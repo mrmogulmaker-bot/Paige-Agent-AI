@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Upload, Trash2, Download, FileText, Eye, Share2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { useConfirm } from "@/hooks/useConfirm";
 
 type Visibility = "internal" | "shared" | "client_upload";
 
@@ -39,6 +40,7 @@ export function ContactFilesPanel({ contactId, tenantId }: { contactId: string; 
   const [files, setFiles] = useState<FileRow[]>([]);
   const [tab, setTab] = useState<Visibility>("internal");
   const [busy, setBusy] = useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const load = async () => {
     const { data } = await supabase
@@ -96,7 +98,13 @@ export function ContactFilesPanel({ contactId, tenantId }: { contactId: string; 
   };
 
   const remove = async (f: FileRow) => {
-    if (!confirm(`Delete ${f.original_filename}?`)) return;
+    const ok = await confirm({
+      title: `Delete ${f.original_filename}?`,
+      description: "The file is removed from storage for good — this can't be undone.",
+      actionLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     await supabase.storage.from("client-files").remove([f.storage_path]);
     const { error } = await supabase.from("client_files").delete().eq("id", f.id);
     if (error) toast.error(error.message);
@@ -114,6 +122,7 @@ export function ContactFilesPanel({ contactId, tenantId }: { contactId: string; 
 
   return (
     <Card><CardContent className="p-4 space-y-4">
+      {confirmDialog}
       <Tabs value={tab} onValueChange={(v) => setTab(v as Visibility)}>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <TabsList>

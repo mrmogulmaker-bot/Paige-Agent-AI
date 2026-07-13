@@ -17,6 +17,7 @@ import {
   Shield, ShieldOff, Eye, CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@/hooks/useConfirm";
 
 // ---------- Constants ----------
 
@@ -191,6 +192,7 @@ export function LenderBureauManager() {
   const [filterMinority, setFilterMinority] = useState<boolean>(false);
   const [filterConfidence, setFilterConfidence] = useState<string>("all");
   const [filterMaxScore, setFilterMaxScore] = useState<string>("");
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const { data: prefs, isLoading } = useQuery({
     queryKey: ["lender-bureau-preferences"],
@@ -360,7 +362,13 @@ export function LenderBureauManager() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this lender record?")) return;
+    const ok = await confirm({
+      title: "Delete this lender record?",
+      description: "It's removed for good — this can't be undone.",
+      actionLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       const { error } = await supabase
         .from("lender_bureau_preferences" as any)
@@ -400,6 +408,7 @@ export function LenderBureauManager() {
 
   return (
     <TooltipProvider>
+      {confirmDialog}
       <Card>
         <CardHeader className="space-y-4 pb-4">
           {/* Title row */}

@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, Copy, FileText } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@/hooks/useConfirm";
 
 type Template = {
   template_key: string;
@@ -28,6 +29,7 @@ export function EmailTemplatesPanel() {
   const [editing, setEditing] = useState<Template | null>(null);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const load = async () => {
     const { data, error } = await supabase
@@ -72,7 +74,13 @@ export function EmailTemplatesPanel() {
   };
 
   const remove = async (t: Template) => {
-    if (!confirm(`Delete template "${t.template_key}"?`)) return;
+    const ok = await confirm({
+      title: `Delete "${t.template_key}"?`,
+      description: "Any automation still pointing at this template will lose it.",
+      actionLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const { error } = await supabase.from("email_templates").delete().eq("template_key", t.template_key);
     if (error) return toast.error(error.message);
     toast.success("Deleted");
@@ -93,6 +101,7 @@ export function EmailTemplatesPanel() {
 
   return (
     <Card>
+      {confirmDialog}
       <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base flex items-center gap-2">
           <FileText className="h-4 w-4" /> Email Templates

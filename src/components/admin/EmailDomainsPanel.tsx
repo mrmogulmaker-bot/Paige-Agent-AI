@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Globe, RefreshCw, Trash2, Plus, Check, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@/hooks/useConfirm";
 
 type Domain = {
   id: string;
@@ -31,6 +32,7 @@ export function EmailDomainsPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ domain: "", from_email_local: "no-reply", from_name: "" });
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const call = async (verb: string, payload: any = {}) => {
     const { data, error } = await supabase.functions.invoke("manage-tenant-domain", { body: { verb, ...payload } });
@@ -61,11 +63,21 @@ export function EmailDomainsPanel() {
 
   const refresh = async (id: string) => { setBusy(id); try { await call("refresh", { id }); await load(); toast.success("Status refreshed"); } catch (e: any) { toast.error(e?.message); } finally { setBusy(null); } };
   const setDefault = async (id: string) => { setBusy(id); try { await call("set_default", { id }); await load(); } catch (e: any) { toast.error(e?.message); } finally { setBusy(null); } };
-  const remove = async (id: string) => { if (!confirm("Remove this sender domain?")) return; setBusy(id); try { await call("remove", { id }); await load(); } catch (e: any) { toast.error(e?.message); } finally { setBusy(null); } };
+  const remove = async (id: string) => {
+    const ok = await confirm({
+      title: "Remove this sender domain?",
+      description: "Paige can no longer send from it until you register and verify it again.",
+      actionLabel: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
+    setBusy(id); try { await call("remove", { id }); await load(); } catch (e: any) { toast.error(e?.message); } finally { setBusy(null); }
+  };
   const copy = (v: string) => { navigator.clipboard.writeText(v); toast.success("Copied"); };
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between gap-4">

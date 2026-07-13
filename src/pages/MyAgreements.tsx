@@ -119,19 +119,27 @@ export default function MyAgreements() {
                       <summary className="cursor-pointer hover:text-foreground">
                         Audit details
                       </summary>
-                      <div className="mt-2 space-y-1 font-mono">
+                      <dl className="mt-2 grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1">
                         {r.user_agent && (
-                          <div>
-                            <span className="text-muted-foreground/80">UA:</span>{" "}
-                            {r.user_agent}
-                          </div>
+                          <>
+                            <dt className="text-muted-foreground/80">Device</dt>
+                            <dd className="break-all">{r.user_agent}</dd>
+                          </>
                         )}
-                        {r.context && Object.keys(r.context).length > 0 && (
-                          <pre className="whitespace-pre-wrap break-all">
-                            {JSON.stringify(r.context, null, 2)}
-                          </pre>
-                        )}
-                      </div>
+                        {r.context &&
+                          Object.entries(r.context).map(([k, v]) => (
+                            <div key={k} className="contents">
+                              <dt className="text-muted-foreground/80 capitalize">
+                                {k.replace(/_/g, " ")}
+                              </dt>
+                              <dd className="break-all font-mono">
+                                {typeof v === "object" && v !== null
+                                  ? JSON.stringify(v)
+                                  : String(v)}
+                              </dd>
+                            </div>
+                          ))}
+                      </dl>
                     </details>
                   </CardContent>
                 ) : null}

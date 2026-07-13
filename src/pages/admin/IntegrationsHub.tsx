@@ -111,7 +111,14 @@ export default function IntegrationsHub() {
       case "apollo": return config?.apollo_auto_enrich ? { state: "success", label: `Auto-enrich on • ${counts.enrichments} (7d)` } : { state: "off", label: "Auto-enrich off" };
       case "posthog": return hasPosthogKey ? { state: "success", label: "Connected" } : { state: "off", label: "Disabled" };
       case "sentry": return hasSentryDsn ? { state: "success", label: "Connected" } : { state: "off", label: "Disabled" };
-      default: return { state: "off", label: "Unknown" };
+      // No pixel/CAPI-specific signal in config yet — never claim "Connected" off
+      // the Meta *page* field (that's the separate Meta Graph tile). Stay truthful
+      // (§13): show "Not configured" until a real pixel-id/event signal exists.
+      case "meta_pixel": return { state: "off", label: "Not configured" };
+      case "nav": return { state: "off", label: "Not connected" };
+      case "smartcredit": return { state: "off", label: "Not connected" };
+      case "plaid": return { state: "off", label: "Not connected" };
+      default: return { state: "off", label: "Not configured" };
     }
   };
 

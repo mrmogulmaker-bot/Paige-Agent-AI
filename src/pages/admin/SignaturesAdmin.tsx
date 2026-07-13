@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { FileSignature, ExternalLink } from "lucide-react";
 
@@ -57,13 +58,14 @@ export default function SignaturesAdmin() {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <Input placeholder="Search envelope ID..." value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
-            <select
-              className="rounded-md border bg-background px-3 py-2 text-sm"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger className="h-9 w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUSES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             {filtered.length === 0 && <p className="text-sm text-muted-foreground">No envelopes match.</p>}

@@ -39,10 +39,10 @@ export interface FleetTenant {
 }
 
 const TONE_CLASS: Record<string, string> = {
-  positive: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-  notice: "bg-violet-500/15 text-violet-300 border-violet-500/30",
-  warn: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  critical: "bg-red-500/15 text-red-400 border-red-500/30",
+  positive: "bg-[hsl(var(--success)/0.15)] text-[hsl(var(--success))] border-[hsl(var(--success)/0.3)]",
+  notice: "bg-[hsl(var(--primary)/0.15)] text-[hsl(var(--primary))] border-[hsl(var(--primary)/0.3)]",
+  warn: "bg-[hsl(var(--warning)/0.15)] text-[hsl(var(--warning))] border-[hsl(var(--warning)/0.3)]",
+  critical: "bg-[hsl(var(--destructive)/0.15)] text-[hsl(var(--destructive))] border-[hsl(var(--destructive)/0.3)]",
   neutral: "bg-muted text-muted-foreground border-border",
 };
 
@@ -251,7 +251,7 @@ function UsageStat({
       <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
         <Icon className="w-3.5 h-3.5" /> {label}
       </div>
-      <div className={`text-lg font-bold tabular-nums mt-1 ${atLimit ? "text-amber-400" : ""}`}>
+      <div className={`text-lg font-bold tabular-nums mt-1 ${atLimit ? "text-[hsl(var(--warning))]" : ""}`}>
         {used}<span className="text-muted-foreground font-normal text-sm">/{limit || "∞"}</span>
       </div>
     </div>

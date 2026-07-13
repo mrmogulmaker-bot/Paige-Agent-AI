@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { useConfirm } from "@/hooks/useConfirm";
 
 type Task = {
   id: string;
@@ -32,6 +33,7 @@ export function ContactTasksPanel({
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [busy, setBusy] = useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const ownerId = linkedUserId; // tasks are scoped by user_id on the existing tasks table
 
@@ -77,7 +79,13 @@ export function ContactTasksPanel({
   };
 
   const remove = async (t: Task) => {
-    if (!confirm("Delete this task?")) return;
+    const ok = await confirm({
+      title: "Delete this task?",
+      description: "It's removed for good — this can't be undone.",
+      actionLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const { error } = await supabase.from("tasks").delete().eq("id", t.id);
     if (error) toast.error(error.message);
   };
@@ -92,6 +100,7 @@ export function ContactTasksPanel({
 
   return (
     <Card><CardContent className="p-4 space-y-4">
+      {confirmDialog}
       <div className="space-y-2 border-b pb-3">
         <Input placeholder="Task title…" value={title} onChange={e => setTitle(e.target.value)} />
         <Textarea placeholder="Description (optional)" rows={2} value={description} onChange={e => setDescription(e.target.value)} />

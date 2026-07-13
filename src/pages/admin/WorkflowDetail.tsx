@@ -8,9 +8,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { ArrowLeft, Play } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+
+const ENUM_NONE = "__none__";
 
 interface SchemaProp {
   type: "string" | "number" | "integer" | "boolean";
@@ -105,14 +108,20 @@ export default function WorkflowDetail() {
                 <p className="text-[11px] text-muted-foreground">{p.description}</p>
               )}
               {p.enum ? (
-                <select
-                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
-                  value={values[k] ?? ""}
-                  onChange={(e) => setValues({ ...values, [k]: e.target.value })}
+                <Select
+                  value={values[k] === undefined || values[k] === null || values[k] === "" ? "" : String(values[k])}
+                  onValueChange={(v) => setValues({ ...values, [k]: v === ENUM_NONE ? "" : v })}
                 >
-                  <option value="">—</option>
-                  {p.enum.map((opt) => <option key={String(opt)} value={String(opt)}>{String(opt)}</option>)}
-                </select>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ENUM_NONE}>—</SelectItem>
+                    {p.enum.map((opt) => (
+                      <SelectItem key={String(opt)} value={String(opt)}>{String(opt)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               ) : p.type === "boolean" ? (
                 <Switch
                   checked={!!values[k]}

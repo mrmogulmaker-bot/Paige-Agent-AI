@@ -17,6 +17,7 @@ import { ReassignCoachDialog } from "./ReassignCoachDialog";
 import { Link } from "react-router-dom";
 import { Users, CheckSquare, Activity, ExternalLink } from "lucide-react";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
+import { useConfirm } from "@/hooks/useConfirm";
 
 // Coaching-generic specialties every tenant can assign (§2/§9).
 const BASE_SPECIALTY_OPTIONS = [
@@ -53,6 +54,7 @@ export function CoachDetailDrawer({ open, onOpenChange, coachUserId, coachName, 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirm();
   const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
   const specialtyOptions = fundingEnabled
     ? [...BASE_SPECIALTY_OPTIONS, ...FUNDING_SPECIALTY_OPTIONS]
@@ -133,7 +135,13 @@ export function CoachDetailDrawer({ open, onOpenChange, coachUserId, coachName, 
 
   const removeRole = async () => {
     if (!coachUserId) return;
-    if (!confirm("Revoke the coach role for this user? This is blocked if they still have active clients.")) return;
+    const ok = await confirm({
+      title: "Revoke this coach role?",
+      description: "They'll lose coach access. If they still have active clients, you'll need to reassign those first.",
+      actionLabel: "Revoke role",
+      destructive: true,
+    });
+    if (!ok) return;
     const { data, error } = await supabase.rpc("admin_remove_coach_role", { _user_id: coachUserId });
     if (error) return toast.error(error.message);
     const res = data as any;
@@ -148,6 +156,7 @@ export function CoachDetailDrawer({ open, onOpenChange, coachUserId, coachName, 
 
   return (
     <>
+      {confirmDialog}
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
           <SheetHeader>

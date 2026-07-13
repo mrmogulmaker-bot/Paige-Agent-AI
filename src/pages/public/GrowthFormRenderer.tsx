@@ -78,6 +78,7 @@ function FormBody({ form, accent }: { form: FormRow; accent?: string }) {
   const [data, setData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
 
   const section = schema.sections[step];
   const progress = totalSteps > 0 ? Math.round(((step + 1) / totalSteps) * 100) : 100;
@@ -88,11 +89,12 @@ function FormBody({ form, accent }: { form: FormRow; accent?: string }) {
 
   const submit = async () => {
     setSubmitting(true);
+    setSubmitError(false);
     const { error } = await submitGrowthForm({
       form_id: form.id, tenant_id: form.tenant_id, payload: data, utm: readUtm(),
     });
     setSubmitting(false);
-    if (error) { alert(error.message); return; }
+    if (error) { setSubmitError(true); return; }
     if (form.success_action_json?.redirect_url) {
       window.location.href = form.success_action_json.redirect_url;
       return;
@@ -131,6 +133,12 @@ function FormBody({ form, accent }: { form: FormRow; accent?: string }) {
       <div className="grid gap-4 md:grid-cols-2">
         {section.fields.map((f) => <FieldRenderer key={f.key} field={f} value={data[f.key]} onChange={(v) => setField(f.key, v)} />)}
       </div>
+
+      {submitError && (
+        <div role="alert" className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+          We couldn't submit your responses just now. Please try again in a moment.
+        </div>
+      )}
 
       <div className="flex justify-between pt-2">
         {step > 0 ? <Button variant="outline" onClick={() => setStep((s) => s - 1)}>Back</Button> : <div />}

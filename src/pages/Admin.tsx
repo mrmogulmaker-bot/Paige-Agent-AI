@@ -23,9 +23,9 @@ const lazy = <T extends React.ComponentType<any>>(factory: () => Promise<{ defau
   });
 import { useNavigate, Routes, Route, useParams, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { Users, FileText, DollarSign, TrendingUp } from "lucide-react";
+import { Users, DollarSign, TrendingUp, LayoutDashboard } from "lucide-react";
+import { PageShell, PageHeader, StatRow, StatTile } from "@/components/ui/page";
 import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
 import { toast } from "sonner";
 import { RoleGate } from "@/components/auth/RoleGate";
@@ -100,7 +100,6 @@ const PlanningAdmin = lazy(() => import("@/pages/admin/PlanningAdmin"));
 const SubAgentsAdmin = lazy(() => import("@/pages/admin/SubAgentsAdmin"));
 const SkillsHub = lazy(() => import("@/pages/admin/SkillsHub"));
 const WorkflowsList = lazy(() => import("@/pages/admin/WorkflowsList"));
-const CampaignsAdmin = lazy(() => import("@/pages/admin/CampaignsAdmin"));
 const CampaignsHub = lazy(() => import("@/pages/admin/CampaignsHub"));
 const WorkflowDetail = lazy(() => import("@/pages/admin/WorkflowDetail"));
 const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
@@ -136,7 +135,6 @@ const PlaidIntegrationConfig = lazy(() => import("@/pages/admin/PlaidIntegration
 const BankingAdmin = lazy(() => import("@/pages/admin/BankingAdmin"));
 const MembersAdmin = lazy(() => import("@/pages/admin/MembersAdmin"));
 const FundingLensHub = lazy(() => import("@/pages/admin/FundingLensHub"));
-const GrowthHub = lazy(() => import("@/pages/admin/GrowthHub"));
 
 
 
@@ -166,7 +164,6 @@ const Admin = () => {
   const [stats, setStats] = useState({
     totalUsers: 0,
     activeSubscriptions: 0,
-    pendingApplications: 0,
     totalRevenue: 0,
   });
 
@@ -259,7 +256,6 @@ const Admin = () => {
       setStats({
         totalUsers: usersRes.count || 0,
         activeSubscriptions: subsRes.count || 0,
-        pendingApplications: 0,
         totalRevenue,
       });
     } catch (error) {
@@ -615,55 +611,33 @@ const Admin = () => {
 };
 
 
-function AdminOverview({ stats }: { stats: { totalUsers: number; activeSubscriptions: number; pendingApplications: number; totalRevenue: number } }) {
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground truncate">Admin Dashboard</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Overview of your platform activity</p>
-        </div>
-        <ExportClientsButton />
-      </div>
+function AdminOverview({ stats }: { stats: { totalUsers: number; activeSubscriptions: number; totalRevenue: number } }) {
+  const revenue = new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(stats.totalRevenue);
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalUsers}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Subscriptions</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.activeSubscriptions}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pending Applications</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.pendingApplications}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">${stats.totalRevenue.toFixed(2)}</div>
-          </CardContent>
-        </Card>
-      </div>
+  return (
+    <PageShell width="wide">
+      <PageHeader
+        variant="hero"
+        icon={LayoutDashboard}
+        eyebrow="Overview"
+        title="Dashboard"
+        description="Your practice at a glance — people, subscriptions, and what's waiting on you."
+        actions={<ExportClientsButton />}
+      />
+
+      <StatRow cols={3}>
+        <StatTile label="Total Users" value={stats.totalUsers.toLocaleString()} icon={Users} />
+        <StatTile
+          label="Active Subscriptions"
+          value={stats.activeSubscriptions.toLocaleString()}
+          icon={TrendingUp}
+        />
+        <StatTile label="Total Revenue" value={revenue} icon={DollarSign} />
+      </StatRow>
 
       <Suspense fallback={<SuspenseFallback />}>
         <AILearningOverview />
@@ -672,7 +646,7 @@ function AdminOverview({ stats }: { stats: { totalUsers: number; activeSubscript
       <Suspense fallback={<SuspenseFallback />}>
         <UserPerformance />
       </Suspense>
-    </div>
+    </PageShell>
   );
 }
 

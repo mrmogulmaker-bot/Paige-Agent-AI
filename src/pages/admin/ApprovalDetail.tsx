@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   ArrowLeft, Send, Pencil, SkipForward, AlertTriangle, MessageSquare,
@@ -16,6 +17,8 @@ import {
   CATEGORY_LABEL, RISK_COLOR, type ApprovalCategory,
 } from "@/lib/approvals";
 import { formatDistanceToNow } from "date-fns";
+
+const UNASSIGNED = "__unassigned__";
 
 interface Comment {
   id: string;
@@ -348,18 +351,22 @@ export default function ApprovalDetail() {
           <Card>
             <CardHeader><CardTitle className="text-base flex items-center gap-2"><UserCog className="w-4 h-4" /> Assignment</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              <select
-                className="w-full h-9 rounded-md border bg-background px-2 text-sm"
-                value={approval.assigned_to_user_id ?? ""}
-                onChange={(e) => reassign(e.target.value)}
+              <Select
+                value={approval.assigned_to_user_id ?? UNASSIGNED}
+                onValueChange={(v) => reassign(v === UNASSIGNED ? "" : v)}
               >
-                <option value="">Unassigned</option>
-                {members.map((m) => (
-                  <option key={m.user_id} value={m.user_id}>
-                    {`${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() || m.email}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={UNASSIGNED}>Unassigned</SelectItem>
+                  {members.map((m) => (
+                    <SelectItem key={m.user_id} value={m.user_id}>
+                      {`${m.first_name ?? ""} ${m.last_name ?? ""}`.trim() || m.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </CardContent>
           </Card>
 

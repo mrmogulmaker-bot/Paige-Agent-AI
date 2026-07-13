@@ -5,6 +5,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useConfirm } from "@/hooks/useConfirm";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,7 @@ export default function TenantKnowledgeAdmin() {
   const [docs, setDocs] = useState<TenantDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,7 +73,13 @@ export default function TenantKnowledgeAdmin() {
   };
 
   const remove = async (doc: TenantDoc) => {
-    if (!confirm(`Delete "${doc.title}"? This removes all chunks.`)) return;
+    const ok = await confirm({
+      title: `Delete "${doc.title}"?`,
+      description: "This removes the document and every embedded chunk. Paige will no longer draw on it.",
+      actionLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const { error } = await supabase.from("tenant_knowledge_docs" as any).delete().eq("id", doc.id);
     if (error) return toast.error(error.message);
     toast.success("Deleted");
@@ -80,6 +88,7 @@ export default function TenantKnowledgeAdmin() {
 
   return (
     <div className="space-y-6 p-6">
+      {confirmDialog}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">

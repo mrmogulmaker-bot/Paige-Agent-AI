@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Crown, Loader2, Lock } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@/hooks/useConfirm";
 
 // The roles a member can be granted here. Mirrors ASSIGNABLE_ROLES in MembersAdmin.
 // super_admin / platform_admin are intentionally absent — never grantable from this surface.
@@ -71,6 +72,7 @@ export function ManageRolesDialog({
   const [baseline, setBaseline] = useState<Record<string, boolean>>({});
   const [staged, setStaged] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const isSelf = !!member && member.user_id === currentUserId;
 
@@ -114,9 +116,12 @@ export function ManageRolesDialog({
     if (!member || !tenantId || pendingCount === 0) return;
 
     if (removesLastStaffRole) {
-      const ok = window.confirm(
-        "This removes their last staff role — they'll no longer appear in Members & Roles. Continue?",
-      );
+      const ok = await confirm({
+        title: "Remove their last staff role?",
+        description: "They'll drop off Members & Roles and lose staff access. You can re-add a role later.",
+        actionLabel: "Remove role",
+        destructive: true,
+      });
       if (!ok) return;
     }
 
@@ -187,7 +192,9 @@ export function ManageRolesDialog({
   if (!member) return null;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!saving) onOpenChange(o); }}>
+    <>
+      {confirmDialog}
+      <Dialog open={open} onOpenChange={(o) => { if (!saving) onOpenChange(o); }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Manage roles</DialogTitle>
@@ -289,6 +296,7 @@ export function ManageRolesDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
   );
 }

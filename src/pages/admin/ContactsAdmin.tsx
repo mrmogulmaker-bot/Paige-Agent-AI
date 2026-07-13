@@ -569,11 +569,10 @@ export default function ContactsAdmin() {
             </AlertDialogHeader>
             {deleteTarget?.linked_user_id && (
               <label className="flex items-start gap-2 text-sm bg-destructive/5 border border-destructive/30 rounded p-3 -mt-1">
-                <input
-                  type="checkbox"
+                <Checkbox
                   className="mt-0.5"
                   checked={alsoDeleteAuth}
-                  onChange={(e) => setAlsoDeleteAuth(e.target.checked)}
+                  onCheckedChange={(v) => setAlsoDeleteAuth(v === true)}
                   disabled={deleting}
                 />
                 <span>

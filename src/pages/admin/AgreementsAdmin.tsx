@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -425,13 +426,12 @@ const AgreementsAdmin = () => {
                   for legal clarity.
                 </p>
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={profile.white_label_ai_connect}
-                    onChange={(e) =>
+                    onCheckedChange={(v) =>
                       setProfile({
                         ...profile,
-                        white_label_ai_connect: e.target.checked,
+                        white_label_ai_connect: v === true,
                       })
                     }
                   />

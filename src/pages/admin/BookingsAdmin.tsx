@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { CalendarClock } from "lucide-react";
 
@@ -74,9 +75,14 @@ export default function BookingsAdmin() {
               <button className={`px-3 py-1 rounded ${view === "upcoming" ? "bg-muted" : ""}`} onClick={() => setView("upcoming")}>Upcoming</button>
               <button className={`px-3 py-1 rounded ${view === "past" ? "bg-muted" : ""}`} onClick={() => setView("past")}>Past</button>
             </div>
-            <select className="rounded-md border bg-background px-3 py-2 text-sm" value={eventType} onChange={(e) => setEventType(e.target.value)}>
-              {EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <Select value={eventType} onValueChange={setEventType}>
+              <SelectTrigger className="h-9 w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {EVENT_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
         </CardHeader>
         <CardContent>

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { FileSignature, Send } from "lucide-react";
@@ -118,16 +119,17 @@ export default function DocuSignConfig() {
         <CardContent className="grid gap-3 md:grid-cols-2">
           <div className="space-y-1">
             <Label>Envelope type</Label>
-            <select
-              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            <Select
               value={form.envelope_type}
-              onChange={(e) => {
-                const t = e.target.value;
-                setForm({ ...form, envelope_type: t, template_id: templates[t] ?? form.template_id });
-              }}
+              onValueChange={(t) => setForm({ ...form, envelope_type: t, template_id: templates[t] ?? form.template_id })}
             >
-              {TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
+              <SelectTrigger className="w-full h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1">
             <Label>Template ID</Label>

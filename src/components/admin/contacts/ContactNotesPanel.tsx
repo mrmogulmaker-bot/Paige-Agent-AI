@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Pin, PinOff, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { useConfirm } from "@/hooks/useConfirm";
 
 type Note = {
   id: string;
@@ -26,6 +27,7 @@ export function ContactNotesPanel({ contactId, tenantId }: { contactId: string; 
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const load = async () => {
     const { data } = await supabase
@@ -70,7 +72,13 @@ export function ContactNotesPanel({ contactId, tenantId }: { contactId: string; 
   };
 
   const remove = async (n: Note) => {
-    if (!confirm("Delete this note?")) return;
+    const ok = await confirm({
+      title: "Delete this note?",
+      description: "It's removed for good — this can't be undone.",
+      actionLabel: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     const { error } = await supabase.from("client_notes").delete().eq("id", n.id);
     if (error) toast.error(error.message);
   };
@@ -82,6 +90,7 @@ export function ContactNotesPanel({ contactId, tenantId }: { contactId: string; 
 
   return (
     <Card><CardContent className="p-4 space-y-4">
+      {confirmDialog}
       <div className="space-y-2">
         <Textarea
           placeholder="Write a note about this contact… (visible to staff only)"
