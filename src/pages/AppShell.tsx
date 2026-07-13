@@ -8,6 +8,7 @@ import { PaigeChat } from "@/components/app/PaigeChat";
 import { AppNav } from "@/components/app/AppNav";
 import { QuickStatsBar } from "@/components/app/QuickStatsBar";
 import { useCreditFactors } from "@/hooks/useCreditFactors";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { SessionTimeoutWarning } from "@/components/auth/SessionTimeoutWarning";
@@ -71,6 +72,11 @@ const AppShell = () => {
   const { target: impersonationTarget, isImpersonating } = useImpersonation();
   const effectiveUserId = impersonationTarget?.targetUserId ?? user?.id;
   const { factors } = useCreditFactors(effectiveUserId ?? null, { enabled: !!effectiveUserId });
+  // Credit/funding client chrome (the QuickStatsBar → /app/credit and the
+  // credit-first OnboardingFlow) is opt-in per tenant (§2/§9). Fail-closed:
+  // hidden for every coaching-generic tenant until they turn on the funding
+  // preset. Coaching clients keep the neutral /onboard + portal experience.
+  const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
   const { showWarning, staySignedIn } = useSessionTimeout();
   // Publish live presence while signed in (#148). The heartbeat always stamps
   // the real authenticated user (auth.uid()), regardless of view-as-client.
@@ -278,7 +284,7 @@ const AppShell = () => {
     return (
       <>
         {!isImpersonating && <RequiredConsentsGate userId={activeUser.id} />}
-        {!isImpersonating && <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />}
+        {!isImpersonating && fundingEnabled && <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />}
         <AdminViewBanner />
         <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
         <PushNotificationPrompt />
@@ -293,7 +299,7 @@ const AppShell = () => {
               </div>
             )}
           </div>
-          <QuickStatsBar factors={factors} />
+          {fundingEnabled && <QuickStatsBar factors={factors} />}
         </div>
       </>
     );
@@ -303,7 +309,7 @@ const AppShell = () => {
   return (
     <>
       {!isImpersonating && <RequiredConsentsGate userId={activeUser.id} />}
-      {!isImpersonating && <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />}
+      {!isImpersonating && fundingEnabled && <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />}
       <AdminViewBanner />
       <SessionTimeoutWarning open={showWarning} onStaySignedIn={staySignedIn} />
       <PushNotificationPrompt />
@@ -324,7 +330,7 @@ const AppShell = () => {
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
-        <QuickStatsBar factors={factors} />
+        {fundingEnabled && <QuickStatsBar factors={factors} />}
       </div>
     </>
   );

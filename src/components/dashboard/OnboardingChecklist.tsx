@@ -1,11 +1,13 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, Circle, Upload, Search, FileText, Building2, X, Sparkles } from "lucide-react";
+import { CheckCircle2, Circle, Upload, Search, FileText, Building2, Target, X, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { trackEvent } from "@/hooks/useAnalytics";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
+import { usePlaybook } from "@/lib/playbook";
 
 interface ChecklistItem {
   id: string;
@@ -21,56 +23,122 @@ export const OnboardingChecklist = ({ userId }: { userId: string }) => {
   const [dismissed, setDismissed] = useState(false);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  // Credit/funding onboarding steps are opt-in per tenant (§2/§9). Fail-closed:
+  // a coaching-generic tenant never sees credit-report/business-credit steps;
+  // it gets a neutral, coaching-generic checklist instead. Only a tenant that
+  // turned on the funding preset gets the credit-building steps.
+  const { enabled: fundingEnabled, loading: featureLoading } = useTenantFeature("funding_readiness");
+  const pb = usePlaybook();
+  const coachName = pb.persona.name;
 
-  const items: ChecklistItem[] = [
-    {
-      id: "upload_report",
-      label: "Upload a Credit Report",
-      description: "Upload your first credit report to unlock AI-powered insights",
-      icon: Upload,
-      route: "/app/credit",
-      check: async () => {
-        const { count } = await supabase
-          .from("credit_report_uploads")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", userId);
-        return (count ?? 0) > 0;
+  const items: ChecklistItem[] = useMemo(() => {
+    if (fundingEnabled) {
+      return [
+        {
+          id: "upload_report",
+          label: "Upload a Credit Report",
+          description: "Upload your first credit report to see your insights",
+          icon: Upload,
+          route: "/app/credit",
+          check: async () => {
+            const { count } = await supabase
+              .from("credit_report_uploads")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", userId);
+            return (count ?? 0) > 0;
+          },
+        },
+        {
+          id: "review_accounts",
+          label: "Review Your Accounts",
+          description: "Check your tradelines and account details across all bureaus",
+          icon: Search,
+          route: "/app/credit",
+          check: async () => {
+            const { count } = await supabase
+              .from("credit_accounts")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", userId);
+            return (count ?? 0) > 0;
+          },
+        },
+        // [§194] "Start Your First Dispute" step removed — monitoring-only surface.
+        {
+          id: "add_business",
+          label: "Set Up Your Business Profile",
+          description: "Add your business to start building business credit",
+          icon: Building2,
+          route: "/app/business",
+          check: async () => {
+            const { count } = await supabase
+              .from("businesses")
+              .select("id", { count: "exact", head: true })
+              .eq("owner_user_id", userId);
+            return (count ?? 0) > 0;
+          },
+        },
+      ];
+    }
+
+    // Coaching-generic default (every tenant that hasn't opted into funding).
+    // Uses only universal, tenant-agnostic tables (profiles / client_goals /
+    // documents) and real client routes (/app/settings, /app/business) — the
+    // same ones ClientHomeTiles relies on for coaching clients.
+    return [
+      {
+        id: "complete_profile",
+        label: "Complete Your Profile",
+        description: "Add your name and contact details so we can personalize your experience",
+        icon: FileText,
+        route: "/app/settings",
+        check: async () => {
+          const { data } = await supabase
+            .from("profiles")
+            .select("full_name")
+            .eq("user_id", userId)
+            .maybeSingle();
+          return !!data?.full_name?.trim();
+        },
       },
-    },
-    {
-      id: "review_accounts",
-      label: "Review Your Accounts",
-      description: "Check your tradelines and account details across all bureaus",
-      icon: Search,
-      route: "/app/credit",
-      check: async () => {
-        const { count } = await supabase
-          .from("credit_accounts")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", userId);
-        return (count ?? 0) > 0;
+      {
+        id: "set_goal",
+        label: "Set Your First Goal",
+        description: `Tell ${coachName} what you're working toward so you can map the path together`,
+        icon: Target,
+        route: "/app/settings",
+        check: async () => {
+          const { count } = await supabase
+            .from("client_goals" as any)
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", userId);
+          return (count ?? 0) > 0;
+        },
       },
-    },
-    // [§194] "Start Your First Dispute" step removed — monitoring-only surface.
-    {
-      id: "add_business",
-      label: "Set Up Your Business Profile",
-      description: "Add your business to start building business credit",
-      icon: Building2,
-      route: "/app/business",
-      check: async () => {
-        const { count } = await supabase
-          .from("businesses")
-          .select("id", { count: "exact", head: true })
-          .eq("owner_user_id", userId);
-        return (count ?? 0) > 0;
+      {
+        id: "upload_document",
+        label: "Upload Your First Document",
+        description: "Keep your important files in one place for easy reference",
+        icon: Building2,
+        route: "/app/business",
+        check: async () => {
+          const { count } = await supabase
+            .from("documents" as any)
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", userId);
+          return (count ?? 0) > 0;
+        },
       },
-    },
-  ];
+    ];
+  }, [fundingEnabled, userId, coachName]);
 
   const firedStepsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    // Wait for the tenant funding flag to resolve before checking, so a funding
+    // tenant is never briefly measured against the coaching-generic step set
+    // (the flag is fail-closed while loading).
+    if (featureLoading) return;
+
     const dismissKey = `onboarding_dismissed_${userId}`;
     if (localStorage.getItem(dismissKey) === "true") {
       setDismissed(true);
@@ -117,7 +185,8 @@ export const OnboardingChecklist = ({ userId }: { userId: string }) => {
       }
     };
     checkAll();
-  }, [userId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, fundingEnabled, featureLoading]);
 
   if (dismissed || loading) return null;
 

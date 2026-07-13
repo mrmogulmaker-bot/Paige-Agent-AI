@@ -60,6 +60,7 @@ import { AllCreditReportsView } from "@/components/dashboard/AllCreditReportsVie
 import { QuickUploadReportModal } from "@/components/dashboard/QuickUploadReportModal";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { performSignOut } from "@/lib/auth/signOut";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
 
 const Dashboard = () => {
   const { mode, isCoachOrAdmin } = useDashboardMode();
@@ -90,6 +91,10 @@ const Dashboard = () => {
   const [showQuickUpload, setShowQuickUpload] = useState(false);
   const isMobile = useIsMobile();
   const navigate = useNavigate();
+  // The credit-first OnboardingFlow is opt-in per tenant (§2/§9). Fail-closed:
+  // a coaching-generic tenant never sees the credit welcome flow on this legacy
+  // /dashboard surface.
+  const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -159,7 +164,7 @@ const Dashboard = () => {
 
   return (
     <>
-      <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />
+      {fundingEnabled && <OnboardingFlow open={showOnboarding} onComplete={() => setShowOnboarding(false)} />}
       <UpgradeModal open={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} />
       <QuickUploadReportModal open={showQuickUpload} onOpenChange={setShowQuickUpload} />
       
