@@ -72,7 +72,6 @@ const PortalStudio = lazy(() => import("@/pages/admin/PortalStudio"));
 const PlatformTenants = lazy(() => import("@/pages/admin/PlatformTenants"));
 const PlatformTeam = lazy(() => import("@/pages/admin/PlatformTeam"));
 const PlatformSendingIdentities = lazy(() => import("@/pages/admin/PlatformSendingIdentities"));
-const UserPerformance = lazy(() => import("@/components/dashboard/UserPerformance").then(m => ({ default: m.UserPerformance })));
 const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
 const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
 const MyReferralsPanel = lazy(() => import("@/components/dashboard/MyReferralsPanel"));
@@ -641,10 +640,6 @@ function AdminOverview({ stats }: { stats: { totalUsers: number; activeSubscript
 
       <Suspense fallback={<SuspenseFallback />}>
         <AILearningOverview />
-      </Suspense>
-
-      <Suspense fallback={<SuspenseFallback />}>
-        <UserPerformance />
       </Suspense>
     </PageShell>
   );

@@ -377,7 +377,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         </div>
 
         {/* Row 2: 7-hub primary nav (desktop) */}
-        <div className="hidden md:flex items-center gap-1 px-3 md:px-6 h-11 overflow-x-auto scrollbar-none border-t border-sidebar-border/60">
+        <div className="hidden md:flex items-center gap-1 px-3 md:px-6 h-11 overflow-x-auto no-scrollbar border-t border-sidebar-border/60">
           {activeHubs.map((hub) => {
             const hubActive =
               isActive(hub.href) ||
