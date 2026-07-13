@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2, ArrowRight, ArrowLeft, Target, TrendingUp, DollarSign, CheckCircle2, Sparkles, FileText } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { DemographicQuestionsStep, EMPTY_ANSWERS, saveDemographicAnswers, type DemographicAnswers } from "@/components/onboarding/DemographicQuestionsStep";
+import { usePlaybook } from "@/lib/playbook";
 
 interface OnboardingFlowProps {
   open: boolean;
@@ -20,6 +21,9 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
   const [step, setStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  // Speak in the tenant's Paige persona, never the platform brand (§3/§6).
+  const pb = usePlaybook();
+  const brandName = pb.persona.name;
 
   // Goals
   const [goals, setGoals] = useState<string[]>([]);
@@ -143,7 +147,7 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
       try { await saveDemographicAnswers(supabase, user.id, demographicAnswers); } catch {}
 
       toast({
-        title: "Welcome to PaigeAgent.ai!",
+        title: `Welcome to ${brandName}!`,
         description: "Your profile has been set up successfully",
       });
 
@@ -185,7 +189,7 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) handleSkipForNow(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto sm:max-h-[85vh]">
         <DialogHeader>
-          <DialogTitle className="text-xl sm:text-2xl">Welcome to PaigeAgent.ai! 🎉</DialogTitle>
+          <DialogTitle className="text-xl sm:text-2xl">Welcome to {brandName}! 🎉</DialogTitle>
           <DialogDescription>
             Optional setup — takes ~2 minutes. Skip anytime; we'll keep your checklist on the dashboard.
           </DialogDescription>
@@ -200,9 +204,9 @@ export const OnboardingFlow = ({ open, onComplete }: OnboardingFlowProps) => {
               <div className="w-14 h-14 sm:w-20 sm:h-20 bg-gradient-gold rounded-full mx-auto flex items-center justify-center">
                 <Sparkles className="w-7 h-7 sm:w-10 sm:h-10 text-white" />
               </div>
-              <h2 className="text-xl sm:text-3xl font-bold">Welcome to PaigeAgent.ai!</h2>
+              <h2 className="text-xl sm:text-3xl font-bold">Welcome to {brandName}!</h2>
               <p className="text-sm sm:text-base text-muted-foreground max-w-md mx-auto">
-                Your AI-powered credit building and business financing companion.
+                {brandName} runs your credit-building and business-financing workflow.
               </p>
             </div>
 
