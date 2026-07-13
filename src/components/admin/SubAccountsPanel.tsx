@@ -135,7 +135,7 @@ export function SubAccountsPanel() {
         _kind: "subaccount_owner",
         _default_role: "admin",
         _expires_in_days: 30,
-        _max_uses: null,
+        _max_uses: 1,
         _contact_id: null,
         _email: email,
       });

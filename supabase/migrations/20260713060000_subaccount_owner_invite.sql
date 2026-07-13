@@ -166,21 +166,31 @@ BEGIN
     -- invariant, not the caller's parameter). The AGENCY stays owner_user_id, so it
     -- retains white-label control (can_manage_tenant_brand walks the parent chain);
     -- there is NO ownership transfer here.
-    INSERT INTO public.tenant_members (tenant_id, user_id, role, status, accepted_at)
+    --
+    -- §13 least-privilege: this token grants tenant-ADMIN, so accept is bound to the
+    -- intended recipient. If the invite was minted to a specific email, the accepting
+    -- user's own email MUST match it — a forwarded link cannot be redeemed by a
+    -- stranger into admin. (Paired with single-use max_uses=1 at mint.) _email is
+    -- only populated in the consumer branch above, so fetch it here first.
+    SELECT email INTO _email FROM auth.users WHERE id = _uid;
+    IF _tok.email IS NOT NULL AND lower(_tok.email) <> lower(COALESCE(_email, '')) THEN
+      RAISE EXCEPTION 'This invite was sent to a different email address. Accept it while signed in as %', _tok.email;
+    END IF;
+    INSERT INTO public.tenant_members (tenant_id, user_id, role, status, joined_at)
     VALUES (_tok.tenant_id, _uid, 'admin', 'active', now())
     ON CONFLICT (tenant_id, user_id) DO UPDATE
       SET role = 'admin',
           status = 'active',
-          accepted_at = COALESCE(public.tenant_members.accepted_at, now()),
+          joined_at = COALESCE(public.tenant_members.joined_at, now()),
           updated_at = now();
 
   ELSE
     -- TEAM / staff invite — idempotent membership upsert (unchanged).
-    INSERT INTO public.tenant_members (tenant_id, user_id, role, status, accepted_at)
+    INSERT INTO public.tenant_members (tenant_id, user_id, role, status, joined_at)
     VALUES (_tok.tenant_id, _uid, _tok.default_role, 'active', now())
     ON CONFLICT (tenant_id, user_id) DO UPDATE
       SET status = 'active',
-          accepted_at = COALESCE(public.tenant_members.accepted_at, now()),
+          joined_at = COALESCE(public.tenant_members.joined_at, now()),
           updated_at = now();
   END IF;
 

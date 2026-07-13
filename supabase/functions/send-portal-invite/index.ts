@@ -38,9 +38,30 @@ function senderFrom(tenantName: string, fallbackFrom: string): string {
   return name ? `${name} <${addr}>` : fallbackFrom;
 }
 
-function inviteHtml(tenantName: string, accent: string, logo: string | null, joinUrl: string, firstName: string): string {
+// Copy varies by who the invite is FOR (§6/§9/§3): a client is invited to their
+// portal; a sub-account OWNER is handed the reins of their own workspace. The
+// pixels (logo/accent/sender) are the agency's either way; only the words change.
+function inviteCopy(kind: string, tenantName: string): { lead: string; cta: string; subject: string; textLead: string } {
+  if (kind === "subaccount_owner") {
+    return {
+      subject: `${tenantName} set up your workspace — take the reins`,
+      lead: `${esc(tenantName)} set you up to run your own workspace. Set up your account to take the reins — your brand, your clients, your team, all yours to run.`,
+      textLead: `${tenantName} set you up to run your own workspace. Set up your account to take the reins.`,
+      cta: "Set up my account",
+    };
+  }
+  return {
+    subject: `${tenantName} invited you to your client portal`,
+    lead: `${esc(tenantName)} invited you to your private client portal. It's where you'll work with the team, track your progress, and chat with your assistant — all in one place.`,
+    textLead: `${tenantName} invited you to your private client portal.`,
+    cta: "Open my portal",
+  };
+}
+
+function inviteHtml(tenantName: string, accent: string, logo: string | null, joinUrl: string, firstName: string, kind: string): string {
   const on = textOn(accent);
   const hi = firstName ? `Hi ${esc(firstName)},` : "Hi there,";
+  const { lead, cta } = inviteCopy(kind, tenantName);
   const header = logo
     ? `<img src="${esc(logo)}" alt="${esc(tenantName)}" height="40" style="max-height:40px;display:inline-block;" />`
     : `<div style="font-size:18px;font-weight:bold;color:#fff;">${esc(tenantName)}</div>`;
@@ -52,13 +73,12 @@ function inviteHtml(tenantName: string, accent: string, logo: string | null, joi
       <tr><td style="padding:30px 32px 6px;">
         <h1 style="color:#101828;font-size:21px;margin:0 0 8px;">${hi}</h1>
         <p style="color:#475467;font-size:14px;line-height:1.6;margin:0 0 18px;">
-          ${esc(tenantName)} invited you to your private client portal. It's where you'll work with
-          the team, track your progress, and chat with your assistant — all in one place.
+          ${lead}
         </p>
       </td></tr>
       <tr><td style="padding:2px 32px 28px;">
         <a href="${esc(joinUrl)}" style="display:inline-block;background:${esc(accent)};color:${on};font-weight:bold;font-size:14px;text-decoration:none;padding:13px 26px;border-radius:9999px;">
-          Open my portal
+          ${esc(cta)}
         </a>
         <p style="color:#98a0ae;font-size:12px;margin:14px 0 0;word-break:break-all;">Or paste this link: ${esc(joinUrl)}</p>
       </td></tr>
@@ -87,7 +107,7 @@ Deno.serve(async (req) => {
   // Validate the token, then resolve the brand up the parent chain (below).
   const { data: tok } = await admin
     .from("tenant_invite_tokens")
-    .select("tenant_id, revoked_at, expires_at, email")
+    .select("tenant_id, revoked_at, expires_at, email, kind")
     .eq("token", token)
     .maybeSingle();
   if (!tok || tok.revoked_at || new Date(tok.expires_at as string) <= new Date()) {
@@ -133,6 +153,9 @@ Deno.serve(async (req) => {
     }
   } catch { /* keep the platform-address fallback */ }
 
+  const kind = String((tok as { kind?: string }).kind ?? "consumer");
+  const copy = inviteCopy(kind, tenantName);
+
   if (!RESEND_KEY) return json({ ok: true, join_url: joinUrl, emailed: false });
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -142,9 +165,9 @@ Deno.serve(async (req) => {
         from: fromHeader,
         ...(replyTo ? { reply_to: replyTo } : {}),
         to: [recipient],
-        subject: `${tenantName} invited you to your client portal`,
-        html: inviteHtml(tenantName, accent, logoUrl, joinUrl, firstName),
-        text: `${firstName ? `Hi ${firstName},` : "Hi there,"}\n\n${tenantName} invited you to your private client portal.\n\nOpen it: ${joinUrl}\n`,
+        subject: copy.subject,
+        html: inviteHtml(tenantName, accent, logoUrl, joinUrl, firstName, kind),
+        text: `${firstName ? `Hi ${firstName},` : "Hi there,"}\n\n${copy.textLead}\n\nOpen it: ${joinUrl}\n`,
       }),
     });
     return json({ ok: true, join_url: joinUrl, emailed: res.ok });
