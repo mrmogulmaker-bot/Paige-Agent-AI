@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { PageShell, PageHeader, SectionCard, StatePill } from "@/components/ui/page";
 import type { PillState } from "@/components/ui/page";
 import { supabase } from "@/integrations/supabase/client";
+import { CalendarConnectorsPanel } from "@/components/admin/settings/CalendarConnectorsPanel";
 import {
   Workflow, CreditCard, MessageSquare, Send, Zap, Search, Activity,
   ExternalLink, FileSignature, CalendarClock, BarChart3, Bug, Share2, UserSearch,
@@ -56,7 +57,7 @@ const tiles = [
 ] as const;
 
 
-export default function IntegrationsHub({ embedded = false }: { embedded?: boolean } = {}) {
+export default function IntegrationsHub() {
   const [config, setConfig] = useState<ConfigShape | null>(null);
   const [counts, setCounts] = useState<Counts>({
     n8n: 0, mcp: 0, telegramConfigured: false, recentSubscriptionEvents: 0,
@@ -114,32 +115,41 @@ export default function IntegrationsHub({ embedded = false }: { embedded?: boole
     }
   };
 
-  const grid = (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {tiles.map((tile) => {
-        const status = statusFor(tile.key);
-        return (
-          <SectionCard
-            key={tile.key}
-            interactive
-            icon={tile.icon}
-            title={tile.title}
-            description={tile.description}
-            actions={<StatePill state={status.state}>{status.label}</StatePill>}
-          >
-            <Button asChild size="sm" variant="outline" className="gap-1">
-              <Link to={tile.href}>Manage <ExternalLink className="size-3" /></Link>
-            </Button>
-          </SectionCard>
-        );
-      })}
-    </div>
+  const tools = (
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
+          <Plug className="h-4 w-4 text-muted-foreground" /> Connected tools
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Every tool Paige can reach — connect, configure, and monitor each one.
+        </p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {tiles.map((tile) => {
+          const status = statusFor(tile.key);
+          return (
+            <SectionCard
+              key={tile.key}
+              interactive
+              icon={tile.icon}
+              title={tile.title}
+              description={tile.description}
+              actions={<StatePill state={status.state}>{status.label}</StatePill>}
+            >
+              <Button asChild size="sm" variant="outline" className="gap-1">
+                <Link to={tile.href}>Manage <ExternalLink className="size-3" /></Link>
+              </Button>
+            </SectionCard>
+          );
+        })}
+      </div>
+    </section>
   );
 
-  // Embedded inside the Settings → Integrations tab: skip the shell + hero so it
-  // doesn't render a second masthead under the Settings page's own hero.
-  if (embedded) return grid;
-
+  // One integrations home (§9/§12): the connected-tool tiles plus the calendar
+  // connectors that used to live in a rival Settings tab, now folded in as a
+  // section. Each connector still deep-links to its own config/connect flow.
   return (
     <PageShell width="wide">
       <PageHeader
@@ -149,7 +159,8 @@ export default function IntegrationsHub({ embedded = false }: { embedded?: boole
         title="Integrations"
         description="Every tool Paige can reach — the wiring that lets her act across your stack. Admin only."
       />
-      {grid}
+      {tools}
+      <CalendarConnectorsPanel />
     </PageShell>
   );
 }

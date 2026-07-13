@@ -7,11 +7,12 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageShell, PageHeader, SectionCard, StatePill } from "@/components/ui/page";
-import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe, CalendarCheck, Plug, Bot } from "lucide-react";
-import { lazy, Suspense } from "react";
+import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe, Plug, Bot } from "lucide-react";
 import { Link } from "react-router-dom";
-import { CalendarConnectorsPanel } from "@/components/admin/settings/CalendarConnectorsPanel";
-const IntegrationsHub = lazy(() => import("@/pages/admin/IntegrationsHub"));
+// Integrations & calendar connectors consolidated to the one home at
+// /admin/integrations (Automation → Integrations). The former Settings
+// "Integrations" and "Connectors" tabs are retired; a signpost card below the
+// tab list points there (§9/§12 — one home, no dead end).
 // Team & Roles lives at /admin/members — the Settings tab was retired in Ship #3 (Task #15).
 // A transitional signpost card below the tab list points users to the canonical route.
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
@@ -87,16 +88,27 @@ export function AdminSettingsHub() {
         </Button>
       </SectionCard>
 
+      {/* Integrations & calendar connectors now live in one home under
+          Automation → Integrations (§9/§12). This card replaces the retired
+          Settings "Integrations" and "Connectors" tabs so there's no dead end. */}
+      <SectionCard
+        icon={Plug}
+        title="Integrations & connectors moved"
+        description="Every connector — plus your Google Calendar, Zoom, and calendar sync — now lives in one place under Automation → Integrations."
+        className="border-primary/30 bg-primary/5"
+      >
+        <Button asChild>
+          <Link to="/admin/integrations">
+            Go to Integrations
+            <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+          </Link>
+        </Button>
+      </SectionCard>
+
       <Tabs defaultValue="workspace" className="space-y-4">
         <TabsList className="flex h-auto flex-wrap justify-start gap-1 p-1">
           <TabsTrigger value="workspace" className="gap-2">
             <Building2 className="w-4 h-4" /> Workspace
-          </TabsTrigger>
-          <TabsTrigger value="connectors" className="gap-2">
-            <CalendarCheck className="w-4 h-4" /> Connectors
-          </TabsTrigger>
-          <TabsTrigger value="integrations" className="gap-2">
-            <Plug className="w-4 h-4" /> Integrations
           </TabsTrigger>
           <TabsTrigger value="storefront" className="gap-2">
             <Store className="w-4 h-4" /> Storefront
@@ -131,16 +143,6 @@ export function AdminSettingsHub() {
 
         <TabsContent value="workspace" className="space-y-4">
           <WorkspaceSettingsPanel />
-        </TabsContent>
-
-        <TabsContent value="connectors" className="space-y-4">
-          <CalendarConnectorsPanel />
-        </TabsContent>
-
-        <TabsContent value="integrations" className="space-y-4">
-          <Suspense fallback={<p className="text-sm text-muted-foreground">Loading integrations…</p>}>
-            <IntegrationsHub embedded />
-          </Suspense>
         </TabsContent>
 
         <TabsContent value="storefront" className="space-y-4">
