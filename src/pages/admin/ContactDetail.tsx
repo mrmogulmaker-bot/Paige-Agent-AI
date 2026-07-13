@@ -34,6 +34,7 @@ import { ContactPlanningPanel } from "@/components/admin/contacts/ContactPlannin
 import { ContactPortalPanel } from "@/components/admin/contacts/ContactPortalPanel";
 import { ClientOnboardingStatusPanel } from "@/components/admin/contacts/ClientOnboardingStatusPanel";
 import { ImpersonateClientButton } from "@/components/admin/ImpersonateClientButton";
+import { useTenantContext } from "@/hooks/useTenantContext";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -156,6 +157,7 @@ export default function ContactDetail() {
   };
 
   const fullName = useMemo(() => client ? `${client.first_name} ${client.last_name}`.trim() : "", [client]);
+  const { activeTenantId } = useTenantContext();
   const { enabled: btfEnabled } = useTenantFeature("btf_enabled");
   // "Funding Readiness" is a vertical-specific surface (credit/funding coaching).
   // It is NOT a platform default (§2/§9): the tab shows only for tenants whose
@@ -165,28 +167,44 @@ export default function ContactDetail() {
   const coachName = (uid: string | null) => uid ? (coaches.find((c) => c.user_id === uid)?.name || "Coach") : "Unassigned";
 
   const sendClientProgramInvite = async () => {
-    // BRIDGE (Task #21): points at send-admin-invitation with role="client"
-    // to unblock smoke testing coach-lens Paige. Task #22 ships the real
-    // invite-client-program function with program-enrollment semantics
-    // (program picker, agreement attachment, Stripe intent, coach
-    // auto-assignment). Replace this call at that time.
+    // §9: a CLIENT gets the tenant-branded PORTAL invite (/join), never the staff
+    // /accept-invite dashboard path. Mirrors ContactPortalPanel's "Grant Paige
+    // access" flow — mint a consumer token BOUND to this contact so, on accept,
+    // accept_tenant_invite links them to this exact row (clients row + client
+    // role, NO tenant_members membership → no operator dashboard).
     if (!client?.email) {
       toast.error("This contact has no email on file — add one before inviting.");
       return;
     }
+    if (!activeTenantId) {
+      toast.error("No active workspace to invite into.");
+      return;
+    }
     try {
-      const { data, error } = await supabase.functions.invoke("send-admin-invitation", {
-        body: { email: client.email, role: "client" },
+      const { data: tokRes, error: mintErr } = await supabase.rpc("create_tenant_invite_token", {
+        _tenant_id: activeTenantId,
+        _kind: "consumer",
+        _default_role: "member",
+        _expires_in_days: 30,
+        _max_uses: null,
+        _contact_id: client.id,
+        _email: client.email,
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      if (data?.emailSent === false) {
+      if (mintErr) throw mintErr;
+      const row = Array.isArray(tokRes) ? tokRes[0] : tokRes;
+      const token = (row as { token?: string } | null)?.token;
+      if (!token) throw new Error("Could not create the invite");
+      const { data: sent } = await supabase.functions.invoke("send-portal-invite", {
+        body: { token, email: client.email },
+      });
+      const emailed = (sent as { emailed?: boolean } | null)?.emailed;
+      if (emailed === false) {
         toast.warning(`Invite created for ${client.email}, but the email didn't send. Check delivery.`);
       } else {
-        toast.success(`Client program invite sent to ${client.email}`);
+        toast.success(`Client portal invite sent to ${client.email}`);
       }
     } catch (e: any) {
-      toast.error(e.message || "Failed to send client program invite");
+      toast.error(e.message || "Failed to send client portal invite");
     }
   };
 
