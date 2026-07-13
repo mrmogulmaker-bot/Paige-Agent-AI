@@ -102,3 +102,32 @@ BEGIN
     CASE WHEN _granted THEN 'COULD' ELSE 'was REFUSED —' END,
     COALESCE(_msg, 'n/a');
 END $$;
+
+
+-- PROOF D — MCP surface (post-DEPLOY, NOT SQL) -------------------------------
+-- The paige-mcp surface runs on the service-role key (RLS bypassed), so PROOF
+-- A/B/C above do NOT exercise it. This half is verified AFTER `paige-mcp` and
+-- `paige-mcp-consent` are DEPLOYED (a green migration alone leaves it open).
+--
+-- Two checks, both against a real TENANT-OWNER OAuth session (not the platform
+-- owner). Substitute a live tenant-owner bearer token for <TENANT_OWNER_JWT> and
+-- your project's function origin for <ORIGIN>.
+--
+-- D1 — consent must NOT grant platform.write to a tenant owner:
+--   POST <ORIGIN>/functions/v1/paige-mcp-consent
+--     Authorization: Bearer <TENANT_OWNER_JWT>
+--     body: { "action":"authorize", "scope":"crm.read platform.write", ... }
+--   EXPECT: the response `scopes` array does NOT contain "platform.write"
+--           (tier resolves to tenant_owner; platform.* is not auto-granted).
+--   Before the fix this returned platform.write; after, it must not.
+--
+-- D2 — tier gate must DENY the forge tools to a tenant caller:
+--   Call tools/call `approve_subagent_proposal` (or propose_subagent) over the
+--   MCP endpoint with a tenant-tier OAuth token.
+--   EXPECT: denied at the audience-tier gate (god-only) — NOT executed.
+--
+-- If a live tenant-owner token is not handy, the minimum structural confirm is:
+-- fetch the DEPLOYED paige-mcp source and verify propose_subagent /
+-- list_subagent_proposals / approve_subagent_proposal now appear in
+-- MASTER_ONLY_TOOLS, and paige-mcp-consent step 6 returns `granted: []`.
+-- (Structural confirms the right bytes shipped; D1/D2 confirm live behaviour.)
