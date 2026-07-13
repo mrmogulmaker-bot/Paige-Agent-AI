@@ -184,10 +184,17 @@ export default function MembersAdmin() {
 
       setMembers(built);
       setInvites(
-        (pendingInvites || []).map((i: any) => {
-          const s = statusByEmail.get(i.email);
-          return { ...i, last_status: s?.status ?? null, last_error: s?.error ?? null };
-        }) as PendingInvite[]
+        (pendingInvites || [])
+          // Members & Roles is a STAFF surface. Only staff-role invites belong here;
+          // client/consumer invites go through the portal path (/join) and are
+          // managed on the contact. Filtering also hides any legacy mis-routed
+          // client-role invitation (bug #208) so it can't be resent through the
+          // staff send-admin-invitation path (which now rejects those roles).
+          .filter((i: any) => STAFF_ROLE_SET.has(i.role))
+          .map((i: any) => {
+            const s = statusByEmail.get(i.email);
+            return { ...i, last_status: s?.status ?? null, last_error: s?.error ?? null };
+          }) as PendingInvite[]
       );
     } catch (e: any) {
       console.error(e);

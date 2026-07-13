@@ -9,8 +9,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// STAFF roles only. Client/consumer invites must NOT go through this function —
+// it emits the operator /accept-invite dashboard link and, on accept, routes by
+// role into the operator app (§9). A CLIENT is invited via the portal path
+// (create_tenant_invite_token kind='consumer' + send-portal-invite → /join), so
+// 'user' and 'client' are deliberately excluded here: a miswired caller passing
+// them now fails loudly instead of silently dropping a client into the dashboard.
 const VALID_ROLES = [
-  "user", "client", "coach", "moderator", "admin",
+  "coach", "moderator", "admin",
   "affiliate", "sales_rep", "broker", "cs_rep", "finance", "viewer",
 ] as const;
 type InviteRole = typeof VALID_ROLES[number];
@@ -138,7 +144,7 @@ const handler = async (req: Request): Promise<Response> => {
     // 6. Send branded invitation email
     const roleLabels: Record<string, string> = {
       admin: "Administrator", coach: "Coach", moderator: "Moderator",
-      affiliate: "Affiliate Partner", user: "Client", client: "Client",
+      affiliate: "Affiliate Partner",
       sales_rep: "Sales Rep", broker: "Broker", cs_rep: "Customer Success",
       finance: "Finance", viewer: "Viewer",
     };
