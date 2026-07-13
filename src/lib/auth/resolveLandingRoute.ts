@@ -79,10 +79,16 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
 
     let roles = (rolesRes.data || []).map((r: any) => r.role as string);
 
-    // Staff routes take priority — but only for genuine staff roles. An agency
-    // operator may prefer to land on their /agency side (#191); a non-agency staff
-    // user, or one who prefers 'last_account', falls through to /admin.
-    if (roles.includes("super_admin") || roles.includes("admin") || roles.includes("coach")) {
+    // Platform operators (super_admin) ALWAYS land on the God console — never
+    // diverted to an agency side, even if they also own/admin an agency tenant.
+    // The platform operator and the agency operator are different §9 audiences;
+    // /admin renders the God console for platform staff (godMode).
+    if (roles.includes("super_admin")) {
+      return "/admin";
+    }
+    // Tenant/agency operators may prefer to land on their /agency side (#191);
+    // a non-agency operator, or one who prefers 'last_account', falls to /admin.
+    if (roles.includes("admin") || roles.includes("coach")) {
       const agencyRoute = await resolveAgencyLanding(userId);
       return agencyRoute ?? "/admin";
     }
