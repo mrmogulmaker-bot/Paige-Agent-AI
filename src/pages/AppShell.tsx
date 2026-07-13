@@ -29,6 +29,7 @@ import { ClientHomeTiles } from "@/components/client/ClientHomeTiles";
 import { ClientActivityFeed } from "@/components/app/ClientActivityFeed";
 import { UpcomingWidget } from "@/components/planning/UpcomingWidget";
 import { usePlaybook } from "@/lib/playbook";
+import { useClientPortalConfig } from "@/hooks/useClientPortalConfig";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 
 // Map /app sub-routes to canonical feature names emitted as `feature_visit`.
@@ -332,6 +333,14 @@ const AppShell = () => {
 // Default home content when on /app
 function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }) {
   const pb = usePlaybook();
+  // Tenant-authored portal greeting (Portal Studio → portal_config.welcome).
+  // Fail-open: an unset/empty overlay falls back to the current defaults, so
+  // every existing portal is byte-for-byte unchanged until a tenant sets one.
+  const portalConfig = useClientPortalConfig();
+  const welcomeHeadline = portalConfig.welcome?.headline?.trim() || "Welcome Back";
+  const welcomeSubhead =
+    portalConfig.welcome?.subhead?.trim() ||
+    `Ask ${pb.persona.name} anything — she's here to keep you moving toward your goals.`;
   // `factors` is a real credit_factor_scores row — it only exists for a
   // credit-enabled tenant/client. It doubles as the "hasCreditData" signal, so
   // the credit-only factor grid below stays gated behind it. Coaching clients
@@ -342,10 +351,8 @@ function AppDashboardHome({ factors, userId }: { factors: any; userId?: string }
     <div className="space-y-6 max-w-4xl mx-auto">
       {userId && <OnboardingChecklist userId={userId} />}
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Welcome Back</h1>
-        <p className="text-muted-foreground mt-1">
-          Ask {pb.persona.name} anything — she's here to keep you moving toward your goals.
-        </p>
+        <h1 className="text-3xl font-bold text-foreground">{welcomeHeadline}</h1>
+        <p className="text-muted-foreground mt-1">{welcomeSubhead}</p>
       </div>
 
       <UpcomingWidget />
