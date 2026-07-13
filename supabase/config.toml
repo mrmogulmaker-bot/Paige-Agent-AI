@@ -40,7 +40,7 @@ project_id = "xygzykjyynhzqytbqnzu"
   [functions.enroll-user-in-course]
     verify_jwt = true
   [functions.fetch-url-content]
-    verify_jwt = true
+    verify_jwt = false
   [functions.handle-email-suppression]
     verify_jwt = false
   [functions.handle-email-unsubscribe]
@@ -65,7 +65,7 @@ project_id = "xygzykjyynhzqytbqnzu"
   [functions.paige-mcp]
     verify_jwt = false
   [functions.paige-web-search]
-    verify_jwt = true
+    verify_jwt = false
   [functions.paige-write-back]
     verify_jwt = true
   [functions.personal-build-suggestions]
