@@ -10,8 +10,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Home, BookOpen, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye, LifeBuoy, ListChecks, ClipboardList, CalendarClock, CreditCard, Landmark, Compass, Wallet, Building2, FileSignature, Handshake } from "lucide-react";
+import { Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye, LifeBuoy, ClipboardList, CalendarClock } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { catalogRoutableItems, applyPortalOverlay } from "@/lib/portal/moduleNav";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useEffect, useState } from "react";
@@ -22,6 +23,7 @@ import { useUnreadSupportCount } from "@/hooks/useUnreadSupportCount";
 import { isAvatarBucketUrl } from "@/components/ui/avatar-uploader";
 import { usePlaybook } from "@/lib/playbook";
 import { useClientPortalBrandState, type ClientPortalBrand } from "@/hooks/useClientPortalBrand";
+import { useClientPortalConfigState } from "@/hooks/useClientPortalConfig";
 import { readableTextOn } from "@/lib/brand/contrast";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
@@ -81,40 +83,12 @@ function PortalLogo({
   return <img src={paigeLogoTransparent} alt="PaigeAgent.ai" className={imgClassName} />;
 }
 
-// The client portal nav is driven by the active Playbook's portal.modules. Each
-// module key is rendered ONLY if it maps to a route that actually exists, so a
-// module the app can't route to is hidden rather than shipped as a dangling
-// link. The funding-vertical surfaces below are routable ONLY for a tenant whose
-// OPT-IN funding Playbook lists those keys (§2 clarification, 2026-07-09) — they
-// are absent from every coaching-generic / fitness / agency / consulting preset,
-// so a non-funding client never sees a funding tab. The nav stays Playbook-gated
-// (§2/§9): no funding wording ships to a tenant that didn't choose it.
-const MODULE_ROUTES: Record<string, { href: string; icon: LucideIcon }> = {
-  home: { href: "/app", icon: Home },
-  learn: { href: "/app/learn", icon: BookOpen },
-  resources: { href: "/app/learn", icon: BookOpen },
-  approvals: { href: "/app/approvals", icon: ListChecks },
-  actions: { href: "/app/actions", icon: ClipboardList },
-  // Funding-vertical surfaces — keys match the /app route paths in App.tsx.
-  // Gated by the funding Playbook's portal.modules (opt-in preset), never shown
-  // to a coaching-generic tenant.
-  credit: { href: "/app/credit", icon: CreditCard },
-  funding: { href: "/app/funding", icon: Landmark },
-  "funding-journey": { href: "/app/funding-journey", icon: Compass },
-  "financial-profile": { href: "/app/financial-profile", icon: Wallet },
-  business: { href: "/app/business", icon: Building2 },
-  agreements: { href: "/app/agreements", icon: FileSignature },
-  affiliate: { href: "/app/affiliate", icon: Handshake },
-  // Defensive aliases: the Playbook editor's slugify() emits underscores
-  // ("Funding Journey" → "funding_journey"), so a tenant who authors these
-  // modules by hand still routes to the same funding surfaces.
-  funding_journey: { href: "/app/funding-journey", icon: Compass },
-  financial_profile: { href: "/app/financial-profile", icon: Wallet },
-  // NOTE: 'planning' is intentionally NOT here. plan_list is tenant-member
-  // scoped (a client gets PLAN_FORBIDDEN), so Planning must never be added to a
-  // client's Playbook module list — it's surfaced via the staff-only fallback
-  // below instead (§9 keeps the client seam clean).
-};
+// The client portal nav is driven by the active Playbook's portal.modules,
+// resolved through the shared MODULE_ROUTES + overlay merge in
+// @/lib/portal/moduleNav — the ONE source of truth Portal Studio's "View as
+// Client" preview computes from too, so the preview can never drift from the
+// live chrome (§13). The merge stays Playbook-gated (§2/§9): funding surfaces are
+// routable only for a tenant whose opt-in funding Playbook lists those keys.
 
 interface NavItem {
   label: string;
@@ -139,6 +113,11 @@ export function AppNav({ user }: AppNavProps) {
   // get_client_portal_brand()). `loading` gates a skeleton so the platform logo
   // never flashes before the tenant's resolves (§6/§11).
   const { brand, loading: brandLoading } = useClientPortalBrandState();
+  // The tenant's PRESENTATION OVERLAY over the Playbook module catalog (§9/§10).
+  // Purely subtractive/reordering — never introduces module keys. Resolves to {}
+  // while loading / for staff / on error, so the nav is fail-open: an
+  // absent/empty overlay leaves the tab list byte-for-byte unchanged.
+  const { config: portalConfig } = useClientPortalConfigState();
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   useEffect(() => {
     let cancelled = false;
@@ -159,14 +138,16 @@ export function AppNav({ user }: AppNavProps) {
     cachePortalSlug(brand?.tenant_slug ?? null);
   }, [isCoachOrAdmin, brandLoading, brand]);
 
-  // Visible nav = the active Playbook's portal modules, filtered to those with a
-  // real route. Labels come straight from the Playbook (neutral coaching copy).
-  const navItems: NavItem[] = pb.portal.modules
-    .map((m) => {
-      const route = MODULE_ROUTES[m.key];
-      return route ? { label: m.label, href: route.href, icon: route.icon } : null;
-    })
-    .filter((item): item is NavItem => item !== null);
+  // Base nav = the active Playbook's module CATALOG (filtered to routable keys,
+  // default order) with the tenant PRESENTATION OVERLAY applied — both computed
+  // by the shared @/lib/portal/moduleNav helpers. FAIL-OPEN: an absent/empty/
+  // malformed overlay yields byte-for-byte the catalog order. The force-injected
+  // "Action items" and staff "Planning" items below are added AFTER this merge,
+  // so the overlay can never touch or hide them.
+  const navItems: NavItem[] = applyPortalOverlay(
+    catalogRoutableItems(pb.portal.modules),
+    portalConfig.modules,
+  ).map(({ label, href, icon }): NavItem => ({ label, href, icon }));
 
   // "Action items" is the customer's side of the two-way action bus (§8) — a core
   // portal surface every client gets, regardless of what their Playbook's module

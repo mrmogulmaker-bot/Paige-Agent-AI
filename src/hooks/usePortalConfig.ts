@@ -1,0 +1,77 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  normalizePortalConfig,
+  type ClientPortalConfig,
+} from "@/hooks/useClientPortalConfig";
+
+/**
+ * Editor-side seam for the tenant PRESENTATION OVERLAY (§10 — Paige-callable).
+ *
+ * Reads tenants.features.portal_config for the admin's active tenant (a direct
+ * select on the tenants row they can access, mirroring useBrandKit's read), and
+ * writes through the ONE shared RPC set_tenant_portal_config — the same entry
+ * point Paige drives from chat, with the same authority as brand editing
+ * (can_manage_tenant_brand). The overlay is subtractive/reordering over the
+ * Playbook catalog and never introduces module keys.
+ *
+ * Optimistic: a save patches the cache immediately, rolls back on error, and
+ * re-fetches on settle so the editor always reflects the server's merged truth.
+ */
+
+// Untyped shim — the generated types don't yet carry the portal_config RPC.
+const db = supabase as unknown as {
+  from: (t: string) => any;
+  rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: any; error: any }>;
+};
+
+export function usePortalConfig(tenantId: string | null) {
+  const qc = useQueryClient();
+  const key = ["portal-config", tenantId];
+
+  const query = useQuery({
+    queryKey: key,
+    enabled: !!tenantId,
+    queryFn: async (): Promise<ClientPortalConfig> => {
+      const { data, error } = await db
+        .from("tenants")
+        .select("features")
+        .eq("id", tenantId)
+        .maybeSingle();
+      if (error) throw error;
+      const feats = (data?.features ?? {}) as Record<string, unknown>;
+      return normalizePortalConfig(feats.portal_config);
+    },
+  });
+
+  const save = useMutation({
+    mutationFn: async (patch: Partial<ClientPortalConfig>) => {
+      if (!tenantId) throw new Error("No active tenant");
+      const { data, error } = await db.rpc("set_tenant_portal_config", {
+        _tenant_id: tenantId,
+        _patch: patch,
+      });
+      if (error) throw error;
+      return normalizePortalConfig(data);
+    },
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: key });
+      const prev = qc.getQueryData<ClientPortalConfig>(key);
+      qc.setQueryData<ClientPortalConfig>(key, (old) =>
+        normalizePortalConfig({ ...(old ?? {}), ...patch }),
+      );
+      return { prev };
+    },
+    onError: (_err, _patch, ctx) => {
+      if (ctx?.prev !== undefined) qc.setQueryData(key, ctx.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+  });
+
+  return {
+    ...query,
+    config: query.data ?? ({} as ClientPortalConfig),
+    save: (patch: Partial<ClientPortalConfig>) => save.mutateAsync(patch),
+    saving: save.isPending,
+  };
+}

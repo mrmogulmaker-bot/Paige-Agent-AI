@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, Network,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, Network, LayoutTemplate,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -50,6 +50,12 @@ const hubs: Hub[] = [
   // the God console's Automation hub, not here (§9).
   { label: "Your Paige", href: "/admin/playbook", icon: Bot, aliases: ["/admin/tenant-knowledge"] },
   { label: "Marketplace", href: "/admin/marketplace", icon: Store },
+  // Portal Studio — the tenant skins their client-facing portal (/app): brand,
+  // which tabs a client sees + order, and the welcome greeting (§9/§10/§11). A
+  // tenant-scoped surface for every coach/consultant/agency admin; the God console
+  // (GOD_HUBS) deliberately never carries it — the operator doesn't run a client
+  // portal.
+  { label: "Portal Studio", href: "/admin/portal", icon: LayoutTemplate },
   {
     label: "Contacts",
     href: "/admin/contacts",

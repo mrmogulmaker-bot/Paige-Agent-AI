@@ -95,6 +95,7 @@ const AdminSettingsHub = lazy(() => import("@/pages/admin/AdminSettingsHub"));
 const PlaybookAdmin = lazy(() => import("@/pages/admin/PlaybookAdmin"));
 const AgreementAdmin = lazy(() => import("@/pages/admin/AgreementAdmin"));
 const Marketplace = lazy(() => import("@/pages/admin/Marketplace"));
+const PortalStudio = lazy(() => import("@/pages/admin/PortalStudio"));
 const PlatformTenants = lazy(() => import("@/pages/admin/PlatformTenants"));
 const PlatformTeam = lazy(() => import("@/pages/admin/PlatformTeam"));
 const PlatformSendingIdentities = lazy(() => import("@/pages/admin/PlatformSendingIdentities"));
@@ -480,6 +481,13 @@ const Admin = () => {
           <AdminOnly>
             <Suspense fallback={<SuspenseFallback />}>
               <Marketplace />
+            </Suspense>
+          </AdminOnly>
+        } />
+        <Route path="portal" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <PortalStudio />
             </Suspense>
           </AdminOnly>
         } />

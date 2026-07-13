@@ -1,151 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Image as ImageIcon, Palette, Type, Mail, UploadCloud, X, Loader2, Check, AlertTriangle } from "lucide-react";
+import { Image as ImageIcon, Palette, Type, Mail, Loader2 } from "lucide-react";
 import { SectionCard } from "@/components/ui/page/SectionCard";
 import { StatePill } from "@/components/ui/page/StatePill";
 import { EmptyState } from "@/components/ui/page/EmptyState";
+import { ColorField, LogoUploader, FONT_OPTIONS } from "@/components/ui/page/BrandControls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { useBrandKit, type LogoKind } from "@/hooks/useBrandKit";
+import { useBrandKit } from "@/hooks/useBrandKit";
 import {
-  contrastRatio, readableTextOn, isValidHex, PRIMARY_FLOOR, ACCENT_FLOOR,
+  readableTextOn, isValidHex, PRIMARY_FLOOR, ACCENT_FLOOR,
   type BrandField, type BrandSource,
 } from "@/lib/brand/resolveBrand";
 import { cn } from "@/lib/utils";
-
-const FONT_OPTIONS = [
-  "System default", "Inter", "Plus Jakarta Sans", "Poppins", "Montserrat",
-  "Playfair Display", "Lora", "Source Serif 4", "DM Sans", "Space Grotesk",
-];
-
-const MAX_BYTES = 2 * 1024 * 1024;
-const IMG_TYPES = ["image/png", "image/svg+xml", "image/webp", "image/jpeg", "image/x-icon", "image/vnd.microsoft.icon"];
 
 function SourceBadge({ source, hasOwn }: { source?: BrandSource; hasOwn: boolean }) {
   // "Custom" uses `success` (not gold `included`) — gold is reserved for the Save act (§11).
   if (hasOwn) return <StatePill state="success">Custom</StatePill>;
   if (source === "agency") return <StatePill state="pending">Inherited</StatePill>;
   return <StatePill state="off">Placeholder</StatePill>;
-}
-
-function LogoUploader({
-  label, hint, kind, url, onUpload, onClear, busy, square,
-}: {
-  label: string; hint: string; kind: LogoKind; url: string | null;
-  onUpload: (kind: LogoKind, file: File) => Promise<void>; onClear: (kind: LogoKind) => Promise<void>;
-  busy: boolean; square?: boolean;
-}) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
-  const [uploading, setUploading] = useState(false);
-
-  const handleFile = async (file?: File | null) => {
-    if (!file) return;
-    if (!IMG_TYPES.includes(file.type)) {
-      toast({ title: "Unsupported file", description: "Use a PNG, SVG, WEBP, JPG, or ICO.", variant: "destructive" });
-      return;
-    }
-    if (file.size > MAX_BYTES) {
-      toast({ title: "File too large", description: "Keep it under 2 MB.", variant: "destructive" });
-      return;
-    }
-    setUploading(true);
-    try {
-      await onUpload(kind, file);
-      toast({ title: `${label} updated` });
-    } catch (e) {
-      toast({ title: "Upload failed", description: e instanceof Error ? e.message : "Try again.", variant: "destructive" });
-    } finally {
-      setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
-    }
-  };
-
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-foreground">{label}</span>
-        {url && (
-          <button
-            type="button"
-            onClick={() => void onClear(kind)}
-            disabled={busy || uploading}
-            className="text-xs text-muted-foreground hover:text-destructive disabled:opacity-50"
-          >
-            Remove
-          </button>
-        )}
-      </div>
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); void handleFile(e.dataTransfer.files?.[0]); }}
-        disabled={uploading || busy}
-        className={cn(
-          "group relative flex w-full items-center justify-center overflow-hidden rounded-lg border border-dashed border-border bg-[conic-gradient(at_center,_hsl(var(--muted))_0deg,_transparent_90deg,_hsl(var(--muted))_180deg,_transparent_270deg)] bg-[length:16px_16px] transition-colors hover:border-[hsl(var(--ring))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-          square ? "h-24 w-24" : "h-24 w-full",
-        )}
-      >
-        {uploading ? (
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground motion-reduce:animate-none" />
-        ) : url ? (
-          <img src={url} alt={label} className="max-h-[84%] max-w-[84%] object-contain" />
-        ) : (
-          <span className="flex flex-col items-center gap-1 text-muted-foreground">
-            <UploadCloud className="h-5 w-5" />
-            <span className="text-xs">Drop or click</span>
-          </span>
-        )}
-      </button>
-      <p className="text-xs text-muted-foreground">{hint}</p>
-      <input
-        ref={inputRef} type="file" accept={IMG_TYPES.join(",")} className="hidden"
-        onChange={(e) => void handleFile(e.target.files?.[0])}
-      />
-    </div>
-  );
-}
-
-function ColorField({
-  label, value, floor, onChange, contrastAgainst, contrastLabel,
-}: {
-  label: string; value: string; floor: string; onChange: (v: string) => void;
-  contrastAgainst?: string; contrastLabel?: string;
-}) {
-  const hex = isValidHex(value) ? value : floor;
-  const ratio = contrastAgainst ? contrastRatio(hex, contrastAgainst) : null;
-  const lowContrast = ratio != null && ratio < 4.5;
-  return (
-    <div className="space-y-1.5">
-      <span className="text-sm font-medium text-foreground">{label}</span>
-      <div className="flex items-center gap-2">
-        <label className="relative h-9 w-9 shrink-0 cursor-pointer overflow-hidden rounded-md border border-border" style={{ background: hex }}>
-          <input
-            type="color" value={hex} onChange={(e) => onChange(e.target.value.toUpperCase())}
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-            aria-label={`${label} color picker`}
-          />
-        </label>
-        <Input
-          value={value}
-          onChange={(e) => onChange(e.target.value.toUpperCase())}
-          placeholder={floor}
-          spellCheck={false}
-          className="font-mono uppercase"
-        />
-      </div>
-      {ratio != null && (
-        <p className={cn("flex items-center gap-1 text-xs", lowContrast ? "text-[hsl(var(--warning))]" : "text-muted-foreground")}>
-          {lowContrast ? <AlertTriangle className="h-3 w-3" /> : <Check className="h-3 w-3" />}
-          {contrastLabel} contrast {ratio.toFixed(1)}:1 {lowContrast ? "— may be hard to read" : "— AA pass"}
-        </p>
-      )}
-    </div>
-  );
 }
 
 /**
