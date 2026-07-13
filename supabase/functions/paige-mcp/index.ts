@@ -136,6 +136,16 @@ const MASTER_ONLY_TOOLS = new Set<string>([
   "suspend_tenant",
   "get_platform_metrics",
   "broadcast_system_announcement",
+  // Sub-agent forge = platform infra: approving a proposal can execute arbitrary
+  // sub-agent code. These carry a platform.* SCOPE but were NOT god-locked at the
+  // audience-tier gate, and — unlike register_workflow (guarded in-handler at
+  // :2086) — have NO in-handler actorIsPlatformOwner() check, so a tenant caller
+  // who held platform.write could reach them (toolTier() resolved them to
+  // `tenant`). God-lock them here so the tier gate denies every non-operator.
+  // (P0 Move 1 — Task #207.)
+  "propose_subagent",
+  "list_subagent_proposals",
+  "approve_subagent_proposal",
 ]);
 
 // Doctrine §9/§25 — four named audience tiers on the SINGLE MCP endpoint.
@@ -4660,14 +4670,16 @@ const TOOL_SCOPE: Record<string, Scope> = {
 };
 
 // ── Tool → audience tier (§9/§25) ────────────────────────────────────────────
-// MASTER_ONLY_TOOLS (the 7 all-tenant operator functions) stay the single source
-// of the god set. AGENCY_TOOLS manage the caller's OWN sub-accounts only. Every
-// other tool derives its tier from its scope: a self.* tool is `client`, anything
-// else is `tenant`. NOTE: register_workflow / propose_subagent etc. deliberately
-// stay `tenant`-tier here — they carry a platform.* SCOPE that already restricts
-// them, and register_workflow also serves the tenant workflow path (a god-lock
-// would break tenant workflow registration). Their platform-infra restriction is
-// enforced in-handler via actorIsPlatformOwner(), not by tier.
+// MASTER_ONLY_TOOLS is the single source of the god set. AGENCY_TOOLS manage the
+// caller's OWN sub-accounts only. Every other tool derives its tier from its
+// scope: a self.* tool is `client`, anything else is `tenant`. NOTE:
+// register_workflow deliberately stays `tenant`-tier — it has a REAL tenant path
+// (a tenant registers its own non-platform workflow, tenant_id-scoped at :2110)
+// and its platform-provider path is gated in-handler by actorIsPlatformOwner()
+// (:2086). The *_subagent_* forge tools, by contrast, have NO in-handler guard, so
+// they are god-locked in MASTER_ONLY_TOOLS above rather than relying on a guard
+// that does not exist (their platform.* scope alone did not stop a tenant caller
+// who held platform.write — the tier gate is what denies them).
 const AGENCY_TOOLS = new Set<string>([
   "list_subaccounts",
   "create_subaccount",

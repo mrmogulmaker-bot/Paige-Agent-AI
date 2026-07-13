@@ -152,9 +152,13 @@ async function computeGrantedScopes(userId: string, userEmail: string | null, re
     return { granted, tier, tenantName };
   }
 
-  // 6. Anyone else (coach, broker, unlinked user) — only the scopes they
-  //    explicitly requested that they're already entitled to via RLS.
-  return { granted: base, tier: null, tenantName };
+  // 6. Anyone else (coach, broker, unlinked user) — no tier resolved. There is NO
+  //    RLS backstop on the MCP service-role surface, so returning `base` here would
+  //    hand the caller whatever scope they requested (including admin.* / platform.*).
+  //    Fail CLOSED: no resolved tier -> no scopes. (If coaches/brokers should have
+  //    MCP access, define a dedicated tier with an explicit scope allow-list rather
+  //    than falling through to a verbatim grant — P0 Move 1, Task #207.)
+  return { granted: [], tier: null, tenantName };
 }
 
 Deno.serve(async (req) => {
