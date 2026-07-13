@@ -9,6 +9,37 @@ const STAGE_TO_PATH: Record<string, string> = {
 };
 const PRE_PORTAL_STAGES = new Set(Object.keys(STAGE_TO_PATH));
 
+/**
+ * Agency default-landing (#191). For a staff user who would otherwise land on
+ * `/admin`, decide whether they should instead open their Agency operator side.
+ *
+ * Eligibility is SERVER-PROVEN (§13), never `account_type` (which flips to the
+ * child's on entry): `agency_switch_context().is_agency_manager` is the authority.
+ * An eligible operator's per-owner preference (`profiles.agency_login_default`,
+ * default 'agency') decides WHERE:
+ *   - 'agency'       → open the /agency shell (also the brand-new-owner default).
+ *   - 'last_account' → resume their last active account (→ /admin, which reads
+ *                      profiles.active_tenant_id).
+ * Returns "/agency" only when eligible AND preference is 'agency'; otherwise null
+ * so the caller falls through to "/admin". Non-agency users get null (unaffected).
+ */
+async function resolveAgencyLanding(userId: string): Promise<string | null> {
+  try {
+    const [ctxRes, profileRes] = await Promise.all([
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      supabase.rpc("agency_switch_context" as any),
+      supabase.from("profiles").select("agency_login_default").eq("user_id", userId).maybeSingle(),
+    ]);
+    const ctx = (ctxRes.data as { is_agency_manager?: boolean } | null) ?? null;
+    if (ctx?.is_agency_manager !== true) return null;
+    const pref = (profileRes.data as { agency_login_default?: string } | null)?.agency_login_default;
+    // Default (and first-signup) is 'agency'; 'last_account' resumes /admin.
+    return pref === "last_account" ? null : "/agency";
+  } catch {
+    return null;
+  }
+}
+
 
 /**
  * Canonical post-login landing route for a given user, based on their roles
@@ -48,9 +79,12 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
 
     let roles = (rolesRes.data || []).map((r: any) => r.role as string);
 
-    // Staff routes take priority — but only for genuine staff roles.
+    // Staff routes take priority — but only for genuine staff roles. An agency
+    // operator may prefer to land on their /agency side (#191); a non-agency staff
+    // user, or one who prefers 'last_account', falls through to /admin.
     if (roles.includes("super_admin") || roles.includes("admin") || roles.includes("coach")) {
-      return "/admin";
+      const agencyRoute = await resolveAgencyLanding(userId);
+      return agencyRoute ?? "/admin";
     }
     if (roles.includes("broker") || roles.includes("broker_team_member")) {
       return "/broker/app";

@@ -123,14 +123,24 @@ export function AccountSwitcher() {
     }
   }, []);
 
-  const exitToAgency = useCallback(async () => {
+  // "Agency view" goes UP to the agency operator side (`/agency`, §9), not the
+  // tenant workspace. If we're currently scoped INSIDE a child, exit that context
+  // first (reset active_tenant_id to the primary agency) so the agency side reads
+  // the right scope; then hard-navigate so every per-instance tenant context
+  // re-reads from scratch (switchNotice.ts). Already in agency view → straight to
+  // /agency.
+  const goToAgency = useCallback(async (insideChild: boolean) => {
+    if (!insideChild) {
+      window.location.assign("/agency");
+      return;
+    }
     setSwitching(true);
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await supabase.rpc("agency_exit_subaccount" as any);
       if (error) throw error;
       stashSwitchNotice("Back to agency view.");
-      window.location.assign("/admin");
+      window.location.assign("/agency");
     } catch (e) {
       toast.error(switchError(e));
       setSwitching(false);
@@ -173,7 +183,7 @@ export function AccountSwitcher() {
 
         {/* Agency view — the agency itself. Current selection = muted check (never gold, §11). */}
         <DropdownMenuItem
-          onClick={() => { if (!inAgencyView) exitToAgency(); }}
+          onClick={() => goToAgency(!!insideChild)}
           disabled={switching}
           className="flex items-center justify-between"
         >

@@ -24,7 +24,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Building2, Users, Workflow as WorkflowIcon, UserCog, Plus, RefreshCw,
   ArrowRightLeft, Store, Loader2, PackageCheck, Layers,
-  TrendingUp, Palette, Mic, Sparkles,
+  TrendingUp, Palette, Mic, Sparkles, UserPlus,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -35,6 +35,9 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { TableCell, TableRow } from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import {
   PageShell, PageHeader, SectionCard, StatTile, StatRow,
   DataTableShell, EmptyState, StatePill, GlyphPlate, type Column,
@@ -80,6 +83,13 @@ export default function AgencyBoard() {
   const [name, setName] = useState("");
   const [industry, setIndustry] = useState("");
   const [creating, setCreating] = useState(false);
+
+  // "Invite owner" flow — hand a sub-account to its principal as the child's ADMIN.
+  // Moved here (with the sub-accounts surface) from the tenant Settings panel: it's
+  // part of the agency operator's job, so it lives on the agency side (§9/§12).
+  const [inviteFor, setInviteFor] = useState<SubAccount | null>(null);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
 
   // The resell surface targets one selected child at a time.
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -192,6 +202,47 @@ export default function AgencyBoard() {
           : e instanceof Error ? e.message : "Couldn't open that sub-account",
       );
       setSwitchingId(null);
+    }
+  };
+
+  // Invite the sub-account's owner. Mints a `subaccount_owner` invite ON THE CHILD
+  // (auth passes: the agency owner is the child's owner + a member → is_tenant_admin
+  // is true), bound to the owner's email, then emails the child/agency-branded /join
+  // link via send-portal-invite. On accept they become the child's ADMIN — the
+  // agency stays owner_user_id and keeps white-label control. No clients row.
+  const sendOwnerInvite = async () => {
+    if (!inviteFor) return;
+    const email = inviteEmail.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { toast.error("Enter a valid email address"); return; }
+    setInviteBusy(true);
+    try {
+      const { data: tokRes, error: mintErr } = await supabase.rpc("create_tenant_invite_token", {
+        _tenant_id: inviteFor.id,
+        _kind: "subaccount_owner",
+        _default_role: "admin",
+        _expires_in_days: 30,
+        _max_uses: 1,
+        _contact_id: null,
+        _email: email,
+      });
+      if (mintErr) throw mintErr;
+      const row = Array.isArray(tokRes) ? tokRes[0] : tokRes;
+      const token = (row as { token?: string } | null)?.token;
+      if (!token) throw new Error("Could not create the invite");
+
+      const joinUrl = `${window.location.origin}/join/${token}`;
+      const { data: sent } = await supabase.functions.invoke("send-portal-invite", {
+        body: { token, email },
+      });
+      try { await navigator.clipboard.writeText(joinUrl); } catch { /* clipboard optional */ }
+      const emailed = (sent as { emailed?: boolean } | null)?.emailed;
+      toast.success(emailed ? `Owner invite emailed to ${email} — link also copied` : `Invite link copied — send it to ${email}`);
+      setInviteFor(null);
+      setInviteEmail("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not send the owner invite");
+    } finally {
+      setInviteBusy(false);
     }
   };
 
@@ -380,19 +431,28 @@ export default function AgencyBoard() {
                   )}
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={switchingId === s.id}
-                    onClick={(e) => { e.stopPropagation(); openChild(s); }}
-                  >
-                    {switchingId === s.id ? (
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <ArrowRightLeft className="mr-1.5 h-3.5 w-3.5" />
-                    )}
-                    Open
-                  </Button>
+                  <div className="flex items-center justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => { e.stopPropagation(); setInviteFor(s); setInviteEmail(""); }}
+                    >
+                      <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Invite owner
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={switchingId === s.id}
+                      onClick={(e) => { e.stopPropagation(); openChild(s); }}
+                    >
+                      {switchingId === s.id ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ArrowRightLeft className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      Open
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             );
@@ -484,6 +544,46 @@ export default function AgencyBoard() {
         <PackageCheck className="h-3.5 w-3.5" />
         {availableCount} of {MARKETPLACE_SKILLS.length} catalog capabilities are live and resellable today; the rest are on the roadmap.
       </div>
+
+      {/* Invite the owner of a sub-account — hand off the day-to-day, keep the keys. */}
+      <Dialog open={!!inviteFor} onOpenChange={(o) => { if (!o && !inviteBusy) { setInviteFor(null); setInviteEmail(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite the owner of {inviteFor?.name ?? "this sub-account"}</DialogTitle>
+            <DialogDescription>
+              They'll get a branded link to set up their account and take the reins as this
+              workspace's admin. You stay the owner and keep full control — hand off the day-to-day,
+              not the keys.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="owner-invite-email">Owner's email</Label>
+            <Input
+              id="owner-invite-email"
+              type="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              placeholder="owner@business.com"
+              disabled={inviteBusy}
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") void sendOwnerInvite(); }}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => { setInviteFor(null); setInviteEmail(""); }}
+              disabled={inviteBusy}
+            >
+              Cancel
+            </Button>
+            <Button variant="gold" onClick={sendOwnerInvite} disabled={inviteBusy || inviteEmail.trim().length === 0}>
+              {inviteBusy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Send invite
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageShell>
   );
 }

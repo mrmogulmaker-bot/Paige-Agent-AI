@@ -76,6 +76,9 @@ const FundingMatches = lazyWithReload(() => import("./pages/FundingMatches"));
 const FundingJourney = lazyWithReload(() => import("./pages/FundingJourney"));
 const FinancialProfile = lazyWithReload(() => import("./pages/FinancialProfile"));
 const Admin = lazyWithReload(() => import("./pages/Admin"));
+// Agency Operator side (§9) — its own top-level shell, peer to the God console,
+// gated on server-proven agency-manager eligibility inside AgencyLayout.
+const AgencyLayout = lazyWithReload(() => import("./components/admin/AgencyLayout"));
 const ResetPassword = lazyWithReload(() => import("./pages/ResetPassword"));
 const AffiliateApply = lazyWithReload(() => import("./pages/AffiliateApply"));
 const BrokerApply = lazyWithReload(() => import("./pages/BrokerApply"));
@@ -219,6 +222,7 @@ const App = () => (
             <Route path="/dashboard" element={<Navigate to="/app" replace />} />
 
             <Route path="/admin/*" element={<PageSuspense><Admin /></PageSuspense>} />
+            <Route path="/agency/*" element={<PageSuspense><AgencyLayout /></PageSuspense>} />
             <Route path="/unsubscribe" element={<PageSuspense><Unsubscribe /></PageSuspense>} />
            <Route path="/terms" element={<PageSuspense><Terms /></PageSuspense>} />
            <Route path="/privacy" element={<PageSuspense><Privacy /></PageSuspense>} />
