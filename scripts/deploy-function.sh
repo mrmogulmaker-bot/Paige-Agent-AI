@@ -33,21 +33,48 @@ ENTRY="supabase/functions/${SLUG}/index.ts"
 [[ -f "$ENTRY" ]] || { echo "no entrypoint at $ENTRY" >&2; exit 1; }
 
 # Collect the entrypoint + its transitive relative deps (repo-relative paths).
-mapfile -t FILES < <(python3 - "$ENTRY" <<'PY'
-import os, re, sys
-seen=[]
-def walk(p):
-    p=os.path.normpath(p)
-    if p in seen or not os.path.exists(p): return
-    seen.append(p)
-    for m in re.finditer(r"""from\s+['"]([^'"]+)['"]""", open(p).read()):
-        imp=m.group(1)
-        if imp.startswith('.'):
-            walk(os.path.join(os.path.dirname(p), imp))
-walk(sys.argv[1])
-print("\n".join(seen))
-PY
+# Uses Node (a hard dependency of this repo, so always present where this runs)
+# rather than python3 — python3 is frequently absent on Windows, and because a
+# process-substitution failure isn't caught by `set -e`, a missing interpreter
+# would silently yield an EMPTY file list and deploy a zero-file function over
+# production. Node is portable here and the walk output is byte-identical.
+mapfile -t FILES < <(ENTRY="$ENTRY" node <<'JS'
+const fs = require("fs"), path = require("path");
+const seen = [];
+function walk(p) {
+  p = path.normalize(p);
+  if (seen.includes(p) || !fs.existsSync(p)) return;
+  seen.push(p);
+  const src = fs.readFileSync(p, "utf8");
+  const re = /from\s+['"]([^'"]+)['"]/g;
+  let m;
+  while ((m = re.exec(src))) {
+    const imp = m[1];
+    if (imp.startsWith(".")) walk(path.join(path.dirname(p), imp));
+  }
+}
+walk(process.env.ENTRY);
+console.log(seen.join("\n"));
+JS
 )
+
+# Drop any blank entries (a non-resolving entrypoint makes Node print an empty
+# line, which mapfile would otherwise keep as a phantom element).
+_CLEAN=(); for _f in "${FILES[@]}"; do [[ -n "$_f" ]] && _CLEAN+=("$_f"); done
+FILES=("${_CLEAN[@]}")
+
+# Never deploy an empty function. If the dependency walk produced nothing — a
+# missing Node, an unreadable entrypoint, a moved file — abort loudly instead of
+# shipping a zero-file (broken) deploy over a working production version.
+if [[ ${#FILES[@]} -eq 0 ]]; then
+  echo "ERROR: dependency walk produced 0 files — refusing to deploy an empty function." >&2
+  echo "  Check that Node is installed and on PATH, and that '$ENTRY' is readable." >&2
+  exit 1
+fi
+if [[ "${FILES[0]}" != "$ENTRY" ]]; then
+  echo "ERROR: entrypoint '$ENTRY' missing from the resolved file set — aborting." >&2
+  exit 1
+fi
 
 echo "Deploying '${SLUG}' (${#FILES[@]} files, verify_jwt=${VERIFY_JWT}):"
 FORM=(-F "metadata={\"entrypoint_path\":\"${ENTRY}\",\"name\":\"${SLUG}\",\"verify_jwt\":${VERIFY_JWT}};type=application/json")
