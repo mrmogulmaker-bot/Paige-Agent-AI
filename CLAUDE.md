@@ -392,3 +392,30 @@ the per-department "what Paige performs," and the growth-stage rollout.
 - **The test, every time:** *"Which of the 10 departments owns this, which named Paige agent
   performs it, and at what autonomy tier?"* If a build can't answer that, it isn't wired into
   the org model yet.
+
+## 17. The $1B Growth Map — the revenue + governance north star.
+
+**Directive (owner: Antonio):** the company's growth and top-down governance model is the
+**$1B Growth Map** (`docs/doctrine/1B-growth-map.md`) — $1B ARR (~$83M MRR) → $5B+ valuation.
+It is canonical and sits alongside §16 (how Paige runs a business) and §1–§15 (how we build).
+Read the doc for the full engine/stage/governance detail; the load-bearing points:
+
+- **The billing taxonomy IS the revenue map, and it already exists** (verified in schema):
+  L1 platform subs (`platform_subscriptions`/`_plans`) · Engine-2 usage (`platform_usage_events`)
+  · L2 tenant service billing (`tenant_service_subscriptions`/`tenant_products`/`tenant_prices`)
+  · L3 metered pass-through (`platform_metered_events`) · L4 consumer-direct (`consumer_waitlist`,
+  the one 2027 net-new). Locate every revenue feature on this map before building it.
+- **The Agency account is the growth atom** — unlimited sub-accounts = structural NRR; expansion
+  is architectural, not sold. Protect and extend it.
+- **The Model Router is the margin** (§14): open models for volume, frontier for judgment and any
+  approval-gated/external-send action. Never route a send or an approval decision to an open model.
+- **Governance extends what exists (§12), never reinvents:** the 🟢/🟡/🔴 `autonomy_lane` tiers,
+  `paige_audit_log`, RLS tenant isolation, §199 data-sovereignty bridge patterns, and the §2/§9
+  tests — plus, binding the God account itself at scale: immutable append-only audit, a two-key
+  rule on destructive/ceiling actions, and never-silent break-glass tenant access.
+- **The Commerce Line (hard):** power the operators, never become the marketplace. Paige monetizes
+  rails (SaaS + platform fees + Exchange take), never demand aggregation; consumer-marketplace
+  liability stays with the operator who owns the customer. Any Engine-6 proposal that crosses from
+  operator tooling into consumer marketplace fails the test and does not ship.
+- **The test, every time:** *"Which engine does this feed, which governance law binds it, and which
+  existing primitive does it extend?"* If a build can't place itself on the map, it isn't ready.
