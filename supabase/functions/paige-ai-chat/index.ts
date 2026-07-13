@@ -290,6 +290,69 @@ async function embedText(text: string): Promise<number[] | null> {
   }
 }
 
+// D1 — render a gate-survived entity_profile (from paige-deep-research) into a
+// compact, fully-cited intel block for the model to present. Every fact keeps its
+// [n] markers; `not_public` people render name + title + "contact not public" and
+// NEVER a fabricated value. This only formats what already survived the engine's
+// deterministic gate — it invents nothing.
+function formatDossier(ep: any): string {
+  const cite = (arr: any): string => (Array.isArray(arr) && arr.length ? " " + arr.map((n: number) => `[${n}]`).join("") : "");
+  const lines: string[] = [];
+  const kind = ep?.kind === "person" ? "Person" : "Entity";
+  lines.push(`DOSSIER — ${ep?.name ?? "Unknown"} (${kind})`);
+  if (ep?.headline) lines.push(ep.headline);
+  if (ep?.summary) lines.push(`Summary: ${ep.summary}`);
+
+  const sec = (title: string, s: any): void => {
+    if (!s) return;
+    lines.push(`\n${title} [${s.status ?? "not_found"}]`);
+    if (!Array.isArray(s.items) || s.items.length === 0) { lines.push(`  ${s.note || "None verified."}`); return; }
+    for (const it of s.items) lines.push(`  - ${it}`);
+  };
+
+  // Structure (divisions)
+  const divs = (ep?.divisions?.items ?? []).map((d: any) =>
+    `${d.name}${d.description ? ` — ${d.description}` : ""}${cite(d.citations)}`);
+  sec("Structure / Divisions", { status: ep?.divisions?.status, note: ep?.divisions?.note, items: divs });
+
+  // People
+  const people = (ep?.people?.items ?? []).map((p: any) => {
+    const title = p.title ? `, ${p.title}${cite(p.title_citations)}` : "";
+    if (p.contact_status === "not_public") {
+      return `${p.name}${cite(p.name_citations)}${title} — contact not public`;
+    }
+    const c = p.contact ?? {};
+    const bits: string[] = [];
+    if (c.email) bits.push(`email ${c.email}${cite(c.email_citations)}`);
+    if (c.phone) bits.push(`phone ${c.phone}${cite(c.phone_citations)}`);
+    if (c.profile_url) bits.push(`profile ${c.profile_url}${cite(c.profile_url_citations)}`);
+    return `${p.name}${cite(p.name_citations)}${title} — ${bits.join(" · ") || "contact not public"} (${p.reliability_label ?? p.confidence})`;
+  });
+  sec("People", { status: ep?.people?.status, note: ep?.people?.note, items: people });
+
+  // Offerings
+  const offs = (ep?.offerings?.items ?? []).map((o: any) =>
+    `${o.name}${o.detail ? ` — ${o.detail}` : ""}${cite(o.citations)}`);
+  sec("Offerings", { status: ep?.offerings?.status, note: ep?.offerings?.note, items: offs });
+
+  // Locations
+  const locs = (ep?.locations?.items ?? []).map((l: any) => {
+    const parts: string[] = [];
+    if (l.address) parts.push(`${l.address}${cite(l.address_citations)}`);
+    else if (l.locality) parts.push(`${l.locality} (city/region only)${cite(l.locality_citations)}`);
+    if (l.phone) parts.push(`phone ${l.phone}${cite(l.phone_citations)}`);
+    if (l.site) parts.push(`${l.site}${cite(l.site_citations)}`);
+    return `${l.label ? `${l.label}: ` : ""}${parts.join(" · ") || "no verifiable detail"}`;
+  });
+  sec("Locations", { status: ep?.locations?.status, note: ep?.locations?.note, items: locs });
+
+  if (Array.isArray(ep?.unverified_notes) && ep.unverified_notes.length) {
+    lines.push(`\nWhat we could not verify:`);
+    for (const n of ep.unverified_notes) lines.push(`  - ${n}`);
+  }
+  return lines.join("\n");
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -5287,9 +5350,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const coverage = dr?.coverage ?? {};
             const findings = Array.isArray(dr?.findings) ? dr.findings : [];
             const sources = Array.isArray(dr?.sources) ? dr.sources : [];
+            // D1 — dossier mode. When the engine detected an entity target it
+            // returns a gate-survived `entity_profile` (per-field cited). Format it
+            // as a structured intel block: summary, Structure/People/Offerings/
+            // Locations, each fact carrying its [n]. `not_public` people render as
+            // name + title + "contact not public" — NEVER a guessed email (§13).
+            const ep = dr?.entity_profile ?? null;
+            const dossier = ep ? formatDossier(ep) : null;
             let note: string;
             if (coverage.configured === false) {
               note = "Deep research unavailable: live web search is not configured. Do NOT fabricate facts — tell the client web lookup is offline and answer from your knowledge, clearly flagged as not freshly sourced.";
+            } else if (dossier) {
+              note = "This is a cited entity dossier. Present it as structured intel with EVERY fact carrying its [n] citation. When a person's contact is 'not public', say so plainly and point to the main channels — do NOT fill the gap with a guessed email or phone. Surface the 'What we could not verify' notes honestly.";
             } else if (findings.length === 0) {
               note = `No verifiable sources found${coverage.note ? ` (${coverage.note})` : ""}. Report that honestly — do NOT invent results, names, or figures.`;
             } else {
@@ -5302,6 +5374,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 configured: coverage.configured !== false,
                 run_id: dr?.run_id ?? null,
                 stop_reason: coverage.stop_reason ?? null,
+                ...(dossier ? { dossier } : {}),
+                ...(ep ? { unverified_notes: Array.isArray(ep.unverified_notes) ? ep.unverified_notes : [] } : {}),
                 findings: findings.map((f: any) => ({
                   text: f?.text ?? "",
                   citations: Array.isArray(f?.citations) ? f.citations : [],

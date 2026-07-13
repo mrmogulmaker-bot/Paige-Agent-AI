@@ -28,11 +28,37 @@ interface DeepResearchFinding {
   confidence: "high" | "medium" | "low";
   unverifiedFields?: string[];
 }
+// D1/B1 — the engine's gate-survived entity dossier (per-field cited). Present
+// only when the engine detected a single-entity target; absent on list queries.
+// Every field here already survived the deterministic validateProfile gate, so
+// this caller reads it STRUCTURED and never re-scrapes free text (§13).
+interface DossierPerson {
+  name: string;
+  name_citations: number[];
+  title?: string;
+  contact?: { email?: string; phone?: string; profile_url?: string };
+  contact_status: "verified" | "not_public";
+  confidence: "high" | "medium" | "low";
+}
+interface DossierRecord { name: string; description?: string; detail?: string; citations: number[] }
+interface DossierLocation { address?: string; locality?: string; phone?: string; site?: string; citations: number[] }
+interface EntityProfile {
+  name: string;
+  kind: "organization" | "person";
+  summary: string;
+  people: { status: string; items: DossierPerson[]; note: string };
+  divisions: { status: string; items: DossierRecord[]; note: string };
+  offerings: { status: string; items: DossierRecord[]; note: string };
+  locations: { status: string; items: DossierLocation[]; note: string };
+  unverified_notes: string[];
+  headline: string;
+}
 interface DeepResearchResult {
   run_id: string;
   question: string;
   findings: DeepResearchFinding[];
   sources: DeepResearchSource[];
+  entity_profile?: EntityProfile | null;
   coverage: {
     stop_reason: string;
     hops_used: number;
@@ -169,6 +195,52 @@ function mapFindingsToLenders(dr: DeepResearchResult, strict: boolean): Lender[]
     });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// D3 — map a gate-survived entity_profile → lender cards using its STRUCTURED,
+// per-field-cited records (divisions→type, offerings→products, people→contacts,
+// locations→website/phone). Reads only fields that passed the engine's gate;
+// never re-scrapes free text. Fires only when the engine returned a dossier
+// (single-entity target); list queries fall back to mapFindingsToLenders.
+// ---------------------------------------------------------------------------
+function mapProfileToLenders(ep: EntityProfile, strict: boolean): Lender[] {
+  const products = (ep.offerings?.items ?? []).map((o) => o.name).filter(Boolean);
+  const type = (ep.divisions?.items?.[0]?.name) || "Lender";
+
+  // First verified person contact, then any verified location contact.
+  const person = (ep.people?.items ?? []).find((p) => p.contact_status === "verified" && (p.contact?.phone || p.contact?.email));
+  const loc = (ep.locations?.items ?? []).find((l) => l.phone || l.site);
+  const contactInfo = person?.contact?.phone || loc?.phone || null;
+  const website = loc?.site || person?.contact?.profile_url || null;
+
+  const citations = Array.from(new Set([
+    ...(ep.people?.items ?? []).flatMap((p) => p.name_citations ?? []),
+    ...(ep.offerings?.items ?? []).flatMap((o) => o.citations ?? []),
+    ...(ep.divisions?.items ?? []).flatMap((d) => d.citations ?? []),
+  ]));
+
+  if (strict && !website && !contactInfo) return []; // no surviving contact vector
+
+  const missing: string[] = [];
+  if (!website) missing.push("website");
+  if (!contactInfo) missing.push("phone");
+  if (!products.length) missing.push("products");
+
+  return [{
+    name: ep.name,
+    type,
+    products,
+    minimumRequirements: ep.summary || "",
+    estimatedRates: "Contact lender for rates",
+    contactInfo,
+    website,
+    locationMatch: loc?.locality || loc?.address || "",
+    notes: ep.headline || ep.summary || "",
+    citations,
+    confidence: person?.confidence ?? "medium",
+    unverifiedFields: missing,
+  }];
 }
 
 // ---------------------------------------------------------------------------
@@ -337,8 +409,13 @@ serve(async (req) => {
       return json(d.body, d.status); // persist nothing
     }
 
-    // --- Map cited findings → lender cards (validated fields only) ---
-    const lenders = mapFindingsToLenders(dr, true);
+    // --- Map cited results → lender cards (validated fields only) ---
+    // D3: when the engine returned a structured entity_profile, consume it
+    // directly (divisions/people/offerings/locations); otherwise fall back to the
+    // per-finding structured mapping. Neither path ever scrapes free text.
+    const lenders = dr.entity_profile
+      ? mapProfileToLenders(dr.entity_profile, true)
+      : mapFindingsToLenders(dr, true);
 
     if (lenders.length === 0) {
       // Distinguish "found unverifiable pages" from "found nothing at all".

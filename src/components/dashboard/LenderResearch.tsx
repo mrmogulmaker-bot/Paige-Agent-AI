@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useReducedMotion } from "framer-motion";
 import { StatePill, SectionCard, EmptyState } from "@/components/ui/page";
+import { EntityDossier, type EntityProfile } from "@/components/dashboard/EntityDossier";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -84,6 +85,10 @@ interface ResearchResult {
   rawLinks: RawLink[];
   configured: boolean;
   isDeep: boolean;
+  // Universal entity dossier from the deep-research engine (present only when an
+  // entity target was detected and ≥1 item survived gating). Read the gate-
+  // survived structured fields — never regexed from prose. See EntityDossier.
+  entityProfile: EntityProfile | null;
 }
 
 interface SearchCriteria {
@@ -204,6 +209,7 @@ export function LenderResearch() {
         rawLinks: data.rawLinks ?? [],
         configured: data.configured !== false,
         isDeep: data.is_deep_research ?? deepResearch,
+        entityProfile: data.entity_profile ?? null,
       };
       setResult(next);
 
@@ -492,6 +498,13 @@ export function LenderResearch() {
             </div>
           )}
         </SectionCard>
+      )}
+
+      {/* Universal entity dossier — cited, gate-survived intel from the engine.
+          Present only when the engine detected an entity target and ≥1 item
+          survived §13 validation. Reusable across surfaces via EntityDossier. */}
+      {result?.entityProfile && (
+        <EntityDossier profile={result.entityProfile} sources={result.sources} />
       )}
 
       {/* Verified results */}

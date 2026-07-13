@@ -42,6 +42,38 @@ const READ_BODY_MAX = 6_000;        // chars kept per fetched page
 // Rough per-op cost estimate (USD) — only for the soft ceiling log/break, never billed.
 const COST = { search: 0.001, read: 0.0005, cheapLLM: 0.002, synthesis: 0.03 };
 
+// ── Conditional dossier bounds (A8) ─────────────────────────────────────────
+// The general-question path (entityTarget === null) uses the constants above
+// UNCHANGED. When — and ONLY when — an entity target is detected, the engine
+// widens to these bounds so a full business/entity dossier can be assembled in
+// one bounded run. Nothing else about the general path changes.
+const MAX_HOPS_DOSSIER = 4;
+const MAX_QUERIES_PER_HOP_DOSSIER = 6;
+const MAX_TOTAL_SEARCHES_DOSSIER = 18;
+const MAX_READS_DOSSIER = 10;
+const WALL_CLOCK_MS_DOSSIER = 90_000;
+const COST_CEILING_USD_DOSSIER = 0.10; // soft; general stays 0.15
+
+interface RunBounds {
+  MAX_HOPS: number;
+  MAX_QUERIES_PER_HOP: number;
+  MAX_TOTAL_SEARCHES: number;
+  MAX_READS: number;
+  WALL_CLOCK_MS: number;
+  COST_CEILING_USD: number;
+}
+const DEFAULT_BOUNDS: RunBounds = {
+  MAX_HOPS, MAX_QUERIES_PER_HOP, MAX_TOTAL_SEARCHES, MAX_READS, WALL_CLOCK_MS, COST_CEILING_USD,
+};
+const DOSSIER_BOUNDS: RunBounds = {
+  MAX_HOPS: MAX_HOPS_DOSSIER,
+  MAX_QUERIES_PER_HOP: MAX_QUERIES_PER_HOP_DOSSIER,
+  MAX_TOTAL_SEARCHES: MAX_TOTAL_SEARCHES_DOSSIER,
+  MAX_READS: MAX_READS_DOSSIER,
+  WALL_CLOCK_MS: WALL_CLOCK_MS_DOSSIER,
+  COST_CEILING_USD: COST_CEILING_USD_DOSSIER,
+};
+
 type StopReason =
   | "answered" | "max_hops" | "budget" | "wall_clock"
   | "no_results" | "unconfigured" | "error";
@@ -57,6 +89,12 @@ interface DeepResearchRequest {
   persist?: boolean;
   strict?: boolean;
   caller?: string;   // opaque provenance tag (e.g. "chat" | "manual" | an opted-in caller)
+  // A7 — caller-supplied flavor facets. An opt-in vertical surface may inject its
+  // OWN extra search-facet templates (with `{name}`/`{site}` placeholders) that are
+  // appended after the universal facets in dossier mode. The engine holds ZERO
+  // vertical vocabulary; any domain-specific facet wording lives in the CALLER
+  // (§2/§9). This is the injection MECHANISM only — never a vertical literal here.
+  flavor_facets?: string[];
 }
 
 // ── Output contract (A6) ────────────────────────────────────────────────────
@@ -67,8 +105,8 @@ interface Finding {
   unverifiedFields?: string[];
   // VALIDATED structured specifics — the ONLY trustworthy source of these facts.
   // Populated solely from values that survived the deterministic gate in
-  // validateAndBind. Consumers (e.g. lender-research) MUST read these, never
-  // regex the free-text `text`/summary (which can carry ungrounded model prose).
+  // validateAndBind. Downstream callers MUST read these structured fields, never
+  // regex the free-text `text` field (which can carry ungrounded model prose).
   name?: string;
   website?: string;
   phone?: string;
@@ -86,11 +124,66 @@ interface OutSource {
   fetched_at: string;
   excluded: boolean;
 }
+// ── Entity dossier output schema (Section B1) ───────────────────────────────
+// Every field carries its OWN per-field citations and is proven against ONLY
+// those sources by the deterministic validateProfile gate. Nothing here is
+// emitted unless it survived that gate against a real, non-excluded source.
+type EntityKind = "organization" | "person";
+
+interface ProfilePerson {
+  name: string;
+  name_citations: number[];              // ≥1 required; else person dropped
+  title?: string;
+  title_citations: number[];             // ⊆ resolved(name_citations); else title omitted
+  contact?: {
+    email?: string;   email_citations: number[];        // verbatim in cited source; else omitted
+    phone?: string;   phone_citations: number[];         // last-10 via phonesIn(); else omitted
+    profile_url?: string; profile_url_citations: number[]; // host-vouched; else omitted
+  };
+  division?: string; division_citations: number[];       // ⊆ resolved(name_citations); else Unassigned
+  contact_status: "verified" | "not_public";             // "verified" iff email|phone|profile_url survived
+  confidence: "high" | "medium" | "low";                 // deriveConfidence(name-grounding sources)
+  reliability_label: string;                             // Corroborated | Single authoritative source | Single low-tier source — treat as a lead
+  unverified_fields: string[];                           // fields the model proposed that a gate dropped
+  email_flags?: string[];                                // e.g. "personal-domain"
+}
+interface ProfileDivision { name: string; description?: string; citations: number[]; status_note?: string; }
+interface ProfileOffering { name: string; detail?: string; citations: number[]; }
+interface ProfileLocation {
+  label?: string; address?: string; address_citations: number[];
+  locality?: string; locality_citations: number[];       // city/region-only, separate from address
+  phone?: string; phone_citations: number[];
+  site?: string; site_citations: number[];
+  citations: number[];
+}
+interface ProfileSection<T> { status: "verified" | "partial" | "not_found"; items: T[]; note: string; }
+
+interface EntityProfile {
+  name: string;
+  kind: EntityKind;
+  summary: string;                       // 1–3 sentence grounded overview, cited via findings
+  people:    ProfileSection<ProfilePerson>;
+  divisions: ProfileSection<ProfileDivision>;
+  offerings: ProfileSection<ProfileOffering>;
+  locations: ProfileSection<ProfileLocation>;
+  unverified_notes: string[];            // deterministic honesty trail (the LLM never writes these)
+  headline: string;
+  coverage: {
+    people_found: number;
+    people_with_verified_contact: number;
+    divisions_found: number;
+    locations_found: number;
+  };
+}
+
 interface DeepResearchResult {
   run_id: string;
   question: string;
   findings: Finding[];
   sources: OutSource[];
+  // Present ONLY in dossier mode (entity target detected) AND only when ≥1 typed
+  // item survived the profile gate. Absent on the general path → back-compat.
+  entity_profile?: EntityProfile;
   coverage: {
     stop_reason: string;
     hops_used: number;
@@ -98,6 +191,9 @@ interface DeepResearchResult {
     reads: number;
     note: string;
     configured: boolean;
+    // Mirror of entity_profile.unverified_notes for consumers that read only
+    // `coverage`. Canonical source is entity_profile.unverified_notes.
+    unverified_notes?: string[];
   };
 }
 
@@ -395,6 +491,241 @@ async function planHop(
   }
 }
 
+// ── Entity-target detection (A1/A2) ─────────────────────────────────────────
+// Pure, deterministic, runs ONCE before hop 0. Returns null for the general
+// path (which is then byte-for-byte the pre-existing engine). Returns an
+// EntityTarget only when the question is unambiguously ABOUT a specific business
+// or person — a dossier request — so the enrichment fires narrowly and never
+// hijacks a general how/why/compare question (A2 over-trigger guard).
+interface EntityTarget {
+  kind: EntityKind;
+  name: string;
+  seedSite: string | null;   // bare domain the caller anchored on, if any (A5 direct-site sweep)
+  confidence: "high" | "medium" | "low";
+}
+
+// Framing that means "explain / compare / teach", never "profile this entity".
+const GENERAL_FRAMING = /\b(how (?:do|does|to|can|should)|why|compare|versus|vs\.?|best practices?|pros and cons|difference between|explain|what is|what are|tutorial|guide to|examples? of)\b/i;
+
+// Organisation trigger phrases (universal business vocabulary only — §2/§9 clean).
+const ORG_TRIGGER = /\b(who (?:runs|owns|leads|founded)|leadership|executives?|org chart|organi[sz]ational chart|subsidiar(?:y|ies)|headquarters|contact info(?:rmation)?|profile of|dossier on|research (?:the )?(?:company|firm|business|organi[sz]ation)|background on|due diligence on|company overview)\b/i;
+
+// Legal-entity / org suffix tokens (name + suffix ⇒ an organisation).
+const ORG_SUFFIX = /\b([A-Z][A-Za-z&'.-]+(?:\s+[A-Z][A-Za-z&'.-]+){0,4})\s+(Inc|LLC|LLP|Ltd|GmbH|Corp|Co|Company|Group|Partners|Associates|Agency|Bank|Capital|Holdings|Industries|Ventures|Labs|Studios|Foundation|Institute|University|Consulting|Advisors)\.?\b/;
+
+// Person triggers: honorific/title adjacent to a Proper-Case bigram, or an
+// explicit "contact/reach/email/phone for <Name>".
+const PERSON_TITLE = /\b(Mr|Mrs|Ms|Dr|Prof|CEO|CFO|COO|CTO|CMO|President|Founder|Co-?founder|Director|Chair(?:man|woman|person)?|Partner|Principal|Owner|Manager|Head)\.?\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/;
+const PERSON_CONTACT = /\b(?:contact|reach|email|phone|call)\s+(?:info(?:rmation)?\s+)?(?:for|of)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/;
+const NAME_TITLE_SUFFIX = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+),?\s+(?:the\s+)?(CEO|CFO|COO|CTO|CMO|President|Founder|Co-?founder|Director|Chair(?:man|woman|person)?|Partner|Principal|Owner)\b/;
+
+// Extract a bare domain / URL as the seed site (A5). Ignores obviously-generic
+// hosts (search engines, encyclopedias) so they never become the anchor.
+const SEED_STOP_HOSTS = new Set([
+  "google.com", "bing.com", "duckduckgo.com", "wikipedia.org", "youtube.com",
+]);
+function extractSeedSite(question: string): string | null {
+  const m = question.match(/\b((?:https?:\/\/)?(?:www\.)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)+)\b/i);
+  if (!m) return null;
+  let host = m[1].replace(/^https?:\/\//i, "").replace(/^www\./i, "").split("/")[0].toLowerCase();
+  const e = etld1(host);
+  if (!e || SEED_STOP_HOSTS.has(e)) return null;
+  // Must look like a real hostname (has a dot + a plausible TLD), not "e.g" etc.
+  if (!/\.[a-z]{2,}$/.test(e)) return null;
+  return e;
+}
+
+// Title-case a domain into a candidate entity name ("acme-partners.com" → "Acme Partners").
+function nameFromDomain(site: string): string {
+  const label = site.split(".")[0].replace(/[-_]+/g, " ").trim();
+  return label.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function detectEntityTarget(question: string, _domainHint: string): EntityTarget | null {
+  // NOTE (A3/§4 clean-seam): `_domainHint` is intentionally IGNORED here. Detection
+  // never branches on the opaque domain hint — vertical behavior belongs in the
+  // calling surface (§2/§9), not in this universal detector.
+  const q = question.trim();
+  if (!q) return null;
+
+  const seedSite = extractSeedSite(q);
+  const hasGeneralFraming = GENERAL_FRAMING.test(q);
+
+  // Person path (checked before org so "email for Jane Smith" wins over a stray suffix).
+  const pm = PERSON_TITLE.exec(q) || PERSON_CONTACT.exec(q) || NAME_TITLE_SUFFIX.exec(q);
+  if (pm) {
+    // The captured name group differs by pattern; grab the Proper-Case bigram.
+    const name = (pm[2] && /^[A-Z][a-z]+/.test(pm[2]) ? pm[2] : pm[1] && /^[A-Z][a-z]+/.test(pm[1]) ? pm[1] : "").trim();
+    if (name && name.split(/\s+/).length >= 2) {
+      return { kind: "person", name, seedSite, confidence: "high" };
+    }
+  }
+
+  const orgTriggered = ORG_TRIGGER.test(q);
+  const suffixMatch = ORG_SUFFIX.exec(q);
+
+  if (suffixMatch) {
+    const name = `${suffixMatch[1]} ${suffixMatch[2]}`.trim();
+    return { kind: "organization", name, seedSite, confidence: "high" };
+  }
+
+  if (orgTriggered) {
+    // A trigger phrase present ⇒ dossier intent even without a legal suffix.
+    // Derive the name from the seed site if present, else the leading Proper-Case
+    // run in the question.
+    let name = seedSite ? nameFromDomain(seedSite) : "";
+    if (!name) {
+      const proper = q.match(/\b([A-Z][A-Za-z&'.-]+(?:\s+[A-Z][A-Za-z&'.-]+){0,4})\b/);
+      name = proper ? proper[1].trim() : "";
+    }
+    if (name) return { kind: "organization", name, seedSite, confidence: seedSite ? "high" : "medium" };
+  }
+
+  // A2 — over-trigger guard. A bare seed site with NO general framing is a
+  // profile request ("acme.com", "research acme.io"). A seed site WITH general
+  // framing ("how does stripe.com pricing work") is NOT — fall through to null.
+  if (seedSite && !hasGeneralFraming) {
+    return { kind: "organization", name: nameFromDomain(seedSite), seedSite, confidence: "medium" };
+  }
+
+  // Everything else — how/why/compare/explain, bare proper nouns with no trigger,
+  // no seed site — is the untouched general path.
+  return null;
+}
+
+// ── Universal facet vocabulary (A4) ─────────────────────────────────────────
+// Business/entity intelligence facets ONLY — identity, leadership, structure,
+// offerings, locations/contacts, key people. ZERO vertical or finance words.
+// `{name}` / `{site}` are interpolated per target.
+type Facet =
+  | "identity" | "leadership" | "structure" | "offerings" | "locations_contacts" | "key_people";
+
+const UNIVERSAL_FACETS: Record<EntityKind, Record<Facet, string[]>> = {
+  organization: {
+    identity:            ['{name} official website about', '{name} company overview'],
+    leadership:          ['{name} leadership team executives', '{name} founder ownership management'],
+    structure:           ['{name} divisions business units subsidiaries', '{name} organizational structure'],
+    offerings:           ['{name} products services offerings', '{name} what they do solutions'],
+    locations_contacts:  ['{name} headquarters address office location', '{name} contact phone email'],
+    key_people:          ['{name} executives directors leadership profiles', '{name} team staff members'],
+  },
+  person: {
+    identity:            ['{name} biography profile background', '{name} who is professional'],
+    leadership:          ['{name} title role position company'],
+    structure:           ['{name} company organization affiliation'],
+    offerings:           ['{name} work expertise services'],
+    locations_contacts:  ['{name} contact email phone', '{name} office location based'],
+    key_people:          ['{name} colleagues team associates'],
+  },
+};
+
+// A7 — DOMAIN_FLAVORS injection MECHANISM. This registry is intentionally EMPTY
+// in the engine: no vertical/finance flavor pack is hard-coded here (§2/§9). An
+// opt-in caller supplies its own facet templates via req.flavor_facets, which the
+// planner appends after the universal facets. Keys map an opaque `domain` hint to
+// caller-registered templates; the engine ships NONE, so the §2 grep stays empty.
+const DOMAIN_FLAVORS: Record<string, string[]> = {};
+
+const interp = (tpl: string, name: string, site: string | null): string =>
+  tpl.replace(/\{name\}/g, name).replace(/\{site\}/g, site ?? name);
+
+// Which facets are gathered on each hop of the dossier schedule (A6).
+const HOP_FACETS: Record<number, Facet[]> = {
+  0: ["identity", "leadership", "structure", "offerings"],
+  1: ["locations_contacts", "key_people"],
+};
+
+// Candidate person-name extraction from already-fetched page bodies. Deterministic,
+// no LLM. A Proper-Case bigram sitting within ~240 chars of a role/title token,
+// used ONLY to steer gap-check contact queries (never emitted as a fact). People
+// facts are produced solely by the gated synthesis path.
+const ROLE_WORDS = /\b(CEO|CFO|COO|CTO|CMO|President|Founder|Co-?founder|Director|Chair(?:man|woman|person)?|Partner|Principal|Owner|Manager|Head|VP|Vice President|Lead|Officer)\b/i;
+function extractCandidatePeople(sources: SourceRec[]): { name: string; hasContact: boolean }[] {
+  const out = new Map<string, boolean>();
+  const nameRe = /\b([A-Z][a-z]+(?:\s+[A-Z]\.?)?\s+[A-Z][a-z]+)\b/g;
+  for (const s of sources) {
+    const text = `${s.title}\n${s.snippet}\n${s.content}`;
+    if (!text.trim()) continue;
+    let m: RegExpExecArray | null;
+    nameRe.lastIndex = 0;
+    while ((m = nameRe.exec(text)) !== null) {
+      const name = m[1].replace(/\s+/g, " ").trim();
+      if (name.split(/\s+/).length < 2) continue;
+      const pos = m.index;
+      const window = text.slice(Math.max(0, pos - 240), pos + 240);
+      if (!ROLE_WORDS.test(window)) continue;
+      const contactWindow = window.toLowerCase();
+      const hasContact = phonesIn(window).length > 0 || /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/.test(contactWindow);
+      out.set(name, (out.get(name) ?? false) || hasContact);
+      if (out.size >= 12) break;
+    }
+    if (out.size >= 12) break;
+  }
+  return Array.from(out.entries()).map(([name, hasContact]) => ({ name, hasContact }));
+}
+
+// ── Dossier hop planner (A4–A6) — pure, deterministic, no LLM round-trip ─────
+// Replaces the free-form planHop in dossier mode. Facet-driven, {name}/{site}
+// interpolated, one query per facet template, capped by the per-hop budget.
+// Hop0: identity+leadership+structure+offerings, with a direct-site sweep (A5).
+// Hop1: locations_contacts+key_people + ≤2 GAP-CHECK per-person contact queries.
+// Hop2: GAP-CHECK only (contact-less people, HQ/structure corroboration).
+// Hop3: contact-resolution — fires ONLY if ≥1 named person still lacks contact.
+interface EntityPlan { queries: string[]; done: boolean }
+function planEntityHop(
+  target: EntityTarget,
+  hop: number,
+  sources: SourceRec[],
+  flavorFacets: string[],
+  perHopCap: number,
+): EntityPlan {
+  const { name, seedSite } = target;
+  const table = UNIVERSAL_FACETS[target.kind];
+  const queries: string[] = [];
+  const push = (q: string) => { const t = q.trim(); if (t && !queries.includes(t)) queries.push(t); };
+
+  if (hop === 0 || hop === 1) {
+    const facets = HOP_FACETS[hop];
+    // A5 direct-site sweep: on hop 0, read the entity's OWN pages first.
+    if (hop === 0 && seedSite) {
+      for (const f of facets) for (const tpl of table[f]) push(`site:${seedSite} ${interp(tpl, name, seedSite)}`);
+    }
+    for (const f of facets) for (const tpl of table[f]) push(interp(tpl, name, seedSite));
+
+    // A7 flavor injection — caller-supplied templates appended after universals,
+    // deduped by interpolated template. No vertical wording lives in this file.
+    if (hop === 0) {
+      for (const tpl of flavorFacets) {
+        if (typeof tpl === "string" && tpl.trim()) push(interp(tpl, name, seedSite));
+      }
+    }
+
+    // Hop1 gap-check: up to 2 targeted per-person contact queries for named people
+    // discovered in hop-0 content who still lack a contact vector.
+    if (hop === 1) {
+      const need = extractCandidatePeople(sources).filter((p) => !p.hasContact).slice(0, 2);
+      for (const p of need) push(`"${p.name}" ${name} email contact`);
+    }
+    return { queries: queries.slice(0, perHopCap), done: false };
+  }
+
+  if (hop === 2) {
+    // GAP-CHECK only: contact-less named people + HQ / structure corroboration.
+    const need = extractCandidatePeople(sources).filter((p) => !p.hasContact).slice(0, 2);
+    for (const p of need) push(`"${p.name}" ${name} contact information`);
+    push(interp('{name} headquarters address', name, seedSite));
+    push(interp('{name} divisions subsidiaries overview', name, seedSite));
+    return { queries: queries.slice(0, perHopCap), done: queries.length === 0 };
+  }
+
+  // Hop3 (dossier-only) — contact-resolution. Runs ONLY if a named person still
+  // has no contact vector after Hop2; otherwise the loop stops here.
+  const stillNeed = extractCandidatePeople(sources).filter((p) => !p.hasContact).slice(0, 2);
+  if (stillNeed.length === 0) return { queries: [], done: true };
+  for (const p of stillNeed) push(`"${p.name}" email address phone ${name}`);
+  return { queries: queries.slice(0, perHopCap), done: false };
+}
+
 // ── SYNTHESIS (A3d/A5) — the ONE Claude reasoning call ──────────────────────
 // jobKind "doc_draft" resolves to the Claude reasoning tier (claude-sonnet-5) and is NEVER
 // routed to an open model (only CHEAP_KINDS are). This is the single sensitive call.
@@ -406,12 +737,41 @@ interface RawFinding {
   phone?: string | null;
   values?: string[];
 }
-interface SynthOut { findings: RawFinding[] }
+// Per-field-cited raw profile records (C2). Emitted in the SAME doc_draft call
+// as findings (A9). Every field carries its OWN citations; the deterministic
+// validateProfile gate proves each field against ONLY its own cited sources.
+interface RawPerson {
+  name?: string | null;            name_citations?: number[];
+  title?: string | null;           title_citations?: number[];
+  email?: string | null;           email_citations?: number[];
+  phone?: string | null;           phone_citations?: number[];
+  profile_url?: string | null;     profile_url_citations?: number[];
+  division?: string | null;        division_citations?: number[];
+}
+interface RawDivision { name?: string | null; description?: string | null; citations?: number[] }
+interface RawOffering { name?: string | null; detail?: string | null; citations?: number[] }
+interface RawLocation {
+  label?: string | null;
+  address?: string | null;         address_citations?: number[];
+  locality?: string | null;        locality_citations?: number[];
+  phone?: string | null;           phone_citations?: number[];
+  site?: string | null;            site_citations?: number[];
+  citations?: number[];
+}
+interface SynthOut {
+  findings: RawFinding[];
+  summary?: string;
+  people?: RawPerson[];
+  divisions?: RawDivision[];
+  offerings?: RawOffering[];
+  locations?: RawLocation[];
+}
 
 async function synthesize(
   question: string,
   domainHint: string,
   citable: SourceRec[],
+  entityTarget: EntityTarget | null,
 ): Promise<SynthOut | null> {
   // Sources passed exactly as subagent-financial-research's `[n] title\nsnippet\nurl` block,
   // generalised: include the fetched body excerpt when we have it.
@@ -420,7 +780,7 @@ async function synthesize(
     return `[${s.index}] ${s.title}\n${s.snippet}${body}\n${s.url}`;
   }).join("\n\n");
 
-  const sys =
+  let sys =
     "You are a rigorous research synthesizer. State a fact ONLY if it appears in the fetched " +
     "text of a specific SOURCE, and tag that fact with the source's [n]. Use NO prior " +
     "knowledge, memory, or assumptions. A factual claim is any name, phone number, website/URL, " +
@@ -432,17 +792,51 @@ async function synthesize(
     "[n] indices that support the finding and must be non-empty. `name`/`website`/`phone` are for " +
     "entity findings (leave null for prose findings). `values` holds any figures/thresholds/dates " +
     "quoted verbatim from a cited source. No prose outside the JSON.";
+
+  // ── C1 — dossier synth extension (same single doc_draft call, A9) ──────────
+  // Emit `people[]`/`divisions[]`/`offerings[]`/`locations[]` as ATOMIC arrays
+  // distinct from findings, each field carrying its OWN citations. The
+  // deterministic gate re-checks everything; this only asks the model to be
+  // atomic and honest so the gate has clean input.
+  if (entityTarget) {
+    sys +=
+      "\n\nThis is an ENTITY DOSSIER. In ADDITION to findings, extract atomic structured records " +
+      "about the target entity, each field carrying its OWN citations array. Rules, absolute:\n" +
+      "• Copy each person's name VERBATIM from the source. `name_citations` = every [n] where that " +
+      "exact name string appears.\n" +
+      "• Give a `title` ONLY if the SAME [n] shows that title within about one sentence of the name; " +
+      "`title_citations` must be a subset of that name's citations. NEVER pair a name from one source " +
+      "with a title or contact from another source.\n" +
+      "• Every email, phone, and street address MUST appear VERBATIM in a cited source. Never guess " +
+      "`first.last@domain`, never infer or format a phone number, never recall an address from memory. " +
+      "Put each in its own field with its own citations ([email_citations], [phone_citations], " +
+      "[address_citations]).\n" +
+      "• Any field not present in the naming source → null. A profile with 3 real cited contacts is " +
+      "correct; 10 guessed contacts is a FAILURE.\n" +
+      'Extend the JSON with: "summary":string (1–3 grounded sentences), ' +
+      '"people":[{"name","name_citations":[],"title","title_citations":[],"email","email_citations":[],' +
+      '"phone","phone_citations":[],"profile_url","profile_url_citations":[],"division","division_citations":[]}], ' +
+      '"divisions":[{"name","description","citations":[]}], "offerings":[{"name","detail","citations":[]}], ' +
+      '"locations":[{"label","address","address_citations":[],"locality","locality_citations":[],' +
+      '"phone","phone_citations":[],"site","site_citations":[],"citations":[]}]. ' +
+      "Leave any array empty if nothing is grounded. No prose outside the JSON.";
+  }
+
+  const goalTag = entityTarget
+    ? `RESEARCH GOAL: Build a cited dossier on ${entityTarget.kind === "person" ? "the person" : "the entity"} "${entityTarget.name}".\nOriginal question: ${question}\n`
+    : `RESEARCH GOAL: ${question}\n`;
   const user =
-    `RESEARCH GOAL: ${question}\n` +
+    goalTag +
     (domainHint ? `TOPIC HINT: ${domainHint}\n` : "") +
-    `\nSOURCES:\n${ctx}\n\nWrite grounded findings. Every finding MUST carry at least one [n] citation.`;
+    `\nSOURCES:\n${ctx}\n\nWrite grounded findings. Every finding MUST carry at least one [n] citation.` +
+    (entityTarget ? " Also emit the atomic dossier records per the rules above." : "");
 
   try {
     const resp = await routedChatCompletion("doc_draft", {
       messages: [{ role: "system", content: sys }, { role: "user", content: user }],
       response_format: { type: "json_object" },
       temperature: 0.1,
-      max_tokens: 2400,
+      max_tokens: entityTarget ? 3200 : 2400,
     });
     const parsed = parseJsonLoose<SynthOut>(llmContent(resp));
     if (!parsed || !Array.isArray(parsed.findings)) return { findings: [] };
@@ -582,6 +976,458 @@ function composeText(
   return `${base}${detail}`.trim();
 }
 
+// ── Deterministic profile validation (Section C) ────────────────────────────
+// Runs AFTER validateAndBind, over the SAME byIndex map of non-excluded ranked
+// sources. Every field is proven against the concatenated snippet+content of
+// ITS OWN citations only. The LLM never writes an unverified_note — those are
+// emitted deterministically here, once per drop. Nothing survives that is not
+// quoted from a real cited source (§13).
+const FREE_MAIL = new Set([
+  "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com", "icloud.com",
+  "proton.me", "protonmail.com", "live.com", "msn.com",
+]);
+const EMAIL_RE = /[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/i;
+const SUFFIX_TOKENS =
+  "Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Drive|Dr|Lane|Ln|Way|Court|Ct|Suite|Ste|" +
+  "Floor|Fl|Plaza|Parkway|Pkwy|Highway|Hwy|Place|Pl|Terrace|Ter|Circle|Cir|Square|Sq";
+const SUFFIX_RE = new RegExp(`\\b(?:${SUFFIX_TOKENS})\\b`, "i");
+
+// Short-token variant: keeps 2–3 char tokens (names/titles like "Ng", "CEO").
+function shortTokens(s: string): string[] {
+  return (s.toLowerCase().match(/[a-z]+/g) ?? []).filter((t) => t.length >= 2 && !STOP.has(t));
+}
+
+function resolveCites(cites: number[] | undefined, byIndex: Map<number, SourceRec>): number[] {
+  return Array.from(new Set((cites ?? []).filter((c) => byIndex.has(c))));
+}
+function textOfCites(cites: number[], byIndex: Map<number, SourceRec>): string {
+  return cites.map((c) => byIndex.get(c)!).map((s) => `${s.snippet}\n${s.content}`).join("\n").toLowerCase();
+}
+function normalizeSpace(s: string): string { return s.toLowerCase().replace(/\s+/g, " ").trim(); }
+
+// All tokens must occur within a `window`-char span anchored on the first token.
+function tokensWithinWindow(text: string, toks: string[], window: number): boolean {
+  if (toks.length === 0) return false;
+  const first = toks[0];
+  let from = 0;
+  for (;;) {
+    const p = text.indexOf(first, from);
+    if (p < 0) return false;
+    const slice = text.slice(Math.max(0, p - window), p + window);
+    if (toks.every((t) => slice.includes(t))) return true;
+    from = p + 1;
+  }
+}
+
+function reliabilityLabel(conf: "high" | "medium" | "low"): string {
+  if (conf === "high") return "Corroborated";
+  if (conf === "medium") return "Single authoritative source";
+  return "Single low-tier source — treat as a lead";
+}
+
+// C4 — the highest-risk gate. Every person field proven against ITS OWN cites.
+function bindPerson(
+  rp: RawPerson,
+  byIndex: Map<number, SourceRec>,
+  notes: string[],
+): { person: ProfilePerson | null; dropped: number } {
+  const rawName = (rp.name ?? "").trim();
+  const nameCites = resolveCites(rp.name_citations, byIndex);
+  const nToks = shortTokens(rawName);
+
+  // NAME gate — ≥2 tokens, ≥1 cite, every token present, 240-char adjacency.
+  if (nToks.length < 2 || nameCites.length === 0) {
+    if (rawName) notes.push(`Dropped person "${rawName}" — name not grounded in a cited source.`);
+    return { person: null, dropped: 0 };
+  }
+  const nameText = textOfCites(nameCites, byIndex);
+  if (!nToks.every((t) => nameText.includes(t))) {
+    notes.push(`Dropped person "${rawName}" — name tokens not all present in its cited source.`);
+    return { person: null, dropped: 0 };
+  }
+  if (!tokensWithinWindow(nameText, nToks, 240)) {
+    notes.push(`Dropped person "${rawName}" — name tokens not adjacent within one passage (possible split-source fabrication).`);
+    return { person: null, dropped: 0 };
+  }
+
+  const nameCiteSet = new Set(nameCites);
+  const unverified: string[] = [];
+  let dropped = 0;
+
+  // TITLE gate — non-empty subset of name cites + 240-char co-occurrence.
+  let title: string | undefined;
+  let titleCitations: number[] = [];
+  const rawTitle = (rp.title ?? "").trim();
+  if (rawTitle) {
+    const tCites = resolveCites(rp.title_citations, byIndex);
+    if (tCites.length > 0 && tCites.every((c) => nameCiteSet.has(c))) {
+      const tText = textOfCites(tCites, byIndex);
+      const tToks = shortTokens(rawTitle);
+      if (tToks.length > 0 && tToks.every((t) => tText.includes(t)) &&
+          tokensWithinWindow(tText, [nToks[0], ...tToks], 240)) {
+        title = rawTitle; titleCitations = tCites;
+      }
+    }
+    if (!title) { unverified.push("title"); dropped++; }
+  }
+
+  // DIVISION gate — same discipline; fail ⇒ Unassigned bucket (person kept).
+  let division: string | undefined;
+  let divisionCitations: number[] = [];
+  const rawDiv = (rp.division ?? "").trim();
+  if (rawDiv) {
+    const dCites = resolveCites(rp.division_citations, byIndex);
+    if (dCites.length > 0 && dCites.every((c) => nameCiteSet.has(c))) {
+      const dText = textOfCites(dCites, byIndex);
+      const dToks = shortTokens(rawDiv);
+      if (dToks.length > 0 && dToks.every((t) => dText.includes(t)) &&
+          tokensWithinWindow(dText, [nToks[0], ...dToks], 240)) {
+        division = rawDiv; divisionCitations = dCites;
+      }
+    }
+    if (!division) { unverified.push("division"); dropped++; }
+  }
+
+  // Contamination union — contact cites must be a subset of name+title+division cites.
+  const unionSet = new Set<number>([...nameCites, ...titleCitations, ...divisionCitations]);
+
+  // EMAIL gate — regex-valid, verbatim, contamination-subset, host-vouched.
+  let email: string | undefined;
+  let emailCitations: number[] = [];
+  const emailFlags: string[] = [];
+  const rawEmail = (rp.email ?? "").trim().toLowerCase();
+  if (rawEmail) {
+    const eCites = resolveCites(rp.email_citations, byIndex);
+    const subsetOk = eCites.length > 0 && eCites.every((c) => unionSet.has(c));
+    if (EMAIL_RE.test(rawEmail) && subsetOk) {
+      const eText = textOfCites(eCites, byIndex);
+      const eHost = etld1((rawEmail.split("@")[1] ?? ""));
+      if (eText.includes(rawEmail) && eHost) {
+        const citedHosts = new Set(eCites.map((c) => byIndex.get(c)!.host));
+        const hostOk = citedHosts.has(eHost) || nameText.includes(eHost) || FREE_MAIL.has(eHost);
+        if (hostOk) {
+          email = rawEmail; emailCitations = eCites;
+          if (FREE_MAIL.has(eHost)) emailFlags.push("personal-domain");
+        }
+      }
+    }
+    if (!email) {
+      unverified.push("email"); dropped++;
+      notes.push(`Dropped email for "${rawName}" — not verbatim in a source cited for this person.`);
+    }
+  }
+
+  // PHONE gate — last-10 match scoped to phone cites, same contamination guard.
+  let phone: string | undefined;
+  let phoneCitations: number[] = [];
+  const rawPhone = (rp.phone ?? "").trim();
+  if (rawPhone) {
+    const pCites = resolveCites(rp.phone_citations, byIndex);
+    const subsetOk = pCites.length > 0 && pCites.every((c) => unionSet.has(c));
+    const want = digitsOnly(rawPhone);
+    if (subsetOk && want.length >= 10 &&
+        phonesIn(textOfCites(pCites, byIndex)).some((p) => p.endsWith(want.slice(-10)))) {
+      phone = rawPhone; phoneCitations = pCites;
+    }
+    if (!phone) {
+      unverified.push("phone"); dropped++;
+      notes.push(`Dropped phone for "${rawName}" — no matching number in cited sources.`);
+    }
+  }
+
+  // profile_url — host equals/subdomains a cited host OR URL string in cited text.
+  let profileUrl: string | undefined;
+  let profileUrlCitations: number[] = [];
+  const rawUrl = (rp.profile_url ?? "").trim();
+  if (rawUrl) {
+    const uCites = resolveCites(rp.profile_url_citations, byIndex);
+    if (uCites.length > 0) {
+      const uText = textOfCites(uCites, byIndex);
+      const uHost = hostOf(rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`);
+      const citedHosts = new Set(uCites.map((c) => byIndex.get(c)!.host));
+      if (uHost && (citedHosts.has(uHost) || uText.includes(rawUrl.toLowerCase()))) {
+        profileUrl = rawUrl; profileUrlCitations = uCites;
+      }
+    }
+    if (!profileUrl) { unverified.push("profile_url"); dropped++; }
+  }
+
+  const hasContact = !!(email || phone || profileUrl);
+  const nameRecs = nameCites.map((c) => byIndex.get(c)!);
+  const confidence = deriveConfidence(nameRecs);
+
+  const person: ProfilePerson = {
+    name: rawName,
+    name_citations: nameCites,
+    ...(title ? { title } : {}),
+    title_citations: titleCitations,
+    ...(hasContact
+      ? {
+          contact: {
+            ...(email ? { email } : {}), email_citations: emailCitations,
+            ...(phone ? { phone } : {}), phone_citations: phoneCitations,
+            ...(profileUrl ? { profile_url: profileUrl } : {}), profile_url_citations: profileUrlCitations,
+          },
+        }
+      : {}),
+    ...(division ? { division } : {}),
+    division_citations: divisionCitations,
+    contact_status: hasContact ? "verified" : "not_public",
+    confidence,
+    reliability_label: reliabilityLabel(confidence),
+    unverified_fields: unverified,
+    ...(emailFlags.length ? { email_flags: emailFlags } : {}),
+  };
+  return { person, dropped };
+}
+
+// C5 — address emitted only as a contiguous, cited number-through-suffix span.
+function bindAddress(
+  rawAddr: string,
+  addrCites: number[] | undefined,
+  byIndex: Map<number, SourceRec>,
+): { address?: string; citations: number[]; ok: boolean } {
+  const addr = (rawAddr ?? "").trim();
+  const cites = resolveCites(addrCites, byIndex);
+  if (!addr || cites.length === 0) return { citations: cites, ok: false };
+  if (!/^\s*\d+/.test(addr)) return { citations: cites, ok: false };       // (1) leading number
+  if (!SUFFIX_RE.test(addr)) return { citations: cites, ok: false };       // (2) recognized suffix
+  const srcNorm = normalizeSpace(
+    cites.map((c) => byIndex.get(c)!).map((s) => `${s.snippet} ${s.content}`).join(" "),
+  );
+  const m = addr.match(new RegExp(`\\d+[^\\n,]*?\\b(?:${SUFFIX_TOKENS})\\b\\.?`, "i"));
+  const span = m ? m[0] : addr;
+  if (!srcNorm.includes(normalizeSpace(span))) return { citations: cites, ok: false }; // (3) contiguous
+  return { address: span.trim(), citations: cites, ok: true };
+}
+
+// C6 — division / offering / location record gates.
+function bindDivision(rd: RawDivision, byIndex: Map<number, SourceRec>): ProfileDivision | null {
+  const name = (rd.name ?? "").trim();
+  const cites = resolveCites(rd.citations, byIndex);
+  if (!name || cites.length === 0) return null;
+  const text = textOfCites(cites, byIndex);
+  const nToks = shortTokens(name);
+  if (nToks.length === 0 || !nToks.every((t) => text.includes(t))) return null;
+  let description: string | undefined;
+  const rawDesc = (rd.description ?? "").trim();
+  if (rawDesc && shortTokens(rawDesc).some((t) => text.includes(t))) description = rawDesc;
+  return { name, citations: cites, ...(description ? { description } : {}) };
+}
+function bindOffering(ro: RawOffering, byIndex: Map<number, SourceRec>): ProfileOffering | null {
+  const name = (ro.name ?? "").trim();
+  const cites = resolveCites(ro.citations, byIndex);
+  if (!name || cites.length === 0) return null;
+  const text = textOfCites(cites, byIndex);
+  const nToks = shortTokens(name);
+  if (nToks.length === 0 || !nToks.every((t) => text.includes(t))) return null;
+  let detail: string | undefined;
+  const rawDetail = (ro.detail ?? "").trim();
+  if (rawDetail && shortTokens(rawDetail).some((t) => text.includes(t))) detail = rawDetail;
+  return { name, citations: cites, ...(detail ? { detail } : {}) };
+}
+function bindLocation(rl: RawLocation, byIndex: Map<number, SourceRec>): ProfileLocation | null {
+  const cites = resolveCites(rl.citations, byIndex);
+  const addr = bindAddress((rl.address ?? "").trim(), rl.address_citations, byIndex);
+
+  let locality: string | undefined;
+  let localityCitations: number[] = [];
+  const rawLoc = (rl.locality ?? "").trim();
+  if (rawLoc) {
+    const lCites = resolveCites(rl.locality_citations, byIndex);
+    if (lCites.length > 0) {
+      const lNorm = normalizeSpace(
+        lCites.map((c) => byIndex.get(c)!).map((s) => `${s.snippet} ${s.content}`).join(" "),
+      );
+      if (lNorm.includes(normalizeSpace(rawLoc))) { locality = rawLoc; localityCitations = lCites; }
+    }
+  }
+
+  let phone: string | undefined;
+  let phoneCitations: number[] = [];
+  const rawPhone = (rl.phone ?? "").trim();
+  if (rawPhone) {
+    const pCites = resolveCites(rl.phone_citations, byIndex);
+    const want = digitsOnly(rawPhone);
+    if (pCites.length > 0 && want.length >= 10 &&
+        phonesIn(textOfCites(pCites, byIndex)).some((p) => p.endsWith(want.slice(-10)))) {
+      phone = rawPhone; phoneCitations = pCites;
+    }
+  }
+
+  let site: string | undefined;
+  let siteCitations: number[] = [];
+  const rawSite = (rl.site ?? "").trim();
+  if (rawSite) {
+    const sCites = resolveCites(rl.site_citations, byIndex);
+    if (sCites.length > 0) {
+      const sHost = hostOf(rawSite.startsWith("http") ? rawSite : `https://${rawSite}`);
+      const citedHosts = new Set(sCites.map((c) => byIndex.get(c)!.host));
+      const sText = textOfCites(sCites, byIndex);
+      if (sHost && (citedHosts.has(sHost) || sText.includes(sHost))) { site = rawSite; siteCitations = sCites; }
+    }
+  }
+
+  if (!addr.ok && !locality && !phone && !site) return null; // nothing survived → drop location
+  return {
+    ...(rl.label ? { label: String(rl.label).trim() } : {}),
+    ...(addr.ok && addr.address ? { address: addr.address } : {}),
+    address_citations: addr.ok ? addr.citations : [],
+    ...(locality ? { locality } : {}),
+    locality_citations: localityCitations,
+    ...(phone ? { phone } : {}),
+    phone_citations: phoneCitations,
+    ...(site ? { site } : {}),
+    site_citations: siteCitations,
+    citations: cites.length ? cites : addr.citations,
+  };
+}
+
+function sectionStatus<T>(items: T[], hadDrops: boolean): "verified" | "partial" | "not_found" {
+  if (items.length === 0) return "not_found";
+  return hadDrops ? "partial" : "verified";
+}
+
+// C10 — headline from the deterministic counts + first honesty notes.
+function buildHeadline(
+  cov: EntityProfile["coverage"],
+  notes: string[],
+): string {
+  const parts: string[] = ["entity"];
+  if (cov.divisions_found) parts.push(`${cov.divisions_found} division${cov.divisions_found === 1 ? "" : "s"}`);
+  if (cov.people_found) {
+    parts.push(`${cov.people_found} ${cov.people_found === 1 ? "person" : "people"} (${cov.people_with_verified_contact} with direct contact)`);
+  }
+  const verified = `Verified: ${parts.join(" + ")}.`;
+  const gaps = notes.slice(0, 3).join(" ");
+  return gaps ? `${verified} Could not verify: ${gaps}` : verified;
+}
+
+// C3/C7-C11 — orchestrator. Returns null (emit rule C11) unless ≥1 typed item survived.
+function validateProfile(
+  raw: SynthOut,
+  citable: SourceRec[],
+  rankedAll: SourceRec[],
+  target: EntityTarget,
+  findings: Finding[],
+  readsDone: number,
+): EntityProfile | null {
+  const byIndex = new Map<number, SourceRec>();
+  for (const s of citable) byIndex.set(s.index, s);
+
+  const notes: string[] = [];
+  let droppedFields = 0;
+
+  // PEOPLE
+  const people: ProfilePerson[] = [];
+  let peopleDrops = false;
+  for (const rp of raw.people ?? []) {
+    const { person, dropped } = bindPerson(rp, byIndex, notes);
+    droppedFields += dropped;
+    if (dropped > 0) peopleDrops = true;
+    if (person) {
+      if (person.unverified_fields.length || person.contact_status === "not_public") peopleDrops = true;
+      people.push(person);
+    } else {
+      peopleDrops = true;
+    }
+  }
+
+  // DIVISIONS / OFFERINGS
+  const divisions: ProfileDivision[] = [];
+  let divDrops = false;
+  for (const rd of raw.divisions ?? []) {
+    const d = bindDivision(rd, byIndex);
+    if (d) divisions.push(d); else divDrops = true;
+  }
+  const offerings: ProfileOffering[] = [];
+  let offDrops = false;
+  for (const ro of raw.offerings ?? []) {
+    const o = bindOffering(ro, byIndex);
+    if (o) offerings.push(o); else offDrops = true;
+  }
+
+  // LOCATIONS
+  const locations: ProfileLocation[] = [];
+  let locDrops = false;
+  let anyAddress = false;
+  for (const rl of raw.locations ?? []) {
+    const l = bindLocation(rl, byIndex);
+    if (l) { locations.push(l); if (l.address) anyAddress = true; } else locDrops = true;
+  }
+
+  // C11 emit rule — nothing typed survived ⇒ omit profile, fall back to findings.
+  if (people.length === 0 && divisions.length === 0 && offerings.length === 0 && locations.length === 0) {
+    return null;
+  }
+
+  // C8 — deterministic honest-coverage notes (the LLM never writes these).
+  const pagesFetched = readsDone > 0 || rankedAll.some((s) => s.read);
+  if (people.length === 0 && pagesFetched) {
+    notes.push("No individual people could be verified against the sources retrieved. Any names seen could not be confirmed on a cited page.");
+  }
+  if (people.length > 0 && people.every((p) => p.contact_status === "not_public")) {
+    notes.push("No direct executive contacts were publicly listed. Names and titles are shown; use the organization's main channels below.");
+  }
+  if (locations.length > 0 && !anyAddress) {
+    notes.push("No street address was verifiable on a cited page. Only a stated city/region is shown.");
+  }
+  const TEAM_PAGE = /(about|team|leadership|management|people|staff|board|our-|company|contact|executives?)/i;
+  const sawTeamPage = rankedAll.some((s) => TEAM_PAGE.test(s.url) || TEAM_PAGE.test(s.title));
+  if (!sawTeamPage) {
+    notes.push("A leadership or team page was not found; the people section may be incomplete.");
+  }
+  if (droppedFields > 0) {
+    notes.push(`${droppedFields} proposed contact detail${droppedFields === 1 ? "" : "s"} ${droppedFields === 1 ? "was" : "were"} dropped for failing source verification.`);
+  }
+
+  // C9 — per-section status; empty section renders an explicit not_found note.
+  const peopleSection: ProfileSection<ProfilePerson> = {
+    status: sectionStatus(people, peopleDrops), items: people,
+    note: people.length ? "" : "No individual people could be verified in the sources found.",
+  };
+  const divisionsSection: ProfileSection<ProfileDivision> = {
+    status: sectionStatus(divisions, divDrops), items: divisions,
+    note: divisions.length ? "" : "No divisions were stated in the sources found.",
+  };
+  const offeringsSection: ProfileSection<ProfileOffering> = {
+    status: sectionStatus(offerings, offDrops), items: offerings,
+    note: offerings.length ? "" : "No offerings were stated in the sources found.",
+  };
+  const locationsSection: ProfileSection<ProfileLocation> = {
+    status: sectionStatus(locations, locDrops), items: locations,
+    note: locations.length ? "" : "No verifiable location was found in the sources.",
+  };
+
+  // Summary — grounded from gate-survived findings ONLY. raw.summary is
+  // prompt-trusted model prose (could carry an ungated name/address/phone) and
+  // must NEVER reach the user under the "everything is cited" promise (§13).
+  // When no findings survived, use a safe deterministic string, not model text.
+  const summary = findings.length
+    ? findings.slice(0, 2).map((f) => f.text).join(" ")
+    : `${target.name} — limited public information could be verified.`;
+
+  const cov = {
+    people_found: people.length,
+    people_with_verified_contact: people.filter((p) => p.contact_status === "verified").length,
+    divisions_found: divisions.length,
+    locations_found: locations.length,
+  };
+
+  return {
+    name: target.name,
+    kind: target.kind,
+    summary,
+    people: peopleSection,
+    divisions: divisionsSection,
+    offerings: offeringsSection,
+    locations: locationsSection,
+    unverified_notes: notes,
+    headline: buildHeadline(cov, notes),
+    coverage: cov,
+  };
+}
+
 // ── Persistence (service-role) ──────────────────────────────────────────────
 async function persistRun(
   serviceUrl: string,
@@ -605,6 +1451,8 @@ async function persistRun(
       coverage: result.coverage,
       stop_reason: result.coverage.stop_reason,
       configured: result.coverage.configured,
+      // B2 — nullable dossier profile; null on the general path (back-compat).
+      entity_profile: result.entity_profile ?? null,
     });
     if (runErr) { console.error("[paige-deep-research] persist run failed:", runErr.message); return; }
 
@@ -652,7 +1500,29 @@ serve(async (req) => {
   if (!body.user_id || typeof body.user_id !== "string") return json({ error: "user_id is required" }, 400);
 
   const domainHint = typeof body.domain === "string" ? body.domain : "general";
-  const effectiveMaxHops = Math.max(1, Math.min(MAX_HOPS, Number.isFinite(body.max_hops as number) ? Number(body.max_hops) : 2));
+
+  // ── Entity-target detection (A1/A2) — runs ONCE, before hop 0 ──────────────
+  // null ⇒ the general-question path, which is byte-for-byte the pre-existing
+  // engine (DEFAULT_BOUNDS, planHop, no profile). Non-null ⇒ dossier mode: wider
+  // bounds (A8), facet-driven planning (A4-A6), and the profile gate (Section C).
+  const entityTarget = detectEntityTarget(question, domainHint);
+  const BND: RunBounds = entityTarget ? DOSSIER_BOUNDS : DEFAULT_BOUNDS;
+  // A7 — flavor injection MECHANISM only. Effective facets = the (empty) in-file
+  // registry keyed by the opaque domain hint + any caller-supplied templates.
+  // No vertical vocabulary lives in this file (§2/§9 grep must stay empty).
+  const flavorFacets: string[] = [
+    ...(DOMAIN_FLAVORS[domainHint] ?? []),
+    ...(Array.isArray(body.flavor_facets) ? body.flavor_facets.filter((f) => typeof f === "string") : []),
+  ];
+
+  // General path default stays 2 (unchanged). Dossier mode, when the caller does
+  // not pin max_hops, defaults to the dossier ceiling so the Hop2/Hop3 gap-check
+  // + contact-resolution schedule (A6) can actually run; Hop3 still self-skips
+  // when no named person is missing a contact.
+  const requestedHops = Number.isFinite(body.max_hops as number)
+    ? Number(body.max_hops)
+    : (entityTarget ? BND.MAX_HOPS : 2);
+  const effectiveMaxHops = Math.max(1, Math.min(BND.MAX_HOPS, requestedHops));
   const freshnessDays = Number.isFinite(body.freshness_days as number) && Number(body.freshness_days) > 0
     ? Number(body.freshness_days) : 365;
   const persist = body.persist !== false;
@@ -672,28 +1542,40 @@ serve(async (req) => {
   for (let hop = 0; hop < effectiveMaxHops; hop++) {
     hopsUsed = hop + 1;
 
-    if (Date.now() - t0 > WALL_CLOCK_MS) { stop = "wall_clock"; break; }
-    if (costUSD > COST_CEILING_USD) { console.warn(`[paige-deep-research] soft cost ceiling hit ($${costUSD.toFixed(3)})`); stop = "budget"; break; }
+    if (Date.now() - t0 > BND.WALL_CLOCK_MS) { stop = "wall_clock"; break; }
+    if (costUSD > BND.COST_CEILING_USD) { console.warn(`[paige-deep-research] soft cost ceiling hit ($${costUSD.toFixed(3)})`); stop = "budget"; break; }
 
-    // (a) PLAN / GAP-CHECK
-    const evidence = sources
-      .filter((s) => s.read || s.snippet)
-      .slice(0, 12)
-      .map((s, i) => ({ index: i + 1, title: s.title, snippet: (s.content || s.snippet).slice(0, 400) }));
-    costUSD += COST.cheapLLM;
-    const plan = await planHop(question, domainHint, hop, evidence);
-    if (plan.done && hop > 0) { stop = "answered"; break; }
-
-    const queries = plan.queries.slice(0, MAX_QUERIES_PER_HOP);
-    if (queries.length === 0) {
-      if (hop === 0) queries.push(question);
-      else { stop = "answered"; break; }
+    // (a) PLAN / GAP-CHECK. Dossier mode uses the pure, deterministic facet
+    // planner (A4-A6) — no LLM round-trip for query generation. General mode is
+    // unchanged: the cheap "extract"-tier planHop.
+    let queries: string[];
+    if (entityTarget) {
+      const eplan = planEntityHop(entityTarget, hop, sources, flavorFacets, BND.MAX_QUERIES_PER_HOP);
+      if (eplan.done && hop > 0) { stop = "answered"; break; }
+      queries = eplan.queries.slice(0, BND.MAX_QUERIES_PER_HOP);
+      if (queries.length === 0) {
+        if (hop === 0) queries = [entityTarget.name];
+        else { stop = "answered"; break; }
+      }
+    } else {
+      const evidence = sources
+        .filter((s) => s.read || s.snippet)
+        .slice(0, 12)
+        .map((s, i) => ({ index: i + 1, title: s.title, snippet: (s.content || s.snippet).slice(0, 400) }));
+      costUSD += COST.cheapLLM;
+      const plan = await planHop(question, domainHint, hop, evidence);
+      if (plan.done && hop > 0) { stop = "answered"; break; }
+      queries = plan.queries.slice(0, BND.MAX_QUERIES_PER_HOP);
+      if (queries.length === 0) {
+        if (hop === 0) queries.push(question);
+        else { stop = "answered"; break; }
+      }
     }
 
     // (b) SEARCH — Firecrawl fan-out
     for (const q of queries) {
-      if (searches >= MAX_TOTAL_SEARCHES) break;
-      if (Date.now() - t0 > WALL_CLOCK_MS) { stop = "wall_clock"; break outer; }
+      if (searches >= BND.MAX_TOTAL_SEARCHES) break;
+      if (Date.now() - t0 > BND.WALL_CLOCK_MS) { stop = "wall_clock"; break outer; }
       const r = await callWebSearch(SUPABASE_URL, SERVICE_KEY, q);
       if (!r.configured) { configured = false; stop = "unconfigured"; break outer; } // §13 — never fabricate
       searches++;
@@ -704,9 +1586,9 @@ serve(async (req) => {
     // (c) READ — top-ranked unread sources' full body
     const ranked = rankSources(sources, freshnessDays);
     for (const s of ranked) {
-      if (reads >= MAX_READS) break;
+      if (reads >= BND.MAX_READS) break;
       if (s.read || s.excluded) continue;
-      if (Date.now() - t0 > WALL_CLOCK_MS) { stop = "wall_clock"; break outer; }
+      if (Date.now() - t0 > BND.WALL_CLOCK_MS) { stop = "wall_clock"; break outer; }
       const live = sources.find((x) => x.url === s.url)!;
       const content = await fetchUrl(SUPABASE_URL, SERVICE_KEY, s.url);
       live.read = true;
@@ -715,7 +1597,7 @@ serve(async (req) => {
       if (content) live.content = content;
     }
 
-    if (searches >= MAX_TOTAL_SEARCHES && reads >= MAX_READS) { stop = "budget"; break; }
+    if (searches >= BND.MAX_TOTAL_SEARCHES && reads >= BND.MAX_READS) { stop = "budget"; break; }
     if (hop + 1 >= effectiveMaxHops) stop = "max_hops";
   }
 
@@ -766,9 +1648,11 @@ serve(async (req) => {
     return json(result);
   }
 
-  // ── SYNTHESIZE — exactly ONE Claude reasoning call ────────────────────────
+  // ── SYNTHESIZE — exactly ONE Claude reasoning call (A9) ───────────────────
+  // In dossier mode the SAME call additionally emits the atomic per-field-cited
+  // profile records; there is never a second model round-trip.
   costUSD += COST.synthesis;
-  const synth = await synthesize(question, domainHint, citable);
+  const synth = await synthesize(question, domainHint, citable, entityTarget);
   if (!synth) {
     const result = buildResult([], "error", "Synthesis failed; no findings returned rather than risk fabrication.");
     if (persist) await persistRun(SUPABASE_URL, SERVICE_KEY, runId, body, result);
@@ -778,14 +1662,28 @@ serve(async (req) => {
   // ── POST-VALIDATION gate ──────────────────────────────────────────────────
   const findings = validateAndBind(synth, citable, strict);
 
-  const finalStop = findings.length > 0
+  // ── DOSSIER profile gate (Section C) — runs AFTER validateAndBind, over the
+  // same non-excluded ranked sources. Emitted only if ≥1 typed item survived.
+  const entityProfile = entityTarget
+    ? validateProfile(synth, citable, rankedFinal, entityTarget, findings, reads)
+    : null;
+
+  const finalStop = (findings.length > 0 || entityProfile)
     ? (stop === "unconfigured" ? "answered" : stop)
     : "no_results";
   const note = findings.length > 0
     ? `Verified ${findings.length} finding(s) across ${citable.length} citable source(s).`
-    : "The model produced no claim that survived source verification. Reporting nothing rather than an unverified fact.";
+    : (entityProfile
+        ? "Structured entity profile assembled from cited sources; see entity_profile for the verified intel and its unverified gaps."
+        : "The model produced no claim that survived source verification. Reporting nothing rather than an unverified fact.");
 
   const result = buildResult(findings, finalStop, note);
+  if (entityProfile) {
+    result.entity_profile = entityProfile;
+    // Mirror the canonical honesty trail into coverage for consumers that read
+    // only `coverage` (B1). entity_profile.unverified_notes stays canonical.
+    result.coverage.unverified_notes = entityProfile.unverified_notes;
+  }
   if (persist) await persistRun(SUPABASE_URL, SERVICE_KEY, runId, body, result);
   return json(result);
   } catch (e) {
