@@ -105,10 +105,11 @@ const Blog = lazyWithReload(() => import("./pages/Blog"));
 const OnboardLayout = lazyWithReload(() => import("./pages/onboard/OnboardLayout"));
 const OnboardStep1 = lazyWithReload(() => import("./pages/onboard/Step1Welcome"));
 const OnboardStep2 = lazyWithReload(() => import("./pages/onboard/Step2Agreement"));
-const OnboardStep3 = lazyWithReload(() => import("./pages/onboard/Step3Payment"));
-const OnboardStep4 = lazyWithReload(() => import("./pages/onboard/Step4Intake"));
-const OnboardStep5 = lazyWithReload(() => import("./pages/onboard/Step5Documents"));
-const OnboardStep6 = lazyWithReload(() => import("./pages/onboard/Step6Complete"));
+// Onboarding is now two gates (welcome + agreement); everything past agreement
+// happens inside /workspace under Paige. The old Step3-6 (payment/intake/docs/
+// complete) were dead — OnboardLayout aliases those paths to /app so they never
+// rendered — and carried hardcoded §2 funding content. Removed in the final
+// wiring audit. If a paid-onboarding step returns, build it Playbook-driven.
 const AcceptInvite = lazyWithReload(() => import("./pages/AcceptInvite"));
 
 // Lazy-load existing dashboard sections for /app/* routes
@@ -257,12 +258,9 @@ const App = () => (
               <Route index element={<PageSuspense><OnboardStep1 /></PageSuspense>} />
               <Route path="welcome" element={<PageSuspense><OnboardStep1 /></PageSuspense>} />
               <Route path="agreement" element={<PageSuspense><OnboardStep2 /></PageSuspense>} />
-              <Route path="payment" element={<PageSuspense><OnboardStep3 /></PageSuspense>} />
-              <Route path="intake" element={<PageSuspense><OnboardStep4 /></PageSuspense>} />
-              <Route path="documents" element={<PageSuspense><OnboardStep5 /></PageSuspense>} />
-              <Route path="complete" element={<PageSuspense><OnboardStep6 /></PageSuspense>} />
-              {/* Deep-link self-heal: any unknown /onboard/* path renders the
-                  layout so it can normalize the URL to the current stage. */}
+              {/* Deep-link self-heal: any unknown /onboard/* path (incl. the
+                  retired payment/intake/documents/complete) renders the layout so
+                  it can normalize the URL to the current stage → /app. */}
               <Route path="*" element={<PageSuspense><OnboardStep1 /></PageSuspense>} />
             </Route>
 

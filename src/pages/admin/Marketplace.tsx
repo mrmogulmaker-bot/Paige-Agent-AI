@@ -95,8 +95,11 @@ export default function Marketplace() {
   const roadmapCount = MARKETPLACE_SKILLS.filter((s) => s.status === "coming_soon").length;
 
   const notify = (skill: MarketplaceSkill) => {
-    // TODO(§10): file an interest action via RPC so the waitlist is Paige-governable.
-    toast.success(`You're on the list for ${skill.name}.`);
+    // §13 truthfulness: there is no waitlist store yet, so DON'T claim we captured
+    // a signup we didn't. Tell the truth — it's coming and will appear here. Wiring
+    // a real, Paige-governable interest action (RPC → paige_actions) is tracked
+    // separately; until then this stays honest rather than a fabricated confirmation.
+    toast.info(`${skill.name} is coming soon — it'll show up right here the moment it's ready.`);
   };
 
   return (

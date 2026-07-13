@@ -23,6 +23,7 @@ import { EmailDomainsPanel } from "@/components/admin/EmailDomainsPanel";
 import { EmailTemplatesPanel } from "@/components/admin/settings/EmailTemplatesPanel";
 import { PaigeAutonomyPanel } from "@/components/admin/settings/PaigeAutonomyPanel";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenantContext } from "@/hooks/useTenantContext";
 import { toast } from "sonner";
 
 type FlagKey =
@@ -62,6 +63,13 @@ const FLAG_META: Record<FlagKey, { label: string; description: string }> = {
 };
 
 export function AdminSettingsHub() {
+  // §9 seam: the "Platform" and "Platform Pipes" tabs mutate PLATFORM-GLOBAL
+  // singleton config (admin_app_settings global flags; paige_config id=1 — the
+  // shared from-email / SMS / Twilio identity). Those belong to the operator, not
+  // to a tenant admin. Show them ONLY to platform staff; a normal tenant admin
+  // never sees them (paige_config writes are RLS-blocked for them anyway, so the
+  // tab would otherwise be a confusing dead-end — see the final wiring audit).
+  const { isPlatformStaff } = useTenantContext();
   return (
     <PageShell width="wide">
       <PageHeader
@@ -119,12 +127,16 @@ export function AdminSettingsHub() {
           <TabsTrigger value="paige" className="gap-2">
             <Bot className="w-4 h-4" /> Paige Autonomy
           </TabsTrigger>
-          <TabsTrigger value="platform" className="gap-2">
-            <SettingsIcon className="w-4 h-4" /> Platform
-          </TabsTrigger>
-          <TabsTrigger value="pipes" className="gap-2">
-            <Radio className="w-4 h-4" /> Platform Pipes
-          </TabsTrigger>
+          {isPlatformStaff && (
+            <>
+              <TabsTrigger value="platform" className="gap-2">
+                <SettingsIcon className="w-4 h-4" /> Platform
+              </TabsTrigger>
+              <TabsTrigger value="pipes" className="gap-2">
+                <Radio className="w-4 h-4" /> Platform Pipes
+              </TabsTrigger>
+            </>
+          )}
           <TabsTrigger value="email-domains" className="gap-2">
             <Globe className="w-4 h-4" /> Email Domains
           </TabsTrigger>
@@ -176,13 +188,17 @@ export function AdminSettingsHub() {
           <PaigeAutonomyPanel />
         </TabsContent>
 
-        <TabsContent value="platform" className="space-y-4">
-          <PlatformSettingsPanel />
-        </TabsContent>
+        {isPlatformStaff && (
+          <>
+            <TabsContent value="platform" className="space-y-4">
+              <PlatformSettingsPanel />
+            </TabsContent>
 
-        <TabsContent value="pipes" className="space-y-4">
-          <PlatformPipesPanel />
-        </TabsContent>
+            <TabsContent value="pipes" className="space-y-4">
+              <PlatformPipesPanel />
+            </TabsContent>
+          </>
+        )}
 
         <TabsContent value="email-domains" className="space-y-4">
           <EmailDomainsPanel />

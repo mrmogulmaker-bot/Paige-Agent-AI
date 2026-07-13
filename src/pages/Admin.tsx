@@ -350,12 +350,14 @@ const Admin = () => {
           </Suspense>
         } />
         <Route path="knowledge" element={
-          <Suspense fallback={<SuspenseFallback />}>
-            <div className="space-y-6">
-              <KnowledgeBaseReviewQueue />
-              <FundingGate><LenderBureauManager /></FundingGate>
-            </div>
-          </Suspense>
+          <PlatformStaffOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <div className="space-y-6">
+                <KnowledgeBaseReviewQueue />
+                <FundingGate><LenderBureauManager /></FundingGate>
+              </div>
+            </Suspense>
+          </PlatformStaffOnly>
         } />
         <Route path="maintenance" element={
           <AdminOnly>
@@ -370,11 +372,11 @@ const Admin = () => {
           </Suspense>
         } />
         <Route path="knowledge-base" element={
-          <AdminOnly>
+          <PlatformStaffOnly>
             <Suspense fallback={<SuspenseFallback />}>
               <KnowledgeBaseAdmin />
             </Suspense>
-          </AdminOnly>
+          </PlatformStaffOnly>
         } />
         <Route path="tenant-knowledge" element={
           <AdminOnly>
@@ -384,11 +386,11 @@ const Admin = () => {
           </AdminOnly>
         } />
         <Route path="network-kb" element={
-          <AdminOnly>
+          <PlatformStaffOnly>
             <Suspense fallback={<SuspenseFallback />}>
               <NetworkKbInsights />
             </Suspense>
-          </AdminOnly>
+          </PlatformStaffOnly>
         } />
         <Route path="security" element={
           <AdminOnly>
