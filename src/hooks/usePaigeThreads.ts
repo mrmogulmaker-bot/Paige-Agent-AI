@@ -48,9 +48,15 @@ export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: s
     queryKey: ["paige-threads", callerUserId, tenantId],
     enabled,
     queryFn: async (): Promise<PaigeThread[]> => {
+      // §9 tenant isolation: scope the owner sidebar to the ACTIVE tenant. Without
+      // this predicate, switching into a sub-account would re-fetch (the query key
+      // carries tenantId) but return the same rows, seeping the owner's other-tenant
+      // "Your Paige" threads into the child. `enabled` gates on tenantId, so this is
+      // never undefined here — no tenant context ⇒ query disabled ⇒ no threads.
       const { data, error } = await db
         .from("paige_chat_threads")
         .select("id,title,last_message_at,message_count,is_archived,updated_at")
+        .eq("tenant_id", tenantId)
         .eq("lens", "coach")
         .is("contact_id", null)
         .eq("is_archived", false)
