@@ -24,9 +24,7 @@ const lazy = <T extends React.ComponentType<any>>(factory: () => Promise<{ defau
 import { useNavigate, Routes, Route, useParams, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { Users, DollarSign, TrendingUp, LayoutDashboard } from "lucide-react";
-import { PageShell, PageHeader, StatRow, StatTile } from "@/components/ui/page";
-import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
+import { PracticeOverview } from "@/pages/admin/PracticeOverview";
 import { toast } from "sonner";
 import { RoleGate } from "@/components/auth/RoleGate";
 import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
@@ -160,11 +158,6 @@ const Admin = () => {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<"admin" | "coach">("admin");
   const { isPlatformStaff } = useTenantContext();
-  const [stats, setStats] = useState({
-    totalUsers: 0,
-    activeSubscriptions: 0,
-    totalRevenue: 0,
-  });
 
   useEffect(() => {
     let cancelled = false;
@@ -221,9 +214,6 @@ const Admin = () => {
         }
 
         setUserRole(isAdmin || isPlatformStaffRole ? "admin" : "coach");
-        // Don't fail the whole page if a stats query errors — render the
-        // workspace anyway so the user is never bounced off /admin.
-        fetchStats().catch((e) => console.error("[Admin] fetchStats:", e));
       } catch (error) {
         console.error("Admin access check error:", error);
         // Stay on /admin and let the boundary surface the failure rather
@@ -238,29 +228,6 @@ const Admin = () => {
       cancelled = true;
     };
   }, [navigate]);
-
-  const checkAdminAccess = async () => {};
-
-
-  const fetchStats = async () => {
-    try {
-      const [usersRes, subsRes, ordersRes] = await Promise.all([
-        supabase.from("profiles").select("id", { count: "exact", head: true }),
-        supabase.from("user_subscriptions").select("id", { count: "exact", head: true }).eq("status", "active"),
-        supabase.from("orders").select("amount").eq("status", "completed"),
-      ]);
-
-      const totalRevenue = ordersRes.data?.reduce((sum, order) => sum + Number(order.amount), 0) || 0;
-
-      setStats({
-        totalUsers: usersRes.count || 0,
-        activeSubscriptions: subsRes.count || 0,
-        totalRevenue,
-      });
-    } catch (error) {
-      console.error("Error fetching stats:", error);
-    }
-  };
 
   const handleViewClient = (clientUserId: string) => {
     navigate(`/admin/clients/user/${clientUserId}`);
@@ -284,7 +251,7 @@ const Admin = () => {
     <AdminLoaderBoundary>
     <AdminLayout userRole={userRole}>
       <Routes>
-        <Route index element={isPlatformStaff ? <Navigate to="/admin/platform/tenants" replace /> : <AdminOverview stats={stats} />} />
+        <Route index element={isPlatformStaff ? <Navigate to="/admin/platform/tenants" replace /> : <AdminOverview />} />
         <Route path="contacts" element={
           <Suspense fallback={<SuspenseFallback />}><ContactsAdmin /></Suspense>
         } />
@@ -610,38 +577,13 @@ const Admin = () => {
 };
 
 
-function AdminOverview({ stats }: { stats: { totalUsers: number; activeSubscriptions: number; totalRevenue: number } }) {
-  const revenue = new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(stats.totalRevenue);
-
+function AdminOverview() {
   return (
-    <PageShell width="wide">
-      <PageHeader
-        variant="hero"
-        icon={LayoutDashboard}
-        eyebrow="Overview"
-        title="Dashboard"
-        description="Your practice at a glance — people, subscriptions, and what's waiting on you."
-        actions={<ExportClientsButton />}
-      />
-
-      <StatRow cols={3}>
-        <StatTile label="Total Users" value={stats.totalUsers.toLocaleString()} icon={Users} />
-        <StatTile
-          label="Active Subscriptions"
-          value={stats.activeSubscriptions.toLocaleString()}
-          icon={TrendingUp}
-        />
-        <StatTile label="Total Revenue" value={revenue} icon={DollarSign} />
-      </StatRow>
-
+    <PracticeOverview>
       <Suspense fallback={<SuspenseFallback />}>
         <AILearningOverview />
       </Suspense>
-    </PageShell>
+    </PracticeOverview>
   );
 }
 

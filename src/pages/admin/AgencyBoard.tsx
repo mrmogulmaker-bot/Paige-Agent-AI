@@ -9,8 +9,9 @@
  *
  * Ownership & isolation (§9): every read/write here is scoped to THIS agency's
  * own children by the authenticated, parentage-gated RPCs:
+ *   - agency_portfolio_metrics()              → ONE rollup across this agency's
+ *                                               book (replaces the per-child N+1)
  *   - agency_list_my_subaccounts()            → this agency's children only
- *   - agency_subaccount_metrics(_child)       → per-child KPIs (parentage-gated)
  *   - agency_child_provisioned(_child)        → what's live on that child
  *   - agency_provision_catalog_item(_child,…) → resell / retract an item
  *   - create_subaccount(4-arg)                → spin up a new child
@@ -22,13 +23,15 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Building2, Users, Workflow as WorkflowIcon, UserCog, Plus, RefreshCw,
+  Building2, Users, Workflow as WorkflowIcon, Plus, RefreshCw,
   ArrowRightLeft, Store, Loader2, PackageCheck, Layers,
   TrendingUp, Palette, Mic, Sparkles, UserPlus,
+  DollarSign, AlertTriangle, Activity, Trophy, ArrowUpRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useAgencyPortfolio, type PortfolioHealthKey } from "@/hooks/useAgencyPortfolio";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,25 +62,37 @@ interface SubAccount {
   created_at: string;
 }
 
-interface ChildMetrics {
-  clients: number;
-  active_workflows: number;
-  members: number;
-}
-
-const asNum = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const asSlugs = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((s): s is string => typeof s === "string") : [];
+
+const usd = (cents: number) =>
+  new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(Math.round(cents / 100));
+
+const num = (n: number) => n.toLocaleString();
+const signed = (n: number) => (n > 0 ? `+${num(n)}` : num(n));
+
+// Health buckets → the shared word-pill vocabulary (legible by LABEL, not color).
+const HEALTH_PILL: Record<PortfolioHealthKey, { state: "success" | "warning" | "error"; label: string }> = {
+  healthy: { state: "success", label: "Healthy" },
+  watch: { state: "warning", label: "Watch" },
+  at_risk: { state: "error", label: "At risk" },
+};
 
 export default function AgencyBoard() {
   const { activeTenant, activeTenantId } = useTenantContext();
 
+  // ONE parentage-gated rollup across the whole book — replaces the old
+  // per-child N+1. Polls every 45s and on window focus (live/dynamic doctrine).
+  const { portfolio, loading: portfolioLoading, refetch: refetchPortfolio } = useAgencyPortfolio();
+
   const [subs, setSubs] = useState<SubAccount[]>([]);
-  // Which child we're entering (drives the row's Open-button spinner).
+  // Which child we're entering (drives the row's Open/Reach-out spinner).
   const [switchingId, setSwitchingId] = useState<string | null>(null);
-  const [metrics, setMetrics] = useState<Record<string, ChildMetrics>>({});
   const [loading, setLoading] = useState(true);
-  const [metricsLoading, setMetricsLoading] = useState(false);
 
   // Create-a-child form (mirrors SubAccountsPanel's proven pattern).
   const [name, setName] = useState("");
@@ -99,43 +114,30 @@ export default function AgencyBoard() {
 
   const selected = useMemo(() => subs.find((s) => s.id === selectedId) ?? null, [subs, selectedId]);
 
-  // --- Roster + per-child metrics (this agency's children only, RPC-scoped) ---
+  // --- Roster (this agency's children only, RPC-scoped) — drives the management
+  // surface below. The at-a-glance KPIs come from agency_portfolio_metrics, so
+  // this no longer fans out a metrics call per child. ---
   const loadRoster = useCallback(async () => {
     if (!activeTenantId) return;
     setLoading(true);
     try {
       const { data, error } = await supabase.rpc("agency_list_my_subaccounts");
       if (error) throw error;
-      const rows = (Array.isArray(data) ? data : []) as SubAccount[];
-      setSubs(rows);
-
-      // Fan out metrics in parallel — one gated call per child.
-      setMetricsLoading(true);
-      const results = await Promise.all(
-        rows.map(async (r) => {
-          const { data: m, error: mErr } = await supabase.rpc("agency_subaccount_metrics", { _child: r.id });
-          if (mErr) return [r.id, { clients: 0, active_workflows: 0, members: 0 }] as const;
-          const obj = (m ?? {}) as Record<string, unknown>;
-          return [
-            r.id,
-            {
-              clients: asNum(obj.clients),
-              active_workflows: asNum(obj.active_workflows),
-              members: asNum(obj.members),
-            },
-          ] as const;
-        }),
-      );
-      setMetrics(Object.fromEntries(results));
+      setSubs((Array.isArray(data) ? data : []) as SubAccount[]);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't load your sub-accounts");
     } finally {
       setLoading(false);
-      setMetricsLoading(false);
     }
   }, [activeTenantId]);
 
   useEffect(() => { loadRoster(); }, [loadRoster]);
+
+  // One refresh gesture re-pulls both the live rollup and the roster.
+  const refreshAll = useCallback(() => {
+    refetchPortfolio();
+    loadRoster();
+  }, [refetchPortfolio, loadRoster]);
 
   // --- Provisioned state for the selected child ---
   const loadProvisioned = useCallback(async (childId: string) => {
@@ -179,7 +181,7 @@ export default function AgencyBoard() {
     }
   };
 
-  const openChild = async (child: SubAccount) => {
+  const openChild = async (childId: string, childName: string) => {
     // Enter the sub-account through the parentage-gated RPC (§9/§10): it grants
     // the agency admin a membership row on the child (so child-scoped RLS lets
     // them work) AND sets active_tenant_id = child in one authenticated call —
@@ -187,12 +189,12 @@ export default function AgencyBoard() {
     // leave the admin unable to read the child under RLS. Then hard-navigate so
     // every per-instance tenant context re-reads the new scope (switchNotice.ts).
     if (switchingId) return;
-    setSwitchingId(child.id);
+    setSwitchingId(childId);
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await supabase.rpc("agency_enter_subaccount" as any, { _child: child.id });
+      const { error } = await supabase.rpc("agency_enter_subaccount" as any, { _child: childId });
       if (error) throw error;
-      stashSwitchNotice(`Now managing ${child.name}.`);
+      stashSwitchNotice(`Now managing ${childName}.`);
       window.location.assign("/admin");
     } catch (e) {
       const code = (e as { code?: string } | null)?.code;
@@ -272,27 +274,107 @@ export default function AgencyBoard() {
     }
   };
 
-  // --- Aggregate KPIs across the book (real data only, never hardcoded) ---
-  const totals = useMemo(() => {
-    const vals = Object.values(metrics);
-    return {
-      children: subs.length,
-      clients: vals.reduce((s, m) => s + m.clients, 0),
-      workflows: vals.reduce((s, m) => s + m.active_workflows, 0),
-      members: vals.reduce((s, m) => s + m.members, 0),
-    };
-  }, [subs, metrics]);
+  // --- Hero KPIs across the book — one real rollup, rendered defensively so a
+  // tile appears ONLY when its key is present (§13: no fabricated numbers). ---
+  const kpis = useMemo(() => {
+    const p = portfolio;
+    const tiles: Array<{ key: string; node: JSX.Element }> = [];
+    if (portfolioLoading || p?.active_subaccounts !== undefined) {
+      tiles.push({
+        key: "active_subaccounts",
+        node: (
+          <StatTile
+            label="Sub-accounts"
+            value={num(p?.active_subaccounts ?? 0)}
+            icon={Building2}
+            loading={portfolioLoading}
+          />
+        ),
+      });
+    }
+    if (portfolioLoading || p?.portfolio_mrr_cents !== undefined) {
+      tiles.push({
+        key: "portfolio_mrr_cents",
+        node: (
+          <StatTile
+            label="Portfolio revenue"
+            value={usd(p?.portfolio_mrr_cents ?? 0)}
+            icon={DollarSign}
+            hint="monthly recurring"
+            loading={portfolioLoading}
+          />
+        ),
+      });
+    }
+    if (portfolioLoading || p?.net_growth !== undefined) {
+      const g = p?.net_growth ?? 0;
+      tiles.push({
+        key: "net_growth",
+        node: (
+          <StatTile
+            label="Net growth"
+            value={signed(g)}
+            icon={TrendingUp}
+            intent={g > 0 ? "positive" : g < 0 ? "negative" : "neutral"}
+            hint={
+              p?.subaccounts_added !== undefined && p?.subaccounts_churned !== undefined
+                ? `${num(p.subaccounts_added)} added · ${num(p.subaccounts_churned)} churned`
+                : undefined
+            }
+            loading={portfolioLoading}
+          />
+        ),
+      });
+    }
+    if (portfolioLoading || p?.at_risk_subaccounts !== undefined) {
+      const r = p?.at_risk_subaccounts ?? 0;
+      tiles.push({
+        key: "at_risk_subaccounts",
+        node: (
+          <StatTile
+            label="Sub-accounts at risk"
+            value={num(r)}
+            icon={AlertTriangle}
+            intent={r > 0 ? "negative" : "neutral"}
+            loading={portfolioLoading}
+          />
+        ),
+      });
+    }
+    if (portfolioLoading || p?.clients_under_mgmt !== undefined) {
+      tiles.push({
+        key: "clients_under_mgmt",
+        node: (
+          <StatTile
+            label="Clients under management"
+            value={num(p?.clients_under_mgmt ?? 0)}
+            icon={Users}
+            loading={portfolioLoading}
+          />
+        ),
+      });
+    }
+    return tiles;
+  }, [portfolio, portfolioLoading]);
+
+  const health = portfolio?.health;
+  const leaderboard = portfolio?.leaderboard;
 
   const availableCount = MARKETPLACE_SKILLS.filter((s) => s.status === "available").length;
 
   const columns: Column[] = [
     { key: "name", header: "Sub-account" },
     { key: "status", header: "Status" },
-    { key: "clients", header: "Clients", numeric: true },
-    { key: "workflows", header: "Workflows", numeric: true },
-    { key: "members", header: "Members", numeric: true },
-    { key: "live", header: "Reselling", numeric: true },
+    { key: "manage", header: "" },
     { key: "actions", header: "", className: "text-right" },
+  ];
+
+  const leaderboardColumns: Column[] = [
+    { key: "name", header: "Sub-account" },
+    { key: "clients", header: "Clients", numeric: true },
+    { key: "mrr", header: "MRR", numeric: true },
+    { key: "health", header: "Health" },
+    { key: "act", header: "", className: "text-right" },
   ];
 
   return (
@@ -308,22 +390,106 @@ export default function AgencyBoard() {
         actions={
           <Button
             variant="secondary"
-            onClick={loadRoster}
-            disabled={loading}
+            onClick={refreshAll}
+            disabled={loading || portfolioLoading}
             className="bg-white/10 text-white hover:bg-white/20 border-0"
           >
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading || portfolioLoading ? "animate-spin" : ""}`} />
             Refresh
           </Button>
         }
       />
 
-      <StatRow cols={4}>
-        <StatTile label="Sub-accounts" value={totals.children} icon={Building2} loading={loading} />
-        <StatTile label="Clients (book)" value={totals.clients} icon={Users} loading={loading || metricsLoading} />
-        <StatTile label="Active workflows" value={totals.workflows} icon={WorkflowIcon} loading={loading || metricsLoading} />
-        <StatTile label="Team members" value={totals.members} icon={UserCog} loading={loading || metricsLoading} />
-      </StatRow>
+      {kpis.length > 0 && (
+        <StatRow cols={4}>{kpis.map((k) => <div key={k.key}>{k.node}</div>)}</StatRow>
+      )}
+
+      {/* Portfolio health — how the book splits across healthy / watch / at-risk. */}
+      {health && (
+        <SectionCard
+          icon={Activity}
+          title="Portfolio health"
+          description="Where your book stands right now, at a glance — so you know who needs you before they churn."
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([
+              { key: "healthy" as const, value: health.healthy },
+              { key: "watch" as const, value: health.watch },
+              { key: "at_risk" as const, value: health.at_risk },
+            ]).map(({ key, value }) => {
+              const meta = HEALTH_PILL[key];
+              return (
+                <div
+                  key={key}
+                  className="flex items-center justify-between gap-3 rounded-[var(--radius)] border border-border bg-card p-4"
+                >
+                  <div className="font-display text-2xl font-semibold tabular-nums text-foreground">
+                    {num(value)}
+                  </div>
+                  <StatePill state={meta.state}>{meta.label}</StatePill>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Leaderboard / at-risk board — per-child clients + MRR + health, straight
+          from the single rollup. Gold is spent ONLY on the Reach-out act moment. */}
+      {leaderboard !== undefined && (
+        <SectionCard
+          icon={Trophy}
+          title="Sub-account leaderboard"
+          description="Your book ranked by traction — reach out to the ones losing steam before they slip."
+        >
+          <DataTableShell
+            columns={leaderboardColumns}
+            loading={portfolioLoading}
+            isEmpty={!portfolioLoading && leaderboard.length === 0}
+            empty={
+              <EmptyState
+                icon={Trophy}
+                tone="brand"
+                title="No sub-accounts to rank yet"
+                description="Spin up your first child workspace below and it'll show up here with live clients, revenue, and health."
+              />
+            }
+          >
+            {leaderboard.map((row) => {
+              const meta = HEALTH_PILL[row.health] ?? HEALTH_PILL.watch;
+              const busy = switchingId === row.tenant_id;
+              return (
+                <TableRow key={row.tenant_id}>
+                  <TableCell>
+                    <div className="truncate font-medium text-foreground">{row.name}</div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{num(row.client_count)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{usd(row.mrr_cents)}</TableCell>
+                  <TableCell>
+                    <StatePill state={meta.state}>{meta.label}</StatePill>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="gold"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => openChild(row.tenant_id, row.name)}
+                      aria-label={`Open ${row.name} to check in`}
+                    >
+                      {busy ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ArrowUpRight className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      Open
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </DataTableShell>
+        </SectionCard>
+      )}
 
       {/* Create a sub-account */}
       <SectionCard
@@ -364,7 +530,7 @@ export default function AgencyBoard() {
           <div className="min-w-0">
             <h2 className="font-display text-lg font-semibold leading-tight text-foreground">Your sub-accounts</h2>
             <p className="text-sm text-muted-foreground">
-              Select an account to manage what it resells. Metrics are live per workspace.
+              Select an account to manage what it resells, hand it to its owner, or open it to work inside.
             </p>
           </div>
         </div>
@@ -383,7 +549,6 @@ export default function AgencyBoard() {
           }
         >
           {subs.map((s) => {
-            const m = metrics[s.id];
             const isSelected = s.id === selectedId;
             return (
               <TableRow
@@ -407,15 +572,6 @@ export default function AgencyBoard() {
                   <StatePill state={s.status === "active" ? "success" : "pending"}>
                     {s.status}
                   </StatePill>
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {m ? m.clients : <span className="text-muted-foreground">—</span>}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {m ? m.active_workflows : <span className="text-muted-foreground">—</span>}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {m ? m.members : <span className="text-muted-foreground">—</span>}
                 </TableCell>
                 <TableCell className="text-right">
                   {isSelected ? (
@@ -443,7 +599,7 @@ export default function AgencyBoard() {
                       variant="outline"
                       size="sm"
                       disabled={switchingId === s.id}
-                      onClick={(e) => { e.stopPropagation(); openChild(s); }}
+                      onClick={(e) => { e.stopPropagation(); openChild(s.id, s.name); }}
                     >
                       {switchingId === s.id ? (
                         <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />

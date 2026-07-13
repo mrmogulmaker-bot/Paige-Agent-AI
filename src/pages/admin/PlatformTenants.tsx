@@ -23,6 +23,7 @@ import {
   type TenantStatus, type HealthLevel, STATUS_META, tenantHealth, trialDaysLeft,
 } from "@/lib/platform/tenantLifecycle";
 import { TenantDetailSheet, type FleetTenant } from "@/components/admin/platform/TenantDetailSheet";
+import PlatformOverview from "./PlatformOverview";
 
 // Status tone → state-pill state. Attention tones (warn/critical) collapse to the
 // destructive pill; positive → success; trial → muted pending; canceled → off.
@@ -156,6 +157,10 @@ export default function PlatformTenants() {
   // reflects a mutation the moment load() refetches after it.
   const selected = useMemo(() => rows.find((r) => r.id === selectedId) ?? null, [rows, selectedId]);
   const openTenant = (t: FleetTenant) => { setSelectedId(t.id); setSheetOpen(true); };
+  // The operator-overview "Reach out" act opens the same lifecycle drill-in as a
+  // fleet-row click; `selected` derives from live rows, so the sheet fills in as
+  // soon as the tenant is loaded.
+  const reachOutTenant = (tenantId: string) => { setSelectedId(tenantId); setSheetOpen(true); };
 
   if (ctxLoading) {
     return (
@@ -196,6 +201,8 @@ export default function PlatformTenants() {
         title="Fleet Console"
         description={`Every workspace running on ${PLATFORM.name}. Click a tenant to manage its plan, limits, and lifecycle.`}
       />
+
+      <PlatformOverview onReachOut={reachOutTenant} />
 
       <StatRow cols={4}>
         <StatTile label="Tenants" value={totals.tenants} icon={Building2} loading={loading} />
