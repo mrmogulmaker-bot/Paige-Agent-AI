@@ -53,7 +53,10 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
   const [pages, setPages] = useState<Page[]>([]);
   const [forms, setForms] = useState<Form[]>([]);
   const [funnels, setFunnels] = useState<Funnel[]>([]);
-  const [subs, setSubs] = useState<Submission[]>([]);
+  // Submissions are a per-form metric (lead capture), not a top-level surface —
+  // the count lives on each form, the raw responses drill from that form, and the
+  // lead itself flows into Contacts. This is the count keyed by form_id.
+  const [subCounts, setSubCounts] = useState<Record<string, number>>({});
   const [sources, setSources] = useState<ExternalSource[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -65,17 +68,21 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
         supabase.from("growth_pages").select("id,slug,title,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
         supabase.from("growth_forms").select("id,slug,name,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
         supabase.from("growth_funnels").select("id,slug,name,status,updated_at").eq("tenant_id", activeTenantId).order("updated_at", { ascending: false }),
-        supabase.from("growth_form_submissions").select("id,form_id,created_at,payload_json,source,contact_id").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }).limit(50),
+        supabase.from("growth_form_submissions").select("form_id").eq("tenant_id", activeTenantId),
         supabase.from("growth_external_sources").select("id,provider,label,active,last_seen_at").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }),
       ]);
       setPages((p.data ?? []) as Page[]);
       setForms((f.data ?? []) as Form[]);
       setFunnels((fn.data ?? []) as Funnel[]);
-      setSubs((s.data ?? []) as Submission[]);
+      const counts: Record<string, number> = {};
+      ((s.data ?? []) as { form_id: string }[]).forEach((r) => { if (r.form_id) counts[r.form_id] = (counts[r.form_id] ?? 0) + 1; });
+      setSubCounts(counts);
       setSources((src.data ?? []) as ExternalSource[]);
       setLoading(false);
     })();
   }, [activeTenantId, tab]);
+
+  const totalSubs = useMemo(() => Object.values(subCounts).reduce((a, b) => a + b, 0), [subCounts]);
 
   const tenantSlug = activeTenant?.slug ?? "tenant";
   const inboundBase = `${(import.meta.env.VITE_SUPABASE_URL ?? "").replace(/\/$/, "")}/functions/v1/growth-inbound`;
@@ -87,7 +94,6 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
             <TabsTrigger value="pages"><LayoutGrid className="w-4 h-4 mr-1.5" />Pages</TabsTrigger>
             <TabsTrigger value="funnels"><GitBranch className="w-4 h-4 mr-1.5" />Funnels</TabsTrigger>
             <TabsTrigger value="forms"><FileText className="w-4 h-4 mr-1.5" />Forms</TabsTrigger>
-            <TabsTrigger value="submissions"><Inbox className="w-4 h-4 mr-1.5" />Submissions</TabsTrigger>
             <TabsTrigger value="integrations"><Plug className="w-4 h-4 mr-1.5" />External Builders</TabsTrigger>
           </TabsList>
         )}
@@ -169,14 +175,18 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
                   actions={<StatePill state={f.status === "active" ? "success" : "off"}>{f.status}</StatePill>}
                 >
                   <div className="text-xs text-muted-foreground space-y-2">
-                    <div>/{f.slug}</div>
-                    <div className="flex gap-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate">/{f.slug}</span>
+                      <span className="tabular-nums shrink-0">{subCounts[f.id] ?? 0} submission{(subCounts[f.id] ?? 0) === 1 ? "" : "s"}</span>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
                       <Button asChild size="sm" variant="outline">
                         <a href={`/form/${f.id}`} target="_blank" rel="noreferrer">
                           <ExternalLink className="w-3.5 h-3.5 mr-1" />Open
                         </a>
                       </Button>
                       <CopyButton text={`${window.location.origin}/form/${f.id}`} label="Copy link" />
+                      <FormSubmissionsDialog form={f} tenantId={activeTenantId} />
                     </div>
                   </div>
                 </SectionCard>
@@ -184,27 +194,6 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
             </div>
           )}
         </TabsContent>
-
-        <TabsContent value="submissions" className="space-y-4 mt-4">
-          <SectionHeader title="All Submissions (last 50)" />
-          {subs.length === 0 ? (
-            <EmptyState icon={Inbox} title="No submissions yet" description="Submissions from Paige forms and external builders both land here." />
-          ) : (
-            <div className="space-y-2">
-              {subs.map((s) => (
-                <SubmissionRow
-                  key={s.id}
-                  sub={s}
-                  tenantId={activeTenantId}
-                  onConverted={(contactId) => {
-                    setSubs((prev) => prev.map((x) => x.id === s.id ? { ...x, contact_id: contactId } : x));
-                  }}
-                />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
 
         <TabsContent value="integrations" className="space-y-4 mt-4">
           <SectionHeader title="External Builders" cta={
@@ -257,7 +246,7 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
         <StatTile label="Pages" value={pages.length} icon={LayoutGrid} loading={loading} />
         <StatTile label="Funnels" value={funnels.length} icon={GitBranch} loading={loading} />
         <StatTile label="Forms" value={forms.length} icon={FileText} loading={loading} />
-        <StatTile label="Submissions" value={subs.length} icon={Inbox} loading={loading} />
+        <StatTile label="Submissions" value={totalSubs} icon={Inbox} loading={loading} />
       </StatRow>
       {tabs}
     </PageShell>
@@ -270,6 +259,56 @@ function SectionHeader({ title, cta }: { title: string; cta?: React.ReactNode })
       <h2 className="text-lg font-semibold">{title}</h2>
       {cta}
     </div>
+  );
+}
+
+// Submissions are scoped to their form (lead capture), not a global bucket. Each
+// form drills into its own responses on demand; the lead itself flows to Contacts.
+function FormSubmissionsDialog({ form, tenantId }: { form: Form; tenantId: string }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<Submission[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    setLoading(true);
+    supabase
+      .from("growth_form_submissions")
+      .select("id,form_id,created_at,payload_json,source,contact_id")
+      .eq("tenant_id", tenantId)
+      .eq("form_id", form.id)
+      .order("created_at", { ascending: false })
+      .limit(100)
+      .then(({ data }) => { if (active) { setRows((data ?? []) as Submission[]); setLoading(false); } });
+    return () => { active = false; };
+  }, [open, form.id, tenantId]);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="ghost"><Inbox className="w-3.5 h-3.5 mr-1" />Submissions</Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader><DialogTitle className="truncate">{form.name} — submissions</DialogTitle></DialogHeader>
+        {loading ? (
+          <div className="space-y-2 py-2">
+            {[0, 1, 2].map((i) => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}
+          </div>
+        ) : rows.length === 0 ? (
+          <EmptyState icon={Inbox} title="No submissions yet" description="When someone fills out this form, their responses land here and the lead flows into Contacts." />
+        ) : (
+          <div className="space-y-2">
+            {rows.map((s) => (
+              <SubmissionRow
+                key={s.id}
+                sub={s}
+                tenantId={tenantId}
+                onConverted={(contactId) => setRows((prev) => prev.map((x) => x.id === s.id ? { ...x, contact_id: contactId } : x))}
+              />
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

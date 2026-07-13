@@ -19,7 +19,7 @@ const BrandKitPanel = lazy(() =>
   import("@/components/admin/brand/BrandKitPanel").then((m) => ({ default: m.BrandKitPanel })),
 );
 
-const GROWTH_TABS = new Set(["pages", "funnels", "forms", "submissions", "integrations"]);
+const GROWTH_TABS = new Set(["pages", "funnels", "forms", "integrations"]);
 
 
 export default function CampaignsHub() {
@@ -40,7 +40,7 @@ export default function CampaignsHub() {
         eyebrow="Growth & Acquisition"
         title="Campaigns"
         icon={Megaphone}
-        description="Live campaigns, landing pages, funnels, forms, submissions, and external builder bridges — all wired into contacts, pipeline, and Paige workflows in real time."
+        description="Live campaigns, landing pages, funnels, forms, and external builder bridges — all wired into contacts, pipeline, and Paige workflows in real time."
       />
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -52,7 +52,6 @@ export default function CampaignsHub() {
           <TabsTrigger value="pages"><LayoutGrid className="w-4 h-4 mr-1.5" />Pages</TabsTrigger>
           <TabsTrigger value="funnels"><GitBranch className="w-4 h-4 mr-1.5" />Funnels</TabsTrigger>
           <TabsTrigger value="forms"><FileText className="w-4 h-4 mr-1.5" />Forms</TabsTrigger>
-          <TabsTrigger value="submissions"><Inbox className="w-4 h-4 mr-1.5" />Submissions</TabsTrigger>
           <TabsTrigger value="integrations"><Plug className="w-4 h-4 mr-1.5" />External Builders</TabsTrigger>
         </TabsList>
 
