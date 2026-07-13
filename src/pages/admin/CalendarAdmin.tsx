@@ -37,8 +37,8 @@ import {
   Plus, Loader2, ListChecks, Settings2, Users, Cable,
 } from "lucide-react";
 import CalendarsPanel from "@/components/admin/calendar/CalendarsPanel";
-import CalendarConnectorsPanel from "@/components/admin/settings/CalendarConnectorsPanel";
 import { CalendarGrid, type GridEvent, type ViewMode } from "@/components/admin/calendar/CalendarGrid";
+import { Link } from "react-router-dom";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { usePlanList, type PlanItem } from "@/hooks/usePlanList";
@@ -516,11 +516,22 @@ export default function CalendarAdmin() {
           <CalendarsPanel />
         </TabsContent>
 
-        {/* CONNECTIONS — account-level calendar sync (Google OAuth, Apple soon).
-            Reuses the existing Settings panel (§12) so tenants find it inside the
-            Calendar section without duplicating the connect flows. */}
+        {/* CONNECTIONS — signpost only. Calendar/meeting connect flows live in the
+            ONE integrations home (Automation → Integrations, §6/§12), so we don't
+            keep a rival management surface here — just a path to it, no dead end. */}
         <TabsContent value="connections" className="space-y-4">
-          <CalendarConnectorsPanel />
+          <SectionCard
+            icon={Cable}
+            title="Calendar connectors moved"
+            description="Google Calendar, Zoom, and Apple connect flows now live in one place with the rest of your integrations."
+            className="border-primary/30"
+          >
+            <Button asChild variant="outline" size="sm">
+              <Link to="/admin/integrations">
+                Go to Integrations <ChevronRight className="h-4 w-4 ml-1.5" />
+              </Link>
+            </Button>
+          </SectionCard>
         </TabsContent>
       </Tabs>
 

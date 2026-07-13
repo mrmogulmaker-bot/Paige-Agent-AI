@@ -128,18 +128,26 @@ export default function IntegrationsHub() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {tiles.map((tile) => {
           const status = statusFor(tile.key);
+          // A tile whose href is the hub itself has no dedicated config surface
+          // (e.g. Firecrawl is always-on) — don't render a "Manage" button that
+          // just reloads this page (§192: no dead-end control).
+          const hasConfig = tile.href !== "/admin/integrations";
           return (
             <SectionCard
               key={tile.key}
-              interactive
+              interactive={hasConfig}
               icon={tile.icon}
               title={tile.title}
               description={tile.description}
               actions={<StatePill state={status.state}>{status.label}</StatePill>}
             >
-              <Button asChild size="sm" variant="outline" className="gap-1">
-                <Link to={tile.href}>Manage <ExternalLink className="size-3" /></Link>
-              </Button>
+              {hasConfig ? (
+                <Button asChild size="sm" variant="outline" className="gap-1">
+                  <Link to={tile.href}>Manage <ExternalLink className="size-3" /></Link>
+                </Button>
+              ) : (
+                <p className="text-xs text-muted-foreground">Always on — no setup needed.</p>
+              )}
             </SectionCard>
           );
         })}

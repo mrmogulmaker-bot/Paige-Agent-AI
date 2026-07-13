@@ -1,19 +1,28 @@
 /**
- * Connectors — account-level calendar connections, tucked into Settings.
+ * Calendar connectors — per-user calendar/meeting account links.
  *
- * The owner wanted the Google/Apple connect flows OUT of the Calendar page and
- * into one organized home in Settings, so people aren't hunting across screens.
- * This is the calendar-sync connector surface (per-user Google/Apple accounts);
- * the per-calendar schedule/branding lives in the Calendars builder itself.
+ * Lives in the ONE integrations home (Automation → Integrations, folded in as a
+ * section) so people aren't hunting connect flows across screens. It is also
+ * legitimately reused in the person's own Profile ("connected accounts") as a
+ * personal surface — the connection is keyed to the signed-in user
+ * (`staff_calendar_settings.user_id`), so "my Google / my Zoom" belongs on the
+ * profile too; that is contextual reuse (§12), not a rival management home.
+ *
+ * Built on the shared primitive layer (§11): SectionCard + StatePill so it reads
+ * as one continuous system beside the hub's own connector tiles — no raw Card,
+ * no Badge status, no native confirm() (an AlertDialog governs disconnect).
  */
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { StatePill } from "@/components/ui/page";
+import { SectionCard, StatePill } from "@/components/ui/page";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Link as LinkIcon, Unlink, Loader2, CalendarCheck } from "lucide-react";
+import { Link as LinkIcon, Unlink, Loader2, CalendarCheck, Video, Apple } from "lucide-react";
 
 interface ConnState {
   google_calendar_connected: boolean;
@@ -23,11 +32,16 @@ interface ConnState {
   zoom_email: string | null;
 }
 
+/** Which account a pending disconnect confirmation targets. */
+type DisconnectTarget = "google" | "zoom" | null;
+
 export function CalendarConnectorsPanel() {
   const [conn, setConn] = useState<ConnState | null>(null);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState(false);
   const [connectingZoom, setConnectingZoom] = useState(false);
+  const [disconnectTarget, setDisconnectTarget] = useState<DisconnectTarget>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -62,17 +76,6 @@ export function CalendarConnectorsPanel() {
     window.location.href = url;
   };
 
-  const disconnectGoogle = async () => {
-    if (!confirm("Disconnect Google Calendar?")) return;
-    const { data, error } = await supabase.functions.invoke("google-calendar-disconnect", { body: {} });
-    if (error || (data as { error?: string } | null)?.error) {
-      toast.error((data as { error?: string } | null)?.error ?? error?.message ?? "Failed");
-      return;
-    }
-    toast.success("Google Calendar disconnected");
-    void load();
-  };
-
   const connectZoom = async () => {
     setConnectingZoom(true);
     const { data, error } = await supabase.functions.invoke("zoom-oauth-start", {
@@ -87,109 +90,131 @@ export function CalendarConnectorsPanel() {
     window.location.href = url;
   };
 
-  const disconnectZoom = async () => {
-    if (!confirm("Disconnect Zoom?")) return;
-    const { data, error } = await supabase.functions.invoke("zoom-disconnect", { body: {} });
+  // One AlertDialog governs both disconnects (§11 — no native confirm()). It
+  // fires the right edge function for whichever account the user chose to drop.
+  const confirmDisconnect = async () => {
+    const target = disconnectTarget;
+    if (!target) return;
+    setDisconnecting(true);
+    const fn = target === "google" ? "google-calendar-disconnect" : "zoom-disconnect";
+    const { data, error } = await supabase.functions.invoke(fn, { body: {} });
+    setDisconnecting(false);
     if (error || (data as { error?: string } | null)?.error) {
       toast.error((data as { error?: string } | null)?.error ?? error?.message ?? "Failed");
       return;
     }
-    toast.success("Zoom disconnected");
+    toast.success(target === "google" ? "Google Calendar disconnected" : "Zoom disconnected");
+    setDisconnectTarget(null);
     void load();
   };
 
+  const googleConnected = conn?.google_calendar_connected ?? false;
+  const zoomConnected = conn?.zoom_connected ?? false;
+
   return (
-    <div className="space-y-4">
+    <section className="space-y-4">
       <div>
         <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
           <CalendarCheck className="h-4 w-4 text-muted-foreground" /> Calendar connectors
         </h2>
         <p className="text-sm text-muted-foreground">
-          Connect your calendar so your bookings stay in sync both ways.
+          Connect your calendar and meeting tools so your bookings stay in sync both ways.
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base">Google Calendar</CardTitle>
-                <CardDescription>Two-way sync with your Google account.</CardDescription>
-              </div>
-              {conn?.google_calendar_connected
+        {/* Google Calendar */}
+        <SectionCard
+          icon={CalendarCheck}
+          title="Google Calendar"
+          description="Two-way sync with your Google account."
+          actions={
+            loading ? <Skeleton className="h-5 w-24 rounded-full" />
+              : googleConnected
                 ? <StatePill state="success">Connected</StatePill>
-                : <Badge variant="secondary">Not connected</Badge>}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {loading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
-            ) : conn?.google_calendar_connected ? (
-              <>
-                <p className="text-sm text-muted-foreground">{conn.google_email ?? "Connected account"}</p>
-                <Button variant="outline" size="sm" onClick={disconnectGoogle}>
-                  <Unlink className="h-4 w-4 mr-2" /> Disconnect
-                </Button>
-              </>
-            ) : (
-              <Button onClick={connectGoogle} disabled={connecting}>
-                {connecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <LinkIcon className="h-4 w-4 mr-2" />}
-                Connect Google Calendar
+                : <StatePill state="off">Not connected</StatePill>
+          }
+        >
+          {loading ? (
+            <Skeleton className="h-9 w-48" />
+          ) : googleConnected ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{conn?.google_email ?? "Connected account"}</p>
+              <Button variant="outline" size="sm" onClick={() => setDisconnectTarget("google")}>
+                <Unlink className="h-4 w-4 mr-2" /> Disconnect
               </Button>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          ) : (
+            <Button onClick={connectGoogle} disabled={connecting}>
+              {connecting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <LinkIcon className="h-4 w-4 mr-2" />}
+              Connect Google Calendar
+            </Button>
+          )}
+        </SectionCard>
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base">Zoom</CardTitle>
-                <CardDescription>Connect Zoom so a meeting link is added to your bookings automatically.</CardDescription>
-              </div>
-              {conn?.zoom_connected
+        {/* Zoom */}
+        <SectionCard
+          icon={Video}
+          title="Zoom"
+          description="Add a meeting link to your bookings automatically."
+          actions={
+            loading ? <Skeleton className="h-5 w-24 rounded-full" />
+              : zoomConnected
                 ? <StatePill state="success">Connected</StatePill>
-                : <Badge variant="secondary">Not connected</Badge>}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {loading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
-            ) : conn?.zoom_connected ? (
-              <>
-                <p className="text-sm text-muted-foreground">{conn.zoom_email ?? "Connected account"}</p>
-                <Button variant="outline" size="sm" onClick={disconnectZoom}>
-                  <Unlink className="h-4 w-4 mr-2" /> Disconnect
-                </Button>
-              </>
-            ) : (
-              <Button onClick={connectZoom} disabled={connectingZoom}>
-                {connectingZoom ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <LinkIcon className="h-4 w-4 mr-2" />}
-                Connect Zoom
+                : <StatePill state="off">Not connected</StatePill>
+          }
+        >
+          {loading ? (
+            <Skeleton className="h-9 w-36" />
+          ) : zoomConnected ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">{conn?.zoom_email ?? "Connected account"}</p>
+              <Button variant="outline" size="sm" onClick={() => setDisconnectTarget("zoom")}>
+                <Unlink className="h-4 w-4 mr-2" /> Disconnect
               </Button>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base">Apple Calendar</CardTitle>
-                <CardDescription>iCloud connect via CalDAV.</CardDescription>
-              </div>
-              <Badge variant="secondary">Coming soon</Badge>
             </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              You'll enter your iCloud email and an app-specific password from appleid.apple.com. We'll wire the sync next.
-            </p>
-          </CardContent>
-        </Card>
+          ) : (
+            <Button onClick={connectZoom} disabled={connectingZoom}>
+              {connectingZoom ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <LinkIcon className="h-4 w-4 mr-2" />}
+              Connect Zoom
+            </Button>
+          )}
+        </SectionCard>
+
+        {/* Apple Calendar — not yet wired */}
+        <SectionCard
+          icon={Apple}
+          title="Apple Calendar"
+          description="iCloud connect via CalDAV."
+          actions={<StatePill state="pending">Coming soon</StatePill>}
+        >
+          <p className="text-sm text-muted-foreground">
+            You'll enter your iCloud email and an app-specific password from appleid.apple.com. We'll wire the sync next.
+          </p>
+        </SectionCard>
       </div>
-    </div>
+
+      <AlertDialog open={disconnectTarget !== null} onOpenChange={(v) => !v && setDisconnectTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Disconnect {disconnectTarget === "google" ? "Google Calendar" : "Zoom"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {disconnectTarget === "google"
+                ? "New bookings will stop syncing to your Google Calendar. You can reconnect anytime."
+                : "New bookings will stop getting a Zoom link added automatically. You can reconnect anytime."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={disconnecting}>Keep connected</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => { e.preventDefault(); void confirmDisconnect(); }} disabled={disconnecting}>
+              {disconnecting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Disconnect
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
   );
 }
 
