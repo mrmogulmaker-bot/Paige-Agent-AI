@@ -58,6 +58,9 @@ export function AccountSwitcher() {
   const { loading: ctxLoading, isPlatformStaff, activeTenantId, activeTenant } = useTenantContext();
 
   const [subs, setSubs] = useState<ManagedSub[]>([]);
+  // The agency's own name, so the "Agency view" row can name the account you'd
+  // return to even while scoped INSIDE a child (activeTenant is the child then).
+  const [agencyName, setAgencyName] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [switching, setSwitching] = useState(false);
   const mounted = useRef(true);
@@ -78,11 +81,22 @@ export function AccountSwitcher() {
     }
     (async () => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await supabase.rpc("agency_list_my_subaccounts" as any);
-        if (error) throw error;
-        const rows = (Array.isArray(data) ? data : []) as ManagedSub[];
-        if (mounted.current) setSubs(rows);
+        // Roster of this agency's children + the agency's home context (its name),
+        // both auth.uid()-keyed and server-gated. The context call is what lets us
+        // label the return-to-agency row while scoped inside a child.
+        const [roster, ctx] = await Promise.all([
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          supabase.rpc("agency_list_my_subaccounts" as any),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          supabase.rpc("agency_switch_context" as any),
+        ]);
+        if (roster.error) throw roster.error;
+        const rows = (Array.isArray(roster.data) ? roster.data : []) as ManagedSub[];
+        const name = (ctx.data as { agency_name?: string } | null)?.agency_name ?? null;
+        if (mounted.current) {
+          setSubs(rows);
+          setAgencyName(name);
+        }
       } catch {
         // A non-agency caller (or a transient error) simply shows no switcher.
         if (mounted.current) setSubs([]);
@@ -168,7 +182,7 @@ export function AccountSwitcher() {
             <div className="min-w-0">
               <div className="truncate text-sm">Agency view</div>
               <div className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
-                {activeTenant && inAgencyView ? activeTenant.name : "Your agency"}
+                {inAgencyView && activeTenant ? activeTenant.name : (agencyName ?? "Your agency")}
               </div>
             </div>
           </div>

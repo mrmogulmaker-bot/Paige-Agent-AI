@@ -51,7 +51,9 @@ BEGIN
   VALUES (_child, auth.uid(), 'admin', 'active', now())
   ON CONFLICT (tenant_id, user_id) DO UPDATE
     SET status = 'active',
-        role   = CASE WHEN tenant_members.role = 'owner' THEN 'owner' ELSE 'admin' END;
+        -- Cast to tenant_role: an UPDATE SET does not implicitly coerce the text
+        -- CASE result to the enum column type (unlike the VALUES insert path).
+        role   = (CASE WHEN tenant_members.role = 'owner' THEN 'owner' ELSE 'admin' END)::public.tenant_role;
 
   UPDATE public.profiles SET active_tenant_id = _child WHERE user_id = auth.uid();
 
