@@ -26,28 +26,40 @@ SELECT
 
 
 -- PROOF B — behavioural keystone (rolls itself back) -------------------------
--- Simulates a global-'admin' identity (which every tenant owner automatically
--- is) and attempts the exact exploit final hop: INSERT (self,'super_admin') into
--- user_roles as the authenticated role, subject to RLS. Uses a synthetic uuid so
--- it never touches real data; the closing RAISE rolls back the synthetic admin
--- row and any test insert. Expect: "PROOF-B PASS ... could NOT insert".
+-- user_roles.user_id has a FK to auth.users, so a synthetic uuid can't be used.
+-- Instead pick a REAL authenticated user who already holds the global 'admin'
+-- role (every tenant owner is one) but is NOT a platform operator (no super_admin,
+-- not the owner_email) — the exact attacker profile, FK-valid. Under the
+-- authenticated role, attempt the exploit's final hop: INSERT (self,'super_admin').
+-- Nothing commits: the closing RAISE rolls back any test insert. Expect:
+-- "PROOF-B PASS ... could NOT insert".
 DO $$
 DECLARE
-  _fake uuid := '00000000-0000-0000-0000-0000000000ff';
+  _admin uuid;
   _inserted boolean := false;
 BEGIN
-  -- Seed a synthetic global-admin identity (rolled back with everything else).
-  INSERT INTO public.user_roles (user_id, role)
-  VALUES (_fake, 'admin'::public.app_role) ON CONFLICT DO NOTHING;
+  SELECT ur.user_id INTO _admin
+  FROM public.user_roles ur
+  JOIN auth.users u ON u.id = ur.user_id
+  WHERE ur.role = 'admin'::public.app_role
+    AND NOT EXISTS (SELECT 1 FROM public.user_roles s
+                    WHERE s.user_id = ur.user_id AND s.role = 'super_admin'::public.app_role)
+    AND lower(u.email) IS DISTINCT FROM
+        (SELECT lower(owner_email) FROM public.app_settings_owner LIMIT 1)
+  LIMIT 1;
 
-  -- Become that user, under the authenticated role so RLS is enforced.
+  IF _admin IS NULL THEN
+    RAISE EXCEPTION 'PROOF-B SKIP: no non-operator ''admin'' user available to simulate the attacker';
+  END IF;
+
+  -- Become that real admin user, under the authenticated role so RLS is enforced.
   PERFORM set_config('request.jwt.claims',
-                     json_build_object('sub', _fake::text, 'role', 'authenticated')::text, true);
+                     json_build_object('sub', _admin::text, 'role', 'authenticated')::text, true);
   SET LOCAL ROLE authenticated;
 
   BEGIN
     INSERT INTO public.user_roles (user_id, role)
-    VALUES (_fake, 'super_admin'::public.app_role);
+    VALUES (_admin, 'super_admin'::public.app_role);
     _inserted := true;                    -- reached only if RLS ALLOWED it => hole OPEN
   EXCEPTION WHEN insufficient_privilege THEN
     _inserted := false;                   -- RLS denied => keystone holds
@@ -63,32 +75,39 @@ END $$;
 
 -- PROOF C — behavioural, grant escalation cut (rolls itself back) ------------
 -- Proves grant_tenant_member_role now refuses a non-owner minting a
--- platform-operator role. Simulates a synthetic tenant admin (member+admin of a
--- throwaway tenant) and calls grant_tenant_member_role(self,'platform_admin').
--- Expect: "PROOF-C PASS ... refused". All synthetic rows roll back.
+-- platform-operator role. Uses a REAL active tenant owner/admin who is NOT a
+-- platform operator (no super_admin, not the owner_email) and calls
+-- grant_tenant_member_role(self,'platform_admin') for their own tenant. FK-safe
+-- (real ids); every write rolls back via the closing RAISE. Expect: "PROOF-C
+-- PASS ... refused" with the rejection reason quoting the platform-operator guard.
 DO $$
 DECLARE
-  _fake   uuid := '00000000-0000-0000-0000-0000000000fe';
-  _tenant uuid := '00000000-0000-0000-0000-00000000fe00';
+  _admin   uuid;
+  _tenant  uuid;
   _granted boolean := false;
   _msg text;
 BEGIN
-  -- Synthetic tenant + this user as its active admin member (all rolled back).
-  INSERT INTO public.tenants (id, name, slug, owner_user_id)
-  VALUES (_tenant, 'proof-c-tenant', 'proof-c-'||substr(_tenant::text,1,8), _fake)
-  ON CONFLICT (id) DO NOTHING;
-  INSERT INTO public.user_roles (user_id, role)
-  VALUES (_fake, 'admin'::public.app_role) ON CONFLICT DO NOTHING;
-  INSERT INTO public.tenant_members (tenant_id, user_id, role, status, invited_at, joined_at)
-  VALUES (_tenant, _fake, 'admin'::public.tenant_role, 'active', now(), now())
-  ON CONFLICT (tenant_id, user_id) DO NOTHING;
+  SELECT tm.user_id, tm.tenant_id INTO _admin, _tenant
+  FROM public.tenant_members tm
+  JOIN auth.users u ON u.id = tm.user_id
+  WHERE tm.status = 'active'
+    AND tm.role IN ('owner'::public.tenant_role, 'admin'::public.tenant_role)
+    AND NOT EXISTS (SELECT 1 FROM public.user_roles s
+                    WHERE s.user_id = tm.user_id AND s.role = 'super_admin'::public.app_role)
+    AND lower(u.email) IS DISTINCT FROM
+        (SELECT lower(owner_email) FROM public.app_settings_owner LIMIT 1)
+  LIMIT 1;
+
+  IF _admin IS NULL THEN
+    RAISE EXCEPTION 'PROOF-C SKIP: no non-operator tenant admin/owner available to simulate the attacker';
+  END IF;
 
   PERFORM set_config('request.jwt.claims',
-                     json_build_object('sub', _fake::text, 'role', 'authenticated')::text, true);
+                     json_build_object('sub', _admin::text, 'role', 'authenticated')::text, true);
   SET LOCAL ROLE authenticated;
 
   BEGIN
-    PERFORM public.grant_tenant_member_role(_fake, 'platform_admin'::public.app_role, _tenant, 'proof-c');
+    PERFORM public.grant_tenant_member_role(_admin, 'platform_admin'::public.app_role, _tenant, 'proof-c');
     _granted := true;                     -- reached only if the guard let it through => escalation OPEN
   EXCEPTION WHEN OTHERS THEN
     _granted := false;                    -- rejected => escalation cut
