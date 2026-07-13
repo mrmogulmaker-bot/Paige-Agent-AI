@@ -18,7 +18,13 @@ SLUG="${1:?usage: deploy-function.sh <slug> [--no-verify-jwt]}"
 VERIFY_JWT=true
 [[ "${2:-}" == "--no-verify-jwt" ]] && VERIFY_JWT=false
 
-: "${SUPABASE_ACCESS_TOKEN:?set SUPABASE_ACCESS_TOKEN (supabase.com/dashboard/account/tokens)}"
+# Accept the management token under the canonical name OR common alternates — an
+# operator may name the Claude Code env var differently (Supabase reserves the
+# SUPABASE_ prefix for its own *function* secrets; the Claude Code env has no such
+# rule, but people often carry the alt name over anyway). Get one at
+# supabase.com/dashboard/account/tokens (starts with sbp_).
+SUPABASE_ACCESS_TOKEN="${SUPABASE_ACCESS_TOKEN:-${SUPA_TOKEN:-${SUPABASE_TOKEN:-${SUPA_ACCESS_TOKEN:-${SB_ACCESS_TOKEN:-${SUPABASE_PAT:-}}}}}}"
+: "${SUPABASE_ACCESS_TOKEN:?set SUPABASE_ACCESS_TOKEN (or SUPA_TOKEN) in the Claude Code environment — get one at supabase.com/dashboard/account/tokens}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
