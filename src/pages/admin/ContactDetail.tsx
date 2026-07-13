@@ -203,8 +203,8 @@ export default function ContactDetail() {
       } else {
         toast.success(`Client portal invite sent to ${client.email}`);
       }
-    } catch (e: any) {
-      toast.error(e.message || "Failed to send client portal invite");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to send client portal invite");
     }
   };
 
