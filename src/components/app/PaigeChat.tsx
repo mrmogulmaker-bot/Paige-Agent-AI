@@ -31,6 +31,8 @@ import { useProfileSnapshot } from "@/hooks/useProfileSnapshot";
 import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { usePlaybook } from "@/lib/playbook";
+import { useClientPortalBrandState } from "@/hooks/useClientPortalBrand";
+import { readableTextOn } from "@/lib/brand/contrast";
 import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 
 type Message = {
@@ -54,6 +56,10 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   // a hardcoded credit/funding script. Defaults to neutral coaching today.
   const playbook = usePlaybook();
   const quickActions = playbook.quickActions;
+  // The chat header wears the TENANT's brand, not a hardcoded Paige face (§6/§9).
+  // Same resolver the /app chrome uses (get_client_portal_brand); `loading` gates
+  // a skeleton so the Paige avatar never flashes before the tenant's resolves.
+  const { brand: portalBrand, loading: portalBrandLoading } = useClientPortalBrandState();
   const { contextBlock, isLoading: contextLoading, hasCreditData } = useClientChatContext(clientId, clientId ? null : user.id);
   // Snapshot of profile/business fields used by the conversational extractor
   // to skip already-populated values. Refreshed after every successful save.
@@ -758,6 +764,41 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     }
   };
 
+  // Header avatar, resolved to the tenant brand (§6): tenant logo → tenant/persona
+  // monogram on a brand-tinted plate → Paige avatar ONLY when there is no tenant
+  // brand at all (staff / neutral default). Skeleton while the brand resolves so
+  // the Paige face never flashes and swaps to the tenant's.
+  const brandName = portalBrand?.tenant_name?.trim() || null;
+  const brandLogo = portalBrand?.logo_url?.trim() || null;
+  const brandColor = portalBrand?.primary_color?.trim() || null;
+  const personaName = playbook.persona.name?.trim() || null;
+  const avatarLabel = brandName || personaName || "Assistant";
+  const monogram = (brandName || personaName || "?").charAt(0).toUpperCase();
+  const headerAvatar = portalBrandLoading ? (
+    <span
+      className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-border bg-muted animate-pulse flex-shrink-0"
+      aria-hidden="true"
+    />
+  ) : brandLogo ? (
+    <img
+      src={brandLogo}
+      alt={avatarLabel}
+      className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-accent object-cover flex-shrink-0"
+    />
+  ) : portalBrand ? (
+    <span
+      className={`inline-flex w-8 h-8 sm:w-9 sm:h-9 items-center justify-center rounded-full border-2 border-accent text-sm font-semibold flex-shrink-0 ${
+        brandColor ? "" : "bg-sidebar-accent text-primary-foreground"
+      }`}
+      style={brandColor ? { backgroundColor: brandColor, color: readableTextOn(brandColor) } : undefined}
+      aria-label={avatarLabel}
+    >
+      {monogram}
+    </span>
+  ) : (
+    <img src={paigeAvatar} alt="Paige" className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-accent flex-shrink-0" />
+  );
+
   return (
     <div
       className={`flex flex-col h-full bg-card border-r border-border relative ${isDragOver ? "ring-2 ring-primary ring-inset" : ""}`}
@@ -778,7 +819,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       {/* Header — compact on mobile */}
       <div className="px-3 sm:px-4 py-2 sm:py-3 border-b border-border flex-shrink-0">
         <div className="flex items-center gap-2 sm:gap-3">
-          <img src={paigeAvatar} alt="Paige" className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 border-accent" />
+          {headerAvatar}
           <div className="flex-1 min-w-0">
             <h2 className="font-bold text-foreground text-sm capitalize">{playbook.persona.name}</h2>
             <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate capitalize">{playbook.persona.role}</p>

@@ -309,14 +309,19 @@ export const fundingCoach: Playbook = {
     { key: "target_amount", label: "Target amount", type: "text" },
     { key: "timeline", label: "Timeline", type: "select", options: ["ASAP", "This quarter", "Next quarter", "Exploring"] },
   ],
+  // Module keys match the funding /app route paths (App.tsx) so this opt-in
+  // vertical's client actually reaches the funding product (Credit, Funding,
+  // etc.). These keys live ONLY in this chosen funding preset — never in the
+  // coaching-generic / platform defaults (§2/§9).
   portal: {
     modules: [
       { key: "home", label: "Home" },
-      { key: "readiness", label: "Funding Readiness" },
-      { key: "program", label: "My Plan" },
-      { key: "sessions", label: "Sessions" },
-      { key: "messages", label: "Messages" },
-      { key: "billing", label: "Billing" },
+      { key: "funding-journey", label: "Funding Journey" },
+      { key: "credit", label: "Credit" },
+      { key: "funding", label: "Funding" },
+      { key: "financial-profile", label: "Financial Profile" },
+      { key: "business", label: "Business" },
+      { key: "agreements", label: "Agreements" },
     ],
   },
 };

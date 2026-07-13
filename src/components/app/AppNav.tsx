@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Home, BookOpen, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye, LifeBuoy, ListChecks, ClipboardList, CalendarClock } from "lucide-react";
+import { Home, BookOpen, Settings, LogOut, User as UserIcon, Menu, ArrowLeft, MessageCircle, Eye, LifeBuoy, ListChecks, ClipboardList, CalendarClock, CreditCard, Landmark, Compass, Wallet, Building2, FileSignature, Handshake } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -21,20 +21,95 @@ import { performSignOut, customerSignOutTarget, cachePortalSlug } from "@/lib/au
 import { useUnreadSupportCount } from "@/hooks/useUnreadSupportCount";
 import { isAvatarBucketUrl } from "@/components/ui/avatar-uploader";
 import { usePlaybook } from "@/lib/playbook";
+import { useClientPortalBrandState, type ClientPortalBrand } from "@/hooks/useClientPortalBrand";
+import { readableTextOn } from "@/lib/brand/contrast";
 import paigeLogoTransparent from "@/assets/paige-logo-transparent.png";
 
-// The client portal nav is driven by the active Playbook's portal.modules
-// (coaching default — no credit/funding language). Each module key is rendered
-// ONLY if it maps to a route that actually exists, so a module the app can't
-// route to is hidden rather than shipped as a dangling link. Credit / funding /
-// financial-profile / disputes are absent from the coaching module set, so a
-// coaching client never sees them.
+// Renders the brand mark in the /app chrome. Prefers the TENANT's brand (logo, or
+// a monogram + name driven by the tenant's primary color) so a client sees THEIR
+// coach's brand — never hardcoded Paige (§6/§9). Falls back to the Paige logo ONLY
+// once the resolver has returned no tenant (staff / platform context). While the
+// resolver is in flight it renders a neutral skeleton so the platform logo never
+// flashes and swaps to the tenant's (§11 — no jarring hand-off).
+function PortalLogo({
+  brand,
+  loading,
+  imgClassName,
+  skeletonClassName = "h-7 w-24",
+  nameClassName = "font-bold text-base truncate max-w-[160px]",
+}: {
+  brand: ClientPortalBrand | null;
+  loading: boolean;
+  imgClassName: string;
+  skeletonClassName?: string;
+  nameClassName?: string;
+}) {
+  if (loading) {
+    return (
+      <span
+        className={`inline-block rounded bg-primary-foreground/10 animate-pulse ${skeletonClassName}`}
+        aria-hidden="true"
+      />
+    );
+  }
+  const name = brand?.tenant_name?.trim();
+  const logo = brand?.logo_url?.trim();
+  const color = brand?.primary_color?.trim() || null;
+
+  if (logo) {
+    return <img src={logo} alt={name || "PaigeAgent.ai"} className={imgClassName} />;
+  }
+  if (name) {
+    // No logo on file — wear a tenant monogram tinted with their primary color
+    // (the color is the tenant's accent, applied only to the brand mark — never to
+    // an act/approve control, so gold discipline stays intact — §11).
+    return (
+      <span className="flex items-center gap-2">
+        <span
+          className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-sm font-semibold shrink-0 ${
+            color ? "" : "bg-sidebar-accent text-primary-foreground"
+          }`}
+          style={color ? { backgroundColor: color, color: readableTextOn(color) } : undefined}
+        >
+          {name.charAt(0).toUpperCase()}
+        </span>
+        <span className={nameClassName}>{name}</span>
+      </span>
+    );
+  }
+  // Resolved with no tenant → platform (Paige) fallback.
+  return <img src={paigeLogoTransparent} alt="PaigeAgent.ai" className={imgClassName} />;
+}
+
+// The client portal nav is driven by the active Playbook's portal.modules. Each
+// module key is rendered ONLY if it maps to a route that actually exists, so a
+// module the app can't route to is hidden rather than shipped as a dangling
+// link. The funding-vertical surfaces below are routable ONLY for a tenant whose
+// OPT-IN funding Playbook lists those keys (§2 clarification, 2026-07-09) — they
+// are absent from every coaching-generic / fitness / agency / consulting preset,
+// so a non-funding client never sees a funding tab. The nav stays Playbook-gated
+// (§2/§9): no funding wording ships to a tenant that didn't choose it.
 const MODULE_ROUTES: Record<string, { href: string; icon: LucideIcon }> = {
   home: { href: "/app", icon: Home },
   learn: { href: "/app/learn", icon: BookOpen },
   resources: { href: "/app/learn", icon: BookOpen },
   approvals: { href: "/app/approvals", icon: ListChecks },
   actions: { href: "/app/actions", icon: ClipboardList },
+  // Funding-vertical surfaces — keys match the /app route paths in App.tsx.
+  // Gated by the funding Playbook's portal.modules (opt-in preset), never shown
+  // to a coaching-generic tenant.
+  credit: { href: "/app/credit", icon: CreditCard },
+  funding: { href: "/app/funding", icon: Landmark },
+  "funding-journey": { href: "/app/funding-journey", icon: Compass },
+  "financial-profile": { href: "/app/financial-profile", icon: Wallet },
+  business: { href: "/app/business", icon: Building2 },
+  agreements: { href: "/app/agreements", icon: FileSignature },
+  affiliate: { href: "/app/affiliate", icon: Handshake },
+  // Defensive aliases: the Playbook editor's slugify() emits underscores
+  // ("Funding Journey" → "funding_journey"), so a tenant who authors these
+  // modules by hand still routes to the same funding surfaces.
+  funding_journey: { href: "/app/funding-journey", icon: Compass },
+  financial_profile: { href: "/app/financial-profile", icon: Wallet },
   // NOTE: 'planning' is intentionally NOT here. plan_list is tenant-member
   // scoped (a client gets PLAN_FORBIDDEN), so Planning must never be added to a
   // client's Playbook module list — it's surfaced via the staff-only fallback
@@ -60,6 +135,10 @@ export function AppNav({ user }: AppNavProps) {
   const { isCoachOrAdmin, isAdmin, mode, setMode } = useDashboardMode();
   const { count: unreadSupport } = useUnreadSupportCount(user.id);
   const pb = usePlaybook();
+  // Resolve the TENANT's brand for the chrome (same resolver onboarding uses —
+  // get_client_portal_brand()). `loading` gates a skeleton so the platform logo
+  // never flashes before the tenant's resolves (§6/§11).
+  const { brand, loading: brandLoading } = useClientPortalBrandState();
   const [avatarUrl, setAvatarUrl] = useState<string>("");
   useEffect(() => {
     let cancelled = false;
@@ -73,14 +152,12 @@ export function AppNav({ user }: AppNavProps) {
 
   // Cache this customer's portal slug so an involuntary logout (session expiry,
   // forced sign-out) can still return them to their tenant gateway, not the
-  // Paige page (§9). No-ops for staff (get_client_portal_brand returns no row).
+  // Paige page (§9). Reuses the brand already resolved above (no second RPC).
+  // No-ops for staff (get_client_portal_brand returns no row → brand is null).
   useEffect(() => {
-    if (isCoachOrAdmin) return;
-    supabase.rpc("get_client_portal_brand").then(({ data }) => {
-      const row = Array.isArray(data) ? data[0] : data;
-      cachePortalSlug((row as { tenant_slug?: string } | null)?.tenant_slug ?? null);
-    }).catch(() => { /* non-blocking */ });
-  }, [isCoachOrAdmin]);
+    if (isCoachOrAdmin || brandLoading) return;
+    cachePortalSlug(brand?.tenant_slug ?? null);
+  }, [isCoachOrAdmin, brandLoading, brand]);
 
   // Visible nav = the active Playbook's portal modules, filtered to those with a
   // real route. Labels come straight from the Playbook (neutral coaching copy).
@@ -132,7 +209,13 @@ export function AppNav({ user }: AppNavProps) {
           </SheetTrigger>
           <SheetContent side="left" className="bg-primary text-primary-foreground w-64 p-0">
             <div className="p-4 border-b border-sidebar-border">
-              <img src={paigeLogoTransparent} alt="PaigeAgent.ai" className="h-8" />
+              <PortalLogo
+                brand={brand}
+                loading={brandLoading}
+                imgClassName="h-8 w-auto max-w-[200px] object-contain"
+                skeletonClassName="h-8 w-28"
+                nameClassName="font-bold text-lg truncate max-w-[180px]"
+              />
             </div>
             <nav className="p-2 space-y-1">
               {navItems.map((item) => (
@@ -181,7 +264,16 @@ export function AppNav({ user }: AppNavProps) {
           </SheetContent>
         </Sheet>
 
-        <span className="font-bold text-base sm:text-lg truncate">PaigeAgent</span>
+        {brandLoading ? (
+          <span
+            className="inline-block h-4 w-24 rounded bg-primary-foreground/10 animate-pulse"
+            aria-hidden="true"
+          />
+        ) : (
+          <span className="font-bold text-base sm:text-lg truncate">
+            {brand?.tenant_name?.trim() || "PaigeAgent"}
+          </span>
+        )}
 
         <div className="flex items-center gap-1">
           <NotificationBell />
@@ -194,7 +286,12 @@ export function AppNav({ user }: AppNavProps) {
     <div className="flex items-center justify-between px-6 py-2 bg-primary text-primary-foreground border-b border-sidebar-border">
       <div className="flex items-center gap-8">
         <Link to="/app" className="flex items-center gap-2">
-          <img src={paigeLogoTransparent} alt="PaigeAgent.ai" className="h-7" />
+          <PortalLogo
+            brand={brand}
+            loading={brandLoading}
+            imgClassName="h-7 w-auto max-w-[180px] object-contain"
+            skeletonClassName="h-7 w-24"
+          />
         </Link>
         <nav className="flex items-center gap-1">
           {navItems.map((item) => (
@@ -237,7 +334,7 @@ export function AppNav({ user }: AppNavProps) {
             size="sm"
             className="text-primary-foreground/70 hover:text-primary-foreground hover:bg-sidebar-accent/50 gap-1.5 text-xs"
             onClick={() => navigate("/app")}
-            title="Ask Paige to connect you with your advisor"
+            title={`Ask ${pb.persona.name} to connect you with your advisor`}
           >
             <MessageCircle className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Contact Advisor</span>

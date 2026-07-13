@@ -266,6 +266,17 @@ async function callWebSearch(
       headers: { Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ query }),
     });
+    if (!r.ok) {
+      // A non-OK response is NOT "0 results" (§13). Most often the search
+      // function isn't deployed (404) — which would otherwise masquerade as an
+      // empty search and make Paige say "no sources" instead of "search
+      // unavailable". A 404 → surface as unconfigured (honest "not connected");
+      // any other error → treat as this-query-empty so one flaky call doesn't
+      // abort the whole run.
+      console.error(`[paige-deep-research] paige-web-search HTTP ${r.status} for query "${query.slice(0, 60)}"`);
+      if (r.status === 404) return { configured: false, results: [] };
+      return { configured: true, results: [] };
+    }
     body = await r.json().catch(() => ({}));
   } catch (e) {
     // A transient network failure on ONE query must not crash the run or be
