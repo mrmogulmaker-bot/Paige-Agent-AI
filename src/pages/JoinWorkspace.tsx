@@ -68,7 +68,15 @@ export default function JoinWorkspace() {
   }, []);
 
   const isConsumerInvite = !!info && info.kind === "consumer";
-  const isStaffInvite = !!info && !isConsumerInvite;
+  // A sub-account OWNER invite: an agency invited the principal of a child
+  // workspace. They set up their account INLINE on the agency-branded card (never
+  // the platform /auth bounce), but they are staff (an admin of the child), not a
+  // customer — so no client-portal copy and no /onboard redirect.
+  const isSubaccountOwnerInvite = !!info && info.kind === "subaccount_owner";
+  // Both consumer and sub-account-owner invites register inline on this branded
+  // card; only true platform staff bounce to /auth.
+  const isInlineRegisterInvite = isConsumerInvite || isSubaccountOwnerInvite;
+  const isStaffInvite = !!info && !isInlineRegisterInvite;
 
   useEffect(() => {
     let cancelled = false;
@@ -136,9 +144,10 @@ export default function JoinWorkspace() {
         await doAccept(auth.user.id);
         return;
       }
-      // Not signed in. A CUSTOMER creates their login inline here (never the
-      // platform /auth page); staff go through the platform auth.
-      if (isConsumerInvite) {
+      // Not signed in. A CUSTOMER or a SUB-ACCOUNT OWNER creates their login
+      // inline here on the agency-branded card (never the platform /auth page);
+      // only true platform staff go through the platform auth.
+      if (isInlineRegisterInvite) {
         setStep("register");
         setAccepting(false);
         return;
@@ -159,8 +168,10 @@ export default function JoinWorkspace() {
     setAccepting(true);
     try {
       if (regMode === "signup") {
-        // Customer-only account — suppress the platform welcome (they got the
-        // tenant's branded invite); accept_tenant_invite grants only the client role.
+        // Suppress the platform welcome — they arrived on the tenant/agency-branded
+        // invite, not the platform. accept_tenant_invite then grants the right
+        // access: a consumer gets the 'client' role + a clients row; a
+        // sub-account owner gets ADMIN membership on the child tenant.
         await signUpTenant({ email, password: regPassword, suppressWelcome: true });
       } else {
         const { error: e } = await supabase.auth.signInWithPassword({ email, password: regPassword });
@@ -181,7 +192,10 @@ export default function JoinWorkspace() {
     }
   };
 
-  const brandColor = info?.brand?.primary_color || "#CFAE70";
+  // brand.primary_color arrives resolved up the parent chain (peek_tenant_invite →
+  // resolve_tenant_brand), already floored to the platform token; the literal below
+  // is only a pre-load defensive default (§11 token floor, never off-palette).
+  const brandColor = info?.brand?.primary_color || "#150C31";
   const btnStyle = { backgroundColor: brandColor, color: readableTextOn(brandColor) };
 
   return (
@@ -209,11 +223,15 @@ export default function JoinWorkspace() {
             {error
               ? error
               : step === "register"
-                ? `${regMode === "signup" ? "Create your login" : "Sign in"} to open your portal with ${info?.tenant_name ?? "your workspace"}.`
+                ? isSubaccountOwnerInvite
+                  ? `${regMode === "signup" ? "Set up your account" : "Sign in"} to run ${info?.tenant_name ?? "your workspace"}.`
+                  : `${regMode === "signup" ? "Create your login" : "Sign in"} to open your portal with ${info?.tenant_name ?? "your workspace"}.`
                 : info
                   ? isConsumerInvite
                     ? `Accept to open your private client portal with ${info.tenant_name}.`
-                    : `You've been invited to join the ${info.tenant_name} team as a ${info.default_role}. Accept to access the workspace.`
+                    : isSubaccountOwnerInvite
+                      ? `You're set up as the owner of ${info.tenant_name}. Set up your account to take the reins.`
+                      : `You've been invited to join the ${info.tenant_name} team as a ${info.default_role}. Accept to access the workspace.`
                   : "Checking your invitation…"}
           </CardDescription>
         </CardHeader>
@@ -268,13 +286,17 @@ export default function JoinWorkspace() {
                 <span>
                   I agree to the{" "}
                   <Link to="/legal/terms" target="_blank" className="underline" onClick={(e) => e.stopPropagation()}>Terms</Link> and{" "}
-                  <Link to="/legal/privacy" target="_blank" className="underline" onClick={(e) => e.stopPropagation()}>Privacy Policy</Link>, and to work
-                  with {info?.tenant_name ?? "this workspace"} through my client portal.
+                  <Link to="/legal/privacy" target="_blank" className="underline" onClick={(e) => e.stopPropagation()}>Privacy Policy</Link>
+                  {isSubaccountOwnerInvite
+                    ? `, and to run ${info?.tenant_name ?? "this workspace"} on this platform.`
+                    : `, and to work with ${info?.tenant_name ?? "this workspace"} through my client portal.`}
                 </span>
               </label>
               <Button onClick={submitRegister} disabled={accepting} className="w-full" style={btnStyle}>
                 {accepting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                {regMode === "signup" ? "Create login & open portal" : "Sign in & open portal"}
+                {isSubaccountOwnerInvite
+                  ? regMode === "signup" ? "Set up account & open workspace" : "Sign in & open workspace"
+                  : regMode === "signup" ? "Create login & open portal" : "Sign in & open portal"}
               </Button>
               <button
                 type="button"
@@ -292,7 +314,9 @@ export default function JoinWorkspace() {
                 <span>
                   {isConsumerInvite
                     ? `By continuing you agree to ${info?.tenant_name ?? "the workspace"}'s terms and to work with them through your client portal.`
-                    : "By accepting you agree to the workspace's terms and grant the admin access to manage your membership."}
+                    : isSubaccountOwnerInvite
+                      ? `By continuing you'll set up your account and take ownership of ${info?.tenant_name ?? "your workspace"}.`
+                      : "By accepting you agree to the workspace's terms and grant the admin access to manage your membership."}
                 </span>
               </div>
               <Button onClick={onAcceptClick} disabled={accepting || !info?.is_valid} className="w-full" style={btnStyle}>

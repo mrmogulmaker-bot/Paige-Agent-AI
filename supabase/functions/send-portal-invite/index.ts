@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
   if (!url || !serviceKey) return json({ ok: false, error: "server not configured" }, 500);
   const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
-  // Validate the token + load the tenant brand.
+  // Validate the token, then resolve the brand up the parent chain (below).
   const { data: tok } = await admin
     .from("tenant_invite_tokens")
     .select("tenant_id, revoked_at, expires_at, email")
@@ -103,13 +103,18 @@ Deno.serve(async (req) => {
   }
   const recipient = boundEmail ?? email;
 
-  const { data: tenant } = await admin
-    .from("tenants").select("name, brand").eq("id", tok.tenant_id).maybeSingle();
-
-  const brand = (tenant?.brand ?? {}) as { primary_color?: string; logo_url?: string };
-  const accent = brand.primary_color || "#241645";
+  // §6/§9: resolve the brand UP the parent chain so a sub-account invite wears its
+  // AGENCY's logo + accent (not the child's empty stub, never Paige). The resolver
+  // floors unset colors to the platform tokens (#150C31 / #EBB94C) — never a
+  // one-off hex — and returns the child's OWN name as tenant_name.
+  const { data: brandRows } = await admin.rpc("resolve_tenant_brand", { _tenant_id: tok.tenant_id });
+  const rb = (Array.isArray(brandRows) ? brandRows[0] : brandRows) as
+    | { tenant_name?: string; primary_color?: string; logo_url?: string | null }
+    | null;
+  const accent = rb?.primary_color || "#150C31";
+  const logoUrl = rb?.logo_url ?? null;
   const joinUrl = `${PUBLIC_BASE}/join/${token}`;
-  const tenantName = tenant?.name || "Your workspace";
+  const tenantName = rb?.tenant_name || "Your workspace";
 
   // §6/§9: send from the TENANT's own sending identity (their {slug}@ address or a
   // verified custom domain), not the platform's hello@ — so the client sees the
@@ -138,7 +143,7 @@ Deno.serve(async (req) => {
         ...(replyTo ? { reply_to: replyTo } : {}),
         to: [recipient],
         subject: `${tenantName} invited you to your client portal`,
-        html: inviteHtml(tenantName, accent, brand.logo_url ?? null, joinUrl, firstName),
+        html: inviteHtml(tenantName, accent, logoUrl, joinUrl, firstName),
         text: `${firstName ? `Hi ${firstName},` : "Hi there,"}\n\n${tenantName} invited you to your private client portal.\n\nOpen it: ${joinUrl}\n`,
       }),
     });
