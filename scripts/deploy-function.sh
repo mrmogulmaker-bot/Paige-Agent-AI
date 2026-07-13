@@ -42,7 +42,12 @@ mapfile -t FILES < <(ENTRY="$ENTRY" node <<'JS'
 const fs = require("fs"), path = require("path");
 const seen = [];
 function walk(p) {
-  p = path.normalize(p);
+  // POSIX-normalize: these strings become upload filenames for a Linux API and
+  // MUST use forward slashes on every host OS. On Windows path.normalize()/join()
+  // emit backslashes, which (a) fail the entrypoint guard below and (b) if they
+  // slipped past, would upload "supabase\functions\..." names the Supabase API
+  // can't match to metadata.entrypoint_path (declared with forward slashes).
+  p = path.normalize(p).split(path.sep).join("/");
   if (seen.includes(p) || !fs.existsSync(p)) return;
   seen.push(p);
   const src = fs.readFileSync(p, "utf8");
