@@ -166,7 +166,7 @@ VOICE (§3): direct, confident, mogul-founder. Never use "AI-powered", "streamli
 
 DEFAULTS (§2): the offer defaults to a coaching-generic play — a webinar/masterclass, a free consultation or strategy call, a coaching program, or a lead magnet. Do NOT introduce credit, funding, lending, loans, financing, or "readiness/funding score" framing UNLESS the brief explicitly asks for it.
 
-NO FABRICATION (§15): do NOT invent specifics you were not given — no fake dates, times, Zoom/webinar links, prices, testimonial names, quotes, or statistics. When the brief lacks a specific, either omit that element OR write a short, clearly-labeled editable prompt in square brackets for the operator to fill, e.g. "[Add webinar date]", "[Paste registration link]", "[Add a client result here]". A bracketed editable prompt is expected and fine; a fabricated concrete fact is not.
+NO FABRICATION (§15): do NOT invent specifics you were not given — no fake dates, times, Zoom/webinar links, prices, testimonial names, quotes, or statistics. When the brief lacks a specific, either omit that element OR write a clearly-labeled editable placeholder token in square brackets, ALL-CAPS with underscores, for the operator to fill, e.g. "[ADD_WEBINAR_DATE]", "[PASTE_REGISTRATION_LINK]", "[ADD_CLIENT_RESULT]". Use that exact ALL_CAPS_UNDERSCORE bracket shape so the publish step can detect an unfilled placeholder. A bracketed editable token is expected and fine; a fabricated concrete fact is not.
 
 OUTPUT — return ONLY a single JSON object, no prose, no markdown fences:
 {
@@ -182,7 +182,7 @@ GrowthBlock variants (use the exact "type" strings and field names):
 - { "type": "rich_text", "html": string }
 - { "type": "embedded_form", "form_slug": string }
 
-REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST include exactly one "embedded_form" block (the webinar/lead signup) — set its "form_slug" to a short kebab-case slug describing the signup, e.g. "webinar-signup" or "strategy-call". Do not fabricate the form's fields here; the form is drafted separately. For hero/cta buttons that should scroll to the form, use "cta_href": "#signup". Aim for a hero, one supporting block (feature_grid or phase_cards), a cta, and the embedded_form — tight and premium, not padded.`;
+REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST include exactly one "embedded_form" block (the webinar/lead signup) — set its "form_slug" to a short kebab-case slug describing the signup, e.g. "webinar-signup" or "strategy-call". Do not fabricate the form's fields here; the form is drafted separately. For hero/cta buttons that should scroll to the form, use "cta_href": "#apply". Aim for a hero, one supporting block (feature_grid or phase_cards), a cta, and the embedded_form — tight and premium, not padded.`;
 
     const messages = [
       { role: "system", content: SYSTEM },
@@ -221,7 +221,7 @@ REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST inc
         title: seo_json.title,
         subtitle: seo_json.description,
         cta_label: "Save your spot",
-        cta_href: "#signup",
+        cta_href: "#apply",
       });
     } else {
       // Ensure the hero is the first block.

@@ -75,6 +75,11 @@ function describeStep(
     case "draft_marketing_content": return { label: "Drafting your content", group: "shared" };
     case "content_save": return { label: "Saving that to your library", group: "shared" };
     case "generate_image": return { label: "Creating the image", group: "shared", detail: failed ? undefined : "image ready" };
+    // Landing pages / growth (owner)
+    case "growth_list": return { label: "Checking your pages", group: "owner" };
+    case "growth_page_generate": return { label: "Designing your landing page", group: "owner" };
+    case "growth_page_save": return { label: "Saving your page draft", group: "owner" };
+    case "growth_page_publish": return { label: "Publishing your page", group: "owner" };
     // Scheduling (owner)
     case "calendar_book_meeting": return { label: "Booking the meeting", group: "owner" };
     // Team / orchestration (shared)
@@ -4155,6 +4160,62 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "growth_list",
+              description: "Admin/coach only. List the tenant's landing pages (growth pages) with their slug, title, status (draft/published/archived), and — for published pages — the real public URL. Read-only; safe to run. Use when the operator asks 'what pages do I have?', 'show my landing pages', or before saving/publishing so you can reference an existing page by id.",
+              parameters: { type: "object", properties: {} }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "growth_page_generate",
+              description: "Admin/coach only. Draft a branded landing page from a one-line brief — Paige designs the page blocks (hero, feature/phase cards, CTA, an embedded lead form) in the tenant's brand. Returns the draft blocks for the operator to review; drafting is safe and writes nothing (saving and publishing are separate steps). Defaults to a coaching-generic offer (webinar, strategy call, program, lead magnet) — never credit/funding framing unless the brief explicitly asks. Use when the operator asks you to build, design, or create a landing/sales/opt-in page.",
+              parameters: {
+                type: "object",
+                properties: {
+                  brief: { type: "string", description: "What the page is for — the offer, the audience, and the action you want visitors to take." },
+                  tone: { type: "string", description: "Optional tone, e.g. bold, warm, professional, playful." }
+                },
+                required: ["brief"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "growth_page_save",
+              description: "Admin/coach only. Save a landing page as a DRAFT to the tenant's growth pages (does not go live — publishing is a separate, approval-gated step). Use after growth_page_generate when the operator likes the draft, passing the reviewed blocks. Pass page_id to update an existing page, or omit it to create a new one keyed by slug.",
+              parameters: {
+                type: "object",
+                properties: {
+                  slug: { type: "string", description: "URL slug for the page, e.g. 'spring-masterclass'. Lowercase words separated by hyphens." },
+                  title: { type: "string", description: "Page title (used for the browser tab and SEO)." },
+                  blocks: { type: "array", items: { type: "object" }, description: "The reviewed page blocks (the array returned by growth_page_generate)." },
+                  theme: { type: "object", description: "Optional theme override (primary/accent/font/logo). Omit to keep the tenant brand cascade." },
+                  seo: { type: "object", description: "Optional SEO object { title, description }." },
+                  page_id: { type: "string", description: "Existing page id to update. Omit to create a new page." }
+                },
+                required: ["slug", "title", "blocks"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "growth_page_publish",
+              description: "Admin/coach only. Publish a saved landing page so it goes LIVE at its public URL. This is a going-live action — always confirm with the operator first, and on success report back the REAL public URL the publish returns (never claim it's live without the link). The page must already be saved as a draft (growth_page_save) and free of unfilled [PLACEHOLDER] prompts, which the publish step rejects.",
+              parameters: {
+                type: "object",
+                properties: {
+                  page_id: { type: "string", description: "The growth page id to publish (from growth_list or growth_page_save)." }
+                },
+                required: ["page_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "action_file",
               description: "Admin/coach only. File a unit of work from one of Paige's departments to the other on the action bus — e.g. Client Experience flags an at-risk client to Owner Ops, or Owner Ops queues a follow-up. This STARTS a tracked hand-off; it does not draft or send. Use action_advance next to draft/route it. action_kind must be one of the platform kinds (e.g. owner.followup_email, client.followup, client.at_risk, owner.task, owner.onboarding_nudge, client.portal_recommendation).",
               parameters: {
@@ -4822,6 +4883,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "member_grant_role", "member_revoke_role",
       "calendar_book_meeting", "program_enroll",
       "draft_marketing_content", "generate_image", "content_save",
+      "growth_page_save", "growth_page_publish",
       "action_file", "action_advance",
       "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
       "n8n_run_workflow", "n8n_archive_workflow", "n8n_delete_workflow",
@@ -4851,6 +4913,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       draft_marketing_content: "drafting marketing content",
       generate_image: "generating an image",
       content_save: "saving content",
+      growth_page_save: "saving a landing page draft",
+      growth_page_publish: "publishing a landing page",
       action_file: "filing an action",
       action_advance: "advancing an action",
       n8n_activate_workflow: "turning on an automation",
@@ -4912,6 +4976,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Generate an image: "${String(a?.prompt || "").slice(0, 80)}".`;
         case "content_save":
           return `Save "${a?.title || "content"}" to the content library.`;
+        case "growth_page_save":
+          return `Save the landing page "${a?.title || a?.slug || "Untitled"}" as a draft${a?.page_id ? " (updating the existing page)" : ""}. It stays private until you publish it.`;
+        case "growth_page_publish":
+          return `Publish the landing page ${a?.page_id || ""} so it goes LIVE at its public URL. I'll send you the real link once it's up.`;
         case "action_file":
           return `File a "${a?.action_kind || "action"}" action${a?.title ? `: ${a.title}` : ""}.`;
         case "action_advance":
@@ -5570,6 +5638,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "generate_image" ||
           tc.function.name === "draft_marketing_content" ||
           tc.function.name === "content_save" ||
+          tc.function.name === "growth_list" ||
+          tc.function.name === "growth_page_generate" ||
+          tc.function.name === "growth_page_save" ||
+          tc.function.name === "growth_page_publish" ||
           tc.function.name === "action_file" ||
           tc.function.name === "action_advance" ||
           tc.function.name === "action_list" ||
@@ -5797,6 +5869,115 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, content_id: cid };
+            } else if (tc.function.name === "growth_list") {
+              // Caller-authed read, EXPLICITLY tenant-pinned (§9). Don't rely on RLS
+              // alone: a platform admin's manage-RLS would span tenants, and the URLs
+              // below are built from personaCtx's single slug — cross-tenant rows would
+              // get wrong links (§13). No tenant context → empty, never a leak.
+              const _listTid = personaCtx?.tenant_id ?? null;
+              const { data: pages, error } = _listTid
+                ? await supabaseClient
+                    .from("growth_pages")
+                    .select("id, slug, title, status, published_at, updated_at")
+                    .eq("tenant_id", _listTid)
+                    .order("updated_at", { ascending: false })
+                    .limit(100)
+                : { data: [] as any[], error: null };
+              if (error) throw error;
+              // Resolve the tenant slug once to build the REAL public URL for published
+              // pages (§13 — never a made-up link); drafts have no public URL yet.
+              let tenantSlug: string | null = null;
+              if ((pages || []).some((p: any) => p.status === "published") && personaCtx?.tenant_id) {
+                const { data: t } = await admin.from("tenants").select("slug").eq("id", personaCtx.tenant_id).maybeSingle();
+                tenantSlug = (t as any)?.slug ?? null;
+              }
+              result = {
+                success: true,
+                count: (pages || []).length,
+                pages: (pages || []).map((p: any) => ({
+                  id: p.id,
+                  slug: p.slug,
+                  title: p.title,
+                  status: p.status,
+                  url: p.status === "published" && tenantSlug ? `/p/${tenantSlug}/${p.slug}` : null,
+                })),
+              };
+            } else if (tc.function.name === "growth_page_generate") {
+              // Draft-only preview: designs the page blocks, writes nothing (§13). The
+              // edge fn resolves the tenant brand and enforces §2 coaching-generic defaults.
+              const { data: gd, error } = await supabaseClient.functions.invoke("growth-page-draft", {
+                body: { brief: args.brief, kind: "page", tone: args.tone ?? null, tenant_id: personaCtx?.tenant_id ?? null },
+              });
+              if (error) throw error;
+              if ((gd as any)?.error) throw new Error((gd as any).error);
+              result = {
+                success: true,
+                blocks: (gd as any)?.blocks ?? [],
+                theme_json: (gd as any)?.theme_json ?? null,
+                seo_json: (gd as any)?.seo_json ?? null,
+              };
+            } else if (tc.function.name === "growth_page_save") {
+              // p_tenant_id is IGNORED for JWT callers by the DEFINER RPC (no IDOR, §9) —
+              // it pins to current_user_tenant_id(). Writes the DRAFT only; never goes live.
+              const { data: row, error } = await supabaseClient.rpc("growth_page_upsert", {
+                p_tenant_id: personaCtx?.tenant_id ?? null,
+                p_slug: args.slug,
+                p_title: args.title,
+                p_blocks_json: Array.isArray(args.blocks) ? args.blocks : [],
+                p_theme_json: args.theme ?? null,
+                p_seo_json: args.seo ?? null,
+                p_id: args.page_id ?? null,
+              });
+              if (error) throw error;
+              // §10 / lead-capture (B1): every embedded_form block must be backed by a
+              // real active growth_forms row, or the published page renders an INVISIBLE
+              // signup and publish would falsely report success. Auto-author a
+              // coaching-generic default form (name/email/goal) for any form_slug that
+              // doesn't exist yet — never overwrite one the operator already customized.
+              const _saveTid = personaCtx?.tenant_id ?? null;
+              const _formSlugs: string[] = Array.from(new Set(
+                (Array.isArray(args.blocks) ? args.blocks : [])
+                  .filter((b: any) => b?.type === "embedded_form" && typeof b?.form_slug === "string" && b.form_slug.trim())
+                  .map((b: any) => b.form_slug.trim())
+              ));
+              const formsCreated: string[] = [];
+              for (const fslug of _formSlugs) {
+                let existing: any = null;
+                if (_saveTid) {
+                  const { data: ex } = await supabaseClient
+                    .from("growth_forms").select("id").eq("tenant_id", _saveTid).eq("slug", fslug).maybeSingle();
+                  existing = ex;
+                }
+                if (existing?.id) continue;
+                const { error: fErr } = await supabaseClient.rpc("growth_form_upsert", {
+                  p_tenant_id: _saveTid,
+                  p_slug: fslug,
+                  p_name: args.title ? `${String(args.title).slice(0, 80)} — signup` : "Signup",
+                  p_schema_json: {
+                    submit_label: "Count me in",
+                    sections: [{
+                      title: "",
+                      fields: [
+                        { key: "full_name", label: "Your name", type: "text", required: true },
+                        { key: "email", label: "Email", type: "email", required: true, maps_to: "contacts.email" },
+                        { key: "goal", label: "What are you hoping to get out of this?", type: "textarea", required: false },
+                      ],
+                    }],
+                  },
+                });
+                if (!fErr) formsCreated.push(fslug);
+              }
+              result = { success: true, page_id: (row as any)?.id, slug: (row as any)?.slug, status: (row as any)?.status, forms_created: formsCreated };
+            } else if (tc.function.name === "growth_page_publish") {
+              // Going-live action (confirm-gated by the autonomy gate above). The RPC
+              // validates the draft (rejects unfilled [PLACEHOLDER]s, §15) and returns the
+              // REAL public url — surface it verbatim; never claim it's live without it (§13).
+              const { data: pub, error } = await supabaseClient.rpc("growth_page_publish", {
+                p_tenant_id: personaCtx?.tenant_id ?? null,
+                p_id: args.page_id,
+              });
+              if (error) throw error;
+              result = { success: true, ...(pub as any) };
             } else if (tc.function.name === "action_file") {
               const { data, error } = await supabaseClient.rpc("file_action", {
                 p_action_kind: args.action_kind,

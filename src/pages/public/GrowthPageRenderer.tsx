@@ -19,9 +19,21 @@ interface PageRow {
   tenant_id: string;
 }
 
+// Anon-safe brand peek shape (peek_tenant_portal_brand, keyed by slug).
+interface PortalBrand {
+  primary_color: string | null;
+  accent_color: string | null;
+  font: string | null;
+  logo_url: string | null;
+}
+
+// Token floor (§6/§11) — never the old hardcoded #0b1220/#cfae70.
+const BRAND_FLOOR = { primary: "#150C31", accent: "#EBB94C", background: "#150C31", text: "#F8F5EE" };
+
 export default function GrowthPageRenderer() {
   const { tenantSlug, pageSlug } = useParams();
   const [page, setPage] = useState<PageRow | null>(null);
+  const [brand, setBrand] = useState<PortalBrand | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -36,7 +48,15 @@ export default function GrowthPageRenderer() {
         .eq("slug", pageSlug)
         .eq("status", "published")
         .maybeSingle();
-      if (!data) setNotFound(true); else setPage(data as unknown as PageRow);
+      if (!data) { setNotFound(true); setLoading(false); return; }
+      setPage(data as unknown as PageRow);
+      // Resolve the tenant brand FLOOR (anon-safe, SECURITY DEFINER, keyed by the
+      // slug in the route) so a published page wears its coach's brand (§6), not a
+      // hardcoded theme. A transient brand miss is not a page miss — fall through
+      // to BRAND_FLOOR below.
+      const { data: brandData } = await supabase.rpc("peek_tenant_portal_brand", { _slug: tenantSlug });
+      const row = Array.isArray(brandData) ? (brandData[0] as PortalBrand | undefined) : (brandData as PortalBrand | null);
+      if (row) setBrand(row);
       setLoading(false);
     })();
   }, [tenantSlug, pageSlug]);
@@ -48,22 +68,36 @@ export default function GrowthPageRenderer() {
   if (loading) return <div className="min-h-dvh flex items-center justify-center text-muted-foreground">Loading…</div>;
   if (notFound || !page) return <div className="min-h-dvh flex items-center justify-center">Page not found.</div>;
 
-  const theme = page.theme_json ?? {};
-  const bg = theme.background ?? "#0b1220";
-  const text = theme.text ?? "#f8f5ee";
-  const accent = theme.accent ?? "#cfae70";
+  // Brand floor from the tenant peek → token floor for anything missing. The page's
+  // own theme_json overrides the floor, but the brand (indigo/gold/logo/font) is the
+  // default — never the old #0b1220/#cfae70 hardcode.
+  const brandFloor: GrowthPageTheme = {
+    primary: brand?.primary_color || BRAND_FLOOR.primary,
+    accent: brand?.accent_color || BRAND_FLOOR.accent,
+    background: brand?.primary_color || BRAND_FLOOR.background,
+    text: BRAND_FLOOR.text,
+    ...(brand?.font ? { font: brand.font } : {}),
+    ...(brand?.logo_url ? { logo_url: brand.logo_url } : {}),
+  };
+  const resolvedTheme: GrowthPageTheme = { ...brandFloor, ...(page.theme_json || {}) };
+  const bg = resolvedTheme.background ?? BRAND_FLOOR.background;
+  const text = resolvedTheme.text ?? BRAND_FLOOR.text;
+  const accent = resolvedTheme.accent ?? BRAND_FLOOR.accent;
+  // Text color for a gold-filled button (the §11 accent-foreground pairing): the
+  // brand's dark ink (indigo floor), never a hardcoded hex. Dark-on-gold reads AA.
+  const accentText = resolvedTheme.primary ?? BRAND_FLOOR.primary;
 
   return (
     <div style={{ background: bg, color: text, minHeight: "100dvh" }}>
       {(page.blocks_json ?? []).map((block, i) => (
-        <BlockRenderer key={i} block={block} accent={accent} tenantId={page.tenant_id} />
+        <BlockRenderer key={i} block={block} accent={accent} accentText={accentText} tenantId={page.tenant_id} />
       ))}
       <footer className="text-center text-xs opacity-50 py-8">© {new Date().getFullYear()}</footer>
     </div>
   );
 }
 
-function BlockRenderer({ block, accent, tenantId }: { block: GrowthBlock; accent: string; tenantId: string }) {
+function BlockRenderer({ block, accent, accentText, tenantId }: { block: GrowthBlock; accent: string; accentText: string; tenantId: string }) {
   switch (block.type) {
     case "hero":
       return (
@@ -79,7 +113,7 @@ function BlockRenderer({ block, accent, tenantId }: { block: GrowthBlock; accent
           {block.subtitle && <p className="text-lg md:text-xl opacity-80 max-w-2xl mx-auto mb-6">{block.subtitle}</p>}
           {block.quote && <p className="italic opacity-70 mb-8" style={{ fontFamily: "'Playfair Display', serif" }}>{block.quote}</p>}
           {block.cta_label && block.cta_href && (
-            <a href={block.cta_href} className="inline-block px-8 py-3 font-semibold rounded" style={{ background: accent, color: "#0b1220" }}>
+            <a href={block.cta_href} className="inline-block px-8 py-3 font-semibold rounded" style={{ background: accent, color: accentText }}>
               {block.cta_label} →
             </a>
           )}
@@ -122,7 +156,7 @@ function BlockRenderer({ block, accent, tenantId }: { block: GrowthBlock; accent
         <section className="px-6 md:px-12 py-20 text-center max-w-3xl mx-auto">
           <h2 className="text-3xl md:text-4xl mb-4" style={{ fontFamily: "'Playfair Display', serif", color: accent }}>{block.title}</h2>
           {block.body && <p className="opacity-80 mb-6">{block.body}</p>}
-          <a href={block.cta_href} className="inline-block px-8 py-3 font-semibold rounded" style={{ background: accent, color: "#0b1220" }}>{block.cta_label}</a>
+          <a href={block.cta_href} className="inline-block px-8 py-3 font-semibold rounded" style={{ background: accent, color: accentText }}>{block.cta_label}</a>
         </section>
       );
     case "rich_text": {

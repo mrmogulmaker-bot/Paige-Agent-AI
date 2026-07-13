@@ -21,6 +21,18 @@ ALTER TABLE public.growth_pages
   ADD COLUMN IF NOT EXISTS draft_theme_json  jsonb,
   ADD COLUMN IF NOT EXISTS draft_seo_json    jsonb;
 
+-- 1a. Column-scoped anon read (§9). RLS is ROW-level, so the table-wide
+--     `GRANT SELECT ... TO anon` from the base migration would let the public read the
+--     new draft_* columns of any PUBLISHED row via a direct PostgREST select — exposing
+--     unpublished next-version edits. Replace the table grant with a column grant that
+--     omits draft_*; the public renderer only ever selects the live columns below.
+REVOKE SELECT ON public.growth_pages FROM anon;
+GRANT SELECT (
+  id, tenant_id, slug, title, status, template_key,
+  theme_json, blocks_json, seo_json, og_image_url,
+  published_at, created_by, created_at, updated_at
+) ON public.growth_pages TO anon;
+
 -- ============================================================
 -- 2. growth_page_upsert — insert/update a page's DRAFT content
 -- ============================================================
@@ -173,10 +185,32 @@ BEGIN
       USING ERRCODE = '22023';
   END IF;
 
-  -- §15 placeholder guard: refuse to publish unresolved [PLACEHOLDER] tokens.
-  IF _row.draft_blocks_json::text ~ '\[[A-Z_]{3,}\]'
-     OR COALESCE(_row.draft_seo_json::text, '') ~ '\[[A-Z_]{3,}\]' THEN
-    RAISE EXCEPTION 'GROWTH_UNRESOLVED_PLACEHOLDER: page has unresolved [PLACEHOLDER] tokens — fill them before publishing'
+  -- §15 placeholder guard: refuse to publish unresolved editable-prompt tokens. The
+  -- generator emits ALL_CAPS_UNDERSCORE tokens ([ADD_WEBINAR_DATE]); operators may also
+  -- hand-type mixed-case prompts ([Add webinar date]). Catch BOTH shapes, in blocks AND
+  -- seo, while NOT false-positiving on innocuous bracketed caps like [USA] or [2024]:
+  --   (a) a bracketed token CONTAINING an underscore  → [ADD_WEBINAR_DATE], [PASTE_LINK]
+  --   (b) a bracket containing an editing action word  → [Add …], [Paste …], [Your …]
+  IF _row.draft_blocks_json::text ~ '\[[A-Za-z0-9]*_[A-Za-z0-9_]*\]'
+     OR _row.draft_blocks_json::text ~* '\[[^\]]*\y(add|paste|insert|enter|fill|tbd|placeholder|replace|example|your)\y[^\]]*\]'
+     OR COALESCE(_row.draft_seo_json::text, '') ~ '\[[A-Za-z0-9]*_[A-Za-z0-9_]*\]'
+     OR COALESCE(_row.draft_seo_json::text, '') ~* '\[[^\]]*\y(add|paste|insert|enter|fill|tbd|placeholder|replace|example|your)\y[^\]]*\]' THEN
+    RAISE EXCEPTION 'GROWTH_UNRESOLVED_PLACEHOLDER: page has unresolved editable placeholders (e.g. [ADD_WEBINAR_DATE]) — fill them before publishing'
+      USING ERRCODE = '22023';
+  END IF;
+
+  -- Lead-capture guard (§13): every embedded_form block must reference a real ACTIVE
+  -- form in this tenant, or the published page would render an invisible signup while
+  -- we report it live. Refuse rather than ship a dead lead-capture.
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(_row.draft_blocks_json) AS b
+    WHERE b->>'type' = 'embedded_form'
+      AND NOT EXISTS (
+        SELECT 1 FROM public.growth_forms f
+        WHERE f.tenant_id = _tenant AND f.slug = b->>'form_slug' AND f.status = 'active'
+      )
+  ) THEN
+    RAISE EXCEPTION 'GROWTH_FORM_MISSING: a signup form on this page does not exist yet — re-save the page to author it before publishing'
       USING ERRCODE = '22023';
   END IF;
 
@@ -192,6 +226,11 @@ BEGIN
   RETURNING * INTO _row;
 
   SELECT slug INTO _tenant_slug FROM public.tenants WHERE id = _tenant;
+  -- §13: never hand back a malformed '/p//slug' link and call it live.
+  IF _tenant_slug IS NULL OR btrim(_tenant_slug) = '' THEN
+    RAISE EXCEPTION 'GROWTH_NO_TENANT_SLUG: this workspace has no public slug — set one before publishing'
+      USING ERRCODE = '22023';
+  END IF;
 
   INSERT INTO public.audit_logs (user_id, entity, action, entity_id, data)
   VALUES (_caller, 'growth_pages', 'growth_page_publish', _row.id,
