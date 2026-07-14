@@ -51,8 +51,10 @@ serve(async (req: Request): Promise<Response> => {
     const uid = user.id;
 
     // Refuse to delete a completed account. is_signup_complete() is TRUE for any
-    // real user (any role, owned/member tenant, linked client, or the explicit
-    // marker) — so tenant owners, staff, and clients are all protected here.
+    // real user (owns/member of a tenant, a role beyond the auto-granted
+    // 'user'/'client', a genuine invited client, or the explicit completion
+    // marker) — so tenant owners, staff, and real clients are all protected here.
+    // Only a bare pre-provisioning shell reads FALSE and can be removed.
     const { data: complete, error: rpcError } = await supabase.rpc("is_signup_complete", { _uid: uid });
     if (rpcError) {
       console.error("signup-cancel is_signup_complete error:", rpcError);
@@ -64,7 +66,23 @@ serve(async (req: Request): Promise<Response> => {
       }, 409);
     }
 
-    // Best-effort cleanup of the pre-signup profile shell, then the auth user.
+    // Write the audit record BEFORE the irreversible delete, while the user
+    // still exists (so user_id FKs hold and the cancellation is never a silent
+    // destructive op — §13, systems report what actually happened). An audit
+    // failure is logged, not swallowed, but does not block the user's explicit
+    // cancel request.
+    const { error: auditError } = await supabase.from("audit_logs").insert({
+      user_id: uid,
+      entity: "auth_user",
+      action: "signup_cancelled",
+      entity_id: uid,
+      data: { email: user.email ?? null, reason: "self-serve pre-provisioning cancel" },
+    });
+    if (auditError) {
+      console.error("signup-cancel audit insert failed (proceeding with delete):", auditError);
+    }
+
+    // Cleanup of the pre-signup profile shell, then the auth user.
     // Deleting auth.users cascades to identities/sessions/refresh_tokens.
     await supabase.from("profiles").delete().eq("user_id", uid);
 
@@ -73,16 +91,6 @@ serve(async (req: Request): Promise<Response> => {
       console.error("signup-cancel deleteUser error:", delError);
       return json({ error: `Could not remove the sign-up: ${delError.message}` }, 500);
     }
-
-    // Audit the self-cancellation. (No user_id FK dependency — the user is gone.)
-    try {
-      await supabase.from("audit_logs").insert({
-        entity: "auth_user",
-        action: "signup_cancelled",
-        entity_id: uid,
-        data: { email: user.email ?? null, reason: "self-serve pre-provisioning cancel" },
-      });
-    } catch (_e) { /* audit is best-effort */ }
 
     console.log("signup-cancel: removed abandoned shell", uid);
     return json({ success: true });

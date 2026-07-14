@@ -42,20 +42,27 @@ export default function Onboarding() {
         return;
       }
 
-      // Already a tenant operator (staff, owner, or member) or a linked client?
-      // Then there's nothing to provision — forward to their real home.
-      const [{ data: staff }, { data: owned }, { data: member }, { data: client }] = await Promise.all([
+      // Already a tenant operator (staff, owner, or member) or a REAL linked
+      // client? Then there's nothing to provision — forward to their real home.
+      // NOTE: handle_new_user autocreates a self-linked clients row (source
+      // 'signup') for EVERY signup, so "has a clients row" does NOT mean "is a
+      // real client" — we must exclude the autocreated signup contact, or a
+      // brand-new owner would be shunted into /app and never reach the
+      // provisioner (and loop against RequireCompleteSignup). A genuine invited
+      // client's row has source <> 'signup'.
+      const [{ data: staff }, { data: owned }, { data: member }, { data: clientRows }] = await Promise.all([
         supabase.rpc("is_platform_admin"),
         supabase.from("tenants").select("id").eq("owner_user_id", uid).limit(1).maybeSingle(),
         supabase.from("tenant_members").select("tenant_id").eq("user_id", uid).limit(1).maybeSingle(),
-        supabase.from("clients").select("id").eq("linked_user_id", uid).limit(1).maybeSingle(),
+        supabase.from("clients").select("id, source").eq("linked_user_id", uid).limit(10),
       ]);
       if (!mounted) return;
       if (staff || owned?.id || member?.tenant_id) {
         window.location.assign("/admin");
         return;
       }
-      if (client?.id) {
+      const realClient = (clientRows ?? []).find((c) => (c.source ?? "") !== "signup");
+      if (realClient) {
         window.location.assign("/app");
         return;
       }

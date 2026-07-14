@@ -39,11 +39,23 @@ COMMENT ON COLUMN public.profiles.signup_lane IS
   'The account_type the subscriber chose at signup: standalone | agency | enterprise.';
 
 -- 2. is_signup_complete(uid) — the authoritative completion predicate ---------
--- TRUE iff the user is something real on the platform: has any granted role,
--- owns a tenant, is an active tenant member, is a linked client, or carries the
--- explicit completion marker. A bare OAuth/email shell (a "ghost") has none of
--- these and reads FALSE. SECURITY DEFINER so it can read across the auth-scoped
--- tables uniformly; STABLE; no side effects.
+-- TRUE iff the user is a REAL account on the platform. A bare OAuth/email shell
+-- (a "ghost") reads FALSE.
+--
+-- CRITICAL: the on_auth_user_created trigger (handle_new_user) auto-grants a
+-- baseline 'user' role AND autocreates a self-linked clients row (source
+-- 'signup') for EVERY new auth user, and ensure_client_role_self_heal will grant
+-- 'client' to anyone carrying a linked clients row. So "has any role", "has a
+-- clients row", and even "has the 'client' role" are all TRUE for a ghost and
+-- must NOT be used as completion signals. We key only on things a bare signup
+-- does NOT produce:
+--   * owns a top-level tenant                (never auto-created)
+--   * an active tenant_members row           (never auto-created)
+--   * a role BEYOND the baseline 'user'/'client' (real staff/operator grant)
+--   * a REAL client row: linked, source <> 'signup' (a genuine invited customer,
+--     not the autocreated signup contact)
+--   * the explicit signup_completed_at marker set by provision_tenant
+-- SECURITY DEFINER so it reads across auth-scoped tables uniformly; STABLE.
 CREATE OR REPLACE FUNCTION public.is_signup_complete(_uid uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -54,11 +66,11 @@ AS $$
   SELECT
     _uid IS NOT NULL
     AND (
-         EXISTS (SELECT 1 FROM public.user_roles    ur WHERE ur.user_id = _uid)
-      OR EXISTS (SELECT 1 FROM public.tenants        t WHERE t.owner_user_id = _uid)
+         EXISTS (SELECT 1 FROM public.tenants        t  WHERE t.owner_user_id = _uid)
       OR EXISTS (SELECT 1 FROM public.tenant_members tm WHERE tm.user_id = _uid AND tm.status = 'active')
-      OR EXISTS (SELECT 1 FROM public.clients        c WHERE c.linked_user_id = _uid)
-      OR EXISTS (SELECT 1 FROM public.profiles       p WHERE p.user_id = _uid AND p.signup_completed_at IS NOT NULL)
+      OR EXISTS (SELECT 1 FROM public.user_roles     ur WHERE ur.user_id = _uid AND ur.role NOT IN ('user','client'))
+      OR EXISTS (SELECT 1 FROM public.clients        c  WHERE c.linked_user_id = _uid AND coalesce(c.source, '') <> 'signup')
+      OR EXISTS (SELECT 1 FROM public.profiles       p  WHERE p.user_id = _uid AND p.signup_completed_at IS NOT NULL)
     );
 $$;
 
@@ -223,5 +235,12 @@ BEGIN
   RETURN _tenant;
 END;
 $function$;
+
+-- A DROP+CREATE with a new signature is a brand-new function object, so it
+-- inherits the default EXECUTE-to-PUBLIC grant. Restore the least-privilege
+-- pattern every prior provision_tenant migration used (the body still raises
+-- 28000 for anon, but we don't rely on that for the grant).
+REVOKE ALL ON FUNCTION public.provision_tenant(text, text, text, text, text, text, integer) FROM public;
+GRANT EXECUTE ON FUNCTION public.provision_tenant(text, text, text, text, text, text, integer) TO authenticated, service_role;
 
 COMMIT;
