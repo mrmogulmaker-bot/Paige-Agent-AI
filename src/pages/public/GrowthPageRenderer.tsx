@@ -11,7 +11,7 @@ import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { GrowthBlock, GrowthPageTheme } from "@/lib/growth";
 import { GrowthBlocks } from "@/components/growth/GrowthBlocks";
-import { resolveGrowthTheme, GROWTH_BRAND_FLOOR } from "@/components/growth/growth-theme";
+import { resolveGrowthTheme, GROWTH_BRAND_FLOOR, buildGrowthBrandFloor } from "@/components/growth/growth-theme";
 
 interface PageRow {
   id: string;
@@ -69,16 +69,10 @@ export default function GrowthPageRenderer() {
   if (loading) return <PageSkeleton />;
   if (notFound || !page) return <NotFound />;
 
-  // The tenant brand becomes the FLOOR; the page's own theme_json overrides it. Both are
-  // fed to the ONE resolver inside <GrowthBlocks>, so this matches the Studio preview.
-  const brandFloor: GrowthPageTheme = {
-    primary: brand?.primary_color || GROWTH_BRAND_FLOOR.primary,
-    accent: brand?.accent_color || GROWTH_BRAND_FLOOR.accent,
-    background: brand?.primary_color || GROWTH_BRAND_FLOOR.background,
-    text: GROWTH_BRAND_FLOOR.text,
-    ...(brand?.font ? { font: brand.font } : {}),
-    ...(brand?.logo_url ? { logo_url: brand.logo_url } : {}),
-  };
+  // The tenant brand becomes the FLOOR; the page's own theme_json overrides it. Both are fed to
+  // the ONE resolver inside <GrowthBlocks>. The floor is built by the ONE shared builder, which
+  // the Studio canvas also calls — that shared call is what makes preview == published true.
+  const brandFloor: GrowthPageTheme = buildGrowthBrandFloor(brand);
 
   return (
     <GrowthBlocks blocks={page.blocks_json ?? []} theme={page.theme_json} brandFloor={brandFloor} tenantId={page.tenant_id}>

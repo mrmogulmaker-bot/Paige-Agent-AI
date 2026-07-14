@@ -1,22 +1,80 @@
-// growth-page-draft — Paige's landing-page generator (Growth OS / vibe-coding studio #86).
+// growth-page-draft — Paige's landing-page generator (Growth OS / Vibe Studio #86).
+//
 // From one sentence, Paige drafts a branded landing page: a set of GrowthBlocks (a hero +
 // an embedded lead/signup form at minimum), a theme seeded from the tenant's real brand
 // cascade, and SEO. PURE DRAFT — zero DB writes. Publishing is a separate, approval-gated
-// action (§8/§10) handled by the publish RPC, which returns the real resolved URL (§13).
+// action (§8/§10) handled by growth_page_publish, which returns the real resolved URL (§13).
+//
+// Sibling: growth-block-edit revises ONE section of a page. This generates the whole page.
+// Both bottom out in the SAME 17-type block contract, shared in _shared/growth-blocks.ts —
+// one validator, one spec, one set of length caps. (This file used to carry a verbatim fork
+// whose rich_text cap was 6000 while the SQL gate and its own prompt said 20000; it silently
+// truncated legitimate long-form copy. Migrating to the shared module fixes that.)
+//
+// ── CONTRACT ────────────────────────────────────────────────────────────────
+// POST (JWT or service-role bearer required)
+//
+//   Request:
+//     {
+//       brief:      string,   // REQUIRED. >= 5 chars after trim. What the page is for.
+//       tone?:      string,   // OPTIONAL. Free text.
+//       tenant_id?: string    // SERVICE-ROLE CALLERS ONLY. IGNORED for JWT callers, whose
+//                             //   tenant is resolved server-side (see SECURITY).
+//     }
+//
+//   200  { blocks: GrowthBlock[], theme_json: GrowthPageTheme, seo_json: { title, description } }
+//        blocks: hero guaranteed FIRST; exactly ONE embedded_form guaranteed.
+//   4xx/5xx { error: { code, message } }   // structured, non-2xx, never a 200-with-error
+//
+//   Error codes:
+//     400 BAD_JSON           request body was not JSON
+//     400 EMPTY_BRIEF        brief missing or shorter than 5 characters
+//     400 INVALID_TENANT_ID  service-role caller passed a malformed tenant_id
+//     401 UNAUTHENTICATED    no / invalid bearer token
+//     403 FORBIDDEN          JWT caller lacks admin, coach or super_admin
+//     422 NO_VALID_BLOCKS    the model produced ZERO blocks that survive GrowthBlock
+//                            validation. Handing back a bare hero+form skeleton would dress a
+//                            failed generation up as a successful one (§13) — we refuse.
+//     502 MODEL_UNAVAILABLE  the model call failed (real cause logged + reported, not swallowed)
+//     502 MODEL_BAD_OUTPUT   the model returned something that isn't a JSON object — including
+//                            a reply truncated mid-object by the output ceiling
+//     500 INTERNAL           anything else — with the real message, never a generic shrug
+//
+// ── SECURITY (§13 — tenant isolation, least privilege) ──────────────────────
+// This function does NOT trust `tenant_id` from a JWT caller. It resolves the tenant
+// SERVER-SIDE via current_user_tenant_id() executed in the CALLER's own JWT context — the same
+// pin growth_page_upsert / growth_page_edit_blocks use ("JWT callers: client tenant ids
+// IGNORED"). It is SECURITY DEFINER over auth.uid(), so it physically cannot return a tenant
+// the caller doesn't belong to. Only a service-role bearer — Paige's agent driving this
+// headlessly (§10) — may name a tenant explicitly. The service-role key is used ONLY to read
+// brand for the tenant WE resolved, never for a tenant the caller named.
+// (This closes a live cross-tenant IDOR: the previous revision read `body.tenant_id` at face
+// value and fetched that tenant's brand with the service-role key, so any authenticated coach
+// could read any tenant's brand by naming its UUID. Owner-approved fix, mirrors growth-block-edit.)
 //
 // Doctrine:
-//   §2  — defaults are coaching-generic (webinar, coaching offer, lead magnet,
-//         consultation). NO credit/funding/lending framing unless the brief asks for it.
+//   §2  — defaults are coaching-generic (webinar, coaching offer, lead magnet, consultation).
+//         We never ADD credit/funding/lending framing. A tenant who asks for a funding page in
+//         their brief gets one — their offer is theirs; it is just never a platform default.
 //   §3  — mogul-direct voice; no "AI-powered/streamline/seamless/empower".
-//   §13 — theme_json is seeded from the REAL brand cascade (resolve_tenant_brand), not
-//         hallucinated by the model, so what we return is truthful.
-//   §15 — the model must NOT invent specifics (dates, Zoom links, testimonial names). When
-//         the brief lacks them it uses a clearly-labeled editable prompt the caller fills,
-//         never fake data.
+//   §10 — callable seam: the Studio is one caller, Paige's agent is another.
+//   §13 — structured errors, real causes, non-2xx on failure; theme_json is seeded from the
+//         REAL brand cascade (resolve_tenant_brand), not hallucinated, so it is truthful.
+//   §14 — model-routed, reasoning tier, never a hardcoded model.
+//   §15 — the model must NOT invent specifics (dates, Zoom links, testimonial names). When the
+//         brief lacks them it emits a clearly-labeled editable token, never fake data.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { chatCompletionCompat } from "../_shared/claude.ts";
 import { routedChatCompletion } from "../_shared/model-router.ts";
+import {
+  extractJson,
+  GROWTH_BLOCK_SPEC,
+  slugify,
+  str,
+  trimStr,
+  validateBlock,
+} from "../_shared/growth-blocks.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -26,297 +84,163 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
 
 // Token floors (match resolve_tenant_brand's COALESCE defaults): --primary indigo, --accent gold.
 const PRIMARY_FLOOR = "#150C31";
 const ACCENT_FLOOR = "#EBB94C";
 
-function extractJson(text: string): any {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const raw = fenced ? fenced[1] : text;
-  const start = raw.indexOf("{"); const end = raw.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("No JSON in model output");
-  return JSON.parse(raw.slice(start, end + 1));
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Output ceiling for the page generation (§13 — the whole feature dies without it).
+// _shared/claude.ts defaults `max_tokens` to 2048. This job is now routed to the reasoning
+// tier (claude-sonnet-5), which writes LONGER copy than the model this prompt was tuned
+// against — and a full page is a BIG single JSON object: hero + feature_grid + faq + pricing +
+// steps + cta + embedded_form + seo_json. Under a 2048-token ceiling that object truncates
+// mid-write, extractJson throws on the broken JSON, and the retry hits the identical ceiling
+// and truncates identically — so the primary path of the entire feature returns "no page,"
+// every time, deterministically.
+// The number: the sibling growth-block-edit spends 6000 on a SINGLE section (a rich_text block
+// alone may legitimately run to 20000 chars of html). A page carries up to 12 sections, so
+// anything under that is not a ceiling, it's a cliff. 8192 comfortably clears a maximal
+// realistic page while still capping a runaway generation. It is a CEILING, not a spend:
+// output tokens are billed on what the model actually writes, so a headroom-generous ceiling
+// costs nothing on a normal page and removes this entire failure class.
+const PAGE_MAX_TOKENS = 8192;
+
+/** Structured failure. Never a 200-with-{error}; never a swallowed generic (§13). */
+function fail(status: number, code: string, message: string): Response {
+  return new Response(JSON.stringify({ error: { code, message } }), { status, headers: jsonHeaders });
+}
+function ok(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), { status: 200, headers: jsonHeaders });
 }
 
-function slugify(s: string, fallback: string): string {
-  const out = String(s || "").toLowerCase().trim()
-    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
-  return out || fallback;
-}
-
-const str = (v: unknown): string => (typeof v === "string" ? v : "");
-const trimStr = (v: unknown, max: number): string => str(v).trim().slice(0, max);
-// URL-bearing fields must be a real https URL. Returns "" for anything else (a placeholder
-// token like "[PASTE_VIDEO_URL]", an http url, a relative path) so the caller OMITS the
-// value/block rather than emitting a dead or unsafe link (§13, blueprint B6).
-const httpsUrl = (v: unknown, max = 600): string => {
-  const s = trimStr(v, max);
-  return /^https:\/\//i.test(s) ? s : "";
-};
-
-// ── Block validation ─────────────────────────────────────────────────────────
-// Validate one candidate against the GrowthBlock union (src/lib/growth.ts). Returns a
-// cleaned block or null if it doesn't satisfy its variant's required fields. Optional
-// fields are only carried through when present & non-empty (keeps the payload tight and
-// avoids empty-string CTAs rendering as dead buttons).
-function validateBlock(b: any): any | null {
-  if (!b || typeof b !== "object") return null;
-  switch (b.type) {
-    case "hero": {
-      const title = trimStr(b.title, 160);
-      if (!title) return null;
-      const block: any = { type: "hero", title };
-      const eyebrow = trimStr(b.eyebrow, 80); if (eyebrow) block.eyebrow = eyebrow;
-      const subtitle = trimStr(b.subtitle, 400); if (subtitle) block.subtitle = subtitle;
-      const ctaLabel = trimStr(b.cta_label, 60); if (ctaLabel) block.cta_label = ctaLabel;
-      const ctaHref = trimStr(b.cta_href, 400); if (ctaHref) block.cta_href = ctaHref;
-      const imageUrl = httpsUrl(b.image_url); if (imageUrl) block.image_url = imageUrl;
-      const quote = trimStr(b.quote, 400); if (quote) block.quote = quote;
-      const imgPos = trimStr(b.image_position, 8);
-      if (imageUrl && (imgPos === "full" || imgPos === "split")) block.image_position = imgPos;
-      return block;
-    }
-    case "phase_cards": {
-      const cards = Array.isArray(b.cards) ? b.cards.map((c: any) => {
-        const title = trimStr(c?.title, 120); const body = trimStr(c?.body, 400);
-        if (!title || !body) return null;
-        const card: any = { phase: trimStr(c?.phase, 40), title, body };
-        const outcome = trimStr(c?.outcome, 200); if (outcome) card.outcome = outcome;
-        return card;
-      }).filter(Boolean) : [];
-      if (!cards.length) return null;
-      return { type: "phase_cards", cards: cards.slice(0, 8) };
-    }
-    case "feature_grid": {
-      const items = Array.isArray(b.items) ? b.items.map((it: any) => {
-        const title = trimStr(it?.title, 120); const body = trimStr(it?.body, 400);
-        if (!title || !body) return null;
-        return { title, body };
-      }).filter(Boolean) : [];
-      if (!items.length) return null;
-      const block: any = { type: "feature_grid", items: items.slice(0, 9) };
-      const title = trimStr(b.title, 160); if (title) block.title = title;
-      return block;
-    }
-    case "cta": {
-      const title = trimStr(b.title, 160);
-      const ctaLabel = trimStr(b.cta_label, 60);
-      const ctaHref = trimStr(b.cta_href, 400);
-      if (!title || !ctaLabel || !ctaHref) return null;
-      const block: any = { type: "cta", title, cta_label: ctaLabel, cta_href: ctaHref };
-      const body = trimStr(b.body, 400); if (body) block.body = body;
-      return block;
-    }
-    case "rich_text": {
-      const html = trimStr(b.html, 6000);
-      if (!html) return null;
-      return { type: "rich_text", html };
-    }
-    case "embedded_form": {
-      const formSlug = slugify(b.form_slug, "");
-      if (!formSlug) return null;
-      return { type: "embedded_form", form_slug: formSlug };
-    }
-    case "social_proof": {
-      const logos = Array.isArray(b.logos) ? b.logos.map((l: any) => {
-        const name = trimStr(l?.name, 80);
-        if (!name) return null;
-        const logo: any = { name };
-        const img = httpsUrl(l?.image_url); if (img) logo.image_url = img;
-        return logo;
-      }).filter(Boolean) : [];
-      if (!logos.length) return null;
-      const block: any = { type: "social_proof", logos: logos.slice(0, 12) };
-      const title = trimStr(b.title, 160); if (title) block.title = title;
-      return block;
-    }
-    case "testimonial": {
-      const items = Array.isArray(b.items) ? b.items.map((it: any) => {
-        const quote = trimStr(it?.quote, 600);
-        if (!quote) return null;
-        const t: any = { quote };
-        const author = trimStr(it?.author, 80); if (author) t.author = author;
-        const role = trimStr(it?.role, 120); if (role) t.role = role;
-        const avatar = httpsUrl(it?.avatar_url); if (avatar) t.avatar_url = avatar;
-        const rating = Number(it?.rating);
-        if (Number.isFinite(rating) && rating >= 1 && rating <= 5) t.rating = Math.round(rating);
-        return t;
-      }).filter(Boolean) : [];
-      if (!items.length) return null;
-      return { type: "testimonial", items: items.slice(0, 12) };
-    }
-    case "pricing": {
-      const tiers = Array.isArray(b.tiers) ? b.tiers.map((t: any) => {
-        const name = trimStr(t?.name, 80);
-        const price = trimStr(t?.price, 40);
-        const features = Array.isArray(t?.features)
-          ? t.features.map((f: any) => trimStr(f, 160)).filter(Boolean) : [];
-        if (!name || !price || !features.length) return null;
-        const tier: any = { name, price, features: features.slice(0, 12) };
-        const period = trimStr(t?.period, 40); if (period) tier.period = period;
-        const ctaLabel = trimStr(t?.cta_label, 60); if (ctaLabel) tier.cta_label = ctaLabel;
-        const ctaHref = trimStr(t?.cta_href, 400); if (ctaHref) tier.cta_href = ctaHref;
-        if (t?.featured === true) tier.featured = true;
-        return tier;
-      }).filter(Boolean) : [];
-      if (!tiers.length) return null;
-      const block: any = { type: "pricing", tiers: tiers.slice(0, 6) };
-      const title = trimStr(b.title, 160); if (title) block.title = title;
-      return block;
-    }
-    case "faq": {
-      const items = Array.isArray(b.items) ? b.items.map((it: any) => {
-        const question = trimStr(it?.question, 300);
-        const answer = trimStr(it?.answer, 1500);
-        if (!question || !answer) return null;
-        return { question, answer };
-      }).filter(Boolean) : [];
-      if (!items.length) return null;
-      const block: any = { type: "faq", items: items.slice(0, 20) };
-      const title = trimStr(b.title, 160); if (title) block.title = title;
-      return block;
-    }
-    case "media": {
-      // URL-bearing: omit entirely without an allowlisted provider AND a real https url (B6).
-      const provider = trimStr(b.provider, 20).toLowerCase();
-      const url = httpsUrl(b.url);
-      if (!["youtube", "vimeo", "loom", "mp4"].includes(provider) || !url) return null;
-      const block: any = { type: "media", provider, url };
-      const title = trimStr(b.title, 160); if (title) block.title = title;
-      const caption = trimStr(b.caption, 300); if (caption) block.caption = caption;
-      return block;
-    }
-    case "stats": {
-      const items = Array.isArray(b.items) ? b.items.map((it: any) => {
-        const value = trimStr(it?.value, 40);
-        const label = trimStr(it?.label, 120);
-        if (!value || !label) return null;
-        return { value, label };
-      }).filter(Boolean) : [];
-      if (!items.length) return null;
-      const block: any = { type: "stats", items: items.slice(0, 8) };
-      const title = trimStr(b.title, 160); if (title) block.title = title;
-      return block;
-    }
-    case "countdown": {
-      // Never invent a date (§15) — require a real, parseable timestamp; omit otherwise.
-      const endsAt = trimStr(b.ends_at, 40);
-      if (!endsAt || Number.isNaN(Date.parse(endsAt))) return null;
-      const block: any = { type: "countdown", ends_at: endsAt };
-      const title = trimStr(b.title, 160); if (title) block.title = title;
-      const subtitle = trimStr(b.subtitle, 300); if (subtitle) block.subtitle = subtitle;
-      const expired = trimStr(b.expired_text, 120); if (expired) block.expired_text = expired;
-      return block;
-    }
-    case "two_column": {
-      const heading = trimStr(b.heading, 160);
-      const body = trimStr(b.body, 1500);
-      if (!heading && !body) return null;
-      const block: any = { type: "two_column" };
-      if (heading) block.heading = heading;
-      if (body) block.body = body;
-      const img = httpsUrl(b.image_url); if (img) block.image_url = img;
-      const side = trimStr(b.image_side, 8);
-      if (side === "left" || side === "right") block.image_side = side;
-      const ctaLabel = trimStr(b.cta_label, 60); if (ctaLabel) block.cta_label = ctaLabel;
-      const ctaHref = trimStr(b.cta_href, 400); if (ctaHref) block.cta_href = ctaHref;
-      return block;
-    }
-    case "image": {
-      // URL-bearing: omit entirely without a real https url (B6).
-      const url = httpsUrl(b.url);
-      if (!url) return null;
-      const block: any = { type: "image", url };
-      const alt = trimStr(b.alt, 200); if (alt) block.alt = alt;
-      const caption = trimStr(b.caption, 300); if (caption) block.caption = caption;
-      return block;
-    }
-    case "gallery": {
-      // URL-bearing: keep only images with a real https url; omit the block if none survive (B6).
-      const images = Array.isArray(b.images) ? b.images.map((im: any) => {
-        const url = httpsUrl(im?.url);
-        if (!url) return null;
-        const g: any = { url };
-        const alt = trimStr(im?.alt, 200); if (alt) g.alt = alt;
-        const caption = trimStr(im?.caption, 300); if (caption) g.caption = caption;
-        return g;
-      }).filter(Boolean) : [];
-      if (!images.length) return null;
-      const block: any = { type: "gallery", images: images.slice(0, 12) };
-      const title = trimStr(b.title, 160); if (title) block.title = title;
-      return block;
-    }
-    case "steps": {
-      const items = Array.isArray(b.items) ? b.items.map((it: any) => {
-        const title = trimStr(it?.title, 120);
-        const body = trimStr(it?.body, 400);
-        if (!title || !body) return null;
-        const s: any = { title, body };
-        const number = trimStr(it?.number, 8); if (number) s.number = number;
-        return s;
-      }).filter(Boolean) : [];
-      if (!items.length) return null;
-      const block: any = { type: "steps", items: items.slice(0, 10) };
-      const title = trimStr(b.title, 160); if (title) block.title = title;
-      return block;
-    }
-    default:
-      return null;
+/**
+ * Read the (already gateway-verified) bearer's claims. verify_jwt=true means the signature is
+ * checked upstream; this only tells us WHICH kind of caller it is, so we can decide whether
+ * `tenant_id` in the body is even allowed to be read. Mirrors growth-block-edit.
+ */
+function parseJwtClaims(token: string): Record<string, unknown> | null {
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const payload = parts[1]
+      .replaceAll("-", "+")
+      .replaceAll("_", "/")
+      .padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
+    return JSON.parse(atob(payload)) as Record<string, unknown>;
+  } catch {
+    return null;
   }
 }
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
   try {
+    // ── 1. Authenticate, and decide which caller this is ─────────────────────
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header");
-    const authed = createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
-    const { data: { user }, error: uErr } = await authed.auth.getUser();
-    if (uErr || !user) throw new Error("Unauthorized");
-    const { data: roleRows } = await authed.from("user_roles").select("role").eq("user_id", user.id);
-    const roles = (roleRows || []).map((r: any) => r.role);
-    if (!roles.some((r: string) => r === "admin" || r === "super_admin" || r === "coach")) {
-      return new Response(JSON.stringify({ error: "Admin or coach access required." }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!authHeader?.startsWith("Bearer ")) {
+      return fail(401, "UNAUTHENTICATED", "A bearer token is required.");
+    }
+    const token = authHeader.slice("Bearer ".length).trim();
+    const isServiceRole = parseJwtClaims(token)?.role === "service_role";
+
+    // ── 2. Parse + validate the request BEFORE spending a model call ─────────
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return fail(400, "BAD_JSON", "Request body must be JSON.");
     }
 
-    const body = await req.json();
-    const brief = String(body?.brief ?? "").trim();
-    const tone = String(body?.tone ?? "").trim();
-    const tenantId = body?.tenant_id ?? null;
+    const brief = str(body?.brief).trim().slice(0, 4000);
     if (brief.length < 5) {
-      return new Response(JSON.stringify({ error: "Give a brief: what's the page for — the offer, the audience, the action you want." }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return fail(400, "EMPTY_BRIEF",
+        "Give a brief: what's the page for — the offer, the audience, the action you want.");
+    }
+    const tone = str(body?.tone).trim().slice(0, 200);
+
+    // ── 3. Resolve the tenant SERVER-SIDE (the IDOR-safe path) ───────────────
+    // JWT caller: role-gate, then pin the tenant to current_user_tenant_id() run in THEIR JWT
+    // context. `body.tenant_id` is never read on this path. Service-role caller: Paige's agent
+    // running headlessly (§10) may name the tenant.
+    let tenantId: string | null = null;
+
+    if (isServiceRole) {
+      const named = str(body?.tenant_id).trim();
+      if (named) {
+        if (!UUID_RE.test(named)) {
+          return fail(400, "INVALID_TENANT_ID", "tenant_id must be a UUID.");
+        }
+        tenantId = named;
+      }
+    } else {
+      const authed = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: uErr } = await authed.auth.getUser();
+      if (uErr || !user) {
+        return fail(401, "UNAUTHENTICATED", uErr?.message || "Could not verify this session.");
+      }
+
+      const { data: roleRows, error: rErr } = await authed.from("user_roles").select("role").eq("user_id", user.id);
+      if (rErr) {
+        console.error("growth-page-draft: role lookup failed:", rErr);
+        return fail(500, "INTERNAL", `Could not read your roles: ${rErr.message}`);
+      }
+      const roles = (roleRows || []).map((r: any) => r.role);
+      if (!roles.some((r: string) => r === "admin" || r === "super_admin" || r === "coach")) {
+        return fail(403, "FORBIDDEN", "Admin or coach access required.");
+      }
+
+      // The tenant pin. SECURITY DEFINER over auth.uid(), evaluated as the caller — it cannot
+      // return a tenant they don't belong to. May legitimately be null (an operator with no
+      // active tenant); that only means "no brand context", never "use whatever tenant they
+      // asked for" — we fall through to the token floors below.
+      const { data: resolved, error: tErr } = await authed.rpc("current_user_tenant_id");
+      if (tErr) {
+        console.error("growth-page-draft: tenant resolve failed:", tErr);
+        return fail(500, "INTERNAL", `Could not resolve your workspace: ${tErr.message}`);
+      }
+      tenantId = str(resolved) || null;
     }
 
-    // Pull the tenant's REAL brand cascade so the page is native to their practice and the
-    // theme we return is truthful (§13), not whatever the model guessed. resolve_tenant_brand
-    // is SECURITY DEFINER and returns token floors (indigo/gold) when a tenant sets nothing.
+    // ── 4. Brand cascade (truthful, §13) — read with the tenant WE resolved ───
+    // resolve_tenant_brand is SECURITY DEFINER and returns the token floors (indigo/gold) when
+    // a tenant sets nothing, so the theme we hand back is the tenant's REAL brand — never a
+    // colour the model guessed.
     let brandName = "";
     let theme: { primary: string; accent: string; font: string | null; logo_url: string | null } = {
       primary: PRIMARY_FLOOR, accent: ACCENT_FLOOR, font: null, logo_url: null,
     };
     if (tenantId) {
       const admin = createClient(supabaseUrl, supabaseServiceKey);
-      const { data: b } = await admin.rpc("resolve_tenant_brand", { _tenant_id: tenantId });
-      const row = Array.isArray(b) ? b[0] : b;
-      if (row) {
-        brandName = str(row.product_name) || str(row.tenant_name) || "";
-        theme = {
-          primary: str(row.primary_color) || PRIMARY_FLOOR,
-          accent: str(row.accent_color) || ACCENT_FLOOR,
-          font: str(row.font) || null,
-          logo_url: str(row.logo_url) || null,
-        };
+      const { data: b, error: bErr } = await admin.rpc("resolve_tenant_brand", { _tenant_id: tenantId });
+      if (bErr) {
+        // Non-fatal: a page on the brand floor is still a real page. Log the REAL cause.
+        console.warn("growth-page-draft: brand lookup failed, using brand floor:", bErr.message);
+      } else {
+        const row = Array.isArray(b) ? b[0] : b;
+        if (row) {
+          brandName = str(row.product_name) || str(row.tenant_name) || "";
+          theme = {
+            primary: str(row.primary_color) || PRIMARY_FLOOR,
+            accent: str(row.accent_color) || ACCENT_FLOOR,
+            font: str(row.font) || null,
+            logo_url: str(row.logo_url) || null,
+          };
+        }
       }
     }
 
+    // ── 5. The draft ─────────────────────────────────────────────────────────
     const SYSTEM = `You are Paige, drafting a high-converting landing page for a client-based service business${brandName ? ` called "${brandName}"` : ""}. You output the page as a structured set of content blocks.
 
 VOICE (§3): direct, confident, mogul-founder. Never use "AI-powered", "streamline", "seamless", or "empower". Write for a broad client-based-services audience — coaches, consultants, agencies, advisors, thought leaders — using inclusive words (practice, business, clients, work) rather than narrowly "coaching".
 
-DEFAULTS (§2): the offer defaults to a coaching-generic play — a webinar/masterclass, a free consultation or strategy call, a coaching program, or a lead magnet. Do NOT introduce credit, funding, lending, loans, financing, or "readiness/funding score" framing UNLESS the brief explicitly asks for it.
+DEFAULTS (§2): the offer defaults to a coaching-generic play — a webinar/masterclass, a free consultation or strategy call, a coaching program, or a lead magnet. Do NOT introduce credit, funding, lending, loans, financing, or "readiness/funding score" framing UNLESS the brief explicitly asks for it. (If the brief DOES ask for it, that is the operator's own offer and you write it in their voice — the rule is that you never ADD it.)
 
 NO FABRICATION (§15): do NOT invent specifics you were not given — no fake dates, times, Zoom/webinar links, prices, testimonial names, quotes, or statistics. When the brief lacks a specific, either omit that element OR write a clearly-labeled editable placeholder token in square brackets, ALL-CAPS with underscores, for the operator to fill, e.g. "[ADD_WEBINAR_DATE]", "[PASTE_REGISTRATION_LINK]", "[ADD_CLIENT_RESULT]". Use that exact ALL_CAPS_UNDERSCORE bracket shape so the publish step can detect an unfilled placeholder. A bracketed editable token is expected and fine; a fabricated concrete fact is not.
 
@@ -326,24 +250,7 @@ OUTPUT — return ONLY a single JSON object, no prose, no markdown fences:
   "seo_json": { "title": string, "description": string }
 }
 
-GrowthBlock variants — 17 types (use the exact "type" strings and field names):
-- { "type": "hero", "eyebrow"?: string, "title": string, "subtitle"?: string, "cta_label"?: string, "cta_href"?: string, "image_url"?: https-string, "image_position"?: "full"|"split", "quote"?: string }
-- { "type": "feature_grid", "title"?: string, "items": [{ "title": string, "body": string }] }
-- { "type": "phase_cards", "cards": [{ "phase": string, "title": string, "body": string, "outcome"?: string }] }
-- { "type": "cta", "title": string, "body"?: string, "cta_label": string, "cta_href": string }
-- { "type": "rich_text", "html": string }   // max 20000 chars
-- { "type": "embedded_form", "form_slug": string }
-- { "type": "social_proof", "title"?: string, "logos": [{ "name": string, "image_url"?: https-string }] }
-- { "type": "testimonial", "items": [{ "quote": string, "author"?: string, "role"?: string, "avatar_url"?: https-string, "rating"?: 1-5 }] }
-- { "type": "pricing", "title"?: string, "tiers": [{ "name": string, "price": string, "period"?: string, "features": [string], "cta_label"?: string, "cta_href"?: string, "featured"?: boolean }] }
-- { "type": "faq", "title"?: string, "items": [{ "question": string, "answer": string }] }
-- { "type": "media", "provider": "youtube"|"vimeo"|"loom"|"mp4", "url": https-string, "title"?: string, "caption"?: string }
-- { "type": "stats", "title"?: string, "items": [{ "value": string, "label": string }] }
-- { "type": "countdown", "title"?: string, "ends_at": ISO-8601-timestamp, "subtitle"?: string, "expired_text"?: string }
-- { "type": "two_column", "heading"?: string, "body"?: string, "image_url"?: https-string, "image_side"?: "left"|"right", "cta_label"?: string, "cta_href"?: string }
-- { "type": "image", "url": https-string, "alt"?: string, "caption"?: string }
-- { "type": "gallery", "title"?: string, "images": [{ "url": https-string, "alt"?: string, "caption"?: string }] }
-- { "type": "steps", "title"?: string, "items": [{ "number"?: string, "title": string, "body": string }] }
+${GROWTH_BLOCK_SPEC}
 
 URL & DATE RULE (hard, §15/§13): "media", "image", and "gallery" blocks — and any image_url/avatar_url field — need a REAL https:// URL you were actually given. You do NOT have tenant asset URLs. So do NOT emit these blocks (or these fields) with a placeholder, a bracket token, an http link, or a made-up URL — OMIT the whole block/field entirely. Same for "countdown": only include it if the brief gives a real date; never invent one. A page with no real media is correct; a page with a fake video/image link is a defect that will be rejected.
 
@@ -354,33 +261,73 @@ REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST inc
       { role: "user", content: `Brief: ${brief}${tone ? `\nTone: ${tone}` : ""}` },
     ];
 
-    // Drafting is internal first-draft work — route through the model router so it can ride
-    // the cheap tier when configured. Claude reasoning is the safety net if the routed draft
-    // doesn't parse as our JSON.
-    let parsed: any;
+    // Reasoning-tier, deliberately (§14 routing, §3 voice): this copy gets PUBLISHED to real
+    // prospects under the tenant's brand, so it is a doc_draft (a draft a human reviews before
+    // it ships), never an internal_first_draft — that kind is CHEAP_KINDS and would route the
+    // page to an 8B open model. Route through the router, never a hardcoded model. Do not
+    // re-cheapen this call.
+    let parsed: any = null;
     try {
-      const data = await routedChatCompletion("internal_first_draft", { messages, response_format: { type: "json_object" } });
-      parsed = extractJson(data?.choices?.[0]?.message?.content ?? "");
-    } catch {
-      const retry = await chatCompletionCompat({ messages, response_format: { type: "json_object" } }, "reasoning");
-      parsed = extractJson(retry?.choices?.[0]?.message?.content ?? "");
+      let raw = "";
+      try {
+        const data = await routedChatCompletion("doc_draft", {
+          messages,
+          response_format: { type: "json_object" },
+          max_tokens: PAGE_MAX_TOKENS,
+        });
+        raw = str(data?.choices?.[0]?.message?.content);
+      } catch (routerErr: any) {
+        // One retry on the SAME reasoning tier — model calls fail transiently, and losing an
+        // operator's page to a blip is worse than one extra call. Same tier, so this can never
+        // silently downgrade the model, and the SAME ceiling, so it can never re-truncate for
+        // want of headroom. If it fails again we report the REAL cause.
+        console.warn("growth-page-draft: router call failed, retrying on reasoning tier:", routerErr?.message);
+        const retry = await chatCompletionCompat(
+          { messages, response_format: { type: "json_object" }, max_tokens: PAGE_MAX_TOKENS },
+          "reasoning",
+        );
+        raw = str(retry?.choices?.[0]?.message?.content);
+      }
+      if (!raw.trim()) throw new Error("model returned an empty completion");
+      try {
+        parsed = extractJson(raw);
+      } catch (parseErr: any) {
+        // The classic shape of this failure is a reply truncated by the output ceiling: the
+        // JSON simply stops mid-object. Log the TAIL, which is where the truncation shows.
+        console.error("growth-page-draft: unparseable model output (tail):", raw.slice(-400));
+        return fail(502, "MODEL_BAD_OUTPUT", `The model did not return a usable page: ${parseErr?.message}`);
+      }
+    } catch (modelErr: any) {
+      console.error("growth-page-draft: model call failed:", modelErr);
+      return fail(502, "MODEL_UNAVAILABLE",
+        `Could not reach the model to draft the page: ${modelErr?.message || "unknown error"}`);
     }
 
-    // Validate every block against the GrowthBlock union; drop anything malformed.
-    const raw = Array.isArray(parsed?.blocks) ? parsed.blocks : [];
-    let blocks: any[] = raw.map(validateBlock).filter(Boolean).slice(0, 12);
+    // ── 6. Validate every block against the ONE GrowthBlock contract ──────────
+    // Shared with growth-block-edit and STRICTER than the SQL gate on purpose, so anything
+    // that survives here is guaranteed to survive growth_page_upsert.
+    const candidates = Array.isArray(parsed?.blocks) ? parsed.blocks : [];
+    let blocks: any[] = candidates.map(validateBlock).filter(Boolean).slice(0, 12);
 
-    // SEO — model-provided, tightened; fall back to a brief-derived line, never empty.
+    // ZERO blocks survived. The hero/form repairs below would still hand back a two-block
+    // skeleton with the brief echoed into it — a failed generation wearing a 200 (§13). Refuse.
+    if (!blocks.length) {
+      console.error("growth-page-draft: no valid blocks in model output:", JSON.stringify(parsed).slice(0, 400));
+      return fail(422, "NO_VALID_BLOCKS",
+        "That draft didn't produce a single usable section. Try again, or give the brief a little more to work with — the offer, who it's for, and the action you want.");
+    }
+
+    // SEO — model-provided, tightened; falls back to a brief-derived line, never empty.
     const seo_json = {
-      title: trimStr(parsed?.seo_json?.title, 70) || (brandName ? `${brandName}` : brief.slice(0, 70)),
+      title: trimStr(parsed?.seo_json?.title, 70) || brandName || brief.slice(0, 70),
       description: trimStr(parsed?.seo_json?.description, 200) || brief.slice(0, 200),
     };
 
-    // Phase-1 guarantees: a hero first, and exactly one embedded_form. If the model omitted
-    // either, synthesize a minimal, honest fallback (derived from the brief/SEO — no invented
-    // specifics) so the caller always gets a renderable, form-bearing page.
-    const hasHero = blocks.some((b) => b.type === "hero");
-    if (!hasHero) {
+    // ── 7. Phase-1 guarantees: hero FIRST, exactly ONE embedded_form ─────────
+    // These are repairs to a real draft, not a substitute for one (the zero-block case above
+    // already bailed). Derived from the draft's own SEO — no invented specifics (§15).
+    const heroIdx = blocks.findIndex((b) => b.type === "hero");
+    if (heroIdx === -1) {
       blocks.unshift({
         type: "hero",
         title: seo_json.title,
@@ -388,27 +335,42 @@ REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST inc
         cta_label: "Save your spot",
         cta_href: "#apply",
       });
-    } else {
-      // Ensure the hero is the first block.
-      const heroIdx = blocks.findIndex((b) => b.type === "hero");
-      if (heroIdx > 0) { const [h] = blocks.splice(heroIdx, 1); blocks.unshift(h); }
+    } else if (heroIdx > 0) {
+      const [h] = blocks.splice(heroIdx, 1);
+      blocks.unshift(h);
     }
 
-    const formBlocks = blocks.filter((b) => b.type === "embedded_form");
-    if (formBlocks.length === 0) {
+    const formCount = blocks.filter((b) => b.type === "embedded_form").length;
+    if (formCount === 0) {
       blocks.push({ type: "embedded_form", form_slug: slugify(seo_json.title, "lead-signup") });
-    } else if (formBlocks.length > 1) {
+    } else if (formCount > 1) {
       // Keep the first embedded_form only (one signup per Phase-1 page).
       let seen = false;
       blocks = blocks.filter((b) => {
         if (b.type !== "embedded_form") return true;
         if (seen) return false;
-        seen = true; return true;
+        seen = true;
+        return true;
       });
     }
 
-    // Theme comes from the real brand cascade (§13) — accent floors to gold, primary to
-    // indigo — not from the model.
+    // Re-run the repaired page through the SAME validator that gates the save. The synthesized
+    // hero/form are built from already-validated strings so this should never trip — but "should
+    // never" is not "proven" (§13), and a block we hand back that growth_page_upsert would then
+    // reject is worse than an honest failure.
+    const final: any[] = [];
+    for (const b of blocks) {
+      const clean = validateBlock(b);
+      if (!clean) {
+        console.error("growth-page-draft: repaired page failed re-validation:", JSON.stringify(b).slice(0, 300));
+        return fail(422, "NO_VALID_BLOCKS",
+          "That draft produced a section the page can't save. Try again.");
+      }
+      final.push(clean);
+    }
+
+    // Theme comes from the real brand cascade (§13) — primary floors to indigo, accent to gold —
+    // not from the model.
     const theme_json = {
       primary: theme.primary || PRIMARY_FLOOR,
       accent: theme.accent || ACCENT_FLOOR,
@@ -416,11 +378,11 @@ REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST inc
       logo_url: theme.logo_url,
     };
 
-    return new Response(JSON.stringify({ blocks, theme_json, seo_json }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return ok({ blocks: final, theme_json, seo_json });
   } catch (e: any) {
-    console.error("growth-page-draft error:", e);
-    return new Response(JSON.stringify({ error: e?.message || "Failed to draft page" }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Last line: still non-2xx, still the REAL cause (§13 — never a swallowed generic, and
+    // never the old 200-with-{error} that made a model outage read as a successful draft).
+    console.error("growth-page-draft: unhandled error:", e);
+    return fail(500, "INTERNAL", e?.message || "Failed to draft the page.");
   }
 });

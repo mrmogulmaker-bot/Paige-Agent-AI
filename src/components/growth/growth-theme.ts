@@ -21,6 +21,38 @@ export const GROWTH_BRAND_FLOOR: Required<Pick<GrowthPageTheme, "primary" | "acc
   font: '"Inter", system-ui, -apple-system, "Segoe UI", sans-serif',
 };
 
+/**
+ * The tenant's brand floor, built from the anon-safe `peek_tenant_portal_brand` row.
+ *
+ * THIS MUST EXIST IN EXACTLY ONE PLACE. The published page (GrowthPageRenderer), the funnel
+ * step (GrowthFunnelRenderer), and the Studio canvas (studio.ts → LivePreview) all render the
+ * same page and must all resolve the same floor — if any one of them re-derives it by hand, the
+ * Studio's preview silently stops matching what publishes, and no test catches it because both
+ * halves still "work".
+ *
+ * The non-obvious part, and the reason a hand-copy goes wrong: `background` DERIVES FROM
+ * `primary_color`. There is no background column on the brand row. And `text` is ALWAYS the
+ * floor's — a tenant never overrides it, because the floor's ink is what guarantees AA contrast
+ * against the brand background.
+ */
+export interface GrowthBrandRow {
+  primary_color?: string | null;
+  accent_color?: string | null;
+  font?: string | null;
+  logo_url?: string | null;
+}
+
+export function buildGrowthBrandFloor(brand: GrowthBrandRow | null | undefined): GrowthPageTheme {
+  return {
+    primary: brand?.primary_color || GROWTH_BRAND_FLOOR.primary,
+    accent: brand?.accent_color || GROWTH_BRAND_FLOOR.accent,
+    background: brand?.primary_color || GROWTH_BRAND_FLOOR.background,
+    text: GROWTH_BRAND_FLOOR.text,
+    ...(brand?.font ? { font: brand.font } : {}),
+    ...(brand?.logo_url ? { logo_url: brand.logo_url } : {}),
+  };
+}
+
 // ── color math (all self-contained, no deps) ────────────────────────────────
 interface RGB { r: number; g: number; b: number }
 
