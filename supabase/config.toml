@@ -19,6 +19,11 @@ project_id = "xygzykjyynhzqytbqnzu"
   # (derives the uid from the JWT and refuses to delete a completed account).
   [functions.signup-cancel]
     verify_jwt = true
+  # Invite/add an AGENCY-tier teammate. Authenticated; authorizes on
+  # agency_team_can_manage (owner/admin) from the caller's JWT — agency id from
+  # the server, never the body.
+  [functions.agency-invite-member]
+    verify_jwt = true
   # Internal-only notifier — self-gates on the service-role key in-function;
   # verify_jwt=true is a redundant gateway layer (both callers present it).
   [functions.notify-team-event]
