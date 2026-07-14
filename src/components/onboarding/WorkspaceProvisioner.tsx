@@ -12,17 +12,20 @@
  * account_type is a pure capability flag and is upgradeable anytime, so the
  * copy says so — no one is boxed in at the door.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { User, Network, Building2, Check, Loader2 } from "lucide-react";
+import { useLegalDoc } from "@/lib/legal/useLegalDocuments";
+import { User, Network, Building2, Check, Loader2, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TEAM_SIZES = ["Just me", "2–5", "6–20", "21+"] as const;
@@ -61,6 +64,17 @@ const INDUSTRY_TO_PLAYBOOK: Record<string, string> = {
 };
 
 type AccountType = "standalone" | "agency" | "enterprise";
+
+// Each lane signs its OWN platform subscriber agreement before the account is
+// created (§9 platform terms; interim, counsel-review pending). The hard stop is
+// enforced server-side in provision_tenant, which validates the current
+// agreement and records the acceptance in legal_acceptances atomically with the
+// tenant — this checkbox is the human-facing half of that gate.
+const LANE_TO_AGREEMENT: Record<AccountType, string> = {
+  standalone: "saas-standalone",
+  agency: "saas-agency",
+  enterprise: "saas-enterprise",
+};
 
 const ACCOUNT_TYPES: {
   value: AccountType;
@@ -106,10 +120,25 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
   const [teamSize, setTeamSize] = useState<string>("");
   const [about, setAbout] = useState("");
   const [creating, setCreating] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+
+  // The agreement for the currently-selected lane. Re-consent whenever the lane
+  // changes — standalone, agency, and enterprise are three different contracts.
+  const agreementSlug = LANE_TO_AGREEMENT[accountType];
+  const { doc: agreement, loading: agreementLoading } = useLegalDoc(agreementSlug);
+  useEffect(() => { setAgreed(false); }, [accountType]);
 
   const createWorkspace = async () => {
     if (businessName.trim().length < 2) {
       toast({ title: "Name your business", description: "This becomes your workspace.", variant: "destructive" });
+      return;
+    }
+    if (!agreement || !agreed) {
+      toast({
+        title: "Review the agreement",
+        description: "Please read and accept the subscriber agreement for your account type to continue.",
+        variant: "destructive",
+      });
       return;
     }
     setCreating(true);
@@ -128,6 +157,10 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
         _team_size: teamSize || null,
         _description: about.trim() || null,
         _account_type: accountType,
+        // Server-side hard stop: provision_tenant refuses to create the account
+        // unless a current lane agreement is passed, and records the acceptance.
+        _agreement_slug: agreementSlug,
+        _agreement_version: agreement.version,
       });
       if (error) throw error;
 
@@ -231,7 +264,43 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
             placeholder="I help early-stage founders build repeatable sales systems." />
           <p className="text-xs text-muted-foreground">Paige uses this to tailor your workspace. You can refine it later.</p>
         </div>
-        <Button onClick={createWorkspace} disabled={creating || businessName.trim().length < 2} className="w-full h-11">
+        <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2.5">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="agree-terms"
+              checked={agreed}
+              onCheckedChange={(v) => setAgreed(v === true)}
+              disabled={agreementLoading || !agreement}
+              className="mt-0.5"
+            />
+            <Label htmlFor="agree-terms" className="text-sm font-normal leading-snug cursor-pointer">
+              I have read and agree to the{" "}
+              {agreement ? (
+                <Link
+                  to={`/legal/${agreementSlug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-medium text-primary underline underline-offset-2 hover:opacity-80"
+                >
+                  <FileText className="h-3.5 w-3.5" />{agreement.title}
+                </Link>
+              ) : (
+                <span className="text-muted-foreground">
+                  {agreementLoading ? "loading agreement…" : "subscriber agreement"}
+                </span>
+              )}
+              {" "}for a {ACCOUNT_TYPES.find((a) => a.value === accountType)?.title} account.
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground pl-7">
+            Interim terms while our full legal review is completed. Your account isn't created until you accept.
+          </p>
+        </div>
+        <Button
+          onClick={createWorkspace}
+          disabled={creating || businessName.trim().length < 2 || !agreed || !agreement}
+          className="w-full h-11"
+        >
           {creating ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating your workspace…</> : "Create my workspace"}
         </Button>
       </div>

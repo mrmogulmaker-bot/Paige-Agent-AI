@@ -15,6 +15,10 @@ project_id = "xygzykjyynhzqytbqnzu"
   # token server-side; safe to call with the anon key.
   [functions.send-portal-invite]
     verify_jwt = false
+  # Self-serve removal of an abandoned pre-signup shell. Must be authenticated
+  # (derives the uid from the JWT and refuses to delete a completed account).
+  [functions.signup-cancel]
+    verify_jwt = true
   # Internal-only notifier — self-gates on the service-role key in-function;
   # verify_jwt=true is a redundant gateway layer (both callers present it).
   [functions.notify-team-event]

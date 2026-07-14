@@ -126,6 +126,10 @@ const ActionItems = lazyWithReload(() => import("./pages/app/ActionItems"));
 const Planning = lazyWithReload(() => import("./pages/app/Planning"));
 const GoogleCalendarCallback = lazyWithReload(() => import("./pages/GoogleCalendarCallback"));
 
+// Bounces a signed-in-but-incomplete signup (no lane/agreement/workspace yet) to
+// the /onboarding gate. Not lazy — it's a thin wrapper around the app shells.
+import { RequireCompleteSignup } from "@/components/auth/RequireCompleteSignup";
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -198,7 +202,7 @@ const App = () => (
             <Route path="/auth/google-calendar/callback" element={<PageSuspense><GoogleCalendarCallback /></PageSuspense>} />
 
             {/* New agent-first dashboard */}
-            <Route path="/app" element={<PageSuspense><AppShell /></PageSuspense>}>
+            <Route path="/app" element={<RequireCompleteSignup><PageSuspense><AppShell /></PageSuspense></RequireCompleteSignup>}>
               <Route index element={null} />
               <Route path="credit" element={<PageSuspense><CreditIntelligence /></PageSuspense>} />
               <Route path="funding" element={<PageSuspense><FundingMatches /></PageSuspense>} />
@@ -222,8 +226,8 @@ const App = () => (
             {/* Backward compat redirect */}
             <Route path="/dashboard" element={<Navigate to="/app" replace />} />
 
-            <Route path="/admin/*" element={<PageSuspense><Admin /></PageSuspense>} />
-            <Route path="/agency/*" element={<PageSuspense><AgencyLayout /></PageSuspense>} />
+            <Route path="/admin/*" element={<RequireCompleteSignup><PageSuspense><Admin /></PageSuspense></RequireCompleteSignup>} />
+            <Route path="/agency/*" element={<RequireCompleteSignup><PageSuspense><AgencyLayout /></PageSuspense></RequireCompleteSignup>} />
             <Route path="/unsubscribe" element={<PageSuspense><Unsubscribe /></PageSuspense>} />
            <Route path="/terms" element={<PageSuspense><Terms /></PageSuspense>} />
            <Route path="/privacy" element={<PageSuspense><Privacy /></PageSuspense>} />
