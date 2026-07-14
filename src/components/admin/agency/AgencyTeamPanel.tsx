@@ -67,6 +67,7 @@ interface TeamMember {
   agency_role: AgencyRole;
   status: string;
   scoped_count: number;
+  scoped_subaccounts: string[] | null;
   is_you: boolean;
   joined_at: string | null;
 }
@@ -307,7 +308,9 @@ function RoleEditor({
   member, subs, onClose, onSaved,
 }: { member: TeamMember; subs: SubAccount[]; onClose: () => void; onSaved: () => void }) {
   const [role, setRole] = useState<AgencyRole>(member.agency_role);
-  const [scoped, setScoped] = useState<string[]>([]);
+  // Hydrate from the member's REAL assigned scope so re-saving a specialist
+  // doesn't wipe it (the roster RPC returns scoped_subaccounts).
+  const [scoped, setScoped] = useState<string[]>(member.scoped_subaccounts ?? []);
   const [saving, setSaving] = useState(false);
 
   const save = async () => {

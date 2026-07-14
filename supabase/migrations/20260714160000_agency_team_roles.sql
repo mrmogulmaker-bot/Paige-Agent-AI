@@ -178,7 +178,7 @@ CREATE POLICY agency_team_select ON public.agency_team_members
 CREATE OR REPLACE FUNCTION public.agency_list_team()
 RETURNS TABLE (
   user_id uuid, email text, full_name text, agency_role text, status text,
-  scoped_count int, is_you boolean, joined_at timestamptz
+  scoped_count int, scoped_subaccounts uuid[], is_you boolean, joined_at timestamptz
 )
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path TO 'public' AS $$
 DECLARE
@@ -202,6 +202,7 @@ BEGIN
          p.full_name,
          atm.agency_role, atm.status,
          COALESCE(array_length(atm.scoped_subaccounts, 1), 0) AS scoped_count,
+         atm.scoped_subaccounts,
          (atm.user_id = _me) AS is_you,
          atm.joined_at
   FROM public.agency_team_members atm
