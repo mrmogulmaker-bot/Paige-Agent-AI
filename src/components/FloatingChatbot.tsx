@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { MessageCircle, X, Send, Loader2, Mic, MicOff, Volume2, Paperclip, ChevronRight, ChevronLeft } from "lucide-react";
+import { MessageCircle, X, Send, Loader2, Mic, MicOff, Paperclip, ChevronRight, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
 import { primeMicAndAudio, startManagedVoiceSession, describeVoiceError } from "@/lib/voice/startVoiceSession";
 import { getCurrentPageName } from "@/lib/pageContext";
-import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
+import { VoiceDock } from "@/components/voice/VoiceDock";
+import type { VoiceModalStatus, VoiceTranscriptEntry } from "@/components/voice/types";
 
 type Message = {
   role: "user" | "assistant";
@@ -586,36 +587,8 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              {/* Mobile voice status + end button in header */}
-              {isMobile && conversation.status === "connected" && (
-                <div className="flex items-center gap-1.5 mr-2">
-                  {conversation.isSpeaking ? (
-                    <div className="flex items-center gap-1 text-primary text-xs">
-                      <Volume2 className="h-3.5 w-3.5 animate-pulse" />
-                      <span className="text-[10px]">Speaking</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1 text-primary text-xs">
-                      <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                      <span className="text-[10px]">Listening</span>
-                    </div>
-                  )}
-                  <Button onClick={stopVoiceChat} variant="destructive" size="sm" className="h-7 px-2 text-[10px]">
-                    <MicOff className="w-3 h-3 mr-1" />
-                    End
-                  </Button>
-                </div>
-              )}
-              {/* Desktop voice status icon */}
-              {!isMobile && conversation.status === "connected" && (
-                <div className="flex items-center gap-1 text-primary text-xs mr-2">
-                  {conversation.isSpeaking ? (
-                    <Volume2 className="h-3.5 w-3.5 animate-pulse" />
-                  ) : (
-                    <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                  )}
-                </div>
-              )}
+              {/* Live voice status lives in the VoiceDock overlay (scoped to this
+                  card), so no duplicate status chrome is needed in the header. */}
               <Button variant="ghost" size="icon" onClick={handleClose} className="h-8 w-8">
                 <X className="h-4 w-4" />
               </Button>
@@ -653,34 +626,6 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
           </ScrollArea>
 
           <div className="p-3 sm:p-4 border-t border-border flex-shrink-0 pb-[env(safe-area-inset-bottom,8px)]">
-            {conversation.status === "connected" && (
-              <div className="mb-2 sm:mb-3 space-y-2">
-                {!isMobile && (
-                  <div className="flex items-center justify-center gap-4 text-sm">
-                    {conversation.isSpeaking ? (
-                      <div className="flex items-center gap-2 text-primary"><Volume2 className="h-4 w-4 animate-pulse" /><span>Speaking...</span></div>
-                    ) : (
-                      <div className="flex items-center gap-2 text-primary"><div className="h-2 w-2 rounded-full bg-primary animate-pulse" /><span>Listening...</span></div>
-                    )}
-                  </div>
-                )}
-                <p className="text-[10px] text-muted-foreground text-center">Voice active — type to send a text message instead</p>
-                <div className="flex gap-2">
-                  <Input
-                    ref={inputRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={(e) => e.key === "Enter" && handleSend()}
-                    placeholder="Type to Paige while talking..."
-                    className="bg-muted/30 border-border/50 h-10"
-                  />
-                  <Button onClick={handleSend} disabled={isLoading || !input.trim()} size="icon" className="h-10 w-10">
-                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
-            )}
-
             {attachedDoc && (
               <div className="mb-2">
                 <DocumentAttachmentChip fileName={attachedDoc.name} onRemove={removeAttachment} />
@@ -724,19 +669,23 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
               </Button>
             </div>
           </div>
+          {/* Voice session UI — scoped to this card (fixed → its own containing
+              block), so voice covers only the chatbot, never the whole viewport. */}
+          <VoiceDock
+            open={voiceModalOpen}
+            status={voiceStatus}
+            isMuted={voiceMuted}
+            pageName={currentPageName}
+            transcript={voiceTranscript}
+            onToggleMute={toggleVoiceMute}
+            onEndCall={stopVoiceChat}
+            inputValue={input}
+            onInputChange={setInput}
+            onSendText={() => handleSend()}
+            isSending={isLoading}
+          />
         </Card>
       )}
-
-      {/* Premium voice session UI — full-screen modal */}
-      <VoiceSessionModal
-        open={voiceModalOpen}
-        status={voiceStatus}
-        isMuted={voiceMuted}
-        pageName={currentPageName}
-        transcript={voiceTranscript}
-        onToggleMute={toggleVoiceMute}
-        onEndCall={stopVoiceChat}
-      />
     </>
   );
 

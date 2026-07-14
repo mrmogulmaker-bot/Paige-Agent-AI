@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Send, Loader2, Mic, MicOff, Clock } from "lucide-react";
@@ -15,7 +14,8 @@ import { useQuery } from "@tanstack/react-query";
 import { getUserClock } from "@/lib/userClock";
 import { useLocation } from "react-router-dom";
 import { getCurrentPageName } from "@/lib/pageContext";
-import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
+import { VoiceDock } from "@/components/voice/VoiceDock";
+import type { VoiceModalStatus, VoiceTranscriptEntry } from "@/components/voice/types";
 import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
 import { extractEntityDiagram } from "@/lib/entityDiagram";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
@@ -545,7 +545,7 @@ const PaigeAIChatInner = ({
           </div>
         )}
 
-        <Card className="flex-1 min-h-0 flex flex-col bg-card border-border shadow-card overflow-hidden">
+        <Card className="relative flex-1 min-h-0 flex flex-col bg-card border-border shadow-card overflow-hidden">
           {focusBanner}
           <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
             {messages.map((message, index) => (
@@ -643,19 +643,6 @@ const PaigeAIChatInner = ({
                 ))}
               </div>
             )}
-            {conversation.status === "connected" && (
-              <div className="flex items-center justify-center gap-2 text-sm">
-                {conversation.isSpeaking ? (
-                  <div className="flex items-center gap-2 text-primary">
-                    <div className="w-2 h-2 bg-primary rounded-full animate-pulse motion-reduce:animate-none" />
-                    <span>Paige is speaking...</span>
-                  </div>
-                ) : (
-                  <span className="text-muted-foreground">Listening...</span>
-                )}
-              </div>
-            )}
-            
             <div className="flex items-end gap-2">
               <Textarea
                 ref={inputRef}
@@ -703,20 +690,25 @@ const PaigeAIChatInner = ({
               )}
             </Button>
           </div>
+
+          {/* Voice session UI — scoped to THIS chat card, not the viewport. Owner
+              can keep typing to Paige mid-call via the dock's type-while-talking row. */}
+          <VoiceDock
+            open={voiceModalOpen}
+            status={voiceStatus}
+            isMuted={voiceMuted}
+            pageName={currentPageName}
+            transcript={voiceTranscript}
+            onToggleMute={toggleVoiceMute}
+            onEndCall={stopVoiceChat}
+            inputValue={input}
+            onInputChange={setInput}
+            onSendText={() => handleSend()}
+            isSending={isLoading}
+          />
         </Card>
         </div>
       </div>
-
-      {/* Premium voice session UI — full-screen modal with avatar, transcript, controls. */}
-      <VoiceSessionModal
-        open={voiceModalOpen}
-        status={voiceStatus}
-        isMuted={voiceMuted}
-        pageName={currentPageName}
-        transcript={voiceTranscript}
-        onToggleMute={toggleVoiceMute}
-        onEndCall={stopVoiceChat}
-      />
     </div>
   );
 };
