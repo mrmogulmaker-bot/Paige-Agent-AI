@@ -12,6 +12,17 @@
 --       enterprise tenant → agency authority by the back door. Phase A RAISES
 --       on that branch when the target is an agency/enterprise tenant; agency
 --       authority may ONLY be granted through kind='agency_team'.
+--   (3) FIVE residual inference surfaces (Phase A.2, below) the §1/§5 adversarial
+--       crew found — list_subaccounts, actor_primary_agency, the no-arg
+--       agency_exit_subaccount, agency_portfolio_metrics, and the
+--       agency_team_select RLS policy — each still read the same admin×account_type
+--       inference and are repointed onto the declared rail.
+--
+-- Accepted, non-blocking (crew nits): agency_current_id resolves rail-FIRST then
+-- the owner fallback (was owner-first) — intended, declared authority wins; zero
+-- prod impact (single agency tenant today). The pending admin-on-agency invites
+-- the clamp now refuses are the §9 leak itself (same pattern as the operator's
+-- reported stray-access cases) — refusing them is the fix, not a regression.
 --
 -- Behavior is IDENTICAL for legit operators: the day-0 seed inserted every
 -- prior agency/enterprise owner→agency_owner and admin→agency_admin into
@@ -295,5 +306,154 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.actor_manages_any_agency(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.actor_manages_any_agency(uuid) TO service_role;
+
+-- ============================================================================
+-- Phase A.2 — the FIVE residual inference surfaces the §1/§5 adversarial crew
+-- found (two independent crews corroborated). Each still read the OLD
+-- tenant_members role IN ('owner','admin') × account_type inference, so a stray
+-- admin row on an agency/enterprise tenant could still reach agency-scoped data
+-- or view even after the 4 gates above were repointed. Repoint each onto the
+-- SAME declared rail (agency_current_id / agency_team_role), preserving grants.
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- (3a) list_subaccounts(_actor) — the service_role MCP twin of the (already
+--   repointed) agency_list_my_subaccounts(). Was returning children across
+--   EVERY agency where the actor held an owner/admin tenant_members row, so a
+--   mixed operator (real agency A + stray admin on agency B) saw B's roster over
+--   MCP. Gate on the rail per parent, dropping the admin×account_type join.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.list_subaccounts(_actor uuid)
+ RETURNS TABLE(id uuid, slug text, name text, account_type text, status text, created_at timestamp with time zone)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT c.id, c.slug, c.name, c.account_type, c.status::text, c.created_at
+  FROM public.tenants c
+  JOIN public.tenants p ON p.id = c.parent_tenant_id
+  WHERE p.account_type IN ('agency', 'enterprise')
+    AND public.agency_team_role(p.id, _actor) IS NOT NULL
+  ORDER BY c.created_at DESC;
+$function$;
+
+REVOKE ALL ON FUNCTION public.list_subaccounts(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.list_subaccounts(uuid) TO service_role;
+
+-- ----------------------------------------------------------------------------
+-- (3b) actor_primary_agency(_actor) — the service_role "agency home" resolver
+--   behind agency_exit_subaccount(_actor) (paige-mcp exit_subaccount). Was pure
+--   inference and, ordered by oldest joined_at, a stray admin row could even
+--   OUTRANK the operator's real agency. Repoint to the rail-first resolver; the
+--   _actor exit overload that calls this is fixed transitively.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.actor_primary_agency(_actor uuid)
+ RETURNS uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT public.agency_current_id(_actor);
+$function$;
+
+REVOKE ALL ON FUNCTION public.actor_primary_agency(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.actor_primary_agency(uuid) TO service_role;
+
+-- ----------------------------------------------------------------------------
+-- (3c) agency_exit_subaccount() (no-arg, authenticated) — the browser-callable
+--   "return to /agency" RPC (AccountSwitcher.goToAgency). Resolved the return-to
+--   agency by inline inference and set active_tenant_id to it. Repoint onto the
+--   rail so a stray/durable child-admin row can't land the actor on an agency.
+--   Behavior otherwise identical (same RAISE, same profiles UPDATE, same shape).
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.agency_exit_subaccount()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  _agency uuid;
+BEGIN
+  _agency := public.agency_current_id(auth.uid());
+  IF _agency IS NULL THEN
+    RAISE EXCEPTION 'not_an_agency_manager' USING ERRCODE = '42501';
+  END IF;
+
+  UPDATE public.profiles SET active_tenant_id = _agency WHERE user_id = auth.uid();
+  RETURN jsonb_build_object('active_tenant_id', _agency);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.agency_exit_subaccount() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.agency_exit_subaccount() TO authenticated;
+
+-- ----------------------------------------------------------------------------
+-- (3d) agency_portfolio_metrics() (authenticated) — the Agency dashboard KPI
+--   rollup. Its AUTHORIZATION gate was the old inference. Two problems: (a) a
+--   stray admin passed it (empty rollup, but a 200 "you're an agency manager"
+--   signal instead of 42501); (b) REGRESSION — a rail-only operator added via
+--   kind='agency_team' (agency_manager/biller/specialist/viewer, or an
+--   agency_admin with no legacy tenant_members owner/admin row) FAILED this gate
+--   and got agency_scope_forbidden on the KPI header even though the rest of the
+--   console worked. Repoint the guard to the rail; the CTE body (which already
+--   draws from the rail-gated agency_list_my_subaccounts()) is unchanged.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.agency_portfolio_metrics()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE result jsonb;
+BEGIN
+  IF public.agency_current_id(auth.uid()) IS NULL THEN
+    RAISE EXCEPTION 'agency_scope_forbidden' USING ERRCODE = '42501';
+  END IF;
+  WITH kids AS (SELECT s.id, s.name, s.status, s.created_at FROM public.agency_list_my_subaccounts() s),
+  kid_clients AS (SELECT c.tenant_id, count(*) AS cnt FROM public.clients c WHERE c.tenant_id IN (SELECT id FROM kids) GROUP BY c.tenant_id),
+  kid_mrr AS (
+    SELECT ps.tenant_id, sum(CASE WHEN ps.billing_period = 'annual' THEN round(pl.annual_price_cents::numeric / 12)::bigint ELSE pl.monthly_price_cents END)::bigint AS mrr
+    FROM public.platform_subscriptions ps JOIN public.platform_subscription_plans pl ON pl.id = ps.plan_id
+    WHERE ps.tenant_id IN (SELECT id FROM kids) AND ps.status IN ('active', 'trialing') GROUP BY ps.tenant_id),
+  kid_dunning AS (SELECT DISTINCT ps.tenant_id FROM public.platform_subscriptions ps WHERE ps.tenant_id IN (SELECT id FROM kids) AND ps.status IN ('past_due', 'unpaid')),
+  kid_h AS (
+    SELECT k.id, k.name, k.status, k.created_at, COALESCE(kc.cnt, 0) AS client_count, COALESCE(km.mrr, 0) AS mrr_cents,
+      CASE WHEN k.status IN ('past_due', 'suspended', 'canceled') OR kd.tenant_id IS NOT NULL THEN 'at_risk'
+           WHEN k.status = 'trial' THEN 'watch' ELSE 'healthy' END AS health
+    FROM kids k LEFT JOIN kid_clients kc ON kc.tenant_id = k.id LEFT JOIN kid_mrr km ON km.tenant_id = k.id LEFT JOIN kid_dunning kd ON kd.tenant_id = k.id)
+  SELECT jsonb_build_object(
+    'active_subaccounts',  count(*) FILTER (WHERE status NOT IN ('canceled', 'suspended')),
+    'subaccounts_added',   count(*) FILTER (WHERE created_at >= now() - interval '30 days'),
+    'subaccounts_churned', count(*) FILTER (WHERE status IN ('canceled', 'suspended')),
+    'net_growth', count(*) FILTER (WHERE created_at >= now() - interval '30 days') - count(*) FILTER (WHERE status IN ('canceled', 'suspended')),
+    'portfolio_mrr_cents', COALESCE(sum(mrr_cents), 0),
+    'at_risk_subaccounts', count(*) FILTER (WHERE health = 'at_risk'),
+    'clients_under_mgmt',  COALESCE(sum(client_count), 0),
+    'health', jsonb_build_object('healthy', count(*) FILTER (WHERE health = 'healthy'), 'watch', count(*) FILTER (WHERE health = 'watch'), 'at_risk', count(*) FILTER (WHERE health = 'at_risk')),
+    'leaderboard', COALESCE((SELECT jsonb_agg(jsonb_build_object('tenant_id', lb.id, 'name', lb.name, 'client_count', lb.client_count, 'mrr_cents', lb.mrr_cents, 'health', lb.health) ORDER BY lb.mrr_cents DESC, lb.client_count DESC)
+      FROM (SELECT * FROM kid_h ORDER BY mrr_cents DESC, client_count DESC LIMIT 20) lb), '[]'::jsonb))
+  INTO result FROM kid_h;
+  RETURN result;
+END; $function$;
+
+REVOKE ALL ON FUNCTION public.agency_portfolio_metrics() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.agency_portfolio_metrics() TO authenticated;
+
+-- ----------------------------------------------------------------------------
+-- (3e) RLS policy agency_team_select ON agency_team_members — the leak sat on
+--   the rail's OWN table: the SELECT policy's inference arm let any stray admin
+--   read the WHOLE agency roster (every teammate's user_id, email, agency_role,
+--   scoped_subaccounts). Replace the tenant_members owner/admin arm with the
+--   rail: you see your own row, or the full roster iff you resolve a role on the
+--   rail (agency_team_role handles the immutable owner + active team members).
+-- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS agency_team_select ON public.agency_team_members;
+CREATE POLICY agency_team_select ON public.agency_team_members
+  FOR SELECT
+  USING (
+    user_id = auth.uid()
+    OR public.agency_team_role(agency_tenant_id, auth.uid()) IS NOT NULL
+  );
 
 COMMIT;

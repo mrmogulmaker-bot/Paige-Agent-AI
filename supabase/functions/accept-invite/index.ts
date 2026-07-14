@@ -297,18 +297,25 @@ Deno.serve(async (req) => {
       // tenant_members row on an agency tenant is exactly the inference leak
       // Phase A closes. Refuse before any mutation.
       if (team.tenant_id) {
-        const { data: tRow } = await admin
+        const { data: tRow, error: tErr } = await admin
           .from("tenants")
           .select("account_type")
           .eq("id", team.tenant_id)
           .maybeSingle();
-        if (tRow && ["agency", "enterprise"].includes(String(tRow.account_type))) {
+        // Fail CLOSED: only proceed when we POSITIVELY confirm a non-agency
+        // target. A lookup error or a missing tenant row must refuse — never
+        // fall through to the grant paths on an unverified account_type, or an
+        // agency-staff grant could slip in whenever the lookup transiently errors.
+        if (tErr || !tRow || ["agency", "enterprise"].includes(String(tRow.account_type))) {
           await admin.from("audit_logs").insert({
             user_id: authUser.id,
             entity: "invitation",
             action: "invite_rejected_agency_staff_grant",
             entity_id: team.id,
-            data: { role: team.role, email: team.email, tenant_id: team.tenant_id },
+            data: {
+              role: team.role, email: team.email, tenant_id: team.tenant_id,
+              lookup_error: tErr?.message ?? null, tenant_missing: !tRow,
+            },
           }).then(() => {}, () => {});
           return json(403, { ok: false, error: "This invite cannot grant access on this account. Contact your administrator." });
         }

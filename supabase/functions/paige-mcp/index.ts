@@ -1128,7 +1128,7 @@ mcp.tool("get_coach_performance", {
 
 mcp.tool("create_team_invitation", {
   description:
-    "Create a team invitation row for an internal tenant team member (admin | coach | sales_rep | cs | member). Does NOT send the email — pair with the send-admin-invitation function for that. Platform (super_admin/platform_admin) and agency_* roles are NOT grantable here — those go through the platform-invite and agency-team flows.",
+    "Create a team invitation row for an internal tenant team member (admin | coach | sales_rep | cs_rep). Does NOT send the email — pair with the send-admin-invitation function for that. Platform (super_admin/platform_admin) and agency_* roles are NOT grantable here — those go through the platform-invite and agency-team flows.",
   inputSchema: z.object({
     email: z.string(),
     role: z.enum(["admin", "coach", "sales_rep", "cs_rep"])
