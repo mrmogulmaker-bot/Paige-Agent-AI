@@ -10,13 +10,22 @@
 // embedding and installs via the RPC alone; Paige can also call that RPC straight
 // from chat (§10) without this function.
 //
+// BUNDLES (Wave 1): installing a bundle fans out to its children inside the RPC.
+// A config-only child installs fully in-SQL; a child that carries a kb_pack is
+// created active-but-embedding_pending and returned in the receipt's
+// `children_deferred_embedding` list. This function then embeds each such child's
+// docs and calls install_marketplace_item(child_slug, docIds) — which lands in the
+// RPC's FINALIZE branch (fills kb_doc_ids, clears embedding_pending; does NOT
+// re-ledger, re-count, or change held_directly). §13: the receipt reports exactly
+// which children were embedded vs. left KB-pending (e.g. if Voyage is down).
+//
 // Authorization is enforced server-side against the caller's JWT (the target
 // tenant is authorized via the gated RPCs, never trusted from the payload — §9/§13).
 // §13 honesty: the receipt reports what actually embedded/installed. If a doc can't
 // embed (e.g. VOYAGE_API_KEY down) it is NOT counted as seeded and the orphan row
 // is removed, so the KB never fills with phantom un-searchable entries.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 import { voyageEmbed } from "../_shared/voyage.ts";
 
@@ -56,6 +65,92 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// Embed + insert every kb_pack doc in a version manifest for one item, returning
+// the IDs of the docs that were ACTUALLY seeded (embedded 1:1) — never a phantom.
+// Shared by the top-level item and each deferred bundle child so the honesty rules
+// (exact vector/chunk alignment, orphan cleanup) live in exactly one place (§12/§13).
+async function embedManifestKbDocs(
+  admin: SupabaseClient,
+  tenantId: string,
+  itemSlug: string,
+  manifest: Record<string, unknown>,
+  userId: string,
+  warnings: string[],
+): Promise<string[]> {
+  const seededDocIds: string[] = [];
+  const kb = (manifest?.kb_pack ?? null) as { docs?: unknown[] } | null;
+  const docs: any[] = Array.isArray(kb?.docs) ? kb!.docs! : [];
+  for (const d of docs) {
+    const title = String(d?.title ?? "").slice(0, 300);
+    const content = String(d?.content ?? "");
+    if (!title || !content.trim()) { warnings.push(`skipped a doc with empty title/content`); continue; }
+    const chunks = chunkText(content);
+    if (chunks.length === 0) { warnings.push(`"${title}" had no chunkable content`); continue; }
+
+    // Insert the doc row (service role — authorization already confirmed by caller).
+    const tags = Array.isArray(d?.tags) ? d.tags.slice(0, 20).map((t: any) => String(t)) : [];
+    const { data: doc, error: docErr } = await admin
+      .from("tenant_knowledge_docs")
+      .insert({
+        tenant_id: tenantId,
+        title,
+        content,
+        summary: d?.summary ? String(d.summary).slice(0, 2000) : null,
+        category: d?.category ? String(d.category).slice(0, 100) : "onboarding",
+        tags: [...new Set([`marketplace:${itemSlug}`, ...tags])],
+        source: "sync",
+        share_to_network: false,
+        network_review_status: "none",
+        token_count: Math.ceil(content.length / 4),
+        chunk_count: chunks.length,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    if (docErr || !doc) { warnings.push(`"${title}" could not be saved: ${docErr?.message ?? "insert failed"}`); continue; }
+
+    // Embed the chunks. document input type for stored content.
+    let vecs: number[][] = [];
+    try {
+      vecs = await voyageEmbed(chunks, { inputType: "document" });
+    } catch (e) {
+      vecs = [];
+      warnings.push(`embedding unavailable — "${title}" not seeded (${(e as Error).message})`);
+    }
+    // A short/misaligned return would pair the wrong vector with the wrong chunk
+    // text (positional index). Never store a guess: require exact 1:1 alignment or
+    // fail the doc (§13).
+    if (vecs.length !== chunks.length || vecs.some((v) => !Array.isArray(v) || v.length === 0)) {
+      await admin.from("tenant_knowledge_docs").delete().eq("id", doc.id);
+      if (vecs.length > 0) {
+        warnings.push(`"${title}" embedding was misaligned (${vecs.length}/${chunks.length}) — not seeded`);
+      }
+      continue;
+    }
+    const rows = vecs.map((embedding, i) => ({
+      tenant_id: tenantId,
+      doc_id: doc.id,
+      chunk_index: i,
+      content: chunks[i],
+      embedding,
+      token_count: Math.ceil(chunks[i].length / 4),
+    }));
+
+    if (rows.length === 0) {
+      // Nothing embedded → not retrievable → not a real seed. Remove the orphan (§13).
+      await admin.from("tenant_knowledge_docs").delete().eq("id", doc.id);
+      continue;
+    }
+    await admin.from("tenant_knowledge_chunks").insert(rows);
+    if (rows.length !== chunks.length) {
+      await admin.from("tenant_knowledge_docs").update({ chunk_count: rows.length }).eq("id", doc.id);
+      warnings.push(`"${title}" partially embedded (${rows.length}/${chunks.length} chunks)`);
+    }
+    seededDocIds.push(doc.id);
+  }
+  return seededDocIds;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -69,7 +164,7 @@ serve(async (req) => {
     const userClient = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, {
       global: { headers: { Authorization: auth } },
     });
-    // Service client — used ONLY to read the manifest and write KB rows AFTER the
+    // Service client — used ONLY to read manifests and write KB rows AFTER the
     // caller's authorization for the tenant has been confirmed.
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -131,84 +226,18 @@ serve(async (req) => {
       .select("id, status")
       .eq("tenant_id", tenantId).eq("item_id", item.id).maybeSingle();
 
-    const seededDocIds: string[] = [];
     const warnings: string[] = [];
+    let seededDocIds: string[] = [];
 
     if (!existing || existing.status !== "active") {
-      // Embed + insert kb_pack docs (the part SQL can't do).
-      const docs: any[] = Array.isArray(manifest?.kb_pack?.docs) ? manifest.kb_pack.docs : [];
-      for (const d of docs) {
-        const title = String(d?.title ?? "").slice(0, 300);
-        const content = String(d?.content ?? "");
-        if (!title || !content.trim()) { warnings.push(`skipped a doc with empty title/content`); continue; }
-        const chunks = chunkText(content);
-        if (chunks.length === 0) { warnings.push(`"${title}" had no chunkable content`); continue; }
-
-        // Insert the doc row (service role — authorization already confirmed above).
-        const tags = Array.isArray(d?.tags) ? d.tags.slice(0, 20).map((t: any) => String(t)) : [];
-        const { data: doc, error: docErr } = await admin
-          .from("tenant_knowledge_docs")
-          .insert({
-            tenant_id: tenantId,
-            title,
-            content,
-            summary: d?.summary ? String(d.summary).slice(0, 2000) : null,
-            category: d?.category ? String(d.category).slice(0, 100) : "onboarding",
-            tags: [...new Set([`marketplace:${item.slug}`, ...tags])],
-            source: "sync",
-            share_to_network: false,
-            network_review_status: "none",
-            token_count: Math.ceil(content.length / 4),
-            chunk_count: chunks.length,
-            created_by: userId,
-          })
-          .select("id")
-          .single();
-        if (docErr || !doc) { warnings.push(`"${title}" could not be saved: ${docErr?.message ?? "insert failed"}`); continue; }
-
-        // Embed the chunks. document input type for stored content.
-        let vecs: number[][] = [];
-        try {
-          vecs = await voyageEmbed(chunks, { inputType: "document" });
-        } catch (e) {
-          vecs = [];
-          warnings.push(`embedding unavailable — "${title}" not seeded (${(e as Error).message})`);
-        }
-        // A short/misaligned return would pair the wrong vector with the wrong
-        // chunk text (positional index). Never store a guess: require exact
-        // 1:1 alignment or fail the doc (§13).
-        if (vecs.length !== chunks.length || vecs.some((v) => !Array.isArray(v) || v.length === 0)) {
-          await admin.from("tenant_knowledge_docs").delete().eq("id", doc.id);
-          if (vecs.length > 0) {
-            warnings.push(`"${title}" embedding was misaligned (${vecs.length}/${chunks.length}) — not seeded`);
-          }
-          continue;
-        }
-        const rows = vecs.map((embedding, i) => ({
-          tenant_id: tenantId,
-          doc_id: doc.id,
-          chunk_index: i,
-          content: chunks[i],
-          embedding,
-          token_count: Math.ceil(chunks[i].length / 4),
-        }));
-
-        if (rows.length === 0) {
-          // Nothing embedded → not retrievable → not a real seed. Remove the orphan (§13).
-          await admin.from("tenant_knowledge_docs").delete().eq("id", doc.id);
-          continue;
-        }
-        await admin.from("tenant_knowledge_chunks").insert(rows);
-        if (rows.length !== chunks.length) {
-          await admin.from("tenant_knowledge_docs").update({ chunk_count: rows.length }).eq("id", doc.id);
-          warnings.push(`"${title}" partially embedded (${rows.length}/${chunks.length} chunks)`);
-        }
-        seededDocIds.push(doc.id);
-      }
+      // Embed + insert THIS item's own kb_pack docs (the part SQL can't do). For a
+      // bundle whose own manifest carries no kb_pack this is a no-op; its children
+      // are embedded below.
+      seededDocIds = await embedManifestKbDocs(admin, tenantId, item.slug, manifest, userId, warnings);
     }
 
-    // Finalize: flip skills, record provenance (incl. the doc IDs we just seeded),
-    // write the ledger — all atomic + idempotent inside the gated RPC.
+    // Finalize: flip skills, fan out the bundle, record provenance (incl. the doc
+    // IDs we just seeded), write the ledger — all atomic + idempotent in the RPC.
     const { data: receipt, error: rpcErr } = await userClient.rpc("install_marketplace_item", {
       _tenant_id: tenantId,
       _item_slug: item_slug,
@@ -225,17 +254,78 @@ serve(async (req) => {
       return json({ error: rpcErr.message }, forbidden ? 403 : 400);
     }
 
+    const rec = (receipt ?? {}) as Record<string, unknown>;
+
     // A parallel install won the race: the RPC returned the already-active receipt
     // and did NOT record the docs we just embedded (its seeded_refs are the
     // winner's). Delete our now-unreferenced batch so it can't strand orphaned,
     // un-searchable KB (§13). The winner's docs are untouched.
-    const rec = (receipt ?? {}) as Record<string, unknown>;
     if (rec.already_installed === true && seededDocIds.length) {
       await admin.from("tenant_knowledge_docs").delete().in("id", seededDocIds);
       warnings.push("this item was already installed — no duplicate knowledge was added");
     }
 
-    return json({ ...rec, warnings });
+    // ── BUNDLE FAN-OUT: finalize each deferred kb_pack child ────────────────────
+    // The RPC created each kb-carrying child active-but-embedding_pending and listed
+    // it here. Embed its docs and call the RPC again per child (FINALIZE branch:
+    // fills kb_doc_ids, clears the pending flag — no re-ledger/re-count). Each child
+    // is independent: one child's embedding failure never blocks the others, and is
+    // reported honestly rather than silently leaving a phantom-KB install (§13).
+    const deferred = Array.isArray(rec.children_deferred_embedding)
+      ? (rec.children_deferred_embedding as any[]) : [];
+    const bundleChildren: Record<string, unknown>[] = [];
+    for (const child of deferred) {
+      const childSlug = String(child?.item_slug ?? "");
+      if (!childSlug) continue;
+
+      const { data: childItem } = await admin
+        .from("marketplace_items")
+        .select("id, slug, current_version_id")
+        .eq("slug", childSlug).maybeSingle();
+      if (!childItem?.current_version_id) {
+        warnings.push(`bundle child "${childSlug}" has no published version — its knowledge was not seeded`);
+        bundleChildren.push({ item_slug: childSlug, ok: false, reason: "no published version" });
+        continue;
+      }
+      const { data: childVer } = await admin
+        .from("marketplace_item_versions")
+        .select("install_manifest")
+        .eq("id", childItem.current_version_id).maybeSingle();
+      const childManifest = (childVer?.install_manifest ?? {}) as Record<string, any>;
+
+      const childWarnings: string[] = [];
+      const childDocIds = await embedManifestKbDocs(admin, tenantId, childSlug, childManifest, userId, childWarnings);
+      childWarnings.forEach((w) => warnings.push(`[${childSlug}] ${w}`));
+
+      // Finalize the child (docIds present → FINALIZE branch clears embedding_pending).
+      // If nothing embedded (childDocIds empty), the RPC is a no-op and the child
+      // stays KB-pending — surfaced as a warning, not a silent success.
+      const { data: childReceipt, error: childErr } = await userClient.rpc("install_marketplace_item", {
+        _tenant_id: tenantId,
+        _item_slug: childSlug,
+        _seeded_kb_doc_ids: childDocIds,
+        _installed_by_agent: installed_by_agent ?? null,
+      });
+      if (childErr) {
+        if (childDocIds.length) {
+          await admin.from("tenant_knowledge_docs").delete().in("id", childDocIds);
+        }
+        warnings.push(`bundle child "${childSlug}" could not be finalized: ${childErr.message}`);
+        bundleChildren.push({ item_slug: childSlug, ok: false, reason: childErr.message });
+        continue;
+      }
+      if (childDocIds.length === 0) {
+        warnings.push(`bundle child "${childSlug}" is active but its knowledge is still pending (embedding unavailable) — retry to seed it`);
+      }
+      bundleChildren.push({
+        item_slug: childSlug,
+        ok: true,
+        kb_docs_seeded: childDocIds.length,
+        status: (childReceipt as Record<string, unknown>)?.status ?? null,
+      });
+    }
+
+    return json({ ...rec, warnings, ...(deferred.length ? { bundle_children: bundleChildren } : {}) });
   } catch (e) {
     console.error("[marketplace-install] error:", e);
     return json({ error: (e as Error).message }, 500);
