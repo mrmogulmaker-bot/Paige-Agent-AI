@@ -56,6 +56,19 @@ BEGIN
   IF p_patch IS NULL OR jsonb_typeof(p_patch) <> 'object' THEN
     RAISE EXCEPTION 'ONBOARDING_BAD_PATCH' USING ERRCODE = '22023';
   END IF;
+  -- Defense-in-depth (§13): accept only the known top-level keys and a sane size
+  -- cap, so even a legit owner/admin can't stuff arbitrary or oversized junk into
+  -- the column. (The write already targets only onboarding_state on their OWN
+  -- tenant — this just keeps the shape honest.)
+  IF EXISTS (
+    SELECT 1 FROM jsonb_object_keys(p_patch) AS k
+    WHERE k NOT IN ('dismissed', 'completed_at', 'steps')
+  ) THEN
+    RAISE EXCEPTION 'ONBOARDING_BAD_PATCH_KEY' USING ERRCODE = '22023';
+  END IF;
+  IF length(p_patch::text) > 4000 THEN
+    RAISE EXCEPTION 'ONBOARDING_PATCH_TOO_LARGE' USING ERRCODE = '22023';
+  END IF;
   -- Auth gate BEFORE any write. Same rule as the read seam.
   IF _caller IS NOT NULL THEN
     IF NOT (public.is_tenant_admin(p_tenant_id) OR public.is_tenant_owner(_caller, p_tenant_id)) THEN

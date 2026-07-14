@@ -201,7 +201,10 @@ serve(async (req: Request): Promise<Response> => {
         body: {
           templateName: "role-invitation",
           recipientEmail: email,
-          idempotencyKey: `agency-invite-${agencyId}-${target.id}-${role}`,
+          // Discriminate on the freshly minted token's tail so a RE-invite (new
+          // single-use token) actually re-sends instead of being deduped against a
+          // now-spent/expired link. The static /auth fallback keeps a stable key.
+          idempotencyKey: `agency-invite-${agencyId}-${target.id}-${role}-${inviteUrl.split("/").pop()}`,
           tenantId: agencyId,
           templateData: {
             role: ROLE_LABEL[role] ?? role,   // matches the agency-role copy keys

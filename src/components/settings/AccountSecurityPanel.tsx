@@ -120,7 +120,7 @@ function ChangePasswordCard() {
         toast({
           title: "Verify it's you first",
           description:
-            "For your security we need to reconfirm your identity before changing your password. Check your email for a verification link, then try again.",
+            "For your security, changing your password here needs an extra identity check. Sign out and use the “Forgot password” link on the sign-in page to reset it by email.",
           variant: "destructive",
         });
       } else {
@@ -243,9 +243,21 @@ function TwoFactorCard() {
   const startEnroll = async () => {
     setEnrolling(true);
     try {
+      // Clean up orphaned unverified TOTP factors from any abandoned prior attempt
+      // (navigate-away / reload without Cancel). Left alone they accumulate
+      // invisibly and a same-day retry collides on gotrue's friendly-name
+      // uniqueness, silently blocking setup with no UI recovery (§12/§13).
+      const { data: existing } = await supabase.auth.mfa.listFactors();
+      const stray = ((existing?.all ?? []) as MfaFactor[]).filter(
+        (f) => f.factor_type === "totp" && f.status !== "verified",
+      );
+      for (const f of stray) {
+        await supabase.auth.mfa.unenroll({ factorId: f.id }).catch(() => {});
+      }
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: "totp",
-        friendlyName: `Authenticator ${new Date().toISOString().slice(0, 10)}`,
+        // Full timestamp (not date-only) so repeated same-day setups never collide.
+        friendlyName: `Authenticator ${new Date().toISOString()}`,
       });
       if (error) throw error;
       setPending({
