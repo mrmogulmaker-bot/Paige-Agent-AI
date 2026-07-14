@@ -839,8 +839,46 @@ export const ProfileSettings = () => {
 };
 
 const SecurityCard = () => {
+  const { toast } = useToast();
   const [signingOut, setSigningOut] = useState(false);
   const [signingOutAll, setSigningOutAll] = useState(false);
+
+  // Self-service password change. Works for password accounts AND OAuth-only
+  // (Google) accounts — updateUser sets a password so they can also sign in
+  // with email + password. No email round-trip; the new password takes effect
+  // on this session immediately.
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (newPassword.length < 8) {
+      toast({ title: "Password too short", description: "Use at least 8 characters.", variant: "destructive" });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast({ title: "Passwords don't match", description: "Re-enter the same password in both fields.", variant: "destructive" });
+      return;
+    }
+    setChangingPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setNewPassword("");
+      setConfirmPassword("");
+      setShowPassword(false);
+      toast({ title: "Password updated", description: "Your new password is active now." });
+    } catch (error) {
+      toast({
+        title: "Couldn't update password",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setChangingPassword(false);
+    }
+  };
 
   const handleLocalSignOut = async () => {
     if (signingOut || signingOutAll) return;
@@ -868,6 +906,60 @@ const SecurityCard = () => {
           <p className="text-sm text-muted-foreground mt-1">
             Manage where you're signed in. Signing out of all devices forces every browser, tablet, and phone using your account to sign back in.
           </p>
+        </div>
+
+        <div className="rounded-lg border border-border p-4 space-y-3">
+          <div>
+            <p className="font-medium text-sm">Change password</p>
+            <p className="text-xs text-muted-foreground">Set a new password. It takes effect immediately on this account.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="new-password">New password</Label>
+              <div className="relative">
+                <Input
+                  id="new-password"
+                  type={showPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                  autoComplete="new-password"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full"
+                  onClick={() => setShowPassword((s) => !s)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="confirm-password">Confirm password</Label>
+              <Input
+                id="confirm-password"
+                type={showPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter new password"
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+          <Button
+            onClick={handleChangePassword}
+            disabled={changingPassword || !newPassword || !confirmPassword}
+            className="bg-gradient-gold"
+          >
+            {changingPassword ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating…</>
+            ) : (
+              "Update Password"
+            )}
+          </Button>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3">
