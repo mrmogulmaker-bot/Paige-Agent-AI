@@ -148,6 +148,15 @@ BEGIN
         _child_features := _child_features || jsonb_build_object('playbook', _pb_config->>'slug');
       END IF;
     END IF;
+  ELSIF _inherit_from_parent
+        AND _parent_features IS NOT NULL
+        AND (_parent_features ? 'playbook')
+        AND COALESCE(_parent_features->>'playbook', '') NOT IN ('', 'funding') THEN
+    -- Slug-only parent (features.playbook set, no playbook_config — the shape the
+    -- slug-only branch of set_tenant_playbook produces): carry the slug down so
+    -- "inherit" honors the agency's Playbook for BOTH storage shapes, not just the
+    -- config shape. §2: a 'funding' slug is still never inherited as a default.
+    _child_features := _child_features || jsonb_build_object('playbook', _parent_features->>'playbook');
   END IF;
 
   -- ── Portal presentation overlay: carry down when inheriting (optional) ──────

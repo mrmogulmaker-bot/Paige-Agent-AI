@@ -175,12 +175,22 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 2. Check suppression list (fail-closed: if we can't verify, don't send)
-  const { data: suppressed, error: suppressionError } = await supabase
+  // 2. Check suppression list (fail-closed: if we can't verify, don't send).
+  // Suppression is SCOPED BY CATEGORY: transactional/security mail (email OTP,
+  // sign-out alerts, role/broker invites, approvals) must ALWAYS deliver, so a
+  // user who opted out of BULK mail (reason='unsubscribe') is NOT suppressed for
+  // transactional sends — only hard reasons (bounce/complaint, and any null-reason
+  // row) block those. Bulk mail honors every suppression, unsubscribe included.
+  // Without this, one bulk unsubscribe would silently kill a user's OTP/invite
+  // mail and lock them out.
+  let suppressionQuery = supabase
     .from('suppressed_emails')
     .select('id')
     .eq('email', effectiveRecipient.toLowerCase())
-    .maybeSingle()
+  if (template.category !== 'bulk') {
+    suppressionQuery = suppressionQuery.or('reason.neq.unsubscribe,reason.is.null')
+  }
+  const { data: suppressed, error: suppressionError } = await suppressionQuery.maybeSingle()
 
   if (suppressionError) {
     console.error('Suppression check failed — refusing to send', {

@@ -34,17 +34,12 @@ export default function SignupCoachQualify() {
 
         <div className="mt-8 flex flex-wrap gap-3">
           <Button asChild>
-            <a href="https://www.skool.com/mogul-maker-academy" target="_blank" rel="noreferrer">
-              Join the community while you wait
-            </a>
-          </Button>
-          <Button variant="outline" asChild>
             <Link to="/app">Continue to your dashboard</Link>
           </Button>
         </div>
 
         <p className="text-xs text-muted-foreground mt-10">
-          Questions in the meantime? Reply to the welcome email or text us at +1 470-594-4470.
+          Questions in the meantime? Just reply to the welcome email — we'll get right back to you.
         </p>
       </div>
     </div>
