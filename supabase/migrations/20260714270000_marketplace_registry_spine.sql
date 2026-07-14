@@ -250,8 +250,10 @@ CREATE POLICY mp_ledger_read ON public.marketplace_install_ledger FOR SELECT TO 
                        AND v.owner_tenant_id IS NOT NULL AND public.is_tenant_admin(v.owner_tenant_id)));
 
 -- ── Seed: the first-party "Paige" vendor + the current catalog as data ───────
-INSERT INTO public.marketplace_vendors (id, slug, display_name, owner_tenant_id, origin, status, contact_email)
-VALUES ('00000000-0000-4000-a000-000000000a01'::uuid, 'paige', 'Paige Agent AI', NULL, 'first_party', 'verified', 'support@paigeagent.ai')
+-- No hard-coded id — the vendor is always resolved by its stable slug below, and
+-- a literal UUID trips the migration linter (FK-to-auth.users rebuild guard).
+INSERT INTO public.marketplace_vendors (slug, display_name, owner_tenant_id, origin, status, contact_email)
+VALUES ('paige', 'Paige Agent AI', NULL, 'first_party', 'verified', 'support@paigeagent.ai')
 ON CONFLICT (slug) DO NOTHING;
 
 -- Helper to seed an item + its published v1 in one shot.
@@ -264,7 +266,7 @@ BEGIN
   INSERT INTO public.marketplace_items (slug,item_type,vendor_id,origin,name,tagline,description,category,icon,scope,status,default_for_new_tenants)
   VALUES ('funding','skill',_vendor,'first_party','Funding & Capital-Raising',
           'Turn Paige into a funding-desk strategist.',
-          'Adds funding-readiness, lender matching, and a funding knowledge base to Paige. Opt-in; layers on top of any coach type.',
+          'Adds funding-readiness, lender matching, and a funding knowledge base to Paige. Opt-in; layers on top of any practice — coach, consultant, agency, or advisor.',
           'verticals','TrendingUp','public','listed',false)
   ON CONFLICT (slug) DO NOTHING RETURNING id INTO _item;
   IF _item IS NOT NULL THEN
@@ -287,7 +289,7 @@ BEGIN
   INSERT INTO public.marketplace_items (slug,item_type,vendor_id,origin,name,tagline,description,category,icon,scope,status,default_for_new_tenants)
   VALUES ('client_onboarding_essentials','kb_pack',_vendor,'first_party','Client Onboarding Essentials',
           'Give Paige a proven onboarding playbook.',
-          'Seeds your knowledge base with a coaching-generic client-onboarding framework Paige uses to welcome, orient, and set expectations with every new client.',
+          'Seeds your knowledge base with a proven client-onboarding framework Paige uses to welcome, orient, and set expectations with every new client — for any practice.',
           'experience','BookOpen','public','listed',false)
   ON CONFLICT (slug) DO NOTHING RETURNING id INTO _item;
   IF _item IS NOT NULL THEN

@@ -174,16 +174,24 @@ serve(async (req) => {
           vecs = [];
           warnings.push(`embedding unavailable — "${title}" not seeded (${(e as Error).message})`);
         }
-        const rows = vecs
-          .map((embedding, i) => ({
-            tenant_id: tenantId,
-            doc_id: doc.id,
-            chunk_index: i,
-            content: chunks[i],
-            embedding,
-            token_count: Math.ceil(chunks[i].length / 4),
-          }))
-          .filter((r) => Array.isArray(r.embedding) && r.embedding.length > 0);
+        // A short/misaligned return would pair the wrong vector with the wrong
+        // chunk text (positional index). Never store a guess: require exact
+        // 1:1 alignment or fail the doc (§13).
+        if (vecs.length !== chunks.length || vecs.some((v) => !Array.isArray(v) || v.length === 0)) {
+          await admin.from("tenant_knowledge_docs").delete().eq("id", doc.id);
+          if (vecs.length > 0) {
+            warnings.push(`"${title}" embedding was misaligned (${vecs.length}/${chunks.length}) — not seeded`);
+          }
+          continue;
+        }
+        const rows = vecs.map((embedding, i) => ({
+          tenant_id: tenantId,
+          doc_id: doc.id,
+          chunk_index: i,
+          content: chunks[i],
+          embedding,
+          token_count: Math.ceil(chunks[i].length / 4),
+        }));
 
         if (rows.length === 0) {
           // Nothing embedded → not retrievable → not a real seed. Remove the orphan (§13).
@@ -217,7 +225,17 @@ serve(async (req) => {
       return json({ error: rpcErr.message }, forbidden ? 403 : 400);
     }
 
-    return json({ ...(receipt as Record<string, unknown>), warnings });
+    // A parallel install won the race: the RPC returned the already-active receipt
+    // and did NOT record the docs we just embedded (its seeded_refs are the
+    // winner's). Delete our now-unreferenced batch so it can't strand orphaned,
+    // un-searchable KB (§13). The winner's docs are untouched.
+    const rec = (receipt ?? {}) as Record<string, unknown>;
+    if (rec.already_installed === true && seededDocIds.length) {
+      await admin.from("tenant_knowledge_docs").delete().in("id", seededDocIds);
+      warnings.push("this item was already installed — no duplicate knowledge was added");
+    }
+
+    return json({ ...rec, warnings });
   } catch (e) {
     console.error("[marketplace-install] error:", e);
     return json({ error: (e as Error).message }, 500);
