@@ -54,11 +54,11 @@ const TIER_LABEL: Record<string, string> = {
 const TIER_FILTERS = ["all", "client", "tenant", "subaccount", "agency", "god"] as const;
 type TierFilter = (typeof TIER_FILTERS)[number];
 
-function TierTag({ tier }: { tier: string | null }) {
-  if (!tier) return <span className="text-muted-foreground">—</span>;
+function TierTag({ tier, fallback = "—" }: { tier: string | null; fallback?: string }) {
+  if (!tier) return <span className="text-xs uppercase tracking-wide text-muted-foreground">{fallback}</span>;
   return (
     <span className="text-xs uppercase tracking-wide text-muted-foreground">
-      {TIER_LABEL[tier] ?? tier}
+      {TIER_LABEL[tier] ?? "Other"}
     </span>
   );
 }
@@ -128,9 +128,9 @@ export default function PlatformSends() {
       >
         {rows.map((r) => (
           <TableRow key={`${r.source_table}-${r.send_id}`}>
-            <TableCell className="font-medium">{CHANNEL_LABEL[r.source_table] ?? r.source_table}</TableCell>
-            <TableCell><TierTag tier={r.origin_tier ?? r.actor_tier} /></TableCell>
-            <TableCell><TierTag tier={r.actor_tier} /></TableCell>
+            <TableCell className="font-medium">{CHANNEL_LABEL[r.source_table] ?? "Send"}</TableCell>
+            <TableCell><TierTag tier={r.origin_tier ?? r.actor_tier} fallback="System" /></TableCell>
+            <TableCell><TierTag tier={r.actor_tier} fallback="System" /></TableCell>
             <TableCell><TierTag tier={r.target_tier} /></TableCell>
             <TableCell className="text-sm text-muted-foreground">{r.recipient_email ?? "—"}</TableCell>
             <TableCell className="text-sm text-muted-foreground">{r.status ?? "—"}</TableCell>
@@ -140,6 +140,13 @@ export default function PlatformSends() {
           </TableRow>
         ))}
       </DataTableShell>
+
+      {rows.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Most recent {rows.length}{rows.length >= 500 ? " (capped at 500)" : ""} sends from the last 30 days.
+          System/platform emails (no tenant of origin) show as “System”.
+        </p>
+      )}
     </PageShell>
   );
 }
