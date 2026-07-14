@@ -106,6 +106,7 @@ CREATE OR REPLACE FUNCTION public._marketplace_finance_re()
  RETURNS text LANGUAGE sql IMMUTABLE AS $function$
   SELECT '(credit|funding|lending|lender|loan|financ|capital[- ]rais|tradeline|underwrit|\mdebt\M|merchant cash|cash advance|\mfico\M|collections|business credit|net[- ]?30|grant writ)'::text;
 $function$;
+REVOKE ALL ON FUNCTION public._marketplace_finance_re() FROM PUBLIC;
 
 -- ── §2 finance-default guard: extend to walk bundle children recursively ──────
 -- A bundle's own copy/manifest is just child slugs; the finance content lives in
@@ -323,7 +324,11 @@ BEGIN
     DELETE FROM public.marketplace_install_bundle_links
      WHERE bundle_install_id = _install_id AND child_install_id = _link.child_install_id;
 
-    SELECT * INTO _child FROM public.marketplace_installs WHERE id = _link.child_install_id;
+    -- Tenant predicate is defense-in-depth: links can't cross tenants (fan-out is
+    -- tenant-scoped), but this makes the teardown self-defending, not merely inheriting
+    -- the upstream invariant (§9/§13).
+    SELECT * INTO _child FROM public.marketplace_installs
+     WHERE id = _link.child_install_id AND tenant_id = _tenant_id;
     IF FOUND AND _child.status = 'active' THEN
       _remaining := (CASE WHEN _child.held_directly THEN 1 ELSE 0 END)
                     + public._marketplace_active_bundle_holds(_child.id);
