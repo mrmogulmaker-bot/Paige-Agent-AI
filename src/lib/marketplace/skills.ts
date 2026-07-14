@@ -39,7 +39,12 @@ export const SKILL_CATEGORIES: SkillCategory[] = [
   {
     key: "verticals",
     label: "Practice Verticals",
-    blurb: "Domain brains that give Paige deep, profession-specific expertise. Layer one onto your coach type — your persona stays yours.",
+    blurb: "Domain brains that give Paige deep, profession-specific expertise. Layer one onto your practice — your persona stays yours.",
+  },
+  {
+    key: "playbooks",
+    label: "Playbooks & Knowledge",
+    blurb: "Proven frameworks Paige draws on with every client. Install one and she runs discovery, retention, pricing, and more like a seasoned operator.",
   },
   {
     key: "experience",
