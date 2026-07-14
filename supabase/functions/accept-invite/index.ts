@@ -266,6 +266,54 @@ Deno.serve(async (req) => {
         return json(404, { ok: false, error: "Account not found. Contact your administrator." });
       }
 
+      // ── SECURITY (Tier Rail Phase A) ──────────────────────────────────────
+      // This generic accept path must NEVER mint platform/god authority. Those
+      // roles (super_admin / platform_admin / any platform_*/agency_*/god role)
+      // may only be granted through the dedicated platform-invite flow
+      // (create_platform_invite → JoinPlatform). If an invitations row carries
+      // one here, refuse the whole accept BEFORE any mutation — log and stop.
+      const roleLc = String(team.role ?? "").toLowerCase();
+      const FORBIDDEN_ACCEPT_ROLES = new Set([
+        "super_admin", "platform_admin", "god", "platform_owner", "owner_god",
+      ]);
+      if (
+        FORBIDDEN_ACCEPT_ROLES.has(roleLc) ||
+        roleLc.startsWith("platform_") ||
+        roleLc.startsWith("agency_")
+      ) {
+        await admin.from("audit_logs").insert({
+          user_id: authUser.id,
+          entity: "invitation",
+          action: "invite_rejected_privileged_role",
+          entity_id: team.id,
+          data: { role: team.role, email: team.email },
+        }).then(() => {}, () => {});
+        return json(403, { ok: false, error: "This invite cannot be accepted here. Contact your administrator." });
+      }
+
+      // A staff/team invite may only grant membership on a NON-agency tenant
+      // (mirrors accept_tenant_invite's staff-branch guard). Agency/enterprise
+      // authority must come through the agency-team invite flow — a staff
+      // tenant_members row on an agency tenant is exactly the inference leak
+      // Phase A closes. Refuse before any mutation.
+      if (team.tenant_id) {
+        const { data: tRow } = await admin
+          .from("tenants")
+          .select("account_type")
+          .eq("id", team.tenant_id)
+          .maybeSingle();
+        if (tRow && ["agency", "enterprise"].includes(String(tRow.account_type))) {
+          await admin.from("audit_logs").insert({
+            user_id: authUser.id,
+            entity: "invitation",
+            action: "invite_rejected_agency_staff_grant",
+            entity_id: team.id,
+            data: { role: team.role, email: team.email, tenant_id: team.tenant_id },
+          }).then(() => {}, () => {});
+          return json(403, { ok: false, error: "This invite cannot grant access on this account. Contact your administrator." });
+        }
+      }
+
       const { error: uErr } = await admin.auth.admin.updateUserById(authUser.id, {
         password,
         email_confirm: true,
