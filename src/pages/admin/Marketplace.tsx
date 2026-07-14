@@ -13,7 +13,7 @@
  * a Playbook preset (e.g. the Funding coach type), so we reconcile all three paths
  * — the AI gate reads enabled_skills, and the card must never misrepresent it.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { TrendingUp, Palette, Mic, Workflow, BookOpen, Sparkles } from "lucide-react";
@@ -122,9 +122,12 @@ export default function Marketplace() {
   const feats = featuresQ.data ?? { enabledSkills: [], presetFundingOn: false };
   const loading = catalogQ.isLoading || featuresQ.isLoading;
 
+  // For a skill, "on" is driven by the AI gate itself (enabled_skills + preset) —
+  // the source of truth the chat reads — so the card can never show "Live" while
+  // the gate is off (§13). Install always writes enabled_skills, so they agree.
   const isOnFor = (r: CatalogRow) =>
     r.item_type === "skill"
-      ? feats.enabledSkills.includes(r.slug) || r.installed || (r.slug === "funding" && feats.presetFundingOn)
+      ? feats.enabledSkills.includes(r.slug) || (r.slug === "funding" && feats.presetFundingOn)
       : r.installed;
   const lockedOnFor = (r: CatalogRow) => r.slug === "funding" && feats.presetFundingOn;
   const availableFor = (r: CatalogRow) => r.version != null;
@@ -186,11 +189,6 @@ export default function Marketplace() {
     }
   };
 
-  const notify = (r: CatalogRow) => {
-    // §13: no waitlist store yet — don't claim a signup we didn't capture.
-    toast.info(`${r.name} is coming soon — it'll show up right here the moment it's ready.`);
-  };
-
   const byCategory = useMemo(() => {
     const map = new Map<string, CatalogRow[]>();
     for (const r of rows) {
@@ -211,13 +209,23 @@ export default function Marketplace() {
     );
   }
 
-  // Category order follows the curated list; any category not in it falls to the end.
+  // Category order follows the curated list; any category not in it falls to the
+  // end. Only categories that actually have rows render (so the 01/02 badges are
+  // numbered off the VISIBLE list, never skipping).
   const orderedCategories = [
     ...SKILL_CATEGORIES,
     ...[...byCategory.keys()]
       .filter((k) => !SKILL_CATEGORIES.some((c) => c.key === k))
       .map((k) => ({ key: k, label: k, blurb: "" })),
   ];
+  const visibleCategories = orderedCategories.filter((cat) => (byCategory.get(cat.key) ?? []).length > 0);
+
+  // Freeze the opened row so the detail dialog keeps its content through the close
+  // animation (never a bare, titleless DialogContent flash — §11/a11y).
+  const detailRow = openSlug ? rows.find((r) => r.slug === openSlug) ?? null : null;
+  const shownRowRef = useRef<CatalogRow | null>(null);
+  if (detailRow) shownRowRef.current = detailRow;
+  const dialogRow = detailRow ?? shownRowRef.current;
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8 md:px-8 space-y-10">
@@ -269,82 +277,111 @@ export default function Marketplace() {
         </div>
       </section>
 
-      {catalogQ.isError ? (
+      {catalogQ.isError || featuresQ.isError ? (
         <Card><CardContent className="p-6 text-sm text-muted-foreground">
           Couldn't load the capability store. Refresh to try again.
         </CardContent></Card>
+      ) : loading ? (
+        <MarketplaceSkeleton />
+      ) : rows.length === 0 ? (
+        <Card><CardContent className="flex flex-col items-center gap-2 p-10 text-center">
+          <Sparkles className="h-6 w-6 text-muted-foreground" aria-hidden />
+          <p className="text-sm font-medium text-foreground">No capabilities available yet</p>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            New capabilities for your Paige will appear here as they ship.
+          </p>
+        </CardContent></Card>
       ) : (
-        orderedCategories.map((cat, i) => {
-          const catRows = byCategory.get(cat.key) ?? [];
-          if (catRows.length === 0) return null;
-          return (
-            <section key={cat.key} className="space-y-4">
-              <div className="flex items-center gap-3">
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary text-[11px] font-semibold text-white">
-                  {String(i + 1).padStart(2, "0")}
-                </span>
-                <div className="min-w-0">
-                  <h2 className="text-lg font-semibold leading-tight text-foreground">{cat.label}</h2>
-                  {cat.blurb && <p className="text-sm text-muted-foreground">{cat.blurb}</p>}
-                </div>
-                <div className="ml-2 hidden h-px flex-1 bg-border/60 sm:block" />
+        visibleCategories.map((cat, i) => (
+          <section key={cat.key} className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary text-[11px] font-semibold text-white">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold leading-tight text-foreground">{cat.label}</h2>
+                {cat.blurb && <p className="text-sm text-muted-foreground">{cat.blurb}</p>}
               </div>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {catRows.map((r) => {
-                  const Icon = ICONS[r.icon ?? ""] ?? Sparkles;
-                  const available = availableFor(r);
-                  const lockedOn = lockedOnFor(r);
-                  const isOn = isOnFor(r) || lockedOn;
-                  const skill: MarketplaceSkill = {
-                    slug: r.slug,
-                    name: r.name,
-                    tagline: r.tagline ?? "",
-                    description: r.description ?? "",
-                    category: r.category,
-                    status: available ? "available" : "coming_soon",
-                    icon: r.icon ?? "Sparkles",
-                  };
-                  return (
-                    <SkillCard
-                      key={r.slug}
-                      skill={skill}
-                      Icon={Icon}
-                      isOn={isOn}
-                      available={available}
-                      lockedOn={lockedOn}
-                      saving={saving === r.slug}
-                      loading={loading}
-                      justArmed={justArmed === r.slug}
-                      onToggle={(v) => toggle(r, v)}
-                      onNotify={() => notify(r)}
-                      onOpen={() => setOpenSlug(r.slug)}
-                    />
-                  );
-                })}
-              </div>
-            </section>
-          );
-        })
+              <div className="ml-2 hidden h-px flex-1 bg-border/60 sm:block" />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {(byCategory.get(cat.key) ?? []).map((r) => {
+                const Icon = ICONS[r.icon ?? ""] ?? Sparkles;
+                const available = availableFor(r);
+                const lockedOn = lockedOnFor(r);
+                const isOn = isOnFor(r) || lockedOn;
+                const skill: MarketplaceSkill = {
+                  slug: r.slug,
+                  name: r.name,
+                  tagline: r.tagline ?? "",
+                  description: r.description ?? "",
+                  category: r.category,
+                  status: available ? "available" : "coming_soon",
+                  icon: r.icon ?? "Sparkles",
+                };
+                return (
+                  <SkillCard
+                    key={r.slug}
+                    skill={skill}
+                    Icon={Icon}
+                    isOn={isOn}
+                    available={available}
+                    lockedOn={lockedOn}
+                    saving={saving === r.slug}
+                    loading={loading}
+                    justArmed={justArmed === r.slug}
+                    onToggle={(v) => toggle(r, v)}
+                    onOpen={() => setOpenSlug(r.slug)}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        ))
       )}
 
-      <MarketplaceDetailDialog
-        row={rows.find((r) => r.slug === openSlug) ?? null}
-        open={!!openSlug}
-        onOpenChange={(v) => !v && setOpenSlug(null)}
-        isOn={(r) => isOnFor(r)}
-        available={availableFor}
-        lockedOn={lockedOnFor}
-        saving={saving}
-        onToggle={toggle}
-        onNotify={notify}
-      />
+      {dialogRow && (
+        <MarketplaceDetailDialog
+          row={dialogRow}
+          open={!!openSlug}
+          onOpenChange={(v) => !v && setOpenSlug(null)}
+          isOn={isOnFor}
+          available={availableFor}
+          lockedOn={lockedOnFor}
+          saving={saving}
+          onToggle={toggle}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Loading placeholder — a shimmer grid so the body is never a bare blank (§11). */
+function MarketplaceSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="h-5 w-40 animate-pulse rounded bg-muted" />
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="min-h-[15rem] rounded-[var(--radius)] border border-border bg-card p-5">
+            <div className="flex items-start justify-between">
+              <div className="h-14 w-14 animate-pulse rounded-xl bg-muted" />
+              <div className="h-5 w-12 animate-pulse rounded-full bg-muted" />
+            </div>
+            <div className="mt-4 h-4 w-2/3 animate-pulse rounded bg-muted" />
+            <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-muted" />
+            <div className="mt-4 h-3 w-full animate-pulse rounded bg-muted" />
+            <div className="mt-2 h-3 w-5/6 animate-pulse rounded bg-muted" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
 /** The full detail view for one capability — opens when a card is clicked. */
 function MarketplaceDetailDialog({
-  row, open, onOpenChange, isOn, available, lockedOn, saving, onToggle, onNotify,
+  row, open, onOpenChange, isOn, available, lockedOn, saving, onToggle,
 }: {
   row: CatalogRow | null;
   open: boolean;
@@ -354,9 +391,8 @@ function MarketplaceDetailDialog({
   lockedOn: (r: CatalogRow) => boolean;
   saving: string | null;
   onToggle: (r: CatalogRow, on: boolean) => void;
-  onNotify: (r: CatalogRow) => void;
 }) {
-  if (!row) return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent /></Dialog>;
+  if (!row) return null;
   const Icon = ICONS[row.icon ?? ""] ?? Sparkles;
   const isAvail = available(row);
   const locked = lockedOn(row);
@@ -369,7 +405,7 @@ function MarketplaceDetailDialog({
         <DialogHeader>
           <div className="flex items-start gap-4">
             <span
-              className="relative grid h-14 w-14 shrink-0 place-items-center rounded-xl shadow-md ring-1 ring-inset ring-[hsl(var(--gold)/0.3)] bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary-light))]"
+              className="relative grid h-14 w-14 shrink-0 place-items-center rounded-xl shadow-md ring-1 ring-inset ring-border bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary-light))]"
             >
               <Icon className="h-6 w-6 text-white/90" aria-hidden />
             </span>
@@ -411,9 +447,9 @@ function MarketplaceDetailDialog({
         <DialogFooter className="mt-2 sm:justify-between sm:items-center gap-3">
           <span className="text-xs text-muted-foreground">
             {locked
-              ? "Included with your Funding coach type."
+              ? "Included with your Funding playbook."
               : !isAvail
-                ? "On the roadmap — we'll surface it here the moment it's ready."
+                ? "On the roadmap — it'll appear here the moment it's ready."
                 : on
                   ? "On — Paige runs this with every client."
                   : "Off — switch on to add it."}
@@ -434,9 +470,9 @@ function MarketplaceDetailDialog({
               <a href="/admin/your-paige">Manage in Your Paige</a>
             </Button>
           ) : (
-            <Button variant="outline" size="sm" onClick={() => onNotify(row)}>
-              <Sparkles className="mr-1.5 h-3.5 w-3.5" /> Notify me
-            </Button>
+            <span className="rounded-full border border-border bg-muted px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Coming soon
+            </span>
           )}
         </DialogFooter>
       </DialogContent>
