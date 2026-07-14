@@ -41,15 +41,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  PageShell, PageHeader, EmptyState,
-} from "@/components/ui/page";
 import { AccountSwitcher } from "@/components/admin/AccountSwitcher";
 import { supabase } from "@/integrations/supabase/client";
 import { performSignOut } from "@/lib/auth/signOut";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import AgencyBoard from "@/pages/admin/AgencyBoard";
+import { AgencyTeamPanel } from "@/components/admin/agency/AgencyTeamPanel";
 import { toast } from "sonner";
 
 type LoginPref = "agency" | "last_account";
@@ -136,25 +134,6 @@ function LoginDefaultControl({
   );
 }
 
-/** Agency Team — nav slot present, surface not built yet (§11 crafted empty, no fake data). */
-function AgencyTeam({ agencyName }: { agencyName: string | null }) {
-  return (
-    <PageShell width="wide">
-      <PageHeader
-        eyebrow="Paige · Agency"
-        title="Agency team"
-        description={`Decide who may manage ${agencyName ?? "your agency"}'s book of sub-accounts.`}
-      />
-      <EmptyState
-        icon={UserCog}
-        tone="brand"
-        title="Agency roles are coming"
-        description="Soon you'll invite and scope the people who help run your book — separate from any one sub-account's own team. For now, you manage every sub-account yourself."
-      />
-    </PageShell>
-  );
-}
-
 export default function AgencyLayout() {
   const location = useLocation();
 
@@ -173,18 +152,23 @@ export default function AgencyLayout() {
       try {
         const { data: auth } = await supabase.auth.getUser();
         const uid = auth.user?.id ?? null;
-        const [ctxRes, rosterRes, profileRes] = await Promise.all([
+        const [ctxRes, rosterRes, membershipRes, profileRes] = await Promise.all([
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           supabase.rpc("agency_switch_context" as any),
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           supabase.rpc("agency_list_my_subaccounts" as any),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          supabase.rpc("agency_my_membership" as any),
           uid
             ? supabase.from("profiles").select("agency_login_default").eq("user_id", uid).maybeSingle()
             : Promise.resolve({ data: null }),
         ]);
         const ctx = (ctxRes.data as { is_agency_manager?: boolean; agency_name?: string } | null) ?? null;
         const roster = Array.isArray(rosterRes.data) ? rosterRes.data : [];
-        const isMgr = ctx?.is_agency_manager === true || roster.length > 0;
+        // An invited agency teammate (manager/biller/viewer/specialist) is eligible
+        // even without owner/admin tenant membership — their agency role is the proof.
+        const membership = (membershipRes.data as { agency_role?: string | null } | null) ?? null;
+        const isMgr = ctx?.is_agency_manager === true || roster.length > 0 || !!membership?.agency_role;
         const pref = (profileRes.data as { agency_login_default?: string } | null)?.agency_login_default;
         if (mounted) {
           setEligible(isMgr);
@@ -294,7 +278,7 @@ export default function AgencyLayout() {
       <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
         <Routes>
           <Route index element={<AgencyBoard />} />
-          <Route path="team" element={<AgencyTeam agencyName={agencyName} />} />
+          <Route path="team" element={<AgencyTeamPanel agencyName={agencyName} />} />
           <Route path="*" element={<Navigate to="/agency" replace />} />
         </Routes>
       </main>
