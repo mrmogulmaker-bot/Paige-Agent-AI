@@ -228,7 +228,7 @@ export function WorkspaceSettingsPanel() {
               <Label htmlFor="ws-from">Email "From" name</Label>
               <Input
                 id="ws-from"
-                placeholder="Mogul Maker Academy"
+                placeholder="Paige Agent AI"
                 value={brand.from_name}
                 onChange={(e) => setBrand((b) => ({ ...b, from_name: e.target.value }))}
                 disabled={!isAdmin}
