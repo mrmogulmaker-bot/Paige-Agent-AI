@@ -53,7 +53,7 @@ export default function CampaignsAdmin() {
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Megaphone className="w-6 h-6" /> Campaigns
           </h1>
-          <p className="text-sm text-muted-foreground">Live state of every campaign n8n is running, read through the MMA OS bridge.</p>
+          <p className="text-sm text-muted-foreground">Live state of every campaign n8n is running, read through the Paige Agent AI bridge.</p>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={refreshing}>
           <RefreshCw className={`w-4 h-4 mr-1 ${refreshing ? "animate-spin" : ""}`} /> Refresh
@@ -63,7 +63,7 @@ export default function CampaignsAdmin() {
       {stub && (
         <div className="text-xs flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-900/20 dark:text-amber-200 px-3 py-2">
           <AlertCircle className="w-3.5 h-3.5" />
-          MMA OS bridge v15 verbs not wired yet — showing empty state. Set <code className="font-mono">MMA_OS_BRIDGE_URL</code> + <code className="font-mono">MMA_OS_BRIDGE_API_KEY</code> on the <code className="font-mono">tenant-campaigns</code> function to go live.
+          Paige Agent AI bridge v15 verbs not wired yet — showing empty state. Set <code className="font-mono">MMA_OS_BRIDGE_URL</code> + <code className="font-mono">MMA_OS_BRIDGE_API_KEY</code> on the <code className="font-mono">tenant-campaigns</code> function to go live.
         </div>
       )}
 

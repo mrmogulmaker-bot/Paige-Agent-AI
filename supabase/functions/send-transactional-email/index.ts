@@ -175,12 +175,22 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 2. Check suppression list (fail-closed: if we can't verify, don't send)
-  const { data: suppressed, error: suppressionError } = await supabase
+  // 2. Check suppression list (fail-closed: if we can't verify, don't send).
+  // Suppression is SCOPED BY CATEGORY: transactional/security mail (email OTP,
+  // sign-out alerts, role/broker invites, approvals) must ALWAYS deliver, so a
+  // user who opted out of BULK mail (reason='unsubscribe') is NOT suppressed for
+  // transactional sends — only hard reasons (bounce/complaint, and any null-reason
+  // row) block those. Bulk mail honors every suppression, unsubscribe included.
+  // Without this, one bulk unsubscribe would silently kill a user's OTP/invite
+  // mail and lock them out.
+  let suppressionQuery = supabase
     .from('suppressed_emails')
     .select('id')
     .eq('email', effectiveRecipient.toLowerCase())
-    .maybeSingle()
+  if (template.category !== 'bulk') {
+    suppressionQuery = suppressionQuery.or('reason.neq.unsubscribe,reason.is.null')
+  }
+  const { data: suppressed, error: suppressionError } = await suppressionQuery.maybeSingle()
 
   if (suppressionError) {
     console.error('Suppression check failed — refusing to send', {
@@ -245,12 +255,31 @@ Deno.serve(async (req) => {
     )
   }
 
+  // 3b. Deliverability class + unsubscribe surfaces.
+  // Only 'bulk' mail (notifications/marketing) gets an opt-out; 'transactional'
+  // security/OTP/invite/receipt mail never does. The token is single-use and its
+  // plaintext form is only ever surfaced here (the DB stores the SHA-256 hash).
+  const isBulk = template.category === 'bulk'
+  // Visible footer link → the SPA /unsubscribe page (validate-then-confirm flow),
+  // on the platform-level public site, never a tenant domain (§2).
+  const PUBLIC_SITE_URL = (Deno.env.get('PUBLIC_SITE_URL') ?? 'https://paigeagent.ai').replace(/\/$/, '')
+  const unsubscribePageUrl = `${PUBLIC_SITE_URL}/unsubscribe?token=${unsubscribeToken}`
+  // RFC 8058 one-click target → the edge function directly (verify_jwt=false so
+  // Gmail's JWT-less POST reaches it), which performs the suppression on POST.
+  const unsubscribeOneClickUrl = `${supabaseUrl}/functions/v1/handle-email-unsubscribe?token=${unsubscribeToken}`
+
+  // Inject the visible opt-out link into the render props for bulk mail only, so
+  // the shared EmailFooter renders it. Transactional templates never receive it.
+  const renderData = isBulk
+    ? { ...templateData, unsubscribeUrl: unsubscribePageUrl }
+    : templateData
+
   // 4. Render React Email template to HTML and plain text
   const html = await renderAsync(
-    React.createElement(template.component, templateData)
+    React.createElement(template.component, renderData)
   )
   const plainText = await renderAsync(
-    React.createElement(template.component, templateData),
+    React.createElement(template.component, renderData),
     { plainText: true }
   )
 
@@ -374,6 +403,16 @@ Deno.serve(async (req) => {
     })
   }
 
+  // List-Unsubscribe headers (RFC 2369 + RFC 8058 one-click). Attached to BULK
+  // mail ONLY — never to transactional/security mail, which must not advertise an
+  // opt-out. The mailto is a fixed platform mailbox, not a tenant address (§2).
+  const listUnsubscribeHeaders = isBulk
+    ? {
+        'List-Unsubscribe': `<${unsubscribeOneClickUrl}>, <mailto:unsubscribe@mail.paigeagent.ai>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      }
+    : undefined
+
   let sendOk = false
   let vendorId: string | null = null
   let sendError: string | null = null
@@ -388,6 +427,7 @@ Deno.serve(async (req) => {
         html,
         text: plainText,
         ...(resolvedReplyTo ? { reply_to: resolvedReplyTo } : {}),
+        ...(listUnsubscribeHeaders ? { headers: listUnsubscribeHeaders } : {}),
       }),
     })
     const resendJson: any = await resendResp.json().catch(() => ({}))

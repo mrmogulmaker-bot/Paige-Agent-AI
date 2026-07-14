@@ -35,7 +35,7 @@ export function TrustSecuritySection() {
             </span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-bold text-foreground tracking-tight">
-            Built on Trust. Engineered for Coaches.
+            Built on Trust. Engineered for client-based businesses.
           </h2>
           <p className="text-base text-muted-foreground mt-3 max-w-2xl mx-auto">
             Serious entrepreneurs deserve infrastructure that protects what

@@ -207,7 +207,7 @@ export default function ClientJourney() {
       });
     }
 
-    // Try MMA OS bridge (stub-safe)
+    // Try Paige Agent AI bridge (stub-safe)
     try {
       const { data } = await supabase.functions.invoke("tenant-journey", {
         body: { verb: "get_journey", payload: { contact_id: c.id, email: c.email } },
@@ -356,7 +356,7 @@ export default function ClientJourney() {
           <CardContent className="space-y-6">
             {events.length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No events yet. Stage data and rich events are loading from MMA OS as the bridge comes online.
+                No events yet. Stage data and rich events are loading from Paige Agent AI as the bridge comes online.
               </p>
             )}
             {[...stages].reverse().map(stage => {
@@ -416,7 +416,7 @@ export default function ClientJourney() {
             </Button>
             <Separator />
             <p className="text-xs text-muted-foreground">
-              MMA OS bridge v15 will populate cross-system events automatically once <code>get_journey</code> ships.
+              Paige Agent AI bridge v15 will populate cross-system events automatically once <code>get_journey</code> ships.
             </p>
           </CardContent>
         </Card>

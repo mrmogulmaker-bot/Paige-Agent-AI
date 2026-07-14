@@ -124,6 +124,9 @@ async function audit(action: string, target_type: string | null, target_id: stri
 // Workflow dispatcher lives in _shared so the pg_cron sweeper
 // (dispatch-queued-workflow-runs) can re-use the same routing logic.
 import { dispatchWorkflowRun, MMA_TENANT_ID } from "../_shared/workflowDispatch.ts";
+// Tier Rail Spine (Phase D): one shared tier resolver, off the same declared rail
+// (public.get_actor_access) a human resolves through — so Paige's tier == a human's.
+import { getActorTier, isClientSeatByScopes } from "../_shared/actorTier.ts";
 
 // Doctrine §118 master-only MCP tools. Hidden from tools/list when caller's
 // tenant != MMA. These are forward-looking — none are implemented yet but the
@@ -224,21 +227,21 @@ async function actorManagesAnyAgency(actor: ActorCtx): Promise<boolean> {
 // operator token carries. No schema change required.
 function isClientSeat(actor: ActorCtx): boolean {
   if (actor.kind !== "user") return false;
-  if (actor.scopes.length === 0) return false;
-  return actor.scopes.every((s) => s.startsWith("self."));
+  return isClientSeatByScopes(actor.scopes);
 }
 
 // THE request-time tier. Precedence: god → client(sealed) → agency → tenant.
+// Delegates to the shared resolver (Phase D) so MCP and paige-ai-chat and human
+// surfaces all read the SAME declared rail. The shared resolver returns
+// 'subaccount' for a sub-account operator; the MCP ladder treats a sub-account
+// exactly like a tenant (they run their own child like a tenant), so collapse it.
 async function deriveTier(actor: ActorCtx): Promise<McpTier> {
-  if (actor.kind === "platform") return "god";
-  if (await actorIsPlatformOwner(actor)) return "god";   // actorIsPlatformOwner already ⇒ true for platform
-  // client is sealed BEFORE agency — a self.* seat can never widen to agency.
-  if (isClientSeat(actor)) return "client";
-  if (await actorManagesAnyAgency(actor)) return "agency";
-  // Fallback: standalone owner/admin, or an agency member without owner/admin
-  // authority, or an unresolved tenant (tenant tools all re-resolve and hard-fail
-  // tenant_not_resolved, so an unresolved tenant can touch nothing).
-  return "tenant";
+  const t = await getActorTier(admin, {
+    actorUserId: actor.kind === "user" ? actor.user_id : null,
+    isPlatform: actor.kind === "platform" || (await actorIsPlatformOwner(actor)),
+    scopes: actor.scopes ?? [],
+  });
+  return (t === "subaccount" ? "tenant" : t) as McpTier;
 }
 
 
@@ -1128,15 +1131,35 @@ mcp.tool("get_coach_performance", {
 
 mcp.tool("create_team_invitation", {
   description:
-    "Create a team invitation row for an internal team member. Does NOT send the email — pair with the send-admin-invitation function for that.",
+    "Create a team invitation row for an internal tenant team member (admin | coach | sales_rep | cs_rep). Does NOT send the email — pair with the send-admin-invitation function for that. Platform (super_admin/platform_admin) and agency_* roles are NOT grantable here — those go through the platform-invite and agency-team flows.",
   inputSchema: z.object({
     email: z.string(),
-    role: z.string().describe("admin | sales_rep | coach | broker | cs"),
+    role: z.enum(["admin", "coach", "sales_rep", "cs_rep"])
+      .describe("Tenant staff role. Valid app_role staff labels only: admin | coach | sales_rep | cs_rep."),
     invited_by_user_id: z.string().optional(),
     template_name: z.string().optional(),
   }),
   annotations: { destructiveHint: true },
   handler: async (args) => {
+    // ── SECURITY (Tier Rail Phase A) ────────────────────────────────────────
+    // Clamp the grantable role to a server-side allow-list scoped to the
+    // caller's tier — this generic tenant-invite tool must NEVER mint
+    // super_admin/platform_admin or agency_* authority (those flow through the
+    // platform-invite / agency-team paths). The z.enum blocks bad input at the
+    // schema; this runtime check is defense-in-depth. Bind the invitation to the
+    // caller's RESOLVED tenant — a null tenant_id would leave the accepted
+    // membership unscoped.
+    const actor = currentActor();
+    const tier = await deriveTier(actor);
+    if (tier === "client") return err("forbidden_tier");
+    // DB-valid app_role staff labels only. Deny-by-default: super_admin,
+    // platform_admin, agency_*, finance, moderator, developer, broker*, etc. are
+    // NOT grantable through this generic tenant-invite tool.
+    const ALLOWED_TENANT_INVITE_ROLES = new Set(["admin", "coach", "sales_rep", "cs_rep"]);
+    if (!ALLOWED_TENANT_INVITE_ROLES.has(args.role)) return err("role_not_allowed");
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+
     const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
     const tokenHash = await sha256Hex(token);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -1145,6 +1168,7 @@ mcp.tool("create_team_invitation", {
       .insert({
         email: args.email.toLowerCase(),
         role: args.role,
+        tenant_id: tenantId,
         invited_by: args.invited_by_user_id ?? null,
         token_hash: tokenHash,
         expires_at: expiresAt,
@@ -1153,7 +1177,7 @@ mcp.tool("create_team_invitation", {
       .select("id")
       .single();
     if (error) return err(error.message);
-    await audit("create_team_invitation", "invitation", data.id, { email: args.email, role: args.role });
+    await audit("create_team_invitation", "invitation", data.id, { email: args.email, role: args.role, tenant_id: tenantId });
     return ok({
       ok: true,
       invitation_id: data.id,
@@ -3491,28 +3515,41 @@ mcp.tool("list_subaccounts", {
 
 mcp.tool("create_subaccount", {
   description:
-    "Agency only. Create a new sub-account (child workspace) under YOUR agency. Requires a display `name`; optional `industry` and `description`. The child is created as a standalone workspace owned by you. Only the agency OWNER may create sub-accounts.",
+    "Agency only. Create a new sub-account (child workspace) under YOUR agency. Requires a display `name`; optional `industry` and `description`. The child arrives READY: by default (`inherit_from_parent`) it inherits your agency's white-label brand/voice, and it either carries your Playbook down or starts from `playbook_slug` — one of general, coaching-default, fitness, consultant, agency, or funding. Funding is an explicit opt-in only; it is never inherited or defaulted. The child is a standalone workspace owned by you. Only the agency OWNER may create sub-accounts.",
   inputSchema: z.object({
     name: z.string().min(1),
     industry: z.string().optional(),
     description: z.string().optional(),
+    playbook_slug: z
+      .enum(["general", "coaching-default", "fitness", "consultant", "agency", "funding"])
+      .optional(),
+    inherit_from_parent: z.boolean().optional(),
   }),
-  handler: async ({ name, industry, description }) => {
+  handler: async ({ name, industry, description, playbook_slug, inherit_from_parent }) => {
     const actor = currentActor();
     if (!actor.user_id) return err("agency_actor_required");
     const parent = await actorTenantId();
     if (!parent) return err("tenant_not_resolved");
-    // 5-arg actor-explicit core (service_role): enforces owner-only +
-    // agency/enterprise-parent + 100-child cap + forces child account_type.
+    // Actor-explicit core (service_role): enforces owner-only + agency/enterprise-
+    // parent + 100-child cap + forces child account_type, and seeds the inherited
+    // brand + chosen/inherited Playbook. §2: funding only ever via an explicit
+    // playbook_slug='funding' choice, never a default — do not force it on here.
     const { data, error } = await admin.rpc("create_subaccount", {
       _name: name,
       _industry: industry ?? null,
       _description: description ?? null,
       _parent_tenant_id: parent,
       _actor: actor.user_id,
+      _playbook_slug: playbook_slug ?? null,
+      _inherit_from_parent: inherit_from_parent ?? true,
     });
     if (error) return err(error.message);
-    await audit("create_subaccount", "tenant", (data as any)?.id ?? null, { name, parent });
+    await audit("create_subaccount", "tenant", (data as any)?.id ?? null, {
+      name,
+      parent,
+      playbook_slug: playbook_slug ?? null,
+      inherit_from_parent: inherit_from_parent ?? true,
+    });
     return ok({ subaccount: data });
   },
 });

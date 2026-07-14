@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -27,8 +27,11 @@ import {
 } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
 import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
+import { OwnerWelcome, type OnboardingState } from "@/components/onboarding/OwnerWelcome";
 import { usePracticeDashboard } from "@/hooks/usePracticeDashboard";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { supabase } from "@/integrations/supabase/client";
 
 const usd = (cents: number) =>
   new Intl.NumberFormat(undefined, {
@@ -86,6 +89,37 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
   // subscribes to paige_pending_approvals realtime, so this count is instant.
   const { items: approvals } = usePendingApprovals({ scope: "mine" });
   const approvalsCount = approvals.length;
+
+  // First-run welcome (§9/§10). Completion state is authoritative in the tenants row,
+  // read through the Paige-callable RPC — never localStorage. We show the guided
+  // welcome only while it's neither dismissed nor completed; it's an above-the-fold,
+  // dismissible panel that never blocks the dashboard underneath.
+  const { activeTenantId, activeTenant } = useTenantContext();
+  const [welcome, setWelcome] = useState<OnboardingState | null>(null);
+  const [welcomeHidden, setWelcomeHidden] = useState(false);
+
+  useEffect(() => {
+    let on = true;
+    setWelcome(null);
+    setWelcomeHidden(false);
+    if (!activeTenantId) return;
+    (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await supabase.rpc("get_owner_onboarding_state" as any, {
+        p_tenant_id: activeTenantId,
+      });
+      // Role-gated RPC: a non-owner/admin caller raises — we simply show nothing.
+      if (!on || error) return;
+      setWelcome((data ?? {}) as OnboardingState);
+    })();
+    return () => { on = false; };
+  }, [activeTenantId]);
+
+  const showWelcome =
+    !welcomeHidden &&
+    welcome !== null &&
+    !welcome.dismissed &&
+    !welcome.completed_at;
 
   // Defensive: render a KPI tile only when its key is actually present (§13).
   const kpis: Array<{ key: string; node: JSX.Element }> = [];
@@ -216,6 +250,15 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
         description="The people you serve, the revenue in motion, and exactly what's waiting on you today."
         actions={<ExportClientsButton />}
       />
+
+      {showWelcome && activeTenantId && (
+        <OwnerWelcome
+          tenantId={activeTenantId}
+          accountType={activeTenant?.account_type ?? "standalone"}
+          initialState={welcome ?? {}}
+          onClose={() => setWelcomeHidden(true)}
+        />
+      )}
 
       {kpis.length > 0 && (
         <StatRow cols={4}>{kpis.map((k) => <div key={k.key}>{k.node}</div>)}</StatRow>

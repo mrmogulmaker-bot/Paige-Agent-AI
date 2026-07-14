@@ -3,6 +3,7 @@ import {
   Body, Container, Head, Heading, Html, Preview, Text, Button, Hr, Section,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
+import { EmailFooter } from './email-footer.tsx'
 
 const SITE_NAME = "Paige Agent AI"
 
@@ -13,10 +14,11 @@ interface AffiliateInvitationProps {
   setPasswordUrl?: string
   invitedBy?: string
   tier?: string
+  unsubscribeUrl?: string
 }
 
 const AffiliateInvitationEmail = ({
-  name, referralCode, referralLink, setPasswordUrl, invitedBy, tier,
+  name, referralCode, referralLink, setPasswordUrl, invitedBy, tier, unsubscribeUrl,
 }: AffiliateInvitationProps) => {
   const greeting = name ? `Welcome, ${name}!` : 'Welcome to the program!'
   const link = referralLink || 'https://paigeagent.ai/pricing'
@@ -69,6 +71,7 @@ const AffiliateInvitationEmail = ({
 
           <Hr style={hr} />
           <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME} All rights reserved.</Text>
+          <EmailFooter unsubscribeUrl={unsubscribeUrl} />
         </Container>
       </Body>
     </Html>

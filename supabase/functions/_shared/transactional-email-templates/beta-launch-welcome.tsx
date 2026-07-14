@@ -3,6 +3,7 @@ import {
   Body, Container, Head, Heading, Html, Img, Preview, Text, Button, Hr, Section,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
+import { EmailFooter } from './email-footer.tsx'
 
 const SITE_NAME = 'Paige Agent AI'
 const LOGO_URL =
@@ -10,9 +11,10 @@ const LOGO_URL =
 
 interface BetaLaunchProps {
   name?: string
+  unsubscribeUrl?: string
 }
 
-const BetaLaunchEmail = ({ name }: BetaLaunchProps) => (
+const BetaLaunchEmail = ({ name, unsubscribeUrl }: BetaLaunchProps) => (
   <Html lang="en" dir="ltr">
     <Head />
     <Preview>You are in — the Paige Agent AI Beta is officially live 🎉</Preview>
@@ -113,6 +115,7 @@ const BetaLaunchEmail = ({ name }: BetaLaunchProps) => (
         <Text style={footer}>
           © {new Date().getFullYear()} {SITE_NAME}. All rights reserved.
         </Text>
+        <EmailFooter unsubscribeUrl={unsubscribeUrl} />
       </Container>
     </Body>
   </Html>

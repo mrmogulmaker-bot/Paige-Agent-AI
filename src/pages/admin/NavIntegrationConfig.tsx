@@ -41,7 +41,7 @@ export default function NavIntegrationConfig() {
             <Label>Score-change alert threshold (points)</Label>
             <Input type="number" value={delta} onChange={(e) => setDelta(parseInt(e.target.value || "0", 10))} />
             <p className="text-xs text-muted-foreground mt-1">
-              When any score moves by this amount, Paige fires <code>business_credit_score_changed</code> to MMA OS.
+              When any score moves by this amount, Paige fires <code>business_credit_score_changed</code> to Paige Agent AI.
             </p>
           </div>
           <Button onClick={save}>Save</Button>

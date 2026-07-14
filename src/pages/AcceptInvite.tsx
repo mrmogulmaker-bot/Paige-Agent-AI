@@ -163,12 +163,17 @@ export default function AcceptInvitePage() {
     );
   }
 
-  // ============ BTF Client (white-label) ============
+  // ============ White-label workspace client ============
+  // Brand is DATA-DRIVEN off the invite (info.brand.{name,program}), resolved by the
+  // accept-invite lookup — never a hardcoded vertical name here (§9). The workspace
+  // theme (workspace-theme.css) supplies the white-label palette for this tenant.
   if (isBtf) {
+    const brandName = info.brand?.name || info.displayName;
+    const brandProgram = info.brand?.program || "";
     return (
       <div className="workspace-theme min-h-screen flex items-center justify-center px-6 py-12">
         <Helmet>
-          <title>Activate Your Workspace · Mogul Maker Academy</title>
+          <title>{`Activate Your Workspace · ${brandName}`}</title>
           <meta name="robots" content="noindex,nofollow" />
         </Helmet>
         <div className="workspace-card p-8 max-w-md w-full">
@@ -176,11 +181,15 @@ export default function AcceptInvitePage() {
             className="workspace-gold text-2xl font-bold mb-1 text-center"
             style={{ fontFamily: '"Bookman Old Style", Georgia, serif' }}
           >
-            Mogul Maker Academy
+            {brandName}
           </div>
-          <p className="text-xs uppercase tracking-[0.2em] text-center mb-6" style={{ color: "rgba(8,20,40,0.55)" }}>
-            Build to Fund Workspace
-          </p>
+          {brandProgram ? (
+            <p className="text-xs uppercase tracking-[0.2em] text-center mb-6" style={{ color: "rgba(8,20,40,0.55)" }}>
+              {brandProgram} Workspace
+            </p>
+          ) : (
+            <div className="mb-6" />
+          )}
           <h1 className="text-2xl font-semibold mb-2" style={{ fontFamily: '"Bookman Old Style", Georgia, serif' }}>
             Welcome, {info.displayName}.
           </h1>

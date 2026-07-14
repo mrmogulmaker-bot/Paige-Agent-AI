@@ -86,9 +86,11 @@ These two are severity-critical **if git is replayed**, but production is patche
 
 **Do not run `supabase db push` in any form until the ledger is reconciled.**
 
-State of the world:
-- Git has **458** migration files; the live ledger has **~124–130** rows. The version sets **intersect in exactly 0 places** — the 2026-07-05 schema-only rebuild regenerated every timestamp, so the ledger and the repo share no join key. Ordinary tooling cannot see that 18 fixes are unrepresented in source or that 352 git migrations are unrecorded in the ledger.
-- **A bare `db push` is currently a no-op** (remote head `20260714051416` > git max `20260713160000`, so the CLI withholds all 458 as out-of-order). *This is an inference from the CLI's own guard strings + verified version arithmetic — it was NOT executed. `supabase db push --dry-run` is the safe way to confirm and should print the out-of-order warning.*
+State of the world *(refreshed 2026-07-14, post-reconciliation — the numbers below are measured, not inferred)*:
+- Git has **475** migration files; the live ledger has **138** rows. The version sets still **intersect in almost 0 places** — the 2026-07-05 schema-only rebuild regenerated every timestamp, so the ledger and the repo share no join key. Ordinary tooling cannot see this.
+- **CORRECTION — the previous "bare `db push` is a no-op" claim was WRONG, and its supporting arithmetic had inverted.** That claim rested on `remote head > git max`. By 2026-07-14 the inequality had flipped (remote head `20260714144656` vs git max `20260714230000`), so six already-applied migrations sorted *after* the remote head and a bare push would have attempted them. The reconciliation pass re-versioned those six to their true ledger versions, and git max is now exactly `20260714144656` — equal to the remote head.
+- **OBSERVED (not inferred) — `supabase db push --dry-run` was actually executed.** It does **not** silently apply and it is **not** a no-op: it **aborts** with `Remote migration versions not found in local migrations directory`, naming **124 ledger versions that exist in no git file**. The abort happens *before* any out-of-order check, so the version arithmetic above is moot for safety purposes — the CLI refuses outright. **This abort is the only thing standing between you and a data-loss event.**
+- **The danger is the CLI's own remediation advice — and it is now the FIRST thing it prints.** The dry-run's suggested fix is `supabase migration repair --status reverted <124 versions>`. Running it would mark all 124 as reverted and hand you a repo where a subsequent `db push` replays **475 local migrations** against a live database. Do not run the command the CLI suggests.
 - **`db push --include-all` aborts safely on hop #1** (genesis `20251009234919` runs unguarded `CREATE TYPE public.app_role` → 42710, since `app_role` already exists in prod).
 - **The danger is the CLI's own remediation advice.** When hop #1 fails, the CLI prints `supabase migration repair --status applied`. Repairing that one version and retrying advances the cursor one migration at a time. Many of the 352 unrecorded migrations are fully idempotency-guarded, so they **succeed and COMMIT their destructive payload silently**:
   - `20260417220551` — `DROP TABLE ... CASCADE` on `affiliate_profiles` (**9 live rows**), `referral_codes` (**9**), `affiliate_commission_tiers` (**1**). `IF EXISTS + CASCADE` ⇒ no error, data gone.
@@ -102,6 +104,61 @@ supabase migration repair --status applied \
   $(ls supabase/migrations/*.sql | sed 's#.*/##; s#_.*##' | tr '\n' ' ')
 ```
 **Do NOT:** run `db push --include-all`; repair one failing version and retry (that *is* the loop that walks you to the DROPs); or "fix" genesis by adding `IF NOT EXISTS` (that removes the very 42710 error currently protecting prod at hop #1). Take a verified backup before any subsequent schema work, then confirm `db push --dry-run` reports "up to date."
+
+### 4b. Reconciliation pass — 2026-07-14 (what was fixed, what was NOT)
+
+Triggered by merging `origin/main` (Cowork's PRs #58–#65). The merge was **clean to git** yet
+produced four duplicated migrations and two files colliding on one version key — a conflict class
+git, CI, and typecheck are all structurally blind to, because it lives in the
+`schema_migrations.version` namespace.
+
+**Fixed in this pass:**
+- **Deleted 4 duplicate files.** `origin/main` re-authored four migrations that already existed under
+  their true ledger versions. Each deleted file's DDL is supplied by a surviving file — verified
+  against live prod, not assumed:
+  | Deleted (fabricated prefix) | Superseded by (ledger version) | "Extra" DDL is supplied by |
+  |---|---|---|
+  | `20260714120000_move2_stage1_operator_regate` | `20260714004026` | *(none — semantically identical)* |
+  | `20260714130000_signup_completion_gate` | `20260714013653` | `20260714014149` + `20260714015706` |
+  | `20260714140000_seed_interim_saas_agreements` | `20260714014103` | *(none; kept file also adds an idempotency guard)* |
+  | `20260714160000_agency_team_roles` | `20260714045732` | `20260714051416` + `20260714052246` |
+  Cowork's `130000` and `160000` were **squashes** of three prod migrations each — that is why their
+  "extra" DDL is not lost. All deleted files remain retrievable via `git show` and the merge commit's
+  second parent.
+- **Renamed the C1 fix off its version collision:** `20260714130000` → **`20260714130001`**
+  `_businesses_tenant_isolation_forward.sql`. (C1 is *not* a ledger recovery — it is a newly authored
+  forward fix that happened to pick a round timestamp `origin/main` independently used.)
+- **Recovered 3 prod-only migrations** verbatim from the ledger: `20260714142258_tier_rail_phaseB`,
+  `20260714142748_tier_rail_phaseC`, and **`20260714144656_tier_rail_phaseB_agency_standing`**.
+  ⚠️ The third was nearly missed. It `CREATE OR REPLACE`s `current_user_tenant_id()` and
+  `guard_active_tenant_membership()` — the same two functions phaseB defines — adding the
+  `OR public.agency_team_role(...) IS NOT NULL` clause. `current_user_tenant_id()` is called by
+  **68 live RLS policies across 53 tables**, including the `businesses` `tenant_isolation` policy that
+  is the entire point of C1. Recovering phaseB *without* it would have made the **pre-fix body** git's
+  last word, silently dropping agency-team tenant standing on any rebuild-from-git.
+- **Re-versioned 6 files** from fabricated round-hour prefixes to their true ledger versions
+  (`170000→051416`, `180000→052246`, `190000→123703`, `200000→123722`, `210000→123803`,
+  `230000→140017`). Verified order-safe: zero object overlap with any later-sorting migration. This
+  restored `git max == remote head` (`20260714144656`) and made git's tier-rail order finally mirror
+  prod's (`…140017(A) → 142258(B) → 142748(C) → 144656`), instead of the prior inverted order where
+  phaseA sorted *after* phaseB/C.
+
+**Explicitly NOT fixed — still open, do not mistake this pass for "the drift is handled":**
+- **124 ledger versions still exist in no git file.** The systemic 2026-07-05 decoupling is untouched.
+  `db push` / `db reset` remain **unsafe**. The only safe deploy path is still hand-applied psql — which
+  is, itself, what produced C1's unledgered state. That circularity is the real problem and it is unsolved.
+- **A name match does NOT mean git records prod.** Of the ledger migrations that *do* have a
+  same-named git file, only **5 of 25** have SQL byte-identical to what prod actually executed; the other
+  20 are 2026-07-05 rebuild-era reconstructions. The durable-record gap is materially wider than the
+  handful of files recovered so far.
+- **`20260713023823_agency_switch_rpcs_enum_cast_fix`** is prod-applied and in no git file, and is
+  **deliberately NOT recovered.** Its content (the `::public.tenant_role` cast) is already present in
+  `20260713030000_agency_switch_rpcs.sql:56`. Recovering it at its ledger version would sort it *before*
+  that file, where it would be clobbered — producing a no-op file that manufactures false confidence.
+  Recorded here as a known ledger-only version with **no DDL gap**.
+- **Rule for future recoveries:** when a prod migration already exists in git under a *fabricated*
+  prefix, **RE-VERSION the existing file** — do not add a second file at the ledger version. Doing the
+  latter manufactures a new duplicate name, which is precisely the bug this pass cleaned up.
 
 ---
 

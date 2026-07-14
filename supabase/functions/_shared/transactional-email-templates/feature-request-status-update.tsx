@@ -3,6 +3,7 @@ import {
   Body, Button, Container, Head, Heading, Hr, Html, Preview, Section, Text,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
+import { EmailFooter } from './email-footer.tsx'
 
 const SITE_NAME = 'PaigeAgent.ai'
 
@@ -11,6 +12,7 @@ interface Props {
   newStatus?: string
   adminResponse?: string
   plannedRelease?: string
+  unsubscribeUrl?: string
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -22,7 +24,7 @@ const STATUS_LABEL: Record<string, string> = {
   declined: 'Not Planned',
 }
 
-const FeatureRequestStatusUpdateEmail = ({ title, newStatus, adminResponse, plannedRelease }: Props) => (
+const FeatureRequestStatusUpdateEmail = ({ title, newStatus, adminResponse, plannedRelease, unsubscribeUrl }: Props) => (
   <Html lang="en" dir="ltr">
     <Head />
     <Preview>Update on your feature request: {title ?? ''}</Preview>
@@ -70,6 +72,7 @@ const FeatureRequestStatusUpdateEmail = ({ title, newStatus, adminResponse, plan
         <Text style={footer}>
           © {new Date().getFullYear()} {SITE_NAME}
         </Text>
+        <EmailFooter unsubscribeUrl={unsubscribeUrl} />
       </Container>
     </Body>
   </Html>

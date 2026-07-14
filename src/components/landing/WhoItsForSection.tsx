@@ -29,15 +29,15 @@ const personas = [
       "Integration and tooling guidance",
       "Matched automations by stage",
     ],
-    accent: "fundability-excellent",
+    accent: "success",
   },
   {
     icon: Users,
-    badge: "Pro & Coach Tier",
+    badge: "Agency & Pro Tier",
     title: "The Agency Owner",
     subtitle: "Managing multiple clients",
     description:
-      "You're a coach, consultant, or agency owner managing a book of clients. Paige gives you a full client CRM, readiness pipeline, activity audit trail, and white-glove reporting — all built for how you actually work.",
+      "You're a coach, consultant, or agency owner managing a book of clients. Paige gives you a full client CRM, engagement pipeline, activity audit trail, and white-glove reporting — all built for how you actually work.",
     bullets: [
       "Multi-client dashboard & CRM",
       "Activity-logged audit trails",

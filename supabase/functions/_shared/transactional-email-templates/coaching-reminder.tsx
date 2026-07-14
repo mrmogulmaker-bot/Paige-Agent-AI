@@ -3,6 +3,7 @@ import {
   Body, Container, Head, Heading, Html, Img, Preview, Text, Button, Hr, Section,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
+import { EmailFooter } from './email-footer.tsx'
 
 const SITE_NAME = "Paige Agent AI"
 const LOGO_URL = 'https://bfmyebsjyuoecmjskqhs.supabase.co/storage/v1/object/public/email-assets/paige-logo-transparent.png'
@@ -15,6 +16,7 @@ interface CoachingReminderProps {
   joinUrl?: string
   rescheduleUrl?: string
   agenda?: string
+  unsubscribeUrl?: string
 }
 
 const CoachingReminderEmail = ({
@@ -25,6 +27,7 @@ const CoachingReminderEmail = ({
   joinUrl = 'https://app.paigeagent.ai',
   rescheduleUrl = 'https://app.paigeagent.ai',
   agenda = 'Review your progress, work through your current goals, and set the next steps.',
+  unsubscribeUrl,
 }: CoachingReminderProps) => (
   <Html lang="en" dir="ltr">
     <Head />
@@ -57,6 +60,7 @@ const CoachingReminderEmail = ({
         </Text>
         <Hr style={hr} />
         <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME}. You received this because session reminders are enabled in your notification preferences.</Text>
+        <EmailFooter unsubscribeUrl={unsubscribeUrl} />
       </Container>
     </Body>
   </Html>

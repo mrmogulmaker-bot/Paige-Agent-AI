@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageShell, PageHeader, SectionCard, StatePill } from "@/components/ui/page";
-import { Mail, Bell, Shield, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe, Plug, Bot } from "lucide-react";
+import { Mail, Bell, Shield, ShieldCheck, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe, Plug, Bot } from "lucide-react";
 import { Link } from "react-router-dom";
 // Integrations & calendar connectors consolidated to the one home at
 // /admin/integrations (Automation → Integrations). The former Settings
@@ -22,6 +22,7 @@ import { StorefrontPanel } from "@/components/admin/StorefrontPanel";
 import { EmailDomainsPanel } from "@/components/admin/EmailDomainsPanel";
 import { EmailTemplatesPanel } from "@/components/admin/settings/EmailTemplatesPanel";
 import { PaigeAutonomyPanel } from "@/components/admin/settings/PaigeAutonomyPanel";
+import { AccountSecurityPanel } from "@/components/settings/AccountSecurityPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { toast } from "sonner";
@@ -127,6 +128,9 @@ export function AdminSettingsHub() {
           <TabsTrigger value="paige" className="gap-2">
             <Bot className="w-4 h-4" /> Paige Autonomy
           </TabsTrigger>
+          <TabsTrigger value="account-security" className="gap-2">
+            <ShieldCheck className="w-4 h-4" /> Account Security
+          </TabsTrigger>
           {isPlatformStaff && (
             <>
               <TabsTrigger value="platform" className="gap-2">
@@ -186,6 +190,14 @@ export function AdminSettingsHub() {
 
         <TabsContent value="paige" className="space-y-4">
           <PaigeAutonomyPanel />
+        </TabsContent>
+
+        {/* §9 parity: this user's OWN account security — same Change Password /
+            Two-Factor / Sign-out-everywhere controls every tenant user gets. The
+            panel is self-scoped (auth.uid()), so it carries no operator-only
+            controls and is safe for staff/agency operators, not just admins. */}
+        <TabsContent value="account-security" className="space-y-4">
+          <AccountSecurityPanel />
         </TabsContent>
 
         {isPlatformStaff && (

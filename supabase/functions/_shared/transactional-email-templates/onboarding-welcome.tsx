@@ -3,15 +3,17 @@ import {
   Body, Container, Head, Heading, Html, Img, Preview, Text, Button, Hr, Section,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
+import { EmailFooter } from './email-footer.tsx'
 
 const SITE_NAME = "Paige Agent AI"
 const LOGO_URL = 'https://bfmyebsjyuoecmjskqhs.supabase.co/storage/v1/object/public/email-assets/paige-logo-transparent.png'
 
 interface OnboardingWelcomeProps {
   name?: string
+  unsubscribeUrl?: string
 }
 
-const OnboardingWelcomeEmail = ({ name }: OnboardingWelcomeProps) => (
+const OnboardingWelcomeEmail = ({ name, unsubscribeUrl }: OnboardingWelcomeProps) => (
   <Html lang="en" dir="ltr">
     <Head />
     <Preview>Welcome to {SITE_NAME} — your AI teammate is ready</Preview>
@@ -45,6 +47,7 @@ const OnboardingWelcomeEmail = ({ name }: OnboardingWelcomeProps) => (
         </Button>
         <Hr style={hr} />
         <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME}. You received this because you signed up for an account.</Text>
+        <EmailFooter unsubscribeUrl={unsubscribeUrl} />
       </Container>
     </Body>
   </Html>
