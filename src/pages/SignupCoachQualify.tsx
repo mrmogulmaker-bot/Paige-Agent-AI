@@ -1,5 +1,6 @@
-// Public coach-qualify landing — shown after signup when funding goal $50K+ AND entity exists.
-// Soft handoff to a coach conversation before workspace access.
+// Public qualify landing — shown after signup when a prospect qualifies for a
+// concierge onboarding conversation. Soft handoff to a real coach before
+// workspace access. Coaching-generic; no vertical-specific framing.
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { PageHead } from "@/components/seo/PageHead";
@@ -8,8 +9,8 @@ export default function SignupCoachQualify() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <PageHead
-        title="Let's talk to a coach first — Paige Agent AI"
-        description="Funding goals at this level deserve a real plan. A coach will walk you through the next step."
+        title="Let's talk first — Paige Agent AI"
+        description="A goal at this level deserves a real plan. A coach will walk you through the right next move before you dive in."
         path="/signup/coach-qualify"
       />
       <div className="max-w-2xl mx-auto px-6 py-16">
@@ -17,9 +18,9 @@ export default function SignupCoachQualify() {
           You're aiming bigger. Let's talk first.
         </h1>
         <p className="mt-4 text-muted-foreground text-lg">
-          Goals at this level don't get solved with a generic dashboard. Before you start running the
+          A goal at this level doesn't get solved with a generic dashboard. Before you start running the
           workspace, a coach will walk you through what's actually possible — and what the right next
-          move looks like for your specific situation.
+          move looks like for your specific practice.
         </p>
 
         <div className="mt-8 rounded-xl border border-border bg-card p-6 space-y-3">

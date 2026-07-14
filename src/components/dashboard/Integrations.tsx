@@ -66,7 +66,7 @@ const integrations: Integration[] = [
   {
     id: "gusto",
     name: "Gusto",
-    description: "Streamline payroll and employee benefits",
+    description: "Payroll and employee benefits, handled in one place",
     category: "payroll",
     connected: false,
   },
@@ -100,7 +100,7 @@ export function Integrations() {
       <div>
         <h2 className="text-3xl font-bold mb-2">Integrations</h2>
         <p className="text-muted-foreground">
-          Connect your favorite apps to streamline your credit building journey
+          Connect your favorite apps and let Paige run your practice from one place
         </p>
       </div>
 
