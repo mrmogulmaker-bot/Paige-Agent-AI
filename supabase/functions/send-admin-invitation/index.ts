@@ -9,8 +9,14 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// STAFF roles only. Client/consumer invites must NOT go through this function —
+// it emits the operator /accept-invite dashboard link and, on accept, routes by
+// role into the operator app (§9). A CLIENT is invited via the portal path
+// (create_tenant_invite_token kind='consumer' + send-portal-invite → /join), so
+// 'user' and 'client' are deliberately excluded here: a miswired caller passing
+// them now fails loudly instead of silently dropping a client into the dashboard.
 const VALID_ROLES = [
-  "user", "client", "coach", "moderator", "admin",
+  "coach", "moderator", "admin",
   "affiliate", "sales_rep", "broker", "cs_rep", "finance", "viewer",
 ] as const;
 type InviteRole = typeof VALID_ROLES[number];
@@ -138,11 +144,30 @@ const handler = async (req: Request): Promise<Response> => {
     // 6. Send branded invitation email
     const roleLabels: Record<string, string> = {
       admin: "Administrator", coach: "Coach", moderator: "Moderator",
-      affiliate: "Affiliate Partner", user: "Client", client: "Client",
+      affiliate: "Affiliate Partner",
       sales_rep: "Sales Rep", broker: "Broker", cs_rep: "Customer Success",
       finance: "Finance", viewer: "Viewer",
     };
     const roleLabel = roleLabels[role] || role;
+
+    // §6/§9: a tenant's staff invite wears the TENANT's brand, not the platform's.
+    // Resolve up the parent chain (child inherits its agency's logo/color); the
+    // resolver floors unset colors to the platform tokens, never the master brand.
+    // No tenant (platform-owner invite with no active tenant) → Paige defaults.
+    let brandName: string | null = null;
+    let brandLogoUrl: string | null = null;
+    let brandColor: string | null = null;
+    if (inviterTenantId) {
+      const { data: brandRows } = await supabase.rpc("resolve_tenant_brand", { _tenant_id: inviterTenantId });
+      const rb = (Array.isArray(brandRows) ? brandRows[0] : brandRows) as
+        | { tenant_name?: string; primary_color?: string; logo_url?: string | null }
+        | null;
+      if (rb) {
+        brandName = rb.tenant_name ?? null;
+        brandLogoUrl = rb.logo_url ?? null;
+        brandColor = rb.primary_color ?? null;
+      }
+    }
 
     const { error: emailError } = await supabase.functions.invoke("send-transactional-email", {
       body: {
@@ -150,7 +175,7 @@ const handler = async (req: Request): Promise<Response> => {
         recipientEmail: email,
         idempotencyKey: `invite-${invitation.id}`,
         tenantId: inviterTenantId,
-        templateData: { role: roleLabel, inviteUrl, invitedBy: inviterName, message: message ?? null },
+        templateData: { role: roleLabel, inviteUrl, invitedBy: inviterName, message: message ?? null, brandName, brandLogoUrl, brandColor },
       },
     });
 

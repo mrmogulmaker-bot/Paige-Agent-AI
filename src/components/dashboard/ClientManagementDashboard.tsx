@@ -17,6 +17,7 @@ import { AddClientDialog } from "./AddClientDialog";
 import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
+import { useTenantContext } from "@/hooks/useTenantContext";
 import { toast } from "sonner";
 
 interface InternalClient {
@@ -63,6 +64,7 @@ interface ClientManagementDashboardProps {
 export function ClientManagementDashboard({ onViewClient, onViewInternalClient }: ClientManagementDashboardProps) {
   const navigate = useNavigate();
   const { setMode } = useDashboardMode();
+  const { activeTenantId } = useTenantContext();
   const [internalClients, setInternalClients] = useState<InternalClient[]>([]);
   const [authClients, setAuthClients] = useState<AuthClient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -427,19 +429,53 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
     }
     setInviteSending(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const { data, error } = await supabase.functions.invoke("send-admin-invitation", {
-        body: { email: inviteEmail.trim(), role: inviteRole },
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      if (inviteRole === "user") {
+        // §9: "Client" (role 'user') gets the tenant-branded client PORTAL invite
+        // (/join) via a consumer token — never the staff /accept-invite dashboard
+        // path. Mirrors ContactPortalPanel so, on accept, they get a clients row +
+        // client role with NO tenant_members membership (no operator dashboard).
+        if (!activeTenantId) {
+          toast.error("No active workspace to invite into.");
+          return;
+        }
+        const { data: tokRes, error: mintErr } = await supabase.rpc("create_tenant_invite_token", {
+          _tenant_id: activeTenantId,
+          _kind: "consumer",
+          _default_role: "member",
+          _expires_in_days: 30,
+          _max_uses: null,
+          _contact_id: null,
+          _email: inviteEmail.trim(),
+        });
+        if (mintErr) throw mintErr;
+        const row = Array.isArray(tokRes) ? tokRes[0] : tokRes;
+        const token = (row as { token?: string } | null)?.token;
+        if (!token) throw new Error("Could not create the invite");
+        const { data: sent } = await supabase.functions.invoke("send-portal-invite", {
+          body: { token, email: inviteEmail.trim() },
+        });
+        const emailed = (sent as { emailed?: boolean } | null)?.emailed;
+        toast[emailed === false ? "warning" : "success"](
+          emailed === false
+            ? `Invite created for ${inviteEmail}, but the email didn't send. Check delivery.`
+            : `Client portal invite sent to ${inviteEmail}`,
+        );
+      } else {
+        // Staff roles (coach/moderator/admin/affiliate) keep the admin path.
+        const { data: { session } } = await supabase.auth.getSession();
+        const { data, error } = await supabase.functions.invoke("send-admin-invitation", {
+          body: { email: inviteEmail.trim(), role: inviteRole },
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
 
-      const roleLabels: Record<string, string> = {
-        admin: "Administrator", coach: "Coach", moderator: "Moderator",
-        affiliate: "Affiliate", user: "Client",
-      };
-      toast.success(`Invitation sent to ${inviteEmail} as ${roleLabels[inviteRole] || inviteRole}`);
+        const roleLabels: Record<string, string> = {
+          admin: "Administrator", coach: "Coach", moderator: "Moderator",
+          affiliate: "Affiliate", user: "Client",
+        };
+        toast.success(`Invitation sent to ${inviteEmail} as ${roleLabels[inviteRole] || inviteRole}`);
+      }
       setInviteOpen(false);
       setInviteEmail("");
       setInviteRole("user");

@@ -7,7 +7,7 @@ const testimonials = [
     quote:
       "Paige organized every client in one place and built me a 90-day onboarding workflow that runs itself. My follow-ups stopped slipping through the cracks and my calendar finally makes sense.",
     name: "[Client name]",
-    role: "Business Coach",
+    role: "Thought Leader",
     location: "Atlanta, GA",
   },
   {

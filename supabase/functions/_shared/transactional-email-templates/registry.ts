@@ -7,6 +7,16 @@ export interface TemplateEntry {
   to?: string
   displayName?: string
   previewData?: Record<string, any>
+  /**
+   * Deliverability class (set centrally below — templates need not declare it):
+   *  - 'transactional': security/OTP/invite/receipt mail the recipient cannot
+   *    opt out of. Gets NO List-Unsubscribe header and NO visible opt-out link.
+   *  - 'bulk': notifications/marketing. Gets the RFC 2369 / 8058 List-Unsubscribe
+   *    headers AND a visible footer opt-out link.
+   * Ambiguous templates default to 'transactional' (safer: you can't unsubscribe
+   * from a security alert). See BULK_TEMPLATES below.
+   */
+  category?: 'transactional' | 'bulk'
 }
 
 import { template as roleInvitation } from './role-invitation.tsx'
@@ -41,7 +51,30 @@ import { template as approvalNotification } from './approval-notification.tsx'
 import { template as securityCanaryRegression } from './security-canary-regression.tsx'
 import { template as securitySignedOut } from './security-signed-out.tsx'
 
-export const TEMPLATES: Record<string, TemplateEntry> = {
+/**
+ * BULK templates (§ deliverability): notifications + marketing that a recipient
+ * may opt out of. Everything NOT listed here defaults to 'transactional' — the
+ * safe default, since security/OTP/invite/receipt mail must never carry an
+ * unsubscribe. Kept as one central list (§12) so the classification is findable
+ * and the send path derives headers from data, not hardcoded per template.
+ */
+const BULK_TEMPLATES: ReadonlySet<string> = new Set([
+  'welcome',
+  'onboarding-welcome',
+  'weekly-summary',
+  'coaching-reminder',
+  'beta-launch-welcome',
+  'affiliate-invitation',
+  'affiliate-application-received',
+  'affiliate-approved-welcome',
+  'affiliate-conversion-earned',
+  'affiliate-commission-paid',
+  'affiliate-monthly-statement',
+  'elite-waitlist-confirmed',
+  'feature-request-status-update',
+])
+
+const RAW_TEMPLATES: Record<string, TemplateEntry> = {
   'role-invitation': roleInvitation,
   'welcome': welcomeEmail,
   'affiliate-invitation': affiliateInvitation,
@@ -66,8 +99,21 @@ export const TEMPLATES: Record<string, TemplateEntry> = {
   'feature-request-status-update': featureRequestStatusUpdate,
   'broker-team-invitation': brokerTeamInvitation,
   'beta-launch-welcome': betaLaunchWelcome,
-  
+
   'approval-notification': approvalNotification,
   'security-canary-regression': securityCanaryRegression,
   'security-signed-out': securitySignedOut,
 }
+
+// Resolve each entry's deliverability category once, centrally. A template may
+// still self-declare `category` (override wins); otherwise it's derived from the
+// BULK_TEMPLATES set with a 'transactional' default.
+export const TEMPLATES: Record<string, TemplateEntry> = Object.fromEntries(
+  Object.entries(RAW_TEMPLATES).map(([key, entry]) => [
+    key,
+    {
+      ...entry,
+      category: entry.category ?? (BULK_TEMPLATES.has(key) ? 'bulk' : 'transactional'),
+    } satisfies TemplateEntry,
+  ]),
+)

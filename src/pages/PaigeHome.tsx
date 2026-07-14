@@ -21,7 +21,8 @@ import { PaigeMark } from "@/components/brand/PaigeMark";
 /**
  * PaigeHome — the gold + indigo Paige landing (route "/"). A complete, from-
  * scratch build to the two-character spec; it does NOT reuse the old star-field
- * design (parked at /premium) or the legacy site (/legacy). Coaching only.
+ * design (parked at /premium) or the legacy site (/legacy). Coaching-generic:
+ * broad to coaches, consultants, agencies, and advisors; no finance framing.
  */
 
 const PaigeScene = lazy(() => import("@/components/PaigeScene"));
@@ -55,11 +56,11 @@ const NAV = [
   { label: "Meet Paige", href: "#hero" },
   { label: "Workspace", href: "#workspace" },
   { label: "A day with her", href: "#day" },
-  { label: "Coaches", href: "#proof" },
+  { label: "Who it's for", href: "#proof" },
   { label: "Pricing", href: "#pricing" },
 ];
 
-// Hero workspace panels (coaching only)
+// Hero workspace panels (coaching-generic; no finance framing)
 const PANELS = [
   { icon: MessageSquare, eyebrow: "Paige · replying to Maya", body: "Rescheduled your 3:00 to Thursday — sent the prep doc and confirmed she got it.", pos: "right-[5%] top-[15%]", depth: 0 },
   { icon: CalendarCheck, eyebrow: "Kickoff booked · Wed 11:00", body: "New client onboarded while you slept.", pos: "right-[30%] top-[30%]", depth: 0.5 },
@@ -81,16 +82,16 @@ const DAY = [
 const PROOF = [
   { q: "Paige runs the parts of my practice I used to dread. I got my evenings back.", a: "Business coach · Chicago" },
   { q: "The follow-through happens whether I remember it or not. My clients feel it.", a: "Executive coach · Austin" },
-  { q: "Every client gets the follow-up I could never keep up with. Retention's up.", a: "Fitness coach · Los Angeles" },
-  { q: "She handles the whole back office. I just show up and coach.", a: "Life coach · Denver" },
-  { q: "My cohort has never been more looked-after, and I'm doing a fraction of the admin.", a: "Mindset coach · Miami" },
-  { q: "Onboarding, check-ins, recaps — Paige runs all of it. It's like a full ops team.", a: "Sales coach · Dallas" },
+  { q: "Every client gets the follow-up I could never keep up with. Retention's up.", a: "Management consultant · Los Angeles" },
+  { q: "She handles the whole back office. I just show up and do the work.", a: "Agency owner · Denver" },
+  { q: "My clients have never been more looked-after, and I'm doing a fraction of the admin.", a: "Strategy advisor · Miami" },
+  { q: "Onboarding, check-ins, recaps — Paige runs all of it. It's like a full ops team.", a: "Author & thought leader · Dallas" },
 ];
 
 const PLANS = [
   { name: "Solo", price: "$58", tagline: "Just you, fully covered.", features: ["Paige runs your CRM & pipeline", "Auto-drafted follow-ups & recaps", "Client welcome sequences", "Cohort check-ins & at-risk flags"], highlight: false },
-  { name: "Practice", price: "$149", tagline: "Most coaches land here.", features: ["Everything in Solo", "Custom playbooks per coach", "Advanced signals & analytics", "Priority support"], highlight: true },
-  { name: "Studio", price: "$349", tagline: "For the coach running the whole show.", features: ["Everything in Practice", "Multi-coach roster & routing", "White-label workspace", "Dedicated success partner"], highlight: false },
+  { name: "Practice", price: "$149", tagline: "Where most practices land.", features: ["Everything in Solo", "Custom playbooks per seat", "Advanced signals & analytics", "Priority support"], highlight: true },
+  { name: "Studio", price: "$349", tagline: "For the operator running the whole show.", features: ["Everything in Practice", "Full team roster & routing", "White-label workspace", "Dedicated success partner"], highlight: false },
 ];
 
 /** Degrade gracefully: if the 3D scene ever throws, drop it and keep the
@@ -523,15 +524,15 @@ export default function PaigeHome() {
             className="font-bold tracking-tight text-[#F8F5EE]"
             style={{ fontFamily: HEAD, fontSize: "clamp(40px, 6.4vw, 92px)", letterSpacing: "-0.03em", lineHeight: 0.96, textShadow: "0 2px 40px rgba(0,0,0,0.85)" }}
           >
-            Paige runs your <br /> coaching{" "}
-            <span className="bg-gradient-to-br from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">business.</span>
+            Paige runs your <br />{" "}
+            <span className="bg-gradient-to-br from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">practice.</span>
           </motion.h1>
           <motion.p
             variants={rise}
             className="mt-4 font-semibold text-[#F8F5EE] sm:mt-5"
             style={{ fontFamily: HEAD, fontSize: "clamp(28px, 4.2vw, 56px)", lineHeight: 1.0, letterSpacing: "-0.02em" }}
           >
-            You just <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">coach.</span>
+            You just do the <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">work.</span>
           </motion.p>
           <motion.p variants={rise} className="mt-6 max-w-lg text-lg leading-relaxed text-[#F8F5EE]/70 md:text-xl [text-shadow:0_2px_20px_rgba(0,0,0,0.7)]">
             The admin, the follow-ups, the onboarding, the at-risk clients — Paige handles all of it, and runs every move past you before it goes out.
@@ -633,7 +634,7 @@ export default function PaigeHome() {
       {/* PROOF */}
       <Section id="proof" className="py-28">
         <motion.h2 variants={rise} className="mb-12 text-center text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
-          Coaches who <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">hired Paige.</span>
+          Practices that <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">hired Paige.</span>
         </motion.h2>
         <div className="grid gap-5 md:grid-cols-3">
           {PROOF.map((t) => (
@@ -721,7 +722,7 @@ export default function PaigeHome() {
             </Link>
           </nav>
         </div>
-        <div className="mt-6 text-center text-white/35 sm:text-left">© 2026 Paige · The operating system for coaches</div>
+        <div className="mt-6 text-center text-white/35 sm:text-left">© 2026 Paige · The operating system for client-based businesses</div>
       </footer>
       </div>{/* /frosted below-hero wrapper */}
       </div>{/* /z-10 content wrapper */}

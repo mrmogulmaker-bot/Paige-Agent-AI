@@ -5,12 +5,35 @@ import {
 import type { TemplateEntry } from './registry.ts'
 
 const SITE_NAME = "Paige Agent AI"
+// Paige platform defaults (§9). When an inviting tenant/agency brand is passed in,
+// these are overridden so the invite email wears the inviter's brand end-to-end —
+// same template, tenant pixels — matching the branded /join card the link opens.
+const DEFAULT_BRAND_COLOR = "#EBB94C"      // Paige Gold (the resting default CTA)
+const DEFAULT_ON_BRAND = "#0a1628"         // readable text on gold
+const HEADER_BG = "#0a1628"                // neutral dark header, works for any brand
 
 interface RoleInvitationProps {
   role?: string
   inviteUrl?: string
   invitedBy?: string
   message?: string | null
+  /** Inviting tenant/agency brand (§6/§9). Absent → Paige platform defaults. */
+  brandName?: string | null
+  brandLogoUrl?: string | null
+  brandColor?: string | null
+}
+
+// Readable foreground (near-white / near-dark) for text painted ON an arbitrary
+// brand color — a pale-gold brand needs dark text, a deep-indigo brand needs light.
+// Mirror of src/lib/brand/contrast.readableTextOn (can't import across the Deno seam).
+function textOn(hex?: string | null): string {
+  const h = (hex || "").trim().replace(/^#/, "")
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h
+  if (full.length !== 6 || /[^0-9a-fA-F]/.test(full)) return "#FFFFFF"
+  const r = parseInt(full.slice(0, 2), 16)
+  const g = parseInt(full.slice(2, 4), 16)
+  const b = parseInt(full.slice(4, 6), 16)
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55 ? "#FFFFFF" : "#1B1230"
 }
 
 // Role-specific welcome copy + capability bullets.
@@ -117,25 +140,91 @@ const ROLE_COPY: Record<string, { headline: string; intro: string; features: str
       "💬  24/7 guidance from Paige",
     ],
   },
+  // Agency-tier team roles (§9). An agency operates a book of sub-accounts; these
+  // people help run it. Copy stays coaching/consulting/agency-generic (§2/§3) — no
+  // vertical, no finance vocabulary.
+  "Agency Admin": {
+    headline: "You're on the agency team",
+    intro: "Full run of the book — manage the team and every sub-account across the agency, with your assistant surfacing what each account needs.",
+    features: [
+      "🏢  Manage every sub-account in the portfolio",
+      "👥  Invite & manage the agency team",
+      "📊  Portfolio-wide reporting & rollups",
+      "🤖  Your assistant working across the whole book",
+    ],
+  },
+  "Agency Manager": {
+    headline: "You're on the agency team",
+    intro: "Spin up, open, and run every sub-account in the agency — with your assistant keeping each account moving.",
+    features: [
+      "🏢  Open & run all sub-accounts",
+      "🚀  Provision new accounts on demand",
+      "📈  Account health across the portfolio",
+      "🤖  Your assistant drafting the next move",
+    ],
+  },
+  "Agency Billing": {
+    headline: "Welcome to the agency team",
+    intro: "Own the numbers for the agency's book — invoices, retainers, and reconciliation across every account, scoped to what you need.",
+    features: [
+      "🧾  Invoices & retainer ledger across accounts",
+      "🔁  Reconciliation & adjustments",
+      "📊  Revenue rollups by account",
+      "💼  Wallet & payout visibility",
+    ],
+  },
+  "Agency Specialist": {
+    headline: "Your accounts are ready",
+    intro: "You'll work inside the specific accounts assigned to you — everything you need to move those clients forward, and nothing you don't.",
+    features: [
+      "🎯  Your assigned sub-accounts",
+      "💬  Client messaging within each account",
+      "✍️  Assistant-drafted follow-ups ready to send",
+      "📅  Scheduling & session coordination",
+    ],
+  },
+  "Agency Viewer": {
+    headline: "Read-only agency access granted",
+    intro: "Review the portfolio, reporting, and account journeys across the agency without making changes.",
+    features: [
+      "📊  Portfolio-wide reporting dashboards",
+      "👀  Account & journey visibility",
+      "📈  Retention & outcome metrics",
+      "🔍  Search across the book",
+    ],
+  },
 }
 
 const DEFAULT_COPY = ROLE_COPY.Client
 
-const RoleInvitationEmail = ({ role, inviteUrl, invitedBy, message }: RoleInvitationProps) => {
+const RoleInvitationEmail = ({ role, inviteUrl, invitedBy, message, brandName, brandLogoUrl, brandColor }: RoleInvitationProps) => {
   const roleLabel = role || 'Team Member'
   const link = inviteUrl || '#'
   const copy = ROLE_COPY[roleLabel] ?? DEFAULT_COPY
 
+  // Brand resolution (§6/§9): the inviter's brand wins when present, else Paige.
+  const brand = (brandName || '').trim()
+  const displayName = brand || SITE_NAME
+  const isBranded = !!brand
+  const accent = (brandColor || '').trim() || DEFAULT_BRAND_COLOR
+  const onAccent = brandColor ? textOn(brandColor) : DEFAULT_ON_BRAND
+  const ctaStyle = { ...button, backgroundColor: accent, color: onAccent }
+  const badgeStyle = { ...roleBadge, backgroundColor: accent, color: onAccent }
+
   return (
     <Html lang="en" dir="ltr">
       <Head />
-      <Preview>{copy.headline} — activate your {SITE_NAME} account</Preview>
+      <Preview>{copy.headline} — activate your {displayName} account</Preview>
       <Body style={main}>
         <Container style={container}>
-          {/* Header bar */}
+          {/* Header bar — brand logo when supplied, else the brand/product name */}
           <Section style={headerBar}>
-            <Heading style={logoText}>{SITE_NAME}</Heading>
-            <Text style={tagline}>Intelligent Client Portal</Text>
+            {brandLogoUrl ? (
+              <Img src={brandLogoUrl} alt={displayName} height="40" style={brandLogo} />
+            ) : (
+              <Heading style={logoText}>{displayName}</Heading>
+            )}
+            {isBranded ? null : <Text style={tagline}>Intelligent Client Portal</Text>}
           </Section>
 
           {/* Main content */}
@@ -143,14 +232,14 @@ const RoleInvitationEmail = ({ role, inviteUrl, invitedBy, message }: RoleInvita
             <Heading as="h2" style={h2}>{copy.headline}</Heading>
             <Text style={text}>
               {invitedBy
-                ? `${invitedBy} has invited you to join the ${SITE_NAME} workspace.`
-                : `You've been invited to join the ${SITE_NAME} workspace.`}
+                ? `${invitedBy} has invited you to join the ${displayName} workspace.`
+                : `You've been invited to join the ${displayName} workspace.`}
             </Text>
 
             {/* Role badge */}
             <Section style={roleBadgeWrapper}>
               <Text style={roleBadgeLabel}>YOUR ROLE</Text>
-              <Text style={roleBadge}>{roleLabel}</Text>
+              <Text style={badgeStyle}>{roleLabel}</Text>
             </Section>
 
             <Text style={text}>{copy.intro}</Text>
@@ -162,8 +251,8 @@ const RoleInvitationEmail = ({ role, inviteUrl, invitedBy, message }: RoleInvita
               </Section>
             ) : null}
 
-            <Button style={button} href={link}>
-              Activate Account & Set Password
+            <Button style={ctaStyle} href={link}>
+              Activate Account &amp; Set Password
             </Button>
 
             <Text style={helperText}>
@@ -180,7 +269,7 @@ const RoleInvitationEmail = ({ role, inviteUrl, invitedBy, message }: RoleInvita
           </Section>
 
           <Hr style={hr} />
-          <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME}. All rights reserved.</Text>
+          <Text style={footer}>© {new Date().getFullYear()} {displayName}. All rights reserved.</Text>
         </Container>
       </Body>
     </Html>
@@ -192,7 +281,8 @@ export const template = {
   subject: (data: Record<string, any>) => {
     const role = data.role || 'Team Member'
     const copy = ROLE_COPY[role] ?? DEFAULT_COPY
-    return `${copy.headline} · ${SITE_NAME}`
+    const name = (data.brandName || '').trim() || SITE_NAME
+    return `${copy.headline} · ${name}`
   },
   displayName: 'Role Invitation',
   previewData: { role: 'Coach', inviteUrl: 'https://app.paigeagent.ai/accept-invite?token=sample', invitedBy: 'Antonio', message: 'Welcome aboard — excited to have you on the team.' },
@@ -201,8 +291,9 @@ export const template = {
 // Styles — premium Paige branding (gold + indigo)
 const main = { backgroundColor: '#ffffff', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" }
 const container = { maxWidth: '600px', margin: '0 auto' }
-const headerBar = { backgroundColor: '#0a1628', padding: '32px 40px 28px', borderRadius: '8px 8px 0 0', textAlign: 'center' as const }
+const headerBar = { backgroundColor: HEADER_BG, padding: '32px 40px 28px', borderRadius: '8px 8px 0 0', textAlign: 'center' as const }
 const logoText = { fontSize: '26px', fontWeight: 'bold' as const, color: '#EBB94C', margin: '0', letterSpacing: '0.5px' }
+const brandLogo = { height: '40px', maxHeight: '40px', width: 'auto', margin: '0 auto', display: 'inline-block' as const }
 const tagline = { fontSize: '12px', color: '#9ca3af', margin: '6px 0 0', textTransform: 'uppercase' as const, letterSpacing: '2px' }
 const contentSection = { padding: '36px 40px 24px' }
 const h2 = { fontSize: '24px', fontWeight: 'bold' as const, color: '#0a1628', margin: '0 0 16px' }
