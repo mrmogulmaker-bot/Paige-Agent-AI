@@ -9,8 +9,14 @@
  *      customer-only; accept_tenant_invite grants the 'client' role and links a
  *      tenant-scoped clients row, then they go straight to /onboard.
  *
- * Staff (team) flow is unchanged: staff are platform users, so an unauthenticated
- * staff invite still routes through /auth.
+ * Staff (team) & agency-team flow: a STAFF teammate (kind='team') and an AGENCY
+ * TEAM member (kind='agency_team') now also create their login INLINE on this
+ * branded card — they are never bounced to the unbranded platform /auth page (§9).
+ * They are staff, so the Workforce/GLBA acknowledgment gate runs before the accept
+ * finishes; accept_tenant_invite then grants the correct membership (tenant staff →
+ * tenant_members at the invite's default_role; agency staff → agency_team_members at
+ * the token's agency_role). Inline signup can never escalate role beyond the invite.
+ * Only an unrecognized/legacy kind still falls back to /auth.
  */
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
@@ -73,10 +79,20 @@ export default function JoinWorkspace() {
   // the platform /auth bounce), but they are staff (an admin of the child), not a
   // customer — so no client-portal copy and no /onboard redirect.
   const isSubaccountOwnerInvite = !!info && info.kind === "subaccount_owner";
-  // Both consumer and sub-account-owner invites register inline on this branded
-  // card; only true platform staff bounce to /auth.
-  const isInlineRegisterInvite = isConsumerInvite || isSubaccountOwnerInvite;
-  const isStaffInvite = !!info && !isInlineRegisterInvite;
+  // A tenant STAFF invite (a coach/consultant/agency invited a teammate onto their
+  // own workspace) and an AGENCY TEAM invite (an agency invited someone onto its
+  // operator team, §9) both now register INLINE on the branded card too — matching
+  // the client-portal and sub-account-owner bar. Nobody is bounced to the unbranded
+  // platform /auth page anymore.
+  const isTenantStaffInvite = !!info && info.kind === "team";
+  const isAgencyTeamInvite = !!info && info.kind === "agency_team";
+  // Workforce/GLBA acknowledgment gates STAFF invites (tenant staff + agency team),
+  // not customers or sub-account owners — preserved from the prior behavior.
+  const isStaffInvite = isTenantStaffInvite || isAgencyTeamInvite;
+  // Every recognized kind registers inline; an unrecognized/legacy kind still falls
+  // back to the platform /auth bounce (defensive — never a dead end).
+  const isInlineRegisterInvite =
+    isConsumerInvite || isSubaccountOwnerInvite || isTenantStaffInvite || isAgencyTeamInvite;
 
   useEffect(() => {
     let cancelled = false;
@@ -126,8 +142,11 @@ export default function JoinWorkspace() {
 
   /** Consume the invite for an already-authenticated user and route them in. */
   const doAccept = async (uid: string) => {
-    // Staff invitations capture the Workforce/GLBA acknowledgment first.
-    if (isStaffInvite && !consentDone) {
+    // Tenant STAFF invitations capture the Workforce/GLBA acknowledgment first
+    // (preserved from the prior staff flow). Agency-team invites are not gated here
+    // — the shipped agency flow had no such gate; adding one is a deliberate
+    // follow-up, not smuggled in with this branding change.
+    if (isTenantStaffInvite && !consentDone) {
       setUserId(uid);
       setConsentOpen(true);
       setAccepting(false);
@@ -225,13 +244,17 @@ export default function JoinWorkspace() {
               : step === "register"
                 ? isSubaccountOwnerInvite
                   ? `${regMode === "signup" ? "Set up your account" : "Sign in"} to run ${info?.tenant_name ?? "your workspace"}.`
-                  : `${regMode === "signup" ? "Create your login" : "Sign in"} to open your portal with ${info?.tenant_name ?? "your workspace"}.`
+                  : isStaffInvite
+                    ? `${regMode === "signup" ? "Create your login" : "Sign in"} to join the ${info?.tenant_name ?? "workspace"} team.`
+                    : `${regMode === "signup" ? "Create your login" : "Sign in"} to open your portal with ${info?.tenant_name ?? "your workspace"}.`
                 : info
                   ? isConsumerInvite
                     ? `Accept to open your private client portal with ${info.tenant_name}.`
                     : isSubaccountOwnerInvite
                       ? `You're set up as the owner of ${info.tenant_name}. Set up your account to take the reins.`
-                      : `You've been invited to join the ${info.tenant_name} team as a ${info.default_role}. Accept to access the workspace.`
+                      : isAgencyTeamInvite
+                        ? `You've been invited to join the ${info.tenant_name} team. Accept to get started.`
+                        : `You've been invited to join the ${info.tenant_name} team as a ${info.default_role}. Accept to access the workspace.`
                   : "Checking your invitation…"}
           </CardDescription>
         </CardHeader>
@@ -289,14 +312,18 @@ export default function JoinWorkspace() {
                   <Link to="/legal/privacy" target="_blank" className="underline" onClick={(e) => e.stopPropagation()}>Privacy Policy</Link>
                   {isSubaccountOwnerInvite
                     ? `, and to run ${info?.tenant_name ?? "this workspace"} on this platform.`
-                    : `, and to work with ${info?.tenant_name ?? "this workspace"} through my client portal.`}
+                    : isStaffInvite
+                      ? `, and to join the ${info?.tenant_name ?? "workspace"} team.`
+                      : `, and to work with ${info?.tenant_name ?? "this workspace"} through my client portal.`}
                 </span>
               </label>
               <Button onClick={submitRegister} disabled={accepting} className="w-full" style={btnStyle}>
                 {accepting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                 {isSubaccountOwnerInvite
                   ? regMode === "signup" ? "Set up account & open workspace" : "Sign in & open workspace"
-                  : regMode === "signup" ? "Create login & open portal" : "Sign in & open portal"}
+                  : isStaffInvite
+                    ? regMode === "signup" ? "Create login & join team" : "Sign in & join team"
+                    : regMode === "signup" ? "Create login & open portal" : "Sign in & open portal"}
               </Button>
               <button
                 type="button"
