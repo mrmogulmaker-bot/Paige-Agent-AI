@@ -102,7 +102,7 @@ export default function AdminNotifications() {
             <Bell className="w-6 h-6" /> Admin Notifications
           </h1>
           <p className="text-sm text-muted-foreground">
-            Pushed in from n8n + MMA OS via the Paige Bridge.
+            Pushed in from n8n + Paige Agent AI via the Paige Bridge.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={markAllRead}>
