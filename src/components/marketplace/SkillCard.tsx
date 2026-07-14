@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { Clock, Lock, Sparkles } from "lucide-react";
+import { ChevronRight, Clock, Lock, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,8 @@ interface Props {
   justArmed: boolean;
   onToggle: (on: boolean) => void;
   onNotify: () => void;
+  /** Open the full detail view for this capability (click / Enter / Space). */
+  onOpen?: () => void;
 }
 
 /**
@@ -24,9 +26,11 @@ interface Props {
  * Included), and the enable moment lit in gold — the single act color (§6).
  */
 export function SkillCard({
-  skill, Icon, isOn, available, lockedOn, saving, loading, justArmed, onToggle, onNotify,
+  skill, Icon, isOn, available, lockedOn, saving, loading, justArmed, onToggle, onNotify, onOpen,
 }: Props) {
   const reduce = useReducedMotion();
+  // Keep the inline controls (toggle / links) from also opening the detail view.
+  const stop = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
   // Word-pill (top-right) — state legible without relying on color.
   const StatePill = () => {
@@ -74,8 +78,20 @@ export function SkillCard({
     <motion.div
       layout
       whileHover={reduce ? undefined : { y: -2 }}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      aria-label={onOpen ? `Open ${skill.name} details` : undefined}
+      onClick={onOpen}
+      onKeyDown={
+        onOpen
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); }
+            }
+          : undefined
+      }
       className={cn(
         "group relative flex min-h-[15rem] flex-col rounded-[var(--radius)] border bg-card p-5 transition-shadow duration-200",
+        onOpen && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         isOn ? "border-[hsl(var(--gold)/0.55)]" : "border-border shadow-card hover:shadow-lg",
       )}
       style={isOn ? { boxShadow: "var(--shadow-glow)" } : undefined}
@@ -103,7 +119,15 @@ export function SkillCard({
         <StatePill />
       </div>
 
-      <h3 className="mt-4 text-base font-semibold leading-tight text-foreground">{skill.name}</h3>
+      <h3 className="mt-4 inline-flex items-center gap-1 text-base font-semibold leading-tight text-foreground">
+        {skill.name}
+        {onOpen && (
+          <ChevronRight
+            className="h-4 w-4 shrink-0 text-muted-foreground opacity-0 -translate-x-1 transition group-hover:opacity-70 group-hover:translate-x-0"
+            aria-hidden
+          />
+        )}
+      </h3>
       <p className="mt-0.5 text-sm text-muted-foreground">{skill.tagline}</p>
       <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-muted-foreground/90">{skill.description}</p>
 
@@ -116,16 +140,19 @@ export function SkillCard({
         </span>
 
         {available ? (
-          <Switch
-            checked={isOn}
-            disabled={saving || loading || lockedOn}
-            onCheckedChange={onToggle}
-            aria-label={`Toggle ${skill.name}`}
-            className="shrink-0 data-[state=checked]:bg-[hsl(var(--gold))] focus-visible:ring-[hsl(var(--ring))]"
-          />
+          <span onClick={stop} onKeyDown={stop} className="shrink-0">
+            <Switch
+              checked={isOn}
+              disabled={saving || loading || lockedOn}
+              onCheckedChange={onToggle}
+              aria-label={`Toggle ${skill.name}`}
+              className="data-[state=checked]:bg-[hsl(var(--gold))] focus-visible:ring-[hsl(var(--ring))]"
+            />
+          </span>
         ) : lockedOn ? (
           <a
             href="/admin/your-paige"
+            onClick={stop}
             className="shrink-0 rounded text-xs font-medium text-[hsl(var(--primary))] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           >
             Manage →
@@ -133,7 +160,7 @@ export function SkillCard({
         ) : (
           <button
             type="button"
-            onClick={onNotify}
+            onClick={(e) => { stop(e); onNotify(); }}
             className="shrink-0 inline-flex items-center gap-1 rounded text-xs font-medium text-[hsl(var(--primary))] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           >
             <Sparkles className="h-3 w-3" /> Notify me
