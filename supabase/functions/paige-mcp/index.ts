@@ -1128,15 +1128,35 @@ mcp.tool("get_coach_performance", {
 
 mcp.tool("create_team_invitation", {
   description:
-    "Create a team invitation row for an internal team member. Does NOT send the email — pair with the send-admin-invitation function for that.",
+    "Create a team invitation row for an internal tenant team member (admin | coach | sales_rep | cs_rep). Does NOT send the email — pair with the send-admin-invitation function for that. Platform (super_admin/platform_admin) and agency_* roles are NOT grantable here — those go through the platform-invite and agency-team flows.",
   inputSchema: z.object({
     email: z.string(),
-    role: z.string().describe("admin | sales_rep | coach | broker | cs"),
+    role: z.enum(["admin", "coach", "sales_rep", "cs_rep"])
+      .describe("Tenant staff role. Valid app_role staff labels only: admin | coach | sales_rep | cs_rep."),
     invited_by_user_id: z.string().optional(),
     template_name: z.string().optional(),
   }),
   annotations: { destructiveHint: true },
   handler: async (args) => {
+    // ── SECURITY (Tier Rail Phase A) ────────────────────────────────────────
+    // Clamp the grantable role to a server-side allow-list scoped to the
+    // caller's tier — this generic tenant-invite tool must NEVER mint
+    // super_admin/platform_admin or agency_* authority (those flow through the
+    // platform-invite / agency-team paths). The z.enum blocks bad input at the
+    // schema; this runtime check is defense-in-depth. Bind the invitation to the
+    // caller's RESOLVED tenant — a null tenant_id would leave the accepted
+    // membership unscoped.
+    const actor = currentActor();
+    const tier = await deriveTier(actor);
+    if (tier === "client") return err("forbidden_tier");
+    // DB-valid app_role staff labels only. Deny-by-default: super_admin,
+    // platform_admin, agency_*, finance, moderator, developer, broker*, etc. are
+    // NOT grantable through this generic tenant-invite tool.
+    const ALLOWED_TENANT_INVITE_ROLES = new Set(["admin", "coach", "sales_rep", "cs_rep"]);
+    if (!ALLOWED_TENANT_INVITE_ROLES.has(args.role)) return err("role_not_allowed");
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+
     const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
     const tokenHash = await sha256Hex(token);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -1145,6 +1165,7 @@ mcp.tool("create_team_invitation", {
       .insert({
         email: args.email.toLowerCase(),
         role: args.role,
+        tenant_id: tenantId,
         invited_by: args.invited_by_user_id ?? null,
         token_hash: tokenHash,
         expires_at: expiresAt,
@@ -1153,7 +1174,7 @@ mcp.tool("create_team_invitation", {
       .select("id")
       .single();
     if (error) return err(error.message);
-    await audit("create_team_invitation", "invitation", data.id, { email: args.email, role: args.role });
+    await audit("create_team_invitation", "invitation", data.id, { email: args.email, role: args.role, tenant_id: tenantId });
     return ok({
       ok: true,
       invitation_id: data.id,
