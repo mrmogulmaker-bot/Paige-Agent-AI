@@ -4,6 +4,9 @@ import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 import { PME_KNOWLEDGE_BASE } from "../_shared/pme-knowledge-base.ts";
+// Tier Rail Spine (Phase D): the SAME declared-rail tier resolver + client-seat
+// allowlist that paige-mcp uses, so a client-portal Paige seat is sealed here too.
+import { getActorTier, clientSeatToolAllowed, type Tier } from "../_shared/actorTier.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -3536,6 +3539,20 @@ SUPPORT & FEEDBACK AWARENESS
     } catch (e) {
       console.warn("[paige-ai-chat] role lookup failed:", e);
     }
+
+    // === TIER RAIL (Phase D): the ENFORCEMENT signal ===
+    // callerTier is derived off the SAME declared rail as a human (get_actor_access,
+    // service_role). isOperator above stays the prompt-UX signal; callerTier is what
+    // GATES tools. A genuine client-portal seat → 'client' (owner-ops tools refused
+    // server-side below); an operator (even when focusing a client file) → tenant/
+    // agency/god, so operators keep every tool. Fails CLOSED to 'client' on any error.
+    let callerTier: Tier = "tenant";
+    try {
+      callerTier = await getActorTier(supabase, { actorUserId: user.id, isPlatform: false, scopes: [] });
+    } catch {
+      callerTier = "client";
+    }
+
     if (isOperator) {
       // Who is Paige actually talking to? Load the operator's own profile so she greets
       // and refers to them by name — a named teammate, not a generic chat box.
@@ -5143,6 +5160,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       for (const tc of toolCalls) {
         if (!tc || !tc.function?.name) continue;
         executed.push(tc);
+
+        // ── CLIENT-SEAT GATE (Tier Rail Phase D, §9/#133) ────────────────────
+        // Deny-by-default on a client-portal seat: only the CLIENT_SEAT_ALLOW
+        // tools are permitted; every owner-ops tool (crm_*, pipeline_*, member_*,
+        // growth_page_*, action_file/advance, n8n_*, forge_subagent, plan_*, …) is
+        // refused SERVER-SIDE regardless of what the model attempts — hidden AND
+        // enforced, mirroring paige-mcp's enforceTierAndScope client seal.
+        if (callerTier === "client" && !clientSeatToolAllowed(tc.function.name)) {
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, forbidden_seat: true, error: "This is a client portal seat; that action is not available here." }) });
+          continue;
+        }
 
         // ── AUTONOMY GATE ────────────────────────────────────────────────────
         // The single choke point for mutating tools. Default 'confirm' → Paige

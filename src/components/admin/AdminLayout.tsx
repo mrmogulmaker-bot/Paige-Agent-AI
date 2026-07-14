@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate, Radio,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -207,6 +207,7 @@ const GOD_HUBS: Hub[] = [
 // top-level tab: it's a setup tool, not a daily-driver, so the top bar stays
 // focused on the operational essentials.
 const GOD_MORE: MoreItem[] = [
+  { label: "Sends & Tier", href: "/admin/platform/sends", icon: Radio },
   { label: "Sending Identities", href: "/admin/platform/sending", icon: Send },
   { label: "Support", href: "/admin/support", icon: LifeBuoy },
   { label: "Security Canary", href: "/admin/security", icon: ShieldCheck },

@@ -70,6 +70,7 @@ const PortalStudio = lazy(() => import("@/pages/admin/PortalStudio"));
 const PlatformTenants = lazy(() => import("@/pages/admin/PlatformTenants"));
 const PlatformTeam = lazy(() => import("@/pages/admin/PlatformTeam"));
 const PlatformSendingIdentities = lazy(() => import("@/pages/admin/PlatformSendingIdentities"));
+const PlatformSends = lazy(() => import("@/pages/admin/PlatformSends"));
 const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
 const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
 const MyReferralsPanel = lazy(() => import("@/components/dashboard/MyReferralsPanel"));
@@ -568,6 +569,9 @@ const Admin = () => {
         } />
         <Route path="platform/sending" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformSendingIdentities /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/sends" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformSends /></Suspense></PlatformStaffOnly>
         } />
       </Routes>
 
