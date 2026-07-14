@@ -124,6 +124,9 @@ async function audit(action: string, target_type: string | null, target_id: stri
 // Workflow dispatcher lives in _shared so the pg_cron sweeper
 // (dispatch-queued-workflow-runs) can re-use the same routing logic.
 import { dispatchWorkflowRun, MMA_TENANT_ID } from "../_shared/workflowDispatch.ts";
+// Tier Rail Spine (Phase D): one shared tier resolver, off the same declared rail
+// (public.get_actor_access) a human resolves through — so Paige's tier == a human's.
+import { getActorTier, isClientSeatByScopes } from "../_shared/actorTier.ts";
 
 // Doctrine §118 master-only MCP tools. Hidden from tools/list when caller's
 // tenant != MMA. These are forward-looking — none are implemented yet but the
@@ -224,21 +227,21 @@ async function actorManagesAnyAgency(actor: ActorCtx): Promise<boolean> {
 // operator token carries. No schema change required.
 function isClientSeat(actor: ActorCtx): boolean {
   if (actor.kind !== "user") return false;
-  if (actor.scopes.length === 0) return false;
-  return actor.scopes.every((s) => s.startsWith("self."));
+  return isClientSeatByScopes(actor.scopes);
 }
 
 // THE request-time tier. Precedence: god → client(sealed) → agency → tenant.
+// Delegates to the shared resolver (Phase D) so MCP and paige-ai-chat and human
+// surfaces all read the SAME declared rail. The shared resolver returns
+// 'subaccount' for a sub-account operator; the MCP ladder treats a sub-account
+// exactly like a tenant (they run their own child like a tenant), so collapse it.
 async function deriveTier(actor: ActorCtx): Promise<McpTier> {
-  if (actor.kind === "platform") return "god";
-  if (await actorIsPlatformOwner(actor)) return "god";   // actorIsPlatformOwner already ⇒ true for platform
-  // client is sealed BEFORE agency — a self.* seat can never widen to agency.
-  if (isClientSeat(actor)) return "client";
-  if (await actorManagesAnyAgency(actor)) return "agency";
-  // Fallback: standalone owner/admin, or an agency member without owner/admin
-  // authority, or an unresolved tenant (tenant tools all re-resolve and hard-fail
-  // tenant_not_resolved, so an unresolved tenant can touch nothing).
-  return "tenant";
+  const t = await getActorTier(admin, {
+    actorUserId: actor.kind === "user" ? actor.user_id : null,
+    isPlatform: actor.kind === "platform" || (await actorIsPlatformOwner(actor)),
+    scopes: actor.scopes ?? [],
+  });
+  return (t === "subaccount" ? "tenant" : t) as McpTier;
 }
 
 

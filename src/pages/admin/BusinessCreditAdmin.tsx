@@ -47,7 +47,7 @@ export default function BusinessCreditAdmin() {
       </div>
       <p className="text-sm text-muted-foreground max-w-2xl">
         Nav.com business credit profiles for monitored MMA contacts. Threshold-based alerts
-        push to MMA OS via <code>business_credit_score_changed</code>.
+        push to Paige Agent AI via <code>business_credit_score_changed</code>.
       </p>
       <Card>
         <CardHeader><CardTitle>Monitored businesses</CardTitle></CardHeader>

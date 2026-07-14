@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
   const message =
     `🚨 Bridge auth failures detected (${failures.length} in last hour)\n` +
     lines.join("\n") +
-    `\n\nLikely cause: stale PAIGE_BRIDGE_API_KEY on a caller (LangGraph / n8n / MMA OS).`;
+    `\n\nLikely cause: stale PAIGE_BRIDGE_API_KEY on a caller (LangGraph / n8n / Paige Agent AI).`;
 
   // 1. Local mirror notification (drives in-app bell)
   await supabase.from("paige_admin_notifications").insert({
