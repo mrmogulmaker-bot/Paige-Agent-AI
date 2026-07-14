@@ -1,6 +1,15 @@
 import { useMemo } from "react";
 import { Check, X } from "lucide-react";
 
+/**
+ * Single source of truth for the account password minimum, shared by every
+ * self-service surface that sets a password (the Account Security panel and the
+ * recovery ResetPassword page) so the gate never disagrees between flows.
+ * Set to 8 (the stronger of the two prior values — the panel already used 8;
+ * ResetPassword used 6) so consolidating never weakens either flow.
+ */
+export const MIN_PASSWORD_LENGTH = 8;
+
 interface Props {
   password: string;
 }

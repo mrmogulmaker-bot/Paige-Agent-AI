@@ -68,9 +68,17 @@ serve(async (req: Request): Promise<Response> => {
     if (!email || !/.+@.+\..+/.test(email)) return json({ error: "A valid email is required." }, 400);
     if (!ASSIGNABLE.has(role)) return json({ error: `Invalid or non-assignable role: ${role}` }, 400);
 
-    // Agency name (for the email) — service client, read-only.
-    const { data: agencyRow } = await admin.from("tenants").select("name").eq("id", agencyId).maybeSingle();
-    const agencyName = agencyRow?.name ?? "your agency";
+    // Agency brand (for the email + the branded /join card) — service client,
+    // read-only. Resolve UP the parent chain so the teammate sees the agency's logo
+    // + color; the resolver floors unset colors to the platform tokens (§6/§9),
+    // never the operator master brand. Falls back to the raw tenant name.
+    const { data: brandRows } = await admin.rpc("resolve_tenant_brand", { _tenant_id: agencyId });
+    const rb = (Array.isArray(brandRows) ? brandRows[0] : brandRows) as
+      | { tenant_name?: string; primary_color?: string; logo_url?: string | null }
+      | null;
+    const agencyName = rb?.tenant_name ?? "your agency";
+    const brandLogoUrl = rb?.logo_url ?? null;
+    const brandColor = rb?.primary_color ?? null;
 
     // Resolve existing user by email via a service-role-only lookup RPC — NOT
     // listUsers(), which returns only the first page and would silently miss (then
@@ -148,23 +156,66 @@ serve(async (req: Request): Promise<Response> => {
       }, { onConflict: "agency_tenant_id,user_id" });
     if (upsertErr) return json({ error: `Could not add the teammate: ${upsertErr.message}` }, 500);
 
-    // Branded email — reuse the transactional role-invitation template.
-    const inviteUrl = actionLink ?? `${APP_BASE}/auth`;
+    // Mint a BRANDED, single-use agency-team invite token so the teammate lands on
+    // the agency-branded /join card with inline account creation — never the
+    // unbranded /reset-password or /auth page (§6/§9). Authorization already
+    // happened above (agency_team_can_manage, agency id from the server), so this
+    // direct service-role INSERT is safe; it deliberately bypasses
+    // create_tenant_invite_token's auth gate, which keys off auth.uid() (null here).
+    // TTL + max_uses=1 keep it single-use and expiring like every other invite kind.
+    let inviteUrl: string | null = null;
+    try {
+      const rawBytes = crypto.getRandomValues(new Uint8Array(24));
+      const mintToken = btoa(String.fromCharCode(...rawBytes))
+        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+      const { data: tokRow, error: tokErr } = await admin
+        .from("tenant_invite_tokens")
+        .insert({
+          tenant_id: agencyId,
+          token: mintToken,
+          kind: "agency_team",
+          default_role: "member",        // placeholder; agency authority lives in agency_role
+          agency_role: role,
+          created_by: user.id,
+          email,                          // bound recipient — anti-relay + single-redeemer
+          max_uses: 1,
+          expires_at: new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString(),
+        })
+        .select("token")
+        .maybeSingle();
+      if (tokErr) throw tokErr;
+      if (tokRow?.token) inviteUrl = `${APP_BASE}/join/${tokRow.token}`;
+    } catch (e) {
+      // PRESERVE the prior working behavior as a fallback: a new teammate still gets
+      // their set-password recovery link, an existing one is pointed at sign-in.
+      console.error("agency-invite-member: branded token mint failed, falling back to prior link:", e);
+    }
+    if (!inviteUrl) inviteUrl = actionLink ?? `${APP_BASE}/auth`;
+
+    // Branded email — reuse the transactional role-invitation template, now wearing
+    // the AGENCY's brand (name/logo/color) so the email and the /join card it opens
+    // read as one continuous system (§6).
     const inviterName = user.user_metadata?.full_name || user.email || "Your agency";
     try {
       await admin.functions.invoke("send-transactional-email", {
         body: {
           templateName: "role-invitation",
           recipientEmail: email,
-          idempotencyKey: `agency-invite-${agencyId}-${target.id}-${role}`,
+          // Discriminate on the freshly minted token's tail so a RE-invite (new
+          // single-use token) actually re-sends instead of being deduped against a
+          // now-spent/expired link. The static /auth fallback keeps a stable key.
+          idempotencyKey: `agency-invite-${agencyId}-${target.id}-${role}-${inviteUrl.split("/").pop()}`,
           tenantId: agencyId,
           templateData: {
-            role: `${ROLE_LABEL[role] ?? role} · ${agencyName}`,
+            role: ROLE_LABEL[role] ?? role,   // matches the agency-role copy keys
             inviteUrl,
             invitedBy: inviterName,
+            brandName: agencyName,
+            brandLogoUrl,
+            brandColor,
             message: createdUser
-              ? `You've been added to ${agencyName}'s agency team. Set your password to get in.`
-              : `You've been added to ${agencyName}'s agency team. Sign in to get started.`,
+              ? `You've been added to ${agencyName}'s team. Set up your account to get in.`
+              : `You've been added to ${agencyName}'s team. Sign in to get started.`,
           },
         },
       });

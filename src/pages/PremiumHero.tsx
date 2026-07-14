@@ -82,7 +82,7 @@ const GoldRule = () => (
 /**
  * Floating workspace panels — the "operation running around Paige." Each is a
  * glass card of real coaching work (drafts, kickoffs, milestones, retainers)
- * that drifts slowly at its own depth. Coaching only — no finance language.
+ * that drifts slowly at its own depth. Coaching-generic — no finance language.
  */
 type Panel = {
   icon: typeof MessageSquare;
@@ -105,7 +105,7 @@ const PANELS: Panel[] = [
 /**
  * Day in the Life — Paige narrates a full day of coaching operations, each line
  * lighting a real artifact. Dawn-gold → dusk-violet "sun arc" runs top to bottom.
- * Coaching only — invoicing here is billing coaching clients, not consumer finance.
+ * Coaching-generic — invoicing here is billing your own clients, not consumer finance.
  */
 const DAY = [
   { t: "6:47 AM", icon: Sunrise, line: "I'm drafting your morning brief.", tag: "Morning brief ready" },
@@ -295,18 +295,18 @@ const STEPS = [
 
 const PLANS = [
   { name: "Solo", price: "$58", tagline: "Just you, fully covered.", features: ["Paige runs your CRM & pipeline", "Auto-drafted follow-ups & recaps", "Client welcome sequences", "Cohort check-ins & at-risk flags"], highlight: false },
-  { name: "Practice", price: "$149", tagline: "Most coaches land here.", features: ["Everything in Solo", "Custom playbooks per coach", "Advanced analytics & signals", "Priority support"], highlight: true },
-  { name: "Studio", price: "$349", tagline: "For the coach running the whole show.", features: ["Everything in Practice", "Multi-coach roster & routing", "White-label workspace", "Dedicated success partner"], highlight: false },
+  { name: "Practice", price: "$149", tagline: "Where most practices land.", features: ["Everything in Solo", "Custom playbooks per seat", "Advanced analytics & signals", "Priority support"], highlight: true },
+  { name: "Studio", price: "$349", tagline: "For the operator running the whole show.", features: ["Everything in Practice", "Full team roster & routing", "White-label workspace", "Dedicated success partner"], highlight: false },
 ];
 
 const QUOTES = [
   { q: "Paige runs the parts of my practice I used to dread. I got my evenings back — and my clients have never felt more looked-after.", a: "Business coach · Chicago" },
-  { q: "It's like hiring an ops team overnight. The follow-through happens whether I remember it or not.", a: "Executive coach · Austin" },
-  { q: "Every client gets the follow-up I could never keep up with. Retention's up and I'm doing a fraction of the admin.", a: "Fitness coach · Los Angeles" },
+  { q: "It's like hiring an ops team overnight. The follow-through happens whether I remember it or not.", a: "Management consultant · Austin" },
+  { q: "Every client gets the follow-up I could never keep up with. Retention's up and I'm doing a fraction of the admin.", a: "Agency owner · Los Angeles" },
 ];
 
 const FAQS = [
-  { q: "Who is Paige for?", a: "Coaches running a real practice — business, executive, fitness, life — who want the operations handled so they can focus on the work only they can do." },
+  { q: "Who is Paige for?", a: "Operators running a real practice — coaches, consultants, agencies, advisors — who want the operations handled so they can focus on the work only they can do." },
   { q: "Do I need technical skills?", a: "No. Paige is conversational — you tell her what you want and she handles the workflows behind the scenes." },
   { q: "How fast can she start?", a: "Day one. Every plan comes with a 14-day pilot and no contract — Paige is running your operation the moment you connect her." },
 ];
@@ -446,7 +446,7 @@ export default function PremiumHero() {
             <span className="bg-gradient-to-br from-[#f4e2a8] via-[#e8c66a] to-[#d4af37] bg-clip-text text-transparent">Paige.</span>
           </h1>
           <p className="mt-4 text-2xl font-semibold text-white/90 md:text-3xl" style={{ fontFamily: HEAD }}>
-            She runs your coaching business.
+            She runs your whole practice.
           </p>
           <p className="mt-1 text-2xl font-semibold md:text-3xl" style={{ fontFamily: HEAD }}>
             <span className="bg-gradient-to-r from-[#e8c66a] to-[#d4af37] bg-clip-text text-transparent">
@@ -584,7 +584,7 @@ export default function PremiumHero() {
         {/* Testimonials */}
         <Section className="py-24">
           <motion.h2 variants={rise} className="mb-12 text-center text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
-            Coaches who <span className="bg-gradient-to-r from-[#e8c66a] to-[#a855f7] bg-clip-text text-transparent">hired Paige.</span>
+            Practices that <span className="bg-gradient-to-r from-[#e8c66a] to-[#a855f7] bg-clip-text text-transparent">hired Paige.</span>
           </motion.h2>
           <div className="grid gap-5 md:grid-cols-3">
             {QUOTES.map((t) => (

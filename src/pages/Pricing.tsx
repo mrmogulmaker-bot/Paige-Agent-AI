@@ -25,7 +25,7 @@ type TenantTier = {
   tagline: string;
   inclusions: {
     agents: string;
-    creditInquiries: string;
+    actionsPerMonth: string;
     storage: string;
   };
   features: string[];
@@ -44,7 +44,7 @@ const tenantTiers: TenantTier[] = [
     tagline: "For solo coaches launching a Paige-powered practice.",
     inclusions: {
       agents: "25 agents included",
-      creditInquiries: "1,000 AI actions / mo",
+      actionsPerMonth: "1,000 AI actions / mo",
       storage: "10 GB storage",
     },
     features: [
@@ -65,7 +65,7 @@ const tenantTiers: TenantTier[] = [
     tagline: "For coaching academies and broker shops scaling client volume.",
     inclusions: {
       agents: "100 agents included",
-      creditInquiries: "5,000 AI actions / mo",
+      actionsPerMonth: "5,000 AI actions / mo",
       storage: "50 GB storage",
     },
     features: [
@@ -88,7 +88,7 @@ const tenantTiers: TenantTier[] = [
     tagline: "For established firms running multi-brand or high-volume operations.",
     inclusions: {
       agents: "500 agents included",
-      creditInquiries: "25,000 AI actions / mo",
+      actionsPerMonth: "25,000 AI actions / mo",
       storage: "500 GB storage",
     },
     features: [
@@ -110,7 +110,7 @@ const tenantTiers: TenantTier[] = [
     tagline: "For multi-brand portfolios with bespoke infrastructure requirements.",
     inclusions: {
       agents: "Unlimited agents",
-      creditInquiries: "Volume-negotiated",
+      actionsPerMonth: "Volume-negotiated",
       storage: "Volume-negotiated",
     },
     features: [
@@ -186,15 +186,15 @@ export default function Pricing() {
                     </p>
                     <ul className="space-y-1.5 text-sm">
                       <li className="flex items-start gap-2">
-                        <Building2 className="w-3.5 h-3.5 text-fundability-excellent flex-shrink-0 mt-0.5" />
+                        <Building2 className="w-3.5 h-3.5 text-success flex-shrink-0 mt-0.5" />
                         <span>{tier.inclusions.agents}</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <Building2 className="w-3.5 h-3.5 text-fundability-excellent flex-shrink-0 mt-0.5" />
-                        <span>{tier.inclusions.creditInquiries}</span>
+                        <Building2 className="w-3.5 h-3.5 text-success flex-shrink-0 mt-0.5" />
+                        <span>{tier.inclusions.actionsPerMonth}</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <Building2 className="w-3.5 h-3.5 text-fundability-excellent flex-shrink-0 mt-0.5" />
+                        <Building2 className="w-3.5 h-3.5 text-success flex-shrink-0 mt-0.5" />
                         <span>{tier.inclusions.storage}</span>
                       </li>
                     </ul>
@@ -211,7 +211,7 @@ export default function Pricing() {
                         {f.endsWith("plus:") ? (
                           <span className="w-4 h-0.5 mt-2.5 bg-gold flex-shrink-0" />
                         ) : (
-                          <CheckCircle className="w-4 h-4 text-fundability-excellent flex-shrink-0 mt-0.5" />
+                          <CheckCircle className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
                         )}
                         <span className="text-sm leading-snug">{f}</span>
                       </li>
@@ -251,13 +251,13 @@ export default function Pricing() {
               </p>
               <ul className="text-sm space-y-1.5">
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-fundability-excellent flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
                   <span>
                     <strong>$5 per additional agent</strong> per month beyond your tier's included seats
                   </span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-fundability-excellent flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
                   <span>
                     <strong>$5 per additional 1,000 AI actions</strong> beyond your tier's monthly cap
                   </span>
@@ -266,7 +266,7 @@ export default function Pricing() {
             </Card>
 
             <p className="text-center text-xs text-muted-foreground max-w-3xl mx-auto leading-relaxed mt-10">
-              Paige provides AI-powered business operations, client management, and coaching workflow
+              Paige provides Paige-run business operations, client management, and coaching workflow
               infrastructure for client-based businesses. Service provided by{" "}
               <strong>PaigeAgent AI LLC</strong>.
             </p>

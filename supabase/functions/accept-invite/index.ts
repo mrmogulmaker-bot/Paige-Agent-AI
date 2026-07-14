@@ -249,7 +249,19 @@ Deno.serve(async (req) => {
         return json(400, { ok: false, error: "Password must be at least 10 characters" });
       }
 
-      const authUser = await findAuthUserByEmail(team.email);
+      // Resolve the account by email via the service-role RPC (agency_lookup_user_id
+      // is a generic email→uid resolver) — NOT the first-page-only listUsers scan,
+      // which silently misses anyone past the first page once the tenant grows.
+      const { data: staffUid, error: staffLookupErr } =
+        await admin.rpc("agency_lookup_user_id", { _email: team.email });
+      if (staffLookupErr) {
+        return json(500, { ok: false, error: "Could not verify the account. Try again." });
+      }
+      if (!staffUid) {
+        return json(404, { ok: false, error: "Account not found. Contact your administrator." });
+      }
+      const { data: staffUserRes } = await admin.auth.admin.getUserById(staffUid as string);
+      const authUser = staffUserRes?.user;
       if (!authUser) {
         return json(404, { ok: false, error: "Account not found. Contact your administrator." });
       }

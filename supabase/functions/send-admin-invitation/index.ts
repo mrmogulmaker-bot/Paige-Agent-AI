@@ -150,13 +150,32 @@ const handler = async (req: Request): Promise<Response> => {
     };
     const roleLabel = roleLabels[role] || role;
 
+    // §6/§9: a tenant's staff invite wears the TENANT's brand, not the platform's.
+    // Resolve up the parent chain (child inherits its agency's logo/color); the
+    // resolver floors unset colors to the platform tokens, never the master brand.
+    // No tenant (platform-owner invite with no active tenant) → Paige defaults.
+    let brandName: string | null = null;
+    let brandLogoUrl: string | null = null;
+    let brandColor: string | null = null;
+    if (inviterTenantId) {
+      const { data: brandRows } = await supabase.rpc("resolve_tenant_brand", { _tenant_id: inviterTenantId });
+      const rb = (Array.isArray(brandRows) ? brandRows[0] : brandRows) as
+        | { tenant_name?: string; primary_color?: string; logo_url?: string | null }
+        | null;
+      if (rb) {
+        brandName = rb.tenant_name ?? null;
+        brandLogoUrl = rb.logo_url ?? null;
+        brandColor = rb.primary_color ?? null;
+      }
+    }
+
     const { error: emailError } = await supabase.functions.invoke("send-transactional-email", {
       body: {
         templateName: templateName || "role-invitation",
         recipientEmail: email,
         idempotencyKey: `invite-${invitation.id}`,
         tenantId: inviterTenantId,
-        templateData: { role: roleLabel, inviteUrl, invitedBy: inviterName, message: message ?? null },
+        templateData: { role: roleLabel, inviteUrl, invitedBy: inviterName, message: message ?? null, brandName, brandLogoUrl, brandColor },
       },
     });
 
