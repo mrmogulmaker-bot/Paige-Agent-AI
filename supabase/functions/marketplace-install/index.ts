@@ -1,0 +1,225 @@
+// marketplace-install — the universal install entry point for the marketplace
+// registry (Client Experience epic / Marketplace Registry Spine).
+//
+// Why an edge function and not just the RPC: a kb_pack item's docs are only
+// retrievable once their chunks are embedded via Voyage, and Postgres cannot call
+// Voyage. So this function does the ONE thing SQL can't — embed + insert the KB
+// docs (reusing the proven kb-ingest path) — and then hands the resulting doc IDs
+// to install_marketplace_item(), which atomically flips skills, records the exact
+// provenance, and writes the §17 ledger. A pure skill item (no kb_pack) skips the
+// embedding and installs via the RPC alone; Paige can also call that RPC straight
+// from chat (§10) without this function.
+//
+// Authorization is enforced server-side against the caller's JWT (the target
+// tenant is authorized via the gated RPCs, never trusted from the payload — §9/§13).
+// §13 honesty: the receipt reports what actually embedded/installed. If a doc can't
+// embed (e.g. VOYAGE_API_KEY down) it is NOT counted as seeded and the orphan row
+// is removed, so the KB never fills with phantom un-searchable entries.
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { z } from "https://esm.sh/zod@3.22.4";
+import { voyageEmbed } from "../_shared/voyage.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const BodySchema = z.object({
+  item_slug: z.string().min(1).max(120).regex(/^[a-z0-9_]+$/),
+  tenant_id: z.string().uuid().optional(), // platform-owner override; ignored otherwise
+  installed_by_agent: z.string().max(40).optional(), // 'paige' when driven from chat
+});
+
+const CHUNK_SIZE = 1000;
+const CHUNK_OVERLAP = 150;
+
+function chunkText(text: string): string[] {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  if (clean.length <= CHUNK_SIZE) return [clean];
+  const out: string[] = [];
+  let i = 0;
+  while (i < clean.length) {
+    const end = Math.min(i + CHUNK_SIZE, clean.length);
+    out.push(clean.slice(i, end));
+    if (end === clean.length) break;
+    i = end - CHUNK_OVERLAP;
+  }
+  return out;
+}
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  try {
+    const auth = req.headers.get("Authorization");
+    if (!auth?.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+
+    const url = Deno.env.get("SUPABASE_URL")!;
+    // User-scoped client — carries the caller's JWT so the gated RPCs see the real
+    // auth.uid() and enforce is_platform_owner()/is_tenant_admin().
+    const userClient = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, {
+      global: { headers: { Authorization: auth } },
+    });
+    // Service client — used ONLY to read the manifest and write KB rows AFTER the
+    // caller's authorization for the tenant has been confirmed.
+    const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+    const token = auth.replace("Bearer ", "");
+    const { data: claims, error: claimsErr } = await userClient.auth.getClaims(token);
+    if (claimsErr || !claims?.claims) return json({ error: "Unauthorized" }, 401);
+    const userId = claims.claims.sub as string;
+
+    const parsed = BodySchema.safeParse(await req.json());
+    if (!parsed.success) return json({ error: parsed.error.flatten() }, 400);
+    const { item_slug, installed_by_agent } = parsed.data;
+
+    // Resolve the target tenant. A tenant_id override is only honored for a
+    // platform owner; everyone else installs into their own active tenant.
+    let tenantId = parsed.data.tenant_id ?? null;
+    const { data: isOwner } = await userClient.rpc("is_platform_owner");
+    if (tenantId && !isOwner) tenantId = null; // ignore spoofed override
+    if (!tenantId) {
+      const { data: prof } = await admin
+        .from("profiles").select("active_tenant_id").eq("user_id", userId).maybeSingle();
+      tenantId = prof?.active_tenant_id ?? null;
+    }
+    if (!tenantId) return json({ error: "No active tenant for this user" }, 400);
+
+    // Authorization probe: this RPC RAISES 42501 unless the caller is the platform
+    // owner or an admin of tenantId. Confirm BEFORE we spend embed calls / write rows.
+    const { error: gateErr } = await userClient.rpc("marketplace_catalog_for_tenant", {
+      _tenant_id: tenantId,
+    });
+    if (gateErr) {
+      const forbidden = /not authorized/i.test(gateErr.message);
+      return json({ error: forbidden ? "Not authorized for this tenant" : gateErr.message },
+        forbidden ? 403 : 400);
+    }
+
+    // Load the item + its current published version manifest.
+    const { data: item, error: itemErr } = await admin
+      .from("marketplace_items")
+      .select("id, slug, item_type, status, current_version_id")
+      .eq("slug", item_slug)
+      .maybeSingle();
+    if (itemErr) return json({ error: itemErr.message }, 400);
+    if (!item) return json({ error: `marketplace item ${item_slug} not found` }, 404);
+    if (!item.current_version_id) return json({ error: `item ${item_slug} has no published version` }, 409);
+
+    const { data: version, error: verErr } = await admin
+      .from("marketplace_item_versions")
+      .select("id, semver, install_manifest")
+      .eq("id", item.current_version_id)
+      .maybeSingle();
+    if (verErr || !version) return json({ error: verErr?.message ?? "version not found" }, 400);
+
+    const manifest = (version.install_manifest ?? {}) as Record<string, any>;
+
+    // Idempotency: if an active install already exists, don't re-embed — return the
+    // RPC's already-installed receipt (the RPC is the single source of truth).
+    const { data: existing } = await admin
+      .from("marketplace_installs")
+      .select("id, status")
+      .eq("tenant_id", tenantId).eq("item_id", item.id).maybeSingle();
+
+    const seededDocIds: string[] = [];
+    const warnings: string[] = [];
+
+    if (!existing || existing.status !== "active") {
+      // Embed + insert kb_pack docs (the part SQL can't do).
+      const docs: any[] = Array.isArray(manifest?.kb_pack?.docs) ? manifest.kb_pack.docs : [];
+      for (const d of docs) {
+        const title = String(d?.title ?? "").slice(0, 300);
+        const content = String(d?.content ?? "");
+        if (!title || !content.trim()) { warnings.push(`skipped a doc with empty title/content`); continue; }
+        const chunks = chunkText(content);
+        if (chunks.length === 0) { warnings.push(`"${title}" had no chunkable content`); continue; }
+
+        // Insert the doc row (service role — authorization already confirmed above).
+        const tags = Array.isArray(d?.tags) ? d.tags.slice(0, 20).map((t: any) => String(t)) : [];
+        const { data: doc, error: docErr } = await admin
+          .from("tenant_knowledge_docs")
+          .insert({
+            tenant_id: tenantId,
+            title,
+            content,
+            summary: d?.summary ? String(d.summary).slice(0, 2000) : null,
+            category: d?.category ? String(d.category).slice(0, 100) : "onboarding",
+            tags: [...new Set([`marketplace:${item.slug}`, ...tags])],
+            source: "sync",
+            share_to_network: false,
+            network_review_status: "none",
+            token_count: Math.ceil(content.length / 4),
+            chunk_count: chunks.length,
+            created_by: userId,
+          })
+          .select("id")
+          .single();
+        if (docErr || !doc) { warnings.push(`"${title}" could not be saved: ${docErr?.message ?? "insert failed"}`); continue; }
+
+        // Embed the chunks. document input type for stored content.
+        let vecs: number[][] = [];
+        try {
+          vecs = await voyageEmbed(chunks, { inputType: "document" });
+        } catch (e) {
+          vecs = [];
+          warnings.push(`embedding unavailable — "${title}" not seeded (${(e as Error).message})`);
+        }
+        const rows = vecs
+          .map((embedding, i) => ({
+            tenant_id: tenantId,
+            doc_id: doc.id,
+            chunk_index: i,
+            content: chunks[i],
+            embedding,
+            token_count: Math.ceil(chunks[i].length / 4),
+          }))
+          .filter((r) => Array.isArray(r.embedding) && r.embedding.length > 0);
+
+        if (rows.length === 0) {
+          // Nothing embedded → not retrievable → not a real seed. Remove the orphan (§13).
+          await admin.from("tenant_knowledge_docs").delete().eq("id", doc.id);
+          continue;
+        }
+        await admin.from("tenant_knowledge_chunks").insert(rows);
+        if (rows.length !== chunks.length) {
+          await admin.from("tenant_knowledge_docs").update({ chunk_count: rows.length }).eq("id", doc.id);
+          warnings.push(`"${title}" partially embedded (${rows.length}/${chunks.length} chunks)`);
+        }
+        seededDocIds.push(doc.id);
+      }
+    }
+
+    // Finalize: flip skills, record provenance (incl. the doc IDs we just seeded),
+    // write the ledger — all atomic + idempotent inside the gated RPC.
+    const { data: receipt, error: rpcErr } = await userClient.rpc("install_marketplace_item", {
+      _tenant_id: tenantId,
+      _item_slug: item_slug,
+      _seeded_kb_doc_ids: seededDocIds,
+      _installed_by_agent: installed_by_agent ?? null,
+    });
+    if (rpcErr) {
+      // Roll back the KB rows we optimistically inserted so a failed finalize
+      // doesn't leave un-tracked docs behind.
+      if (seededDocIds.length) {
+        await admin.from("tenant_knowledge_docs").delete().in("id", seededDocIds);
+      }
+      const forbidden = /not authorized/i.test(rpcErr.message);
+      return json({ error: rpcErr.message }, forbidden ? 403 : 400);
+    }
+
+    return json({ ...(receipt as Record<string, unknown>), warnings });
+  } catch (e) {
+    console.error("[marketplace-install] error:", e);
+    return json({ error: (e as Error).message }, 500);
+  }
+});
