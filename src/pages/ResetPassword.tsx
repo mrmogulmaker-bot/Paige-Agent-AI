@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ArrowLeft, CheckCircle2 } from "lucide-react";
 import paigeLogo from "@/assets/paige-logo-transparent.png";
-import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
+import { PasswordStrengthIndicator, MIN_PASSWORD_LENGTH } from "@/components/auth/PasswordStrengthIndicator";
 
 interface PortalBrand {
   tenant_name: string;
@@ -66,8 +66,8 @@ const ResetPassword = () => {
       toast({ title: "Passwords don't match", variant: "destructive" });
       return;
     }
-    if (password.length < 6) {
-      toast({ title: "Password must be at least 6 characters", variant: "destructive" });
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      toast({ title: `Password must be at least ${MIN_PASSWORD_LENGTH} characters`, variant: "destructive" });
       return;
     }
 
@@ -156,7 +156,7 @@ const ResetPassword = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={MIN_PASSWORD_LENGTH}
               disabled={isLoading}
               className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20"
             />
@@ -174,7 +174,7 @@ const ResetPassword = () => {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={MIN_PASSWORD_LENGTH}
               disabled={isLoading}
               className="h-12 bg-muted/50 border-border/60 focus:border-accent focus:ring-accent/20"
             />
