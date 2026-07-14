@@ -3,6 +3,7 @@ import {
   Body, Container, Head, Heading, Html, Img, Preview, Text, Button, Hr, Section, Row, Column,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
+import { EmailFooter } from './email-footer.tsx'
 
 const SITE_NAME = "Paige Agent AI"
 const LOGO_URL = 'https://bfmyebsjyuoecmjskqhs.supabase.co/storage/v1/object/public/email-assets/paige-logo-transparent.png'
@@ -14,6 +15,7 @@ interface WeeklySummaryProps {
   sessionsHeld?: number
   atRiskCount?: number
   topRecommendation?: string
+  unsubscribeUrl?: string
 }
 
 const WeeklySummaryEmail = ({
@@ -23,6 +25,7 @@ const WeeklySummaryEmail = ({
   sessionsHeld = 0,
   atRiskCount = 0,
   topRecommendation = 'Two clients have gone quiet for over a week — Paige has drafted check-in notes for each, ready for your approval.',
+  unsubscribeUrl,
 }: WeeklySummaryProps) => {
   return (
     <Html lang="en" dir="ltr">
@@ -66,6 +69,7 @@ const WeeklySummaryEmail = ({
           </Button>
           <Hr style={hr} />
           <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME}. You received this because the weekly summary is enabled in your notification preferences.</Text>
+          <EmailFooter unsubscribeUrl={unsubscribeUrl} />
         </Container>
       </Body>
     </Html>

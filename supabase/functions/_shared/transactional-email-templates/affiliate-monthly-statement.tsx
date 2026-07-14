@@ -3,6 +3,7 @@ import {
   Body, Button, Container, Head, Heading, Hr, Html, Preview, Section, Text,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
+import { EmailFooter } from './email-footer.tsx'
 
 const SITE_NAME = 'PaigeAgent.ai'
 
@@ -17,10 +18,11 @@ interface Props {
   ytdTotal?: string
   referralLink?: string
   firstName?: string
+  unsubscribeUrl?: string
 }
 
 const AffiliateMonthlyStatementEmail = ({
-  monthLabel, clicks, signups, conversions, earned, paid, pending, ytdTotal, referralLink, firstName,
+  monthLabel, clicks, signups, conversions, earned, paid, pending, ytdTotal, referralLink, firstName, unsubscribeUrl,
 }: Props) => {
   const link = referralLink || 'https://paigeagent.ai'
   return (
@@ -70,6 +72,7 @@ const AffiliateMonthlyStatementEmail = ({
           <Text style={footer}>
             © {new Date().getFullYear()} {SITE_NAME}
           </Text>
+          <EmailFooter unsubscribeUrl={unsubscribeUrl} />
         </Container>
       </Body>
     </Html>

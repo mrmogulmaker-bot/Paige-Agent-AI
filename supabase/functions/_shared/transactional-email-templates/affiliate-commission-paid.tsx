@@ -3,6 +3,7 @@ import {
   Body, Button, Container, Head, Heading, Hr, Html, Preview, Section, Text,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
+import { EmailFooter } from './email-footer.tsx'
 
 const SITE_NAME = 'Paige Agent AI'
 
@@ -11,9 +12,10 @@ interface Props {
   paymentMethod?: string
   periodLabel?: string
   ytdTotal?: string
+  unsubscribeUrl?: string
 }
 
-const AffiliateCommissionPaidEmail = ({ amount, paymentMethod, periodLabel, ytdTotal }: Props) => (
+const AffiliateCommissionPaidEmail = ({ amount, paymentMethod, periodLabel, ytdTotal, unsubscribeUrl }: Props) => (
   <Html lang="en" dir="ltr">
     <Head />
     <Preview>✅ Your commission payment has been sent</Preview>
@@ -51,6 +53,7 @@ const AffiliateCommissionPaidEmail = ({ amount, paymentMethod, periodLabel, ytdT
         <Text style={footer}>
           © {new Date().getFullYear()} {SITE_NAME}
         </Text>
+        <EmailFooter unsubscribeUrl={unsubscribeUrl} />
       </Container>
     </Body>
   </Html>

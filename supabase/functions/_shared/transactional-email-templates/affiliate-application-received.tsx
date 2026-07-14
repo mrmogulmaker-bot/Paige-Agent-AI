@@ -3,15 +3,17 @@ import {
   Body, Button, Container, Head, Heading, Hr, Html, Preview, Section, Text,
 } from 'npm:@react-email/components@0.0.22'
 import type { TemplateEntry } from './registry.ts'
+import { EmailFooter } from './email-footer.tsx'
 
 const SITE_NAME = 'PaigeAgent.ai'
 
 interface Props {
   name?: string
   tierKey?: 'external' | 'coach' | 'admin' | string
+  unsubscribeUrl?: string
 }
 
-const AffiliateApplicationReceivedEmail = ({ name, tierKey }: Props) => {
+const AffiliateApplicationReceivedEmail = ({ name, tierKey, unsubscribeUrl }: Props) => {
   const isCoach = tierKey === 'coach'
   const tierLabel = isCoach ? 'Coach Partner' : 'Affiliate'
   const timeline = isCoach
@@ -57,6 +59,7 @@ const AffiliateApplicationReceivedEmail = ({ name, tierKey }: Props) => {
           <Text style={footer}>
             © {new Date().getFullYear()} {SITE_NAME}
           </Text>
+          <EmailFooter unsubscribeUrl={unsubscribeUrl} />
         </Container>
       </Body>
     </Html>
