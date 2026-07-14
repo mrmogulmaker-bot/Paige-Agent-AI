@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { Clock, Lock, Sparkles } from "lucide-react";
+import { Clock, Lock } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -15,20 +15,25 @@ interface Props {
   loading: boolean;
   justArmed: boolean;
   onToggle: (on: boolean) => void;
-  onNotify: () => void;
+  /** Open the full detail view (whole card is a stretched-link overlay button). */
+  onOpen?: () => void;
 }
 
 /**
- * One capability in the Paige store. A glyph "plate" (not a tinted square), a
- * word-pill that carries state independent of color (Off / Live / Roadmap /
- * Included), and the enable moment lit in gold — the single act color (§6).
+ * One capability in the Paige store. A glyph "plate", a word-pill that carries
+ * state independent of color (Off / Live / Roadmap / Included), and the enable
+ * moment lit in gold — the single act color (§6/§11). Gold is reserved strictly
+ * to the Switch-checked fill and the "Live" pill; nothing at rest is gold.
+ *
+ * Openable via a "stretched-link" overlay button (a11y): the openable control is
+ * a SIBLING of the Switch/links (higher-z controls sit above the overlay), so no
+ * interactive control is nested inside another.
  */
 export function SkillCard({
-  skill, Icon, isOn, available, lockedOn, saving, loading, justArmed, onToggle, onNotify,
+  skill, Icon, isOn, available, lockedOn, saving, loading, justArmed, onToggle, onOpen,
 }: Props) {
   const reduce = useReducedMotion();
 
-  // Word-pill (top-right) — state legible without relying on color.
   const StatePill = () => {
     if (lockedOn) {
       return (
@@ -63,7 +68,7 @@ export function SkillCard({
   };
 
   const footerMicrocopy = lockedOn
-    ? "Included with your Funding coach type — manage it in Your Paige."
+    ? "Included with your Funding playbook — manage it in Your Paige."
     : !available
       ? "On the roadmap."
       : isOn
@@ -76,19 +81,31 @@ export function SkillCard({
       whileHover={reduce ? undefined : { y: -2 }}
       className={cn(
         "group relative flex min-h-[15rem] flex-col rounded-[var(--radius)] border bg-card p-5 transition-shadow duration-200",
-        isOn ? "border-[hsl(var(--gold)/0.55)]" : "border-border shadow-card hover:shadow-lg",
+        isOn
+          ? "border-[hsl(var(--primary)/0.4)] shadow-lg"
+          : "border-border shadow-card hover:shadow-lg",
       )}
-      style={isOn ? { boxShadow: "var(--shadow-glow)" } : undefined}
     >
-      {/* top row: glyph plate + state pill */}
+      {/* Stretched-link overlay: the openable control. Sits above static content
+          (so clicking the card body opens details) but BELOW the interactive
+          footer controls (z-20), so no control is nested inside another. */}
+      {onOpen && (
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`Open ${skill.name} details`}
+          className="absolute inset-0 z-10 rounded-[var(--radius)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+        />
+      )}
+
+      {/* top row: glyph plate + state pill (static — clicks fall through to overlay) */}
       <div className="flex items-start justify-between">
         <motion.span
           animate={justArmed && !reduce ? { scale: [1, 1.06, 1] } : undefined}
           transition={{ duration: 0.32 }}
           className={cn(
-            "relative grid h-14 w-14 place-items-center rounded-xl shadow-md ring-1 ring-inset",
+            "relative grid h-14 w-14 place-items-center rounded-xl shadow-md ring-1 ring-inset ring-border",
             "bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary-light))]",
-            isOn ? "ring-[hsl(var(--gold)/0.6)]" : "ring-[hsl(var(--gold)/0.25)]",
           )}
         >
           <Icon className="h-6 w-6 text-white/90" aria-hidden />
@@ -107,18 +124,16 @@ export function SkillCard({
       <p className="mt-0.5 text-sm text-muted-foreground">{skill.tagline}</p>
       <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-muted-foreground/90">{skill.description}</p>
 
-      {/* footer control row */}
-      <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/60 pt-4">
-        <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium",
-          isOn || lockedOn ? "text-[hsl(var(--gold-dark))]" : "text-muted-foreground")}>
-          {(isOn || lockedOn) && <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--gold))]" />}
+      {/* footer control row — sits above the overlay so its controls own their clicks */}
+      <div className="relative z-20 mt-auto flex items-center justify-between gap-3 border-t border-border/60 pt-4">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           {footerMicrocopy}
         </span>
 
-        {available ? (
+        {available && !lockedOn ? (
           <Switch
             checked={isOn}
-            disabled={saving || loading || lockedOn}
+            disabled={saving || loading}
             onCheckedChange={onToggle}
             aria-label={`Toggle ${skill.name}`}
             className="shrink-0 data-[state=checked]:bg-[hsl(var(--gold))] focus-visible:ring-[hsl(var(--ring))]"
@@ -131,13 +146,9 @@ export function SkillCard({
             Manage →
           </a>
         ) : (
-          <button
-            type="button"
-            onClick={onNotify}
-            className="shrink-0 inline-flex items-center gap-1 rounded text-xs font-medium text-[hsl(var(--primary))] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-          >
-            <Sparkles className="h-3 w-3" /> Notify me
-          </button>
+          <span className="shrink-0 rounded-full border border-border bg-muted px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Coming soon
+          </span>
         )}
       </div>
     </motion.div>
