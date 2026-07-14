@@ -3491,28 +3491,41 @@ mcp.tool("list_subaccounts", {
 
 mcp.tool("create_subaccount", {
   description:
-    "Agency only. Create a new sub-account (child workspace) under YOUR agency. Requires a display `name`; optional `industry` and `description`. The child is created as a standalone workspace owned by you. Only the agency OWNER may create sub-accounts.",
+    "Agency only. Create a new sub-account (child workspace) under YOUR agency. Requires a display `name`; optional `industry` and `description`. The child arrives READY: by default (`inherit_from_parent`) it inherits your agency's white-label brand/voice, and it either carries your Playbook down or starts from `playbook_slug` — one of general, coaching-default, fitness, consultant, agency, or funding. Funding is an explicit opt-in only; it is never inherited or defaulted. The child is a standalone workspace owned by you. Only the agency OWNER may create sub-accounts.",
   inputSchema: z.object({
     name: z.string().min(1),
     industry: z.string().optional(),
     description: z.string().optional(),
+    playbook_slug: z
+      .enum(["general", "coaching-default", "fitness", "consultant", "agency", "funding"])
+      .optional(),
+    inherit_from_parent: z.boolean().optional(),
   }),
-  handler: async ({ name, industry, description }) => {
+  handler: async ({ name, industry, description, playbook_slug, inherit_from_parent }) => {
     const actor = currentActor();
     if (!actor.user_id) return err("agency_actor_required");
     const parent = await actorTenantId();
     if (!parent) return err("tenant_not_resolved");
-    // 5-arg actor-explicit core (service_role): enforces owner-only +
-    // agency/enterprise-parent + 100-child cap + forces child account_type.
+    // Actor-explicit core (service_role): enforces owner-only + agency/enterprise-
+    // parent + 100-child cap + forces child account_type, and seeds the inherited
+    // brand + chosen/inherited Playbook. §2: funding only ever via an explicit
+    // playbook_slug='funding' choice, never a default — do not force it on here.
     const { data, error } = await admin.rpc("create_subaccount", {
       _name: name,
       _industry: industry ?? null,
       _description: description ?? null,
       _parent_tenant_id: parent,
       _actor: actor.user_id,
+      _playbook_slug: playbook_slug ?? null,
+      _inherit_from_parent: inherit_from_parent ?? true,
     });
     if (error) return err(error.message);
-    await audit("create_subaccount", "tenant", (data as any)?.id ?? null, { name, parent });
+    await audit("create_subaccount", "tenant", (data as any)?.id ?? null, {
+      name,
+      parent,
+      playbook_slug: playbook_slug ?? null,
+      inherit_from_parent: inherit_from_parent ?? true,
+    });
     return ok({ subaccount: data });
   },
 });

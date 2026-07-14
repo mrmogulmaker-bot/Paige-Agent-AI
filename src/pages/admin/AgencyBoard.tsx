@@ -39,6 +39,9 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { TableCell, TableRow } from "@/components/ui/table";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
@@ -48,7 +51,13 @@ import {
 import {
   MARKETPLACE_SKILLS, SKILL_CATEGORIES, type MarketplaceSkill,
 } from "@/lib/marketplace/skills";
+import { PLAYBOOK_LIBRARY } from "@/lib/playbook/presets";
 import { stashSwitchNotice } from "@/lib/agency/switchNotice";
+
+// A child spins up ready: pick a Playbook preset from the shared library, or let
+// it inherit the agency's. Sentinel = "carry the agency's Playbook down" (no
+// explicit slug). Funding is surfaced as a deliberate opt-in, never a default (§2).
+const INHERIT_PLAYBOOK = "__inherit__";
 
 // Catalog icons resolve here (the catalog stores a lucide name, §platform-owned).
 const ICONS: Record<string, LucideIcon> = { TrendingUp, Palette, Mic, Workflow: WorkflowIcon };
@@ -94,9 +103,12 @@ export default function AgencyBoard() {
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Create-a-child form (mirrors SubAccountsPanel's proven pattern).
+  // Create-a-child form (mirrors SubAccountsPanel's proven pattern). A new child
+  // arrives ready: it inherits the agency's brand/voice by default and either
+  // carries the agency's Playbook down or starts from a chosen preset (§7).
   const [name, setName] = useState("");
-  const [industry, setIndustry] = useState("");
+  const [playbookSlug, setPlaybookSlug] = useState<string>(INHERIT_PLAYBOOK);
+  const [inheritBrand, setInheritBrand] = useState(true);
   const [creating, setCreating] = useState(false);
 
   // "Invite owner" flow — hand a sub-account to its principal as the child's ADMIN.
@@ -164,15 +176,23 @@ export default function AgencyBoard() {
     if (name.trim().length < 2) { toast.error("Give the sub-account a name"); return; }
     setCreating(true);
     try {
-      const { error } = await supabase.rpc("create_subaccount", {
+      // Sentinel → no explicit slug: inherit the agency's Playbook (or fall back to
+      // the coaching-generic default). Any real preset is passed through as chosen.
+      const chosenSlug = playbookSlug === INHERIT_PLAYBOOK ? null : playbookSlug;
+      // The RPC gained _playbook_slug + _inherit_from_parent; the generated types
+      // lag the migration, so cast the name like the other new-RPC callers here.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await supabase.rpc("create_subaccount" as any, {
         _name: name.trim(),
-        _industry: industry.trim() || null,
+        _industry: null,
         _description: null,
         _parent_tenant_id: activeTenantId,
+        _playbook_slug: chosenSlug,
+        _inherit_from_parent: inheritBrand,
       });
       if (error) throw error;
       toast.success(`${name.trim()} is live under your agency.`);
-      setName(""); setIndustry("");
+      setName(""); setPlaybookSlug(INHERIT_PLAYBOOK); setInheritBrand(true);
       await loadRoster();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't create the sub-account");
@@ -497,29 +517,54 @@ export default function AgencyBoard() {
         title="Add a sub-account"
         description="A child workspace under your agency — its own clients, brand, and pipeline. You own it and can open it any time."
       >
-        <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
-          <div className="space-y-1.5">
-            <Label htmlFor="sub-name">Name</Label>
-            <Input
-              id="sub-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Northwind Advisory"
+        <div className="space-y-4">
+          <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <div className="space-y-1.5">
+              <Label htmlFor="sub-name">Name</Label>
+              <Input
+                id="sub-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Northwind Advisory"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sub-playbook">Playbook</Label>
+              <Select value={playbookSlug} onValueChange={setPlaybookSlug}>
+                <SelectTrigger id="sub-playbook">
+                  <SelectValue placeholder="Choose a starting Playbook" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={INHERIT_PLAYBOOK}>Inherit from our agency</SelectItem>
+                  {PLAYBOOK_LIBRARY.map((p) => (
+                    <SelectItem key={p.slug} value={p.slug}>
+                      {p.slug === "funding" ? `${p.name} (opt-in)` : p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button variant="gold" onClick={create} disabled={creating || name.trim().length < 2}>
+              {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+              Create
+            </Button>
+          </div>
+
+          <div className="flex items-start justify-between gap-3 rounded-[var(--radius)] border border-border bg-card p-4">
+            <div className="min-w-0">
+              <Label htmlFor="sub-inherit" className="cursor-pointer">Use our agency brand &amp; voice</Label>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                The new account opens wearing your logo, colors, and sender identity — one continuous
+                system. Turn this off to start it from a clean slate.
+              </p>
+            </div>
+            <Switch
+              id="sub-inherit"
+              checked={inheritBrand}
+              onCheckedChange={setInheritBrand}
+              aria-label="Inherit this agency's brand and voice on the new sub-account"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="sub-industry">What they do (optional)</Label>
-            <Input
-              id="sub-industry"
-              value={industry}
-              onChange={(e) => setIndustry(e.target.value)}
-              placeholder="Consulting, agency, advisory…"
-            />
-          </div>
-          <Button variant="gold" onClick={create} disabled={creating || name.trim().length < 2}>
-            {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-            Create
-          </Button>
         </div>
       </SectionCard>
 
