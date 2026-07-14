@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { GrowthFormSchema, GrowthField } from "@/lib/growth";
-import { submitGrowthForm, readUtm } from "@/lib/growth";
+import { submitGrowthForm, readUtm, growthOptionValue, growthOptionLabel } from "@/lib/growth";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -164,15 +164,15 @@ function FieldRenderer({ field, value, onChange }: { field: GrowthField; value: 
       ) : field.type === "select" ? (
         <select className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm" value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
           <option value="">Select…</option>
-          {field.options?.map((o) => <option key={o} value={o}>{o}</option>)}
+          {field.options?.map((o) => { const v = growthOptionValue(o); return <option key={v} value={v}>{growthOptionLabel(o)}</option>; })}
         </select>
       ) : field.type === "radio" ? (
         <div className="space-y-2 mt-1">
-          {field.options?.map((o) => (
-            <label key={o} className="flex items-center gap-2 text-sm">
-              <input type="radio" name={field.key} value={o} checked={value === o} onChange={() => onChange(o)} />{o}
+          {field.options?.map((o) => { const v = growthOptionValue(o); return (
+            <label key={v} className="flex items-center gap-2 text-sm">
+              <input type="radio" name={field.key} value={v} checked={value === v} onChange={() => onChange(v)} />{growthOptionLabel(o)}
             </label>
-          ))}
+          ); })}
         </div>
       ) : (
         <Input
