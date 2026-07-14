@@ -72,9 +72,27 @@ serve(async (req: Request): Promise<Response> => {
     const { data: agencyRow } = await admin.from("tenants").select("name").eq("id", agencyId).maybeSingle();
     const agencyName = agencyRow?.name ?? "your agency";
 
-    // Resolve existing user by email.
-    const { data: list } = await admin.auth.admin.listUsers();
-    let target = list?.users?.find((u) => (u.email ?? "").toLowerCase() === email) ?? null;
+    // Resolve existing user by email via a service-role-only lookup RPC — NOT
+    // listUsers(), which returns only the first page and would silently miss (then
+    // try to re-create, and collide on) anyone past ~50 users.
+    const { data: existingUserId, error: lookupErr } = await admin.rpc("agency_lookup_user_id", { _email: email });
+    if (lookupErr) return json({ error: "Could not look up that email." }, 500);
+
+    // Guard: the agency's TENANT OWNER is the immutable agency_owner — you don't
+    // "invite" them onto their own team through this staff path.
+    if (existingUserId) {
+      const { data: ownerRow } = await admin
+        .from("tenant_members")
+        .select("user_id")
+        .eq("tenant_id", agencyId)
+        .eq("user_id", existingUserId)
+        .eq("status", "active")
+        .eq("role", "owner")
+        .maybeSingle();
+      if (ownerRow) return json({ error: "That person already owns this agency." }, 400);
+    }
+
+    let target: { id: string } | null = existingUserId ? { id: existingUserId as string } : null;
     let createdUser = false;
     let actionLink: string | null = null;
 
@@ -98,6 +116,20 @@ serve(async (req: Request): Promise<Response> => {
       actionLink = linkData?.properties?.action_link ?? null;
     }
 
+    // Specialist scope is only meaningful for agency_specialist, and only for REAL
+    // children of THIS agency — filter out junk/foreign ids server-side (mirrors
+    // agency_set_member_role, so the invite path can't seed a wider scope than an
+    // edit could set).
+    let scopedClean: string[] = [];
+    if (role === "agency_specialist" && scoped.length > 0) {
+      const { data: children } = await admin
+        .from("tenants")
+        .select("id")
+        .eq("parent_tenant_id", agencyId)
+        .in("id", scoped);
+      scopedClean = (children ?? []).map((c) => c.id as string);
+    }
+
     // Upsert the agency team membership (service role bypasses RLS; the table's
     // unique index keys on (agency, user_id)).
     const nowIso = new Date().toISOString();
@@ -109,7 +141,7 @@ serve(async (req: Request): Promise<Response> => {
         email,
         agency_role: role,
         status: "active",
-        scoped_subaccounts: role === "agency_specialist" ? scoped : [],
+        scoped_subaccounts: scopedClean,
         invited_by: user.id,
         invited_at: nowIso,
         joined_at: nowIso,

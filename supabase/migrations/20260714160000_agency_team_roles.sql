@@ -88,20 +88,18 @@ RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS
 $$;
 
 -- The actor's effective agency role for a given agency. The tenant owner is
--- ALWAYS agency_owner (immutable). Otherwise the explicit team row, then a
--- back-compat mapping for a tenant admin not yet in the table.
+-- ALWAYS agency_owner (immutable). Otherwise ONLY an active agency_team_members
+-- row — we deliberately do NOT fall back to tenant_members 'admin', so that
+-- suspending/removing a teammate's row genuinely revokes their agency authority
+-- (the seeded cohort has real rows; a suspended/removed row → NULL → no access).
 CREATE OR REPLACE FUNCTION public.agency_team_role(_agency uuid, _actor uuid)
 RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
   SELECT CASE
     WHEN EXISTS (SELECT 1 FROM public.tenant_members m
                   WHERE m.tenant_id = _agency AND m.user_id = _actor AND m.status = 'active' AND m.role = 'owner')
       THEN 'agency_owner'
-    ELSE COALESCE(
-      (SELECT atm.agency_role FROM public.agency_team_members atm
-         WHERE atm.agency_tenant_id = _agency AND atm.user_id = _actor AND atm.status = 'active' LIMIT 1),
-      (SELECT 'agency_admin' FROM public.tenant_members m
-         WHERE m.tenant_id = _agency AND m.user_id = _actor AND m.status = 'active' AND m.role = 'admin' LIMIT 1)
-    )
+    ELSE (SELECT atm.agency_role FROM public.agency_team_members atm
+            WHERE atm.agency_tenant_id = _agency AND atm.user_id = _actor AND atm.status = 'active' LIMIT 1)
   END;
 $$;
 
@@ -124,6 +122,7 @@ GRANT EXECUTE ON FUNCTION public.agency_team_can_manage(uuid, uuid) TO authentic
 CREATE OR REPLACE FUNCTION public.agency_can_manage_child(_child uuid, _actor uuid)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
   SELECT
+    -- The parent agency's tenant OWNER always manages children (ultimate authority).
     EXISTS (
       SELECT 1
       FROM public.tenants child
@@ -132,13 +131,18 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
       WHERE child.id = _child
         AND parent.account_type IN ('agency', 'enterprise')
         AND pm.status = 'active'
-        AND pm.role IN ('owner', 'admin')
+        AND pm.role = 'owner'
     )
+    -- Everyone else derives from an ACTIVE agency_team_members row (so suspend/
+    -- remove revokes child access too), scoped for specialists. Branch also
+    -- re-checks the parent is agency/enterprise (defense against a downgrade).
     OR EXISTS (
       SELECT 1
       FROM public.tenants child
-      JOIN public.agency_team_members atm ON atm.agency_tenant_id = child.parent_tenant_id
+      JOIN public.tenants parent            ON parent.id = child.parent_tenant_id
+      JOIN public.agency_team_members atm   ON atm.agency_tenant_id = parent.id
       WHERE child.id = _child
+        AND parent.account_type IN ('agency', 'enterprise')
         AND atm.user_id = _actor
         AND atm.status = 'active'
         AND (
@@ -225,6 +229,9 @@ BEGIN
   IF _agency IS NULL OR NOT public.agency_team_can_manage(_agency, _me) THEN
     RAISE EXCEPTION 'Only an agency owner or admin can change team roles' USING ERRCODE = '42501';
   END IF;
+  IF _target_user = _me THEN
+    RAISE EXCEPTION 'You cannot change your own agency role' USING ERRCODE = '42501';
+  END IF;
   IF _role NOT IN ('agency_admin','agency_manager','agency_biller','agency_specialist','agency_viewer') THEN
     RAISE EXCEPTION 'Invalid or non-assignable agency role: %', _role USING ERRCODE = '22023';
   END IF;
@@ -236,7 +243,12 @@ BEGIN
 
   UPDATE public.agency_team_members
      SET agency_role = _role,
-         scoped_subaccounts = CASE WHEN _role = 'agency_specialist' THEN COALESCE(_scoped, '{}') ELSE '{}' END
+         -- keep only real children of THIS agency as specialist scope; junk/foreign
+         -- ids are dropped, and scope is meaningless for non-specialists.
+         scoped_subaccounts = CASE WHEN _role = 'agency_specialist'
+           THEN ARRAY(SELECT c.id FROM public.tenants c
+                       WHERE c.parent_tenant_id = _agency AND c.id = ANY (COALESCE(_scoped, '{}')))
+           ELSE '{}' END
    WHERE agency_tenant_id = _agency AND user_id = _target_user;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'That person is not on this agency''s team' USING ERRCODE = 'P0002';
@@ -253,6 +265,9 @@ DECLARE
 BEGIN
   IF _agency IS NULL OR NOT public.agency_team_can_manage(_agency, _me) THEN
     RAISE EXCEPTION 'Only an agency owner or admin can change member status' USING ERRCODE = '42501';
+  END IF;
+  IF _target_user = _me THEN
+    RAISE EXCEPTION 'You cannot change your own agency access' USING ERRCODE = '42501';
   END IF;
   IF _status NOT IN ('active','suspended') THEN
     RAISE EXCEPTION 'Invalid status: %', _status USING ERRCODE = '22023';
@@ -304,12 +319,23 @@ RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' A
   FROM (SELECT public.agency_current_id(auth.uid()) AS agency_id) a;
 $$;
 
+-- Resolve an email → auth user id for the invite edge function. SECURITY DEFINER
+-- so it can read auth.users; granted to SERVICE_ROLE ONLY (never authenticated) —
+-- this closes the edge fn's first-page-only listUsers() gap without exposing an
+-- email→uid oracle to end users.
+CREATE OR REPLACE FUNCTION public.agency_lookup_user_id(_email text)
+RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $$
+  SELECT id FROM auth.users WHERE lower(email) = lower(trim(_email)) LIMIT 1;
+$$;
+
 REVOKE ALL ON FUNCTION public.agency_list_team()                         FROM public;
+REVOKE ALL ON FUNCTION public.agency_lookup_user_id(text)                FROM public;
 REVOKE ALL ON FUNCTION public.agency_set_member_role(uuid, text, uuid[]) FROM public;
 REVOKE ALL ON FUNCTION public.agency_set_member_status(uuid, text)       FROM public;
 REVOKE ALL ON FUNCTION public.agency_remove_member(uuid)                 FROM public;
 REVOKE ALL ON FUNCTION public.agency_my_membership()                     FROM public;
 GRANT EXECUTE ON FUNCTION public.agency_list_team()                         TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.agency_lookup_user_id(text)                TO service_role;
 GRANT EXECUTE ON FUNCTION public.agency_set_member_role(uuid, text, uuid[]) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.agency_set_member_status(uuid, text)       TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.agency_remove_member(uuid)                 TO authenticated, service_role;
