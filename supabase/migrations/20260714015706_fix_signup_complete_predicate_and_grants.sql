@@ -3,7 +3,12 @@
 -- so a rebuild-from-git would silently drop it (drift audit 2026-07-14, prod-ahead-of-git).
 -- SQL is verbatim from the ledger unless a marked adjustment note says otherwise.
 
--- Corrective (prod already ran the pre-fix 20260714130000): make is_signup_complete
+-- ADJUSTMENT (drift audit 2026-07-14, not in the live ledger statement): this comment
+-- previously pointed at "20260714130000", a git-only file prefix that no longer exists
+-- (it was a duplicate of signup_completion_gate and has been deleted). The pre-fix
+-- migration prod actually ran is ledger version 20260714013653_signup_completion_gate.
+--
+-- Corrective (prod already ran the pre-fix 20260714013653): make is_signup_complete
 -- robust against handle_new_user's auto 'user' role + self-linked 'signup' client
 -- and ensure_client_role_self_heal's auto 'client' role, and restore least-privilege
 -- grants on the new 7-arg provision_tenant.
