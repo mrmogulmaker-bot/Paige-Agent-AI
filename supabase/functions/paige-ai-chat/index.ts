@@ -5735,7 +5735,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // billing (Stripe Connect) in a later release.
           if (Number(row.price_cents || 0) > 0) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, paid: true, error: `${row.name} is a paid add-on. Purchasing isn't available yet — I can only install free items right now.` }) }); continue; }
           if (row.installed) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, already_installed: true, item: row.name, message: `${row.name} is already installed.` }) }); continue; }
-          const { data: res, error } = await supabaseClient.functions.invoke("marketplace-install", { body: { item_slug: slug, installed_by_agent: "paige" } });
+          const { data: res, error } = await supabaseClient.functions.invoke("marketplace-install", { body: { item_slug: slug, installed_by_agent: "paige", tenant_id: personaCtx.tenant_id } });
           if (error) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: error.message ?? "Install failed." }) }); continue; }
           const r = (res ?? {}) as any;
           if (r.error) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: String(r.error) }) }); continue; }
