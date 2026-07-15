@@ -205,3 +205,11 @@ project_id = "xygzykjyynhzqytbqnzu"
   [functions.growth-page-draft]
     verify_jwt = true
 
+  # Vibe Studio conversational per-section edit: one instruction + one GrowthBlock -> the
+  # revised GrowthBlock. JWT-gated (the fn re-verifies the caller, role-gates to
+  # admin/coach/super_admin, and pins the tenant to current_user_tenant_id() — a JWT caller's
+  # body tenant_id is IGNORED); service-role callers (Paige's agent, §10) may name a tenant.
+  # Pure draft, zero DB writes.
+  [functions.growth-block-edit]
+    verify_jwt = true
+

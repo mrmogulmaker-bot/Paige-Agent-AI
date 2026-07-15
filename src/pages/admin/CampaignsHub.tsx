@@ -6,7 +6,7 @@
 import { lazy, Suspense } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Megaphone, LayoutGrid, GitBranch, FileText, Inbox, Plug, Sparkles, Palette, Share2, Facebook, Youtube, Linkedin } from "lucide-react";
+import { Megaphone, LayoutGrid, GitBranch, FileText, Inbox, Plug, Sparkles, Palette, Share2, Facebook, Youtube, Linkedin, Wand2 } from "lucide-react";
 import { PageShell, PageHeader, EmptyState, StatePill } from "@/components/ui/page";
 import { CampaignsOverviewStats } from "@/components/admin/campaigns/CampaignsOverviewStats";
 
@@ -17,6 +17,10 @@ const ContentStudio = lazy(() =>
 );
 const BrandKitPanel = lazy(() =>
   import("@/components/admin/brand/BrandKitPanel").then((m) => ({ default: m.BrandKitPanel })),
+);
+// The Vibe Studio: describe the page, watch Paige build it in the real renderer, publish it.
+const StudioShell = lazy(() =>
+  import("@/components/admin/studio").then((m) => ({ default: m.StudioShell })),
 );
 
 const GROWTH_TABS = new Set(["pages", "funnels", "forms", "integrations"]);
@@ -47,6 +51,7 @@ export default function CampaignsHub() {
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="overview"><Megaphone className="w-4 h-4 mr-1.5" />Overview</TabsTrigger>
           <TabsTrigger value="content"><Sparkles className="w-4 h-4 mr-1.5" />Content Studio</TabsTrigger>
+          <TabsTrigger value="studio"><Wand2 className="w-4 h-4 mr-1.5" />Vibe Studio</TabsTrigger>
           <TabsTrigger value="brand"><Palette className="w-4 h-4 mr-1.5" />Brand Kit</TabsTrigger>
           <TabsTrigger value="social"><Share2 className="w-4 h-4 mr-1.5" />Social</TabsTrigger>
           <TabsTrigger value="pages"><LayoutGrid className="w-4 h-4 mr-1.5" />Pages</TabsTrigger>
@@ -70,6 +75,17 @@ export default function CampaignsHub() {
             </div>
           }>
             <ContentStudio />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="studio" className="mt-4">
+          <Suspense fallback={
+            <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
+              <div className="h-96 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
+              <div className="h-96 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
+            </div>
+          }>
+            <StudioShell embedded />
           </Suspense>
         </TabsContent>
 
