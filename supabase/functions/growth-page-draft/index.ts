@@ -18,11 +18,22 @@
 //     {
 //       brief:      string,   // REQUIRED. >= 5 chars after trim. What the page is for.
 //       tone?:      string,   // OPTIONAL. Free text.
-//       tenant_id?: string    // SERVICE-ROLE CALLERS ONLY. IGNORED for JWT callers, whose
+//       tenant_id?: string,   // SERVICE-ROLE CALLERS ONLY. IGNORED for JWT callers, whose
 //                             //   tenant is resolved server-side (see SECURITY).
+//       questionnaire_answer?: string   // OPTIONAL. >= 2 chars after trim to be honored. The
+//                             //   operator's own free-text answer to "what should the
+//                             //   questionnaire ask" (from the Studio's clarifying step). When
+//                             //   present, the model derives a REAL form_schema_json instead of
+//                             //   leaving the embedded_form's fields to growth_page_upsert's
+//                             //   generic default.
 //     }
 //
-//   200  { blocks: GrowthBlock[], theme_json: GrowthPageTheme, seo_json: { title, description } }
+//   200  { blocks: GrowthBlock[], theme_json: GrowthPageTheme, seo_json: { title, description },
+//          form_schema_json?: {   // present ONLY when questionnaire_answer was supplied AND the
+//                                 // model's proposal survived cleanFormSchema() with >= 1 field.
+//            submit_label?: string,
+//            sections: [{ title?: string, fields: [{ key, label, type, required?, options?, maps_to? }] }]
+//          } }
 //        blocks: hero guaranteed FIRST; exactly ONE embedded_form guaranteed.
 //   4xx/5xx { error: { code, message } }   // structured, non-2xx, never a 200-with-error
 //
@@ -75,6 +86,7 @@ import {
   trimStr,
   validateBlock,
 } from "../_shared/growth-blocks.ts";
+import { cleanFormSchema, GROWTH_FORM_SCHEMA_SPEC, type CleanFormSchema } from "../_shared/growth-forms.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -106,7 +118,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // realistic page while still capping a runaway generation. It is a CEILING, not a spend:
 // output tokens are billed on what the model actually writes, so a headroom-generous ceiling
 // costs nothing on a normal page and removes this entire failure class.
-const PAGE_MAX_TOKENS = 8192;
+// Bumped 8192 -> 9216 (questionnaire extension): when questionnaire_answer is supplied the same
+// single model call also returns form_schema_json in the same JSON object — headroom for that
+// on top of a maximal 12-section page, still a ceiling, not a spend.
+const PAGE_MAX_TOKENS = 9216;
 
 /** Structured failure. Never a 200-with-{error}; never a swallowed generic (§13). */
 function fail(status: number, code: string, message: string): Response {
@@ -161,6 +176,8 @@ serve(async (req: Request) => {
         "Give a brief: what's the page for — the offer, the audience, the action you want.");
     }
     const tone = str(body?.tone).trim().slice(0, 200);
+    const questionnaireAnswer = str(body?.questionnaire_answer).trim().slice(0, 4000);
+    const hasQuestionnaireAnswer = questionnaireAnswer.length >= 2;
 
     // ── 3. Resolve the tenant SERVER-SIDE (the IDOR-safe path) ───────────────
     // JWT caller: role-gate, then pin the tenant to current_user_tenant_id() run in THEIR JWT
@@ -260,6 +277,22 @@ REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST inc
       { role: "system", content: SYSTEM },
       { role: "user", content: `Brief: ${brief}${tone ? `\nTone: ${tone}` : ""}` },
     ];
+
+    // Questionnaire extension (§15 — probe, then propose the REAL fields instead of leaving the
+    // embedded_form's schema to growth_page_upsert's generic name/email/goal filler). Additive:
+    // the SAME single model call below now also returns form_schema_json when this fires.
+    if (hasQuestionnaireAnswer) {
+      messages.push({
+        role: "user",
+        content:
+          `The operator also described what the signup/questionnaire form itself should ask:\n${questionnaireAnswer}\n\n` +
+          `Additionally return "form_schema_json" in the SAME JSON object, following this shape:\n${GROWTH_FORM_SCHEMA_SPEC}\n\n` +
+          `Derive the fields from exactly what the operator described — do not invent fields they didn't ask for. ` +
+          `If their description doesn't already include a way to capture the respondent's name and email, add ` +
+          `"full_name" (text, required) and "email" (email, required, maps_to "clients.email") in addition to what ` +
+          `they described — every lead form needs a way to follow up. Never use "ssn4" or "currency" types; use "text".`,
+      });
+    }
 
     // Reasoning-tier, deliberately (§14 routing, §3 voice): this copy gets PUBLISHED to real
     // prospects under the tenant's brand, so it is a doc_draft (a draft a human reviews before
@@ -378,7 +411,17 @@ REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST inc
       logo_url: theme.logo_url,
     };
 
-    return ok({ blocks: final, theme_json, seo_json });
+    // Questionnaire extension: clean/repair the model's proposed schema so it is GUARANTEED to
+    // pass growth_validate_form_schema downstream. No usable schema survives => omit the field
+    // entirely, and growth_page_upsert's existing hardcoded 3-field synthesis runs unchanged.
+    let form_schema_json: CleanFormSchema | undefined;
+    if (hasQuestionnaireAnswer) {
+      const cleaned = cleanFormSchema(parsed?.form_schema_json);
+      if (cleaned) form_schema_json = cleaned;
+      else console.warn("growth-page-draft: questionnaire_answer given but no usable schema produced; falling back to the default.");
+    }
+
+    return ok({ blocks: final, theme_json, seo_json, ...(form_schema_json ? { form_schema_json } : {}) });
   } catch (e: any) {
     // Last line: still non-2xx, still the REAL cause (§13 — never a swallowed generic, and
     // never the old 200-with-{error} that made a model outage read as a successful draft).
