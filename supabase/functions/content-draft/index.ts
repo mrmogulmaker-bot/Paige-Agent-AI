@@ -6,7 +6,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { chatCompletionCompat } from "../_shared/claude.ts";
-import { routedChatCompletion } from "../_shared/model-router.ts";
+import { claudeVoicePolish, pickRoute, routedChatCompletion } from "../_shared/model-router.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -75,6 +75,8 @@ serve(async (req: Request) => {
     const SYSTEM = `You are Paige, the marketing content writer for a client-based service business${brandName ? ` called "${brandName}"` : ""}. Write high-converting, on-brand marketing content.
 ${brandVoice ? `Brand voice: ${brandVoice}.` : "Voice: direct, confident, human — never corporate filler."}
 CHANNEL: ${CHANNEL_GUIDE[channel]}
+COPY CRAFT: name a specific outcome and timeframe, never a vague benefit — "your first paying client in 30 days" beats "grow your business." Agitate a real, named problem the reader recognizes in themselves before you resolve it. Write with an actual point of view, not corporate-anonymous voice. Every claim is a concrete number, or it's cut — a hollow adjective is never doing the work a number should do.
+TIER CHECK: before you return a draft, grade it. Premier copy is marketplace-scale — specific and sharp enough that a stranger would act on it now. Low-tier copy is generic filler dressed up as content. Ask yourself plainly: "is this the kind of copy that helps this business sell and make real money, or did I just generate something to satisfy the request?" If it's the latter, rewrite it before returning it.
 RULES: Write for a broad client-based-services audience (coaches, consultants, agencies, advisors) unless the brief says otherwise. Do NOT invent statistics, testimonials, or guarantees. Do NOT introduce consumer-finance/credit/lending framing unless the brief is explicitly about that. Never use "AI-powered", "streamline", "seamless", or "empower".
 Return ONLY JSON: {"drafts":[{"title":"short label","content":"the full copy for this channel"}]}. Produce exactly ${count} distinct draft${count > 1 ? "s" : ""}.`;
 
@@ -85,6 +87,7 @@ Return ONLY JSON: {"drafts":[{"title":"short label","content":"the full copy for
     // Drafting is high-volume internal work — route it through the model router so it can
     // ride the cheap open-model tier when Featherless is configured. Claude is the safety
     // net: if the routed draft doesn't parse as our JSON, retry once on Claude reasoning.
+    const route = pickRoute("internal_first_draft");
     let parsed: any;
     try {
       const data = await routedChatCompletion("internal_first_draft", { messages, response_format: { type: "json_object" } });
@@ -97,6 +100,17 @@ Return ONLY JSON: {"drafts":[{"title":"short label","content":"the full copy for
       title: String(d?.title ?? channel).slice(0, 80),
       content: String(d?.content ?? "").slice(0, 4000),
     })) : [];
+
+    // This copy goes to a real client/lead once the coach approves and sends it — it is
+    // client-facing, not internal, even though drafting itself rides the cheap tier. When the
+    // cheap pass actually drafted on an open model, give it the router's own promised Claude
+    // voice-polish pass before it comes back for approval (model-router.ts's documented
+    // safety net: "cheap models draft, Claude ships").
+    if (route.provider === "featherless" && drafts.length) {
+      await Promise.all(drafts.map(async (d) => {
+        d.content = (await claudeVoicePolish(d.content, brandVoice)).slice(0, 4000);
+      }));
+    }
 
     return new Response(JSON.stringify({ channel, drafts }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });

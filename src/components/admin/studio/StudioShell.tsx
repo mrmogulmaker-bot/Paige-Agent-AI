@@ -63,6 +63,13 @@ import {
   type PublishPageResult,
 } from "./studio";
 import {
+  clearPageDraftSnapshot,
+  loadPageDraftSnapshot,
+  pageDraftKey,
+  savePageDraftSnapshot,
+  type PageDraftSnapshot,
+} from "./studio-draft";
+import {
   BLOCK_LABELS,
   CLARIFYING_QUESTIONS,
   CLARIFYING_RAIL,
@@ -235,9 +242,56 @@ export function StudioShell({
     };
   }, [tenantSlug, patch]);
 
+  // ── recover an in-progress client-side draft (no DB write) ────────────────────────
+  // Restores brief/blocks/theme/seo/formSchema (plus the composer/canvas state around
+  // them) from localStorage before anything else falls back to EMPTY_SHELL — this is the
+  // fix for "navigate away and the in-progress build vanishes with zero warning." Tenant-
+  // AND page-scoped (§9): the key always carries tenantId, and a page that already has a
+  // DB row gets its own key distinct from the tenant's blank-composer slot, so opening a
+  // different page can never resurrect a stray draft written against a different one.
+  const draftRestoreRef = useRef<{ key: string | null; applied: boolean }>({ key: null, applied: false });
+  useEffect(() => {
+    if (!tenantId) return;
+    const key = pageDraftKey(tenantId, pageIdProp ?? null);
+    if (draftRestoreRef.current.key === key) return; // already resolved this exact draft once
+    const snapshot = loadPageDraftSnapshot(key);
+    draftRestoreRef.current = { key, applied: !!snapshot };
+    if (!snapshot) return;
+    setState((s) => ({
+      ...s,
+      pageId: snapshot.pageId,
+      title: snapshot.title,
+      slug: snapshot.slug,
+      slugTouched: snapshot.slugTouched,
+      blocks: snapshot.blocks,
+      theme: snapshot.theme,
+      seo: snapshot.seo,
+      formSchema: snapshot.formSchema,
+      brief: snapshot.brief,
+      mode: snapshot.mode,
+      clarifying: snapshot.clarifying,
+      selectedIndex: snapshot.selectedIndex,
+      // Recovered content hasn't been confirmed by a real Save from this mount's point of
+      // view — mark it dirty so the top bar's Save affordance reads honestly, not silently.
+      dirty: true,
+      error: null,
+    }));
+    toast({
+      title: "Draft restored",
+      description: "Picked up right where you left off — hit Save to make it permanent.",
+    });
+  }, [tenantId, pageIdProp, toast]);
+
   // ── open an existing draft ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!tenantId || !pageIdProp) return;
+    // A local client-side draft for this EXACT page was just restored above — it already
+    // reflects everything the DB has, plus whatever wasn't saved yet, so re-fetching here
+    // would clobber unsaved edits with the older saved row (the very bug this mechanism
+    // exists to close).
+    if (draftRestoreRef.current.key === pageDraftKey(tenantId, pageIdProp) && draftRestoreRef.current.applied) {
+      return;
+    }
     let live = true;
     loadPageDraft({ tenantId, pageId: pageIdProp })
       .then((page) => {
@@ -454,6 +508,11 @@ export function StudioShell({
         saving: false,
         dirty: false,
       }));
+      // A real DB row backs this content now — the client-side recovery draft has done
+      // its job and must not linger stale past the point the operator actually committed
+      // (this fires for the explicit Save button, Publish's save-first step, and the
+      // section-edit path's implicit save — every one of them means a DB row now exists).
+      clearPageDraftSnapshot(pageDraftKey(tenantId, state.pageId));
       onSaved?.({ id: row.id, slug: row.slug });
       return { id: row.id, slug: row.slug };
     } catch (err) {
@@ -536,6 +595,66 @@ export function StudioShell({
     },
     [tenantId, state.selectedIndex, state.blocks, state.pageId, saveDraft, patch, toast],
   );
+
+  // ── persist the client-side draft (no DB write) ───────────────────────────────────
+  // The Studio holds the in-progress design ONLY in this component's state until an
+  // explicit Save/Publish — route-swapping to any other admin section unmounts this whole
+  // tree and, without this, silently destroys whatever wasn't saved. Debounced so typing a
+  // brief doesn't hammer localStorage on every keystroke; only the fields needed to recover
+  // (never saving/publishing/editing/error/dirty — those reset fresh on rehydrate).
+  const latestDraftWriteRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!tenantId) return;
+    // Nothing worth protecting yet (a blank composer, or right after Cancel/backToCompose
+    // restored an empty canvas) — skip the write entirely rather than stamp an empty
+    // snapshot over whatever's already stored, which would otherwise surface a hollow
+    // "Draft restored" toast on the next mount for content that was never really there.
+    const hasContent =
+      state.blocks.length > 0 || state.brief.trim().length > 0 || state.title.trim().length > 0;
+    if (!hasContent) return;
+    const key = pageDraftKey(tenantId, state.pageId);
+    const snapshot: PageDraftSnapshot = {
+      pageId: state.pageId,
+      title: state.title,
+      slug: state.slug,
+      slugTouched: state.slugTouched,
+      blocks: state.blocks,
+      theme: state.theme,
+      seo: state.seo,
+      formSchema: state.formSchema,
+      brief: state.brief,
+      mode: state.mode,
+      clarifying: state.clarifying,
+      selectedIndex: state.selectedIndex,
+    };
+    const write = () => savePageDraftSnapshot(key, snapshot);
+    latestDraftWriteRef.current = write;
+    const id = window.setTimeout(write, 400);
+    return () => window.clearTimeout(id);
+  }, [
+    tenantId,
+    state.pageId,
+    state.title,
+    state.slug,
+    state.slugTouched,
+    state.blocks,
+    state.theme,
+    state.seo,
+    state.formSchema,
+    state.brief,
+    state.mode,
+    state.clarifying,
+    state.selectedIndex,
+  ]);
+
+  // A true unmount (the route swap that eats in-progress work today) flushes whatever the
+  // debounce hadn't gotten to yet — the one moment this bug actually bites, so it's the one
+  // moment the timer is never allowed to lose the race against navigation.
+  useEffect(() => {
+    return () => {
+      latestDraftWriteRef.current();
+    };
+  }, []);
 
   // ── the page canvas ───────────────────────────────────────────────────────────────
   const busy = isGenerating || state.editing;
