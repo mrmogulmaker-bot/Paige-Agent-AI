@@ -50,15 +50,29 @@ export default function Onboarding() {
       // brand-new owner would be shunted into /app and never reach the
       // provisioner (and loop against RequireCompleteSignup). A genuine invited
       // client's row has source <> 'signup'.
-      const [{ data: staff }, { data: owned }, { data: member }, { data: clientRows }] = await Promise.all([
+      const [{ data: staff }, { data: owned }, { data: member }, { data: clientRows }, agencyRes] = await Promise.all([
         supabase.rpc("is_platform_admin"),
         supabase.from("tenants").select("id").eq("owner_user_id", uid).limit(1).maybeSingle(),
         supabase.from("tenant_members").select("tenant_id").eq("user_id", uid).limit(1).maybeSingle(),
         supabase.from("clients").select("id, source").eq("linked_user_id", uid).limit(10),
+        // Agency-team invitees have no tenant_members row — they'd otherwise
+        // fall through and be shown WorkspaceProvisioner. Forward them to /agency.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase.from("agency_team_members" as any) as any)
+          .select("agency_tenant_id")
+          .eq("user_id", uid)
+          .eq("status", "active")
+          .limit(1)
+          .maybeSingle(),
       ]);
       if (!mounted) return;
       if (staff || owned?.id || member?.tenant_id) {
         window.location.assign("/admin");
+        return;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if ((agencyRes as any)?.data?.agency_tenant_id) {
+        window.location.assign("/agency");
         return;
       }
       const realClient = (clientRows ?? []).find((c) => (c.source ?? "") !== "signup");
