@@ -223,7 +223,9 @@ serve(async (req) => {
       .select("blocks_json")
       .eq("tenant_id", tenantId)
       .eq("status", "published")
-      .contains("blocks_json", [{ type: "chatbot" }])
+      // jsonb containment: pass the value as a JSON STRING so PostgREST emits `@> '[...]'`. A raw JS
+      // array is serialized as a Postgres array literal ({...}) and the jsonb @> parse fails.
+      .contains("blocks_json", JSON.stringify([{ type: "chatbot" }]))
       .limit(3);
     if (pErr) { console.error("[paige-public-chat] page gate:", pErr.message); return json(500, { ok: false, error: "server_error" }); }
     if (!pubPages || pubPages.length === 0) return json(403, { ok: false, error: "chat_not_enabled" });
