@@ -13,7 +13,110 @@
 //         map below is what converts a raw server raise into a sentence they can act on.
 //   §15 — the seed briefs are REAL, usable briefs. Not lorem, not [PLACEHOLDER].
 import type { GrowthBlock } from "@/lib/growth";
-import type { GenerationPhase, IntentChip, StudioErrorCode } from "./studio-types";
+import type { GenerationPhase, IntentChip, StudioErrorCode, StudioMode } from "./studio-types";
+
+/** The mode switcher's words. One studio, five outputs. */
+export const MODE_LABELS: Record<StudioMode, string> = {
+  page: "Page",
+  funnel: "Funnel",
+  form: "Form",
+  copy: "Copy",
+  image: "Image",
+};
+
+/** The rail's heading + one-liner per mode. §3 voice, §2-clean. */
+export const MODE_RAIL: Record<StudioMode, { heading: string; description: string }> = {
+  page: {
+    heading: "Describe the page",
+    description: "One brief. Paige drafts the whole page in front of you.",
+  },
+  funnel: {
+    heading: "Describe the funnel",
+    description: "Chain a page to a form. Paige wires the flow end to end.",
+  },
+  form: {
+    heading: "Describe the form",
+    description: "Pick the questions, name it, and it's live-ready in one move.",
+  },
+  copy: {
+    heading: "What should Paige write?",
+    description: "A brief in, on-brand drafts out — edit them until they're yours.",
+  },
+  image: {
+    heading: "Describe the image",
+    description: "Say what you need. Paige creates it and files it in your library.",
+  },
+};
+
+/** The §8/§14 moat line — verbatim from the original composer footer. */
+export const TEAM_LINE =
+  "Paige runs a team — a brand, design, and quality agent build every page with her.";
+
+/** Crafted empty-canvas copy per mode. Never a bare blank (§11). */
+export const MODE_EMPTY: Record<StudioMode, { title: string; description: string }> = {
+  page: {
+    title: "Your page shows up here",
+    description:
+      "Describe the page on the left. Paige drafts it in front of you — every section is the real thing, not a mockup.",
+  },
+  funnel: {
+    title: "Your funnel takes shape here",
+    description: "Chain a page to a form and Paige wires the flow — entry, capture, thank-you.",
+  },
+  form: {
+    title: "Your form previews here",
+    description: "Pick a template on the left and you'll see every question before it's created.",
+  },
+  copy: {
+    title: "Paige is ready to write",
+    description: "Fill in a brief and Paige drafts on-brand copy you can edit, save, and reuse.",
+  },
+  image: {
+    title: "Your image appears here",
+    description:
+      "Describe what you need — a promo graphic, a social visual, an ad image — and Paige creates it.",
+  },
+};
+
+/**
+ * Starting briefs for copy mode — the same discipline as INTENT_CHIPS: real, editable
+ * briefs spread across the audience (§2: coaches, consultants, agencies, advisors,
+ * thought leaders — zero finance wording), each modeling what a good copy brief looks like.
+ */
+export const COPY_CHIPS: IntentChip[] = [
+  {
+    id: "program-announcement",
+    label: "Program announcement",
+    seed:
+      "Announce my new 6-week client onboarding program. Key points: faster ramp, weekly " +
+      "check-ins, a results guarantee. Aim it at consultants scaling their practice, and end " +
+      "with one clear ask: book a call.",
+  },
+  {
+    id: "welcome-email",
+    label: "Welcome email",
+    seed:
+      "A welcome email for a new client who just signed. Set the tone for how we work, tell " +
+      "them exactly what happens in the first week, and give them the one thing to do before " +
+      "our first session.",
+  },
+  {
+    id: "reengage-lead",
+    label: "Re-engage a lead",
+    seed:
+      "A short follow-up for a lead who asked about working together three weeks ago and went " +
+      "quiet. Warm, zero pressure, one question that's easy to answer, and a low-effort next " +
+      "step: reply or grab a time.",
+  },
+  {
+    id: "workshop-promo",
+    label: "Workshop promo post",
+    seed:
+      "A social post promoting my live workshop for agency owners on running client delivery " +
+      "without being the bottleneck. Name the problem, tease the three things we cover, and " +
+      "close with: save your seat.",
+  },
+];
 
 /** The narration for each phase of a run. Every line names work that actually happens —
  *  the phase ticker is not decoration, it is a report (§13). It reads as Paige's TEAM at
@@ -130,6 +233,7 @@ export const BLOCK_LABELS: Record<GrowthBlock["type"], string> = {
   image: "Image",
   gallery: "Gallery",
   steps: "Steps",
+  chatbot: "Chatbot",
 };
 
 /**

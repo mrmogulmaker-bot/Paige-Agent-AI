@@ -6,8 +6,37 @@
 // studio-copy.ts so the §2/§3 audit has a single surface to read).
 import type { GrowthBlock, GrowthPageTheme } from "@/lib/growth";
 
-/** compose = blank brief · generating = a run is in flight · canvas = blocks on the board. */
-export type StudioMode = "compose" | "generating" | "canvas";
+/**
+ * The Studio's five outputs — one workspace, five creation modes. `page` is the
+ * original Vibe Studio; `copy` and `image` are the absorbed Content Studio;
+ * `funnel` and `form` are the structured builders. The tab param carries this
+ * (?tab=studio&mode=…) so every mode is deep-linkable.
+ */
+export type StudioMode = "page" | "funnel" | "form" | "copy" | "image";
+
+export const STUDIO_MODES: readonly StudioMode[] = ["page", "funnel", "form", "copy", "image"];
+
+export function isStudioMode(value: unknown): value is StudioMode {
+  return typeof value === "string" && (STUDIO_MODES as readonly string[]).includes(value);
+}
+
+/** One toolbar action a mode publishes into the Studio top bar (Save / the gold act). */
+export interface StudioBarAction {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+}
+
+/** What a mounted mode contributes to the top bar. `act` is the ONE gold button. */
+export interface ModeToolbarState {
+  save?: StudioBarAction;
+  act?: StudioBarAction;
+}
+
+/** compose = blank brief · generating = a run is in flight · canvas = blocks on the board.
+ *  (Page-mode only — the other modes hold their own local state.) */
+export type PageCanvasMode = "compose" | "generating" | "canvas";
 
 export type DeviceFrame = "desktop" | "mobile";
 
@@ -123,7 +152,7 @@ export interface StudioState {
   brief: string;
   /** The in-flight section instruction (section mode only). */
   instruction: string;
-  mode: StudioMode;
+  mode: PageCanvasMode;
   generation: GenerationState;
 
   // — the canvas —

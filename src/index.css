@@ -102,7 +102,20 @@ All colors MUST be HSL.
     --muted-foreground: 265 15% 66%;
 
     --border: 270 32% 17%;
+    --border-strong: 270 30% 26%;
     --input: 270 32% 17%;
+
+    /* Primary lifts on dark: the light theme's 12%-lightness indigo ink would sit
+       dark-on-dark against the near-black surfaces (the Studio's dark chrome and the
+       app-wide dark theme share this gap). Lighter indigo, same near-white
+       --primary-foreground — white-on-this stays AA (≈6:1) and the fill clears the
+       3:1 component bar against --background. Token-only, no hex. */
+    --primary: 258 65% 56%;
+    --primary-light: 258 60% 66%;
+
+    /* Gold-as-TEXT flips to the bright brand gold on dark — the light theme's
+       --gold-dark (32% lightness) sinks below AA against a 5%-lightness surface. */
+    --gold-dark: 41 82% 61%;
   }
 }
 
@@ -516,9 +529,9 @@ All colors MUST be HSL.
   .gp-shimmer {
     background-image: linear-gradient(
       90deg,
-      color-mix(in srgb, var(--gp-text, #888) 6%, transparent) 0%,
-      color-mix(in srgb, var(--gp-text, #888) 16%, transparent) 50%,
-      color-mix(in srgb, var(--gp-text, #888) 6%, transparent) 100%
+      color-mix(in srgb, var(--gp-text, hsl(var(--muted-foreground))) 6%, transparent) 0%,
+      color-mix(in srgb, var(--gp-text, hsl(var(--muted-foreground))) 16%, transparent) 50%,
+      color-mix(in srgb, var(--gp-text, hsl(var(--muted-foreground))) 6%, transparent) 100%
     );
     background-size: 800px 100%;
     animation: gp-shimmer 1.6s linear infinite;
