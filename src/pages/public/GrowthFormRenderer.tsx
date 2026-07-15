@@ -4,10 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import type { GrowthFormSchema, GrowthField } from "@/lib/growth";
-import { submitGrowthForm, readUtm } from "@/lib/growth";
+import { submitGrowthForm, readUtm, growthOptionValue, growthOptionLabel } from "@/lib/growth";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface FormRow {
   id: string;
@@ -38,8 +41,26 @@ export default function GrowthFormPage() {
 
   useEffect(() => { if (form?.name) document.title = form.name; }, [form?.name]);
 
-  if (loading) return <div className="min-h-dvh flex items-center justify-center">Loading…</div>;
-  if (!form) return <div className="min-h-dvh flex items-center justify-center">Form not found.</div>;
+  if (loading) {
+    return (
+      <div className="min-h-dvh bg-background py-12 px-4">
+        <div className="mx-auto max-w-2xl space-y-4" aria-busy="true" aria-label="Loading form">
+          <div className="h-8 w-2/3 animate-pulse rounded-md bg-muted motion-reduce:animate-none" />
+          <div className="h-40 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
+        </div>
+      </div>
+    );
+  }
+  if (!form) {
+    return (
+      <div className="min-h-dvh bg-background flex items-center justify-center px-4">
+        <div className="max-w-md rounded-xl border border-border bg-card p-8 text-center">
+          <h1 className="font-display text-xl font-semibold text-foreground">This form isn't available</h1>
+          <p className="mt-2 text-sm text-muted-foreground">The link may be broken, or the form was unpublished. Check with whoever shared it.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-dvh bg-background py-12 px-4">
@@ -51,7 +72,7 @@ export default function GrowthFormPage() {
   );
 }
 
-export function GrowthFormEmbed({ tenantId, formSlug, accent }: { tenantId: string; formSlug: string; accent?: string }) {
+export function GrowthFormEmbed({ tenantId, formSlug, accent, onComplete }: { tenantId: string; formSlug: string; accent?: string; onComplete?: () => void }) {
   const [form, setForm] = useState<FormRow | null>(null);
   useEffect(() => {
     (async () => {
@@ -64,14 +85,33 @@ export function GrowthFormEmbed({ tenantId, formSlug, accent }: { tenantId: stri
   }, [tenantId, formSlug]);
   if (!form) return null;
   return (
-    <div className="bg-white text-gray-900 rounded-lg shadow-xl p-6 md:p-8">
-      <h2 className="text-2xl font-bold mb-2 text-center" style={{ color: accent }}>{form.name}</h2>
-      <FormBody form={form} accent={accent} />
+    // §6 brand continuity + dark-AA: the embed rides the surrounding page's --gp-* palette so it
+    // reads as one system with the rest of the published site (and the chatbot block), instead of a
+    // foreign white card. Falls back to theme-aware shadcn card tokens when rendered outside a
+    // --gp-* context, so the shadcn Select/Checkbox/Radio inside never land dark-on-white.
+    <div
+      className="rounded-lg shadow-xl p-6 md:p-8"
+      style={{ background: "var(--gp-surface, hsl(var(--card)))", color: "var(--gp-text, hsl(var(--card-foreground)))" }}
+    >
+      <h2 className="text-2xl font-bold mb-2 text-center" style={{ color: accent || "var(--gp-accent-ink)" }}>{form.name}</h2>
+      <FormBody form={form} accent={accent} onComplete={onComplete} />
     </div>
   );
 }
 
-function FormBody({ form, accent }: { form: FormRow; accent?: string }) {
+// A field counts as "answered" per its own type — a boolean checkbox must be TRUE, a
+// checkbox group must have at least one choice, everything else must be a non-empty value.
+// (A plain `!== ""` check would wrongly pass an unchecked required consent box, whose value
+// is `false`/`undefined`.)
+function fieldAnswered(field: GrowthField, value: any): boolean {
+  if (field.type === "checkbox") {
+    if (field.options?.length) return Array.isArray(value) && value.length > 0;
+    return value === true;
+  }
+  return value !== undefined && value !== null && value !== "";
+}
+
+function FormBody({ form, accent, onComplete }: { form: FormRow; accent?: string; onComplete?: () => void }) {
   const schema = form.schema_json ?? { sections: [] };
   const totalSteps = schema.sections.length;
   const [step, setStep] = useState(0);
@@ -85,7 +125,7 @@ function FormBody({ form, accent }: { form: FormRow; accent?: string }) {
 
   const setField = (k: string, v: any) => setData((d) => ({ ...d, [k]: v }));
 
-  const requiredOk = (s: typeof section) => s.fields.every((f) => !f.required || (data[f.key] !== undefined && data[f.key] !== ""));
+  const requiredOk = (s: typeof section) => s.fields.every((f) => !f.required || fieldAnswered(f, data[f.key]));
 
   const submit = async () => {
     setSubmitting(true);
@@ -99,6 +139,11 @@ function FormBody({ form, accent }: { form: FormRow; accent?: string }) {
       window.location.href = form.success_action_json.redirect_url;
       return;
     }
+    // Embedded in a funnel with a next step: hand control back to the step machine so the
+    // visitor advances to the thankyou/next step instead of dead-ending on this form's own
+    // success card. Standalone (/form/:id) and landing-embed have no onComplete, so they keep
+    // showing the authored success state exactly as before.
+    if (onComplete) { onComplete(); return; }
     setDone(true);
   };
 
@@ -155,27 +200,91 @@ function FormBody({ form, accent }: { form: FormRow; accent?: string }) {
 }
 
 function FieldRenderer({ field, value, onChange }: { field: GrowthField; value: any; onChange: (v: any) => void }) {
-  const span = ["textarea","home_address","business_address","use_of_funds"].includes(field.type) || field.key.includes("address") ? "md:col-span-2" : "";
+  const fid = `gf-${field.key}`;
+  const help = field.help ? <p className="text-xs text-muted-foreground mt-1">{field.help}</p> : null;
+  const req = field.required ? <span className="text-destructive"> *</span> : null;
+
+  // A single boolean checkbox (a consent line, no options) reads as its own row: the field
+  // label IS the checkbox's clickable label, so we don't stack a separate heading above it.
+  const isBoolean = field.type === "checkbox" && !field.options?.length;
+  const span =
+    ["textarea", "home_address", "business_address", "use_of_funds"].includes(field.type) ||
+    field.type === "checkbox" ||
+    field.key.includes("address")
+      ? "md:col-span-2"
+      : "";
+
+  if (field.type === "checkbox" && isBoolean) {
+    return (
+      <div className={span}>
+        <div className="flex items-start gap-2.5">
+          <Checkbox
+            id={fid}
+            checked={value === true}
+            onCheckedChange={(c) => onChange(c === true)}
+            aria-required={field.required || undefined}
+            className="mt-0.5"
+          />
+          <label htmlFor={fid} className="text-sm font-medium leading-snug cursor-pointer">
+            {field.label}{req}
+          </label>
+        </div>
+        {help}
+      </div>
+    );
+  }
+
   return (
     <div className={span}>
-      <label className="text-sm font-medium block mb-1">{field.label}{field.required && <span className="text-red-500">*</span>}</label>
-      {field.type === "textarea" ? (
-        <Textarea value={value ?? ""} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} />
-      ) : field.type === "select" ? (
-        <select className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm" value={value ?? ""} onChange={(e) => onChange(e.target.value)}>
-          <option value="">Select…</option>
-          {field.options?.map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
-      ) : field.type === "radio" ? (
-        <div className="space-y-2 mt-1">
-          {field.options?.map((o) => (
-            <label key={o} className="flex items-center gap-2 text-sm">
-              <input type="radio" name={field.key} value={o} checked={value === o} onChange={() => onChange(o)} />{o}
-            </label>
-          ))}
+      <label htmlFor={field.type === "textarea" || field.type === "select" ? fid : undefined} className="text-sm font-medium block mb-1">
+        {field.label}{req}
+      </label>
+      {field.type === "checkbox" ? (
+        <div className="space-y-2 mt-1" role="group" aria-label={field.label} aria-required={field.required || undefined}>
+          {field.options?.map((o) => {
+            const v = growthOptionValue(o);
+            const arr: string[] = Array.isArray(value) ? value : [];
+            const on = arr.includes(v);
+            return (
+              <div key={v} className="flex items-center gap-2.5">
+                <Checkbox
+                  id={`${fid}-${v}`}
+                  checked={on}
+                  onCheckedChange={(c) => onChange(c === true ? [...arr, v] : arr.filter((x) => x !== v))}
+                />
+                <label htmlFor={`${fid}-${v}`} className="text-sm cursor-pointer">{growthOptionLabel(o)}</label>
+              </div>
+            );
+          })}
         </div>
+      ) : field.type === "textarea" ? (
+        <Textarea id={fid} value={value ?? ""} onChange={(e) => onChange(e.target.value)} placeholder={field.placeholder} />
+      ) : field.type === "select" ? (
+        <Select value={value || undefined} onValueChange={(v) => onChange(v)}>
+          <SelectTrigger id={fid}>
+            <SelectValue placeholder={field.placeholder ?? "Select…"} />
+          </SelectTrigger>
+          <SelectContent>
+            {/* Radix Select/RadioGroup THROW on an empty-string value (the placeholder owns ""),
+                so an empty option value would white-screen the whole public form — filter defensively. */}
+            {field.options?.filter((o) => growthOptionValue(o) !== "").map((o) => { const v = growthOptionValue(o); return <SelectItem key={v} value={v}>{growthOptionLabel(o)}</SelectItem>; })}
+          </SelectContent>
+        </Select>
+      ) : field.type === "radio" ? (
+        <RadioGroup value={value ?? ""} onValueChange={(v) => onChange(v)} aria-label={field.label} aria-required={field.required || undefined} className="mt-1">
+          {field.options?.filter((o) => growthOptionValue(o) !== "").map((o) => {
+            const v = growthOptionValue(o);
+            return (
+              <div key={v} className="flex items-center gap-2.5">
+                <RadioGroupItem id={`${fid}-${v}`} value={v} />
+                <label htmlFor={`${fid}-${v}`} className="text-sm cursor-pointer">{growthOptionLabel(o)}</label>
+              </div>
+            );
+          })}
+        </RadioGroup>
       ) : (
         <Input
+          id={fid}
           type={field.type === "ssn4" ? "text" : field.type === "currency" || field.type === "number" ? "number" : field.type === "date" ? "date" : field.type === "email" ? "email" : field.type === "tel" ? "tel" : "text"}
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
@@ -183,7 +292,7 @@ function FieldRenderer({ field, value, onChange }: { field: GrowthField; value: 
           placeholder={field.placeholder}
         />
       )}
-      {field.help && <p className="text-xs text-gray-500 mt-1">{field.help}</p>}
+      {help}
     </div>
   );
 }

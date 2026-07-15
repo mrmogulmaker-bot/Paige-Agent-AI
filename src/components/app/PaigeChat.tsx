@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Loader2, Mic, MicOff, Volume2, Paperclip } from "lucide-react";
+import { Send, Loader2, Mic, MicOff, Paperclip } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -28,7 +27,8 @@ import { ExtractionProposalCard, type ExtractionProposal } from "@/components/ch
 import { extractFromMessage } from "@/lib/conversationalExtractor";
 import { fieldToWriteBackUpdate } from "@/lib/extractionProposal";
 import { useProfileSnapshot } from "@/hooks/useProfileSnapshot";
-import { VoiceSessionModal, type VoiceModalStatus, type VoiceTranscriptEntry } from "@/components/voice/VoiceSessionModal";
+import { VoiceDock } from "@/components/voice/VoiceDock";
+import type { VoiceModalStatus, VoiceTranscriptEntry } from "@/components/voice/types";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { usePlaybook } from "@/lib/playbook";
 import { useClientPortalBrandState } from "@/hooks/useClientPortalBrand";
@@ -824,31 +824,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             <h2 className="font-bold text-foreground text-sm capitalize">{playbook.persona.name}</h2>
             <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate capitalize">{playbook.persona.role}</p>
           </div>
-          {/* Voice status in header on mobile for visibility */}
-          {isMobile && conversation.status === "connected" && (
-            <div className="flex items-center gap-1.5">
-              {conversation.isSpeaking ? (
-                <div className="flex items-center gap-1 text-primary text-xs">
-                  <Volume2 className="h-3.5 w-3.5 animate-pulse" />
-                  <span className="text-[10px]">Speaking</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 text-primary text-xs">
-                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-                  <span className="text-[10px]">Listening</span>
-                </div>
-              )}
-              <Button
-                onClick={stopVoiceChat}
-                variant="destructive"
-                size="sm"
-                className="h-7 px-2 text-[10px]"
-              >
-                <MicOff className="w-3 h-3 mr-1" />
-                End
-              </Button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -928,19 +903,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         </div>
       </div>
 
-      {/* Voice status indicator — desktop only (mobile shows in header) */}
-      {!isMobile && conversation.status === "connected" && (
-        <div className="px-4 pb-2 space-y-2 flex-shrink-0">
-          <div className="flex items-center justify-center gap-4 text-sm">
-            {conversation.isSpeaking ? (
-              <div className="flex items-center gap-2 text-primary"><Volume2 className="h-4 w-4 animate-pulse" /><span>Speaking...</span></div>
-            ) : (
-              <div className="flex items-center gap-2 text-primary"><div className="h-2 w-2 rounded-full bg-primary animate-pulse" /><span>Listening...</span></div>
-            )}
-          </div>
-        </div>
-      )}
-
       {attachedDoc && (
         <div className="px-3 pt-1.5 flex-shrink-0">
           <DocumentAttachmentChip fileName={attachedDoc.name} onRemove={removeAttachment} />
@@ -949,54 +911,6 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
       {/* Input area — safe area padding on mobile */}
       <div className="p-2 sm:p-3 border-t border-border space-y-2 flex-shrink-0 pb-[env(safe-area-inset-bottom,8px)]">
-        {/* Text input during voice mode — desktop */}
-        {!isMobile && conversation.status === "connected" && (
-          <div className="space-y-1">
-            <p className="text-[10px] text-muted-foreground text-center">Voice active — type to send a text message instead</p>
-            <div className="flex gap-2 items-center">
-              <Textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                placeholder="Type to Paige while talking... (Shift+Enter for new line)"
-                rows={1}
-                className="flex-1 text-sm bg-muted/30 border-border/50 min-h-[40px] max-h-[160px] resize-none py-2"
-              />
-              <Button
-                onClick={() => handleSend()}
-                disabled={isLoading || !input.trim()}
-                className="bg-gradient-gold hover:opacity-90"
-                size="icon"
-              >
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Mobile voice mode: simplified input */}
-        {isMobile && conversation.status === "connected" && (
-          <div className="flex gap-2 items-center">
-            <Textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-              placeholder="Or type to Paige... (Shift+Enter for new line)"
-              rows={1}
-              className="flex-1 text-sm bg-muted/30 border-border/50 min-h-[40px] max-h-[160px] resize-none py-2"
-            />
-            <Button
-              onClick={() => handleSend()}
-              disabled={isLoading || !input.trim()}
-              className="bg-gradient-gold hover:opacity-90 h-10 w-10"
-              size="icon"
-            >
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            </Button>
-          </div>
-        )}
-
         <div className="flex gap-1.5 sm:gap-2 items-center">
           <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach a document (PDF)">
             <Paperclip className="w-4 h-4" />
@@ -1037,8 +951,9 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         </div>
       </div>
 
-      {/* Premium voice session UI — full-screen modal with avatar, transcript, controls. */}
-      <VoiceSessionModal
+      {/* Voice session UI — scoped to THIS chat widget, not the viewport. Client
+          can keep typing to Paige mid-call via the dock's type-while-talking row. */}
+      <VoiceDock
         open={voiceModalOpen}
         status={voiceStatus}
         isMuted={voiceMuted}
@@ -1046,6 +961,10 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         transcript={voiceTranscript}
         onToggleMute={toggleVoiceMute}
         onEndCall={stopVoiceChat}
+        inputValue={input}
+        onInputChange={setInput}
+        onSendText={() => handleSend()}
+        isSending={isLoading}
       />
     </div>
   );

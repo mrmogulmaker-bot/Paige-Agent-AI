@@ -3883,6 +3883,77 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "marketplace_browse",
+              description: "List the add-ons available to this practice in the Marketplace — Playbooks, skill packs, and knowledge packs they can install. Use when the operator asks what's available, what they can add, or wants to shop the marketplace. Read-only.",
+              parameters: {
+                type: "object",
+                properties: {
+                  category: { type: "string", description: "Optional category to filter by." },
+                  query: { type: "string", description: "Optional free-text to match against name/tagline." },
+                  only_installed: { type: "boolean", description: "If true, return only items already installed." }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "marketplace_recommend",
+              description: "Recommend a short, ranked shortlist of Marketplace add-ons that fit what the practice needs, each with a one-line reason. Use when the operator asks what they should add, or describes a goal and wants suggestions. Read-only. Do not suggest funding or credit add-ons unless the operator explicitly asks about funding.",
+              parameters: {
+                type: "object",
+                properties: {
+                  need: { type: "string", description: "What the operator is trying to accomplish, in their words." }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "marketplace_install",
+              description: "Install a Marketplace add-on into this practice by its slug. This wires up the item's skills/knowledge for the whole workspace, so confirm with the operator first. Paid add-ons cannot be purchased yet — only free, first-party items install today.",
+              parameters: {
+                type: "object",
+                properties: {
+                  item_slug: { type: "string", description: "The slug of the item to install (from marketplace_browse)." },
+                  confirm: { type: "boolean", description: "Set true only after the operator has explicitly approved installing this item." }
+                },
+                required: ["item_slug"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "marketplace_uninstall",
+              description: "Remove a previously installed Marketplace add-on from this practice by its slug. Confirm with the operator first. Shared skills/knowledge are only fully removed once nothing else still relies on them.",
+              parameters: {
+                type: "object",
+                properties: {
+                  item_slug: { type: "string", description: "The slug of the installed item to remove." },
+                  confirm: { type: "boolean", description: "Set true only after the operator has explicitly approved removing this item." }
+                },
+                required: ["item_slug"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "marketplace_my_capabilities",
+              description: "List the Marketplace add-ons this practice already has installed. Optionally pass an item_slug to see how deeply one item is relied on. Use when the operator asks what they've added or what Paige can already do for them. Read-only.",
+              parameters: {
+                type: "object",
+                properties: {
+                  item_slug: { type: "string", description: "Optional slug to get the reliance/reference count for one installed item." }
+                }
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "web_search",
               description: "Search the web for current, real-time public information that helps you answer the client accurately — anything that changes frequently or that you don't already have in context. Use proactively when the client asks about current facts, prices, providers, requirements, or recent developments relevant to this practice's work. Returns the top 5 results with title, description, and URL.",
               parameters: {
@@ -4908,11 +4979,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "plan_set_reminder", "plan_create", "plan_add_milestone",
       "plan_assign_task", "plan_update_item", "plan_remove_item",
       "author_event_kind",
+      "marketplace_install", "marketplace_uninstall",
     ]);
 
     // Friendly, operator-facing labels for each mutating tool — never surface the
     // raw internal tool_key (§11: no backend function names in visible copy).
     const TOOL_LABELS: Record<string, string> = {
+      marketplace_install: "installing a marketplace add-on",
+      marketplace_uninstall: "removing a marketplace add-on",
       crm_update_contact: "updating a contact",
       crm_create_contact: "adding a contact",
       crm_delete_contact: "deleting a contact",
@@ -5633,6 +5707,54 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               content: JSON.stringify({ success: false, error: err instanceof Error ? err.message : "Unknown error" }),
             });
           }
+        } else if (tc.function.name === "marketplace_browse") {
+          let a: any = {}; try { a = JSON.parse(tc.function.arguments || "{}"); } catch { a = {}; }
+          const { data, error } = await supabaseClient.rpc("marketplace_catalog_for_tenant", { _tenant_id: personaCtx.tenant_id });
+          if (error) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: error.message }) }); continue; }
+          let items = (data ?? []) as any[];
+          if (a.only_installed) items = items.filter((i) => i.installed);
+          if (a.category) items = items.filter((i) => String(i.category || "").toLowerCase() === String(a.category).toLowerCase());
+          if (a.query) { const q = String(a.query).toLowerCase(); items = items.filter((i) => `${i.name || ""} ${i.tagline || ""}`.toLowerCase().includes(q)); }
+          const slim = items.map((i) => ({ slug: i.slug, name: i.name, tagline: i.tagline, category: i.category, pricing_model: i.pricing_model, price_cents: i.price_cents, installed: i.installed, install_status: i.install_status }));
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, count: slim.length, items: slim }) });
+        } else if (tc.function.name === "marketplace_recommend") {
+          const { data, error } = await supabaseClient.rpc("marketplace_catalog_for_tenant", { _tenant_id: personaCtx.tenant_id });
+          if (error) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: error.message }) }); continue; }
+          const candidates = ((data ?? []) as any[]).filter((i) => !i.installed).map((i) => ({ slug: i.slug, name: i.name, tagline: i.tagline, category: i.category, description: i.description, price_cents: i.price_cents }));
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, candidates, note: "Choose the few add-ons that best fit what the operator needs and give a one-line reason for each. Do not recommend funding or credit add-ons unless the operator explicitly asked about funding." }) });
+        } else if (tc.function.name === "marketplace_install") {
+          let a: any = {}; try { a = JSON.parse(tc.function.arguments || "{}"); } catch { a = {}; }
+          const slug = String(a.item_slug || "").trim();
+          if (!slug) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Which add-on? Pass the item_slug from marketplace_browse." }) }); continue; }
+          const { data: cat, error: catErr } = await supabaseClient.rpc("marketplace_catalog_for_tenant", { _tenant_id: personaCtx.tenant_id });
+          if (catErr) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: catErr.message }) }); continue; }
+          const row = ((cat ?? []) as any[]).find((i) => i.slug === slug);
+          if (!row) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: `No add-on named "${slug}" is available to this workspace.` }) }); continue; }
+          // Money-gate (§17): paid add-ons are not purchasable yet — only free items
+          // install today. The authoritative entitlement check moves server-side with
+          // billing (Stripe Connect) in a later release.
+          if (Number(row.price_cents || 0) > 0) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, paid: true, error: `${row.name} is a paid add-on. Purchasing isn't available yet — I can only install free items right now.` }) }); continue; }
+          if (row.installed) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, already_installed: true, item: row.name, message: `${row.name} is already installed.` }) }); continue; }
+          const { data: res, error } = await supabaseClient.functions.invoke("marketplace-install", { body: { item_slug: slug, installed_by_agent: "paige", tenant_id: personaCtx.tenant_id } });
+          if (error) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: error.message ?? "Install failed." }) }); continue; }
+          const r = (res ?? {}) as any;
+          if (r.error) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: String(r.error) }) }); continue; }
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, item: row.name, already_installed: !!r.already_installed, kb_docs_seeded: Number(r.kb_docs_seeded ?? 0), warnings: [r.warning, ...(Array.isArray(r.warnings) ? r.warnings : [])].filter(Boolean) }) });
+        } else if (tc.function.name === "marketplace_uninstall") {
+          let a: any = {}; try { a = JSON.parse(tc.function.arguments || "{}"); } catch { a = {}; }
+          const slug = String(a.item_slug || "").trim();
+          if (!slug) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Which add-on? Pass the item_slug." }) }); continue; }
+          const { data: res, error } = await supabaseClient.rpc("uninstall_marketplace_item", { _tenant_id: personaCtx.tenant_id, _item_slug: slug });
+          if (error) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: error.message }) }); continue; }
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, result: res }) });
+        } else if (tc.function.name === "marketplace_my_capabilities") {
+          let a: any = {}; try { a = JSON.parse(tc.function.arguments || "{}"); } catch { a = {}; }
+          const { data, error } = await supabaseClient.rpc("marketplace_catalog_for_tenant", { _tenant_id: personaCtx.tenant_id });
+          if (error) { toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: error.message }) }); continue; }
+          const installed = ((data ?? []) as any[]).filter((i) => i.installed).map((i) => ({ slug: i.slug, name: i.name, category: i.category }));
+          let refcount: any;
+          if (a.item_slug) { const { data: rc } = await supabaseClient.rpc("marketplace_install_refcount", { _tenant_id: personaCtx.tenant_id, _item_slug: String(a.item_slug) }); refcount = rc; }
+          toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: true, count: installed.length, installed, ...(refcount !== undefined ? { refcount } : {}) }) });
         } else if (tc.function.name === "search_funding_marketplace") {
           // Scaffold — not wired to Lendflow yet. Activate by setting LENDFLOW_ENABLED=true and
           // implementing the real Lendflow API call inside the `if (lendflowEnabled)` branch.

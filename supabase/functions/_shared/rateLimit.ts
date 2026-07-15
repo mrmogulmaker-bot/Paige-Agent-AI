@@ -20,6 +20,16 @@ export function clientIp(req: Request): string {
     "unknown";
 }
 
+/** Abuse-hardened client IP for UNAUTHENTICATED cost-bearing endpoints (e.g. the public
+ *  Paige chat). Trusts ONLY the platform-set Cloudflare header — the left-most X-Forwarded-For
+ *  hop is attacker-controlled on a public surface, so keying an IP throttle on it lets a caller
+ *  mint a fresh identity per request and walk straight through the limit. A header-less request
+ *  shares one coarse "unknown" bucket rather than escaping the throttle. Use this (not clientIp)
+ *  anywhere the per-IP bucket is the primary defense against spend abuse. */
+export function trustedClientIp(req: Request): string {
+  return req.headers.get("cf-connecting-ip")?.trim() || "unknown";
+}
+
 /** Durable per-bucket throttle. Returns TRUE when the caller is OVER the limit
  *  (block them), FALSE when the request is allowed.
  *
@@ -31,6 +41,7 @@ export async function overRateLimit(
   bucket: string,
   max: number,
   windowSeconds = 60,
+  failClosed = false,
 ): Promise<boolean> {
   try {
     const { data, error } = await admin.rpc("check_public_rate_limit", {
@@ -38,9 +49,9 @@ export async function overRateLimit(
       _max: max,
       _window_seconds: windowSeconds,
     });
-    if (error) return false; // fail-open — don't block on a limiter error
+    if (error) return failClosed; // default fail-OPEN; cost-protection backstops pass failClosed=true
     return data === false; // the RPC returns false ONLY when the ceiling is exceeded
   } catch {
-    return false; // fail-open
+    return failClosed; // same posture on a thrown limiter error
   }
 }

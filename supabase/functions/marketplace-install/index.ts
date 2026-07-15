@@ -38,7 +38,25 @@ const BodySchema = z.object({
   item_slug: z.string().min(1).max(120).regex(/^[a-z0-9_]+$/),
   tenant_id: z.string().uuid().optional(), // platform-owner override; ignored otherwise
   installed_by_agent: z.string().max(40).optional(), // 'paige' when driven from chat
+  // Service-role (paige-mcp) path only: the trusted actor paige-mcp resolved from its
+  // ActorCtx. Ignored on the user-JWT path (auth.uid() is the actor there). Re-verified
+  // as a tenant admin of tenant_id before anything installs — never trusted (§9/§13).
+  actor_user_id: z.string().uuid().optional(),
 });
+
+// Decode a JWT's `role` claim without verifying the signature — enough to branch
+// user-JWT vs service-role. The service-role KEY the caller presents is trusted by
+// Supabase's gateway; here we only need to know WHICH path to take. On the service
+// path, authorization is enforced by re-verifying the actor is a tenant admin.
+function jwtRole(token: string): string | null {
+  try {
+    const seg = token.split(".")[1];
+    const json = atob(seg.replace(/-/g, "+").replace(/_/g, "/"));
+    return (JSON.parse(json)?.role ?? null) as string | null;
+  } catch {
+    return null;
+  }
+}
 
 const CHUNK_SIZE = 1000;
 const CHUNK_OVERLAP = 150;
@@ -169,36 +187,73 @@ serve(async (req) => {
     const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
     const token = auth.replace("Bearer ", "");
-    const { data: claims, error: claimsErr } = await userClient.auth.getClaims(token);
-    if (claimsErr || !claims?.claims) return json({ error: "Unauthorized" }, 401);
-    const userId = claims.claims.sub as string;
+    const isService = jwtRole(token) === "service_role";
 
     const parsed = BodySchema.safeParse(await req.json());
     if (!parsed.success) return json({ error: parsed.error.flatten() }, 400);
     const { item_slug, installed_by_agent } = parsed.data;
 
-    // Resolve the target tenant. A tenant_id override is only honored for a
-    // platform owner; everyone else installs into their own active tenant.
-    let tenantId = parsed.data.tenant_id ?? null;
-    const { data: isOwner } = await userClient.rpc("is_platform_owner");
-    if (tenantId && !isOwner) tenantId = null; // ignore spoofed override
-    if (!tenantId) {
-      const { data: prof } = await admin
-        .from("profiles").select("active_tenant_id").eq("user_id", userId).maybeSingle();
-      tenantId = prof?.active_tenant_id ?? null;
-    }
-    if (!tenantId) return json({ error: "No active tenant for this user" }, 400);
+    // The actor whose authorship + authorization the install runs under, and the
+    // client used for the tenant-gated RPCs. Two disjoint paths:
+    //   • USER JWT  — the caller's own client; auth.uid() IS the actor; base RPCs.
+    //   • SERVICE   — paige-mcp presents the service-role key + a trusted actor_user_id
+    //                 it resolved from its ActorCtx. We RE-VERIFY that actor is a tenant
+    //                 admin (never trust the body, §9/§13) and drive the actor-scoped
+    //                 RPC overloads so KB embedding still runs (true parity, §12/§14).
+    let userId: string; // doc-authorship + provenance
+    let tenantId: string | null;
+    // deno-lint-ignore no-explicit-any
+    const rpcClient: any = isService ? admin : userClient;
 
-    // Authorization probe: this RPC RAISES 42501 unless the caller is the platform
-    // owner or an admin of tenantId. Confirm BEFORE we spend embed calls / write rows.
-    const { error: gateErr } = await userClient.rpc("marketplace_catalog_for_tenant", {
-      _tenant_id: tenantId,
-    });
-    if (gateErr) {
-      const forbidden = /not authorized/i.test(gateErr.message);
-      return json({ error: forbidden ? "Not authorized for this tenant" : gateErr.message },
-        forbidden ? 403 : 400);
+    if (isService) {
+      const actorUserId = parsed.data.actor_user_id ?? null;
+      tenantId = parsed.data.tenant_id ?? null;
+      if (!actorUserId || !tenantId) {
+        return json({ error: "service-role install requires actor_user_id and tenant_id" }, 400);
+      }
+      // Re-verify the actor is an admin of the target tenant. This is the same lock the
+      // actor-scoped RPC overloads enforce; checking here fails fast before we embed.
+      const { data: okAdmin, error: adminErr } = await admin.rpc("is_tenant_admin_as", {
+        _actor: actorUserId, _tenant: tenantId,
+      });
+      if (adminErr) return json({ error: adminErr.message }, 400);
+      if (!okAdmin) return json({ error: "Not authorized for this tenant" }, 403);
+      userId = actorUserId;
+    } else {
+      const { data: claims, error: claimsErr } = await userClient.auth.getClaims(token);
+      if (claimsErr || !claims?.claims) return json({ error: "Unauthorized" }, 401);
+      userId = claims.claims.sub as string;
+
+      // Resolve the target tenant. A tenant_id override is only honored for a
+      // platform owner; everyone else installs into their own active tenant.
+      tenantId = parsed.data.tenant_id ?? null;
+      const { data: isOwner } = await userClient.rpc("is_platform_owner");
+      if (tenantId && !isOwner) tenantId = null; // ignore spoofed override
+      if (!tenantId) {
+        const { data: prof } = await admin
+          .from("profiles").select("active_tenant_id").eq("user_id", userId).maybeSingle();
+        tenantId = prof?.active_tenant_id ?? null;
+      }
+      if (!tenantId) return json({ error: "No active tenant for this user" }, 400);
+
+      // Authorization probe: this RPC RAISES 42501 unless the caller is the platform
+      // owner or an admin of tenantId. Confirm BEFORE we spend embed calls / write rows.
+      const { error: gateErr } = await userClient.rpc("marketplace_catalog_for_tenant", {
+        _tenant_id: tenantId,
+      });
+      if (gateErr) {
+        const forbidden = /not authorized/i.test(gateErr.message);
+        return json({ error: forbidden ? "Not authorized for this tenant" : gateErr.message },
+          forbidden ? 403 : 400);
+      }
     }
+    if (!tenantId) return json({ error: "No active tenant for this request" }, 400);
+
+    // On the service path, always send _actor_user_id so PostgREST resolves the 5-arg
+    // actor-scoped overload (the 4-arg base would 42501 under service role).
+    // deno-lint-ignore no-explicit-any
+    const installArgs = (base: Record<string, unknown>): Record<string, unknown> =>
+      isService ? { ...base, _actor_user_id: userId } : base;
 
     // Load the item + its current published version manifest.
     const { data: item, error: itemErr } = await admin
@@ -238,12 +293,12 @@ serve(async (req) => {
 
     // Finalize: flip skills, fan out the bundle, record provenance (incl. the doc
     // IDs we just seeded), write the ledger — all atomic + idempotent in the RPC.
-    const { data: receipt, error: rpcErr } = await userClient.rpc("install_marketplace_item", {
+    const { data: receipt, error: rpcErr } = await rpcClient.rpc("install_marketplace_item", installArgs({
       _tenant_id: tenantId,
       _item_slug: item_slug,
       _seeded_kb_doc_ids: seededDocIds,
       _installed_by_agent: installed_by_agent ?? null,
-    });
+    }));
     if (rpcErr) {
       // Roll back the KB rows we optimistically inserted so a failed finalize
       // doesn't leave un-tracked docs behind.
@@ -300,12 +355,12 @@ serve(async (req) => {
       // Finalize the child (docIds present → FINALIZE branch clears embedding_pending).
       // If nothing embedded (childDocIds empty), the RPC is a no-op and the child
       // stays KB-pending — surfaced as a warning, not a silent success.
-      const { data: childReceipt, error: childErr } = await userClient.rpc("install_marketplace_item", {
+      const { data: childReceipt, error: childErr } = await rpcClient.rpc("install_marketplace_item", installArgs({
         _tenant_id: tenantId,
         _item_slug: childSlug,
         _seeded_kb_doc_ids: childDocIds,
         _installed_by_agent: installed_by_agent ?? null,
-      });
+      }));
       if (childErr) {
         if (childDocIds.length) {
           await admin.from("tenant_knowledge_docs").delete().in("id", childDocIds);

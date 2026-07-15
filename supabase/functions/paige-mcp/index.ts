@@ -4266,6 +4266,187 @@ mcp.tool("me_search_lender_products", {
 });
 
 // ============================================================================
+// Marketplace — Wave 4 (paige-mcp parity with the paige-ai-chat surface).
+//
+// paige-ai-chat drives these RPCs with the caller's GoTrue JWT so is_tenant_admin
+// (auth.uid()) authorizes natively. paige-mcp has no such JWT — it resolves a trusted
+// actor from the ActorCtx and calls Postgres with the SERVICE-ROLE `admin` client. The
+// 20260714350000 migration adds service-role-gated overloads that take an explicit
+// _actor_user_id and RE-VERIFY it is a tenant admin of _tenant_id (defense in depth,
+// §9/§13). We resolve that actor here and pass it to every call.
+// ============================================================================
+
+// Resolve the forgery-resistant actor user_id for the marketplace overloads. A user
+// OAuth token carries its own user_id. The platform (god) key has none, so we back the
+// call with the resolved tenant's OWNER — a real admin the overload's is_tenant_admin_as
+// check will accept. The audit row still records the true mcp:platform actor (audit()
+// reads currentActor()), so the god origin is never lost (§13).
+async function resolveMarketplaceActor(tenantId: string): Promise<string | null> {
+  const a = currentActor();
+  if (a.user_id) return a.user_id;
+  // The platform (god) key has no user_id. Only back it with the tenant OWNER when the
+  // resolved tenant is the operator's OWN (actorTenantId() pins a platform actor to
+  // MMA_TENANT_ID today). This guard means a future change to that pin can never quietly
+  // open a cross-tenant god write — the overload would reject a borrowed non-owner actor,
+  // but we fail closed here first (§9/§17: no silent break-glass).
+  if (tenantId !== MMA_TENANT_ID) return null;
+  const { data } = await admin.from("tenants").select("owner_user_id").eq("id", tenantId).maybeSingle();
+  return (data?.owner_user_id as string | null) ?? null;
+}
+
+mcp.tool("marketplace_browse", {
+  description: "List the add-ons available to this practice in the Marketplace — Playbooks, skill packs, and knowledge packs they can install. Use when the operator asks what's available, what they can add, or wants to shop the marketplace. Read-only.",
+  inputSchema: z.object({
+    category: z.string().optional().describe("Optional category to filter by."),
+    query: z.string().optional().describe("Optional free-text to match against name/tagline."),
+    only_installed: z.boolean().optional().describe("If true, return only items already installed."),
+  }),
+  handler: async ({ category, query, only_installed }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const actorUserId = await resolveMarketplaceActor(tenantId);
+    if (!actorUserId) return err("actor_not_resolved");
+    const { data, error } = await admin.rpc("marketplace_catalog_for_tenant", { _tenant_id: tenantId, _actor_user_id: actorUserId });
+    if (error) return err(error.message);
+    // deno-lint-ignore no-explicit-any
+    let items = (data ?? []) as any[];
+    if (only_installed) items = items.filter((i) => i.installed);
+    if (category) items = items.filter((i) => String(i.category || "").toLowerCase() === String(category).toLowerCase());
+    if (query) { const q = String(query).toLowerCase(); items = items.filter((i) => `${i.name || ""} ${i.tagline || ""}`.toLowerCase().includes(q)); }
+    // §2: no client-side finance filter here — marketplace_catalog_for_tenant already
+    // filters to what THIS tenant may see (public + their own opted-in presets). A
+    // funding/credit preset a tenant chose is an allowed, visible item in their own
+    // catalog; suppressing it would hide what they opted into. Matches paige-ai-chat.
+    const slim = items.map((i) => ({ slug: i.slug, name: i.name, tagline: i.tagline, category: i.category, pricing_model: i.pricing_model, price_cents: i.price_cents, installed: i.installed, install_status: i.install_status }));
+    return ok({ success: true, count: slim.length, items: slim });
+  },
+});
+
+mcp.tool("marketplace_recommend", {
+  description: "Recommend a short, ranked shortlist of Marketplace add-ons that fit what the practice needs, each with a one-line reason. Use when the operator asks what they should add, or describes a goal and wants suggestions. Read-only. Do not suggest funding or credit add-ons unless the operator explicitly asks about funding.",
+  inputSchema: z.object({
+    need: z.string().optional().describe("What the operator is trying to accomplish, in their words."),
+  }),
+  handler: async ({ need }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const actorUserId = await resolveMarketplaceActor(tenantId);
+    if (!actorUserId) return err("actor_not_resolved");
+    const { data, error } = await admin.rpc("marketplace_catalog_for_tenant", { _tenant_id: tenantId, _actor_user_id: actorUserId });
+    if (error) return err(error.message);
+    // deno-lint-ignore no-explicit-any
+    const pool = ((data ?? []) as any[]).filter((i) => !i.installed);
+    // §2 is a SOFT rule on recommend (don't proactively upsell funding) — enforced by the
+    // note below, not a name regex that would drop legit items like "Fundamentals".
+    const candidates = pool.map((i) => ({ slug: i.slug, name: i.name, tagline: i.tagline, category: i.category, description: i.description, price_cents: i.price_cents }));
+    return ok({ success: true, candidates, note: "Choose the few add-ons that best fit what the operator needs and give a one-line reason for each. Do not recommend funding or credit add-ons unless the operator explicitly asked about funding." });
+  },
+});
+
+mcp.tool("marketplace_install", {
+  description: "Install a Marketplace add-on into this practice by its slug. This wires up the item's skills/knowledge for the whole workspace, so confirm with the operator first. Paid add-ons cannot be purchased yet — only free, first-party items install today.",
+  inputSchema: z.object({
+    item_slug: z.string().describe("The slug of the item to install (from marketplace_browse)."),
+    confirm: z.boolean().optional().describe("Set true only after the operator has explicitly approved installing this item."),
+  }),
+  handler: async ({ item_slug, confirm }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const actorUserId = await resolveMarketplaceActor(tenantId);
+    if (!actorUserId) return err("actor_not_resolved");
+    const slug = String(item_slug || "").trim();
+    if (!slug) return err("Which add-on? Pass the item_slug from marketplace_browse.");
+    const { data: cat, error: catErr } = await admin.rpc("marketplace_catalog_for_tenant", { _tenant_id: tenantId, _actor_user_id: actorUserId });
+    if (catErr) return err(catErr.message);
+    // deno-lint-ignore no-explicit-any
+    const row = ((cat ?? []) as any[]).find((i) => i.slug === slug);
+    if (!row) return err(`No add-on named "${slug}" is available to this workspace.`);
+    // Money-gate (§17): paid add-ons are not purchasable yet — only free items install.
+    if (Number(row.price_cents || 0) > 0) {
+      return ok({ success: false, paid: true, error: `${row.name} is a paid add-on. Purchasing isn't available yet — I can only install free items right now.` });
+    }
+    if (row.installed) return ok({ success: true, already_installed: true, item: row.name, message: `${row.name} is already installed.` });
+    // Propose→confirm (§15): installing wires skills/knowledge for the WHOLE workspace,
+    // so preview first and only act on an explicit confirm — mirrors delete_contacts.
+    if (confirm !== true) {
+      return ok({ success: true, needs_confirm: true, item: row.name, action: "install", price_cents: row.price_cents ?? 0,
+        message: `Installing ${row.name} adds its skills/knowledge to the whole workspace. Confirm with the operator, then re-call marketplace_install with confirm:true.` });
+    }
+    // Route through the marketplace-install edge fn (service-role branch) so Voyage KB
+    // embedding still runs — true parity with paige-ai-chat, incl. kb_docs_seeded (§12/§14).
+    const url = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/marketplace-install`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        apikey: SERVICE_ROLE_KEY,
+      },
+      body: JSON.stringify({ item_slug: slug, installed_by_agent: "paige", tenant_id: tenantId, actor_user_id: actorUserId }),
+    });
+    // deno-lint-ignore no-explicit-any
+    const r = (await res.json().catch(() => ({}))) as any;
+    if (!res.ok || r.error) return err(String(r.error ?? `install_failed:${res.status}`));
+    await audit("marketplace_install", "marketplace_items", slug, { item: row.name });
+    return ok({ success: true, item: row.name, already_installed: !!r.already_installed, kb_docs_seeded: Number(r.kb_docs_seeded ?? 0), warnings: [r.warning, ...(Array.isArray(r.warnings) ? r.warnings : [])].filter(Boolean) });
+  },
+});
+
+mcp.tool("marketplace_uninstall", {
+  description: "Remove a previously installed Marketplace add-on from this practice by its slug. Confirm with the operator first. Shared skills/knowledge are only fully removed once nothing else still relies on them.",
+  inputSchema: z.object({
+    item_slug: z.string().describe("The slug of the installed item to remove."),
+    confirm: z.boolean().optional().describe("Set true only after the operator has explicitly approved removing this item."),
+  }),
+  handler: async ({ item_slug, confirm }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const actorUserId = await resolveMarketplaceActor(tenantId);
+    if (!actorUserId) return err("actor_not_resolved");
+    const slug = String(item_slug || "").trim();
+    if (!slug) return err("Which add-on? Pass the item_slug.");
+    // Propose→confirm (§15): removing may disable skills/knowledge for the workspace.
+    if (confirm !== true) {
+      return ok({ success: true, needs_confirm: true, item_slug: slug, action: "uninstall",
+        message: `Removing "${slug}" may switch off skills/knowledge for the workspace (kept if another bundle still relies on it). Confirm with the operator, then re-call marketplace_uninstall with confirm:true.` });
+    }
+    const { data: res, error } = await admin.rpc("uninstall_marketplace_item", { _tenant_id: tenantId, _item_slug: slug, _actor_user_id: actorUserId });
+    if (error) return err(error.message);
+    // deno-lint-ignore no-explicit-any
+    const rr = (res ?? {}) as any;
+    // §13: only audit an ACTUAL teardown — not a no-op (was_installed:false) or a
+    // bundle-retained hold (retained:true), neither of which removed anything.
+    if (rr.was_installed === true && rr.retained !== true) {
+      await audit("marketplace_uninstall", "marketplace_items", slug, { torn_down: true, kb_docs_removed: rr.kb_docs_removed ?? 0 });
+    }
+    return ok({ success: true, result: res });
+  },
+});
+
+mcp.tool("marketplace_my_capabilities", {
+  description: "List the Marketplace add-ons this practice already has installed. Optionally pass an item_slug to see how deeply one item is relied on. Use when the operator asks what they've added or what Paige can already do for them. Read-only.",
+  inputSchema: z.object({
+    item_slug: z.string().optional().describe("Optional slug to get the reliance/reference count for one installed item."),
+  }),
+  handler: async ({ item_slug }) => {
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const actorUserId = await resolveMarketplaceActor(tenantId);
+    if (!actorUserId) return err("actor_not_resolved");
+    const { data, error } = await admin.rpc("marketplace_catalog_for_tenant", { _tenant_id: tenantId, _actor_user_id: actorUserId });
+    if (error) return err(error.message);
+    // deno-lint-ignore no-explicit-any
+    const installed = ((data ?? []) as any[]).filter((i) => i.installed).map((i) => ({ slug: i.slug, name: i.name, category: i.category }));
+    let refcount: unknown;
+    if (item_slug) {
+      const { data: rc } = await admin.rpc("marketplace_install_refcount", { _tenant_id: tenantId, _item_slug: String(item_slug), _actor_user_id: actorUserId });
+      refcount = rc;
+    }
+    return ok({ success: true, count: installed.length, installed, ...(refcount !== undefined ? { refcount } : {}) });
+  },
+});
+
+// ============================================================================
 // Stage Automation Rules — Ship #1 Phase B (§189/§191 governed)
 // ============================================================================
 async function ensureStageAutomationEnabled(tenantId: string): Promise<string | null> {
@@ -4681,6 +4862,13 @@ const TOOL_SCOPE: Record<string, Scope> = {
   me_log_progress_update: "self.write",
   me_list_tasks: "self.read",
   me_search_lender_products: "self.read",
+  // Marketplace (Wave 4) — tenant-operator add-on management (Tenant Admin work).
+  // Reads = admin.read, install/uninstall = admin.write. NOT master-only, NOT agency,
+  // NOT self.* → toolTier() resolves them to the 'tenant' audience tier, matching the
+  // is_tenant_admin gating the underlying RPCs enforce.
+  marketplace_browse: "admin.read", marketplace_recommend: "admin.read",
+  marketplace_my_capabilities: "admin.read",
+  marketplace_install: "admin.write", marketplace_uninstall: "admin.write",
   // Ship #1 Phase B — Stage Automation Rules
   list_stage_automation_rules: "admin.read",
   create_stage_automation_rule: "admin.write",
