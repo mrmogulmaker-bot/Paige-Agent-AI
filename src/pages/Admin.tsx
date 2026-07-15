@@ -92,6 +92,7 @@ const ClientJourney = lazy(() => import("@/pages/admin/ClientJourney"));
 const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
 const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
 const PipelineSettings = lazy(() => import("@/pages/admin/PipelineSettings"));
+const CustomFieldsSettings = lazy(() => import("@/pages/admin/CustomFieldsSettings"));
 const StageAutomationRules = lazy(() => import("@/pages/admin/StageAutomationRules"));
 const ReadinessProposalsAdmin = lazy(() => import("@/pages/admin/ReadinessProposalsAdmin"));
 const PlanningAdmin = lazy(() => import("@/pages/admin/PlanningAdmin"));
@@ -432,6 +433,13 @@ const Admin = () => {
           <AdminOnly>
             <Suspense fallback={<SuspenseFallback />}>
               <PipelineSettings />
+            </Suspense>
+          </AdminOnly>
+        } />
+        <Route path="settings/custom-fields" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <CustomFieldsSettings />
             </Suspense>
           </AdminOnly>
         } />

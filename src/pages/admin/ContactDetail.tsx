@@ -10,6 +10,7 @@ import {
   ArrowLeft, Mail, Phone, Building2, DollarSign, ExternalLink,
   MessageSquare, CheckSquare, FileText, StickyNote, Activity, Briefcase,
   CreditCard, User, Landmark, TrendingUp, Send, Pencil, ClipboardCheck, Trash2, Zap, Wallet, Sparkles,
+  ListChecks,
 } from "lucide-react";
 import { ContactAutomationHistory } from "@/components/admin/contacts/ContactAutomationHistory";
 import { ContactBillingPanel } from "@/components/admin/contacts/ContactBillingPanel";
@@ -30,6 +31,7 @@ import { ClientOrgChartPanel } from "@/components/admin/contacts/ClientOrgChartP
 import { ContactCommsPanel } from "@/components/admin/contacts/ContactCommsPanel";
 import { ContactNotesPanel } from "@/components/admin/contacts/ContactNotesPanel";
 import { ContactFilesPanel } from "@/components/admin/contacts/ContactFilesPanel";
+import { ContactCustomFieldsPanel } from "@/components/admin/contacts/ContactCustomFieldsPanel";
 import { ContactPlanningPanel } from "@/components/admin/contacts/ContactPlanningPanel";
 import { ContactPortalPanel } from "@/components/admin/contacts/ContactPortalPanel";
 import { ClientOnboardingStatusPanel } from "@/components/admin/contacts/ClientOnboardingStatusPanel";
@@ -363,6 +365,7 @@ export default function ContactDetail() {
           <TabsTrigger value="notes"><StickyNote className="h-4 w-4 mr-1" /> Notes</TabsTrigger>
           <TabsTrigger value="files"><FileText className="h-4 w-4 mr-1" /> Files</TabsTrigger>
           <TabsTrigger value="business"><Building2 className="h-4 w-4 mr-1" /> Business</TabsTrigger>
+          <TabsTrigger value="custom-fields"><ListChecks className="h-4 w-4 mr-1" /> Custom Fields</TabsTrigger>
           {fundingReadinessEnabled && (
             <TabsTrigger value="funding-lens"><TrendingUp className="h-4 w-4 mr-1" /> Funding Readiness</TabsTrigger>
           )}
@@ -468,6 +471,10 @@ export default function ContactDetail() {
               <BusinessTabPanel linkedUserId={client.linked_user_id} businesses={businesses} />
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="custom-fields">
+          <ContactCustomFieldsPanel contactId={client.id} tenantId={(client as any).tenant_id ?? null} />
         </TabsContent>
 
         {fundingReadinessEnabled && (
