@@ -6,7 +6,7 @@
 //
 //   TS  — cleanFormSchema() below: repairs/cleans a model-proposed form_schema_json so it is
 //         GUARANTEED to pass the SQL-side growth_validate_form_schema (migration
-//         20260715120000_growth_page_form_schema.sql). Same TS-valid ⊆ SQL-valid invariant
+//         20260715123000_growth_page_form_schema.sql). Same TS-valid ⊆ SQL-valid invariant
 //         validateBlock/growth_validate_blocks already hold for page blocks.
 //   PROMPT — GROWTH_FORM_SCHEMA_SPEC below: the shape the model is held to when asked to
 //         derive a real questionnaire from the operator's free-text description.
@@ -70,7 +70,7 @@ export function cleanFormSchema(raw: any): CleanFormSchema | null {
       let options: string[] | undefined;
       if (type === "select" || type === "radio" || type === "checkbox") {
         options = Array.isArray(f?.options)
-          ? f.options.map((o: any) => trimStr(typeof o === "string" ? o : o?.label, 120)).filter(Boolean)
+          ? f.options.slice(0, 40).map((o: any) => trimStr(typeof o === "string" ? o : o?.label, 120)).filter(Boolean)
           : [];
         if (!options.length) type = "text"; // repair, don't drop the question
       }

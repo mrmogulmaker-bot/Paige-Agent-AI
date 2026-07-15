@@ -20,7 +20,7 @@
 // PublishDialog. Not on Generate, not on Save, not on a chip, not on the selection
 // outline (that's indigo `--ring`).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Sparkles, Wand2 } from "lucide-react";
+import { Send, Sparkles, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useGeneratePage } from "@/hooks/useGeneratePage";
 import { useToast } from "@/hooks/use-toast";
@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { BuildProgress } from "./BuildProgress";
+import { ClarifyingQuestions } from "./ClarifyingQuestions";
 import { GenerationExperience } from "./GenerationExperience";
 import { LivePreview } from "./LivePreview";
 import { PromptComposer } from "./PromptComposer";
@@ -49,6 +50,7 @@ import { FunnelMode } from "./modes/FunnelMode";
 import { LibraryPanel } from "./modes/content-shared";
 import {
   STUDIO_ERROR_COPY,
+  composeBrief,
   editBlocks,
   loadBrandFloor,
   loadPageDraft,
@@ -56,17 +58,28 @@ import {
   publishPage,
   reviseBlock,
   savePageDraft,
+  shouldClarify,
   uniqueGrowthPageSlug,
   type PublishPageResult,
 } from "./studio";
-import { BLOCK_LABELS, INTENT_CHIPS, MODE_EMPTY, MODE_RAIL } from "./studio-copy";
-import type {
-  ModeToolbarState,
-  StudioError,
-  StudioErrorCode,
-  StudioMode,
-  StudioSeoDraft,
-  StudioState,
+import {
+  BLOCK_LABELS,
+  CLARIFYING_QUESTIONS,
+  CLARIFYING_RAIL,
+  INTENT_CHIPS,
+  MODE_EMPTY,
+  MODE_RAIL,
+  QUESTIONNAIRE_FIELDS_QUESTION,
+  QUESTIONNAIRE_FIELDS_QUESTION_ID,
+} from "./studio-copy";
+import {
+  EMPTY_CLARIFYING,
+  type ModeToolbarState,
+  type StudioError,
+  type StudioErrorCode,
+  type StudioMode,
+  type StudioSeoDraft,
+  type StudioState,
 } from "./studio-types";
 
 export interface StudioShellProps {
@@ -106,9 +119,11 @@ const EMPTY_SHELL: ShellState = {
   theme: null,
   brandFloor: null,
   seo: null,
+  formSchema: null,
   brief: "",
   instruction: "",
   mode: "compose",
+  clarifying: EMPTY_CLARIFYING,
   device: "desktop",
   selectedIndex: null,
   dirty: false,
@@ -236,7 +251,9 @@ export function StudioShell({
           blocks: page.blocks,
           theme: page.theme,
           seo: page.seo,
+          formSchema: null,
           mode: page.blocks.length > 0 ? "canvas" : "compose",
+          clarifying: EMPTY_CLARIFYING,
           dirty: false,
           publishedUrl: null,
           error: null,
@@ -289,16 +306,14 @@ export function StudioShell({
   }, []);
 
   // ── generate (whole page) ─────────────────────────────────────────────────────────
-  const runGenerate = useCallback(
-    async (brief: string) => {
-      if (!tenantId) {
-        patch({ error: { code: "NO_TENANT", message: STUDIO_ERROR_COPY.NO_TENANT, recoverable: false } });
-        return;
-      }
+  // The actual run: capture the pre-run blocks (for a clean cancel), flip to "generating",
+  // call the seam, absorb the result. Shared by both the direct path (gate said "skip it")
+  // and the clarifying rail's own submit — one generate call site, no fork.
+  const generateWholePage = useCallback(
+    async (compiledBrief: string, questionnaireAnswer?: string) => {
       blocksBeforeRun.current = state.blocks;
       setState((s) => ({
         ...s,
-        brief,
         mode: "generating",
         selectedIndex: null,
         instruction: "",
@@ -306,7 +321,7 @@ export function StudioShell({
         publishedUrl: null,
       }));
 
-      const result = await generate({ brief });
+      const result = await generate({ brief: compiledBrief, questionnaireAnswer });
       // A failure stays on the canvas and narrates itself inside GenerationExperience (with
       // a Retry). A cancel is handled by handleCancel, which restores the previous blocks.
       if (!result) return;
@@ -317,6 +332,7 @@ export function StudioShell({
         blocks: result.blocks,
         theme: result.theme,
         seo,
+        formSchema: result.formSchema ?? null,
         title: seo.title ?? s.title,
         slug: s.slugTouched ? s.slug : kebabSlug(seo.title ?? s.title),
         mode: "canvas",
@@ -325,8 +341,67 @@ export function StudioShell({
       }));
       reset();
     },
-    [tenantId, state.blocks, generate, reset, patch],
+    [state.blocks, generate, reset],
   );
+
+  // ── the clarifying gate (§15) — a thin or questionnaire-signaling brief is grounded in a
+  //    few real specifics BEFORE a model call is spent, instead of Paige guessing them.
+  //    Takes the raw (not-yet-committed) brief directly, rather than reading it back off
+  //    `state` a tick later, so the fast path below never races React's setState batching. ──
+  const runGenerate = useCallback(
+    (brief: string) => {
+      if (!tenantId) {
+        patch({ error: { code: "NO_TENANT", message: STUDIO_ERROR_COPY.NO_TENANT, recoverable: false } });
+        return;
+      }
+      const decision = shouldClarify(brief);
+      if (!decision.needed) {
+        setState((s) => ({ ...s, brief, clarifying: EMPTY_CLARIFYING }));
+        void generateWholePage(brief);
+        return;
+      }
+      setState((s) => ({
+        ...s,
+        brief,
+        mode: "clarifying",
+        clarifying: {
+          questions: decision.formSignal
+            ? [...CLARIFYING_QUESTIONS, QUESTIONNAIRE_FIELDS_QUESTION]
+            : CLARIFYING_QUESTIONS,
+          // Carry forward any answers already on hand (e.g. a Regenerate/Retry re-entering
+          // this gate) — never wipe a previously-answered questionnaire back to blank, or a
+          // second pass could silently fall back to the generic filler the operator already
+          // fixed once.
+          answers: s.clarifying.answers,
+        },
+        error: null,
+      }));
+    },
+    [tenantId, patch, generateWholePage],
+  );
+
+  // Every rendered question must be answered before the gate lets the operator through —
+  // otherwise "Build the page" is one click away from reproducing the exact generic-filler
+  // behavior this step exists to close (composeBrief with empty answers is a no-op).
+  const clarifyingAnswered = state.clarifying.questions.every(
+    (q) => (state.clarifying.answers[q.id] ?? "").trim().length > 0,
+  );
+
+  // The clarifying rail's own submit. Gated on clarifyingAnswered above — reachable only once
+  // every question has a real answer, so composeBrief never runs against an empty answer map.
+  const proceedToGenerate = useCallback(() => {
+    const compiled = composeBrief(state.brief, state.clarifying.answers);
+    const questionnaireAnswer = state.clarifying.answers[QUESTIONNAIRE_FIELDS_QUESTION_ID]?.trim() || undefined;
+    void generateWholePage(compiled, questionnaireAnswer);
+  }, [state.brief, state.clarifying, generateWholePage]);
+
+  const setClarifyingAnswer = useCallback((id: string, value: string) => {
+    setState((s) => ({ ...s, clarifying: { ...s.clarifying, answers: { ...s.clarifying.answers, [id]: value } } }));
+  }, []);
+
+  const backToCompose = useCallback(() => {
+    patch({ mode: "compose", clarifying: EMPTY_CLARIFYING });
+  }, [patch]);
 
   const handleCancel = useCallback(() => {
     cancel();
@@ -368,6 +443,7 @@ export function StudioShell({
         blocks: state.blocks,
         theme: state.theme,
         seo: state.seo,
+        formSchema: state.formSchema,
       });
       setState((s) => ({
         ...s,
@@ -385,7 +461,7 @@ export function StudioShell({
       patch({ saving: false, error: e });
       return null;
     }
-  }, [tenantId, state.blocks, state.slug, state.title, state.seo, state.pageId, state.theme, onSaved, patch]);
+  }, [tenantId, state.blocks, state.slug, state.title, state.seo, state.pageId, state.theme, state.formSchema, onSaved, patch]);
 
   const handleSave = useCallback(async () => {
     const saved = await saveDraft();
@@ -476,7 +552,10 @@ export function StudioShell({
         onRetry={() => void runGenerate(state.brief)}
       />
     );
-  } else if (state.mode === "canvas" && canvasBlocks.length > 0) {
+  } else if ((state.mode === "canvas" || state.mode === "clarifying") && canvasBlocks.length > 0) {
+    // "clarifying" is included here so a REGENERATE of an already-built page (existing
+    // blocks) never blanks the canvas while the operator answers a few more questions —
+    // only a genuinely fresh page (no blocks yet) falls through to the empty state below.
     pageCanvas = (
       <LivePreview
         blocks={canvasBlocks}
@@ -576,72 +655,111 @@ export function StudioShell({
         <StudioSplit
           className={mode !== "page" ? "hidden" : undefined}
           railHeader={
-            <StudioRailHeading
-              heading={state.selectedIndex != null ? "Change one section" : MODE_RAIL.page.heading}
-              description={
-                state.selectedIndex != null
-                  ? "Same conversation — Paige rewrites the section you picked."
-                  : MODE_RAIL.page.description
-              }
-              teamLine={state.selectedIndex == null}
-            />
+            state.mode === "clarifying" ? (
+              <StudioRailHeading heading={CLARIFYING_RAIL.heading} description={CLARIFYING_RAIL.description} />
+            ) : (
+              <StudioRailHeading
+                heading={state.selectedIndex != null ? "Change one section" : MODE_RAIL.page.heading}
+                description={
+                  state.selectedIndex != null
+                    ? "Same conversation — Paige rewrites the section you picked."
+                    : MODE_RAIL.page.description
+                }
+                teamLine={state.selectedIndex == null}
+              />
+            )
           }
           railBody={
-            <>
-              {state.selectedIndex == null && (
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Start from a brief
+            state.mode === "clarifying" ? (
+              <ClarifyingQuestions
+                brief={state.brief}
+                questions={state.clarifying.questions}
+                answers={state.clarifying.answers}
+                onAnswerChange={setClarifyingAnswer}
+                onBack={backToCompose}
+              />
+            ) : (
+              <>
+                {state.selectedIndex == null && (
+                  <div className="space-y-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                      Start from a brief
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {INTENT_CHIPS.map((chip) => (
+                        <FilterChip
+                          key={chip.id}
+                          active={state.brief.trim() === chip.seed.trim()}
+                          onClick={() => patch({ brief: chip.seed })}
+                        >
+                          {chip.label}
+                        </FilterChip>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Each one drops a full brief in the box. Edit it until it's yours.
+                    </p>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {INTENT_CHIPS.map((chip) => (
-                      <FilterChip
-                        key={chip.id}
-                        active={state.brief.trim() === chip.seed.trim()}
-                        onClick={() => patch({ brief: chip.seed })}
-                      >
-                        {chip.label}
-                      </FilterChip>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Each one drops a full brief in the box. Edit it until it's yours.
-                  </p>
-                </div>
-              )}
+                )}
 
-              {/* Paige's team, working — the build progress lives in the conversation. */}
-              {state.mode === "generating" && (
-                <BuildProgress generation={generation} onCancel={handleCancel} />
-              )}
+                {/* Paige's team, working — the build progress lives in the conversation. */}
+                {state.mode === "generating" && (
+                  <BuildProgress generation={generation} onCancel={handleCancel} />
+                )}
 
-              {state.error && (
-                <SectionCard className="border-destructive/40">
-                  <div className="space-y-3">
-                    <p className="text-sm text-foreground">{state.error.message}</p>
-                    {state.error.recoverable && (
-                      <Button variant="outline" size="sm" onClick={() => patch({ error: null })}>
-                        Got it
-                      </Button>
-                    )}
-                  </div>
-                </SectionCard>
-              )}
-            </>
+                {state.error && (
+                  <SectionCard className="border-destructive/40">
+                    <div className="space-y-3">
+                      <p className="text-sm text-foreground">{state.error.message}</p>
+                      {state.error.recoverable && (
+                        <Button variant="outline" size="sm" onClick={() => patch({ error: null })}>
+                          Got it
+                        </Button>
+                      )}
+                    </div>
+                  </SectionCard>
+                )}
+              </>
+            )
           }
           railFooter={
-            <PromptComposer
-              mode={target ? "section" : "page"}
-              value={target ? state.instruction : state.brief}
-              onChange={(value) => patch(target ? { instruction: value } : { brief: value })}
-              onSubmit={(value) => void (target ? handleSectionEdit(value) : runGenerate(value))}
-              busy={busy}
-              disabled={state.saving || state.publishing}
-              target={target}
-              onClearTarget={() => patch({ selectedIndex: null, instruction: "" })}
-              onRegenerate={() => void runGenerate(state.brief)}
-              canRegenerate={state.blocks.length > 0 && state.brief.trim().length >= 5}
-            />
+            state.mode === "clarifying" ? (
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" onClick={backToCompose}>
+                    Back
+                  </Button>
+                  {/* Indigo, deliberately — same discipline as PromptComposer's own submit
+                      (§11): gold is spent only on Publish. Disabled until every question has
+                      a real answer — see clarifyingAnswered above. */}
+                  <Button
+                    type="button"
+                    variant="default"
+                    onClick={() => proceedToGenerate()}
+                    disabled={!clarifyingAnswered}
+                  >
+                    <Send className="h-4 w-4" aria-hidden />
+                    Build the page
+                  </Button>
+                </div>
+                {!clarifyingAnswered && (
+                  <p className="text-xs text-muted-foreground">Answer each question to continue.</p>
+                )}
+              </div>
+            ) : (
+              <PromptComposer
+                mode={target ? "section" : "page"}
+                value={target ? state.instruction : state.brief}
+                onChange={(value) => patch(target ? { instruction: value } : { brief: value })}
+                onSubmit={(value) => void (target ? handleSectionEdit(value) : runGenerate(value))}
+                busy={busy}
+                disabled={state.saving || state.publishing}
+                target={target}
+                onClearTarget={() => patch({ selectedIndex: null, instruction: "" })}
+                onRegenerate={() => void runGenerate(state.brief)}
+                canRegenerate={state.blocks.length > 0 && state.brief.trim().length >= 5}
+              />
+            )
           }
           canvas={pageCanvas}
         />

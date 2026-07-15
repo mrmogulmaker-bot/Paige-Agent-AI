@@ -13,7 +13,13 @@
 //         map below is what converts a raw server raise into a sentence they can act on.
 //   §15 — the seed briefs are REAL, usable briefs. Not lorem, not [PLACEHOLDER].
 import type { GrowthBlock } from "@/lib/growth";
-import type { GenerationPhase, IntentChip, StudioErrorCode, StudioMode } from "./studio-types";
+import type {
+  ClarifyingQuestion,
+  GenerationPhase,
+  IntentChip,
+  StudioErrorCode,
+  StudioMode,
+} from "./studio-types";
 
 /** The mode switcher's words. One studio, five outputs. */
 export const MODE_LABELS: Record<StudioMode, string> = {
@@ -51,6 +57,50 @@ export const MODE_RAIL: Record<StudioMode, { heading: string; description: strin
 /** The §8/§14 moat line — verbatim from the original composer footer. */
 export const TEAM_LINE =
   "Paige runs a team — a brand, design, and quality agent build every page with her.";
+
+/**
+ * The pre-generation clarifying step (§15) — a thin or questionnaire-signaling brief gets
+ * grounded in a few real specifics before Paige spends a model call, instead of guessing
+ * them or shipping the generic 3-field questionnaire nobody asked for. Fixed `id`s so an
+ * answer keyed against one survives the fold into the brief (studio.ts's composeBrief).
+ */
+export const CLARIFYING_RAIL = {
+  heading: "A few quick questions.",
+  description: "A little more detail gets a sharper first draft — answer once, Paige builds.",
+};
+
+/** "Building from: '…'" recap banner label — the operator's own words, verbatim (§15). */
+export const CLARIFYING_RECAP_LABEL = "Building from:";
+
+export const CLARIFYING_QUESTIONS: ClarifyingQuestion[] = [
+  {
+    id: "offer",
+    question: "What's the offer, and what's the one result someone gets from it?",
+    placeholder: "e.g. A 6-week program that gets consultants their first repeatable client process.",
+  },
+  {
+    id: "audience",
+    question: "Who exactly is this page for?",
+    placeholder: "e.g. Consultants and agency owners who are booked out but still doing every piece of delivery themselves.",
+  },
+  {
+    id: "action",
+    question: "What's the one action you want them to take, and what happens right after?",
+    placeholder: "e.g. Apply for the program — I personally review every application.",
+  },
+];
+
+/** Only appended to the clarifying step when the brief itself signals a real questionnaire
+ *  (FORM_SIGNAL_RE in studio.ts) — the answer travels to the server as questionnaire_answer,
+ *  never folded into the brief prose, so the model sees it once, in its own turn (§4). */
+export const QUESTIONNAIRE_FIELDS_QUESTION_ID = "questionnaire_fields";
+
+export const QUESTIONNAIRE_FIELDS_QUESTION: ClarifyingQuestion = {
+  id: QUESTIONNAIRE_FIELDS_QUESTION_ID,
+  question:
+    "What should the questionnaire actually ask? List the real questions, in order — and note which ones are required.",
+  placeholder: "1) Business name (required) 2) How long in business? (required, dropdown) …",
+};
 
 /** Crafted empty-canvas copy per mode. Never a bare blank (§11). */
 export const MODE_EMPTY: Record<StudioMode, { title: string; description: string }> = {
