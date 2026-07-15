@@ -90,7 +90,15 @@ export function cleanFormSchema(raw: any): CleanFormSchema | null {
   // Phase-1-style repair (mirrors index.ts's own hero/embedded_form guarantee): a lead form
   // that captures no way to follow up is a defect, never ship one silently.
   if (!fields.some((f) => f.type === "email")) {
-    fields.push({ key: "email", label: "Email", type: "email", required: true, maps_to: "clients.email" });
+    // A model field can already occupy the "email" key under a different type (e.g. a
+    // mislabeled { key: "email", type: "text" }) — reuse the same seen-set dedupe the loop
+    // above uses, or this fallback emits a duplicate key and the SQL validator rejects the
+    // whole schema.
+    let key = "email";
+    let i = 1;
+    while (seen.has(key)) key = `email_${++i}`;
+    seen.add(key);
+    fields.push({ key, label: "Email", type: "email", required: true, maps_to: "clients.email" });
   }
 
   return {
