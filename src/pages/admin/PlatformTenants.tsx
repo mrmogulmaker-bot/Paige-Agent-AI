@@ -45,7 +45,7 @@ type SortKey = "name" | "plan_offer" | "status" | "trial" | "seats" | "customers
 const HEALTH_RANK: Record<HealthLevel, number> = { healthy: 0, watch: 1, critical: 2 };
 
 export default function PlatformTenants() {
-  const { isPlatformOwner, loading: ctxLoading } = useTenantContext();
+  const { isPlatformOwner, isPlatformStaff, loading: ctxLoading } = useTenantContext();
   const [rows, setRows] = useState<FleetTenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>("health");
@@ -92,10 +92,10 @@ export default function PlatformTenants() {
   };
 
   useEffect(() => {
-    if (ctxLoading || !isPlatformOwner) return;
+    if (ctxLoading || !(isPlatformOwner || isPlatformStaff)) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctxLoading, isPlatformOwner]);
+  }, [ctxLoading, isPlatformOwner, isPlatformStaff]);
 
   const withHealth = useMemo(
     () => rows.map((t) => ({ t, health: tenantHealth(t), days: trialDaysLeft(t.trial_ends_at) })),
@@ -170,7 +170,7 @@ export default function PlatformTenants() {
     );
   }
 
-  if (!isPlatformOwner) {
+  if (!isPlatformOwner && !isPlatformStaff) {
     return (
       <PageShell width="narrow">
         <SectionCard title="Platform owner only" icon={ShieldAlert}>
