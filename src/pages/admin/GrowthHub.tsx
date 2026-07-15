@@ -1,7 +1,7 @@
 // Growth OS — unified admin hub for Pages, Forms, Funnels, Submissions, External Sources.
 // Phase 1 keeps creation flows lightweight (template-driven + JSON-editable) so we ship
 // the engine fast; a visual editor lands in v2.
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -14,14 +14,17 @@ import { PageShell, PageHeader, SectionCard, StatRow, StatTile, EmptyState, Stat
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { FileText, LayoutGrid, GitBranch, Inbox, Plug, Copy, ExternalLink, Plus, UserPlus, Check, Loader2 } from "lucide-react";
+import { FileText, LayoutGrid, GitBranch, Inbox, Plug, Copy, ExternalLink, Plus, UserPlus, Check, Loader2, Wand2, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 type Page = { id: string; slug: string; title: string; status: string; updated_at: string };
 type Form = { id: string; slug: string; name: string; status: string; updated_at: string };
 type Funnel = { id: string; slug: string; name: string; status: string; updated_at: string };
 type Submission = { id: string; form_id: string; created_at: string; payload_json: any; source: string; contact_id: string | null };
-type ExternalSource = { id: string; provider: string; label: string; webhook_token: string; active: boolean; last_seen_at: string | null };
+// webhook_token is stored ENCRYPTED (webhook_token_ct) and SELECT-revoked from every non-service
+// role (§9), so it is never on the row the tenant admin reads. The ingest URL is resolved on demand
+// through a tenant-scoped reveal RPC — see RevealWebhookButton.
+type ExternalSource = { id: string; provider: string; label: string; active: boolean; last_seen_at: string | null };
 
 
 // Platform-default template sets (§2/§9): these ship to EVERY tenant, so they stay
@@ -52,9 +55,15 @@ interface GrowthHubProps {
    * and just render the active tab's content.
    */
   embedded?: boolean;
+  /**
+   * Bumped by the parent hub after a Vibe Studio publish or save. It's a dep of the load
+   * effect, so the Pages/Forms/Funnels lists refetch and a freshly built page shows up
+   * immediately — no manual reload — even when this component stays mounted.
+   */
+  refreshNonce?: number;
 }
 
-export default function GrowthHub({ embedded = false }: GrowthHubProps) {
+export default function GrowthHub({ embedded = false, refreshNonce = 0 }: GrowthHubProps) {
   const { activeTenantId, activeTenant } = useTenantContext();
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "pages";
@@ -68,6 +77,11 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
   const [subCounts, setSubCounts] = useState<Record<string, number>>({});
   const [sources, setSources] = useState<ExternalSource[]>([]);
   const [loading, setLoading] = useState(true);
+  // Refetch trigger for this component's own mutations (create / publish / take-down). Setting
+  // the tab param to the value it already holds does NOT re-run the load effect, so a dedicated
+  // counter is the honest way to pull fresh rows after a write — no full reload, no stale card.
+  const [localRefresh, setLocalRefresh] = useState(0);
+  const refresh = () => setLocalRefresh((n) => n + 1);
 
   useEffect(() => {
     if (!activeTenantId) return;
@@ -89,7 +103,7 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
       setSources((src.data ?? []) as ExternalSource[]);
       setLoading(false);
     })();
-  }, [activeTenantId, tab]);
+  }, [activeTenantId, tab, refreshNonce, localRefresh]);
 
   const totalSubs = useMemo(() => Object.values(subCounts).reduce((a, b) => a + b, 0), [subCounts]);
 
@@ -109,7 +123,7 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
 
         <TabsContent value="pages" className="space-y-4 mt-4">
           <SectionHeader title="Landing Pages" cta={
-            <CreatePageDialog tenantId={activeTenantId} pages={pages} forms={forms} onCreated={() => setParams({ tab: "pages" })} />
+            <CreatePageDialog tenantId={activeTenantId} pages={pages} forms={forms} onCreated={refresh} />
           } />
           {loading ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -130,13 +144,19 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
                 >
                   <div className="text-xs text-muted-foreground space-y-2">
                     <div>/{p.slug}</div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <Button asChild size="sm" variant="outline">
                         <a href={`/p/${tenantSlug}/${p.slug}`} target="_blank" rel="noreferrer">
                           <ExternalLink className="w-3.5 h-3.5 mr-1" />View
                         </a>
                       </Button>
-                      <TogglePublishButton row={p} onChanged={() => setParams({ tab: "pages" })} />
+                      {/* Re-open this page's draft in the Vibe Studio. Switches the hub to the
+                          Studio tab and hands it the page id; StudioShell loads the draft onto the
+                          canvas. Not a go-live moment, so it stays outline — gold is publish only. */}
+                      <Button size="sm" variant="outline" onClick={() => setParams({ tab: "studio", pageId: p.id })}>
+                        <Wand2 className="w-3.5 h-3.5 mr-1" />Edit in Studio
+                      </Button>
+                      <TogglePublishButton row={p} onChanged={refresh} />
                     </div>
                   </div>
                 </SectionCard>
@@ -147,9 +167,15 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
 
         <TabsContent value="funnels" className="space-y-4 mt-4">
           <SectionHeader title="Funnels" cta={
-            <CreateFunnelDialog tenantId={activeTenantId} pages={pages} forms={forms} onCreated={() => setParams({ tab: "funnels" })} />
+            <CreateFunnelDialog tenantId={activeTenantId} pages={pages} forms={forms} onCreated={refresh} />
           } />
-          {funnels.length === 0 ? (
+          {loading ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[0, 1].map((i) => (
+                <div key={i} className="h-28 animate-pulse rounded-[var(--radius)] border border-border bg-muted/40 motion-reduce:animate-none" />
+              ))}
+            </div>
+          ) : funnels.length === 0 ? (
             <EmptyState icon={GitBranch} title="No funnels yet" description="A funnel chains pages → forms → success in one flow. Build one once you have a page and a form." />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
@@ -160,13 +186,16 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
                   title={<span>{f.name}</span>}
                   actions={<StatePill state={f.status === "active" ? "success" : "off"}>{f.status}</StatePill>}
                 >
-                  <div className="text-xs text-muted-foreground">
-                    <div className="mb-2">/f/{tenantSlug}/{f.slug}</div>
-                    <Button asChild size="sm" variant="outline">
-                      <a href={`/f/${tenantSlug}/${f.slug}`} target="_blank" rel="noreferrer">
-                        <ExternalLink className="w-3.5 h-3.5 mr-1" />Open
-                      </a>
-                    </Button>
+                  <div className="text-xs text-muted-foreground space-y-2">
+                    <div>/f/{tenantSlug}/{f.slug}</div>
+                    <div className="flex gap-2 flex-wrap">
+                      <Button asChild size="sm" variant="outline">
+                        <a href={`/f/${tenantSlug}/${f.slug}`} target="_blank" rel="noreferrer">
+                          <ExternalLink className="w-3.5 h-3.5 mr-1" />Open
+                        </a>
+                      </Button>
+                      <FunnelTogglePublishButton row={f} onChanged={refresh} />
+                    </div>
                   </div>
                 </SectionCard>
               ))}
@@ -176,9 +205,15 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
 
         <TabsContent value="forms" className="space-y-4 mt-4">
           <SectionHeader title="Forms & Questionnaires" cta={
-            <CreateFormDialog tenantId={activeTenantId} onCreated={() => setParams({ tab: "forms" })} />
+            <CreateFormDialog tenantId={activeTenantId} onCreated={refresh} />
           } />
-          {forms.length === 0 ? (
+          {loading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-28 animate-pulse rounded-[var(--radius)] border border-border bg-muted/40 motion-reduce:animate-none" />
+              ))}
+            </div>
+          ) : forms.length === 0 ? (
             <EmptyState icon={FileText} title="No forms yet" description="Use a template or have Paige generate one for you." />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -212,7 +247,7 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
 
         <TabsContent value="integrations" className="space-y-4 mt-4">
           <SectionHeader title="External Builders" cta={
-            <CreateSourceDialog tenantId={activeTenantId} forms={forms} onCreated={() => setParams({ tab: "integrations" })} />
+            <CreateSourceDialog tenantId={activeTenantId} forms={forms} onCreated={refresh} />
           } />
           <p className="text-xs text-muted-foreground">
             Already using Webflow, Framer, ClickFunnels, GoHighLevel, Vibe, or Typeform? Create a bridge — point your form's webhook at the URL below and Paige will ingest every submission into your contacts and pipeline.
@@ -221,26 +256,20 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
             <EmptyState icon={Plug} title="No external sources yet" description="Add a bridge for each external form or builder you want to pipe into Paige." />
           ) : (
             <div className="space-y-2">
-              {sources.map((s) => {
-                const webhookUrl = s.webhook_token ? `${inboundBase}/${s.webhook_token}` : `${inboundBase}/[token hidden — regenerate to view]`;
-                return (
-                  <SectionCard key={s.id}>
-                    <div className="text-xs space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="font-medium text-sm">{s.label}</div>
-                        <Badge variant="outline" className="capitalize">{s.provider}</Badge>
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <Input readOnly value={webhookUrl} className="text-xs font-mono" />
-                        <CopyButton text={webhookUrl} label="Copy" />
-                      </div>
-                      <div className="text-muted-foreground">
-                        Last seen: {s.last_seen_at ? new Date(s.last_seen_at).toLocaleString() : "never"}
-                      </div>
+              {sources.map((s) => (
+                <SectionCard key={s.id}>
+                  <div className="text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium text-sm">{s.label}</div>
+                      <Badge variant="outline" className="capitalize">{s.provider}</Badge>
                     </div>
-                  </SectionCard>
-                );
-              })}
+                    <RevealWebhookButton sourceId={s.id} inboundBase={inboundBase} />
+                    <div className="text-muted-foreground">
+                      Last seen: {s.last_seen_at ? new Date(s.last_seen_at).toLocaleString() : "never"}
+                    </div>
+                  </div>
+                </SectionCard>
+              ))}
             </div>
           )}
         </TabsContent>
@@ -302,16 +331,18 @@ function FormSubmissionsDialog({ form, tenantId }: { form: Form; tenantId: strin
       <DialogTrigger asChild>
         <Button size="sm" variant="ghost"><Inbox className="w-3.5 h-3.5 mr-1" />Submissions</Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      {/* The header stays put; only the responses region scrolls, so a form with 100 responses
+          never turns the dialog into one long scroll-wall (§11/§67). */}
+      <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
         <DialogHeader><DialogTitle className="truncate">{form.name} — submissions</DialogTitle></DialogHeader>
         {loading ? (
           <div className="space-y-2 py-2">
-            {[0, 1, 2].map((i) => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse" />)}
+            {[0, 1, 2].map((i) => <div key={i} className="h-16 rounded-lg bg-muted animate-pulse motion-reduce:animate-none" />)}
           </div>
         ) : rows.length === 0 ? (
           <EmptyState icon={Inbox} title="No submissions yet" description="When someone fills out this form, their responses land here and the lead flows into Contacts." />
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2 overflow-y-auto -mr-2 pr-2 py-1">
             {rows.map((s) => (
               <SubmissionRow
                 key={s.id}
@@ -332,6 +363,64 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(text); toast.success("Copied"); }}>
       <Copy className="w-3.5 h-3.5 mr-1" />{label}
     </Button>
+  );
+}
+
+/**
+ * The bridge's ingest URL, revealed on demand.
+ *
+ * The webhook token is stored ENCRYPTED (webhook_token_ct) and SELECT-revoked from every
+ * non-service role — a tenant admin can never read it off the row, and we must never widen that
+ * (§9). So the full URL is resolved through a tenant-scoped SECURITY DEFINER RPC that decrypts
+ * the token ONLY for a source inside the caller's own tenant and returns it just-in-time. This
+ * is the §10 seam: the UI is one caller; Paige's headless tools are another. Nothing is shown
+ * until the operator asks, and the raw token never lives in the page's data.
+ */
+function RevealWebhookButton({ sourceId, inboundBase }: { sourceId: string; inboundBase: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const reveal = async () => {
+    setBusy(true);
+    try {
+      // Tenant-pinned reveal (IDOR-safe): the RPC resolves the token from webhook_token_ct only
+      // for a source in current_user_tenant_id(), and role-gates the caller server-side.
+      const { data, error } = await supabase.rpc("growth_external_source_reveal_token" as any, {
+        p_id: sourceId,
+      });
+      if (error) throw error;
+      const token = typeof data === "string" && data.trim() ? data : null;
+      if (!token) {
+        toast.error("This bridge doesn't have an ingest link yet.");
+        return;
+      }
+      setUrl(`${inboundBase}/${token}`);
+    } catch (e) {
+      toast.error(growthSeamMessage(e, "Couldn't fetch the ingest link. Refresh and try again."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (url) {
+    return (
+      <div className="flex gap-2 items-center">
+        <Input readOnly value={url} className="text-xs font-mono" onFocus={(e) => e.currentTarget.select()} />
+        <CopyButton text={url} label="Copy" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <Button size="sm" variant="outline" onClick={reveal} disabled={busy}>
+        {busy ? <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> : <Eye className="w-3.5 h-3.5 mr-1" />}
+        Reveal ingest URL
+      </Button>
+      <p className="text-[11px] text-muted-foreground">
+        Point your form's webhook at this URL. It carries a secret key, so it's shown only when you ask.
+      </p>
+    </div>
   );
 }
 
@@ -364,9 +453,26 @@ function growthSeamMessage(err: unknown, fallback: string): string {
     case "GROWTH_INVALID_BLOCKS":
       return "One of the sections on this page isn't finished. Open it in the Studio, fix the section, and save.";
     case "GROWTH_INVALID_SLUG":
-      return "This page needs a link before it can go live.";
+      return "This needs a link before it can go live.";
+    case "GROWTH_INVALID_SCHEMA":
+      return "One of the fields on this form isn't finished. Fix it, then try again.";
+    case "GROWTH_INVALID_STEPS":
+      return "One of the funnel's steps isn't finished. Fix it, then try again.";
+    case "GROWTH_FUNNEL_EMPTY":
+      return "This funnel has no steps yet. Add at least one before publishing.";
+    case "GROWTH_FUNNEL_STEP_INCOMPLETE":
+      return "One of the funnel's steps is missing its page or form. Fill it in, then publish.";
+    case "GROWTH_FUNNEL_UNPUBLISHED_PAGE":
+      return "A page in this funnel isn't live yet. Publish that page first, then publish the funnel.";
+    case "GROWTH_FUNNEL_INACTIVE_FORM":
+      return "A form in this funnel is turned off. Turn it on, then publish the funnel.";
+    case "GROWTH_ENTRY_PAGE_NOT_FOUND":
+    case "GROWTH_SUCCESS_PAGE_NOT_FOUND":
+    case "GROWTH_STEP_PAGE_NOT_FOUND":
+    case "GROWTH_STEP_FORM_NOT_FOUND":
+      return "A page or form this funnel points to isn't in this workspace anymore. Refresh and try again.";
     case "GROWTH_NOT_FOUND":
-      return "That page isn't here anymore. Refresh and try again.";
+      return "That isn't here anymore. Refresh and try again.";
     case "GROWTH_NO_TENANT":
       return "Pick a workspace first.";
     case "GROWTH_FORBIDDEN":
@@ -431,6 +537,53 @@ function TogglePublishButton({ row, onChanged }: { row: Page; onChanged: () => v
       onChanged();
     } catch (e) {
       toast.error(growthSeamMessage(e, isLive ? "Couldn't take that page down. Try again." : "Couldn't publish this page. Try again."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Button size="sm" variant={isLive ? "ghost" : "gold"} disabled={busy} onClick={run}>
+      {busy && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
+      {isLive ? "Unpublish" : "Publish"}
+    </Button>
+  );
+}
+
+/**
+ * The funnel go-live control. A funnel is created as a DRAFT (the public funnel route only
+ * serves status='active'), and growth_funnel_publish is the only path to 'active' — it enforces
+ * the lead-capture guards (every step's page published, every step's form active, entry/success
+ * pages live) so a "live" funnel can never render a blank or dead step (§13). Taking one down is
+ * a plain status flip, so it goes straight through the tenant-scoped table policy. Gold is spent
+ * only on the go-live click (§11).
+ */
+function FunnelTogglePublishButton({ row, onChanged }: { row: Funnel; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const isLive = row.status === "active";
+
+  const run = async () => {
+    setBusy(true);
+    try {
+      if (isLive) {
+        const { error } = await supabase
+          .from("growth_funnels")
+          .update({ status: "draft" })
+          .eq("id", row.id);
+        if (error) throw error;
+        toast.success("Funnel taken down");
+      } else {
+        const { data, error } = await supabase.rpc("growth_funnel_publish" as any, {
+          p_tenant_id: null,
+          p_id: row.id,
+        });
+        if (error) throw error;
+        const url = (data as { url?: string } | null)?.url ?? null;
+        toast.success(url ? `Published — live at ${url}` : "Funnel published");
+      }
+      onChanged();
+    } catch (e) {
+      toast.error(growthSeamMessage(e, isLive ? "Couldn't take that funnel down. Try again." : "Couldn't publish this funnel. Try again."));
     } finally {
       setBusy(false);
     }
@@ -539,15 +692,42 @@ function CreateFormDialog({ tenantId, onCreated }: { tenantId: string | null; on
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [template, setTemplate] = useState("discovery-call");
+  const [busy, setBusy] = useState(false);
 
+  // Creation goes through growth_form_upsert — the same SECURITY DEFINER rail Paige writes on
+  // (§10). It validates the whole schema server-side (field keys, choice options, the
+  // clients.*/businesses.* maps_to allowlist), pins JWT callers to their own tenant (IDOR-safe:
+  // the p_tenant_id is ignored for real users), and is atomic. A raw insert bypassed every one
+  // of those guards.
   const create = async () => {
     if (!tenantId || !name || !slug) return toast.error("Name and slug required");
-    const schema = formTemplateSchema(template);
-    const { error } = await supabase.from("growth_forms").insert({
-      tenant_id: tenantId, slug: slug.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
-      name, template_key: template, schema_json: schema as any, status: "active",
-    });
-    if (error) toast.error(error.message); else { toast.success("Form created"); setOpen(false); onCreated(); }
+    const normalizedSlug = slug.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    setBusy(true);
+    try {
+      const schema = formTemplateSchema(template);
+      const { data, error } = await supabase.rpc("growth_form_upsert" as any, {
+        p_tenant_id: null,
+        p_slug: normalizedSlug,
+        p_name: name,
+        p_schema_json: schema as any,
+        p_success_action_json: null,
+        p_auto_create_contact: true,
+        p_pipeline_id: null,
+        p_stage_id: null,
+        p_id: null,
+      });
+      if (error) throw error;
+      // Provenance only (§12) — which template this started from. Never touches schema or status.
+      const newId = (data as { id?: string } | null)?.id;
+      if (newId) await supabase.from("growth_forms").update({ template_key: template }).eq("id", newId);
+      toast.success("Form created");
+      setOpen(false);
+      onCreated();
+    } catch (e) {
+      toast.error(growthSeamMessage(e, "Couldn't create that form. Try again."));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -569,7 +749,11 @@ function CreateFormDialog({ tenantId, onCreated }: { tenantId: string | null; on
             <p className="text-[11px] text-muted-foreground mt-1">{FORM_TEMPLATES.find((t) => t.key === template)?.description}</p>
           </div>
         </div>
-        <DialogFooter><Button variant="default" onClick={create}>Create</Button></DialogFooter>
+        <DialogFooter>
+          <Button variant="default" onClick={create} disabled={busy}>
+            {busy && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Create
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -581,21 +765,45 @@ function CreateFunnelDialog({ tenantId, pages, forms, onCreated }: { tenantId: s
   const [slug, setSlug] = useState("");
   const [entryPageId, setEntryPageId] = useState<string>("");
   const [stepFormId, setStepFormId] = useState<string>("");
+  const [busy, setBusy] = useState(false);
 
+  // Creation goes through growth_funnel_upsert (§10) — ONE atomic write. The old path did two
+  // separate raw inserts (funnel, then steps); if the second failed the tenant was left with a
+  // stepless funnel that could never publish. The RPC full-replaces the step list in the same
+  // transaction, resolves every page/form reference server-side, and refuses any reference that
+  // crosses a tenant boundary (IDOR-safe). Steps are a jsonb array in the RPC's own shape —
+  // no funnel_id/tenant_id in the payload; the function pins both.
   const create = async () => {
     if (!tenantId || !name || !slug) return toast.error("Name and slug required");
-    const { data: f, error } = await supabase.from("growth_funnels").insert({
-      tenant_id: tenantId, slug: slug.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
-      name, status: "active", entry_page_id: entryPageId || null,
-    }).select("id").single();
-    if (error || !f) return toast.error(error?.message ?? "Failed");
+    // A funnel needs at least one real step to capture on — a thank-you-only funnel is a live page
+    // that does nothing. Require a page or a form (a server-side guard mirrors this on publish).
+    if (!entryPageId && !stepFormId) return toast.error("Pick an entry page or a form step — a funnel needs at least one.");
+    const normalizedSlug = slug.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     const steps: any[] = [];
-    if (entryPageId) steps.push({ funnel_id: f.id, tenant_id: tenantId, order_index: 0, step_type: "page", page_id: entryPageId });
-    if (stepFormId) steps.push({ funnel_id: f.id, tenant_id: tenantId, order_index: 1, step_type: "form", form_id: stepFormId });
-    steps.push({ funnel_id: f.id, tenant_id: tenantId, order_index: steps.length, step_type: "thankyou" });
-    if (steps.length > 0) await supabase.from("growth_funnel_steps").insert(steps);
-    toast.success("Funnel created");
-    setOpen(false); onCreated();
+    if (entryPageId) steps.push({ step_type: "page", order_index: 0, page_id: entryPageId });
+    if (stepFormId) steps.push({ step_type: "form", order_index: steps.length, form_id: stepFormId });
+    steps.push({ step_type: "thankyou", order_index: steps.length });
+    setBusy(true);
+    try {
+      const { error } = await supabase.rpc("growth_funnel_upsert" as any, {
+        p_tenant_id: null,
+        p_slug: normalizedSlug,
+        p_name: name,
+        p_goal: null,
+        p_steps: steps,
+        p_entry_page_id: entryPageId || null,
+        p_success_page_id: null,
+        p_id: null,
+      });
+      if (error) throw error;
+      toast.success("Funnel created");
+      setOpen(false);
+      onCreated();
+    } catch (e) {
+      toast.error(growthSeamMessage(e, "Couldn't create that funnel. Try again."));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -621,7 +829,11 @@ function CreateFunnelDialog({ tenantId, pages, forms, onCreated }: { tenantId: s
             </Select>
           </div>
         </div>
-        <DialogFooter><Button variant="default" onClick={create}>Create</Button></DialogFooter>
+        <DialogFooter>
+          <Button variant="default" onClick={create} disabled={busy}>
+            {busy && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Create
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -837,10 +1049,10 @@ function formTemplateSchema(template: string): GrowthFormSchema {
         submit_label: "Submit application",
         sections: [
           { title: "About you", description: "The basics, so we know who we're talking to.", fields: [
-            { key: "first_name", label: "First name", type: "text", required: true, maps_to: "contacts.first_name" },
-            { key: "last_name", label: "Last name", type: "text", required: true, maps_to: "contacts.last_name" },
-            { key: "email", label: "Email", type: "email", required: true, maps_to: "contacts.email" },
-            { key: "phone", label: "Phone", type: "tel", maps_to: "contacts.phone" },
+            { key: "first_name", label: "First name", type: "text", required: true, maps_to: "clients.first_name" },
+            { key: "last_name", label: "Last name", type: "text", required: true, maps_to: "clients.last_name" },
+            { key: "email", label: "Email", type: "email", required: true, maps_to: "clients.email" },
+            { key: "phone", label: "Phone", type: "tel", maps_to: "clients.phone" },
             { key: "role", label: "Your role", type: "text", placeholder: "Founder, principal, partner…" },
             { key: "location", label: "Where are you based?", type: "text", help: "So we can find hours that work for both of us." },
           ]},
@@ -870,10 +1082,10 @@ function formTemplateSchema(template: string): GrowthFormSchema {
         submit_label: "Send it over",
         sections: [
           { title: "Your details", fields: [
-            { key: "first_name", label: "First name", type: "text", required: true, maps_to: "contacts.first_name" },
-            { key: "last_name", label: "Last name", type: "text", required: true, maps_to: "contacts.last_name" },
-            { key: "email", label: "Email", type: "email", required: true, maps_to: "contacts.email" },
-            { key: "phone", label: "Phone", type: "tel", maps_to: "contacts.phone" },
+            { key: "first_name", label: "First name", type: "text", required: true, maps_to: "clients.first_name" },
+            { key: "last_name", label: "Last name", type: "text", required: true, maps_to: "clients.last_name" },
+            { key: "email", label: "Email", type: "email", required: true, maps_to: "clients.email" },
+            { key: "phone", label: "Phone", type: "tel", maps_to: "clients.phone" },
             { key: "business_name", label: "Business name", type: "text", maps_to: "businesses.legal_name" },
             { key: "start_date", label: "When do you want to start?", type: "date" },
           ]},
@@ -895,8 +1107,8 @@ function formTemplateSchema(template: string): GrowthFormSchema {
       return {
         submit_label: "Send it to me",
         sections: [{ title: "Where should we send it?", fields: [
-          { key: "first_name", label: "First name", type: "text", required: true, maps_to: "contacts.first_name" },
-          { key: "email", label: "Email", type: "email", required: true, maps_to: "contacts.email" },
+          { key: "first_name", label: "First name", type: "text", required: true, maps_to: "clients.first_name" },
+          { key: "email", label: "Email", type: "email", required: true, maps_to: "clients.email" },
         ]}],
       };
 
@@ -904,9 +1116,9 @@ function formTemplateSchema(template: string): GrowthFormSchema {
       return {
         submit_label: "Send my story",
         sections: [{ title: "Tell us what changed", description: "A few minutes from you, and we can show other people what this work actually does.", fields: [
-          { key: "first_name", label: "First name", type: "text", required: true, maps_to: "contacts.first_name" },
-          { key: "last_name", label: "Last name", type: "text", maps_to: "contacts.last_name" },
-          { key: "email", label: "Email", type: "email", required: true, maps_to: "contacts.email" },
+          { key: "first_name", label: "First name", type: "text", required: true, maps_to: "clients.first_name" },
+          { key: "last_name", label: "Last name", type: "text", maps_to: "clients.last_name" },
+          { key: "email", label: "Email", type: "email", required: true, maps_to: "clients.email" },
           { key: "role", label: "Your role and company", type: "text", help: "How you'd like to be named when we quote you." },
           { key: "before", label: "Where were you before we started?", type: "textarea", required: true },
           { key: "after", label: "Where are you now?", type: "textarea", required: true },
@@ -921,10 +1133,10 @@ function formTemplateSchema(template: string): GrowthFormSchema {
       return {
         submit_label: "Request a call",
         sections: [{ title: "Tell us about your business", fields: [
-          { key: "first_name", label: "First name", type: "text", required: true, maps_to: "contacts.first_name" },
-          { key: "last_name", label: "Last name", type: "text", required: true, maps_to: "contacts.last_name" },
-          { key: "email", label: "Email", type: "email", required: true, maps_to: "contacts.email" },
-          { key: "phone", label: "Phone", type: "tel", maps_to: "contacts.phone" },
+          { key: "first_name", label: "First name", type: "text", required: true, maps_to: "clients.first_name" },
+          { key: "last_name", label: "Last name", type: "text", required: true, maps_to: "clients.last_name" },
+          { key: "email", label: "Email", type: "email", required: true, maps_to: "clients.email" },
+          { key: "phone", label: "Phone", type: "tel", maps_to: "clients.phone" },
           { key: "business_name", label: "Business name", type: "text", maps_to: "businesses.legal_name" },
           { key: "what_you_do", label: "What do you do, and who for?", type: "textarea", required: true },
           { key: "biggest_obstacle", label: "What's the one thing in the way right now?", type: "textarea", required: true },
@@ -1029,11 +1241,44 @@ function SubmissionRow({
             )}
           </div>
         </div>
-        <pre className="whitespace-pre-wrap break-words text-muted-foreground bg-muted/40 p-2 rounded">
-          {JSON.stringify(sub.payload_json, null, 2)}
-        </pre>
+        <SubmissionPayload payload={payload} />
       </div>
     </SectionCard>
   );
+}
+
+/**
+ * A submission's answers as a readable label → value list (§11 — never a raw JSON dump as
+ * product UI). Field keys are humanized, booleans read as Yes/No, empty answers show an em dash,
+ * and lists are joined. The raw object is never surfaced.
+ */
+function SubmissionPayload({ payload }: { payload: Record<string, unknown> }) {
+  const entries = Object.entries(payload).filter(([k]) => k !== "");
+  if (entries.length === 0) {
+    return <p className="text-muted-foreground">No answers were captured with this submission.</p>;
+  }
+  return (
+    <dl className="grid grid-cols-[minmax(0,8.5rem)_1fr] gap-x-3 gap-y-1.5 rounded-lg border border-border/60 bg-muted/30 p-3">
+      {entries.map(([key, value]) => (
+        <Fragment key={key}>
+          <dt className="text-muted-foreground truncate">{humanizeFieldKey(key)}</dt>
+          <dd className="text-foreground break-words whitespace-pre-wrap">{formatSubmissionValue(value)}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
+function humanizeFieldKey(key: string): string {
+  const words = key.replace(/[_-]+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function formatSubmissionValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) return value.length ? value.map((v) => formatSubmissionValue(v)).join(", ") : "—";
+  if (typeof value === "object") return Object.values(value as Record<string, unknown>).map((v) => formatSubmissionValue(v)).join(", ");
+  return String(value);
 }
 

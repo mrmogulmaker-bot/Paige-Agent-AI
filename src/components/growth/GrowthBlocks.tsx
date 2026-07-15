@@ -5,11 +5,13 @@
 //
 // Theming: <GrowthBlocks> wraps the list in a scope div that applies resolveGrowthTheme()
 // as inline CSS variables, so the same component themes identically in both surfaces.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "react-router-dom";
 import DOMPurify from "dompurify";
 import type { GrowthBlock, GrowthPageTheme } from "@/lib/growth";
+import { supabase } from "@/integrations/supabase/client";
 import { resolveGrowthTheme, type GrowthThemeVars } from "@/components/growth/growth-theme";
-import { GP_FADE_RISE, GP_PRESS, fadeRiseStyle } from "@/components/growth/growth-motion";
+import { GP_FADE_RISE, GP_PRESS, fadeRiseStyle, useReducedMotion } from "@/components/growth/growth-motion";
 import { GrowthFormEmbed } from "@/pages/public/GrowthFormRenderer";
 
 // ── shared layout tokens ─────────────────────────────────────────────────────
@@ -604,6 +606,198 @@ function StepsBlock({ block }: { block: Extract<GrowthBlock, { type: "steps" }> 
   );
 }
 
+// ── chatbot: the tenant's own Paige, inline on the published site ─────────────
+// Scoped to the block (never a full-screen takeover). The tenant is resolved SERVER-SIDE by
+// the public slug in the route — the client sends the slug, never a tenant identity it made up.
+// On the studio canvas (no tenantId / no public slug) it renders a graceful static preview so
+// the section never crashes or calls a live endpoint it can't be authorized for.
+type ChatMsg = { role: "user" | "assistant"; content: string };
+
+function ChatbotBlock({ block, tenantId }: { block: Extract<GrowthBlock, { type: "chatbot" }>; tenantId?: string }) {
+  const { tenantSlug } = useParams();
+  const reduceMotion = useReducedMotion();
+  const greeting = (block.greeting || "").trim() || "Hi — ask me anything, and I'll help you find your way.";
+  const placeholder = (block.placeholder || "").trim() || "Type your question…";
+  const title = (block.title || "").trim();
+
+  const live = !!tenantId && !!tenantSlug;
+
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const convId = useRef<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const liveRegionId = useMemo(() => `paige-chat-log-${Math.random().toString(36).slice(2, 8)}`, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: reduceMotion ? "auto" : "smooth" });
+  }, [messages, sending, reduceMotion]);
+
+  async function send(e?: React.FormEvent) {
+    e?.preventDefault();
+    const text = input.trim();
+    if (!text || sending || !live) return;
+    setError(null);
+    const nextHistory = messages.slice(-12);
+    setMessages((m) => [...m, { role: "user", content: text }]);
+    setInput("");
+    setSending(true);
+    try {
+      const { data, error: fnErr } = await supabase.functions.invoke("paige-public-chat", {
+        body: {
+          slug: tenantSlug,
+          message: text,
+          history: nextHistory,
+          ...(convId.current ? { conversation_id: convId.current } : {}),
+        },
+      });
+      if (fnErr) throw fnErr;
+      if (!data?.ok || typeof data?.reply !== "string") throw new Error("generic");
+      if (data.conversation_id) convId.current = data.conversation_id as string;
+      setMessages((m) => [...m, { role: "assistant", content: data.reply as string }]);
+    } catch (err) {
+      // On a non-2xx the invoke throws with the Response on `.context`; sniff a 429 so we can
+      // show the softer "slow down" copy. Any failure to read it just falls back to generic.
+      let rate = false;
+      try {
+        const ctx = (err as { context?: Response })?.context;
+        if (ctx && typeof ctx.status === "number") rate = ctx.status === 429;
+      } catch { /* ignore */ }
+      setError(rate
+        ? "You're sending messages a little fast — give it a moment and try again."
+        : "Something went sideways on my end. Try again in a moment, or use the contact options on this page.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const bubbleBase = "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed";
+  const panel = (
+    <div
+      className="mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-3xl"
+      style={{ ...cardStyle, background: "var(--gp-surface)" }}
+    >
+      {/* header */}
+      <div className="flex items-center gap-3 px-6 py-4" style={{ borderBottom: hairline }}>
+        <span
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold"
+          style={{ background: "color-mix(in srgb, var(--gp-accent-ink) 16%, transparent)", color: "var(--gp-accent-ink)", border: "1px solid color-mix(in srgb, var(--gp-accent-ink) 40%, transparent)" }}
+          aria-hidden
+        >
+          P
+        </span>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold" style={{ color: "var(--gp-text)" }}>{title || "Chat with us"}</div>
+          <div className="truncate text-xs" style={{ color: "var(--gp-muted)" }}>Usually replies in a few seconds</div>
+        </div>
+      </div>
+
+      {/* transcript */}
+      <div
+        ref={scrollRef}
+        id={liveRegionId}
+        role="log"
+        aria-live="polite"
+        aria-atomic="false"
+        className="flex max-h-[24rem] min-h-[13rem] flex-col gap-3 overflow-y-auto px-6 py-5"
+      >
+        <div className="flex justify-start">
+          <div className={bubbleBase} style={{ background: "color-mix(in srgb, var(--gp-text) 6%, transparent)", color: "var(--gp-text)" }}>
+            {greeting}
+          </div>
+        </div>
+        {messages.map((m, i) =>
+          m.role === "user" ? (
+            <div key={i} className="flex justify-end">
+              <div className={bubbleBase} style={{ background: "var(--gp-primary)", color: "var(--gp-primary-foreground)" }}>
+                {m.content}
+              </div>
+            </div>
+          ) : (
+            <div key={i} className="flex justify-start">
+              <div className={`${bubbleBase} whitespace-pre-wrap`} style={{ background: "color-mix(in srgb, var(--gp-text) 6%, transparent)", color: "var(--gp-text)" }}>
+                {m.content}
+              </div>
+            </div>
+          ),
+        )}
+        {sending && (
+          <div className="flex justify-start">
+            <div className={`${bubbleBase} flex items-center gap-1.5`} style={{ background: "color-mix(in srgb, var(--gp-text) 6%, transparent)" }} aria-label="Assistant is typing">
+              {[0, 1, 2].map((d) => (
+                <span
+                  key={d}
+                  className={reduceMotion ? "" : "animate-pulse"}
+                  style={{ width: 6, height: 6, borderRadius: 999, background: "var(--gp-muted)", animationDelay: `${d * 160}ms` }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        {error && (
+          <div className="flex justify-start">
+            <div className={bubbleBase} style={{ background: "color-mix(in srgb, var(--gp-text) 6%, transparent)", color: "var(--gp-muted)" }} role="status">
+              {error}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* composer */}
+      <form onSubmit={send} className="flex items-end gap-2 px-4 py-3" style={{ borderTop: hairline }}>
+        <label htmlFor={`${liveRegionId}-input`} className="sr-only">Your message</label>
+        <textarea
+          id={`${liveRegionId}-input`}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void send(); } }}
+          rows={1}
+          disabled={!live || sending}
+          placeholder={live ? placeholder : "Chat is live on your published page."}
+          maxLength={2000}
+          className="min-h-[2.75rem] max-h-32 flex-1 resize-none rounded-2xl px-4 py-2.5 text-sm outline-none disabled:opacity-60"
+          style={{
+            background: "var(--gp-bg)",
+            color: "var(--gp-text)",
+            border: hairline,
+            fontFamily: "var(--gp-font)",
+          }}
+          onFocus={(e) => { e.currentTarget.style.borderColor = "var(--gp-primary)"; e.currentTarget.style.boxShadow = "0 0 0 3px color-mix(in srgb, var(--gp-primary) 24%, transparent)"; }}
+          onBlur={(e) => { e.currentTarget.style.borderColor = "color-mix(in srgb, var(--gp-text) 14%, transparent)"; e.currentTarget.style.boxShadow = "none"; }}
+        />
+        {/* Gold is spent ONLY here — the act/send moment (§11). */}
+        <button
+          type="submit"
+          disabled={!live || sending || !input.trim()}
+          aria-label="Send message"
+          className={`${GP_PRESS} inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl px-5 text-sm font-semibold transition-[filter,opacity] hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-45`}
+          style={{ background: "var(--gp-accent)", color: "var(--gp-accent-foreground)" }}
+        >
+          Send
+          <span aria-hidden>↑</span>
+        </button>
+      </form>
+    </div>
+  );
+
+  return (
+    <section className={SECTION}>
+      <div className={WRAP}>
+        {(title || !live) && (
+          <SectionHead
+            title={title || "Chat with us"}
+            subtitle={live ? undefined : "This is a preview. On your published page, visitors chat live with your Paige here."}
+          />
+        )}
+        {panel}
+      </div>
+    </section>
+  );
+}
+
 // ── single-block dispatcher (exported for callers that render one block) ──────
 export function BlockRenderer({ block, tenantId }: { block: GrowthBlock; tenantId?: string }) {
   switch (block.type) {
@@ -624,6 +818,7 @@ export function BlockRenderer({ block, tenantId }: { block: GrowthBlock; tenantI
     case "image": return <ImageBlock block={block} />;
     case "gallery": return <GalleryBlock block={block} />;
     case "steps": return <StepsBlock block={block} />;
+    case "chatbot": return <ChatbotBlock block={block} tenantId={tenantId} />;
     default: return null;
   }
 }

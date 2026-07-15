@@ -151,6 +151,7 @@ export default function GrowthFunnelRenderer() {
 
   const step = steps[idx];
   const next = () => setIdx((i) => i + 1);
+  const hasNext = idx < steps.length - 1;
 
   // Advanced past the last step (a funnel that ends on a page rather than a thankyou).
   if (!step) {
@@ -179,7 +180,9 @@ export default function GrowthFunnelRenderer() {
     return (
       <Scope brandFloor={brandFloor} className="px-6 py-16 md:py-24">
         <div className="mx-auto w-full max-w-2xl">
-          <FunnelFormStep key={step.id} formId={step.form_id} />
+          {/* Advance the funnel on a completed submission — but only when a step follows. If
+              this form ends the funnel, it keeps its own authored success state (no onNext). */}
+          <FunnelFormStep key={step.id} formId={step.form_id} onComplete={hasNext ? next : undefined} />
         </div>
       </Scope>
     );
@@ -249,7 +252,7 @@ function FunnelPageStep({
   );
 }
 
-function FunnelFormStep({ formId }: { formId: string }) {
+function FunnelFormStep({ formId, onComplete }: { formId: string; onComplete?: () => void }) {
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [slug, setSlug] = useState<string | null>(null);
   useEffect(() => {
@@ -263,7 +266,7 @@ function FunnelFormStep({ formId }: { formId: string }) {
     return () => { cancelled = true; };
   }, [formId]);
   if (!tenantId || !slug) return <FormSkeleton />;
-  return <GrowthFormEmbed tenantId={tenantId} formSlug={slug} accent="var(--gp-accent)" />;
+  return <GrowthFormEmbed tenantId={tenantId} formSlug={slug} accent="var(--gp-accent)" onComplete={onComplete} />;
 }
 
 // ── the advance affordance ───────────────────────────────────────────────────

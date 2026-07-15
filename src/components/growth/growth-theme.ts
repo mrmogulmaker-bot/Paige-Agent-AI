@@ -164,6 +164,7 @@ export function resolveGrowthTheme(theme?: GrowthPageTheme | null, brandFloor?: 
   const text = clampToContrast(textRaw, bg, 4.5);
 
   const accentForeground = inkOn(accent);        // ink ON an accent fill
+  const primaryForeground = inkOn(primary);      // ink ON a primary fill (e.g. a filled bubble/button)
   const accentInk = clampToContrast(accent, bg); // accent AS text on the background
 
   // A muted text token (AA-clamped to ~3:1 for large/secondary copy) and a hairline
@@ -178,6 +179,7 @@ export function resolveGrowthTheme(theme?: GrowthPageTheme | null, brandFloor?: 
     "--gp-text": toHex(text),
     "--gp-muted": toHex(muted),
     "--gp-accent-foreground": toHex(accentForeground),
+    "--gp-primary-foreground": toHex(primaryForeground),
     "--gp-accent-ink": toHex(accentInk),
     "--gp-font": safeFont(t.font) || GROWTH_BRAND_FLOOR.font,
   };

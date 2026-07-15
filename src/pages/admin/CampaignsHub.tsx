@@ -3,7 +3,7 @@
 // under Campaigns so the top-bar stays lean. All data continues to flow live from
 // Supabase (growth_* + tenant-campaigns bridge), keyed to the active tenant — coaches /
 // admins / clients still see exactly what their RLS policies allow.
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Megaphone, LayoutGrid, GitBranch, FileText, Inbox, Plug, Sparkles, Palette, Share2, Facebook, Youtube, Linkedin, Wand2 } from "lucide-react";
@@ -30,10 +30,20 @@ export default function CampaignsHub() {
   const [params, setParams] = useSearchParams();
   const tab = params.get("tab") ?? "overview";
   const isGrowth = GROWTH_TABS.has(tab);
+  // ?pageId= opens a specific page's draft in the Vibe Studio (set by "Edit in Studio" on a
+  // page card). Only meaningful on the studio tab; setTab() clears it whenever we leave.
+  const studioPageId = params.get("pageId") ?? undefined;
+
+  // Bumped after a Studio publish/save so the embedded Growth lists refetch and the new page
+  // shows up without a manual reload.
+  const [growthRefresh, setGrowthRefresh] = useState(0);
 
   const setTab = (next: string) => {
     const p = new URLSearchParams(params);
     p.set("tab", next);
+    // A page id belongs only to an active Studio edit — never let it linger on another tab and
+    // silently re-open a page the operator has moved on from.
+    if (next !== "studio") p.delete("pageId");
     setParams(p, { replace: false });
   };
 
@@ -85,7 +95,17 @@ export default function CampaignsHub() {
               <div className="h-96 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
             </div>
           }>
-            <StudioShell embedded />
+            <StudioShell
+              embedded
+              pageId={studioPageId}
+              onPublished={() => {
+                // The page is live now — refresh the lists and drop the operator on the Pages
+                // tab so they see it published in context.
+                setGrowthRefresh((n) => n + 1);
+                setTab("pages");
+              }}
+              onSaved={() => setGrowthRefresh((n) => n + 1)}
+            />
           </Suspense>
         </TabsContent>
 
@@ -122,7 +142,7 @@ export default function CampaignsHub() {
         {isGrowth && (
           <div className="mt-4">
             <Suspense fallback={<div className="text-sm text-muted-foreground">Loading…</div>}>
-              <GrowthHub embedded />
+              <GrowthHub embedded refreshNonce={growthRefresh} />
             </Suspense>
           </div>
         )}

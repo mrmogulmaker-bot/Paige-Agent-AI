@@ -213,3 +213,19 @@ project_id = "xygzykjyynhzqytbqnzu"
   [functions.growth-block-edit]
     verify_jwt = true
 
+  # Vibe Studio on-submit AUTOMATION EXECUTOR. NOT user-facing — fired by the growth_form_submissions
+  # trigger / recovery sweeper with {submission_id}. verify_jwt = false because it does its OWN auth
+  # (service-role bearer OR a valid Vault cron token, fail-closed); the tenant is taken from the
+  # CLAIMED submission row, never the body (§9). Runs the form's configured automations exactly once
+  # each (contact upsert -> pipeline attach -> Paige action -> rail -> notify), idempotent + honest.
+  [functions.growth-process-submission]
+    verify_jwt = false
+
+  # The per-site Paige chatbot — the tenant's own Paige answering visitors on their PUBLISHED growth
+  # site. NET-NEW ANONYMOUS PUBLIC endpoint (verify_jwt = false): its own controls ARE the gate —
+  # tenant resolved server-side from the public slug (never trusted from the body), tool-less +
+  # read-only, per-IP/per-tenant/platform-global rate limits (cost backstops fail closed), grounded
+  # only in the tenant's published pages + persona. §2/§3 clean.
+  [functions.paige-public-chat]
+    verify_jwt = false
+

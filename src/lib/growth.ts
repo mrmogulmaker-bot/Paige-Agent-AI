@@ -112,7 +112,11 @@ export type GrowthBlock =
       image_side?: "left" | "right"; cta_label?: string; cta_href?: string }
   | { type: "image"; url: string; alt?: string; caption?: string }
   | { type: "gallery"; title?: string; images: { url: string; alt?: string; caption?: string }[] }
-  | { type: "steps"; title?: string; items: { number?: string; title: string; body: string }[] };
+  | { type: "steps"; title?: string; items: { number?: string; title: string; body: string }[] }
+  // — the tenant's own Paige, inline on the published site (per-site chatbot). tenant_id is
+  //   NOT stored on the block — it's threaded via GrowthBlocks' `tenantId` prop, and the public
+  //   endpoint resolves the tenant server-side from the page's public slug (never a stored id). —
+  | { type: "chatbot"; title?: string; greeting?: string; placeholder?: string };
 
 export type GrowthBlockType = GrowthBlock["type"];
 

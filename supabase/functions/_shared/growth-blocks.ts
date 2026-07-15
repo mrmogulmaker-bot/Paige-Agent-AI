@@ -56,7 +56,7 @@ export function extractJson(text: string): any {
 export const GROWTH_BLOCK_TYPES = [
   "hero", "phase_cards", "feature_grid", "cta", "rich_text", "embedded_form",
   "social_proof", "testimonial", "pricing", "faq", "media", "stats", "countdown",
-  "two_column", "image", "gallery", "steps",
+  "two_column", "image", "gallery", "steps", "chatbot",
 ] as const;
 
 export type GrowthBlockType = (typeof GROWTH_BLOCK_TYPES)[number];
@@ -277,6 +277,16 @@ export function validateBlock(b: any): any | null {
       const title = trimStr(b.title, 160); if (title) block.title = title;
       return block;
     }
+    // The per-site Paige chatbot. Config-as-data only (§10): no required fields — the tenant_id is
+    // threaded by the renderer, never stored on the block. All strings optional; the renderer
+    // provides brand-safe defaults so an empty {type:"chatbot"} still renders.
+    case "chatbot": {
+      const block: any = { type: "chatbot" };
+      const title = trimStr(b.title, 120); if (title) block.title = title;
+      const greeting = trimStr(b.greeting, 400); if (greeting) block.greeting = greeting;
+      const placeholder = trimStr(b.placeholder, 120); if (placeholder) block.placeholder = placeholder;
+      return block;
+    }
     default:
       return null;
   }
@@ -301,6 +311,7 @@ export const BLOCK_REQUIREMENTS: Record<string, string> = {
   image: "a real https:// url",
   gallery: "at least one image with a real https:// url",
   steps: "at least one item with a title and a body",
+  chatbot: "nothing required — optional title, greeting and placeholder",
 };
 
 // ── Placeholder tokens (§15) ─────────────────────────────────────────────────
@@ -338,7 +349,7 @@ export function newPlaceholders(original: unknown, revised: unknown): string[] {
 
 // ── The block spec the model is held to ──────────────────────────────────────
 // One source of truth for every Growth OS prompt that emits blocks.
-export const GROWTH_BLOCK_SPEC = `GrowthBlock variants — 17 types (use the exact "type" strings and field names):
+export const GROWTH_BLOCK_SPEC = `GrowthBlock variants — 18 types (use the exact "type" strings and field names):
 - { "type": "hero", "eyebrow"?: string, "title": string, "subtitle"?: string, "cta_label"?: string, "cta_href"?: string, "image_url"?: https-string, "image_position"?: "full"|"split", "quote"?: string }
 - { "type": "feature_grid", "title"?: string, "items": [{ "title": string, "body": string }] }
 - { "type": "phase_cards", "cards": [{ "phase": string, "title": string, "body": string, "outcome"?: string }] }
@@ -355,4 +366,5 @@ export const GROWTH_BLOCK_SPEC = `GrowthBlock variants — 17 types (use the exa
 - { "type": "two_column", "heading"?: string, "body"?: string, "image_url"?: https-string, "image_side"?: "left"|"right", "cta_label"?: string, "cta_href"?: string }
 - { "type": "image", "url": https-string, "alt"?: string, "caption"?: string }
 - { "type": "gallery", "title"?: string, "images": [{ "url": https-string, "alt"?: string, "caption"?: string }] }
-- { "type": "steps", "title"?: string, "items": [{ "number"?: string, "title": string, "body": string }] }`;
+- { "type": "steps", "title"?: string, "items": [{ "number"?: string, "title": string, "body": string }] }
+- { "type": "chatbot", "title"?: string, "greeting"?: string, "placeholder"?: string }   // the tenant's own Paige, answering visitors live on the published page. Add ONE, near the end, only when the brief wants a live chat/assistant on the page. No other fields — the tenant is wired automatically.`;
