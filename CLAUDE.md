@@ -281,6 +281,36 @@ looks and feels, §13 governs how it's built underneath.
 - **The test, every time:** *"Would a world-class engineer put their name on this and be
   proud of it in code review?"* If not, it isn't done.
 
+## 18. Check for redundancy before you build — one home per capability, never two.
+
+**Directive (owner: Antonio, 2026-07-15):** Before starting any build, the first question is not
+just "who is this for" (§9) but *"does this already exist somewhere else on the platform, under a
+different name?"* The concrete case that forced this section: Vibe Studio's Page/Funnel/Form/Copy/
+Image mode chips make the operator pre-classify what they're building *before* Paige has even heard
+the brief — the opposite of "vibe" — because each mode was built in its own session without anyone
+asking "should this be one surface." That is the failure mode this directive exists to stop, everywhere,
+not just there.
+
+- **Search before you scaffold.** Before adding a tab, a mode, a settings panel, a table, or a
+  picker, grep the codebase and walk the relevant hub/nav for anything that already does this job.
+  A team (§1) includes a research pass for exactly this reason — run it every time, not only when
+  it's convenient.
+- **One capability, one home.** If two surfaces do the same job, that is a bug, not a feature —
+  collapse them, don't stand up a third. Default posture: *extend an existing surface*, never
+  *build a sibling that overlaps it* (§12 already says this for naming/filing a thing once it
+  exists; this section says it before the thing is built at all).
+- **Decide the priority home before you build, not after.** For anything new, name the ONE surface
+  it belongs in before writing code. If it could plausibly live in two places, that is the signal
+  to stop and resolve the seam first — not to build it twice and reconcile later.
+- **"Vibe" means one conversation, not a type picker.** A creation surface must not force the
+  operator to pre-select an artifact type before describing what they want. The brief itself — plus
+  Paige's own plan — decides whether the result is a page, a form, a multi-step funnel, an image,
+  or several of those wired together. A mode chip is at most a filter over what already exists; it
+  is never a gate the operator must clear before Paige starts listening.
+- **The test, every time:** *"Does this already live somewhere else on the platform, and if I'm
+  building a creation surface, did I just make the human classify their own request before Paige
+  heard it?"* If either answer is yes, stop and fix the seam before adding anything new.
+
 ## 14. Paige herself never works solo — she orchestrates a standing team, always.
 
 **Directive (owner: Antonio):** §1 is not just how *we* work — it is how **Paige** works.
