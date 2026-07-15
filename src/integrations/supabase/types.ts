@@ -16438,6 +16438,16 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_paige_persona_context: {
+        Args: never
+        Returns: {
+          funding_enabled: boolean
+          playbook_config: Json
+          playbook_slug: string
+          tenant_id: string
+          tenant_name: string
+        }[]
+      }
       get_profile_with_pii_log: {
         Args: { _user_id: string }
         Returns: {
