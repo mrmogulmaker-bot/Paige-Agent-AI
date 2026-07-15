@@ -9,7 +9,7 @@
 // Publish (§11).
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { FileText, Image as ImageIcon, Loader2, Paperclip, RefreshCw, Send, X } from "lucide-react";
-import type { GrowthAsset } from "@/lib/growth";
+import type { GrowthAsset, GrowthBlock } from "@/lib/growth";
 import { GROWTH_ASSET_ACCEPT, GROWTH_ASSET_MAX_COUNT } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";

@@ -158,8 +158,10 @@ function FormBody({ form, accent, onComplete }: { form: FormRow; accent?: string
     // Embedded in a funnel with a next step: hand control back to the step machine so the
     // visitor advances to the thankyou/next step instead of dead-ending on this form's own
     // success card. Standalone (/form/:id) and landing-embed have no onComplete, so they keep
-    // showing the authored success state exactly as before.
-    if (onComplete) { onComplete(); return; }
+    // showing the authored success state exactly as before. A download_url is the one
+    // exception — advancing the funnel immediately would strand the visitor before they ever
+    // see the deliverable, so the success card (with its download button) wins here too.
+    if (onComplete && !form.success_action_json?.download_url) { onComplete(); return; }
     setDone(true);
   };
 
