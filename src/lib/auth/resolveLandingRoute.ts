@@ -137,6 +137,14 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
       return "/admin";
     }
 
+    // Agency-team invitee — belongs to an agency via agency_team_members but has
+    // no tenant_members row and no client link. Send them to their agency shell
+    // (AgencyLayout admits them via agency_my_membership().agency_role).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((agencyTeamRes as any)?.data?.agency_tenant_id) {
+      return "/agency";
+    }
+
     // Signed in with no role/client/tenant. If they came in to accept a customer
     // invite but didn't finish (created a login, closed the tab), resume them at
     // /join instead of the tenant "create a workspace" screen. The stash is a
