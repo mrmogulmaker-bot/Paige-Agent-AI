@@ -20,7 +20,8 @@
 //   3. The publish path ALWAYS saves and THEN publishes. The save is what auto-authors the form
 //      behind the signup section, which is what makes publish's lead-capture guard pass.
 import { supabase } from "@/integrations/supabase/client";
-import type { GrowthBlock, GrowthFormSchema, GrowthPageTheme } from "@/lib/growth";
+import type { GrowthAsset, GrowthAssetKind, GrowthBlock, GrowthFormSchema, GrowthPageTheme, GrowthSuccessAction } from "@/lib/growth";
+import { detectGrowthAssetKind, GROWTH_ASSET_MAX_BYTES } from "@/lib/growth";
 import { GROWTH_BRAND_FLOOR, buildGrowthBrandFloor } from "@/components/growth/growth-theme";
 import { CLARIFYING_QUESTIONS, STUDIO_ERROR_COPY } from "./studio-copy";
 import type { StudioError, StudioErrorCode, StudioSeoDraft } from "./studio-types";
@@ -308,6 +309,78 @@ export function composeBrief(brief: string, answers: Record<string, string>): st
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Reference & lead-magnet attachments — Storage upload seam (§10/§13).
+//
+// This stays the ONLY file under src/components/admin/studio/ that touches Supabase (see
+// header) — so the upload itself lives here rather than in a bespoke hook, even though it is
+// conceptually closer to useBrandKit's uploadAsset than to the rest of the seam layer above.
+// Real, permanent public URLs — never ephemeral — because a download_url built from one has to
+// keep working long after the Studio tab that generated it is closed (§13).
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+const GROWTH_ASSETS_BUCKET = "growth-assets";
+
+/** Upload one reference/deliverable file to the tenant-scoped, public-read growth-assets
+ *  bucket and return its REAL public URL. Path convention matches every other tenant-scoped
+ *  bucket in this codebase: <tenant_id>/<uuid>-<filename>. */
+export async function uploadGrowthAsset(tenantId: string, file: File): Promise<GrowthAsset> {
+  const tid = requireTenant(tenantId);
+  const kind: GrowthAssetKind | null = detectGrowthAssetKind(file.type, file.name);
+  if (!kind) {
+    throw studioError("SAVE_FAILED", null, "Paige can attach JPG, PNG, WEBP, and PDF files.");
+  }
+  if (file.size > GROWTH_ASSET_MAX_BYTES[kind]) {
+    const capMb = GROWTH_ASSET_MAX_BYTES[kind] / (1024 * 1024);
+    throw studioError(
+      "SAVE_FAILED",
+      null,
+      `That file is too large — the limit is ${capMb}MB for ${kind === "image" ? "images" : "PDFs"}.`,
+    );
+  }
+  const safeName = file.name.replace(/[^\w.-]/g, "_").slice(0, 120);
+  const path = `${tid}/${crypto.randomUUID()}-${safeName}`;
+  const { error } = await supabase.storage
+    .from(GROWTH_ASSETS_BUCKET)
+    .upload(path, file, { upsert: false, cacheControl: "3600", contentType: file.type || undefined });
+  if (error) throw toStudioError(error, "SAVE_FAILED");
+  const { data } = supabase.storage.from(GROWTH_ASSETS_BUCKET).getPublicUrl(path);
+  return {
+    url: data.publicUrl,
+    path,
+    name: file.name,
+    mimeType: file.type || (kind === "document" ? "application/pdf" : "image/png"),
+    size: file.size,
+    kind,
+  };
+}
+
+/** List everything this tenant has ever uploaded to growth-assets — the picker for the
+ *  post-submit delivery editor (§10/§15: pick a REAL uploaded asset, never type a URL). */
+export async function listGrowthAssets(tenantId: string): Promise<GrowthAsset[]> {
+  const tid = requireTenant(tenantId);
+  const { data, error } = await supabase.storage
+    .from(GROWTH_ASSETS_BUCKET)
+    .list(tid, { limit: 100, sortBy: { column: "created_at", order: "desc" } });
+  if (error) throw toStudioError(error, "SAVE_FAILED");
+  return (data ?? [])
+    .filter((f) => !!f.name && f.id) // Storage lists placeholder "folder" rows with id=null
+    .map((f) => {
+      const path = `${tid}/${f.name}`;
+      const { data: pub } = supabase.storage.from(GROWTH_ASSETS_BUCKET).getPublicUrl(path);
+      const mimeType = (f.metadata as { mimetype?: string } | null)?.mimetype || "";
+      const kind = detectGrowthAssetKind(mimeType, f.name) ?? "document";
+      return {
+        url: pub.publicUrl,
+        path,
+        name: f.name.replace(/^[0-9a-f-]{36}-/, ""), // strip the <uuid>- prefix for display
+        mimeType,
+        size: (f.metadata as { size?: number } | null)?.size ?? 0,
+        kind,
+      } satisfies GrowthAsset;
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // Generate — supabase/functions/growth-page-draft
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -319,6 +392,9 @@ export interface DraftPageInput {
    *  collected by the clarifying step. Sent through untouched — the server derives a real
    *  form_schema_json from it in the SAME model call, no new spend (§7). */
   questionnaireAnswer?: string;
+  /** Up to 3 REAL uploaded reference/deliverable files (§13). Sent as public Storage URLs —
+   *  never raw base64 — growth-page-draft fetches and base64-encodes them server-side. */
+  attachments?: { url: string; mediaType: string; kind: GrowthAssetKind }[];
   signal?: AbortSignal;
   /** Fires as blocks materialize. TODAY: once, with the full validated array — the function
    *  returns a single JSON payload, there is no token stream. If it ever streams, this fires
@@ -336,6 +412,12 @@ export interface DraftPageResult {
    *  the server's cleanFormSchema() with at least one field. Absent => the save path falls
    *  back to growth_page_upsert's generic 3-field synthesis, unchanged from today. */
   formSchema?: GrowthFormSchema;
+  /** Present ONLY when the model judged one SUPPLIED attachment is the brief's promised
+   *  deliverable. `assetIndex` always indexes into the SAME `attachments` array this call was
+   *  given (validated against it below) — never a fabricated reference (§13/§15). The caller
+   *  decides whether/how to write it into a form's success_action_json.download_url; this
+   *  function only ever surfaces the suggestion. */
+  suggestedDelivery?: { assetIndex: number };
 }
 
 interface DraftPageBody {
@@ -343,6 +425,7 @@ interface DraftPageBody {
   theme_json?: GrowthPageTheme | null;
   seo_json?: { title?: unknown; description?: unknown } | null;
   form_schema_json?: unknown;
+  suggested_delivery?: { type?: unknown; asset_index?: unknown } | null;
 }
 
 function isBlockArray(value: unknown): value is GrowthBlock[] {
@@ -403,6 +486,9 @@ export async function draftPage(input: DraftPageInput): Promise<DraftPageResult>
         tone: input.tone,
         tenant_id: tenantId,
         questionnaire_answer: input.questionnaireAnswer,
+        attachments: input.attachments
+          ?.slice(0, 3)
+          .map((a) => ({ url: a.url, media_type: a.mediaType, kind: a.kind })),
       }),
       signal,
     });
@@ -452,8 +538,22 @@ export async function draftPage(input: DraftPageInput): Promise<DraftPageResult>
   const theme = normalizeGrowthTheme(body.theme_json);
   const formSchema = isFormSchemaShape(body.form_schema_json) ? body.form_schema_json : undefined;
 
+  // suggested_delivery: only ever trusted when it indexes a REAL attachment THIS call supplied
+  // (§13/§15) — the edge function already validates this against what it actually fetched, but
+  // the index must ALSO be in range of what the caller sent, since a stale/mismatched call
+  // could otherwise let a number through that means nothing on this end.
+  const rawIdx = body.suggested_delivery?.asset_index;
+  const suggestedDelivery =
+    typeof rawIdx === "number" &&
+    Number.isInteger(rawIdx) &&
+    !!input.attachments &&
+    rawIdx >= 0 &&
+    rawIdx < input.attachments.length
+      ? { assetIndex: rawIdx }
+      : undefined;
+
   onBlocks?.(blocks);
-  return { blocks, theme, seo, ...(formSchema ? { formSchema } : {}) };
+  return { blocks, theme, seo, ...(formSchema ? { formSchema } : {}), ...(suggestedDelivery ? { suggestedDelivery } : {}) };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -837,6 +937,10 @@ export interface SaveFormInput {
   slug: string;
   name: string;
   schema: GrowthFormSchema;
+  /** What happens right after a visitor submits (§13). Omit to keep growth_form_upsert's own
+   *  default ({"type":"thank_you", message}) — never overwrites an existing form's action with
+   *  null; only an explicit value here ever changes it. */
+  successAction?: GrowthSuccessAction | null;
 }
 
 export interface SavedForm {
@@ -860,11 +964,90 @@ export async function saveForm(input: SaveFormInput): Promise<SavedForm> {
       p_slug: slug,
       p_name: name,
       p_schema_json: input.schema,
-      p_success_action_json: null,
+      p_success_action_json: input.successAction ?? null,
       p_auto_create_contact: true,
       p_pipeline_id: null,
       p_stage_id: null,
       p_id: null,
+    },
+    "SAVE_FAILED",
+  );
+
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return { id: row.id, slug: row.slug ?? slug };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Post-submit delivery editor — closes the gap where every Page-mode form's
+// success_action_json was hardcoded and never editable (§13/§15). Reads/writes the SAME
+// growth_form_upsert rail as saveForm() above — one write seam, no fork.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+export interface FormDeliveryRecord {
+  id: string;
+  slug: string;
+  name: string;
+  schema: GrowthFormSchema;
+  successAction: GrowthSuccessAction | null;
+}
+
+/** Load a tenant's form by its slug (the embedded_form block's own form_slug) so the Studio can
+ *  show/edit its CURRENT post-submit behavior. Returns null if the form hasn't been
+ *  auto-authored yet (the page has never been saved). */
+export async function loadFormBySlug(tenantId: string, slug: string): Promise<FormDeliveryRecord | null> {
+  const tid = requireTenant(tenantId);
+  const cleanSlug = (slug ?? "").trim();
+  if (!cleanSlug) return null;
+  const { data, error } = await supabase
+    .from("growth_forms")
+    .select("id,slug,name,schema_json,success_action_json")
+    .eq("tenant_id", tid)
+    .eq("slug", cleanSlug)
+    .maybeSingle();
+  if (error) throw toStudioError(error, "NOT_FOUND");
+  if (!data) return null;
+  const row = data as unknown as {
+    id: string; slug: string; name: string; schema_json: GrowthFormSchema; success_action_json: GrowthSuccessAction | null;
+  };
+  return { id: row.id, slug: row.slug, name: row.name, schema: row.schema_json, successAction: row.success_action_json ?? null };
+}
+
+export interface SaveFormDeliveryInput {
+  tenantId: string;
+  formId: string;
+  slug: string;
+  name: string;
+  /** The form's CURRENT schema, unchanged — growth_form_upsert sets schema_json unconditionally
+   *  (unlike success_action_json's COALESCE), so an update MUST resend the existing schema or it
+   *  would be silently wiped. Always pass through what loadFormBySlug returned. */
+  schema: GrowthFormSchema;
+  successAction: GrowthSuccessAction;
+}
+
+/** Write a REAL, caller-verified success_action_json — a message, a redirect the operator typed,
+ *  or a download_url that is a REAL uploaded growth-asset URL (never a model-invented string,
+ *  §13/§15). This is the ONLY place that turns a Studio suggestion or operator choice into a
+ *  live, persisted post-submit action. */
+export async function saveFormDelivery(input: SaveFormDeliveryInput): Promise<SavedForm> {
+  requireTenant(input.tenantId);
+  if (!input.formId) throw studioError("SAVE_FAILED", null, "That form hasn't been created yet — save the page first.");
+  const slug = kebab(input.slug);
+  if (!slug) throw studioError("INVALID_SLUG");
+  const name = (input.name ?? "").trim();
+  if (!name) throw studioError("SAVE_FAILED", null, "That form is missing a name.");
+
+  const row = await rpc<{ id?: string; slug?: string } | null>(
+    "growth_form_upsert",
+    {
+      p_tenant_id: null,
+      p_slug: slug,
+      p_name: name,
+      p_schema_json: input.schema,
+      p_success_action_json: input.successAction,
+      p_auto_create_contact: true,
+      p_pipeline_id: null,
+      p_stage_id: null,
+      p_id: input.formId,
     },
     "SAVE_FAILED",
   );

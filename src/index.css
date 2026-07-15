@@ -546,4 +546,52 @@ All colors MUST be HSL.
     .gp-press { transition: none; }
     .gp-press:active { transform: none; }
   }
+
+  /* ── Studio generation-stage motion ("Paige presence") — the animated PaigeMark shown
+     on the Vibe Studio canvas while a page is drafting (GenerationExperience.tsx). Each
+     keyframe starts at the mark's own resting transform so turning this on never shifts
+     the static appearance, it only sets it in motion. Token-neutral (pure transforms/
+     opacity, no color) and no-oped under reduced-motion, same discipline as `.gp-*` above. */
+  @keyframes paige-orbit-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  .paige-orbit-spin {
+    animation: paige-orbit-spin 9s linear infinite;
+    transform-origin: 24px 24px;
+  }
+
+  @keyframes paige-orb-breathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.07); }
+  }
+  .paige-orb-breathe {
+    animation: paige-orb-breathe 2.6s ease-in-out infinite;
+    transform-origin: 24px 24px;
+  }
+
+  @keyframes paige-halo-pulse {
+    0%, 100% { opacity: 0.55; transform: scale(1); }
+    50%      { opacity: 0.9; transform: scale(1.12); }
+  }
+  .paige-halo-pulse {
+    animation: paige-halo-pulse 2.6s ease-in-out infinite;
+    transform-origin: 24px 24px;
+  }
+
+  @keyframes paige-spark-drift {
+    0%, 100% { transform: translate(0, 0); }
+    50%      { transform: translate(-1.4px, 1.4px); }
+  }
+  .paige-spark-drift {
+    animation: paige-spark-drift 3.4s ease-in-out infinite;
+    transform-origin: center;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .paige-orbit-spin { animation: none; }
+    .paige-orb-breathe { animation: none; }
+    .paige-halo-pulse { animation: none; }
+    .paige-spark-drift { animation: none; }
+  }
 }

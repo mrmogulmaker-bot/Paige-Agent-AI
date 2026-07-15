@@ -78,6 +78,70 @@ export interface GrowthFormSchema {
   submit_label?: string;
 }
 
+/** What happens right after a visitor submits a form — the "deliverable" the brief promised
+ *  actually lands here (§13/§15). `download_url`/`redirect_url` are either a REAL uploaded-asset
+ *  URL / a real address the operator typed, or absent — never a placeholder string. Additive to
+ *  the shape every published form already carries (`{type,message,redirect_url}`), so an older
+ *  page with no `download_url` renders exactly as it always has. */
+export interface GrowthSuccessAction {
+  type: string;
+  message?: string;
+  redirect_url?: string;
+  /** A real, permanent public URL to a file the tenant uploaded to the growth-assets bucket
+   *  (see GrowthAsset below). Never a model-invented or hand-typed string that isn't a real
+   *  uploaded asset (§13/§15) — the Studio's delivery editor is the only writer of this field. */
+  download_url?: string;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Reference & lead-magnet attachments — real, permanent files a tenant uploads to the
+// public-read `growth-assets` Storage bucket (tenant-scoped path `<tenant_id>/<uuid>-<name>`).
+// Two uses: (1) multimodal reference material Paige reads while drafting a page, (2) the real
+// deliverable behind a lead-magnet form's `download_url` above. One shared shape for both.
+// ────────────────────────────────────────────────────────────────────────────
+
+export type GrowthAssetKind = "image" | "document";
+
+/** Per-kind hard caps — Claude's real per-file vision/document input limits (§13), enforced
+ *  both client-side (before upload) and again server-side in growth-page-draft (defense in
+ *  depth: never trust a URL's claimed size). */
+export const GROWTH_ASSET_MAX_BYTES: Record<GrowthAssetKind, number> = {
+  image: 5 * 1024 * 1024,
+  document: 10 * 1024 * 1024,
+};
+
+const GROWTH_ASSET_MIME: Record<GrowthAssetKind, string[]> = {
+  image: ["image/jpeg", "image/jpg", "image/png", "image/webp"],
+  document: ["application/pdf"],
+};
+
+/** `<input accept>` string covering every kind this feature supports. */
+export const GROWTH_ASSET_ACCEPT = [...GROWTH_ASSET_MIME.image, ...GROWTH_ASSET_MIME.document].join(",");
+
+/** Studio brief composer + growth-page-draft both cap attachments at 3 (§13 — a runaway
+ *  attachment list is a cost/latency problem, not a feature). */
+export const GROWTH_ASSET_MAX_COUNT = 3;
+
+export function detectGrowthAssetKind(mimeType: string | null | undefined, name: string): GrowthAssetKind | null {
+  const m = (mimeType || "").toLowerCase();
+  if (GROWTH_ASSET_MIME.image.includes(m)) return "image";
+  if (GROWTH_ASSET_MIME.document.includes(m)) return "document";
+  // Some browsers/servers report an empty or generic mime — fall back to the extension.
+  if (/\.pdf$/i.test(name)) return "document";
+  if (/\.(jpe?g|png|webp)$/i.test(name)) return "image";
+  return null;
+}
+
+/** One uploaded reference/deliverable file, with its REAL permanent public Storage URL. */
+export interface GrowthAsset {
+  url: string;
+  path: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  kind: GrowthAssetKind;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Landing-page blocks (the 17-type union — kept in lockstep with the server-side
 // validator in growth_page_upsert and the shared GrowthBlocks renderer)

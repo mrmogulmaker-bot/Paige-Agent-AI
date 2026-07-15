@@ -37,6 +37,7 @@ import {
 import { cn } from "@/lib/utils";
 import { BuildProgress } from "./BuildProgress";
 import { ClarifyingQuestions } from "./ClarifyingQuestions";
+import { DeliveryEditor } from "./DeliveryEditor";
 import { GenerationExperience } from "./GenerationExperience";
 import { LivePreview } from "./LivePreview";
 import { PromptComposer } from "./PromptComposer";
@@ -52,6 +53,7 @@ import {
   STUDIO_ERROR_COPY,
   composeBrief,
   editBlocks,
+  isStudioError,
   loadBrandFloor,
   loadPageDraft,
   preflightPublish,
@@ -60,6 +62,7 @@ import {
   savePageDraft,
   shouldClarify,
   uniqueGrowthPageSlug,
+  uploadGrowthAsset,
   type PublishPageResult,
 } from "./studio";
 import {
@@ -127,6 +130,8 @@ const EMPTY_SHELL: ShellState = {
   brandFloor: null,
   seo: null,
   formSchema: null,
+  attachments: [],
+  suggestedDeliveryAssetUrl: null,
   brief: "",
   instruction: "",
   mode: "compose",
@@ -335,6 +340,15 @@ export function StudioShell({
       }
     : null;
 
+  // The CURRENT page's own signup form, if this brief has one — DeliveryEditor needs its slug
+  // to look up the (already auto-authored, on first save) growth_forms row.
+  const embeddedFormSlug = useMemo(() => {
+    const block = state.blocks.find(
+      (b): b is Extract<GrowthBlock, { type: "embedded_form" }> => b.type === "embedded_form",
+    );
+    return block?.form_slug ?? null;
+  }, [state.blocks]);
+
   const checks = useMemo(
     () =>
       preflightPublish({
@@ -359,6 +373,43 @@ export function StudioShell({
     setState((s) => ({ ...s, slug, slugTouched: true, dirty: true }));
   }, []);
 
+  // ── reference/deliverable attachments (§10/§13) ────────────────────────────────────
+  // Real uploads, tenant-scoped, real permanent URLs — never a File held only in memory.
+  // The upload itself goes through studio.ts (the one file that touches Supabase); this is
+  // just the shell absorbing the result into state, same discipline as every other action here.
+  const [attachmentsBusy, setAttachmentsBusy] = useState(false);
+
+  const handleFilesSelected = useCallback(
+    async (files: File[]) => {
+      if (!tenantId) {
+        toast({ title: "Pick a workspace first", description: STUDIO_ERROR_COPY.NO_TENANT, variant: "destructive" });
+        return;
+      }
+      setAttachmentsBusy(true);
+      try {
+        for (const file of files) {
+          try {
+            const asset = await uploadGrowthAsset(tenantId, file);
+            setState((s) => ({ ...s, attachments: [...s.attachments, asset] }));
+          } catch (err) {
+            toast({
+              title: "Couldn't attach that file",
+              description: isStudioError(err) ? err.message : "Try a different file.",
+              variant: "destructive",
+            });
+          }
+        }
+      } finally {
+        setAttachmentsBusy(false);
+      }
+    },
+    [tenantId, toast],
+  );
+
+  const handleRemoveAttachment = useCallback((index: number) => {
+    setState((s) => ({ ...s, attachments: s.attachments.filter((_, i) => i !== index) }));
+  }, []);
+
   // ── generate (whole page) ─────────────────────────────────────────────────────────
   // The actual run: capture the pre-run blocks (for a clean cancel), flip to "generating",
   // call the seam, absorb the result. Shared by both the direct path (gate said "skip it")
@@ -366,6 +417,7 @@ export function StudioShell({
   const generateWholePage = useCallback(
     async (compiledBrief: string, questionnaireAnswer?: string) => {
       blocksBeforeRun.current = state.blocks;
+      const attachmentsForCall = state.attachments;
       setState((s) => ({
         ...s,
         mode: "generating",
@@ -375,18 +427,29 @@ export function StudioShell({
         publishedUrl: null,
       }));
 
-      const result = await generate({ brief: compiledBrief, questionnaireAnswer });
+      const result = await generate({
+        brief: compiledBrief,
+        questionnaireAnswer,
+        attachments: attachmentsForCall.map((a) => ({ url: a.url, mediaType: a.mimeType, kind: a.kind })),
+      });
       // A failure stays on the canvas and narrates itself inside GenerationExperience (with
       // a Retry). A cancel is handled by handleCancel, which restores the previous blocks.
       if (!result) return;
 
       const seo: StudioSeoDraft = result.seo ?? {};
+      // Resolve the model's suggested_delivery index back to a REAL uploaded asset URL —
+      // purely a proposal DeliveryEditor surfaces (§15); nothing here writes to a form.
+      const suggestedUrl =
+        result.suggestedDelivery != null
+          ? attachmentsForCall[result.suggestedDelivery.assetIndex]?.url ?? null
+          : null;
       setState((s) => ({
         ...s,
         blocks: result.blocks,
         theme: result.theme,
         seo,
         formSchema: result.formSchema ?? null,
+        suggestedDeliveryAssetUrl: suggestedUrl,
         title: seo.title ?? s.title,
         slug: s.slugTouched ? s.slug : kebabSlug(seo.title ?? s.title),
         mode: "canvas",
@@ -395,7 +458,7 @@ export function StudioShell({
       }));
       reset();
     },
-    [state.blocks, generate, reset],
+    [state.blocks, state.attachments, generate, reset],
   );
 
   // ── the clarifying gate (§15) — a thin or questionnaire-signaling brief is grounded in a
@@ -821,6 +884,16 @@ export function StudioShell({
                   </div>
                 )}
 
+                {/* Post-submit delivery — only once the page has been saved at least once
+                    (the embedded_form's backing row only exists after that first save). */}
+                {state.selectedIndex == null && tenantId && state.pageId && embeddedFormSlug && (
+                  <DeliveryEditor
+                    tenantId={tenantId}
+                    formSlug={embeddedFormSlug}
+                    suggestedAssetUrl={state.suggestedDeliveryAssetUrl}
+                  />
+                )}
+
                 {/* Paige's team, working — the build progress lives in the conversation. */}
                 {state.mode === "generating" && (
                   <BuildProgress generation={generation} onCancel={handleCancel} />
@@ -877,6 +950,10 @@ export function StudioShell({
                 onClearTarget={() => patch({ selectedIndex: null, instruction: "" })}
                 onRegenerate={() => void runGenerate(state.brief)}
                 canRegenerate={state.blocks.length > 0 && state.brief.trim().length >= 5}
+                attachments={state.attachments}
+                onFilesSelected={(files) => void handleFilesSelected(files)}
+                onRemoveAttachment={handleRemoveAttachment}
+                attachmentsBusy={attachmentsBusy}
               />
             )
           }

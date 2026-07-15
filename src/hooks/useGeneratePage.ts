@@ -15,7 +15,7 @@
 // section count. Nothing else. If the edge function later streams SSE, `draftPage`'s
 // `onBlocks` callback starts firing per block and this file changes by zero lines.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { GrowthBlock } from "@/lib/growth";
+import type { GrowthAssetKind, GrowthBlock } from "@/lib/growth";
 import { useReducedMotion } from "@/components/growth/growth-motion";
 import { draftPage, STUDIO_ERROR_COPY, type DraftPageResult } from "@/components/admin/studio/studio";
 import {
@@ -66,6 +66,8 @@ export interface UseGeneratePageResult {
     tone?: string;
     /** The clarifying step's questionnaire answer (§15), passed straight through to draftPage(). */
     questionnaireAnswer?: string;
+    /** Up to 3 uploaded reference/deliverable files, passed straight through to draftPage(). */
+    attachments?: { url: string; mediaType: string; kind: GrowthAssetKind }[];
   }) => Promise<DraftPageResult | null>;
   /** Abort the in-flight run. Phase → "idle". Also fired on unmount. */
   cancel: () => void;
@@ -170,10 +172,12 @@ export function useGeneratePage(tenantId: string | null): UseGeneratePageResult 
       brief,
       tone,
       questionnaireAnswer,
+      attachments,
     }: {
       brief: string;
       tone?: string;
       questionnaireAnswer?: string;
+      attachments?: { url: string; mediaType: string; kind: GrowthAssetKind }[];
     }): Promise<DraftPageResult | null> => {
       const trimmed = brief.trim();
 
@@ -214,6 +218,7 @@ export function useGeneratePage(tenantId: string | null): UseGeneratePageResult 
           brief: trimmed,
           tone,
           questionnaireAnswer,
+          attachments,
           signal: controller.signal,
           onPhase: (phase, note) =>
             setGeneration((g) =>

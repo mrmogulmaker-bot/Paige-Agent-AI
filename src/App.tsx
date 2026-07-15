@@ -27,6 +27,7 @@ const lazyWithReload = <T extends React.ComponentType<any>>(
       throw err;
     }
   });
+import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -165,6 +166,7 @@ const AppInner = () => {
 };
 
 const App = () => (
+  <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <SubscriptionProvider>
@@ -297,6 +299,7 @@ const App = () => (
       </SubscriptionProvider>
     </TooltipProvider>
   </QueryClientProvider>
+  </ThemeProvider>
 );
 
 export default App;

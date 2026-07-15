@@ -8,8 +8,9 @@
 // Gold budget: zero. The submit is indigo (`variant="default"`). Gold is spent only on
 // Publish (§11).
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { Loader2, RefreshCw, Send, X } from "lucide-react";
-import type { GrowthBlock } from "@/lib/growth";
+import { FileText, Image as ImageIcon, Loader2, Paperclip, RefreshCw, Send, X } from "lucide-react";
+import type { GrowthAsset } from "@/lib/growth";
+import { GROWTH_ASSET_ACCEPT, GROWTH_ASSET_MAX_COUNT } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { FilterChip } from "@/components/ui/page";
@@ -42,6 +43,15 @@ export interface PromptComposerProps {
   /** Re-run the whole page from the current brief. Only offered once blocks exist. */
   onRegenerate?: () => void;
   canRegenerate?: boolean;
+  /** Page mode only. Reference/deliverable files already uploaded (§10/§13 — real Storage
+   *  URLs). Controlled by the shell, same pattern as `value`/`onChange`: this component never
+   *  touches Supabase itself, it only renders what it's given and asks for a change. */
+  attachments?: GrowthAsset[];
+  /** The operator picked file(s) from the hidden input — the shell does the actual upload. */
+  onFilesSelected?: (files: File[]) => void;
+  onRemoveAttachment?: (index: number) => void;
+  /** An upload is in flight — disables the attach button and shows a spinner on the chip row. */
+  attachmentsBusy?: boolean;
   className?: string;
 }
 
@@ -65,10 +75,16 @@ export function PromptComposer({
   chips,
   onRegenerate,
   canRegenerate = false,
+  attachments = [],
+  onFilesSelected,
+  onRemoveAttachment,
+  attachmentsBusy = false,
   className,
 }: PromptComposerProps) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sectionMode = mode === "section" && !!target;
+  const attachSlotsLeft = GROWTH_ASSET_MAX_COUNT - attachments.length;
 
   // Grow with the writing, up to ~12 rows, then scroll. No jumpy fixed box.
   useLayoutEffect(() => {
@@ -101,6 +117,15 @@ export function PromptComposer({
       submit();
     }
   };
+
+  const onFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(e.target.files ?? []).slice(0, Math.max(attachSlotsLeft, 0));
+      if (files.length > 0) onFilesSelected?.(files);
+      if (e.target) e.target.value = "";
+    },
+    [attachSlotsLeft, onFilesSelected],
+  );
 
   return (
     <div className={cn("space-y-4", className)}>
@@ -147,6 +172,65 @@ export function PromptComposer({
             : "The more real detail you give — the offer, the audience, the ask — the closer the first draft lands."}
         </p>
       </div>
+
+      {/* Reference material / lead-magnet attachments — page mode only. Real files, tenant-
+          scoped, read as actual multimodal content (§10/§13) — never just described in prose. */}
+      {!sectionMode && onFilesSelected && (
+        <div className="space-y-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={GROWTH_ASSET_ACCEPT}
+            multiple
+            className="hidden"
+            onChange={onFileInputChange}
+          />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={disabled || attachmentsBusy || attachSlotsLeft <= 0}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {attachmentsBusy ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+              ) : (
+                <Paperclip className="h-3.5 w-3.5" aria-hidden />
+              )}
+              Attach a file
+            </Button>
+            {attachments.map((a, i) => (
+              <span
+                key={a.path}
+                className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full border border-border bg-muted/50 py-1 pl-2.5 pr-1.5 text-xs text-foreground"
+              >
+                {a.kind === "image" ? (
+                  <ImageIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                ) : (
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                )}
+                <span className="truncate">{a.name}</span>
+                {onRemoveAttachment && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveAttachment(i)}
+                    aria-label={`Remove ${a.name}`}
+                    className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  >
+                    <X className="h-3 w-3" aria-hidden />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {attachments.length > 0
+              ? "Paige reads these as real reference material — a brand PDF, a program one-pager, a photo. If one is the deliverable you're promising (like a checklist), she'll notice."
+              : `Optional — attach up to ${GROWTH_ASSET_MAX_COUNT} images or PDFs for Paige to read while building (reference material, or the real file behind a "get the checklist" offer).`}
+          </p>
+        </div>
+      )}
 
       {!sectionMode && chips && chips.length > 0 && (
         <div className="space-y-2">
