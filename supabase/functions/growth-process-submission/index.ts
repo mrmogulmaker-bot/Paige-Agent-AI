@@ -36,7 +36,10 @@
 // with the per-executor results — never a 200 hiding a top-level error.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { assertPublicHttpUrl } from "../_shared/ssrfGuard.ts";
+// NOTE: the outbound_webhook executor (which uses the shared SSRF guard) is DEFERRED for the first
+// live ship (see its case below), so this function is intentionally dependency-free / single-file.
+// The fast-follow that re-enables outbound_webhook re-adds: import { assertPublicHttpUrl } from
+// "../_shared/ssrfGuard.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -550,7 +553,6 @@ async function runExecutor(
     // directly-configured automation is visibly a no-op rather than a silent SSRF. Re-enable in the
     // fast-follow once (1)+(2) land. assertPublicHttpUrl stays imported for that work.
     case "outbound_webhook": {
-      void assertPublicHttpUrl; // referenced by the fast-follow; keeps the import honest
       return {
         status: "done",
         result: { note: "outbound_webhook_deferred", detail: "The outbound webhook executor ships in a fast-follow; this submission's other automations ran." },
