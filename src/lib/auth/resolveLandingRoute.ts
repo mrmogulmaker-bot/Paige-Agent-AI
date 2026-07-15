@@ -66,7 +66,7 @@ async function resolveAgencyLanding(userId: string): Promise<string | null> {
  */
 export async function resolveLandingRoute(userId: string): Promise<string> {
   try {
-    const [rolesRes, clientRes, ownedTenantRes, memberTenantRes] = await Promise.all([
+    const [rolesRes, clientRes, ownedTenantRes, memberTenantRes, agencyTeamRes] = await Promise.all([
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase
         .from("clients")
@@ -75,6 +75,16 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
         .maybeSingle(),
       supabase.from("tenants").select("id").eq("owner_user_id", userId).limit(1).maybeSingle(),
       supabase.from("tenant_members").select("tenant_id").eq("user_id", userId).limit(1).maybeSingle(),
+      // Agency-team invitees don't get a tenant_members row — they live in
+      // agency_team_members. Without this signal they fall through to
+      // /onboarding and get prompted to create their own workspace.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase.from("agency_team_members" as any) as any)
+        .select("agency_tenant_id")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     let roles = (rolesRes.data || []).map((r: any) => r.role as string);
@@ -125,6 +135,14 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     // tenant operator, so send them to the tenant admin, not the consumer app.
     if (ownedTenantRes.data?.id || memberTenantRes.data?.tenant_id) {
       return "/admin";
+    }
+
+    // Agency-team invitee — belongs to an agency via agency_team_members but has
+    // no tenant_members row and no client link. Send them to their agency shell
+    // (AgencyLayout admits them via agency_my_membership().agency_role).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((agencyTeamRes as any)?.data?.agency_tenant_id) {
+      return "/agency";
     }
 
     // Signed in with no role/client/tenant. If they came in to accept a customer
