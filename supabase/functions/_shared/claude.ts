@@ -25,6 +25,15 @@ function tierModel(tier: ClaudeTier): string {
   return tier === "reasoning" ? CLAUDE_REASONING : CLAUDE_CLASSIFICATION;
 }
 
+// The current reasoning-tier Claude models (Sonnet 5 / Opus 4.x / Fable 5) REJECT any non-default
+// sampling parameter (temperature/top_p/top_k) with an HTTP 400. The classification tier (Haiku 4.5)
+// still accepts them. Callers routinely pass a temperature, so strip it for the models that refuse it
+// rather than 400 the whole request — otherwise every reasoning call that sets temperature fails
+// (this was the paige-public-chat / paige-deep-research / paige-voice-chat 400->502 defect).
+function modelRejectsSampling(model: string): boolean {
+  return /sonnet-5|opus-4|fable-5/i.test(model);
+}
+
 // Map a legacy gateway model string to a Paige tier, preserving the original
 // cost/capability intent (pro/gpt-4 => reasoning; flash/lite/mini => classification).
 export function tierForLegacyModel(model?: string): ClaudeTier {
@@ -156,7 +165,7 @@ export async function callClaude(opts: ClaudeCallOpts): Promise<ClaudeResult> {
     messages: opts.messages,
   };
   if (opts.system) body.system = opts.system;
-  if (opts.temperature != null) body.temperature = opts.temperature;
+  if (opts.temperature != null && !modelRejectsSampling(model)) body.temperature = opts.temperature;
   if (opts.tools?.length) body.tools = opts.tools;
   if (opts.toolChoice) body.tool_choice = opts.toolChoice;
   if (opts.stopSequences?.length) body.stop_sequences = opts.stopSequences;
@@ -279,13 +288,14 @@ function buildClaudeRequest(body: OpenAIStyleBody): Record<string, unknown> {
     description: t.function.description ?? "",
     input_schema: t.function.parameters ?? { type: "object", properties: {} },
   }));
+  const model = tierModel(tierForLegacyModel(body.model));
   const req: Record<string, unknown> = {
-    model: tierModel(tierForLegacyModel(body.model)),
+    model,
     max_tokens: body.max_tokens ?? 2048,
     messages: msgs,
   };
   if (system) req.system = system;
-  if (body.temperature != null) req.temperature = body.temperature;
+  if (body.temperature != null && !modelRejectsSampling(model)) req.temperature = body.temperature;
   if (tools?.length) { req.tools = tools; req.tool_choice = body.tool_choice ? { type: "auto" } : { type: "auto" }; }
   return req;
 }
