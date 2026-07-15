@@ -1,7 +1,14 @@
-// generate-image — Paige generates marketing images for a tenant (OpenAI
-// gpt-image-1), stores them in the public paige-generated bucket, returns URLs.
-// Admin|coach only. Requires the OPENAI_API_KEY edge-function secret; returns a
-// clear, non-crashing error until it's set. Tenant-generic (§2).
+// generate-image — Paige generates marketing images for a tenant, stores them in the public
+// paige-generated bucket, returns URLs. Admin|coach only. Tenant-generic (§2).
+//
+// PROVIDER (owner directive 2026-07-15): Google Gemini image generation is the DEFAULT (cheaper,
+// stronger visual quality for hero/marketing art per the owner's own evaluation). OpenAI
+// gpt-image-1 is the ESCALATION — pass provider:"openai" (or the caller re-requests after a
+// customer isn't happy with the Gemini result) to get an alternate style. Both are optional at
+// the secret level: whichever key(s) are configured is what's actually offered; a request for a
+// provider whose key isn't set returns a clear needs_config error rather than crashing.
+// Featherless is NOT used here — it is a text-LLM host (Llama/Qwen/Mistral/Gemma/DeepSeek/Kimi);
+// it has no verified image-generation models in its catalog (§13 — do not assume otherwise).
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 
@@ -35,22 +42,34 @@ serve(async (req: Request) => {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) {
-      console.warn("generate-image: image provider key not set");
-      return new Response(JSON.stringify({
-        error: "Image generation isn't switched on for your account yet.",
-        needs_config: true,
-      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
-
     const body = await req.json();
     const prompt = String(body?.prompt ?? "").trim();
     const size = SIZE_MAP[body?.size] ?? "1024x1024";
     const tenantId = body?.tenant_id ?? null;
+    // provider: "gemini" (default) or "openai" (the escalation path — caller re-requests this
+    // when a customer isn't happy with the default result). Any other value 400s rather than
+    // silently falling back, so the caller knows their request wasn't honored as asked.
+    const requestedProvider = String(body?.provider ?? "gemini").toLowerCase();
+    if (requestedProvider !== "gemini" && requestedProvider !== "openai") {
+      return new Response(JSON.stringify({ error: `Unknown image provider "${requestedProvider}".` }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     if (prompt.length < 4) {
       return new Response(JSON.stringify({ error: "Describe the image you want." }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const provider = requestedProvider === "openai" ? "openai" : "gemini";
+    const providerKey = provider === "openai" ? OPENAI_API_KEY : GEMINI_API_KEY;
+    if (!providerKey) {
+      console.warn(`generate-image: ${provider} key not set`);
+      return new Response(JSON.stringify({
+        error: `Image generation via ${provider} isn't switched on yet.`,
+        needs_config: true,
+        provider,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // Tenant isolation (§9): the image is stored + filed under tenantId, so the caller
@@ -67,18 +86,44 @@ serve(async (req: Request) => {
       }
     }
 
-    const oai = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gpt-image-1", prompt, n: 1, size }),
-    });
-    if (!oai.ok) {
-      const errText = await oai.text();
-      throw new Error(`Image model error (${oai.status}): ${errText.slice(0, 300)}`);
+    let b64: string | undefined;
+    if (provider === "openai") {
+      const oai = await fetch("https://api.openai.com/v1/images/generations", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${providerKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "gpt-image-1", prompt, n: 1, size }),
+      });
+      if (!oai.ok) {
+        const errText = await oai.text();
+        throw new Error(`OpenAI image model error (${oai.status}): ${errText.slice(0, 300)}`);
+      }
+      const oaiData = await oai.json();
+      b64 = oaiData?.data?.[0]?.b64_json;
+    } else {
+      // Gemini image generation (the "nano-banana"-class model): generateContent with an
+      // image response modality returns the image inline as base64 in the first candidate's
+      // parts. Model id is env-overridable in case Google renames/versions it.
+      const geminiModel = Deno.env.get("GEMINI_IMAGE_MODEL") ?? "gemini-2.5-flash-image";
+      const gem = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${providerKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { responseModalities: ["IMAGE"] },
+          }),
+        },
+      );
+      if (!gem.ok) {
+        const errText = await gem.text();
+        throw new Error(`Gemini image model error (${gem.status}): ${errText.slice(0, 300)}`);
+      }
+      const gemData = await gem.json();
+      const parts = gemData?.candidates?.[0]?.content?.parts ?? [];
+      b64 = parts.find((p: any) => p?.inlineData?.data)?.inlineData?.data;
     }
-    const oaiData = await oai.json();
-    const b64 = oaiData?.data?.[0]?.b64_json;
-    if (!b64) throw new Error("Image model returned no image.");
+    if (!b64) throw new Error(`${provider} image model returned no image.`);
 
     // Decode base64 -> bytes and upload to the public bucket under the tenant path.
     const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -110,10 +155,10 @@ serve(async (req: Request) => {
 
     await admin.from("audit_logs").insert({
       user_id: user.id, entity: "generated_image", action: "generate_image", entity_id: contentId,
-      data: { tenant_id: tenantId, path, size, prompt: prompt.slice(0, 200) },
+      data: { tenant_id: tenantId, path, size, provider, prompt: prompt.slice(0, 200) },
     });
 
-    return new Response(JSON.stringify({ url: publicUrl, path, size, content_id: contentId }), {
+    return new Response(JSON.stringify({ url: publicUrl, path, size, provider, content_id: contentId }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e: any) {
     console.error("generate-image error:", e);

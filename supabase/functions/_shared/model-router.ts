@@ -46,12 +46,34 @@ export interface Route {
   reason: string;
 }
 
-// Featherless is OpenAI-compatible. Base URL + model are env-overridable so we can retune
-// without a deploy; the defaults are widely-available instruct models. A wrong/removed
-// model id is caught by the fallback, never a hard failure.
+// Featherless is OpenAI-compatible. Base URL is env-overridable so we can retune without a
+// deploy. A wrong/removed model id is caught by the fallback, never a hard failure.
 const FEATHERLESS_BASE = Deno.env.get("FEATHERLESS_BASE_URL") ?? "https://api.featherless.ai/v1";
-const FEATHERLESS_CHEAP_MODEL = Deno.env.get("FEATHERLESS_CHEAP_MODEL") ?? "meta-llama/Meta-Llama-3.1-8B-Instruct";
 function featherlessKey(): string | undefined { return Deno.env.get("FEATHERLESS_API_KEY") || undefined; }
+
+// Per-job-kind Featherless model map, specialized instead of one 8B for everything (owner
+// directive 2026-07-15: "don't default and assume" — every id below was checked against
+// Featherless's live model catalog before being wired in). Each is env-overridable
+// (FEATHERLESS_MODEL_<KIND>) so the mix can be retuned without a code deploy.
+// NOTE (plan gate): the larger ids (14B+) need a Featherless plan tier above Basic ($10, 15B
+// cap) — Featherless bills flat-rate by model-size tier, not per-token. If the configured
+// model isn't reachable on the active plan, featherlessChat's catch-and-fall-through still
+// protects the call: it degrades to Claude, never a hard failure.
+const FEATHERLESS_MODEL_BY_KIND: Partial<Record<JobKind, string>> = {
+  classify: "Qwen/Qwen2.5-7B-Instruct",             // best cheap-tier JSON/label adherence
+  score: "Qwen/Qwen2.5-7B-Instruct",                 // numeric/rubric-out, high-volume
+  tone_check: "Qwen/Qwen2.5-14B-Instruct",           // needs more nuance than a raw label
+  extract: "Qwen/Qwen2.5-14B-Instruct",              // structured-field extraction to JSON
+  summarize: "Qwen/Qwen2.5-14B-Instruct",            // coherence for briefs/heartbeat feeds
+  internal_first_draft: "meta-llama/Llama-3.3-70B-Instruct", // internal draft only, never sent
+};
+const FEATHERLESS_CHEAP_FALLBACK_MODEL =
+  Deno.env.get("FEATHERLESS_CHEAP_MODEL") ?? "meta-llama/Meta-Llama-3.1-8B-Instruct";
+
+function featherlessModelFor(jobKind: JobKind): string {
+  const envOverride = Deno.env.get(`FEATHERLESS_MODEL_${jobKind.toUpperCase()}`);
+  return envOverride || FEATHERLESS_MODEL_BY_KIND[jobKind] || FEATHERLESS_CHEAP_FALLBACK_MODEL;
+}
 
 /** Decide who does a job. Pure + synchronous — safe to log/inspect. */
 export function pickRoute(jobKind: JobKind): Route {
@@ -60,7 +82,7 @@ export function pickRoute(jobKind: JobKind): Route {
   }
   if (CHEAP_KINDS.has(jobKind)) {
     if (featherlessKey()) {
-      return { provider: "featherless", model: FEATHERLESS_CHEAP_MODEL, tier: "classification", reason: `cheap:${jobKind} → open model (Claude classification on fallback)` };
+      return { provider: "featherless", model: featherlessModelFor(jobKind), tier: "classification", reason: `cheap:${jobKind} → open model (Claude classification on fallback)` };
     }
     return { provider: "anthropic", tier: "classification", reason: `cheap:${jobKind} → Claude classification (Featherless not configured)` };
   }
