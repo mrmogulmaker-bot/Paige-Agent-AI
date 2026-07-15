@@ -20,7 +20,7 @@
 //   3. The publish path ALWAYS saves and THEN publishes. The save is what auto-authors the form
 //      behind the signup section, which is what makes publish's lead-capture guard pass.
 import { supabase } from "@/integrations/supabase/client";
-import type { GrowthBlock, GrowthPageTheme } from "@/lib/growth";
+import type { GrowthBlock, GrowthFormSchema, GrowthPageTheme } from "@/lib/growth";
 import { GROWTH_BRAND_FLOOR, buildGrowthBrandFloor } from "@/components/growth/growth-theme";
 import { STUDIO_ERROR_COPY } from "./studio-copy";
 import type { StudioError, StudioErrorCode, StudioSeoDraft } from "./studio-types";
@@ -737,6 +737,137 @@ function kebab(input: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 48);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Forms & funnels — the Studio's form/funnel modes drive the SAME SECURITY DEFINER rails
+// the Growth libraries and Paige write on (§10). Same house style as the page seams:
+// plain async, structured StudioError, no React. p_tenant_id is passed as null on purpose —
+// the RPCs pin a JWT caller to their own tenant server-side (IDOR-safe); requireTenant()
+// still gates the call so platform staff with no active tenant fail loudly first (§9).
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+export interface SaveFormInput {
+  tenantId: string;
+  slug: string;
+  name: string;
+  schema: GrowthFormSchema;
+}
+
+export interface SavedForm {
+  id: string;
+  slug: string;
+}
+
+/** Create (or update) a form through growth_form_upsert — schema validated server-side,
+ *  atomic, tenant-pinned. The exact payload shape the Forms library used. */
+export async function saveForm(input: SaveFormInput): Promise<SavedForm> {
+  requireTenant(input.tenantId);
+  const slug = kebab(input.slug);
+  if (!slug) throw studioError("INVALID_SLUG");
+  const name = (input.name ?? "").trim();
+  if (!name) throw studioError("SAVE_FAILED", null, "Give the form a name first.");
+
+  const row = await rpc<{ id?: string; slug?: string } | null>(
+    "growth_form_upsert",
+    {
+      p_tenant_id: null,
+      p_slug: slug,
+      p_name: name,
+      p_schema_json: input.schema,
+      p_success_action_json: null,
+      p_auto_create_contact: true,
+      p_pipeline_id: null,
+      p_stage_id: null,
+      p_id: null,
+    },
+    "SAVE_FAILED",
+  );
+
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return { id: row.id, slug: row.slug ?? slug };
+}
+
+export interface FunnelStepInput {
+  step_type: "page" | "form" | "thankyou";
+  order_index: number;
+  page_id?: string;
+  form_id?: string;
+}
+
+export interface SaveFunnelInput {
+  tenantId: string;
+  slug: string;
+  name: string;
+  /** The RPC's own jsonb shape — no funnel_id/tenant_id; the function pins both. */
+  steps: FunnelStepInput[];
+  entryPageId?: string | null;
+  /** Pass when re-saving — the upsert full-replaces the step list atomically. */
+  id?: string | null;
+}
+
+export interface SavedFunnel {
+  id: string;
+  slug: string;
+}
+
+/** Create (or update) a funnel through growth_funnel_upsert — ONE atomic write; the RPC
+ *  resolves every page/form reference server-side and refuses cross-tenant references. */
+export async function saveFunnel(input: SaveFunnelInput): Promise<SavedFunnel> {
+  const tenantId = requireTenant(input.tenantId);
+  const slug = kebab(input.slug);
+  if (!slug) throw studioError("INVALID_SLUG");
+  const name = (input.name ?? "").trim();
+  if (!name) throw studioError("SAVE_FAILED", null, "Give the funnel a name first.");
+  if (!Array.isArray(input.steps) || input.steps.length === 0) {
+    throw studioError("SAVE_FAILED", null, "Pick an entry page or a form step — a funnel needs at least one.");
+  }
+
+  const row = await rpc<{ id?: string } | null>(
+    "growth_funnel_upsert",
+    {
+      p_tenant_id: null,
+      p_slug: slug,
+      p_name: name,
+      p_goal: null,
+      p_steps: input.steps,
+      p_entry_page_id: input.entryPageId || null,
+      p_success_page_id: null,
+      p_id: input.id ?? null,
+    },
+    "SAVE_FAILED",
+  );
+
+  // Some upsert rails return the row, some return void — resolve the id by (tenant, slug)
+  // when it isn't handed back, so publishFunnel always has a real target (§13: never
+  // report a save we can't point at).
+  let id = row && typeof row === "object" && typeof row.id === "string" ? row.id : null;
+  if (!id) {
+    const { data, error } = await supabase
+      .from("growth_funnels")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("slug", slug)
+      .maybeSingle();
+    if (error) throw toStudioError(error, "SAVE_FAILED");
+    id = (data as { id?: string } | null)?.id ?? null;
+  }
+  if (!id) throw studioError("SAVE_FAILED", row);
+  return { id, slug };
+}
+
+/** Go live — growth_funnel_publish is the ONLY path to status='active'; it enforces the
+ *  lead-capture guards (pages published, forms active) so a live funnel never renders a
+ *  blank or dead step. Never flip the status column directly. */
+export async function publishFunnel(input: { tenantId: string; id: string }): Promise<{ url: string | null }> {
+  requireTenant(input.tenantId);
+  if (!input.id) throw studioError("NO_DRAFT");
+  const row = await rpc<{ url?: string } | null>(
+    "growth_funnel_publish",
+    { p_tenant_id: null, p_id: input.id },
+    "PUBLISH_FAILED",
+  );
+  return { url: row?.url ?? null };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
