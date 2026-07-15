@@ -2,8 +2,23 @@
  * PaigeMark — the shared Paige brand mark (gold orbital orb + ring + companion
  * spark + halo). One SVG used across the landing header/footer/intro and the
  * public sign-up flow so the mark is identical everywhere. Owned, design-crew SVG.
+ *
+ * `animated` (default false, fully backward-compatible) turns on the "Paige presence"
+ * motion used by the Vibe Studio's generation stage: the ring keeps orbiting, the orb
+ * breathes, the halo pulses, and the companion spark drifts — CSS/SVG animation only
+ * (no three.js, no GLB). The keyframes live in index.css (`.paige-orbit-spin`,
+ * `.paige-orb-breathe`, `.paige-halo-pulse`, `.paige-spark-drift`) and are ALL no-oped
+ * under `prefers-reduced-motion` there, same discipline as the `.gp-*` set. Callers that
+ * also gate on `useReducedMotion()` (as GenerationExperience does) get belt-and-suspenders
+ * safety; the CSS alone is sufficient even if a caller forgets.
  */
-export function PaigeMark({ className = "" }: { className?: string }) {
+export function PaigeMark({
+  className = "",
+  animated = false,
+}: {
+  className?: string;
+  animated?: boolean;
+}) {
   return (
     <svg viewBox="0 0 48 48" fill="none" role="img" aria-label="Paige" className={className}>
       <defs>
@@ -27,12 +42,40 @@ export function PaigeMark({ className = "" }: { className?: string }) {
           <stop offset="100%" stopColor="#F0C86A" stopOpacity="0" />
         </radialGradient>
       </defs>
-      <circle cx="24" cy="24" r="17" fill="url(#pg-halo)" />
+      <circle
+        cx="24"
+        cy="24"
+        r="17"
+        fill="url(#pg-halo)"
+        className={animated ? "paige-halo-pulse" : undefined}
+      />
       <g transform="rotate(-27 24 24)">
-        <ellipse cx="24" cy="24" rx="18" ry="7.5" stroke="url(#pg-ring)" strokeWidth="2" fill="none" strokeLinecap="round" />
-        <circle cx="24" cy="24" r="8" fill="url(#pg-orb)" />
+        <ellipse
+          cx="24"
+          cy="24"
+          rx="18"
+          ry="7.5"
+          stroke="url(#pg-ring)"
+          strokeWidth="2"
+          fill="none"
+          strokeLinecap="round"
+          className={animated ? "paige-orbit-spin" : undefined}
+        />
+        <circle
+          cx="24"
+          cy="24"
+          r="8"
+          fill="url(#pg-orb)"
+          className={animated ? "paige-orb-breathe" : undefined}
+        />
         <circle cx="21.4" cy="21" r="2.4" fill="#FFF6E2" opacity="0.85" />
-        <circle cx="37.8" cy="29.1" r="3.4" fill="url(#pg-spark)" />
+        <circle
+          cx="37.8"
+          cy="29.1"
+          r="3.4"
+          fill="url(#pg-spark)"
+          className={animated ? "paige-spark-drift" : undefined}
+        />
       </g>
     </svg>
   );

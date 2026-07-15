@@ -23,9 +23,11 @@ import {
   Wand2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FilterChip, GlyphPlate, StatePill } from "@/components/ui/page";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 import { MODE_LABELS } from "./studio-copy";
 import {
@@ -104,6 +106,14 @@ export function StudioTopBar({
         <div className="flex items-center gap-2">
           <GlyphPlate icon={Wand2} size="sm" />
           <span className="font-display text-sm font-semibold text-foreground">Studio</span>
+          {/* Honest state (§13) — the Studio is under active, ongoing development;
+              say so rather than let a rough edge read as a bug nobody knows about. */}
+          <Badge
+            variant="outline"
+            className="text-[10px] font-medium uppercase tracking-wide border-border text-muted-foreground bg-transparent"
+          >
+            Beta
+          </Badge>
         </div>
         <div role="group" aria-label="What are you creating" className="flex flex-wrap items-center gap-1">
           {STUDIO_MODES.map((m) => {
@@ -133,6 +143,7 @@ export function StudioTopBar({
 
       {/* ── the acts ── */}
       <div className="flex flex-wrap items-center gap-2">
+        <ThemeToggle />
         {isPage && onDeviceChange && (
           <div className="flex items-center gap-1" role="group" aria-label="Preview device">
             <FilterChip active={device === "desktop"} onClick={() => onDeviceChange("desktop")}>

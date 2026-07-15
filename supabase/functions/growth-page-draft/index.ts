@@ -26,6 +26,15 @@
 //                             //   present, the model derives a REAL form_schema_json instead of
 //                             //   leaving the embedded_form's fields to growth_page_upsert's
 //                             //   generic default.
+//       attachments?: [{ url: string, media_type: string, kind: "image"|"document" }]
+//                             // OPTIONAL. Up to 3. REAL public URLs from the tenant-scoped
+//                             //   growth-assets Storage bucket (never raw base64 in the request
+//                             //   body — this function fetches + base64-encodes each one
+//                             //   server-side). Threaded into the model's user turn as real
+//                             //   image/document content blocks, so Paige actually READS them
+//                             //   as reference material. A file that fails to fetch/encode is
+//                             //   dropped and generation continues (§13 — an optional
+//                             //   enhancement never breaks the core feature).
 //     }
 //
 //   200  { blocks: GrowthBlock[], theme_json: GrowthPageTheme, seo_json: { title, description },
@@ -33,7 +42,16 @@
 //                                 // model's proposal survived cleanFormSchema() with >= 1 field.
 //            submit_label?: string,
 //            sections: [{ title?: string, fields: [{ key, label, type, required?, options?, maps_to? }] }]
-//          } }
+//          },
+//          suggested_delivery?: { type: "download", asset_index: number }
+//                                 // present ONLY when >=1 attachment was actually included AND
+//                                 //   the brief signals a lead-magnet/deliverable pattern AND the
+//                                 //   model judged one attachment IS the promised deliverable.
+//                                 //   asset_index always refers to a position in the CALLER'S
+//                                 //   OWN `attachments` array (never a fabricated index — see
+//                                 //   §7 below). The caller (Studio/Paige, never this function)
+//                                 //   decides whether/how to write it into success_action_json.
+//        }
 //        blocks: hero guaranteed FIRST; exactly ONE embedded_form guaranteed.
 //   4xx/5xx { error: { code, message } }   // structured, non-2xx, never a 200-with-error
 //
@@ -73,7 +91,11 @@
 //         REAL brand cascade (resolve_tenant_brand), not hallucinated, so it is truthful.
 //   §14 — model-routed, reasoning tier, never a hardcoded model.
 //   §15 — the model must NOT invent specifics (dates, Zoom links, testimonial names). When the
-//         brief lacks them it emits a clearly-labeled editable token, never fake data.
+//         brief lacks them it emits a clearly-labeled editable token, never fake data. Same rule
+//         extends to `suggested_delivery`: the model may only ever point at an attachment index
+//         WE actually included (never invent one), and even then this function is the last line
+//         of defense — it drops any index the model returns that doesn't correspond to a
+//         real, successfully-attached file before it ever leaves this function.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { chatCompletionCompat } from "../_shared/claude.ts";
@@ -103,6 +125,95 @@ const PRIMARY_FLOOR = "#150C31";
 const ACCENT_FLOOR = "#EBB94C";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// ── Attachments (reference material + lead-magnet candidates) ───────────────────────────
+// Up to 3 REAL public URLs from the tenant-scoped `growth-assets` Storage bucket (never raw
+// base64 in the request body — kept the payload sane per the build spec). This function
+// fetches + base64-encodes each one server-side and threads it into the model's user turn as
+// a real Anthropic image/document content block (_shared/claude.ts's toClaudeContent already
+// knows how to pass an already-Anthropic-shaped block straight through).
+const GROWTH_ASSET_MAX_BYTES: Record<"image" | "document", number> = {
+  image: 5 * 1024 * 1024,
+  document: 10 * 1024 * 1024,
+};
+const GROWTH_ASSET_MAX_COUNT = 3;
+const IMAGE_MIME_RE = /^image\/(jpeg|jpg|png|webp)$/;
+
+interface RawAttachment { url: string; media_type: string; kind: "image" | "document" }
+interface IncludedAttachment { index: number; block: Record<string, unknown> }
+
+function parseAttachments(raw: unknown): RawAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RawAttachment[] = [];
+  for (const a of raw.slice(0, GROWTH_ASSET_MAX_COUNT)) {
+    const url = str((a as any)?.url).trim();
+    const media_type = str((a as any)?.media_type).trim().toLowerCase();
+    const kindRaw = (a as any)?.kind;
+    const kind: "image" | "document" | null = kindRaw === "image" ? "image" : kindRaw === "document" ? "document" : null;
+    if (!url || !/^https:\/\//i.test(url) || !kind) continue;
+    if (kind === "image" && !IMAGE_MIME_RE.test(media_type)) continue;
+    if (kind === "document" && media_type !== "application/pdf") continue;
+    out.push({ url, media_type, kind });
+  }
+  return out;
+}
+
+/** Chunked ArrayBuffer -> base64 (avoids a call-stack blowout on a 5-10MB file — mirrors the
+ *  same chunking the frontend's own file-to-base64 helper uses). */
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+/**
+ * Fetch + base64-encode every attachment the caller supplied. A file that fails to fetch,
+ * exceeds its kind's real cap, or comes back with a mismatched content-type is DROPPED —
+ * generation continues without it rather than failing the whole request (§13: an optional
+ * enhancement never breaks the core feature). Returns blocks keyed by the CALLER'S OWN index
+ * (so a model-returned `asset_index` always means what the caller thinks it means), plus the
+ * plain descriptions used in the prompt.
+ */
+async function fetchAttachmentBlocks(
+  attachments: RawAttachment[],
+): Promise<{ included: IncludedAttachment[]; descriptions: string[] }> {
+  const included: IncludedAttachment[] = [];
+  const descriptions: string[] = [];
+  for (let i = 0; i < attachments.length; i++) {
+    const a = attachments[i];
+    try {
+      const resp = await fetch(a.url);
+      if (!resp.ok) throw new Error(`fetch failed: ${resp.status}`);
+      const buf = await resp.arrayBuffer();
+      const maxBytes = GROWTH_ASSET_MAX_BYTES[a.kind];
+      if (buf.byteLength > maxBytes) {
+        throw new Error(`attachment exceeds the ${maxBytes / (1024 * 1024)}MB cap for ${a.kind}`);
+      }
+      const data = arrayBufferToBase64(buf);
+      const block = a.kind === "image"
+        ? { type: "image", source: { type: "base64", media_type: a.media_type, data } }
+        : { type: "document", source: { type: "base64", media_type: a.media_type, data } };
+      included.push({ index: i, block });
+      descriptions.push(
+        `Attachment index ${i} (${a.kind}): a reference ${a.kind === "image" ? "image" : "PDF"} the operator uploaded — read it for real content, don't guess at what it says.`,
+      );
+    } catch (err) {
+      console.warn(`growth-page-draft: attachment ${i} dropped (fetch/encode failed):`, (err as Error)?.message);
+      continue;
+    }
+  }
+  return { included, descriptions };
+}
+
+// Cheap prose heuristic (no model call — mirrors the Studio's own FORM_SIGNAL_RE pattern for a
+// DIFFERENT signal: "this brief promises a deliverable", not "this needs a real questionnaire").
+// Gates whether we even ask the model to consider `suggested_delivery` at all.
+const DELIVERABLE_SIGNAL_RE =
+  /\b(checklist|cheat[- ]?sheet|template|e-?book|workbook|guide|swipe file|blueprint|toolkit|worksheet|resource|download(?:able)?|freebie|pdf)\b/i;
 
 // Output ceiling for the page generation (§13 — the whole feature dies without it).
 // _shared/claude.ts defaults `max_tokens` to 2048. This job is now routed to the reasoning
@@ -178,6 +289,8 @@ serve(async (req: Request) => {
     const tone = str(body?.tone).trim().slice(0, 200);
     const questionnaireAnswer = str(body?.questionnaire_answer).trim().slice(0, 4000);
     const hasQuestionnaireAnswer = questionnaireAnswer.length >= 2;
+    const rawAttachments = parseAttachments(body?.attachments);
+    const deliverableSignal = DELIVERABLE_SIGNAL_RE.test(brief);
 
     // ── 3. Resolve the tenant SERVER-SIDE (the IDOR-safe path) ───────────────
     // JWT caller: role-gate, then pin the tenant to current_user_tenant_id() run in THEIR JWT
@@ -252,6 +365,11 @@ serve(async (req: Request) => {
       }
     }
 
+    // ── 4b. Attachments — fetch + encode server-side (never trust raw base64 in the body) ───
+    const { included: includedAttachments, descriptions: attachmentDescriptions } =
+      rawAttachments.length ? await fetchAttachmentBlocks(rawAttachments) : { included: [], descriptions: [] };
+    const wantsSuggestedDelivery = includedAttachments.length > 0 && deliverableSignal;
+
     // ── 5. The draft ─────────────────────────────────────────────────────────
     const SYSTEM = `You are Paige, drafting a high-converting landing page for a client-based service business${brandName ? ` called "${brandName}"` : ""}. You output the page as a structured set of content blocks.
 
@@ -277,9 +395,25 @@ URL & DATE RULE (hard, §15/§13): "media", "image", and "gallery" blocks — an
 
 REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST include exactly one "embedded_form" block (the webinar/lead signup) — set its "form_slug" to a short kebab-case slug describing the signup, e.g. "webinar-signup" or "strategy-call". Do not fabricate the form's fields here; the form is drafted separately. For hero/cta buttons that should scroll to the form, use "cta_href": "#apply". Aim for a hero, two or three supporting blocks chosen from the list above (e.g. feature_grid, phase_cards, testimonial, faq, stats, pricing, steps), a cta, and the embedded_form — tight and premium, not padded. Pull only from the blocks the brief can truthfully support.`;
 
+    // The brief turn. Plain text UNLESS at least one attachment survived fetch/encode, in which
+    // case it becomes a real Anthropic content-block array (text + image/document blocks) so
+    // Claude reads the attachments as actual reference material, not a text description of one
+    // (_shared/claude.ts's toClaudeContent passes already-Anthropic-shaped blocks straight
+    // through untouched).
+    const briefText = `Brief: ${brief}${tone ? `\nTone: ${tone}` : ""}`;
+    const userContent: string | any[] = includedAttachments.length
+      ? [
+          {
+            type: "text",
+            text: `${briefText}\n\nThe operator also attached ${includedAttachments.length} reference file${includedAttachments.length === 1 ? "" : "s"} — read ${includedAttachments.length === 1 ? "it" : "them"} for real content before drafting:\n${attachmentDescriptions.join("\n")}`,
+          },
+          ...includedAttachments.map((a) => a.block),
+        ]
+      : briefText;
+
     const messages = [
       { role: "system", content: SYSTEM },
-      { role: "user", content: `Brief: ${brief}${tone ? `\nTone: ${tone}` : ""}` },
+      { role: "user", content: userContent },
     ];
 
     // Questionnaire extension (§15 — probe, then propose the REAL fields instead of leaving the
@@ -295,6 +429,23 @@ REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST inc
           `If their description doesn't already include a way to capture the respondent's name and email, add ` +
           `"full_name" (text, required) and "email" (email, required, maps_to "clients.email") in addition to what ` +
           `they described — every lead form needs a way to follow up. Never use "ssn4" or "currency" types; use "text".`,
+      });
+    }
+
+    // Delivery-suggestion extension (§15 — the model may SUGGEST which attachment IS the
+    // promised deliverable; it may NEVER invent a download URL itself. Gated on both signals so
+    // this never fires on plain reference material with no lead-magnet language in the brief.
+    if (wantsSuggestedDelivery) {
+      const validIndexes = includedAttachments.map((a) => a.index).join(", ");
+      messages.push({
+        role: "user",
+        content:
+          `This brief sounds like it promises a downloadable deliverable (a checklist, guide, template, etc.). ` +
+          `Look at the attached reference file(s) above and judge whether ONE of them IS that promised deliverable ` +
+          `(not just brand/logo reference material). If so, additionally return in the SAME JSON object:\n` +
+          `"suggested_delivery": { "type": "download", "asset_index": <one of: ${validIndexes}> }\n` +
+          `Use ONLY one of those exact index numbers — never invent a number, a filename, or a URL. If none of the ` +
+          `attachments look like the promised deliverable, omit "suggested_delivery" entirely rather than guessing.`,
       });
     }
 
@@ -425,7 +576,28 @@ REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST inc
       else console.warn("growth-page-draft: questionnaire_answer given but no usable schema produced; falling back to the default.");
     }
 
-    return ok({ blocks: final, theme_json, seo_json, ...(form_schema_json ? { form_schema_json } : {}) });
+    // Delivery suggestion: the model may only ever reference an attachment index WE actually
+    // fetched and included (§13/§15 — last line of defense, independent of whatever the model's
+    // own instructions said). Anything else — a missing field, a non-integer, an out-of-range or
+    // dropped index — is silently omitted rather than forwarded as if it were trustworthy.
+    let suggested_delivery: { type: "download"; asset_index: number } | undefined;
+    if (wantsSuggestedDelivery) {
+      const rawIdx = (parsed as any)?.suggested_delivery?.asset_index;
+      const idx = typeof rawIdx === "number" && Number.isInteger(rawIdx) ? rawIdx : -1;
+      if (includedAttachments.some((a) => a.index === idx)) {
+        suggested_delivery = { type: "download", asset_index: idx };
+      } else if (rawIdx !== undefined) {
+        console.warn("growth-page-draft: model returned an unusable suggested_delivery index, dropping it:", rawIdx);
+      }
+    }
+
+    return ok({
+      blocks: final,
+      theme_json,
+      seo_json,
+      ...(form_schema_json ? { form_schema_json } : {}),
+      ...(suggested_delivery ? { suggested_delivery } : {}),
+    });
   } catch (e: any) {
     // Last line: still non-2xx, still the REAL cause (§13 — never a swallowed generic, and
     // never the old 200-with-{error} that made a model outage read as a successful draft).

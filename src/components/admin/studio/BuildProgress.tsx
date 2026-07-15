@@ -25,8 +25,10 @@ export interface BuildProgressProps {
   className?: string;
 }
 
-/** The five phases, in order. Each one names work the seam genuinely does. */
-const PHASE_ORDER: Exclude<GenerationPhase, "idle" | "done" | "error">[] = [
+/** The five phases, in order. Each one names work the seam genuinely does. Exported so
+ *  GenerationExperience can draw the SAME stage order on the canvas — the rail and the
+ *  canvas must never disagree about how many stages there are or what order they run. */
+export const PHASE_ORDER: Exclude<GenerationPhase, "idle" | "done" | "error">[] = [
   "brief",
   "brand",
   "drafting",
@@ -34,7 +36,7 @@ const PHASE_ORDER: Exclude<GenerationPhase, "idle" | "done" | "error">[] = [
   "composing",
 ];
 
-function phaseRank(phase: GenerationPhase): number {
+export function phaseRank(phase: GenerationPhase): number {
   if (phase === "done") return PHASE_ORDER.length;
   const i = PHASE_ORDER.indexOf(phase as (typeof PHASE_ORDER)[number]);
   return i === -1 ? 0 : i;

@@ -4,7 +4,7 @@
 // an error, and the page under construction is defined in exactly ONE place. Types + two
 // frozen-by-convention constants only — no React, no IO, no copy (copy lives in
 // studio-copy.ts so the §2/§3 audit has a single surface to read).
-import type { GrowthBlock, GrowthFormSchema, GrowthPageTheme } from "@/lib/growth";
+import type { GrowthAsset, GrowthBlock, GrowthFormSchema, GrowthPageTheme } from "@/lib/growth";
 
 /**
  * The Studio's five outputs — one workspace, five creation modes. `page` is the
@@ -171,6 +171,13 @@ export interface StudioState {
   formSchema: GrowthFormSchema | null;
 
   // — the composer —
+  /** Up to 3 reference/deliverable files uploaded for the CURRENT brief (§10/§13) — real
+   *  Storage URLs, threaded to growth-page-draft as real multimodal content on generate. */
+  attachments: GrowthAsset[];
+  /** A real, already-uploaded attachment URL Paige flagged as this brief's likely deliverable
+   *  (from the last generate's suggestedDelivery). Purely a proposal (§15) surfaced in
+   *  DeliveryEditor — never written to a form until the operator explicitly saves. */
+  suggestedDeliveryAssetUrl: string | null;
   /** The whole-page brief. PRESERVED across section-mode retargeting. */
   brief: string;
   /** The in-flight section instruction (section mode only). */

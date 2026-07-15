@@ -707,7 +707,10 @@ function DuplicatePageButton({ row, pages, onDone }: { row: Page; pages: Page[];
 }
 
 /** Duplicate a form — same recipe: read schema_json, re-create through growth_form_upsert
- *  (schema re-validated server-side) with p_id:null and a uniquified "-copy" slug. */
+ *  (schema re-validated server-side) with p_id:null and a uniquified "-copy" slug. Carries
+ *  the ORIGINAL success_action_json forward too (message/redirect/download_url) — a copy that
+ *  silently reverted to the generic "thanks" default would drop a real deliverable/redirect the
+ *  operator already configured (§13). */
 function DuplicateFormButton({ row, forms, onDone }: { row: Form; forms: Form[]; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
 
@@ -716,11 +719,11 @@ function DuplicateFormButton({ row, forms, onDone }: { row: Form; forms: Form[];
     try {
       const { data, error } = await supabase
         .from("growth_forms")
-        .select("schema_json,name")
+        .select("schema_json,name,success_action_json")
         .eq("id", row.id)
         .single();
       if (error) throw error;
-      const d = data as { schema_json?: unknown; name?: string } | null;
+      const d = data as { schema_json?: unknown; name?: string; success_action_json?: unknown } | null;
       if (!d?.schema_json) {
         toast.error("This form has no questions to copy yet.");
         return;
@@ -731,7 +734,7 @@ function DuplicateFormButton({ row, forms, onDone }: { row: Form; forms: Form[];
         p_slug: slug,
         p_name: `${d?.name ?? row.name} (copy)`,
         p_schema_json: d.schema_json as any,
-        p_success_action_json: null,
+        p_success_action_json: (d.success_action_json as any) ?? null,
         p_auto_create_contact: true,
         p_pipeline_id: null,
         p_stage_id: null,

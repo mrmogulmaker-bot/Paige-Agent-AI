@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import type { GrowthFormSchema, GrowthField } from "@/lib/growth";
+import type { GrowthFormSchema, GrowthField, GrowthSuccessAction } from "@/lib/growth";
 import { submitGrowthForm, readUtm, growthOptionValue, growthOptionLabel } from "@/lib/growth";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,7 +18,20 @@ interface FormRow {
   name: string;
   status: string;
   schema_json: GrowthFormSchema;
-  success_action_json: { type: string; message?: string; redirect_url?: string };
+  success_action_json: GrowthSuccessAction;
+}
+
+/** The real uploaded file's own name, recovered from its Storage URL
+ *  (<tenant_id>/<uuid>-<name>) — never a fabricated label (§13). Falls back to a generic
+ *  label only if the URL doesn't carry a recognizable filename tail. */
+function filenameFromDownloadUrl(url: string): string {
+  try {
+    const tail = decodeURIComponent(url.split("/").pop() ?? "");
+    const withoutUuidPrefix = tail.replace(/^[0-9a-f-]{36}-/i, "");
+    return withoutUuidPrefix || "file";
+  } catch {
+    return "file";
+  }
 }
 
 export default function GrowthFormPage() {
@@ -135,22 +148,40 @@ function FormBody({ form, accent, onComplete }: { form: FormRow; accent?: string
     });
     setSubmitting(false);
     if (error) { setSubmitError(true); return; }
-    if (form.success_action_json?.redirect_url) {
+    // A download_url wins over an immediate redirect — navigating straight away would strand
+    // the visitor before they ever see the download button (additive: pages with ONLY
+    // redirect_url set, which is every page today, behave exactly as before).
+    if (form.success_action_json?.redirect_url && !form.success_action_json?.download_url) {
       window.location.href = form.success_action_json.redirect_url;
       return;
     }
     // Embedded in a funnel with a next step: hand control back to the step machine so the
     // visitor advances to the thankyou/next step instead of dead-ending on this form's own
     // success card. Standalone (/form/:id) and landing-embed have no onComplete, so they keep
-    // showing the authored success state exactly as before.
-    if (onComplete) { onComplete(); return; }
+    // showing the authored success state exactly as before. A download_url is the one
+    // exception — advancing the funnel immediately would strand the visitor before they ever
+    // see the deliverable, so the success card (with its download button) wins here too.
+    if (onComplete && !form.success_action_json?.download_url) { onComplete(); return; }
     setDone(true);
   };
 
   if (done) {
-    return <div className="text-center py-12">
+    const success = form.success_action_json;
+    return <div className="text-center py-12 space-y-4">
       <div className="text-3xl mb-2">✓</div>
-      <p className="text-lg">{form.success_action_json?.message ?? "Thanks — we'll be in touch."}</p>
+      <p className="text-lg">{success?.message ?? "Thanks — we'll be in touch."}</p>
+      {success?.download_url && (
+        <Button asChild>
+          <a href={success.download_url} target="_blank" rel="noopener noreferrer" download>
+            Download {filenameFromDownloadUrl(success.download_url)}
+          </a>
+        </Button>
+      )}
+      {success?.redirect_url && (
+        <p className="text-sm">
+          <a href={success.redirect_url} className="underline">Continue</a>
+        </p>
+      )}
     </div>;
   }
 

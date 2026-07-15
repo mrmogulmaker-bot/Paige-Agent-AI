@@ -28,6 +28,7 @@ import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PLATFORM } from "@/lib/platform/identity";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 // 7-hub top bar. Each hub has a primary route and optional sub-routes
 // surfaced via a dropdown so power users can jump deep with one click.
@@ -360,9 +361,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                 AccountSwitcher above. */}
             {godMode && <TenantSwitcher />}
             <AdminBridgeBell />
-
-
-
+            <ThemeToggle variant="on-primary" />
 
             <Button
               variant="ghost"

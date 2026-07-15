@@ -1,21 +1,31 @@
 // The canvas half of the generation moment — the product demo.
 //
-// The phase ticker now lives in BuildProgress (rendered in the Studio's left rail, next
-// to the conversation); this component owns what happens ON the canvas while a run is in
-// flight: the real blocks materializing through the REAL <GrowthBlocks>, with shimmer
-// skeletons trailing below for what's still coming.
+// The phase ticker lives in BuildProgress (the Studio's left rail, next to the
+// conversation); this component owns what happens ON the canvas while a run is in
+// flight. Until the owner's screenshot review, that was a flat gray shimmer scaffold —
+// "all you see is a blur." This file is the fix: a staged, Paige-branded "presence" that
+// narrates the SAME true phase BuildProgress already tracks (GenerationStage, below),
+// live and animated, then yields the instant real content starts landing.
 //
-// HONESTY IS THE DESIGN (§13): what you watch appear IS what publishes — same renderer,
-// same theme resolver, same footer child. A failure narrates itself right here with a
-// Retry; a dead model never paints a successful, empty page.
+// HONESTY IS THE DESIGN (§13): the phase note, the agent attribution, the elapsed
+// seconds, and the section count are ALL real values pulled straight from
+// `GenerationState` — nothing here is fabricated, and there is still no percentage
+// (`growth-page-draft` returns one JSON payload, not a stream). Once the payload lands
+// and the REAL blocks start materializing, they paint through the REAL <GrowthBlocks> —
+// same renderer, same theme resolver, same footer child — and the stage steps aside.
+// A failure narrates itself right here with a Retry; a dead model never paints a
+// successful, empty page.
 import { AlertTriangle } from "lucide-react";
 import type { GrowthPageTheme } from "@/lib/growth";
+import { PaigeMark } from "@/components/brand/PaigeMark";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/page";
+import { GP_FADE_RISE, useReducedMotion } from "@/components/growth/growth-motion";
 import { cn } from "@/lib/utils";
+import { PHASE_ORDER, phaseRank } from "./BuildProgress";
 import { LivePreview } from "./LivePreview";
-import { GENERATION_NOTES } from "./studio-copy";
-import type { DeviceFrame, GenerationState } from "./studio-types";
+import { GENERATION_NOTES, PHASE_AGENTS } from "./studio-copy";
+import type { DeviceFrame, GenerationPhase, GenerationState } from "./studio-types";
 
 export interface GenerationExperienceProps {
   generation: GenerationState;
@@ -34,6 +44,112 @@ export interface GenerationExperienceProps {
  *  promise of a specific number of sections. */
 const SCAFFOLD_SKELETONS = 3;
 
+/** The phases the on-canvas stage knows how to narrate — exactly PHASE_AGENTS' keys. */
+type StagePhase = keyof typeof PHASE_AGENTS;
+
+function isStagePhase(phase: GenerationPhase): phase is StagePhase {
+  return phase in PHASE_AGENTS;
+}
+
+interface GenerationStageProps {
+  phase: StagePhase;
+  note: string;
+  total: number | null;
+  emittedCount: number;
+  elapsedMs: number;
+  reduce: boolean;
+  className?: string;
+}
+
+/**
+ * The "Paige presence" — what the canvas shows BEFORE any real block has painted. This
+ * replaces the old flat 3-box shimmer with a premium, staged visual: an animated
+ * PaigeMark (the ring orbits, the orb breathes, the halo pulses, the spark drifts — all
+ * CSS/SVG, gated by `reduce`), the current phase's real note blown up large, the agent
+ * on Paige's team who owns that phase, and a five-dot stepper mirroring BuildProgress's
+ * own phase order — so the rail and the canvas always tell the same story.
+ *
+ * Gold discipline (§6/§11): PaigeMark's own gradients are the ONLY gold here — the
+ * brand mark's inherent color, unchanged, just animated. Every surrounding surface
+ * (the ambient wash, the stepper, the text) is indigo/neutral, never gold-as-chrome.
+ */
+function GenerationStage({
+  phase,
+  note,
+  total,
+  emittedCount,
+  elapsedMs,
+  reduce,
+  className,
+}: GenerationStageProps) {
+  const rank = phaseRank(phase);
+  const seconds = Math.max(0, Math.round(elapsedMs / 1000));
+  const agent = PHASE_AGENTS[phase];
+
+  // Once the payload has landed but before the first block has painted, the section
+  // count is REAL — say so. Before that there's nothing to count yet, so we don't invent
+  // a number (same rule BuildProgress already follows for its own count line).
+  const detail =
+    phase === "composing" && total != null && emittedCount === 0
+      ? `Assembling ${total} section${total === 1 ? "" : "s"}…`
+      : null;
+
+  return (
+    <div
+      className={cn(
+        "relative flex min-h-[560px] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-border bg-card px-6 py-16 text-center",
+        className,
+      )}
+    >
+      {/* Ambient indigo field — purely atmospheric, never gold (§6/§11 gold discipline). */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(58% 46% at 50% 34%, hsl(var(--primary) / 0.12), transparent 72%)",
+        }}
+      />
+
+      <PaigeMark animated={!reduce} className="relative h-24 w-24 md:h-28 md:w-28" />
+
+      <div
+        key={phase}
+        aria-live="polite"
+        className={cn("relative mt-8 max-w-md space-y-2", !reduce && GP_FADE_RISE)}
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+          {agent} · Paige's team
+        </p>
+        <p className="font-display text-xl font-semibold text-foreground md:text-2xl">{note}</p>
+        {detail && <p className="text-sm text-muted-foreground">{detail}</p>}
+      </div>
+
+      {/* The same five stages BuildProgress narrates in the rail — mirrored here so the
+          canvas itself tells you what's happening, not just a side panel you might miss. */}
+      <div className="relative mt-8 flex items-center gap-2" aria-hidden>
+        {PHASE_ORDER.map((p, i) => {
+          const done = i < rank;
+          const active = i === rank;
+          return (
+            <span
+              key={p}
+              className={cn(
+                "h-1.5 rounded-full transition-[width,background-color] duration-300",
+                done ? "w-4 bg-success" : active ? "w-6 bg-primary" : "w-1.5 bg-border-strong",
+              )}
+            />
+          );
+        })}
+      </div>
+
+      <p className="relative mt-3 text-[11px] uppercase tracking-wide text-muted-foreground tabular-nums">
+        {seconds}s elapsed
+      </p>
+    </div>
+  );
+}
+
 export function GenerationExperience({
   generation,
   theme,
@@ -43,7 +159,8 @@ export function GenerationExperience({
   onRetry,
   className,
 }: GenerationExperienceProps) {
-  const { phase, emitted, total, error } = generation;
+  const reduce = useReducedMotion();
+  const { phase, emitted, total, error, note, elapsedMs } = generation;
 
   if (phase === "error") {
     return (
@@ -61,6 +178,24 @@ export function GenerationExperience({
           }
         />
       </div>
+    );
+  }
+
+  // Before the first REAL block has painted, show the "Paige presence" stage instead of a
+  // blur. The instant a real block lands, this yields to the real renderer below — real
+  // content always wins, never the other way around (§13).
+  if (phase !== "done" && emitted.length === 0) {
+    const stagePhase: StagePhase = isStagePhase(phase) ? phase : "brief";
+    return (
+      <GenerationStage
+        className={className}
+        phase={stagePhase}
+        note={note || GENERATION_NOTES[stagePhase]}
+        total={total}
+        emittedCount={emitted.length}
+        elapsedMs={elapsedMs}
+        reduce={!!reduce}
+      />
     );
   }
 
