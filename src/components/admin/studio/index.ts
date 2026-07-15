@@ -16,6 +16,7 @@ export { StudioShell, type StudioShellProps } from "./StudioShell";
 export { StudioTopBar, type StudioTopBarProps } from "./StudioTopBar";
 export { BuildProgress, type BuildProgressProps } from "./BuildProgress";
 export { PromptComposer, type PromptComposerProps, type IntentChip } from "./PromptComposer";
+export { ClarifyingQuestions, type ClarifyingQuestionsProps } from "./ClarifyingQuestions";
 export { GenerationExperience, type GenerationExperienceProps } from "./GenerationExperience";
 export { LivePreview, type LivePreviewProps } from "./LivePreview";
 export { PublishDialog, type PublishDialogProps, kebabSlug } from "./PublishDialog";

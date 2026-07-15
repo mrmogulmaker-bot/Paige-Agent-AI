@@ -4,7 +4,7 @@
 // an error, and the page under construction is defined in exactly ONE place. Types + two
 // frozen-by-convention constants only — no React, no IO, no copy (copy lives in
 // studio-copy.ts so the §2/§3 audit has a single surface to read).
-import type { GrowthBlock, GrowthPageTheme } from "@/lib/growth";
+import type { GrowthBlock, GrowthFormSchema, GrowthPageTheme } from "@/lib/growth";
 
 /**
  * The Studio's five outputs — one workspace, five creation modes. `page` is the
@@ -34,9 +34,10 @@ export interface ModeToolbarState {
   act?: StudioBarAction;
 }
 
-/** compose = blank brief · generating = a run is in flight · canvas = blocks on the board.
+/** compose = blank brief · clarifying = grounding the brief before a model call is spent ·
+ *  generating = a run is in flight · canvas = blocks on the board.
  *  (Page-mode only — the other modes hold their own local state.) */
-export type PageCanvasMode = "compose" | "generating" | "canvas";
+export type PageCanvasMode = "compose" | "clarifying" | "generating" | "canvas";
 
 export type DeviceFrame = "desktop" | "mobile";
 
@@ -126,6 +127,24 @@ export const EMPTY_GENERATION: GenerationState = {
   error: null,
 };
 
+/** One pre-generation grounding question (§15) — a fixed `id` so an answer keyed against it
+ *  survives being folded into the brief (or, for the questionnaire-fields question, sent on
+ *  its own as `questionnaire_answer`). */
+export interface ClarifyingQuestion {
+  id: string;
+  question: string;
+  placeholder?: string;
+}
+
+/** The clarifying step's own state: which questions are on screen (3, or 4 when the brief
+ *  signaled a real questionnaire) and what the operator has typed for each so far. */
+export interface ClarifyingState {
+  questions: ClarifyingQuestion[];
+  answers: Record<string, string>;
+}
+
+export const EMPTY_CLARIFYING: ClarifyingState = { questions: [], answers: {} };
+
 /** The state StudioShell owns. Nothing else holds studio state. */
 export interface StudioState {
   // — scope —
@@ -146,6 +165,10 @@ export interface StudioState {
   /** Resolved ONCE per tenant, by the SAME construction the published page uses. */
   brandFloor: GrowthPageTheme | null;
   seo: StudioSeoDraft | null;
+  /** Derived ONLY when the clarifying step collected a questionnaire_answer and the model's
+   *  proposal survived the server's cleanup with at least one field. Null = growth_page_upsert
+   *  falls back to its generic 3-field synthesis for this page's embedded_form. */
+  formSchema: GrowthFormSchema | null;
 
   // — the composer —
   /** The whole-page brief. PRESERVED across section-mode retargeting. */
@@ -153,6 +176,8 @@ export interface StudioState {
   /** The in-flight section instruction (section mode only). */
   instruction: string;
   mode: PageCanvasMode;
+  /** Populated only while mode === "clarifying" (or once it has been, until the next brief). */
+  clarifying: ClarifyingState;
   generation: GenerationState;
 
   // — the canvas —

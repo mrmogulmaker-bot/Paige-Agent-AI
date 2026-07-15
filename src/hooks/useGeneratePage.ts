@@ -61,7 +61,12 @@ export interface UseGeneratePageResult {
   isGenerating: boolean;
   /** Runs the seam. Resolves with the payload, or null on error/abort — NEVER throws.
    *  Calling it while a run is in flight aborts the previous one first. */
-  generate: (input: { brief: string; tone?: string }) => Promise<DraftPageResult | null>;
+  generate: (input: {
+    brief: string;
+    tone?: string;
+    /** The clarifying step's questionnaire answer (§15), passed straight through to draftPage(). */
+    questionnaireAnswer?: string;
+  }) => Promise<DraftPageResult | null>;
   /** Abort the in-flight run. Phase → "idle". Also fired on unmount. */
   cancel: () => void;
   /** Clear the run back to idle (after the shell has absorbed the result). */
@@ -161,7 +166,15 @@ export function useGeneratePage(tenantId: string | null): UseGeneratePageResult 
   );
 
   const generate = useCallback(
-    async ({ brief, tone }: { brief: string; tone?: string }): Promise<DraftPageResult | null> => {
+    async ({
+      brief,
+      tone,
+      questionnaireAnswer,
+    }: {
+      brief: string;
+      tone?: string;
+      questionnaireAnswer?: string;
+    }): Promise<DraftPageResult | null> => {
       const trimmed = brief.trim();
 
       if (!tenantId) {
@@ -200,6 +213,7 @@ export function useGeneratePage(tenantId: string | null): UseGeneratePageResult 
           tenantId,
           brief: trimmed,
           tone,
+          questionnaireAnswer,
           signal: controller.signal,
           onPhase: (phase, note) =>
             setGeneration((g) =>

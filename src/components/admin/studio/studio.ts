@@ -22,7 +22,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { GrowthBlock, GrowthFormSchema, GrowthPageTheme } from "@/lib/growth";
 import { GROWTH_BRAND_FLOOR, buildGrowthBrandFloor } from "@/components/growth/growth-theme";
-import { STUDIO_ERROR_COPY } from "./studio-copy";
+import { CLARIFYING_QUESTIONS, STUDIO_ERROR_COPY } from "./studio-copy";
 import type { StudioError, StudioErrorCode, StudioSeoDraft } from "./studio-types";
 
 // StudioShell and useGeneratePage read the error map through the seam, so a caller only ever
@@ -257,6 +257,57 @@ export async function loadBrandFloor(tenantSlug: string): Promise<GrowthPageThem
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// The clarifying gate (§15) — probe before Paige builds, never guess a placeholder-riddled
+// draft. Deterministic text heuristics only: word count + a signal regex, NOT an LLM job
+// (§7) — this never touches JobKind or the model router at all.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+const THIN_BRIEF_WORDS = 30;
+
+/** Loose signal that the operator wants a REAL questionnaire, not the generic name/email
+ *  default — matched as prose, since a brief is a sentence, not a keyword field. */
+export const FORM_SIGNAL_RE = /\b(questionnaire|survey|intake form|application (?:form|process)|qualify|screen(?:ing)?)\b/i;
+
+export interface ClarifyDecision {
+  needed: boolean;
+  /** Whether the brief itself asked for a real questionnaire — gates the 4th question. */
+  formSignal: boolean;
+}
+
+/** Whole-page briefs only — a section instruction never gates. */
+export function shouldClarify(brief: string): ClarifyDecision {
+  const trimmed = (brief ?? "").trim();
+  const wordCount = trimmed ? trimmed.split(/\s+/).length : 0;
+  const formSignal = FORM_SIGNAL_RE.test(trimmed);
+  return { needed: wordCount < THIN_BRIEF_WORDS || formSignal, formSignal };
+}
+
+/**
+ * Fold the offer/audience/action answers into the brief as prose. The questionnaire-fields
+ * answer is deliberately NOT folded in here — it travels separately as `questionnaireAnswer`
+ * so the model reads it once, in its own turn (§4).
+ *
+ * An empty `answers` map — the gate was skipped, or a fresh page has never populated it —
+ * returns `brief` UNCHANGED: the exact string `generate({ brief })` received before this
+ * feature existed. Zero behavior change on the happy path for an already-good brief.
+ */
+const CLARIFYING_FOLD_LABEL: Record<string, string> = {
+  offer: "Offer & result",
+  audience: "Audience",
+  action: "Action",
+};
+
+export function composeBrief(brief: string, answers: Record<string, string>): string {
+  const extra = CLARIFYING_QUESTIONS.map((q) => {
+    const answer = (answers[q.id] ?? "").trim();
+    if (!answer) return "";
+    const label = CLARIFYING_FOLD_LABEL[q.id];
+    return label ? `${label}: ${answer}` : answer;
+  }).filter(Boolean);
+  return extra.length > 0 ? `${brief.trim()}\n\n${extra.join("\n")}` : brief;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // Generate — supabase/functions/growth-page-draft
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -264,6 +315,10 @@ export interface DraftPageInput {
   tenantId: string;
   brief: string;
   tone?: string;
+  /** The operator's own free-text answer to "what should the questionnaire ask" (§15),
+   *  collected by the clarifying step. Sent through untouched — the server derives a real
+   *  form_schema_json from it in the SAME model call, no new spend (§7). */
+  questionnaireAnswer?: string;
   signal?: AbortSignal;
   /** Fires as blocks materialize. TODAY: once, with the full validated array — the function
    *  returns a single JSON payload, there is no token stream. If it ever streams, this fires
@@ -277,12 +332,17 @@ export interface DraftPageResult {
   blocks: GrowthBlock[];
   theme: GrowthPageTheme;
   seo: StudioSeoDraft;
+  /** Present ONLY when questionnaireAnswer was supplied and the model's proposal survived
+   *  the server's cleanFormSchema() with at least one field. Absent => the save path falls
+   *  back to growth_page_upsert's generic 3-field synthesis, unchanged from today. */
+  formSchema?: GrowthFormSchema;
 }
 
 interface DraftPageBody {
   blocks?: unknown;
   theme_json?: GrowthPageTheme | null;
   seo_json?: { title?: unknown; description?: unknown } | null;
+  form_schema_json?: unknown;
 }
 
 function isBlockArray(value: unknown): value is GrowthBlock[] {
@@ -291,6 +351,19 @@ function isBlockArray(value: unknown): value is GrowthBlock[] {
     value.every(
       (b) => !!b && typeof b === "object" && typeof (b as { type?: unknown }).type === "string",
     )
+  );
+}
+
+/** Shallow shape-check only — same discipline as isBlockArray. The server's cleanFormSchema()
+ *  is what guarantees the deep shape; this just refuses to trust something that isn't even a
+ *  sections/fields tree before handing it to the canvas or the save seam. */
+function isFormSchemaShape(value: unknown): value is GrowthFormSchema {
+  if (!value || typeof value !== "object") return false;
+  const sections = (value as { sections?: unknown }).sections;
+  return (
+    Array.isArray(sections) &&
+    sections.length > 0 &&
+    sections.every((s) => !!s && typeof s === "object" && Array.isArray((s as { fields?: unknown }).fields))
   );
 }
 
@@ -325,7 +398,12 @@ export async function draftPage(input: DraftPageInput): Promise<DraftPageResult>
     res = await fetch(`${FUNCTIONS_URL}/growth-page-draft`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ brief, tone: input.tone, tenant_id: tenantId }),
+      body: JSON.stringify({
+        brief,
+        tone: input.tone,
+        tenant_id: tenantId,
+        questionnaire_answer: input.questionnaireAnswer,
+      }),
       signal,
     });
   } catch (err) {
@@ -372,9 +450,10 @@ export async function draftPage(input: DraftPageInput): Promise<DraftPageResult>
   // The theme is normalized exactly ONCE, here — so the object the canvas previews is the
   // object that gets persisted, and `font: null` can never clobber the tenant's brand font.
   const theme = normalizeGrowthTheme(body.theme_json);
+  const formSchema = isFormSchemaShape(body.form_schema_json) ? body.form_schema_json : undefined;
 
   onBlocks?.(blocks);
-  return { blocks, theme, seo };
+  return { blocks, theme, seo, ...(formSchema ? { formSchema } : {}) };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -391,6 +470,11 @@ export interface SavePageInput {
   blocks: GrowthBlock[];
   theme?: GrowthPageTheme | null;
   seo?: StudioSeoDraft | null;
+  /** The REAL questionnaire schema derived from the clarifying step's questionnaire_answer
+   *  (§4/§15). Replaces growth_page_upsert's generic 3-field synthesis for this page's
+   *  embedded_form on first save — never overwrites an operator's later manual edit
+   *  (ON CONFLICT DO NOTHING on growth_forms, server-side). Omit/null on every other save. */
+  formSchema?: GrowthFormSchema | null;
 }
 
 export interface SavedPage {
@@ -431,6 +515,7 @@ export async function savePageDraft(input: SavePageInput): Promise<SavedPage> {
       p_theme_json: themeJson,
       p_seo_json: seoJson,
       p_id: input.pageId ?? null,
+      p_form_schema_json: input.formSchema ?? null,
     },
     "SAVE_FAILED",
   );
