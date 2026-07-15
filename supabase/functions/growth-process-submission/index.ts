@@ -106,6 +106,26 @@ function extractIdentity(payload: Record<string, unknown>, schema: any): Identit
   return id;
 }
 
+// -- Custom-field extraction: fields declare maps_to like "custom.t_shirt_size" (the extension
+// this migration adds to the same allowlist growth_form_upsert enforces). Collected separately
+// from identity because these write to client_custom_field_values, not clients columns, and an
+// unknown/archived key is silently skipped server-side (client_custom_fields_upsert RPC) rather
+// than failing the submission (§13 — one bad key never blocks the rest of a real answer).
+function extractCustomFields(payload: Record<string, unknown>, schema: any): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const sections = Array.isArray(schema?.sections) ? schema.sections : [];
+  for (const sec of sections) {
+    for (const f of (Array.isArray(sec?.fields) ? sec.fields : [])) {
+      const mapsTo = typeof f?.maps_to === "string" ? f.maps_to : null;
+      if (!mapsTo?.startsWith("custom.") || f?.key == null) continue;
+      const key = mapsTo.slice("custom.".length);
+      const raw = payload[f.key];
+      if (key && raw !== undefined && raw !== null && raw !== "") out[key] = raw;
+    }
+  }
+  return out;
+}
+
 type ExecOutcome = { status: "done" | "error"; result: Record<string, unknown>; error?: string };
 
 Deno.serve(async (req) => {
@@ -337,48 +357,70 @@ async function runExecutor(
   const { admin, tenantId, submissionId, form, payload } = ctx;
 
   switch (p.executor) {
-    // -- contact_upsert: resolve, else create; then pin the submission's contact_id. --
+    // -- contact_upsert: resolve, else create; then pin the submission's contact_id. Also writes
+    // any custom.<key>-mapped answers onto the resolved contact, whichever path found it (§13 —
+    // an already-linked contact still gets its new answers, not just a freshly-created one). --
     case "contact_upsert": {
-      if (ctx.contactId) {
-        return { status: "done", result: { contact_id: ctx.contactId, note: "already_linked" } };
-      }
-      const idn = extractIdentity(payload, form.schema_json);
-      if (!idn.email && !idn.phone) {
-        return { status: "done", result: { note: "no_identity_to_resolve" } };
-      }
-      // Resolve an existing tenant contact first (service path: p_tenant used directly).
-      const { data: resolved } = await admin.rpc("resolve_contact_id", {
-        p_tenant: tenantId, p_phone: idn.phone, p_email: idn.email, p_user_id: null,
-      });
-      let contactId = s(resolved);
-      if (!contactId) {
-        // Create via the audited RPC seam (S10). p_created_by threads the form's verified
-        // operator so the admin/coach role gate and NOT-NULL created_by are satisfied.
-        const { data: created, error: createErr } = await admin.rpc("create_contact", {
-          p_first_name: idn.firstName ?? "New",
-          p_last_name: idn.lastName ?? null,
-          p_email: idn.email,
-          p_phone: idn.phone,
-          p_entity_name: idn.entityName,
-          p_title: idn.title,
-          p_lifecycle_stage: "lead",
-          p_source: "paige_form",
-          p_tags: [],
-          p_primary_offer: null,
-          p_notes: null,
-          p_assigned_coach_user_id: null,
-          p_tenant_id: tenantId,
-          p_created_by: form.created_by ?? null,
-        });
-        if (createErr || !created) {
-          return { status: "error", result: {}, error: `create_contact_failed: ${createErr?.message ?? "no id returned"}` };
+      let contactId = ctx.contactId;
+      let note: string | undefined;
+      if (contactId) {
+        note = "already_linked";
+      } else {
+        const idn = extractIdentity(payload, form.schema_json);
+        if (!idn.email && !idn.phone) {
+          return { status: "done", result: { note: "no_identity_to_resolve" } };
         }
-        contactId = s(created);
+        // Resolve an existing tenant contact first (service path: p_tenant used directly).
+        const { data: resolved } = await admin.rpc("resolve_contact_id", {
+          p_tenant: tenantId, p_phone: idn.phone, p_email: idn.email, p_user_id: null,
+        });
+        contactId = s(resolved);
+        if (!contactId) {
+          // Create via the audited RPC seam (S10). p_created_by threads the form's verified
+          // operator so the admin/coach role gate and NOT-NULL created_by are satisfied.
+          const { data: created, error: createErr } = await admin.rpc("create_contact", {
+            p_first_name: idn.firstName ?? "New",
+            p_last_name: idn.lastName ?? null,
+            p_email: idn.email,
+            p_phone: idn.phone,
+            p_entity_name: idn.entityName,
+            p_title: idn.title,
+            p_lifecycle_stage: "lead",
+            p_source: "paige_form",
+            p_tags: [],
+            p_primary_offer: null,
+            p_notes: null,
+            p_assigned_coach_user_id: null,
+            p_tenant_id: tenantId,
+            p_created_by: form.created_by ?? null,
+          });
+          if (createErr || !created) {
+            return { status: "error", result: {}, error: `create_contact_failed: ${createErr?.message ?? "no id returned"}` };
+          }
+          contactId = s(created);
+        }
+        if (!contactId) return { status: "error", result: {}, error: "contact_unresolved" };
+        ctx.setContactId(contactId);
+        await admin.from("growth_form_submissions").update({ contact_id: contactId }).eq("id", submissionId);
       }
-      if (!contactId) return { status: "error", result: {}, error: "contact_unresolved" };
-      ctx.setContactId(contactId);
-      await admin.from("growth_form_submissions").update({ contact_id: contactId }).eq("id", submissionId);
-      return { status: "done", result: { contact_id: contactId } };
+
+      let customFieldsError: string | undefined;
+      const customValues = extractCustomFields(payload, form.schema_json);
+      if (Object.keys(customValues).length > 0) {
+        const { error: cfErr } = await admin.rpc("client_custom_fields_upsert", {
+          p_client_id: contactId, p_tenant_id: tenantId, p_values: customValues,
+        });
+        if (cfErr) customFieldsError = cfErr.message;
+      }
+
+      return {
+        status: "done",
+        result: {
+          contact_id: contactId,
+          ...(note ? { note } : {}),
+          ...(customFieldsError ? { custom_fields_error: customFieldsError } : {}),
+        },
+      };
     }
 
     // -- pipeline_attach: create/advance a tenant-OWNED deal on the form's pipeline/stage. --
