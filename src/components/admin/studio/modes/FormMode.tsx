@@ -7,20 +7,45 @@
 //
 // Templates are the §2/§9-clean platform set from src/lib/growth-templates.ts — shared
 // with the Forms library, one copy, no drift.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SectionCard, FilterChip } from "@/components/ui/page";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
-import type { GrowthFieldType } from "@/lib/growth";
+import type { GrowthFieldType, GrowthFormSchema } from "@/lib/growth";
 import { FORM_TEMPLATES, formTemplateSchema, growthSeamMessage } from "@/lib/growth-templates";
+import { listCustomFieldDefinitions, type CustomFieldDefinition } from "@/lib/customFields";
 import { saveForm, isStudioError } from "../studio";
 import { kebabSlug } from "../PublishDialog";
 import { StudioRailHeading, StudioSplit } from "../StudioChrome";
 import { MODE_RAIL } from "../studio-copy";
 import type { ModeToolbarState } from "../studio-types";
 import { LabelChip } from "./content-shared";
+
+/** The fixed, always-available "maps to" targets — every clients.* column an operator can
+ *  route a form answer into. Custom fields (tenant-authored) are appended below these,
+ *  fetched per-tenant so the picker always reflects what this workspace has actually defined. */
+const IDENTITY_MAP_OPTIONS: { value: string; label: string }[] = [
+  { value: "clients.email", label: "Email" },
+  { value: "clients.first_name", label: "First name" },
+  { value: "clients.last_name", label: "Last name" },
+  { value: "clients.phone", label: "Phone" },
+  { value: "clients.entity_name", label: "Company / entity" },
+  { value: "clients.title", label: "Title" },
+];
+
+/** A human-readable fallback for a maps_to path this picker doesn't otherwise offer (e.g. a
+ *  template-seeded "businesses.legal_name") — so an existing mapping never silently vanishes
+ *  from view just because the operator opened this picker (§13: truthful, never a hoped-for
+ *  state). */
+function formatUnlistedMapsTo(path: string): string {
+  const [object, ...rest] = path.split(".");
+  return `${object} · ${rest.join(".") || "—"}`;
+}
 
 /** Human words for every field type — the operator never reads a backend type string (§11). */
 const FIELD_TYPE_LABEL: Record<GrowthFieldType, string> = {
@@ -53,9 +78,47 @@ export function FormMode({ tenantId, onToolbar, onCreated, className }: FormMode
   const [template, setTemplate] = useState("discovery-call");
   const [busy, setBusy] = useState(false);
 
-  const schema = useMemo(() => formTemplateSchema(template), [template]);
+  // The schema starts from the static template but is real, mutable component state — the
+  // operator's "maps to" choices below edit THIS object, and it's what flows into saveForm()
+  // on Create. Re-seeded from the template whenever the operator switches templates.
+  const [schema, setSchema] = useState<GrowthFormSchema>(() => formTemplateSchema(template));
+  useEffect(() => { setSchema(formTemplateSchema(template)); }, [template]);
+
+  // Every ACTIVE custom field definition for this tenant, so the "maps to" picker can offer
+  // `custom.<key>` targets alongside the fixed clients.* identity columns (Task: FormMode
+  // maps_to picker). Tenant-scoped (§9) — refetches whenever the workspace changes.
+  const [customFieldDefs, setCustomFieldDefs] = useState<CustomFieldDefinition[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadCustomFields() {
+      if (!tenantId) { setCustomFieldDefs([]); return; }
+      try {
+        const defs = await listCustomFieldDefinitions(tenantId);
+        if (!cancelled) setCustomFieldDefs(defs);
+      } catch (e) {
+        if (!cancelled) console.warn("FormMode: custom field definitions not loaded for maps_to picker:", e);
+      }
+    }
+    void loadCustomFields();
+    return () => { cancelled = true; };
+  }, [tenantId]);
+
   const selected = FORM_TEMPLATES.find((t) => t.key === template);
   const fieldCount = schema.sections.reduce((n, s) => n + s.fields.length, 0);
+
+  /** Real, load-bearing edit — reassigns which record path a form answer writes into. */
+  const setFieldMapsTo = useCallback((sectionIndex: number, fieldKey: string, mapsTo: string | undefined) => {
+    setSchema((prev) => ({
+      ...prev,
+      sections: prev.sections.map((section, si) => {
+        if (si !== sectionIndex) return section;
+        return {
+          ...section,
+          fields: section.fields.map((f) => (f.key === fieldKey ? { ...f, maps_to: mapsTo } : f)),
+        };
+      }),
+    }));
+  }, []);
 
   const setNameAndSlug = (next: string) => {
     setName(next);
@@ -150,18 +213,61 @@ export function FormMode({ tenantId, onToolbar, onCreated, className }: FormMode
           {schema.sections.map((section, si) => (
             <SectionCard key={si} title={section.title} description={section.description} numbered={si + 1}>
               <ul className="space-y-2">
-                {section.fields.map((field) => (
-                  <li
-                    key={field.key}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
-                  >
-                    <span className="min-w-0 truncate text-sm text-foreground">
-                      {field.label}
-                      {field.required && <span className="ml-1.5 text-xs text-muted-foreground">· required</span>}
-                    </span>
-                    <LabelChip>{FIELD_TYPE_LABEL[field.type]}</LabelChip>
-                  </li>
-                ))}
+                {section.fields.map((field) => {
+                  const currentMapsTo = field.maps_to ?? "__none";
+                  const knownValues = new Set<string>([
+                    "__none",
+                    ...IDENTITY_MAP_OPTIONS.map((o) => o.value),
+                    ...customFieldDefs.map((d) => `custom.${d.key}`),
+                  ]);
+                  const isUnlisted = currentMapsTo !== "__none" && !knownValues.has(currentMapsTo);
+                  return (
+                    <li
+                      key={field.key}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2"
+                    >
+                      <span className="min-w-0 truncate text-sm text-foreground">
+                        {field.label}
+                        {field.required && <span className="ml-1.5 text-xs text-muted-foreground">· required</span>}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <LabelChip>{FIELD_TYPE_LABEL[field.type]}</LabelChip>
+                        <span className="text-[11px] text-muted-foreground">Maps to</span>
+                        <Select
+                          value={currentMapsTo}
+                          onValueChange={(v) => setFieldMapsTo(si, field.key, v === "__none" ? undefined : v)}
+                        >
+                          <SelectTrigger className="h-8 w-[180px] text-xs">
+                            <SelectValue placeholder="Don't map" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none">Don't map</SelectItem>
+                            {isUnlisted && (
+                              <SelectGroup>
+                                <SelectLabel>Current mapping</SelectLabel>
+                                <SelectItem value={currentMapsTo}>{formatUnlistedMapsTo(currentMapsTo)}</SelectItem>
+                              </SelectGroup>
+                            )}
+                            <SelectGroup>
+                              <SelectLabel>Contact fields</SelectLabel>
+                              {IDENTITY_MAP_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                              ))}
+                            </SelectGroup>
+                            {customFieldDefs.length > 0 && (
+                              <SelectGroup>
+                                <SelectLabel>Custom fields</SelectLabel>
+                                {customFieldDefs.map((def) => (
+                                  <SelectItem key={def.id} value={`custom.${def.key}`}>{def.label}</SelectItem>
+                                ))}
+                              </SelectGroup>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </SectionCard>
           ))}

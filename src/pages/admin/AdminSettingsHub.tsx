@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PageShell, PageHeader, SectionCard, StatePill } from "@/components/ui/page";
-import { Mail, Bell, Shield, ShieldCheck, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, Radio, Plug2, Building2, Store, Globe, Plug, Bot } from "lucide-react";
+import { Mail, Bell, Shield, ShieldCheck, Activity, Settings as SettingsIcon, ExternalLink, KanbanSquare, ListChecks, Radio, Plug2, Building2, Store, Globe, Plug, Bot } from "lucide-react";
 import { Link } from "react-router-dom";
 // Integrations & calendar connectors consolidated to the one home at
 // /admin/integrations (Automation → Integrations). The former Settings
@@ -125,6 +125,9 @@ export function AdminSettingsHub() {
           <TabsTrigger value="pipelines" className="gap-2">
             <KanbanSquare className="w-4 h-4" /> Pipelines
           </TabsTrigger>
+          <TabsTrigger value="custom-fields" className="gap-2">
+            <ListChecks className="w-4 h-4" /> Custom Fields
+          </TabsTrigger>
           <TabsTrigger value="paige" className="gap-2">
             <Bot className="w-4 h-4" /> Paige Autonomy
           </TabsTrigger>
@@ -185,6 +188,21 @@ export function AdminSettingsHub() {
                 </Link>
               </Button>
             </div>
+          </SectionCard>
+        </TabsContent>
+
+        <TabsContent value="custom-fields" className="space-y-4">
+          <SectionCard
+            icon={ListChecks}
+            title="Custom Fields"
+            description="Define your own fields for contacts — cohort, T-shirt size, whatever your practice tracks — and Paige-built forms can capture them directly."
+          >
+            <Button asChild>
+              <Link to="/admin/settings/custom-fields">
+                Manage custom fields
+                <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+              </Link>
+            </Button>
           </SectionCard>
         </TabsContent>
 
