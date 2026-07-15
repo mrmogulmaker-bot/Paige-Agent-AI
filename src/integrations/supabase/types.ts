@@ -282,6 +282,59 @@ export type Database = {
           },
         ]
       }
+      agency_team_members: {
+        Row: {
+          agency_role: string
+          agency_tenant_id: string
+          created_at: string
+          email: string | null
+          id: string
+          invited_at: string | null
+          invited_by: string | null
+          joined_at: string | null
+          scoped_subaccounts: string[]
+          status: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          agency_role: string
+          agency_tenant_id: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          invited_at?: string | null
+          invited_by?: string | null
+          joined_at?: string | null
+          scoped_subaccounts?: string[]
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          agency_role?: string
+          agency_tenant_id?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          invited_at?: string | null
+          invited_by?: string | null
+          joined_at?: string | null
+          scoped_subaccounts?: string[]
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agency_team_members_agency_tenant_id_fkey"
+            columns: ["agency_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agreement_templates: {
         Row: {
           body_markdown: string
@@ -564,6 +617,41 @@ export type Database = {
             columns: ["business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      booking_notifications_sent: {
+        Row: {
+          booking_id: string
+          id: string
+          notif_key: string
+          recipient_email: string | null
+          sent_at: string
+          status: string
+        }
+        Insert: {
+          booking_id: string
+          id?: string
+          notif_key: string
+          recipient_email?: string | null
+          sent_at?: string
+          status?: string
+        }
+        Update: {
+          booking_id?: string
+          id?: string
+          notif_key?: string
+          recipient_email?: string | null
+          sent_at?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_notifications_sent_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "internal_bookings"
             referencedColumns: ["id"]
           },
         ]
@@ -1960,6 +2048,7 @@ export type Database = {
           registered_agent_state: string | null
           revenue_band: string | null
           state_of_formation: string | null
+          tenant_id: string | null
           updated_at: string | null
           website: string | null
         }
@@ -2039,6 +2128,7 @@ export type Database = {
           registered_agent_state?: string | null
           revenue_band?: string | null
           state_of_formation?: string | null
+          tenant_id?: string | null
           updated_at?: string | null
           website?: string | null
         }
@@ -2118,6 +2208,7 @@ export type Database = {
           registered_agent_state?: string | null
           revenue_band?: string | null
           state_of_formation?: string | null
+          tenant_id?: string | null
           updated_at?: string | null
           website?: string | null
         }
@@ -2127,6 +2218,221 @@ export type Database = {
             columns: ["parent_business_id"]
             isOneToOne: false
             referencedRelation: "businesses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "businesses_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendar_groups: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          enabled: boolean
+          id: string
+          name: string
+          slug: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          name: string
+          slug: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          name?: string
+          slug?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_groups_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendar_hosts: {
+        Row: {
+          availability_json: Json | null
+          calendar_id: string
+          created_at: string
+          priority: number
+          timezone: string | null
+          user_id: string
+        }
+        Insert: {
+          availability_json?: Json | null
+          calendar_id: string
+          created_at?: string
+          priority?: number
+          timezone?: string | null
+          user_id: string
+        }
+        Update: {
+          availability_json?: Json | null
+          calendar_id?: string
+          created_at?: string
+          priority?: number
+          timezone?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_hosts_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "calendars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      calendars: {
+        Row: {
+          accent: string | null
+          appointment_types: Json
+          assignment_strategy: Json
+          availability_json: Json | null
+          booking_horizon_days: number
+          buffer_after_min: number
+          buffer_before_min: number
+          capacity: number
+          color: string | null
+          cover_url: string | null
+          created_at: string
+          created_by: string | null
+          date_overrides: Json
+          description: string | null
+          duration_min: number
+          enabled: boolean
+          group_id: string | null
+          id: string
+          intake_questions: Json
+          location_options: Json | null
+          location_type: string
+          location_value: string | null
+          logo_url: string | null
+          min_notice_min: number
+          notify_config: Json
+          redirect_url: string | null
+          show_company_name: boolean
+          slug: string
+          subtitle: string | null
+          tenant_id: string | null
+          theme: string
+          timezone: string
+          title: string | null
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          accent?: string | null
+          appointment_types?: Json
+          assignment_strategy?: Json
+          availability_json?: Json | null
+          booking_horizon_days?: number
+          buffer_after_min?: number
+          buffer_before_min?: number
+          capacity?: number
+          color?: string | null
+          cover_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          date_overrides?: Json
+          description?: string | null
+          duration_min?: number
+          enabled?: boolean
+          group_id?: string | null
+          id?: string
+          intake_questions?: Json
+          location_options?: Json | null
+          location_type?: string
+          location_value?: string | null
+          logo_url?: string | null
+          min_notice_min?: number
+          notify_config?: Json
+          redirect_url?: string | null
+          show_company_name?: boolean
+          slug: string
+          subtitle?: string | null
+          tenant_id?: string | null
+          theme?: string
+          timezone?: string
+          title?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          accent?: string | null
+          appointment_types?: Json
+          assignment_strategy?: Json
+          availability_json?: Json | null
+          booking_horizon_days?: number
+          buffer_after_min?: number
+          buffer_before_min?: number
+          capacity?: number
+          color?: string | null
+          cover_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          date_overrides?: Json
+          description?: string | null
+          duration_min?: number
+          enabled?: boolean
+          group_id?: string | null
+          id?: string
+          intake_questions?: Json
+          location_options?: Json | null
+          location_type?: string
+          location_value?: string | null
+          logo_url?: string | null
+          min_notice_min?: number
+          notify_config?: Json
+          redirect_url?: string | null
+          show_company_name?: boolean
+          slug?: string
+          subtitle?: string | null
+          tenant_id?: string | null
+          theme?: string
+          timezone?: string
+          title?: string | null
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendars_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "calendar_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendars_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -2210,6 +2516,79 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      client_custom_field_values: {
+        Row: {
+          client_id: string
+          created_at: string
+          field_definition_id: string
+          id: string
+          tenant_id: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          field_definition_id: string
+          id?: string
+          tenant_id: string
+          updated_at?: string
+          value?: Json
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          field_definition_id?: string
+          id?: string
+          tenant_id?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_custom_field_values_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_custom_field_values_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "client_custom_field_values_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "client_custom_field_values_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_custom_field_values_field_definition_id_fkey"
+            columns: ["field_definition_id"]
+            isOneToOne: false
+            referencedRelation: "custom_field_definitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_custom_field_values_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       client_files: {
         Row: {
@@ -4134,6 +4513,65 @@ export type Database = {
           },
         ]
       }
+      custom_field_definitions: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          field_type: string
+          help_text: string | null
+          id: string
+          key: string
+          label: string
+          object_type: string
+          options: Json | null
+          position: number
+          required: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          field_type: string
+          help_text?: string | null
+          id?: string
+          key: string
+          label: string
+          object_type?: string
+          options?: Json | null
+          position?: number
+          required?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          field_type?: string
+          help_text?: string | null
+          id?: string
+          key?: string
+          label?: string
+          object_type?: string
+          options?: Json | null
+          position?: number
+          required?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "custom_field_definitions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       data_deletion_requests: {
         Row: {
           completed_at: string | null
@@ -4602,38 +5040,47 @@ export type Database = {
       }
       email_send_log: {
         Row: {
+          actor_tier: string | null
           created_at: string
           error_message: string | null
           id: string
           message_id: string | null
           metadata: Json | null
+          origin_account_id: string | null
           recipient_email: string
           sender_account: string | null
           status: string
+          target_tier: string | null
           template_name: string
           tenant_id: string | null
         }
         Insert: {
+          actor_tier?: string | null
           created_at?: string
           error_message?: string | null
           id?: string
           message_id?: string | null
           metadata?: Json | null
+          origin_account_id?: string | null
           recipient_email: string
           sender_account?: string | null
           status: string
+          target_tier?: string | null
           template_name: string
           tenant_id?: string | null
         }
         Update: {
+          actor_tier?: string | null
           created_at?: string
           error_message?: string | null
           id?: string
           message_id?: string | null
           metadata?: Json | null
+          origin_account_id?: string | null
           recipient_email?: string
           sender_account?: string | null
           status?: string
+          target_tier?: string | null
           template_name?: string
           tenant_id?: string | null
         }
@@ -5799,6 +6246,36 @@ export type Database = {
         }
         Relationships: []
       }
+      growth_automation_targets: {
+        Row: {
+          config_schema: Json
+          description: string
+          display_order: number
+          enabled: boolean
+          executor: string
+          label: string
+          slug: string
+        }
+        Insert: {
+          config_schema?: Json
+          description: string
+          display_order?: number
+          enabled?: boolean
+          executor: string
+          label: string
+          slug: string
+        }
+        Update: {
+          config_schema?: Json
+          description?: string
+          display_order?: number
+          enabled?: boolean
+          executor?: string
+          label?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       growth_external_sources: {
         Row: {
           active: boolean
@@ -5859,8 +6336,74 @@ export type Database = {
           },
         ]
       }
+      growth_form_automations: {
+        Row: {
+          autonomy_lane: string | null
+          config_json: Json
+          created_at: string | null
+          created_by: string | null
+          enabled: boolean
+          form_id: string
+          id: string
+          order_index: number
+          target_slug: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          autonomy_lane?: string | null
+          config_json?: Json
+          created_at?: string | null
+          created_by?: string | null
+          enabled?: boolean
+          form_id: string
+          id?: string
+          order_index?: number
+          target_slug: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          autonomy_lane?: string | null
+          config_json?: Json
+          created_at?: string | null
+          created_by?: string | null
+          enabled?: boolean
+          form_id?: string
+          id?: string
+          order_index?: number
+          target_slug?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_form_automations_form_id_fkey"
+            columns: ["form_id"]
+            isOneToOne: false
+            referencedRelation: "growth_forms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_form_automations_target_slug_fkey"
+            columns: ["target_slug"]
+            isOneToOne: false
+            referencedRelation: "growth_automation_targets"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "growth_form_automations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       growth_form_submissions: {
         Row: {
+          attempts: number
+          claimed_at: string | null
           consent_json: Json
           contact_id: string | null
           created_at: string
@@ -5870,9 +6413,11 @@ export type Database = {
           funnel_session_id: string | null
           id: string
           ip: string | null
+          last_error: string | null
           payload_json: Json
           processed: boolean
           processed_at: string | null
+          processing_state: string
           referrer: string | null
           source: string
           tenant_id: string
@@ -5880,6 +6425,8 @@ export type Database = {
           utm_json: Json
         }
         Insert: {
+          attempts?: number
+          claimed_at?: string | null
           consent_json?: Json
           contact_id?: string | null
           created_at?: string
@@ -5889,9 +6436,11 @@ export type Database = {
           funnel_session_id?: string | null
           id?: string
           ip?: string | null
+          last_error?: string | null
           payload_json?: Json
           processed?: boolean
           processed_at?: string | null
+          processing_state?: string
           referrer?: string | null
           source?: string
           tenant_id: string
@@ -5899,6 +6448,8 @@ export type Database = {
           utm_json?: Json
         }
         Update: {
+          attempts?: number
+          claimed_at?: string | null
           consent_json?: Json
           contact_id?: string | null
           created_at?: string
@@ -5908,9 +6459,11 @@ export type Database = {
           funnel_session_id?: string | null
           id?: string
           ip?: string | null
+          last_error?: string | null
           payload_json?: Json
           processed?: boolean
           processed_at?: string | null
+          processing_state?: string
           referrer?: string | null
           source?: string
           tenant_id?: string
@@ -6023,6 +6576,63 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "growth_forms_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      growth_funnel_sessions: {
+        Row: {
+          completed: boolean
+          created_at: string
+          current_step: number
+          funnel_id: string
+          id: string
+          referrer: string | null
+          session_token: string
+          tenant_id: string
+          updated_at: string
+          user_agent: string | null
+          utm_json: Json
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          current_step?: number
+          funnel_id: string
+          id?: string
+          referrer?: string | null
+          session_token: string
+          tenant_id: string
+          updated_at?: string
+          user_agent?: string | null
+          utm_json?: Json
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          current_step?: number
+          funnel_id?: string
+          id?: string
+          referrer?: string | null
+          session_token?: string
+          tenant_id?: string
+          updated_at?: string
+          user_agent?: string | null
+          utm_json?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_funnel_sessions_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "growth_funnels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_funnel_sessions_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -6167,6 +6777,9 @@ export type Database = {
           blocks_json: Json
           created_at: string
           created_by: string | null
+          draft_blocks_json: Json | null
+          draft_seo_json: Json | null
+          draft_theme_json: Json | null
           id: string
           og_image_url: string | null
           published_at: string | null
@@ -6183,6 +6796,9 @@ export type Database = {
           blocks_json?: Json
           created_at?: string
           created_by?: string | null
+          draft_blocks_json?: Json | null
+          draft_seo_json?: Json | null
+          draft_theme_json?: Json | null
           id?: string
           og_image_url?: string | null
           published_at?: string | null
@@ -6199,6 +6815,9 @@ export type Database = {
           blocks_json?: Json
           created_at?: string
           created_by?: string | null
+          draft_blocks_json?: Json | null
+          draft_seo_json?: Json | null
+          draft_theme_json?: Json | null
           id?: string
           og_image_url?: string | null
           published_at?: string | null
@@ -6221,11 +6840,75 @@ export type Database = {
           },
         ]
       }
+      growth_submission_dispatches: {
+        Row: {
+          automation_id: string
+          created_at: string
+          error: string | null
+          id: string
+          result: Json
+          status: string
+          submission_id: string
+          target_slug: string
+          tenant_id: string
+        }
+        Insert: {
+          automation_id: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          result?: Json
+          status?: string
+          submission_id: string
+          target_slug: string
+          tenant_id: string
+        }
+        Update: {
+          automation_id?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          result?: Json
+          status?: string
+          submission_id?: string
+          target_slug?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "growth_submission_dispatches_automation_id_fkey"
+            columns: ["automation_id"]
+            isOneToOne: false
+            referencedRelation: "growth_form_automations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_submission_dispatches_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "growth_form_submissions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "growth_submission_dispatches_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       internal_bookings: {
         Row: {
+          appointment_type: Json | null
+          booking_kind: string
+          calendar_id: string | null
           cancellation_reason: string | null
           cancelled_at: string | null
           cancelled_by: string | null
+          capacity: number | null
+          class_session_id: string | null
+          collective_group_id: string | null
           contact_id: string | null
           created_at: string
           end_at: string
@@ -6236,9 +6919,15 @@ export type Database = {
           guest_phone: string | null
           host_user_id: string
           id: string
+          intake_answers: Json | null
           location: string | null
+          location_type: string | null
+          location_value: string | null
+          manage_token_version: number
           meeting_link: string | null
+          meeting_url: string | null
           notes: string | null
+          reminder_state: Json
           source: string
           start_at: string
           status: string
@@ -6246,11 +6935,18 @@ export type Database = {
           timezone: string
           title: string
           updated_at: string
+          zoom_meeting_id: string | null
         }
         Insert: {
+          appointment_type?: Json | null
+          booking_kind?: string
+          calendar_id?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
+          capacity?: number | null
+          class_session_id?: string | null
+          collective_group_id?: string | null
           contact_id?: string | null
           created_at?: string
           end_at: string
@@ -6261,9 +6957,15 @@ export type Database = {
           guest_phone?: string | null
           host_user_id: string
           id?: string
+          intake_answers?: Json | null
           location?: string | null
+          location_type?: string | null
+          location_value?: string | null
+          manage_token_version?: number
           meeting_link?: string | null
+          meeting_url?: string | null
           notes?: string | null
+          reminder_state?: Json
           source?: string
           start_at: string
           status?: string
@@ -6271,11 +6973,18 @@ export type Database = {
           timezone?: string
           title: string
           updated_at?: string
+          zoom_meeting_id?: string | null
         }
         Update: {
+          appointment_type?: Json | null
+          booking_kind?: string
+          calendar_id?: string | null
           cancellation_reason?: string | null
           cancelled_at?: string | null
           cancelled_by?: string | null
+          capacity?: number | null
+          class_session_id?: string | null
+          collective_group_id?: string | null
           contact_id?: string | null
           created_at?: string
           end_at?: string
@@ -6286,9 +6995,15 @@ export type Database = {
           guest_phone?: string | null
           host_user_id?: string
           id?: string
+          intake_answers?: Json | null
           location?: string | null
+          location_type?: string | null
+          location_value?: string | null
+          manage_token_version?: number
           meeting_link?: string | null
+          meeting_url?: string | null
           notes?: string | null
+          reminder_state?: Json
           source?: string
           start_at?: string
           status?: string
@@ -6296,8 +7011,23 @@ export type Database = {
           timezone?: string
           title?: string
           updated_at?: string
+          zoom_meeting_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "internal_bookings_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "calendars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_bookings_class_session_id_fkey"
+            columns: ["class_session_id"]
+            isOneToOne: false
+            referencedRelation: "internal_bookings"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "internal_bookings_contact_id_fkey"
             columns: ["contact_id"]
@@ -6338,13 +7068,16 @@ export type Database = {
       invitations: {
         Row: {
           accepted_at: string | null
+          actor_tier: string | null
           created_at: string | null
           email: string
           expires_at: string
           id: string
           invited_by: string
           metadata: Json
+          origin_account_id: string | null
           role: Database["public"]["Enums"]["app_role"]
+          target_tier: string | null
           template_name: string | null
           tenant_id: string | null
           token: string | null
@@ -6352,13 +7085,16 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          actor_tier?: string | null
           created_at?: string | null
           email: string
           expires_at?: string
           id?: string
           invited_by: string
           metadata?: Json
+          origin_account_id?: string | null
           role?: Database["public"]["Enums"]["app_role"]
+          target_tier?: string | null
           template_name?: string | null
           tenant_id?: string | null
           token?: string | null
@@ -6366,13 +7102,16 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          actor_tier?: string | null
           created_at?: string | null
           email?: string
           expires_at?: string
           id?: string
           invited_by?: string
           metadata?: Json
+          origin_account_id?: string | null
           role?: Database["public"]["Enums"]["app_role"]
+          target_tier?: string | null
           template_name?: string | null
           tenant_id?: string | null
           token?: string | null
@@ -6905,9 +7644,11 @@ export type Database = {
           id: string
           is_deep_research: boolean
           market_commentary: string | null
+          provenance: string
           results: Json
           search_criteria: Json
           search_status: string
+          sources: Json
           updated_at: string
           user_id: string
         }
@@ -6917,9 +7658,11 @@ export type Database = {
           id?: string
           is_deep_research?: boolean
           market_commentary?: string | null
+          provenance?: string
           results?: Json
           search_criteria?: Json
           search_status?: string
+          sources?: Json
           updated_at?: string
           user_id: string
         }
@@ -6929,9 +7672,11 @@ export type Database = {
           id?: string
           is_deep_research?: boolean
           market_commentary?: string | null
+          provenance?: string
           results?: Json
           search_criteria?: Json
           search_status?: string
+          sources?: Json
           updated_at?: string
           user_id?: string
         }
@@ -7022,6 +7767,497 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      marketing_content: {
+        Row: {
+          body: string | null
+          brief: string | null
+          channel: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          image_path: string | null
+          image_url: string | null
+          kind: string
+          meta: Json
+          size: string | null
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          brief?: string | null
+          channel?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_path?: string | null
+          image_url?: string | null
+          kind?: string
+          meta?: Json
+          size?: string | null
+          status?: string
+          tenant_id: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          brief?: string | null
+          channel?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_path?: string | null
+          image_url?: string | null
+          kind?: string
+          meta?: Json
+          size?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_content_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_install_bundle_links: {
+        Row: {
+          bundle_install_id: string
+          child_install_id: string
+          child_item_slug: string
+          linked_at: string
+          tenant_id: string
+        }
+        Insert: {
+          bundle_install_id: string
+          child_install_id: string
+          child_item_slug: string
+          linked_at?: string
+          tenant_id: string
+        }
+        Update: {
+          bundle_install_id?: string
+          child_install_id?: string
+          child_item_slug?: string
+          linked_at?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_install_bundle_links_bundle_install_id_fkey"
+            columns: ["bundle_install_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_installs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_install_bundle_links_child_install_id_fkey"
+            columns: ["child_install_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_installs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_install_ledger: {
+        Row: {
+          event_type: string
+          gross_cents: number
+          id: string
+          install_id: string | null
+          item_id: string
+          occurred_at: string
+          platform_fee_cents: number
+          stripe_ref: string | null
+          take_rate_bps: number
+          tenant_id: string
+          vendor_id: string
+          vendor_net_cents: number
+        }
+        Insert: {
+          event_type: string
+          gross_cents?: number
+          id?: string
+          install_id?: string | null
+          item_id: string
+          occurred_at?: string
+          platform_fee_cents?: number
+          stripe_ref?: string | null
+          take_rate_bps?: number
+          tenant_id: string
+          vendor_id: string
+          vendor_net_cents?: number
+        }
+        Update: {
+          event_type?: string
+          gross_cents?: number
+          id?: string
+          install_id?: string | null
+          item_id?: string
+          occurred_at?: string
+          platform_fee_cents?: number
+          stripe_ref?: string | null
+          take_rate_bps?: number
+          tenant_id?: string
+          vendor_id?: string
+          vendor_net_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_install_ledger_install_id_fkey"
+            columns: ["install_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_installs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_install_ledger_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_install_ledger_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_install_ledger_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_installs: {
+        Row: {
+          held_directly: boolean
+          id: string
+          installed_at: string
+          installed_by: string | null
+          installed_by_agent: string | null
+          item_id: string
+          seeded_refs: Json
+          service_subscription_id: string | null
+          status: string
+          tenant_id: string
+          uninstalled_at: string | null
+          version_id: string
+        }
+        Insert: {
+          held_directly?: boolean
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          installed_by_agent?: string | null
+          item_id: string
+          seeded_refs?: Json
+          service_subscription_id?: string | null
+          status?: string
+          tenant_id: string
+          uninstalled_at?: string | null
+          version_id: string
+        }
+        Update: {
+          held_directly?: boolean
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          installed_by_agent?: string | null
+          item_id?: string
+          seeded_refs?: Json
+          service_subscription_id?: string | null
+          status?: string
+          tenant_id?: string
+          uninstalled_at?: string | null
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_installs_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_installs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_installs_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_item_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_item_versions: {
+        Row: {
+          approved_at: string | null
+          changelog: string | null
+          code_ref: Json | null
+          created_at: string
+          created_by: string | null
+          deprecated_at: string | null
+          id: string
+          install_manifest: Json
+          item_id: string
+          payload_class: Database["public"]["Enums"]["marketplace_payload_class"]
+          published_at: string | null
+          review_proposal_id: string | null
+          reviewed_by: string | null
+          reviewer_notes: string | null
+          semver: string
+          status: Database["public"]["Enums"]["marketplace_version_status"]
+          submitted_at: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          changelog?: string | null
+          code_ref?: Json | null
+          created_at?: string
+          created_by?: string | null
+          deprecated_at?: string | null
+          id?: string
+          install_manifest?: Json
+          item_id: string
+          payload_class?: Database["public"]["Enums"]["marketplace_payload_class"]
+          published_at?: string | null
+          review_proposal_id?: string | null
+          reviewed_by?: string | null
+          reviewer_notes?: string | null
+          semver: string
+          status?: Database["public"]["Enums"]["marketplace_version_status"]
+          submitted_at?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          changelog?: string | null
+          code_ref?: Json | null
+          created_at?: string
+          created_by?: string | null
+          deprecated_at?: string | null
+          id?: string
+          install_manifest?: Json
+          item_id?: string
+          payload_class?: Database["public"]["Enums"]["marketplace_payload_class"]
+          published_at?: string | null
+          review_proposal_id?: string | null
+          reviewed_by?: string | null
+          reviewer_notes?: string | null
+          semver?: string
+          status?: Database["public"]["Enums"]["marketplace_version_status"]
+          submitted_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_item_versions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_items: {
+        Row: {
+          billing_period: string | null
+          category: string
+          created_at: string
+          current_version_id: string | null
+          default_for_new_tenants: boolean
+          description: string | null
+          featured: boolean
+          icon: string | null
+          id: string
+          install_count: number
+          is_finance: boolean
+          item_type: Database["public"]["Enums"]["marketplace_item_type"]
+          metadata: Json
+          name: string
+          origin: Database["public"]["Enums"]["marketplace_origin"]
+          price_cents: number
+          pricing_model: string
+          rating_avg: number | null
+          rating_count: number
+          scope: Database["public"]["Enums"]["marketplace_scope"]
+          serves: string
+          slug: string
+          status: Database["public"]["Enums"]["marketplace_item_status"]
+          tagline: string | null
+          take_rate_bps: number
+          updated_at: string
+          vendor_id: string
+          visible_to_agency_id: string | null
+          visible_to_tenant_id: string | null
+        }
+        Insert: {
+          billing_period?: string | null
+          category: string
+          created_at?: string
+          current_version_id?: string | null
+          default_for_new_tenants?: boolean
+          description?: string | null
+          featured?: boolean
+          icon?: string | null
+          id?: string
+          install_count?: number
+          is_finance?: boolean
+          item_type: Database["public"]["Enums"]["marketplace_item_type"]
+          metadata?: Json
+          name: string
+          origin: Database["public"]["Enums"]["marketplace_origin"]
+          price_cents?: number
+          pricing_model?: string
+          rating_avg?: number | null
+          rating_count?: number
+          scope?: Database["public"]["Enums"]["marketplace_scope"]
+          serves?: string
+          slug: string
+          status?: Database["public"]["Enums"]["marketplace_item_status"]
+          tagline?: string | null
+          take_rate_bps?: number
+          updated_at?: string
+          vendor_id: string
+          visible_to_agency_id?: string | null
+          visible_to_tenant_id?: string | null
+        }
+        Update: {
+          billing_period?: string | null
+          category?: string
+          created_at?: string
+          current_version_id?: string | null
+          default_for_new_tenants?: boolean
+          description?: string | null
+          featured?: boolean
+          icon?: string | null
+          id?: string
+          install_count?: number
+          is_finance?: boolean
+          item_type?: Database["public"]["Enums"]["marketplace_item_type"]
+          metadata?: Json
+          name?: string
+          origin?: Database["public"]["Enums"]["marketplace_origin"]
+          price_cents?: number
+          pricing_model?: string
+          rating_avg?: number | null
+          rating_count?: number
+          scope?: Database["public"]["Enums"]["marketplace_scope"]
+          serves?: string
+          slug?: string
+          status?: Database["public"]["Enums"]["marketplace_item_status"]
+          tagline?: string | null
+          take_rate_bps?: number
+          updated_at?: string
+          vendor_id?: string
+          visible_to_agency_id?: string | null
+          visible_to_tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_items_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_vendors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_items_visible_to_agency_id_fkey"
+            columns: ["visible_to_agency_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_items_visible_to_tenant_id_fkey"
+            columns: ["visible_to_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mp_items_current_version_fk"
+            columns: ["current_version_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_item_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_vendors: {
+        Row: {
+          contact_email: string | null
+          created_at: string
+          created_by: string | null
+          display_name: string
+          id: string
+          metadata: Json
+          origin: Database["public"]["Enums"]["marketplace_origin"]
+          owner_tenant_id: string | null
+          payout_status: string
+          slug: string
+          status: string
+          stripe_connect_account_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          contact_email?: string | null
+          created_at?: string
+          created_by?: string | null
+          display_name: string
+          id?: string
+          metadata?: Json
+          origin?: Database["public"]["Enums"]["marketplace_origin"]
+          owner_tenant_id?: string | null
+          payout_status?: string
+          slug: string
+          status?: string
+          stripe_connect_account_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          contact_email?: string | null
+          created_at?: string
+          created_by?: string | null
+          display_name?: string
+          id?: string
+          metadata?: Json
+          origin?: Database["public"]["Enums"]["marketplace_origin"]
+          owner_tenant_id?: string | null
+          payout_status?: string
+          slug?: string
+          status?: string
+          stripe_connect_account_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_vendors_owner_tenant_id_fkey"
+            columns: ["owner_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       naics_codes: {
         Row: {
@@ -7259,6 +8495,322 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      paige_action_kinds: {
+        Row: {
+          approval_type: string
+          created_at: string
+          default_autonomy_lane: string
+          default_from_department: string
+          default_priority: string
+          default_to_department: string
+          description: string
+          draft_subagent_slug: string | null
+          enabled: boolean
+          executor: string
+          label: string
+          requires_approval: boolean
+          slug: string
+          tenant_id: string | null
+        }
+        Insert: {
+          approval_type?: string
+          created_at?: string
+          default_autonomy_lane?: string
+          default_from_department: string
+          default_priority?: string
+          default_to_department: string
+          description: string
+          draft_subagent_slug?: string | null
+          enabled?: boolean
+          executor: string
+          label: string
+          requires_approval?: boolean
+          slug: string
+          tenant_id?: string | null
+        }
+        Update: {
+          approval_type?: string
+          created_at?: string
+          default_autonomy_lane?: string
+          default_from_department?: string
+          default_priority?: string
+          default_to_department?: string
+          description?: string
+          draft_subagent_slug?: string | null
+          enabled?: boolean
+          executor?: string
+          label?: string
+          requires_approval?: boolean
+          slug?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_action_kinds_default_from_department_fkey"
+            columns: ["default_from_department"]
+            isOneToOne: false
+            referencedRelation: "paige_departments"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "paige_action_kinds_default_to_department_fkey"
+            columns: ["default_to_department"]
+            isOneToOne: false
+            referencedRelation: "paige_departments"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "paige_action_kinds_draft_subagent_slug_fkey"
+            columns: ["draft_subagent_slug"]
+            isOneToOne: false
+            referencedRelation: "paige_subagents"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "paige_action_kinds_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_actions: {
+        Row: {
+          action_kind: string
+          actor_tier: string | null
+          approval_id: string | null
+          assigned_at: string | null
+          assigned_subagent_slug: string | null
+          assigned_to_user_id: string | null
+          autonomy_lane: string
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string
+          created_by: string | null
+          created_by_agent: string | null
+          customer_action_id: string | null
+          decision_rationale: string | null
+          draft_content: Json | null
+          drafted_at: string | null
+          due_at: string | null
+          error: string | null
+          executed_at: string | null
+          expires_at: string | null
+          filed_at: string
+          from_department: string
+          id: string
+          invocation_id: string | null
+          origin_account_id: string | null
+          parent_action_id: string | null
+          payload: Json
+          priority: string
+          resolved_at: string | null
+          result: Json | null
+          status: string
+          summary: string | null
+          target_tier: string | null
+          tenant_id: string
+          title: string
+          to_department: string
+          updated_at: string
+          workflow_run_id: string | null
+        }
+        Insert: {
+          action_kind: string
+          actor_tier?: string | null
+          approval_id?: string | null
+          assigned_at?: string | null
+          assigned_subagent_slug?: string | null
+          assigned_to_user_id?: string | null
+          autonomy_lane?: string
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_agent?: string | null
+          customer_action_id?: string | null
+          decision_rationale?: string | null
+          draft_content?: Json | null
+          drafted_at?: string | null
+          due_at?: string | null
+          error?: string | null
+          executed_at?: string | null
+          expires_at?: string | null
+          filed_at?: string
+          from_department: string
+          id?: string
+          invocation_id?: string | null
+          origin_account_id?: string | null
+          parent_action_id?: string | null
+          payload?: Json
+          priority?: string
+          resolved_at?: string | null
+          result?: Json | null
+          status?: string
+          summary?: string | null
+          target_tier?: string | null
+          tenant_id: string
+          title: string
+          to_department: string
+          updated_at?: string
+          workflow_run_id?: string | null
+        }
+        Update: {
+          action_kind?: string
+          actor_tier?: string | null
+          approval_id?: string | null
+          assigned_at?: string | null
+          assigned_subagent_slug?: string | null
+          assigned_to_user_id?: string | null
+          autonomy_lane?: string
+          contact_id?: string | null
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          created_by_agent?: string | null
+          customer_action_id?: string | null
+          decision_rationale?: string | null
+          draft_content?: Json | null
+          drafted_at?: string | null
+          due_at?: string | null
+          error?: string | null
+          executed_at?: string | null
+          expires_at?: string | null
+          filed_at?: string
+          from_department?: string
+          id?: string
+          invocation_id?: string | null
+          origin_account_id?: string | null
+          parent_action_id?: string | null
+          payload?: Json
+          priority?: string
+          resolved_at?: string | null
+          result?: Json | null
+          status?: string
+          summary?: string | null
+          target_tier?: string | null
+          tenant_id?: string
+          title?: string
+          to_department?: string
+          updated_at?: string
+          workflow_run_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_actions_action_kind_fkey"
+            columns: ["action_kind"]
+            isOneToOne: false
+            referencedRelation: "paige_action_kinds"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "paige_actions_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "paige_approval_queue_v"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_actions_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "paige_pending_approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_actions_assigned_subagent_slug_fkey"
+            columns: ["assigned_subagent_slug"]
+            isOneToOne: false
+            referencedRelation: "paige_subagents"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "paige_actions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_actions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_actions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_actions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_actions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "paige_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_actions_customer_action_id_fkey"
+            columns: ["customer_action_id"]
+            isOneToOne: false
+            referencedRelation: "paige_customer_actions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_actions_from_department_fkey"
+            columns: ["from_department"]
+            isOneToOne: false
+            referencedRelation: "paige_departments"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "paige_actions_invocation_id_fkey"
+            columns: ["invocation_id"]
+            isOneToOne: false
+            referencedRelation: "paige_subagent_invocations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_actions_parent_action_id_fkey"
+            columns: ["parent_action_id"]
+            isOneToOne: false
+            referencedRelation: "paige_actions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_actions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_actions_to_department_fkey"
+            columns: ["to_department"]
+            isOneToOne: false
+            referencedRelation: "paige_departments"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "paige_actions_workflow_run_id_fkey"
+            columns: ["workflow_run_id"]
+            isOneToOne: false
+            referencedRelation: "paige_workflow_runs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       paige_admin_notifications: {
         Row: {
@@ -7884,6 +9436,7 @@ export type Database = {
           lens: string
           message_count: number
           summary: string | null
+          summary_through_seq: number
           tenant_id: string
           title: string | null
           updated_at: string
@@ -7900,6 +9453,7 @@ export type Database = {
           lens: string
           message_count?: number
           summary?: string | null
+          summary_through_seq?: number
           tenant_id: string
           title?: string | null
           updated_at?: string
@@ -7916,6 +9470,7 @@ export type Database = {
           lens?: string
           message_count?: number
           summary?: string | null
+          summary_through_seq?: number
           tenant_id?: string
           title?: string | null
           updated_at?: string
@@ -7968,6 +9523,7 @@ export type Database = {
           load_id: string | null
           model: string | null
           role: string
+          seq: number
           surfaces_used: string[] | null
           thread_id: string
           tokens_used: number | null
@@ -7982,6 +9538,7 @@ export type Database = {
           load_id?: string | null
           model?: string | null
           role: string
+          seq?: number
           surfaces_used?: string[] | null
           thread_id: string
           tokens_used?: number | null
@@ -7996,6 +9553,7 @@ export type Database = {
           load_id?: string | null
           model?: string | null
           role?: string
+          seq?: number
           surfaces_used?: string[] | null
           thread_id?: string
           tokens_used?: number | null
@@ -8008,6 +9566,126 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "paige_chat_threads"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_client_events: {
+        Row: {
+          actor_type: string
+          actor_user_id: string | null
+          audience: string
+          contact_id: string
+          created_at: string
+          event_kind: string
+          from_department: string | null
+          id: string
+          occurred_at: string
+          payload: Json
+          ref_id: string | null
+          ref_table: string | null
+          summary: string | null
+          surface: string
+          tenant_id: string
+          title: string
+          to_department: string | null
+          visibility: string
+        }
+        Insert: {
+          actor_type: string
+          actor_user_id?: string | null
+          audience: string
+          contact_id: string
+          created_at?: string
+          event_kind: string
+          from_department?: string | null
+          id?: string
+          occurred_at?: string
+          payload?: Json
+          ref_id?: string | null
+          ref_table?: string | null
+          summary?: string | null
+          surface: string
+          tenant_id: string
+          title: string
+          to_department?: string | null
+          visibility: string
+        }
+        Update: {
+          actor_type?: string
+          actor_user_id?: string | null
+          audience?: string
+          contact_id?: string
+          created_at?: string
+          event_kind?: string
+          from_department?: string | null
+          id?: string
+          occurred_at?: string
+          payload?: Json
+          ref_id?: string | null
+          ref_table?: string | null
+          summary?: string | null
+          surface?: string
+          tenant_id?: string
+          title?: string
+          to_department?: string | null
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_client_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_client_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_client_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "paige_client_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_client_events_event_kind_fkey"
+            columns: ["event_kind"]
+            isOneToOne: false
+            referencedRelation: "paige_event_kinds"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "paige_client_events_from_department_fkey"
+            columns: ["from_department"]
+            isOneToOne: false
+            referencedRelation: "paige_departments"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "paige_client_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_client_events_to_department_fkey"
+            columns: ["to_department"]
+            isOneToOne: false
+            referencedRelation: "paige_departments"
+            referencedColumns: ["slug"]
           },
         ]
       }
@@ -8679,6 +10357,42 @@ export type Database = {
           },
         ]
       }
+      paige_departments: {
+        Row: {
+          audience: string
+          description: string
+          display_order: number
+          enabled: boolean
+          escalation: Json
+          kpis: Json
+          mandate: string | null
+          name: string
+          slug: string
+        }
+        Insert: {
+          audience: string
+          description: string
+          display_order?: number
+          enabled?: boolean
+          escalation?: Json
+          kpis?: Json
+          mandate?: string | null
+          name: string
+          slug: string
+        }
+        Update: {
+          audience?: string
+          description?: string
+          display_order?: number
+          enabled?: boolean
+          escalation?: Json
+          kpis?: Json
+          mandate?: string | null
+          name?: string
+          slug?: string
+        }
+        Relationships: []
+      }
       paige_enrichment_log: {
         Row: {
           contact_id: string | null
@@ -8740,6 +10454,57 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_event_kinds: {
+        Row: {
+          created_at: string
+          default_audience: string
+          default_visibility: string
+          department: string | null
+          description: string | null
+          enabled: boolean
+          label: string
+          slug: string
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          default_audience?: string
+          default_visibility?: string
+          department?: string | null
+          description?: string | null
+          enabled?: boolean
+          label: string
+          slug: string
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          default_audience?: string
+          default_visibility?: string
+          department?: string | null
+          description?: string | null
+          enabled?: boolean
+          label?: string
+          slug?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_event_kinds_department_fkey"
+            columns: ["department"]
+            isOneToOne: false
+            referencedRelation: "paige_departments"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "paige_event_kinds_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -10551,6 +12316,7 @@ export type Database = {
           proposals_count: number
           quota_date: string
           soft_shipped: number
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -10560,6 +12326,7 @@ export type Database = {
           proposals_count?: number
           quota_date?: string
           soft_shipped?: number
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -10569,9 +12336,18 @@ export type Database = {
           proposals_count?: number
           quota_date?: string
           soft_shipped?: number
+          tenant_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "paige_subagent_factory_quota_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       paige_subagent_invocations: {
         Row: {
@@ -10642,6 +12418,7 @@ export type Database = {
           runtime: string
           status: string
           system_prompt: string
+          tenant_id: string | null
           triggers: string[]
           updated_at: string
         }
@@ -10668,6 +12445,7 @@ export type Database = {
           runtime: string
           status?: string
           system_prompt: string
+          tenant_id?: string | null
           triggers?: string[]
           updated_at?: string
         }
@@ -10694,6 +12472,7 @@ export type Database = {
           runtime?: string
           status?: string
           system_prompt?: string
+          tenant_id?: string | null
           triggers?: string[]
           updated_at?: string
         }
@@ -10703,6 +12482,13 @@ export type Database = {
             columns: ["resulting_subagent_id"]
             isOneToOne: false
             referencedRelation: "paige_subagents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_subagent_proposals_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -10715,6 +12501,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           daily_invocation_cap: number | null
+          department: string | null
           description: string
           display_order: number
           domain: string
@@ -10730,6 +12517,7 @@ export type Database = {
           runtime: string
           slug: string
           system_prompt: string | null
+          tenant_id: string | null
           triggers: string[]
           updated_at: string
         }
@@ -10740,6 +12528,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           daily_invocation_cap?: number | null
+          department?: string | null
           description: string
           display_order?: number
           domain: string
@@ -10755,6 +12544,7 @@ export type Database = {
           runtime: string
           slug: string
           system_prompt?: string | null
+          tenant_id?: string | null
           triggers?: string[]
           updated_at?: string
         }
@@ -10765,6 +12555,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           daily_invocation_cap?: number | null
+          department?: string | null
           description?: string
           display_order?: number
           domain?: string
@@ -10780,10 +12571,26 @@ export type Database = {
           runtime?: string
           slug?: string
           system_prompt?: string | null
+          tenant_id?: string | null
           triggers?: string[]
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "paige_subagents_department_fkey"
+            columns: ["department"]
+            isOneToOne: false
+            referencedRelation: "paige_departments"
+            referencedColumns: ["slug"]
+          },
+          {
+            foreignKeyName: "paige_subagents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       paige_subscription_events: {
         Row: {
@@ -11301,6 +13108,216 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_items: {
+        Row: {
+          assigned_to_user_id: string | null
+          campaign_ref: Json | null
+          completed_at: string | null
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          due_at: string | null
+          id: string
+          item_type: string
+          linked_action_id: string | null
+          linked_booking_id: string | null
+          metadata: Json
+          parent_item_id: string | null
+          plan_id: string | null
+          priority: string
+          remind_at: string | null
+          remind_channel: string
+          remind_target: string
+          reminded_at: string | null
+          resolved_at: string | null
+          status: string
+          summary: string | null
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_to_user_id?: string | null
+          campaign_ref?: Json | null
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          due_at?: string | null
+          id?: string
+          item_type: string
+          linked_action_id?: string | null
+          linked_booking_id?: string | null
+          metadata?: Json
+          parent_item_id?: string | null
+          plan_id?: string | null
+          priority?: string
+          remind_at?: string | null
+          remind_channel?: string
+          remind_target?: string
+          reminded_at?: string | null
+          resolved_at?: string | null
+          status?: string
+          summary?: string | null
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_to_user_id?: string | null
+          campaign_ref?: Json | null
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          due_at?: string | null
+          id?: string
+          item_type?: string
+          linked_action_id?: string | null
+          linked_booking_id?: string | null
+          metadata?: Json
+          parent_item_id?: string | null
+          plan_id?: string | null
+          priority?: string
+          remind_at?: string | null
+          remind_channel?: string
+          remind_target?: string
+          reminded_at?: string | null
+          resolved_at?: string | null
+          status?: string
+          summary?: string | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_items_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_items_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "plan_items_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "plan_items_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_items_linked_action_id_fkey"
+            columns: ["linked_action_id"]
+            isOneToOne: false
+            referencedRelation: "paige_actions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_items_linked_booking_id_fkey"
+            columns: ["linked_booking_id"]
+            isOneToOne: false
+            referencedRelation: "internal_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_items_parent_item_id_fkey"
+            columns: ["parent_item_id"]
+            isOneToOne: false
+            referencedRelation: "plan_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_items_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plans: {
+        Row: {
+          campaign_ref: Json | null
+          created_at: string
+          created_by: string | null
+          ends_on: string
+          horizon: string
+          id: string
+          metadata: Json
+          owner_user_id: string | null
+          scope: string
+          starts_on: string
+          status: string
+          summary: string | null
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          campaign_ref?: Json | null
+          created_at?: string
+          created_by?: string | null
+          ends_on: string
+          horizon: string
+          id?: string
+          metadata?: Json
+          owner_user_id?: string | null
+          scope?: string
+          starts_on: string
+          status?: string
+          summary?: string | null
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_ref?: Json | null
+          created_at?: string
+          created_by?: string | null
+          ends_on?: string
+          horizon?: string
+          id?: string
+          metadata?: Json
+          owner_user_id?: string | null
+          scope?: string
+          starts_on?: string
+          status?: string
+          summary?: string | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plans_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_api_keys: {
         Row: {
           created_at: string
@@ -11331,6 +13348,78 @@ export type Database = {
           key_prefix?: string
           label?: string
           revoked_at?: string | null
+        }
+        Relationships: []
+      }
+      platform_email_settings: {
+        Row: {
+          default_from_name: string
+          default_reply_to: string
+          id: boolean
+          shared_domain: string
+          updated_at: string
+        }
+        Insert: {
+          default_from_name?: string
+          default_reply_to?: string
+          id?: boolean
+          shared_domain?: string
+          updated_at?: string
+        }
+        Update: {
+          default_from_name?: string
+          default_reply_to?: string
+          id?: boolean
+          shared_domain?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      platform_invites: {
+        Row: {
+          accepted_at: string | null
+          accepted_user_id: string | null
+          actor_tier: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          origin_account_id: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          target_tier: string | null
+          token: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          actor_tier?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          origin_account_id?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          target_tier?: string | null
+          token: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_user_id?: string | null
+          actor_tier?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          origin_account_id?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          target_tier?: string | null
+          token?: string
         }
         Relationships: []
       }
@@ -11854,6 +13943,7 @@ export type Database = {
         Row: {
           active_tenant_id: string | null
           address: string | null
+          agency_login_default: string
           avatar_url: string | null
           biggest_obstacle: string | null
           business_name: string | null
@@ -11881,6 +13971,7 @@ export type Database = {
           ethnicity: string[] | null
           experience_level: string | null
           financing_preference: string | null
+          first_name: string | null
           full_name: string | null
           funding_goals: Json | null
           gender_identity: string | null
@@ -11905,8 +13996,10 @@ export type Database = {
           is_veteran: boolean | null
           last_fundability_calculated: string | null
           last_fundability_snapshot: Json | null
+          last_name: string | null
           last_report_analyzed_at: string | null
           last_report_source: string | null
+          middle_initial: string | null
           monthly_revenue_range: string | null
           onboarding_completed: boolean | null
           onboarding_step: string | null
@@ -11921,6 +14014,9 @@ export type Database = {
           real_estate_equity_range: string | null
           referral_code: string | null
           score_model: string | null
+          signup_completed_at: string | null
+          signup_lane: string | null
+          signup_started_at: string | null
           ssn_encrypted: string | null
           ssn_last_4: string | null
           staff_notes: string | null
@@ -11929,6 +14025,8 @@ export type Database = {
           suspended_at: string | null
           suspended_by: string | null
           suspended_reason: string | null
+          terms_accepted_at: string | null
+          terms_version: string | null
           total_liquid_assets_range: string | null
           updated_at: string | null
           user_id: string
@@ -11938,6 +14036,7 @@ export type Database = {
         Insert: {
           active_tenant_id?: string | null
           address?: string | null
+          agency_login_default?: string
           avatar_url?: string | null
           biggest_obstacle?: string | null
           business_name?: string | null
@@ -11965,6 +14064,7 @@ export type Database = {
           ethnicity?: string[] | null
           experience_level?: string | null
           financing_preference?: string | null
+          first_name?: string | null
           full_name?: string | null
           funding_goals?: Json | null
           gender_identity?: string | null
@@ -11989,8 +14089,10 @@ export type Database = {
           is_veteran?: boolean | null
           last_fundability_calculated?: string | null
           last_fundability_snapshot?: Json | null
+          last_name?: string | null
           last_report_analyzed_at?: string | null
           last_report_source?: string | null
+          middle_initial?: string | null
           monthly_revenue_range?: string | null
           onboarding_completed?: boolean | null
           onboarding_step?: string | null
@@ -12005,6 +14107,9 @@ export type Database = {
           real_estate_equity_range?: string | null
           referral_code?: string | null
           score_model?: string | null
+          signup_completed_at?: string | null
+          signup_lane?: string | null
+          signup_started_at?: string | null
           ssn_encrypted?: string | null
           ssn_last_4?: string | null
           staff_notes?: string | null
@@ -12013,6 +14118,8 @@ export type Database = {
           suspended_at?: string | null
           suspended_by?: string | null
           suspended_reason?: string | null
+          terms_accepted_at?: string | null
+          terms_version?: string | null
           total_liquid_assets_range?: string | null
           updated_at?: string | null
           user_id: string
@@ -12022,6 +14129,7 @@ export type Database = {
         Update: {
           active_tenant_id?: string | null
           address?: string | null
+          agency_login_default?: string
           avatar_url?: string | null
           biggest_obstacle?: string | null
           business_name?: string | null
@@ -12049,6 +14157,7 @@ export type Database = {
           ethnicity?: string[] | null
           experience_level?: string | null
           financing_preference?: string | null
+          first_name?: string | null
           full_name?: string | null
           funding_goals?: Json | null
           gender_identity?: string | null
@@ -12073,8 +14182,10 @@ export type Database = {
           is_veteran?: boolean | null
           last_fundability_calculated?: string | null
           last_fundability_snapshot?: Json | null
+          last_name?: string | null
           last_report_analyzed_at?: string | null
           last_report_source?: string | null
+          middle_initial?: string | null
           monthly_revenue_range?: string | null
           onboarding_completed?: boolean | null
           onboarding_step?: string | null
@@ -12089,6 +14200,9 @@ export type Database = {
           real_estate_equity_range?: string | null
           referral_code?: string | null
           score_model?: string | null
+          signup_completed_at?: string | null
+          signup_lane?: string | null
+          signup_started_at?: string | null
           ssn_encrypted?: string | null
           ssn_last_4?: string | null
           staff_notes?: string | null
@@ -12097,6 +14211,8 @@ export type Database = {
           suspended_at?: string | null
           suspended_by?: string | null
           suspended_reason?: string | null
+          terms_accepted_at?: string | null
+          terms_version?: string | null
           total_liquid_assets_range?: string | null
           updated_at?: string | null
           user_id?: string
@@ -12636,6 +14752,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      public_rate_limits: {
+        Row: {
+          bucket: string
+          request_count: number
+          window_start: string
+        }
+        Insert: {
+          bucket: string
+          request_count?: number
+          window_start: string
+        }
+        Update: {
+          bucket?: string
+          request_count?: number
+          window_start?: string
+        }
+        Relationships: []
       }
       push_notification_log: {
         Row: {
@@ -13261,6 +15395,107 @@ export type Database = {
           },
         ]
       }
+      research_runs: {
+        Row: {
+          caller: string
+          client_user_id: string | null
+          configured: boolean
+          coverage: Json
+          created_at: string
+          domain: string
+          entity_profile: Json | null
+          findings: Json
+          id: string
+          question: string
+          stop_reason: string | null
+          user_id: string
+        }
+        Insert: {
+          caller?: string
+          client_user_id?: string | null
+          configured?: boolean
+          coverage?: Json
+          created_at?: string
+          domain?: string
+          entity_profile?: Json | null
+          findings?: Json
+          id?: string
+          question: string
+          stop_reason?: string | null
+          user_id: string
+        }
+        Update: {
+          caller?: string
+          client_user_id?: string | null
+          configured?: boolean
+          coverage?: Json
+          created_at?: string
+          domain?: string
+          entity_profile?: Json | null
+          findings?: Json
+          id?: string
+          question?: string
+          stop_reason?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      research_sources: {
+        Row: {
+          excluded: boolean
+          fetched_at: string
+          id: string
+          published_at: string | null
+          reliability: string | null
+          reliability_score: number
+          run_id: string
+          snippet: string | null
+          source_index: number
+          tier: string | null
+          title: string | null
+          url: string
+          user_id: string
+        }
+        Insert: {
+          excluded?: boolean
+          fetched_at?: string
+          id?: string
+          published_at?: string | null
+          reliability?: string | null
+          reliability_score?: number
+          run_id: string
+          snippet?: string | null
+          source_index: number
+          tier?: string | null
+          title?: string | null
+          url: string
+          user_id: string
+        }
+        Update: {
+          excluded?: boolean
+          fetched_at?: string
+          id?: string
+          published_at?: string | null
+          reliability?: string | null
+          reliability_score?: number
+          run_id?: string
+          snippet?: string | null
+          source_index?: number
+          tier?: string | null
+          title?: string | null
+          url?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_sources_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "research_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       response_quality_feedback: {
         Row: {
           correction_note: string | null
@@ -13386,8 +15621,11 @@ export type Database = {
           apple_caldav_username: string | null
           apple_last_sync_at: string | null
           availability_json: Json
+          booking_page_accent: string | null
+          booking_page_description: string | null
           booking_page_enabled: boolean
           booking_page_slug: string | null
+          booking_page_title: string | null
           buffer_after_min: number
           buffer_before_min: number
           created_at: string
@@ -13403,6 +15641,12 @@ export type Database = {
           timezone: string
           updated_at: string
           user_id: string
+          zoom_access_token_encrypted: string | null
+          zoom_connected: boolean
+          zoom_email: string | null
+          zoom_refresh_token_encrypted: string | null
+          zoom_token_expires_at: string | null
+          zoom_user_id: string | null
         }
         Insert: {
           apple_app_password_encrypted?: string | null
@@ -13411,8 +15655,11 @@ export type Database = {
           apple_caldav_username?: string | null
           apple_last_sync_at?: string | null
           availability_json?: Json
+          booking_page_accent?: string | null
+          booking_page_description?: string | null
           booking_page_enabled?: boolean
           booking_page_slug?: string | null
+          booking_page_title?: string | null
           buffer_after_min?: number
           buffer_before_min?: number
           created_at?: string
@@ -13428,6 +15675,12 @@ export type Database = {
           timezone?: string
           updated_at?: string
           user_id: string
+          zoom_access_token_encrypted?: string | null
+          zoom_connected?: boolean
+          zoom_email?: string | null
+          zoom_refresh_token_encrypted?: string | null
+          zoom_token_expires_at?: string | null
+          zoom_user_id?: string | null
         }
         Update: {
           apple_app_password_encrypted?: string | null
@@ -13436,8 +15689,11 @@ export type Database = {
           apple_caldav_username?: string | null
           apple_last_sync_at?: string | null
           availability_json?: Json
+          booking_page_accent?: string | null
+          booking_page_description?: string | null
           booking_page_enabled?: boolean
           booking_page_slug?: string | null
+          booking_page_title?: string | null
           buffer_after_min?: number
           buffer_before_min?: number
           created_at?: string
@@ -13453,6 +15709,12 @@ export type Database = {
           timezone?: string
           updated_at?: string
           user_id?: string
+          zoom_access_token_encrypted?: string | null
+          zoom_connected?: boolean
+          zoom_email?: string | null
+          zoom_refresh_token_encrypted?: string | null
+          zoom_token_expires_at?: string | null
+          zoom_user_id?: string | null
         }
         Relationships: [
           {
@@ -14164,6 +16426,57 @@ export type Database = {
           },
         ]
       }
+      tenant_email_identities: {
+        Row: {
+          custom_domain_id: string | null
+          from_name: string
+          kind: string
+          local_part: string
+          provisioned_at: string
+          reply_to: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          custom_domain_id?: string | null
+          from_name: string
+          kind?: string
+          local_part: string
+          provisioned_at?: string
+          reply_to?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          custom_domain_id?: string | null
+          from_name?: string
+          kind?: string
+          local_part?: string
+          provisioned_at?: string
+          reply_to?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_email_identities_custom_domain_id_fkey"
+            columns: ["custom_domain_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_email_domains"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_email_identities_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_entity_relationships: {
         Row: {
           contact_id: string
@@ -14295,51 +16608,97 @@ export type Database = {
       }
       tenant_invite_tokens: {
         Row: {
+          actor_tier: string | null
+          agency_role: string | null
+          contact_id: string | null
           created_at: string
           created_by: string | null
           default_role: Database["public"]["Enums"]["tenant_role"]
+          email: string | null
           expires_at: string
           id: string
           kind: string
           last_used_at: string | null
           max_uses: number | null
+          origin_account_id: string | null
           revoked_at: string | null
+          target_tier: string | null
           tenant_id: string
           token: string
           updated_at: string
           uses: number
         }
         Insert: {
+          actor_tier?: string | null
+          agency_role?: string | null
+          contact_id?: string | null
           created_at?: string
           created_by?: string | null
           default_role?: Database["public"]["Enums"]["tenant_role"]
+          email?: string | null
           expires_at?: string
           id?: string
           kind?: string
           last_used_at?: string | null
           max_uses?: number | null
+          origin_account_id?: string | null
           revoked_at?: string | null
+          target_tier?: string | null
           tenant_id: string
           token: string
           updated_at?: string
           uses?: number
         }
         Update: {
+          actor_tier?: string | null
+          agency_role?: string | null
+          contact_id?: string | null
           created_at?: string
           created_by?: string | null
           default_role?: Database["public"]["Enums"]["tenant_role"]
+          email?: string | null
           expires_at?: string
           id?: string
           kind?: string
           last_used_at?: string | null
           max_uses?: number | null
+          origin_account_id?: string | null
           revoked_at?: string | null
+          target_tier?: string | null
           tenant_id?: string
           token?: string
           updated_at?: string
           uses?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "tenant_invite_tokens_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_invite_tokens_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_deal_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "tenant_invite_tokens_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_readiness_rollup"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "tenant_invite_tokens_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "paige_unassigned_queue"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tenant_invite_tokens_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -14491,6 +16850,9 @@ export type Database = {
           legal_business_name: string
           logo_url: string | null
           registered_address: string | null
+          service_agreement_body: string | null
+          service_agreement_title: string | null
+          service_agreement_updated_at: string | null
           signatory_name: string | null
           signatory_title: string | null
           state_of_formation: string | null
@@ -14512,6 +16874,9 @@ export type Database = {
           legal_business_name: string
           logo_url?: string | null
           registered_address?: string | null
+          service_agreement_body?: string | null
+          service_agreement_title?: string | null
+          service_agreement_updated_at?: string | null
           signatory_name?: string | null
           signatory_title?: string | null
           state_of_formation?: string | null
@@ -14533,6 +16898,9 @@ export type Database = {
           legal_business_name?: string
           logo_url?: string | null
           registered_address?: string | null
+          service_agreement_body?: string | null
+          service_agreement_title?: string | null
+          service_agreement_updated_at?: string | null
           signatory_name?: string | null
           signatory_title?: string | null
           state_of_formation?: string | null
@@ -14591,6 +16959,62 @@ export type Database = {
             foreignKeyName: "tenant_members_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_n8n_connections: {
+        Row: {
+          api_key_ct: string | null
+          api_key_last4: string | null
+          base_url_ct: string | null
+          created_at: string
+          created_by: string | null
+          label: string | null
+          last_error: string | null
+          last_sync_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+          workflow_count: number
+        }
+        Insert: {
+          api_key_ct?: string | null
+          api_key_last4?: string | null
+          base_url_ct?: string | null
+          created_at?: string
+          created_by?: string | null
+          label?: string | null
+          last_error?: string | null
+          last_sync_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+          workflow_count?: number
+        }
+        Update: {
+          api_key_ct?: string | null
+          api_key_last4?: string | null
+          base_url_ct?: string | null
+          created_at?: string
+          created_by?: string | null
+          label?: string | null
+          last_error?: string | null
+          last_sync_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          workflow_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_n8n_connections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -14789,6 +17213,47 @@ export type Database = {
             foreignKeyName: "tenant_products_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_provisioning: {
+        Row: {
+          attempts: number
+          created_at: string
+          last_error: string | null
+          parent_action_id: string | null
+          status: string
+          steps: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          last_error?: string | null
+          parent_action_id?: string | null
+          status?: string
+          steps?: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          last_error?: string | null
+          parent_action_id?: string | null
+          status?: string
+          steps?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_provisioning_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -15011,9 +17476,104 @@ export type Database = {
           },
         ]
       }
+      tenant_tool_autonomy: {
+        Row: {
+          created_at: string
+          mode: string
+          tenant_id: string
+          tool_key: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          mode?: string
+          tenant_id: string
+          tool_key: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          mode?: string
+          tenant_id?: string
+          tool_key?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_tool_autonomy_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_workflows: {
+        Row: {
+          active: boolean
+          created_by_paige: boolean
+          first_seen_at: string
+          folder: string | null
+          last_run_at: string | null
+          last_synced_at: string
+          n8n_workflow_id: string
+          name: string | null
+          notes: string | null
+          present_in_n8n: boolean
+          source: string
+          tags: string[]
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_by_paige?: boolean
+          first_seen_at?: string
+          folder?: string | null
+          last_run_at?: string | null
+          last_synced_at?: string
+          n8n_workflow_id: string
+          name?: string | null
+          notes?: string | null
+          present_in_n8n?: boolean
+          source?: string
+          tags?: string[]
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_by_paige?: boolean
+          first_seen_at?: string
+          folder?: string | null
+          last_run_at?: string | null
+          last_synced_at?: string
+          n8n_workflow_id?: string
+          name?: string | null
+          notes?: string | null
+          present_in_n8n?: boolean
+          source?: string
+          tags?: string[]
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_workflows_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           account_number_prefix: string
+          account_type: string
           automation_webhook_url_encrypted: string | null
           brand: Json
           created_at: string
@@ -15021,6 +17581,7 @@ export type Database = {
           features: Json
           id: string
           name: string
+          onboarding_state: Json
           owner_user_id: string | null
           parent_tenant_id: string | null
           plan_offer: string | null
@@ -15036,6 +17597,7 @@ export type Database = {
         }
         Insert: {
           account_number_prefix: string
+          account_type?: string
           automation_webhook_url_encrypted?: string | null
           brand?: Json
           created_at?: string
@@ -15043,6 +17605,7 @@ export type Database = {
           features?: Json
           id?: string
           name: string
+          onboarding_state?: Json
           owner_user_id?: string | null
           parent_tenant_id?: string | null
           plan_offer?: string | null
@@ -15058,6 +17621,7 @@ export type Database = {
         }
         Update: {
           account_number_prefix?: string
+          account_type?: string
           automation_webhook_url_encrypted?: string | null
           brand?: Json
           created_at?: string
@@ -15065,6 +17629,7 @@ export type Database = {
           features?: Json
           id?: string
           name?: string
+          onboarding_state?: Json
           owner_user_id?: string | null
           parent_tenant_id?: string | null
           plan_offer?: string | null
@@ -15301,6 +17866,41 @@ export type Database = {
             columns: ["lender_product_id"]
             isOneToOne: false
             referencedRelation: "lender_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_presence: {
+        Row: {
+          last_seen: string
+          session_meta: Json
+          status: string
+          tenant_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          last_seen?: string
+          session_meta?: Json
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          last_seen?: string
+          session_meta?: Json
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_presence_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -16011,6 +18611,22 @@ export type Database = {
         }
         Relationships: []
       }
+      tier_send_ledger: {
+        Row: {
+          actor_tier: string | null
+          created_at: string | null
+          created_by: string | null
+          kind_or_role: string | null
+          origin_account_id: string | null
+          origin_tier: string | null
+          recipient_email: string | null
+          send_id: string | null
+          source_table: string | null
+          status: string | null
+          target_tier: string | null
+        }
+        Relationships: []
+      }
       v_affiliate_stats: {
         Row: {
           active: boolean | null
@@ -16052,12 +18668,58 @@ export type Database = {
         }
         Returns: undefined
       }
+      _marketplace_active_bundle_holds: {
+        Args: { _child_install: string }
+        Returns: number
+      }
+      _marketplace_default_bundle_finance_violation: {
+        Args: never
+        Returns: string
+      }
+      _marketplace_finance_re: { Args: never; Returns: string }
+      _marketplace_install_node: {
+        Args: {
+          _installed_by_agent: string
+          _is_owner: boolean
+          _item_slug: string
+          _parent_install_id: string
+          _path: string[]
+          _seeded_kb_doc_ids: string[]
+          _tenant_id: string
+        }
+        Returns: Json
+      }
+      _marketplace_is_service_role: { Args: never; Returns: boolean }
+      _marketplace_operator_authorized: { Args: never; Returns: boolean }
+      _marketplace_skill_referenced_elsewhere: {
+        Args: { _exclude_install: string; _slug: string; _tenant_id: string }
+        Returns: boolean
+      }
+      _marketplace_teardown_install: {
+        Args: { _install_id: string; _tenant_id: string }
+        Returns: Json
+      }
       _ship26_assert_super_admin: { Args: never; Returns: undefined }
       accept_invitation: {
         Args: { _token: string; _user_id: string }
         Returns: Json
       }
+      accept_platform_invite: { Args: { _token: string }; Returns: Json }
       accept_tenant_invite: { Args: { _token: string }; Returns: string }
+      account_tier: { Args: { _tenant_id: string }; Returns: string }
+      actor_manages_any_agency: { Args: { _actor: string }; Returns: boolean }
+      actor_primary_agency: { Args: { _actor: string }; Returns: string }
+      add_pipeline_stage: {
+        Args: {
+          _color?: string
+          _label: string
+          _order_index?: number
+          _pipeline_id: string
+          _probability?: number
+          _stage_type?: string
+        }
+        Returns: string
+      }
       admin_bulk_assign_coach: {
         Args: { _client_ids: string[]; _coach: string }
         Returns: Json
@@ -16119,6 +18781,10 @@ export type Database = {
         Args: { _tenant_id: string; _url: string }
         Returns: undefined
       }
+      admin_set_booking_status: {
+        Args: { _booking_id: string; _status: string }
+        Returns: string
+      }
       admin_set_meta_capi_token: {
         Args: { _token: string }
         Returns: undefined
@@ -16127,9 +18793,98 @@ export type Database = {
         Args: { _max_businesses: number; _target_user_id: string }
         Returns: Json
       }
+      advance_action: {
+        Args: {
+          p_action_id: string
+          p_assigned_subagent_slug?: string
+          p_assigned_to_user_id?: string
+          p_decision_rationale?: string
+          p_draft_content?: Json
+          p_error?: string
+          p_invocation_id?: string
+          p_result?: Json
+          p_tenant_id?: string
+          p_to_status?: string
+        }
+        Returns: Json
+      }
+      agency_can_manage_child:
+        | { Args: { _child: string }; Returns: boolean }
+        | { Args: { _actor: string; _child: string }; Returns: boolean }
+      agency_child_provisioned: { Args: { _child: string }; Returns: Json }
+      agency_current_id: { Args: { _actor: string }; Returns: string }
+      agency_enter_subaccount:
+        | { Args: { _child: string }; Returns: Json }
+        | { Args: { _actor: string; _child: string }; Returns: undefined }
+      agency_exit_subaccount:
+        | { Args: never; Returns: Json }
+        | { Args: { _actor: string }; Returns: string }
+      agency_list_my_subaccounts: {
+        Args: never
+        Returns: {
+          account_type: string
+          created_at: string
+          id: string
+          name: string
+          slug: string
+          status: string
+        }[]
+      }
+      agency_list_team: {
+        Args: never
+        Returns: {
+          agency_role: string
+          email: string
+          full_name: string
+          is_you: boolean
+          joined_at: string
+          scoped_count: number
+          scoped_subaccounts: string[]
+          status: string
+          user_id: string
+        }[]
+      }
+      agency_lookup_user_id: { Args: { _email: string }; Returns: string }
+      agency_my_membership: { Args: never; Returns: Json }
+      agency_portfolio_metrics: { Args: never; Returns: Json }
+      agency_provision_catalog_item: {
+        Args: { _child: string; _enabled: boolean; _slug: string }
+        Returns: Json
+      }
+      agency_remove_member: {
+        Args: { _target_user: string }
+        Returns: undefined
+      }
+      agency_set_member_role: {
+        Args: { _role: string; _scoped?: string[]; _target_user: string }
+        Returns: undefined
+      }
+      agency_set_member_status: {
+        Args: { _status: string; _target_user: string }
+        Returns: undefined
+      }
+      agency_subaccount_metrics: { Args: { _child: string }; Returns: Json }
+      agency_switch_context: { Args: never; Returns: Json }
+      agency_team_can_manage: {
+        Args: { _actor: string; _agency: string }
+        Returns: boolean
+      }
+      agency_team_role: {
+        Args: { _actor: string; _agency: string }
+        Returns: string
+      }
       allocate_account_number: { Args: { _tenant_id: string }; Returns: string }
       approve_affiliate_application: {
         Args: { _application_id: string; _notes?: string; _tier_key?: string }
+        Returns: Json
+      }
+      assign_contact: {
+        Args: {
+          p_contact_id: string
+          p_role?: string
+          p_tenant_id?: string
+          p_user_id: string
+        }
         Returns: Json
       }
       assignment_role_for: {
@@ -16146,9 +18901,48 @@ export type Database = {
         }
         Returns: string
       }
+      bump_subagent_quota: {
+        Args: { _field: string; _tenant_id: string }
+        Returns: {
+          created_at: string
+          hard_shipped: number
+          id: string
+          proposals_count: number
+          quota_date: string
+          soft_shipped: number
+          tenant_id: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "paige_subagent_factory_quota"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      calendar_host_load: {
+        Args: { _cal: string }
+        Returns: {
+          full_name: string
+          priority: number
+          upcoming_count: number
+          user_id: string
+        }[]
+      }
       can_access_contact: {
         Args: { _contact_id: string; _user_id: string }
         Returns: boolean
+      }
+      can_access_presence_topic: { Args: { _topic: string }; Returns: boolean }
+      can_access_rail_topic: { Args: { _topic: string }; Returns: boolean }
+      can_manage_calendar: { Args: { _cal: string }; Returns: boolean }
+      can_manage_tenant_brand: {
+        Args: { _tenant_id: string }
+        Returns: boolean
+      }
+      cancel_internal_booking: {
+        Args: { _booking_id: string; _reason?: string; _tenant_id?: string }
+        Returns: Json
       }
       change_user_role: {
         Args: {
@@ -16162,6 +18956,10 @@ export type Database = {
       }
       check_feature_access: {
         Args: { _feature: string; _user_id: string }
+        Returns: boolean
+      }
+      check_public_rate_limit: {
+        Args: { _bucket: string; _max?: number; _window_seconds?: number }
         Returns: boolean
       }
       check_rate_limit: {
@@ -16198,6 +18996,10 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      clear_tenant_n8n_connection: {
+        Args: { _tenant_id?: string }
+        Returns: undefined
+      }
       client_advance_onboarding_stage: {
         Args: { p_payload?: Json; p_to_stage: string }
         Returns: {
@@ -16205,6 +19007,24 @@ export type Database = {
           onboarding_stage: string
           updated_at: string
         }[]
+      }
+      client_custom_fields_upsert: {
+        Args: { p_client_id: string; p_tenant_id: string; p_values: Json }
+        Returns: {
+          client_id: string
+          created_at: string
+          field_definition_id: string
+          id: string
+          tenant_id: string
+          updated_at: string
+          value: Json
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "client_custom_field_values"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       client_has_role_assigned: {
         Args: { _assignment_role: string; _client: string }
@@ -16232,24 +19052,270 @@ export type Database = {
         Args: { _contact_id: string }
         Returns: number
       }
+      create_calendar: {
+        Args: {
+          p_duration_min?: number
+          p_enabled?: boolean
+          p_owner_user_id?: string
+          p_tenant_id: string
+          p_title?: string
+          p_type?: string
+        }
+        Returns: string
+      }
+      create_class_booking: {
+        Args: {
+          _calendar_id: string
+          _capacity: number
+          _contact_id?: string
+          _end_at: string
+          _guest_email: string
+          _guest_name: string
+          _guest_phone: string
+          _host_user_id: string
+          _intake_answers: Json
+          _location_type: string
+          _location_value: string
+          _notes: string
+          _source: string
+          _start_at: string
+          _tenant_id: string
+          _timezone: string
+          _title: string
+        }
+        Returns: {
+          appointment_type: Json | null
+          booking_kind: string
+          calendar_id: string | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          capacity: number | null
+          class_session_id: string | null
+          collective_group_id: string | null
+          contact_id: string | null
+          created_at: string
+          end_at: string
+          external_calendar_id: string | null
+          external_event_id: string | null
+          guest_email: string | null
+          guest_name: string | null
+          guest_phone: string | null
+          host_user_id: string
+          id: string
+          intake_answers: Json | null
+          location: string | null
+          location_type: string | null
+          location_value: string | null
+          manage_token_version: number
+          meeting_link: string | null
+          meeting_url: string | null
+          notes: string | null
+          reminder_state: Json
+          source: string
+          start_at: string
+          status: string
+          tenant_id: string | null
+          timezone: string
+          title: string
+          updated_at: string
+          zoom_meeting_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "internal_bookings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_contact: {
+        Args: {
+          p_assigned_coach_user_id?: string
+          p_created_by?: string
+          p_email?: string
+          p_entity_name?: string
+          p_first_name: string
+          p_last_name?: string
+          p_lifecycle_stage?: string
+          p_notes?: string
+          p_phone?: string
+          p_primary_offer?: string
+          p_source?: string
+          p_tags?: string[]
+          p_tenant_id?: string
+          p_title?: string
+        }
+        Returns: string
+      }
+      create_internal_booking: {
+        Args: {
+          _appointment_type?: Json
+          _calendar_id?: string
+          _contact_id?: string
+          _end_at: string
+          _guest_email?: string
+          _guest_name?: string
+          _guest_phone?: string
+          _host_user_id?: string
+          _intake_answers?: Json
+          _location?: string
+          _notes?: string
+          _source?: string
+          _start_at: string
+          _status?: string
+          _tenant_id?: string
+          _timezone?: string
+          _title: string
+        }
+        Returns: string
+      }
+      create_pipeline_with_stages: {
+        Args: {
+          _color?: string
+          _created_by?: string
+          _description?: string
+          _is_default?: boolean
+          _name: string
+          _stages?: Json
+          _tenant_id: string
+        }
+        Returns: string
+      }
+      create_platform_invite: {
+        Args: {
+          _email: string
+          _role?: Database["public"]["Enums"]["app_role"]
+        }
+        Returns: {
+          accepted_at: string | null
+          accepted_user_id: string | null
+          actor_tier: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          origin_account_id: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          target_tier: string | null
+          token: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "platform_invites"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      create_subaccount:
+        | {
+            Args: {
+              _description?: string
+              _industry?: string
+              _inherit_from_parent?: boolean
+              _name: string
+              _parent_tenant_id?: string
+              _playbook_slug?: string
+            }
+            Returns: {
+              account_number_prefix: string
+              account_type: string
+              automation_webhook_url_encrypted: string | null
+              brand: Json
+              created_at: string
+              customer_limit: number
+              features: Json
+              id: string
+              name: string
+              onboarding_state: Json
+              owner_user_id: string | null
+              parent_tenant_id: string | null
+              plan_offer: string | null
+              platform_fee_bps: number
+              seat_limit: number
+              slug: string
+              status: Database["public"]["Enums"]["tenant_status"]
+              storefront_enabled: boolean
+              stripe_customer_id: string | null
+              stripe_subscription_id: string | null
+              trial_ends_at: string | null
+              updated_at: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "tenants"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              _actor: string
+              _description: string
+              _industry: string
+              _inherit_from_parent?: boolean
+              _name: string
+              _parent_tenant_id: string
+              _playbook_slug?: string
+            }
+            Returns: {
+              account_number_prefix: string
+              account_type: string
+              automation_webhook_url_encrypted: string | null
+              brand: Json
+              created_at: string
+              customer_limit: number
+              features: Json
+              id: string
+              name: string
+              onboarding_state: Json
+              owner_user_id: string | null
+              parent_tenant_id: string | null
+              plan_offer: string | null
+              platform_fee_bps: number
+              seat_limit: number
+              slug: string
+              status: Database["public"]["Enums"]["tenant_status"]
+              storefront_enabled: boolean
+              stripe_customer_id: string | null
+              stripe_subscription_id: string | null
+              trial_ends_at: string | null
+              updated_at: string
+            }
+            SetofOptions: {
+              from: "*"
+              to: "tenants"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
       create_tenant_invite_token: {
         Args: {
+          _contact_id?: string
           _default_role?: Database["public"]["Enums"]["tenant_role"]
+          _email?: string
           _expires_in_days?: number
           _kind?: string
           _max_uses?: number
           _tenant_id: string
         }
         Returns: {
+          actor_tier: string | null
+          agency_role: string | null
+          contact_id: string | null
           created_at: string
           created_by: string | null
           default_role: Database["public"]["Enums"]["tenant_role"]
+          email: string | null
           expires_at: string
           id: string
           kind: string
           last_used_at: string | null
           max_uses: number | null
+          origin_account_id: string | null
           revoked_at: string | null
+          target_tier: string | null
           tenant_id: string
           token: string
           updated_at: string
@@ -16262,8 +19328,69 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      cron_token_header: { Args: never; Returns: string }
       current_user_roles: { Args: never; Returns: string[] }
       current_user_tenant_id: { Args: never; Returns: string }
+      custom_field_definition_archive: {
+        Args: { p_id: string }
+        Returns: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          field_type: string
+          help_text: string | null
+          id: string
+          key: string
+          label: string
+          object_type: string
+          options: Json | null
+          position: number
+          required: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "custom_field_definitions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      custom_field_definition_upsert: {
+        Args: {
+          p_field_type: string
+          p_help_text?: string
+          p_id?: string
+          p_key: string
+          p_label: string
+          p_options?: Json
+          p_position?: number
+          p_required?: boolean
+          p_tenant_id: string
+        }
+        Returns: {
+          archived_at: string | null
+          created_at: string
+          created_by: string | null
+          field_type: string
+          help_text: string | null
+          id: string
+          key: string
+          label: string
+          object_type: string
+          options: Json | null
+          position: number
+          required: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "custom_field_definitions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       customer_paige_activity_summary: {
         Args: { p_days?: number }
         Returns: Json
@@ -16288,6 +19415,9 @@ export type Database = {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
       }
+      delete_marketing_content: { Args: { p_id: string }; Returns: boolean }
+      delete_pipeline: { Args: { _pipeline_id: string }; Returns: undefined }
+      disable_tenant_event_kind: { Args: { p_slug: string }; Returns: Json }
       email_queue_dispatch: { Args: never; Returns: undefined }
       end_client_impersonation: {
         Args: { p_contact_id: string }
@@ -16316,6 +19446,14 @@ export type Database = {
         Args: { payload: Json; queue_name: string }
         Returns: number
       }
+      enroll_contact_in_program: {
+        Args: {
+          p_contact_id: string
+          p_program_id: string
+          p_tenant_id?: string
+        }
+        Returns: Json
+      }
       ensure_client_role_self_heal: {
         Args: never
         Returns: {
@@ -16330,7 +19468,27 @@ export type Database = {
         Args: { _user_id: string }
         Returns: undefined
       }
+      file_action: {
+        Args: {
+          p_action_kind: string
+          p_autonomy_lane?: string
+          p_contact_id?: string
+          p_conversation_id?: string
+          p_created_by_agent?: string
+          p_due_at?: string
+          p_from_department?: string
+          p_parent_action_id?: string
+          p_payload?: Json
+          p_priority?: string
+          p_summary?: string
+          p_tenant_id?: string
+          p_title: string
+          p_to_department?: string
+        }
+        Returns: Json
+      }
       fire_team_event: { Args: { payload: Json }; Returns: undefined }
+      get_actor_access: { Args: { _actor: string }; Returns: Json }
       get_analytics_daily_summary: {
         Args: { _end?: string; _start?: string }
         Returns: {
@@ -16396,6 +19554,54 @@ export type Database = {
           parent_business_id: string
         }[]
       }
+      get_client_portal_brand: {
+        Args: never
+        Returns: {
+          accent_color: string
+          favicon_url: string
+          font: string
+          from_name: string
+          logo_dark_url: string
+          logo_url: string
+          primary_color: string
+          product_name: string
+          support_email: string
+          tagline: string
+          tenant_id: string
+          tenant_name: string
+          tenant_slug: string
+        }[]
+      }
+      get_client_portal_config: { Args: never; Returns: Json }
+      get_client_rail: {
+        Args: { p_contact_id: string; p_lens?: string; p_limit?: number }
+        Returns: {
+          actor_type: string
+          actor_user_id: string
+          audience: string
+          event_kind: string
+          from_department: string
+          id: string
+          occurred_at: string
+          payload: Json
+          ref_id: string
+          ref_table: string
+          summary: string
+          surface: string
+          title: string
+          to_department: string
+          visibility: string
+        }[]
+      }
+      get_client_service_agreement: {
+        Args: never
+        Returns: {
+          agreement_body: string
+          agreement_title: string
+          tenant_name: string
+        }[]
+      }
+      get_my_access: { Args: never; Returns: Json }
       get_my_ssn_last_4: { Args: never; Returns: string }
       get_outstanding_consents: {
         Args: { _user_id: string }
@@ -16406,6 +19612,10 @@ export type Database = {
           title: string
           version: number
         }[]
+      }
+      get_owner_onboarding_state: {
+        Args: { p_tenant_id: string }
+        Returns: Json
       }
       get_paige_context_fields: {
         Args: { _surface?: string }
@@ -16441,6 +19651,7 @@ export type Database = {
       get_paige_persona_context: {
         Args: never
         Returns: {
+          brand: Json
           funding_enabled: boolean
           playbook_config: Json
           playbook_slug: string
@@ -16448,11 +19659,29 @@ export type Database = {
           tenant_name: string
         }[]
       }
+      get_platform_email_settings: { Args: never; Returns: Json }
+      get_platform_rail: {
+        Args: { p_limit?: number; p_tenant_id?: string }
+        Returns: {
+          actor_type: string
+          audience: string
+          contact_id: string
+          event_kind: string
+          id: string
+          occurred_at: string
+          summary: string
+          surface: string
+          tenant_id: string
+          title: string
+          visibility: string
+        }[]
+      }
       get_profile_with_pii_log: {
         Args: { _user_id: string }
         Returns: {
           active_tenant_id: string | null
           address: string | null
+          agency_login_default: string
           avatar_url: string | null
           biggest_obstacle: string | null
           business_name: string | null
@@ -16480,6 +19709,7 @@ export type Database = {
           ethnicity: string[] | null
           experience_level: string | null
           financing_preference: string | null
+          first_name: string | null
           full_name: string | null
           funding_goals: Json | null
           gender_identity: string | null
@@ -16504,8 +19734,10 @@ export type Database = {
           is_veteran: boolean | null
           last_fundability_calculated: string | null
           last_fundability_snapshot: Json | null
+          last_name: string | null
           last_report_analyzed_at: string | null
           last_report_source: string | null
+          middle_initial: string | null
           monthly_revenue_range: string | null
           onboarding_completed: boolean | null
           onboarding_step: string | null
@@ -16520,6 +19752,9 @@ export type Database = {
           real_estate_equity_range: string | null
           referral_code: string | null
           score_model: string | null
+          signup_completed_at: string | null
+          signup_lane: string | null
+          signup_started_at: string | null
           ssn_encrypted: string | null
           ssn_last_4: string | null
           staff_notes: string | null
@@ -16528,6 +19763,8 @@ export type Database = {
           suspended_at: string | null
           suspended_by: string | null
           suspended_reason: string | null
+          terms_accepted_at: string | null
+          terms_version: string | null
           total_liquid_assets_range: string | null
           updated_at: string | null
           user_id: string
@@ -16554,12 +19791,33 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_subaccount_metrics: {
+        Args: { _actor: string; _child: string }
+        Returns: Json
+      }
+      get_tenant_email_identity: {
+        Args: { p_tenant_id?: string }
+        Returns: Json
+      }
+      get_tenant_n8n_connection: {
+        Args: { _tenant_id?: string }
+        Returns: Json
+      }
+      get_tenant_n8n_secret: { Args: { _tenant_id: string }; Returns: Json }
       get_tenant_sender: {
         Args: { _tenant_id: string }
         Returns: {
           from_email: string
           from_name: string
           source: string
+        }[]
+      }
+      get_tenant_service_agreement: {
+        Args: { _tenant_id: string }
+        Returns: {
+          agreement_body: string
+          agreement_title: string
+          updated_at: string
         }[]
       }
       get_user_business_limit: { Args: { _user_id: string }; Returns: number }
@@ -16582,24 +19840,186 @@ export type Database = {
           white_label_ai_connect: boolean
         }[]
       }
-      grant_tenant_member_role:
-        | {
-            Args: {
-              _role: Database["public"]["Enums"]["app_role"]
-              _tenant_id?: string
-              _user_id: string
-            }
-            Returns: undefined
-          }
-        | {
-            Args: {
-              _reason?: string
-              _role: Database["public"]["Enums"]["app_role"]
-              _tenant_id?: string
-              _user_id: string
-            }
-            Returns: undefined
-          }
+      grant_tenant_member_role: {
+        Args: {
+          _reason?: string
+          _role: Database["public"]["Enums"]["app_role"]
+          _tenant_id?: string
+          _user_id: string
+        }
+        Returns: undefined
+      }
+      growth_claim_submission: {
+        Args: { p_submission_id: string }
+        Returns: Json
+      }
+      growth_complete_submission: {
+        Args: { p_submission_id: string }
+        Returns: Json
+      }
+      growth_fail_submission: {
+        Args: { p_error?: string; p_submission_id: string }
+        Returns: Json
+      }
+      growth_fire_submission_processor: {
+        Args: { p_submission_id: string; p_tenant_id: string }
+        Returns: undefined
+      }
+      growth_form_upsert: {
+        Args: {
+          p_auto_create_contact?: boolean
+          p_id?: string
+          p_name: string
+          p_pipeline_id?: string
+          p_schema_json: Json
+          p_slug: string
+          p_stage_id?: string
+          p_success_action_json?: Json
+          p_tenant_id: string
+        }
+        Returns: {
+          auto_create_contact: boolean
+          auto_create_deal: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          notify_user_ids: string[]
+          pipeline_id: string | null
+          schema_json: Json
+          slug: string
+          stage_id: string | null
+          status: string
+          success_action_json: Json
+          template_key: string | null
+          tenant_id: string
+          updated_at: string
+          workflow_slug: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "growth_forms"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      growth_funnel_publish: {
+        Args: { p_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      growth_funnel_session_upsert: {
+        Args: {
+          p_completed?: boolean
+          p_funnel_id: string
+          p_referrer?: string
+          p_session_token?: string
+          p_step?: number
+          p_tenant_id?: string
+          p_user_agent?: string
+          p_utm_json?: Json
+        }
+        Returns: {
+          completed: boolean
+          created_at: string
+          current_step: number
+          funnel_id: string
+          id: string
+          referrer: string | null
+          session_token: string
+          tenant_id: string
+          updated_at: string
+          user_agent: string | null
+          utm_json: Json
+        }
+        SetofOptions: {
+          from: "*"
+          to: "growth_funnel_sessions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      growth_funnel_upsert: {
+        Args: {
+          p_entry_page_id?: string
+          p_goal?: string
+          p_id?: string
+          p_name: string
+          p_slug: string
+          p_steps?: Json
+          p_success_page_id?: string
+          p_tenant_id: string
+        }
+        Returns: {
+          created_at: string
+          created_by: string | null
+          entry_page_id: string | null
+          goal: string | null
+          id: string
+          name: string
+          slug: string
+          status: string
+          success_page_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "growth_funnels"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      growth_page_edit_blocks: {
+        Args: { p_id: string; p_ops: Json; p_tenant_id: string }
+        Returns: Json
+      }
+      growth_page_publish: {
+        Args: { p_id: string; p_tenant_id: string }
+        Returns: Json
+      }
+      growth_page_upsert: {
+        Args: {
+          p_blocks_json: Json
+          p_form_schema_json?: Json
+          p_id?: string
+          p_seo_json?: Json
+          p_slug: string
+          p_tenant_id: string
+          p_theme_json?: Json
+          p_title: string
+        }
+        Returns: {
+          blocks_json: Json
+          created_at: string
+          created_by: string | null
+          draft_blocks_json: Json | null
+          draft_seo_json: Json | null
+          draft_theme_json: Json | null
+          id: string
+          og_image_url: string | null
+          published_at: string | null
+          seo_json: Json
+          slug: string
+          status: string
+          template_key: string | null
+          tenant_id: string
+          theme_json: Json
+          title: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "growth_pages"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      growth_sweep_stuck_submissions: { Args: never; Returns: number }
+      growth_validate_blocks: { Args: { p_blocks: Json }; Returns: undefined }
+      growth_validate_form_schema: {
+        Args: { p_schema: Json }
+        Returns: undefined
+      }
       handle_data_subject_request: {
         Args: {
           _contact_id: string
@@ -16644,6 +20064,26 @@ export type Database = {
         }
         Returns: undefined
       }
+      install_marketplace_item:
+        | {
+            Args: {
+              _installed_by_agent?: string
+              _item_slug: string
+              _seeded_kb_doc_ids?: string[]
+              _tenant_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              _actor_user_id: string
+              _installed_by_agent: string
+              _item_slug: string
+              _seeded_kb_doc_ids: string[]
+              _tenant_id: string
+            }
+            Returns: Json
+          }
       is_admin: { Args: { p_user_id: string }; Returns: boolean }
       is_assigned_coach: { Args: { _client_id: string }; Returns: boolean }
       is_assigned_to_client: {
@@ -16654,7 +20094,10 @@ export type Database = {
         Args: { _broker_id: string }
         Returns: boolean
       }
-      is_platform_admin: { Args: never; Returns: boolean }
+      is_calendar_host: { Args: { _cal: string }; Returns: boolean }
+      is_platform_admin:
+        | { Args: never; Returns: boolean }
+        | { Args: { _actor: string }; Returns: boolean }
       is_platform_owner:
         | { Args: never; Returns: boolean }
         | { Args: { _user_id: string }; Returns: boolean }
@@ -16662,11 +20105,18 @@ export type Database = {
         Args: { _client_id: string }
         Returns: boolean
       }
+      is_signup_complete:
+        | { Args: never; Returns: boolean }
+        | { Args: { _uid: string }; Returns: boolean }
       is_staff: { Args: { _user_id: string }; Returns: boolean }
       is_super_admin:
         | { Args: never; Returns: boolean }
         | { Args: { _user_id: string }; Returns: boolean }
       is_tenant_admin: { Args: { _tenant: string }; Returns: boolean }
+      is_tenant_admin_as: {
+        Args: { _actor: string; _tenant: string }
+        Returns: boolean
+      }
       is_tenant_ancestor: {
         Args: { _candidate_ancestor: string; _tenant_id: string }
         Returns: boolean
@@ -16676,9 +20126,199 @@ export type Database = {
         Args: { _tenant_id?: string; _user_id: string }
         Returns: boolean
       }
+      list_actions: {
+        Args: {
+          p_action_id?: string
+          p_contact_id?: string
+          p_limit?: number
+          p_status?: string
+          p_tenant_id?: string
+          p_to_department?: string
+        }
+        Returns: {
+          action_kind: string
+          actor_tier: string | null
+          approval_id: string | null
+          assigned_at: string | null
+          assigned_subagent_slug: string | null
+          assigned_to_user_id: string | null
+          autonomy_lane: string
+          contact_id: string | null
+          conversation_id: string | null
+          created_at: string
+          created_by: string | null
+          created_by_agent: string | null
+          customer_action_id: string | null
+          decision_rationale: string | null
+          draft_content: Json | null
+          drafted_at: string | null
+          due_at: string | null
+          error: string | null
+          executed_at: string | null
+          expires_at: string | null
+          filed_at: string
+          from_department: string
+          id: string
+          invocation_id: string | null
+          origin_account_id: string | null
+          parent_action_id: string | null
+          payload: Json
+          priority: string
+          resolved_at: string | null
+          result: Json | null
+          status: string
+          summary: string | null
+          target_tier: string | null
+          tenant_id: string
+          title: string
+          to_department: string
+          updated_at: string
+          workflow_run_id: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "paige_actions"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      list_calendar_host_candidates: {
+        Args: { _cal: string }
+        Returns: {
+          full_name: string
+          is_host: boolean
+          priority: number
+          user_id: string
+        }[]
+      }
+      list_event_kinds: {
+        Args: never
+        Returns: {
+          default_audience: string
+          default_visibility: string
+          department: string
+          description: string
+          enabled: boolean
+          is_platform_default: boolean
+          label: string
+          slug: string
+          tenant_id: string
+        }[]
+      }
       list_pending_customer_actions: {
         Args: { p_contact_id: string }
         Returns: Json
+      }
+      list_platform_staff: {
+        Args: never
+        Returns: {
+          email: string
+          full_name: string
+          role: string
+          user_id: string
+        }[]
+      }
+      list_subaccounts: {
+        Args: { _actor: string }
+        Returns: {
+          account_type: string
+          created_at: string
+          id: string
+          name: string
+          slug: string
+          status: string
+        }[]
+      }
+      list_team_bookings: {
+        Args: {
+          _from: string
+          _host_ids?: string[]
+          _tenant_id?: string
+          _to: string
+        }
+        Returns: {
+          appointment_type: Json
+          booking_kind: string
+          calendar_id: string
+          capacity: number
+          class_session_id: string
+          collective_group_id: string
+          contact_id: string
+          end_at: string
+          guest_email: string
+          guest_name: string
+          guest_phone: string
+          host_full_name: string
+          host_user_id: string
+          id: string
+          intake_answers: Json
+          location_type: string
+          location_value: string
+          notes: string
+          source: string
+          start_at: string
+          status: string
+          tenant_id: string
+          timezone: string
+          title: string
+        }[]
+      }
+      list_team_members: {
+        Args: { p_tenant_id?: string }
+        Returns: {
+          name: string
+          role: string
+          status: string
+          user_id: string
+        }[]
+      }
+      list_tenant_programs: {
+        Args: { p_tenant_id?: string }
+        Returns: {
+          description: string
+          id: string
+          is_priority: boolean
+          kind: string
+          name: string
+          status: string
+        }[]
+      }
+      list_tenant_sender_identities: { Args: never; Returns: Json }
+      list_tenant_workflows: {
+        Args: { _tenant_id?: string }
+        Returns: {
+          active: boolean
+          created_by_paige: boolean
+          first_seen_at: string
+          folder: string | null
+          last_run_at: string | null
+          last_synced_at: string
+          n8n_workflow_id: string
+          name: string | null
+          notes: string | null
+          present_in_n8n: boolean
+          source: string
+          tags: string[]
+          tenant_id: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "tenant_workflows"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      list_tool_autonomy: {
+        Args: { _tenant_id?: string }
+        Returns: {
+          category: string
+          is_default: boolean
+          label: string
+          mode: string
+          tool_key: string
+          updated_at: string
+        }[]
       }
       load_contact_context: {
         Args: { p_contact_id: string; p_scopes?: string[] }
@@ -16709,6 +20349,145 @@ export type Database = {
       map_tenant_role_to_app_role: {
         Args: { _tenant_role: Database["public"]["Enums"]["tenant_role"] }
         Returns: Database["public"]["Enums"]["app_role"]
+      }
+      marketplace_catalog_for_tenant:
+        | {
+            Args: { _tenant_id: string }
+            Returns: {
+              category: string
+              description: string
+              icon: string
+              install_status: string
+              installed: boolean
+              item_type: Database["public"]["Enums"]["marketplace_item_type"]
+              name: string
+              price_cents: number
+              pricing_model: string
+              requires_embedding: boolean
+              slug: string
+              tagline: string
+              version: string
+            }[]
+          }
+        | {
+            Args: { _actor_user_id: string; _tenant_id: string }
+            Returns: {
+              category: string
+              description: string
+              icon: string
+              install_status: string
+              installed: boolean
+              item_type: Database["public"]["Enums"]["marketplace_item_type"]
+              name: string
+              price_cents: number
+              pricing_model: string
+              requires_embedding: boolean
+              slug: string
+              tagline: string
+              version: string
+            }[]
+          }
+      marketplace_deprecate_version: {
+        Args: { _item_slug: string; _semver: string }
+        Returns: Json
+      }
+      marketplace_install_refcount:
+        | { Args: { _item_slug: string; _tenant_id: string }; Returns: Json }
+        | {
+            Args: {
+              _actor_user_id: string
+              _item_slug: string
+              _tenant_id: string
+            }
+            Returns: Json
+          }
+      marketplace_operator_catalog: {
+        Args: never
+        Returns: {
+          billing_period: string
+          category: string
+          created_at: string
+          current_payload_class: Database["public"]["Enums"]["marketplace_payload_class"]
+          current_semver: string
+          current_version_id: string
+          current_version_is_published: boolean
+          current_version_status: Database["public"]["Enums"]["marketplace_version_status"]
+          default_for_new_tenants: boolean
+          featured: boolean
+          icon: string
+          id: string
+          install_count: number
+          is_finance: boolean
+          item_type: Database["public"]["Enums"]["marketplace_item_type"]
+          name: string
+          origin: Database["public"]["Enums"]["marketplace_origin"]
+          paid_install_count: number
+          platform_fee_cents: number
+          price_cents: number
+          pricing_model: string
+          rating_avg: number
+          rating_count: number
+          refunds_cents: number
+          revenue_event_count: number
+          revenue_gross_cents: number
+          scope: Database["public"]["Enums"]["marketplace_scope"]
+          serves: string
+          slug: string
+          status: Database["public"]["Enums"]["marketplace_item_status"]
+          tagline: string
+          take_rate_bps: number
+          updated_at: string
+          vendor_net_cents: number
+          vendor_slug: string
+          version_count: number
+        }[]
+      }
+      marketplace_publish_version: {
+        Args: {
+          _changelog?: string
+          _install_manifest?: Json
+          _item_slug: string
+          _payload_class?: string
+          _semver: string
+        }
+        Returns: Json
+      }
+      marketplace_set_current_version: {
+        Args: { _item_slug: string; _semver: string }
+        Returns: Json
+      }
+      marketplace_set_default_for_new_tenants: {
+        Args: { _item_slug: string; _on: boolean }
+        Returns: Json
+      }
+      marketplace_set_featured: {
+        Args: { _item_slug: string; _on: boolean }
+        Returns: Json
+      }
+      marketplace_set_item_status: {
+        Args: { _item_slug: string; _status: string }
+        Returns: Json
+      }
+      marketplace_upsert_item: {
+        Args: {
+          _billing_period?: string
+          _category?: string
+          _description?: string
+          _icon?: string
+          _is_finance?: boolean
+          _item_type?: string
+          _name?: string
+          _price_cents?: number
+          _pricing_model?: string
+          _scope?: string
+          _serves?: string
+          _slug: string
+          _tagline?: string
+          _take_rate_bps?: number
+          _visible_to_agency_id?: string
+          _visible_to_tenant_id?: string
+        }
+        Returns: Json
       }
       match_paige_memory: {
         Args: {
@@ -16772,6 +20551,37 @@ export type Database = {
         }
         Returns: number
       }
+      operator_at_risk_tenants: {
+        Args: { p_days?: number }
+        Returns: {
+          last_active: string
+          mrr_cents: number
+          name: string
+          reason: string
+          tenant_id: string
+          tier: string
+        }[]
+      }
+      operator_dashboard_metrics: {
+        Args: { p_window_days?: number }
+        Returns: Json
+      }
+      operator_tier_send_feed: {
+        Args: { _since?: string; _tier?: string }
+        Returns: {
+          actor_tier: string
+          created_at: string
+          created_by: string
+          kind_or_role: string
+          origin_account_id: string
+          origin_tier: string
+          recipient_email: string
+          send_id: string
+          source_table: string
+          status: string
+          target_tier: string
+        }[]
+      }
       paige_chat_thread_create: {
         Args: {
           p_consent_snapshot: Json
@@ -16794,6 +20604,10 @@ export type Database = {
           p_tokens_used: number
           p_tool_calls?: Json
         }
+        Returns: string
+      }
+      paige_resolve_autonomy: {
+        Args: { p_default: string; p_kind: string; p_tenant: string }
         Returns: string
       }
       paige_tool_add_client_note: {
@@ -16822,12 +20636,117 @@ export type Database = {
           brand: Json
           default_role: Database["public"]["Enums"]["tenant_role"]
           expires_at: string
+          invited_email: string
           is_valid: boolean
           kind: string
           tenant_id: string
           tenant_name: string
           tenant_slug: string
         }[]
+      }
+      peek_tenant_portal_brand: {
+        Args: { _slug: string }
+        Returns: {
+          accent_color: string
+          favicon_url: string
+          font: string
+          logo_dark_url: string
+          logo_url: string
+          primary_color: string
+          product_name: string
+          tagline: string
+          tenant_name: string
+          tenant_slug: string
+        }[]
+      }
+      plan_add_milestone: {
+        Args: {
+          p_assigned_to_user_id?: string
+          p_due_at?: string
+          p_plan_id: string
+          p_priority?: string
+          p_summary?: string
+          p_tenant_id?: string
+          p_title: string
+        }
+        Returns: Json
+      }
+      plan_assign_task: {
+        Args: {
+          p_assigned_to_user_id: string
+          p_campaign_ref?: Json
+          p_contact_id?: string
+          p_due_at?: string
+          p_file_to_bus?: boolean
+          p_milestone_id?: string
+          p_plan_id?: string
+          p_priority?: string
+          p_summary?: string
+          p_tenant_id?: string
+          p_title: string
+        }
+        Returns: Json
+      }
+      plan_create: {
+        Args: {
+          p_campaign_ref?: Json
+          p_ends_on: string
+          p_horizon: string
+          p_owner_user_id?: string
+          p_scope?: string
+          p_starts_on: string
+          p_summary?: string
+          p_tenant_id?: string
+          p_title: string
+        }
+        Returns: Json
+      }
+      plan_list: {
+        Args: {
+          p_assigned_to_user_id?: string
+          p_by_item_date?: boolean
+          p_contact_id?: string
+          p_from?: string
+          p_horizon?: string
+          p_limit?: number
+          p_plan_id?: string
+          p_status?: string
+          p_tenant_id?: string
+          p_to?: string
+        }
+        Returns: Json
+      }
+      plan_remove_item: {
+        Args: { p_item_id: string; p_tenant_id?: string }
+        Returns: Json
+      }
+      plan_set_reminder: {
+        Args: {
+          p_channel?: string
+          p_contact_id?: string
+          p_plan_id?: string
+          p_remind_at: string
+          p_summary?: string
+          p_target?: string
+          p_target_user_id?: string
+          p_tenant_id?: string
+          p_title: string
+        }
+        Returns: Json
+      }
+      plan_update_item: {
+        Args: {
+          p_assigned_to_user_id?: string
+          p_due_at?: string
+          p_item_id: string
+          p_priority?: string
+          p_remind_at?: string
+          p_status?: string
+          p_summary?: string
+          p_tenant_id?: string
+          p_title?: string
+        }
+        Returns: Json
       }
       platform_decrypt: { Args: { ciphertext: string }; Returns: string }
       platform_encrypt: { Args: { plaintext: string }; Returns: string }
@@ -16861,6 +20780,105 @@ export type Database = {
           escalated: number
           picked: number
         }[]
+      }
+      practice_attention_queue: { Args: never; Returns: Json }
+      practice_dashboard_metrics: {
+        Args: { p_window_days?: number }
+        Returns: Json
+      }
+      presence_check_user: {
+        Args: { p_query: string; p_window_seconds?: number }
+        Returns: {
+          avatar_url: string
+          full_name: string
+          is_online: boolean
+          last_seen: string
+          status: string
+          user_id: string
+        }[]
+      }
+      presence_go_offline: { Args: never; Returns: undefined }
+      presence_heartbeat: {
+        Args: { p_meta?: Json; p_status?: string }
+        Returns: undefined
+      }
+      presence_list_online: {
+        Args: { p_tenant_id?: string; p_window_seconds?: number }
+        Returns: {
+          avatar_url: string
+          full_name: string
+          last_seen: string
+          session_meta: Json
+          status: string
+          tenant_id: string
+          user_id: string
+        }[]
+      }
+      process_starter_provisioning_queue: { Args: never; Returns: number }
+      provision_tenant: {
+        Args: {
+          _account_type?: string
+          _agreement_slug?: string
+          _agreement_version?: number
+          _description?: string
+          _industry?: string
+          _name: string
+          _team_size?: string
+        }
+        Returns: {
+          account_number_prefix: string
+          account_type: string
+          automation_webhook_url_encrypted: string | null
+          brand: Json
+          created_at: string
+          customer_limit: number
+          features: Json
+          id: string
+          name: string
+          onboarding_state: Json
+          owner_user_id: string | null
+          parent_tenant_id: string | null
+          plan_offer: string | null
+          platform_fee_bps: number
+          seat_limit: number
+          slug: string
+          status: Database["public"]["Enums"]["tenant_status"]
+          storefront_enabled: boolean
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      provision_tenant_default_calendar: {
+        Args: { _tenant_id: string }
+        Returns: string
+      }
+      provision_tenant_email_identity: {
+        Args: { _tenant_id: string }
+        Returns: {
+          custom_domain_id: string | null
+          from_name: string
+          kind: string
+          local_part: string
+          provisioned_at: string
+          reply_to: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenant_email_identities"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       qb_decrypt_token: { Args: { _ciphertext: string }; Returns: string }
       qb_encrypt_token: { Args: { _plaintext: string }; Returns: string }
@@ -16900,22 +20918,186 @@ export type Database = {
         }
         Returns: string
       }
+      record_paige_workflow: {
+        Args: { _n8n_workflow_id: string; _name: string; _tenant_id: string }
+        Returns: undefined
+      }
+      record_rail_event: {
+        Args: {
+          p_actor_type: string
+          p_contact_id: string
+          p_event_kind: string
+          p_from_department?: string
+          p_narrow_to_owner?: boolean
+          p_occurred_at?: string
+          p_payload?: Json
+          p_ref_id?: string
+          p_ref_table?: string
+          p_summary?: string
+          p_surface: string
+          p_tenant_id?: string
+          p_title: string
+          p_to_department?: string
+        }
+        Returns: string
+      }
       refresh_analytics_views: { Args: never; Returns: undefined }
       reject_affiliate_application: {
         Args: { _application_id: string; _notes?: string }
         Returns: Json
       }
+      reorder_pipeline_stages: {
+        Args: { _ordered_ids: string[]; _pipeline_id: string }
+        Returns: undefined
+      }
       require_tenant_brand: { Args: { p_tenant_id: string }; Returns: Json }
+      reschedule_class_booking: {
+        Args: { _new_end_at: string; _new_start_at: string; _seat_id: string }
+        Returns: {
+          appointment_type: Json | null
+          booking_kind: string
+          calendar_id: string | null
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          capacity: number | null
+          class_session_id: string | null
+          collective_group_id: string | null
+          contact_id: string | null
+          created_at: string
+          end_at: string
+          external_calendar_id: string | null
+          external_event_id: string | null
+          guest_email: string | null
+          guest_name: string | null
+          guest_phone: string | null
+          host_user_id: string
+          id: string
+          intake_answers: Json | null
+          location: string | null
+          location_type: string | null
+          location_value: string | null
+          manage_token_version: number
+          meeting_link: string | null
+          meeting_url: string | null
+          notes: string | null
+          reminder_state: Json
+          source: string
+          start_at: string
+          status: string
+          tenant_id: string | null
+          timezone: string
+          title: string
+          updated_at: string
+          zoom_meeting_id: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "internal_bookings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      reschedule_internal_booking: {
+        Args: {
+          _booking_id: string
+          _end_at: string
+          _start_at: string
+          _tenant_id?: string
+        }
+        Returns: Json
+      }
+      resolve_actor_tier: {
+        Args: { _actor: string; _origin: string }
+        Returns: string
+      }
       resolve_client_id_by_email: { Args: { _email: string }; Returns: string }
+      resolve_contact_id: {
+        Args: {
+          p_email?: string
+          p_phone?: string
+          p_tenant: string
+          p_user_id?: string
+        }
+        Returns: string
+      }
+      resolve_starter_playbook_slug: {
+        Args: { _industry: string }
+        Returns: string
+      }
+      resolve_tenant_brand: {
+        Args: { _tenant_id: string }
+        Returns: {
+          accent_color: string
+          custom_domain: string
+          favicon_url: string
+          font: string
+          from_name: string
+          logo_dark_url: string
+          logo_url: string
+          primary_color: string
+          product_name: string
+          support_email: string
+          tagline: string
+          tenant_id: string
+          tenant_name: string
+          tenant_slug: string
+        }[]
+      }
+      resolve_tenant_sender: { Args: { _tenant_id: string }; Returns: Json }
+      resolve_tool_autonomy: {
+        Args: { _tenant_id: string; _tool_key: string }
+        Returns: string
+      }
       revoke_platform_access:
         | { Args: { _user_id: string }; Returns: undefined }
         | { Args: { _reason?: string; _user_id: string }; Returns: undefined }
+      revoke_platform_admin: { Args: { _user_id: string }; Returns: undefined }
+      revoke_tenant_member_role: {
+        Args: {
+          _reason?: string
+          _role: Database["public"]["Enums"]["app_role"]
+          _tenant_id?: string
+          _user_id: string
+        }
+        Returns: Json
+      }
+      run_starter_provisioning: {
+        Args: { _force?: boolean; _steps?: string[]; _tenant_id: string }
+        Returns: Json
+      }
+      sanitize_email_local_part: { Args: { _raw: string }; Returns: string }
+      save_marketing_content: {
+        Args: {
+          p_body?: string
+          p_brief?: string
+          p_channel?: string
+          p_id?: string
+          p_image_path?: string
+          p_image_url?: string
+          p_kind: string
+          p_meta?: Json
+          p_size?: string
+          p_tenant_id?: string
+          p_title: string
+        }
+        Returns: string
+      }
       scan_soft_subagents_for_tool_refs: {
         Args: never
         Returns: {
           out_pattern: string
           out_slug: string
         }[]
+      }
+      seed_starter_business: {
+        Args: { _tenant_id: string }
+        Returns: undefined
+      }
+      set_agency_login_default: { Args: { _pref: string }; Returns: Json }
+      set_calendar_hosts: {
+        Args: { _cal: string; _hosts: Json }
+        Returns: undefined
       }
       set_journey_stage: {
         Args: {
@@ -16924,6 +21106,144 @@ export type Database = {
           _stage_slug: string
         }
         Returns: Json
+      }
+      set_owner_onboarding_state: {
+        Args: { p_patch: Json; p_tenant_id: string }
+        Returns: Json
+      }
+      set_platform_email_settings: {
+        Args: {
+          p_default_from_name?: string
+          p_default_reply_to?: string
+          p_shared_domain?: string
+        }
+        Returns: Json
+      }
+      set_tenant_account_type: {
+        Args: { _account_type: string; _tenant_id: string }
+        Returns: {
+          account_number_prefix: string
+          account_type: string
+          automation_webhook_url_encrypted: string | null
+          brand: Json
+          created_at: string
+          customer_limit: number
+          features: Json
+          id: string
+          name: string
+          onboarding_state: Json
+          owner_user_id: string | null
+          parent_tenant_id: string | null
+          plan_offer: string | null
+          platform_fee_bps: number
+          seat_limit: number
+          slug: string
+          status: Database["public"]["Enums"]["tenant_status"]
+          storefront_enabled: boolean
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_tenant_brand: {
+        Args: { _patch: Json; _tenant_id: string }
+        Returns: Json
+      }
+      set_tenant_email_identity: {
+        Args: {
+          p_from_name?: string
+          p_local_part?: string
+          p_reply_to?: string
+          p_tenant_id?: string
+        }
+        Returns: Json
+      }
+      set_tenant_n8n_connection: {
+        Args: {
+          _api_key: string
+          _base_url: string
+          _label?: string
+          _tenant_id?: string
+        }
+        Returns: Json
+      }
+      set_tenant_playbook: {
+        Args: {
+          _config?: Json
+          _only_if_unset?: boolean
+          _slug?: string
+          _tenant_id: string
+        }
+        Returns: {
+          account_number_prefix: string
+          account_type: string
+          automation_webhook_url_encrypted: string | null
+          brand: Json
+          created_at: string
+          customer_limit: number
+          features: Json
+          id: string
+          name: string
+          onboarding_state: Json
+          owner_user_id: string | null
+          parent_tenant_id: string | null
+          plan_offer: string | null
+          platform_fee_bps: number
+          seat_limit: number
+          slug: string
+          status: Database["public"]["Enums"]["tenant_status"]
+          storefront_enabled: boolean
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          trial_ends_at: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenants"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      set_tenant_portal_config: {
+        Args: { _patch: Json; _tenant_id: string }
+        Returns: Json
+      }
+      set_tenant_service_agreement: {
+        Args: { _body: string; _tenant_id: string; _title: string }
+        Returns: undefined
+      }
+      set_tenant_skill: {
+        Args: { _enabled: boolean; _skill: string; _tenant_id: string }
+        Returns: Json
+      }
+      set_tenant_workflow_folder: {
+        Args: { _folder: string; _n8n_workflow_id: string; _tenant_id?: string }
+        Returns: undefined
+      }
+      set_tool_autonomy: {
+        Args: { _mode: string; _tenant_id?: string; _tool_key: string }
+        Returns: {
+          created_at: string
+          mode: string
+          tenant_id: string
+          tool_key: string
+          updated_at: string
+          updated_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "tenant_tool_autonomy"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       ship_26_check_dependencies: { Args: never; Returns: Json }
       ship_26_drop_legacy_tables: { Args: { _force?: boolean }; Returns: Json }
@@ -16939,6 +21259,10 @@ export type Database = {
       suspend_user: {
         Args: { _reason: string; _user_id: string }
         Returns: undefined
+      }
+      sync_tenant_workflows: {
+        Args: { _tenant_id: string; _workflows: Json }
+        Returns: number
       }
       tenant_feature_enabled: {
         Args: { _feature: string; _tenant_id: string }
@@ -16976,6 +21300,33 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      uninstall_marketplace_item:
+        | { Args: { _item_slug: string; _tenant_id: string }; Returns: Json }
+        | {
+            Args: {
+              _actor_user_id: string
+              _item_slug: string
+              _tenant_id: string
+            }
+            Returns: Json
+          }
+      update_contact: {
+        Args: {
+          p_assigned_coach_user_id?: string
+          p_contact_id: string
+          p_email?: string
+          p_entity_name?: string
+          p_first_name?: string
+          p_last_name?: string
+          p_lifecycle_stage?: string
+          p_notes?: string
+          p_phone?: string
+          p_primary_offer?: string
+          p_status?: string
+          p_title?: string
+        }
+        Returns: undefined
+      }
       update_profile_ssn: {
         Args: {
           _date_of_birth: string
@@ -16984,6 +21335,26 @@ export type Database = {
           _user_id: string
         }
         Returns: undefined
+      }
+      update_tenant_n8n_sync: {
+        Args: {
+          _last_error?: string
+          _status: string
+          _tenant_id: string
+          _workflow_count?: number
+        }
+        Returns: undefined
+      }
+      upsert_tenant_event_kind: {
+        Args: {
+          p_default_audience: string
+          p_default_visibility: string
+          p_department: string
+          p_description: string
+          p_label: string
+          p_slug: string
+        }
+        Returns: Json
       }
       verify_certificate_by_code: {
         Args: { _verification_code: string }
@@ -16994,8 +21365,16 @@ export type Database = {
           verification_code: string
         }[]
       }
+      verify_cron_token: { Args: { _token: string }; Returns: boolean }
     }
     Enums: {
+      access_tier:
+        | "god"
+        | "agency"
+        | "tenant"
+        | "subaccount"
+        | "client"
+        | "none"
       account_type:
         | "credit_card"
         | "auto_loan"
@@ -17096,6 +21475,27 @@ export type Database = {
         | "stage"
         | "implementation"
       letter_status: "draft" | "generated" | "sent" | "delivered"
+      marketplace_item_status: "listed" | "unlisted" | "archived"
+      marketplace_item_type:
+        | "skin"
+        | "skill"
+        | "kb_pack"
+        | "tool"
+        | "portal_surface"
+        | "automation"
+        | "bundle"
+      marketplace_origin: "first_party" | "vendor"
+      marketplace_payload_class: "config_only" | "code"
+      marketplace_scope: "public" | "tenant" | "agency"
+      marketplace_version_status:
+        | "draft"
+        | "submitted"
+        | "in_review"
+        | "changes_requested"
+        | "approved"
+        | "published"
+        | "deprecated"
+        | "rejected"
       naics_risk_category:
         | "low_risk"
         | "moderate_risk"
@@ -17275,6 +21675,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      access_tier: ["god", "agency", "tenant", "subaccount", "client", "none"],
       account_type: [
         "credit_card",
         "auto_loan",
@@ -17386,6 +21787,29 @@ export const Constants = {
         "implementation",
       ],
       letter_status: ["draft", "generated", "sent", "delivered"],
+      marketplace_item_status: ["listed", "unlisted", "archived"],
+      marketplace_item_type: [
+        "skin",
+        "skill",
+        "kb_pack",
+        "tool",
+        "portal_surface",
+        "automation",
+        "bundle",
+      ],
+      marketplace_origin: ["first_party", "vendor"],
+      marketplace_payload_class: ["config_only", "code"],
+      marketplace_scope: ["public", "tenant", "agency"],
+      marketplace_version_status: [
+        "draft",
+        "submitted",
+        "in_review",
+        "changes_requested",
+        "approved",
+        "published",
+        "deprecated",
+        "rejected",
+      ],
       naics_risk_category: [
         "low_risk",
         "moderate_risk",
