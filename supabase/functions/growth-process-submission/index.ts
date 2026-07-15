@@ -1,39 +1,39 @@
-// growth-process-submission — the on-submit AUTOMATION EXECUTOR (Growth OS / Vibe Studio, Phase 4).
+// growth-process-submission - the on-submit AUTOMATION EXECUTOR (Growth OS / Vibe Studio, Phase 4).
 //
 // This is the missing seam that turns a captured form/funnel submission into real CRM + Paige
 // activity. A per-submission trigger (or the recovery sweeper) POSTs {submission_id, tenant_id}
 // here; this function runs that submission's configured automations, in order, exactly once each.
 //
 // The spine it drives lives in migration 20260714092000_growth_submission_processor.sql:
-//   • growth_claim_submission / _complete_ / _fail_  — atomic claim + terminal lifecycle (service-only)
-//   • growth_form_automations                        — the per-form ordered automation config (rows)
-//   • growth_automation_targets                      — the platform catalog: slug → executor + config
-//   • growth_submission_dispatches                   — the fire-once ledger, UNIQUE(submission,automation)
+//   * growth_claim_submission / _complete_ / _fail_  - atomic claim + terminal lifecycle (service-only)
+//   * growth_form_automations                        - the per-form ordered automation config (rows)
+//   * growth_automation_targets                      - the platform catalog: slug -> executor + config
+//   * growth_submission_dispatches                   - the fire-once ledger, UNIQUE(submission,automation)
 // Legacy forms with no automation rows fall back to their growth_forms columns (auto_create_contact /
 // pipeline_id / workflow_slug / notify_user_ids) exactly as the migration's backfill intends.
 //
-// ── EXECUTOR MAP (growth_automation_targets.executor → what runs) ────────────────────────────
-//   contact_upsert     → resolve_contact_id, else create_contact; writes submission.contact_id
-//   pipeline_attach    → create/advance a tenant-owned deal on the form's pipeline/stage
-//   paige_action       → file_action(<kind>) onto the action bus (owner draft/approve lane)
-//   surface_to_client  → file_action(<kind>) (client-facing surface kind), same seam
-//   client_rail_event  → record_rail_event onto the client's activity timeline
-//   notify_team        → invoke notify-team-event (event=form_submission)
-//   n8n_workflow       → file_action(owner.run_workflow, {workflow_key}) then advance_action → run
-//   outbound_webhook   → SSRF-guarded POST of the submission to a connected endpoint
+// -- EXECUTOR MAP (growth_automation_targets.executor -> what runs) ----------------------------
+//   contact_upsert     -> resolve_contact_id, else create_contact; writes submission.contact_id
+//   pipeline_attach    -> create/advance a tenant-owned deal on the form's pipeline/stage
+//   paige_action       -> file_action(<kind>) onto the action bus (owner draft/approve lane)
+//   surface_to_client  -> file_action(<kind>) (client-facing surface kind), same seam
+//   client_rail_event  -> record_rail_event onto the client's activity timeline
+//   notify_team        -> invoke notify-team-event (event=form_submission)
+//   n8n_workflow       -> file_action(owner.run_workflow, {workflow_key}) then advance_action -> run
+//   outbound_webhook   -> SSRF-guarded POST of the submission to a connected endpoint
 //
-// ── SECURITY (§9/§13) ────────────────────────────────────────────────────────────────────────
+// -- SECURITY (S9/S13) ------------------------------------------------------------------------
 // NOT user-facing. Authorized ONLY by (a) the service-role bearer, or (b) a valid Vault cron token
-// (verify_cron_token) — the same gate the cron-style functions use. Fails CLOSED. The tenant is
+// (verify_cron_token) - the same gate the cron-style functions use. Fails CLOSED. The tenant is
 // taken from the CLAIMED submission row, never trusted from the request body (body.tenant_id is
 // only used to disambiguate/log). Every downstream RPC re-checks tenant scope in-DB.
 //
-// ── HONESTY (§13) ────────────────────────────────────────────────────────────────────────────
+// -- HONESTY (S13) ----------------------------------------------------------------------------
 // Each executor's TRUE outcome is written to the dispatch ledger (done|error). One executor failing
-// never drops the rest — the loop runs them all, then the submission is completed if all succeeded
+// never drops the rest - the loop runs them all, then the submission is completed if all succeeded
 // or failed (with the real error) if any did, so the sweeper can retry. non-2xx is returned ONLY on
 // a top-level failure (bad auth, missing id, claim error, unknown submission/form); otherwise 200
-// with the per-executor results — never a 200 hiding a top-level error.
+// with the per-executor results - never a 200 hiding a top-level error.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 // NOTE: the outbound_webhook executor (which uses the shared SSRF guard) is DEFERRED for the first
@@ -60,7 +60,7 @@ function s(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : (typeof v === "number" ? String(v) : null);
 }
 
-// ── Identity extraction from a submission payload, honoring the form's field maps_to ──
+// -- Identity extraction from a submission payload, honoring the form's field maps_to --
 // Fields declare maps_to like "contacts.email" / "clients.first_name" / "businesses.legal_name"
 // (the convention used across GrowthHub + paige-ai-chat). payload_json is keyed by field.key.
 // We resolve mapped columns first, then fall back to conventional top-level keys (like
@@ -116,7 +116,7 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // ── Auth: service-role bearer OR a valid Vault cron token. Fail CLOSED (§13). ──
+  // -- Auth: service-role bearer OR a valid Vault cron token. Fail CLOSED (S13). --
   const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   let authorized = bearer.length > 0 && bearer === SERVICE_ROLE;
   if (!authorized) {
@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
   }
   if (!authorized) return json({ error: "unauthorized" }, 401);
 
-  // ── Body ──
+  // -- Body --
   let body: { submission_id?: string; tenant_id?: string };
   try { body = await req.json(); } catch { return json({ error: "invalid_json" }, 400); }
   const submissionId = s(body?.submission_id);
@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
     return json({ error: "submission_id required (uuid)" }, 400);
   }
 
-  // ── 1. Atomic claim. Loser exits cleanly (idempotent). ──
+  // -- 1. Atomic claim. Loser exits cleanly (idempotent). --
   const { data: claim, error: claimErr } = await admin.rpc("growth_claim_submission", { p_submission_id: submissionId });
   if (claimErr) {
     return json({ error: "claim_failed", detail: claimErr.message }, 500);
@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
     // Already claimed by a concurrent worker, or already terminal. Nothing to do.
     return json({ submission_id: submissionId, claimed: false, executed: [], failed: [] }, 200);
   }
-  const tenantId: string = claim.tenant_id; // authoritative — from the claimed row, never the body (§9)
+  const tenantId: string = claim.tenant_id; // authoritative - from the claimed row, never the body (S9)
 
   // From here on, a thrown/failed path must mark the submission failed so the sweeper can retry.
   const failSubmission = async (msg: string) => {
@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
   };
 
   try {
-    // ── 2. Load the claimed submission + its form ──
+    // -- 2. Load the claimed submission + its form --
     const { data: submission, error: subErr } = await admin
       .from("growth_form_submissions")
       .select("id, tenant_id, form_id, contact_id, deal_id, source, payload_json")
@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
       await failSubmission(`form_not_found: ${formErr?.message ?? "no row"}`);
       return json({ error: "form_not_found", detail: formErr?.message ?? null }, 404);
     }
-    // §9 defense-in-depth: the form MUST belong to the claimed submission's tenant. The anon-INSERT
+    // S9 defense-in-depth: the form MUST belong to the claimed submission's tenant. The anon-INSERT
     // RLS already binds submission.tenant_id to form.tenant_id, but the processor never runs one
     // tenant's automations under another's context on the strength of a single upstream policy.
     if (form.tenant_id !== tenantId) {
@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
       return json({ error: "tenant_mismatch" }, 409);
     }
 
-    // ── 3. Resolve the ordered automation list (rows first; legacy columns as fallback) ──
+    // -- 3. Resolve the ordered automation list (rows first; legacy columns as fallback) --
     const { data: rows, error: autoErr } = await admin
       .from("growth_form_automations")
       .select("id, target_slug, order_index, enabled, autonomy_lane, config_json, growth_automation_targets(executor, config_schema)")
@@ -207,7 +207,7 @@ Deno.serve(async (req) => {
     if (rows && rows.length > 0) {
       for (const r of rows as any[]) {
         const target = Array.isArray(r.growth_automation_targets) ? r.growth_automation_targets[0] : r.growth_automation_targets;
-        if (!target?.executor) continue; // orphaned slug — skip rather than guess
+        if (!target?.executor) continue; // orphaned slug - skip rather than guess
         plan.push({
           automationId: r.id,
           slug: r.target_slug,
@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
         });
       }
     } else {
-      // Legacy fallback — synthesize from growth_forms columns (no automation_id ⇒ not ledgered;
+      // Legacy fallback - synthesize from growth_forms columns (no automation_id => not ledgered;
       // submission-level completion prevents re-fire on the normal path).
       if (form.auto_create_contact) {
         plan.push({ automationId: null, slug: "contact_upsert", executor: "contact_upsert", lane: null, config: {}, targetConfig: {} });
@@ -237,7 +237,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Existing dispatch ledger for this submission → skip already-completed executors (idempotent).
+    // Existing dispatch ledger for this submission -> skip already-completed executors (idempotent).
     const { data: existingDispatches } = await admin
       .from("growth_submission_dispatches")
       .select("automation_id, status")
@@ -254,7 +254,7 @@ Deno.serve(async (req) => {
     const failed: Array<Record<string, unknown>> = [];
     const skipped: Array<Record<string, unknown>> = [];
 
-    // ── 4. Run each automation in order ──
+    // -- 4. Run each automation in order --
     for (const p of plan) {
       // Idempotency: a done/skipped dispatch is permanent; an error dispatch is retried (re-run + upsert).
       if (p.automationId) {
@@ -296,19 +296,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── 5. Terminal lifecycle (honest) ──
+    // -- 5. Terminal lifecycle (honest) --
     if (failed.length > 0) {
       await failSubmission(`executor_failures: ${failed.map((f) => `${f.slug}:${f.error}`).join("; ")}`);
     } else {
       const { error: compErr } = await admin.rpc("growth_complete_submission", { p_submission_id: submissionId });
       if (compErr) {
-        // The work ran, but we couldn't mark it done — report truthfully; the sweeper will re-claim
+        // The work ran, but we couldn't mark it done - report truthfully; the sweeper will re-claim
         // and the ledger will skip the already-completed executors.
         return json({ submission_id: submissionId, claimed: true, executed, failed, skipped, complete_error: compErr.message }, 200);
       }
     }
 
-    // ── 6. Structured summary. 200 with per-executor truth (top-level succeeded). ──
+    // -- 6. Structured summary. 200 with per-executor truth (top-level succeeded). --
     return json({ submission_id: submissionId, claimed: true, executed, failed, skipped }, 200);
   } catch (e) {
     const msg = (e as Error)?.message ?? "unknown_error";
@@ -317,7 +317,7 @@ Deno.serve(async (req) => {
   }
 });
 
-// ── The executor dispatch. Each arm returns a truthful ExecOutcome; a throw is caught by the loop. ──
+// -- The executor dispatch. Each arm returns a truthful ExecOutcome; a throw is caught by the loop. --
 type ExecCtx = {
   // deno-lint-ignore no-explicit-any
   admin: any;
@@ -337,7 +337,7 @@ async function runExecutor(
   const { admin, tenantId, submissionId, form, payload } = ctx;
 
   switch (p.executor) {
-    // ── contact_upsert: resolve, else create; then pin the submission's contact_id. ──
+    // -- contact_upsert: resolve, else create; then pin the submission's contact_id. --
     case "contact_upsert": {
       if (ctx.contactId) {
         return { status: "done", result: { contact_id: ctx.contactId, note: "already_linked" } };
@@ -352,7 +352,7 @@ async function runExecutor(
       });
       let contactId = s(resolved);
       if (!contactId) {
-        // Create via the audited RPC seam (§10). p_created_by threads the form's verified
+        // Create via the audited RPC seam (S10). p_created_by threads the form's verified
         // operator so the admin/coach role gate and NOT-NULL created_by are satisfied.
         const { data: created, error: createErr } = await admin.rpc("create_contact", {
           p_first_name: idn.firstName ?? "New",
@@ -381,7 +381,7 @@ async function runExecutor(
       return { status: "done", result: { contact_id: contactId } };
     }
 
-    // ── pipeline_attach: create/advance a tenant-OWNED deal on the form's pipeline/stage. ──
+    // -- pipeline_attach: create/advance a tenant-OWNED deal on the form's pipeline/stage. --
     case "pipeline_attach": {
       const contactId = ctx.contactId;
       if (!contactId) return { status: "error", result: {}, error: "no_contact_for_pipeline" };
@@ -389,7 +389,7 @@ async function runExecutor(
       const stageId = s(p.config.stage_id) ?? s(form.stage_id);
       if (!pipelineId) return { status: "done", result: { note: "no_pipeline_configured" } };
 
-      // §9 ownership: the pipeline (and stage) MUST belong to this tenant.
+      // S9 ownership: the pipeline (and stage) MUST belong to this tenant.
       const { data: pipe } = await admin.from("pipelines").select("id, tenant_id, name").eq("id", pipelineId).maybeSingle();
       if (!pipe || pipe.tenant_id !== tenantId) {
         return { status: "error", result: {}, error: "pipeline_not_in_tenant" };
@@ -401,7 +401,7 @@ async function runExecutor(
           return { status: "error", result: {}, error: "stage_not_in_pipeline" };
         }
       } else {
-        // No stage named — fall to the lowest-order OPEN stage of the pipeline.
+        // No stage named - fall to the lowest-order OPEN stage of the pipeline.
         const { data: firstStage } = await admin
           .from("pipeline_stages")
           .select("id").eq("pipeline_id", pipelineId).eq("stage_type", "open")
@@ -439,14 +439,14 @@ async function runExecutor(
       return { status: "done", result: { deal_id: dealId, stage_id: resolvedStageId } };
     }
 
-    // ── paige_action / surface_to_client: file the action onto the bus (governed lane). ──
+    // -- paige_action / surface_to_client: file the action onto the bus (governed lane). --
     case "paige_action":
     case "surface_to_client": {
       const actionKind = s(p.config.action_kind) ?? s(p.targetConfig.action_kind);
       if (!actionKind) return { status: "error", result: {}, error: "no_action_kind_configured" };
       const { data: filed, error: fileErr } = await admin.rpc("file_action", {
         p_action_kind: actionKind,
-        p_title: `New submission — ${form.name ?? "form"}`,
+        p_title: `New submission - ${form.name ?? "form"}`,
         p_summary: null,
         p_contact_id: ctx.contactId,
         p_payload: { submission_id: submissionId, form_id: form.id, source: s(payload.source) ?? "paige_form" },
@@ -458,7 +458,7 @@ async function runExecutor(
         p_parent_action_id: null,
         p_created_by_agent: "paige",
         p_tenant_id: tenantId,
-        p_autonomy_lane: p.lane, // null ⇒ the kind default; the DB resolver clamps it (§16)
+        p_autonomy_lane: p.lane, // null => the kind default; the DB resolver clamps it (S16)
       });
       if (fileErr || !filed?.ok) {
         return { status: "error", result: {}, error: `file_action_failed: ${fileErr?.message ?? filed?.error ?? "unknown"}` };
@@ -466,7 +466,7 @@ async function runExecutor(
       return { status: "done", result: { action_id: filed.action_id, action_kind: actionKind, status: filed.status } };
     }
 
-    // ── client_rail_event: post the submission onto the client's activity timeline. ──
+    // -- client_rail_event: post the submission onto the client's activity timeline. --
     case "client_rail_event": {
       if (!ctx.contactId) return { status: "done", result: { note: "no_contact_for_timeline" } };
       const eventKind = s(p.config.event_kind) ?? s(p.targetConfig.event_kind) ?? "client.intake_answer";
@@ -490,7 +490,7 @@ async function runExecutor(
       return { status: "done", result: { event_id: s(railId), event_kind: eventKind } };
     }
 
-    // ── notify_team: hand off to the unified team notifier (event=form_submission). ──
+    // -- notify_team: hand off to the unified team notifier (event=form_submission). --
     case "notify_team": {
       const res = await fetch(`${SUPABASE_URL}/functions/v1/notify-team-event`, {
         method: "POST",
@@ -503,13 +503,13 @@ async function runExecutor(
       return { status: "done", result: { notify: parsed ?? txt.slice(0, 200) } };
     }
 
-    // ── n8n_workflow: file owner.run_workflow, then advance it into a queued run (governed). ──
+    // -- n8n_workflow: file owner.run_workflow, then advance it into a queued run (governed). --
     case "n8n_workflow": {
       const workflowKey = s(p.config.workflow_key) ?? s(p.config.workflow_slug);
       if (!workflowKey) return { status: "error", result: {}, error: "no_workflow_key_configured" };
       const { data: filed, error: fileErr } = await admin.rpc("file_action", {
         p_action_kind: "owner.run_workflow",
-        p_title: `Automation — ${form.name ?? "form"}`,
+        p_title: `Automation - ${form.name ?? "form"}`,
         p_summary: null,
         p_contact_id: ctx.contactId,
         p_payload: { workflow_key: workflowKey, submission_id: submissionId, form_id: form.id, contact_id: ctx.contactId },
@@ -528,8 +528,8 @@ async function runExecutor(
       }
       // Drive it forward. advance_action's workflow executor enqueues a paige_workflow_runs row when
       // the resolved lane is 'auto'; on a confirm/off lane it holds for approval. The dispatch sweeper
-      // fires the queued run and trg_pwr_sync_action flips the action to done/failed at terminal (§13
-      // truthful — never done-at-fire-time). We report the real resulting status.
+      // fires the queued run and trg_pwr_sync_action flips the action to done/failed at terminal (S13
+      // truthful - never done-at-fire-time). We report the real resulting status.
       const { data: adv, error: advErr } = await admin.rpc("advance_action", {
         p_action_id: filed.action_id, p_to_status: "drafted", p_tenant_id: tenantId,
       });
@@ -539,14 +539,14 @@ async function runExecutor(
       return { status: "done", result: { action_id: filed.action_id, workflow_key: workflowKey, action_status: adv?.status ?? filed.status } };
     }
 
-    // ── outbound_webhook: DEFERRED (fast-follow). ──────────────────────────────────────────────
+    // -- outbound_webhook: DEFERRED (fast-follow). ----------------------------------------------
     // Held out of the first live ship on purpose. Two things must land together before a service-role
     // fetch to a tenant-authored URL is safe and honest, and neither is done yet:
     //   1. The connected-endpoint URL now lives ENCRYPTED (outbound_webhook_configs.url_ct, decrypt via
-    //      platform_decrypt) and that table is not tenant-scoped — so the config-id path needs a
+    //      platform_decrypt) and that table is not tenant-scoped - so the config-id path needs a
     //      tenant-owned endpoint table + a scoped decrypt, not the old plaintext `url` column.
     //   2. The inline-URL path needs DNS-rebinding-safe fetching (resolve once, connect to the
-    //      validated IP literal with the original Host header) — assertPublicHttpUrl + fetch(url) is a
+    //      validated IP literal with the original Host header) - assertPublicHttpUrl + fetch(url) is a
     //      TOCTOU that a low-TTL record can slip past.
     // This executor is NOT a platform default and has no authoring UI, so no live form references it;
     // deferring it fails no real submission. It records an honest, non-failing "deferred" outcome so a
