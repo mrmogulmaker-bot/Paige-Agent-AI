@@ -66,7 +66,7 @@ async function resolveAgencyLanding(userId: string): Promise<string | null> {
  */
 export async function resolveLandingRoute(userId: string): Promise<string> {
   try {
-    const [rolesRes, clientRes, ownedTenantRes, memberTenantRes] = await Promise.all([
+    const [rolesRes, clientRes, ownedTenantRes, memberTenantRes, agencyTeamRes] = await Promise.all([
       supabase.from("user_roles").select("role").eq("user_id", userId),
       supabase
         .from("clients")
@@ -75,6 +75,16 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
         .maybeSingle(),
       supabase.from("tenants").select("id").eq("owner_user_id", userId).limit(1).maybeSingle(),
       supabase.from("tenant_members").select("tenant_id").eq("user_id", userId).limit(1).maybeSingle(),
+      // Agency-team invitees don't get a tenant_members row — they live in
+      // agency_team_members. Without this signal they fall through to
+      // /onboarding and get prompted to create their own workspace.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase.from("agency_team_members" as any) as any)
+        .select("agency_tenant_id")
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .limit(1)
+        .maybeSingle(),
     ]);
 
     let roles = (rolesRes.data || []).map((r: any) => r.role as string);
