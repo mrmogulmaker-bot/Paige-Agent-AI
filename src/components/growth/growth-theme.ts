@@ -124,12 +124,37 @@ function safeFont(font?: string): string | null {
 export type GrowthThemeVars = Record<string, string>;
 
 /**
+ * Layer theme objects floor → most-specific WITHOUT letting a null/undefined/"" in a higher
+ * layer clobber a real value below it.
+ *
+ * A plain `{ ...floor, ...theme }` spread does NOT skip nulls — so an explicit `font: null` in a
+ * page's theme_json overwrites the tenant's brand font with nothing. The generator emits
+ * `font: null` / `logo_url: null` for every tenant that hasn't set them (most of them), and the
+ * public renderer feeds its raw theme_json straight in. The Studio normalizes at its seam, but
+ * this merge is the ONE point both surfaces pass through, so guarding it here is what makes the
+ * canvas and the published page provably resolve the same tokens (§1/§6/§13) — no caller can
+ * reintroduce the clobber.
+ */
+function layerThemes(...layers: (GrowthPageTheme | null | undefined)[]): GrowthPageTheme {
+  const out: GrowthPageTheme = {};
+  for (const layer of layers) {
+    if (!layer || typeof layer !== "object") continue;
+    for (const [key, value] of Object.entries(layer)) {
+      if (value === null || value === undefined) continue;
+      if (typeof value === "string" && value.trim() === "") continue;
+      (out as Record<string, unknown>)[key] = value;
+    }
+  }
+  return out;
+}
+
+/**
  * Resolve a page theme (over an optional brand floor) into the `--gp-*` variable map.
  * Layering: hard floor → tenant brand floor → the page's own theme_json (most specific).
  * Returns a plain object spreadable into a React `style` prop.
  */
 export function resolveGrowthTheme(theme?: GrowthPageTheme | null, brandFloor?: GrowthPageTheme | null): GrowthThemeVars {
-  const t: GrowthPageTheme = { ...GROWTH_BRAND_FLOOR, ...(brandFloor || {}), ...(theme || {}) };
+  const t: GrowthPageTheme = layerThemes(GROWTH_BRAND_FLOOR, brandFloor, theme);
 
   const primary = parseHex(t.primary) || parseHex(GROWTH_BRAND_FLOOR.primary)!;
   const accent = parseHex(t.accent) || parseHex(GROWTH_BRAND_FLOOR.accent)!;

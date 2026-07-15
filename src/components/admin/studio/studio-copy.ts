@@ -16,15 +16,31 @@ import type { GrowthBlock } from "@/lib/growth";
 import type { GenerationPhase, IntentChip, StudioErrorCode } from "./studio-types";
 
 /** The narration for each phase of a run. Every line names work that actually happens —
- *  the phase ticker is not decoration, it is a report (§13). */
+ *  the phase ticker is not decoration, it is a report (§13). It reads as Paige's TEAM at
+ *  work (§8/§14): you're not watching one chatbot spin, you're watching a crew build the
+ *  page. Each line stays honest — the named agent maps to real work the seam performs
+ *  (brand resolve, the model draft, the block validator, the staged reveal). */
 export const GENERATION_NOTES: Record<Exclude<GenerationPhase, "idle">, string> = {
-  brief: "Reading your brief.",
+  brief: "Paige is reading your brief.",
   brand: "Pulling your brand — colors, type, logo.",
-  drafting: "Writing the page.",
+  drafting: "Laying out the page, section by section.",
   validating: "Checking every section holds up.",
-  composing: "Painting the canvas.",
-  done: "Done.",
+  composing: "Bringing it onto the canvas.",
+  done: "Done — the whole team signed off.",
   error: "That didn't land.",
+};
+
+/**
+ * Who on Paige's team owns each phase (§8/§14). This is the attribution that sells the moat —
+ * "you're hiring her entire team," not a single model. Each name is honest: the work behind it
+ * genuinely happens in the seam. Paige herself conducts (brief), then hands to her specialists.
+ */
+export const PHASE_AGENTS: Record<Exclude<GenerationPhase, "idle" | "done" | "error">, string> = {
+  brief: "Paige",
+  brand: "Brand agent",
+  drafting: "Design agent",
+  validating: "Quality agent",
+  composing: "Paige",
 };
 
 /**

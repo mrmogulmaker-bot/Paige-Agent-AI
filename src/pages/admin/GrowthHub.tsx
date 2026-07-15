@@ -111,7 +111,13 @@ export default function GrowthHub({ embedded = false }: GrowthHubProps) {
           <SectionHeader title="Landing Pages" cta={
             <CreatePageDialog tenantId={activeTenantId} pages={pages} forms={forms} onCreated={() => setParams({ tab: "pages" })} />
           } />
-          {loading ? <div className="text-muted-foreground text-sm">Loading…</div> : pages.length === 0 ? (
+          {loading ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-28 animate-pulse rounded-[var(--radius)] border border-border bg-muted/40 motion-reduce:animate-none" />
+              ))}
+            </div>
+          ) : pages.length === 0 ? (
             <EmptyState icon={LayoutGrid} title="No pages yet" description="Spin one up from a template, then publish it when it's ready to go live." />
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -431,7 +437,7 @@ function TogglePublishButton({ row, onChanged }: { row: Page; onChanged: () => v
   };
 
   return (
-    <Button size="sm" variant="ghost" disabled={busy} onClick={run}>
+    <Button size="sm" variant={isLive ? "ghost" : "gold"} disabled={busy} onClick={run}>
       {busy && <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />}
       {isLive ? "Unpublish" : "Publish"}
     </Button>
@@ -491,7 +497,7 @@ function CreatePageDialog({ tenantId, pages, forms, onCreated }: { tenantId: str
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button size="sm" variant="gold"><Plus className="w-4 h-4 mr-1" />New Page</Button></DialogTrigger>
+      <DialogTrigger asChild><Button size="sm" variant="default"><Plus className="w-4 h-4 mr-1" />New Page</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Create landing page</DialogTitle></DialogHeader>
         <div className="space-y-3">
@@ -519,7 +525,7 @@ function CreatePageDialog({ tenantId, pages, forms, onCreated }: { tenantId: str
           </div>
         </div>
         <DialogFooter>
-          <Button variant="gold" onClick={create} disabled={busy}>
+          <Button variant="default" onClick={create} disabled={busy}>
             {busy && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}Create
           </Button>
         </DialogFooter>
@@ -546,7 +552,7 @@ function CreateFormDialog({ tenantId, onCreated }: { tenantId: string | null; on
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button size="sm" variant="gold"><Plus className="w-4 h-4 mr-1" />New Form</Button></DialogTrigger>
+      <DialogTrigger asChild><Button size="sm" variant="default"><Plus className="w-4 h-4 mr-1" />New Form</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Create form</DialogTitle></DialogHeader>
         <div className="space-y-3">
@@ -563,7 +569,7 @@ function CreateFormDialog({ tenantId, onCreated }: { tenantId: string | null; on
             <p className="text-[11px] text-muted-foreground mt-1">{FORM_TEMPLATES.find((t) => t.key === template)?.description}</p>
           </div>
         </div>
-        <DialogFooter><Button variant="gold" onClick={create}>Create</Button></DialogFooter>
+        <DialogFooter><Button variant="default" onClick={create}>Create</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -594,7 +600,7 @@ function CreateFunnelDialog({ tenantId, pages, forms, onCreated }: { tenantId: s
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button size="sm" variant="gold"><Plus className="w-4 h-4 mr-1" />New Funnel</Button></DialogTrigger>
+      <DialogTrigger asChild><Button size="sm" variant="default"><Plus className="w-4 h-4 mr-1" />New Funnel</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>Create funnel</DialogTitle></DialogHeader>
         <div className="space-y-3">
@@ -615,7 +621,7 @@ function CreateFunnelDialog({ tenantId, pages, forms, onCreated }: { tenantId: s
             </Select>
           </div>
         </div>
-        <DialogFooter><Button variant="gold" onClick={create}>Create</Button></DialogFooter>
+        <DialogFooter><Button variant="default" onClick={create}>Create</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -639,7 +645,7 @@ function CreateSourceDialog({ tenantId, forms, onCreated }: { tenantId: string |
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button size="sm" variant="gold"><Plus className="w-4 h-4 mr-1" />Add Bridge</Button></DialogTrigger>
+      <DialogTrigger asChild><Button size="sm" variant="default"><Plus className="w-4 h-4 mr-1" />Add Bridge</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>New external builder bridge</DialogTitle></DialogHeader>
         <div className="space-y-3">
@@ -659,7 +665,7 @@ function CreateSourceDialog({ tenantId, forms, onCreated }: { tenantId: string |
             </Select>
           </div>
         </div>
-        <DialogFooter><Button variant="gold" onClick={create}>Create bridge</Button></DialogFooter>
+        <DialogFooter><Button variant="default" onClick={create}>Create bridge</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -106,7 +106,9 @@ export function PublishDialog({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-display">
               It's live
-              <StatePill state="success">Published</StatePill>
+              {/* The go-live moment, in gold (§11): the act just completed. The gold confirm
+                  button is gone by now, so this is the single gold mark on this view. */}
+              <StatePill state="on">Live</StatePill>
             </DialogTitle>
             <DialogDescription>Anyone with the link can see this page now.</DialogDescription>
           </DialogHeader>

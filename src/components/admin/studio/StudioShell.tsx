@@ -13,7 +13,7 @@
 // the toolbar below, and the confirm inside PublishDialog. Not on Generate, not on Save, not
 // on a chip, not on the selection outline (that's indigo `--ring`).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Monitor, Smartphone, Sparkles, Wand2 } from "lucide-react";
+import { Monitor, Smartphone, Sparkles, Users, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useGeneratePage } from "@/hooks/useGeneratePage";
 import { useToast } from "@/hooks/use-toast";
@@ -428,6 +428,29 @@ export function StudioShell({
     );
   }
 
+  // ── still resolving the workspace: a themed skeleton, never a live-but-inert composer.
+  //    Platform staff carry no active tenant (§9), so we wait for the resolve to settle
+  //    before deciding between the Studio and the hard gate — a composer that can't write
+  //    anywhere must never render as if it can. ───────────────────────────────────────
+  if (tenantLoading && !tenantId) {
+    return (
+      <PageShell width="full" className={className}>
+        {!embedded && (
+          <PageHeader
+            variant="hero"
+            eyebrow="Vibe Studio"
+            title="Build a page"
+            description="Describe it. Paige builds it. You publish it."
+          />
+        )}
+        <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
+          <div className="h-96 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
+          <div className="h-96 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
+        </div>
+      </PageShell>
+    );
+  }
+
   // ── no workspace: a hard gate, not a broken surface ───────────────────────────────
   if (!tenantLoading && !tenantId) {
     return (
@@ -473,6 +496,15 @@ export function StudioShell({
               state.selectedIndex != null
                 ? "Same conversation — Paige rewrites the section you picked."
                 : "One brief. Paige drafts the whole page in front of you."
+            }
+            footer={
+              state.selectedIndex == null ? (
+                // §8/§14 — the moat, stated once and quietly: it's a crew, not a chatbot.
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Users className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  Paige runs a team — a brand, design, and quality agent build every page with her.
+                </p>
+              ) : undefined
             }
           >
             <PromptComposer
@@ -520,8 +552,13 @@ export function StudioShell({
               </div>
 
               <div className="flex items-center gap-2">
-                <StatePill state={state.status === "published" ? "success" : "off"}>
-                  {state.status === "published" ? (state.dirty ? "Unpublished changes" : "Published") : "Draft"}
+                {/* GOLD (§11): the ONLY gold that lives at rest — and only on a page that is
+                    genuinely live and in sync. Unpublished edits drop it to warning; a draft
+                    is off. Gold means "this is on the internet right now," nothing less. */}
+                <StatePill
+                  state={state.status === "published" ? (state.dirty ? "warning" : "on") : "off"}
+                >
+                  {state.status === "published" ? (state.dirty ? "Unpublished changes" : "Live") : "Draft"}
                 </StatePill>
                 <Button
                   variant="outline"
