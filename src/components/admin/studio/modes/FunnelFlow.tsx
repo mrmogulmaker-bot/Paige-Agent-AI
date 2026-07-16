@@ -5,7 +5,7 @@
 // the same visual language the manual FunnelMode uses, so an AI funnel and a hand-built one
 // read as one object. The act (Publish funnel) lives in the top bar, not here.
 import type { ReactNode } from "react";
-import { ExternalLink, FileText, LayoutGrid, PartyPopper } from "lucide-react";
+import { AlertTriangle, ExternalLink, FileText, LayoutGrid, PartyPopper } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { SectionCard, StatePill } from "@/components/ui/page";
 import type { BuiltFunnel, BuiltFunnelStep } from "../studio";
@@ -44,6 +44,7 @@ function stepNote(step: BuiltFunnelStep): string | undefined {
 }
 
 export function FunnelFlow({ funnel, url }: { funnel: BuiltFunnel; url: string | null }) {
+  const blanks = funnel.pageBlanks ?? [];
   return (
     <div className="mx-auto w-full max-w-xl">
       <SectionCard className="mb-4">
@@ -67,6 +68,33 @@ export function FunnelFlow({ funnel, url }: { funnel: BuiltFunnel; url: string |
           )}
         </div>
       </SectionCard>
+
+      {/* §15/§13: the entry page still has blanks the brief didn't fill — publishing is blocked
+          until they're resolved (the server refuses them), so say exactly what's missing rather
+          than let the gold act fail mysteriously. The composer below rebuilds with the details. */}
+      {blanks.length > 0 && (
+        <SectionCard className="mb-4 border-warning/40">
+          <div className="flex gap-3">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
+            <div className="min-w-0 space-y-1.5">
+              <p className="text-sm font-medium text-foreground">A few details to fill before this goes live</p>
+              <p className="text-xs text-muted-foreground">
+                Add these to your description below and Paige will rebuild the funnel with them in place:
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {blanks.map((b) => (
+                  <code
+                    key={b}
+                    className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
+                  >
+                    {b}
+                  </code>
+                ))}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      )}
 
       {funnel.steps.map((step, i) => {
         const Icon = STEP_ICON[step.kind];

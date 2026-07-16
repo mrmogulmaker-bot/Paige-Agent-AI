@@ -24,8 +24,9 @@
 // now driven entirely by `visibleModes`, computed in StudioShell from REAL content per mode
 // (never just "this mode was mounted"). A fresh session passes an EMPTY array — no strip at
 // all — and the row only reappears once there's a genuine second destination to switch to.
-// Funnel never appears in that array (zero AI-generation path — 100% manual); it gets its own
-// small, deliberately-secondary ghost button instead, always reachable, never a co-equal tab.
+// Funnel is NOT in that array and has NO button here (§18/§19): an AI funnel now builds and
+// renders inside the page surface, reached only conversationally or via the funnel intent
+// (mode="funnel"); when one is active its gold act (`funnelActive`) replaces the page acts.
 import {
   FileText,
   GitBranch,
@@ -101,6 +102,8 @@ export interface StudioTopBarProps {
   onPublishFunnel?: () => void;
   funnelPublishing?: boolean;
   publishFunnelDisabled?: boolean;
+  /** Leave the funnel and return to a blank composer — the operator's way out (§13). */
+  onExitFunnel?: () => void;
 
   className?: string;
 }
@@ -130,6 +133,7 @@ export function StudioTopBar({
   onPublishFunnel,
   funnelPublishing = false,
   publishFunnelDisabled = false,
+  onExitFunnel,
   className,
 }: StudioTopBarProps) {
   // When a funnel is up, the page-only controls (title, device, Save, Publish, the page
@@ -303,9 +307,15 @@ export function StudioTopBar({
         )}
 
         {/* AI funnel act — the SAME page surface, its own gold moment (§11/§18/§19). The pill
-            reads the funnel's real live state; gold ships the whole sequence (page + funnel). */}
+            reads the funnel's real live state; gold ships the whole sequence (page + funnel).
+            "Start over" is the way out so the operator is never trapped in one artifact (§13). */}
         {funnelActive && (
           <>
+            {onExitFunnel && (
+              <Button variant="ghost" size="sm" onClick={onExitFunnel} className="text-muted-foreground hover:text-foreground">
+                Start over
+              </Button>
+            )}
             <StatePill state={funnelLive ? "on" : "off"}>{funnelLive ? "Live" : "Draft"}</StatePill>
             {onPublishFunnel && (
               <Button

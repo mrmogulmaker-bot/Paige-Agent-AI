@@ -1299,6 +1299,9 @@ export interface SaveFormInput {
    *  default ({"type":"thank_you", message}) — never overwrites an existing form's action with
    *  null; only an explicit value here ever changes it. */
   successAction?: GrowthSuccessAction | null;
+  /** PASS THIS TO UPDATE an existing form in place (the funnel rebuild path). Without it the
+   *  upsert INSERTs a new row — which is what would strand orphan forms on every rebuild. */
+  id?: string | null;
 }
 
 export interface SavedForm {
@@ -1326,7 +1329,7 @@ export async function saveForm(input: SaveFormInput): Promise<SavedForm> {
       p_auto_create_contact: true,
       p_pipeline_id: null,
       p_stage_id: null,
-      p_id: null,
+      p_id: input.id ?? null,
     },
     "SAVE_FAILED",
   );
@@ -1597,23 +1600,53 @@ export interface BuiltFunnel {
   pageSlug: string;
   pageStatus: "draft" | "published";
   formId: string | null;
+  /** The intake form's slug — carried so a rebuild updates the SAME form row in place. */
+  formSlug: string | null;
+  /** Unresolved [ADD_…] blanks the generator left in the entry page (§15). While non-empty
+   *  the funnel CANNOT publish — growth_page_publish hard-refuses these — so the caller must
+   *  gate the act and tell the operator what to add, never arm a gold button that will fail. */
+  pageBlanks: string[];
   steps: BuiltFunnelStep[];
+}
+
+/** The [ADD_…] / prompt-style blanks the page generator leaves when the brief lacked a real
+ *  fact (§15). Same two regexes the publish preflight uses (PLACEHOLDER_TOKEN/_PROMPT below),
+ *  so what we flag here is exactly what growth_page_publish will refuse — no drift. */
+function collectPlaceholders(value: unknown): string[] {
+  if (value === null || value === undefined) return [];
+  const text = JSON.stringify(value) ?? "";
+  const found = new Set<string>();
+  for (const re of [new RegExp(PLACEHOLDER_TOKEN.source, "g"), new RegExp(PLACEHOLDER_PROMPT.source, "gi")]) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      found.add(m[0]);
+      if (found.size >= 8) break;
+    }
+  }
+  return [...found];
 }
 
 /** Persist a drafted funnel into REAL rows — the entry page (draft), the intake form (active),
  *  and the funnel itself with its wired steps. Returns the built funnel with honest per-step
- *  status so the canvas never claims a step is live before publishFunnelCascade() ships it. */
+ *  status so the canvas never claims a step is live before publishFunnelCascade() ships it.
+ *
+ *  Pass `existing` to REBUILD in place (the refine-by-re-briefing path): the same page/form/
+ *  funnel rows are updated instead of INSERTing a fresh set — otherwise every refinement would
+ *  strand orphan pages/forms/funnels in the tenant's libraries (§12). */
 export async function buildFunnelFromDraft(input: {
   tenantId: string;
   draft: FunnelDraft;
+  existing?: BuiltFunnel | null;
 }): Promise<BuiltFunnel> {
   const tenantId = requireTenant(input.tenantId);
-  const { draft } = input;
+  const { draft, existing } = input;
 
   // 1. Entry page — a draft row (its own embedded signup form is auto-authored by the upsert).
-  const pageSlug = await uniqueGrowthPageSlug(tenantId, draft.page.title || draft.name);
+  //    On rebuild, update the SAME row (keep its id + slug) rather than mint a new one.
+  const pageSlug = existing?.pageSlug ?? (await uniqueGrowthPageSlug(tenantId, draft.page.title || draft.name));
   const page = await savePageDraft({
     tenantId,
+    pageId: existing?.pageId ?? null,
     slug: pageSlug,
     title: draft.page.title || draft.name,
     blocks: draft.page.blocks,
@@ -1622,13 +1655,22 @@ export async function buildFunnelFromDraft(input: {
   });
 
   // 2. Intake form step — created ACTIVE by growth_form_upsert (never a draft), so the only
-  //    thing standing between the funnel and live is publishing the entry page.
+  //    thing standing between the funnel and live is publishing the entry page. Reuse the
+  //    existing form row on rebuild; only mint a new slug when the funnel gains a form.
   let formId: string | null = null;
+  let formSlug: string | null = null;
   let formTitle = "";
   if (draft.form) {
-    const formSlug = await uniqueGrowthSlug("growth_forms", tenantId, draft.form.name);
-    const form = await saveForm({ tenantId, slug: formSlug, name: draft.form.name, schema: draft.form.schema });
+    formSlug = existing?.formSlug ?? (await uniqueGrowthSlug("growth_forms", tenantId, draft.form.name));
+    const form = await saveForm({
+      tenantId,
+      id: existing?.formId ?? null,
+      slug: formSlug,
+      name: draft.form.name,
+      schema: draft.form.schema,
+    });
     formId = form.id;
+    formSlug = form.slug;
     formTitle = draft.form.name;
   }
 
@@ -1638,14 +1680,20 @@ export async function buildFunnelFromDraft(input: {
   if (formId) steps.push({ step_type: "form", order_index: steps.length, form_id: formId });
   steps.push({ step_type: "thankyou", order_index: steps.length });
 
-  const funnelSlug = await uniqueGrowthSlug("growth_funnels", tenantId, draft.name);
+  const funnelSlug = existing?.funnelSlug ?? (await uniqueGrowthSlug("growth_funnels", tenantId, draft.name));
   const funnel = await saveFunnel({
     tenantId,
+    id: existing?.funnelId ?? null,
     slug: funnelSlug,
     name: draft.name,
     steps,
     entryPageId: page.id,
   });
+
+  // Any [ADD_…] blank in the drafted page is a hard publish blocker (§15) — surface it, don't
+  // arm a publish that the server will refuse.
+  const pageBlanks = collectPlaceholders(draft.page.blocks).concat(collectPlaceholders(draft.page.seo));
+  const uniqueBlanks = [...new Set(pageBlanks)].slice(0, 8);
 
   const builtSteps: BuiltFunnelStep[] = [
     { kind: "page", title: page.title || draft.page.title, refId: page.id, status: "draft" },
@@ -1662,6 +1710,8 @@ export async function buildFunnelFromDraft(input: {
     pageSlug: page.slug,
     pageStatus: "draft",
     formId,
+    formSlug,
+    pageBlanks: uniqueBlanks,
     steps: builtSteps,
   };
 }
@@ -1672,10 +1722,23 @@ export interface PublishFunnelCascadeResult {
   pagePublished: boolean;
 }
 
+/** A funnel-publish failure that happened AFTER the entry page already went live — so the
+ *  caller can still reflect the page as published instead of lying that nothing happened (§13). */
+export interface FunnelPublishError {
+  cause: unknown;
+  /** The entry page IS live even though the funnel didn't flip — reflect it. */
+  pagePublished: boolean;
+}
+
+export function isFunnelPublishError(e: unknown): e is FunnelPublishError {
+  return !!e && typeof e === "object" && "cause" in e && "pagePublished" in e;
+}
+
 /** Ship the whole funnel in one act (§19): publish the entry page (the one step still a draft),
  *  then publish the funnel — whose server guard re-checks that pages are live and forms active
- *  before it flips to active and returns the real /f/<tenant>/<slug> URL. Any guard failure
- *  surfaces honestly; nothing is reported live that isn't (§13). */
+ *  before it flips to active and returns the real /f/<tenant>/<slug> URL. If the funnel step
+ *  throws AFTER the page published, we rethrow a FunnelPublishError carrying pagePublished so
+ *  the UI never claims the page is still a draft when it is actually live (§13). */
 export async function publishFunnelCascade(input: {
   tenantId: string;
   funnel: Pick<BuiltFunnel, "funnelId" | "pageId" | "pageStatus">;
@@ -1686,8 +1749,12 @@ export async function publishFunnelCascade(input: {
     await publishPage({ tenantId, pageId: input.funnel.pageId });
     pagePublished = true;
   }
-  const { url } = await publishFunnel({ tenantId, id: input.funnel.funnelId });
-  return { url, pagePublished };
+  try {
+    const { url } = await publishFunnel({ tenantId, id: input.funnel.funnelId });
+    return { url, pagePublished };
+  } catch (cause) {
+    throw { cause, pagePublished } as FunnelPublishError;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
