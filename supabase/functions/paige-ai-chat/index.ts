@@ -72,6 +72,9 @@ function describeStep(
     // Pipeline (owner)
     case "pipeline_create": return { label: "Building your pipeline", group: "owner" };
     case "pipeline_add_stage": return { label: "Adding a pipeline stage", group: "owner" };
+    case "pipeline_suggest_from_program": return { label: "Mapping out your sales process", group: "owner" };
+    case "deal_create": return { label: "Adding the deal", group: "owner" };
+    case "deal_move_stage": return { label: "Moving the deal", group: "owner" };
     case "crm_pipeline_summary": case "crm_list_deals": return { label: "Reviewing your pipeline", group: "owner" };
     case "crm_list_tasks": return { label: "Checking your tasks", group: "owner" };
     // Roles / members (owner)
@@ -3584,6 +3587,9 @@ The current user is an ADMIN or COACH operating the Paige CRM. You have full rea
 - "What's the pipeline look like?" → crm_pipeline_summary, then crm_list_deals for the top stages.
 - "Tell me about Jane Doe" → crm_search_contacts to resolve the id, then crm_get_contact_summary for the full file (recent activity, deals, tasks, notes, lifecycle, last touch).
 - "What tasks are overdue?" → crm_list_tasks with overdue=true.
+- "Set up a pipeline for my program" / "Help me figure out my sales process" → if they describe a program or offer, pipeline_suggest_from_program to draft the stages, read them back, refine, then pipeline_create (confirm-gated). You can also design the stages conversationally yourself; use the proposer when they've described a program/offer so the result matches the app.
+- "Add a deal for Jane, $3k, in Proposal" → resolve the pipeline/stage (crm_pipeline_summary or crm_list_deals) and the contact (crm_search_contacts), then deal_create (value in CENTS, confirm-gated).
+- "Move the Acme deal to Won" → crm_list_deals to get the deal id + target stage id, then deal_move_stage (confirm-gated).
 
 Always resolve names/emails to client_id via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
 
@@ -4555,6 +4561,56 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "deal_create",
+              description: "Admin/coach only. Add a NEW deal to a pipeline — the operator's individual opportunity (e.g. 'add a deal for Jane's onboarding, $3k, in Proposal'). Resolve the pipeline and (optionally) the stage first: call crm_pipeline_summary or crm_list_deals to see the tenant's pipelines/stages, and crm_search_contacts to resolve a named client to contact_client_id. If stage_id is omitted the deal lands on the pipeline's first stage. value_cents is in CENTS ($3,000 → 300000). PROPOSE FIRST: say what you'll add and get the operator's yes, then call again with confirm:true — unless the workspace autonomy policy has set this action to auto. Returns the new deal id.",
+              parameters: {
+                type: "object",
+                properties: {
+                  title: { type: "string", description: "Short deal name, e.g. 'Acme — Q3 retainer'." },
+                  pipeline_id: { type: "string", description: "pipelines.id the deal belongs to." },
+                  stage_id: { type: "string", description: "pipeline_stages.id. Omit to land on the pipeline's first stage." },
+                  contact_client_id: { type: "string", description: "clients.id of the linked contact (resolve by name first)." },
+                  value_cents: { type: "number", description: "Deal value in CENTS." },
+                  currency: { type: "string", description: "ISO code, default USD." },
+                  expected_close_date: { type: "string", description: "ISO date, e.g. 2026-08-15." }
+                },
+                required: ["title", "pipeline_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "deal_move_stage",
+              description: "Admin/coach only. Move an existing deal to a different pipeline stage (the chat equivalent of dragging a card across the board). Moving into a WON stage marks the deal won and stamps today's close date; a LOST stage marks it lost; any other stage returns it to open. Resolve the deal id and target stage_id first via crm_list_deals. Logs a timeline activity. PROPOSE FIRST and call again with confirm:true once the operator approves — unless the workspace has set this action to auto.",
+              parameters: {
+                type: "object",
+                properties: {
+                  deal_id: { type: "string", description: "deals.id to move." },
+                  stage_id: { type: "string", description: "pipeline_stages.id to move the deal into." },
+                  reason: { type: "string", description: "Optional note recorded on the timeline." }
+                },
+                required: ["deal_id", "stage_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "pipeline_suggest_from_program",
+              description: "Admin/coach only. When the operator wants help figuring out what their SALES PROCESS should look like from a described program/offer/service, use this to get a tuned, guard-railed proposal (4-7 stages in their own vocabulary, exactly one won and one lost). Pass the operator's own description of the program/offer as program_text (a paragraph or more — ask for it if they haven't given it). This RETURNS a proposal only; it does NOT create anything. Read the proposed stages back to the operator, refine conversationally, then call pipeline_create (confirm-gated) to build it. Prefer this over inventing stages yourself when they describe a program or offer.",
+              parameters: {
+                type: "object",
+                properties: {
+                  program_text: { type: "string", description: "The operator's description of their program/offer/service, in their words (min ~1 paragraph)." }
+                },
+                required: ["program_text"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "crm_list_tasks",
               description: "Admin/coach only. List operator tasks. Use for 'what's due today', 'overdue tasks', or 'tasks for [coach]'. Returns id, title, due_date, status, assignee user_id, track, deal_id.",
               parameters: {
@@ -5019,6 +5075,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "crm_update_pipeline_stage", "crm_assign_coach", "crm_assign_contact",
       "crm_create_task", "crm_log_activity",
       "pipeline_create", "pipeline_add_stage",
+      "deal_create", "deal_move_stage",
       "member_grant_role", "member_revoke_role",
       "calendar_book_meeting", "program_enroll",
       "draft_marketing_content", "generate_image", "content_save",
@@ -5049,6 +5106,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       crm_log_activity: "logging an activity",
       pipeline_create: "creating a pipeline",
       pipeline_add_stage: "adding a pipeline stage",
+      deal_create: "adding a deal",
+      deal_move_stage: "moving a deal",
       member_grant_role: "granting a staff role",
       member_revoke_role: "revoking a staff role",
       calendar_book_meeting: "booking a meeting",
@@ -5088,6 +5147,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Create a pipeline "${a?.name || "Untitled"}"${Array.isArray(a?.stages) && a.stages.length ? ` with ${a.stages.length} stage${a.stages.length === 1 ? "" : "s"}${a.stages.map((s: any) => s?.label).filter(Boolean).length ? ` (${a.stages.map((s: any) => s?.label).filter(Boolean).join(" → ")})` : ""}` : ""}.`;
         case "pipeline_add_stage":
           return `Add stage "${a?.label || ""}" to the pipeline.`;
+        case "deal_create":
+          return `Add a deal "${a?.title || "Untitled"}"${typeof a?.value_cents === "number" ? ` worth ${(a.value_cents / 100).toLocaleString(undefined, { style: "currency", currency: a?.currency || "USD" })}` : ""} to the pipeline.`;
+        case "deal_move_stage":
+          return `Move the deal to a new stage${a?.reason ? ` (${String(a.reason).slice(0, 80)})` : ""}.`;
         case "crm_create_contact":
           return `Add contact ${[a?.first_name, a?.last_name].filter(Boolean).join(" ") || a?.email || "new contact"}${a?.email ? ` (${a.email})` : ""}.`;
         case "crm_update_contact": {
@@ -5840,6 +5903,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "crm_delete_contact" ||
           tc.function.name === "pipeline_create" ||
           tc.function.name === "pipeline_add_stage" ||
+          tc.function.name === "deal_create" ||
+          tc.function.name === "deal_move_stage" ||
+          tc.function.name === "pipeline_suggest_from_program" ||
           tc.function.name === "member_grant_role" ||
           tc.function.name === "member_revoke_role" ||
           tc.function.name === "calendar_book_meeting" ||
@@ -6007,6 +6073,125 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, stage_id: sid };
+            } else if (tc.function.name === "deal_create") {
+              // Add a deal to a pipeline. Tenant-scoped by construction: the stage must belong to
+              // THIS tenant's pipeline, and the row is stamped with the caller's tenant_id — a deal
+              // can never be planted in another workspace. Status/close-date follow the stage type,
+              // mirroring the board's drag behavior (§13: the row reflects what actually happened).
+              const tenantId = personaCtx?.tenant_id;
+              if (!tenantId) {
+                result = { success: false, error: "No workspace in context — pick a workspace first." };
+              } else {
+                let stage: any = null;
+                if (args.stage_id) {
+                  const { data: st } = await admin.from("pipeline_stages")
+                    .select("id, stage_type, label")
+                    .eq("id", args.stage_id).eq("pipeline_id", args.pipeline_id).eq("tenant_id", tenantId)
+                    .maybeSingle();
+                  stage = st;
+                } else {
+                  const { data: st } = await admin.from("pipeline_stages")
+                    .select("id, stage_type, label")
+                    .eq("pipeline_id", args.pipeline_id).eq("tenant_id", tenantId)
+                    .order("order_index", { ascending: true }).limit(1).maybeSingle();
+                  stage = st;
+                }
+                if (!stage) {
+                  result = { success: false, error: "That pipeline or stage isn't in your workspace, or the pipeline has no stages yet." };
+                } else {
+                  // A named contact must belong to THIS tenant — the FK enforces existence, not
+                  // tenancy, so a foreign clients.id would otherwise link into this tenant's deal and
+                  // leak the foreign client's details through any deals→clients join (§9).
+                  let contactId: string | null = null;
+                  let contactOk = true;
+                  if (args.contact_client_id) {
+                    const { data: c } = await admin.from("clients")
+                      .select("id").eq("id", args.contact_client_id).eq("tenant_id", tenantId).maybeSingle();
+                    if (c) contactId = c.id; else contactOk = false;
+                  }
+                  if (!contactOk) {
+                    result = { success: false, error: "That contact isn't in your workspace." };
+                  } else {
+                    const today = new Date().toISOString().slice(0, 10);
+                    const status = stage.stage_type === "won" ? "won" : stage.stage_type === "lost" ? "lost" : "open";
+                    const { data: deal, error: derr } = await admin.from("deals").insert({
+                      title: args.title,
+                      pipeline_id: args.pipeline_id,
+                      stage_id: stage.id,
+                      contact_client_id: contactId,
+                      // value_cents is NOT NULL DEFAULT 0 — never pass null (would violate the constraint).
+                      value_cents: typeof args.value_cents === "number" ? Math.round(args.value_cents) : 0,
+                      currency: args.currency ?? "USD",
+                      expected_close_date: args.expected_close_date ?? null,
+                      status,
+                      actual_close_date: status === "open" ? null : today,
+                      source: "paige",
+                      tenant_id: tenantId,
+                      owner_user_id: user.id,
+                      created_by: user.id,
+                    }).select("id").single();
+                    if (derr) throw derr;
+                    await admin.from("deal_activities").insert({
+                      deal_id: deal.id, type: "created",
+                      summary: `Deal created in ${stage.label}`,
+                      actor_user_id: user.id, payload: { source: "paige", stage_id: stage.id },
+                    });
+                    result = { success: true, deal_id: deal.id, stage: stage.label, status };
+                  }
+                }
+              }
+            } else if (tc.function.name === "deal_move_stage") {
+              // Move a deal across stages — the chat twin of dragging a card. Both the target stage
+              // and the deal are pinned to the caller's tenant, so neither can reach another
+              // workspace. Won/lost stamps status + close date; anything else reopens (matches
+              // PipelineAdmin.onDrop). Logs a timeline activity so the move shows in the CRM.
+              const tenantId = personaCtx?.tenant_id;
+              if (!tenantId) {
+                result = { success: false, error: "No workspace in context — pick a workspace first." };
+              } else {
+                const { data: stage } = await admin.from("pipeline_stages")
+                  .select("id, stage_type, label, pipeline_id").eq("id", args.stage_id).eq("tenant_id", tenantId).maybeSingle();
+                if (!stage) {
+                  result = { success: false, error: "That stage isn't in your workspace." };
+                } else {
+                  const today = new Date().toISOString().slice(0, 10);
+                  const status = stage.stage_type === "won" ? "won" : stage.stage_type === "lost" ? "lost" : "open";
+                  // Keep pipeline_id in lockstep with the stage: if the target stage lives in a
+                  // different pipeline of the same tenant, the deal moves to THAT pipeline — never a
+                  // row whose stage_id and pipeline_id disagree (which would vanish off the board).
+                  const { data: moved, error: merr } = await admin.from("deals")
+                    .update({ stage_id: stage.id, pipeline_id: stage.pipeline_id, status, actual_close_date: status === "open" ? null : today })
+                    .eq("id", args.deal_id).eq("tenant_id", tenantId)
+                    .select("id").maybeSingle();
+                  if (merr) throw merr;
+                  if (!moved) {
+                    result = { success: false, error: "That deal isn't in your workspace." };
+                  } else {
+                    await admin.from("deal_activities").insert({
+                      deal_id: args.deal_id, type: "stage_changed",
+                      summary: `Moved to ${stage.label}${args.reason ? ` — ${String(args.reason).slice(0, 200)}` : ""}`,
+                      actor_user_id: user.id, payload: { stage_id: stage.id, source: "paige" },
+                    });
+                    result = { success: true, deal_id: args.deal_id, stage: stage.label, status };
+                  }
+                }
+              }
+            } else if (tc.function.name === "pipeline_suggest_from_program") {
+              // Route the operator's program/offer description through the tuned pipeline-suggest
+              // proposer (the same guard-railed engine behind the "Build from a program" dialog),
+              // so consultative sales-process design in chat matches the UI instead of ad-hoc stages.
+              // Returns a PROPOSAL only — Paige reads it back and calls pipeline_create to build it.
+              const { data: sug, error: serr } = await supabaseClient.functions.invoke("pipeline-suggest", {
+                body: { program_text: args.program_text },
+              });
+              // pipeline-suggest returns its internal-failure body with HTTP 200, so functions.invoke
+              // sees no transport error — check the payload's own `error` field too, or Paige would
+              // "read back" an error object as if it were a real proposal (§13 truthfulness).
+              if (serr || (sug as any)?.error || !(sug as any)?.proposed_pipeline) {
+                result = { success: false, error: "Couldn't draft a pipeline from that — try describing the program in a bit more detail." };
+              } else {
+                result = { success: true, suggestion: sug };
+              }
             } else if (tc.function.name === "member_grant_role") {
               const { error } = await supabaseClient.rpc("grant_tenant_member_role", {
                 _user_id: args.user_id, _role: args.role, _tenant_id: personaCtx?.tenant_id ?? null,
