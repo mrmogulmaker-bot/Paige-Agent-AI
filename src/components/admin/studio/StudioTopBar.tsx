@@ -10,6 +10,14 @@
 //   copy   → none in the bar (gold lives on each draft card's "Save to library")
 //   image  → none at all (the act is the server's auto-file; the result pill reports it)
 // Everything else — mode chips, device chips, Save, Library — is indigo/neutral.
+//
+// MODE STRIP (§18): this used to render all five modes as a permanent, equal-weight tab row
+// — the exact "pick a type before Paige has heard the brief" gate §18 exists to forbid. It's
+// now driven entirely by `visibleModes`, computed in StudioShell from REAL content per mode
+// (never just "this mode was mounted"). A fresh session passes an EMPTY array — no strip at
+// all — and the row only reappears once there's a genuine second destination to switch to.
+// Funnel never appears in that array (zero AI-generation path — 100% manual); it gets its own
+// small, deliberately-secondary ghost button instead, always reachable, never a co-equal tab.
 import {
   FileText,
   GitBranch,
@@ -31,7 +39,6 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 import { MODE_LABELS } from "./studio-copy";
 import {
-  STUDIO_MODES,
   type DeviceFrame,
   type ModeToolbarState,
   type StudioMode,
@@ -48,6 +55,10 @@ const MODE_ICONS: Record<StudioMode, LucideIcon> = {
 export interface StudioTopBarProps {
   mode: StudioMode;
   onModeChange: (mode: StudioMode) => void;
+  /** Which of page/form/copy/image have earned a real tab this session (StudioShell decides —
+   *  see its "the mode-tab strip" block). Never includes "funnel" — that has its own ghost
+   *  button below, always available regardless of content. Empty = render no strip at all. */
+  visibleModes: readonly StudioMode[];
 
   // — page mode —
   title?: string;
@@ -75,6 +86,7 @@ export interface StudioTopBarProps {
 export function StudioTopBar({
   mode,
   onModeChange,
+  visibleModes,
   title,
   onTitleChange,
   device,
@@ -115,17 +127,43 @@ export function StudioTopBar({
             Beta
           </Badge>
         </div>
-        <div role="group" aria-label="What are you creating" className="flex flex-wrap items-center gap-1">
-          {STUDIO_MODES.map((m) => {
-            const Icon = MODE_ICONS[m];
-            return (
-              <FilterChip key={m} active={mode === m} onClick={() => onModeChange(m)}>
-                <Icon className="h-3.5 w-3.5" aria-hidden />
-                {MODE_LABELS[m]}
-              </FilterChip>
-            );
-          })}
-        </div>
+        {/* A fresh session — nothing generated, drafted, or saved yet — renders NOTHING here:
+            one composer, no picker. The strip earns its place back one real tab at a time as
+            `visibleModes` grows (StudioShell owns that call). Never framed as "pick a type." */}
+        {visibleModes.length > 0 && (
+          <div role="group" aria-label="Switch what you've built this session" className="flex flex-wrap items-center gap-1">
+            {visibleModes.map((m) => {
+              const Icon = MODE_ICONS[m];
+              return (
+                <FilterChip key={m} active={mode === m} onClick={() => onModeChange(m)}>
+                  <Icon className="h-3.5 w-3.5" aria-hidden />
+                  {MODE_LABELS[m]}
+                </FilterChip>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Funnel — the one deliberate exception (§18): zero AI-generation path, 100% manual,
+            so it can never earn a spot in the tab strip above. A quiet ghost button, always
+            here regardless of session content — ISN'T styled as a co-equal tab (no active-pill
+            fill, no icon-plus-label pair matching the FilterChips) so it never restores the
+            "6th tab" picker the owner rejected. Toggles: click in from anywhere, click again
+            (while parked there) to head back to the Page composer. */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onModeChange(mode === "funnel" ? "page" : "funnel")}
+          aria-pressed={mode === "funnel"}
+          className={cn(
+            "h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground",
+            mode === "funnel" && "bg-muted text-foreground",
+          )}
+        >
+          <GitBranch className="h-3.5 w-3.5" aria-hidden />
+          {mode === "funnel" ? "Back to page" : "Funnel"}
+        </Button>
       </div>
 
       {/* ── the page's name, inline (page mode; hidden when the bar is tight) ── */}

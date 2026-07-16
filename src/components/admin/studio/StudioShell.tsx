@@ -387,6 +387,47 @@ export function StudioShell({
     [state.blocks, state.seo, state.slug, tenantSlug],
   );
 
+  // ── the mode-tab strip (§18) — never an upfront 5-way picker ───────────────────────
+  // `visited` (above) only proves a mode was MOUNTED, not that anything real lives there —
+  // a fresh session mounts "page" the instant StudioShell renders, before the operator has
+  // typed a word. The tab strip needs a STRICTER signal: does this mode actually hold an
+  // artifact this session? Page's is its own canonical state (state.blocks). Form/copy/image
+  // don't lift their internal drafts up to the shell (CopyMode's `drafts` array and
+  // ImageMode's result stay local component state — out of scope here, see StudioTopBar.tsx
+  // for why), so the honest signal available at THIS level is "Paige already routed a real,
+  // classified brief/prompt into it" — draftedFormSchema / draftedCopyBrief / draftedImagePrompt,
+  // the exact same state Phase 1 already threads through as each mode's `initial…` prop.
+  const modeHasContent = useMemo(
+    () => ({
+      page: state.blocks.length > 0,
+      form: draftedFormSchema != null,
+      copy: draftedCopyBrief !== undefined,
+      image: draftedImagePrompt !== undefined,
+    }),
+    [state.blocks.length, draftedFormSchema, draftedCopyBrief, draftedImagePrompt],
+  );
+
+  // Funnel is the one deliberate exception — zero AI-generation path (100% manual, confirmed
+  // in FunnelMode), so it never earns a spot in this strip; it gets its own small, always-on,
+  // deliberately-secondary entry point in the top bar instead (never a 6th co-equal tab).
+  const visibleModes = useMemo<StudioMode[]>(() => {
+    // Page is always a candidate (it's the home surface). The current mode is too, UNLESS
+    // it's funnel — funnel is deliberately never "the current tab," it has its own control —
+    // so it never strands the operator with no indication of, or way out of, where a
+    // classify/deep-link just placed them. Anything else needs real content to earn a tab.
+    const relevant = new Set<StudioMode>(["page"]);
+    if (mode !== "funnel") relevant.add(mode);
+    if (modeHasContent.form) relevant.add("form");
+    if (modeHasContent.copy) relevant.add("copy");
+    if (modeHasContent.image) relevant.add("image");
+    const ordered: StudioMode[] = ["page", "form", "copy", "image"];
+    const list = ordered.filter((m) => relevant.has(m));
+    // Parked in Funnel, "Page" is always the one way back home — show it even alone. Anywhere
+    // else, a lone "Page" chip with nothing else going on IS the upfront-picker framing the
+    // owner rejected — suppress the whole strip until there's a genuine second destination.
+    return mode === "funnel" ? list : list.length > 1 ? list : [];
+  }, [mode, modeHasContent]);
+
   const setTitle = useCallback((title: string) => {
     setState((s) => ({
       ...s,
@@ -903,6 +944,7 @@ export function StudioShell({
         <StudioTopBar
           mode={mode}
           onModeChange={handleModeChange}
+          visibleModes={visibleModes}
           title={state.title}
           onTitleChange={setTitle}
           device={state.device}
