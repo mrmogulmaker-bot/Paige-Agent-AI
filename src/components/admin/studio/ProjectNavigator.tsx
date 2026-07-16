@@ -6,22 +6,28 @@
 // viewed / My / Starred / Templates) even inside a project — the platform nav, not the project.
 // This component is what the rail swaps to on a project route (/admin/studio/:sessionId): a
 // "back to all projects" escape, the project's name, and its artifact manifest — every page,
-// form, funnel, and piece of copy/imagery the project holds, each openable onto the stage.
+// form, funnel, and piece of copy/imagery the project holds.
 //
 // It is a pure READER of the shared ActiveStudioSession bundle (loaded once in StudioLayout, §
 // single-source): it never fetches the manifest itself, so it can never diverge from the stage.
 // The one WRITE it performs — "add a page" — goes through the createSessionArtifact seam and
 // hands the returned row back to applyMeta, so the rail and stage re-render in lockstep (§10/§13).
+//
+// Honesty note (§13): only PAGE rows re-open their saved content today (the shell hydrates a page
+// draft via ?pageId). Form/funnel/copy/image are create-only in the builder — it has no
+// "open existing" path yet — so their rows are LISTED (the project's contents, truthfully, §19)
+// but NOT presented as openable, because clicking through to a blank builder and saving would
+// silently mint a duplicate. Re-hydrating them is its own tracked task (Studio Slice-1b follow-up).
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ClipboardList,
+  FilePlus,
   FileText,
   FolderOpen,
   Image as ImageIcon,
   Loader2,
-  Plus,
   Type,
   Workflow,
 } from "lucide-react";
@@ -31,59 +37,103 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { createSessionArtifact, isStudioError } from "./studio";
 import type { ActiveStudioSession } from "./useActiveStudioSession";
-import type { SessionArtifactRef, StudioMode } from "./studio-types";
+import type { SessionArtifactRef } from "./studio-types";
 
-/** How one manifest ref presents in the rail: its glyph, a human label for the type, and the
- *  builder mode it opens into. `content` is copy OR image — disambiguated by thumbnailUrl
- *  (images carry a real Storage URL; copy doesn't), so the rail shows the right glyph/mode. */
+/** How one manifest ref presents in the rail: its glyph and a human label for the type.
+ *  `content` is copy OR image — disambiguated by thumbnailUrl (images carry a real Storage URL;
+ *  copy doesn't), so the rail shows the right glyph. */
 interface RefFace {
   icon: LucideIcon;
   typeLabel: string;
-  mode: StudioMode;
 }
 
 function faceForRef(ref: SessionArtifactRef): RefFace {
   switch (ref.kind) {
     case "page":
-      return { icon: FileText, typeLabel: "Page", mode: "page" };
+      return { icon: FileText, typeLabel: "Page" };
     case "form":
-      return { icon: ClipboardList, typeLabel: "Form", mode: "form" };
+      return { icon: ClipboardList, typeLabel: "Form" };
     case "funnel":
-      return { icon: Workflow, typeLabel: "Funnel", mode: "funnel" };
+      return { icon: Workflow, typeLabel: "Funnel" };
     case "content":
     default:
       return ref.thumbnailUrl
-        ? { icon: ImageIcon, typeLabel: "Image", mode: "image" }
-        : { icon: Type, typeLabel: "Copy", mode: "copy" };
+        ? { icon: ImageIcon, typeLabel: "Image" }
+        : { icon: Type, typeLabel: "Copy" };
   }
 }
 
-/** The deep-link that opens a ref onto the builder stage. Pages carry a real ?pageId so the
- *  shell hydrates that exact draft; the other kinds land on their own mode surface (per-artifact
- *  re-hydration for form/funnel/content is a tracked follow-up — the shell can't reopen their
- *  saved content yet, so we take the operator to the right surface, never a dead end, §13). */
-function hrefForRef(sessionId: string, ref: SessionArtifactRef): string {
-  const { mode } = faceForRef(ref);
-  const base = `/admin/studio/${sessionId}?mode=${mode}`;
-  return ref.kind === "page" ? `${base}&pageId=${ref.id}` : base;
+/** The deep-link that re-opens a PAGE ref onto the builder stage — the shell hydrates that exact
+ *  draft from ?pageId. Only pages re-hydrate today (see the honesty note above). */
+function pageHref(sessionId: string, ref: SessionArtifactRef): string {
+  return `/admin/studio/${sessionId}?mode=page&pageId=${ref.id}`;
 }
 
 function ArtifactRow({
-  ref: artifact,
-  sessionId,
+  artifact,
   collapsed,
   active,
   onOpen,
 }: {
-  ref: SessionArtifactRef;
-  sessionId: string;
+  artifact: SessionArtifactRef;
   collapsed: boolean;
   active: boolean;
-  onOpen: () => void;
+  /** Present only for rows that can genuinely re-open their saved content (pages today). When
+   *  absent the row is informational — listed but not clickable, so it can't mislead or mint a
+   *  duplicate (§13). */
+  onOpen?: () => void;
 }) {
   const face = faceForRef(artifact);
   const Icon = face.icon;
   const label = artifact.title?.trim() || `Untitled ${face.typeLabel.toLowerCase()}`;
+  const interactive = !!onOpen;
+
+  const glyph = (
+    <span
+      className={cn(
+        "grid h-6 w-6 shrink-0 place-items-center rounded-md border transition-colors",
+        active
+          ? "border-transparent bg-[hsl(var(--studio-glass-border)/0.6)] text-foreground"
+          : "border-[hsl(var(--studio-glass-border)/0.5)] text-muted-foreground",
+        interactive && "group-hover:text-foreground",
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden />
+    </span>
+  );
+
+  const body = !collapsed && (
+    <span className="flex min-w-0 flex-1 flex-col">
+      <span className="truncate leading-tight">{label}</span>
+      <span className="truncate text-[11px] font-normal text-muted-foreground">
+        {face.typeLabel}
+        {!interactive && " · view only for now"}
+      </span>
+    </span>
+  );
+
+  const base = cn(
+    "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+    collapsed && "justify-center px-0",
+  );
+
+  if (!interactive) {
+    // Listed but not yet reopenable — informational, not a button (no pointer, no hover-as-click).
+    return (
+      <div
+        className={cn(base, "cursor-default text-muted-foreground")}
+        title={
+          collapsed
+            ? `${label} · ${face.typeLabel} — reopening saved ${face.typeLabel.toLowerCase()}s from here is coming`
+            : `Reopening saved ${face.typeLabel.toLowerCase()}s from the project is coming — build new pieces in the chat`
+        }
+      >
+        {glyph}
+        {body}
+      </div>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -91,32 +141,15 @@ function ArtifactRow({
       aria-current={active ? "true" : undefined}
       title={collapsed ? `${label} · ${face.typeLabel}` : undefined}
       className={cn(
-        "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+        base,
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         active
           ? "bg-[hsl(var(--studio-glass-border)/0.4)] font-medium text-foreground"
           : "text-muted-foreground hover:bg-[hsl(var(--studio-glass-border)/0.25)] hover:text-foreground",
-        collapsed && "justify-center px-0",
       )}
     >
-      <span
-        className={cn(
-          "grid h-6 w-6 shrink-0 place-items-center rounded-md border transition-colors",
-          active
-            ? "border-transparent bg-[hsl(var(--studio-glass-border)/0.6)] text-foreground"
-            : "border-[hsl(var(--studio-glass-border)/0.5)] text-muted-foreground group-hover:text-foreground",
-        )}
-      >
-        <Icon className="h-3.5 w-3.5" aria-hidden />
-      </span>
-      {!collapsed && (
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate leading-tight">{label}</span>
-          <span className="truncate text-[11px] font-normal text-muted-foreground/80">
-            {face.typeLabel}
-          </span>
-        </span>
-      )}
+      {glyph}
+      {body}
     </button>
   );
 }
@@ -133,20 +166,14 @@ export function ProjectNavigator({
   const [params] = useSearchParams();
   const [adding, setAdding] = useState(false);
 
-  const { sessionId, tenantId, artifacts, session: meta, loading, notFound } = session;
+  const { sessionId, tenantId, artifacts, session: meta, loading, notFound, error } = session;
 
   const activePageId = params.get("pageId");
-  const activeMode = params.get("mode");
 
-  // Which ref (if any) is the one currently on the stage — a page matches by its exact id; the
-  // other kinds match by mode (best-effort; multiple same-mode refs share the highlight).
-  const isActive = useCallback(
-    (ref: SessionArtifactRef) => {
-      const face = faceForRef(ref);
-      if (ref.kind === "page") return !!activePageId && activePageId === ref.id;
-      return !activePageId && activeMode === face.mode;
-    },
-    [activePageId, activeMode],
+  // A page row is the active one when its id matches the ?pageId on the stage.
+  const isActivePage = useCallback(
+    (ref: SessionArtifactRef) => !!activePageId && activePageId === ref.id,
+    [activePageId],
   );
 
   const projectTitle = useMemo(() => meta?.title?.trim() || "Untitled project", [meta]);
@@ -154,7 +181,7 @@ export function ProjectNavigator({
   // "Add a page" — mint a blank page into the project via the §10 seam, reflect it in the shared
   // bundle (so the rail updates without a refetch), then open it for briefing. The default way
   // to add is still the conversational composer on the stage (§18); this is the explicit
-  // "start another blank page in this project" affordance a project navigator is expected to have.
+  // "start another blank page" affordance — pages, because they're the type that re-opens cleanly.
   const addPage = useCallback(async () => {
     if (!tenantId || !sessionId || adding) return;
     setAdding(true);
@@ -163,7 +190,7 @@ export function ProjectNavigator({
       const next = await createSessionArtifact({ tenantId, sessionId, type: "page" });
       session.applyMeta(next);
       const fresh = next.artifacts.find((a) => !before.has(`${a.kind}:${a.id}`));
-      if (fresh) navigate(hrefForRef(sessionId, fresh));
+      if (fresh) navigate(pageHref(sessionId, fresh));
     } catch (err) {
       toast({
         title: "Couldn't add a page",
@@ -174,6 +201,12 @@ export function ProjectNavigator({
       setAdding(false);
     }
   }, [tenantId, sessionId, adding, artifacts, session, navigate, toast]);
+
+  const railBorder = "border-[hsl(var(--studio-glass-border)/0.6)]";
+  // The manifest region only invites building into a project that actually exists and loaded — a
+  // not-found / errored session shows nothing here (the header + the stage carry the message), so
+  // the rail never says "build your first piece" for a project that isn't there (§13).
+  const showEmptyInvite = !loading && !notFound && !error && artifacts.length === 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -197,20 +230,30 @@ export function ProjectNavigator({
 
       {/* project identity */}
       {!collapsed && (
-        <div className="px-3 pb-2 pt-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/70">
+        <div className={cn("border-t px-3 pb-2 pt-2", railBorder)}>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             Project
           </p>
           <h2 className="mt-0.5 line-clamp-2 font-display text-sm font-semibold leading-snug text-foreground">
-            {loading && !meta ? "Opening…" : notFound ? "Project not found" : projectTitle}
+            {loading && !meta
+              ? "Opening…"
+              : notFound
+                ? "Project not found"
+                : error
+                  ? "Couldn't open this project"
+                  : projectTitle}
           </h2>
+          {error && !notFound && (
+            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{error}</p>
+          )}
         </div>
       )}
+      {collapsed && <div className={cn("mx-2 border-t", railBorder)} />}
 
       {/* the manifest — every piece the project holds */}
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
-        {!collapsed && (
-          <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground/70">
+        {!collapsed && !notFound && !error && (
+          <p className="px-1 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             In this project
           </p>
         )}
@@ -223,51 +266,55 @@ export function ProjectNavigator({
               />
             ))}
           </ul>
-        ) : artifacts.length === 0 ? (
+        ) : showEmptyInvite ? (
           !collapsed && (
-            <div className="rounded-md border border-dashed border-[hsl(var(--studio-glass-border)/0.6)] px-3 py-4 text-center">
-              <FolderOpen className="mx-auto h-5 w-5 text-muted-foreground/70" aria-hidden />
+            <div className={cn("rounded-md border border-dashed px-3 py-4 text-center", railBorder)}>
+              <FolderOpen className="mx-auto h-5 w-5 text-muted-foreground" aria-hidden />
               <p className="mt-1.5 text-xs text-muted-foreground">
                 Nothing here yet. Describe what you want in the chat and Paige builds the first
                 piece — it lands here.
               </p>
             </div>
           )
-        ) : (
+        ) : artifacts.length > 0 ? (
           <ul className="space-y-0.5">
             {artifacts.map((ref) => (
               <li key={`${ref.kind}:${ref.id}`}>
                 <ArtifactRow
-                  ref={ref}
-                  sessionId={sessionId}
+                  artifact={ref}
                   collapsed={collapsed}
-                  active={isActive(ref)}
-                  onOpen={() => navigate(hrefForRef(sessionId, ref))}
+                  active={ref.kind === "page" && isActivePage(ref)}
+                  onOpen={
+                    ref.kind === "page" ? () => navigate(pageHref(sessionId, ref)) : undefined
+                  }
                 />
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
       </div>
 
-      {/* add another piece — the explicit blank-start (the conversational add lives on the stage) */}
-      <div className="shrink-0 px-2 pb-1 pt-1">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void addPage()}
-          disabled={adding || !tenantId || !sessionId || notFound}
-          title={collapsed ? "Add a page" : undefined}
-          className={cn("w-full", collapsed && "px-0")}
-        >
-          {adding ? (
-            <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
-          ) : (
-            <Plus className="h-4 w-4" aria-hidden />
-          )}
-          {!collapsed && (adding ? "Adding…" : "Add a page")}
-        </Button>
-      </div>
+      {/* add another piece — the explicit blank-start (the conversational add lives on the stage).
+          FilePlus (not the gold "New project" Plus) so the two never blur together collapsed. */}
+      {!notFound && (
+        <div className={cn("shrink-0 border-t px-2 pb-1 pt-1", railBorder)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void addPage()}
+            disabled={adding || !tenantId || !sessionId}
+            title={collapsed ? "Add a page" : undefined}
+            className={cn("w-full", collapsed && "px-0")}
+          >
+            {adding ? (
+              <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
+            ) : (
+              <FilePlus className="h-4 w-4" aria-hidden />
+            )}
+            {!collapsed && (adding ? "Adding…" : "Add a page")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

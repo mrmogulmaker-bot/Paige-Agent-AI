@@ -59,6 +59,9 @@ export function useActiveStudioSession(
 
   const [nonce, setNonce] = useState(0);
   const runIdRef = useRef(0);
+  // Which sessionId the cached session/primary currently represent — lets us tell a real
+  // project switch (clear the stale identity) from a same-id refresh (keep it, no flash).
+  const loadedIdRef = useRef<string | null>(null);
 
   const active = enabled && !!tenantId && !!sessionId;
 
@@ -72,12 +75,21 @@ export function useActiveStudioSession(
       setLoading(false);
       setError(null);
       setNotFound(false);
+      loadedIdRef.current = null;
       return;
     }
     const runId = ++runIdRef.current;
     setLoading(true);
     setError(null);
     setNotFound(false);
+    // Switching straight from project A to project B: drop A's identity/manifest immediately so
+    // the rail shows the "Opening…" state, never A's title/artifacts under B's route. A same-id
+    // refresh (nonce bump) keeps the current row so it doesn't flash empty.
+    if (loadedIdRef.current && loadedIdRef.current !== sessionId) {
+      setSession(null);
+      setPrimary(null);
+      setPrimaryType(null);
+    }
     let live = true;
     loadSession({ tenantId, sessionId })
       .then((loaded) => {
@@ -85,6 +97,7 @@ export function useActiveStudioSession(
         setSession(loaded.session);
         setPrimary(loaded.primary);
         setPrimaryType(loaded.primaryType);
+        loadedIdRef.current = sessionId;
       })
       .catch((err) => {
         if (!live || runId !== runIdRef.current) return;
@@ -113,11 +126,21 @@ export function useActiveStudioSession(
 
   // A mutation RETURNed the fresh row — swap it in locally so the rail + stage both re-render
   // without a second fetch. Its artifact_refs become the new manifest everything reads.
-  const applyMeta = useCallback((meta: StudioSessionMeta) => {
-    setSession(meta);
-    setNotFound(false);
-    setError(null);
-  }, []);
+  //
+  // Guarded by id: a link/rename fired on project A that resolves AFTER the operator has already
+  // opened project B must NOT clobber B's rail with A's manifest. We only accept a meta whose id
+  // matches the session this hook is currently resolving (the stage's un-awaited writes captured a
+  // stable applyMeta, so a late one can arrive cross-project — drop it).
+  const applyMeta = useCallback(
+    (meta: StudioSessionMeta) => {
+      if (sessionId && meta.id !== sessionId) return;
+      setSession(meta);
+      loadedIdRef.current = meta.id;
+      setNotFound(false);
+      setError(null);
+    },
+    [sessionId],
+  );
 
   return {
     sessionId: sessionId ?? "",

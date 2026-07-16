@@ -70,6 +70,7 @@ import {
   preflightPublish,
   publishFunnelCascade,
   publishPage,
+  renameSessionArtifactRef,
   renameStudioSession,
   reviseBlock,
   savePageDraft,
@@ -364,16 +365,37 @@ export function StudioShell({
       firstLinkRef.current = false;
       try {
         const meta = await linkSessionArtifact({ tenantId, sessionId, artifactType, artifactId });
+        let latest = meta;
+        const cleanTitle = (title ?? "").trim();
+        // Keep the project-local chip label in sync with the artifact's real title. link is
+        // idempotent and only titles a ref on FIRST insert, so a ref that pre-existed with a
+        // stale label — e.g. an "Add a page" mint titled "Untitled page" the operator has since
+        // named on save, or a page renamed across saves — would otherwise show the old label.
+        if (cleanTitle) {
+          const ref = latest.artifacts.find((a) => a.id === artifactId);
+          if (ref && ref.title !== cleanTitle) {
+            try {
+              latest = await renameSessionArtifactRef({
+                tenantId,
+                sessionId,
+                kind: ref.kind,
+                artifactId,
+                label: cleanTitle,
+              });
+            } catch (err) {
+              console.warn("[studio] artifact ref label sync failed (non-fatal):", err);
+            }
+          }
+        }
         setState((s) => ({
           ...s,
-          artifacts: meta.artifacts,
+          artifacts: latest.artifacts,
           activeArtifactId: artifactId,
           activeArtifactType: artifactType,
         }));
         // Push the fresh manifest to the shared bundle so the rail's project navigator re-renders
         // with the new piece the instant it's linked (no refetch, no split source of truth).
-        onManifestChange?.(meta);
-        const cleanTitle = (title ?? "").trim();
+        onManifestChange?.(latest);
         if (isFirst && cleanTitle) {
           try {
             const renamed = await renameStudioSession({ tenantId, sessionId, title: cleanTitle });
