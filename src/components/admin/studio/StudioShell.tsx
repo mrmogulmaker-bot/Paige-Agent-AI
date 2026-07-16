@@ -171,11 +171,23 @@ function asStudioError(err: unknown, fallback: StudioErrorCode): StudioError {
  *  only apply there. Getting this backwards (unconditional `overflow-hidden`) is exactly
  *  what silently ate the composer's submit button once the textarea grew past the frame's
  *  resolved height, with no scrollbar anywhere to reach it — never repeat that. */
-function StudioFrame({ children, className }: { children: ReactNode; className?: string }) {
+function StudioFrame({
+  children,
+  className,
+  dark = true,
+}: {
+  children: ReactNode;
+  className?: string;
+  /** Studio-local only — never the platform's next-themes state (see StudioTopBar's doc
+   *  comment). Defaults dark to match the look every prior version of this frame had; only
+   *  the main authenticated session (where the toggle actually lives) ever passes `false`. */
+  dark?: boolean;
+}) {
   return (
     <div
       className={cn(
-        "dark flex w-full flex-col rounded-xl border border-border bg-background text-foreground lg:h-full lg:min-h-[620px] lg:overflow-hidden",
+        dark && "dark",
+        "flex w-full flex-col rounded-xl border border-border bg-background text-foreground lg:h-full lg:min-h-[620px] lg:overflow-hidden",
         className,
       )}
     >
@@ -205,6 +217,27 @@ export function StudioShell({
 
   const [state, setState] = useState<ShellState>(EMPTY_SHELL);
   const { generation, isGenerating, generate, cancel, reset } = useGeneratePage(tenantId);
+
+  // Studio-local dark/light — completely separate from the platform's own next-themes state
+  // (there's no ThemeToggle in here anymore; see StudioTopBar's doc comment for why). This is
+  // just a class on StudioFrame's own root div, read/written to its own localStorage key so a
+  // choice survives a reload without ever touching <html>'s class or the platform's theme.
+  const [studioDark, setStudioDark] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem("paige-studio-theme") !== "light";
+  });
+  const toggleStudioTheme = useCallback(() => {
+    setStudioDark((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("paige-studio-theme", next ? "dark" : "light");
+      } catch {
+        // Storage can be unavailable (private browsing, quota) — the toggle still works for
+        // the session, it just won't survive a reload. Not worth failing the click over.
+      }
+      return next;
+    });
+  }, []);
 
   // Modes stay mounted once visited, so switching outputs never eats in-progress work.
   const [visited, setVisited] = useState<ReadonlySet<StudioMode>>(() => new Set([mode]));
@@ -947,11 +980,13 @@ export function StudioShell({
 
   return wrap(
     <>
-      <StudioFrame className={embedded ? className : undefined}>
+      <StudioFrame className={embedded ? className : undefined} dark={studioDark}>
         <StudioTopBar
           mode={mode}
           onModeChange={handleModeChange}
           visibleModes={visibleModes}
+          studioDark={studioDark}
+          onToggleStudioTheme={toggleStudioTheme}
           title={state.title}
           onTitleChange={setTitle}
           device={state.device}
