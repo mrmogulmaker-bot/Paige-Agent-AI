@@ -24,7 +24,7 @@ function StudioSkeleton() {
   // Themed skeleton (never a live-but-inert composer, and never a bare "Loading…"): mirrors
   // StudioFrame's masthead strip + rail + drafting well so the surface doesn't flatten then pop.
   return (
-    <div className="dark flex h-[calc(100dvh-8rem)] min-h-[620px] flex-col overflow-hidden rounded-xl border border-border bg-background">
+    <div className="dark flex h-full min-h-[620px] flex-col overflow-hidden rounded-xl border border-border bg-background">
       <div className="h-14 shrink-0 border-b border-border bg-card" />
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <div className="border-b border-border p-4 lg:w-[380px] lg:shrink-0 lg:border-b-0 lg:border-r">

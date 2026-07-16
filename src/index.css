@@ -123,6 +123,51 @@ All colors MUST be HSL.
        --gold-dark (32% lightness) sinks below AA against a 5%-lightness surface. */
     --gold-dark: 41 82% 61%;
   }
+
+  /* ── Vibe Studio creative surface — SCOPED palette exception (owner: Antonio, 2026-07-16).
+     A vibrant "Paige gradient": indigo → violet → magenta, plus soft aurora washes and glassy
+     cards. Recognizably Paige (our indigo/violet lineage), turned up — NOT a rainbow. GOLD is
+     deliberately ABSENT from the resting gradient fill: it stays reserved for the act
+     (Button variant="gold"). Confined to `.studio-surface` (applied only by StudioLayout) — it
+     touches no platform token and leaks to no other route (§6/§11 exception, scoped). */
+  .studio-surface {
+    --studio-hero-from: 258 72% 20%;
+    --studio-hero-via:  272 66% 38%;
+    --studio-hero-via2: 300 62% 42%;
+    --studio-hero-to:   322 68% 46%;
+    --studio-hero-gradient: linear-gradient(
+      135deg,
+      hsl(var(--studio-hero-from)) 0%,
+      hsl(var(--studio-hero-via))  38%,
+      hsl(var(--studio-hero-via2)) 70%,
+      hsl(var(--studio-hero-to))  100%
+    );
+    --studio-aurora-1: 272 85% 62%;
+    --studio-aurora-2: 320 85% 60%;
+    --studio-aurora-3: 250 90% 66%;
+    --studio-glass-bg:     0 0% 100%;
+    --studio-glass-border: 276 40% 82%;
+    --studio-glass-solid:  258 30% 99%;
+    --studio-rail-bg:   258 42% 98%;
+    --studio-on-hero:   0 0% 100%;
+    --studio-scrim:     258 60% 10%;
+  }
+
+  .dark .studio-surface {
+    --studio-hero-from: 258 60% 12%;
+    --studio-hero-via:  272 55% 26%;
+    --studio-hero-via2: 300 52% 30%;
+    --studio-hero-to:   322 58% 34%;
+    --studio-aurora-1: 272 70% 48%;
+    --studio-aurora-2: 320 70% 46%;
+    --studio-aurora-3: 250 72% 52%;
+    --studio-glass-bg:     265 40% 16%;
+    --studio-glass-border: 276 30% 34%;
+    --studio-glass-solid:  265 40% 10%;
+    --studio-rail-bg:   265 44% 7%;
+    --studio-on-hero:   0 0% 100%;
+    --studio-scrim:     265 60% 4%;
+  }
 }
 
 @layer base {
@@ -246,6 +291,35 @@ All colors MUST be HSL.
       linear-gradient(to bottom, hsl(var(--muted) / 0.2), hsl(var(--muted) / 0.4));
     background-size: 22px 22px, 100% 100%;
     background-position: 0 0, 0 0;
+  }
+
+  /* Vibe Studio hero — the vibrant Paige gradient (indigo→violet→magenta). Tokens resolve
+     from the enclosing `.studio-surface` scope, so this is inert anywhere else. */
+  .studio-hero {
+    background-image: var(--studio-hero-gradient);
+  }
+  /* Aurora bloom overlay — decorative, pointer-events-none, motion-free (static blur). Two
+     low-opacity radial blooms (violet + magenta) layered over the hero for depth. */
+  .studio-aurora::before,
+  .studio-aurora::after {
+    content: "";
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(60px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .studio-aurora::before {
+    inset: -20% auto auto -10%;
+    width: 40rem;
+    height: 40rem;
+    background: radial-gradient(closest-side, hsl(var(--studio-aurora-1) / 0.45), transparent);
+  }
+  .studio-aurora::after {
+    inset: auto -10% -25% auto;
+    width: 34rem;
+    height: 34rem;
+    background: radial-gradient(closest-side, hsl(var(--studio-aurora-2) / 0.4), transparent);
   }
 
   /* Floating animations inspired by Motion.com */

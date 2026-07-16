@@ -235,6 +235,11 @@ interface AdminLayoutProps {
 export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  // Vibe Studio is its own immersive room (owner: Antonio, 2026-07-16): the admin top nav +
+  // mobile drawer step aside and StudioLayout owns the whole viewport with its own left rail.
+  // Covers the bare home (exact) AND every builder sub-route. No effect on any other route.
+  const isStudio =
+    location.pathname === "/admin/studio" || location.pathname.startsWith("/admin/studio/");
   const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
   const { isPlatformOwner, isPlatformStaff } = useTenantContext();
@@ -295,7 +300,8 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     <div className="h-dvh flex flex-col bg-background overflow-hidden">
       {/* Banner intentionally omitted on /admin — it's redundant when already on
           the admin dashboard. AppShell still renders it inside the client view. */}
-      {/* Top bar — Pipedrive-style horizontal CRM nav */}
+      {/* Top bar — Pipedrive-style horizontal CRM nav. Hidden on Vibe Studio (immersive room). */}
+      {!isStudio && (
       <header className="shrink-0 z-40 bg-primary text-primary-foreground border-b border-sidebar-border">
         {/* Row 1: brand + utilities */}
         <div className="flex items-center justify-between gap-3 px-3 md:px-6 h-14">
@@ -473,9 +479,10 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           )}
         </div>
       </header>
+      )}
 
       {/* Mobile dropdown drawer */}
-      {mobileNavOpen && (
+      {!isStudio && mobileNavOpen && (
         <div className="md:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileNavOpen(false)} />
           <div className="relative z-10 bg-primary text-primary-foreground shadow-xl max-h-[85vh] overflow-y-auto">
@@ -564,15 +571,15 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
 
       {/* Main content */}
       <main
-        className={`flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] ${
-          // Vibe Studio's BUILDER is an immersive full-bleed workspace (§11 / owner: not "boxed
-          // inside the platform") — it owns its own frame, so the content well drops its padding
-          // for /admin/studio/:sessionId (and /new). The bare HOME (/admin/studio) is a padded
-          // PageShell gallery, so it keeps normal admin padding.
-          location.pathname.startsWith("/admin/studio/")
-            ? ""
-            : "p-3 sm:p-4 md:p-6"
-        }`}
+        className={
+          // Vibe Studio (home AND builder) is an immersive full-bleed room — StudioLayout owns
+          // the viewport, its own left rail, and all internal scroll. `overflow-hidden` lets its
+          // h-full/min-h-0 resolve against this flex-1 main inside the h-dvh column. Every other
+          // route keeps the exact padded, scrollable content well it had before.
+          isStudio
+            ? "flex-1 overflow-hidden"
+            : `flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] p-3 sm:p-4 md:p-6`
+        }
       >
         {children}
       </main>

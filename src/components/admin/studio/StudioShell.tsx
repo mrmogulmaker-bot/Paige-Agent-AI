@@ -1271,7 +1271,9 @@ export function StudioShell({
       <>{node}</>
     ) : (
       <PageShell width="full" className={className}>
-        <div className="lg:h-[calc(100dvh-8rem)]">{node}</div>
+        {/* Fills the immersive StudioLayout outlet (the admin header is hidden on studio routes),
+            so the builder tracks the true available height instead of a fixed viewport calc. */}
+        <div className="h-full min-h-0 lg:h-full">{node}</div>
       </PageShell>
     );
 
