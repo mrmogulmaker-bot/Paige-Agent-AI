@@ -216,6 +216,7 @@ export function PromptComposer({
               size="sm"
               disabled={disabled || attachmentsBusy || attachSlotsLeft <= 0}
               onClick={() => fileInputRef.current?.click()}
+              className="shadow-xs hover:shadow-sm"
             >
               {attachmentsBusy ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
@@ -295,7 +296,7 @@ export function PromptComposer({
         </Button>
 
         {!sectionMode && onRegenerate && canRegenerate && (
-          <Button type="button" variant="outline" onClick={onRegenerate} disabled={busy || disabled}>
+          <Button type="button" variant="outline" onClick={onRegenerate} disabled={busy || disabled} className="shadow-xs hover:shadow-sm">
             <RefreshCw className="h-4 w-4" aria-hidden />
             Rebuild it
           </Button>

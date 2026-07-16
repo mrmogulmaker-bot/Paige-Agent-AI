@@ -923,13 +923,23 @@ export function StudioShell({
       />
     );
   } else {
+    // The empty state sits on a real elevated SectionCard (the reference-bar primitive —
+    // bg-card + border + shadow-card) centered on the drafting-surface well, so it reads as a
+    // crafted card floating on the working surface instead of bare text top-anchored in a dead
+    // expanse. `grid h-full place-items-center` fixes EmptyState's own py-12 top-anchoring;
+    // wrapping EmptyState in SectionCard is the exact pattern the no-workspace gate below
+    // already uses (§11 primitive reuse, in-file precedent). EmptyState stays unforked.
     pageCanvas = (
-      <EmptyState
-        icon={Wand2}
-        tone="brand"
-        title={MODE_EMPTY.page.title}
-        description={MODE_EMPTY.page.description}
-      />
+      <div className="grid h-full place-items-center">
+        <SectionCard className="max-w-md">
+          <EmptyState
+            icon={Wand2}
+            tone="brand"
+            title={MODE_EMPTY.page.title}
+            description={MODE_EMPTY.page.description}
+          />
+        </SectionCard>
+      </div>
     );
   }
 
@@ -949,12 +959,16 @@ export function StudioShell({
   if (tenantLoading && !tenantId) {
     return wrap(
       <StudioFrame className={embedded ? className : undefined}>
-        <div className="h-14 shrink-0 border-b border-border/60 bg-card shadow-sm" />
+        {/* Skeleton parity (StudioFrame's own "never flashes between shells" contract): the
+            loading strip/rail/well must carry the SAME masthead wash, top-lit rail gradient,
+            and drafting-surface texture the live Studio now has, or the surface visibly
+            flattens for a beat and then pops richer once the workspace resolves. */}
+        <div className="h-14 shrink-0 border-b border-border/60 bg-gradient-to-b from-card to-muted/20 shadow-sm" />
         <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-          <div className="border-b border-border/60 p-4 lg:w-[380px] lg:shrink-0 lg:border-b-0 lg:border-r">
+          <div className="border-b border-border/60 bg-gradient-to-b from-card to-background p-4 lg:w-[380px] lg:shrink-0 lg:border-b-0 lg:border-r">
             <div className="h-64 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
           </div>
-          <div className="flex-1 bg-gradient-to-b from-muted/20 to-muted/40 p-4 md:p-6">
+          <div className="studio-drafting-grid flex-1 p-4 md:p-6">
             <div className="h-full min-h-[16rem] animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
           </div>
         </div>
@@ -966,7 +980,7 @@ export function StudioShell({
   if (!tenantLoading && !tenantId) {
     return wrap(
       <StudioFrame className={embedded ? className : undefined}>
-        <div className="flex h-14 shrink-0 items-center border-b border-border/60 bg-card px-4 shadow-sm">
+        <div className="flex h-14 shrink-0 items-center border-b border-border/60 bg-gradient-to-b from-card to-muted/20 px-4 shadow-sm">
           <span className="font-display text-sm font-semibold text-foreground">Studio</span>
         </div>
         <div className="grid flex-1 place-items-center p-6">

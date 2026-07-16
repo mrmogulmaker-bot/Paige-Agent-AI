@@ -50,7 +50,7 @@ export function StudioSplit({
           well it sits beside, and non-positioned siblings paint in tree order — without a
           stacking context, the canvas's own opaque gradient (painted later) would silently
           cover this shadow's rightward bleed, the same no-op risk the top bar has above. */}
-      <div className="relative z-10 flex flex-col border-b border-border/60 bg-background lg:min-h-0 lg:w-[380px] lg:shrink-0 lg:border-b-0 lg:border-r lg:shadow-[4px_0_16px_-12px_hsl(var(--shadow-ink)/0.16)]">
+      <div className="relative z-10 flex flex-col border-b border-border/60 bg-gradient-to-b from-card to-background lg:min-h-0 lg:w-[380px] lg:shrink-0 lg:border-b-0 lg:border-r lg:shadow-[4px_0_16px_-12px_hsl(var(--shadow-ink)/0.16)]">
         {railHeader && <div className="shrink-0 border-b border-border/60 px-4 py-3">{railHeader}</div>}
         <div className="space-y-4 px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">{railBody}</div>
         {railFooter && (
@@ -62,11 +62,13 @@ export function StudioSplit({
           </div>
         )}
       </div>
-      {/* A subtle top-to-bottom gradient + inset shadow reads as a recessed working surface
-          (the Lovable pattern this file already named) instead of one flat gray fill — the
-          empty state no longer floats in a dead expanse with nothing else going on. Same
-          `--shadow-ink` token again, for the same reason as the rail edges above. */}
-      <div className="min-w-0 flex-1 bg-gradient-to-b from-muted/20 to-muted/40 p-4 shadow-[inset_0_2px_16px_-6px_hsl(var(--shadow-ink)/0.12)] md:p-6 lg:min-h-0 lg:overflow-y-auto">
+      {/* `.studio-drafting-grid` (src/index.css) carries the same muted top-to-bottom gradient
+          this used to have inline, PLUS a faint 22px dot-grid on top — a recessed DRAFTING
+          SURFACE the rendered page floats on (the Lovable/Figma pattern this file already
+          named), not one flat gray fill. The dots are --foreground-tinted so they auto-invert
+          to stay a low-contrast tonal mark in both themes (correct for a texture — the mirror
+          of why the shadows use --shadow-ink). The existing inset shadow is preserved verbatim. */}
+      <div className="studio-drafting-grid min-w-0 flex-1 p-4 shadow-[inset_0_2px_16px_-6px_hsl(var(--shadow-ink)/0.12)] md:p-6 lg:min-h-0 lg:overflow-y-auto">
         {canvas}
       </div>
     </div>

@@ -131,7 +131,11 @@ export function StudioTopBar({
         // rail/canvas below it, and non-positioned siblings paint in tree order — without a
         // stacking context ahead of them, the rail/canvas's own opaque backgrounds (painted
         // later) would silently cover this shadow's downward bleed, making it a no-op.
-        "relative z-10 flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border/60 bg-card px-3 py-2 shadow-sm md:px-4",
+        // bg-gradient-to-b from-card to-muted/20: the masthead is a top-lit tonal wash, and
+        // its bottom stop (to-muted/20) lands on the EXACT tone the canvas well opens with
+        // (StudioChrome's from-muted/20), so masthead → working surface reads as one continuous
+        // machined surface instead of two flat panels stacked with a shadow between (§6/§11).
+        "relative z-10 flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border/60 bg-gradient-to-b from-card to-muted/20 px-3 py-2 shadow-sm md:px-4",
         className,
       )}
     >
@@ -204,22 +208,45 @@ export function StudioTopBar({
       {/* ── the acts ── */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Studio-local only (§ above) — flips StudioFrame's own `dark` class, nothing else. */}
+        {/* h-9 w-9 folds this into the 36px act-row rhythm — size="icon" is 40px, the ONE
+            control that broke the cluster (it filled the bar edge-to-edge while Save/Publish
+            floated with breathing room). Studio-local theme wiring is untouched. */}
         <Button
           type="button"
           variant="ghost"
           size="icon"
           onClick={onToggleStudioTheme}
           aria-label={studioDark ? "Switch this session to light mode" : "Switch this session to dark mode"}
+          className="h-9 w-9"
         >
           {studioDark ? <Sun className="h-4 w-4" aria-hidden /> : <Moon className="h-4 w-4" aria-hidden />}
         </Button>
         {isPage && onDeviceChange && (
-          <div className="flex items-center gap-1" role="group" aria-label="Preview device">
-            <FilterChip active={device === "desktop"} onClick={() => onDeviceChange("desktop")}>
+          // A binary XOR choice belongs in ONE recessed segmented track with a lifted thumb —
+          // reads as a single machined control, not two competing pills (the Linear/macOS
+          // affordance, and semantically more correct than loose chips). FilterChip stays the
+          // shared primitive, unforked (§18): border-transparent drops the inactive hairline so
+          // the inactive segment is clean text-on-track, and the active chip gains shadow-sm so
+          // its indigo bg-primary fill reads as a thumb sitting in the well. Inset uses the
+          // shared --shadow-ink token (dark ink in both themes). Active stays indigo, never gold.
+          <div
+            className="flex items-center gap-0.5 rounded-full bg-muted/60 p-0.5 shadow-[inset_0_1px_1px_hsl(var(--shadow-ink)/0.08)]"
+            role="group"
+            aria-label="Preview device"
+          >
+            <FilterChip
+              active={device === "desktop"}
+              onClick={() => onDeviceChange("desktop")}
+              className={cn("border-transparent", device === "desktop" && "shadow-sm")}
+            >
               <Monitor className="h-3.5 w-3.5" aria-hidden />
               Desktop
             </FilterChip>
-            <FilterChip active={device === "mobile"} onClick={() => onDeviceChange("mobile")}>
+            <FilterChip
+              active={device === "mobile"}
+              onClick={() => onDeviceChange("mobile")}
+              className={cn("border-transparent", device === "mobile" && "shadow-sm")}
+            >
               <Smartphone className="h-3.5 w-3.5" aria-hidden />
               Mobile
             </FilterChip>
@@ -243,7 +270,12 @@ export function StudioTopBar({
         )}
 
         {isPage && onSave && (
-          <Button variant="outline" size="sm" onClick={onSave} disabled={saveDisabled}>
+          // shadow-xs hover:shadow-sm: the outline variant has NO resting shadow, so its
+          // hairline read as a drawn line next to gold Publish — the owner's literal note
+          // ("the outlines and the lines themselves look like they're there"). A whisper of
+          // ink depth grounds the edge as a real raised button; the lift stays subordinate to
+          // Publish's own -translate-y hover, so the hierarchy stays intentional. Ink, never gold.
+          <Button variant="outline" size="sm" onClick={onSave} disabled={saveDisabled} className="shadow-xs hover:shadow-sm">
             {saving ? "Saving…" : "Save"}
           </Button>
         )}
@@ -254,6 +286,7 @@ export function StudioTopBar({
             size="sm"
             onClick={modeBar.save.onClick}
             disabled={modeBar.save.disabled}
+            className="shadow-xs hover:shadow-sm"
           >
             {modeBar.save.busy && (
               <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />

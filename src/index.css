@@ -229,6 +229,25 @@ All colors MUST be HSL.
     box-shadow: var(--shadow-glow-lg);
   }
 
+  /* Studio drafting surface — the Vibe Studio canvas well. Two stacked background layers on
+     one element: (layer 1) a faint 22px dot-grid tinted from --foreground, and (layer 2) the
+     same muted top-to-bottom tonal gradient the well used inline before. Reads as a recessed
+     drafting/blueprint surface the rendered page floats on (the Lovable/Figma pattern), not a
+     flat gray fill. NO .dark override, deliberately: --muted flips per theme (unchanged from
+     the inline gradient), and --foreground flips near-white in the dark studio / near-black in
+     light — for a TEXTURE that auto-inversion is exactly right (subtle light dots on charcoal,
+     subtle dark dots on near-white), the mirror image of why a SHADOW must instead use the
+     fixed-ink --shadow-ink. Held at 0.04 opacity / 1px dots: "felt, not seen" — the failure
+     mode is invisible, never busy. background-attachment defaults to scroll so the surface
+     stays put as canvas content scrolls. */
+  .studio-drafting-grid {
+    background-image:
+      radial-gradient(hsl(var(--foreground) / 0.04) 1px, transparent 1.5px),
+      linear-gradient(to bottom, hsl(var(--muted) / 0.2), hsl(var(--muted) / 0.4));
+    background-size: 22px 22px, 100% 100%;
+    background-position: 0 0, 0 0;
+  }
+
   /* Floating animations inspired by Motion.com */
   @keyframes float {
     0%, 100% {
