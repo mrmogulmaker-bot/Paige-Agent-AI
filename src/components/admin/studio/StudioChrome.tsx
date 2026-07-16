@@ -5,6 +5,13 @@
 // Below lg the regions stack (rail above canvas) and the PAGE scrolls — no trapped inner
 // scroll on mobile; at lg+ each region scrolls itself inside the full-height frame.
 //
+// The composer (railFooter) is the one region that ISN'T bounded by the rail body's own
+// scroll — it sits below it, `shrink-0`, so its own natural height (a growing textarea +
+// attachments + chips + the submit button) has to fit. At lg+ it gets its own scroll cap
+// so a long brief never pushes the submit button past the frame's edge with nothing to
+// reach it. Below lg there's no cap — the composer just takes its natural height and the
+// page (not this component) scrolls, per the paragraph above.
+//
 // Everything is token-only. The Studio root carries the `dark` scope, so these resolve
 // to the dark chrome automatically; the canvas well (`bg-muted/30`) reads as the deep
 // charcoal working surface the light rendered page floats on — the Lovable pattern.
@@ -27,11 +34,15 @@ export function StudioSplit({
   className?: string;
 }) {
   return (
-    <div className={cn("flex min-h-0 flex-1 flex-col lg:flex-row", className)}>
+    <div className={cn("flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row", className)}>
       <div className="flex flex-col border-b border-border bg-background lg:min-h-0 lg:w-[380px] lg:shrink-0 lg:border-b-0 lg:border-r">
         {railHeader && <div className="shrink-0 border-b border-border px-4 py-3">{railHeader}</div>}
         <div className="space-y-4 px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">{railBody}</div>
-        {railFooter && <div className="shrink-0 border-t border-border px-4 py-3">{railFooter}</div>}
+        {railFooter && (
+          <div className="shrink-0 overflow-y-auto border-t border-border px-4 py-3 lg:max-h-[50vh]">
+            {railFooter}
+          </div>
+        )}
       </div>
       <div className="min-w-0 flex-1 bg-muted/30 p-4 md:p-6 lg:min-h-0 lg:overflow-y-auto">{canvas}</div>
     </div>

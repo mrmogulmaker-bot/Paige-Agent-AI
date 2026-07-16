@@ -11,6 +11,13 @@
 //   image  → none at all (the act is the server's auto-file; the result pill reports it)
 // Everything else — mode chips, device chips, Save, Library — is indigo/neutral.
 //
+// No theme toggle lives here (deliberately). `ThemeToggle` drives next-themes' single global
+// `<html>` class — there is no Studio-scoped variant of it, and nothing in this tree keys off
+// theme at all (the chrome is hardcoded dark via StudioFrame's own literal `dark` class). A
+// toggle here did one thing only: change the theme for the whole platform once the operator
+// left Studio, which reads as "the Studio broke my theme." If a genuine Studio-local
+// light/dark canvas preview is ever wanted, it needs its own local state — never this hook.
+//
 // MODE STRIP (§18): this used to render all five modes as a permanent, equal-weight tab row
 // — the exact "pick a type before Paige has heard the brief" gate §18 exists to forbid. It's
 // now driven entirely by `visibleModes`, computed in StudioShell from REAL content per mode
@@ -35,7 +42,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FilterChip, GlyphPlate, StatePill } from "@/components/ui/page";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 import { MODE_LABELS } from "./studio-copy";
 import {
@@ -181,7 +187,6 @@ export function StudioTopBar({
 
       {/* ── the acts ── */}
       <div className="flex flex-wrap items-center gap-2">
-        <ThemeToggle />
         {isPage && onDeviceChange && (
           <div className="flex items-center gap-1" role="group" aria-label="Preview device">
             <FilterChip active={device === "desktop"} onClick={() => onDeviceChange("desktop")}>

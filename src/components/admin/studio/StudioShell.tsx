@@ -163,12 +163,19 @@ function asStudioError(err: unknown, fallback: StudioErrorCode): StudioError {
 }
 
 /** The dark-chrome frame every state of the Studio renders inside — including the
- *  skeleton and the tenant gate, so the surface never flashes between shells. */
+ *  skeleton and the tenant gate, so the surface never flashes between shells.
+ *
+ *  Below lg this is a normal flowing block — the surrounding page scrolls, nothing here
+ *  clips. At lg+ it becomes the fixed-height, self-contained workspace (StudioSplit's rail
+ *  body / footer / canvas each own their own internal scroll) — `h-full`/`overflow-hidden`
+ *  only apply there. Getting this backwards (unconditional `overflow-hidden`) is exactly
+ *  what silently ate the composer's submit button once the textarea grew past the frame's
+ *  resolved height, with no scrollbar anywhere to reach it — never repeat that. */
 function StudioFrame({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
       className={cn(
-        "dark flex h-full min-h-[620px] w-full flex-col overflow-hidden rounded-xl border border-border bg-background text-foreground",
+        "dark flex w-full flex-col rounded-xl border border-border bg-background text-foreground lg:h-full lg:min-h-[620px] lg:overflow-hidden",
         className,
       )}
     >
