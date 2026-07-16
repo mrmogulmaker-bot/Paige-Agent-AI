@@ -227,9 +227,11 @@ export function StudioShell({
   // (there's no ThemeToggle in here anymore; see StudioTopBar's doc comment for why). This is
   // just a class on StudioFrame's own root div, read/written to its own localStorage key so a
   // choice survives a reload without ever touching <html>'s class or the platform's theme.
+  // Defaults to LIGHT (owner call) — dark only if the operator explicitly chose it and it's
+  // saved. The toggle stays optional; only the no-preference default flipped.
   const [studioDark, setStudioDark] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem("paige-studio-theme") !== "light";
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("paige-studio-theme") === "dark";
   });
   const toggleStudioTheme = useCallback(() => {
     setStudioDark((prev) => {
@@ -958,7 +960,7 @@ export function StudioShell({
   //    anywhere must never render as if it can. ───────────────────────────────────────
   if (tenantLoading && !tenantId) {
     return wrap(
-      <StudioFrame className={embedded ? className : undefined}>
+      <StudioFrame className={embedded ? className : undefined} dark={studioDark}>
         {/* Skeleton parity (StudioFrame's own "never flashes between shells" contract): the
             loading strip/rail/well must carry the SAME masthead wash, top-lit rail gradient,
             and drafting-surface texture the live Studio now has, or the surface visibly
@@ -979,7 +981,7 @@ export function StudioShell({
   // ── no workspace: a hard gate, not a broken surface ───────────────────────────────
   if (!tenantLoading && !tenantId) {
     return wrap(
-      <StudioFrame className={embedded ? className : undefined}>
+      <StudioFrame className={embedded ? className : undefined} dark={studioDark}>
         <div className="flex h-14 shrink-0 items-center border-b border-border/60 bg-gradient-to-b from-card to-muted/20 px-4 shadow-sm">
           <span className="font-display text-sm font-semibold text-foreground">Studio</span>
         </div>
