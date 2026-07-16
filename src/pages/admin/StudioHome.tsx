@@ -144,7 +144,7 @@ export default function StudioHome() {
     <div className="h-full min-h-0 overflow-y-auto">
       {/* ── COSMIC hero: the centered composer floating in a deep night-sky field. The composer
           sits in a theme-aware glass card so PromptComposer's app-token text stays AA (§11). */}
-      <section className="studio-hero relative overflow-hidden px-4 py-14 md:py-20">
+      <section className="studio-hero relative overflow-hidden px-4 py-12 md:py-16">
         {/* Decorative cosmic layers, back → front. All aria-hidden + pointer-events-none,
             motion-safe (frozen under prefers-reduced-motion). */}
         <div aria-hidden className="studio-stars" />
@@ -183,6 +183,7 @@ export default function StudioHome() {
               placeholder="e.g. a webinar registration page for my Q3 masterclass, with an intake form and a thank-you."
               helperText="One sentence is enough to start — Paige asks for anything she needs, then builds it with her team."
               submitLabel="Start building"
+              submitVariant="gold"
               busy={starting}
               busyLabel="Spinning up your session…"
               chips={STUDIO_HOME_CHIPS}
@@ -206,8 +207,9 @@ export default function StudioHome() {
               </FilterChip>
             ))}
           </div>
-          {/* The home's single GOLD act — start a new project (§11 gold budget). */}
-          <Button variant="gold" onClick={() => void startSession()} disabled={starting}>
+          {/* Blank-canvas start — a SECONDARY path to the same act. The hero composer's
+              "Start building" is the one gold act on this surface (§11), so this stays outline. */}
+          <Button variant="outline" onClick={() => void startSession()} disabled={starting}>
             <Plus className="h-4 w-4" aria-hidden /> New project
           </Button>
         </Toolbar>
@@ -250,7 +252,7 @@ export default function StudioHome() {
               }
               action={
                 !isTemplates ? (
-                  <Button variant="gold" onClick={() => void startSession()} disabled={starting}>
+                  <Button variant="outline" onClick={() => void startSession()} disabled={starting}>
                     <Plus className="h-4 w-4" aria-hidden /> Start building
                   </Button>
                 ) : undefined

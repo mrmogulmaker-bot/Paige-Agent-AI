@@ -158,10 +158,17 @@ All colors MUST be HSL.
     --studio-star:  210 40% 92%;
     --studio-orbit: 41 82% 62%;
 
-    /* Glass composer card + rail — THEME-AWARE (light-theme values here) */
+    /* Deep cosmic ink — the fixed near-black the title glow + glass-card shadow cast with,
+       so those effects read the same over the committed-dark field in either theme (a shadow
+       must use fixed ink, never a theme-flipping token — §11). */
+    --studio-ink: 236 70% 3%;
+
+    /* Glass composer card + rail — THEME-AWARE (light-theme values here). The card sits a step
+       BELOW --card (100% L light) so PromptComposer's bg-card input lifts above the glass and its
+       shadow casts (the input must read as raised, §11). */
     --studio-glass-bg:     0 0% 100%;
     --studio-glass-border: 220 40% 82%;
-    --studio-glass-solid:  222 30% 99%;
+    --studio-glass-solid:  222 30% 96%;
     --studio-rail-bg:      222 42% 98%;
     --studio-on-hero:      0 0% 100%;
     --studio-scrim:        236 60% 4%;
@@ -172,7 +179,9 @@ All colors MUST be HSL.
   .dark .studio-surface {
     --studio-glass-bg:     222 40% 12%;
     --studio-glass-border: 220 30% 30%;
-    --studio-glass-solid:  230 38% 9%;
+    /* A step BELOW the dark --card (~8% L) so the bg-card composer input sits ABOVE the glass
+       and its shadow-sm registers (previously 9% — lighter than --card — sank the input). */
+    --studio-glass-solid:  230 38% 6%;
     --studio-rail-bg:      234 44% 7%;
     --studio-scrim:        236 60% 3%;
   }
