@@ -24,9 +24,9 @@ import { Send, Sparkles, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useGeneratePage } from "@/hooks/useGeneratePage";
 import { useToast } from "@/hooks/use-toast";
-import type { GrowthBlock } from "@/lib/growth";
+import type { GrowthBlock, GrowthFormSchema } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
-import { EmptyState, FilterChip, PageShell, SectionCard } from "@/components/ui/page";
+import { EmptyState, PageShell, SectionCard } from "@/components/ui/page";
 import {
   Sheet,
   SheetContent,
@@ -51,7 +51,9 @@ import { FunnelMode } from "./modes/FunnelMode";
 import { LibraryPanel } from "./modes/content-shared";
 import {
   STUDIO_ERROR_COPY,
+  classifyStudioIntent,
   composeBrief,
+  draftFormSchema,
   editBlocks,
   isStudioError,
   loadBrandFloor,
@@ -214,10 +216,32 @@ export function StudioShell({
   // The content library, one Sheet — the same LibraryPanel the Content Studio shipped.
   const [libraryOpen, setLibraryOpen] = useState(false);
 
+  // A manual mode-chip click is a deliberate power-user choice — the classify step (§18)
+  // must never override it. This flips true ONLY inside a real click, never on a prop the
+  // parent set from a URL (a deep link into e.g. Form mode leaves the page composer hidden
+  // and untouched, so classification simply never has a reason to fire there).
+  const modeChipClickedRef = useRef(false);
   const handleModeChange = useCallback(
-    (next: StudioMode) => onModeChange?.(next),
+    (next: StudioMode) => {
+      modeChipClickedRef.current = true;
+      onModeChange?.(next);
+    },
     [onModeChange],
   );
+
+  // ── Studio Phase 1 — the single entry point (§18) ─────────────────────────────────
+  // `classifiedOnceRef` flips true the moment the FIRST brief this session is submitted from
+  // the still-on-page-mode default composer, whatever it resolves to — every submission
+  // after that (including a Regenerate) is already committed to a mode and never reclassified.
+  const classifiedOnceRef = useRef(false);
+  const [classifying, setClassifying] = useState(false);
+  // Artifacts Paige already drafted from the classified brief, handed to the mode they
+  // route into on its first mount. Null/undefined = that mode's own manual entry (a
+  // template pick, a hand-typed brief) — never overwritten by a stale value from a
+  // different session's classify run.
+  const [draftedFormSchema, setDraftedFormSchema] = useState<GrowthFormSchema | null>(null);
+  const [draftedCopyBrief, setDraftedCopyBrief] = useState<string | undefined>(undefined);
+  const [draftedImagePrompt, setDraftedImagePrompt] = useState<string | undefined>(undefined);
 
   // The blocks we hold when a run starts — restored verbatim if the operator stops it, so a
   // cancelled run never leaves a half-painted canvas.
@@ -659,6 +683,65 @@ export function StudioShell({
     [tenantId, state.selectedIndex, state.blocks, state.pageId, saveDraft, patch, toast],
   );
 
+  // ── the single entry point's routing decision (§18) ────────────────────────────────
+  // Every submission from the page-mode composer lands here first. A section edit always
+  // behaves exactly as before. Everything else classifies EXACTLY ONCE per session — the
+  // first submission this session — and every submission after that (including the same
+  // brief resubmitted via Rebuild it) is already committed to whatever mode it landed in.
+  const handleBriefSubmit = useCallback(
+    (value: string) => {
+      if (target) {
+        void handleSectionEdit(value);
+        return;
+      }
+      if (classifiedOnceRef.current || modeChipClickedRef.current) {
+        void runGenerate(value);
+        return;
+      }
+      classifiedOnceRef.current = true;
+      setClassifying(true);
+      void (async () => {
+        try {
+          const { artifact } = await classifyStudioIntent(value);
+          switch (artifact) {
+            case "form": {
+              onModeChange?.("form");
+              try {
+                const schema = await draftFormSchema(value);
+                setDraftedFormSchema(schema);
+              } catch (err) {
+                // The classify step already spent a call getting this far — an honest miss
+                // here still lands the operator in Form mode with its normal template picker,
+                // never a dead end (§13).
+                toast({
+                  title: "Couldn't draft that form",
+                  description: isStudioError(err) ? err.message : "Pick a template below to keep going.",
+                  variant: "destructive",
+                });
+              }
+              break;
+            }
+            case "copy":
+              setDraftedCopyBrief(value);
+              onModeChange?.("copy");
+              break;
+            case "image":
+              setDraftedImagePrompt(value);
+              onModeChange?.("image");
+              break;
+            case "page":
+            default:
+              void runGenerate(value);
+              break;
+          }
+        } finally {
+          setClassifying(false);
+        }
+      })();
+    },
+    [target, runGenerate, handleSectionEdit, onModeChange, toast],
+  );
+
   // ── persist the client-side draft (no DB write) ───────────────────────────────────
   // The Studio holds the in-progress design ONLY in this component's state until an
   // explicit Save/Publish — route-swapping to any other admin section unmounts this whole
@@ -862,28 +945,6 @@ export function StudioShell({
               />
             ) : (
               <>
-                {state.selectedIndex == null && (
-                  <div className="space-y-2">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                      Start from a brief
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {INTENT_CHIPS.map((chip) => (
-                        <FilterChip
-                          key={chip.id}
-                          active={state.brief.trim() === chip.seed.trim()}
-                          onClick={() => patch({ brief: chip.seed })}
-                        >
-                          {chip.label}
-                        </FilterChip>
-                      ))}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Each one drops a full brief in the box. Edit it until it's yours.
-                    </p>
-                  </div>
-                )}
-
                 {/* Post-submit delivery — only once the page has been saved at least once
                     (the embedded_form's backing row only exists after that first save). */}
                 {state.selectedIndex == null && tenantId && state.pageId && embeddedFormSlug && (
@@ -943,8 +1004,9 @@ export function StudioShell({
                 mode={target ? "section" : "page"}
                 value={target ? state.instruction : state.brief}
                 onChange={(value) => patch(target ? { instruction: value } : { brief: value })}
-                onSubmit={(value) => void (target ? handleSectionEdit(value) : runGenerate(value))}
-                busy={busy}
+                onSubmit={(value) => handleBriefSubmit(value)}
+                busy={busy || classifying}
+                busyLabel={classifying ? "Figuring out what to build…" : undefined}
                 disabled={state.saving || state.publishing}
                 target={target}
                 onClearTarget={() => patch({ selectedIndex: null, instruction: "" })}
@@ -954,6 +1016,7 @@ export function StudioShell({
                 onFilesSelected={(files) => void handleFilesSelected(files)}
                 onRemoveAttachment={handleRemoveAttachment}
                 attachmentsBusy={attachmentsBusy}
+                chips={INTENT_CHIPS}
               />
             )
           }
@@ -975,13 +1038,22 @@ export function StudioShell({
             tenantId={tenantId}
             onToolbar={onFormToolbar}
             onCreated={onFormCreated}
+            initialSchema={draftedFormSchema}
           />
         )}
         {visited.has("copy") && (
-          <CopyMode className={mode !== "copy" ? "hidden" : undefined} tenantId={tenantId} />
+          <CopyMode
+            className={mode !== "copy" ? "hidden" : undefined}
+            tenantId={tenantId}
+            initialBrief={draftedCopyBrief}
+          />
         )}
         {visited.has("image") && (
-          <ImageMode className={mode !== "image" ? "hidden" : undefined} tenantId={tenantId} />
+          <ImageMode
+            className={mode !== "image" ? "hidden" : undefined}
+            tenantId={tenantId}
+            initialPrompt={draftedImagePrompt}
+          />
         )}
       </StudioFrame>
 

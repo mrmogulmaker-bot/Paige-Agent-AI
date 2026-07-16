@@ -20,7 +20,7 @@
 //   3. The publish path ALWAYS saves and THEN publishes. The save is what auto-authors the form
 //      behind the signup section, which is what makes publish's lead-capture guard pass.
 import { supabase } from "@/integrations/supabase/client";
-import type { GrowthAsset, GrowthAssetKind, GrowthBlock, GrowthFormSchema, GrowthPageTheme, GrowthSuccessAction } from "@/lib/growth";
+import type { GrowthAsset, GrowthAssetKind, GrowthBlock, GrowthField, GrowthFormSchema, GrowthPageTheme, GrowthSuccessAction } from "@/lib/growth";
 import { detectGrowthAssetKind, GROWTH_ASSET_MAX_BYTES } from "@/lib/growth";
 import { GROWTH_BRAND_FLOOR, buildGrowthBrandFloor } from "@/components/growth/growth-theme";
 import { CLARIFYING_QUESTIONS, STUDIO_ERROR_COPY } from "./studio-copy";
@@ -554,6 +554,224 @@ export async function draftPage(input: DraftPageInput): Promise<DraftPageResult>
 
   onBlocks?.(blocks);
   return { blocks, theme, seo, ...(formSchema ? { formSchema } : {}), ...(suggestedDelivery ? { suggestedDelivery } : {}) };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Studio Phase 1 — the single entry point (§18: "a creation surface must not force the
+// operator to pre-select an artifact type before describing what they want"). One brief
+// typed at the always-present composer classifies BEFORE the operator ever has to click a
+// mode chip, then routes to whichever artifact's own draft seam applies.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+export interface StudioIntentResult {
+  artifact: "page" | "form" | "copy" | "image";
+  /** One short sentence from the classifier — surfaced only if a caller wants to show it. */
+  reasoning: string;
+}
+
+function isStudioArtifactValue(v: unknown): v is StudioIntentResult["artifact"] {
+  return v === "page" || v === "form" || v === "copy" || v === "image";
+}
+
+/**
+ * Classify a fresh brief into which artifact the operator is actually asking for.
+ *
+ * ALWAYS resolves to a real artifact, never throws for a classification miss — this mirrors
+ * growth-studio-route's own discipline (§13: never fail closed on a legitimate brief). A
+ * genuine auth/session problem is swallowed the same way: the downstream draft call
+ * (runGenerate/draftFormSchema/draftCopy/draftImage) authenticates again and surfaces the
+ * REAL error honestly at that point, so nothing is silently hidden — this function just never
+ * blocks the operator's very first keystroke on a routing hiccup.
+ */
+export async function classifyStudioIntent(brief: string): Promise<StudioIntentResult> {
+  const trimmed = (brief ?? "").trim();
+  if (trimmed.length < 5) return { artifact: "page", reasoning: "" };
+
+  try {
+    const headers = await authHeaders();
+    const res = await fetch(`${FUNCTIONS_URL}/growth-studio-route`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ brief: trimmed }),
+    });
+    const body = (await res.json()) as { artifact?: unknown; reasoning?: unknown; error?: unknown };
+    const fnError = readFnError(body);
+    if (fnError || !res.ok || !isStudioArtifactValue(body.artifact)) {
+      if (fnError) console.warn("[studio] growth-studio-route failed, defaulting to page:", res.status, fnError.message);
+      return { artifact: "page", reasoning: "" };
+    }
+    return { artifact: body.artifact, reasoning: typeof body.reasoning === "string" ? body.reasoning : "" };
+  } catch (err) {
+    console.warn("[studio] classifyStudioIntent transport failure, defaulting to page:", err);
+    return { artifact: "page", reasoning: "" };
+  }
+}
+
+/** The server's CleanFormSchema shape (sections[].title is OPTIONAL there) adapted to the
+ *  frontend's GrowthFormSchema (sections[].title is a required string) — never a shape
+ *  mismatch reaching FormMode's state. */
+function cleanSchemaToGrowthFormSchema(schema: {
+  submit_label?: string;
+  sections: { title?: string; fields: unknown[] }[];
+}): GrowthFormSchema {
+  return {
+    submit_label: schema.submit_label,
+    sections: schema.sections.map((s) => ({
+      title: s.title ?? "",
+      fields: s.fields as GrowthField[],
+    })),
+  };
+}
+
+/**
+ * Derive a real GrowthFormSchema from one brief — the form-mode mirror of draftPage(), for
+ * JUST a form schema (no page, no blocks, no theme). Unlike classifyStudioIntent, a failure
+ * here is real and the caller should show it — FormMode falls back to its own template
+ * picker on a thrown StudioError (NO_VALID_SCHEMA from the server surfaces as
+ * GENERATION_FAILED here, same as any other generation miss).
+ */
+export async function draftFormSchema(brief: string): Promise<GrowthFormSchema> {
+  const trimmed = (brief ?? "").trim();
+  if (trimmed.length < 5) throw studioError("EMPTY_BRIEF");
+
+  const headers = await authHeaders();
+  let res: Response;
+  try {
+    res = await fetch(`${FUNCTIONS_URL}/growth-form-draft`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ brief: trimmed }),
+    });
+  } catch (err) {
+    throw toStudioError(err, "GENERATION_FAILED");
+  }
+
+  let body: { schema?: unknown; error?: unknown };
+  try {
+    body = (await res.json()) as { schema?: unknown; error?: unknown };
+  } catch (err) {
+    throw studioError("GENERATION_FAILED", err);
+  }
+
+  const fnError = readFnError(body);
+  if (fnError) {
+    const code: StudioErrorCode =
+      res.status === 403 || res.status === 401
+        ? "FORBIDDEN"
+        : res.status === 400
+          ? "EMPTY_BRIEF"
+          : "GENERATION_FAILED";
+    console.error("[studio] growth-form-draft failed:", res.status, fnError.message);
+    throw studioError(code, fnError, operatorSafe(fnError.message) ?? undefined);
+  }
+  if (!res.ok) throw studioError("GENERATION_FAILED", `HTTP ${res.status}`);
+
+  const raw = body.schema as { submit_label?: string; sections?: unknown } | undefined;
+  if (!raw || !Array.isArray(raw.sections) || raw.sections.length === 0) {
+    throw studioError("GENERATION_FAILED", body);
+  }
+  return cleanSchemaToGrowthFormSchema(raw as { submit_label?: string; sections: { title?: string; fields: unknown[] }[] });
+}
+
+export interface DraftCopyInput {
+  tenantId: string;
+  brief: string;
+  channel?: string;
+  tone?: string;
+  variations?: number;
+}
+
+export interface DraftCopyResult {
+  channel: string;
+  drafts: { title: string; content: string }[];
+}
+
+/**
+ * Draft marketing copy — relocated verbatim from CopyMode's own direct `content-draft` invoke
+ * (§10: the UI is one caller, Paige's headless tools are another). Same payload, same response
+ * shape, same behavior — only the call site moved behind the seam.
+ */
+export async function draftCopy(input: DraftCopyInput): Promise<DraftCopyResult> {
+  const tenantId = requireTenant(input.tenantId);
+  const brief = (input.brief ?? "").trim();
+  if (brief.length < 5) {
+    throw studioError("EMPTY_BRIEF", null, "Give Paige a brief: what's the content about?");
+  }
+  const { data, error } = await supabase.functions.invoke("content-draft", {
+    body: {
+      channel: input.channel ?? "social_post",
+      brief,
+      tone: input.tone ?? "",
+      variations: input.variations ?? 2,
+      tenant_id: tenantId,
+    },
+  });
+  if (error) throw toStudioError(error, "GENERATION_FAILED");
+  if ((data as { error?: unknown } | null)?.error) {
+    throw studioError("GENERATION_FAILED", data, operatorSafe(String((data as { error?: unknown }).error)) ?? undefined);
+  }
+  const drafts = ((data as { drafts?: { title: string; content: string }[] } | null)?.drafts ?? []);
+  if (!drafts.length) {
+    throw studioError("GENERATION_FAILED", data, "Paige didn't return a draft. Try adding more detail.");
+  }
+  return { channel: (data as { channel?: string } | null)?.channel ?? input.channel ?? "social_post", drafts };
+}
+
+export interface DraftImageInput {
+  tenantId: string;
+  prompt: string;
+  size?: string;
+  provider?: string;
+}
+
+export interface DraftImageResult {
+  url: string;
+  path?: string;
+  size: string;
+  provider?: string;
+  content_id?: string;
+  /** True when image generation isn't switched on for this tenant — an honest non-error
+   *  result (§13), not a thrown failure; the caller renders its existing needs_config gate. */
+  needsConfig?: boolean;
+}
+
+/**
+ * Generate an image — relocated verbatim from ImageMode's own direct `generate-image` invoke
+ * (§10). Preserves the needs_config gate as a returned, honest result rather than a thrown
+ * error — image generation being off for a tenant is a real, expected state, not a defect.
+ */
+export async function draftImage(input: DraftImageInput): Promise<DraftImageResult> {
+  const tenantId = requireTenant(input.tenantId);
+  const prompt = (input.prompt ?? "").trim();
+  if (prompt.length < 4) {
+    throw studioError("EMPTY_BRIEF", null, "Describe the image you want.");
+  }
+  const { data, error } = await supabase.functions.invoke("generate-image", {
+    body: {
+      prompt,
+      size: input.size ?? "square",
+      tenant_id: tenantId,
+      ...(input.provider ? { provider: input.provider } : {}),
+    },
+  });
+  if (error) throw toStudioError(error, "GENERATION_FAILED");
+  const body = data as { needs_config?: boolean; error?: unknown; url?: string; path?: string; size?: string; provider?: string; content_id?: string } | null;
+  if (body?.needs_config) {
+    return { url: "", size: input.size ?? "square", needsConfig: true };
+  }
+  if (body?.error) {
+    throw studioError("GENERATION_FAILED", data, operatorSafe(String(body.error)) ?? undefined);
+  }
+  if (!body?.url) {
+    throw studioError("GENERATION_FAILED", data, "No image came back. Try again.");
+  }
+  return {
+    url: body.url,
+    path: body.path,
+    size: body.size || input.size || "square",
+    provider: body.provider,
+    content_id: body.content_id,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

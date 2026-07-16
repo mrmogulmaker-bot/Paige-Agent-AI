@@ -52,6 +52,18 @@ export interface PromptComposerProps {
   onRemoveAttachment?: (index: number) => void;
   /** An upload is in flight — disables the attach button and shows a spinner on the chip row. */
   attachmentsBusy?: boolean;
+  /** Overrides the field label ("What's this page for?" in page mode). Additive — omit to
+   *  keep the page/section defaults unchanged. Lets Copy/Image modes reuse this ONE
+   *  composer with their own wording instead of forking a private textarea (§18). */
+  heading?: string;
+  /** Overrides the placeholder text (page mode only — section mode keeps its own). */
+  placeholder?: string;
+  /** Overrides the helper caption under the textarea (page mode only). */
+  helperText?: string;
+  /** Overrides the submit button's resting label ("Build the page" in page mode). */
+  submitLabel?: string;
+  /** Overrides the submit button's busy label ("Working…" by default). */
+  busyLabel?: string;
   className?: string;
 }
 
@@ -79,6 +91,11 @@ export function PromptComposer({
   onFilesSelected,
   onRemoveAttachment,
   attachmentsBusy = false,
+  heading,
+  placeholder,
+  helperText,
+  submitLabel,
+  busyLabel,
   className,
 }: PromptComposerProps) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
@@ -153,7 +170,7 @@ export function PromptComposer({
 
       <div className="space-y-2">
         <label htmlFor="studio-composer" className="block text-sm font-medium text-foreground">
-          {sectionMode ? "What should this section say?" : "What's this page for?"}
+          {sectionMode ? "What should this section say?" : heading ?? "What's this page for?"}
         </label>
         <Textarea
           id="studio-composer"
@@ -163,13 +180,13 @@ export function PromptComposer({
           onKeyDown={onKeyDown}
           disabled={disabled}
           rows={MIN_ROWS}
-          placeholder={sectionMode ? SECTION_PLACEHOLDER : PAGE_PLACEHOLDER}
+          placeholder={sectionMode ? SECTION_PLACEHOLDER : placeholder ?? PAGE_PLACEHOLDER}
           className="resize-none text-sm leading-relaxed"
         />
         <p className="text-xs text-muted-foreground">
           {sectionMode
             ? "Paige rewrites this one section and leaves the rest of the page alone."
-            : "The more real detail you give — the offer, the audience, the ask — the closer the first draft lands."}
+            : helperText ?? "The more real detail you give — the offer, the audience, the ask — the closer the first draft lands."}
         </p>
       </div>
 
@@ -260,12 +277,12 @@ export function PromptComposer({
           {busy ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
-              Working…
+              {busyLabel ?? "Working…"}
             </>
           ) : (
             <>
               <Send className="h-4 w-4" aria-hidden />
-              {sectionMode ? "Apply the change" : "Build the page"}
+              {sectionMode ? "Apply the change" : submitLabel ?? "Build the page"}
             </>
           )}
         </Button>

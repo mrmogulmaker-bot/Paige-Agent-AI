@@ -205,6 +205,18 @@ project_id = "xygzykjyynhzqytbqnzu"
   [functions.growth-page-draft]
     verify_jwt = true
 
+  # Vibe Studio Phase 1 (§18): the single-entry-point classifier — one brief in, a cheap
+  # judgment of "page"|"form"|"copy"|"image" out. JWT-gated like growth-page-draft; never
+  # writes to the database and never fails closed on a legitimate brief (defaults to "page").
+  [functions.growth-studio-route]
+    verify_jwt = true
+
+  # Vibe Studio Phase 1 (§18): the form-mode mirror of growth-page-draft — derives a real
+  # GrowthFormSchema from one brief, no page/blocks/theme. JWT-gated the same way; pure
+  # draft, zero DB writes.
+  [functions.growth-form-draft]
+    verify_jwt = true
+
   # Vibe Studio conversational per-section edit: one instruction + one GrowthBlock -> the
   # revised GrowthBlock. JWT-gated (the fn re-verifies the caller, role-gates to
   # admin/coach/super_admin, and pins the tenant to current_user_tenant_id() — a JWT caller's

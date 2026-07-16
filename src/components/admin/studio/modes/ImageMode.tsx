@@ -1,55 +1,56 @@
 // Image mode — the absorbed Content Studio image generator, re-laid as a Studio workspace.
 //
-// Rail: the prompt + shape with an indigo "Generate image" pinned at the bottom.
-// Canvas: the result (or the honest needs_config gate, preserved verbatim). There is NO
-// gold in this mode — the act is the server auto-filing the image into the library, and
-// the success StatePill reports that it happened (§13: report what actually happened).
+// Rail: shape picker, then the SHARED PromptComposer (§18 — the same conversational input
+// page mode uses) pinned at the bottom, indigo submit. Canvas: the result (or the honest
+// needs_config gate, preserved verbatim). There is NO gold in this mode — the act is the
+// server auto-filing the image into the library, and the success StatePill reports that it
+// happened (§13: report what actually happened).
 //
-// Backend unchanged (§10): the exact `generate-image` invoke, including the needs_config
-// branch, lifted from the old ImagePanel.
+// Generation routes through studio.ts's draftImage() seam (§10) — the exact `generate-image`
+// invoke that used to live directly in this component, relocated behind the seam, unchanged
+// in behavior, including the needs_config branch.
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { SectionCard, EmptyState, Toolbar, StatePill } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Download, Info, Loader2, Send, Sparkles } from "lucide-react";
+import { Download, Info, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { StudioRailHeading, StudioSplit } from "../StudioChrome";
 import { MODE_EMPTY, MODE_RAIL } from "../studio-copy";
+import { PromptComposer } from "../PromptComposer";
+import { draftImage, isStudioError } from "../studio";
 import { growthSeamMessage } from "@/lib/growth-templates";
 
 export interface ImageModeProps {
   tenantId: string | null;
   className?: string;
+  /** A prompt Paige already routed here from the Studio's single entry point (§18) — seeds
+   *  the composer on this mode's first mount. Additive: an operator who deliberately clicks
+   *  the Image chip still gets the normal blank composer and writes their own prompt. */
+  initialPrompt?: string;
 }
 
-export function ImageMode({ tenantId, className }: ImageModeProps) {
-  const [prompt, setPrompt] = useState("");
+export function ImageMode({ tenantId, className, initialPrompt }: ImageModeProps) {
+  const [prompt, setPrompt] = useState(initialPrompt ?? "");
   const [size, setSize] = useState("square");
   const [busy, setBusy] = useState(false);
   const [needsConfig, setNeedsConfig] = useState(false);
   const [result, setResult] = useState<{ url: string; size: string } | null>(null);
 
-  const generate = async () => {
-    if (prompt.trim().length < 4) { toast.error("Describe the image you want."); return; }
+  const generate = async (value: string) => {
+    const thePrompt = value.trim();
+    if (thePrompt.length < 4) { toast.error("Describe the image you want."); return; }
     setBusy(true); setNeedsConfig(false);
     try {
-      const { data, error } = await supabase.functions.invoke("generate-image", {
-        body: { prompt, size, tenant_id: tenantId },
-      });
-      if (error) throw error;
-      if ((data as any)?.needs_config) { setNeedsConfig(true); return; }
-      if ((data as any)?.error) throw new Error((data as any).error);
-      const url = (data as any)?.url;
-      if (!url) throw new Error("No image came back. Try again.");
-      setResult({ url, size: (data as any)?.size || size });
+      const out = await draftImage({ tenantId: tenantId ?? "", prompt: thePrompt, size });
+      if (out.needsConfig) { setNeedsConfig(true); return; }
+      setResult({ url: out.url, size: out.size });
       // Auto-filed to the library server-side — the StatePill below says so.
     } catch (e) {
-      toast.error(growthSeamMessage(e, "Couldn't generate that image. Try again."));
+      toast.error(isStudioError(e) ? e.message : growthSeamMessage(e, "Couldn't generate that image. Try again."));
     } finally { setBusy(false); }
   };
 
@@ -63,35 +64,31 @@ export function ImageMode({ tenantId, className }: ImageModeProps) {
         />
       }
       railBody={
-        <>
-          <div className="space-y-1.5">
-            <Label htmlFor="img-prompt">Prompt</Label>
-            <Textarea
-              id="img-prompt" value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={6}
-              className="resize-none text-sm leading-relaxed"
-              placeholder="e.g. A clean, modern promo graphic for a consulting webinar — indigo and gold palette, confident, minimal, space for a headline."
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Shape</Label>
-            <Select value={size} onValueChange={setSize}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="square">Square (1:1)</SelectItem>
-                <SelectItem value="portrait">Portrait (2:3)</SelectItem>
-                <SelectItem value="landscape">Landscape (3:2)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </>
+        <div className="space-y-1.5">
+          <Label>Shape</Label>
+          <Select value={size} onValueChange={setSize}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="square">Square (1:1)</SelectItem>
+              <SelectItem value="portrait">Portrait (2:3)</SelectItem>
+              <SelectItem value="landscape">Landscape (3:2)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       }
       railFooter={
-        /* Indigo — generating isn't the act; the auto-file to the library is. */
-        <Button onClick={generate} disabled={busy} variant="default" className="w-full gap-2">
-          {busy
-            ? <><Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> Generating…</>
-            : <><Send className="h-4 w-4" /> Generate image</>}
-        </Button>
+        <PromptComposer
+          mode="page"
+          value={prompt}
+          onChange={setPrompt}
+          onSubmit={(value) => void generate(value)}
+          busy={busy}
+          heading={MODE_RAIL.image.heading}
+          placeholder="e.g. A clean, modern promo graphic for a consulting webinar — indigo and gold palette, confident, minimal, space for a headline."
+          helperText="Say what you need — the more specific the scene, palette, and mood, the closer the first result lands."
+          submitLabel="Generate image"
+          busyLabel="Generating…"
+        />
       }
       canvas={
         <div className="mx-auto w-full max-w-3xl">

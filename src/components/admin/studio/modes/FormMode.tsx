@@ -7,7 +7,7 @@
 //
 // Templates are the §2/§9-clean platform set from src/lib/growth-templates.ts — shared
 // with the Forms library, one copy, no drift.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { SectionCard, FilterChip } from "@/components/ui/page";
 import { Input } from "@/components/ui/input";
@@ -69,9 +69,15 @@ export interface FormModeProps {
   /** The form is created — the hub jumps to the Forms library. */
   onCreated?: () => void;
   className?: string;
+  /** A schema Paige already drafted from the operator's brief (Studio Phase 1, §18 — the
+   *  single entry point classified the brief as a standalone form and drafted it before ever
+   *  switching to this mode). Additive: replaces the starting template exactly ONCE, the
+   *  first time a real schema arrives — an operator who deliberately clicks the Form chip
+   *  and never typed a brief still gets the normal template-picker flow, untouched. */
+  initialSchema?: GrowthFormSchema | null;
 }
 
-export function FormMode({ tenantId, onToolbar, onCreated, className }: FormModeProps) {
+export function FormMode({ tenantId, onToolbar, onCreated, className, initialSchema }: FormModeProps) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
@@ -81,8 +87,37 @@ export function FormMode({ tenantId, onToolbar, onCreated, className }: FormMode
   // The schema starts from the static template but is real, mutable component state — the
   // operator's "maps to" choices below edit THIS object, and it's what flows into saveForm()
   // on Create. Re-seeded from the template whenever the operator switches templates.
-  const [schema, setSchema] = useState<GrowthFormSchema>(() => formTemplateSchema(template));
-  useEffect(() => { setSchema(formTemplateSchema(template)); }, [template]);
+  const [schema, setSchema] = useState<GrowthFormSchema>(() => initialSchema ?? formTemplateSchema(template));
+
+  // Re-seed from the template on every DELIBERATE template switch — but NOT on this
+  // component's own first mount: a `useEffect` with a dependency array still runs once on
+  // mount regardless of whether that dependency "changed," so without this guard it would
+  // unconditionally clobber a schema the lazy initializer above already correctly seeded from
+  // `initialSchema` (§13 — proven, not assumed: an earlier version of this guard looked
+  // correct but silently lost the AI-drafted schema whenever it happened to already be known
+  // at mount, since a ref seeded from the same prop value can never see a "change" to catch).
+  const didMountTemplateEffect = useRef(false);
+  useEffect(() => {
+    if (!didMountTemplateEffect.current) {
+      didMountTemplateEffect.current = true;
+      return;
+    }
+    setSchema(formTemplateSchema(template));
+  }, [template]);
+
+  // A Paige-drafted schema (§18) wins over the template default exactly once per distinct
+  // schema reference — covers BOTH timing cases: it's already known at mount (the lazy init
+  // above handles that, and the guard just above stops the template-reset effect from undoing
+  // it), or it's still in flight when this mode first mounts and lands a moment later (the
+  // classify step routed here before draftFormSchema resolved). Guarded by reference so it
+  // never re-fights an operator's own template pick or maps_to edits after that one hand-off.
+  const appliedInitialSchemaRef = useRef<GrowthFormSchema | null | undefined>(initialSchema);
+  useEffect(() => {
+    if (initialSchema && initialSchema !== appliedInitialSchemaRef.current) {
+      appliedInitialSchemaRef.current = initialSchema;
+      setSchema(initialSchema);
+    }
+  }, [initialSchema]);
 
   // Every ACTIVE custom field definition for this tenant, so the "maps to" picker can offer
   // `custom.<key>` targets alongside the fixed clients.* identity columns (Task: FormMode
