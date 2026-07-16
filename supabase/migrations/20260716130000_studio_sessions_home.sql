@@ -333,10 +333,11 @@ END; $$;
 REVOKE ALL ON FUNCTION public.set_studio_session_transcript(uuid, jsonb, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.set_studio_session_transcript(uuid, jsonb, uuid) TO authenticated, service_role;
 
--- touch_studio_session — bump last_opened_at (drives "Recently viewed"). Idempotent.
--- NOTE: a touch is a read-side recency stamp; it is intentionally NOT owner-gated beyond
--- the tenant wall so a tenant admin opening any project stamps recency normally, but it
--- still requires the row to be in the caller's tenant.
+-- touch_studio_session — bump last_opened_at (drives "Recently viewed") AND returns the row,
+-- so it carries the same owner-or-admin gate as the other mutations: this is a SECURITY
+-- DEFINER path that bypasses the RLS SELECT policy, and RETURNING * would otherwise hand a
+-- non-owner non-admin peer another user's seed_brief/transcript/artifact_refs. Admins and
+-- service_role still touch any project in the tenant (recency stamping intact).
 CREATE OR REPLACE FUNCTION public.touch_studio_session(
   p_id uuid, p_tenant_id uuid DEFAULT NULL
 ) RETURNS public.studio_sessions
@@ -350,7 +351,9 @@ BEGIN
   ELSE _tenant := p_tenant_id; END IF;
   IF _tenant IS NULL THEN RAISE EXCEPTION 'STUDIO_NO_TENANT: a tenant context is required' USING ERRCODE = '22023'; END IF;
   UPDATE public.studio_sessions SET last_opened_at = now()
-    WHERE id = p_id AND tenant_id = _tenant RETURNING * INTO _row;
+    WHERE id = p_id AND tenant_id = _tenant
+      AND (auth.uid() IS NULL OR owner_user_id = auth.uid() OR public.is_tenant_admin(_tenant))
+    RETURNING * INTO _row;
   IF _row.id IS NULL THEN RAISE EXCEPTION 'STUDIO_NOT_FOUND: session not found in this tenant' USING ERRCODE = 'P0002'; END IF;
   RETURN _row;
 END; $$;
