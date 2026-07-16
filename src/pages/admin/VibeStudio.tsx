@@ -12,7 +12,7 @@
 // viewed / My / Starred / Templates) + resume-a-session land in the next slice; today this is
 // the promotion: its own top-level, full-page room.
 import { lazy, Suspense } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import { isStudioMode, type StudioMode } from "@/components/admin/studio/studio-types";
 
 // Same lazy split the hub used — the heavy Studio bundle only loads on this route.
@@ -40,10 +40,17 @@ function StudioSkeleton() {
 
 export default function VibeStudio() {
   const [params, setParams] = useSearchParams();
+  // The builder is opened FOR a session (Slice 2): /admin/studio/:sessionId. StudioShell touches
+  // recency on mount and hydrates the session's primary artifact (§10/§19).
+  const { sessionId } = useParams();
+  // The seed brief the HOME composer passed on navigation — a fast-path seed only; the DURABLE
+  // brief is the session's own seed_brief, which StudioShell reads from the row (blocking #4).
+  const location = useLocation();
+  const initialBrief = (location.state as { brief?: string } | null)?.brief;
 
   // ?mode= picks the output (page|funnel|form|copy|image); defaults to page. ?pageId= opens a
-  // specific page's draft (set by "Edit in Studio" on a page card — the redirect from Campaigns
-  // carries it through). Both mirror the exact contract the Campaigns tab owned before.
+  // specific page's draft (deep-links WITHIN a session still work). Both mirror the exact
+  // contract the Campaigns tab owned before — untouched by the session split.
   const modeParam = params.get("mode");
   const mode: StudioMode = isStudioMode(modeParam) ? modeParam : "page";
   const pageId = params.get("pageId") ?? undefined;
@@ -57,7 +64,13 @@ export default function VibeStudio() {
 
   return (
     <Suspense fallback={<StudioSkeleton />}>
-      <StudioShell mode={mode} onModeChange={setMode} pageId={pageId} />
+      <StudioShell
+        sessionId={sessionId}
+        initialBrief={initialBrief}
+        mode={mode}
+        onModeChange={setMode}
+        pageId={pageId}
+      />
     </Suspense>
   );
 }

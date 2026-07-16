@@ -263,6 +263,60 @@ export const INTENT_CHIPS: IntentChip[] = [
   },
 ];
 
+/**
+ * The Studio HOME composer's starter briefs (Slice 2). Same discipline as INTENT_CHIPS: each
+ * chip drops a REAL, editable brief into the one composer — no hidden template (§15). Spread
+ * across the whole audience (§2: coaches, consultants, agencies, advisors, thought leaders) and
+ * across artifact SHAPES (a page, a form, a nurture sequence, a results page) so the home models
+ * "describe anything, Paige works out the shape" — never a type-picker (§18). ZERO credit /
+ * funding / lending wording — that is a tenant's own opt-in offer, never a platform default.
+ */
+export const STUDIO_HOME_CHIPS: IntentChip[] = [
+  {
+    id: "home-masterclass",
+    label: "Masterclass landing page",
+    seed:
+      "A landing page for my next live masterclass. It's for founders and operators who keep " +
+      "losing clients to slow follow-up. Say what they walk away with, the three things we cover " +
+      "live, and why I'm the one teaching it. One action: save a seat — name and email. I'll add " +
+      "the date before it goes out.",
+  },
+  {
+    id: "home-discovery-intake",
+    label: "Discovery-call intake",
+    seed:
+      "An intake questionnaire for new discovery calls, so I walk in already knowing who I'm " +
+      "talking to. Ask their business and role, what they're trying to fix, what they've already " +
+      "tried, their timeline, and the best email to reach them. Keep it short enough that a busy " +
+      "consultant will actually finish it.",
+  },
+  {
+    id: "home-welcome-sequence",
+    label: "New-client welcome",
+    seed:
+      "A welcome message for a client who just signed. Set the tone for how we work together, " +
+      "tell them exactly what happens in the first week, and give them the one thing to do before " +
+      "our first session. Warm, confident, zero fluff.",
+  },
+  {
+    id: "home-results-page",
+    label: "Results & proof page",
+    seed:
+      "A page that shows the results my clients get, built around one real client story. Cover " +
+      "where they started, what we did together, and the outcome — then invite the reader to see " +
+      "if they're a fit. One action: book a call.",
+  },
+  {
+    id: "home-waitlist",
+    label: "Waitlist for next intake",
+    seed:
+      "A waitlist page for my next intake. I take a handful of clients at a time and the next " +
+      "group opens soon — keep the scarcity honest, no fake countdown. Say what working with me " +
+      "looks like week to week and who I do my best work with. One action: join the waitlist — " +
+      "name, email, and what they need help with.",
+  },
+];
+
 /** The human name for every block type. The operator never sees a backend type string (§11).
  *  Covers all 17 variants — TypeScript enforces that here. */
 export const BLOCK_LABELS: Record<GrowthBlock["type"], string> = {

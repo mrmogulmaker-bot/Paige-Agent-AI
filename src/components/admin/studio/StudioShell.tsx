@@ -23,6 +23,7 @@
 // Not on Generate, not on Save, not on a chip, not on the selection outline (that's
 // indigo `--ring`).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Loader2, Send, Sparkles, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useGeneratePage } from "@/hooks/useGeneratePage";
@@ -62,11 +63,14 @@ import {
   editBlocks,
   isFunnelPublishError,
   isStudioError,
+  linkSessionArtifact,
   loadBrandFloor,
   loadPageDraft,
+  loadSession,
   preflightPublish,
   publishFunnelCascade,
   publishPage,
+  renameStudioSession,
   reviseBlock,
   savePageDraft,
   shouldClarify,
@@ -78,8 +82,8 @@ import {
 import {
   clearPageDraftSnapshot,
   loadPageDraftSnapshot,
-  pageDraftKey,
   savePageDraftSnapshot,
+  studioDraftKey,
   type PageDraftSnapshot,
 } from "./studio-draft";
 import {
@@ -95,6 +99,7 @@ import {
 import {
   EMPTY_CLARIFYING,
   type ModeToolbarState,
+  type StudioArtifactType,
   type StudioError,
   type StudioErrorCode,
   type StudioMode,
@@ -107,6 +112,13 @@ export interface StudioShellProps {
   tenantId?: string;
   /** Tenant public web address — needed for the brand floor and for publish. */
   tenantSlug?: string;
+  /** The owning authoring session (Slice 2). When present, the shell touches recency on mount,
+   *  hydrates the session's primary artifact, seeds the brief from its durable seed_brief, and
+   *  links each saved artifact back to it. Absent on the legacy ?pageId deep-link path. */
+  sessionId?: string;
+  /** The seed brief the HOME composer passed on navigation — a fast-path seed only; the durable
+   *  brief is the session's own seed_brief, read from the row (blocking #4). */
+  initialBrief?: string;
   /** Open an existing page's DRAFT instead of a blank composer (page mode). */
   pageId?: string;
   /** Which output the workspace is building. The hub owns the ?mode= param. */
@@ -131,6 +143,10 @@ const EMPTY_SHELL: ShellState = {
   tenantId: null,
   tenantSlug: null,
   pageId: null,
+  sessionId: null,
+  artifacts: [],
+  activeArtifactId: null,
+  activeArtifactType: null,
   title: "",
   slug: "",
   slugTouched: false,
@@ -209,6 +225,8 @@ function StudioFrame({
 export function StudioShell({
   tenantId: tenantIdProp,
   tenantSlug: tenantSlugProp,
+  sessionId,
+  initialBrief,
   pageId: pageIdProp,
   mode = "page",
   onModeChange,
@@ -321,6 +339,48 @@ export function StudioShell({
 
   const patch = useCallback((next: Partial<ShellState>) => setState((s) => ({ ...s, ...next })), []);
 
+  // ── session (Slice 2) ───────────────────────────────────────────────────────────────
+  // A loadSession that throws NOT_FOUND is a hard stop (§11): the operator opened a session id
+  // that isn't in their workspace. We render the operator-safe "couldn't find that project"
+  // gate, never a raw code.
+  const [sessionNotFound, setSessionNotFound] = useState(false);
+  // True until the session's FIRST artifact is linked — the save that flips it names the project
+  // from the real artifact. A resumed session that already has artifacts starts false.
+  const firstLinkRef = useRef(true);
+
+  /** Attach a saved artifact to the owning session and reflect it in state (§10/§19). Best-effort
+   *  and non-fatal: a link hiccup must never fail the save the operator just performed (§13). On
+   *  the FIRST link it also titles the project from the real artifact. */
+  const linkPrimaryArtifact = useCallback(
+    async (artifactType: StudioArtifactType, artifactId: string, title?: string) => {
+      if (!tenantId || !sessionId || !artifactId) return;
+      const isFirst = firstLinkRef.current;
+      firstLinkRef.current = false;
+      try {
+        const meta = await linkSessionArtifact({ tenantId, sessionId, artifactType, artifactId });
+        setState((s) => ({
+          ...s,
+          artifacts: meta.artifacts,
+          activeArtifactId: artifactId,
+          activeArtifactType: artifactType,
+        }));
+        const cleanTitle = (title ?? "").trim();
+        if (isFirst && cleanTitle) {
+          try {
+            await renameStudioSession({ tenantId, sessionId, title: cleanTitle });
+          } catch (err) {
+            console.warn("[studio] rename-on-first-save failed (non-fatal):", err);
+          }
+        }
+      } catch (err) {
+        // Don't undo the first-link flag on failure — a later save retries the link anyway, and
+        // re-titling on a much later save would be surprising. Just log; the artifact is saved.
+        console.warn("[studio] linkSessionArtifact failed (non-fatal):", err);
+      }
+    },
+    [tenantId, sessionId],
+  );
+
   // ── scope ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     patch({ tenantId, tenantSlug });
@@ -353,7 +413,9 @@ export function StudioShell({
   const draftRestoreRef = useRef<{ key: string | null; applied: boolean }>({ key: null, applied: false });
   useEffect(() => {
     if (!tenantId) return;
-    const key = pageDraftKey(tenantId, pageIdProp ?? null);
+    // Session-scoped when the builder is opened FOR a session (Slice 2), else page-scoped for
+    // the legacy ?pageId path (behavior unchanged there).
+    const key = studioDraftKey(tenantId, sessionId ?? null, pageIdProp ?? null);
     if (draftRestoreRef.current.key === key) return; // already resolved this exact draft once
     const snapshot = loadPageDraftSnapshot(key);
     draftRestoreRef.current = { key, applied: !!snapshot };
@@ -361,6 +423,12 @@ export function StudioShell({
     setState((s) => ({
       ...s,
       pageId: snapshot.pageId,
+      // Session scope (Slice 2) — prefer the live sessionId prop; fall back to whatever the
+      // snapshot carried so an older, pre-session snapshot still restores cleanly.
+      sessionId: sessionId ?? snapshot.sessionId ?? s.sessionId,
+      artifacts: snapshot.artifacts ?? s.artifacts,
+      activeArtifactId: snapshot.activeArtifactId ?? s.activeArtifactId,
+      activeArtifactType: snapshot.activeArtifactType ?? s.activeArtifactType,
       title: snapshot.title,
       slug: snapshot.slug,
       slugTouched: snapshot.slugTouched,
@@ -377,11 +445,14 @@ export function StudioShell({
       dirty: true,
       error: null,
     }));
+    // A restored snapshot with artifacts already reflects a session past its first save — don't
+    // re-title on the next link.
+    if ((snapshot.artifacts?.length ?? 0) > 0) firstLinkRef.current = false;
     toast({
       title: "Draft restored",
       description: "Picked up right where you left off — hit Save to make it permanent.",
     });
-  }, [tenantId, pageIdProp, toast]);
+  }, [tenantId, sessionId, pageIdProp, toast]);
 
   // ── open an existing draft ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -390,7 +461,10 @@ export function StudioShell({
     // reflects everything the DB has, plus whatever wasn't saved yet, so re-fetching here
     // would clobber unsaved edits with the older saved row (the very bug this mechanism
     // exists to close).
-    if (draftRestoreRef.current.key === pageDraftKey(tenantId, pageIdProp) && draftRestoreRef.current.applied) {
+    if (
+      draftRestoreRef.current.key === studioDraftKey(tenantId, sessionId ?? null, pageIdProp) &&
+      draftRestoreRef.current.applied
+    ) {
       return;
     }
     let live = true;
@@ -420,7 +494,78 @@ export function StudioShell({
     return () => {
       live = false;
     };
-  }, [tenantId, pageIdProp, patch]);
+  }, [tenantId, sessionId, pageIdProp, patch]);
+
+  // ── open a SESSION (Slice 2) ──────────────────────────────────────────────────────
+  // Sits ALONGSIDE the pageId-open effect above (which stays for the legacy ?pageId deep-link).
+  // On mount with a sessionId: loadSession stamps recency (§10) and hydrates the primary page
+  // artifact (delegating to loadPageDraft). A zero-artifact session seeds the composer brief from
+  // the DURABLE seed_brief (blocking #4), never from ephemeral router state alone. A restored
+  // local snapshot for this session ran first, so unsaved work WINS over the DB row — we still
+  // adopt the session identity + manifest, but never clobber restored content.
+  const sessionLoadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!tenantId || !sessionId) return;
+    if (sessionLoadRef.current === sessionId) return; // resolved this session once
+    sessionLoadRef.current = sessionId;
+    setSessionNotFound(false);
+
+    const key = studioDraftKey(tenantId, sessionId, null);
+    const restored = draftRestoreRef.current.key === key && draftRestoreRef.current.applied;
+    // Seed the brief instantly from the navigation state so the composer isn't blank for a beat
+    // (loadSession then confirms it from the durable seed_brief).
+    if (initialBrief && !restored) patch({ brief: initialBrief });
+
+    let live = true;
+    loadSession({ tenantId, sessionId })
+      .then((loaded) => {
+        if (!live) return;
+        firstLinkRef.current = loaded.artifacts.length === 0;
+        setState((s) => {
+          // Always adopt the session's identity + manifest.
+          const base: ShellState = { ...s, sessionId, artifacts: loaded.artifacts };
+          // Unsaved local work already restored — keep it; just carry the session scope.
+          if (restored) return base;
+          if (loaded.primary) {
+            return {
+              ...base,
+              pageId: loaded.primary.id,
+              activeArtifactId: loaded.primary.id,
+              activeArtifactType: loaded.primaryType,
+              title: loaded.primary.title,
+              slug: loaded.primary.slug,
+              slugTouched: true,
+              status: loaded.primary.status,
+              blocks: loaded.primary.blocks,
+              theme: loaded.primary.theme,
+              seo: loaded.primary.seo,
+              mode: loaded.primary.blocks.length > 0 ? "canvas" : "compose",
+              dirty: false,
+              publishedUrl: null,
+              error: null,
+            };
+          }
+          // Zero-artifact (fresh) session — seed the composer from the durable brief.
+          return {
+            ...base,
+            brief: s.brief || loaded.session.seedBrief || initialBrief || "",
+            mode: "compose",
+            error: null,
+          };
+        });
+      })
+      .catch((err) => {
+        if (!live) return;
+        if (isStudioError(err) && err.code === "NOT_FOUND") {
+          setSessionNotFound(true);
+        } else {
+          patch({ error: asStudioError(err, "NOT_FOUND") });
+        }
+      });
+    return () => {
+      live = false;
+    };
+  }, [tenantId, sessionId, initialBrief, patch]);
 
   // ── derived ───────────────────────────────────────────────────────────────────────
   const canvasBlocks = state.mode === "generating" ? generation.emitted : state.blocks;
@@ -710,7 +855,10 @@ export function StudioShell({
       // its job and must not linger stale past the point the operator actually committed
       // (this fires for the explicit Save button, Publish's save-first step, and the
       // section-edit path's implicit save — every one of them means a DB row now exists).
-      clearPageDraftSnapshot(pageDraftKey(tenantId, state.pageId));
+      clearPageDraftSnapshot(studioDraftKey(tenantId, sessionId ?? null, state.pageId));
+      // Wire the saved page into its owning session (Slice 2) — idempotent, non-fatal, and it
+      // titles the project from the real page on the first save (§19). No-op without a session.
+      void linkPrimaryArtifact("page", row.id, row.title || state.title);
       onSaved?.({ id: row.id, slug: row.slug });
       return { id: row.id, slug: row.slug };
     } catch (err) {
@@ -718,7 +866,7 @@ export function StudioShell({
       patch({ saving: false, error: e });
       return null;
     }
-  }, [tenantId, state.blocks, state.slug, state.title, state.seo, state.pageId, state.theme, state.formSchema, onSaved, patch]);
+  }, [tenantId, sessionId, state.blocks, state.slug, state.title, state.seo, state.pageId, state.theme, state.formSchema, onSaved, patch, linkPrimaryArtifact]);
 
   const handleSave = useCallback(async () => {
     const saved = await saveDraft();
@@ -774,6 +922,9 @@ export function StudioShell({
         // same page/form/funnel rows instead of stranding orphans in the libraries (§12).
         const built = await buildFunnelFromDraft({ tenantId, draft, existing: funnel });
         setFunnel(built);
+        // Wire the built funnel into its owning session (Slice 2) — the funnel is the session's
+        // primary artifact; idempotent + non-fatal, and titles the project on first build (§19).
+        void linkPrimaryArtifact("funnel", built.funnelId, built.name);
         toast({
           title: "Funnel drafted",
           description: built.pageBlanks.length
@@ -786,7 +937,7 @@ export function StudioShell({
         setFunnelBuilding(false);
       }
     },
-    [tenantId, funnel, patch, toast],
+    [tenantId, funnel, patch, toast, linkPrimaryArtifact],
   );
 
   // Leave the funnel and return to a blank composer (§13 — never trap the operator in one
@@ -967,9 +1118,13 @@ export function StudioShell({
     const hasContent =
       state.blocks.length > 0 || state.brief.trim().length > 0 || state.title.trim().length > 0;
     if (!hasContent) return;
-    const key = pageDraftKey(tenantId, state.pageId);
+    const key = studioDraftKey(tenantId, sessionId ?? null, state.pageId);
     const snapshot: PageDraftSnapshot = {
       pageId: state.pageId,
+      sessionId: state.sessionId,
+      artifacts: state.artifacts,
+      activeArtifactId: state.activeArtifactId,
+      activeArtifactType: state.activeArtifactType,
       title: state.title,
       slug: state.slug,
       slugTouched: state.slugTouched,
@@ -988,7 +1143,12 @@ export function StudioShell({
     return () => window.clearTimeout(id);
   }, [
     tenantId,
+    sessionId,
     state.pageId,
+    state.sessionId,
+    state.artifacts,
+    state.activeArtifactId,
+    state.activeArtifactType,
     state.title,
     state.slug,
     state.slugTouched,
@@ -1153,6 +1313,32 @@ export function StudioShell({
               tone="brand"
               title="Pick a workspace to build in"
               description="Everything here is built inside a workspace so it carries its brand and its signups. Choose one from the switcher up top and the Studio opens."
+            />
+          </SectionCard>
+        </div>
+      </StudioFrame>,
+    );
+  }
+
+  // ── session not found: a hard stop, never a raw code (§11) ─────────────────────────
+  if (sessionNotFound) {
+    return wrap(
+      <StudioFrame className={embedded ? className : undefined} dark={studioDark}>
+        <div className="flex h-14 shrink-0 items-center border-b border-border/60 bg-gradient-to-b from-card to-muted/20 px-4 shadow-sm">
+          <span className="font-display text-sm font-semibold text-foreground">Studio</span>
+        </div>
+        <div className="grid flex-1 place-items-center p-6">
+          <SectionCard className="max-w-lg">
+            <EmptyState
+              icon={Wand2}
+              tone="brand"
+              title="We couldn't find that project"
+              description="It may have been removed, or it belongs to another workspace. Head back to the Studio to pick up another one — or start something new."
+              action={
+                <Button asChild variant="default">
+                  <Link to="/admin/studio">Back to the Studio</Link>
+                </Button>
+              }
             />
           </SectionCard>
         </div>

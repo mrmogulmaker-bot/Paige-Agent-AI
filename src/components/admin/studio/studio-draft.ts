@@ -16,7 +16,13 @@
 // never throws. A corrupted or foreign entry fails open — a console.warn, then nothing,
 // never a crash (§13).
 import type { GrowthBlock, GrowthFormSchema, GrowthPageTheme } from "@/lib/growth";
-import type { ClarifyingState, PageCanvasMode, StudioSeoDraft } from "./studio-types";
+import type {
+  ClarifyingState,
+  PageCanvasMode,
+  SessionArtifactRef,
+  StudioArtifactType,
+  StudioSeoDraft,
+} from "./studio-types";
 
 /** The exact recoverable slice of ShellState. Everything else — saving/publishing/editing/
  *  error/dirty/tenantId/tenantSlug/status/instruction/device/publishOpen/publishedUrl — is
@@ -34,6 +40,12 @@ export interface PageDraftSnapshot {
   mode: PageCanvasMode;
   clarifying: ClarifyingState;
   selectedIndex: number | null;
+  // Session scope (Slice 2) — present once the builder is opened FOR a session. Optional so a
+  // pre-session (legacy ?pageId) snapshot still validates and restores unchanged.
+  sessionId?: string | null;
+  artifacts?: SessionArtifactRef[];
+  activeArtifactId?: string | null;
+  activeArtifactType?: StudioArtifactType | null;
 }
 
 /** A draft older than this is treated as gone — long enough to survive a coffee break or a
@@ -55,6 +67,22 @@ interface StoredDraftEnvelope {
  *  tenant — the same slot a Save promotes it out of once a real id exists. */
 export function pageDraftKey(tenantId: string, pageId: string | null): string {
   return `paige.studio.page-draft.${tenantId}.${pageId ?? "new"}`;
+}
+
+/**
+ * Session-scoped recovery key (Slice 2). When the builder is opened FOR a session, recovery is
+ * keyed by the SESSION, not the page — so a fresh, never-saved session (no pageId yet) still has
+ * a stable slot, and two different sessions never collide on the shared 'new' slot. Falls back
+ * to the page-scoped key for the legacy ?pageId path that carries no session (behavior
+ * unchanged there). `paige.studio.<tenant>.<sessionId|'new'>`.
+ */
+export function studioDraftKey(
+  tenantId: string,
+  sessionId: string | null,
+  pageId: string | null,
+): string {
+  if (sessionId) return `paige.studio.${tenantId}.${sessionId}`;
+  return pageDraftKey(tenantId, pageId);
 }
 
 function isClarifyingState(value: unknown): value is ClarifyingState {

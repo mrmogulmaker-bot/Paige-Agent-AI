@@ -145,6 +145,75 @@ export interface ClarifyingState {
 
 export const EMPTY_CLARIFYING: ClarifyingState = { questions: [], answers: {} };
 
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Sessions — the projects HOME layer (Slice 2).
+//
+// A studio SESSION is one authoring project (studio_sessions). It wraps today's single-primary
+// artifact flow and is multi-artifact in the DATA model (the artifact_refs manifest). These
+// types are the shared contract between the callable seam (studio.ts), the gallery hook, and
+// the builder — defined here so the shape lives in exactly ONE place, like every other studio
+// type. §2/§9: nothing here is vertical or finance-specific; it is generic authoring state.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/** The five artifact TYPES a session can author — the studio's own modes. */
+export type StudioArtifactType = "page" | "form" | "funnel" | "copy" | "image";
+
+/** The kind as PERSISTED in the manifest / accepted by link_session_artifact. copy and image
+ *  both persist as 'content' (marketing_content); page/form/funnel pass through. */
+export type SessionArtifactKind = "page" | "form" | "funnel" | "content";
+
+/** The session lifecycle, distinct from any one artifact's status. */
+export type StudioSessionStatus = "draft" | "building" | "published" | "archived";
+
+/** Which gallery view the HOME is showing — a filter over ONE grid, never a route (§18). */
+export type StudioSessionView = "recent" | "mine" | "starred" | "templates";
+
+/** One typed reference INTO a growth_ / marketing_content row a session authored — never the
+ *  artifact's content, just enough to render a chip/glyph and re-open it. A ref whose target
+ *  was deleted is a tombstone the UI tolerates (no broken image, no throw). */
+export interface SessionArtifactRef {
+  kind: SessionArtifactKind;
+  id: string;
+  title: string;
+  slug: string | null;
+  thumbnailUrl: string | null;
+  addedAt: string | null;
+}
+
+/** The full session row, camelCased — the builder's resume payload. */
+export interface StudioSessionMeta {
+  id: string;
+  tenantId: string;
+  ownerUserId: string | null;
+  title: string;
+  seedBrief: string | null;
+  status: StudioSessionStatus;
+  starred: boolean;
+  thumbnailUrl: string | null;
+  isTemplate: boolean;
+  transcript: unknown[];
+  artifacts: SessionArtifactRef[];
+  lastOpenedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The gallery card projection — exactly what a ProjectCard renders. */
+export interface StudioSessionCard {
+  id: string;
+  title: string;
+  seedBrief: string | null;
+  starred: boolean;
+  status: StudioSessionStatus;
+  isTemplate: boolean;
+  thumbnailUrl: string | null;
+  /** The primary artifact's studio type (drives the cover glyph); null for an empty session. */
+  primaryKind: StudioArtifactType | null;
+  /** Distinct studio types wired into the session — the multi-artifact glyph row (§19). */
+  artifactKinds: StudioArtifactType[];
+  lastEditedAt: string;
+}
+
 /** The state StudioShell owns. Nothing else holds studio state. */
 export interface StudioState {
   // — scope —
@@ -152,6 +221,14 @@ export interface StudioState {
   tenantSlug: string | null;
   /** null until the draft is first saved (the upsert seam returns it). */
   pageId: string | null;
+
+  // — session (Slice 2) — the owning authoring project. `pageId` above is now a
+  //   specialization of the active PAGE artifact (activeArtifactId === pageId for a page);
+  //   `sessionId` is null only on the legacy ?pageId path that carries no session.
+  sessionId: string | null;
+  artifacts: SessionArtifactRef[];
+  activeArtifactId: string | null;
+  activeArtifactType: StudioArtifactType | null;
 
   // — the page —
   title: string;

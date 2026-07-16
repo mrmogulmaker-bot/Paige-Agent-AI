@@ -101,6 +101,8 @@ const SkillsHub = lazy(() => import("@/pages/admin/SkillsHub"));
 const WorkflowsList = lazy(() => import("@/pages/admin/WorkflowsList"));
 const CampaignsHub = lazy(() => import("@/pages/admin/CampaignsHub"));
 const VibeStudio = lazy(() => import("@/pages/admin/VibeStudio"));
+const StudioHome = lazy(() => import("@/pages/admin/StudioHome"));
+const StudioNew = lazy(() => import("@/pages/admin/StudioNew"));
 const WorkflowDetail = lazy(() => import("@/pages/admin/WorkflowDetail"));
 const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
 const WorkflowRunDetail = lazy(() => import("@/pages/admin/WorkflowRunDetail"));
@@ -464,9 +466,17 @@ const Admin = () => {
         <Route path="campaigns" element={
           <Suspense fallback={<SuspenseFallback />}><CampaignsHub /></Suspense>
         } />
-        {/* Vibe Studio — its own full-page creation surface (§18: the single Studio mount; the
-            Campaigns tab redirects here). Staff-visible, not owner-only. */}
+        {/* Vibe Studio — three surfaces (§18: one home each). Staff-visible, not owner-only.
+            HOME = the projects gallery + the one conversational composer (bare /admin/studio).
+            NEW  = a thin creator that mints a session then redirects into the builder.
+            BUILDER = the StudioShell, opened FOR a session (/admin/studio/:sessionId). */}
         <Route path="studio" element={
+          <Suspense fallback={<SuspenseFallback />}><StudioHome /></Suspense>
+        } />
+        <Route path="studio/new" element={
+          <Suspense fallback={<SuspenseFallback />}><StudioNew /></Suspense>
+        } />
+        <Route path="studio/:sessionId" element={
           <Suspense fallback={<SuspenseFallback />}><VibeStudio /></Suspense>
         } />
         <Route path="workflows/runs" element={
