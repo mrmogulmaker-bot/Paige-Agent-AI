@@ -10,7 +10,7 @@ import type { GrowthAsset, GrowthBlock, GrowthFormSchema, GrowthPageTheme } from
  * The Studio's five outputs — one workspace, five creation modes. `page` is the
  * original Vibe Studio; `copy` and `image` are the absorbed Content Studio;
  * `funnel` and `form` are the structured builders. The tab param carries this
- * (?tab=studio&mode=…) so every mode is deep-linkable.
+ * (/admin/studio?mode=…) so every mode is deep-linkable.
  */
 export type StudioMode = "page" | "funnel" | "form" | "copy" | "image";
 

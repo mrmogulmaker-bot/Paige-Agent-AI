@@ -1,5 +1,5 @@
 // Growth OS — the LIBRARIES for Pages, Forms, Funnels, Submissions, External Sources.
-// Creation happens in the Studio (?tab=studio&mode=…); once an asset is done it is SAVED
+// Creation happens in the Vibe Studio (/admin/studio?mode=…); once an asset is done it is SAVED
 // here, where the operator can go back, edit, duplicate, recycle, and publish/unpublish.
 // Every "New …" action deep-links INTO the Studio — no bare create dialogs.
 import { Fragment, useEffect, useMemo, useState } from "react";

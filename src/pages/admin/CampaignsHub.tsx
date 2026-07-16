@@ -1,17 +1,19 @@
 // Campaigns Hub — single home for outbound marketing & acquisition.
 //
-// ONE creation surface: the Studio (?tab=studio&mode=page|funnel|form|copy|image) — the
-// consolidated Vibe Studio, which absorbed the old Content Studio's copy/image tools.
-// Pages / Funnels / Forms are LIBRARIES: the saved work lives there (edit, duplicate,
-// publish, recycle); their "New …" actions deep-link INTO the Studio.
+// The Vibe Studio (the conversational page/funnel/form/copy/image builder) was PROMOTED to
+// its own full-page route at /admin/studio (§18: one capability, one home). This hub no
+// longer mounts it — any legacy ?tab=studio / ?tab=content link, and every library "New …"
+// action, REDIRECTS to /admin/studio carrying mode + pageId through.
+// Pages / Funnels / Forms remain LIBRARIES here: the saved work lives there (edit, duplicate,
+// publish, recycle); their "New …" actions open the Studio on its own route.
 //
 // All data continues to flow live from Supabase (growth_* + tenant-campaigns bridge),
 // keyed to the active tenant — coaches / admins / clients still see exactly what their
 // RLS policies allow.
-import { lazy, Suspense, useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { lazy, Suspense, useState } from "react";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Megaphone, LayoutGrid, GitBranch, FileText, Plug, Palette, Share2, Facebook, Youtube, Linkedin, Wand2 } from "lucide-react";
+import { Megaphone, LayoutGrid, GitBranch, FileText, Plug, Palette, Share2, Facebook, Youtube, Linkedin } from "lucide-react";
 import { PageShell, PageHeader, EmptyState, StatePill } from "@/components/ui/page";
 import { CampaignsOverviewStats } from "@/components/admin/campaigns/CampaignsOverviewStats";
 import { isStudioMode, type StudioMode } from "@/components/admin/studio/studio-types";
@@ -21,11 +23,6 @@ const GrowthHub = lazy(() => import("@/pages/admin/GrowthHub"));
 const BrandKitPanel = lazy(() =>
   import("@/components/admin/brand/BrandKitPanel").then((m) => ({ default: m.BrandKitPanel })),
 );
-// THE Studio: describe it, watch Paige's team build it in the real renderer, publish it.
-const StudioShell = lazy(() =>
-  import("@/components/admin/studio").then((m) => ({ default: m.StudioShell })),
-);
-
 const GROWTH_TABS = new Set(["pages", "funnels", "forms", "integrations"]);
 
 export default function CampaignsHub() {
@@ -49,18 +46,9 @@ export default function CampaignsHub() {
       ? "copy"
       : "page";
 
-  useEffect(() => {
-    if (rawTab !== "content") return;
-    const p = new URLSearchParams(params);
-    p.set("tab", "studio");
-    p.set("mode", "copy");
-    setParams(p, { replace: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawTab]);
-
-  // Bumped after a Studio publish/save/create so the embedded Growth lists refetch and the
-  // new asset shows up without a manual reload.
-  const [growthRefresh, setGrowthRefresh] = useState(0);
+  // The embedded Growth libraries refetch on mount; the Studio now lives on its own route
+  // (/admin/studio), so there is no in-hub publish to bump this — kept as a stable nonce.
+  const [growthRefresh] = useState(0);
 
   const setTab = (next: string) => {
     const p = new URLSearchParams(params);
@@ -74,12 +62,15 @@ export default function CampaignsHub() {
     setParams(p, { replace: false });
   };
 
-  const setMode = (next: StudioMode) => {
-    const p = new URLSearchParams(params);
-    p.set("tab", "studio");
-    p.set("mode", next);
-    setParams(p, { replace: true });
-  };
+  // §18 — the Studio has ONE home now (/admin/studio). Any ?tab=studio (including the legacy
+  // ?tab=content and every "New / Edit in Studio" deep-link from the libraries) redirects there,
+  // carrying mode + pageId through so nothing that pointed at the old in-hub tab breaks.
+  if (isStudio) {
+    const sp = new URLSearchParams();
+    sp.set("mode", mode);
+    if (studioPageId) sp.set("pageId", studioPageId);
+    return <Navigate to={`/admin/studio?${sp.toString()}`} replace />;
+  }
 
   return (
     <PageShell width="wide">
@@ -97,7 +88,6 @@ export default function CampaignsHub() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex flex-wrap h-auto">
           <TabsTrigger value="overview"><Megaphone className="w-4 h-4 mr-1.5" />Overview</TabsTrigger>
-          <TabsTrigger value="studio"><Wand2 className="w-4 h-4 mr-1.5" />Studio</TabsTrigger>
           <TabsTrigger value="brand"><Palette className="w-4 h-4 mr-1.5" />Brand Kit</TabsTrigger>
           <TabsTrigger value="social"><Share2 className="w-4 h-4 mr-1.5" />Social</TabsTrigger>
           <TabsTrigger value="pages"><LayoutGrid className="w-4 h-4 mr-1.5" />Pages</TabsTrigger>
@@ -113,48 +103,6 @@ export default function CampaignsHub() {
           }>
             <CampaignsOverview />
           </Suspense>
-        </TabsContent>
-
-        <TabsContent value="studio" className="mt-4">
-          {/* Full-bleed immersive workspace: fixed height at lg+ (the frame scrolls its own
-              rail + canvas), natural page flow below lg — no trapped inner scroll. */}
-          <div className="lg:h-[calc(100dvh-11.5rem)] lg:min-h-[640px]">
-            <Suspense fallback={
-              <div className="dark flex h-full min-h-[620px] flex-col overflow-hidden rounded-xl border border-border bg-background">
-                <div className="h-14 shrink-0 border-b border-border bg-card" />
-                <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-                  <div className="border-b border-border p-4 lg:w-[380px] lg:shrink-0 lg:border-b-0 lg:border-r">
-                    <div className="h-64 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
-                  </div>
-                  <div className="flex-1 bg-muted/30 p-4 md:p-6">
-                    <div className="h-full min-h-[16rem] animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
-                  </div>
-                </div>
-              </div>
-            }>
-              <StudioShell
-                embedded
-                mode={mode}
-                onModeChange={setMode}
-                pageId={studioPageId}
-                onPublished={() => {
-                  // The page is live now — refresh the lists and drop the operator on the
-                  // Pages library so they see it published in context.
-                  setGrowthRefresh((n) => n + 1);
-                  setTab("pages");
-                }}
-                onSaved={() => setGrowthRefresh((n) => n + 1)}
-                onFunnelCreated={() => {
-                  setGrowthRefresh((n) => n + 1);
-                  setTab("funnels");
-                }}
-                onFormCreated={() => {
-                  setGrowthRefresh((n) => n + 1);
-                  setTab("forms");
-                }}
-              />
-            </Suspense>
-          </div>
         </TabsContent>
 
         <TabsContent value="brand" className="mt-4">

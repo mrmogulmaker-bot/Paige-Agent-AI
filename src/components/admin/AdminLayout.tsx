@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate, Radio,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate, Radio, Wand2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -58,6 +58,11 @@ const hubs: Hub[] = [
   // (GOD_HUBS) deliberately never carries it — the operator doesn't run a client
   // portal.
   { label: "Portal Studio", href: "/admin/portal", icon: LayoutTemplate },
+  // Vibe Studio — the full-page conversational creation surface (pages · funnels · forms ·
+  // copy · images). Its own top-level room, distinct from Portal Studio (client-portal
+  // skinning). Staff-visible (a marketing/social hire on a staff seat sees it) — not
+  // owner-only; real access still comes from RLS.
+  { label: "Vibe Studio", href: "/admin/studio", icon: Wand2 },
   {
     label: "Contacts",
     href: "/admin/contacts",
@@ -559,7 +564,15 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
       )}
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-4 md:p-6 pb-[calc(env(safe-area-inset-bottom)+1rem)]">
+      <main
+        className={`flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] ${
+          // Vibe Studio is an immersive full-bleed workspace (§11 / owner: not "boxed inside
+          // the platform") — it owns its own frame, so the content well drops its padding here.
+          location.pathname === "/admin/studio" || location.pathname.startsWith("/admin/studio/")
+            ? ""
+            : "p-3 sm:p-4 md:p-6"
+        }`}
+      >
         {children}
       </main>
     </div>
