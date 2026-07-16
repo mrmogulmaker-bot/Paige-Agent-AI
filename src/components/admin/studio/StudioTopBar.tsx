@@ -11,12 +11,13 @@
 //   image  → none at all (the act is the server's auto-file; the result pill reports it)
 // Everything else — mode chips, device chips, Save, Library — is indigo/neutral.
 //
-// No theme toggle lives here (deliberately). `ThemeToggle` drives next-themes' single global
-// `<html>` class — there is no Studio-scoped variant of it, and nothing in this tree keys off
-// theme at all (the chrome is hardcoded dark via StudioFrame's own literal `dark` class). A
-// toggle here did one thing only: change the theme for the whole platform once the operator
-// left Studio, which reads as "the Studio broke my theme." If a genuine Studio-local
-// light/dark canvas preview is ever wanted, it needs its own local state — never this hook.
+// The theme toggle here is Studio-LOCAL (owner-requested follow-up) — it does NOT use
+// `ThemeToggle`/next-themes, which drives the platform's single global `<html>` class. That
+// was tried once and removed: it changed the whole platform's theme once the operator left
+// Studio, which read as "the Studio broke my theme." Instead, `studioDark`/onToggleStudioTheme
+// are owned by StudioShell as plain local state (persisted to its own localStorage key) and
+// only ever flip the literal `dark` class on StudioFrame's own root div — nothing outside
+// this component tree is touched, in either direction.
 //
 // MODE STRIP (§18): this used to render all five modes as a permanent, equal-weight tab row
 // — the exact "pick a type before Paige has heard the brief" gate §18 exists to forbid. It's
@@ -33,8 +34,10 @@ import {
   Library,
   Loader2,
   Monitor,
+  Moon,
   PenLine,
   Smartphone,
+  Sun,
   Wand2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -65,6 +68,10 @@ export interface StudioTopBarProps {
    *  see its "the mode-tab strip" block). Never includes "funnel" — that has its own ghost
    *  button below, always available regardless of content. Empty = render no strip at all. */
   visibleModes: readonly StudioMode[];
+  /** Studio-LOCAL dark/light (StudioShell's own state, StudioFrame's own `dark` class) — never
+   *  the platform's next-themes. See the doc comment above for why this isn't `ThemeToggle`. */
+  studioDark: boolean;
+  onToggleStudioTheme: () => void;
 
   // — page mode —
   title?: string;
@@ -93,6 +100,8 @@ export function StudioTopBar({
   mode,
   onModeChange,
   visibleModes,
+  studioDark,
+  onToggleStudioTheme,
   title,
   onTitleChange,
   device,
@@ -187,6 +196,16 @@ export function StudioTopBar({
 
       {/* ── the acts ── */}
       <div className="flex flex-wrap items-center gap-2">
+        {/* Studio-local only (§ above) — flips StudioFrame's own `dark` class, nothing else. */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={onToggleStudioTheme}
+          aria-label={studioDark ? "Switch this session to light mode" : "Switch this session to dark mode"}
+        >
+          {studioDark ? <Sun className="h-4 w-4" aria-hidden /> : <Moon className="h-4 w-4" aria-hidden />}
+        </Button>
         {isPage && onDeviceChange && (
           <div className="flex items-center gap-1" role="group" aria-label="Preview device">
             <FilterChip active={device === "desktop"} onClick={() => onDeviceChange("desktop")}>
