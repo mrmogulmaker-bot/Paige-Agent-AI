@@ -299,6 +299,29 @@ looks and feels, §13 governs how it's built underneath.
 - **The test, every time:** *"Would a world-class engineer put their name on this and be
   proud of it in code review?"* If not, it isn't done.
 
+## 20. Dispatching a team of agents is a CHAT act, never a separate surface.
+
+**Directive (owner: Antonio, 2026-07-16).** Everything Paige does — including standing up a
+**team of agents** to spread work across a job — happens **inside the chat**, by voice or
+typing. It is **never** a separate tab, panel, or "agent manager" the human has to learn.
+People are used to a conversation: you tell Paige *"have your design agent build the landing
+page while copy writes the emails and forms wires the intake,"* she dispatches the team, and
+their **assignments, progress, and results stream back in the transcript** — the same chat
+you were already in. This is §1/§8/§14 (never solo; orchestrate a team) surfaced the only way
+that stays §18-clean: through the one conversation, not a new surface.
+
+- **Dispatch is conversational.** No "add agent" button, no team-management screen. The brief
+  (and Paige's own plan) decides who to spin up and what each does; she reports the team back
+  in the thread (who's on it, what each is doing, what they produced) — honestly (§13: what
+  the agents *actually* did, never a hoped-for result).
+- **Status may surface ambiently, but control lives in the chat.** A working surface (e.g. the
+  Vibe Studio project) may show an *ambient* signal — an artifact reading "building," by which
+  agent — but the act of dispatching, steering, and hearing back is the transcript, not a panel.
+- **This binds every surface, not just Studio.** Anywhere Paige runs a team (Studio, the
+  command center, the departments of §16), the team is convened and monitored **in her chat**.
+- **The test, every time:** *"Did I put agent-team control behind a tab/panel the human has to
+  operate, or is it just something they say to Paige in the chat?"* If it's a surface, it's wrong.
+
 ## 19. The Studio is the whole campaign, end to end — one session, not five.
 
 **Directive (owner: Antonio, 2026-07-16).** The Vibe Studio (Campaigns tab) is not a page
