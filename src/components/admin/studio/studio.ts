@@ -2231,3 +2231,142 @@ export async function ensureSessionForArtifact(input: {
   if (!row?.id) throw studioError("NOT_FOUND", row);
   return rowToSessionMeta(row);
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// The artifact-MANIFEST seam (Slice 1 of the multi-page redesign).
+//
+// A project (session) holds MANY artifacts in its artifact_refs manifest. These functions are
+// how the UI — and Paige (§10) — open ANY of them onto the stage and manage the manifest:
+// open one, mint a blank one, remove one from the project (never from its library, §9), reorder,
+// or relabel it project-locally. The four mutations bottom out in the DEFINER RPCs from the
+// studio_manifest_ops migration (studio_role_ok-gated, tenant-pinned, owner-or-admin, audited);
+// each RETURNs the fresh row so the caller can hand it to useActiveStudioSession.applyMeta and
+// the rail + stage re-render in lockstep — no split source of truth.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/** ONE artifact hydrated for the editor stage. Page + form resolve their real content here;
+ *  funnel + content (and a slug-less form) open their mode carrying just the ref — the mode
+ *  component runs its own loader. A tombstoned ref (underlying row gone) resolves to
+ *  `{ …, missing: true }`, so the editor shows an honest "no longer available" state, never a
+ *  throw (§13). `studioTypeFromRef` supplies the glyph/type. */
+export type OpenedArtifact =
+  | { kind: "page"; type: StudioArtifactType; ref: SessionArtifactRef; page: LoadedPageDraft }
+  | { kind: "form"; type: StudioArtifactType; ref: SessionArtifactRef; form: FormDeliveryRecord }
+  | { kind: SessionArtifactKind; type: StudioArtifactType; ref: SessionArtifactRef; missing?: boolean };
+
+/** Hydrate one artifact ref onto the stage. Generalizes loadSession's single-primary-page
+ *  hydrate into a kind→loader dispatch, so the editor can open ANY artifact in the project, not
+ *  just the first page. Reads are RLS-scoped; no mutation. */
+export async function openSessionArtifact(input: {
+  tenantId: string;
+  ref: SessionArtifactRef;
+}): Promise<OpenedArtifact> {
+  const tenantId = requireTenant(input.tenantId);
+  const ref = input.ref;
+  const type = studioTypeFromRef(ref);
+  try {
+    if (ref.kind === "page") {
+      const page = await loadPageDraft({ tenantId, pageId: ref.id });
+      return { kind: "page", type, ref, page };
+    }
+    if (ref.kind === "form" && ref.slug) {
+      const form = await loadFormBySlug(tenantId, ref.slug);
+      if (form) return { kind: "form", type, ref, form };
+    }
+  } catch (err) {
+    // The underlying library row was deleted — a tombstoned ref. Open to an honest empty state.
+    console.warn("[studio] artifact ref no longer resolvable:", err);
+    return { kind: ref.kind, type, ref, missing: true };
+  }
+  // funnel / content (or a form with no slug) — the mode component hydrates from the ref itself.
+  return { kind: ref.kind, type, ref };
+}
+
+/** Remove an artifact from THIS project's manifest. Never deletes the underlying library row
+ *  (§9) — the artifact stays in its growth_ or marketing_content library. RETURNs the session. */
+export async function unlinkSessionArtifact(input: {
+  tenantId: string;
+  sessionId: string;
+  kind: SessionArtifactKind;
+  artifactId: string;
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "unlink_session_artifact",
+    { p_session_id: input.sessionId, p_kind: input.kind, p_artifact_id: input.artifactId, p_tenant_id: null },
+    "SAVE_FAILED",
+  );
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return rowToSessionMeta(row);
+}
+
+/** Reorder the project's manifest. `order` names the desired sequence; refs it omits keep their
+ *  order at the end, and ids that aren't already linked are ignored (no injection). */
+export async function reorderSessionArtifacts(input: {
+  tenantId: string;
+  sessionId: string;
+  order: { kind: SessionArtifactKind; id: string }[];
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "reorder_session_artifacts",
+    {
+      p_session_id: input.sessionId,
+      p_ordered_refs: input.order.map((o) => ({ kind: o.kind, id: o.id })),
+      p_tenant_id: null,
+    },
+    "SAVE_FAILED",
+  );
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return rowToSessionMeta(row);
+}
+
+/** Mint a blank artifact of `type` in the tenant's library AND link it to the project in one
+ *  atomic call (§10 — Paige: "add a page to this project"). The composer's classify→draft→link
+ *  path is still the DEFAULT way to add (§18: one conversation, no type picker); this is the
+ *  explicit programmatic mint for a blank start. */
+export async function createSessionArtifact(input: {
+  tenantId: string;
+  sessionId: string;
+  type: StudioArtifactType;
+  title?: string;
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "create_session_artifact",
+    {
+      p_session_id: input.sessionId,
+      p_kind: SESSION_KIND_FROM_TYPE[input.type],
+      p_seed: input.title?.trim() ? { title: input.title.trim() } : {},
+      p_tenant_id: null,
+    },
+    "SAVE_FAILED",
+  );
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return rowToSessionMeta(row);
+}
+
+/** Set a PROJECT-LOCAL label on one artifact ref (its name as it appears in this project). Does
+ *  not rename the underlying library row (§9). */
+export async function renameSessionArtifactRef(input: {
+  tenantId: string;
+  sessionId: string;
+  kind: SessionArtifactKind;
+  artifactId: string;
+  label: string;
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "rename_session_artifact_ref",
+    {
+      p_session_id: input.sessionId,
+      p_kind: input.kind,
+      p_artifact_id: input.artifactId,
+      p_label: input.label,
+      p_tenant_id: null,
+    },
+    "SAVE_FAILED",
+  );
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return rowToSessionMeta(row);
+}
