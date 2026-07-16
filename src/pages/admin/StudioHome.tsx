@@ -130,33 +130,40 @@ export default function StudioHome() {
 
   return (
     <PageShell width="wide">
+      {/* Compact header — NOT a hero banner. A full gradient masthead here just eats a third of
+          the viewport and pushes the projects below the fold; the work leads, the header stays
+          lean (§11 — banners are the exception, not the default). */}
       <PageHeader
-        variant="hero"
-        mark
         eyebrow="Vibe Studio"
         title="What do you want to build?"
-        description="Describe it in a sentence — a page, a form, a funnel, copy, an image, or a whole campaign wired together. Paige works out the shape."
+        description="Start something new below, or pick up a project you've already got going. Paige works out the shape — a page, a form, a funnel, copy, or a whole campaign."
       />
 
-      {/* The ONE conversational composer — no upfront artifact-type picker (§18). */}
+      {/* The ONE conversational composer — no upfront artifact-type picker (§18). Kept COMPACT
+          (minRows=3) so it's a real starting line, not a wide-open box that buries the gallery. */}
       <SectionCard>
         <PromptComposer
           mode="page"
           value={brief}
           onChange={setBrief}
           onSubmit={(value) => void startSession(value)}
-          heading="Describe what you want to build"
+          heading="Describe it in a sentence"
           placeholder="e.g. a webinar registration page for my Q3 masterclass, with an intake form and a thank-you."
           helperText="One sentence is enough to start — Paige asks for anything she needs, then builds it with her team."
           submitLabel="Start building"
           busy={starting}
           busyLabel="Spinning up your session…"
           chips={STUDIO_HOME_CHIPS}
+          minRows={3}
         />
       </SectionCard>
 
-      {/* Projects gallery — ONE grid, four filter VIEWS. */}
+      {/* Projects gallery — ONE grid, four filter VIEWS. This is the anchor of the home: what
+          the tenant came back to see (their previous work), kept above the fold. */}
       <div className="space-y-4">
+        <h2 className="font-display text-lg font-semibold tracking-tight text-foreground">
+          Your projects
+        </h2>
         <Toolbar>
           <div className="flex flex-wrap gap-1.5">
             {VIEWS.map((v) => (

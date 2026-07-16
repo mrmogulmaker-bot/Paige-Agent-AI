@@ -228,6 +228,20 @@ best-in-class bar; when in doubt, raise it.
   skeletons + crafted `EmptyState`); no native `<select>`/`<input type=checkbox>`; no
   backend table/function names, internal jargon (`MMA OS`, `n8n`, `§NN`, secret var
   names, "once Antonio approves"), or owner PII in visible copy (§3).
+- **Banners are the exception, not the default — vertical space is the scarcest resource
+  (owner: Antonio, 2026-07-16).** A big hero/gradient masthead at the top of a working
+  surface is NOT what makes it premium — most of the time it just eats a third of the
+  viewport and pushes the actual work (the projects, the list, the tool) below the fold.
+  Do **not** plaster a `PageHeader variant="hero"` banner on every page by reflex. The
+  default header is compact (a title row, `variant="plain"`), and the primary content —
+  what the user came to do — is the first thing above the fold. A full banner is earned
+  only where it genuinely serves the design: a true landing/marketing surface, or an
+  empty first-run state with nothing else to show yet. On a **working** surface (a
+  gallery, a builder, a dashboard, a table) the content leads and the header stays lean.
+  Premium is *more usable space for the real work*, not more decoration. **The test:**
+  *"Does this banner earn its pixels, or is it just taking a third of the screen from the
+  thing the user actually opened this page to see?"* If the latter, cut it to a compact
+  header.
 - **The design crew is mandatory on design work (§1/§5).** Every page/surface carries a
   **design engineer** (builds to the primitives), an **adversarial verifier** (hunts
   gold misuse, contrast, broken states, jargon, regressions), and a **compliance
