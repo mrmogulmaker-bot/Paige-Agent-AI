@@ -17,8 +17,11 @@
 //
 // GOLD (§11): one gold act per mode — the Publish trigger in the top bar (page), Publish
 // funnel, Create form, the per-draft Save to library (copy) — plus the confirm inside
-// PublishDialog. Not on Generate, not on Save, not on a chip, not on the selection
-// outline (that's indigo `--ring`).
+// PublishDialog. Image carries gold ONLY on its manual Save-to-library retry, and only
+// when the server's own auto-file didn't happen (§13) — the ordinary path (auto-filed,
+// confirmed by a real content_id) shows a plain success StatePill, no button to click.
+// Not on Generate, not on Save, not on a chip, not on the selection outline (that's
+// indigo `--ring`).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Send, Sparkles, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -160,12 +163,19 @@ function asStudioError(err: unknown, fallback: StudioErrorCode): StudioError {
 }
 
 /** The dark-chrome frame every state of the Studio renders inside — including the
- *  skeleton and the tenant gate, so the surface never flashes between shells. */
+ *  skeleton and the tenant gate, so the surface never flashes between shells.
+ *
+ *  Below lg this is a normal flowing block — the surrounding page scrolls, nothing here
+ *  clips. At lg+ it becomes the fixed-height, self-contained workspace (StudioSplit's rail
+ *  body / footer / canvas each own their own internal scroll) — `h-full`/`overflow-hidden`
+ *  only apply there. Getting this backwards (unconditional `overflow-hidden`) is exactly
+ *  what silently ate the composer's submit button once the textarea grew past the frame's
+ *  resolved height, with no scrollbar anywhere to reach it — never repeat that. */
 function StudioFrame({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div
       className={cn(
-        "dark flex h-full min-h-[620px] w-full flex-col overflow-hidden rounded-xl border border-border bg-background text-foreground",
+        "dark flex w-full flex-col rounded-xl border border-border bg-background text-foreground lg:h-full lg:min-h-[620px] lg:overflow-hidden",
         className,
       )}
     >
@@ -1088,6 +1098,7 @@ export function StudioShell({
             className={mode !== "copy" ? "hidden" : undefined}
             tenantId={tenantId}
             initialBrief={draftedCopyBrief}
+            onOpenLibrary={() => setLibraryOpen(true)}
           />
         )}
         {visited.has("image") && (
@@ -1095,6 +1106,7 @@ export function StudioShell({
             className={mode !== "image" ? "hidden" : undefined}
             tenantId={tenantId}
             initialPrompt={draftedImagePrompt}
+            onOpenLibrary={() => setLibraryOpen(true)}
           />
         )}
       </StudioFrame>
