@@ -138,11 +138,14 @@ export default function StudioHome() {
   // StudioLayout owns the immersive frame (its own left rail); the home returns a scrollable
   // dashboard body: a vibrant gradient hero with the centered composer, then the projects.
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+    // Plain BLOCK scroll container (not a flex column — a flex column shrinks its children to fit
+    // and the hero's overflow-hidden then clips the composer, which read as "frozen, no scroll").
+    // As a block, the hero + gallery keep their natural height and the page scrolls normally.
+    <div className="h-full min-h-0 overflow-y-auto">
       {/* ── gradient hero: the centered composer (the Lovable "What should we build?" feel).
           The composer sits in a near-opaque glass card so its text is AA against a solid
           surface, never the raw gradient (§11). */}
-      <section className="studio-hero studio-aurora relative overflow-hidden px-4 py-14 md:py-20">
+      <section className="studio-hero studio-aurora relative overflow-hidden px-4 py-10 md:py-12">
         {/* Soft dark scrim behind the centered text cluster — lifts the translucent eyebrow +
             subtitle to AA over the gradient without flattening the design (§11). */}
         <div

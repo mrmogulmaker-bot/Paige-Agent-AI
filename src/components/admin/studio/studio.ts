@@ -184,7 +184,10 @@ type UntypedRpc = (
 ) => Promise<{ data: unknown; error: unknown }>;
 
 async function rpc<T>(fn: string, params: Record<string, unknown>, fallback: StudioErrorCode): Promise<T> {
-  const call = supabase.rpc as unknown as UntypedRpc;
+  // Call on `supabase` directly (or bind) — do NOT detach the method into a bare `const`, or it
+  // loses its `this` and throws before the request is ever sent (which surfaced as every session
+  // read/write failing with the generic "try again" fallback).
+  const call = supabase.rpc.bind(supabase) as unknown as UntypedRpc;
   const { data, error } = await call(fn, params);
   if (error) throw toStudioError(error, fallback);
   return data as T;
@@ -277,7 +280,7 @@ export { buildGrowthBrandFloor };
 export async function loadBrandFloor(tenantSlug: string): Promise<GrowthPageTheme> {
   if (!tenantSlug) return buildGrowthBrandFloor(null);
   try {
-    const call = supabase.rpc as unknown as UntypedRpc;
+    const call = supabase.rpc.bind(supabase) as unknown as UntypedRpc;
     const { data, error } = await call("peek_tenant_portal_brand", { _slug: tenantSlug });
     if (error) throw error;
     const row = Array.isArray(data)
