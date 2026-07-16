@@ -6099,31 +6099,45 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 if (!stage) {
                   result = { success: false, error: "That pipeline or stage isn't in your workspace, or the pipeline has no stages yet." };
                 } else {
-                  const today = new Date().toISOString().slice(0, 10);
-                  const status = stage.stage_type === "won" ? "won" : stage.stage_type === "lost" ? "lost" : "open";
-                  const { data: deal, error: derr } = await admin.from("deals").insert({
-                    title: args.title,
-                    pipeline_id: args.pipeline_id,
-                    stage_id: stage.id,
-                    contact_client_id: args.contact_client_id ?? null,
-                    // value_cents is NOT NULL DEFAULT 0 — never pass null (would violate the constraint).
-                    value_cents: typeof args.value_cents === "number" ? Math.round(args.value_cents) : 0,
-                    currency: args.currency ?? "USD",
-                    expected_close_date: args.expected_close_date ?? null,
-                    status,
-                    actual_close_date: status === "open" ? null : today,
-                    source: "paige",
-                    tenant_id: tenantId,
-                    owner_user_id: user.id,
-                    created_by: user.id,
-                  }).select("id").single();
-                  if (derr) throw derr;
-                  await admin.from("deal_activities").insert({
-                    deal_id: deal.id, type: "created",
-                    summary: `Deal created in ${stage.label}`,
-                    actor_user_id: user.id, payload: { source: "paige", stage_id: stage.id },
-                  });
-                  result = { success: true, deal_id: deal.id, stage: stage.label, status };
+                  // A named contact must belong to THIS tenant — the FK enforces existence, not
+                  // tenancy, so a foreign clients.id would otherwise link into this tenant's deal and
+                  // leak the foreign client's details through any deals→clients join (§9).
+                  let contactId: string | null = null;
+                  let contactOk = true;
+                  if (args.contact_client_id) {
+                    const { data: c } = await admin.from("clients")
+                      .select("id").eq("id", args.contact_client_id).eq("tenant_id", tenantId).maybeSingle();
+                    if (c) contactId = c.id; else contactOk = false;
+                  }
+                  if (!contactOk) {
+                    result = { success: false, error: "That contact isn't in your workspace." };
+                  } else {
+                    const today = new Date().toISOString().slice(0, 10);
+                    const status = stage.stage_type === "won" ? "won" : stage.stage_type === "lost" ? "lost" : "open";
+                    const { data: deal, error: derr } = await admin.from("deals").insert({
+                      title: args.title,
+                      pipeline_id: args.pipeline_id,
+                      stage_id: stage.id,
+                      contact_client_id: contactId,
+                      // value_cents is NOT NULL DEFAULT 0 — never pass null (would violate the constraint).
+                      value_cents: typeof args.value_cents === "number" ? Math.round(args.value_cents) : 0,
+                      currency: args.currency ?? "USD",
+                      expected_close_date: args.expected_close_date ?? null,
+                      status,
+                      actual_close_date: status === "open" ? null : today,
+                      source: "paige",
+                      tenant_id: tenantId,
+                      owner_user_id: user.id,
+                      created_by: user.id,
+                    }).select("id").single();
+                    if (derr) throw derr;
+                    await admin.from("deal_activities").insert({
+                      deal_id: deal.id, type: "created",
+                      summary: `Deal created in ${stage.label}`,
+                      actor_user_id: user.id, payload: { source: "paige", stage_id: stage.id },
+                    });
+                    result = { success: true, deal_id: deal.id, stage: stage.label, status };
+                  }
                 }
               }
             } else if (tc.function.name === "deal_move_stage") {
@@ -6136,14 +6150,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 result = { success: false, error: "No workspace in context — pick a workspace first." };
               } else {
                 const { data: stage } = await admin.from("pipeline_stages")
-                  .select("id, stage_type, label").eq("id", args.stage_id).eq("tenant_id", tenantId).maybeSingle();
+                  .select("id, stage_type, label, pipeline_id").eq("id", args.stage_id).eq("tenant_id", tenantId).maybeSingle();
                 if (!stage) {
                   result = { success: false, error: "That stage isn't in your workspace." };
                 } else {
                   const today = new Date().toISOString().slice(0, 10);
                   const status = stage.stage_type === "won" ? "won" : stage.stage_type === "lost" ? "lost" : "open";
+                  // Keep pipeline_id in lockstep with the stage: if the target stage lives in a
+                  // different pipeline of the same tenant, the deal moves to THAT pipeline — never a
+                  // row whose stage_id and pipeline_id disagree (which would vanish off the board).
                   const { data: moved, error: merr } = await admin.from("deals")
-                    .update({ stage_id: stage.id, status, actual_close_date: status === "open" ? null : today })
+                    .update({ stage_id: stage.id, pipeline_id: stage.pipeline_id, status, actual_close_date: status === "open" ? null : today })
                     .eq("id", args.deal_id).eq("tenant_id", tenantId)
                     .select("id").maybeSingle();
                   if (merr) throw merr;
@@ -6167,7 +6184,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const { data: sug, error: serr } = await supabaseClient.functions.invoke("pipeline-suggest", {
                 body: { program_text: args.program_text },
               });
-              if (serr) {
+              // pipeline-suggest returns its internal-failure body with HTTP 200, so functions.invoke
+              // sees no transport error — check the payload's own `error` field too, or Paige would
+              // "read back" an error object as if it were a real proposal (§13 truthfulness).
+              if (serr || (sug as any)?.error || !(sug as any)?.proposed_pipeline) {
                 result = { success: false, error: "Couldn't draft a pipeline from that — try describing the program in a bit more detail." };
               } else {
                 result = { success: true, suggestion: sug };
