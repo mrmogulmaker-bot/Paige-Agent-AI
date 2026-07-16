@@ -64,6 +64,10 @@ export interface PromptComposerProps {
   submitLabel?: string;
   /** Overrides the submit button's busy label ("Working…" by default). */
   busyLabel?: string;
+  /** Starting height of the textarea in rows before it grows with the writing. Defaults to 5
+   *  (the builder's roomy brief). The HOME passes a smaller value so the composer stays compact
+   *  and the projects gallery stays above the fold (§11 — space is the scarce resource). */
+  minRows?: number;
   className?: string;
 }
 
@@ -96,6 +100,7 @@ export function PromptComposer({
   helperText,
   submitLabel,
   busyLabel,
+  minRows,
   className,
 }: PromptComposerProps) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
@@ -104,17 +109,18 @@ export function PromptComposer({
   const attachSlotsLeft = GROWTH_ASSET_MAX_COUNT - attachments.length;
 
   // Grow with the writing, up to ~12 rows, then scroll. No jumpy fixed box.
+  const minRowsResolved = Math.max(1, minRows ?? MIN_ROWS);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const line = parseFloat(getComputedStyle(el).lineHeight || "20") || 20;
     const pad = 20;
     el.style.height = "auto";
-    const min = line * MIN_ROWS + pad;
+    const min = line * minRowsResolved + pad;
     const max = line * MAX_ROWS + pad;
     el.style.height = `${Math.min(Math.max(el.scrollHeight, min), max)}px`;
     el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
-  }, [value, sectionMode]);
+  }, [value, sectionMode, minRowsResolved]);
 
   // Retargeting moves the cursor into the composer — the conversation follows the click.
   useEffect(() => {
@@ -179,7 +185,7 @@ export function PromptComposer({
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
           disabled={disabled}
-          rows={MIN_ROWS}
+          rows={sectionMode ? MIN_ROWS : minRowsResolved}
           placeholder={sectionMode ? SECTION_PLACEHOLDER : placeholder ?? PAGE_PLACEHOLDER}
           // bg-card + shadow-sm — the ONE input the whole session revolves around should read
           // as a real, lifted field, not the same bare-hairline outline as everything else
