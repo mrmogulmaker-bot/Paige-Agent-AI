@@ -285,6 +285,39 @@ looks and feels, §13 governs how it's built underneath.
 - **The test, every time:** *"Would a world-class engineer put their name on this and be
   proud of it in code review?"* If not, it isn't done.
 
+## 19. The Studio is the whole campaign, end to end — one session, not five.
+
+**Directive (owner: Antonio, 2026-07-16).** The Vibe Studio (Campaigns tab) is not a page
+builder with some other stuff bolted on — it is the **complete campaign creation surface**.
+A tenant should be able to create, edit, modify, launch, and deploy **every** part of a
+real campaign without leaving that one session: visuals, marketing copy, websites/landing
+pages, questionnaires (forms), and funnels — all of it, wired together, in the same place.
+The point is retention as much as capability: **the more of the platform a tenant can do
+without leaving it, the better it is for them and the better it is for us.** Never design a
+piece of this as a reason for the tenant to go somewhere else.
+
+- **No artifact type is a permanent second-class citizen.** If one type (e.g. funnels) has
+  less AI-generation depth than the others today, that is a sequencing fact, not a scope
+  decision — it stays on the roadmap as real, near-term work, not "later, someday." Log it
+  as its own tracked task the moment it's identified as a gap; don't let it quietly become
+  the thing nobody schedules.
+- **Funnels are a composition problem, not a lesser feature.** A funnel is multiple pages +
+  forms + a sequence between them — harder to draft from one brief than a single page, which
+  is why it sequences after single-artifact drafting, never why it gets skipped. The bar is
+  the same: one brief in, a real working funnel out, exactly like page/form drafting today.
+- **Everything created here stays reachable from here.** Once an artifact exists (a drafted
+  page, a saved copy piece, a generated image, a built funnel), the tenant must be able to
+  come back into this same Studio session and keep working on any of it — not export it, not
+  hunt for it in a different tab of the app.
+- **This extends §18, it doesn't relax it.** The unification (§18: no upfront type-picker,
+  one conversational entry) and the completeness bar (§19: every artifact type, fully
+  capable, in one session) are the same objective seen from two angles — don't ship one
+  without keeping the other in view.
+- **The test, every time:** *"Could a tenant build, wire together, and ship their ENTIRE
+  campaign — every visual, every page, every form, every funnel step, every piece of copy —
+  without ever leaving this session?"* If any piece still requires leaving Studio, or any
+  artifact type is permanently weaker than the others, it isn't done.
+
 ## 18. Check for redundancy before you build — one home per capability, never two.
 
 **Directive (owner: Antonio, 2026-07-15):** Before starting any build, the first question is not
