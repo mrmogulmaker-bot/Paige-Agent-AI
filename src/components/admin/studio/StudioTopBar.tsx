@@ -124,7 +124,14 @@ export function StudioTopBar({
   return (
     <div
       className={cn(
-        "flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border bg-card px-3 py-2 md:px-4",
+        // shadow-sm gives this bar real separation from the rail/canvas below it — the
+        // border alone was the whole "flat wireframe" tell (§11). Softened to /60 now that
+        // the shadow carries the edge, so the two don't stack at full strength. `relative
+        // z-10` is load-bearing, not decoration: this bar is EARLIER in DOM order than the
+        // rail/canvas below it, and non-positioned siblings paint in tree order — without a
+        // stacking context ahead of them, the rail/canvas's own opaque backgrounds (painted
+        // later) would silently cover this shadow's downward bleed, making it a no-op.
+        "relative z-10 flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border/60 bg-card px-3 py-2 shadow-sm md:px-4",
         className,
       )}
     >
