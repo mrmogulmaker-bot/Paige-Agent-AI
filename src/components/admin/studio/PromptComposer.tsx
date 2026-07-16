@@ -181,7 +181,14 @@ export function PromptComposer({
           disabled={disabled}
           rows={MIN_ROWS}
           placeholder={sectionMode ? SECTION_PLACEHOLDER : placeholder ?? PAGE_PLACEHOLDER}
-          className="resize-none text-sm leading-relaxed"
+          // bg-card + shadow-sm — the ONE input the whole session revolves around should read
+          // as a real, lifted field, not the same bare-hairline outline as everything else
+          // (§11). shadow-sm alone was a no-op here: the rail it sits in is bg-background, and
+          // Textarea's own default is also bg-background, so a shadow against an identical
+          // surface never registers. bg-card gives it the same one-step lift SectionCard uses
+          // against a page (card sits above background) — now the shadow has something to cast
+          // onto. focus-visible:shadow-md mirrors SectionCard's own hover:shadow-lg convention.
+          className="resize-none bg-card text-sm leading-relaxed shadow-sm focus-visible:shadow-md"
         />
         <p className="text-xs text-muted-foreground">
           {sectionMode
@@ -209,6 +216,7 @@ export function PromptComposer({
               size="sm"
               disabled={disabled || attachmentsBusy || attachSlotsLeft <= 0}
               onClick={() => fileInputRef.current?.click()}
+              className="shadow-xs hover:shadow-sm"
             >
               {attachmentsBusy ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
@@ -288,7 +296,7 @@ export function PromptComposer({
         </Button>
 
         {!sectionMode && onRegenerate && canRegenerate && (
-          <Button type="button" variant="outline" onClick={onRegenerate} disabled={busy || disabled}>
+          <Button type="button" variant="outline" onClick={onRegenerate} disabled={busy || disabled} className="shadow-xs hover:shadow-sm">
             <RefreshCw className="h-4 w-4" aria-hidden />
             Rebuild it
           </Button>
