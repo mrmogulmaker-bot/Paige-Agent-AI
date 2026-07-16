@@ -302,7 +302,7 @@ export function ProjectNavigator({
             variant="outline"
             size="sm"
             onClick={() => void addPage()}
-            disabled={adding || !tenantId || !sessionId}
+            disabled={adding || !tenantId || !sessionId || !!error}
             title={collapsed ? "Add a page" : undefined}
             className={cn("w-full", collapsed && "px-0")}
           >

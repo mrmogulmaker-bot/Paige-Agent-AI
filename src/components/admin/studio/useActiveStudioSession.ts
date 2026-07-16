@@ -62,6 +62,12 @@ export function useActiveStudioSession(
   // Which sessionId the cached session/primary currently represent — lets us tell a real
   // project switch (clear the stale identity) from a same-id refresh (keep it, no flash).
   const loadedIdRef = useRef<string | null>(null);
+  // The LIVE current sessionId, updated every render. applyMeta is captured by the stage's
+  // un-awaited writes and can fire after the operator has switched projects; it must compare
+  // against the route's current session, NOT the sessionId this callback closed over (which is
+  // the WRITE's own project and would always match). A ref read at call time is the live value.
+  const sessionIdRef = useRef<string | null>(sessionId);
+  sessionIdRef.current = sessionId;
 
   const active = enabled && !!tenantId && !!sessionId;
 
@@ -128,19 +134,17 @@ export function useActiveStudioSession(
   // without a second fetch. Its artifact_refs become the new manifest everything reads.
   //
   // Guarded by id: a link/rename fired on project A that resolves AFTER the operator has already
-  // opened project B must NOT clobber B's rail with A's manifest. We only accept a meta whose id
-  // matches the session this hook is currently resolving (the stage's un-awaited writes captured a
-  // stable applyMeta, so a late one can arrive cross-project — drop it).
-  const applyMeta = useCallback(
-    (meta: StudioSessionMeta) => {
-      if (sessionId && meta.id !== sessionId) return;
-      setSession(meta);
-      loadedIdRef.current = meta.id;
-      setNotFound(false);
-      setError(null);
-    },
-    [sessionId],
-  );
+  // opened project B must NOT clobber B's rail with A's manifest. We compare against the LIVE
+  // route session (sessionIdRef), not a closed-over value — the stage captures a stable applyMeta,
+  // so a late cross-project write reaches here with the OTHER project's id and is dropped. Stable
+  // ([] deps) precisely so the captured callback always reads the current ref.
+  const applyMeta = useCallback((meta: StudioSessionMeta) => {
+    if (sessionIdRef.current && meta.id !== sessionIdRef.current) return;
+    setSession(meta);
+    loadedIdRef.current = meta.id;
+    setNotFound(false);
+    setError(null);
+  }, []);
 
   return {
     sessionId: sessionId ?? "",
