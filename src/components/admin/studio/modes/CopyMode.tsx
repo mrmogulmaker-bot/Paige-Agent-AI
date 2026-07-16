@@ -42,9 +42,12 @@ export interface CopyModeProps {
   /** Opens the Studio's own content library Sheet (§19: everything created here stays
    *  reachable from here) — surfaced as "View in library" once a draft's save resolves. */
   onOpenLibrary?: () => void;
+  /** A draft was saved to the library — the shell links it into the owning project (§19), so it
+   *  carries the new marketing_content row's id + title. Fires on every successful save. */
+  onSaved?: (saved: { id: string; title: string }) => void;
 }
 
-export function CopyMode({ tenantId, className, initialBrief, onOpenLibrary }: CopyModeProps) {
+export function CopyMode({ tenantId, className, initialBrief, onOpenLibrary, onSaved }: CopyModeProps) {
   const [channel, setChannel] = useState<Channel>("social_post");
   const [brief, setBrief] = useState(initialBrief ?? "");
   const [tone, setTone] = useState("");
@@ -99,6 +102,8 @@ export function CopyMode({ tenantId, className, initialBrief, onOpenLibrary }: C
       });
       // Only set once the RPC has genuinely returned a row id — no optimistic flip.
       setSavedIds((prev) => ({ ...prev, [i]: saved.id }));
+      // Attach it to the owning project so it shows in the rail's navigator (§19).
+      onSaved?.({ id: saved.id, title: d.title || CHANNEL_LABEL[channel] });
       toast.success("Saved to your library.");
     } catch (e) {
       toast.error(isStudioError(e) ? e.message : growthSeamMessage(e, "Couldn't save that. Try again."));

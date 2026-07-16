@@ -59,6 +59,15 @@ export function useActiveStudioSession(
 
   const [nonce, setNonce] = useState(0);
   const runIdRef = useRef(0);
+  // Which sessionId the cached session/primary currently represent — lets us tell a real
+  // project switch (clear the stale identity) from a same-id refresh (keep it, no flash).
+  const loadedIdRef = useRef<string | null>(null);
+  // The LIVE current sessionId, updated every render. applyMeta is captured by the stage's
+  // un-awaited writes and can fire after the operator has switched projects; it must compare
+  // against the route's current session, NOT the sessionId this callback closed over (which is
+  // the WRITE's own project and would always match). A ref read at call time is the live value.
+  const sessionIdRef = useRef<string | null>(sessionId);
+  sessionIdRef.current = sessionId;
 
   const active = enabled && !!tenantId && !!sessionId;
 
@@ -72,12 +81,21 @@ export function useActiveStudioSession(
       setLoading(false);
       setError(null);
       setNotFound(false);
+      loadedIdRef.current = null;
       return;
     }
     const runId = ++runIdRef.current;
     setLoading(true);
     setError(null);
     setNotFound(false);
+    // Switching straight from project A to project B: drop A's identity/manifest immediately so
+    // the rail shows the "Opening…" state, never A's title/artifacts under B's route. A same-id
+    // refresh (nonce bump) keeps the current row so it doesn't flash empty.
+    if (loadedIdRef.current && loadedIdRef.current !== sessionId) {
+      setSession(null);
+      setPrimary(null);
+      setPrimaryType(null);
+    }
     let live = true;
     loadSession({ tenantId, sessionId })
       .then((loaded) => {
@@ -85,6 +103,7 @@ export function useActiveStudioSession(
         setSession(loaded.session);
         setPrimary(loaded.primary);
         setPrimaryType(loaded.primaryType);
+        loadedIdRef.current = sessionId;
       })
       .catch((err) => {
         if (!live || runId !== runIdRef.current) return;
@@ -113,8 +132,16 @@ export function useActiveStudioSession(
 
   // A mutation RETURNed the fresh row — swap it in locally so the rail + stage both re-render
   // without a second fetch. Its artifact_refs become the new manifest everything reads.
+  //
+  // Guarded by id: a link/rename fired on project A that resolves AFTER the operator has already
+  // opened project B must NOT clobber B's rail with A's manifest. We compare against the LIVE
+  // route session (sessionIdRef), not a closed-over value — the stage captures a stable applyMeta,
+  // so a late cross-project write reaches here with the OTHER project's id and is dropped. Stable
+  // ([] deps) precisely so the captured callback always reads the current ref.
   const applyMeta = useCallback((meta: StudioSessionMeta) => {
+    if (sessionIdRef.current && meta.id !== sessionIdRef.current) return;
     setSession(meta);
+    loadedIdRef.current = meta.id;
     setNotFound(false);
     setError(null);
   }, []);

@@ -8,8 +8,8 @@
 // nowhere else (§6/§11 palette exception, contained). The rail is an IN-SURFACE object navigator
 // (projects, the four gallery views, New project) plus a single "Back to Paige" escape — not a
 // second copy of the hub bar (§18), the Lovable/Figma/Linear pattern.
-import { useState } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, Outlet, useLocation, useMatch } from "react-router-dom";
 import {
   ChevronLeft,
   Clock,
@@ -25,6 +25,9 @@ import { Button } from "@/components/ui/button";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { ProjectNavigator } from "./ProjectNavigator";
+import { useActiveStudioSession } from "./useActiveStudioSession";
 import type { StudioSessionView } from "./studio-types";
 
 interface ViewNavItem {
@@ -78,11 +81,33 @@ function StudioNavItem({
 
 export default function StudioLayout() {
   const location = useLocation();
+  const { activeTenantId } = useTenantContext();
+
   // Builder routes (/admin/studio/new, /admin/studio/:id) default the rail to a thin icon spine
   // so it doesn't compete with the builder's own 380px chat column; the bare home is expanded.
   const onBuilder = location.pathname.startsWith("/admin/studio/");
   const onHome = !onBuilder;
+
+  // Are we INSIDE a project? `/admin/studio/:sessionId` (but NOT `/admin/studio/new`, which is the
+  // create-and-redirect entry, not a session). When we are, the rail sheds the platform gallery
+  // nav and becomes THIS project's own navigator (the owner's Lovable ask) — and the session is
+  // loaded ONCE here, then shared with both the rail and the stage (<Outlet context>) so a single
+  // source of truth drives both and they can never diverge.
+  const projectMatch = useMatch("/admin/studio/:sessionId");
+  const projectId =
+    projectMatch && projectMatch.params.sessionId && projectMatch.params.sessionId !== "new"
+      ? projectMatch.params.sessionId
+      : null;
+  const onProject = !!projectId;
+  const activeSession = useActiveStudioSession(activeTenantId, projectId, onProject);
+
   const [collapsed, setCollapsed] = useState(onBuilder);
+  // Reset the rail to its sensible default whenever we cross between the expanded home and a
+  // builder/project route — collapsed inside a project (the chat leads), expanded on the gallery.
+  // Deps on `onBuilder` only, so a manual toggle within one route class is never fought.
+  useEffect(() => {
+    setCollapsed(onBuilder);
+  }, [onBuilder]);
 
   const activeView = (new URLSearchParams(location.search).get("view") as StudioSessionView) ?? "recent";
 
@@ -125,14 +150,22 @@ export default function StudioLayout() {
           </Button>
         </div>
 
-        {/* the four gallery views */}
-        <ul className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
-          {VIEW_NAV.map((item) => (
-            <li key={item.view}>
-              <StudioNavItem item={item} collapsed={collapsed} activeView={activeView} onHome={onHome} />
-            </li>
-          ))}
-        </ul>
+        {/* the rail body — INSIDE a project it becomes that project's own navigator (its
+            artifacts + a way back); everywhere else it's the four gallery views (§18: one rail,
+            content by context — never a second nav home). */}
+        {onProject ? (
+          <div className="min-h-0 flex-1 py-2">
+            <ProjectNavigator session={activeSession} collapsed={collapsed} />
+          </div>
+        ) : (
+          <ul className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
+            {VIEW_NAV.map((item) => (
+              <li key={item.view}>
+                <StudioNavItem item={item} collapsed={collapsed} activeView={activeView} onHome={onHome} />
+              </li>
+            ))}
+          </ul>
+        )}
 
         {/* Back to Paige + theme */}
         <div className="mt-auto shrink-0 border-t border-[hsl(var(--studio-glass-border)/0.6)] p-2">
@@ -155,9 +188,10 @@ export default function StudioLayout() {
         </div>
       </nav>
 
-      {/* ── main content: the outlet (home hero OR builder) ── */}
+      {/* ── main content: the outlet (home hero OR builder). The active-session bundle rides
+           <Outlet context> so the stage reads the SAME loaded project the rail does. ── */}
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-        <Outlet />
+        <Outlet context={activeSession} />
       </div>
     </div>
   );
