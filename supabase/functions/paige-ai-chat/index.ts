@@ -6211,7 +6211,16 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 return `${base}-${Date.now()}`;
               };
               const _page = args.page || {};
-              const _pageSlug = args.page_id ? (_page.slug || await _uniqueSlug("growth_pages", _page.title || args.name, "page")) : await _uniqueSlug("growth_pages", _page.title || args.name, "page");
+              // On a rebuild-in-place, REUSE the existing row's slug — never regenerate it, or the
+              // page's live URL (/p/tenant/slug) would churn (spring-launch ⇄ spring-launch-2) and
+              // orphan any link already shared (§13). Only a brand-new page mints a unique slug.
+              let _pageSlug: string;
+              if (args.page_id && _fbTid) {
+                const { data: _exPage } = await supabaseClient.from("growth_pages").select("slug").eq("id", args.page_id).eq("tenant_id", _fbTid).maybeSingle();
+                _pageSlug = (_exPage as any)?.slug || _page.slug || await _uniqueSlug("growth_pages", _page.title || args.name, "page");
+              } else {
+                _pageSlug = await _uniqueSlug("growth_pages", _page.title || args.name, "page");
+              }
               const { data: _pageRow, error: _pErr } = await supabaseClient.rpc("growth_page_upsert", {
                 p_tenant_id: _fbTid,
                 p_slug: _pageSlug,
@@ -6226,7 +6235,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (!_pageId) throw new Error("The funnel's entry page didn't save.");
               let _formId: string | null = null;
               if (args.form && args.form.schema) {
-                const _formSlug = args.form_id ? (args.form.slug || await _uniqueSlug("growth_forms", args.form.name || args.name, "form")) : await _uniqueSlug("growth_forms", args.form.name || args.name, "form");
+                let _formSlug: string;
+                if (args.form_id && _fbTid) {
+                  const { data: _exForm } = await supabaseClient.from("growth_forms").select("slug").eq("id", args.form_id).eq("tenant_id", _fbTid).maybeSingle();
+                  _formSlug = (_exForm as any)?.slug || args.form.slug || await _uniqueSlug("growth_forms", args.form.name || args.name, "form");
+                } else {
+                  _formSlug = await _uniqueSlug("growth_forms", args.form.name || args.name, "form");
+                }
                 const { data: _formRow, error: _fErr } = await supabaseClient.rpc("growth_form_upsert", {
                   p_tenant_id: _fbTid,
                   p_slug: _formSlug,
@@ -6244,7 +6259,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const _steps: any[] = [{ step_type: "page", order_index: 0, page_id: _pageId }];
               if (_formId) _steps.push({ step_type: "form", order_index: _steps.length, form_id: _formId });
               _steps.push({ step_type: "thankyou", order_index: _steps.length });
-              const _funnelSlug = args.funnel_id ? (args.slug || await _uniqueSlug("growth_funnels", args.name, "funnel")) : await _uniqueSlug("growth_funnels", args.name, "funnel");
+              let _funnelSlug: string;
+              if (args.funnel_id && _fbTid) {
+                const { data: _exFunnel } = await supabaseClient.from("growth_funnels").select("slug").eq("id", args.funnel_id).eq("tenant_id", _fbTid).maybeSingle();
+                _funnelSlug = (_exFunnel as any)?.slug || args.slug || await _uniqueSlug("growth_funnels", args.name, "funnel");
+              } else {
+                _funnelSlug = await _uniqueSlug("growth_funnels", args.name, "funnel");
+              }
               const { data: _funnelRow, error: _fnErr } = await supabaseClient.rpc("growth_funnel_upsert", {
                 p_tenant_id: _fbTid,
                 p_slug: _funnelSlug,
@@ -6266,6 +6287,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 _funnelId = (_f as any)?.id ?? null;
                 _funnelSlugOut = (_f as any)?.slug ?? _funnelSlug;
               }
+              // §13 — never report a save we can't point at. (Practically unreachable: the RPC
+              // RETURNS growth_funnels; this guards the "void return + re-query missed" corner.)
+              if (!_funnelId) throw new Error("The funnel saved but its id couldn't be resolved — try again.");
               result = {
                 success: true,
                 funnel_id: _funnelId,
@@ -6281,8 +6305,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // funnel-publish RPC guard refuses unpublished pages — then publish the funnel,
               // which returns the REAL public url. Surface it verbatim; never claim live without it.
               const _fpTid = personaCtx?.tenant_id ?? null;
-              const { data: _stepRows } = await supabaseClient.from("growth_funnel_steps").select("page_id").eq("funnel_id", args.funnel_id).eq("step_type", "page");
-              const { data: _funRow0 } = await supabaseClient.from("growth_funnels").select("entry_page_id").eq("id", args.funnel_id).maybeSingle();
+              // §9 defense-in-depth: pin both reads to the caller's tenant. The publish RPCs are
+              // DEFINER + tenant-pinned and would refuse a cross-tenant id anyway, but the growth
+              // funnel/step public-read RLS would otherwise let this read another tenant's ids.
+              const { data: _stepRows } = await supabaseClient.from("growth_funnel_steps").select("page_id").eq("funnel_id", args.funnel_id).eq("tenant_id", _fpTid).eq("step_type", "page");
+              const { data: _funRow0 } = await supabaseClient.from("growth_funnels").select("entry_page_id").eq("id", args.funnel_id).eq("tenant_id", _fpTid).maybeSingle();
               const _pageIds = Array.from(new Set([(_funRow0 as any)?.entry_page_id, ...((_stepRows || []).map((s: any) => s.page_id))].filter(Boolean)));
               for (const _pid of _pageIds) {
                 const { error: _pubErr } = await supabaseClient.rpc("growth_page_publish", { p_tenant_id: _fpTid, p_id: _pid });
