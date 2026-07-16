@@ -143,6 +143,13 @@ export default function StudioHome() {
           The composer sits in a near-opaque glass card so its text is AA against a solid
           surface, never the raw gradient (§11). */}
       <section className="studio-hero studio-aurora relative overflow-hidden px-4 py-14 md:py-20">
+        {/* Soft dark scrim behind the centered text cluster — lifts the translucent eyebrow +
+            subtitle to AA over the gradient without flattening the design (§11). */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[320px] w-[min(46rem,92%)] -translate-x-1/2 -translate-y-1/2 rounded-[999px] blur-2xl"
+          style={{ background: "radial-gradient(closest-side, hsl(var(--studio-scrim) / 0.55), transparent)" }}
+        />
         <div className="relative z-[1] mx-auto w-full max-w-2xl">
           <div className="mb-6 flex flex-col items-center gap-2.5 text-center">
             <PaigeMark className="h-9 w-9" />
