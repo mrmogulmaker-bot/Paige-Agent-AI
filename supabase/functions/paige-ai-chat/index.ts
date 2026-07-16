@@ -7,6 +7,9 @@ import { PME_KNOWLEDGE_BASE } from "../_shared/pme-knowledge-base.ts";
 // Tier Rail Spine (Phase D): the SAME declared-rail tier resolver + client-seat
 // allowlist that paige-mcp uses, so a client-portal Paige seat is sealed here too.
 import { getActorTier, clientSeatToolAllowed, type Tier } from "../_shared/actorTier.ts";
+// Redeploy trigger (2026-07-16): the git integration skipped this function on the #88 merge,
+// so the Studio funnel tools (growth_funnel_generate/build/publish) never went live. This
+// no-op comment forces a re-detect so the already-merged tool code deploys. Safe to remove.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
