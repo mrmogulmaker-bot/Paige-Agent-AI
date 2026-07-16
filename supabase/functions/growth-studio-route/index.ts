@@ -61,8 +61,8 @@ const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type StudioArtifact = "page" | "form" | "copy" | "image";
-const VALID_ARTIFACTS: readonly StudioArtifact[] = ["page", "form", "copy", "image"];
+type StudioArtifact = "page" | "funnel" | "form" | "copy" | "image";
+const VALID_ARTIFACTS: readonly StudioArtifact[] = ["page", "funnel", "form", "copy", "image"];
 
 function isStudioArtifact(v: unknown): v is StudioArtifact {
   return typeof v === "string" && (VALID_ARTIFACTS as readonly string[]).includes(v);
@@ -92,17 +92,18 @@ function parseJwtClaims(token: string): Record<string, unknown> | null {
   }
 }
 
-const SYSTEM = `You classify a one-sentence creation brief for a client-based service business's marketing studio into exactly ONE of four artifact types:
+const SYSTEM = `You classify a one-sentence creation brief for a client-based service business's marketing studio into exactly ONE of five artifact types:
 
-"page" — a landing/lead page: a registration page, a sales page, a lead-magnet opt-in, a waitlist, an event page. Anything meant to live at its own web address with multiple sections.
+"page" — a SINGLE landing/lead page: a registration page, a sales page, a lead-magnet opt-in, a waitlist, an event page. One web address, multiple sections, but ONE page.
+"funnel" — a SEQUENCE of pages/steps, not one page: a landing page THEN an intake form/application THEN a thank-you; a lead funnel, an application funnel, an opt-in-to-booking flow, a "capture then qualify" flow. Choose this when the operator describes a multi-step path a lead moves THROUGH, or explicitly says "funnel".
 "form" — a standalone form or questionnaire, requested WITHOUT a page around it — an intake form, an application, a survey, a screening questionnaire the operator wants on its own.
 "copy" — marketing text only, not a webpage — a social post, an email, an ad, a caption, a blog outline, an SMS. No page, no form, just words.
 "image" — a single image or graphic — a promo graphic, a social visual, an ad image, a photo-style asset.
 
-Read the brief and decide which ONE the operator is actually asking for. If it's ambiguous, or could plausibly be a page, choose "page" — it's the most capable fallback.
+Read the brief and decide which ONE the operator is actually asking for. "funnel" wins over "page" only when there's a real multi-step path (capture → qualify → confirm) or the word "funnel"; a single opt-in or sales page is "page". If it's otherwise ambiguous, choose "page" — it's the most capable fallback.
 
 Return ONLY a single JSON object, no prose, no markdown fences:
-{"artifact": "page"|"form"|"copy"|"image", "reasoning": "one short sentence"}`;
+{"artifact": "page"|"funnel"|"form"|"copy"|"image", "reasoning": "one short sentence"}`;
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });

@@ -564,13 +564,13 @@ export async function draftPage(input: DraftPageInput): Promise<DraftPageResult>
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
 export interface StudioIntentResult {
-  artifact: "page" | "form" | "copy" | "image";
+  artifact: "page" | "funnel" | "form" | "copy" | "image";
   /** One short sentence from the classifier — surfaced only if a caller wants to show it. */
   reasoning: string;
 }
 
 function isStudioArtifactValue(v: unknown): v is StudioIntentResult["artifact"] {
-  return v === "page" || v === "form" || v === "copy" || v === "image";
+  return v === "page" || v === "funnel" || v === "form" || v === "copy" || v === "image";
 }
 
 /**
@@ -1256,6 +1256,32 @@ function kebab(input: string): string {
     .slice(0, 48);
 }
 
+/** The same collision-avoidance as uniqueGrowthPageSlug, for any (tenant_id, slug) table
+ *  the funnel builder creates rows in (growth_forms, growth_funnels). A NEW row's slug must
+ *  not silently collide with an existing one — the funnel builder creates several rows in a
+ *  row, so it can't lean on the picker's "these already exist" list the way FunnelMode does. */
+async function uniqueGrowthSlug(
+  table: "growth_forms" | "growth_funnels",
+  tenantId: string,
+  desired: string,
+): Promise<string> {
+  const tid = requireTenant(tenantId);
+  const base = kebab(desired) || (table === "growth_funnels" ? "funnel" : "form");
+  const { data, error } = await supabase
+    .from(table)
+    .select("slug")
+    .eq("tenant_id", tid)
+    .like("slug", `${base}%`);
+  if (error) throw toStudioError(error, "SAVE_FAILED");
+  const taken = new Set((data ?? []).map((r) => r.slug));
+  if (!taken.has(base)) return base;
+  for (let n = 2; n < 200; n++) {
+    const candidate = `${base}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  return `${base}-${Date.now()}`;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // Forms & funnels — the Studio's form/funnel modes drive the SAME SECURITY DEFINER rails
 // the Growth libraries and Paige write on (§10). Same house style as the page seams:
@@ -1468,6 +1494,200 @@ export async function publishFunnel(input: { tenantId: string; id: string }): Pr
     "PUBLISH_FAILED",
   );
   return { url: row?.url ?? null };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// AI funnel — the conversational funnel seam (§18/§19). A funnel is born from the SAME
+// composer as everything else: classifyStudioIntent → "funnel" → draftFunnel() plans and
+// drafts the whole thing (via growth-funnel-draft, which reuses the page + form drafters) →
+// buildFunnelFromDraft() persists the real page/form/funnel rows → publishFunnelCascade()
+// ships the whole sequence in one act. There is NO separate Funnel tab; this is the AI path
+// FunnelMode never had, wired straight into the one Studio surface.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+export interface FunnelDraft {
+  name: string;
+  goal: string | null;
+  /** The entry landing page, drafted by growth-page-draft — persisted with savePageDraft. */
+  page: {
+    title: string;
+    brief: string;
+    blocks: GrowthBlock[];
+    theme: GrowthPageTheme | null;
+    seo: StudioSeoDraft | null;
+  };
+  /** The intake form step, drafted by growth-form-draft — or null for a bare opt-in funnel. */
+  form: {
+    name: string;
+    brief: string;
+    schema: GrowthFormSchema;
+  } | null;
+}
+
+/** One brief in, a complete drafted funnel out (§19). PURE DRAFT — writes nothing; the caller
+ *  persists via buildFunnelFromDraft(). Unlike classifyStudioIntent this THROWS a structured
+ *  StudioError on a real failure, so the shell surfaces the honest cause (§13), same as
+ *  draftFormSchema/loadPageDraft. */
+export async function draftFunnel(brief: string): Promise<FunnelDraft> {
+  const trimmed = (brief ?? "").trim();
+  if (trimmed.length < 5) throw studioError("EMPTY_BRIEF", null, "Give a brief: what's the funnel for, and who's it for?");
+
+  let res: Response;
+  try {
+    res = await fetch(`${FUNCTIONS_URL}/growth-funnel-draft`, {
+      method: "POST",
+      headers: await authHeaders(),
+      body: JSON.stringify({ brief: trimmed }),
+    });
+  } catch (err) {
+    throw toStudioError(err, "GENERATION_FAILED");
+  }
+
+  const body = (await res.json().catch(() => null)) as
+    | { name?: string; goal?: string | null; page?: any; form?: any; error?: unknown }
+    | null;
+  const fnError = readFnError(body);
+  if (fnError || !res.ok) {
+    throw studioError("GENERATION_FAILED", fnError, fnError?.message ?? "Couldn't draft that funnel. Try again.");
+  }
+
+  const page = body?.page ?? {};
+  if (!Array.isArray(page.blocks) || page.blocks.length === 0) {
+    throw studioError("GENERATION_FAILED", body, "That didn't produce a usable funnel. Try giving the brief a bit more to work with.");
+  }
+
+  return {
+    name: (typeof body?.name === "string" && body.name.trim()) || "New funnel",
+    goal: typeof body?.goal === "string" && body.goal.trim() ? body.goal.trim() : null,
+    page: {
+      title: (typeof page.title === "string" && page.title.trim()) || "Landing page",
+      brief: typeof page.brief === "string" ? page.brief : trimmed,
+      blocks: page.blocks as GrowthBlock[],
+      theme: (page.theme_json ?? null) as GrowthPageTheme | null,
+      seo: (page.seo_json ?? null) as StudioSeoDraft | null,
+    },
+    form:
+      body?.form && body.form.schema
+        ? {
+            name: (typeof body.form.name === "string" && body.form.name.trim()) || "Intake form",
+            brief: typeof body.form.brief === "string" ? body.form.brief : "",
+            schema: body.form.schema as GrowthFormSchema,
+          }
+        : null,
+  };
+}
+
+export interface BuiltFunnelStep {
+  kind: "page" | "form" | "thankyou";
+  /** Display label for the flow card. */
+  title: string;
+  /** The persisted row id (page/form steps); null for the thank-you step. */
+  refId: string | null;
+  /** Live-readiness of this step, as the publish guard will judge it. */
+  status: "draft" | "published" | "active" | "included";
+}
+
+export interface BuiltFunnel {
+  funnelId: string;
+  funnelSlug: string;
+  name: string;
+  goal: string | null;
+  /** The entry page's real row — the cascade publishes this before the funnel. */
+  pageId: string;
+  pageSlug: string;
+  pageStatus: "draft" | "published";
+  formId: string | null;
+  steps: BuiltFunnelStep[];
+}
+
+/** Persist a drafted funnel into REAL rows — the entry page (draft), the intake form (active),
+ *  and the funnel itself with its wired steps. Returns the built funnel with honest per-step
+ *  status so the canvas never claims a step is live before publishFunnelCascade() ships it. */
+export async function buildFunnelFromDraft(input: {
+  tenantId: string;
+  draft: FunnelDraft;
+}): Promise<BuiltFunnel> {
+  const tenantId = requireTenant(input.tenantId);
+  const { draft } = input;
+
+  // 1. Entry page — a draft row (its own embedded signup form is auto-authored by the upsert).
+  const pageSlug = await uniqueGrowthPageSlug(tenantId, draft.page.title || draft.name);
+  const page = await savePageDraft({
+    tenantId,
+    slug: pageSlug,
+    title: draft.page.title || draft.name,
+    blocks: draft.page.blocks,
+    theme: draft.page.theme,
+    seo: draft.page.seo,
+  });
+
+  // 2. Intake form step — created ACTIVE by growth_form_upsert (never a draft), so the only
+  //    thing standing between the funnel and live is publishing the entry page.
+  let formId: string | null = null;
+  let formTitle = "";
+  if (draft.form) {
+    const formSlug = await uniqueGrowthSlug("growth_forms", tenantId, draft.form.name);
+    const form = await saveForm({ tenantId, slug: formSlug, name: draft.form.name, schema: draft.form.schema });
+    formId = form.id;
+    formTitle = draft.form.name;
+  }
+
+  // 3. Wire the funnel — entry page → (form) → thank-you, the same three-step shape the
+  //    manual FunnelMode builds, so an AI funnel and a hand-built one are one object.
+  const steps: FunnelStepInput[] = [{ step_type: "page", order_index: 0, page_id: page.id }];
+  if (formId) steps.push({ step_type: "form", order_index: steps.length, form_id: formId });
+  steps.push({ step_type: "thankyou", order_index: steps.length });
+
+  const funnelSlug = await uniqueGrowthSlug("growth_funnels", tenantId, draft.name);
+  const funnel = await saveFunnel({
+    tenantId,
+    slug: funnelSlug,
+    name: draft.name,
+    steps,
+    entryPageId: page.id,
+  });
+
+  const builtSteps: BuiltFunnelStep[] = [
+    { kind: "page", title: page.title || draft.page.title, refId: page.id, status: "draft" },
+  ];
+  if (formId) builtSteps.push({ kind: "form", title: formTitle, refId: formId, status: "active" });
+  builtSteps.push({ kind: "thankyou", title: "Thank you", refId: null, status: "included" });
+
+  return {
+    funnelId: funnel.id,
+    funnelSlug: funnel.slug,
+    name: draft.name,
+    goal: draft.goal,
+    pageId: page.id,
+    pageSlug: page.slug,
+    pageStatus: "draft",
+    formId,
+    steps: builtSteps,
+  };
+}
+
+export interface PublishFunnelCascadeResult {
+  url: string | null;
+  /** True when the entry page was published as part of this cascade (§13 — report what ran). */
+  pagePublished: boolean;
+}
+
+/** Ship the whole funnel in one act (§19): publish the entry page (the one step still a draft),
+ *  then publish the funnel — whose server guard re-checks that pages are live and forms active
+ *  before it flips to active and returns the real /f/<tenant>/<slug> URL. Any guard failure
+ *  surfaces honestly; nothing is reported live that isn't (§13). */
+export async function publishFunnelCascade(input: {
+  tenantId: string;
+  funnel: Pick<BuiltFunnel, "funnelId" | "pageId" | "pageStatus">;
+}): Promise<PublishFunnelCascadeResult> {
+  const tenantId = requireTenant(input.tenantId);
+  let pagePublished = false;
+  if (input.funnel.pageStatus !== "published") {
+    await publishPage({ tenantId, pageId: input.funnel.pageId });
+    pagePublished = true;
+  }
+  const { url } = await publishFunnel({ tenantId, id: input.funnel.funnelId });
+  return { url, pagePublished };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

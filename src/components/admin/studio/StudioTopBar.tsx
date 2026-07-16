@@ -93,6 +93,15 @@ export interface StudioTopBarProps {
   // — funnel / form modes (published by the mounted mode component) —
   modeBar?: ModeToolbarState | null;
 
+  // — AI funnel (§18/§19): a funnel built from the page composer renders IN the page surface,
+  //   so when it's active the page-only controls give way to the funnel's own gold act. This
+  //   is NOT a separate tab — there's no funnel chip, no funnel button, just this act. —
+  funnelActive?: boolean;
+  funnelLive?: boolean;
+  onPublishFunnel?: () => void;
+  funnelPublishing?: boolean;
+  publishFunnelDisabled?: boolean;
+
   className?: string;
 }
 
@@ -116,9 +125,16 @@ export function StudioTopBar({
   publishDisabled = false,
   onOpenLibrary,
   modeBar,
+  funnelActive = false,
+  funnelLive = false,
+  onPublishFunnel,
+  funnelPublishing = false,
+  publishFunnelDisabled = false,
   className,
 }: StudioTopBarProps) {
-  const isPage = mode === "page";
+  // When a funnel is up, the page-only controls (title, device, Save, Publish, the page
+  // StatePill) stand down in favour of the funnel's own act — same surface, different act.
+  const isPage = mode === "page" && !funnelActive;
   const hasLibrary = mode === "copy" || mode === "image";
 
   return (
@@ -170,26 +186,10 @@ export function StudioTopBar({
           </div>
         )}
 
-        {/* Funnel — the one deliberate exception (§18): zero AI-generation path, 100% manual,
-            so it can never earn a spot in the tab strip above. A quiet ghost button, always
-            here regardless of session content — ISN'T styled as a co-equal tab (no active-pill
-            fill, no icon-plus-label pair matching the FilterChips) so it never restores the
-            "6th tab" picker the owner rejected. Toggles: click in from anywhere, click again
-            (while parked there) to head back to the Page composer. */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => onModeChange(mode === "funnel" ? "page" : "funnel")}
-          aria-pressed={mode === "funnel"}
-          className={cn(
-            "h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground",
-            mode === "funnel" && "bg-muted text-foreground",
-          )}
-        >
-          <GitBranch className="h-3.5 w-3.5" aria-hidden />
-          {mode === "funnel" ? "Back to page" : "Funnel"}
-        </Button>
+        {/* No funnel tab/button here by design (§18/§19): a funnel is born from the ONE composer
+            like every other artifact — the classifier routes it, it renders in the page surface,
+            and its gold act appears on the right when it's active. There is no upfront funnel
+            gate for the operator to clear before Paige has heard the brief. */}
       </div>
 
       {/* ── the page's name, inline (page mode; hidden when the bar is tight) ── */}
@@ -300,6 +300,27 @@ export function StudioTopBar({
           <Button variant="gold" size="sm" onClick={onPublish} disabled={publishDisabled}>
             Publish
           </Button>
+        )}
+
+        {/* AI funnel act — the SAME page surface, its own gold moment (§11/§18/§19). The pill
+            reads the funnel's real live state; gold ships the whole sequence (page + funnel). */}
+        {funnelActive && (
+          <>
+            <StatePill state={funnelLive ? "on" : "off"}>{funnelLive ? "Live" : "Draft"}</StatePill>
+            {onPublishFunnel && (
+              <Button
+                variant="gold"
+                size="sm"
+                onClick={onPublishFunnel}
+                disabled={publishFunnelDisabled}
+              >
+                {funnelPublishing && (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+                )}
+                {funnelPublishing ? "Publishing…" : funnelLive ? "Republish funnel" : "Publish funnel"}
+              </Button>
+            )}
+          </>
         )}
 
         {!isPage && modeBar?.act && (

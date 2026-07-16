@@ -23,7 +23,7 @@
 // Not on Generate, not on Save, not on a chip, not on the selection outline (that's
 // indigo `--ring`).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Send, Sparkles, Wand2 } from "lucide-react";
+import { GitBranch, Loader2, Send, Sparkles, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useGeneratePage } from "@/hooks/useGeneratePage";
 import { useToast } from "@/hooks/use-toast";
@@ -51,23 +51,28 @@ import { CopyMode } from "./modes/CopyMode";
 import { ImageMode } from "./modes/ImageMode";
 import { FormMode } from "./modes/FormMode";
 import { FunnelMode } from "./modes/FunnelMode";
+import { FunnelFlow } from "./modes/FunnelFlow";
 import { LibraryPanel } from "./modes/content-shared";
 import {
   STUDIO_ERROR_COPY,
+  buildFunnelFromDraft,
   classifyStudioIntent,
   composeBrief,
   draftFormSchema,
+  draftFunnel,
   editBlocks,
   isStudioError,
   loadBrandFloor,
   loadPageDraft,
   preflightPublish,
+  publishFunnelCascade,
   publishPage,
   reviseBlock,
   savePageDraft,
   shouldClarify,
   uniqueGrowthPageSlug,
   uploadGrowthAsset,
+  type BuiltFunnel,
   type PublishPageResult,
 } from "./studio";
 import {
@@ -292,6 +297,15 @@ export function StudioShell({
   const [draftedFormSchema, setDraftedFormSchema] = useState<GrowthFormSchema | null>(null);
   const [draftedCopyBrief, setDraftedCopyBrief] = useState<string | undefined>(undefined);
   const [draftedImagePrompt, setDraftedImagePrompt] = useState<string | undefined>(undefined);
+
+  // ── AI funnel (§18/§19) — lives IN the page surface, never a separate tab ──────────
+  // A funnel classified from the one composer is drafted + persisted into real rows and
+  // rendered right here (FunnelFlow in the page canvas), refined by the same composer, and
+  // shipped by the top bar's gold act. `funnel` holds the built funnel; null = ordinary page.
+  const [funnel, setFunnel] = useState<BuiltFunnel | null>(null);
+  const [funnelBuilding, setFunnelBuilding] = useState(false);
+  const [funnelPublishing, setFunnelPublishing] = useState(false);
+  const [funnelUrl, setFunnelUrl] = useState<string | null>(null);
 
   // The blocks we hold when a run starts — restored verbatim if the operator stops it, so a
   // cancelled run never leaves a half-painted canvas.
@@ -734,6 +748,63 @@ export function StudioShell({
     }
   }, [saveDraft, tenantId, onPublished, patch]);
 
+  // ── build a whole funnel from one brief (§19) ──────────────────────────────────────
+  // draftFunnel plans + drafts (reusing the page/form drafters server-side); then we persist
+  // the real page/form/funnel rows. It renders in this same page surface — no navigation, no
+  // tab. A fresh brief while a funnel is already up rebuilds it (refine-by-re-briefing, v1).
+  const buildFunnel = useCallback(
+    async (brief: string) => {
+      if (!tenantId) {
+        patch({ error: { code: "NO_TENANT", message: STUDIO_ERROR_COPY.NO_TENANT, recoverable: false } });
+        return;
+      }
+      setFunnelBuilding(true);
+      setFunnelUrl(null);
+      patch({ error: null });
+      try {
+        const draft = await draftFunnel(brief);
+        const built = await buildFunnelFromDraft({ tenantId, draft });
+        setFunnel(built);
+        toast({
+          title: "Funnel drafted",
+          description: "Review the steps, then Publish funnel to take the whole sequence live.",
+        });
+      } catch (err) {
+        patch({ error: asStudioError(err, "GENERATION_FAILED") });
+      } finally {
+        setFunnelBuilding(false);
+      }
+    },
+    [tenantId, patch, toast],
+  );
+
+  // Ship the whole funnel in one act (§19) — the cascade publishes the entry page then the
+  // funnel, and reports the REAL url (§13). Reflect each step going live in the flow view.
+  const handlePublishFunnel = useCallback(async () => {
+    if (!tenantId || !funnel) return;
+    setFunnelPublishing(true);
+    patch({ error: null });
+    try {
+      const { url } = await publishFunnelCascade({ tenantId, funnel });
+      setFunnel((f) =>
+        f
+          ? {
+              ...f,
+              pageStatus: "published",
+              steps: f.steps.map((s) => (s.kind === "page" ? { ...s, status: "published" } : s)),
+            }
+          : f,
+      );
+      setFunnelUrl(url);
+      toast({ title: "Funnel is live", description: url ? `Live at ${url}` : "Your funnel is published." });
+      onFunnelCreated?.();
+    } catch (err) {
+      patch({ error: asStudioError(err, "PUBLISH_FAILED") });
+    } finally {
+      setFunnelPublishing(false);
+    }
+  }, [tenantId, funnel, patch, toast, onFunnelCreated]);
+
   // ── the conversational per-section edit ───────────────────────────────────────────
   const handleSectionEdit = useCallback(
     async (instruction: string) => {
@@ -785,6 +856,12 @@ export function StudioShell({
         void handleSectionEdit(value);
         return;
       }
+      // Already in a funnel this session — a new brief refines it into a fresh funnel, staying
+      // in this same surface (§19). Checked BEFORE classifiedOnceRef, which is already true.
+      if (funnel || funnelBuilding) {
+        void buildFunnel(value);
+        return;
+      }
       if (classifiedOnceRef.current || modeChipClickedRef.current) {
         void runGenerate(value);
         return;
@@ -795,6 +872,10 @@ export function StudioShell({
         try {
           const { artifact } = await classifyStudioIntent(value);
           switch (artifact) {
+            case "funnel":
+              // The whole funnel builds right here — no tab, no navigation (§18/§19).
+              void buildFunnel(value);
+              break;
             case "form": {
               onModeChange?.("form");
               try {
@@ -830,7 +911,7 @@ export function StudioShell({
         }
       })();
     },
-    [target, runGenerate, handleSectionEdit, onModeChange, toast],
+    [target, funnel, funnelBuilding, buildFunnel, runGenerate, handleSectionEdit, onModeChange, toast],
   );
 
   // ── persist the client-side draft (no DB write) ───────────────────────────────────
@@ -896,8 +977,31 @@ export function StudioShell({
   // ── the page canvas ───────────────────────────────────────────────────────────────
   const busy = isGenerating || state.editing;
 
+  // A funnel classified from this composer renders IN this same page surface (§18/§19) —
+  // FunnelFlow replaces the page canvas, the composer refines it, the top bar ships it.
+  const funnelActive = mode === "page" && (funnel != null || funnelBuilding);
+
   let pageCanvas: ReactNode;
-  if (state.mode === "generating") {
+  if (funnelActive) {
+    pageCanvas = funnel ? (
+      <FunnelFlow funnel={funnel} url={funnelUrl} />
+    ) : (
+      // Building state — Paige's team drafting the whole funnel (page + form) at once.
+      <div className="grid h-full place-items-center">
+        <SectionCard className="max-w-md">
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <Loader2 className="h-6 w-6 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
+            <div>
+              <p className="font-display text-sm font-semibold text-foreground">Building your funnel</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Paige is drafting the landing page and the intake form, then wiring them together.
+              </p>
+            </div>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  } else if (state.mode === "generating") {
     pageCanvas = (
       <GenerationExperience
         generation={generation}
@@ -1005,7 +1109,7 @@ export function StudioShell({
         <StudioTopBar
           mode={mode}
           onModeChange={handleModeChange}
-          visibleModes={visibleModes}
+          visibleModes={funnelActive ? [] : visibleModes}
           studioDark={studioDark}
           onToggleStudioTheme={toggleStudioTheme}
           title={state.title}
@@ -1022,13 +1126,24 @@ export function StudioShell({
           publishDisabled={state.publishing || busy || state.blocks.length === 0}
           onOpenLibrary={() => setLibraryOpen(true)}
           modeBar={modeBars[mode] ?? null}
+          funnelActive={funnelActive}
+          funnelLive={funnelUrl != null}
+          onPublishFunnel={() => void handlePublishFunnel()}
+          funnelPublishing={funnelPublishing}
+          publishFunnelDisabled={!funnel || funnelBuilding || funnelPublishing}
         />
 
         {/* ── page mode — the original Vibe Studio, re-skinned onto the same state machine ── */}
         <StudioSplit
           className={mode !== "page" ? "hidden" : undefined}
           railHeader={
-            state.mode === "clarifying" ? (
+            funnelActive ? (
+              <StudioRailHeading
+                heading="Your funnel"
+                description="Paige built the whole sequence — a landing page, an intake form, and a thank-you. Review the steps and publish when it's ready."
+                teamLine
+              />
+            ) : state.mode === "clarifying" ? (
               <StudioRailHeading heading={CLARIFYING_RAIL.heading} description={CLARIFYING_RAIL.description} />
             ) : (
               <StudioRailHeading
@@ -1043,7 +1158,28 @@ export function StudioShell({
             )
           }
           railBody={
-            state.mode === "clarifying" ? (
+            funnelActive ? (
+              <>
+                {funnel?.goal && (
+                  <p className="text-xs text-muted-foreground">{funnel.goal}</p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Want to change it? Describe the funnel differently below and Paige rebuilds it.
+                </p>
+                {state.error && (
+                  <SectionCard className="border-destructive/40">
+                    <div className="space-y-3">
+                      <p className="text-sm text-foreground">{state.error.message}</p>
+                      {state.error.recoverable && (
+                        <Button variant="outline" size="sm" onClick={() => patch({ error: null })}>
+                          Got it
+                        </Button>
+                      )}
+                    </div>
+                  </SectionCard>
+                )}
+              </>
+            ) : state.mode === "clarifying" ? (
               <ClarifyingQuestions
                 brief={state.brief}
                 questions={state.clarifying.questions}
@@ -1113,9 +1249,15 @@ export function StudioShell({
                 value={target ? state.instruction : state.brief}
                 onChange={(value) => patch(target ? { instruction: value } : { brief: value })}
                 onSubmit={(value) => handleBriefSubmit(value)}
-                busy={busy || classifying}
-                busyLabel={classifying ? "Figuring out what to build…" : undefined}
-                disabled={state.saving || state.publishing}
+                busy={busy || classifying || funnelBuilding}
+                busyLabel={
+                  funnelBuilding
+                    ? "Building your funnel…"
+                    : classifying
+                      ? "Figuring out what to build…"
+                      : undefined
+                }
+                disabled={state.saving || state.publishing || funnelPublishing}
                 target={target}
                 onClearTarget={() => patch({ selectedIndex: null, instruction: "" })}
                 onRegenerate={() => void runGenerate(state.brief)}
