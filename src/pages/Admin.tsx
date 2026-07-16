@@ -100,6 +100,7 @@ const SubAgentsAdmin = lazy(() => import("@/pages/admin/SubAgentsAdmin"));
 const SkillsHub = lazy(() => import("@/pages/admin/SkillsHub"));
 const WorkflowsList = lazy(() => import("@/pages/admin/WorkflowsList"));
 const CampaignsHub = lazy(() => import("@/pages/admin/CampaignsHub"));
+const VibeStudio = lazy(() => import("@/pages/admin/VibeStudio"));
 const WorkflowDetail = lazy(() => import("@/pages/admin/WorkflowDetail"));
 const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
 const WorkflowRunDetail = lazy(() => import("@/pages/admin/WorkflowRunDetail"));
@@ -462,6 +463,11 @@ const Admin = () => {
         } />
         <Route path="campaigns" element={
           <Suspense fallback={<SuspenseFallback />}><CampaignsHub /></Suspense>
+        } />
+        {/* Vibe Studio — its own full-page creation surface (§18: the single Studio mount; the
+            Campaigns tab redirects here). Staff-visible, not owner-only. */}
+        <Route path="studio" element={
+          <Suspense fallback={<SuspenseFallback />}><VibeStudio /></Suspense>
         } />
         <Route path="workflows/runs" element={
           <Suspense fallback={<SuspenseFallback />}><WorkflowRuns /></Suspense>
