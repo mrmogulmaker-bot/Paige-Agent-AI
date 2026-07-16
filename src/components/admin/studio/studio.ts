@@ -775,6 +775,120 @@ export async function draftImage(input: DraftImageInput): Promise<DraftImageResu
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Save copy / image — rpc save_marketing_content. The Copy/Image "publish" pipeline.
+//
+// CHECKED FIRST (§13 — don't bolt on a toggle the data model doesn't have): marketing_content
+// (20260711120000_marketing_content_library.sql) carries `status text CHECK (status IN
+// ('draft','archived'))` — draft/archived is a housekeeping flag (nothing here ever sets
+// 'archived'), NOT a draft/live publish state the way growth_pages has one. There is no
+// second, "live" copy of a piece of marketing text or a generated image for anything to
+// flip a page's status column between. So there is no publish RPC to add here — filing the
+// item into the tenant's library via save_marketing_content IS the whole act, same as it
+// already is for generate-image's server-side auto-file below. The "test" step these two
+// modes get instead is a real one: copy-to-clipboard for text (it's inert until pasted
+// somewhere real) and a copyable hosted URL for an image (it's already live on the public
+// paige-generated bucket the moment it's generated) — both wired in the mode components,
+// not invented here.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+export interface SaveCopyInput {
+  tenantId: string;
+  title: string;
+  content: string;
+  channel: string;
+  /** The brief that produced this draft — stored for reference, same as growth_page_upsert
+   *  never invents provenance it wasn't given. */
+  brief?: string;
+  /** PASS THIS ON A REPEAT SAVE of the SAME draft (the caller's own saved id from a prior
+   *  saveCopy() call). Without it, save_marketing_content always INSERTs — a second "Save
+   *  again" click would silently fork a duplicate library row instead of updating the one
+   *  already there, same class of bug SavePageInput.pageId's own doc comment guards against. */
+  id?: string | null;
+}
+
+export interface SavedContent {
+  /** The marketing_content row's real id, straight off the RPC — never fabricated (§13).
+   *  Lets a caller show "Saved" only once this resolves, and point "View in library" at a
+   *  row that genuinely exists. */
+  id: string;
+}
+
+/**
+ * File one drafted copy variation into the tenant's content library.
+ *
+ * Relocated from CopyMode's own direct `save_marketing_content` invoke (§10/§18) — same
+ * payload, same RPC, only the call site moved behind the seam, so Page/Form/Copy/Image all
+ * write through the ONE seam layer instead of Copy forking its own pattern.
+ */
+export async function saveCopy(input: SaveCopyInput): Promise<SavedContent> {
+  const tenantId = requireTenant(input.tenantId);
+  const content = (input.content ?? "").trim();
+  if (!content) throw studioError("SAVE_FAILED", null, "There's nothing to save yet.");
+  const title = (input.title ?? "").trim() || "Untitled";
+
+  const id = await rpc<string | null>(
+    "save_marketing_content",
+    {
+      p_kind: "text",
+      p_title: title,
+      p_body: content,
+      p_channel: input.channel || null,
+      p_brief: input.brief?.trim() || null,
+      p_tenant_id: tenantId,
+      p_id: input.id ?? null,
+    },
+    "SAVE_FAILED",
+  );
+
+  if (!id) throw studioError("SAVE_FAILED", id);
+  return { id };
+}
+
+export interface SaveImageInput {
+  tenantId: string;
+  title: string;
+  /** The REAL hosted URL draftImage() returned — never a client-invented string. */
+  url: string;
+  path?: string | null;
+  size: string;
+  brief?: string;
+}
+
+/**
+ * Manual fallback save for a generated image into the tenant's content library.
+ *
+ * draftImage()'s own generate-image call already auto-files every successful generation
+ * into marketing_content SERVER-side (surfaced as `content_id` on its result) — but that
+ * insert is explicitly best-effort there ("never fail the generation because the library
+ * insert hiccuped"). So a genuine, successful generation can still come back with no
+ * content_id. This is the one path that lets the operator complete JUST the save, instead
+ * of ImageMode ever reporting "Saved to library" for a write that didn't actually happen.
+ */
+export async function saveImageToLibrary(input: SaveImageInput): Promise<SavedContent> {
+  const tenantId = requireTenant(input.tenantId);
+  const url = (input.url ?? "").trim();
+  if (!url) throw studioError("SAVE_FAILED", null, "There's no image to save yet.");
+  const title = (input.title ?? "").trim() || "Untitled";
+
+  const id = await rpc<string | null>(
+    "save_marketing_content",
+    {
+      p_kind: "image",
+      p_title: title,
+      p_image_url: url,
+      p_image_path: input.path ?? null,
+      p_size: input.size,
+      p_brief: input.brief?.trim() || null,
+      p_tenant_id: tenantId,
+    },
+    "SAVE_FAILED",
+  );
+
+  if (!id) throw studioError("SAVE_FAILED", id);
+  return { id };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // Save — rpc growth_page_upsert
 // ═══════════════════════════════════════════════════════════════════════════════════════
 

@@ -3,15 +3,19 @@
 // Rail: channel/tone/variations pickers, then the SHARED PromptComposer (§18 — the same
 // conversational input page mode uses) pinned at the bottom, indigo submit — zero gold on
 // generate, matching the page composer's rule. Canvas: the drafts as editable cards; GOLD
-// lives on each card's "Save to library", because filing it is the act.
+// lives on each card's "Save to library", because filing it is the act. The clipboard copy
+// (SectionCard's header action) IS this mode's "test" step (§13/§19) — marketing text is
+// inert until it's pasted somewhere real, so copying it out is the realistic dry run Page/
+// Form get from a live preview URL.
 //
 // Generation routes through studio.ts's draftCopy() seam (§10) — the exact `content-draft`
 // invoke that used to live directly in this component, relocated behind the seam, unchanged
-// in behavior. Saving still goes straight to `save_marketing_content` (unchanged, §10 —
-// this mode's own narrow seam).
+// in behavior. Saving now routes through studio.ts's saveCopy() seam too (§10/§18) — the
+// exact `save_marketing_content` RPC call that used to live directly in this component,
+// relocated behind the seam so Page/Form/Copy/Image all write through the ONE seam layer
+// instead of Copy forking its own direct-RPC pattern.
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { SectionCard, EmptyState } from "@/components/ui/page";
+import { SectionCard, EmptyState, StatePill, Toolbar } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,7 +29,7 @@ import { StudioRailHeading, StudioSplit } from "../StudioChrome";
 import { COPY_CHIPS, MODE_EMPTY, MODE_RAIL } from "../studio-copy";
 import { CHANNELS, CHANNEL_LABEL, CopyButton, LabelChip, type Channel, type Draft } from "./content-shared";
 import { PromptComposer } from "../PromptComposer";
-import { draftCopy, isStudioError } from "../studio";
+import { draftCopy, isStudioError, saveCopy } from "../studio";
 import { growthSeamMessage } from "@/lib/growth-templates";
 
 export interface CopyModeProps {
@@ -35,9 +39,12 @@ export interface CopyModeProps {
    *  the composer on this mode's first mount. Additive: an operator who deliberately clicks
    *  the Copy chip still gets the normal blank composer and writes their own brief. */
   initialBrief?: string;
+  /** Opens the Studio's own content library Sheet (§19: everything created here stays
+   *  reachable from here) — surfaced as "View in library" once a draft's save resolves. */
+  onOpenLibrary?: () => void;
 }
 
-export function CopyMode({ tenantId, className, initialBrief }: CopyModeProps) {
+export function CopyMode({ tenantId, className, initialBrief, onOpenLibrary }: CopyModeProps) {
   const [channel, setChannel] = useState<Channel>("social_post");
   const [brief, setBrief] = useState(initialBrief ?? "");
   const [tone, setTone] = useState("");
@@ -45,6 +52,13 @@ export function CopyMode({ tenantId, className, initialBrief }: CopyModeProps) {
   const [drafting, setDrafting] = useState(false);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
+  // Keyed by the draft's index in `drafts` — the real marketing_content id ONLY once
+  // saveCopy() has actually resolved (§13: never claim "Saved" ahead of the RPC settling).
+  const [savedIds, setSavedIds] = useState<Record<number, string>>({});
+  // The brief that actually produced the CURRENT `drafts` batch — captured at draft time,
+  // same discipline as ImageMode's sourcePrompt, so editing the composer afterward (without
+  // regenerating) can never mislabel what a later "Save"/"Save again" attributes a draft to.
+  const [draftedBrief, setDraftedBrief] = useState("");
 
   const draft = async (value: string) => {
     const theBrief = value.trim();
@@ -56,6 +70,10 @@ export function CopyMode({ tenantId, className, initialBrief }: CopyModeProps) {
         tenantId, brief: theBrief, channel, tone, variations: Number(variations),
       });
       setDrafts(result.drafts);
+      setDraftedBrief(theBrief);
+      // A fresh set of drafts — any earlier "Saved" state belonged to the PREVIOUS drafts
+      // at these same indexes, not these ones.
+      setSavedIds({});
     } catch (e) {
       const cause = isStudioError(e) ? e.cause ?? e : e;
       toast.error(growthSeamMessage(cause, isStudioError(e) ? e.message : "Paige couldn't draft that. Try again."));
@@ -70,14 +88,20 @@ export function CopyMode({ tenantId, className, initialBrief }: CopyModeProps) {
     const d = drafts[i];
     setSavingIdx(i);
     try {
-      const { error } = await supabase.rpc("save_marketing_content", {
-        p_kind: "text", p_title: d.title || CHANNEL_LABEL[channel], p_body: d.content,
-        p_channel: channel, p_brief: brief, p_tenant_id: tenantId,
+      const saved = await saveCopy({
+        tenantId,
+        title: d.title || CHANNEL_LABEL[channel],
+        content: d.content,
+        channel,
+        brief: draftedBrief,
+        // A repeat "Save again" updates the SAME row instead of forking a duplicate.
+        id: savedIds[i] ?? null,
       });
-      if (error) throw error;
+      // Only set once the RPC has genuinely returned a row id — no optimistic flip.
+      setSavedIds((prev) => ({ ...prev, [i]: saved.id }));
       toast.success("Saved to your library.");
     } catch (e) {
-      toast.error(growthSeamMessage(e, "Couldn't save that. Try again."));
+      toast.error(isStudioError(e) ? e.message : growthSeamMessage(e, "Couldn't save that. Try again."));
     } finally {
       setSavingIdx(null);
     }
@@ -166,15 +190,27 @@ export function CopyMode({ tenantId, className, initialBrief }: CopyModeProps) {
                   rows={Math.min(14, Math.max(5, d.content.split("\n").length + 1))}
                   className="text-sm leading-relaxed"
                 />
-                <div className="mt-3 flex justify-end">
-                  {/* GOLD (§11): the act — this draft, filed into the tenant's library. */}
-                  <Button onClick={() => save(i)} disabled={savingIdx === i} variant="gold" size="sm" className="gap-1.5">
-                    {savingIdx === i
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
-                      : <Save className="h-3.5 w-3.5" />}
-                    Save to library
-                  </Button>
-                </div>
+                <Toolbar className="mt-3">
+                  {savedIds[i] ? (
+                    <StatePill state="success">Saved to library</StatePill>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Not saved yet</span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    {savedIds[i] && onOpenLibrary && (
+                      <Button variant="ghost" size="sm" onClick={onOpenLibrary}>
+                        View in library
+                      </Button>
+                    )}
+                    {/* GOLD (§11): the act — this draft, filed into the tenant's library. */}
+                    <Button onClick={() => save(i)} disabled={savingIdx === i} variant="gold" size="sm" className="gap-1.5">
+                      {savingIdx === i
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                        : <Save className="h-3.5 w-3.5" />}
+                      {savedIds[i] ? "Save again" : "Save to library"}
+                    </Button>
+                  </div>
+                </Toolbar>
               </SectionCard>
             ))}
           </div>

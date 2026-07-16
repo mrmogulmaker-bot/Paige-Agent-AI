@@ -17,8 +17,11 @@
 //
 // GOLD (§11): one gold act per mode — the Publish trigger in the top bar (page), Publish
 // funnel, Create form, the per-draft Save to library (copy) — plus the confirm inside
-// PublishDialog. Not on Generate, not on Save, not on a chip, not on the selection
-// outline (that's indigo `--ring`).
+// PublishDialog. Image carries gold ONLY on its manual Save-to-library retry, and only
+// when the server's own auto-file didn't happen (§13) — the ordinary path (auto-filed,
+// confirmed by a real content_id) shows a plain success StatePill, no button to click.
+// Not on Generate, not on Save, not on a chip, not on the selection outline (that's
+// indigo `--ring`).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Send, Sparkles, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -1046,6 +1049,7 @@ export function StudioShell({
             className={mode !== "copy" ? "hidden" : undefined}
             tenantId={tenantId}
             initialBrief={draftedCopyBrief}
+            onOpenLibrary={() => setLibraryOpen(true)}
           />
         )}
         {visited.has("image") && (
@@ -1053,6 +1057,7 @@ export function StudioShell({
             className={mode !== "image" ? "hidden" : undefined}
             tenantId={tenantId}
             initialPrompt={draftedImagePrompt}
+            onOpenLibrary={() => setLibraryOpen(true)}
           />
         )}
       </StudioFrame>
