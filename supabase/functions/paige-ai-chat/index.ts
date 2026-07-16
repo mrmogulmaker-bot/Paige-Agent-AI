@@ -4304,6 +4304,54 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "growth_funnel_generate",
+              description: "Admin/coach only. Draft a whole marketing FUNNEL from a one-line brief — Paige plans and drafts the entry landing page, an intake form, and a thank-you, wired together as a sequence. Returns the draft for the operator to review; drafting is safe and writes nothing (building and publishing are separate steps). Defaults to a coaching-generic offer — never credit/funding framing unless the brief explicitly asks. Use when the operator wants a funnel, a lead flow, an application flow, or a capture→qualify→confirm sequence (more than a single page).",
+              parameters: {
+                type: "object",
+                properties: {
+                  brief: { type: "string", description: "What the funnel is for — the offer, who it's for, and the action you want leads to take." }
+                },
+                required: ["brief"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "growth_funnel_build",
+              description: "Admin/coach only. Build a funnel into real DRAFT rows — the entry landing page, the intake form, and the wired funnel (does NOT go live; publishing is a separate step). Use after growth_funnel_generate when the operator likes the draft, passing the reviewed pieces. Pass funnel_id/page_id/form_id to update an existing funnel in place instead of creating new rows.",
+              parameters: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: "The funnel's name." },
+                  goal: { type: "string", description: "Optional one-line goal for the funnel." },
+                  page: { type: "object", description: "The entry landing page: { title, blocks (the array from growth_funnel_generate), theme?, seo? }." },
+                  form: { type: "object", description: "Optional intake form: { name, schema }. Omit for a page-only opt-in funnel." },
+                  funnel_id: { type: "string", description: "Existing funnel id to update in place (omit to create a new funnel)." },
+                  page_id: { type: "string", description: "Existing entry page id to update in place." },
+                  form_id: { type: "string", description: "Existing form id to update in place." }
+                },
+                required: ["name", "page"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "growth_funnel_publish",
+              description: "Admin/coach only. Publish a saved funnel so the WHOLE sequence goes live — publishes the entry page then the funnel, and returns the REAL public URL. This is a going-live action; always confirm with the operator first and report back the real link the publish returns (never claim it's live without it). The funnel must already be built (growth_funnel_build) and its entry page free of unfilled [PLACEHOLDER] prompts, which the publish step rejects.",
+              parameters: {
+                type: "object",
+                properties: {
+                  funnel_id: { type: "string", description: "The funnel id to publish (from growth_funnel_build)." }
+                },
+                required: ["funnel_id"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "action_file",
               description: "Admin/coach only. File a unit of work from one of Paige's departments to the other on the action bus — e.g. Client Experience flags an at-risk client to Owner Ops, or Owner Ops queues a follow-up. This STARTS a tracked hand-off; it does not draft or send. Use action_advance next to draft/route it. action_kind must be one of the platform kinds (e.g. owner.followup_email, client.followup, client.at_risk, owner.task, owner.onboarding_nudge, client.portal_recommendation).",
               parameters: {
@@ -4972,6 +5020,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "calendar_book_meeting", "program_enroll",
       "draft_marketing_content", "generate_image", "content_save",
       "growth_page_save", "growth_page_publish",
+      "growth_funnel_build", "growth_funnel_publish",
       "action_file", "action_advance",
       "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
       "n8n_run_workflow", "n8n_archive_workflow", "n8n_delete_workflow",
@@ -5006,6 +5055,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       content_save: "saving content",
       growth_page_save: "saving a landing page draft",
       growth_page_publish: "publishing a landing page",
+      growth_funnel_build: "building a funnel",
+      growth_funnel_publish: "publishing a funnel",
       action_file: "filing an action",
       action_advance: "advancing an action",
       n8n_activate_workflow: "turning on an automation",
@@ -5071,6 +5122,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Save the landing page "${a?.title || a?.slug || "Untitled"}" as a draft${a?.page_id ? " (updating the existing page)" : ""}. It stays private until you publish it.`;
         case "growth_page_publish":
           return `Publish the landing page ${a?.page_id || ""} so it goes LIVE at its public URL. I'll send you the real link once it's up.`;
+        case "growth_funnel_build":
+          return `Build the funnel "${a?.name || "Untitled"}" as a draft — a landing page${a?.form ? ", an intake form," : ""} and a thank-you, wired together. It stays private until you publish it.`;
+        case "growth_funnel_publish":
+          return `Publish the funnel ${a?.funnel_id || ""} so the whole sequence goes LIVE. I'll send you the real link once it's up.`;
         case "action_file":
           return `File a "${a?.action_kind || "action"}" action${a?.title ? `: ${a.title}` : ""}.`;
         case "action_advance":
@@ -6128,6 +6183,115 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, ...(pub as any) };
+            } else if (tc.function.name === "growth_funnel_generate") {
+              // Draft-only: plans + drafts the whole funnel (entry page + intake form) via the
+              // edge fn, which reuses the page/form drafters server-side. Writes nothing (§13).
+              const { data: gd, error } = await supabaseClient.functions.invoke("growth-funnel-draft", {
+                body: { brief: args.brief, tenant_id: personaCtx?.tenant_id ?? null },
+              });
+              if (error) throw error;
+              if ((gd as any)?.error) {
+                const e = (gd as any).error;
+                throw new Error(typeof e === "string" ? e : e?.message || "Funnel draft failed");
+              }
+              result = { success: true, name: (gd as any)?.name, goal: (gd as any)?.goal ?? null, page: (gd as any)?.page ?? null, form: (gd as any)?.form ?? null };
+            } else if (tc.function.name === "growth_funnel_build") {
+              // Persist the funnel into REAL draft rows — entry page + intake form + wired
+              // funnel — through the SAME DEFINER RPCs the client seam uses (§10/§18). JWT
+              // caller: p_tenant_id ignored + pinned to current_user_tenant_id() (no IDOR, §9).
+              const _fbTid = personaCtx?.tenant_id ?? null;
+              const _kebab = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+              const _uniqueSlug = async (table: string, base0: string, fallback: string): Promise<string> => {
+                const base = _kebab(base0) || fallback;
+                if (!_fbTid) return base;
+                const { data: rows } = await supabaseClient.from(table).select("slug").eq("tenant_id", _fbTid).like("slug", `${base}%`);
+                const taken = new Set((rows || []).map((r: any) => r.slug));
+                if (!taken.has(base)) return base;
+                for (let n = 2; n < 200; n++) { const c = `${base}-${n}`; if (!taken.has(c)) return c; }
+                return `${base}-${Date.now()}`;
+              };
+              const _page = args.page || {};
+              const _pageSlug = args.page_id ? (_page.slug || await _uniqueSlug("growth_pages", _page.title || args.name, "page")) : await _uniqueSlug("growth_pages", _page.title || args.name, "page");
+              const { data: _pageRow, error: _pErr } = await supabaseClient.rpc("growth_page_upsert", {
+                p_tenant_id: _fbTid,
+                p_slug: _pageSlug,
+                p_title: _page.title || args.name || "Landing page",
+                p_blocks_json: Array.isArray(_page.blocks) ? _page.blocks : [],
+                p_theme_json: _page.theme ?? _page.theme_json ?? null,
+                p_seo_json: _page.seo ?? _page.seo_json ?? null,
+                p_id: args.page_id ?? null,
+              });
+              if (_pErr) throw _pErr;
+              const _pageId = (_pageRow as any)?.id;
+              if (!_pageId) throw new Error("The funnel's entry page didn't save.");
+              let _formId: string | null = null;
+              if (args.form && args.form.schema) {
+                const _formSlug = args.form_id ? (args.form.slug || await _uniqueSlug("growth_forms", args.form.name || args.name, "form")) : await _uniqueSlug("growth_forms", args.form.name || args.name, "form");
+                const { data: _formRow, error: _fErr } = await supabaseClient.rpc("growth_form_upsert", {
+                  p_tenant_id: _fbTid,
+                  p_slug: _formSlug,
+                  p_name: args.form.name || "Intake form",
+                  p_schema_json: args.form.schema,
+                  p_success_action_json: null,
+                  p_auto_create_contact: true,
+                  p_pipeline_id: null,
+                  p_stage_id: null,
+                  p_id: args.form_id ?? null,
+                });
+                if (_fErr) throw _fErr;
+                _formId = (_formRow as any)?.id ?? null;
+              }
+              const _steps: any[] = [{ step_type: "page", order_index: 0, page_id: _pageId }];
+              if (_formId) _steps.push({ step_type: "form", order_index: _steps.length, form_id: _formId });
+              _steps.push({ step_type: "thankyou", order_index: _steps.length });
+              const _funnelSlug = args.funnel_id ? (args.slug || await _uniqueSlug("growth_funnels", args.name, "funnel")) : await _uniqueSlug("growth_funnels", args.name, "funnel");
+              const { data: _funnelRow, error: _fnErr } = await supabaseClient.rpc("growth_funnel_upsert", {
+                p_tenant_id: _fbTid,
+                p_slug: _funnelSlug,
+                p_name: args.name || "New funnel",
+                p_goal: args.goal ?? null,
+                p_steps: _steps,
+                p_entry_page_id: _pageId,
+                p_success_page_id: null,
+                p_id: args.funnel_id ?? null,
+              });
+              if (_fnErr) throw _fnErr;
+              // Some upsert rails return the row, some return void — resolve the id by
+              // (tenant, slug) when it isn't handed back so we never report a save we can't
+              // point at (§13), exactly like the client seam's saveFunnel().
+              let _funnelId = (_funnelRow as any)?.id ?? null;
+              let _funnelSlugOut = (_funnelRow as any)?.slug ?? _funnelSlug;
+              if (!_funnelId && _fbTid) {
+                const { data: _f } = await supabaseClient.from("growth_funnels").select("id,slug").eq("tenant_id", _fbTid).eq("slug", _funnelSlug).maybeSingle();
+                _funnelId = (_f as any)?.id ?? null;
+                _funnelSlugOut = (_f as any)?.slug ?? _funnelSlug;
+              }
+              result = {
+                success: true,
+                funnel_id: _funnelId,
+                funnel_slug: _funnelSlugOut,
+                page_id: _pageId,
+                form_id: _formId,
+                steps: _steps.length,
+                status: "draft",
+                note: "Funnel saved as a draft — the entry page, the intake form, and the flow are wired. Publish it to take the whole sequence live.",
+              };
+            } else if (tc.function.name === "growth_funnel_publish") {
+              // Going-live (confirm-gated above). Publish the funnel's page steps first — the
+              // funnel-publish RPC guard refuses unpublished pages — then publish the funnel,
+              // which returns the REAL public url. Surface it verbatim; never claim live without it.
+              const _fpTid = personaCtx?.tenant_id ?? null;
+              const { data: _stepRows } = await supabaseClient.from("growth_funnel_steps").select("page_id").eq("funnel_id", args.funnel_id).eq("step_type", "page");
+              const { data: _funRow0 } = await supabaseClient.from("growth_funnels").select("entry_page_id").eq("id", args.funnel_id).maybeSingle();
+              const _pageIds = Array.from(new Set([(_funRow0 as any)?.entry_page_id, ...((_stepRows || []).map((s: any) => s.page_id))].filter(Boolean)));
+              for (const _pid of _pageIds) {
+                const { error: _pubErr } = await supabaseClient.rpc("growth_page_publish", { p_tenant_id: _fpTid, p_id: _pid });
+                // Re-publishing an already-live page is a no-op we tolerate; any other error is real.
+                if (_pubErr && !/already|published/i.test(_pubErr.message || "")) throw _pubErr;
+              }
+              const { data: _pub, error: _pubFErr } = await supabaseClient.rpc("growth_funnel_publish", { p_tenant_id: _fpTid, p_id: args.funnel_id });
+              if (_pubFErr) throw _pubFErr;
+              result = { success: true, ...(_pub as any) };
             } else if (tc.function.name === "action_file") {
               const { data, error } = await supabaseClient.rpc("file_action", {
                 p_action_kind: args.action_kind,
