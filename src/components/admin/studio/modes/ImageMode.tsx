@@ -44,6 +44,9 @@ export interface ImageModeProps {
   /** Opens the Studio's own content library Sheet (§19: everything created here stays
    *  reachable from here) — surfaced as "View in library" once the image is confirmed saved. */
   onOpenLibrary?: () => void;
+  /** An image landed in the library (server auto-file on generate, or an explicit save) — the
+   *  shell links it into the owning project (§19), so it carries the row's id + title. */
+  onSaved?: (saved: { id: string; title: string }) => void;
 }
 
 interface ImageResult {
@@ -58,7 +61,7 @@ interface ImageResult {
   contentId: string | null;
 }
 
-export function ImageMode({ tenantId, className, initialPrompt, onOpenLibrary }: ImageModeProps) {
+export function ImageMode({ tenantId, className, initialPrompt, onOpenLibrary, onSaved }: ImageModeProps) {
   const [prompt, setPrompt] = useState(initialPrompt ?? "");
   const [size, setSize] = useState("square");
   const [busy, setBusy] = useState(false);
@@ -82,6 +85,8 @@ export function ImageMode({ tenantId, className, initialPrompt, onOpenLibrary }:
         // can still come back with no row. Reflect exactly what happened, nothing assumed.
         contentId: out.content_id ?? null,
       });
+      // If the server already filed it, link that real row into the project now (§19).
+      if (out.content_id) onSaved?.({ id: out.content_id, title: thePrompt.slice(0, 60) || "Image" });
     } catch (e) {
       toast.error(isStudioError(e) ? e.message : growthSeamMessage(e, "Couldn't generate that image. Try again."));
     } finally { setBusy(false); }
@@ -101,6 +106,7 @@ export function ImageMode({ tenantId, className, initialPrompt, onOpenLibrary }:
         brief: result.sourcePrompt,
       });
       setResult((r) => (r ? { ...r, contentId: saved.id } : r));
+      onSaved?.({ id: saved.id, title: result.sourcePrompt.slice(0, 60) || "Image" });
       toast.success("Saved to your library.");
     } catch (e) {
       toast.error(isStudioError(e) ? e.message : growthSeamMessage(e, "Couldn't save that. Try again."));

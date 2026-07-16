@@ -66,8 +66,9 @@ export interface FormModeProps {
   tenantId: string | null;
   /** Publish this mode's Save/act buttons into the Studio top bar. */
   onToolbar: (state: ModeToolbarState) => void;
-  /** The form is created — the hub jumps to the Forms library. */
-  onCreated?: () => void;
+  /** The form is created. The shell links the new form into the owning project (§19) and, when
+   *  embedded, the hub jumps to the Forms library — so it carries the saved row's id + name. */
+  onCreated?: (created?: { id: string; title: string }) => void;
   className?: string;
   /** A schema Paige already drafted from the operator's brief (Studio Phase 1, §18 — the
    *  single entry point classified the brief as a standalone form and drafted it before ever
@@ -174,7 +175,7 @@ export function FormMode({ tenantId, onToolbar, onCreated, className, initialSch
         .from("growth_forms").update({ template_key: template }).eq("id", saved.id);
       if (provenanceErr) console.warn("form template_key provenance not recorded:", provenanceErr.message);
       toast.success("Form created — it's in your Forms library.");
-      onCreated?.();
+      onCreated?.({ id: saved.id, title: name.trim() });
     } catch (e) {
       const cause = isStudioError(e) ? e.cause ?? e : e;
       toast.error(growthSeamMessage(cause, isStudioError(e) ? e.message : "Couldn't create that form. Try again."));

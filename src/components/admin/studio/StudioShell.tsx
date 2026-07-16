@@ -104,6 +104,7 @@ import {
   type StudioErrorCode,
   type StudioMode,
   type StudioSeoDraft,
+  type StudioSessionMeta,
   type StudioState,
 } from "./studio-types";
 
@@ -132,6 +133,10 @@ export interface StudioShellProps {
   onFunnelCreated?: () => void;
   /** A form was created in form mode — the hub jumps to the Forms library. */
   onFormCreated?: () => void;
+  /** The session's artifact manifest changed (link / rename). The shared active-session bundle
+   *  (StudioLayout) passes its `applyMeta` here so the project navigator in the rail re-renders
+   *  from the same row the stage just wrote — one source of truth, no split (Slice 1b). */
+  onManifestChange?: (meta: StudioSessionMeta) => void;
   className?: string;
 }
 
@@ -235,6 +240,7 @@ export function StudioShell({
   onSaved,
   onFunnelCreated,
   onFormCreated,
+  onManifestChange,
   className,
 }: StudioShellProps) {
   const { activeTenantId, activeTenant, loading: tenantLoading } = useTenantContext();
@@ -364,10 +370,14 @@ export function StudioShell({
           activeArtifactId: artifactId,
           activeArtifactType: artifactType,
         }));
+        // Push the fresh manifest to the shared bundle so the rail's project navigator re-renders
+        // with the new piece the instant it's linked (no refetch, no split source of truth).
+        onManifestChange?.(meta);
         const cleanTitle = (title ?? "").trim();
         if (isFirst && cleanTitle) {
           try {
-            await renameStudioSession({ tenantId, sessionId, title: cleanTitle });
+            const renamed = await renameStudioSession({ tenantId, sessionId, title: cleanTitle });
+            onManifestChange?.(renamed);
           } catch (err) {
             console.warn("[studio] rename-on-first-save failed (non-fatal):", err);
           }
@@ -378,7 +388,28 @@ export function StudioShell({
         console.warn("[studio] linkSessionArtifact failed (non-fatal):", err);
       }
     },
-    [tenantId, sessionId],
+    [tenantId, sessionId, onManifestChange],
+  );
+
+  // Every non-page mode attaches its saved artifact to the owning project too, so ALL five
+  // types land in the manifest — the project navigator shows the whole project, not just its
+  // pages and funnels (§19: no artifact type is a second-class citizen). Each is best-effort
+  // and non-fatal, same as the page/funnel path; the original per-mode "created" hooks (which
+  // the embedded Campaigns hub used to jump libraries) still fire underneath.
+  const handleFormCreated = useCallback(
+    (created?: { id: string; title: string }) => {
+      if (created?.id) void linkPrimaryArtifact("form", created.id, created.title);
+      onFormCreated?.();
+    },
+    [linkPrimaryArtifact, onFormCreated],
+  );
+  const handleCopySaved = useCallback(
+    (saved: { id: string; title: string }) => void linkPrimaryArtifact("copy", saved.id, saved.title),
+    [linkPrimaryArtifact],
+  );
+  const handleImageSaved = useCallback(
+    (saved: { id: string; title: string }) => void linkPrimaryArtifact("image", saved.id, saved.title),
+    [linkPrimaryArtifact],
   );
 
   // ── scope ─────────────────────────────────────────────────────────────────────────
@@ -1533,7 +1564,7 @@ export function StudioShell({
             className={mode !== "form" ? "hidden" : undefined}
             tenantId={tenantId}
             onToolbar={onFormToolbar}
-            onCreated={onFormCreated}
+            onCreated={handleFormCreated}
             initialSchema={draftedFormSchema}
           />
         )}
@@ -1543,6 +1574,7 @@ export function StudioShell({
             tenantId={tenantId}
             initialBrief={draftedCopyBrief}
             onOpenLibrary={() => setLibraryOpen(true)}
+            onSaved={handleCopySaved}
           />
         )}
         {visited.has("image") && (
@@ -1551,6 +1583,7 @@ export function StudioShell({
             tenantId={tenantId}
             initialPrompt={draftedImagePrompt}
             onOpenLibrary={() => setLibraryOpen(true)}
+            onSaved={handleImageSaved}
           />
         )}
       </StudioFrame>

@@ -12,8 +12,9 @@
 // viewed / My / Starred / Templates) + resume-a-session land in the next slice; today this is
 // the promotion: its own top-level, full-page room.
 import { lazy, Suspense } from "react";
-import { useLocation, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useOutletContext, useParams, useSearchParams } from "react-router-dom";
 import { isStudioMode, type StudioMode } from "@/components/admin/studio/studio-types";
+import type { ActiveStudioSession } from "@/components/admin/studio/useActiveStudioSession";
 
 // Same lazy split the hub used — the heavy Studio bundle only loads on this route.
 const StudioShell = lazy(() =>
@@ -43,6 +44,10 @@ export default function VibeStudio() {
   // The builder is opened FOR a session (Slice 2): /admin/studio/:sessionId. StudioShell touches
   // recency on mount and hydrates the session's primary artifact (§10/§19).
   const { sessionId } = useParams();
+  // The shared active-session bundle StudioLayout loaded (Slice 1b). We hand its `applyMeta` to
+  // the shell so every artifact the shell links/renames flows straight back to the rail's project
+  // navigator — one source of truth, no split (see useActiveStudioSession's doc).
+  const activeSession = useOutletContext<ActiveStudioSession | null>();
   // The seed brief the HOME composer passed on navigation — a fast-path seed only; the DURABLE
   // brief is the session's own seed_brief, which StudioShell reads from the row (blocking #4).
   const location = useLocation();
@@ -70,6 +75,7 @@ export default function VibeStudio() {
         mode={mode}
         onModeChange={setMode}
         pageId={pageId}
+        onManifestChange={activeSession?.applyMeta}
       />
     </Suspense>
   );
