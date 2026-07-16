@@ -124,49 +124,57 @@ All colors MUST be HSL.
     --gold-dark: 41 82% 61%;
   }
 
-  /* ── Vibe Studio creative surface — SCOPED palette exception (owner: Antonio, 2026-07-16).
-     A vibrant "Paige gradient": indigo → violet → magenta, plus soft aurora washes and glassy
-     cards. Recognizably Paige (our indigo/violet lineage), turned up — NOT a rainbow. GOLD is
-     deliberately ABSENT from the resting gradient fill: it stays reserved for the act
-     (Button variant="gold"). Confined to `.studio-surface` (applied only by StudioLayout) — it
-     touches no platform token and leaks to no other route (§6/§11 exception, scoped). */
+  /* ── Vibe Studio "COSMIC PAIGE" surface — SCOPED palette exception (owner: Antonio, 2026-07-16).
+     A deep indigo NIGHT SKY: near-black indigo base, a slow nebula in electric-blue + Paige
+     indigo, and GOLD as the signature accent glow (our brand; ties to the PaigeMark orbit).
+     DESIGN CALL: the hero FIELD commits to a dark cosmic canvas in BOTH app themes (a
+     planetarium is dark by definition) — only fixed-white hero text sits on it, so it stays AA
+     either way. The GLASS COMPOSER CARD + rail stay THEME-AWARE (tokens still flip) so
+     PromptComposer's app-token text (bg-card / text-foreground) keeps its own AA. NO magenta.
+     Gold in the FIELD is soft, low-opacity glow ONLY; the gold ACT (Button variant="gold")
+     keeps its solid fill + shadow-glow, so the action still reads as THE action. Confined to
+     `.studio-surface` (applied only by StudioLayout) — touches no platform token, leaks nowhere. */
   .studio-surface {
-    --studio-hero-from: 258 72% 20%;
-    --studio-hero-via:  272 66% 38%;
-    --studio-hero-via2: 300 62% 42%;
-    --studio-hero-to:   322 68% 46%;
-    --studio-hero-gradient: linear-gradient(
-      135deg,
-      hsl(var(--studio-hero-from)) 0%,
-      hsl(var(--studio-hero-via))  38%,
-      hsl(var(--studio-hero-via2)) 70%,
-      hsl(var(--studio-hero-to))  100%
-    );
-    --studio-aurora-1: 272 85% 62%;
-    --studio-aurora-2: 320 85% 60%;
-    --studio-aurora-3: 250 90% 66%;
+    /* Cosmic FIELD — identical in both themes (committed dark); NOT re-declared in .dark below. */
+    --studio-hero-from: 256 58% 7%;
+    --studio-hero-via:  246 54% 10%;
+    --studio-hero-via2: 220 52% 12%;
+    --studio-hero-to:   236 60% 5%;
+    --studio-hero-gradient:
+      radial-gradient(120% 90% at 50% 0%, hsl(220 60% 15% / 0.55), transparent 60%),
+      linear-gradient(
+        160deg,
+        hsl(var(--studio-hero-from)) 0%,
+        hsl(var(--studio-hero-via))  40%,
+        hsl(var(--studio-hero-via2)) 72%,
+        hsl(var(--studio-hero-to))  100%
+      );
+
+    /* Nebula accents (decorative glow only — never a fill, never the act) */
+    --studio-nebula-gold:   41 88% 62%;
+    --studio-nebula-blue:   210 92% 60%;
+    --studio-nebula-indigo: 252 80% 62%;
+
+    --studio-star:  210 40% 92%;
+    --studio-orbit: 41 82% 62%;
+
+    /* Glass composer card + rail — THEME-AWARE (light-theme values here) */
     --studio-glass-bg:     0 0% 100%;
-    --studio-glass-border: 276 40% 82%;
-    --studio-glass-solid:  258 30% 99%;
-    --studio-rail-bg:   258 42% 98%;
-    --studio-on-hero:   0 0% 100%;
-    --studio-scrim:     258 60% 10%;
+    --studio-glass-border: 220 40% 82%;
+    --studio-glass-solid:  222 30% 99%;
+    --studio-rail-bg:      222 42% 98%;
+    --studio-on-hero:      0 0% 100%;
+    --studio-scrim:        236 60% 4%;
   }
 
+  /* Only the theme-aware glass/rail flip for the dark app theme — the cosmic FIELD tokens
+     above are already dark and are inherited unchanged (same element matches both selectors). */
   .dark .studio-surface {
-    --studio-hero-from: 258 60% 12%;
-    --studio-hero-via:  272 55% 26%;
-    --studio-hero-via2: 300 52% 30%;
-    --studio-hero-to:   322 58% 34%;
-    --studio-aurora-1: 272 70% 48%;
-    --studio-aurora-2: 320 70% 46%;
-    --studio-aurora-3: 250 72% 52%;
-    --studio-glass-bg:     265 40% 16%;
-    --studio-glass-border: 276 30% 34%;
-    --studio-glass-solid:  265 40% 10%;
-    --studio-rail-bg:   265 44% 7%;
-    --studio-on-hero:   0 0% 100%;
-    --studio-scrim:     265 60% 4%;
+    --studio-glass-bg:     222 40% 12%;
+    --studio-glass-border: 220 30% 30%;
+    --studio-glass-solid:  230 38% 9%;
+    --studio-rail-bg:      234 44% 7%;
+    --studio-scrim:        236 60% 3%;
   }
 }
 
@@ -293,33 +301,160 @@ All colors MUST be HSL.
     background-position: 0 0, 0 0;
   }
 
-  /* Vibe Studio hero — the vibrant Paige gradient (indigo→violet→magenta). Tokens resolve
-     from the enclosing `.studio-surface` scope, so this is inert anywhere else. */
+  /* ── Vibe Studio "Cosmic Paige" hero field. Tokens resolve from the enclosing
+     `.studio-surface` scope, so every rule below is inert anywhere else. The field is built
+     from explicit layer elements (`.studio-stars`, `.studio-nebula`, `.studio-orbit`) so each
+     gets its own two pseudo-elements. */
   .studio-hero {
     background-image: var(--studio-hero-gradient);
+    background-color: hsl(var(--studio-hero-to)); /* solid fallback before paint */
   }
-  /* Aurora bloom overlay — decorative, pointer-events-none, motion-free (static blur). Two
-     low-opacity radial blooms (violet + magenta) layered over the hero for depth. */
-  .studio-aurora::before,
-  .studio-aurora::after {
-    content: "";
-    position: absolute;
+
+  /* (b) STARFIELD — two GPU-cheap CSS layers. ::before = far field (tiny, faint, slow twinkle);
+     ::after = near field (fewer/larger stars, slow parallax drift) → depth. transform/opacity only. */
+  .studio-stars { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .studio-stars::before,
+  .studio-stars::after {
+    content: ""; position: absolute; inset: -20%;
+    background-repeat: repeat; will-change: transform, opacity;
+  }
+  .studio-stars::before {
+    background-image:
+      radial-gradient(1px 1px at 20% 30%, hsl(var(--studio-star) / 0.90), transparent),
+      radial-gradient(1px 1px at 65% 15%, hsl(var(--studio-star) / 0.70), transparent),
+      radial-gradient(1px 1px at 80% 55%, hsl(var(--studio-star) / 0.80), transparent),
+      radial-gradient(1px 1px at 40% 70%, hsl(var(--studio-star) / 0.60), transparent),
+      radial-gradient(1px 1px at 12% 82%, hsl(var(--studio-star) / 0.75), transparent),
+      radial-gradient(1px 1px at 90% 88%, hsl(var(--studio-star) / 0.65), transparent),
+      radial-gradient(1px 1px at 52% 45%, hsl(var(--studio-star) / 0.50), transparent);
+    background-size: 340px 340px;
+    animation: studio-twinkle 7s ease-in-out infinite;
+  }
+  .studio-stars::after {
+    background-image:
+      radial-gradient(1.6px 1.6px at 30% 20%, hsl(var(--studio-star) / 0.95), transparent),
+      radial-gradient(2px   2px   at 75% 40%, hsl(var(--studio-star) / 0.85), transparent),
+      radial-gradient(1.6px 1.6px at 55% 78%, hsl(var(--studio-star) / 0.80), transparent),
+      radial-gradient(1.6px 1.6px at 15% 60%, hsl(var(--studio-star) / 0.70), transparent);
+    background-size: 520px 520px;
+    animation: studio-drift 46s ease-in-out infinite;
+  }
+
+  /* (c) NEBULA — gold + electric-blue soft blooms, large blur, very slow drift/scale. */
+  .studio-nebula { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .studio-nebula::before,
+  .studio-nebula::after {
+    content: ""; position: absolute; border-radius: 9999px;
+    filter: blur(70px); will-change: transform;
+  }
+  .studio-nebula::before {            /* GOLD — signature, low opacity, NOT the act */
+    top: -18%; left: -8%; width: 42rem; height: 42rem;
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.28), transparent 70%);
+    animation: studio-nebula-a 54s ease-in-out infinite;
+  }
+  .studio-nebula::after {             /* ELECTRIC BLUE */
+    right: -12%; bottom: -22%; width: 38rem; height: 38rem;
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-blue) / 0.30), transparent 70%);
+    animation: studio-nebula-b 64s ease-in-out infinite;
+  }
+
+  /* (d) ORBIT ECHO — a faint gold ellipse ring tying the hero to the PaigeMark orbit motif.
+     Tilted -24deg + flattened like the mark's ring; a soft gold "comet" arc sweeps it very slowly.
+     The `translate` property centers independently of `transform`, so the two never fight. */
+  .studio-orbit {
+    position: absolute; left: 50%; top: 50%; z-index: 0; pointer-events: none;
+    width: min(54rem, 130%); aspect-ratio: 1;
+    translate: -50% -50%;
+    transform: rotate(-24deg) scaleY(0.40);
     border-radius: 9999px;
-    filter: blur(60px);
+    border: 1px solid hsl(var(--studio-orbit) / 0.10);
+  }
+  .studio-orbit::before {             /* the sweeping gold arc, drawn as a masked conic ring */
+    content: ""; position: absolute; inset: -1px; border-radius: 9999px; padding: 2px;
+    background: conic-gradient(from 0deg,
+      hsl(var(--studio-orbit) / 0)    0deg,
+      hsl(var(--studio-orbit) / 0)    260deg,
+      hsl(var(--studio-orbit) / 0.55) 322deg,
+      hsl(var(--studio-orbit) / 0)    360deg);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            mask-composite: exclude;
+    animation: studio-orbit-spin 90s linear infinite;
+    will-change: transform;
+  }
+
+  /* PaigeMark halo + title glow + glass card — composition polish, all static (no motion). */
+  .studio-mark-halo { position: relative; }
+  .studio-mark-halo::before {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 160%; height: 160%;
+    translate: -50% -50%; border-radius: 9999px; z-index: -1; pointer-events: none;
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.35), transparent 70%);
+    filter: blur(10px);
+  }
+  .studio-title-glow {
+    text-shadow:
+      0 0 1px  hsl(0 0% 100% / 0.35),
+      0 0 22px hsl(var(--studio-nebula-blue) / 0.45),
+      0 2px 10px hsl(236 70% 3% / 0.55);
+  }
+  .studio-glass-card {
+    position: relative;
+    border-radius: calc(var(--radius) + 8px);
+    background: hsl(var(--studio-glass-solid) / 0.92);
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    box-shadow:
+      0 24px 60px hsl(236 70% 3% / 0.55),
+      0 2px 8px   hsl(236 70% 3% / 0.40),
+      inset 0 1px 0 hsl(0 0% 100% / 0.10);   /* top inner highlight */
+  }
+  .studio-glass-card::before {                /* fine gradient border (gold→blue whisper) */
+    content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
     pointer-events: none;
-    z-index: 0;
+    background: linear-gradient(135deg,
+      hsl(var(--studio-nebula-gold) / 0.45),
+      hsl(var(--studio-glass-border) / 0.25) 42%,
+      hsl(var(--studio-nebula-blue) / 0.35));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            mask-composite: exclude;
   }
-  .studio-aurora::before {
-    inset: -20% auto auto -10%;
-    width: 40rem;
-    height: 40rem;
-    background: radial-gradient(closest-side, hsl(var(--studio-aurora-1) / 0.45), transparent);
+
+  @keyframes studio-twinkle {
+    0%, 100% { opacity: 0.45; }
+    50%      { opacity: 0.90; }
   }
-  .studio-aurora::after {
-    inset: auto -10% -25% auto;
-    width: 34rem;
-    height: 34rem;
-    background: radial-gradient(closest-side, hsl(var(--studio-aurora-2) / 0.4), transparent);
+  @keyframes studio-drift {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50%      { transform: translate3d(-18px, -12px, 0); }
+  }
+  @keyframes studio-nebula-a {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50%      { transform: translate3d(6%, 4%, 0) scale(1.12); }
+  }
+  @keyframes studio-nebula-b {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50%      { transform: translate3d(-6%, -5%, 0) scale(1.10); }
+  }
+  @keyframes studio-orbit-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* Reduced-motion — freeze every cosmic animation to a still-beautiful frame (§11).
+     Blooms/arc rest at their 0% keyframe (visible, at rest); stars hold a mid-twinkle glow. */
+  @media (prefers-reduced-motion: reduce) {
+    .studio-stars::before,
+    .studio-stars::after,
+    .studio-nebula::before,
+    .studio-nebula::after,
+    .studio-orbit::before {
+      animation: none;
+    }
+    .studio-stars::before { opacity: 0.70; }
+    .studio-stars::after  { transform: none; }
   }
 
   /* Floating animations inspired by Motion.com */

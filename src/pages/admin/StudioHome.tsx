@@ -142,31 +142,38 @@ export default function StudioHome() {
     // and the hero's overflow-hidden then clips the composer, which read as "frozen, no scroll").
     // As a block, the hero + gallery keep their natural height and the page scrolls normally.
     <div className="h-full min-h-0 overflow-y-auto">
-      {/* ── gradient hero: the centered composer (the Lovable "What should we build?" feel).
-          The composer sits in a near-opaque glass card so its text is AA against a solid
-          surface, never the raw gradient (§11). */}
-      <section className="studio-hero studio-aurora relative overflow-hidden px-4 py-10 md:py-12">
-        {/* Soft dark scrim behind the centered text cluster — lifts the translucent eyebrow +
-            subtitle to AA over the gradient without flattening the design (§11). */}
+      {/* ── COSMIC hero: the centered composer floating in a deep night-sky field. The composer
+          sits in a theme-aware glass card so PromptComposer's app-token text stays AA (§11). */}
+      <section className="studio-hero relative overflow-hidden px-4 py-14 md:py-20">
+        {/* Decorative cosmic layers, back → front. All aria-hidden + pointer-events-none,
+            motion-safe (frozen under prefers-reduced-motion). */}
+        <div aria-hidden className="studio-stars" />
+        <div aria-hidden className="studio-nebula" />
+        <div aria-hidden className="studio-orbit" />
+
+        {/* Soft scrim behind the text cluster — deepens the field under the fixed-white copy. */}
         <div
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[320px] w-[min(46rem,92%)] -translate-x-1/2 -translate-y-1/2 rounded-[999px] blur-2xl"
-          style={{ background: "radial-gradient(closest-side, hsl(var(--studio-scrim) / 0.55), transparent)" }}
+          className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[360px] w-[min(48rem,92%)] -translate-x-1/2 -translate-y-1/2 rounded-[999px] blur-3xl"
+          style={{ background: "radial-gradient(closest-side, hsl(var(--studio-scrim) / 0.6), transparent)" }}
         />
+
         <div className="relative z-[1] mx-auto w-full max-w-2xl">
-          <div className="mb-6 flex flex-col items-center gap-2.5 text-center">
-            <PaigeMark className="h-9 w-9" />
-            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
+          <div className="mb-7 flex flex-col items-center gap-3 text-center">
+            <span className="studio-mark-halo inline-flex">
+              <PaigeMark className="h-11 w-11" />
+            </span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/85">
               Vibe Studio
             </span>
-            <h1 className="max-w-xl font-display text-3xl font-semibold leading-[1.1] text-white text-balance md:text-4xl">
+            <h1 className="studio-title-glow max-w-xl font-display text-4xl font-semibold leading-[1.08] text-white text-balance md:text-5xl">
               What do you want to build?
             </h1>
-            <p className="max-w-lg text-sm text-white/75">
+            <p className="max-w-lg text-sm text-white/80 md:text-base">
               Describe it in a sentence — Paige works out the shape and builds it with her team.
             </p>
           </div>
-          <div className="rounded-[calc(var(--radius)+6px)] border border-[hsl(var(--studio-glass-border)/0.5)] bg-[hsl(var(--studio-glass-solid)/0.92)] p-4 shadow-xl backdrop-blur-sm">
+          <div className="studio-glass-card p-4">
             <PromptComposer
               mode="page"
               value={brief}
