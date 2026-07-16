@@ -75,6 +75,12 @@ export function useStudioSessions(
       setSessions((list) => list.map((s) => (s.id === id ? { ...s, starred: next } : s)));
       void setSessionStarred({ tenantId, sessionId: id, starred: next })
         .then((meta) => {
+          // In the "starred" view a just-un-starred card no longer belongs in the grid — drop it
+          // in place so the view stays truthful without waiting for a manual refresh.
+          if (view === "starred" && !meta.starred) {
+            setSessions((list) => list.filter((s) => s.id !== id));
+            return;
+          }
           setSessions((list) => list.map((s) => (s.id === id ? { ...s, starred: meta.starred } : s)));
         })
         .catch(() => {
@@ -82,7 +88,7 @@ export function useStudioSessions(
           setSessions((list) => list.map((s) => (s.id === id ? { ...s, starred: current.starred } : s)));
         });
     },
-    [tenantId, sessions],
+    [tenantId, sessions, view],
   );
 
   return { sessions, loading, error, toggleStar, refresh };

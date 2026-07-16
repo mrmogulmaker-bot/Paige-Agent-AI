@@ -204,7 +204,7 @@ export default function StudioHome() {
               title={isTemplates ? "Starter templates are coming" : "Build your first project"}
               description={
                 isTemplates
-                  ? "Coaching-ready starting points land here soon — for now, describe what you want above and Paige builds it from scratch."
+                  ? "Practice-ready starting points land here soon — for now, describe what you want above and Paige builds it from scratch."
                   : "Nothing here yet. Tell Paige what you want to make above, or start from a blank canvas."
               }
               action={
