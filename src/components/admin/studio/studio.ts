@@ -24,11 +24,34 @@ import type { GrowthAsset, GrowthAssetKind, GrowthBlock, GrowthField, GrowthForm
 import { detectGrowthAssetKind, GROWTH_ASSET_MAX_BYTES } from "@/lib/growth";
 import { GROWTH_BRAND_FLOOR, buildGrowthBrandFloor } from "@/components/growth/growth-theme";
 import { CLARIFYING_QUESTIONS, STUDIO_ERROR_COPY } from "./studio-copy";
-import type { StudioError, StudioErrorCode, StudioSeoDraft } from "./studio-types";
+import type {
+  SessionArtifactKind,
+  SessionArtifactRef,
+  StudioArtifactType,
+  StudioError,
+  StudioErrorCode,
+  StudioSeoDraft,
+  StudioSessionCard,
+  StudioSessionMeta,
+  StudioSessionStatus,
+  StudioSessionView,
+} from "./studio-types";
 
 // StudioShell and useGeneratePage read the error map through the seam, so a caller only ever
 // needs one import to drive an action and speak about its failure.
 export { STUDIO_ERROR_COPY };
+
+// The session types are the seam's contract too — re-exported so a caller imports the function
+// and the shape it returns from ONE place (the same convenience the growth types get).
+export type {
+  SessionArtifactKind,
+  SessionArtifactRef,
+  StudioArtifactType,
+  StudioSessionCard,
+  StudioSessionMeta,
+  StudioSessionStatus,
+  StudioSessionView,
+} from "./studio-types";
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
 // Errors — structured, honest, and safe to show (§11/§13)
@@ -82,6 +105,16 @@ const SEAM_CODES: Record<string, StudioErrorCode> = {
   GROWTH_UNRESOLVED_PLACEHOLDER: "UNRESOLVED_PLACEHOLDER",
   GROWTH_FORM_MISSING: "FORM_MISSING",
   GROWTH_TENANT_MISMATCH: "NOT_FOUND",
+  // Studio sessions seam (Slice 2). The studio_sessions RPCs raise STUDIO_* codes that map onto
+  // the SAME operator-facing outcomes — so a session mutation fails as safely as a page one.
+  STUDIO_FORBIDDEN: "FORBIDDEN",
+  STUDIO_NO_TENANT: "NO_TENANT",
+  STUDIO_NOT_FOUND: "NOT_FOUND",
+  STUDIO_ARTIFACT_NOT_FOUND: "NOT_FOUND",
+  STUDIO_INVALID_TITLE: "SAVE_FAILED",
+  STUDIO_INVALID_STATUS: "SAVE_FAILED",
+  STUDIO_INVALID_KIND: "SAVE_FAILED",
+  STUDIO_INVALID_TRANSCRIPT: "SAVE_FAILED",
 };
 
 function errText(err: unknown): string {
@@ -101,7 +134,7 @@ function errText(err: unknown): string {
  * always preserved on the StudioError and logged.
  */
 const JARGON =
-  /GROWTH_[A-Z_]+|growth_[a-z_]+|supabase|postgrest|pgrst|jsonb|\bRPC\b|\bSQL\b|search_path|auth\.uid|null value|violates|constraint|relation "|function .*\(/i;
+  /GROWTH_[A-Z_]+|STUDIO_[A-Z_]+|growth_[a-z_]+|studio_[a-z_]+|supabase|postgrest|pgrst|jsonb|\bRPC\b|\bSQL\b|search_path|auth\.uid|null value|violates|constraint|relation "|function .*\(/i;
 
 function operatorSafe(message: string): string | null {
   const m = message.trim();
@@ -117,7 +150,7 @@ export function toStudioError(err: unknown, fallback: StudioErrorCode): StudioEr
   }
 
   const raw = errText(err);
-  const match = raw.match(/^\s*(GROWTH_[A-Z_]+)\s*:/);
+  const match = raw.match(/^\s*((?:GROWTH|STUDIO)_[A-Z_]+)\s*:/);
   const code = match ? SEAM_CODES[match[1]] ?? fallback : fallback;
 
   // We keep the real cause — swallowing it would make a production defect undiagnosable (§13).
@@ -1839,4 +1872,359 @@ export function preflightPublish(input: {
       detail: "Give it a web address — letters, numbers and dashes.",
     },
   ];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Sessions — the projects HOME lifecycle (§10 Paige-callable, Slice 2).
+//
+// A studio SESSION (studio_sessions) is one authoring project the operator returns to. This is
+// the seam the gallery, the builder, and Paige all drive: create → list → resume (touch +
+// hydrate) → rename/star/status → link an artifact on save. Every function wraps ONE of the
+// SECURITY DEFINER RPCs through the same rpc<T>() helper the page seam uses; p_tenant_id is
+// always passed null so the server pins a JWT caller to their own tenant (IDOR-safe, §9), while
+// requireTenant() still fails platform staff with no active workspace loudly first.
+//
+// A session never stores artifact CONTENT — only typed refs into growth_*/marketing_content
+// (§18: HOME lists sessions, GrowthHub lists the artifact rows; they never list the same
+// object). copy/image both persist as the 'content' kind; page/form/funnel pass through.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/** The studio_sessions row exactly as the RPCs return it (snake_case, pre-generated-types). */
+interface StudioSessionRow {
+  id: string;
+  tenant_id: string;
+  owner_user_id: string | null;
+  title: string;
+  seed_brief: string | null;
+  status: string;
+  starred: boolean;
+  thumbnail_url: string | null;
+  transcript: unknown;
+  artifact_refs: unknown;
+  is_template: boolean;
+  last_opened_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** studio 'copy'/'image' both persist as the marketing_content 'content' kind; the rest pass
+ *  through. This is the ONE place the mode→manifest mapping lives (§18). */
+const SESSION_KIND_FROM_TYPE: Record<StudioArtifactType, SessionArtifactKind> = {
+  page: "page",
+  form: "form",
+  funnel: "funnel",
+  copy: "content",
+  image: "content",
+};
+
+/** A persisted ref's kind → the studio type used for glyphs. 'content' can't be told apart as
+ *  copy vs image from the row alone, so a thumbnail (marketing_content.image_url) reads as an
+ *  image, otherwise copy — decorative only, never load-bearing. */
+function studioTypeFromRef(ref: SessionArtifactRef): StudioArtifactType {
+  switch (ref.kind) {
+    case "page":
+      return "page";
+    case "form":
+      return "form";
+    case "funnel":
+      return "funnel";
+    case "content":
+    default:
+      return ref.thumbnailUrl ? "image" : "copy";
+  }
+}
+
+const SESSION_ARTIFACT_KINDS: readonly SessionArtifactKind[] = ["page", "form", "funnel", "content"];
+
+/** Narrow one jsonb artifact_refs element into a typed ref, or null if it isn't one — a
+ *  tombstoned/garbled entry is skipped, never thrown on (§13, compliance: tolerate bad refs). */
+function parseArtifactRef(value: unknown): SessionArtifactRef | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const kind = v.kind;
+  const id = v.id;
+  if (typeof id !== "string" || typeof kind !== "string") return null;
+  if (!SESSION_ARTIFACT_KINDS.includes(kind as SessionArtifactKind)) return null;
+  return {
+    kind: kind as SessionArtifactKind,
+    id,
+    title: typeof v.title === "string" ? v.title : "",
+    slug: typeof v.slug === "string" ? v.slug : null,
+    thumbnailUrl: typeof v.thumbnail_url === "string" ? v.thumbnail_url : null,
+    addedAt: typeof v.added_at === "string" ? v.added_at : null,
+  };
+}
+
+function parseArtifactRefs(value: unknown): SessionArtifactRef[] {
+  if (!Array.isArray(value)) return [];
+  return value.map(parseArtifactRef).filter((r): r is SessionArtifactRef => r !== null);
+}
+
+const SESSION_STATUSES: readonly StudioSessionStatus[] = ["draft", "building", "published", "archived"];
+
+function toSessionStatus(value: string): StudioSessionStatus {
+  return (SESSION_STATUSES as readonly string[]).includes(value)
+    ? (value as StudioSessionStatus)
+    : "draft";
+}
+
+/** The one row→meta projection every session function returns through. */
+function rowToSessionMeta(row: StudioSessionRow): StudioSessionMeta {
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    ownerUserId: row.owner_user_id ?? null,
+    title: row.title || "Untitled project",
+    seedBrief: row.seed_brief ?? null,
+    status: toSessionStatus(row.status),
+    starred: !!row.starred,
+    thumbnailUrl: row.thumbnail_url ?? null,
+    isTemplate: !!row.is_template,
+    transcript: Array.isArray(row.transcript) ? row.transcript : [],
+    artifacts: parseArtifactRefs(row.artifact_refs),
+    lastOpenedAt: row.last_opened_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+/** The gallery card projection — the multi-artifact glyph row + cover glyph, computed once. */
+function rowToSessionCard(row: StudioSessionRow): StudioSessionCard {
+  const artifacts = parseArtifactRefs(row.artifact_refs);
+  const kinds: StudioArtifactType[] = [];
+  for (const ref of artifacts) {
+    const t = studioTypeFromRef(ref);
+    if (!kinds.includes(t)) kinds.push(t);
+  }
+  return {
+    id: row.id,
+    title: row.title || "Untitled project",
+    seedBrief: row.seed_brief ?? null,
+    starred: !!row.starred,
+    status: toSessionStatus(row.status),
+    isTemplate: !!row.is_template,
+    thumbnailUrl: row.thumbnail_url ?? null,
+    primaryKind: artifacts.length > 0 ? studioTypeFromRef(artifacts[0]) : null,
+    artifactKinds: kinds,
+    lastEditedAt: row.updated_at,
+  };
+}
+
+/** Spin up a fresh project — the home composer's "new". Persists seed_brief server-side so the
+ *  brief survives a reload (durable resume, §19). Returns the row so the caller routes into the
+ *  builder at /admin/studio/:id. */
+export async function createStudioSession(input: {
+  tenantId: string;
+  title?: string;
+  seedBrief?: string;
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "create_studio_session",
+    {
+      p_title: input.title?.trim() || null,
+      p_seed_brief: input.seedBrief?.trim() || null,
+      p_transcript: [],
+      p_is_template: false,
+      p_tenant_id: null,
+      p_owner_user_id: null,
+    },
+    "SAVE_FAILED",
+  );
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return rowToSessionMeta(row);
+}
+
+/** The gallery feed — one grid under four filter views (recent|mine|starred|templates). */
+export async function listStudioSessions(input: {
+  tenantId: string;
+  view: StudioSessionView;
+  limit?: number;
+}): Promise<StudioSessionCard[]> {
+  requireTenant(input.tenantId);
+  const rows = await rpc<StudioSessionRow[] | null>(
+    "list_studio_sessions",
+    { p_filter: input.view, p_tenant_id: null, p_limit: input.limit ?? 60 },
+    "UNKNOWN",
+  );
+  return (rows ?? []).map(rowToSessionCard);
+}
+
+/** The resumable session payload — the session meta, its manifest, and the hydrated PRIMARY
+ *  artifact (a page, delegated to loadPageDraft — never reimplemented). */
+export interface LoadedSession {
+  session: StudioSessionMeta;
+  artifacts: SessionArtifactRef[];
+  /** The hydrated primary when it is a PAGE; null for a zero-artifact session or a non-page
+   *  primary (v1 hydrates only pages into the canvas; other kinds resolve in a later slice). */
+  primary: LoadedPageDraft | null;
+  primaryType: StudioArtifactType | null;
+}
+
+/**
+ * Open a session in the builder (§10/§19). Stamps recency (touch_studio_session, server-side so
+ * a read can't spoof it) and returns the row, then hydrates the primary artifact by DELEGATING
+ * to loadPageDraft for a page — loadPageDraft stays the artifact-level primitive; loadSession
+ * composes it. A tombstoned/unresolvable primary ref is tolerated (primary stays null, no
+ * throw). Throws NOT_FOUND (hard stop) on a missing/cross-tenant session, exactly like
+ * loadPageDraft, so the builder renders the operator-safe "couldn't find that project" gate.
+ */
+export async function loadSession(input: {
+  tenantId: string;
+  sessionId: string;
+}): Promise<LoadedSession> {
+  const tenantId = requireTenant(input.tenantId);
+  if (!input.sessionId) throw studioError("NOT_FOUND");
+
+  // touch RETURNS the row — recency stamp + read in one guarded call.
+  const row = await rpc<StudioSessionRow | null>(
+    "touch_studio_session",
+    { p_id: input.sessionId, p_tenant_id: null },
+    "NOT_FOUND",
+  );
+  if (!row?.id) throw studioError("NOT_FOUND");
+  const session = rowToSessionMeta(row);
+
+  const primaryRef = session.artifacts[0] ?? null;
+  let primary: LoadedPageDraft | null = null;
+  let primaryType: StudioArtifactType | null = null;
+  if (primaryRef) {
+    primaryType = studioTypeFromRef(primaryRef);
+    if (primaryRef.kind === "page") {
+      try {
+        primary = await loadPageDraft({ tenantId, pageId: primaryRef.id });
+      } catch (err) {
+        // The underlying page was deleted from its library — a tombstoned ref. The session
+        // still opens (to its composer), it just can't hydrate a page that no longer exists.
+        console.warn("[studio] session primary page ref no longer resolvable:", err);
+        primary = null;
+      }
+    }
+  }
+  return { session, artifacts: session.artifacts, primary, primaryType };
+}
+
+/** Standalone recency bump — loadSession also touches; this is the headless/Paige resume path. */
+export async function touchStudioSession(input: {
+  tenantId: string;
+  sessionId: string;
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "touch_studio_session",
+    { p_id: input.sessionId, p_tenant_id: null },
+    "NOT_FOUND",
+  );
+  if (!row?.id) throw studioError("NOT_FOUND");
+  return rowToSessionMeta(row);
+}
+
+/** Retitle the project — called on first artifact save to name it from the real artifact. */
+export async function renameStudioSession(input: {
+  tenantId: string;
+  sessionId: string;
+  title: string;
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "rename_studio_session",
+    { p_id: input.sessionId, p_title: input.title, p_tenant_id: null },
+    "SAVE_FAILED",
+  );
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return rowToSessionMeta(row);
+}
+
+/** Flip the gallery star (owner's per-project flag — NOT a gold act, §11). */
+export async function setSessionStarred(input: {
+  tenantId: string;
+  sessionId: string;
+  starred: boolean;
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "set_studio_session_starred",
+    { p_id: input.sessionId, p_starred: input.starred, p_tenant_id: null },
+    "SAVE_FAILED",
+  );
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return rowToSessionMeta(row);
+}
+
+/** Lifecycle (archive/restore) — the reversible "retire this project" path. */
+export async function setSessionStatus(input: {
+  tenantId: string;
+  sessionId: string;
+  status: StudioSessionStatus;
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "set_studio_session_status",
+    { p_id: input.sessionId, p_status: input.status, p_tenant_id: null },
+    "SAVE_FAILED",
+  );
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return rowToSessionMeta(row);
+}
+
+/** Persist the composer transcript (§19). The RPC ships in v1; per-turn UI wiring is a later
+ *  slice — this exposes the durable seam now so Paige/headless callers can already use it. */
+export async function setSessionTranscript(input: {
+  tenantId: string;
+  sessionId: string;
+  transcript: unknown[];
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "set_studio_session_transcript",
+    { p_id: input.sessionId, p_transcript: input.transcript ?? [], p_tenant_id: null },
+    "SAVE_FAILED",
+  );
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return rowToSessionMeta(row);
+}
+
+/** Attach a saved artifact to the session at SAVE time (idempotent, dedups on kind+id, derives
+ *  the session cover). IDOR-safe server-side (the artifact must live in the same tenant). */
+export async function linkSessionArtifact(input: {
+  tenantId: string;
+  sessionId: string;
+  artifactType: StudioArtifactType;
+  artifactId: string;
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "link_session_artifact",
+    {
+      p_session_id: input.sessionId,
+      p_kind: SESSION_KIND_FROM_TYPE[input.artifactType],
+      p_artifact_id: input.artifactId,
+      p_tenant_id: null,
+    },
+    "SAVE_FAILED",
+  );
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return rowToSessionMeta(row);
+}
+
+/** The ?pageId deep-link shim (blocking #5): returns the caller's existing session wrapping this
+ *  artifact, else mints + links + renames one. Idempotent — repeated "Edit in Studio" clicks
+ *  resolve to the SAME session. Lets legacy deep-links open in the builder, not the gallery. */
+export async function ensureSessionForArtifact(input: {
+  tenantId: string;
+  kind: StudioArtifactType;
+  artifactId: string;
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "ensure_studio_session_for_artifact",
+    {
+      p_kind: SESSION_KIND_FROM_TYPE[input.kind],
+      p_artifact_id: input.artifactId,
+      p_tenant_id: null,
+    },
+    "NOT_FOUND",
+  );
+  if (!row?.id) throw studioError("NOT_FOUND", row);
+  return rowToSessionMeta(row);
 }

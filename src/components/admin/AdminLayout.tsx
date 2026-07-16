@@ -70,9 +70,8 @@ const hubs: Hub[] = [
     children: [
       { label: "All Contacts", href: "/admin/contacts", icon: Contact },
       { label: "Lead Enrichment", href: "/admin/leads/enrichment", icon: Contact },
-      { label: "Client Files (Legacy)", href: "/admin/clients", icon: Users },
     ],
-    aliases: ["/admin/leads", "/admin/clients"],
+    aliases: ["/admin/leads"],
   },
   {
     label: "Pipeline",
@@ -566,9 +565,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
       {/* Main content */}
       <main
         className={`flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] ${
-          // Vibe Studio is an immersive full-bleed workspace (§11 / owner: not "boxed inside
-          // the platform") — it owns its own frame, so the content well drops its padding here.
-          location.pathname === "/admin/studio" || location.pathname.startsWith("/admin/studio/")
+          // Vibe Studio's BUILDER is an immersive full-bleed workspace (§11 / owner: not "boxed
+          // inside the platform") — it owns its own frame, so the content well drops its padding
+          // for /admin/studio/:sessionId (and /new). The bare HOME (/admin/studio) is a padded
+          // PageShell gallery, so it keeps normal admin padding.
+          location.pathname.startsWith("/admin/studio/")
             ? ""
             : "p-3 sm:p-4 md:p-6"
         }`}
