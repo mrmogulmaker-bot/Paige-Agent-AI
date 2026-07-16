@@ -1266,12 +1266,15 @@ export function StudioShell({
     );
   }
 
+  // h-full on PageShell gives the inner h-full a definite parent to resolve against — the
+  // immersive StudioLayout outlet is definite-height, but PageShell's own root is auto-height,
+  // so without this the builder collapsed to StudioFrame's 620px floor with dead space below.
   const wrap = (node: ReactNode) =>
     embedded ? (
       <>{node}</>
     ) : (
-      <PageShell width="full" className={className}>
-        <div className="lg:h-[calc(100dvh-8rem)]">{node}</div>
+      <PageShell width="full" className={cn("h-full min-h-0", className)}>
+        <div className="h-full min-h-0 lg:h-full">{node}</div>
       </PageShell>
     );
 

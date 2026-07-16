@@ -16,11 +16,10 @@ import { Button } from "@/components/ui/button";
 import {
   EmptyState,
   FilterChip,
-  PageHeader,
-  PageShell,
   SectionCard,
   Toolbar,
 } from "@/components/ui/page";
+import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PromptComposer } from "@/components/admin/studio/PromptComposer";
 import { ProjectCard } from "@/components/admin/studio/ProjectCard";
 import { useStudioSessions } from "@/components/admin/studio/useStudioSessions";
@@ -44,9 +43,19 @@ export default function StudioHome() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { activeTenantId } = useTenantContext();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
 
-  const [view, setView] = useState<StudioSessionView>("recent");
+  // The gallery filter lives in the URL (?view=) so the Studio left rail is the single source of
+  // truth for the active view — the rail's links and the on-page chips stay in sync.
+  const view: StudioSessionView = (() => {
+    const v = params.get("view");
+    return v === "mine" || v === "starred" || v === "templates" ? v : "recent";
+  })();
+  const setView = (v: StudioSessionView) => {
+    const p = new URLSearchParams(params);
+    p.set("view", v);
+    setParams(p, { replace: true });
+  };
   const [brief, setBrief] = useState("");
   const [starting, setStarting] = useState(false);
   const { sessions, loading, error, toggleStar } = useStudioSessions(activeTenantId, view);
@@ -115,52 +124,67 @@ export default function StudioHome() {
   // gallery for a beat and then redirect away from it.
   if (shimming) {
     return (
-      <PageShell width="wide">
-        <div className="grid min-h-[60vh] place-items-center">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <Loader2 className="h-6 w-6 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
-            <p className="text-sm text-muted-foreground">Opening your project…</p>
-          </div>
+      <div className="grid h-full min-h-0 place-items-center px-4">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <Loader2 className="h-6 w-6 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
+          <p className="text-sm text-muted-foreground">Opening your project…</p>
         </div>
-      </PageShell>
+      </div>
     );
   }
 
   const isTemplates = view === "templates";
 
+  // StudioLayout owns the immersive frame (its own left rail); the home returns a scrollable
+  // dashboard body: a vibrant gradient hero with the centered composer, then the projects.
   return (
-    <PageShell width="wide">
-      {/* Compact header — NOT a hero banner. A full gradient masthead here just eats a third of
-          the viewport and pushes the projects below the fold; the work leads, the header stays
-          lean (§11 — banners are the exception, not the default). */}
-      <PageHeader
-        eyebrow="Vibe Studio"
-        title="What do you want to build?"
-        description="Start something new below, or pick up a project you've already got going. Paige works out the shape — a page, a form, a funnel, copy, or a whole campaign."
-      />
-
-      {/* The ONE conversational composer — no upfront artifact-type picker (§18). Kept COMPACT
-          (minRows=3) so it's a real starting line, not a wide-open box that buries the gallery. */}
-      <SectionCard>
-        <PromptComposer
-          mode="page"
-          value={brief}
-          onChange={setBrief}
-          onSubmit={(value) => void startSession(value)}
-          heading="Describe it in a sentence"
-          placeholder="e.g. a webinar registration page for my Q3 masterclass, with an intake form and a thank-you."
-          helperText="One sentence is enough to start — Paige asks for anything she needs, then builds it with her team."
-          submitLabel="Start building"
-          busy={starting}
-          busyLabel="Spinning up your session…"
-          chips={STUDIO_HOME_CHIPS}
-          minRows={3}
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+      {/* ── gradient hero: the centered composer (the Lovable "What should we build?" feel).
+          The composer sits in a near-opaque glass card so its text is AA against a solid
+          surface, never the raw gradient (§11). */}
+      <section className="studio-hero studio-aurora relative overflow-hidden px-4 py-14 md:py-20">
+        {/* Soft dark scrim behind the centered text cluster — lifts the translucent eyebrow +
+            subtitle to AA over the gradient without flattening the design (§11). */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[320px] w-[min(46rem,92%)] -translate-x-1/2 -translate-y-1/2 rounded-[999px] blur-2xl"
+          style={{ background: "radial-gradient(closest-side, hsl(var(--studio-scrim) / 0.55), transparent)" }}
         />
-      </SectionCard>
+        <div className="relative z-[1] mx-auto w-full max-w-2xl">
+          <div className="mb-6 flex flex-col items-center gap-2.5 text-center">
+            <PaigeMark className="h-9 w-9" />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">
+              Vibe Studio
+            </span>
+            <h1 className="max-w-xl font-display text-3xl font-semibold leading-[1.1] text-white text-balance md:text-4xl">
+              What do you want to build?
+            </h1>
+            <p className="max-w-lg text-sm text-white/75">
+              Describe it in a sentence — Paige works out the shape and builds it with her team.
+            </p>
+          </div>
+          <div className="rounded-[calc(var(--radius)+6px)] border border-[hsl(var(--studio-glass-border)/0.5)] bg-[hsl(var(--studio-glass-solid)/0.92)] p-4 shadow-xl backdrop-blur-sm">
+            <PromptComposer
+              mode="page"
+              value={brief}
+              onChange={setBrief}
+              onSubmit={(value) => void startSession(value)}
+              heading="Describe it in a sentence"
+              placeholder="e.g. a webinar registration page for my Q3 masterclass, with an intake form and a thank-you."
+              helperText="One sentence is enough to start — Paige asks for anything she needs, then builds it with her team."
+              submitLabel="Start building"
+              busy={starting}
+              busyLabel="Spinning up your session…"
+              chips={STUDIO_HOME_CHIPS}
+              minRows={3}
+            />
+          </div>
+        </div>
+      </section>
 
-      {/* Projects gallery — ONE grid, four filter VIEWS. This is the anchor of the home: what
-          the tenant came back to see (their previous work), kept above the fold. */}
-      <div className="space-y-4">
+      {/* ── projects gallery — ONE grid, four filter VIEWS (mirrors the left rail). The anchor:
+          the tenant's previous work, right under the hero. */}
+      <div className="mx-auto w-full max-w-[90rem] space-y-4 px-4 py-8 md:px-8">
         <h2 className="font-display text-lg font-semibold tracking-tight text-foreground">
           Your projects
         </h2>
@@ -239,6 +263,6 @@ export default function StudioHome() {
           </ul>
         )}
       </div>
-    </PageShell>
+    </div>
   );
 }
