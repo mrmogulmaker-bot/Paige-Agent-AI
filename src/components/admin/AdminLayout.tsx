@@ -254,9 +254,22 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // through the AccountSwitcher's "Agency view" row — it is no longer a tab spliced
   // into the tenant menu. This bar is purely "run this one practice."
   const FUNDING_NAV_HREFS = new Set(["/admin/funding", "/admin/funding-pipeline", "/admin/funding-lens"]);
-  const activeHubs = (godMode ? (isPlatformOwner ? GOD_HUBS : GOD_STAFF_HUBS) : hubs).map((h) =>
-    fundingEnabled ? h : { ...h, children: h.children?.filter((c) => !FUNDING_NAV_HREFS.has(c.href)) }
-  );
+  const activeHubs = (godMode ? (isPlatformOwner ? GOD_HUBS : GOD_STAFF_HUBS) : hubs)
+    .map((h) =>
+      fundingEnabled ? h : { ...h, children: h.children?.filter((c) => !FUNDING_NAV_HREFS.has(c.href)) },
+    )
+    // Collapse a dropdown that no longer earns its caret: once funding surfaces are
+    // filtered out, Pipeline (and any hub) can be left with zero children or a single
+    // child that just points back at the hub's own page. A one-item menu to the same
+    // route is pointless UI — strip `children` so the hub renders as a plain direct
+    // link. Hubs with a genuinely distinct second child (Contacts, Automation, Insights)
+    // keep their dropdown untouched.
+    .map((h) => {
+      const kids = h.children;
+      if (!kids || kids.length === 0) return { ...h, children: undefined };
+      if (kids.length === 1 && kids[0].href === h.href) return { ...h, children: undefined };
+      return h;
+    });
   const canAccessBrokerWorkspace = hasBrokerAccess && !!brokerProfile?.id;
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);

@@ -5,8 +5,10 @@
 // Keeping it a single input is what makes the section edit feel like a continuing
 // conversation instead of a second tool bolted on the side.
 //
-// Gold budget: zero. The submit is indigo (`variant="default"`). Gold is spent only on
-// Publish (§11).
+// Gold budget: the submit is indigo by default (`variant="default"`) — in the builder the act
+// moment is Publish (§11). The Studio HOME is the one exception: it passes `submitVariant="gold"`
+// so its "Start building" is the single gold ACT on that surface, and the cosmic hero's
+// decorative gold reads as secondary to it.
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { FileText, Image as ImageIcon, Loader2, Paperclip, RefreshCw, Send, X } from "lucide-react";
 import type { GrowthAsset, GrowthBlock } from "@/lib/growth";
@@ -68,6 +70,11 @@ export interface PromptComposerProps {
    *  (the builder's roomy brief). The HOME passes a smaller value so the composer stays compact
    *  and the projects gallery stays above the fold (§11 — space is the scarce resource). */
   minRows?: number;
+  /** Variant for the submit button. Defaults to "default" (indigo). The Studio HOME passes
+   *  "gold" so its "Start building" is the ONE gold ACT on that surface (§11 gold discipline —
+   *  the cosmic hero's decorative gold reads as secondary to a single gold act). The in-builder
+   *  composer keeps the default indigo, since Publish is the builder's gold act. */
+  submitVariant?: "default" | "gold";
   className?: string;
 }
 
@@ -101,6 +108,7 @@ export function PromptComposer({
   submitLabel,
   busyLabel,
   minRows,
+  submitVariant = "default",
   className,
 }: PromptComposerProps) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
@@ -286,8 +294,9 @@ export function PromptComposer({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        {/* Indigo, deliberately. The act moment is Publish — not this. */}
-        <Button type="button" variant="default" onClick={submit} disabled={!canSubmit}>
+        {/* Indigo by default (in the builder the act moment is Publish, not this). The Studio
+            HOME overrides to gold so its "Start building" is the single gold ACT on that surface. */}
+        <Button type="button" variant={submitVariant} onClick={submit} disabled={!canSubmit}>
           {busy ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Settings, Filter, TrendingUp, Search, Sparkles } from "lucide-react";
+import { Plus, Settings, Filter, TrendingUp, Search, Sparkles, GripVertical } from "lucide-react";
 import { Deal, Pipeline, PipelineStage, formatMoney, logDealActivity } from "@/lib/pipelines";
 import { useTenantOffers } from "@/hooks/useTenantOffers";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -222,8 +222,15 @@ export default function PipelineAdmin() {
                       draggable
                       onDragStart={(e) => onDragStart(e, d.id)}
                       onClick={() => setSelectedDeal(d)}
-                      className="p-3 cursor-grab active:cursor-grabbing hover:border-primary transition-colors"
+                      className="group relative p-3 pr-6 cursor-grab active:cursor-grabbing hover:border-primary transition-colors"
                     >
+                      {/* Drag affordance — a grip that signals the card is draggable (the whole
+                          card is the drag handle; this just makes it discoverable). Brightens on
+                          hover; decorative, so it never eats the click/drag. */}
+                      <GripVertical
+                        aria-hidden
+                        className="pointer-events-none absolute right-1.5 top-2.5 h-4 w-4 text-muted-foreground/30 transition-colors group-hover:text-muted-foreground/70"
+                      />
                       <div className="font-medium text-sm line-clamp-2">{d.title}</div>
                       {c && <div className="text-xs text-muted-foreground truncate mt-0.5">{c.name}{c.entity ? ` · ${c.entity}` : ""}</div>}
                       {d.offer_type && (
