@@ -231,9 +231,13 @@ best-in-class bar; when in doubt, raise it.
 - **The design crew is mandatory on design work (§1/§5).** Every page/surface carries a
   **design engineer** (builds to the primitives), an **adversarial verifier** (hunts
   gold misuse, contrast, broken states, jargon, regressions), and a **compliance
-  officer** (judges it against best-in-class + §2/§3/§6/§9). The integrator fixes
-  blocking findings before merge. This pass is non-negotiable — it has already caught
-  render bugs that would otherwise have shipped.
+  officer** (judges it against best-in-class + §2/§3/§6/§9 — **and §18: explicitly
+  checks whether this surface fragments or duplicates an existing one**, not just
+  whether it looks polished in isolation). The integrator fixes blocking findings
+  before merge. This pass is non-negotiable — it has already caught render bugs that
+  would otherwise have shipped, and (§18) an entire creation tool built as five
+  redundant silos that no compliance pass ever flagged because each silo shipped in
+  its own session and was only ever judged against itself.
 - **The test, every time:** *"Would the owner call this world-class, and does it read as
   one continuous system with the rest of the platform?"* If not, it isn't done.
 
@@ -310,6 +314,24 @@ not just there.
 - **The test, every time:** *"Does this already live somewhere else on the platform, and if I'm
   building a creation surface, did I just make the human classify their own request before Paige
   heard it?"* If either answer is yes, stop and fix the seam before adding anything new.
+
+**MANDATORY — a real gate, not a reminder (owner: Antonio, 2026-07-16).** A principle that only
+lives in prose gets skipped the same way this one already did once. Before the FIRST line of code
+on any new tab, mode, panel, table, or picker, state — out loud, in the plan or the first message
+of the build — the answers to all four of these, not just believe you checked:
+1. **What existing surfaces did you search?** Name the files/hubs/nav you actually grepped and
+   walked. "I checked" with nothing named means it didn't happen.
+2. **What sibling surfaces already do something adjacent?** List them by name, even the ones you
+   decide NOT to merge with — the point is proving you looked, not that you found nothing.
+3. **Why does this deserve a new home instead of extending one you just named?** If the honest
+   answer is "no reason, it's just faster to bolt on a new one," that is the exact failure mode —
+   stop and extend the existing surface instead.
+4. **If this is a creation surface, where does the type/shape decision get made — a human clicking
+   before they've said anything, or a plan reasoning over what they actually asked for?** If it's
+   the human clicking first, that is a §18 violation on its own, independent of redundancy.
+This four-question gate is part of the design crew's compliance pass (§11) on anything
+design-touching, and part of the plan for anything else — it is not optional paperwork, it is the
+mechanism that makes this section actually stop the mistake instead of just naming it after the fact.
 
 ## 14. Paige herself never works solo — she orchestrates a standing team, always.
 

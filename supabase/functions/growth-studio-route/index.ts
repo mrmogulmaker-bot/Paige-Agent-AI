@@ -1,0 +1,190 @@
+// growth-studio-route — the Studio's single-entry-point classifier (Vibe Studio Phase 1,
+// CLAUDE.md §18: "a creation surface must not force the operator to pre-select an artifact
+// type before describing what they want").
+//
+// One brief in, one cheap judgment out: is the operator asking for a landing/lead PAGE, a
+// standalone FORM (no page around it), marketing COPY (text only — a post, email, ad,
+// caption), or an IMAGE. This is a routing hint, not a generation — the actual draft for
+// whichever artifact wins still runs through its own seam (growth-page-draft,
+// growth-form-draft, content-draft, generate-image). Nothing here writes to the database.
+//
+// ── CONTRACT ────────────────────────────────────────────────────────────────
+// POST (JWT or service-role bearer required)
+//
+//   Request:
+//     { brief: string }   // REQUIRED. >= 5 chars after trim.
+//
+//   200  { artifact: "page"|"form"|"copy"|"image", reasoning: string }
+//        ALWAYS 200 with a real artifact — a model miss or unparseable reply degrades to
+//        "page" (the most capable/flexible fallback) rather than failing the request. A
+//        legitimate brief must never dead-end on a classifier hiccup (§13).
+//   4xx/5xx { error: { code, message } }   // only for genuinely bad input/auth — never for
+//                                          //   "the model didn't answer cleanly."
+//
+//   Error codes:
+//     400 BAD_JSON           request body was not JSON
+//     400 EMPTY_BRIEF        brief missing or shorter than 5 characters
+//     400 INVALID_TENANT_ID  service-role caller passed a malformed tenant_id
+//     401 UNAUTHENTICATED    no / invalid bearer token
+//     403 FORBIDDEN          JWT caller lacks admin, coach or super_admin
+//     500 INTERNAL           anything else — with the real message, never a generic shrug
+//
+// ── SECURITY ─────────────────────────────────────────────────────────────────
+// Same auth boilerplate as growth-page-draft: a JWT caller is role-gated and — though this
+// function reads no tenant-scoped data today — the tenant is still resolved server-side
+// (never trusted from the body) so this function's auth posture never drifts from its
+// siblings if a future revision needs tenant context. Only a service-role bearer (Paige's
+// agent, §10) may name a tenant explicitly.
+//
+// Doctrine:
+//   §14 — cheap, fast tier: this is a "classify" job (model-router.ts CHEAP_KINDS), so it
+//         rides the open-model tier when Featherless is configured, Claude classification
+//         otherwise — never the reasoning tier for a one-word judgment call.
+//   §13 — never fabricate a confident answer past an honest fallback; default to "page" on
+//         any ambiguity or parse failure rather than fail closed on a legitimate brief.
+//   §18 — this is the seam that makes "type first, classify second" possible: the Studio's
+//         one composer stays the single entry point and this is what decides where the
+//         brief lands.
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { routedChatCompletion } from "../_shared/model-router.ts";
+import { extractJson, str } from "../_shared/growth-blocks.ts";
+
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type StudioArtifact = "page" | "form" | "copy" | "image";
+const VALID_ARTIFACTS: readonly StudioArtifact[] = ["page", "form", "copy", "image"];
+
+function isStudioArtifact(v: unknown): v is StudioArtifact {
+  return typeof v === "string" && (VALID_ARTIFACTS as readonly string[]).includes(v);
+}
+
+/** Structured failure. Never a swallowed generic (§13). */
+function fail(status: number, code: string, message: string): Response {
+  return new Response(JSON.stringify({ error: { code, message } }), { status, headers: jsonHeaders });
+}
+function ok(payload: unknown): Response {
+  return new Response(JSON.stringify(payload), { status: 200, headers: jsonHeaders });
+}
+
+/** Same JWT-claims peek growth-page-draft uses — signature already verified upstream by the
+ *  gateway (verify_jwt=true); this only tells us which kind of caller we're looking at. */
+function parseJwtClaims(token: string): Record<string, unknown> | null {
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const payload = parts[1]
+      .replaceAll("-", "+")
+      .replaceAll("_", "/")
+      .padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
+    return JSON.parse(atob(payload)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+const SYSTEM = `You classify a one-sentence creation brief for a client-based service business's marketing studio into exactly ONE of four artifact types:
+
+"page" — a landing/lead page: a registration page, a sales page, a lead-magnet opt-in, a waitlist, an event page. Anything meant to live at its own web address with multiple sections.
+"form" — a standalone form or questionnaire, requested WITHOUT a page around it — an intake form, an application, a survey, a screening questionnaire the operator wants on its own.
+"copy" — marketing text only, not a webpage — a social post, an email, an ad, a caption, a blog outline, an SMS. No page, no form, just words.
+"image" — a single image or graphic — a promo graphic, a social visual, an ad image, a photo-style asset.
+
+Read the brief and decide which ONE the operator is actually asking for. If it's ambiguous, or could plausibly be a page, choose "page" — it's the most capable fallback.
+
+Return ONLY a single JSON object, no prose, no markdown fences:
+{"artifact": "page"|"form"|"copy"|"image", "reasoning": "one short sentence"}`;
+
+serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    // ── 1. Authenticate, and decide which caller this is ─────────────────────
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return fail(401, "UNAUTHENTICATED", "A bearer token is required.");
+    }
+    const token = authHeader.slice("Bearer ".length).trim();
+    const isServiceRole = parseJwtClaims(token)?.role === "service_role";
+
+    // ── 2. Parse + validate the request BEFORE spending a model call ─────────
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return fail(400, "BAD_JSON", "Request body must be JSON.");
+    }
+
+    const brief = str(body?.brief).trim().slice(0, 4000);
+    if (brief.length < 5) {
+      return fail(400, "EMPTY_BRIEF", "Give a brief before Paige can figure out what to build.");
+    }
+
+    // ── 3. Resolve the caller / tenant SERVER-SIDE (same pin as growth-page-draft) ───
+    if (isServiceRole) {
+      const named = str(body?.tenant_id).trim();
+      if (named && !UUID_RE.test(named)) {
+        return fail(400, "INVALID_TENANT_ID", "tenant_id must be a UUID.");
+      }
+    } else {
+      const authed = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: uErr } = await authed.auth.getUser();
+      if (uErr || !user) {
+        return fail(401, "UNAUTHENTICATED", uErr?.message || "Could not verify this session.");
+      }
+
+      const { data: roleRows, error: rErr } = await authed.from("user_roles").select("role").eq("user_id", user.id);
+      if (rErr) {
+        console.error("growth-studio-route: role lookup failed:", rErr);
+        return fail(500, "INTERNAL", `Could not read your roles: ${rErr.message}`);
+      }
+      const roles = (roleRows || []).map((r: any) => r.role);
+      if (!roles.some((r: string) => r === "admin" || r === "super_admin" || r === "coach")) {
+        return fail(403, "FORBIDDEN", "Admin or coach access required.");
+      }
+    }
+
+    // ── 4. Classify — cheap/fast tier, never the reasoning model for this (§14) ──────
+    // Any failure here (router outage, unparseable reply, an artifact value we don't
+    // recognize) degrades to "page" rather than failing the request — a legitimate brief
+    // must never dead-end on a classifier hiccup (§13).
+    let artifact: StudioArtifact = "page";
+    let reasoning = "Defaulted to the page builder.";
+    try {
+      const data = await routedChatCompletion("classify", {
+        messages: [
+          { role: "system", content: SYSTEM },
+          { role: "user", content: `Brief: ${brief}` },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 200,
+      });
+      const raw = str(data?.choices?.[0]?.message?.content);
+      const parsed = extractJson(raw);
+      if (isStudioArtifact(parsed?.artifact)) {
+        artifact = parsed.artifact;
+        reasoning = str(parsed?.reasoning).trim().slice(0, 240) || reasoning;
+      } else {
+        console.warn("growth-studio-route: model returned an unrecognized artifact, defaulting to page:", parsed?.artifact);
+      }
+    } catch (err: any) {
+      console.warn("growth-studio-route: classification failed, defaulting to page:", err?.message);
+    }
+
+    return ok({ artifact, reasoning });
+  } catch (e: any) {
+    console.error("growth-studio-route: unhandled error:", e);
+    return fail(500, "INTERNAL", e?.message || "Failed to classify the brief.");
+  }
+});
