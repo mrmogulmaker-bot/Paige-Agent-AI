@@ -2027,6 +2027,13 @@ function rowToSessionCard(row: StudioSessionRow): StudioSessionCard {
     const t = studioTypeFromRef(ref);
     if (!kinds.includes(t)) kinds.push(t);
   }
+  // Cover resolution (#7): prefer the session's own captured cover, then fall back to the first
+  // artifact ref that carries a real asset (an image/content ref seeds thumbnail_url from
+  // marketing_content.image_url; a page ref can carry a preview). `find` walks refs in order, so
+  // the PRIMARY ref (artifacts[0]) wins, then any later ref — the projection no longer drops a
+  // real image on the floor and renders a glyph over it. Genuinely-empty sessions stay null and
+  // get the premium branded placeholder in ProjectCard.
+  const coverFromRef = artifacts.find((a) => a.thumbnailUrl)?.thumbnailUrl ?? null;
   return {
     id: row.id,
     title: row.title || "Untitled project",
@@ -2034,7 +2041,7 @@ function rowToSessionCard(row: StudioSessionRow): StudioSessionCard {
     starred: !!row.starred,
     status: toSessionStatus(row.status),
     isTemplate: !!row.is_template,
-    thumbnailUrl: row.thumbnail_url ?? null,
+    thumbnailUrl: row.thumbnail_url ?? coverFromRef,
     primaryKind: artifacts.length > 0 ? studioTypeFromRef(artifacts[0]) : null,
     artifactKinds: kinds,
     lastEditedAt: row.updated_at,
