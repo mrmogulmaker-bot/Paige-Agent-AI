@@ -19,6 +19,58 @@ const SECTION = "px-6 md:px-10 py-16 md:py-24";
 const WRAP = "mx-auto w-full max-w-6xl";
 const WRAP_NARROW = "mx-auto w-full max-w-3xl";
 
+// ── section rhythm (§11) — a page must not render as one flat brand color head-to-toe. Each
+// block gets a background BAND; its wrapper rebinds the base --gp-* vars to that band's set, so
+// every block body re-themes with ZERO per-block changes. Adjacent bands never repeat, so a real
+// color break always falls between sections. `--gp-accent`/`--gp-primary` are never rebound, so
+// gold stays emphasis-only and the hero scrim stays constant.
+type GpBand = "brand" | "contrast" | "deep";
+
+const BAND_CYCLE: GpBand[] = ["brand", "contrast", "deep", "contrast"];
+
+function assignBands(blocks: GrowthBlock[]): GpBand[] {
+  const out: GpBand[] = [];
+  let contentIdx = 0;
+  let prev: GpBand | null = null;
+  for (const b of blocks) {
+    let band: GpBand;
+    if (b.type === "hero") band = "brand"; // the hero owns the brand tone (it has its own scrim)
+    else if (b.type === "stats") band = "deep"; // a proof band reads best as a dark strip
+    else {
+      band = BAND_CYCLE[contentIdx % BAND_CYCLE.length];
+      contentIdx++;
+    }
+    if (band === prev) band = band === "contrast" ? "brand" : "contrast"; // never two same tones touching
+    out.push(band);
+    prev = band;
+  }
+  return out;
+}
+
+/** Per-band wrapper style that rebinds the base --gp-* to the band's set. `brand` inherits the
+ *  scope (no override, transparent). */
+function bandStyle(band: GpBand | undefined): React.CSSProperties {
+  if (band === "contrast")
+    return {
+      background: "var(--gp-contrast-bg)",
+      ["--gp-bg" as string]: "var(--gp-contrast-bg)",
+      ["--gp-text" as string]: "var(--gp-contrast-text)",
+      ["--gp-muted" as string]: "var(--gp-contrast-muted)",
+      ["--gp-accent-ink" as string]: "var(--gp-contrast-accent-ink)",
+      ["--gp-surface" as string]: "var(--gp-contrast-surface)",
+    } as React.CSSProperties;
+  if (band === "deep")
+    return {
+      background: "var(--gp-deep-bg)",
+      ["--gp-bg" as string]: "var(--gp-deep-bg)",
+      ["--gp-text" as string]: "var(--gp-deep-text)",
+      ["--gp-muted" as string]: "var(--gp-deep-muted)",
+      ["--gp-accent-ink" as string]: "var(--gp-deep-accent-ink)",
+      ["--gp-surface" as string]: "var(--gp-deep-surface)",
+    } as React.CSSProperties;
+  return {};
+}
+
 // Hairline border / raised surface, both derived from theme tokens (no opacity guesswork).
 const hairline = "1px solid color-mix(in srgb, var(--gp-text) 14%, transparent)";
 const cardStyle: React.CSSProperties = {
@@ -849,10 +901,12 @@ export function GrowthBlocks({ blocks, theme, brandFloor, tenantId, children, cl
     minHeight: "100dvh",
   } as React.CSSProperties;
 
+  const bands = useMemo(() => assignBands(blocks ?? []), [blocks]);
+
   return (
     <div className={className} style={scopeStyle}>
       {(blocks ?? []).map((block, i) => (
-        <div key={i} className={GP_FADE_RISE} style={fadeRiseStyle(i)}>
+        <div key={i} className={GP_FADE_RISE} style={{ ...fadeRiseStyle(i), ...bandStyle(bands[i]) }}>
           <BlockRenderer block={block} tenantId={tenantId} />
         </div>
       ))}

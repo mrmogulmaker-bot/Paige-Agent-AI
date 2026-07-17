@@ -171,6 +171,29 @@ export function resolveGrowthTheme(theme?: GrowthPageTheme | null, brandFloor?: 
   // border, both derived — components never invent their own opacity hacks.
   const muted = clampToContrast(mix(text, bg, 0.32), bg, 3);
 
+  // ── Band variants (§11 rhythm): three section tones so a page is never one flat brand color
+  // head-to-toe. A section wrapper REBINDS the base --gp-* vars to one of these sets, so every
+  // block body (which only ever reads --gp-*) re-themes automatically — zero per-block changes,
+  // all AA-clamped by the same helpers used above.
+  const bgIsDark = luminance(bg) <= 0.5;
+
+  // DEEP band — a darker brand tone anchored on PRIMARY (not bg) so it is genuinely dark even
+  // when a tenant picks a pale primary. Light ink; gold numbers/eyebrows glow on it.
+  const deepBg = mix(primary, BLACK, 0.3);
+  const deepText = inkOn(deepBg);
+  const deepMuted = clampToContrast(mix(deepText, deepBg, 0.32), deepBg, 3);
+  const deepAccentInk = clampToContrast(accent, deepBg, 4.5);
+  const deepSurface = mix(deepBg, deepText, 0.08);
+
+  // CONTRAST band — the OPPOSITE luminance pole from bg. On the common dark brand it is a
+  // near-white panel (cards pop, dark ink); on a pale brand it falls back to the deep tone so it
+  // still contrasts. The single biggest rhythm lever.
+  const contrastBg = bgIsDark ? mix(WHITE, primary, 0.05) : deepBg;
+  const contrastText = inkOn(contrastBg);
+  const contrastMuted = clampToContrast(mix(contrastText, contrastBg, 0.35), contrastBg, 3);
+  const contrastAccentInk = clampToContrast(accent, contrastBg, 4.5);
+  const contrastSurface = mix(contrastBg, contrastText, 0.05);
+
   return {
     "--gp-primary": toHex(primary),
     "--gp-accent": toHex(accent),
@@ -182,5 +205,16 @@ export function resolveGrowthTheme(theme?: GrowthPageTheme | null, brandFloor?: 
     "--gp-primary-foreground": toHex(primaryForeground),
     "--gp-accent-ink": toHex(accentInk),
     "--gp-font": safeFont(t.font) || GROWTH_BRAND_FLOOR.font,
+    // Band variants — a section wrapper rebinds the base --gp-* to one of these for rhythm.
+    "--gp-deep-bg": toHex(deepBg),
+    "--gp-deep-text": toHex(deepText),
+    "--gp-deep-muted": toHex(deepMuted),
+    "--gp-deep-accent-ink": toHex(deepAccentInk),
+    "--gp-deep-surface": toHex(deepSurface),
+    "--gp-contrast-bg": toHex(contrastBg),
+    "--gp-contrast-text": toHex(contrastText),
+    "--gp-contrast-muted": toHex(contrastMuted),
+    "--gp-contrast-accent-ink": toHex(contrastAccentInk),
+    "--gp-contrast-surface": toHex(contrastSurface),
   };
 }
