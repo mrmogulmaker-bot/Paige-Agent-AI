@@ -66,7 +66,10 @@ export function StudioSplit({
       <div
         ref={railRef}
         className={cn(
-          "relative z-10 flex flex-col border-b border-border/60 bg-gradient-to-b from-card to-background",
+          // The conversation rail is a LIT indigo glass column (was platform card→background,
+          // two near-neutral grays) — a soft top→deeper gradient off the committed studio rail
+          // tokens so it reads as a saturated panel, not a flat gray box (§6/§11).
+          "relative z-10 flex flex-col border-b border-[hsl(var(--studio-chrome-border)/0.5)] bg-gradient-to-b from-[hsl(var(--studio-rail-solid))] to-[hsl(var(--studio-canvas))]",
           "lg:min-h-0 lg:shrink-0 lg:border-b-0",
           "transition-[width] duration-300 ease-in-out motion-reduce:transition-none",
           // Immersive first build: at lg+ the rail width animates 380→0; below lg the stacked rail
@@ -74,10 +77,10 @@ export function StudioSplit({
           // reflows to fill as the rail retracts — it needs no transition of its own.
           immersive
             ? "overflow-hidden max-lg:hidden lg:w-0 lg:border-r-0"
-            : "lg:w-[380px] lg:border-r lg:shadow-[4px_0_16px_-12px_hsl(var(--shadow-ink)/0.16)]",
+            : "lg:w-[380px] lg:border-r lg:border-[hsl(var(--studio-chrome-border)/0.5)] lg:shadow-[4px_0_16px_-12px_hsl(var(--shadow-ink)/0.16)]",
         )}
       >
-        {railHeader && <div className="shrink-0 border-b border-border/60 px-4 py-3">{railHeader}</div>}
+        {railHeader && <div className="shrink-0 border-b border-[hsl(var(--studio-chrome-border)/0.5)] px-4 py-3">{railHeader}</div>}
         <div className="space-y-4 px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">{railBody}</div>
         {railFooter && (
           // The pinned composer dock sits at the bottom — an upward shadow says so instead of a
@@ -87,7 +90,10 @@ export function StudioSplit({
           // unit and the send button never leaves the frame (the bug that made it feel like an
           // "isolated box scrolling up and down"). The conversation/canvas above is the scroll
           // region; this stays put — the Lovable/v0 dock pattern.
-          <div className="shrink-0 border-t border-border/60 bg-background px-4 py-3 shadow-[0_-6px_16px_-10px_hsl(var(--shadow-ink)/0.18)]">
+          // The pinned composer dock lifts a step above the rail (its own --studio-dock tone, a
+          // notch lighter + more saturated than the rail) so the primary input reads RAISED —
+          // the Lovable/v0 lit dock, not a gray shelf. Indigo tint, never gold (§11).
+          <div className="shrink-0 border-t border-[hsl(var(--studio-chrome-border)/0.5)] bg-[hsl(var(--studio-dock))] px-4 py-3 shadow-[0_-6px_16px_-10px_hsl(var(--shadow-ink)/0.18)]">
             {railFooter}
           </div>
         )}

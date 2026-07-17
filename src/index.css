@@ -163,21 +163,34 @@ All colors MUST be HSL.
        must use fixed ink, never a theme-flipping token — §11). */
     --studio-ink: 236 70% 3%;
 
-    /* Glass composer card + rail — THEME-AWARE (light-theme values here). The card sits a step
-       BELOW --card (100% L light) so PromptComposer's bg-card input lifts above the glass and its
-       shadow casts (the input must read as raised, §11). */
-    --studio-glass-bg:     0 0% 100%;
-    --studio-glass-border: 220 40% 82%;
-    --studio-glass-solid:  222 30% 96%;
-    --studio-rail-bg:      222 42% 98%;
+    /* Glass composer card + rail — THEME-AWARE (light-theme values here). Retuned OFF the old
+       cool-gray onto the indigo/violet BRAND spectrum (§6/§11 — the "stop the gray" fix): the
+       light-variant chrome is a soft INDIGO-tinted panel, never platform white/gray. The card
+       sits a step below --card so PromptComposer's input still lifts and its shadow casts. */
+    --studio-glass-bg:     240 44% 99%;
+    --studio-glass-border: 248 45% 80%;   /* indigo edge, was gray-blue 220 40% 82% */
+    --studio-glass-solid:  236 40% 93%;   /* soft indigo panel, was pale gray 222 30% 96% */
+    --studio-rail-bg:      240 40% 97%;   /* soft indigo rail, was near-white 222 42% 98% */
     --studio-on-hero:      0 0% 100%;
     --studio-scrim:        236 60% 4%;
 
+    /* Committed CHROME family — the working session's frame/masthead/rail/dock/canvas. Light
+       variant here is a soft indigo tint (the opt-in light session), the deep-indigo default
+       lives in the dark block. Repointing the chrome components off platform neutrals
+       (bg-card/bg-muted/bg-background/border-border) onto THESE is what kills the admin-gray
+       throughout the session (§6/§11 — token-first, one continuous system). */
+    --studio-canvas:        234 34% 94%;  /* base slab the session floats on */
+    --studio-topbar-from:   240 42% 98%;  /* masthead lit top */
+    --studio-topbar-to:     234 32% 94%;  /* masthead bottom → meets the canvas */
+    --studio-rail-solid:    240 38% 96%;  /* the conversation rail column */
+    --studio-dock:          240 46% 99%;  /* the pinned composer dock — a step above the rail */
+    --studio-chrome-border: 246 36% 84%;  /* indigo region seams, never gray */
+
     /* Drafting WELL — the recessed surface the rendered page floats on (the Lovable/v0 preview
-       pane, not a wireframe grid). Light values: a soft cool gray a step BELOW --card (white)
-       so the page card lifts and casts. `well-glow` is the top-light that gives the recess its
+       pane, not a wireframe grid). Light values: a soft indigo-tinted step below the canvas so
+       the page card lifts and casts. `well-glow` is the top-light that gives the recess its
        lit lip. */
-    --studio-well:      224 26% 90%;
+    --studio-well:      232 30% 90%;
     --studio-well-glow:   0  0% 100%;
   }
 
@@ -191,13 +204,27 @@ All colors MUST be HSL.
      are already dark and inherited unchanged). */
   .dark .studio-surface,
   .studio-surface .dark {
-    --studio-glass-bg:     222 40% 12%;
-    --studio-glass-border: 220 30% 30%;
-    /* A step BELOW the dark --card (~8% L) so the bg-card composer input sits ABOVE the glass
-       and its shadow-sm registers (previously 9% — lighter than --card — sank the input). */
-    --studio-glass-solid:  230 38% 6%;
-    --studio-rail-bg:      234 44% 7%;
+    /* The DEFAULT working session (studioDark defaults on). Retuned from flat near-black grays
+       to a LIT, saturated indigo — Lovable/Linear/Replit-grade deep-indigo glass, not an unlit
+       CRUD slab. Every value carries real chroma (44-46% sat) and enough lightness to read as a
+       panel LIFTED off the field, so the nebula bloom bleeds through and the surface feels alive. */
+    --studio-glass-bg:     236 44% 14%;   /* was 222 40% 12% */
+    --studio-glass-border: 248 44% 34%;   /* indigo rim, was gray 220 30% 30% */
+    /* Lit indigo composer face (was a dead flat 230 38% 6% near-black) — the .studio-glass-card
+       fill alpha is dropped below so the cosmic nebula bleeds THROUGH this onto the face. */
+    --studio-glass-solid:  234 46% 14%;
+    --studio-rail-bg:      236 44% 8%;     /* warmed toward indigo, was 234 44% 7% */
     --studio-scrim:        236 60% 3%;
+
+    /* Committed CHROME family — the deep indigo-black default room. Canvas is the base slab
+       (6% L), rail lifts a step off it (9%), the dock lifts again (13%) so the primary input
+       reads raised, the masthead is a lit top→canvas gradient, and every seam is INDIGO. */
+    --studio-canvas:        240 46% 6%;
+    --studio-topbar-from:   242 44% 12%;
+    --studio-topbar-to:     238 46% 8%;
+    --studio-rail-solid:    238 42% 9%;
+    --studio-dock:          242 42% 13%;
+    --studio-chrome-border: 248 42% 30%;
   }
 
   /* The drafting WELL flips for a DARK studio in two distinct ways, so it carries BOTH selectors:
@@ -210,8 +237,8 @@ All colors MUST be HSL.
      (declared once on `.studio-surface`) and needs no dark variant — it is the shadow ink. */
   .dark .studio-surface,
   .studio-surface .dark {
-    --studio-well:      235 42% 6%;
-    --studio-well-glow: 240 45% 14%;
+    --studio-well:      236 44% 6%;   /* deeper indigo saturation, was 235 42% 6% */
+    --studio-well-glow: 246 55% 16%;  /* lifted lit lip — a glowing stage, was 240 45% 14% */
   }
 }
 
@@ -333,6 +360,9 @@ All colors MUST be HSL.
     background-color: hsl(var(--studio-well));
     background-image:
       radial-gradient(120% 80% at 50% 0%, hsl(var(--studio-well-glow) / 0.55), transparent 60%),
+      /* soft violet/blue ambient bloom behind the artifact — the Lovable preview-pane "glowing
+         stage" feel. Static background-image, so it's motion-safe by construction. */
+      radial-gradient(70% 55% at 50% 40%, hsl(var(--studio-nebula-indigo) / 0.10), transparent 72%),
       radial-gradient(100% 100% at 50% 120%, hsl(var(--studio-ink) / 0.5), transparent 55%);
   }
 
@@ -435,22 +465,34 @@ All colors MUST be HSL.
   }
   .studio-glass-card {
     position: relative;
-    border-radius: calc(var(--radius) + 8px);
-    background: hsl(var(--studio-glass-solid) / 0.92);
-    backdrop-filter: blur(12px) saturate(120%);
-    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    /* +16px (28px) — a modern, unmistakably-rounded creative-studio radius at this mass
+       (was +8px/20px, which read square against the slab). */
+    border-radius: calc(var(--radius) + 16px);
+    /* 0.76 alpha (was 0.92) + saturate(140%) — the fill is now translucent enough that the
+       saturated cosmic nebula bleeds THROUGH the glass onto the face, so the surface carries
+       real indigo/violet BRAND color instead of a flat gray slab (§11 — color from the cosmos,
+       never gold on a resting surface). */
+    background: hsl(var(--studio-glass-solid) / 0.76);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    /* Elevation now carries a COLORED indigo ambient bloom (the reference-studio "floating on a
+       violet glow") alongside the neutral ink drop — the card reads lifted and alive, not flat.
+       Indigo glow, not gold (§11). Static, so no reduced-motion concern. */
     box-shadow:
-      0 24px 60px hsl(236 70% 3% / 0.55),
-      0 2px 8px   hsl(236 70% 3% / 0.40),
+      0 30px 80px -20px hsl(var(--studio-nebula-indigo) / 0.35),
+      0 24px 60px hsl(236 70% 3% / 0.50),
+      0 2px 8px   hsl(236 70% 3% / 0.38),
       inset 0 1px 0 hsl(0 0% 100% / 0.10);   /* top inner highlight */
   }
-  .studio-glass-card::before {                /* fine gradient border (gold→blue whisper) */
-    content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+  .studio-glass-card::before {                /* lit brand rim — indigo→blue, zero gold (§11) */
+    content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px;
     pointer-events: none;
+    /* §11 gold discipline: gold is NEVER spent on a resting border — the rim is pure brand
+       indigo→blue. Gold lives only on the act (Publish / Start building / New project). */
     background: linear-gradient(135deg,
-      hsl(var(--studio-nebula-gold) / 0.45),
-      hsl(var(--studio-glass-border) / 0.25) 42%,
-      hsl(var(--studio-nebula-blue) / 0.35));
+      hsl(var(--studio-nebula-indigo) / 0.55),
+      hsl(var(--studio-nebula-blue) / 0.40) 55%,
+      hsl(var(--studio-nebula-indigo) / 0.22));
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
             mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);

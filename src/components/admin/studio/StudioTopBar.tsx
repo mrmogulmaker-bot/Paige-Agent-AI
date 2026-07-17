@@ -19,56 +19,38 @@
 // only ever flip the literal `dark` class on StudioFrame's own root div — nothing outside
 // this component tree is touched, in either direction.
 //
-// MODE STRIP (§18): this used to render all five modes as a permanent, equal-weight tab row
-// — the exact "pick a type before Paige has heard the brief" gate §18 exists to forbid. It's
-// now driven entirely by `visibleModes`, computed in StudioShell from REAL content per mode
-// (never just "this mode was mounted"). A fresh session passes an EMPTY array — no strip at
-// all — and the row only reappears once there's a genuine second destination to switch to.
-// Funnel is NOT in that array and has NO button here (§18/§19): an AI funnel now builds and
-// renders inside the page surface, reached only conversationally or via the funnel intent
-// (mode="funnel"); when one is active its gold act (`funnelActive`) replaces the page acts.
+// NO MODE STRIP (§18/§21): there is no artifact-type row in this bar at all — not an upfront
+// picker, and not a content-derived "switch what you built" tab row either. This used to render
+// the five modes as tabs; that was the exact "pick a type before Paige has heard the brief" gate
+// §18 forbids, and §21 (owner 2026-07-17) made it explicit: everything a tenant makes streams in
+// ONE session, the persistent navigator is the project rail (ProjectNavigator, which lists
+// artifacts by NAME — navigation, never a type-picker), and the brief + Paige's classifier are the
+// ONLY thing that picks a type. A tenant never clicks a type; they describe what they want and the
+// classifier routes it — including PIVOTING mid-session ("now write the launch email" → copy).
+// Funnel likewise has no button (§18/§19): an AI funnel builds inside the page surface, reached
+// only conversationally; when one is active its gold act (`funnelActive`) replaces the page acts.
 import {
-  FileText,
-  GitBranch,
-  Image as ImageIcon,
-  LayoutGrid,
   Library,
   Loader2,
   Monitor,
   Moon,
-  PenLine,
   Smartphone,
   Sun,
   Wand2,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FilterChip, GlyphPlate, StatePill } from "@/components/ui/page";
 import { cn } from "@/lib/utils";
-import { MODE_LABELS } from "./studio-copy";
 import {
   type DeviceFrame,
   type ModeToolbarState,
   type StudioMode,
 } from "./studio-types";
 
-const MODE_ICONS: Record<StudioMode, LucideIcon> = {
-  page: LayoutGrid,
-  funnel: GitBranch,
-  form: FileText,
-  copy: PenLine,
-  image: ImageIcon,
-};
-
 export interface StudioTopBarProps {
   mode: StudioMode;
-  onModeChange: (mode: StudioMode) => void;
-  /** Which of page/form/copy/image have earned a real tab this session (StudioShell decides —
-   *  see its "the mode-tab strip" block). Never includes "funnel" — that has its own ghost
-   *  button below, always available regardless of content. Empty = render no strip at all. */
-  visibleModes: readonly StudioMode[];
   /** Studio-LOCAL dark/light (StudioShell's own state, StudioFrame's own `dark` class) — never
    *  the platform's next-themes. See the doc comment above for why this isn't `ThemeToggle`. */
   studioDark: boolean;
@@ -110,8 +92,6 @@ export interface StudioTopBarProps {
 
 export function StudioTopBar({
   mode,
-  onModeChange,
-  visibleModes,
   studioDark,
   onToggleStudioTheme,
   title,
@@ -151,11 +131,12 @@ export function StudioTopBar({
         // rail/canvas below it, and non-positioned siblings paint in tree order — without a
         // stacking context ahead of them, the rail/canvas's own opaque backgrounds (painted
         // later) would silently cover this shadow's downward bleed, making it a no-op.
-        // bg-gradient-to-b from-card to-muted/20: the masthead is a top-lit tonal wash, and
-        // its bottom stop (to-muted/20) lands on the EXACT tone the canvas well opens with
-        // (StudioChrome's from-muted/20), so masthead → working surface reads as one continuous
-        // machined surface instead of two flat panels stacked with a shadow between (§6/§11).
-        "relative z-10 flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border/60 bg-gradient-to-b from-card to-muted/20 px-3 py-2 shadow-sm md:px-4",
+        // The masthead is a LIT indigo tonal wash (was platform card→muted, two desaturated
+        // grays — the exact "lifeless gray toolbar" tell). Its top stop is a lifted indigo glass
+        // (--studio-topbar-from) and its bottom stop (--studio-topbar-to) lands on the canvas
+        // tone, so masthead → rail/well reads as one continuous machined indigo surface, not two
+        // flat panels stacked with a shadow between (§6/§11). Publish stays gold — untouched.
+        "relative z-10 flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-[hsl(var(--studio-chrome-border)/0.5)] bg-gradient-to-b from-[hsl(var(--studio-topbar-from))] to-[hsl(var(--studio-topbar-to))] px-3 py-2 shadow-sm md:px-4",
         className,
       )}
     >
@@ -173,22 +154,11 @@ export function StudioTopBar({
             Beta
           </Badge>
         </div>
-        {/* A fresh session — nothing generated, drafted, or saved yet — renders NOTHING here:
-            one composer, no picker. The strip earns its place back one real tab at a time as
-            `visibleModes` grows (StudioShell owns that call). Never framed as "pick a type." */}
-        {visibleModes.length > 0 && (
-          <div role="group" aria-label="Switch what you've built this session" className="flex flex-wrap items-center gap-1">
-            {visibleModes.map((m) => {
-              const Icon = MODE_ICONS[m];
-              return (
-                <FilterChip key={m} active={mode === m} onClick={() => onModeChange(m)}>
-                  <Icon className="h-3.5 w-3.5" aria-hidden />
-                  {MODE_LABELS[m]}
-                </FilterChip>
-              );
-            })}
-          </div>
-        )}
+        {/* §21 (owner 2026-07-17): there is NO artifact-type strip here — not an upfront picker,
+            and not a "switch what you built" type-tab row either. Everything a tenant makes streams
+            inside this ONE session; the persistent navigator is the project rail (ProjectNavigator),
+            which lists the session's artifacts by NAME — navigation, never a type-picker. A tenant
+            never clicks a type; they describe what they want and the classifier routes it. */}
 
         {/* No funnel tab/button here by design (§18/§19): a funnel is born from the ONE composer
             like every other artifact — the classifier routes it, it renders in the page surface,
