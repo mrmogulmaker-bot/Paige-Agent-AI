@@ -298,13 +298,15 @@ export default function StudioHome() {
               what remains is exactly the act: example bubbles → a slim field → the gold ↑ send. The
               card follows the Studio theme (no forced `dark`) — see the block below. */}
           <motion.div
-            className="mx-auto w-full max-w-sm"
+            className="mx-auto w-full max-w-xl"
             initial={reduce ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 220, damping: 26, mass: 0.9 }}
           >
-            {/* One tight command bar that IS the hero (§22): a slim, LONG horizontal bar (max-w-sm,
-                p-1) — §311 (d): "longer and slimmer, not taller". The card now follows the Studio
+            {/* One tight command bar that IS the hero (§22): a slim, LONG horizontal bar as WIDE as
+                the H1 "What do you want to build?" (max-w-xl, end-to-end symmetric), 1-row rest that
+                WRAPS/grows as you type (owner: "slimmer and wider, not taller"). The card follows the
+                Studio
                 theme (no forced `dark`): in LIGHT it's a bright frosted glass panel with a WHITE input
                 and dark text; in DARK a deep indigo glass — flipping unmistakably with the toggle
                 (§311 (b)). The ONE gold on HOME is the circular ↑ send — the act moment (§11) — via
@@ -317,7 +319,7 @@ export default function StudioHome() {
                 value={brief}
                 onChange={setBrief}
                 onSubmit={(value) => void startSession(value)}
-                placeholder="e.g. a webinar registration page for my Q3 masterclass, with an intake form and a thank-you."
+                placeholder="e.g. a registration page for my Q3 masterclass, with an intake form…"
                 helperText=""
                 submitLabel="Start building"
                 submitVariant="gold"

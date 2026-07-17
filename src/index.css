@@ -176,9 +176,12 @@ All colors MUST be HSL.
     --studio-rail-bg:      240 44% 98%;   /* rail column — a clean step up off the canvas */
     --studio-on-hero:      0 0% 100%;
     --studio-scrim:        236 60% 4%;
-    /* Composer INPUT field (§311 (b)) — the "middle of the chat box". Light = a WHITE/near-white
-       field the dark text sits on; dark variant below is a raised, lighter-than-canvas well. */
+    /* Composer INPUT field — the "middle of the chat box". It stays a LIGHT, readable field in BOTH
+       themes (owner 2026-07-17: the chat area stays light so people can always SEE their input, incl.
+       Wispr Flow voice) — only the frame/card around it goes dark. Text is the always-dark
+       --studio-input-fg, so it's dark-on-light in light AND dark mode. */
     --studio-input:        240 44% 99.5%;
+    --studio-input-fg:     222 87% 12%;
 
     /* Committed CHROME family — the working session's frame/masthead/rail/dock/canvas. Light
        variant here is a soft indigo tint (the opt-in light session), the deep-indigo default
@@ -246,9 +249,12 @@ All colors MUST be HSL.
     --studio-glass-solid:  234 46% 14%;
     --studio-rail-bg:      236 44% 7.5%;
     --studio-scrim:        236 60% 3%;
-    /* Composer INPUT field (§311 (b)) — raised ABOVE the dock (14%) so the field reads as the lit
-       focal well, never dark-text-on-dark (the text is the light --foreground). */
-    --studio-input:        238 40% 18%;
+    /* Composer INPUT field — STAYS LIGHT even in dark mode (owner 2026-07-17): the frame/card goes
+       dark, but the text-entry well stays a soft near-white so the user always sees their input
+       (esp. Wispr Flow voice). A touch off pure-white so it reads as a lit field, not a glare. Text
+       is the always-dark --studio-input-fg, so it's dark-on-light in dark mode too. */
+    --studio-input:        238 32% 96%;
+    --studio-input-fg:     222 87% 12%;
 
     /* Committed CHROME family — the deep indigo-black room, a real base→raised elevation stack:
        canvas base (5.5% L) → rail (9%) → dock (14%, the raised input shelf) → masthead lit
