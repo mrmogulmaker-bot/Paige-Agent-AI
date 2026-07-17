@@ -437,6 +437,43 @@ piece of this as a reason for the tenant to go somewhere else.
   without ever leaving this session?"* If any piece still requires leaving Studio, or any
   artifact type is permanently weaker than the others, it isn't done.
 
+## 21. ONE session per project — everything streams inside it, no artifact-type tabs.
+
+**Directive (owner: Antonio, 2026-07-17).** Everything that comes out of the Vibe Studio
+streams inside **the same single session**. You start a session from the dashboard → you see
+the rendering → it opens the actual studio session, and **inside that session there is no
+option for "page" or "copy" or any other artifact type.** The owner's words, said three times
+in a row until it landed: *"we don't need a separate button to make copy… there's not a single
+Vibe Studio that has this button"* · *"everything that comes out of the Vibe Studio all gets
+streamed inside of the same studio. We don't have extra tabs… Inside of that session, there
+doesn't need to be an option for page or copy or anything else"* · *"we don't build those as
+separate tabs inside of the Vibe session. It's literally inside of the one session. Stop
+confusing people with all these multiple tabs. Nobody does that."*
+
+- **No artifact-type tab strip. At all.** Not an upfront picker (§18 already forbids that), and
+  not a "switch what you've built" type-tab row either — no Page/Copy/Form/Image/Funnel tabs
+  anywhere in the session chrome. A tenant never clicks a type; they describe what they want and
+  Paige's classifier routes it. The one persistent navigator is the **project rail**
+  (`ProjectNavigator`) — it lists the session's actual artifacts by *name* (§12, one home), which
+  is navigation, not a type-picker. If a second surface exists to switch artifact *types*, delete
+  it; the rail already carries it.
+- **One session holds every type.** *"I don't care if they say they want a website / a funnel /
+  a PDF / an e-book / a downloadable document. I don't care what it is. It all stands inside of
+  that one same single session."* Website, funnel, form, image, copy, PDF, eBook, manual — every
+  output lives in the one project session. Adding a new capability (e.g. documents, §119) means
+  wiring it INTO this session's conversational flow + the rail, never bolting on a new tab.
+- **Copy/text is a chat capability, not a surface.** Drafting copy is something Paige does in the
+  conversation and files into the project — never a mode the human toggles into. The same holds
+  for any output that is fundamentally "Paige hands you a deliverable" (images, documents): it
+  streams in the session, it lands in the rail; it is not a tab.
+- **This is the concrete enforcement of §18/§19/§20.** §18 says no pre-classification gate; §19
+  says every type, fully capable, in one session; §20 says team-dispatch is a chat act, not a
+  surface. §21 is the same rule for the artifacts themselves: **one session, one project, zero
+  type-tabs.**
+- **The test, every time:** *"Did I make the tenant pick or switch an artifact TYPE anywhere in
+  the session — a tab, a chip, a mode button — instead of just talking to Paige in the one
+  session and letting the rail hold what they've made?"* If there's a type-tab, it's wrong.
+
 ## 18. Check for redundancy before you build — one home per capability, never two.
 
 **Directive (owner: Antonio, 2026-07-15):** Before starting any build, the first question is not

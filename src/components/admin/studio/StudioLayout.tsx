@@ -200,21 +200,29 @@ export default function StudioLayout() {
           </ul>
         )}
 
-        {/* Back to Paige + theme */}
+        {/* Theme + (on the gallery only) the way out of the workspace.
+            §21 / owner 2026-07-17: INSIDE a session, "Back to Paige" is a SECOND back control —
+            collapsed it's just a `<` chevron sitting right above the moon, indistinguishable from
+            the project navigator's own "All projects" back-arrow at the top of the rail, and people
+            naturally reach for the bottom one. So it's removed within a project: the top "All
+            projects" backs you out of the SESSION to the gallery, and from the gallery this control
+            backs you out of the WORKSPACE — one unambiguous back per level, never two at once. */}
         <div className="mt-auto shrink-0 border-t border-[hsl(var(--studio-glass-border)/0.6)] p-2">
-          <Link
-            to="/admin"
-            title={collapsed ? "Back to Paige" : undefined}
-            className={cn(
-              "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground",
-              "hover:bg-[hsl(var(--studio-glass-border)/0.3)] hover:text-foreground",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-              collapsed && "justify-center px-0",
-            )}
-          >
-            <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
-            {!collapsed && "Back to Paige"}
-          </Link>
+          {!onProject && (
+            <Link
+              to="/admin"
+              title={collapsed ? "Back to Paige" : undefined}
+              className={cn(
+                "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground",
+                "hover:bg-[hsl(var(--studio-glass-border)/0.3)] hover:text-foreground",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                collapsed && "justify-center px-0",
+              )}
+            >
+              <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
+              {!collapsed && "Back to Paige"}
+            </Link>
+          )}
           <div className={cn("flex items-center gap-1 px-1 pt-1", collapsed && "justify-center")}>
             <ThemeToggle />
           </div>

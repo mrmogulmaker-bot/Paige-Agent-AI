@@ -28,47 +28,27 @@
 // renders inside the page surface, reached only conversationally or via the funnel intent
 // (mode="funnel"); when one is active its gold act (`funnelActive`) replaces the page acts.
 import {
-  FileText,
-  GitBranch,
-  Image as ImageIcon,
-  LayoutGrid,
   Library,
   Loader2,
   Monitor,
   Moon,
-  PenLine,
   Smartphone,
   Sun,
   Wand2,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FilterChip, GlyphPlate, StatePill } from "@/components/ui/page";
 import { cn } from "@/lib/utils";
-import { MODE_LABELS } from "./studio-copy";
 import {
   type DeviceFrame,
   type ModeToolbarState,
   type StudioMode,
 } from "./studio-types";
 
-const MODE_ICONS: Record<StudioMode, LucideIcon> = {
-  page: LayoutGrid,
-  funnel: GitBranch,
-  form: FileText,
-  copy: PenLine,
-  image: ImageIcon,
-};
-
 export interface StudioTopBarProps {
   mode: StudioMode;
-  onModeChange: (mode: StudioMode) => void;
-  /** Which of page/form/copy/image have earned a real tab this session (StudioShell decides —
-   *  see its "the mode-tab strip" block). Never includes "funnel" — that has its own ghost
-   *  button below, always available regardless of content. Empty = render no strip at all. */
-  visibleModes: readonly StudioMode[];
   /** Studio-LOCAL dark/light (StudioShell's own state, StudioFrame's own `dark` class) — never
    *  the platform's next-themes. See the doc comment above for why this isn't `ThemeToggle`. */
   studioDark: boolean;
@@ -173,22 +153,11 @@ export function StudioTopBar({
             Beta
           </Badge>
         </div>
-        {/* A fresh session — nothing generated, drafted, or saved yet — renders NOTHING here:
-            one composer, no picker. The strip earns its place back one real tab at a time as
-            `visibleModes` grows (StudioShell owns that call). Never framed as "pick a type." */}
-        {visibleModes.length > 0 && (
-          <div role="group" aria-label="Switch what you've built this session" className="flex flex-wrap items-center gap-1">
-            {visibleModes.map((m) => {
-              const Icon = MODE_ICONS[m];
-              return (
-                <FilterChip key={m} active={mode === m} onClick={() => onModeChange(m)}>
-                  <Icon className="h-3.5 w-3.5" aria-hidden />
-                  {MODE_LABELS[m]}
-                </FilterChip>
-              );
-            })}
-          </div>
-        )}
+        {/* §21 (owner 2026-07-17): there is NO artifact-type strip here — not an upfront picker,
+            and not a "switch what you built" type-tab row either. Everything a tenant makes streams
+            inside this ONE session; the persistent navigator is the project rail (ProjectNavigator),
+            which lists the session's artifacts by NAME — navigation, never a type-picker. A tenant
+            never clicks a type; they describe what they want and the classifier routes it. */}
 
         {/* No funnel tab/button here by design (§18/§19): a funnel is born from the ONE composer
             like every other artifact — the classifier routes it, it renders in the page surface,

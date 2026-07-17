@@ -330,19 +330,6 @@ export function StudioShell({
   // The content library, one Sheet — the same LibraryPanel the Content Studio shipped.
   const [libraryOpen, setLibraryOpen] = useState(false);
 
-  // A manual mode-chip click is a deliberate power-user choice — the classify step (§18)
-  // must never override it. This flips true ONLY inside a real click, never on a prop the
-  // parent set from a URL (a deep link into e.g. Form mode leaves the page composer hidden
-  // and untouched, so classification simply never has a reason to fire there).
-  const modeChipClickedRef = useRef(false);
-  const handleModeChange = useCallback(
-    (next: StudioMode) => {
-      modeChipClickedRef.current = true;
-      onModeChange?.(next);
-    },
-    [onModeChange],
-  );
-
   // ── Studio Phase 1 — the single entry point (§18) ─────────────────────────────────
   // `classifiedOnceRef` flips true the moment the FIRST brief this session is submitted from
   // the still-on-page-mode default composer, whatever it resolves to — every submission
@@ -820,40 +807,12 @@ export function StudioShell({
   // `visited` (above) only proves a mode was MOUNTED, not that anything real lives there —
   // a fresh session mounts "page" the instant StudioShell renders, before the operator has
   // typed a word. The tab strip needs a STRICTER signal: does this mode actually hold an
-  // artifact this session? Page's is its own canonical state (state.blocks). Form/copy/image
-  // don't lift their internal drafts up to the shell (CopyMode's `drafts` array and
-  // ImageMode's result stay local component state — out of scope here, see StudioTopBar.tsx
-  // for why), so the honest signal available at THIS level is "Paige already routed a real,
-  // classified brief/prompt into it" — draftedFormSchema / draftedCopyBrief / draftedImagePrompt,
-  // the exact same state Phase 1 already threads through as each mode's `initial…` prop.
-  const modeHasContent = useMemo(
-    () => ({
-      page: state.blocks.length > 0,
-      form: draftedFormSchema != null,
-      copy: draftedCopyBrief !== undefined,
-      image: draftedImagePrompt !== undefined,
-    }),
-    [state.blocks.length, draftedFormSchema, draftedCopyBrief, draftedImagePrompt],
-  );
-
-  // Funnel never appears in this strip and has no tab/button (§18/§19): an AI funnel builds
-  // and lives INSIDE the page surface (funnelActive), reached only conversationally or via the
-  // funnel intent (mode="funnel"); its own gold act replaces the page acts while it's up.
-  const visibleModes = useMemo<StudioMode[]>(() => {
-    // Page is always a candidate (it's the home surface). The current mode is too. Anything
-    // else needs real content to earn a tab. When the funnel surface is active the shell passes
-    // an empty array anyway (see the StudioTopBar call), so no strip renders over a funnel.
-    const relevant = new Set<StudioMode>(["page"]);
-    if (mode !== "funnel") relevant.add(mode);
-    if (modeHasContent.form) relevant.add("form");
-    if (modeHasContent.copy) relevant.add("copy");
-    if (modeHasContent.image) relevant.add("image");
-    const ordered: StudioMode[] = ["page", "form", "copy", "image"];
-    const list = ordered.filter((m) => relevant.has(m));
-    // A lone "Page" chip with nothing else going on IS the upfront-picker framing the owner
-    // rejected — suppress the whole strip until there's a genuine second destination.
-    return list.length > 1 ? list : [];
-  }, [mode, modeHasContent]);
+  // §21 (owner 2026-07-17): there is NO artifact-type strip in the top bar — not an upfront
+  // picker, and not a content-derived "switch what you built" tab row either. Everything a tenant
+  // makes streams in this ONE session; the persistent navigator is the project rail
+  // (ProjectNavigator), which lists artifacts by name. So the shell no longer computes a
+  // per-type "visibleModes" set — the classifier still routes the brief to the right surface, but
+  // the human never sees or clicks a type. See StudioTopBar.tsx for the matching removal.
 
   const setTitle = useCallback((title: string) => {
     setState((s) => ({
@@ -1193,7 +1152,6 @@ export function StudioShell({
     setFunnelBuilding(false);
     funnelIntendedRef.current = false;
     classifiedOnceRef.current = false;
-    modeChipClickedRef.current = false;
     patch({ brief: "", composerValue: "", error: null });
     if (mode === "funnel") onModeChange?.("page");
   }, [mode, onModeChange, patch]);
@@ -1299,7 +1257,7 @@ export function StudioShell({
         void buildFunnel(value);
         return;
       }
-      if (classifiedOnceRef.current || modeChipClickedRef.current) {
+      if (classifiedOnceRef.current) {
         void runGenerate(value);
         return;
       }
@@ -1619,8 +1577,6 @@ export function StudioShell({
       <StudioFrame className={embedded ? className : undefined} dark={studioDark}>
         <StudioTopBar
           mode={mode}
-          onModeChange={handleModeChange}
-          visibleModes={funnelActive ? [] : visibleModes}
           studioDark={studioDark}
           onToggleStudioTheme={toggleStudioTheme}
           title={state.title}
