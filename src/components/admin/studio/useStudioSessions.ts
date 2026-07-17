@@ -7,7 +7,13 @@
 // message the page can render, never an unhandled throw; an optimistic star that the server
 // rejects rolls back and re-syncs.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isStudioError, listStudioSessions, setSessionStarred } from "./studio";
+import {
+  isStudioError,
+  listStudioSessions,
+  renameStudioSession,
+  setSessionStarred,
+  setSessionStatus,
+} from "./studio";
 import type { StudioSessionCard, StudioSessionView } from "./studio-types";
 
 export interface UseStudioSessions {
@@ -15,6 +21,13 @@ export interface UseStudioSessions {
   loading: boolean;
   error: string | null;
   toggleStar: (id: string) => void;
+  /** Rename a project. Optimistic; the promise REJECTS on failure (after rolling the title
+   *  back) so the caller can surface the real error (§13). */
+  rename: (id: string, title: string) => Promise<void>;
+  /** Delete a project — RECOVERABLE (archives it; it drops out of every gallery view and can be
+   *  restored). Optimistic remove; the promise REJECTS on failure after restoring the card at its
+   *  original position, so the gallery never lies that it's gone (§13). */
+  remove: (id: string) => Promise<void>;
   refresh: () => void;
 }
 
@@ -91,5 +104,50 @@ export function useStudioSessions(
     [tenantId, sessions, view],
   );
 
-  return { sessions, loading, error, toggleStar, refresh };
+  const rename = useCallback(
+    async (id: string, title: string): Promise<void> => {
+      if (!tenantId) return;
+      const clean = title.trim();
+      if (!clean) return;
+      const current = sessions.find((s) => s.id === id);
+      if (!current || current.title === clean) return;
+      const previous = current.title;
+      // Optimistic: show the new name now, reconcile from the server row (or roll back) after.
+      setSessions((list) => list.map((s) => (s.id === id ? { ...s, title: clean } : s)));
+      try {
+        const meta = await renameStudioSession({ tenantId, sessionId: id, title: clean });
+        setSessions((list) => list.map((s) => (s.id === id ? { ...s, title: meta.title } : s)));
+      } catch (err) {
+        setSessions((list) => list.map((s) => (s.id === id ? { ...s, title: previous } : s)));
+        throw err;
+      }
+    },
+    [tenantId, sessions],
+  );
+
+  const remove = useCallback(
+    async (id: string): Promise<void> => {
+      if (!tenantId) return;
+      const index = sessions.findIndex((s) => s.id === id);
+      if (index === -1) return;
+      const removed = sessions[index];
+      // Optimistic: drop the card now; the row is only archived on the server, so nothing is lost
+      // even if the reconcile races. Restore it at its original slot if the server rejects (§13).
+      setSessions((list) => list.filter((s) => s.id !== id));
+      try {
+        await setSessionStatus({ tenantId, sessionId: id, status: "archived" });
+      } catch (err) {
+        setSessions((list) => {
+          if (list.some((s) => s.id === id)) return list; // a refresh already re-added it
+          const next = [...list];
+          next.splice(Math.min(index, next.length), 0, removed);
+          return next;
+        });
+        throw err;
+      }
+    },
+    [tenantId, sessions],
+  );
+
+  return { sessions, loading, error, toggleStar, rename, remove, refresh };
 }

@@ -59,7 +59,7 @@ export default function StudioHome() {
   };
   const [brief, setBrief] = useState("");
   const [starting, setStarting] = useState(false);
-  const { sessions, loading, error, toggleStar } = useStudioSessions(activeTenantId, view);
+  const { sessions, loading, error, toggleStar, rename, remove } = useStudioSessions(activeTenantId, view);
 
   // ── hero pointer parallax (§22 "the chrome is ALIVE") ────────────────────────────────
   // On pointer move over the hero, write the cursor position (normalized -1..1) into --px/--py on
@@ -196,8 +196,18 @@ export default function StudioHome() {
     // through separation + elevation, never by darkening). The cosmic hero paints its own bg on top.
     <div className="h-full min-h-0 overflow-y-auto bg-[hsl(var(--studio-canvas))]">
       {/* ── COSMIC hero: the centered composer floating in a deep night-sky field. The composer
-          sits in a theme-aware glass card so PromptComposer's app-token text stays AA (§11). */}
-      <section ref={heroRef} className="studio-hero relative overflow-hidden px-4 py-12 md:py-16">
+          sits in a theme-aware glass card so PromptComposer's app-token text stays AA (§11).
+          min-h = the first screen MINUS the rail-footer block (owner 2026-07-17): the hero now
+          fills down so its bottom edge — where the white "Your projects" panel begins — lines up
+          with the rail's footer hairline that sits right above "Back to Paige" (StudioLayout footer:
+          border-t + "Back to Paige" row + theme toggle ≈ 5.5rem from the viewport bottom). That both
+          drops the projects line level with the sidebar AND opens the cosmic field so the comet has
+          room to sweep. flex + justify-center re-centers the composer in the taller field so it
+          stays balanced instead of clinging to the top. */}
+      <section
+        ref={heroRef}
+        className="studio-hero relative flex min-h-[calc(100vh-5.5rem)] flex-col justify-center overflow-hidden px-4 py-12 md:py-16"
+      >
         {/* Decorative cosmic layers, back → front. All aria-hidden + pointer-events-none,
             motion-safe (frozen under prefers-reduced-motion) and pointer-parallaxed at their own
             depth via the section's --px/--py (see the hero handler above). */}
@@ -357,6 +367,30 @@ export default function StudioHome() {
                   isTemplates ? void startSession(s.seedBrief ?? undefined) : navigate(`/admin/studio/${s.id}`)
                 }
                 onToggleStar={() => toggleStar(s.id)}
+                onRename={
+                  isTemplates
+                    ? undefined
+                    : (title) =>
+                        void rename(s.id, title).catch((err) =>
+                          toast({
+                            title: "Couldn't rename that project",
+                            description: isStudioError(err) ? err.message : "Try again in a moment.",
+                            variant: "destructive",
+                          }),
+                        )
+                }
+                onDelete={
+                  isTemplates
+                    ? undefined
+                    : () =>
+                        void remove(s.id).catch((err) =>
+                          toast({
+                            title: "Couldn't delete that project",
+                            description: isStudioError(err) ? err.message : "Try again in a moment.",
+                            variant: "destructive",
+                          }),
+                        )
+                }
               />
             ))}
           </ul>

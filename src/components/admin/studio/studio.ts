@@ -2267,6 +2267,37 @@ export async function setSessionStatus(input: {
   return rowToSessionMeta(row);
 }
 
+/**
+ * Permanently delete a project (§10 Paige-callable, hard delete).
+ *
+ * Two delete tiers exist on ONE seam, both tenant-scoped + owner/admin-gated + audited
+ * server-side (§9/§13), so there is no second, unfenced write path:
+ *   • RECOVERABLE (preferred) — setSessionStatus(…, 'archived'): the project drops out of
+ *     every gallery view (list_studio_sessions filters status <> 'archived') and can be
+ *     restored. This is what the gallery's "Delete" wires to, so an accidental delete is
+ *     never a data loss.
+ *   • PERMANENT (this) — delete_studio_session: the row is GONE, no restore. Exposed for the
+ *     explicit "delete permanently" act (and for Paige to call headlessly). Returns the
+ *     deleted id so a caller only reports success on a delete that actually happened (§13).
+ *
+ * p_tenant_id is null on purpose — the RPC pins a JWT caller to their own tenant server-side
+ * (IDOR-safe), while requireTenant() still fails platform staff with no active workspace loudly.
+ */
+export async function deleteStudioSession(input: {
+  tenantId: string;
+  sessionId: string;
+}): Promise<string> {
+  requireTenant(input.tenantId);
+  if (!input.sessionId) throw studioError("NOT_FOUND");
+  const id = await rpc<string | null>(
+    "delete_studio_session",
+    { p_id: input.sessionId, p_tenant_id: null },
+    "SAVE_FAILED",
+  );
+  if (!id) throw studioError("SAVE_FAILED", id);
+  return id;
+}
+
 /** Persist the composer transcript (§19). The RPC ships in v1; per-turn UI wiring is a later
  *  slice — this exposes the durable seam now so Paige/headless callers can already use it. */
 export async function setSessionTranscript(input: {

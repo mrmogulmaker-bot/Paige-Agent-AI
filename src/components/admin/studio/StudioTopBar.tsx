@@ -29,18 +29,37 @@
 // classifier routes it — including PIVOTING mid-session ("now write the launch email" → copy).
 // Funnel likewise has no button (§18/§19): an AI funnel builds inside the page surface, reached
 // only conversationally; when one is active its gold act (`funnelActive`) replaces the page acts.
+import { useState } from "react";
 import {
   Library,
   Loader2,
   Monitor,
   Moon,
+  MoreHorizontal,
   Smartphone,
   Sun,
+  Trash2,
   Wand2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { FilterChip, GlyphPlate, StatePill } from "@/components/ui/page";
 import { cn } from "@/lib/utils";
 import {
@@ -87,6 +106,15 @@ export interface StudioTopBarProps {
   /** Leave the funnel and return to a blank composer — the operator's way out (§13). */
   onExitFunnel?: () => void;
 
+  // — session-level acts (all modes) —
+  /** Delete THIS project. Fires only after the operator confirms in the AlertDialog below —
+   *  never a native confirm() (§11). Session-scoped, so it's reachable in EVERY mode via one
+   *  consistent neutral ⋯ actions menu beside the mode's act (never a gold caret). Omit
+   *  (e.g. the legacy ?pageId path with no session) to hide it entirely. */
+  onDeleteProject?: () => void;
+  /** The project's name, shown in the delete confirmation copy. */
+  projectTitle?: string;
+
   className?: string;
 }
 
@@ -114,12 +142,20 @@ export function StudioTopBar({
   funnelPublishing = false,
   publishFunnelDisabled = false,
   onExitFunnel,
+  onDeleteProject,
+  projectTitle,
   className,
 }: StudioTopBarProps) {
   // When a funnel is up, the page-only controls (title, device, Save, Publish, the page
   // StatePill) stand down in favour of the funnel's own act — same surface, different act.
   const isPage = mode === "page" && !funnelActive;
   const hasLibrary = mode === "copy" || mode === "image";
+
+  // Delete-project confirm (§11: the shared AlertDialog, never confirm()). Reached from the
+  // page Publish split-button's dropdown OR the neutral session ⋯ in every other mode; the
+  // seam + navigation only run on the operator's explicit confirm (§13).
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const projectLabel = projectTitle?.trim() || "this project";
 
   return (
     <div
@@ -269,7 +305,10 @@ export function StudioTopBar({
           </Button>
         )}
 
-        {/* GOLD #1 — the act. */}
+        {/* GOLD #1 — the act. Gold is spent ONLY here, on Publish itself; the other project
+            actions live in the neutral ⋯ "bubble" beside it (below), never on a gold caret. That
+            keeps the gold budget on the single publish moment (§11) while still giving the operator
+            the actions menu the owner asked for — one consistent control in every mode. */}
         {isPage && onPublish && (
           <Button variant="gold" size="sm" onClick={onPublish} disabled={publishDisabled}>
             Publish
@@ -316,7 +355,55 @@ export function StudioTopBar({
             {modeBar.act.label}
           </Button>
         )}
+
+        {/* Session-level ⋯ actions "bubble" — the ONE home for project acts (Delete today, room
+            for more). Delete is a PROJECT act, not a page act, so it renders IDENTICALLY in every
+            mode (page / copy / image / form / funnel) — one neutral ⋯ beside the mode's gold act,
+            never a gold caret and never a different chrome per mode (§11 gold discipline + one
+            consistent control the owner asked for). */}
+        {onDeleteProject && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Project actions" className="h-9 w-9">
+                <MoreHorizontal className="h-4 w-4" aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={() => setDeleteOpen(true)}
+                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" aria-hidden />
+                Delete project
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
+
+      {/* The shared delete confirm — one dialog for both entry points (the Publish split and the
+          session ⋯). onDeleteProject runs ONLY on the operator's confirm (§11/§13). */}
+      {onDeleteProject && (
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this project?</AlertDialogTitle>
+              <AlertDialogDescription>
+                “{projectLabel}” will be removed from your projects. Are you sure?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={onDeleteProject}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Confirm deletion
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }

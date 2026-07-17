@@ -9,17 +9,49 @@
 import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
+  Copy,
   FileText,
+  FolderOpen,
   GitBranch,
   Image as ImageIcon,
   LayoutGrid,
+  MoreHorizontal,
+  Pencil,
   Star,
+  Trash2,
   Type,
   Wand2,
   type LucideIcon,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { GlyphPlate, StatePill } from "@/components/ui/page";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { cn } from "@/lib/utils";
 import type { StudioArtifactType, StudioSessionCard } from "./studio-types";
@@ -45,10 +77,19 @@ function hashSeed(id: string): number {
 
 export interface ProjectCardProps {
   session: StudioSessionCard;
-  /** Templates render without the star toggle and the live/draft pill. */
+  /** Templates render without the star toggle, the live/draft pill, and the manage menu. */
   isTemplate?: boolean;
   onOpen: () => void;
   onToggleStar: () => void;
+  /** Rename the project. Receives the new title. Omit to hide the Rename item. Fire-and-forget:
+   *  the caller owns the optimistic update + error surfacing (§13). */
+  onRename?: (title: string) => void;
+  /** Duplicate the project. Omit to hide the item — there is no clone seam yet, so the gallery
+   *  ships WITHOUT a Duplicate item rather than a dead one (§13). */
+  onDuplicate?: () => void;
+  /** Delete the project. Called on the operator's confirm inside the AlertDialog (never a native
+   *  confirm(), §11). Omit to hide the Delete item. */
+  onDelete?: () => void;
 }
 
 /** "Edited 3 days ago" — relative, honest, never a raw timestamp on a card. */
@@ -60,11 +101,34 @@ function editedAgo(iso: string): string {
   }
 }
 
-export function ProjectCard({ session, isTemplate = false, onOpen, onToggleStar }: ProjectCardProps) {
+export function ProjectCard({
+  session,
+  isTemplate = false,
+  onOpen,
+  onToggleStar,
+  onRename,
+  onDuplicate,
+  onDelete,
+}: ProjectCardProps) {
   const reduce = useReducedMotion();
   // A cover URL can 404 (a deleted asset, a moved bucket) — fall back to the GlyphPlate rather
   // than render a broken image (§11, compliance: tolerate tombstoned refs).
   const [coverFailed, setCoverFailed] = useState(false);
+  // The ⋯ manage menu + its two dialogs. Delete confirms in a shared AlertDialog; rename collects
+  // the new title in a shared Dialog — never a native confirm()/prompt() (§11).
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState(session.title || "");
+  const projectLabel = session.title || "Untitled project";
+  // The menu earns its place only when the operator can actually DO something with this card and
+  // it isn't a read-only starter template.
+  const hasMenu = !isTemplate && (!!onRename || !!onDuplicate || !!onDelete);
+
+  const submitRename = () => {
+    const next = renameValue.trim();
+    setRenameOpen(false);
+    if (next && next !== session.title) onRename?.(next);
+  };
   const showCover = !!session.thumbnailUrl && !coverFailed;
   const CoverGlyph = session.primaryKind ? ARTIFACT_GLYPH[session.primaryKind] ?? Wand2 : Wand2;
 
@@ -153,25 +217,82 @@ export function ProjectCard({ session, isTemplate = false, onOpen, onToggleStar 
               </div>
             </div>
           )}
-          {!isTemplate && (
-            <button
-              type="button"
-              aria-pressed={session.starred}
-              aria-label={session.starred ? "Unstar project" : "Star project"}
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleStar();
-              }}
-              className="absolute right-2 top-2 rounded-full bg-background/80 p-1.5 backdrop-blur transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          {/* Top-right controls — the star and the ⋯ manage menu ride together. The whole cluster
+              stops click/keydown from bubbling to the card's role=button, so operating a control
+              never also opens the project. Star stays neutral; ⋯ stays neutral — gold is spent
+              only on the act/on moment (§11). */}
+          {(!isTemplate || hasMenu) && (
+            <div
+              className="absolute right-2 top-2 flex items-center gap-1"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
             >
-              <Star
-                className={cn(
-                  "h-4 w-4",
-                  session.starred ? "fill-current text-foreground" : "text-muted-foreground",
-                )}
-                aria-hidden
-              />
-            </button>
+              {!isTemplate && (
+                <button
+                  type="button"
+                  aria-pressed={session.starred}
+                  aria-label={session.starred ? "Unstar project" : "Star project"}
+                  onClick={onToggleStar}
+                  className="rounded-full bg-background/80 p-1.5 backdrop-blur transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                >
+                  <Star
+                    className={cn(
+                      "h-4 w-4",
+                      session.starred ? "fill-current text-foreground" : "text-muted-foreground",
+                    )}
+                    aria-hidden
+                  />
+                </button>
+              )}
+              {hasMenu && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Manage ${projectLabel}`}
+                      className="rounded-full bg-background/80 p-1.5 text-muted-foreground backdrop-blur transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    >
+                      <MoreHorizontal className="h-4 w-4" aria-hidden />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuItem onClick={onOpen}>
+                      <FolderOpen className="mr-2 h-4 w-4" aria-hidden />
+                      Open
+                    </DropdownMenuItem>
+                    {onRename && (
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setRenameValue(session.title || "");
+                          setRenameOpen(true);
+                        }}
+                      >
+                        <Pencil className="mr-2 h-4 w-4" aria-hidden />
+                        Rename
+                      </DropdownMenuItem>
+                    )}
+                    {onDuplicate && (
+                      <DropdownMenuItem onClick={onDuplicate}>
+                        <Copy className="mr-2 h-4 w-4" aria-hidden />
+                        Duplicate
+                      </DropdownMenuItem>
+                    )}
+                    {onDelete && (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={() => setDeleteOpen(true)}
+                          className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" aria-hidden />
+                          Delete
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           )}
         </div>
 
@@ -203,6 +324,67 @@ export function ProjectCard({ session, isTemplate = false, onOpen, onToggleStar 
           </p>
         </div>
       </div>
+
+      {/* Rename — a real dialog with an input, never a native prompt() (§11). Portalled, so its
+          clicks never reach the card's role=button beneath it. */}
+      {onRename && (
+        <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Rename project</DialogTitle>
+              <DialogDescription>Give this project a name you'll recognize.</DialogDescription>
+            </DialogHeader>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitRename();
+              }}
+            >
+              <Input
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                aria-label="Project name"
+                placeholder="Untitled project"
+                autoFocus
+                maxLength={120}
+              />
+              <DialogFooter className="mt-4">
+                <Button type="button" variant="outline" onClick={() => setRenameOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!renameValue.trim() || renameValue.trim() === session.title}>
+                  Save
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Delete — the shared AlertDialog confirm (§11). The act only runs on the operator's
+          explicit confirm; the caller archives it (recoverable) and removes it from the gallery
+          only once that actually succeeds (§13). */}
+      {onDelete && (
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this project?</AlertDialogTitle>
+              <AlertDialogDescription>
+                “{projectLabel}” will be removed from your projects. Are you sure?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={onDelete}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Confirm deletion
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </motion.li>
   );
 }
