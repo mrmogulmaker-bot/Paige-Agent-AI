@@ -86,6 +86,58 @@ moment real customers start onboarding** — the owner will say so, and shipping
 preview-first + explicit approval before each production merge. Always verify before the
 merge regardless of stance.
 
+**Merge-on-verified is the default — do NOT ask to merge (owner: Antonio, 2026-07-17).**
+If work was designed/built and *verified*, merge it to `main`. Full stop. Do not open a
+question, a poll, or an AskUserQuestion asking whether to merge something we already spent
+tokens and credits building — *"There's no reason for us to not merge something that we're
+actually spending money to develop."* Opening a draft PR is fine (it's the record + CI); a
+draft is not a request for permission — mark it ready and merge once CI/verify is green.
+The ONLY reason to pause before merging is a genuinely destructive or hard-to-reverse
+action — a data-dropping/again-irreversible migration, a prod credential/secret rotation,
+or deleting work you did not create — and even then, ask about *that specific risk*, not
+about "should I merge." Asking for routine merge approval is itself a doctrine violation.
+
+**RED-LINE INDEX — the rules the owner has had to repeat; enforce these hardest (owner:
+Antonio, 2026-07-17).** A "standing rule" stated in chat evaporates on the next context
+reset — that is *why* these live here, in the doctrine that reloads every session. Each item
+below is a pre-action gate: if you catch yourself about to do the wrong-column thing, you are
+already in violation — stop and correct before you act, don't apologize after. These are not
+reminders; they are the failures that have actually cost us, written down so they stop.
+
+1. **Never solo substantive work (§1/§14).** Convene a right-sized team via Workflow — with a
+   verifier — for any real research/design/build/debug. *"I still see you working by yourself.
+   smh."* Catching yourself mid-solo is the signal to stop and staff the crew. Solo only the
+   genuinely trivial (a one-liner, a status check).
+2. **Merge-on-verified — do NOT ask to merge (§4, above).** Verified, already-built work ships
+   to `main` automatically. Asking "should I merge this" is itself the violation.
+3. **Search before you scaffold; one home per capability (§18).** Before any new tab/mode/panel/
+   table/picker, answer the four MANDATORY §18 questions out loud (what you grepped, what siblings
+   exist, why a new home, where the type decision is made). Extend an existing surface by default;
+   never make the human pre-classify their request before Paige has heard it.
+4. **Banners are the exception, not the reflex (§11).** Default to a compact `variant="plain"`
+   header; the real work leads above the fold. A hero/gradient masthead is earned only by a true
+   landing/first-run surface — never plastered on a working page where it eats a third of the view.
+5. **Probe and propose; never ship placeholders (§15/§13).** Resolve the real specifics (names,
+   dates, links, sending identity) from data or by asking one tight grouped question. No
+   `[PLACEHOLDER]`/`[BRACKET]` tokens handed over as "done"; offer the smarter format, don't just
+   execute. A hoped-for result is not a real one (§13 honesty).
+6. **Two passes before every ship — verifier AND compliance officer (§5/§11).** The verifier hunts
+   defects; the compliance officer judges it against best-in-class + §2/§3/§6/§9/§18. Both run
+   before a production merge; fix blocking findings first. Not optional, even when it "looks fine."
+7. **Finance/credit is never a platform default (§2).** Funding/credit wording or surfaces only
+   ever appear on a per-tenant opt-in (`funding_enabled`/preset). Never in platform/God defaults,
+   the coaching-generic registry, or any path that ships to every tenant.
+8. **Ask "who is this for?" — platform vs tenant (§9).** Before building or placing anything, name
+   the audience: operator/Super-Admin (coaching-generic, our controls) vs tenant (tenant-authored,
+   tenant-scoped). Don't conflate them; keep the seam clean.
+9. **Everything stays Paige-governable (§10).** No feature's logic lives only inside a React
+   component a human clicks. Every create/update/delete gets a callable seam (RPC/edge/config-as-
+   data) so Paige can drive it by voice or text. Don't ship a dead end.
+
+If in doubt on any of these, the doctrine's default answer is the more disciplined one: staff the
+team, extend the existing surface, cut the banner, probe for the real value, run both passes, keep
+finance opt-in, name the audience, expose the seam — then ship it without asking.
+
 ## 5. Always run a compliance / standards officer.
 
 **Directive (owner: Antonio):** Beyond the bug-hunting verifier, every substantive

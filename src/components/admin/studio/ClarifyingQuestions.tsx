@@ -9,6 +9,7 @@
 import { X } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { FilterChip } from "@/components/ui/page";
 import { CLARIFYING_RECAP_LABEL } from "./studio-copy";
 import type { ClarifyingQuestion } from "./studio-types";
 
@@ -53,20 +54,49 @@ export function ClarifyingQuestions({
       </div>
 
       <div className="mt-4 space-y-4">
-        {questions.map((q) => (
-          <div key={q.id} className="space-y-1.5">
-            <Label htmlFor={`clarify-${q.id}`}>{q.question}</Label>
-            <Textarea
-              id={`clarify-${q.id}`}
-              value={answers[q.id] ?? ""}
-              onChange={(e) => onAnswerChange(q.id, e.target.value)}
-              placeholder={q.placeholder}
-              disabled={disabled}
-              rows={3}
-              className="resize-none text-sm leading-relaxed"
-            />
-          </div>
-        ))}
+        {questions.map((q) => {
+          const value = answers[q.id] ?? "";
+          const hasOptions = !!q.options?.length;
+          return (
+            <div key={q.id} className="space-y-1.5">
+              <Label htmlFor={`clarify-${q.id}`}>{q.question}</Label>
+
+              {/* Predictive answer chips (#296) — the likely answers, one tap to fill. Tapping a
+                  chip writes it into the same answer the textarea reads (so it becomes editable);
+                  tapping the selected chip again clears it. Never gold — FilterChip's active state
+                  is indigo (§11). The textarea below is always the "or type your own" path. */}
+              {hasOptions && (
+                <div
+                  role="group"
+                  aria-label={`Suggested answers for: ${q.question}`}
+                  aria-controls={`clarify-${q.id}`}
+                  className="flex flex-wrap gap-1.5 pt-0.5"
+                >
+                  {q.options!.map((option) => (
+                    <FilterChip
+                      key={option}
+                      active={value === option}
+                      onClick={() => onAnswerChange(q.id, value === option ? "" : option)}
+                      className="whitespace-nowrap"
+                    >
+                      {option}
+                    </FilterChip>
+                  ))}
+                </div>
+              )}
+
+              <Textarea
+                id={`clarify-${q.id}`}
+                value={value}
+                onChange={(e) => onAnswerChange(q.id, e.target.value)}
+                placeholder={hasOptions ? "Select an answer above, or type your own…" : q.placeholder}
+                disabled={disabled}
+                rows={3}
+                className="resize-none text-sm leading-relaxed"
+              />
+            </div>
+          );
+        })}
       </div>
     </div>
   );

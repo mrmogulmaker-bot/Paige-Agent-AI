@@ -2122,6 +2122,48 @@ export async function touchStudioSession(input: {
   return rowToSessionMeta(row);
 }
 
+/**
+ * Derive a human project name from what a generation actually produced — so a Studio project is
+ * never left as "Untitled" the moment it has real content (#294). Preference order, best first:
+ *   1. the generated page's own SEO/hero title (`seo.title`) — already a crafted, specific line;
+ *   2. failing that, the operator's brief, trimmed to its first clause and sentence-cased — a
+ *      real signal of intent, not a placeholder.
+ * Returns "" when there is genuinely nothing real to name from (empty, or punctuation-only with no
+ * word character) — the caller then SKIPS the rename and the row keeps its "Untitled" display
+ * fallback, rather than persisting a junk title. All paths collapse whitespace and cap the length
+ * on a word + code-point boundary (never mid-word, never a split astral char) so a runaway title
+ * can't bloat the rail or the gallery card, and a trailing emoji can't become a mojibake glyph.
+ */
+export function deriveProjectName(
+  seoTitle: string | null | undefined,
+  brief: string | null | undefined,
+): string {
+  const clean = (s: string | null | undefined) => (typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "");
+  const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+  const hasWord = (s: string) => /[\p{L}\p{N}]/u.test(s);
+  // Cap to `max` characters counting by code point (Array.from splits astral chars whole), and
+  // prefer to end on a whole word — trim back to the last space unless that throws away most of
+  // the string (a single very long word still gets a clean hard cut).
+  const capLen = (s: string, max: number) => {
+    const chars = Array.from(s);
+    if (chars.length <= max) return s;
+    const sliced = chars.slice(0, max).join("");
+    const lastSpace = sliced.lastIndexOf(" ");
+    return (lastSpace > max * 0.6 ? sliced.slice(0, lastSpace) : sliced).trim();
+  };
+
+  const seo = clean(seoTitle);
+  if (seo && hasWord(seo)) return capLen(seo, 80);
+
+  const b = clean(brief);
+  if (b && hasWord(b)) {
+    // First clause/sentence of the brief — a real title beats echoing the whole prompt.
+    const firstClause = b.split(/[.!?\n]/)[0].trim();
+    return cap(capLen(firstClause || b, 60));
+  }
+  return "";
+}
+
 /** Retitle the project — called on first artifact save to name it from the real artifact. */
 export async function renameStudioSession(input: {
   tenantId: string;
