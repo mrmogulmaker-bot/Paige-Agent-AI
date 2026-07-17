@@ -47,6 +47,10 @@ export interface LivePreviewProps {
    *  where it lives" affordance — the host is always the neutral `yoursite.paige.app`, never a
    *  faked registered domain (§11/§13). Omit and the pill shows the bare host. */
   previewSlug?: string;
+  /** Fired with the frame's <body> once its cloned stylesheets have SETTLED (and null when the
+   *  frame tears down / reloads). The single honest "safe to snapshot" signal — the gallery
+   *  thumbnail capture (#295) reads it so it never grabs an unstyled shot. */
+  onFrameSettled?: (body: HTMLElement | null) => void;
   className?: string;
 }
 
@@ -113,6 +117,7 @@ export function LivePreview({
   onSelectBlock,
   showFooter = true,
   previewSlug,
+  onFrameSettled,
   className,
 }: LivePreviewProps) {
   const paneRef = useRef<HTMLDivElement | null>(null);
@@ -192,6 +197,17 @@ export function LivePreview({
       setFrameBody(null);
     };
   }, [isEmpty, reloadNonce]);
+
+  // ── the settled-body signal, forwarded to whoever wants to snapshot the frame ─────────
+  // Kept in a ref so a changing callback identity never re-fires it; the effect below runs only
+  // on real frameBody transitions (null → settled body on reveal, body → null on teardown).
+  const onFrameSettledRef = useRef(onFrameSettled);
+  useEffect(() => {
+    onFrameSettledRef.current = onFrameSettled;
+  });
+  useEffect(() => {
+    onFrameSettledRef.current?.(frameBody);
+  }, [frameBody]);
 
   // ── the pane width, so a narrow rail scales the desktop frame instead of clipping it ──
   useLayoutEffect(() => {

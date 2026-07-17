@@ -390,6 +390,34 @@ export async function uploadGrowthAsset(tenantId: string, file: File): Promise<G
   };
 }
 
+/** Upload a captured page-preview thumbnail (a small JPEG blob) to the tenant-scoped
+ *  growth-assets bucket and return its public URL — the gallery cover for a page project
+ *  (Studio Task #295). Separate from uploadGrowthAsset because this is a machine-made cover,
+ *  not an operator upload: no kind/size gate, and ONE stable object per session
+ *  (`<tid>/studio-thumbs/<sessionId>.jpg`, `upsert:true`) so a page regenerated N times leaves
+ *  exactly one cover, never N orphans (§12 — self-organizing AND self-pruning). A per-capture
+ *  cache-bust token on the returned URL defeats the CDN serving a stale copy of the overwritten
+ *  object. Best-effort: returns null on failure (§13). */
+export async function uploadPageThumbnail(
+  tenantId: string,
+  sessionId: string,
+  blob: Blob,
+): Promise<string | null> {
+  const tid = requireTenant(tenantId);
+  const path = `${tid}/studio-thumbs/${sessionId}.jpg`;
+  const { error } = await supabase.storage
+    .from(GROWTH_ASSETS_BUCKET)
+    .upload(path, blob, { upsert: true, cacheControl: "3600", contentType: "image/jpeg" });
+  if (error) {
+    console.warn("[studio] page thumbnail upload failed (non-fatal):", error);
+    return null;
+  }
+  const { data } = supabase.storage.from(GROWTH_ASSETS_BUCKET).getPublicUrl(path);
+  // Cache-bust: the stable path is overwritten in place, so append a fresh token to force the
+  // card (and CDN) to fetch the new cover instead of the previous one.
+  return `${data.publicUrl}?v=${crypto.randomUUID().slice(0, 8)}`;
+}
+
 /** List everything this tenant has ever uploaded to growth-assets — the picker for the
  *  post-submit delivery editor (§10/§15: pick a REAL uploaded asset, never type a URL). */
 export async function listGrowthAssets(tenantId: string): Promise<GrowthAsset[]> {
@@ -2190,6 +2218,26 @@ export async function setSessionStarred(input: {
   const row = await rpc<StudioSessionRow | null>(
     "set_studio_session_starred",
     { p_id: input.sessionId, p_starred: input.starred, p_tenant_id: null },
+    "SAVE_FAILED",
+  );
+  if (!row?.id) throw studioError("SAVE_FAILED", row);
+  return rowToSessionMeta(row);
+}
+
+/** Set the project's gallery cover directly (§10 Paige-callable seam — Studio Task #295).
+ *  Unlike link_session_artifact's COALESCE(thumbnail_url, _thumb) derivation — which seeds a
+ *  cover ONCE and never overwrites it — this SETs the column outright, so a rebuilt page
+ *  refreshes its preview. Tenant-scoped + owner/admin-gated server-side, same as the sibling
+ *  session mutations. */
+export async function setSessionThumbnail(input: {
+  tenantId: string;
+  sessionId: string;
+  thumbnailUrl: string;
+}): Promise<StudioSessionMeta> {
+  requireTenant(input.tenantId);
+  const row = await rpc<StudioSessionRow | null>(
+    "set_studio_session_thumbnail",
+    { p_id: input.sessionId, p_thumbnail_url: input.thumbnailUrl, p_tenant_id: null },
     "SAVE_FAILED",
   );
   if (!row?.id) throw studioError("SAVE_FAILED", row);

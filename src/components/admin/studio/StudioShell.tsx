@@ -44,6 +44,7 @@ import { ClarifyingQuestions } from "./ClarifyingQuestions";
 import { DeliveryEditor } from "./DeliveryEditor";
 import { GenerationExperience } from "./GenerationExperience";
 import { LivePreview } from "./LivePreview";
+import { capturePageThumbnailBlob } from "./page-thumbnail";
 import { PromptComposer } from "./PromptComposer";
 import { PublishDialog, kebabSlug } from "./PublishDialog";
 import { StudioTopBar } from "./StudioTopBar";
@@ -76,9 +77,11 @@ import {
   deriveProjectName,
   reviseBlock,
   savePageDraft,
+  setSessionThumbnail,
   shouldClarify,
   uniqueGrowthPageSlug,
   uploadGrowthAsset,
+  uploadPageThumbnail,
   type BuiltFunnel,
   type PublishPageResult,
 } from "./studio";
@@ -381,6 +384,67 @@ export function StudioShell({
   // already has artifacts is an established, likely-already-named project; it starts true so a
   // regeneration never silently overwrites a name the operator (or the first build) already set.
   const autoNamedRef = useRef(false);
+
+  // ── gallery thumbnail capture (#295) ────────────────────────────────────────────────
+  // The settled LivePreview <body> lives here (fed by its onFrameSettled) so the capture reads
+  // the pixel-accurate, styled render — never an unstyled early frame. The timer defers capture
+  // past the final layout/font settle and is cleared on unmount so a late fire can't touch a
+  // torn-down frame.
+  const settledFrameBodyRef = useRef<HTMLElement | null>(null);
+  const thumbnailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set on a successful build; consumed the moment the fresh canvas frame SETTLES, so capture is
+  // driven by the real "styles are in" edge (§13) instead of racing a fixed delay in prod.
+  const thumbnailPendingRef = useRef(false);
+
+  /** Snapshot the settled preview → upload → set the project cover → reflect it in the rail/
+   *  gallery via onManifestChange (§10/§19). Fully best-effort (§13): any miss leaves
+   *  thumbnail_url null and ProjectCard keeps its glyph — it never stores a blank as a preview. */
+  const capturePageThumbnail = useCallback(async () => {
+    if (!tenantId || !sessionId) return;
+    const body = settledFrameBodyRef.current;
+    if (!body?.isConnected) return;
+    try {
+      const blob = await capturePageThumbnailBlob(body);
+      if (!blob) return; // capture failed → keep the glyph
+      const url = await uploadPageThumbnail(tenantId, sessionId, blob);
+      if (!url) return; // upload failed → keep the glyph
+      const meta = await setSessionThumbnail({ tenantId, sessionId, thumbnailUrl: url });
+      onManifestChange?.(meta);
+    } catch (err) {
+      console.warn("[studio] page thumbnail persist failed (non-fatal):", err);
+    }
+  }, [tenantId, sessionId, onManifestChange]);
+
+  /** Defer a capture past the final block/font/image settle (LivePreview re-measures at ~400ms;
+   *  we wait a touch longer). Coalesces rapid regenerations to a single trailing snapshot. */
+  const scheduleThumbnailCapture = useCallback(() => {
+    if (thumbnailTimerRef.current) clearTimeout(thumbnailTimerRef.current);
+    thumbnailTimerRef.current = setTimeout(() => {
+      thumbnailTimerRef.current = null;
+      void capturePageThumbnail();
+    }, 700);
+  }, [capturePageThumbnail]);
+
+  useEffect(
+    () => () => {
+      if (thumbnailTimerRef.current) clearTimeout(thumbnailTimerRef.current);
+    },
+    [],
+  );
+
+  /** LivePreview's settled-body signal. Stashes the body for the capture, and — if a build just
+   *  finished — arms the deferred snapshot on this exact "styles are in" edge. Gating on the
+   *  pending flag keeps ordinary reloads/device toggles from re-snapshotting. */
+  const handleFrameSettled = useCallback(
+    (body: HTMLElement | null) => {
+      settledFrameBodyRef.current = body;
+      if (body && thumbnailPendingRef.current) {
+        thumbnailPendingRef.current = false;
+        scheduleThumbnailCapture();
+      }
+    },
+    [scheduleThumbnailCapture],
+  );
 
   /** Attach a saved artifact to the owning session and reflect it in state (§10/§19). Best-effort
    *  and non-fatal: a link hiccup must never fail the save the operator just performed (§13). On
@@ -854,6 +918,13 @@ export function StudioShell({
             });
         }
       }
+
+      // Capture a real gallery cover of the freshly-built page (#295): arm it now, let the
+      // canvas frame's settle edge fire it (handleFrameSettled). Best-effort, page-only (this is
+      // the whole-page path), never blocks the canvas (§13). If a build somehow yields zero
+      // blocks (no LivePreview mounts, no settle edge), the flag simply stays armed and the next
+      // successful build captures its own page — harmless, self-correcting.
+      if (tenantId && sessionId) thumbnailPendingRef.current = true;
     },
     [state.blocks, state.attachments, generate, reset, tenantId, sessionId, onManifestChange],
   );
@@ -1369,6 +1440,7 @@ export function StudioShell({
         interactive
         selectedIndex={state.selectedIndex}
         onSelectBlock={(index) => patch({ selectedIndex: index, instruction: "" })}
+        onFrameSettled={handleFrameSettled}
       />
     );
   } else {
