@@ -422,11 +422,23 @@ that stays §18-clean: through the one conversation, not a new surface.
 **Directive (owner: Antonio, 2026-07-16).** The Vibe Studio (Campaigns tab) is not a page
 builder with some other stuff bolted on — it is the **complete campaign creation surface**.
 A tenant should be able to create, edit, modify, launch, and deploy **every** part of a
-real campaign without leaving that one session: visuals, marketing copy, websites/landing
-pages, questionnaires (forms), and funnels — all of it, wired together, in the same place.
+real campaign without leaving that one session: visuals/images, websites/landing pages,
+questionnaires (forms), and funnels — all of it, wired together, in the same place, with
+the **copy embedded inside** each of those assets held to a direct-response bar.
 The point is retention as much as capability: **the more of the platform a tenant can do
 without leaving it, the better it is for them and the better it is for us.** Never design a
 piece of this as a reason for the tenant to go somewhere else.
+
+- **§19 scope correction (2026-07-17):** The Studio authors **creative/design assets** —
+  landing pages, funnels, forms/questionnaires, and images/visuals. **Copy is not a Studio
+  artifact type.** Copy is two things: **(a) embedded-in-asset quality** — the headline/
+  subhead/CTA/body/question wording *inside* a generated page, funnel, or form, held to the
+  direct-response bar by the generation prompts; and **(b) standalone words** (a post, email,
+  ad, caption) — which Paige drafts **in chat** (the `content-draft` seam), never as a
+  separate Studio artifact. So the "everything in one session" completeness bar covers
+  **visuals, pages, forms, funnels, and the copy embedded in them** — standalone marketing
+  text lives in Paige's conversation, its one §18 home. (Replaces the earlier wording that
+  listed "marketing copy" as a Studio artifact type.)
 
 - **No artifact type is a permanent second-class citizen.** If one type (e.g. funnels) has
   less AI-generation depth than the others today, that is a sequencing fact, not a scope
@@ -438,7 +450,7 @@ piece of this as a reason for the tenant to go somewhere else.
   is why it sequences after single-artifact drafting, never why it gets skipped. The bar is
   the same: one brief in, a real working funnel out, exactly like page/form drafting today.
 - **Everything created here stays reachable from here.** Once an artifact exists (a drafted
-  page, a saved copy piece, a generated image, a built funnel), the tenant must be able to
+  page, a generated image, a built funnel, a form), the tenant must be able to
   come back into this same Studio session and keep working on any of it — not export it, not
   hunt for it in a different tab of the app.
 - **This extends §18, it doesn't relax it.** The unification (§18: no upfront type-picker,
@@ -446,9 +458,9 @@ piece of this as a reason for the tenant to go somewhere else.
   capable, in one session) are the same objective seen from two angles — don't ship one
   without keeping the other in view.
 - **The test, every time:** *"Could a tenant build, wire together, and ship their ENTIRE
-  campaign — every visual, every page, every form, every funnel step, every piece of copy —
-  without ever leaving this session?"* If any piece still requires leaving Studio, or any
-  artifact type is permanently weaker than the others, it isn't done.
+  campaign — every visual, every page, every form, every funnel step, and the copy embedded
+  in all of them — without ever leaving this session?"* If any piece still requires leaving
+  Studio, or any artifact type is permanently weaker than the others, it isn't done.
 
 ## 21. ONE session per project — everything streams inside it, no artifact-type tabs.
 

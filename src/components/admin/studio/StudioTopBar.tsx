@@ -7,9 +7,8 @@
 //   page   → Publish (opens PublishDialog; the confirm inside is the second, dialog-scoped gold)
 //   funnel → Publish funnel
 //   form   → Create form
-//   copy   → none in the bar (gold lives on each draft card's "Save to library")
 //   image  → none at all (the act is the server's auto-file; the result pill reports it)
-// Everything else — mode chips, device chips, Save, Library — is indigo/neutral.
+// Everything else — device chips, Save, Library — is indigo/neutral.
 //
 // The theme toggle here is Studio-LOCAL (owner-requested follow-up) — it does NOT use
 // `ThemeToggle`/next-themes, which drives the platform's single global `<html>` class. That
@@ -26,7 +25,7 @@
 // ONE session, the persistent navigator is the project rail (ProjectNavigator, which lists
 // artifacts by NAME — navigation, never a type-picker), and the brief + Paige's classifier are the
 // ONLY thing that picks a type. A tenant never clicks a type; they describe what they want and the
-// classifier routes it — including PIVOTING mid-session ("now write the launch email" → copy).
+// classifier routes it — including PIVOTING mid-session ("now build the intake form" → form).
 // Funnel likewise has no button (§18/§19): an AI funnel builds inside the page surface, reached
 // only conversationally; when one is active its gold act (`funnelActive`) replaces the page acts.
 import { useState } from "react";
@@ -89,7 +88,7 @@ export interface StudioTopBarProps {
   publishing?: boolean;
   publishDisabled?: boolean;
 
-  // — copy / image modes —
+  // — image mode (the library button; also lists any legacy saved copy rows read-only) —
   onOpenLibrary?: () => void;
 
   // — funnel / form modes (published by the mounted mode component) —
@@ -149,7 +148,7 @@ export function StudioTopBar({
   // When a funnel is up, the page-only controls (title, device, Save, Publish, the page
   // StatePill) stand down in favour of the funnel's own act — same surface, different act.
   const isPage = mode === "page" && !funnelActive;
-  const hasLibrary = mode === "copy" || mode === "image";
+  const hasLibrary = mode === "image";
 
   // Delete-project confirm (§11: the shared AlertDialog, never confirm()). Reached from the
   // page Publish split-button's dropdown OR the neutral session ⋯ in every other mode; the
@@ -358,7 +357,7 @@ export function StudioTopBar({
 
         {/* Session-level ⋯ actions "bubble" — the ONE home for project acts (Delete today, room
             for more). Delete is a PROJECT act, not a page act, so it renders IDENTICALLY in every
-            mode (page / copy / image / form / funnel) — one neutral ⋯ beside the mode's gold act,
+            mode (page / image / form / funnel) — one neutral ⋯ beside the mode's gold act,
             never a gold caret and never a different chrome per mode (§11 gold discipline + one
             consistent control the owner asked for). */}
         {onDeleteProject && (

@@ -154,9 +154,11 @@ serve(async (req: Request) => {
 
 VOICE (§3): direct, confident, mogul-founder — but a form is mostly labels, so this mainly means: no filler questions, no corporate throat-clearing in help text.
 
+LABEL QUALITY: field labels are plain, human, and specific — the exact thing you're asking for ("What's the one result you want from this?"), never a vague or jargon label ("Objective details"). Help text is used ONLY when a field genuinely needs a clarifying nudge, and then it's one short concrete sentence — never boilerplate, never restating the label. A required field is marked required; an optional one isn't padded with filler.
+
 DEFAULTS (§2): never introduce credit, funding, lending, financing, or "readiness/funding score" fields unless the operator's own brief explicitly asks for them.
 
-Derive the fields EXACTLY from what the operator described, in the order given — do not invent questions they didn't ask for. Never use "ssn4" or "currency" types; use "text" for money- or ID-like answers.
+Derive the fields EXACTLY from what the operator described, in the order given — do not invent questions they didn't ask for, and never fabricate placeholder/example values (§15). Never use "ssn4" or "currency" types; use "text" for money- or ID-like answers.
 
 Return ONLY a single JSON object, no prose, no markdown fences:
 { "form_schema_json": ${GROWTH_FORM_SCHEMA_SPEC} }`;

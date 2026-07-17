@@ -628,13 +628,17 @@ export async function draftPage(input: DraftPageInput): Promise<DraftPageResult>
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
 export interface StudioIntentResult {
-  artifact: "page" | "funnel" | "form" | "copy" | "image";
+  artifact: "page" | "funnel" | "form" | "image";
   /** One short sentence from the classifier — surfaced only if a caller wants to show it. */
   reasoning: string;
 }
 
+/** The load-bearing coercion guard: `"copy"` is no longer an accepted Studio artifact type, so a
+ *  stale server reply of `{ artifact: "copy" }` fails this check and classifyStudioIntent falls
+ *  back to `"page"`. That makes the frontend safe even BEFORE the growth-studio-route edge
+ *  function is redeployed — no dead copy artifact can ever be routed to (§13/§18). */
 function isStudioArtifactValue(v: unknown): v is StudioIntentResult["artifact"] {
-  return v === "page" || v === "funnel" || v === "form" || v === "copy" || v === "image";
+  return v === "page" || v === "funnel" || v === "form" || v === "image";
 }
 
 /**
@@ -751,9 +755,11 @@ export interface DraftCopyResult {
 }
 
 /**
- * Draft marketing copy — relocated verbatim from CopyMode's own direct `content-draft` invoke
- * (§10: the UI is one caller, Paige's headless tools are another). Same payload, same response
- * shape, same behavior — only the call site moved behind the seam.
+ * Draft marketing copy — the callable seam over `content-draft` (§10: the UI is one caller,
+ * Paige's headless tools are another). Copy is a CHAT capability, no longer a Studio mode
+ * (§18/§21) — its one home is Paige's conversation, and this is the rail she drives to draft it.
+ * It is intentionally kept (not deleted with the CopyMode surface): removing the standalone
+ * ARTIFACT TYPE does not remove Paige's headless copy rail. Same payload/response shape as before.
  */
 export async function draftCopy(input: DraftCopyInput): Promise<DraftCopyResult> {
   const tenantId = requireTenant(input.tenantId);
@@ -880,9 +886,10 @@ export interface SavedContent {
 /**
  * File one drafted copy variation into the tenant's content library.
  *
- * Relocated from CopyMode's own direct `save_marketing_content` invoke (§10/§18) — same
- * payload, same RPC, only the call site moved behind the seam, so Page/Form/Copy/Image all
- * write through the ONE seam layer instead of Copy forking its own pattern.
+ * The save seam over `save_marketing_content` (§10/§18). Copy is a CHAT capability, no longer a
+ * Studio mode (§18/§21) — Paige drafts copy in the conversation via draftCopy() above and files
+ * it with this. Kept alongside draftCopy for the same reason: the standalone Copy artifact TYPE
+ * is gone, but Paige's headless draft→save copy rail is not.
  */
 export async function saveCopy(input: SaveCopyInput): Promise<SavedContent> {
   const tenantId = requireTenant(input.tenantId);
@@ -1938,19 +1945,22 @@ interface StudioSessionRow {
   updated_at: string;
 }
 
-/** studio 'copy'/'image' both persist as the marketing_content 'content' kind; the rest pass
- *  through. This is the ONE place the mode→manifest mapping lives (§18). */
+/** studio 'image' persists as the marketing_content 'content' kind; the rest pass through. This
+ *  is the ONE place the mode→manifest mapping lives (§18). Standalone copy is no longer a Studio
+ *  artifact type (§18/§21), so it isn't a key here — legacy saved-copy rows still persist as
+ *  'content' and are handled read-only on the read path (studioTypeFromRef below). */
 const SESSION_KIND_FROM_TYPE: Record<StudioArtifactType, SessionArtifactKind> = {
   page: "page",
   form: "form",
   funnel: "funnel",
-  copy: "content",
   image: "content",
 };
 
-/** A persisted ref's kind → the studio type used for glyphs. 'content' can't be told apart as
- *  copy vs image from the row alone, so a thumbnail (marketing_content.image_url) reads as an
- *  image, otherwise copy — decorative only, never load-bearing. */
+/** A persisted ref's kind → the studio type used for glyphs. 'content' is now backed only by the
+ *  image type (copy is no longer a Studio artifact), so every 'content' ref reads as an image —
+ *  a LEGACY thumbnail-less copy row therefore shows an image glyph on its gallery card. This is
+ *  decorative-only (cosmetic, never load-bearing), documented, and the graceful degrade for the
+ *  handful of pre-existing copy rows that may exist pre-launch (§13). */
 function studioTypeFromRef(ref: SessionArtifactRef): StudioArtifactType {
   switch (ref.kind) {
     case "page":
@@ -1961,7 +1971,7 @@ function studioTypeFromRef(ref: SessionArtifactRef): StudioArtifactType {
       return "funnel";
     case "content":
     default:
-      return ref.thumbnailUrl ? "image" : "copy";
+      return "image";
   }
 }
 

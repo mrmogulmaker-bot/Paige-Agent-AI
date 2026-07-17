@@ -6,9 +6,11 @@
 // rendered page inside the frame stays in the app's theme + the page's own brand scope.
 // Dark studio, light page — and the preview never lies about what publishes.
 //
-// One studio, five modes: Page (the original Vibe Studio machinery, verbatim), Funnel,
-// Form, and the absorbed Content Studio pair — Copy and Image. Mode state is kept mounted
-// for the session, so switching modes never eats work in progress.
+// One studio, four modes: Page (the original Vibe Studio machinery, verbatim), Funnel,
+// Form, and the absorbed Content Studio's creative surface — Image. Mode state is kept mounted
+// for the session, so switching modes never eats work in progress. (Standalone copy is NOT a
+// Studio mode — it's a Paige-chat capability, §18/§21; copy inside a page/funnel/form is an
+// embedded-quality property of that asset, not a separate artifact.)
 //
 // This is the ONLY file in the Studio that drives the page seam layer end-to-end. The
 // mode components own their own narrow seams (content-draft, generate-image, the
@@ -16,7 +18,7 @@
 // call headlessly (§10).
 //
 // GOLD (§11): one gold act per mode — the Publish trigger in the top bar (page), Publish
-// funnel, Create form, the per-draft Save to library (copy) — plus the confirm inside
+// funnel, Create form — plus the confirm inside
 // PublishDialog. Image carries gold ONLY on its manual Save-to-library retry, and only
 // when the server's own auto-file didn't happen (§13) — the ordinary path (auto-filed,
 // confirmed by a real content_id) shows a plain success StatePill, no button to click.
@@ -55,7 +57,6 @@ import {
   readStudioDark,
   useStudioTheme,
 } from "./StudioTheme";
-import { CopyMode } from "./modes/CopyMode";
 import { ImageMode } from "./modes/ImageMode";
 import { FormMode } from "./modes/FormMode";
 import { FunnelFlow } from "./modes/FunnelFlow";
@@ -313,13 +314,13 @@ export function StudioShell({
   // generation.phase, not state.mode) and would strand both rails retracted+inert forever (crew
   // catch). isGenerating clears the instant a run ends (done OR error), so the rails always slide
   // back. blocks.length===0 keeps a REGENERATE in the normal split; the (page|funnel) gate keeps a
-  // Copy/Form/Image surface from ever retracting the rail with no immersive canvas showing. Reads
+  // Form/Image surface from ever retracting the rail with no immersive canvas showing. Reads
   // reactive state, never the non-reactive blocksBeforeRun ref. Published up to StudioLayout so the
   // OUTER project rail retracts too; the inner rail gets the same flag via StudioSplit below.
   const { setImmersive } = useStudioImmersion();
-  // Mirrors a Copy/Image auto-run build in flight — extends firstBuildGenerating so BOTH rails
+  // Mirrors an Image auto-run build in flight — extends firstBuildGenerating so BOTH rails
   // retract for the full-frame cutscene, exactly as the page path does on its first build.
-  const [copyImageBuilding, setCopyImageBuilding] = useState(false);
+  const [imageBuilding, setImageBuilding] = useState(false);
   // The full-screen "watch it build" cutscene is the DASHBOARD HANDOFF moment ONLY (owner
   // 2026-07-17: "this does not load up inside of the project session"). It fires when a brand-new
   // session is opened from the gallery WITH a brief (autostart) and NEVER for a build triggered
@@ -333,19 +334,19 @@ export function StudioShell({
   // so we only clear it after a build has genuinely been active and then stopped — never in that gap.
   const genActiveRef = useRef(false);
   useEffect(() => {
-    const active = isGenerating || copyImageBuilding;
+    const active = isGenerating || imageBuilding;
     if (active) genActiveRef.current = true;
     else if (genActiveRef.current) {
       genActiveRef.current = false;
       setAutostartBuild(false);
     }
-  }, [isGenerating, copyImageBuilding]);
+  }, [isGenerating, imageBuilding]);
   const firstBuildGenerating =
     autostartBuild &&
     ((isGenerating && (mode === "page" || mode === "funnel")) ||
-      // Copy/Image get the same full-frame moment while their autostart draft is in flight. Gated to
+      // Image gets the same full-frame moment while its autostart draft is in flight. Gated to
       // the active mode so a hidden mode's stale build flag can never retract the visible surface.
-      (copyImageBuilding && (mode === "copy" || mode === "image")));
+      (imageBuilding && mode === "image"));
   useEffect(() => {
     setImmersive(firstBuildGenerating);
     // Clear on unmount so leaving a mid-build project never reopens the gallery with a hidden rail
@@ -381,13 +382,11 @@ export function StudioShell({
   // template pick, a hand-typed brief) — never overwritten by a stale value from a
   // different session's classify run.
   const [draftedFormSchema, setDraftedFormSchema] = useState<GrowthFormSchema | null>(null);
-  const [draftedCopyBrief, setDraftedCopyBrief] = useState<string | undefined>(undefined);
   const [draftedImagePrompt, setDraftedImagePrompt] = useState<string | undefined>(undefined);
-  // Explicit auto-run flags (§18): true ONLY when the classify step routed a brief into Copy/Image,
-  // so those modes fire their generation on mount for the "submit → cutscene → land with the result"
-  // page-parity flow. Kept separate from the drafted-brief value so a future non-classifier caller of
-  // initialBrief/initialPrompt never accidentally triggers a paid model call (§13).
-  const [autoRunCopy, setAutoRunCopy] = useState(false);
+  // Explicit auto-run flag (§18): true ONLY when the classify step routed a brief into Image, so
+  // that mode fires its generation on mount for the "submit → cutscene → land with the result"
+  // page-parity flow. Kept separate from the drafted-prompt value so a future non-classifier caller
+  // of initialPrompt never accidentally triggers a paid model call (§13).
   const [autoRunImage, setAutoRunImage] = useState(false);
 
   // ── AI funnel (§18/§19) — lives IN the page surface, never a separate tab ──────────
@@ -549,7 +548,7 @@ export function StudioShell({
     [tenantId, sessionId, onManifestChange],
   );
 
-  // Every non-page mode attaches its saved artifact to the owning project too, so ALL five
+  // Every non-page mode attaches its saved artifact to the owning project too, so ALL four
   // types land in the manifest — the project navigator shows the whole project, not just its
   // pages and funnels (§19: no artifact type is a second-class citizen). Each is best-effort
   // and non-fatal, same as the page/funnel path; the original per-mode "created" hooks (which
@@ -560,10 +559,6 @@ export function StudioShell({
       onFormCreated?.();
     },
     [linkPrimaryArtifact, onFormCreated],
-  );
-  const handleCopySaved = useCallback(
-    (saved: { id: string; title: string }) => void linkPrimaryArtifact("copy", saved.id, saved.title),
-    [linkPrimaryArtifact],
   );
   const handleImageSaved = useCallback(
     (saved: { id: string; title: string }) => void linkPrimaryArtifact("image", saved.id, saved.title),
@@ -699,7 +694,7 @@ export function StudioShell({
   const sessionLoadRef = useRef<string | null>(null);
   // Bridge to handleBriefSubmit for the autostart fire (Defect 1). MUST be handleBriefSubmit, NOT
   // runGenerate: handleBriefSubmit is the ONE entry that runs classifyStudioIntent, so the Home
-  // brief decides its own shape (page/funnel/form/copy/image) exactly like a manual first submit
+  // brief decides its own shape (page/funnel/form/image) exactly like a manual first submit
   // (§18/§19). Firing runGenerate directly would hardwire every Home build to a lone page.
   // handleBriefSubmit is declared LATER, so the session-load effect can't take it as a dependency
   // without a TDZ at the deps-array eval. A ref kept pointed at the live callback (synced in an
@@ -1336,9 +1331,9 @@ export function StudioShell({
               void buildFunnel(value);
               break;
             case "form": {
-              // A form draft never enters a generation cutscene (page/copy/image do; form's own
+              // A form draft never enters a generation cutscene (page/image do; form's own
               // building-screen parity is separate, #300). So disarm the dashboard-handoff cutscene
-              // flag here — otherwise it stays armed (no isGenerating/copyImageBuilding cycle to
+              // flag here — otherwise it stays armed (no isGenerating/imageBuilding cycle to
               // clear it) and would wrongly full-screen the NEXT in-session build (verifier catch).
               setAutostartBuild(false);
               onModeChange?.("form");
@@ -1357,11 +1352,6 @@ export function StudioShell({
               }
               break;
             }
-            case "copy":
-              setDraftedCopyBrief(value);
-              setAutoRunCopy(true);
-              onModeChange?.("copy");
-              break;
             case "image":
               setDraftedImagePrompt(value);
               setAutoRunImage(true);
@@ -1687,7 +1677,7 @@ export function StudioShell({
 
         {/* ── page mode (and the funnel surface, which lives inside it) — the original Vibe
              Studio, re-skinned onto the same state machine. Shown for "page" AND "funnel";
-             hidden only for the form/copy/image modes that own their own surface. ── */}
+             hidden only for the form/image modes that own their own surface. ── */}
         <StudioSplit
           className={mode === "page" || mode === "funnel" ? undefined : "hidden"}
           immersive={firstBuildGenerating}
@@ -1844,24 +1834,13 @@ export function StudioShell({
             initialSchema={draftedFormSchema}
           />
         )}
-        {visited.has("copy") && (
-          <CopyMode
-            className={mode !== "copy" ? "hidden" : undefined}
-            tenantId={tenantId}
-            initialBrief={draftedCopyBrief}
-            autoRun={autoRunCopy}
-            onGeneratingChange={setCopyImageBuilding}
-            onOpenLibrary={() => setLibraryOpen(true)}
-            onSaved={handleCopySaved}
-          />
-        )}
         {visited.has("image") && (
           <ImageMode
             className={mode !== "image" ? "hidden" : undefined}
             tenantId={tenantId}
             initialPrompt={draftedImagePrompt}
             autoRun={autoRunImage}
-            onGeneratingChange={setCopyImageBuilding}
+            onGeneratingChange={setImageBuilding}
             onOpenLibrary={() => setLibraryOpen(true)}
             onSaved={handleImageSaved}
           />
