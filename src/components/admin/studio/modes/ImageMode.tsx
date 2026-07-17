@@ -18,7 +18,7 @@
 // in behavior, including the needs_config branch. The manual save fallback routes through
 // studio.ts's saveImageToLibrary() seam — the same save_marketing_content RPC the server
 // call already uses, so there is still only ONE write path for this table (§10/§18).
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SectionCard, EmptyState, Toolbar, StatePill } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -28,10 +28,12 @@ import {
 import { Download, Info, Loader2, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { StudioRailHeading, StudioSplit } from "../StudioChrome";
-import { MODE_EMPTY, MODE_RAIL } from "../studio-copy";
+import { BUILDING_NOTES, MODE_EMPTY, MODE_RAIL } from "../studio-copy";
 import { CopyButton } from "./content-shared";
 import { PromptComposer } from "../PromptComposer";
+import { StudioBuildingScreen, useElapsedMs } from "../StudioBuildingScreen";
 import { draftImage, isStudioError, saveImageToLibrary } from "../studio";
+import { useReducedMotion } from "@/components/growth/growth-motion";
 import { growthSeamMessage } from "@/lib/growth-templates";
 
 export interface ImageModeProps {
@@ -41,6 +43,13 @@ export interface ImageModeProps {
    *  the composer on this mode's first mount. Additive: an operator who deliberately clicks
    *  the Image chip still gets the normal blank composer and writes their own prompt. */
   initialPrompt?: string;
+  /** True ONLY when the prompt arrived via the Studio's autostart classify (§18) — fires the
+   *  generation on this mode's first mount so the operator lands with the image already
+   *  rendering, like the page path. A manual Image-chip click leaves this false (config screen). */
+  autoRun?: boolean;
+  /** Mirrors the auto-run render in flight so the shell can retract BOTH rails for the same
+   *  full-frame "watch it build" cutscene the page path gets (§11/§19). */
+  onGeneratingChange?: (building: boolean) => void;
   /** Opens the Studio's own content library Sheet (§19: everything created here stays
    *  reachable from here) — surfaced as "View in library" once the image is confirmed saved. */
   onOpenLibrary?: () => void;
@@ -61,17 +70,32 @@ interface ImageResult {
   contentId: string | null;
 }
 
-export function ImageMode({ tenantId, className, initialPrompt, onOpenLibrary, onSaved }: ImageModeProps) {
+export function ImageMode({ tenantId, className, initialPrompt, autoRun, onGeneratingChange, onOpenLibrary, onSaved }: ImageModeProps) {
+  const reduce = useReducedMotion();
   const [prompt, setPrompt] = useState(initialPrompt ?? "");
   const [size, setSize] = useState("square");
   const [busy, setBusy] = useState(false);
   const [needsConfig, setNeedsConfig] = useState(false);
   const [result, setResult] = useState<ImageResult | null>(null);
   const [savingToLibrary, setSavingToLibrary] = useState(false);
+  // The full-frame cutscene is shown ONLY while an AUTOSTART render is in flight — a manual
+  // "Generate image" keeps the current in-rail spinner. Distinct from `busy` so the manual path
+  // never retracts the rail (which would strand the config screen). Lazy-init from the SAME guard
+  // the auto-fire effect uses, so render 1 already shows the cutscene — no config-screen flash (§11).
+  const [autoBuilding, setAutoBuilding] = useState(
+    () => !!autoRun && !!tenantId && (initialPrompt ?? "").trim().length >= 4,
+  );
+  const elapsedMs = useElapsedMs(autoBuilding);
 
-  const generate = async (value: string) => {
+  const generate = async (value: string, opts?: { auto?: boolean }) => {
     const thePrompt = value.trim();
+    if (!tenantId) { toast.error("Pick a workspace first."); return; }
     if (thePrompt.length < 4) { toast.error("Describe the image you want."); return; }
+    const auto = opts?.auto ?? false;
+    // Full-frame cutscene + rail retraction ONLY on the autostart path (§11/§19). The finally
+    // clears it on every exit — a throw OR the honest needs_config gate both land back on the
+    // editable split, never stranded on the cutscene, never a fake "done" (§13).
+    if (auto) { setAutoBuilding(true); onGeneratingChange?.(true); }
     setBusy(true); setNeedsConfig(false);
     try {
       const out = await draftImage({ tenantId: tenantId ?? "", prompt: thePrompt, size });
@@ -89,8 +113,23 @@ export function ImageMode({ tenantId, className, initialPrompt, onOpenLibrary, o
       if (out.content_id) onSaved?.({ id: out.content_id, title: thePrompt.slice(0, 60) || "Image" });
     } catch (e) {
       toast.error(isStudioError(e) ? e.message : growthSeamMessage(e, "Couldn't generate that image. Try again."));
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+      if (auto) { setAutoBuilding(false); onGeneratingChange?.(false); }
+    }
   };
+
+  // Autostart auto-run (§18): a prompt Paige classified into Image fires the render on first
+  // mount, so the operator lands with the image already generating — no second click. firedRef
+  // survives StrictMode's double-invoke so a paid generate-image call never fires twice.
+  const autoFiredRef = useRef(false);
+  useEffect(() => {
+    if (autoRun && !autoFiredRef.current && (initialPrompt ?? "").trim().length >= 4) {
+      autoFiredRef.current = true;
+      void generate(initialPrompt ?? "", { auto: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const saveToLibrary = async () => {
     if (!result) return;
@@ -118,6 +157,7 @@ export function ImageMode({ tenantId, className, initialPrompt, onOpenLibrary, o
   return (
     <StudioSplit
       className={className}
+      immersive={autoBuilding}
       railHeader={
         <StudioRailHeading
           heading={MODE_RAIL.image.heading}
@@ -152,6 +192,17 @@ export function ImageMode({ tenantId, className, initialPrompt, onOpenLibrary, o
         />
       }
       canvas={
+        autoBuilding ? (
+          // The autostart cutscene — the same full-frame Paige presence the page path shows,
+          // indeterminate (one non-streamed model call, no fabricated phases — §13).
+          <StudioBuildingScreen
+            note={BUILDING_NOTES.image.note}
+            agent={BUILDING_NOTES.image.agent}
+            elapsedMs={elapsedMs}
+            reduce={!!reduce}
+            ariaLabel="Paige is rendering your image"
+          />
+        ) : (
         <div className="mx-auto w-full max-w-3xl">
           <SectionCard>
             {needsConfig ? (
@@ -215,6 +266,7 @@ export function ImageMode({ tenantId, className, initialPrompt, onOpenLibrary, o
             )}
           </SectionCard>
         </div>
+        )
       }
     />
   );

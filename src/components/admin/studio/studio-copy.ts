@@ -210,6 +210,18 @@ export const GENERATION_NOTES: Record<Exclude<GenerationPhase, "idle">, string> 
 };
 
 /**
+ * The full-frame "building" narration for the single-call artifact types (copy, image). Unlike
+ * the page path — a streamed run with real phases — these are ONE non-streamed model call with
+ * no measurable phases, so the building screen runs INDETERMINATE: a real elapsed clock, no
+ * fabricated progress bar (§13). Each line names the teammate on Paige's crew who actually does
+ * the work (§8/§14). §3 voice (no "AI-powered"/"streamline"), §2-clean.
+ */
+export const BUILDING_NOTES: Record<"copy" | "image", { agent: string; note: string }> = {
+  copy: { agent: "Copy agent", note: "Paige is writing your copy." },
+  image: { agent: "Design agent", note: "Paige is rendering your image." },
+};
+
+/**
  * Who on Paige's team owns each phase (§8/§14). This is the attribution that sells the moat —
  * "you're hiring her entire team," not a single model. Each name is honest: the work behind it
  * genuinely happens in the seam. Paige herself conducts (brief), then hands to her specialists.
