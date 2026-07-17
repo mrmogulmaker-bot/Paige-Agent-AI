@@ -402,6 +402,13 @@ export function PromptComposer({
           // visible focus state (WCAG 2.4.7).
           className={cn(
             "resize-none border-0 bg-transparent px-4 pb-2 pt-3.5 text-sm leading-relaxed shadow-none",
+            // BARE (HOME) fix: the shadcn Textarea styles only the PLACEHOLDER color, so TYPED text
+            // inherits `color` from outside the composer's `dark studio-glass-card` scope — which, on
+            // a LIGHT platform theme, is dark → dark text on the dark card (owner: "words going dark
+            // when typing," while the placeholder still looked fine). Pin the typed text to the local
+            // foreground so it resolves to the card's dark-scope light value. The framed builder dock
+            // reads correctly as-is, so this is scoped to bare to avoid touching it.
+            !framed && "text-foreground",
             framed && "focus-visible:ring-0 focus-visible:ring-offset-0",
           )}
         />
