@@ -317,6 +317,13 @@ export function LivePreview({
               </div>
             )}
             <iframe
+              // Keyed on reloadNonce so a reload MOUNTS A FRESH iframe (new blank
+              // contentDocument) instead of `doc.open()`-ing the current one — which would
+              // detach the body node the live React portal is mounted into and throw a
+              // removeChild NotFoundError. React removes the old iframe as a unit and the portal
+              // follows frameBody to the new body cleanly; the frame-write effect (keyed on the
+              // same nonce) writes into the fresh document.
+              key={reloadNonce}
               ref={frameRef}
               title="Page preview"
               className="block w-full border-0"

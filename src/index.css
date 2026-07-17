@@ -181,9 +181,16 @@ All colors MUST be HSL.
     --studio-well-glow:   0  0% 100%;
   }
 
-  /* Only the theme-aware glass/rail flip for the dark app theme — the cosmic FIELD tokens
-     above are already dark and are inherited unchanged (same element matches both selectors). */
-  .dark .studio-surface {
+  /* The theme-aware glass/rail flip for a DARK studio. It carries BOTH selectors for the same
+     reason the well tokens below do: `.dark .studio-surface` catches the PLATFORM theme going
+     dark (`.dark` an ancestor of the surface), and `.studio-surface .dark` catches the
+     STUDIO-LOCAL toggle (its `dark` class sits on StudioFrame, a DESCENDANT). Any in-frame
+     element that consumes a `--studio-glass-*` token — the composer glass card, the rail, and
+     now LivePreview's browser-chrome strip (`--studio-glass-solid`) — needs the local-toggle
+     flip too, or it renders a near-white bar in a dark studio (the cosmic FIELD tokens above
+     are already dark and inherited unchanged). */
+  .dark .studio-surface,
+  .studio-surface .dark {
     --studio-glass-bg:     222 40% 12%;
     --studio-glass-border: 220 30% 30%;
     /* A step BELOW the dark --card (~8% L) so the bg-card composer input sits ABOVE the glass

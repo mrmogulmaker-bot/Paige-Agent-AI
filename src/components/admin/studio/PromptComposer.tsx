@@ -280,7 +280,14 @@ export function PromptComposer({
           // the textarea is a transparent field flush inside it (one cohesive box, not a box
           // in a box). The grow effect above bounds its height; overflow scrolls internally.
           // px-4 aligns the text column with the toolbar's optically-aligned glyph below.
-          className="resize-none border-0 bg-transparent px-4 pb-2 pt-3.5 text-sm leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          // Ring suppression only in FRAMED mode, where the container's focus-within halo IS the
+          // focus indicator. In BARE mode (HOME hero) there is no container halo, so the textarea
+          // keeps its own indigo focus-visible ring — never leave the primary input with no
+          // visible focus state (WCAG 2.4.7).
+          className={cn(
+            "resize-none border-0 bg-transparent px-4 pb-2 pt-3.5 text-sm leading-relaxed shadow-none",
+            framed && "focus-visible:ring-0 focus-visible:ring-offset-0",
+          )}
         />
 
         {/* control row — lives INSIDE the dock, always visible under the textarea */}
