@@ -316,11 +316,32 @@ export function StudioShell({
   // Mirrors a Copy/Image auto-run build in flight — extends firstBuildGenerating so BOTH rails
   // retract for the full-frame cutscene, exactly as the page path does on its first build.
   const [copyImageBuilding, setCopyImageBuilding] = useState(false);
+  // The full-screen "watch it build" cutscene is the DASHBOARD HANDOFF moment ONLY (owner
+  // 2026-07-17: "this does not load up inside of the project session"). It fires when a brand-new
+  // session is opened from the gallery WITH a brief (autostart) and NEVER for a build triggered
+  // while already inside a session — an in-session brief or a rebuild renders the SMALLER inline
+  // GenerationExperience in the normal split instead of retracting both rails full-frame. This
+  // flag is armed the instant the autostart build is fired (see the session-load effect below) and
+  // disarmed the moment that first build actually finishes, so a later in-session build stays inline.
+  const [autostartBuild, setAutostartBuild] = useState(false);
+  // Disarm once the handoff build has actually run and ended. `genActiveRef` guards the arm→run gap:
+  // autostartBuild is set true BEFORE isGenerating flips (the fire routes through an async classify),
+  // so we only clear it after a build has genuinely been active and then stopped — never in that gap.
+  const genActiveRef = useRef(false);
+  useEffect(() => {
+    const active = isGenerating || copyImageBuilding;
+    if (active) genActiveRef.current = true;
+    else if (genActiveRef.current) {
+      genActiveRef.current = false;
+      setAutostartBuild(false);
+    }
+  }, [isGenerating, copyImageBuilding]);
   const firstBuildGenerating =
-    (isGenerating && state.blocks.length === 0 && (mode === "page" || mode === "funnel")) ||
-    // Copy/Image get the same full-frame moment while their autostart draft is in flight. Gated to
-    // the active mode so a hidden mode's stale build flag can never retract the visible surface.
-    (copyImageBuilding && (mode === "copy" || mode === "image"));
+    autostartBuild &&
+    ((isGenerating && (mode === "page" || mode === "funnel")) ||
+      // Copy/Image get the same full-frame moment while their autostart draft is in flight. Gated to
+      // the active mode so a hidden mode's stale build flag can never retract the visible surface.
+      (copyImageBuilding && (mode === "copy" || mode === "image")));
   useEffect(() => {
     setImmersive(firstBuildGenerating);
     // Clear on unmount so leaving a mid-build project never reopens the gallery with a hidden rail
@@ -768,6 +789,9 @@ export function StudioShell({
         // RIGHT artifact type (§18/§19), not a forced page.
         if (willAutostart) {
           autostartRef.current = sessionId;
+          // Arm the full-screen handoff cutscene for THIS build only — the dashboard→new-session
+          // moment. Disarmed when the build finishes, so later in-session builds stay inline.
+          setAutostartBuild(true);
           briefSubmitRef.current(loaded.session.seedBrief ?? initialBrief ?? "");
         }
       })
@@ -1308,6 +1332,11 @@ export function StudioShell({
               void buildFunnel(value);
               break;
             case "form": {
+              // A form draft never enters a generation cutscene (page/copy/image do; form's own
+              // building-screen parity is separate, #300). So disarm the dashboard-handoff cutscene
+              // flag here — otherwise it stays armed (no isGenerating/copyImageBuilding cycle to
+              // clear it) and would wrongly full-screen the NEXT in-session build (verifier catch).
+              setAutostartBuild(false);
               onModeChange?.("form");
               try {
                 const schema = await draftFormSchema(value);
@@ -1339,6 +1368,17 @@ export function StudioShell({
               void runGenerate(value);
               break;
           }
+        } catch (err) {
+          // classifyStudioIntent defaults to "page" on transport failure rather than throwing, so
+          // this is a defensive backstop: if the classify path ever throws, don't leave the handoff
+          // cutscene armed for the next in-session build, and surface an honest miss instead of a
+          // silent unhandled rejection (§13).
+          setAutostartBuild(false);
+          toast({
+            title: "Couldn't read that brief",
+            description: isStudioError(err) ? err.message : "Try describing what you want again.",
+            variant: "destructive",
+          });
         } finally {
           setClassifying(false);
         }
