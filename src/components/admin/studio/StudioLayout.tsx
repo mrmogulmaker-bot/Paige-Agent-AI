@@ -15,20 +15,22 @@ import {
   Clock,
   FolderOpen,
   LayoutTemplate,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Star,
+  Sun,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PaigeMark } from "@/components/brand/PaigeMark";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { ProjectNavigator } from "./ProjectNavigator";
 import { useActiveStudioSession } from "./useActiveStudioSession";
 import { StudioImmersionProvider } from "./StudioImmersion";
+import { StudioThemeProvider, useStudioThemeState, type StudioThemeValue } from "./StudioTheme";
 import type { StudioSessionView } from "./studio-types";
 
 interface ViewNavItem {
@@ -80,9 +82,46 @@ function StudioNavItem({
   );
 }
 
+/** The rail's theme control — the STUDIO-LOCAL toggle (not the platform `ThemeToggle`). It flips
+ *  only the `dark` class on the `.studio-surface` root (below), so it themes the gallery + rail
+ *  the same way the builder top-bar toggle themes the builder — one shared signal, and the global
+ *  platform theme is never touched (owner 2026-07-17). Styled to match StudioNavItem so it reads
+ *  as a first-class rail control in both themes. */
+function StudioThemeToggleRow({
+  theme,
+  collapsed,
+}: {
+  theme: StudioThemeValue;
+  collapsed: boolean;
+}) {
+  const rowLabel = theme.studioDark ? "Light mode" : "Dark mode";
+  const Icon = theme.studioDark ? Sun : Moon;
+  return (
+    <button
+      type="button"
+      onClick={theme.toggleStudioTheme}
+      aria-label={theme.studioDark ? "Switch the Studio to light mode" : "Switch the Studio to dark mode"}
+      title={collapsed ? rowLabel : undefined}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors",
+        "hover:bg-[hsl(var(--studio-glass-border)/0.3)] hover:text-foreground",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+        collapsed && "justify-center px-0",
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" aria-hidden />
+      {!collapsed && <span className="truncate">{rowLabel}</span>}
+    </button>
+  );
+}
+
 export default function StudioLayout() {
   const location = useLocation();
   const { activeTenantId } = useTenantContext();
+  // Studio-LOCAL theme — owned here (the `.studio-surface` root's parent) so the ROOT class themes
+  // BOTH the rail and the outlet in lockstep, and shared down to StudioShell's top-bar toggle via
+  // context. Never next-themes, never the global `<html>` class (see StudioTheme.ts).
+  const studioTheme = useStudioThemeState();
 
   // Builder routes (/admin/studio/new, /admin/studio/:id) default the rail to a thin icon spine
   // so it doesn't compete with the builder's own 380px chat column; the bare home is expanded.
@@ -134,25 +173,32 @@ export default function StudioLayout() {
 
   return (
     <StudioImmersionProvider value={immersionValue}>
-    <div className="studio-surface flex h-full min-h-0 w-full overflow-hidden bg-[hsl(var(--studio-rail-bg))] text-foreground">
+    <StudioThemeProvider value={studioTheme}>
+    {/* The `.studio-surface` ROOT carries the Studio-local `dark` class (owner 2026-07-17): it
+        wraps BOTH the rail and the outlet, so ONE toggle flips every in-Studio surface — rail, top
+        bar, composer dock, canvas, empty states, cards, cutscene, AND the gallery — in lockstep,
+        while the global platform theme is never touched. Nothing here writes `<html>`/`<body>`. */}
+    <div
+      className={cn(
+        "studio-surface flex h-full min-h-0 w-full overflow-hidden bg-[hsl(var(--studio-rail-bg))] text-foreground",
+        studioTheme.studioDark && "dark",
+      )}
+    >
       {/* ── persistent LEFT RAIL ── */}
       <nav
         ref={railRef}
         aria-label="Vibe Studio"
         className={cn(
-          // `dark` commits the persistent rail to the deep-indigo studio chrome in BOTH platform
-          // themes (owner: a workspace is dark by definition) — without it, on a light platform
-          // this rail resolved the light --studio-rail-bg (a near-white column) and read as the
-          // "gray throughout the whole session" the owner called out. Scoped to THIS <nav> only,
-          // so the home gallery under the Outlet stays theme-aware and the in-session light
-          // toggle (which flips StudioFrame, a separate subtree) still works — the rail simply
-          // stays dark like Lovable's does even when you preview a light page (§6/§11).
+          // The rail no longer hardcodes `dark` — it inherits the Studio-local theme from the
+          // `.studio-surface` root above, so flipping the toggle flips the rail too (the old forced
+          // `dark` made the toggle look dead on this surface). Its own --studio-rail-* tokens carry
+          // the deep-indigo (dark) / crisp indigo-off-white (light) chrome either way (§6/§11).
           // overflow-hidden on BOTH states (not just the immersive branch): the rail is z-20 ABOVE
           // the gallery, and while its width animates 64↔248 its chrome could paint over the cards
           // during the tween (the collapse-overlap bug, #3). Clipping the rail to its own box means
           // nothing bleeds across the seam at any point in the animation. Inner lists keep their own
           // vertical scroll, so this only clips the horizontal bleed.
-          "dark relative z-20 flex h-full shrink-0 flex-col overflow-hidden",
+          "relative z-20 flex h-full shrink-0 flex-col overflow-hidden",
           // ease-in-out matches the inner conversation rail's curve so BOTH rails retract in
           // perfect lockstep (Tailwind's arbitrary transition-[width] sets only the property, not
           // a timing function — without this the outer rail would ride the default `ease`).
@@ -243,11 +289,11 @@ export default function StudioLayout() {
               {!collapsed && "Back to Paige"}
             </Link>
           )}
-          {/* A labeled, obviously-a-theme-switch control in BOTH themes (#6). `labeled` re-declares
-              its own color under the rail's `.dark` scope, so the icon renders near-white instead of
-              inheriting the light theme's dark-indigo and vanishing (the old bare icon's bug). */}
+          {/* The Studio-LOCAL theme switch — flips the `.studio-surface` root class only, so the
+              gallery/rail flip with the same signal the builder's top-bar toggle uses. Never the
+              global platform theme (owner 2026-07-17). */}
           <div className="pt-1">
-            <ThemeToggle labeled collapsed={collapsed} />
+            <StudioThemeToggleRow theme={studioTheme} collapsed={collapsed} />
           </div>
         </div>
       </nav>
@@ -258,6 +304,7 @@ export default function StudioLayout() {
         <Outlet context={activeSession} />
       </div>
     </div>
+    </StudioThemeProvider>
     </StudioImmersionProvider>
   );
 }

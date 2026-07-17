@@ -167,78 +167,109 @@ All colors MUST be HSL.
        cool-gray onto the indigo/violet BRAND spectrum (§6/§11 — the "stop the gray" fix): the
        light-variant chrome is a soft INDIGO-tinted panel, never platform white/gray. The card
        sits a step below --card so PromptComposer's input still lifts and its shadow casts. */
-    --studio-glass-bg:     240 44% 99%;
-    --studio-glass-border: 248 45% 80%;   /* indigo edge, was gray-blue 220 40% 82% */
-    --studio-glass-solid:  236 40% 93%;   /* soft indigo panel, was pale gray 222 30% 96% */
-    --studio-rail-bg:      240 40% 97%;   /* soft indigo rail, was near-white 222 42% 98% */
+    /* LIGHT studio (§23 — open / fresh / clear): a crisp indigo-tinted off-white elevation
+       stack, NOT gray and NOT darkened. Depth reads from the L-ladder (well recess < canvas
+       base < rail < dock/card raised < input brightest) + hairline borders + soft ink shadow. */
+    --studio-glass-bg:     240 55% 100%;
+    --studio-glass-border: 244 40% 86%;   /* refined indigo hairline, was saturated 248 45% 80% */
+    --studio-glass-solid:  240 44% 99%;   /* near-white composer card fill (§311 light input) */
+    --studio-rail-bg:      240 44% 98%;   /* rail column — a clean step up off the canvas */
     --studio-on-hero:      0 0% 100%;
     --studio-scrim:        236 60% 4%;
+    /* Composer INPUT field (§311 (b)) — the "middle of the chat box". Light = a WHITE/near-white
+       field the dark text sits on; dark variant below is a raised, lighter-than-canvas well. */
+    --studio-input:        240 44% 99.5%;
 
     /* Committed CHROME family — the working session's frame/masthead/rail/dock/canvas. Light
        variant here is a soft indigo tint (the opt-in light session), the deep-indigo default
        lives in the dark block. Repointing the chrome components off platform neutrals
        (bg-card/bg-muted/bg-background/border-border) onto THESE is what kills the admin-gray
        throughout the session (§6/§11 — token-first, one continuous system). */
-    --studio-canvas:        234 34% 94%;  /* base slab the session floats on */
-    --studio-topbar-from:   240 42% 98%;  /* masthead lit top */
-    --studio-topbar-to:     234 32% 94%;  /* masthead bottom → meets the canvas */
-    --studio-rail-solid:    240 38% 96%;  /* the conversation rail column */
-    --studio-dock:          240 46% 99%;  /* the pinned composer dock — a step above the rail */
-    --studio-chrome-border: 246 36% 84%;  /* indigo region seams, never gray */
+    --studio-canvas:        240 40% 96.5%; /* base slab the session floats on */
+    --studio-topbar-from:   240 50% 99.5%; /* masthead lit top */
+    --studio-topbar-to:     240 40% 97%;   /* masthead bottom → meets the canvas */
+    --studio-rail-solid:    240 42% 97.5%; /* the conversation rail column */
+    --studio-dock:          240 52% 99.8%; /* the pinned composer dock — a step above the rail */
+    --studio-chrome-border: 240 30% 88%;   /* refined indigo region seams, never gray */
 
     /* Drafting WELL — the recessed surface the rendered page floats on (the Lovable/v0 preview
        pane, not a wireframe grid). Light values: a soft indigo-tinted step below the canvas so
        the page card lifts and casts. `well-glow` is the top-light that gives the recess its
        lit lip. */
-    --studio-well:      232 30% 90%;
+    --studio-well:      236 24% 91%;      /* recessed BELOW the canvas so the rendered page lifts */
     --studio-well-glow:   0  0% 100%;
   }
 
-  /* The theme-aware glass/rail flip for a DARK studio. It carries BOTH selectors for the same
-     reason the well tokens below do: `.dark .studio-surface` catches the PLATFORM theme going
-     dark (`.dark` an ancestor of the surface), and `.studio-surface .dark` catches the
-     STUDIO-LOCAL toggle (its `dark` class sits on StudioFrame, a DESCENDANT). Any in-frame
-     element that consumes a `--studio-glass-*` token — the composer glass card, the rail, and
-     now LivePreview's browser-chrome strip (`--studio-glass-solid`) — needs the local-toggle
-     flip too, or it renders a near-white bar in a dark studio (the cosmic FIELD tokens above
-     are already dark and inherited unchanged). */
-  .dark .studio-surface,
-  .studio-surface .dark {
-    /* The DEFAULT working session (studioDark defaults on). Retuned from flat near-black grays
-       to a LIT, saturated indigo — Lovable/Linear/Replit-grade deep-indigo glass, not an unlit
-       CRUD slab. Every value carries real chroma (44-46% sat) and enough lightness to read as a
-       panel LIFTED off the field, so the nebula bloom bleeds through and the surface feels alive. */
-    --studio-glass-bg:     236 44% 14%;   /* was 222 40% 12% */
-    --studio-glass-border: 248 44% 34%;   /* indigo rim, was gray 220 30% 30% */
-    /* Lit indigo composer face (was a dead flat 230 38% 6% near-black) — the .studio-glass-card
-       fill alpha is dropped below so the cosmic nebula bleeds THROUGH this onto the face. */
-    --studio-glass-solid:  234 46% 14%;
-    --studio-rail-bg:      236 44% 8%;     /* warmed toward indigo, was 234 44% 7% */
-    --studio-scrim:        236 60% 3%;
+  /* PLATFORM-TOKEN SHIELD (owner 2026-07-17 — "the platform theme does not dictate the Studio").
+     A LIGHT Studio must stay light even when the platform is DARK. The platform's `.dark` on <html>
+     sets dark values for --foreground/--card/--border/etc. that would otherwise INHERIT down into a
+     light `.studio-surface` (which reads those platform tokens for its text/cards/hairlines) and
+     paint dark text on the light chrome. Re-declaring the overridable platform tokens to their
+     `:root` light values on `.studio-surface:not(.dark)` shields the light Studio from that leak.
+     `:not(.dark)` is load-bearing: on the DARK Studio root (`.studio-surface.dark`) the platform
+     `.dark` block correctly supplies the dark values, and this rule must NOT win over it by source
+     order — so it deliberately excludes the dark root. */
+  .studio-surface:not(.dark) {
+    --background: 210 20% 98%;
+    --foreground: 222 87% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 87% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 87% 12%;
+    --muted: 265 16% 95%;
+    --muted-foreground: 264 12% 45%;
+    --border: 265 14% 90%;
+    --border-strong: 265 13% 82%;
+    --input: 265 14% 90%;
+    --primary: 255 60% 12%;
+    --primary-light: 255 50% 22%;
+    --gold-dark: 36 70% 32%;
+  }
 
-    /* Committed CHROME family — the deep indigo-black default room. Canvas is the base slab
-       (6% L), rail lifts a step off it (9%), the dock lifts again (13%) so the primary input
-       reads raised, the masthead is a lit top→canvas gradient, and every seam is INDIGO. */
-    --studio-canvas:        240 46% 6%;
-    --studio-topbar-from:   242 44% 12%;
-    --studio-topbar-to:     238 46% 8%;
+  /* The glass/rail/chrome flip for a DARK studio, driven ONLY by the Studio-local signal. It
+     carries BOTH selectors: `.studio-surface.dark` is the toggle class on the ROOT (StudioLayout),
+     which themes the whole subtree — rail, outlet, gallery, builder — in lockstep; `.studio-surface
+     .dark` catches any inner `dark` scope (StudioFrame, still passed `dark={studioDark}` as a
+     belt-and-suspenders). Neither keys off a platform-dark ancestor, so the platform theme never
+     dictates the Studio (owner 2026-07-17). */
+  .studio-surface.dark,
+  .studio-surface .dark {
+    /* DARK studio (§22/§23 — focused / premium / immersive): a LIT, layered indigo — deep-indigo
+       glass, not an unlit CRUD slab. `.studio-surface.dark` is the STUDIO-LOCAL toggle on the root;
+       `.studio-surface .dark` catches any inner `dark` scope (StudioFrame). It is deliberately NOT
+       keyed off `.dark .studio-surface` (a platform-dark ancestor) so the platform theme can never
+       force the Studio dark — the Studio-local signal is the only driver (owner 2026-07-17). */
+    --studio-glass-bg:     236 44% 15%;
+    --studio-glass-border: 248 44% 34%;   /* indigo rim */
+    /* Lit indigo composer face — the .studio-glass-card fill alpha is dropped below so the cosmic
+       nebula bleeds THROUGH this onto the face. */
+    --studio-glass-solid:  234 46% 14%;
+    --studio-rail-bg:      236 44% 7.5%;
+    --studio-scrim:        236 60% 3%;
+    /* Composer INPUT field (§311 (b)) — raised ABOVE the dock (14%) so the field reads as the lit
+       focal well, never dark-text-on-dark (the text is the light --foreground). */
+    --studio-input:        238 40% 18%;
+
+    /* Committed CHROME family — the deep indigo-black room, a real base→raised elevation stack:
+       canvas base (5.5% L) → rail (9%) → dock (14%, the raised input shelf) → masthead lit
+       top→canvas gradient, every seam INDIGO (§22). */
+    --studio-canvas:        240 46% 5.5%;
+    --studio-topbar-from:   242 44% 13%;
+    --studio-topbar-to:     238 46% 8.5%;
     --studio-rail-solid:    238 42% 9%;
-    --studio-dock:          242 42% 13%;
+    --studio-dock:          242 42% 14%;
     --studio-chrome-border: 248 42% 30%;
   }
 
-  /* The drafting WELL flips for a DARK studio in two distinct ways, so it carries BOTH selectors:
-     `.dark .studio-surface` catches the PLATFORM theme being dark (`.dark` is an ancestor of the
-     surface), and `.studio-surface .dark` catches the STUDIO-LOCAL toggle (its `dark` class sits on
-     StudioFrame, a DESCENDANT of `.studio-surface`, and StudioFrame is an ancestor of the
-     `.studio-drafting-grid` that consumes these — so the override must live on that inner `.dark`,
-     not only the outer one). Dark well: a deep indigo-charcoal a touch cooler than the field, with a
-     lifted top-glow lip so the recess still reads lit from above. `--studio-ink` is theme-fixed
-     (declared once on `.studio-surface`) and needs no dark variant — it is the shadow ink. */
-  .dark .studio-surface,
+  /* The drafting WELL flip for a DARK studio — same two Studio-local selectors as the chrome above
+     (`.studio-surface.dark` the root toggle, `.studio-surface .dark` any inner `dark` scope). Dark
+     well: a deep indigo-charcoal a touch below the canvas, with a lifted top-glow lip so the recess
+     still reads lit from above. `--studio-ink` is theme-fixed (declared once on `.studio-surface`)
+     and needs no dark variant — it is the shadow ink. */
+  .studio-surface.dark,
   .studio-surface .dark {
-    --studio-well:      236 44% 6%;   /* deeper indigo saturation, was 235 42% 6% */
-    --studio-well-glow: 246 55% 16%;  /* lifted lit lip — a glowing stage, was 240 45% 14% */
+    --studio-well:      236 46% 5%;   /* a touch below the canvas — the recessed preview stage */
+    --studio-well-glow: 246 55% 16%;  /* lifted lit lip — a glowing stage */
   }
 }
 
@@ -555,15 +586,17 @@ All colors MUST be HSL.
       0 2px 8px   hsl(236 70% 3% / 0.38),
       inset 0 1px 0 hsl(0 0% 100% / 0.10);   /* top inner highlight */
   }
-  .studio-glass-card::before {                /* lit brand rim — indigo→blue, zero gold (§11) */
-    content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px;
+  .studio-glass-card::before {                /* the ONE refined hairline frame — zero gold (§11) */
+    content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
     pointer-events: none;
-    /* §11 gold discipline: gold is NEVER spent on a resting border — the rim is pure brand
-       indigo→blue. Gold lives only on the act (Publish / Start building / New project). */
+    /* §311 (a): the SINGLE elegant frame around the whole composer — a refined 1px indigo
+       hairline, NOT the old saturated 1.5px bright-purple rim (the inner ring that stacked with
+       it is removed in PromptComposer's bare dock). §11 gold discipline: gold is never spent on a
+       resting border — the act is the gold ↑ submit alone. */
     background: linear-gradient(135deg,
-      hsl(var(--studio-nebula-indigo) / 0.55),
-      hsl(var(--studio-nebula-blue) / 0.40) 55%,
-      hsl(var(--studio-nebula-indigo) / 0.22));
+      hsl(var(--studio-nebula-indigo) / 0.34),
+      hsl(var(--studio-nebula-blue) / 0.24) 55%,
+      hsl(var(--studio-nebula-indigo) / 0.14));
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
             mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);

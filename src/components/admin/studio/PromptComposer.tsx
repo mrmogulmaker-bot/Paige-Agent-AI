@@ -295,15 +295,20 @@ export function PromptComposer({
             "hover:border-[hsl(var(--studio-chrome-border)/0.85)]",
             "focus-within:border-[hsl(var(--ring))] focus-within:shadow-[0_0_0_3px_hsl(var(--ring)/0.16),0_1px_0_0_hsl(0_0%_100%/0.08)_inset,0_14px_36px_-14px_hsl(var(--shadow-ink)/0.6)]",
           ],
-          // BARE (HOME hero): the dock sits inside the glass card, so it draws no raised box of its
-          // own. The old treatment stacked a HARD 1px inset ring (/0.5) on top of the glass card's
-          // own 1.5px gradient rim — the exact doubled "box-in-a-box" edge the owner flagged (#4).
-          // Now the field is defined by RECESSION, not a competing outline: a deeper ink fill + a
-          // soft inner top shadow sink it into the slab, and the edge is only a whisper hairline
-          // (/0.2). The textarea keeps its own focus-visible ring (WCAG 2.4.7) — this is resting
-          // field definition, not a focus indicator, so the two never fight.
+          // BARE (HOME hero): the dock sits inside the glass card. §311 (a): NO inner outline — the
+          // glass-card's single refined hairline rim is the ONE frame, so this draws none of its own
+          // (the old inset 1px ring stacked on the rim was the "box-in-a-box" the owner flagged).
+          // §311 (b): the field is a genuine INPUT well — --studio-input flips WHITE (light) /
+          // raised-indigo (dark) with the theme, so the "middle of the chat box" is always a light
+          // field with readable text, never dark-on-dark. §311 (c): exactly ONE accent — a soft
+          // indigo focus-within glow (the "glowing blue"), no competing rings. Gold stays only on
+          // the ↑ submit (§11).
+          // A resting INNER shadow (not a border) makes the white well read as a distinct input in
+          // light mode without adding a second outline — so it stays ONE frame (the card rim), never
+          // the box-in-a-box the owner flagged. On focus-within the same recess keeps + a stronger
+          // indigo glow (0.32, up from a too-faint 0.18) is a WCAG-visible focus cue on the white field.
           !framed &&
-            "rounded-2xl bg-[hsl(var(--studio-ink)/0.25)] shadow-[inset_0_0_0_1px_hsl(var(--studio-glass-border)/0.2),inset_0_2px_6px_-2px_hsl(var(--studio-ink)/0.5)]",
+            "rounded-2xl bg-[hsl(var(--studio-input))] shadow-[inset_0_1px_2px_hsl(var(--studio-ink)/0.08)] focus-within:shadow-[inset_0_1px_2px_hsl(var(--studio-ink)/0.08),0_0_0_3px_hsl(var(--ring)/0.32)]",
         )}
       >
         {/* In-dock suggestion chips (builder) — a compact single-line scroll row at the TOP of
@@ -312,11 +317,11 @@ export function PromptComposer({
         {showDockChips && (
           <div
             className={cn(
-              "flex items-center gap-1.5 overflow-x-auto border-b border-border/50 px-4 pb-2.5 pt-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
-              // HOME/bare only: extra vertical padding so the chips' animated gold halo has room and
-              // is never flat-clipped by this row's overflow-x-auto scroll box (the halo peaks at 7px;
-              // this gives ≥14px each side). Builder dock keeps its tighter pb-2.5/pt-3.
-              !framed && "pb-3.5 pt-3.5",
+              "flex items-center gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+              // Builder dock keeps its hairline divider + tighter rhythm. §311 (a): the BARE/HOME row
+              // drops the divider entirely (it was the third "line" in the double-outline the owner
+              // flagged) and slims its padding so the composer reads as one clean slim bar (§311 (d)).
+              framed ? "border-b border-border/50 pb-2.5 pt-3" : "pb-2 pt-2.5",
             )}
           >
             <span className="shrink-0 text-[11px] font-medium text-muted-foreground">Try</span>
@@ -421,15 +426,14 @@ export function PromptComposer({
           // keeps its own indigo focus-visible ring — never leave the primary input with no
           // visible focus state (WCAG 2.4.7).
           className={cn(
-            "resize-none border-0 bg-transparent px-4 pb-2 pt-3.5 text-sm leading-relaxed shadow-none",
-            // BARE (HOME) fix: the shadcn Textarea styles only the PLACEHOLDER color, so TYPED text
-            // inherits `color` from outside the composer's `dark studio-glass-card` scope — which, on
-            // a LIGHT platform theme, is dark → dark text on the dark card (owner: "words going dark
-            // when typing," while the placeholder still looked fine). Pin the typed text to the local
-            // foreground so it resolves to the card's dark-scope light value. The framed builder dock
-            // reads correctly as-is, so this is scoped to bare to avoid touching it.
-            !framed && "text-foreground",
-            framed && "focus-visible:ring-0 focus-visible:ring-offset-0",
+            "resize-none border-0 bg-transparent px-4 text-sm leading-relaxed shadow-none",
+            // §311 (b): pin typed text to --foreground so it always resolves to the card's ACTIVE
+            // theme value — dark text on the light input in light mode, light text on the raised
+            // input in dark mode — never dark-on-dark. §311 (c/d): the bare dock's focus-within glow
+            // is the single focus indicator (so suppress the textarea's own ring, as framed does),
+            // and the vertical padding is slimmed to keep the bar short (§311 (d)).
+            framed && "pb-2 pt-3.5 focus-visible:ring-0 focus-visible:ring-offset-0",
+            !framed && "pb-1.5 pt-2.5 text-foreground focus-visible:ring-0 focus-visible:ring-offset-0",
           )}
         />
 
