@@ -16,16 +16,25 @@
 // A failure narrates itself right here with a Retry; a dead model never paints a
 // successful, empty page.
 import { AlertTriangle } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import type { GrowthPageTheme } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/page";
 import { useReducedMotion } from "@/components/growth/growth-motion";
+import { resolveGrowthTheme } from "@/components/growth/growth-theme";
 import { cn } from "@/lib/utils";
 import { PHASE_ORDER, phaseRank } from "./BuildProgress";
 import { LivePreview } from "./LivePreview";
-import { StudioBuildingScreen } from "./StudioBuildingScreen";
+import { StudioBuildingScreen, type BuildBeat } from "./StudioBuildingScreen";
 import { GENERATION_NOTES, PHASE_AGENTS } from "./studio-copy";
 import type { DeviceFrame, GenerationPhase, GenerationState } from "./studio-types";
+
+/** The five real phases as beats for the cutscene's vertical stack — the SAME order + notes +
+ *  agents BuildProgress narrates in the rail, so the canvas and the rail never disagree (§13). */
+const PHASE_BEATS: BuildBeat[] = PHASE_ORDER.map((p) => ({
+  agent: PHASE_AGENTS[p],
+  note: GENERATION_NOTES[p],
+}));
 
 export interface GenerationExperienceProps {
   generation: GenerationState;
@@ -58,15 +67,19 @@ interface GenerationStageProps {
   emittedCount: number;
   elapsedMs: number;
   reduce: boolean;
+  /** The tenant-brand `--gp-*` map, so the cutscene aurora/halo tone to THIS page's brand. */
+  themeVars: Record<string, string>;
   className?: string;
 }
 
 /**
- * The page path's "Paige presence" — the shared StudioBuildingScreen fed with page-specific
- * inputs: the real phase note, the agent who owns that phase, and a five-dot stepper mirroring
- * BuildProgress's own phase order so the rail and the canvas always tell the same story. The
- * full-frame presence, ambient wash, PaigeMark, and elapsed clock all live in the shared
- * primitive now (§18 — one home), so copy/image render the identical cutscene.
+ * The page path's "Paige presence" — the shared StudioBuildingScreen run in its DETERMINATE
+ * regime (`indeterminate={false}`): fed the real five phase beats and the REAL active index
+ * (phaseRank) so the vertical beat stack settles one line at a time as the seam genuinely
+ * advances, and the brand-toned aurora/halo warm one step per phase. Same order + notes + agents
+ * BuildProgress narrates in the rail — the canvas and the rail never disagree (§13). The full-frame
+ * presence, aurora, living PaigeMark, and elapsed clock all live in the shared primitive now
+ * (§18 — one home), so copy/image render the identical cutscene, minus the phase beats.
  */
 function GenerationStage({
   phase,
@@ -75,6 +88,7 @@ function GenerationStage({
   emittedCount,
   elapsedMs,
   reduce,
+  themeVars,
   className,
 }: GenerationStageProps) {
   const rank = phaseRank(phase);
@@ -97,25 +111,10 @@ function GenerationStage({
       reduce={reduce}
       detail={detail}
       ariaLabel="Paige is building your page"
-      stepper={
-        // The same five stages BuildProgress narrates in the rail — mirrored here so the
-        // canvas itself tells you what's happening, not just a side panel you might miss.
-        <div className="relative mt-8 flex items-center gap-2" aria-hidden>
-          {PHASE_ORDER.map((p, i) => {
-            const done = i < rank;
-            const active = i === rank;
-            return (
-              <span
-                key={p}
-                className={cn(
-                  "h-1.5 rounded-full transition-[width,background-color] duration-300",
-                  done ? "w-4 bg-success" : active ? "w-6 bg-primary" : "w-1.5 bg-border-strong",
-                )}
-              />
-            );
-          })}
-        </div>
-      }
+      themeVars={themeVars}
+      indeterminate={false}
+      beats={PHASE_BEATS}
+      activeIndex={rank}
     />
   );
 }
@@ -131,6 +130,11 @@ export function GenerationExperience({
 }: GenerationExperienceProps) {
   const reduce = useReducedMotion();
   const { phase, emitted, total, error, note, elapsedMs } = generation;
+
+  // Tone the cutscene to THIS page's resolved brand — the SAME resolver the live preview and the
+  // published page use, so the building screen's aurora/halo match what lands (§6/§18). Cheap and
+  // pure; recompute inline (theme/brandFloor are stable across a run).
+  const themeVars = resolveGrowthTheme(theme, brandFloor);
 
   if (phase === "error") {
     return (
@@ -154,35 +158,55 @@ export function GenerationExperience({
   // Before the first REAL block has painted, show the "Paige presence" stage instead of a
   // blur. The instant a real block lands, this yields to the real renderer below — real
   // content always wins, never the other way around (§13).
-  if (phase !== "done" && emitted.length === 0) {
-    const stagePhase: StagePhase = isStagePhase(phase) ? phase : "brief";
-    return (
-      <GenerationStage
-        className={className}
-        phase={stagePhase}
-        note={note || GENERATION_NOTES[stagePhase]}
-        total={total}
-        emittedCount={emitted.length}
-        elapsedMs={elapsedMs}
-        reduce={!!reduce}
-      />
-    );
-  }
-
+  const showStage = phase !== "done" && emitted.length === 0;
+  const stagePhase: StagePhase = isStagePhase(phase) ? phase : "brief";
   const trailing = total != null ? Math.max(0, total - emitted.length) : SCAFFOLD_SKELETONS;
 
+  // HAND-OFF (§ layer 6): the swap from cutscene → real page is a RESOLVE, not a hard cut — the
+  // field calms and recedes as the page springs up. AnimatePresence with mode="wait" runs the
+  // exit before the enter; both are reduce-gated so under reduced-motion the swap is instant.
   return (
-    <LivePreview
-      className={className}
-      blocks={emitted}
-      theme={theme}
-      brandFloor={brandFloor}
-      tenantId={tenantId}
-      device={device}
-      trailingSkeletons={trailing}
-      interactive={false}
-      showFooter={trailing === 0}
-    />
+    <AnimatePresence mode="wait" initial={false}>
+      {showStage ? (
+        <motion.div
+          key="cutscene"
+          className="h-full"
+          exit={reduce ? undefined : { opacity: 0, scale: 0.985, filter: "blur(4px)" }}
+          transition={{ duration: 0.4, ease: "easeInOut" }}
+        >
+          <GenerationStage
+            className={className}
+            phase={stagePhase}
+            note={note || GENERATION_NOTES[stagePhase]}
+            total={total}
+            emittedCount={emitted.length}
+            elapsedMs={elapsedMs}
+            reduce={!!reduce}
+            themeVars={themeVars}
+          />
+        </motion.div>
+      ) : (
+        <motion.div
+          key="page"
+          className="h-full"
+          initial={reduce ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ type: "spring", stiffness: 180, damping: 20 }}
+        >
+          <LivePreview
+            className={className}
+            blocks={emitted}
+            theme={theme}
+            brandFloor={brandFloor}
+            tenantId={tenantId}
+            device={device}
+            trailingSkeletons={trailing}
+            interactive={false}
+            showFooter={trailing === 0}
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 

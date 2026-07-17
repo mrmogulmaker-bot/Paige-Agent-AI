@@ -25,8 +25,9 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { AnimatePresence, motion } from "framer-motion";
 import { StudioRailHeading, StudioSplit } from "../StudioChrome";
-import { BUILDING_NOTES, COPY_CHIPS, MODE_EMPTY, MODE_RAIL } from "../studio-copy";
+import { BUILDING_NOTES, BUILDING_ROTATION, COPY_CHIPS, MODE_EMPTY, MODE_RAIL } from "../studio-copy";
 import { CHANNELS, CHANNEL_LABEL, CopyButton, LabelChip, type Channel, type Draft } from "./content-shared";
 import { PromptComposer } from "../PromptComposer";
 import { StudioBuildingScreen, useElapsedMs } from "../StudioBuildingScreen";
@@ -208,17 +209,39 @@ export function CopyMode({ tenantId, className, initialBrief, autoRun, onGenerat
         />
       }
       canvas={
-        autoBuilding ? (
-          // The autostart cutscene — the same full-frame Paige presence the page path shows,
-          // indeterminate (one non-streamed model call, no fabricated phases — §13).
-          <StudioBuildingScreen
-            note={BUILDING_NOTES.copy.note}
-            agent={BUILDING_NOTES.copy.agent}
-            elapsedMs={elapsedMs}
-            reduce={!!reduce}
-            ariaLabel="Paige is writing your copy"
-          />
-        ) : drafts.length === 0 ? (
+        // HAND-OFF (§ layer 6): the cutscene → drafts swap resolves rather than hard-cuts — the
+        // field recedes as the result springs up. Both sides reduce-gated → instant under reduce.
+        <AnimatePresence mode="wait" initial={false}>
+        {autoBuilding ? (
+          // The autostart cutscene — the same full-frame Paige presence the page path shows, but
+          // INDETERMINATE: one non-streamed model call, no measurable phases, so a single rotating
+          // ambient line off the wall-clock, never a fabricated checklist (§13). No themeVars here —
+          // Copy has no resolved page brand, so the primitive falls back to the app --primary (§6).
+          <motion.div
+            key="cutscene"
+            className="h-full"
+            exit={reduce ? undefined : { opacity: 0, scale: 0.985, filter: "blur(4px)" }}
+            transition={{ duration: 0.4, ease: "easeInOut" }}
+          >
+            <StudioBuildingScreen
+              note={BUILDING_NOTES.copy.note}
+              agent={BUILDING_NOTES.copy.agent}
+              rotation={BUILDING_ROTATION.copy}
+              indeterminate
+              elapsedMs={elapsedMs}
+              reduce={!!reduce}
+              ariaLabel="Paige is writing your copy"
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="result"
+            className="h-full"
+            initial={reduce ? false : { opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 180, damping: 20 }}
+          >
+          {drafts.length === 0 ? (
           <div className="mx-auto w-full max-w-3xl">
             <SectionCard>
               <EmptyState
@@ -270,7 +293,10 @@ export function CopyMode({ tenantId, className, initialBrief, autoRun, onGenerat
               </SectionCard>
             ))}
           </div>
-        )
+        )}
+          </motion.div>
+        )}
+        </AnimatePresence>
       }
     />
   );

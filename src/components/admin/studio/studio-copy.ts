@@ -222,6 +222,31 @@ export const BUILDING_NOTES: Record<"copy" | "image", { agent: string; note: str
 };
 
 /**
+ * The AMBIENT narration rotation for the single-call types (copy, image). The building screen
+ * cycles one of these lines at a time off the wall-clock — never a checklist, never a check, no
+ * ordered "step 1 of 5", because there ARE no measurable phases here (§13: nothing may imply a
+ * completion the seam can't report). They read as a craftsperson at work, not a progress bar.
+ * First line matches BUILDING_NOTES so the opening frame names the job plainly. §3 voice
+ * (no "AI-powered"/"streamline"/"seamless"/"empower"), §2-clean.
+ */
+export const BUILDING_ROTATION: Record<"copy" | "image", string[]> = {
+  copy: [
+    "Paige is writing your copy.",
+    "Finding the line that lands.",
+    "Weighing every word against your brand.",
+    "Cutting the fluff, keeping the point.",
+    "Making it sound like you.",
+  ],
+  image: [
+    "Paige is rendering your image.",
+    "Composing the frame.",
+    "Balancing the light and color.",
+    "Sharpening the details.",
+    "Bringing it into focus.",
+  ],
+};
+
+/**
  * Who on Paige's team owns each phase (§8/§14). This is the attribution that sells the moat —
  * "you're hiring her entire team," not a single model. Each name is honest: the work behind it
  * genuinely happens in the seam. Paige herself conducts (brief), then hands to her specialists.

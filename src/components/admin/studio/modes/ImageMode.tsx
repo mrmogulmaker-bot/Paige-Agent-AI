@@ -27,8 +27,9 @@ import {
 } from "@/components/ui/select";
 import { Download, Info, Loader2, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { AnimatePresence, motion } from "framer-motion";
 import { StudioRailHeading, StudioSplit } from "../StudioChrome";
-import { BUILDING_NOTES, MODE_EMPTY, MODE_RAIL } from "../studio-copy";
+import { BUILDING_NOTES, BUILDING_ROTATION, MODE_EMPTY, MODE_RAIL } from "../studio-copy";
 import { CopyButton } from "./content-shared";
 import { PromptComposer } from "../PromptComposer";
 import { StudioBuildingScreen, useElapsedMs } from "../StudioBuildingScreen";
@@ -192,17 +193,38 @@ export function ImageMode({ tenantId, className, initialPrompt, autoRun, onGener
         />
       }
       canvas={
-        autoBuilding ? (
-          // The autostart cutscene — the same full-frame Paige presence the page path shows,
-          // indeterminate (one non-streamed model call, no fabricated phases — §13).
-          <StudioBuildingScreen
-            note={BUILDING_NOTES.image.note}
-            agent={BUILDING_NOTES.image.agent}
-            elapsedMs={elapsedMs}
-            reduce={!!reduce}
-            ariaLabel="Paige is rendering your image"
-          />
+        // HAND-OFF (§ layer 6): the cutscene → image swap resolves rather than hard-cuts — the
+        // field recedes as the result springs up. Both sides reduce-gated → instant under reduce.
+        <AnimatePresence mode="wait" initial={false}>
+        {autoBuilding ? (
+          // The autostart cutscene — the same full-frame Paige presence the page path shows, but
+          // INDETERMINATE: one non-streamed model call, no measurable phases, so a single rotating
+          // ambient line off the wall-clock, never a fabricated checklist (§13). No themeVars here —
+          // Image has no resolved page brand, so the primitive falls back to the app --primary (§6).
+          <motion.div
+            key="cutscene"
+            className="h-full"
+            exit={reduce ? undefined : { opacity: 0, scale: 0.985, filter: "blur(4px)" }}
+            transition={{ duration: 0.4, ease: "easeInOut" }}
+          >
+            <StudioBuildingScreen
+              note={BUILDING_NOTES.image.note}
+              agent={BUILDING_NOTES.image.agent}
+              rotation={BUILDING_ROTATION.image}
+              indeterminate
+              elapsedMs={elapsedMs}
+              reduce={!!reduce}
+              ariaLabel="Paige is rendering your image"
+            />
+          </motion.div>
         ) : (
+          <motion.div
+            key="result"
+            className="h-full"
+            initial={reduce ? false : { opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 180, damping: 20 }}
+          >
         <div className="mx-auto w-full max-w-3xl">
           <SectionCard>
             {needsConfig ? (
@@ -266,7 +288,9 @@ export function ImageMode({ tenantId, className, initialPrompt, autoRun, onGener
             )}
           </SectionCard>
         </div>
-        )
+          </motion.div>
+        )}
+        </AnimatePresence>
       }
     />
   );

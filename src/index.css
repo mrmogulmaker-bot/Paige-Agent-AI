@@ -880,10 +880,47 @@ All colors MUST be HSL.
     transform-origin: center;
   }
 
+  /* ── #240 Studio build cutscene — the game-grade layers on the SHARED building screen
+     (StudioBuildingScreen.tsx). Every keyframe below STARTS AT ITS RESTING transform, so
+     turning motion on never shifts the static layout — it only sets it moving; each is
+     no-oped under reduced-motion in the block at the bottom. Token-only: colors come from
+     --gp-primary (fallback hsl(var(--primary))) resolved to --build-primary on the elements
+     inline — nothing here paints gold (§6/§11). The aurora blobs reuse .gp-aurora-a/b/c above. */
+
+  /* A SECOND halo on a longer, offset period. Layered over the reused .paige-halo-pulse it
+     reads as an irregular, living pulse — two cadences beating against each other — instead
+     of a single metronome. Center transform-origin (default); the reused halo overrides its
+     own 24px origin to center inline. */
+  @keyframes paige-halo-pulse-b {
+    0%, 100% { opacity: 0.28; transform: scale(1.04); }
+    50%      { opacity: 0.6;  transform: scale(1.2); }
+  }
+  .paige-halo-pulse-b { animation: paige-halo-pulse-b 4.3s ease-in-out infinite; }
+
+  /* Orbiting satellite sparks — a rotating plane the spark rides the edge of. Three planes at
+     different periods and directions so the orbits never lock into one visible cadence. */
+  @keyframes build-orbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .build-orbit-1 { animation: build-orbit 11s linear infinite; }
+  .build-orbit-2 { animation: build-orbit 7s linear infinite reverse; }
+  .build-orbit-3 { animation: build-orbit 16s linear infinite; }
+
+  /* Slow autonomous push-in on the whole field + a gentle drift on the mark plane at a
+     DIFFERENT rate than the aurora (parallax depth). Compositor transforms only, 60fps. */
+  @keyframes build-pushin { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+  .build-pushin { animation: build-pushin 20s ease-in-out infinite; will-change: transform; }
+  @keyframes build-drift-slow {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50%      { transform: translate3d(0, -1.2%, 0); }
+  }
+  .build-drift-slow { animation: build-drift-slow 14s ease-in-out infinite; will-change: transform; }
+
   @media (prefers-reduced-motion: reduce) {
     .paige-orbit-spin { animation: none; }
     .paige-orb-breathe { animation: none; }
     .paige-halo-pulse { animation: none; }
+    .paige-halo-pulse-b { animation: none; }
     .paige-spark-drift { animation: none; }
+    .build-orbit-1, .build-orbit-2, .build-orbit-3 { animation: none; }
+    .build-pushin, .build-drift-slow { animation: none; }
   }
 }
