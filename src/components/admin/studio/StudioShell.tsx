@@ -278,13 +278,18 @@ export function StudioShell({
     });
   }, []);
 
-  // The Lovable/Replit "watch it build full-width" moment. FIRST build ONLY: mode is "generating"
-  // AND no blocks exist yet — a regenerate (blocks already present) leaves this false so it stays
-  // in the normal split. Reads state.blocks (reactive) — NOT the blocksBeforeRun ref (non-reactive,
-  // would never retrigger). Published up to StudioLayout so the OUTER project rail retracts too;
-  // the inner conversation rail gets the same flag via StudioSplit's `immersive` prop below.
+  // The Lovable/Replit "watch it build full-width" moment. FIRST build ONLY, and ONLY on the
+  // page/funnel surface: gated on `isGenerating` (RUNNING_PHASES.has(generation.phase)) — NOT
+  // state.mode==="generating", which stays stuck after a FAILED run (the error lives in
+  // generation.phase, not state.mode) and would strand both rails retracted+inert forever (crew
+  // catch). isGenerating clears the instant a run ends (done OR error), so the rails always slide
+  // back. blocks.length===0 keeps a REGENERATE in the normal split; the (page|funnel) gate keeps a
+  // Copy/Form/Image surface from ever retracting the rail with no immersive canvas showing. Reads
+  // reactive state, never the non-reactive blocksBeforeRun ref. Published up to StudioLayout so the
+  // OUTER project rail retracts too; the inner rail gets the same flag via StudioSplit below.
   const { setImmersive } = useStudioImmersion();
-  const firstBuildGenerating = state.mode === "generating" && state.blocks.length === 0;
+  const firstBuildGenerating =
+    isGenerating && state.blocks.length === 0 && (mode === "page" || mode === "funnel");
   useEffect(() => {
     setImmersive(firstBuildGenerating);
     // Clear on unmount so leaving a mid-build project never reopens the gallery with a hidden rail

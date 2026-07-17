@@ -141,7 +141,10 @@ export default function StudioLayout() {
         aria-label="Vibe Studio"
         className={cn(
           "relative z-20 flex h-full shrink-0 flex-col",
-          "transition-[width] duration-300 motion-reduce:transition-none",
+          // ease-in-out matches the inner conversation rail's curve so BOTH rails retract in
+          // perfect lockstep (Tailwind's arbitrary transition-[width] sets only the property, not
+          // a timing function — without this the outer rail would ride the default `ease`).
+          "transition-[width] duration-300 ease-in-out motion-reduce:transition-none",
           // Immersive (first build): retract to 0 and drop the right border + rightward shadow so
           // nothing bleeds at w-0. Otherwise the normal icon-spine / expanded widths, bordered.
           immersive
