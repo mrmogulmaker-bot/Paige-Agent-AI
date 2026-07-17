@@ -50,6 +50,11 @@ import { PublishDialog, kebabSlug } from "./PublishDialog";
 import { StudioTopBar } from "./StudioTopBar";
 import { StudioRailHeading, StudioSplit } from "./StudioChrome";
 import { useStudioImmersion } from "./StudioImmersion";
+import {
+  STUDIO_THEME_STORAGE_KEY,
+  readStudioDark,
+  useStudioTheme,
+} from "./StudioTheme";
 import { CopyMode } from "./modes/CopyMode";
 import { ImageMode } from "./modes/ImageMode";
 import { FormMode } from "./modes/FormMode";
@@ -279,29 +284,28 @@ export function StudioShell({
   );
   const { generation, isGenerating, generate, cancel, reset } = useGeneratePage(tenantId);
 
-  // Studio-local dark/light — completely separate from the platform's own next-themes state
-  // (there's no ThemeToggle in here anymore; see StudioTopBar's doc comment for why). This is
-  // just a class on StudioFrame's own root div, read/written to its own localStorage key so a
-  // choice survives a reload without ever touching <html>'s class or the platform's theme.
-  // Defaults to DARK (owner call, 2026-07-17 — "a creative workspace is dark by definition"; the
-  // light session shipped as a pale gray CRUD room). Light is now the explicit opt-in and stays
-  // fully supported; only the no-preference default flipped from light → dark.
-  const [studioDark, setStudioDark] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return window.localStorage.getItem("paige-studio-theme") !== "light";
-  });
-  const toggleStudioTheme = useCallback(() => {
-    setStudioDark((prev) => {
+  // Studio-local dark/light — completely separate from the platform's own next-themes state, and
+  // NEVER the global `<html>` class (see StudioTheme.ts / StudioTopBar's doc comment). The signal
+  // is OWNED by StudioLayout (it themes the `.studio-surface` root so the rail + gallery flip in
+  // lockstep) and shared down here via context, so the top-bar toggle drives the SAME signal.
+  // When EMBEDDED (no StudioThemeProvider above), fall back to local state keyed to the same
+  // localStorage slot — the safe no-provider default (StudioImmersion uses the same pattern).
+  const studioTheme = useStudioTheme();
+  const [localDark, setLocalDark] = useState(readStudioDark);
+  const toggleLocalTheme = useCallback(() => {
+    setLocalDark((prev) => {
       const next = !prev;
       try {
-        window.localStorage.setItem("paige-studio-theme", next ? "dark" : "light");
+        window.localStorage.setItem(STUDIO_THEME_STORAGE_KEY, next ? "dark" : "light");
       } catch {
-        // Storage can be unavailable (private browsing, quota) — the toggle still works for
-        // the session, it just won't survive a reload. Not worth failing the click over.
+        // Storage can be unavailable (private browsing, quota) — the toggle still works for the
+        // session, it just won't survive a reload. Not worth failing the click over.
       }
       return next;
     });
   }, []);
+  const studioDark = studioTheme.scoped ? studioTheme.studioDark : localDark;
+  const toggleStudioTheme = studioTheme.scoped ? studioTheme.toggleStudioTheme : toggleLocalTheme;
 
   // The Lovable/Replit "watch it build full-width" moment. FIRST build ONLY, and ONLY on the
   // page/funnel surface: gated on `isGenerating` (RUNNING_PHASES.has(generation.phase)) — NOT
@@ -1865,7 +1869,10 @@ export function StudioShell({
 
       {/* The saved library — the Content Studio's third panel, one Sheet away. */}
       <Sheet open={libraryOpen} onOpenChange={setLibraryOpen}>
-        <SheetContent className="dark w-full overflow-y-auto border-border bg-background text-foreground sm:max-w-2xl">
+        {/* The library Sheet is portalled OUT of `.studio-surface`, so the root theme class can't
+            reach it via the cascade — drive its `dark` scope from studioDark directly so it flips
+            with the Studio instead of being forced dark (owner 2026-07-17: no surface hardcoded). */}
+        <SheetContent className={cn(studioDark ? "dark" : "studio-surface", "w-full overflow-y-auto border-border bg-background text-foreground sm:max-w-2xl")}>
           <SheetHeader>
             <SheetTitle>Content library</SheetTitle>
             <SheetDescription>

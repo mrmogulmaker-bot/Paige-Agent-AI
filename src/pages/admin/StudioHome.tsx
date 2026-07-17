@@ -293,27 +293,25 @@ export default function StudioHome() {
               Describe it in a sentence — Paige works out the shape and builds it with her team.
             </p>
           </div>
-          {/* The composer is deliberately COMPACT (owner: "why is this window so big"): max-w-lg +
-              p-2, and — crucially — the in-card heading and helper are GONE. The hero subhead above
-              already says "describe it in a sentence," so repeating it as a label AND a helper around
-              a 2-line field was what inflated the card to a mostly-empty box (#1). What remains is
-              exactly the act: example chips → a 2-line field → the gold "Start building" inline
-              bottom-right. `dark` commits the card to the deep indigo glass in BOTH platform themes —
-              coherent with the committed-dark cosmic field it floats on — so PromptComposer's
-              app-token text resolves light-on-dark and holds AA (§6/§11). */}
+          {/* The composer is deliberately COMPACT (owner: "why is this window so big"): the in-card
+              heading and helper are GONE (the hero subhead above already carries the instruction), so
+              what remains is exactly the act: example bubbles → a slim field → the gold ↑ send. The
+              card follows the Studio theme (no forced `dark`) — see the block below. */}
           <motion.div
             className="mx-auto w-full max-w-sm"
             initial={reduce ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 220, damping: 26, mass: 0.9 }}
           >
-            {/* One tight command bar that IS the hero (§22): materially narrower (max-w-sm — it now
-                narrows below even the subhead above, a clean funnel down to the command bar) + trimmed
-                padding (p-1.5). The only gold on HOME is the circular ↑ send — the act moment (§11) —
-                via sendShape="circle" + submitVariant="gold". The neutral paperclip attach + removable
-                chips render inside the same bar (uploads go through uploadGrowthAsset; the files ride
-                into the new session on nav state). */}
-            <div className="dark studio-glass-card p-1.5">
+            {/* One tight command bar that IS the hero (§22): a slim, LONG horizontal bar (max-w-sm,
+                p-1) — §311 (d): "longer and slimmer, not taller". The card now follows the Studio
+                theme (no forced `dark`): in LIGHT it's a bright frosted glass panel with a WHITE input
+                and dark text; in DARK a deep indigo glass — flipping unmistakably with the toggle
+                (§311 (b)). The ONE gold on HOME is the circular ↑ send — the act moment (§11) — via
+                sendShape="circle" + submitVariant="gold". A single refined hairline frames it (§311 (a),
+                the studio-glass-card::before rim) and a soft indigo focus glow lives inside (§311 (c)).
+                The neutral paperclip attach + removable chips render inside the same bar. */}
+            <div className="studio-glass-card p-1">
               <PromptComposer
                 mode="page"
                 value={brief}
@@ -329,7 +327,7 @@ export default function StudioHome() {
                 busyLabel="Spinning up your session…"
                 chips={STUDIO_HOME_CHIPS}
                 chipPlacement="dock"
-                minRows={2}
+                minRows={1}
                 attachments={attachments}
                 onFilesSelected={(files) => void handleFilesSelected(files)}
                 onRemoveAttachment={handleRemoveAttachment}
