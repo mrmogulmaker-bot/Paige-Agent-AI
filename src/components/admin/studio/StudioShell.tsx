@@ -1332,6 +1332,11 @@ export function StudioShell({
               void buildFunnel(value);
               break;
             case "form": {
+              // A form draft never enters a generation cutscene (page/copy/image do; form's own
+              // building-screen parity is separate, #300). So disarm the dashboard-handoff cutscene
+              // flag here — otherwise it stays armed (no isGenerating/copyImageBuilding cycle to
+              // clear it) and would wrongly full-screen the NEXT in-session build (verifier catch).
+              setAutostartBuild(false);
               onModeChange?.("form");
               try {
                 const schema = await draftFormSchema(value);
@@ -1363,6 +1368,17 @@ export function StudioShell({
               void runGenerate(value);
               break;
           }
+        } catch (err) {
+          // classifyStudioIntent defaults to "page" on transport failure rather than throwing, so
+          // this is a defensive backstop: if the classify path ever throws, don't leave the handoff
+          // cutscene armed for the next in-session build, and surface an honest miss instead of a
+          // silent unhandled rejection (§13).
+          setAutostartBuild(false);
+          toast({
+            title: "Couldn't read that brief",
+            description: isStudioError(err) ? err.message : "Try describing what you want again.",
+            variant: "destructive",
+          });
         } finally {
           setClassifying(false);
         }
