@@ -328,6 +328,7 @@ export default function StudioHome() {
                 busy={starting}
                 busyLabel="Spinning up your session…"
                 chips={STUDIO_HOME_CHIPS}
+                chipPlacement="dock"
                 minRows={2}
                 attachments={attachments}
                 onFilesSelected={(files) => void handleFilesSelected(files)}
