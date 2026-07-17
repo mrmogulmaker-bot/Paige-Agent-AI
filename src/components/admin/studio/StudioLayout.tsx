@@ -8,7 +8,7 @@
 // nowhere else (§6/§11 palette exception, contained). The rail is an IN-SURFACE object navigator
 // (projects, the four gallery views, New project) plus a single "Back to Paige" escape — not a
 // second copy of the hub bar (§18), the Lovable/Figma/Linear pattern.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Outlet, useLocation, useMatch } from "react-router-dom";
 import {
   ChevronLeft,
@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { ProjectNavigator } from "./ProjectNavigator";
 import { useActiveStudioSession } from "./useActiveStudioSession";
+import { StudioImmersionProvider } from "./StudioImmersion";
 import type { StudioSessionView } from "./studio-types";
 
 interface ViewNavItem {
@@ -109,18 +110,47 @@ export default function StudioLayout() {
     setCollapsed(onBuilder);
   }, [onBuilder]);
 
+  // The first-build FULL-WIDTH moment (owner's Lovable ask): StudioShell (a deep child) publishes
+  // its first-build-generating flag up here; while true the outer project rail retracts to 0 so the
+  // build canvas runs edge-to-edge, then slides back the instant the page lands. Held at this level
+  // so the SAME flag drives the layout's own rail, not just the inner conversation rail.
+  const [immersive, setImmersive] = useState(false);
+  // Backstop: leaving a project (back to the gallery) can never strand a hidden rail, even if the
+  // child's own cleanup didn't run (project→project switch keeps StudioShell mounted).
+  useEffect(() => {
+    if (!onProject) setImmersive(false);
+  }, [onProject]);
+  const immersionValue = useMemo(() => ({ immersive, setImmersive }), [immersive]);
+  // React 18 renders a declarative `inert={false}` as the string "false" — still inert (any present
+  // value counts). Setting the DOM property directly is the only correct path; it also removes the
+  // retracted rail's links from the tab order + a11y tree while it's at w-0 (implicit aria-hidden).
+  const railRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = railRef.current;
+    if (el) el.inert = immersive;
+  }, [immersive]);
+
   const activeView = (new URLSearchParams(location.search).get("view") as StudioSessionView) ?? "recent";
 
   return (
+    <StudioImmersionProvider value={immersionValue}>
     <div className="studio-surface flex h-full min-h-0 w-full overflow-hidden bg-[hsl(var(--studio-rail-bg))] text-foreground">
       {/* ── persistent LEFT RAIL ── */}
       <nav
+        ref={railRef}
         aria-label="Vibe Studio"
         className={cn(
-          "relative z-20 flex h-full shrink-0 flex-col border-r border-[hsl(var(--studio-glass-border)/0.6)]",
-          "bg-[hsl(var(--studio-rail-bg))] shadow-[4px_0_16px_-12px_hsl(var(--shadow-ink)/0.18)]",
-          "transition-[width] duration-200 motion-reduce:transition-none",
-          collapsed ? "w-[64px]" : "w-[248px]",
+          "relative z-20 flex h-full shrink-0 flex-col",
+          "transition-[width] duration-300 motion-reduce:transition-none",
+          // Immersive (first build): retract to 0 and drop the right border + rightward shadow so
+          // nothing bleeds at w-0. Otherwise the normal icon-spine / expanded widths, bordered.
+          immersive
+            ? "w-0 overflow-hidden border-r-0 bg-[hsl(var(--studio-rail-bg))]"
+            : cn(
+                "border-r border-[hsl(var(--studio-glass-border)/0.6)]",
+                "bg-[hsl(var(--studio-rail-bg))] shadow-[4px_0_16px_-12px_hsl(var(--shadow-ink)/0.18)]",
+                collapsed ? "w-[64px]" : "w-[248px]",
+              ),
         )}
       >
         {/* brand + collapse toggle */}
@@ -194,5 +224,6 @@ export default function StudioLayout() {
         <Outlet context={activeSession} />
       </div>
     </div>
+    </StudioImmersionProvider>
   );
 }

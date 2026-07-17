@@ -18,7 +18,7 @@
 // rendered page floats on — the Lovable pattern. The rail's own edges (its right border at
 // lg+, the pinned composer's top edge) carry a matching shadow rather than a bare hairline —
 // premium chrome separates regions with border + shadow together, never a border alone (§11).
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Sparkles, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TEAM_LINE } from "./studio-copy";
@@ -28,14 +28,27 @@ export function StudioSplit({
   railBody,
   railFooter,
   canvas,
+  immersive = false,
   className,
 }: {
   railHeader?: ReactNode;
   railBody: ReactNode;
   railFooter?: ReactNode;
   canvas: ReactNode;
+  /** First-build full-width moment: retract the conversation rail to 0 so the canvas fills the
+   *  frame edge-to-edge (the Lovable/Replit "watch it build" state). Optional — the other modes
+   *  (Form/Image/Copy/Funnel) render StudioSplit without it and stay in the normal split. */
+  immersive?: boolean;
   className?: string;
 }) {
+  // React 18 renders a declarative `inert={false}` as the string "false" — still inert. Set the DOM
+  // property so the retracted (w-0) rail's controls leave the tab order + a11y tree while hidden.
+  const railRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = railRef.current;
+    if (el) el.inert = immersive;
+  }, [immersive]);
+
   return (
     <div className={cn("flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row", className)}>
       {/* The rail/canvas seam was a hairline border doing all the separation work (§11) — a
@@ -50,7 +63,20 @@ export function StudioSplit({
           well it sits beside, and non-positioned siblings paint in tree order — without a
           stacking context, the canvas's own opaque gradient (painted later) would silently
           cover this shadow's rightward bleed, the same no-op risk the top bar has above. */}
-      <div className="relative z-10 flex flex-col border-b border-border/60 bg-gradient-to-b from-card to-background lg:min-h-0 lg:w-[380px] lg:shrink-0 lg:border-b-0 lg:border-r lg:shadow-[4px_0_16px_-12px_hsl(var(--shadow-ink)/0.16)]">
+      <div
+        ref={railRef}
+        className={cn(
+          "relative z-10 flex flex-col border-b border-border/60 bg-gradient-to-b from-card to-background",
+          "lg:min-h-0 lg:shrink-0 lg:border-b-0",
+          "transition-[width] duration-300 ease-in-out motion-reduce:transition-none",
+          // Immersive first build: at lg+ the rail width animates 380→0; below lg the stacked rail
+          // is simply hidden (no width tween expected on a mobile stack). The canvas `flex-1` div
+          // reflows to fill as the rail retracts — it needs no transition of its own.
+          immersive
+            ? "overflow-hidden max-lg:hidden lg:w-0 lg:border-r-0"
+            : "lg:w-[380px] lg:border-r lg:shadow-[4px_0_16px_-12px_hsl(var(--shadow-ink)/0.16)]",
+        )}
+      >
         {railHeader && <div className="shrink-0 border-b border-border/60 px-4 py-3">{railHeader}</div>}
         <div className="space-y-4 px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">{railBody}</div>
         {railFooter && (

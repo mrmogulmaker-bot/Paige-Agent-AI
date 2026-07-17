@@ -48,6 +48,7 @@ import { PromptComposer } from "./PromptComposer";
 import { PublishDialog, kebabSlug } from "./PublishDialog";
 import { StudioTopBar } from "./StudioTopBar";
 import { StudioRailHeading, StudioSplit } from "./StudioChrome";
+import { useStudioImmersion } from "./StudioImmersion";
 import { CopyMode } from "./modes/CopyMode";
 import { ImageMode } from "./modes/ImageMode";
 import { FormMode } from "./modes/FormMode";
@@ -276,6 +277,20 @@ export function StudioShell({
       return next;
     });
   }, []);
+
+  // The Lovable/Replit "watch it build full-width" moment. FIRST build ONLY: mode is "generating"
+  // AND no blocks exist yet — a regenerate (blocks already present) leaves this false so it stays
+  // in the normal split. Reads state.blocks (reactive) — NOT the blocksBeforeRun ref (non-reactive,
+  // would never retrigger). Published up to StudioLayout so the OUTER project rail retracts too;
+  // the inner conversation rail gets the same flag via StudioSplit's `immersive` prop below.
+  const { setImmersive } = useStudioImmersion();
+  const firstBuildGenerating = state.mode === "generating" && state.blocks.length === 0;
+  useEffect(() => {
+    setImmersive(firstBuildGenerating);
+    // Clear on unmount so leaving a mid-build project never reopens the gallery with a hidden rail
+    // (§13 — the UI never lies about state); the layout's !onProject effect is the extra backstop.
+    return () => setImmersive(false);
+  }, [firstBuildGenerating, setImmersive]);
 
   // Modes stay mounted once visited, so switching outputs never eats in-progress work.
   const [visited, setVisited] = useState<ReadonlySet<StudioMode>>(() => new Set([mode]));
@@ -1458,6 +1473,7 @@ export function StudioShell({
              hidden only for the form/copy/image modes that own their own surface. ── */}
         <StudioSplit
           className={mode === "page" || mode === "funnel" ? undefined : "hidden"}
+          immersive={firstBuildGenerating}
           railHeader={
             funnelActive ? (
               <StudioRailHeading
