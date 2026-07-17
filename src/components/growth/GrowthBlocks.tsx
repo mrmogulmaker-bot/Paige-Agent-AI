@@ -249,6 +249,59 @@ function HeroBlock({ block }: { block: Extract<GrowthBlock, { type: "hero" }> })
   );
 }
 
+// Animated brand-toned hero (#240) — the premium, image-free opener. The visual is a slow
+// aurora of blurred, brand-PRIMARY-tinted blobs (never gold — §11 keeps gold on the CTA only),
+// with a fixed vignette that guarantees the headline stays AA over the moving field. The drift
+// is pure CSS transform on the `.gp-aurora-*` classes, which no-op under reduced motion, so this
+// degrades to a calm static gradient. Same copy contract + tokens as HeroBlock.
+function HeroSceneBlock({ block }: { block: Extract<GrowthBlock, { type: "hero_scene" }> }) {
+  return (
+    <section className="relative isolate overflow-hidden" style={{ background: "var(--gp-primary)" }}>
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div
+          className="gp-aurora-blob gp-aurora-a absolute -left-[15%] -top-[20%] h-[62vh] w-[62vh] rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-primary) 55%, white 45%) 0%, transparent 70%)", opacity: 0.32 }}
+        />
+        <div
+          className="gp-aurora-blob gp-aurora-b absolute -right-[10%] top-[8%] h-[56vh] w-[56vh] rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-primary) 30%, black 70%) 0%, transparent 70%)", opacity: 0.5 }}
+        />
+        <div
+          className="gp-aurora-blob gp-aurora-c absolute -bottom-[25%] left-[28%] h-[52vh] w-[52vh] rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-primary) 62%, white 38%) 0%, transparent 70%)", opacity: 0.24 }}
+        />
+        {/* Fixed vignette — keeps the headline AA over the moving blobs. */}
+        <div
+          className="absolute inset-0"
+          style={{ background: "radial-gradient(120% 90% at 50% 32%, transparent 42%, color-mix(in srgb, var(--gp-primary) 72%, black) 100%)" }}
+        />
+      </div>
+
+      <div className={`relative ${WRAP} px-6 md:px-10 py-32 md:py-44`}>
+        <div className="mx-auto max-w-3xl space-y-6 text-center">
+          {block.eyebrow && <Eyebrow>{block.eyebrow}</Eyebrow>}
+          <h1
+            className="font-display text-4xl font-semibold leading-[1.08] tracking-tight md:text-6xl"
+            style={{ color: "var(--gp-text)" }}
+          >
+            {block.title}
+          </h1>
+          {block.subtitle && (
+            <p className="mx-auto max-w-2xl text-lg leading-relaxed md:text-xl" style={{ color: "var(--gp-muted)" }}>
+              {block.subtitle}
+            </p>
+          )}
+          {block.cta_label && block.cta_href && (
+            <div className="flex justify-center pt-2">
+              <CtaButton label={block.cta_label} href={block.cta_href} size="lg" />
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function PhaseCardsBlock({ block }: { block: Extract<GrowthBlock, { type: "phase_cards" }> }) {
   return (
     <section className={SECTION}>
@@ -854,6 +907,7 @@ function ChatbotBlock({ block, tenantId }: { block: Extract<GrowthBlock, { type:
 export function BlockRenderer({ block, tenantId }: { block: GrowthBlock; tenantId?: string }) {
   switch (block.type) {
     case "hero": return <HeroBlock block={block} />;
+    case "hero_scene": return <HeroSceneBlock block={block} />;
     case "phase_cards": return <PhaseCardsBlock block={block} />;
     case "feature_grid": return <FeatureGridBlock block={block} />;
     case "cta": return <CtaBlock block={block} />;

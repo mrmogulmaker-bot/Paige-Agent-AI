@@ -50,11 +50,11 @@ export function extractJson(text: string): any {
   return JSON.parse(raw.slice(start, end + 1));
 }
 
-// ── The 17-type union ────────────────────────────────────────────────────────
+// ── The 19-type union ────────────────────────────────────────────────────────
 // Kept in lockstep with src/lib/growth.ts (the renderer) and the SQL type list in
 // public.growth_validate_blocks. Adding a type means touching all three, deliberately.
 export const GROWTH_BLOCK_TYPES = [
-  "hero", "phase_cards", "feature_grid", "cta", "rich_text", "embedded_form",
+  "hero", "hero_scene", "phase_cards", "feature_grid", "cta", "rich_text", "embedded_form",
   "social_proof", "testimonial", "pricing", "faq", "media", "stats", "countdown",
   "two_column", "image", "gallery", "steps", "chatbot",
 ] as const;
@@ -91,6 +91,18 @@ export function validateBlock(b: any): any | null {
       const quote = trimStr(b.quote, 400); if (quote) block.quote = quote;
       const imgPos = trimStr(b.image_position, 8);
       if (imageUrl && (imgPos === "full" || imgPos === "split")) block.image_position = imgPos;
+      return block;
+    }
+    case "hero_scene": {
+      // Animated brand-toned hero — same copy contract as hero, minus the image (the scene
+      // IS the visual). Only a title is required; everything else is optional and cleaned.
+      const title = trimStr(b.title, 160);
+      if (!title) return null;
+      const block: any = { type: "hero_scene", title };
+      const eyebrow = trimStr(b.eyebrow, 80); if (eyebrow) block.eyebrow = eyebrow;
+      const subtitle = trimStr(b.subtitle, 400); if (subtitle) block.subtitle = subtitle;
+      const ctaLabel = trimStr(b.cta_label, 60); if (ctaLabel) block.cta_label = ctaLabel;
+      const ctaHref = trimStr(b.cta_href, 400); if (ctaHref) block.cta_href = ctaHref;
       return block;
     }
     case "phase_cards": {
@@ -295,6 +307,7 @@ export function validateBlock(b: any): any | null {
 /** Human-readable "what this variant needs" line, used to explain a 422 instead of a shrug. */
 export const BLOCK_REQUIREMENTS: Record<string, string> = {
   hero: "a non-empty title",
+  hero_scene: "a non-empty title",
   phase_cards: "at least one card with a title and a body",
   feature_grid: "at least one item with a title and a body",
   cta: "a title, a cta_label and a cta_href",
@@ -349,8 +362,9 @@ export function newPlaceholders(original: unknown, revised: unknown): string[] {
 
 // ── The block spec the model is held to ──────────────────────────────────────
 // One source of truth for every Growth OS prompt that emits blocks.
-export const GROWTH_BLOCK_SPEC = `GrowthBlock variants — 18 types (use the exact "type" strings and field names):
+export const GROWTH_BLOCK_SPEC = `GrowthBlock variants — 19 types (use the exact "type" strings and field names):
 - { "type": "hero", "eyebrow"?: string, "title": string, "subtitle"?: string, "cta_label"?: string, "cta_href"?: string, "image_url"?: https-string, "image_position"?: "full"|"split", "quote"?: string }
+- { "type": "hero_scene", "eyebrow"?: string, "title": string, "subtitle"?: string, "cta_label"?: string, "cta_href"?: string }   // an ANIMATED, brand-toned hero with a premium motion backdrop and NO image. Prefer this over "hero" as the opening block when you have NO real hero image/photo to use — it looks intentional and high-end instead of a flat color. Use "hero" (with image_url) only when there's a real image. Max ONE hero-type block, first.
 - { "type": "feature_grid", "title"?: string, "items": [{ "title": string, "body": string }] }
 - { "type": "phase_cards", "cards": [{ "phase": string, "title": string, "body": string, "outcome"?: string }] }
 - { "type": "cta", "title": string, "body"?: string, "cta_label": string, "cta_href": string }

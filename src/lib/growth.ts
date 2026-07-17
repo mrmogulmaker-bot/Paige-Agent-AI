@@ -143,7 +143,7 @@ export interface GrowthAsset {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Landing-page blocks (the 17-type union — kept in lockstep with the server-side
+// Landing-page blocks (the 19-type union — kept in lockstep with the server-side
 // validator in growth_page_upsert and the shared GrowthBlocks renderer)
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -154,6 +154,11 @@ export type GrowthBlock =
   | { type: "hero"; eyebrow?: string; title: string; subtitle?: string;
       cta_label?: string; cta_href?: string; image_url?: string;
       image_position?: "full" | "split"; quote?: string }
+  // Animated brand-toned hero (#240) — same copy fields as hero, but the visual is a
+  // motion-safe aurora scene instead of an image (no image_url). For a premium, tech-forward
+  // opener when the brief has no hero photo to lean on.
+  | { type: "hero_scene"; eyebrow?: string; title: string; subtitle?: string;
+      cta_label?: string; cta_href?: string }
   | { type: "phase_cards"; title?: string;
       cards: { phase: string; title: string; body: string; outcome?: string }[] }
   | { type: "feature_grid"; title?: string; items: { title: string; body: string; icon?: string }[] }

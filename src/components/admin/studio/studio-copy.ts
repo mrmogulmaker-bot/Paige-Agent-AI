@@ -344,9 +344,10 @@ export const STUDIO_HOME_CHIPS: IntentChip[] = [
 ];
 
 /** The human name for every block type. The operator never sees a backend type string (§11).
- *  Covers all 17 variants — TypeScript enforces that here. */
+ *  Covers all 19 variants — TypeScript enforces that here. */
 export const BLOCK_LABELS: Record<GrowthBlock["type"], string> = {
   hero: "Hero",
+  hero_scene: "Animated hero",
   phase_cards: "Phases",
   feature_grid: "Features",
   cta: "Call to action",

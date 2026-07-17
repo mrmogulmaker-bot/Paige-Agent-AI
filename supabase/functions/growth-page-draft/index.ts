@@ -595,7 +595,8 @@ REQUIRED for every page: the FIRST block MUST be a "hero", and the page MUST inc
     // ── 7. Phase-1 guarantees: hero FIRST, exactly ONE embedded_form ─────────
     // These are repairs to a real draft, not a substitute for one (the zero-block case above
     // already bailed). Derived from the draft's own SEO — no invented specifics (§15).
-    const heroIdx = blocks.findIndex((b) => b.type === "hero");
+    // A "hero" OR "hero_scene" satisfies the opening-block requirement (both are hero variants).
+    const heroIdx = blocks.findIndex((b) => b.type === "hero" || b.type === "hero_scene");
     if (heroIdx === -1) {
       blocks.unshift({
         type: "hero",
