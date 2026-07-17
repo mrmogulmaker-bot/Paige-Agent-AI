@@ -1,6 +1,6 @@
 // The ONE block renderer. This exact tree draws the public landing page at
 // /p/<tenant>/<slug> AND the Studio live preview — preview == published, no fork. Every
-// one of the 17 GrowthBlock types renders here, token-driven (only `--gp-*` vars, zero
+// one of the 19 GrowthBlock types renders here, token-driven (only `--gp-*` vars, zero
 // hardcoded hex), responsive, motion-safe, AA-contrast, on a generous spacing rhythm.
 //
 // Theming: <GrowthBlocks> wraps the list in a scope div that applies resolveGrowthTheme()
@@ -34,7 +34,7 @@ function assignBands(blocks: GrowthBlock[]): GpBand[] {
   let prev: GpBand | null = null;
   for (const b of blocks) {
     let band: GpBand;
-    if (b.type === "hero") band = "brand"; // the hero owns the brand tone (it has its own scrim)
+    if (b.type === "hero" || b.type === "hero_scene") band = "brand"; // heroes own the brand tone (their own scrim/scene)
     else if (b.type === "stats") band = "deep"; // a proof band reads best as a dark strip
     else {
       band = BAND_CYCLE[contentIdx % BAND_CYCLE.length];
@@ -245,6 +245,75 @@ function HeroBlock({ block }: { block: Extract<GrowthBlock, { type: "hero" }> })
   return (
     <section className={`${SECTION} py-24 md:py-36`}>
       <div className={`${WRAP} px-0`}>{copy}</div>
+    </section>
+  );
+}
+
+// Animated brand-toned hero (#240) — the premium, image-free opener. The visual is a slow
+// aurora of blurred, brand-PRIMARY-tinted blobs (never gold — §11 keeps gold on the CTA only),
+// with a fixed vignette that guarantees the headline stays AA over the moving field. The drift
+// is pure CSS transform on the `.gp-aurora-*` classes, which no-op under reduced motion, so this
+// degrades to a calm static gradient. Same copy contract + tokens as HeroBlock.
+function HeroSceneBlock({ block }: { block: Extract<GrowthBlock, { type: "hero_scene" }> }) {
+  return (
+    <section
+      className="relative isolate overflow-hidden"
+      // Render on the DEEP palette, not the raw brand: the resolver clamps --gp-deep-bg to a
+      // genuinely-dark field with AA light ink for EVERY tenant — even a pale/pastel primary,
+      // where the raw-primary version would put dark ink on a darkened field and fail AA. Rebinding
+      // the base tokens here also makes the block immune to whatever band it lands in (§13: guard
+      // the edge — a hero_scene that isn't the first block must still be legible).
+      style={{
+        background: "var(--gp-deep-bg)",
+        ["--gp-text" as string]: "var(--gp-deep-text)",
+        ["--gp-muted" as string]: "var(--gp-deep-muted)",
+        ["--gp-accent-ink" as string]: "var(--gp-deep-accent-ink)",
+        ["--gp-surface" as string]: "var(--gp-deep-surface)",
+      } as React.CSSProperties}
+    >
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* Brand-tinted glow — the tenant's primary color still reads on the dark field. */}
+        <div
+          className="gp-aurora-blob gp-aurora-a absolute -left-[15%] -top-[20%] h-[62vh] w-[62vh] rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-primary) 58%, white 42%) 0%, transparent 70%)", opacity: 0.3 }}
+        />
+        {/* Deep shadow for dimensional depth (mixes the dark field toward black — always safe here). */}
+        <div
+          className="gp-aurora-blob gp-aurora-b absolute -right-[10%] top-[8%] h-[56vh] w-[56vh] rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-deep-bg) 20%, black 80%) 0%, transparent 70%)", opacity: 0.45 }}
+        />
+        <div
+          className="gp-aurora-blob gp-aurora-c absolute -bottom-[25%] left-[28%] h-[52vh] w-[52vh] rounded-full blur-3xl"
+          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-primary) 68%, white 32%) 0%, transparent 70%)", opacity: 0.22 }}
+        />
+        {/* Fixed vignette — always deepens toward the dark field, keeping copy AA over the motion. */}
+        <div
+          className="absolute inset-0"
+          style={{ background: "radial-gradient(120% 90% at 50% 32%, transparent 44%, color-mix(in srgb, var(--gp-deep-bg) 55%, black) 100%)" }}
+        />
+      </div>
+
+      <div className={`relative ${WRAP} px-6 md:px-10 py-32 md:py-44`}>
+        <div className="mx-auto max-w-3xl space-y-6 text-center">
+          {block.eyebrow && <Eyebrow>{block.eyebrow}</Eyebrow>}
+          <h1
+            className="font-display text-4xl font-semibold leading-[1.08] tracking-tight md:text-6xl"
+            style={{ color: "var(--gp-text)" }}
+          >
+            {block.title}
+          </h1>
+          {block.subtitle && (
+            <p className="mx-auto max-w-2xl text-lg leading-relaxed md:text-xl" style={{ color: "var(--gp-muted)" }}>
+              {block.subtitle}
+            </p>
+          )}
+          {block.cta_label && block.cta_href && (
+            <div className="flex justify-center pt-2">
+              <CtaButton label={block.cta_label} href={block.cta_href} size="lg" />
+            </div>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -854,6 +923,7 @@ function ChatbotBlock({ block, tenantId }: { block: Extract<GrowthBlock, { type:
 export function BlockRenderer({ block, tenantId }: { block: GrowthBlock; tenantId?: string }) {
   switch (block.type) {
     case "hero": return <HeroBlock block={block} />;
+    case "hero_scene": return <HeroSceneBlock block={block} />;
     case "phase_cards": return <PhaseCardsBlock block={block} />;
     case "feature_grid": return <FeatureGridBlock block={block} />;
     case "cta": return <CtaBlock block={block} />;

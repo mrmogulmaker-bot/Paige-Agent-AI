@@ -809,11 +809,34 @@ All colors MUST be HSL.
   .gp-press { transition: transform 150ms ease-out; }
   .gp-press:active { transform: scale(0.97); }
 
+  /* ── hero_scene aurora (#240) — ambient, brand-toned depth behind a generated hero.
+     Pure transform drift on blurred blobs (no color animation, no layout shift); the blob
+     COLORS are set inline from --gp-primary tints by the renderer, never gold (§11 keeps
+     gold on the CTA only). Three phases at different periods so the field never visibly
+     loops. No-oped under reduced motion below → a calm static gradient. */
+  @keyframes gp-aurora-a {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50%      { transform: translate3d(5%, -4%, 0) scale(1.14); }
+  }
+  @keyframes gp-aurora-b {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+    50%      { transform: translate3d(-6%, 5%, 0) scale(0.92); }
+  }
+  @keyframes gp-aurora-c {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(0.95); }
+    50%      { transform: translate3d(4%, 6%, 0) scale(1.1); }
+  }
+  .gp-aurora-blob { will-change: transform; }
+  .gp-aurora-a { animation: gp-aurora-a 24s ease-in-out infinite; }
+  .gp-aurora-b { animation: gp-aurora-b 30s ease-in-out infinite; }
+  .gp-aurora-c { animation: gp-aurora-c 27s ease-in-out infinite; }
+
   @media (prefers-reduced-motion: reduce) {
     .gp-fade-rise { animation: none; }
     .gp-shimmer { animation: none; }
     .gp-press { transition: none; }
     .gp-press:active { transform: none; }
+    .gp-aurora-a, .gp-aurora-b, .gp-aurora-c { animation: none; }
   }
 
   /* ── Studio generation-stage motion ("Paige presence") — the animated PaigeMark shown
