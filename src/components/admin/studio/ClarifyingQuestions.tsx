@@ -69,6 +69,7 @@ export function ClarifyingQuestions({
                 <div
                   role="group"
                   aria-label={`Suggested answers for: ${q.question}`}
+                  aria-controls={`clarify-${q.id}`}
                   className="flex flex-wrap gap-1.5 pt-0.5"
                 >
                   {q.options!.map((option) => (
@@ -76,6 +77,7 @@ export function ClarifyingQuestions({
                       key={option}
                       active={value === option}
                       onClick={() => onAnswerChange(q.id, value === option ? "" : option)}
+                      className="whitespace-nowrap"
                     >
                       {option}
                     </FilterChip>
@@ -87,7 +89,7 @@ export function ClarifyingQuestions({
                 id={`clarify-${q.id}`}
                 value={value}
                 onChange={(e) => onAnswerChange(q.id, e.target.value)}
-                placeholder={hasOptions ? "Tap an answer above, or type your own…" : q.placeholder}
+                placeholder={hasOptions ? "Select an answer above, or type your own…" : q.placeholder}
                 disabled={disabled}
                 rows={3}
                 className="resize-none text-sm leading-relaxed"

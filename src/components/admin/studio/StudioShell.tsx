@@ -839,16 +839,17 @@ export function StudioShell({
       if (tenantId && sessionId && !autoNamedRef.current) {
         const derived = deriveProjectName(seo.title, compiledBrief);
         if (derived) {
+          // Claim BOTH naming flags synchronously, BEFORE awaiting the rename — otherwise a save
+          // landing during the RPC round trip sees firstLinkRef still true and fires a SECOND,
+          // competing rename that races this one (and could disagree on a long title). Both are
+          // restored on failure so a later build (or the first save) can reclaim the naming.
           autoNamedRef.current = true;
+          firstLinkRef.current = false;
           void renameStudioSession({ tenantId, sessionId, title: derived })
-            .then((renamed) => {
-              // Named exactly once: stop the first-artifact-save path from firing a SECOND,
-              // competing rename (which would race this one and could disagree on a long title).
-              firstLinkRef.current = false;
-              onManifestChange?.(renamed);
-            })
+            .then((renamed) => onManifestChange?.(renamed))
             .catch((err) => {
               autoNamedRef.current = false; // let a later build retry the name
+              firstLinkRef.current = true; // and let the first save reclaim the naming
               console.warn("[studio] auto-name on first generate failed (non-fatal):", err);
             });
         }
