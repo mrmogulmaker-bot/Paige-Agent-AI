@@ -17,7 +17,7 @@
 // moment is Publish (§11). The Studio HOME passes `submitVariant="gold"` so its "Start building"
 // is the single gold ACT on that surface.
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { FileText, Image as ImageIcon, Loader2, Paperclip, RefreshCw, Send, X } from "lucide-react";
+import { ArrowUp, FileText, Image as ImageIcon, Loader2, Plus, RefreshCw, Send, X } from "lucide-react";
 import type { GrowthAsset, GrowthBlock } from "@/lib/growth";
 import { GROWTH_ASSET_ACCEPT, GROWTH_ASSET_MAX_COUNT } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
@@ -77,6 +77,13 @@ export interface PromptComposerProps {
   /** Variant for the submit button. Defaults to "default" (indigo). The Studio HOME passes
    *  "gold" so its "Start building" is the ONE gold ACT on that surface (§11 gold discipline). */
   submitVariant?: "default" | "gold";
+  /** How the dock frames itself. "framed" (default) draws its own rounded border/lit-depth
+   *  container. "bare" draws NO border/bg/shadow — for callers that already sit inside a frame
+   *  (the HOME hero's `studio-glass-card`), so the dock isn't a box-in-a-box (§11). */
+  surface?: "framed" | "bare";
+  /** Send-button shape. Omit and it derives from `submitVariant`: gold → a labeled button
+   *  ("Start building" on HOME), indigo → a circular ↑ (the builder dock, Lovable-parity). */
+  sendShape?: "circle" | "label";
   className?: string;
 }
 
@@ -111,11 +118,18 @@ export function PromptComposer({
   busyLabel,
   minRows,
   submitVariant = "default",
+  surface = "framed",
+  sendShape,
   className,
 }: PromptComposerProps) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const sectionMode = mode === "section" && !!target;
+  const framed = surface === "framed";
+  // Labeled by default so every meaningful CTA ("Draft with Paige", "Generate image", "Start
+  // building") keeps its words. The BUILDER dock opts into the circular ↑ (Lovable parity) by
+  // passing sendShape="circle" — that's the one surface whose send carries no standalone label.
+  const resolvedSendShape = sendShape ?? "label";
   const attachSlotsLeft = GROWTH_ASSET_MAX_COUNT - attachments.length;
   const showChips = !sectionMode && !!chips && chips.length > 0 && value.trim().length === 0;
 
@@ -206,42 +220,53 @@ export function PromptComposer({
         </div>
       )}
 
-      {/* Uploaded reference/deliverable files — chips above the dock (page mode). */}
-      {!sectionMode && attachments.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {attachments.map((a, i) => (
-            <span
-              key={a.path}
-              className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full border border-border bg-muted/50 py-1 pl-2.5 pr-1.5 text-xs text-foreground"
-            >
-              {a.kind === "image" ? (
-                <ImageIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-              ) : (
-                <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
-              )}
-              <span className="truncate">{a.name}</span>
-              {onRemoveAttachment && (
-                <button
-                  type="button"
-                  onClick={() => onRemoveAttachment(i)}
-                  aria-label={`Remove ${a.name}`}
-                  className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-                >
-                  <X className="h-3 w-3" aria-hidden />
-                </button>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* ── THE DOCK: one rounded box — textarea + controls together ── */}
+      {/* ── THE DOCK: one lit floating surface — attachments · textarea · controls together ──
+          `framed` draws the rounded border + lit depth and lifts on focus with a halo (not a
+          hard border snap). `bare` skips all of that for callers already inside a frame (HOME's
+          glass card), so it's never a box-in-a-box (§11). The inner white lip is a fixed-white
+          highlight (light in both themes — invisible over a light card, a subtle lit edge over a
+          dark one), the mirror of why the drop-shadow uses fixed shadow-ink. */}
       <div
         className={cn(
-          "rounded-2xl border border-border bg-card shadow-sm transition-shadow",
-          "focus-within:border-[hsl(var(--ring))] focus-within:shadow-md",
+          "overflow-hidden transition-[border-color,box-shadow]",
+          framed && [
+            "rounded-3xl border border-border bg-card",
+            "shadow-[0_1px_0_0_hsl(0_0%_100%/0.06)_inset,0_10px_30px_-14px_hsl(var(--shadow-ink)/0.55)]",
+            "hover:border-[hsl(var(--border)/0.8)]",
+            "focus-within:border-[hsl(var(--ring))] focus-within:shadow-[0_0_0_3px_hsl(var(--ring)/0.16),0_1px_0_0_hsl(0_0%_100%/0.08)_inset,0_14px_36px_-14px_hsl(var(--shadow-ink)/0.6)]",
+          ],
         )}
       >
+        {/* Uploaded reference/deliverable files — INSIDE the dock now, above the textarea, so the
+            box holds its own context (the Lovable pattern). A hairline divider separates them. */}
+        {!sectionMode && attachments.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border/50 px-4 pb-2.5 pt-3">
+            {attachments.map((a, i) => (
+              <span
+                key={a.path}
+                className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full border border-border bg-muted/50 py-1 pl-2.5 pr-1.5 text-xs text-foreground"
+              >
+                {a.kind === "image" ? (
+                  <ImageIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                ) : (
+                  <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                )}
+                <span className="truncate">{a.name}</span>
+                {onRemoveAttachment && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveAttachment(i)}
+                    aria-label={`Remove ${a.name}`}
+                    className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  >
+                    <X className="h-3 w-3" aria-hidden />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+
         <Textarea
           id="studio-composer"
           ref={ref}
@@ -254,11 +279,12 @@ export function PromptComposer({
           // Borderless inside the dock — the container carries the border/shadow/focus ring, so
           // the textarea is a transparent field flush inside it (one cohesive box, not a box
           // in a box). The grow effect above bounds its height; overflow scrolls internally.
-          className="resize-none border-0 bg-transparent px-3.5 pb-1.5 pt-3 text-sm leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          // px-4 aligns the text column with the toolbar's optically-aligned glyph below.
+          className="resize-none border-0 bg-transparent px-4 pb-2 pt-3.5 text-sm leading-relaxed shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
         />
 
         {/* control row — lives INSIDE the dock, always visible under the textarea */}
-        <div className="flex items-center gap-1 px-2 pb-2">
+        <div className="flex items-center gap-1.5 px-3 pb-3">
           {!sectionMode && onFilesSelected && (
             <>
               <input
@@ -286,7 +312,7 @@ export function PromptComposer({
                 {attachmentsBusy ? (
                   <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
                 ) : (
-                  <Paperclip className="h-4 w-4" aria-hidden />
+                  <Plus className="h-4 w-4" aria-hidden />
                 )}
               </Button>
             </>
@@ -306,31 +332,55 @@ export function PromptComposer({
             </Button>
           )}
 
-          <span className="ml-auto hidden pr-1 text-[11px] text-muted-foreground sm:block">
-            ⌘/Ctrl + Enter
+          {/* Keyboard hint as real keycaps, not raw debug text. */}
+          <span className="ml-auto hidden items-center gap-1 pr-0.5 sm:flex" aria-hidden>
+            <kbd className="rounded border border-border/70 bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              ⌘/Ctrl
+            </kbd>
+            <kbd className="rounded border border-border/70 bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              ↵
+            </kbd>
           </span>
 
-          {/* The send act. Indigo in the builder (Publish is the gold act); gold on HOME. */}
-          <Button
-            type="button"
-            variant={submitVariant}
-            size="sm"
-            onClick={submit}
-            disabled={!canSubmit}
-            className="shrink-0"
-          >
-            {busy ? (
-              <>
+          {/* The send act. Circular ↑ in the builder (indigo; Publish is the gold act), a labeled
+              button on HOME (gold "Start building"). aria-label always carries the meaning. */}
+          {resolvedSendShape === "circle" ? (
+            <Button
+              type="button"
+              variant={submitVariant}
+              onClick={submit}
+              disabled={!canSubmit}
+              aria-label={sectionMode ? "Apply the change" : submitLabel ?? "Build the page"}
+              className="h-9 w-9 shrink-0 rounded-full p-0 disabled:opacity-40"
+            >
+              {busy ? (
                 <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
-                {busyLabel ?? "Working…"}
-              </>
-            ) : (
-              <>
-                <Send className="h-4 w-4" aria-hidden />
-                {sectionMode ? "Apply the change" : submitLabel ?? "Build the page"}
-              </>
-            )}
-          </Button>
+              ) : (
+                <ArrowUp className="h-4 w-4" aria-hidden />
+              )}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant={submitVariant}
+              size="sm"
+              onClick={submit}
+              disabled={!canSubmit}
+              className="shrink-0"
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
+                  {busyLabel ?? "Working…"}
+                </>
+              ) : (
+                <>
+                  <Send className="h-4 w-4" aria-hidden />
+                  {sectionMode ? "Apply the change" : submitLabel ?? "Build the page"}
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </div>
 

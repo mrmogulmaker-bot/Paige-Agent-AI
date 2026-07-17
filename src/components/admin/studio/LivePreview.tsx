@@ -18,7 +18,7 @@
 // whose whole job is to feel expensive.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Wand2 } from "lucide-react";
+import { RotateCw, Wand2 } from "lucide-react";
 import type { GrowthBlock, GrowthPageTheme } from "@/lib/growth";
 import { GrowthBlocks } from "@/components/growth/GrowthBlocks";
 import { GP_SHIMMER } from "@/components/growth/growth-motion";
@@ -43,8 +43,16 @@ export interface LivePreviewProps {
   onSelectBlock?: (index: number | null) => void;
   /** Render the same footer child the published page renders. Default true (parity). */
   showFooter?: boolean;
+  /** The path shown in the desktop browser-chrome route pill (e.g. "offer"). Purely a "this is
+   *  where it lives" affordance — the host is always the neutral `yoursite.paige.app`, never a
+   *  faked registered domain (§11/§13). Omit and the pill shows the bare host. */
+  previewSlug?: string;
   className?: string;
 }
+
+/** Desktop browser-chrome strip height (px) — reserved on TOP of the frame height so the scaled
+ *  card wrapper accounts for it and the layout never overlaps. Mobile shows no desktop chrome. */
+const CHROME_HEIGHT = 36;
 
 /** Logical widths. Desktop floors at 1024 so `md:`/`lg:` rules resolve like a real desktop. */
 const DESKTOP_MIN_WIDTH = 1024;
@@ -88,6 +96,7 @@ export function LivePreview({
   selectedIndex = null,
   onSelectBlock,
   showFooter = true,
+  previewSlug,
   className,
 }: LivePreviewProps) {
   const paneRef = useRef<HTMLDivElement | null>(null);
@@ -96,6 +105,10 @@ export function LivePreview({
   const [frameHeight, setFrameHeight] = useState(INITIAL_FRAME_HEIGHT);
   const [paneWidth, setPaneWidth] = useState(0);
   const [rects, setRects] = useState<BlockRect[]>([]);
+  // Reload nonce — the chrome-strip refresh button bumps it to re-write the frame document, a
+  // real browser reload (resets FAQ open-state, restarts the countdown — honest, §13), never a
+  // dead placeholder control (§11).
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   const isEmpty = blocks.length === 0 && trailingSkeletons <= 0;
 
@@ -115,7 +128,7 @@ export function LivePreview({
     setFrameBody(doc.body);
 
     return () => setFrameBody(null);
-  }, [isEmpty]);
+  }, [isEmpty, reloadNonce]);
 
   // ── the pane width, so a narrow rail scales the desktop frame instead of clipping it ──
   useLayoutEffect(() => {
@@ -134,6 +147,9 @@ export function LivePreview({
   const logicalWidth = isMobile ? MOBILE_WIDTH : Math.max(paneWidth || DESKTOP_MIN_WIDTH, DESKTOP_MIN_WIDTH);
   // Scale-to-fit lives on the WRAPPER only — never on the React tree, which stays untouched.
   const scale = paneWidth > 0 && paneWidth < logicalWidth ? paneWidth / logicalWidth : 1;
+  // Desktop wears the browser-chrome strip; its height rides ON TOP of the frame height so the
+  // scaled wrapper reserves the right box and nothing overlaps. Mobile shows no desktop chrome.
+  const chromeH = isMobile ? 0 : CHROME_HEIGHT;
 
   /** Re-measure the frame's content height and each block wrapper's box. The block wrappers
    *  are the direct children of the GrowthBlocks scope div — index i is block i. */
@@ -249,19 +265,57 @@ export function LivePreview({
     </GrowthBlocks>
   );
 
+  // The floated artifact card — the hero of the well. One depth ladder (§11): the page card
+  // gets the biggest float (a tight contact shadow + a wide soft drop + a 1px top light-lip),
+  // cast in fixed shadow-ink so it reads the same over the dark well in either theme.
+  const floatShadow =
+    "shadow-[0_2px_4px_hsl(var(--studio-ink)/0.4),0_24px_60px_-20px_hsl(var(--studio-ink)/0.65),inset_0_1px_0_hsl(var(--foreground)/0.06)]";
+
   return (
-    <div ref={paneRef} className={cn("w-full", className)}>
-      <div style={{ height: frameHeight * scale }}>
+    // Cap + center the pane on desktop so the artifact reads as a real site (which maxes out its
+    // width), not a full-bleed slab. paneRef measures THIS capped box, so the scale math below
+    // fits the card to the (≤1200) column with no other change.
+    <div ref={paneRef} className={cn("mx-auto w-full max-w-[1200px]", className)}>
+      <div style={{ height: (frameHeight + chromeH) * scale }}>
         <div
-          className={cn(isMobile && "mx-auto")}
+          className="mx-auto"
           style={{ width: logicalWidth, transform: scale === 1 ? undefined : `scale(${scale})`, transformOrigin: "top left" }}
         >
           <div
             className={cn(
-              "relative overflow-hidden border border-border bg-card",
-              isMobile ? "rounded-2xl shadow-lg" : "rounded-xl",
+              "relative overflow-hidden border border-border/70 bg-card",
+              floatShadow,
+              isMobile ? "rounded-2xl" : "rounded-xl",
             )}
           >
+            {/* Desktop browser chrome — the single biggest "real site" cue. Neutral window dots
+                (NOT colored macOS traffic-lights), a centered route pill on the neutral
+                yoursite.paige.app host, and a REAL reload. Gold-clean, token-only. */}
+            {!isMobile && (
+              <div
+                className="flex items-center gap-2 border-b border-border/60 bg-[hsl(var(--studio-glass-solid)/0.6)] px-3"
+                style={{ height: CHROME_HEIGHT }}
+              >
+                <div className="flex items-center gap-1.5" aria-hidden>
+                  <span className="h-2 w-2 rounded-full bg-muted-foreground/25" />
+                  <span className="h-2 w-2 rounded-full bg-muted-foreground/25" />
+                  <span className="h-2 w-2 rounded-full bg-muted-foreground/25" />
+                </div>
+                <div className="mx-auto flex min-w-0 max-w-[60%] items-center rounded-md bg-background/60 px-3 py-1">
+                  <span className="truncate text-[11px] leading-none text-muted-foreground">
+                    yoursite.paige.app{previewSlug ? `/${previewSlug}` : ""}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReloadNonce((n) => n + 1)}
+                  aria-label="Reload preview"
+                  className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-[hsl(var(--muted)/0.6)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                >
+                  <RotateCw className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              </div>
+            )}
             <iframe
               ref={frameRef}
               title="Page preview"
@@ -272,9 +326,12 @@ export function LivePreview({
             {interactive && onSelectBlock && (
               // The selection overlay lives in the PARENT document, positioned over the frame,
               // so the previewed tree itself stays byte-identical to the published tree.
-              // Indigo `--ring`, never gold (§11).
+              // Indigo `--ring`, never gold (§11). It starts BELOW the desktop chrome strip
+              // (`top: chromeH`) so block rects — measured relative to the iframe's own top —
+              // line up; `inset-0` would shift every hitbox up by the chrome height.
               <div
-                className="absolute inset-0"
+                className="absolute inset-x-0 bottom-0"
+                style={{ top: chromeH }}
                 onClick={() => onSelectBlock(null)}
                 role="presentation"
               >
