@@ -177,23 +177,31 @@ export default function StudioHome() {
               Describe it in a sentence — Paige works out the shape and builds it with her team.
             </p>
           </div>
-          <div className="studio-glass-card p-4">
-            <PromptComposer
-              mode="page"
-              value={brief}
-              onChange={setBrief}
-              onSubmit={(value) => void startSession(value)}
-              heading="Describe it in a sentence"
-              placeholder="e.g. a webinar registration page for my Q3 masterclass, with an intake form and a thank-you."
-              helperText="One sentence is enough to start — Paige asks for anything she needs, then builds it with her team."
-              submitLabel="Start building"
-              submitVariant="gold"
-              surface="bare"
-              busy={starting}
-              busyLabel="Spinning up your session…"
-              chips={STUDIO_HOME_CHIPS}
-              minRows={3}
-            />
+          {/* The composer card is constrained NARROWER than the heading cluster (max-w-xl, not
+              the section's max-w-2xl) so a one-sentence brief reads FINITE and deliberate, not a
+              giant empty box (owner: "why is this window so big"). `dark` commits the card to the
+              deep indigo glass in BOTH platform themes — matching the already-committed-dark
+              cosmic field — so PromptComposer's app-token text resolves light-on-dark and holds
+              AA without the card ever falling back to the pale gray it used to be (§6/§11). */}
+          <div className="mx-auto w-full max-w-xl">
+            <div className="dark studio-glass-card p-3">
+              <PromptComposer
+                mode="page"
+                value={brief}
+                onChange={setBrief}
+                onSubmit={(value) => void startSession(value)}
+                heading="Describe it in a sentence"
+                placeholder="e.g. a webinar registration page for my Q3 masterclass, with an intake form and a thank-you."
+                helperText="One sentence is enough to start — Paige asks for anything she needs, then builds it with her team."
+                submitLabel="Start building"
+                submitVariant="gold"
+                surface="bare"
+                busy={starting}
+                busyLabel="Spinning up your session…"
+                chips={STUDIO_HOME_CHIPS}
+                minRows={2}
+              />
+            </div>
           </div>
         </div>
       </section>

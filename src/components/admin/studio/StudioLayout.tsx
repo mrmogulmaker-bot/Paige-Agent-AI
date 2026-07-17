@@ -140,7 +140,14 @@ export default function StudioLayout() {
         ref={railRef}
         aria-label="Vibe Studio"
         className={cn(
-          "relative z-20 flex h-full shrink-0 flex-col",
+          // `dark` commits the persistent rail to the deep-indigo studio chrome in BOTH platform
+          // themes (owner: a workspace is dark by definition) — without it, on a light platform
+          // this rail resolved the light --studio-rail-bg (a near-white column) and read as the
+          // "gray throughout the whole session" the owner called out. Scoped to THIS <nav> only,
+          // so the home gallery under the Outlet stays theme-aware and the in-session light
+          // toggle (which flips StudioFrame, a separate subtree) still works — the rail simply
+          // stays dark like Lovable's does even when you preview a light page (§6/§11).
+          "dark relative z-20 flex h-full shrink-0 flex-col",
           // ease-in-out matches the inner conversation rail's curve so BOTH rails retract in
           // perfect lockstep (Tailwind's arbitrary transition-[width] sets only the property, not
           // a timing function — without this the outer rail would ride the default `ease`).

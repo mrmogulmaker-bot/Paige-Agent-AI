@@ -230,7 +230,10 @@ function StudioFrame({
         // against whatever sits behind it. Softened to /60 now that the shadow, not the
         // border, carries the edge — full-strength border + full-strength shadow reads
         // busy, not premium (the same "carry it with one, not both" rule applies below).
-        "flex w-full flex-col rounded-xl border border-border/60 bg-background text-foreground shadow-xl lg:h-full lg:min-h-[620px] lg:overflow-hidden",
+        // The base slab is the committed indigo studio canvas (was platform bg-background, the
+        // flat near-black/near-white that made the whole session read gray in both themes). Every
+        // region inside (masthead, rail, dock, well) sits on this one deep-indigo field (§6/§11).
+        "flex w-full flex-col rounded-xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-[hsl(var(--studio-canvas))] text-foreground shadow-xl lg:h-full lg:min-h-[620px] lg:overflow-hidden",
         className,
       )}
     >
@@ -269,11 +272,12 @@ export function StudioShell({
   // (there's no ThemeToggle in here anymore; see StudioTopBar's doc comment for why). This is
   // just a class on StudioFrame's own root div, read/written to its own localStorage key so a
   // choice survives a reload without ever touching <html>'s class or the platform's theme.
-  // Defaults to LIGHT (owner call) — dark only if the operator explicitly chose it and it's
-  // saved. The toggle stays optional; only the no-preference default flipped.
+  // Defaults to DARK (owner call, 2026-07-17 — "a creative workspace is dark by definition"; the
+  // light session shipped as a pale gray CRUD room). Light is now the explicit opt-in and stays
+  // fully supported; only the no-preference default flipped from light → dark.
   const [studioDark, setStudioDark] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem("paige-studio-theme") === "dark";
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem("paige-studio-theme") !== "light";
   });
   const toggleStudioTheme = useCallback(() => {
     setStudioDark((prev) => {

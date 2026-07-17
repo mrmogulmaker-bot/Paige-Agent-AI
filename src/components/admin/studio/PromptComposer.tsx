@@ -284,6 +284,14 @@ export function PromptComposer({
             "hover:border-[hsl(var(--border)/0.8)]",
             "focus-within:border-[hsl(var(--ring))] focus-within:shadow-[0_0_0_3px_hsl(var(--ring)/0.16),0_1px_0_0_hsl(0_0%_100%/0.08)_inset,0_14px_36px_-14px_hsl(var(--shadow-ink)/0.6)]",
           ],
+          // BARE (HOME hero): the dock sits inside the glass card, so it draws no raised box of
+          // its own — but it now carries a crisp RECESSED field (a 1px indigo inset edge + a soft
+          // inner top shadow) so the text sits in a defined, clean input rectangle instead of
+          // floating on the slab (the owner's "not clear / not clean" read). The textarea keeps
+          // its own focus-visible ring (WCAG 2.4.7) — this inset is resting field definition, not
+          // a focus indicator, so the two never fight.
+          !framed &&
+            "rounded-2xl bg-[hsl(var(--studio-glass-bg)/0.5)] shadow-[inset_0_0_0_1px_hsl(var(--studio-glass-border)/0.5),inset_0_1px_3px_hsl(var(--studio-ink)/0.4)]",
         )}
       >
         {/* In-dock suggestion chips (builder) — a compact single-line scroll row at the TOP of
