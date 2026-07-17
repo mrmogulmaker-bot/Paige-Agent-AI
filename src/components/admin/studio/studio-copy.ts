@@ -77,16 +77,42 @@ export const CLARIFYING_QUESTIONS: ClarifyingQuestion[] = [
     id: "offer",
     question: "What's the offer, and what's the one result someone gets from it?",
     placeholder: "e.g. A 6-week program that gets consultants their first repeatable client process.",
+    // Coaching-generic offer shapes (§2: no finance/credit defaults) — a one-tap starting point
+    // the operator can refine in the field.
+    options: [
+      "A group coaching program",
+      "A 1:1 coaching or consulting engagement",
+      "An online course or cohort",
+      "A done-for-you service",
+      "A free masterclass or webinar",
+      "A paid workshop or intensive",
+    ],
   },
   {
     id: "audience",
     question: "Who exactly is this page for?",
     placeholder: "e.g. Consultants and agency owners who are booked out but still doing every piece of delivery themselves.",
+    options: [
+      "Coaches growing their practice",
+      "Consultants who are booked out",
+      "Agency owners scaling delivery",
+      "Course creators and educators",
+      "Advisors and thought leaders",
+      "Service pros and freelancers",
+    ],
   },
   {
     id: "action",
     question: "What's the one action you want them to take, and what happens right after?",
     placeholder: "e.g. Apply for the program — I personally review every application.",
+    options: [
+      "Book a discovery call",
+      "Register for the webinar",
+      "Apply to work with me",
+      "Start a free trial",
+      "Download the free guide",
+      "Join the waitlist",
+    ],
   },
 ];
 

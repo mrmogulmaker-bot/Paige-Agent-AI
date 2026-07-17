@@ -134,6 +134,11 @@ export interface ClarifyingQuestion {
   id: string;
   question: string;
   placeholder?: string;
+  /** Predictive answer chips (#296) — the likely answers offered as one-tap fills, like the
+   *  platform's own AskUserQuestion. Tapping one writes it into the answer; the free-text box is
+   *  always the "Other / refine" path, so a chip is a shortcut, never a cage. Omit for questions
+   *  (e.g. "list your real questionnaire fields") where a curated set can't stand in for typing. */
+  options?: string[];
 }
 
 /** The clarifying step's own state: which questions are on screen (3, or 4 when the brief
