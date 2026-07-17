@@ -23,7 +23,7 @@
 // Not on Generate, not on Save, not on a chip, not on the selection outline (that's
 // indigo `--ring`).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Loader2, Send, Sparkles, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useGeneratePage } from "@/hooks/useGeneratePage";
@@ -77,6 +77,7 @@ import {
   deriveProjectName,
   reviseBlock,
   savePageDraft,
+  setSessionStatus,
   setSessionThumbnail,
   shouldClarify,
   uniqueGrowthPageSlug,
@@ -261,6 +262,7 @@ export function StudioShell({
 }: StudioShellProps) {
   const { activeTenantId, activeTenant, loading: tenantLoading } = useTenantContext();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const tenantId = tenantIdProp ?? activeTenantId ?? null;
   const tenantSlug = tenantSlugProp ?? activeTenant?.slug ?? null;
@@ -1110,6 +1112,27 @@ export function StudioShell({
     }
   }, [saveDraft, tenantId, onPublished, patch]);
 
+  // ── delete THIS project (session-level, all modes) ─────────────────────────────────
+  // The in-session mirror of the gallery's card ⋯ Delete. Wired to the RECOVERABLE tier
+  // (archive): the project drops out of every gallery view and can be restored, so an accidental
+  // delete is never data loss (§13). We navigate back to the gallery ONLY after the archive
+  // actually succeeds — never optimistically leave for a delete that didn't happen. The confirm
+  // AlertDialog lives in StudioTopBar; this only runs on the operator's explicit confirm.
+  const handleDeleteProject = useCallback(async () => {
+    if (!tenantId || !sessionId) return;
+    try {
+      await setSessionStatus({ tenantId, sessionId, status: "archived" });
+      navigate("/admin/studio");
+    } catch (err) {
+      patch({ error: asStudioError(err, "SAVE_FAILED") });
+      toast({
+        title: "Couldn't delete this project",
+        description: isStudioError(err) ? err.message : "Try again in a moment.",
+        variant: "destructive",
+      });
+    }
+  }, [tenantId, sessionId, navigate, patch, toast]);
+
   // ── build a whole funnel from one brief (§19) ──────────────────────────────────────
   // draftFunnel plans + drafts (reusing the page/form drafters server-side); then we persist
   // the real page/form/funnel rows. It renders in this same page surface — no navigation, no
@@ -1605,6 +1628,8 @@ export function StudioShell({
             !funnel || funnelBuilding || funnelPublishing || (funnel?.pageBlanks.length ?? 0) > 0
           }
           onExitFunnel={funnel || funnelBuilding ? exitFunnel : undefined}
+          onDeleteProject={sessionId ? () => void handleDeleteProject() : undefined}
+          projectTitle={state.title}
         />
 
         {/* ── page mode (and the funnel surface, which lives inside it) — the original Vibe
