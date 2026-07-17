@@ -111,7 +111,13 @@ function GenerationStage({
       role="status"
       aria-label="Paige is building your page"
       className={cn(
-        "relative flex min-h-[560px] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-border bg-card px-6 py-16 text-center",
+        // h-full makes this the FULL-FRAME building screen (the owner's "full-width loading
+        // screen"): during a first build the conversation rail is already retracted to 0 (the
+        // immersive flag in StudioShell), so filling the canvas cell's height too lets the Paige
+        // presence sit centered in the whole frame instead of a fixed 560px box top-anchored in a
+        // tall viewport. min-h keeps a floor on short screens; it hands to the real canvas the
+        // instant blocks land (§13). No gold here — this is a wait, not an act (§11).
+        "relative flex h-full min-h-[560px] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-border bg-card px-6 py-16 text-center",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         className,
       )}

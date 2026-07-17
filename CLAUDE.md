@@ -304,6 +304,19 @@ best-in-class bar; when in doubt, raise it.
   would otherwise have shipped, and (§18) an entire creation tool built as five
   redundant silos that no compliance pass ever flagged because each silo shipped in
   its own session and was only ever judged against itself.
+- **The Studio must feel developable at a "video-game level" — the measuring stick moving
+  forward (owner: Antonio, 2026-07-17).** When a tenant is inside the Vibe Studio *building*
+  something, it should feel like a highly-animated, alive, game-grade creative environment —
+  not an admin form. The owner frames it as "video game level" because that's the felt quality
+  bar, not a literal game engine: cinematic loading/"cutscene" moments (the build screen),
+  choreographed screen-to-screen transitions that feel like one continuous act, motion that
+  makes creating feel powerful and responsive. Concentrate the heavy motion (3D/WebGL, particle/
+  aurora, spring choreography) where it *earns its pixels* — the build/"loading-the-idea" moment
+  and key transitions — never plastered on working surfaces (§11 banner rule still holds). This
+  is now the **measuring stick for all Studio work**: *"Does building in here feel game-grade and
+  alive, or does it feel like CRUD?"* We do not compromise this quality to move faster. Still
+  §-bound: motion-safe (`useReducedMotion`), token-only, AA both themes, gold only on the act
+  moment.
 - **The test, every time:** *"Would the owner call this world-class, and does it read as
   one continuous system with the rest of the platform?"* If not, it isn't done.
 

@@ -107,7 +107,11 @@ export default function StudioHome() {
       setStarting(true);
       try {
         const session = await createStudioSession({ tenantId: activeTenantId, seedBrief: seed });
-        navigate(`/admin/studio/${session.id}`, { state: { brief: seed } });
+        // `autostart` tells the builder this is ONE continuous act: the brief was already "sent"
+        // here on Home, so the shell fires the build itself on arrival (Defect 1 — no second
+        // submit). A blank-canvas start (no seed) carries the flag too, but the shell only fires
+        // on a non-empty brief, so it just opens a clean composer.
+        navigate(`/admin/studio/${session.id}`, { state: { brief: seed, autostart: true } });
       } catch (err) {
         toast({
           title: "Couldn't start a project",

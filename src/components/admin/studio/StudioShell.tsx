@@ -126,6 +126,11 @@ export interface StudioShellProps {
   /** The seed brief the HOME composer passed on navigation — a fast-path seed only; the durable
    *  brief is the session's own seed_brief, read from the row (blocking #4). */
   initialBrief?: string;
+  /** The Home composer already "sent" this brief (Defect 1): fire the build ONCE on arrival —
+   *  straight into runGenerate's brand/clarify gate — instead of waiting for a second submit.
+   *  Only fires on a fresh (zero-artifact), non-restored session with a non-empty brief; a
+   *  deep-link/resume never carries it, so a cold entry stays a normal single-submit. */
+  autostart?: boolean;
   /** Open an existing page's DRAFT instead of a blank composer (page mode). */
   pageId?: string;
   /** Which output the workspace is building. The hub owns the ?mode= param. */
@@ -239,6 +244,7 @@ export function StudioShell({
   tenantSlug: tenantSlugProp,
   sessionId,
   initialBrief,
+  autostart = false,
   pageId: pageIdProp,
   mode = "page",
   onModeChange,
@@ -652,6 +658,19 @@ export function StudioShell({
   // local snapshot for this session ran first, so unsaved work WINS over the DB row — we still
   // adopt the session identity + manifest, but never clobber restored content.
   const sessionLoadRef = useRef<string | null>(null);
+  // Bridge to handleBriefSubmit for the autostart fire (Defect 1). MUST be handleBriefSubmit, NOT
+  // runGenerate: handleBriefSubmit is the ONE entry that runs classifyStudioIntent, so the Home
+  // brief decides its own shape (page/funnel/form/copy/image) exactly like a manual first submit
+  // (§18/§19). Firing runGenerate directly would hardwire every Home build to a lone page.
+  // handleBriefSubmit is declared LATER, so the session-load effect can't take it as a dependency
+  // without a TDZ at the deps-array eval. A ref kept pointed at the live callback (synced in an
+  // effect below, after handleBriefSubmit exists) lets the async loadSession .then() invoke the
+  // current one — the same indirection latestDraftWriteRef already uses for the unmount flush.
+  const briefSubmitRef = useRef<(brief: string) => void>(() => {});
+  // Guards the autostart fire to EXACTLY ONCE per session (R1) — mirrors sessionLoadRef/
+  // autoNamedRef. Claimed (set to the sessionId) BEFORE firing, so a re-entered effect (a dep
+  // change, StrictMode's setup→cleanup→setup) can never fire runGenerate a second time.
+  const autostartRef = useRef<string | null>(null);
   useEffect(() => {
     if (!tenantId || !sessionId) return;
     if (sessionLoadRef.current === sessionId) return; // resolved this session once
@@ -661,8 +680,9 @@ export function StudioShell({
     const key = studioDraftKey(tenantId, sessionId, null);
     const restored = draftRestoreRef.current.key === key && draftRestoreRef.current.applied;
     // Seed the brief instantly from the navigation state so the composer isn't blank for a beat
-    // (loadSession then confirms it from the durable seed_brief).
-    if (initialBrief && !restored) patch({ composerValue: initialBrief });
+    // (loadSession then confirms it from the durable seed_brief). Skipped on autostart: the brief
+    // is a SENT turn, not text waiting to be sent — the box stays empty while the build fires.
+    if (initialBrief && !restored && !autostart) patch({ composerValue: initialBrief });
 
     let live = true;
     loadSession({ tenantId, sessionId })
@@ -672,6 +692,22 @@ export function StudioShell({
         // An established session (already has artifacts) is already named — don't re-title it on a
         // later regeneration. A fresh/empty resumed session may still auto-name on its first build.
         autoNamedRef.current = loaded.artifacts.length > 0;
+
+        // Autostart decision (Defect 1). A fresh session opened WITH build intent from Home fires
+        // the build ONCE, straight into runGenerate's brand/clarify gate. Computed OUTSIDE the
+        // setState updater (updaters must stay pure — StrictMode double-invokes them) and gated so
+        // it never fires over: a restored snapshot (R4), a built page (R5 has a primary), a
+        // non-page-primary session (R5 — artifacts present), an empty brief / cold deep-link (R6),
+        // or a second time for the same session (R1, autostartRef).
+        const isZeroArtifact = !loaded.primary && loaded.artifacts.length === 0;
+        const autostartSeed = (loaded.session.seedBrief ?? initialBrief ?? "").trim();
+        const willAutostart =
+          autostart &&
+          !restored &&
+          isZeroArtifact &&
+          autostartSeed.length > 0 &&
+          autostartRef.current !== sessionId;
+
         setState((s) => {
           // Always adopt the session's identity + manifest.
           const base: ShellState = { ...s, sessionId, artifacts: loaded.artifacts };
@@ -700,17 +736,26 @@ export function StudioShell({
               error: null,
             };
           }
-          // Zero-artifact (fresh) session — seed the composer from the durable brief.
+          // Zero-artifact (fresh) session. On autostart the brief becomes a SENT turn (fired just
+          // below) — keep the box empty for the cutscene. Otherwise seed the LIVE composer from the
+          // navigation brief only; the DURABLE seed_brief is deliberately NOT a fallback here
+          // (Defect 2), so a resume — where initialBrief is undefined — shows a clean box for EVERY
+          // artifact type, not the old sticky prompt. Rebuild reads `brief`, written by runGenerate.
           return {
             ...base,
-            // Seed the LIVE composer (not `brief`) so the operator sees what they typed on Home;
-            // `brief` is written on submit by runGenerate. A RETURN to a built project (other
-            // branch) leaves composerValue empty → a clean box, no sticky words.
-            composerValue: s.composerValue || loaded.session.seedBrief || initialBrief || "",
+            composerValue: willAutostart ? "" : s.composerValue || initialBrief || "",
             mode: "compose",
             error: null,
           };
         });
+
+        // Fire OUTSIDE the updater, once. Claim the guard BEFORE firing (R1) so nothing re-fires.
+        // Routes through handleBriefSubmit → classifyStudioIntent, so the Home brief builds the
+        // RIGHT artifact type (§18/§19), not a forced page.
+        if (willAutostart) {
+          autostartRef.current = sessionId;
+          briefSubmitRef.current(loaded.session.seedBrief ?? initialBrief ?? "");
+        }
       })
       .catch((err) => {
         if (!live) return;
@@ -723,7 +768,7 @@ export function StudioShell({
     return () => {
       live = false;
     };
-  }, [tenantId, sessionId, initialBrief, patch]);
+  }, [tenantId, sessionId, initialBrief, autostart, patch]);
 
   // ── derived ───────────────────────────────────────────────────────────────────────
   const canvasBlocks = state.mode === "generating" ? generation.emitted : state.blocks;
@@ -1293,6 +1338,14 @@ export function StudioShell({
     },
     [target, funnel, funnelBuilding, buildFunnel, runGenerate, handleSectionEdit, onModeChange, toast],
   );
+
+  // Keep the autostart bridge pointed at the live handleBriefSubmit (declared just above, so this
+  // sync must live AFTER it to avoid a TDZ on the deps array). loadSession is real async IO, so its
+  // .then() always runs after this effect has set the ref — the autostart fire never sees the no-op
+  // placeholder, and it always classifies the Home brief into the right artifact type (§18/§19).
+  useEffect(() => {
+    briefSubmitRef.current = handleBriefSubmit;
+  }, [handleBriefSubmit]);
 
   // ── persist the client-side draft (no DB write) ───────────────────────────────────
   // The Studio holds the in-progress design ONLY in this component's state until an

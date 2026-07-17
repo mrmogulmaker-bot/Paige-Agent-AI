@@ -51,7 +51,12 @@ export default function VibeStudio() {
   // The seed brief the HOME composer passed on navigation — a fast-path seed only; the DURABLE
   // brief is the session's own seed_brief, which StudioShell reads from the row (blocking #4).
   const location = useLocation();
-  const initialBrief = (location.state as { brief?: string } | null)?.brief;
+  const navState = location.state as { brief?: string; autostart?: boolean } | null;
+  const initialBrief = navState?.brief;
+  // The Home composer already "sent" the brief (Defect 1): when this is set the shell auto-fires
+  // the build on arrival instead of waiting for a second submit. Absent on a deep-link/resume
+  // (no nav state), so a cold entry never auto-builds.
+  const autostart = navState?.autostart ?? false;
 
   // ?mode= picks the output (page|funnel|form|copy|image); defaults to page. ?pageId= opens a
   // specific page's draft (deep-links WITHIN a session still work). Both mirror the exact
@@ -72,6 +77,7 @@ export default function VibeStudio() {
       <StudioShell
         sessionId={sessionId}
         initialBrief={initialBrief}
+        autostart={autostart}
         mode={mode}
         onModeChange={setMode}
         pageId={pageId}
