@@ -312,7 +312,10 @@ export function StudioBuildingScreen({
         // rail is retracted to 0, so filling the canvas cell centers the presence in the whole
         // frame. min-h floors it on short screens; it hands to the real result the instant it
         // lands (§13). No gold here — a wait, not an act (§11).
-        "relative flex h-full min-h-[560px] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-border bg-card px-6 py-16 text-center",
+        // The base is the deep indigo studio canvas (was platform bg-card — a flat gray box under
+        // the aurora): the "video-game" build moment must glow on the brand field, not read as a
+        // gray card (§11). The aurora + living mark paint on top of this deep indigo stage.
+        "relative flex h-full min-h-[560px] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-[hsl(var(--studio-chrome-border)/0.5)] bg-[hsl(var(--studio-canvas))] px-6 py-16 text-center",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         className,
       )}

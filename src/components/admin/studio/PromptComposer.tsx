@@ -279,9 +279,12 @@ export function PromptComposer({
         className={cn(
           "overflow-hidden transition-[border-color,box-shadow]",
           framed && [
-            "rounded-3xl border border-border bg-card",
+            // The in-session dock sits on the lit indigo studio surface, not platform bg-card
+            // (the neutral gray the owner called out inside a running session). Same de-gray token
+            // family as the frame/rail/masthead so the whole session reads as one indigo room.
+            "rounded-3xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-[hsl(var(--studio-dock))]",
             "shadow-[0_1px_0_0_hsl(0_0%_100%/0.06)_inset,0_10px_30px_-14px_hsl(var(--shadow-ink)/0.55)]",
-            "hover:border-[hsl(var(--border)/0.8)]",
+            "hover:border-[hsl(var(--studio-chrome-border)/0.85)]",
             "focus-within:border-[hsl(var(--ring))] focus-within:shadow-[0_0_0_3px_hsl(var(--ring)/0.16),0_1px_0_0_hsl(0_0%_100%/0.08)_inset,0_14px_36px_-14px_hsl(var(--shadow-ink)/0.6)]",
           ],
           // BARE (HOME hero): the dock sits inside the glass card, so it draws no raised box of
