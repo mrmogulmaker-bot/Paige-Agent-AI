@@ -1,6 +1,6 @@
 // _shared/growth-blocks.ts — the ONE GrowthBlock contract for the Growth OS edge functions.
 //
-// Why this file exists (§12/§13 — extract, never fork): the 17-type block union is enforced
+// Why this file exists (§12/§13 — extract, never fork): the 19-type block union is enforced
 // in three places that must never drift apart:
 //   1. SQL  — public.growth_validate_blocks(jsonb)  (migration 20260714091000), which BOTH
 //             growth_page_upsert and growth_page_edit_blocks call. This is the hard gate: a
@@ -10,7 +10,7 @@
 //             so TS-valid ⊆ SQL-valid — anything this returns is guaranteed to survive the
 //             upsert. A revision we hand back that the save would reject is worse than no
 //             revision at all.
-//   3. PROMPT — GROWTH_BLOCK_SPEC below: the exact same 17 variants, in the shape the model
+//   3. PROMPT — GROWTH_BLOCK_SPEC below: the exact same 19 variants, in the shape the model
 //             must emit. Shared so a new block type is added in ONE place, not three.
 //
 // Callers: growth-block-edit (today). FOLLOW-UP: growth-page-draft/index.ts still carries a

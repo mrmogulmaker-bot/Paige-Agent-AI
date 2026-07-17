@@ -1,6 +1,6 @@
 // The ONE block renderer. This exact tree draws the public landing page at
 // /p/<tenant>/<slug> AND the Studio live preview — preview == published, no fork. Every
-// one of the 17 GrowthBlock types renders here, token-driven (only `--gp-*` vars, zero
+// one of the 19 GrowthBlock types renders here, token-driven (only `--gp-*` vars, zero
 // hardcoded hex), responsive, motion-safe, AA-contrast, on a generous spacing rhythm.
 //
 // Theming: <GrowthBlocks> wraps the list in a scope div that applies resolveGrowthTheme()
@@ -34,7 +34,7 @@ function assignBands(blocks: GrowthBlock[]): GpBand[] {
   let prev: GpBand | null = null;
   for (const b of blocks) {
     let band: GpBand;
-    if (b.type === "hero") band = "brand"; // the hero owns the brand tone (it has its own scrim)
+    if (b.type === "hero" || b.type === "hero_scene") band = "brand"; // heroes own the brand tone (their own scrim/scene)
     else if (b.type === "stats") band = "deep"; // a proof band reads best as a dark strip
     else {
       band = BAND_CYCLE[contentIdx % BAND_CYCLE.length];
@@ -256,24 +256,40 @@ function HeroBlock({ block }: { block: Extract<GrowthBlock, { type: "hero" }> })
 // degrades to a calm static gradient. Same copy contract + tokens as HeroBlock.
 function HeroSceneBlock({ block }: { block: Extract<GrowthBlock, { type: "hero_scene" }> }) {
   return (
-    <section className="relative isolate overflow-hidden" style={{ background: "var(--gp-primary)" }}>
+    <section
+      className="relative isolate overflow-hidden"
+      // Render on the DEEP palette, not the raw brand: the resolver clamps --gp-deep-bg to a
+      // genuinely-dark field with AA light ink for EVERY tenant — even a pale/pastel primary,
+      // where the raw-primary version would put dark ink on a darkened field and fail AA. Rebinding
+      // the base tokens here also makes the block immune to whatever band it lands in (§13: guard
+      // the edge — a hero_scene that isn't the first block must still be legible).
+      style={{
+        background: "var(--gp-deep-bg)",
+        ["--gp-text" as string]: "var(--gp-deep-text)",
+        ["--gp-muted" as string]: "var(--gp-deep-muted)",
+        ["--gp-accent-ink" as string]: "var(--gp-deep-accent-ink)",
+        ["--gp-surface" as string]: "var(--gp-deep-surface)",
+      } as React.CSSProperties}
+    >
       <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        {/* Brand-tinted glow — the tenant's primary color still reads on the dark field. */}
         <div
           className="gp-aurora-blob gp-aurora-a absolute -left-[15%] -top-[20%] h-[62vh] w-[62vh] rounded-full blur-3xl"
-          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-primary) 55%, white 45%) 0%, transparent 70%)", opacity: 0.32 }}
+          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-primary) 58%, white 42%) 0%, transparent 70%)", opacity: 0.3 }}
         />
+        {/* Deep shadow for dimensional depth (mixes the dark field toward black — always safe here). */}
         <div
           className="gp-aurora-blob gp-aurora-b absolute -right-[10%] top-[8%] h-[56vh] w-[56vh] rounded-full blur-3xl"
-          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-primary) 30%, black 70%) 0%, transparent 70%)", opacity: 0.5 }}
+          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-deep-bg) 20%, black 80%) 0%, transparent 70%)", opacity: 0.45 }}
         />
         <div
           className="gp-aurora-blob gp-aurora-c absolute -bottom-[25%] left-[28%] h-[52vh] w-[52vh] rounded-full blur-3xl"
-          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-primary) 62%, white 38%) 0%, transparent 70%)", opacity: 0.24 }}
+          style={{ background: "radial-gradient(circle, color-mix(in srgb, var(--gp-primary) 68%, white 32%) 0%, transparent 70%)", opacity: 0.22 }}
         />
-        {/* Fixed vignette — keeps the headline AA over the moving blobs. */}
+        {/* Fixed vignette — always deepens toward the dark field, keeping copy AA over the motion. */}
         <div
           className="absolute inset-0"
-          style={{ background: "radial-gradient(120% 90% at 50% 32%, transparent 42%, color-mix(in srgb, var(--gp-primary) 72%, black) 100%)" }}
+          style={{ background: "radial-gradient(120% 90% at 50% 32%, transparent 44%, color-mix(in srgb, var(--gp-deep-bg) 55%, black) 100%)" }}
         />
       </div>
 
