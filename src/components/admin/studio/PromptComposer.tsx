@@ -427,13 +427,14 @@ export function PromptComposer({
           // visible focus state (WCAG 2.4.7).
           className={cn(
             "resize-none border-0 bg-transparent px-4 text-sm leading-relaxed shadow-none",
-            // §311 (b): pin typed text to --foreground so it always resolves to the card's ACTIVE
-            // theme value — dark text on the light input in light mode, light text on the raised
-            // input in dark mode — never dark-on-dark. §311 (c/d): the bare dock's focus-within glow
-            // is the single focus indicator (so suppress the textarea's own ring, as framed does),
-            // and the vertical padding is slimmed to keep the bar short (§311 (d)).
+            // The bare input WELL stays light in both themes (--studio-input), so its text is pinned
+            // to the always-dark --studio-input-fg (dark-on-light in light AND dark mode — never
+            // invisible), and the placeholder to a muted version of it. The focus-within glow is the
+            // single focus indicator (suppress the textarea's own ring, as framed does); vertical
+            // padding is slimmed so the bar stays a slim single line that grows as you type.
             framed && "pb-2 pt-3.5 focus-visible:ring-0 focus-visible:ring-offset-0",
-            !framed && "pb-1.5 pt-2.5 text-foreground focus-visible:ring-0 focus-visible:ring-offset-0",
+            !framed &&
+              "pb-1.5 pt-2.5 text-[hsl(var(--studio-input-fg))] placeholder:text-[hsl(var(--studio-input-fg)/0.5)] focus-visible:ring-0 focus-visible:ring-offset-0",
           )}
         />
 

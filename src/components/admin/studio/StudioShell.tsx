@@ -1824,6 +1824,7 @@ export function StudioShell({
                 chips={INTENT_CHIPS}
                 sendShape="circle"
                 chipPlacement="dock"
+                minRows={1}
               />
             )
           }
