@@ -14,7 +14,7 @@
 // exact `save_marketing_content` RPC call that used to live directly in this component,
 // relocated behind the seam so Page/Form/Copy/Image all write through the ONE seam layer
 // instead of Copy forking its own direct-RPC pattern.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SectionCard, EmptyState, StatePill, Toolbar } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,10 +26,12 @@ import {
 import { Loader2, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { StudioRailHeading, StudioSplit } from "../StudioChrome";
-import { COPY_CHIPS, MODE_EMPTY, MODE_RAIL } from "../studio-copy";
+import { BUILDING_NOTES, COPY_CHIPS, MODE_EMPTY, MODE_RAIL } from "../studio-copy";
 import { CHANNELS, CHANNEL_LABEL, CopyButton, LabelChip, type Channel, type Draft } from "./content-shared";
 import { PromptComposer } from "../PromptComposer";
+import { StudioBuildingScreen, useElapsedMs } from "../StudioBuildingScreen";
 import { draftCopy, isStudioError, saveCopy } from "../studio";
+import { useReducedMotion } from "@/components/growth/growth-motion";
 import { growthSeamMessage } from "@/lib/growth-templates";
 
 export interface CopyModeProps {
@@ -39,6 +41,13 @@ export interface CopyModeProps {
    *  the composer on this mode's first mount. Additive: an operator who deliberately clicks
    *  the Copy chip still gets the normal blank composer and writes their own brief. */
   initialBrief?: string;
+  /** True ONLY when the brief arrived via the Studio's autostart classify (§18) — fires the draft
+   *  on this mode's first mount so the operator lands with the result already generating, exactly
+   *  like the page path. A manual Copy-chip click leaves this false and shows the config screen. */
+  autoRun?: boolean;
+  /** Mirrors the auto-run build in flight so the shell can retract BOTH rails for the same
+   *  full-frame "watch it build" cutscene the page path gets (§11/§19). */
+  onGeneratingChange?: (building: boolean) => void;
   /** Opens the Studio's own content library Sheet (§19: everything created here stays
    *  reachable from here) — surfaced as "View in library" once a draft's save resolves. */
   onOpenLibrary?: () => void;
@@ -47,12 +56,22 @@ export interface CopyModeProps {
   onSaved?: (saved: { id: string; title: string }) => void;
 }
 
-export function CopyMode({ tenantId, className, initialBrief, onOpenLibrary, onSaved }: CopyModeProps) {
+export function CopyMode({ tenantId, className, initialBrief, autoRun, onGeneratingChange, onOpenLibrary, onSaved }: CopyModeProps) {
+  const reduce = useReducedMotion();
   const [channel, setChannel] = useState<Channel>("social_post");
   const [brief, setBrief] = useState(initialBrief ?? "");
   const [tone, setTone] = useState("");
   const [variations, setVariations] = useState("2");
   const [drafting, setDrafting] = useState(false);
+  // The full-frame cutscene is shown ONLY while an AUTOSTART draft is in flight — a manual
+  // "Draft with Paige" keeps the current in-rail spinner (unchanged). Distinct from `drafting`
+  // so the manual path never retracts the rail (which would strand the config screen).
+  // Lazy-init from the SAME guard the auto-fire effect uses, so render 1 already shows the
+  // cutscene — never a one-frame flash of the config screen before the effect runs (§11).
+  const [autoBuilding, setAutoBuilding] = useState(
+    () => !!autoRun && !!tenantId && (initialBrief ?? "").trim().length >= 5,
+  );
+  const elapsedMs = useElapsedMs(autoBuilding);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [savingIdx, setSavingIdx] = useState<number | null>(null);
   // Keyed by the draft's index in `drafts` — the real marketing_content id ONLY once
@@ -63,10 +82,15 @@ export function CopyMode({ tenantId, className, initialBrief, onOpenLibrary, onS
   // regenerating) can never mislabel what a later "Save"/"Save again" attributes a draft to.
   const [draftedBrief, setDraftedBrief] = useState("");
 
-  const draft = async (value: string) => {
+  const draft = async (value: string, opts?: { auto?: boolean }) => {
     const theBrief = value.trim();
     if (!tenantId) { toast.error("Pick a workspace first."); return; }
     if (theBrief.length < 5) { toast.error("Give Paige a brief: what's the content about?"); return; }
+    const auto = opts?.auto ?? false;
+    // Full-frame cutscene + rail retraction ONLY on the autostart path (§11/§19). On any exit
+    // (success, throw, or a guard above) the finally clears it, so a failure lands back on the
+    // editable split with the brief intact — never stranded on the cutscene (§13).
+    if (auto) { setAutoBuilding(true); onGeneratingChange?.(true); }
     setDrafting(true);
     try {
       const result = await draftCopy({
@@ -80,8 +104,24 @@ export function CopyMode({ tenantId, className, initialBrief, onOpenLibrary, onS
     } catch (e) {
       const cause = isStudioError(e) ? e.cause ?? e : e;
       toast.error(growthSeamMessage(cause, isStudioError(e) ? e.message : "Paige couldn't draft that. Try again."));
-    } finally { setDrafting(false); }
+    } finally {
+      setDrafting(false);
+      if (auto) { setAutoBuilding(false); onGeneratingChange?.(false); }
+    }
   };
+
+  // Autostart auto-run (§18): a brief Paige classified into Copy fires the draft on first mount,
+  // so the operator lands with the result already generating — no second "Draft with Paige" click.
+  // firedRef survives React StrictMode's setup→cleanup→setup double-invoke so a paid draft call
+  // never fires twice; empty deps + the ref gate mean it fires exactly once, on mount.
+  const autoFiredRef = useRef(false);
+  useEffect(() => {
+    if (autoRun && !autoFiredRef.current && (initialBrief ?? "").trim().length >= 5) {
+      autoFiredRef.current = true;
+      void draft(initialBrief ?? "", { auto: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setDraft = (i: number, patch: Partial<Draft>) =>
     setDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
@@ -115,6 +155,7 @@ export function CopyMode({ tenantId, className, initialBrief, onOpenLibrary, onS
   return (
     <StudioSplit
       className={className}
+      immersive={autoBuilding}
       railHeader={
         <StudioRailHeading
           heading={MODE_RAIL.copy.heading}
@@ -167,7 +208,17 @@ export function CopyMode({ tenantId, className, initialBrief, onOpenLibrary, onS
         />
       }
       canvas={
-        drafts.length === 0 ? (
+        autoBuilding ? (
+          // The autostart cutscene — the same full-frame Paige presence the page path shows,
+          // indeterminate (one non-streamed model call, no fabricated phases — §13).
+          <StudioBuildingScreen
+            note={BUILDING_NOTES.copy.note}
+            agent={BUILDING_NOTES.copy.agent}
+            elapsedMs={elapsedMs}
+            reduce={!!reduce}
+            ariaLabel="Paige is writing your copy"
+          />
+        ) : drafts.length === 0 ? (
           <div className="mx-auto w-full max-w-3xl">
             <SectionCard>
               <EmptyState

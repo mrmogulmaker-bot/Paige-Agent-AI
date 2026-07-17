@@ -15,16 +15,15 @@
 // same renderer, same theme resolver, same footer child — and the stage steps aside.
 // A failure narrates itself right here with a Retry; a dead model never paints a
 // successful, empty page.
-import { useEffect, useRef } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { GrowthPageTheme } from "@/lib/growth";
-import { PaigeMark } from "@/components/brand/PaigeMark";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/page";
-import { GP_FADE_RISE, useReducedMotion } from "@/components/growth/growth-motion";
+import { useReducedMotion } from "@/components/growth/growth-motion";
 import { cn } from "@/lib/utils";
 import { PHASE_ORDER, phaseRank } from "./BuildProgress";
 import { LivePreview } from "./LivePreview";
+import { StudioBuildingScreen } from "./StudioBuildingScreen";
 import { GENERATION_NOTES, PHASE_AGENTS } from "./studio-copy";
 import type { DeviceFrame, GenerationPhase, GenerationState } from "./studio-types";
 
@@ -63,16 +62,11 @@ interface GenerationStageProps {
 }
 
 /**
- * The "Paige presence" — what the canvas shows BEFORE any real block has painted. This
- * replaces the old flat 3-box shimmer with a premium, staged visual: an animated
- * PaigeMark (the ring orbits, the orb breathes, the halo pulses, the spark drifts — all
- * CSS/SVG, gated by `reduce`), the current phase's real note blown up large, the agent
- * on Paige's team who owns that phase, and a five-dot stepper mirroring BuildProgress's
- * own phase order — so the rail and the canvas always tell the same story.
- *
- * Gold discipline (§6/§11): PaigeMark's own gradients are the ONLY gold here — the
- * brand mark's inherent color, unchanged, just animated. Every surrounding surface
- * (the ambient wash, the stepper, the text) is indigo/neutral, never gold-as-chrome.
+ * The page path's "Paige presence" — the shared StudioBuildingScreen fed with page-specific
+ * inputs: the real phase note, the agent who owns that phase, and a five-dot stepper mirroring
+ * BuildProgress's own phase order so the rail and the canvas always tell the same story. The
+ * full-frame presence, ambient wash, PaigeMark, and elapsed clock all live in the shared
+ * primitive now (§18 — one home), so copy/image render the identical cutscene.
  */
 function GenerationStage({
   phase,
@@ -84,17 +78,7 @@ function GenerationStage({
   className,
 }: GenerationStageProps) {
   const rank = phaseRank(phase);
-  const seconds = Math.max(0, Math.round(elapsedMs / 1000));
   const agent = PHASE_AGENTS[phase];
-
-  // Catch focus when the build starts. On a first build the composer's rail is made `inert` at the
-  // same instant (the full-width transition), which per spec blurs whatever had focus and drops it
-  // to <body> with no cue. Pulling focus onto this live, aria-live stage relocates it into the one
-  // region that stays interactive during the build, so keyboard/AT users aren't stranded (§13/a11y).
-  const stageRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    stageRef.current?.focus();
-  }, []);
 
   // Once the payload has landed but before the first block has painted, the section
   // count is REAL — say so. Before that there's nothing to count yet, so we don't invent
@@ -105,69 +89,34 @@ function GenerationStage({
       : null;
 
   return (
-    <div
-      ref={stageRef}
-      tabIndex={-1}
-      role="status"
-      aria-label="Paige is building your page"
-      className={cn(
-        // h-full makes this the FULL-FRAME building screen (the owner's "full-width loading
-        // screen"): during a first build the conversation rail is already retracted to 0 (the
-        // immersive flag in StudioShell), so filling the canvas cell's height too lets the Paige
-        // presence sit centered in the whole frame instead of a fixed 560px box top-anchored in a
-        // tall viewport. min-h keeps a floor on short screens; it hands to the real canvas the
-        // instant blocks land (§13). No gold here — this is a wait, not an act (§11).
-        "relative flex h-full min-h-[560px] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-border bg-card px-6 py-16 text-center",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-        className,
-      )}
-    >
-      {/* Ambient indigo field — purely atmospheric, never gold (§6/§11 gold discipline). */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(58% 46% at 50% 34%, hsl(var(--primary) / 0.12), transparent 72%)",
-        }}
-      />
-
-      <PaigeMark animated={!reduce} className="relative h-24 w-24 md:h-28 md:w-28" />
-
-      <div
-        key={phase}
-        aria-live="polite"
-        className={cn("relative mt-8 max-w-md space-y-2", !reduce && GP_FADE_RISE)}
-      >
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-          {agent} · Paige's team
-        </p>
-        <p className="font-display text-xl font-semibold text-foreground md:text-2xl">{note}</p>
-        {detail && <p className="text-sm text-muted-foreground">{detail}</p>}
-      </div>
-
-      {/* The same five stages BuildProgress narrates in the rail — mirrored here so the
-          canvas itself tells you what's happening, not just a side panel you might miss. */}
-      <div className="relative mt-8 flex items-center gap-2" aria-hidden>
-        {PHASE_ORDER.map((p, i) => {
-          const done = i < rank;
-          const active = i === rank;
-          return (
-            <span
-              key={p}
-              className={cn(
-                "h-1.5 rounded-full transition-[width,background-color] duration-300",
-                done ? "w-4 bg-success" : active ? "w-6 bg-primary" : "w-1.5 bg-border-strong",
-              )}
-            />
-          );
-        })}
-      </div>
-
-      <p className="relative mt-3 text-[11px] uppercase tracking-wide text-muted-foreground tabular-nums">
-        {seconds}s elapsed
-      </p>
-    </div>
+    <StudioBuildingScreen
+      className={className}
+      note={note}
+      agent={agent}
+      elapsedMs={elapsedMs}
+      reduce={reduce}
+      detail={detail}
+      ariaLabel="Paige is building your page"
+      stepper={
+        // The same five stages BuildProgress narrates in the rail — mirrored here so the
+        // canvas itself tells you what's happening, not just a side panel you might miss.
+        <div className="relative mt-8 flex items-center gap-2" aria-hidden>
+          {PHASE_ORDER.map((p, i) => {
+            const done = i < rank;
+            const active = i === rank;
+            return (
+              <span
+                key={p}
+                className={cn(
+                  "h-1.5 rounded-full transition-[width,background-color] duration-300",
+                  done ? "w-4 bg-success" : active ? "w-6 bg-primary" : "w-1.5 bg-border-strong",
+                )}
+              />
+            );
+          })}
+        </div>
+      }
+    />
   );
 }
 

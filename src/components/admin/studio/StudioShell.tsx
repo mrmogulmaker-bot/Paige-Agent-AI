@@ -298,8 +298,14 @@ export function StudioShell({
   // reactive state, never the non-reactive blocksBeforeRun ref. Published up to StudioLayout so the
   // OUTER project rail retracts too; the inner rail gets the same flag via StudioSplit below.
   const { setImmersive } = useStudioImmersion();
+  // Mirrors a Copy/Image auto-run build in flight — extends firstBuildGenerating so BOTH rails
+  // retract for the full-frame cutscene, exactly as the page path does on its first build.
+  const [copyImageBuilding, setCopyImageBuilding] = useState(false);
   const firstBuildGenerating =
-    isGenerating && state.blocks.length === 0 && (mode === "page" || mode === "funnel");
+    (isGenerating && state.blocks.length === 0 && (mode === "page" || mode === "funnel")) ||
+    // Copy/Image get the same full-frame moment while their autostart draft is in flight. Gated to
+    // the active mode so a hidden mode's stale build flag can never retract the visible surface.
+    (copyImageBuilding && (mode === "copy" || mode === "image"));
   useEffect(() => {
     setImmersive(firstBuildGenerating);
     // Clear on unmount so leaving a mid-build project never reopens the gallery with a hidden rail
@@ -350,6 +356,12 @@ export function StudioShell({
   const [draftedFormSchema, setDraftedFormSchema] = useState<GrowthFormSchema | null>(null);
   const [draftedCopyBrief, setDraftedCopyBrief] = useState<string | undefined>(undefined);
   const [draftedImagePrompt, setDraftedImagePrompt] = useState<string | undefined>(undefined);
+  // Explicit auto-run flags (§18): true ONLY when the classify step routed a brief into Copy/Image,
+  // so those modes fire their generation on mount for the "submit → cutscene → land with the result"
+  // page-parity flow. Kept separate from the drafted-brief value so a future non-classifier caller of
+  // initialBrief/initialPrompt never accidentally triggers a paid model call (§13).
+  const [autoRunCopy, setAutoRunCopy] = useState(false);
+  const [autoRunImage, setAutoRunImage] = useState(false);
 
   // ── AI funnel (§18/§19) — lives IN the page surface, never a separate tab ──────────
   // A funnel classified from the one composer is drafted + persisted into real rows and
@@ -1320,10 +1332,12 @@ export function StudioShell({
             }
             case "copy":
               setDraftedCopyBrief(value);
+              setAutoRunCopy(true);
               onModeChange?.("copy");
               break;
             case "image":
               setDraftedImagePrompt(value);
+              setAutoRunImage(true);
               onModeChange?.("image");
               break;
             case "page":
@@ -1796,6 +1810,8 @@ export function StudioShell({
             className={mode !== "copy" ? "hidden" : undefined}
             tenantId={tenantId}
             initialBrief={draftedCopyBrief}
+            autoRun={autoRunCopy}
+            onGeneratingChange={setCopyImageBuilding}
             onOpenLibrary={() => setLibraryOpen(true)}
             onSaved={handleCopySaved}
           />
@@ -1805,6 +1821,8 @@ export function StudioShell({
             className={mode !== "image" ? "hidden" : undefined}
             tenantId={tenantId}
             initialPrompt={draftedImagePrompt}
+            autoRun={autoRunImage}
+            onGeneratingChange={setCopyImageBuilding}
             onOpenLibrary={() => setLibraryOpen(true)}
             onSaved={handleImageSaved}
           />
