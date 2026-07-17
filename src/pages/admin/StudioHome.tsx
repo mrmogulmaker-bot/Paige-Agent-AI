@@ -10,6 +10,7 @@
 // This lists SESSIONS (authoring projects), not the growth_* artifact rows GrowthHub lists (§18).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { motion, useReducedMotion } from "framer-motion";
 import { Loader2, Plus, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,51 @@ export default function StudioHome() {
   const [brief, setBrief] = useState("");
   const [starting, setStarting] = useState(false);
   const { sessions, loading, error, toggleStar } = useStudioSessions(activeTenantId, view);
+
+  // ── hero pointer parallax (§22 "the chrome is ALIVE") ────────────────────────────────
+  // On pointer move over the hero, write the cursor position (normalized -1..1) into --px/--py on
+  // the section; the decorative CSS layers each read them at their own depth and float toward the
+  // cursor, giving the flat cosmic field real 3D parallax. rAF-throttled (one style write per frame,
+  // transform-only), and — per the hard constraint — the whole subscription is GATED on
+  // useReducedMotion: no listener at all when the viewer prefers reduced motion, so it rests on a
+  // still frame. Mirrors PaigeScene's shared-`ptr` pointer-tracking pattern (§18: reuse, not reinvent).
+  const heroRef = useRef<HTMLElement>(null);
+  const reduce = useReducedMotion();
+  useEffect(() => {
+    if (reduce) return;
+    const el = heroRef.current;
+    if (!el) return;
+    let raf = 0;
+    let px = 0;
+    let py = 0;
+    const apply = () => {
+      raf = 0;
+      el.style.setProperty("--px", px.toFixed(3));
+      el.style.setProperty("--py", py.toFixed(3));
+    };
+    const schedule = () => {
+      if (!raf) raf = requestAnimationFrame(apply);
+    };
+    const onMove = (e: PointerEvent) => {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return;
+      px = ((e.clientX - r.left) / r.width) * 2 - 1;
+      py = ((e.clientY - r.top) / r.height) * 2 - 1;
+      schedule();
+    };
+    const onLeave = () => {
+      px = 0;
+      py = 0;
+      schedule();
+    };
+    el.addEventListener("pointermove", onMove, { passive: true });
+    el.addEventListener("pointerleave", onLeave, { passive: true });
+    return () => {
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerleave", onLeave);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [reduce]);
 
   // ── the ?pageId deep-link shim (blocking #5) ────────────────────────────────────────
   // Legacy "Edit in Studio" links land on bare /admin/studio?mode=page&pageId=X. Resolve that
@@ -151,12 +197,15 @@ export default function StudioHome() {
     <div className="h-full min-h-0 overflow-y-auto bg-[hsl(var(--studio-canvas))]">
       {/* ── COSMIC hero: the centered composer floating in a deep night-sky field. The composer
           sits in a theme-aware glass card so PromptComposer's app-token text stays AA (§11). */}
-      <section className="studio-hero relative overflow-hidden px-4 py-12 md:py-16">
+      <section ref={heroRef} className="studio-hero relative overflow-hidden px-4 py-12 md:py-16">
         {/* Decorative cosmic layers, back → front. All aria-hidden + pointer-events-none,
-            motion-safe (frozen under prefers-reduced-motion). */}
+            motion-safe (frozen under prefers-reduced-motion) and pointer-parallaxed at their own
+            depth via the section's --px/--py (see the hero handler above). */}
         <div aria-hidden className="studio-stars" />
         <div aria-hidden className="studio-nebula" />
+        <div aria-hidden className="studio-shooting" />
         <div aria-hidden className="studio-orbit" />
+        <div aria-hidden className="studio-comet" />
 
         {/* Soft scrim behind the text cluster — deepens the field under the fixed-white copy. */}
         <div
@@ -193,7 +242,12 @@ export default function StudioHome() {
               bottom-right. `dark` commits the card to the deep indigo glass in BOTH platform themes —
               coherent with the committed-dark cosmic field it floats on — so PromptComposer's
               app-token text resolves light-on-dark and holds AA (§6/§11). */}
-          <div className="mx-auto w-full max-w-lg">
+          <motion.div
+            className="mx-auto w-full max-w-lg"
+            initial={reduce ? false : { opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 220, damping: 26, mass: 0.9 }}
+          >
             <div className="dark studio-glass-card p-2">
               <PromptComposer
                 mode="page"
@@ -211,7 +265,7 @@ export default function StudioHome() {
                 minRows={2}
               />
             </div>
-          </div>
+          </motion.div>
         </div>
       </section>
 

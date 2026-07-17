@@ -380,9 +380,21 @@ All colors MUST be HSL.
     background-color: hsl(var(--studio-hero-to)); /* solid fallback before paint */
   }
 
+  /* Pointer parallax (§22 "the chrome is ALIVE") — each decorative layer reads the hero's
+     `--px`/`--py` (normalized cursor, -1..1, written by a rAF-throttled handler in StudioHome and
+     gated on useReducedMotion so there is NO listener at rest) and floats at its own depth: far
+     field barely stirs, the foreground orbit/comet swing most → the flat field gains real 3D
+     parallax. Transform-only (GPU-composited); the short spring transition eases toward the cursor
+     and glides back to rest on pointer-leave. At rest (var default 0) every layer sits still. */
+
   /* (b) STARFIELD — two GPU-cheap CSS layers. ::before = far field (tiny, faint, slow twinkle);
      ::after = near field (fewer/larger stars, slow parallax drift) → depth. transform/opacity only. */
-  .studio-stars { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .studio-stars {
+    position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+    transform: translate3d(calc(var(--px, 0) * 4px), calc(var(--py, 0) * 4px), 0);
+    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
   .studio-stars::before,
   .studio-stars::after {
     content: ""; position: absolute; inset: -20%;
@@ -411,7 +423,12 @@ All colors MUST be HSL.
   }
 
   /* (c) NEBULA — gold + electric-blue soft blooms, large blur, very slow drift/scale. */
-  .studio-nebula { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .studio-nebula {
+    position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+    transform: translate3d(calc(var(--px, 0) * 8px), calc(var(--py, 0) * 8px), 0);
+    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
   .studio-nebula::before,
   .studio-nebula::after {
     content: ""; position: absolute; border-radius: 9999px;
@@ -429,38 +446,87 @@ All colors MUST be HSL.
   }
 
   /* (d) ORBIT ECHO — a faint gold ellipse ring tying the hero to the PaigeMark orbit motif.
-     Tilted -24deg + flattened like the mark's ring; a soft gold "comet" arc sweeps it very slowly.
-     The `translate` property centers independently of `transform`, so the two never fight. */
+     Tilted -24deg + flattened like the mark's ring. The `translate` property centers the ring
+     independently of `transform`, so centering and the rotate/scale/parallax never fight. */
   .studio-orbit {
     position: absolute; left: 50%; top: 50%; z-index: 0; pointer-events: none;
     width: min(54rem, 130%); aspect-ratio: 1;
     translate: -50% -50%;
-    transform: rotate(-24deg) scaleY(0.40);
+    transform: translate3d(calc(var(--px, 0) * 10px), calc(var(--py, 0) * 10px), 0) rotate(-24deg) scaleY(0.40);
+    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
     border-radius: 9999px;
-    border: 1px solid hsl(var(--studio-orbit) / 0.10);
-  }
-  .studio-orbit::before {             /* the sweeping gold arc, drawn as a masked conic ring */
-    content: ""; position: absolute; inset: -1px; border-radius: 9999px; padding: 2px;
-    background: conic-gradient(from 0deg,
-      hsl(var(--studio-orbit) / 0)    0deg,
-      hsl(var(--studio-orbit) / 0)    260deg,
-      hsl(var(--studio-orbit) / 0.55) 322deg,
-      hsl(var(--studio-orbit) / 0)    360deg);
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-            mask-composite: exclude;
-    animation: studio-orbit-spin 90s linear infinite;
+    border: 1px solid hsl(var(--studio-orbit) / 0.12);
     will-change: transform;
   }
 
-  /* PaigeMark halo + title glow + glass card — composition polish, all static (no motion). */
+  /* (d2) COMET — a real travelling point of light, replacing the old faint conic smear the owner
+     kept calling "static / 1980s". A bright near-WHITE-cored nucleus with a short trailing tail
+     rides the SAME tilted, flattened ellipse as the ring (rotate -24deg + `offset-path: ellipse`
+     matched to the ring's scaleY 0.40 → 20% vertical radius), but the comet element itself is NOT
+     scaleY-crushed, so the nucleus stays a round point of light rather than a squashed oval.
+     `offset-rotate: auto` keeps the tail trailing behind the head along the arc. Period ~13s so the
+     motion is actually PERCEPTIBLE (the old ring was 90s ≈ 4°/sec). Gold is the signature field-glow
+     tone here (the PaigeMark orbit motif), never a resting UI border and never the act (§11). The
+     `translate` property centers; the parallax + tilt live in `transform`, same split as the ring. */
+  .studio-comet {
+    position: absolute; left: 50%; top: 50%; z-index: 0; pointer-events: none;
+    width: min(54rem, 130%); aspect-ratio: 1;
+    translate: -50% -50%;
+    transform: translate3d(calc(var(--px, 0) * 13px), calc(var(--py, 0) * 13px), 0) rotate(-24deg);
+    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
+  .studio-comet::before {
+    content: ""; position: absolute; top: 0; left: 0;
+    width: 168px; height: 10px; border-radius: 999px;
+    /* leading (right) end = the bright nucleus (white core → gold), trailing (left) = the fading
+       tail. offset-rotate:auto aligns the element's +x axis to the direction of travel, so "right"
+       is always forward along the arc. */
+    background:
+      radial-gradient(closest-side circle at calc(100% - 5px) 50%,
+        hsl(0 0% 100% / 0.98), hsl(var(--studio-orbit) / 0.92) 42%, transparent 74%),
+      linear-gradient(270deg,
+        hsl(var(--studio-orbit) / 0.72) 0%,
+        hsl(var(--studio-orbit) / 0.24) 46%,
+        transparent 92%);
+    filter: drop-shadow(0 0 9px hsl(var(--studio-orbit) / 0.75));
+    offset-path: ellipse(50% 20% at 50% 50%);
+    offset-distance: 0%;
+    offset-rotate: auto;
+    animation: studio-comet-run 13s linear infinite;
+    will-change: offset-distance, opacity;
+  }
+
+  /* (e) SHOOTING STARS — 1–2 faint diagonal streaks that cross the upper field on long, staggered
+     loops, so there's an occasional cinematic "event" rather than a steady loop. Each streak is
+     visible only for the first ~1.7s of its cycle, then gone → a real periodic shooting star. */
+  .studio-shooting { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+    transform: translate3d(calc(var(--px, 0) * 6px), calc(var(--py, 0) * 6px), 0);
+    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
+  .studio-shooting::before,
+  .studio-shooting::after {
+    content: ""; position: absolute; width: 150px; height: 1.5px; border-radius: 999px; opacity: 0;
+    background: linear-gradient(90deg, transparent, hsl(var(--studio-star) / 0.95));
+    filter: drop-shadow(0 0 4px hsl(var(--studio-star) / 0.55));
+    will-change: transform, opacity;
+  }
+  .studio-shooting::before { top: 11%; left: -14%; animation: studio-shoot 15s ease-in 4s infinite; }
+  .studio-shooting::after  { top: 27%; left: -14%; animation: studio-shoot 19s ease-in 11s infinite; }
+
+  /* PaigeMark halo + title glow + glass card — composition polish. The halo carries a slow living
+     pulse (breathing gold bloom) so the mark reads ALIVE, not a static decal; centered by the
+     `translate` property so the pulse `transform: scale` never fights it. Title glow + glass are
+     static. */
   .studio-mark-halo { position: relative; }
   .studio-mark-halo::before {
     content: ""; position: absolute; left: 50%; top: 50%; width: 160%; height: 160%;
     translate: -50% -50%; border-radius: 9999px; z-index: -1; pointer-events: none;
     background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.35), transparent 70%);
     filter: blur(10px);
+    animation: studio-halo-pulse 6.5s ease-in-out infinite;
+    will-change: transform, opacity;
   }
   .studio-title-glow {
     text-shadow:
@@ -551,9 +617,25 @@ All colors MUST be HSL.
     0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
     50%      { transform: translate3d(-6%, -5%, 0) scale(1.10); }
   }
-  @keyframes studio-orbit-spin {
-    from { transform: rotate(0deg); }
-    to   { transform: rotate(360deg); }
+  @keyframes studio-comet-run {
+    /* the nucleus arcs the ellipse (0→100%) then fades near the wrap, so it reads as a comet
+       ARRIVING and LEAVING on a period, not a dot glued to a ring. offset-distance is GPU-cheap. */
+    0%   { offset-distance: 0%;   opacity: 0; }
+    6%   { opacity: 1; }
+    72%  { opacity: 1; }
+    88%  { offset-distance: 100%; opacity: 0; }
+    100% { offset-distance: 100%; opacity: 0; }
+  }
+  @keyframes studio-shoot {
+    /* crosses the field during the first ~11% of the cycle, then stays gone → an occasional event */
+    0%   { opacity: 0; transform: translate3d(0, 0, 0) rotate(19deg); }
+    3%   { opacity: 0.9; }
+    11%  { opacity: 0; transform: translate3d(62vw, 21vw, 0) rotate(19deg); }
+    100% { opacity: 0; transform: translate3d(62vw, 21vw, 0) rotate(19deg); }
+  }
+  @keyframes studio-halo-pulse {
+    0%, 100% { opacity: 0.78; transform: scale(1); }
+    50%      { opacity: 1;    transform: scale(1.09); }
   }
 
   /* Reduced-motion — freeze every cosmic animation to a still-beautiful frame (§11).
@@ -563,11 +645,22 @@ All colors MUST be HSL.
     .studio-stars::after,
     .studio-nebula::before,
     .studio-nebula::after,
-    .studio-orbit::before {
+    .studio-comet::before,
+    .studio-shooting::before,
+    .studio-shooting::after,
+    .studio-mark-halo::before {
       animation: none;
     }
     .studio-stars::before { opacity: 0.70; }
     .studio-stars::after  { transform: none; }
+    /* the comet rests as a still bright point partway along the arc (beautiful at rest, §11);
+       the shooting streaks hold hidden — no streak frozen mid-air. */
+    .studio-comet::before { offset-distance: 34%; opacity: 1; }
+    .studio-shooting::before,
+    .studio-shooting::after { opacity: 0; }
+    /* parallax has no JS listener under reduced motion (gated in StudioHome), so --px/--py stay 0;
+       kill the smoothing transition too so nothing eases. */
+    .studio-stars, .studio-nebula, .studio-orbit, .studio-comet, .studio-shooting { transition: none; }
   }
 
   /* Floating animations inspired by Motion.com */
