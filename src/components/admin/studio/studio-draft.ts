@@ -37,6 +37,10 @@ export interface PageDraftSnapshot {
   seo: StudioSeoDraft | null;
   formSchema: GrowthFormSchema | null;
   brief: string;
+  /** The live composer input at snapshot time — OPTIONAL so older stored envelopes still validate.
+   *  A built project snapshots this as "" (cleared on submit) → a clean box on recovery; an
+   *  in-progress typed brief snapshots it set → typing resumes. */
+  composerValue?: string;
   mode: PageCanvasMode;
   clarifying: ClarifyingState;
   selectedIndex: number | null;
@@ -109,6 +113,7 @@ function isPageDraftSnapshot(value: unknown): value is PageDraftSnapshot {
     (v.seo === null || typeof v.seo === "object") &&
     (v.formSchema === null || typeof v.formSchema === "object") &&
     typeof v.brief === "string" &&
+    (v.composerValue === undefined || typeof v.composerValue === "string") &&
     typeof v.mode === "string" &&
     PAGE_CANVAS_MODES.includes(v.mode as PageCanvasMode) &&
     isClarifyingState(v.clarifying) &&
