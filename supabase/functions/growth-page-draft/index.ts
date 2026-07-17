@@ -91,7 +91,9 @@
 //         REAL brand cascade (resolve_tenant_brand), not hallucinated, so it is truthful.
 //   §14 — model-routed, reasoning tier, never a hardcoded model.
 //   §15 — the model must NOT invent specifics (dates, Zoom links, testimonial names). When the
-//         brief lacks them it emits a clearly-labeled editable token, never fake data. Same rule
+//         brief lacks them it emits ZERO bracketed tokens (a raw "[ADD_DATE]" ships to a live page
+//         AND is hard-rejected by growth_page_publish) — it uses a real value, omits the element, or
+//         words the copy so no missing specific is needed. Never fake data. Same rule
 //         extends to `suggested_delivery`: the model may only ever point at an attachment index
 //         WE actually included (never invent one), and even then this function is the last line
 //         of defense — it drops any index the model returns that doesn't correspond to a
