@@ -147,7 +147,12 @@ export default function StudioLayout() {
           // so the home gallery under the Outlet stays theme-aware and the in-session light
           // toggle (which flips StudioFrame, a separate subtree) still works — the rail simply
           // stays dark like Lovable's does even when you preview a light page (§6/§11).
-          "dark relative z-20 flex h-full shrink-0 flex-col",
+          // overflow-hidden on BOTH states (not just the immersive branch): the rail is z-20 ABOVE
+          // the gallery, and while its width animates 64↔248 its chrome could paint over the cards
+          // during the tween (the collapse-overlap bug, #3). Clipping the rail to its own box means
+          // nothing bleeds across the seam at any point in the animation. Inner lists keep their own
+          // vertical scroll, so this only clips the horizontal bleed.
+          "dark relative z-20 flex h-full shrink-0 flex-col overflow-hidden",
           // ease-in-out matches the inner conversation rail's curve so BOTH rails retract in
           // perfect lockstep (Tailwind's arbitrary transition-[width] sets only the property, not
           // a timing function — without this the outer rail would ride the default `ease`).
@@ -163,18 +168,26 @@ export default function StudioLayout() {
               ),
         )}
       >
-        {/* brand + collapse toggle */}
-        <div className="flex h-14 shrink-0 items-center gap-2 px-3">
-          <Link to="/admin/studio" className="flex min-w-0 items-center gap-2" aria-label="Vibe Studio home">
-            <PaigeMark className="h-7 w-7 shrink-0" />
-            {!collapsed && <span className="truncate font-display text-sm font-semibold">Vibe Studio</span>}
-          </Link>
+        {/* brand + collapse toggle. Collapsed = ONLY the (centered) toggle, so the 64px header can
+            never overflow (the old layout packed a 28px mark + a non-shrinking 28px toggle + 24px
+            padding into 64px and they overlapped, #3). The brand returns the instant the rail
+            expands; the gold New-project button below anchors the collapsed rail. */}
+        <div className={cn("flex h-14 shrink-0 items-center px-3", collapsed ? "justify-center" : "gap-2")}>
+          {!collapsed && (
+            <Link to="/admin/studio" className="flex min-w-0 items-center gap-2" aria-label="Vibe Studio home">
+              <PaigeMark className="h-7 w-7 shrink-0" />
+              <span className="truncate font-display text-sm font-semibold">Vibe Studio</span>
+            </Link>
+          )}
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-expanded={!collapsed}
-            className="ml-auto rounded-md p-1.5 text-muted-foreground hover:bg-[hsl(var(--studio-glass-border)/0.3)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            className={cn(
+              "shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-[hsl(var(--studio-glass-border)/0.3)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+              !collapsed && "ml-auto",
+            )}
           >
             {collapsed ? <PanelLeftOpen className="h-4 w-4" aria-hidden /> : <PanelLeftClose className="h-4 w-4" aria-hidden />}
           </button>
@@ -230,8 +243,11 @@ export default function StudioLayout() {
               {!collapsed && "Back to Paige"}
             </Link>
           )}
-          <div className={cn("flex items-center gap-1 px-1 pt-1", collapsed && "justify-center")}>
-            <ThemeToggle />
+          {/* A labeled, obviously-a-theme-switch control in BOTH themes (#6). `labeled` re-declares
+              its own color under the rail's `.dark` scope, so the icon renders near-white instead of
+              inheriting the light theme's dark-indigo and vanishing (the old bare icon's bug). */}
+          <div className="pt-1">
+            <ThemeToggle labeled collapsed={collapsed} />
           </div>
         </div>
       </nav>

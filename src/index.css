@@ -267,6 +267,11 @@ All colors MUST be HSL.
   h1, h2, h3, .font-display {
     font-family: "Bricolage Grotesque", "Inter", system-ui, sans-serif;
     letter-spacing: -0.01em;
+    /* Bricolage is a variable display face — let it tighten its own optical axis with size
+       instead of holding one width at every scale. The per-surface `tracking-[…]` classes
+       (hero/subhead/section/card) then override the blunt global -0.01em where the size wants
+       tighter or looser letterspacing, which is what gives the type a real optical scale (#2). */
+    font-optical-sizing: auto;
   }
   /* Line up digits in tables/metrics */
   .tabular-nums, [class*="tabular"] { font-variant-numeric: tabular-nums; }
@@ -497,6 +502,37 @@ All colors MUST be HSL.
     -webkit-mask-composite: xor;
             mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
             mask-composite: exclude;
+  }
+
+  /* ── Studio PROJECT CARD — the gallery's elevated surface primitive (§11: one home, not a
+     one-off). A single tokenized INDIGO hairline over the theme-aware card fill, plus a layered
+     ambient lift so a white card separates from the light canvas (the "gray & bland" fix, #8) and
+     a dark card lifts off the indigo room. On hover it rises 2px and blooms an INDIGO ambient
+     shadow (never gold, §11) with the hairline brightening — a Linear/Vercel-caliber lift, not the
+     old near-invisible shadow bump (#5). Depth reads off the --studio-* chrome + nebula tokens, so
+     it lives inside the studio scope. Transform+shadow only; no-oped under reduced motion. */
+  .studio-card {
+    border: 1px solid hsl(var(--studio-chrome-border) / 0.55);
+    background-color: hsl(var(--card));
+    box-shadow:
+      0 1px 2px hsl(var(--shadow-ink) / 0.05),
+      0 5px 16px -6px hsl(var(--shadow-ink) / 0.12);
+    transition:
+      transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 220ms ease,
+      border-color 220ms ease;
+  }
+  .studio-card:hover {
+    transform: translateY(-2px);
+    border-color: hsl(var(--studio-chrome-border) / 0.95);
+    box-shadow:
+      0 2px 4px hsl(var(--shadow-ink) / 0.06),
+      0 20px 44px -14px hsl(var(--studio-nebula-indigo) / 0.32),
+      0 10px 24px -12px hsl(var(--shadow-ink) / 0.18);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .studio-card { transition: none; }
+    .studio-card:hover { transform: none; }
   }
 
   @keyframes studio-twinkle {

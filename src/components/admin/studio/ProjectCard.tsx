@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { GlyphPlate, StatePill } from "@/components/ui/page";
+import { PaigeMark } from "@/components/brand/PaigeMark";
 import { cn } from "@/lib/utils";
 import type { StudioArtifactType, StudioSessionCard } from "./studio-types";
 
@@ -30,6 +31,17 @@ const ARTIFACT_GLYPH: Record<StudioArtifactType, LucideIcon> = {
   copy: Type,
   image: ImageIcon,
 };
+
+/** A stable 32-bit hash of the session id (FNV-1a) — the seed for a project's own deterministic
+ *  cover, so an artifact-less project still reads as ITS distinct cover, not one shared gray box. */
+function hashSeed(id: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < id.length; i += 1) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
 
 export interface ProjectCardProps {
   session: StudioSessionCard;
@@ -56,6 +68,16 @@ export function ProjectCard({ session, isTemplate = false, onOpen, onToggleStar 
   const showCover = !!session.thumbnailUrl && !coverFailed;
   const CoverGlyph = session.primaryKind ? ARTIFACT_GLYPH[session.primaryKind] ?? Wand2 : Wand2;
 
+  // Deterministic per-project cover geometry (§11 token-only): the COLORS are all studio brand
+  // tokens (indigo → primary → electric blue); only the gradient ANGLE, the light-sheen focal
+  // point, and a BOUNDED hue-rotate vary by seed. ±16° keeps every cover inside the indigo/violet/
+  // blue band — it can never wander to gold (#7B, §11: depth from the brand cosmos, never gold).
+  const seed = hashSeed(session.id);
+  const gradAngle = 108 + (seed % 64); // 108°–171°
+  const hueShift = (seed % 33) - 16; // −16°…+16°, provably never gold
+  const sheenX = 22 + (seed % 56); // 22%–77%
+  const sheenY = 16 + ((seed >>> 5) % 40); // 16%–55% (unsigned shift — keeps the focal point in-card)
+
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -76,23 +98,59 @@ export function ProjectCard({ session, isTemplate = false, onOpen, onToggleStar 
         onKeyDown={onKey}
         aria-label={`Open ${session.title || "Untitled project"}`}
         className={cn(
-          "group relative flex h-full flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-card transition-shadow duration-200",
-          "hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+          // The premium card surface (§11 primitive): tokenized indigo hairline + layered
+          // elevation, rising with an indigo bloom on hover (#4/#5). `.studio-card` owns the
+          // border/fill/shadow/lift; the focus ring stays indigo --ring (never gold).
+          "studio-card group relative flex h-full flex-col overflow-hidden rounded-[var(--radius)]",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         )}
       >
-        {/* Thumbnail well — real preview, else the embossed GlyphPlate keyed to the primary. */}
-        <div className="relative aspect-[16/10] overflow-hidden bg-muted">
+        {/* Thumbnail well — real preview when captured, else a PREMIUM branded cover that is always
+            present (#7): a per-project deterministic indigo→violet→blue gradient, a light sheen for
+            depth, a base vignette, a faint PaigeMark watermark for §6 continuity, and the primary-
+            kind glyph plate on top — never a flat gray box with a tiny icon. The cover zooms subtly
+            on hover; the well clips it (overflow-hidden), so nothing bleeds past the card edge. */}
+        <div className="relative aspect-[16/10] overflow-hidden bg-[hsl(var(--studio-canvas))]">
           {showCover ? (
             <img
               src={session.thumbnailUrl as string}
               alt=""
               loading="lazy"
               onError={() => setCoverFailed(true)}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04] motion-reduce:transform-none motion-reduce:transition-none"
             />
           ) : (
-            <div className="grid h-full place-items-center bg-gradient-to-br from-muted to-background">
-              <GlyphPlate icon={CoverGlyph} size="lg" />
+            <div className="relative h-full w-full">
+              {/* Brand gradient — token colors, per-project geometry + bounded hue-rotate (§11). */}
+              <div
+                aria-hidden
+                className="absolute inset-0 transition-transform duration-500 ease-out group-hover:scale-105 motion-reduce:transform-none motion-reduce:transition-none"
+                style={{
+                  background: `linear-gradient(${gradAngle}deg, hsl(var(--studio-nebula-indigo) / 0.9), hsl(var(--primary)) 54%, hsl(var(--studio-nebula-blue) / 0.7))`,
+                  filter: `hue-rotate(${hueShift}deg)`,
+                }}
+              />
+              {/* Soft light sheen (upper-band focal point) for a lit, three-dimensional read. */}
+              <div
+                aria-hidden
+                className="absolute inset-0"
+                style={{ background: `radial-gradient(60% 60% at ${sheenX}% ${sheenY}%, hsl(0 0% 100% / 0.2), transparent 68%)` }}
+              />
+              {/* Base vignette in fixed cosmic ink so the cover sinks at the bottom (§11 shadow ink). */}
+              <div
+                aria-hidden
+                className="absolute inset-0"
+                style={{ background: "radial-gradient(120% 92% at 50% 122%, hsl(var(--studio-ink) / 0.55), transparent 56%)" }}
+              />
+              {/* Faint PaigeMark watermark — §6 brand continuity, kept low enough to read as texture.
+                  Wrapped in an aria-hidden span so the decorative mark isn't announced per card. */}
+              <span aria-hidden className="pointer-events-none absolute -bottom-5 -right-5 opacity-[0.09]">
+                <PaigeMark className="h-28 w-28" />
+              </span>
+              {/* The primary-kind glyph plate, centered on top. */}
+              <div className="relative grid h-full place-items-center">
+                <GlyphPlate icon={CoverGlyph} size="lg" />
+              </div>
             </div>
           )}
           {!isTemplate && (
@@ -120,7 +178,7 @@ export function ProjectCard({ session, isTemplate = false, onOpen, onToggleStar 
         {/* Body */}
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="truncate font-display text-sm font-semibold text-foreground">
+            <h3 className="truncate font-display text-sm font-semibold leading-tight tracking-[-0.006em] text-foreground">
               {session.title || "Untitled project"}
             </h3>
             {!isTemplate && (
@@ -140,7 +198,7 @@ export function ProjectCard({ session, isTemplate = false, onOpen, onToggleStar 
             </div>
           )}
 
-          <p className="mt-auto text-xs text-muted-foreground">
+          <p className="mt-auto text-[11px] tabular-nums text-muted-foreground">
             {isTemplate ? "Start from this" : editedAgo(session.lastEditedAt)}
           </p>
         </div>

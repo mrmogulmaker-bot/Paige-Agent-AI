@@ -145,7 +145,10 @@ export default function StudioHome() {
     // Plain BLOCK scroll container (not a flex column — a flex column shrinks its children to fit
     // and the hero's overflow-hidden then clips the composer, which read as "frozen, no scroll").
     // As a block, the hero + gallery keep their natural height and the page scrolls normally.
-    <div className="h-full min-h-0 overflow-y-auto">
+    // bg = --studio-canvas: a real step DOWN from card-white (light) / a deep indigo room (dark) so
+    // the gallery's cards LIFT off the page instead of white-on-near-white (#8 — light premium
+    // through separation + elevation, never by darkening). The cosmic hero paints its own bg on top.
+    <div className="h-full min-h-0 overflow-y-auto bg-[hsl(var(--studio-canvas))]">
       {/* ── COSMIC hero: the centered composer floating in a deep night-sky field. The composer
           sits in a theme-aware glass card so PromptComposer's app-token text stays AA (§11). */}
       <section className="studio-hero relative overflow-hidden px-4 py-12 md:py-16">
@@ -167,32 +170,38 @@ export default function StudioHome() {
             <span className="studio-mark-halo inline-flex">
               <PaigeMark className="h-11 w-11" />
             </span>
-            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/85">
+            {/* Eyebrow: airier tracking + a dimmer white so the H1 clearly outranks it (#2). */}
+            <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/70">
               Vibe Studio
             </span>
-            <h1 className="studio-title-glow max-w-xl font-display text-4xl font-semibold leading-[1.08] text-white text-balance md:text-5xl">
+            {/* H1: at 44–48px Bricolage wants far tighter tracking than the blunt global -0.01em —
+                override to a real display tightness so the hero reads crafted, not soft (#2). */}
+            <h1 className="studio-title-glow max-w-xl font-display text-4xl font-semibold leading-[1.03] tracking-[-0.025em] text-white text-balance md:text-5xl md:tracking-[-0.03em]">
               What do you want to build?
             </h1>
-            <p className="max-w-lg text-sm text-white/80 md:text-base">
+            {/* Subhead: a tuned measure (~2 lines) + relaxed leading + a step-back white, so it
+                supports the H1 instead of ribboning wide across the field (#2). */}
+            <p className="max-w-md text-[15px] leading-relaxed text-white/70 text-balance md:text-base">
               Describe it in a sentence — Paige works out the shape and builds it with her team.
             </p>
           </div>
-          {/* The composer card is constrained NARROWER than the heading cluster (max-w-xl, not
-              the section's max-w-2xl) so a one-sentence brief reads FINITE and deliberate, not a
-              giant empty box (owner: "why is this window so big"). `dark` commits the card to the
-              deep indigo glass in BOTH platform themes — matching the already-committed-dark
-              cosmic field — so PromptComposer's app-token text resolves light-on-dark and holds
-              AA without the card ever falling back to the pale gray it used to be (§6/§11). */}
-          <div className="mx-auto w-full max-w-xl">
-            <div className="dark studio-glass-card p-3">
+          {/* The composer is deliberately COMPACT (owner: "why is this window so big"): max-w-lg +
+              p-2, and — crucially — the in-card heading and helper are GONE. The hero subhead above
+              already says "describe it in a sentence," so repeating it as a label AND a helper around
+              a 2-line field was what inflated the card to a mostly-empty box (#1). What remains is
+              exactly the act: example chips → a 2-line field → the gold "Start building" inline
+              bottom-right. `dark` commits the card to the deep indigo glass in BOTH platform themes —
+              coherent with the committed-dark cosmic field it floats on — so PromptComposer's
+              app-token text resolves light-on-dark and holds AA (§6/§11). */}
+          <div className="mx-auto w-full max-w-lg">
+            <div className="dark studio-glass-card p-2">
               <PromptComposer
                 mode="page"
                 value={brief}
                 onChange={setBrief}
                 onSubmit={(value) => void startSession(value)}
-                heading="Describe it in a sentence"
                 placeholder="e.g. a webinar registration page for my Q3 masterclass, with an intake form and a thank-you."
-                helperText="One sentence is enough to start — Paige asks for anything she needs, then builds it with her team."
+                helperText=""
                 submitLabel="Start building"
                 submitVariant="gold"
                 surface="bare"
@@ -209,9 +218,20 @@ export default function StudioHome() {
       {/* ── projects gallery — ONE grid, four filter VIEWS (mirrors the left rail). The anchor:
           the tenant's previous work, right under the hero. */}
       <div className="mx-auto w-full max-w-[90rem] space-y-4 px-4 py-8 md:px-8">
-        <h2 className="font-display text-lg font-semibold tracking-tight text-foreground">
-          Your projects
-        </h2>
+        {/* Section header scaled UP with a count subline so it clearly outranks the 14px card
+            titles below it — a real display → subhead → card-title → meta ladder (#2). */}
+        <div>
+          <h2 className="font-display text-xl font-semibold tracking-[-0.012em] text-foreground">
+            Your projects
+          </h2>
+          {!loading && !error && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {isTemplates
+                ? `${sessions.length} ${sessions.length === 1 ? "template" : "templates"}`
+                : `${sessions.length} ${sessions.length === 1 ? "project" : "projects"}`}
+            </p>
+          )}
+        </div>
         <Toolbar>
           <div className="flex flex-wrap gap-1.5">
             {VIEWS.map((v) => (
@@ -242,13 +262,13 @@ export default function StudioHome() {
           </SectionCard>
         ) : loading ? (
           <ul
-            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+            className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-4"
             aria-hidden
           >
             {Array.from({ length: 8 }).map((_, i) => (
               <li
                 key={i}
-                className="h-[248px] animate-pulse rounded-[var(--radius)] border border-border bg-card motion-reduce:animate-none"
+                className="h-[248px] animate-pulse rounded-[var(--radius)] border border-[hsl(var(--studio-chrome-border)/0.5)] bg-card shadow-[0_1px_2px_hsl(var(--shadow-ink)/0.05),0_5px_16px_-6px_hsl(var(--shadow-ink)/0.12)] motion-reduce:animate-none"
               />
             ))}
           </ul>
@@ -273,7 +293,7 @@ export default function StudioHome() {
             />
           </SectionCard>
         ) : (
-          <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-4">
             {sessions.map((s) => (
               <ProjectCard
                 key={s.id}

@@ -258,11 +258,19 @@ export function PromptComposer({
         </label>
       )}
 
-      {/* Suggestion chips — sit ABOVE the dock and clear out once the operator types (§15). */}
+      {/* Suggestion chips — sit ABOVE the dock and clear out once the operator types (§15). The
+          composer always sits on a dark studio surface (the HOME glass card / the builder dock),
+          where the platform --border hairline nearly vanishes; a scoped indigo edge + faint fill
+          gives the chips a crisp, legible resting outline on dark glass (#4). */}
       {showChips && (
         <div className="flex flex-wrap gap-1.5">
           {chips!.map((chip) => (
-            <FilterChip key={chip.id} active={false} onClick={() => onChange(chip.seed)}>
+            <FilterChip
+              key={chip.id}
+              active={false}
+              onClick={() => onChange(chip.seed)}
+              className="border-[hsl(var(--studio-glass-border)/0.7)] bg-[hsl(var(--foreground)/0.04)]"
+            >
               {chip.label}
             </FilterChip>
           ))}
@@ -287,14 +295,15 @@ export function PromptComposer({
             "hover:border-[hsl(var(--studio-chrome-border)/0.85)]",
             "focus-within:border-[hsl(var(--ring))] focus-within:shadow-[0_0_0_3px_hsl(var(--ring)/0.16),0_1px_0_0_hsl(0_0%_100%/0.08)_inset,0_14px_36px_-14px_hsl(var(--shadow-ink)/0.6)]",
           ],
-          // BARE (HOME hero): the dock sits inside the glass card, so it draws no raised box of
-          // its own — but it now carries a crisp RECESSED field (a 1px indigo inset edge + a soft
-          // inner top shadow) so the text sits in a defined, clean input rectangle instead of
-          // floating on the slab (the owner's "not clear / not clean" read). The textarea keeps
-          // its own focus-visible ring (WCAG 2.4.7) — this inset is resting field definition, not
-          // a focus indicator, so the two never fight.
+          // BARE (HOME hero): the dock sits inside the glass card, so it draws no raised box of its
+          // own. The old treatment stacked a HARD 1px inset ring (/0.5) on top of the glass card's
+          // own 1.5px gradient rim — the exact doubled "box-in-a-box" edge the owner flagged (#4).
+          // Now the field is defined by RECESSION, not a competing outline: a deeper ink fill + a
+          // soft inner top shadow sink it into the slab, and the edge is only a whisper hairline
+          // (/0.2). The textarea keeps its own focus-visible ring (WCAG 2.4.7) — this is resting
+          // field definition, not a focus indicator, so the two never fight.
           !framed &&
-            "rounded-2xl bg-[hsl(var(--studio-glass-bg)/0.5)] shadow-[inset_0_0_0_1px_hsl(var(--studio-glass-border)/0.5),inset_0_1px_3px_hsl(var(--studio-ink)/0.4)]",
+            "rounded-2xl bg-[hsl(var(--studio-ink)/0.25)] shadow-[inset_0_0_0_1px_hsl(var(--studio-glass-border)/0.2),inset_0_2px_6px_-2px_hsl(var(--studio-ink)/0.5)]",
         )}
       >
         {/* In-dock suggestion chips (builder) — a compact single-line scroll row at the TOP of
@@ -308,7 +317,7 @@ export function PromptComposer({
                 key={chip.id}
                 active={false}
                 onClick={() => onChange(chip.seed)}
-                className="shrink-0 whitespace-nowrap"
+                className="shrink-0 whitespace-nowrap border-[hsl(var(--studio-glass-border)/0.7)] bg-[hsl(var(--foreground)/0.04)]"
               >
                 {chip.label}
               </FilterChip>
@@ -447,15 +456,19 @@ export function PromptComposer({
             </Button>
           )}
 
-          {/* Keyboard hint as real keycaps, not raw debug text. */}
-          <span className="ml-auto hidden items-center gap-1 pr-0.5 sm:flex" aria-hidden>
-            <kbd className="rounded border border-border/70 bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-              ⌘/Ctrl
-            </kbd>
-            <kbd className="rounded border border-border/70 bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-              ↵
-            </kbd>
-          </span>
+          {/* Keyboard hint as real keycaps — only in the FRAMED builder dock, where the composer is a
+              persistent tool worth teaching. On the BARE home surface it's suppressed (#1): the whole
+              footer collapses to just the inline gold act, so a one-sentence brief reads finite. */}
+          {framed && (
+            <span className="ml-auto hidden items-center gap-1 pr-0.5 sm:flex" aria-hidden>
+              <kbd className="rounded border border-border/70 bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                ⌘/Ctrl
+              </kbd>
+              <kbd className="rounded border border-border/70 bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                ↵
+              </kbd>
+            </span>
+          )}
 
           {/* The send act. Circular ↑ in the builder (indigo; Publish is the gold act), a labeled
               button on HOME (gold "Start building"). aria-label always carries the meaning. */}
@@ -466,7 +479,7 @@ export function PromptComposer({
               onClick={submit}
               disabled={!canSubmit}
               aria-label={sectionMode ? "Apply the change" : submitLabel ?? "Build the page"}
-              className="h-9 w-9 shrink-0 rounded-full p-0 disabled:opacity-40"
+              className={cn("h-9 w-9 shrink-0 rounded-full p-0 disabled:opacity-40", !framed && "ml-auto")}
             >
               {busy ? (
                 <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
@@ -481,7 +494,7 @@ export function PromptComposer({
               size="sm"
               onClick={submit}
               disabled={!canSubmit}
-              className="shrink-0"
+              className={cn("shrink-0", !framed && "ml-auto")}
             >
               {busy ? (
                 <>
@@ -499,12 +512,15 @@ export function PromptComposer({
         </div>
       </div>
 
-      {/* One quiet helper line under the dock. */}
-      <p className="px-0.5 text-xs text-muted-foreground">
-        {sectionMode
-          ? "Paige rewrites this one section and leaves the rest of the page alone."
-          : helperText ?? "The more real detail you give — the offer, the audience, the ask — the closer the first draft lands."}
-      </p>
+      {/* One quiet helper line under the dock — suppressed when a caller passes helperText="" (the
+          HOME, where the hero subhead already carries the instruction, #1). */}
+      {!(!sectionMode && helperText === "") && (
+        <p className="px-0.5 text-xs text-muted-foreground">
+          {sectionMode
+            ? "Paige rewrites this one section and leaves the rest of the page alone."
+            : helperText ?? "The more real detail you give — the offer, the audience, the ask — the closer the first draft lands."}
+        </p>
+      )}
     </div>
   );
 }
