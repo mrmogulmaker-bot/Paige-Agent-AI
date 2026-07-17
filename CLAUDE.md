@@ -155,6 +155,23 @@ space, and is it fully compliant with our SOPs and quality bar?"*
   pass is where we slow down and make sure it's genuinely excellent, not just working.
 - **Reports, doesn't rubber-stamp.** It returns concrete gaps ranked by severity; the
   integrator fixes blocking items before shipping and logs the rest.
+- **TWO scans per cycle — a POST-DEPLOY scan is now mandatory, not just the pre-deploy one
+  (owner: Antonio, 2026-07-17).** The pre-deploy crew (verifier + compliance) catches static/
+  logic bugs *before* the merge — that stays exactly as-is. But it structurally cannot catch
+  runtime behavior, and the owner keeps having to catch those live himself (the double-submit,
+  copy stalling at "Draft with Paige"). So **every deploy is followed by its own post-deploy
+  scan** that asks a different question than "is the code correct?": *"Did we actually ship the
+  RIGHT thing, and does it do what we intended when it's actually running?"* Concretely the
+  post-deploy pass confirms: (a) **deployment integrity** — the intended commit/edge-version/
+  migration is truly live (not stale/cached), and the build silently dropped nothing; (b)
+  **runtime behavior** — the feature actually does the thing end-to-end (drive the flow where
+  drivable; a fresh adversarial re-trace of the *deployed* behavior against intent where it
+  can't be driven headless). Anything it surfaces becomes the next Fix → Redeploy. The burden
+  of catching runtime regressions is **ours, not the owner's** — where a surface genuinely can't
+  be driven autonomously (e.g. the authenticated Studio flow), say so honestly (§13) and push to
+  make it drivable (a permission-scoped test tenant, Playwright against the live URL) so the
+  post-deploy scan stops depending on the owner's eyes. The loop is: Study → Build → **Analyze
+  (pre-deploy scan)** → Fix → Deploy → **Post-deploy scan** → Fix → Redeploy → repeat.
 
 ## 6. Brand consistency is one continuous system.
 
