@@ -7,14 +7,17 @@
 import type { GrowthAsset, GrowthBlock, GrowthFormSchema, GrowthPageTheme } from "@/lib/growth";
 
 /**
- * The Studio's five outputs — one workspace, five creation modes. `page` is the
- * original Vibe Studio; `copy` and `image` are the absorbed Content Studio;
- * `funnel` and `form` are the structured builders. The tab param carries this
- * (/admin/studio?mode=…) so every mode is deep-linkable.
+ * The Studio's four outputs — one workspace, four creation modes. `page` is the
+ * original Vibe Studio; `image` is the absorbed Content Studio's creative surface
+ * (social graphics, static visuals); `funnel` and `form` are the structured builders.
+ * `copy` is NOT a Studio mode — standalone words (a post, email, ad) are a Paige-chat
+ * capability (§18/§21), and copy inside a page/funnel/form is an embedded-quality
+ * property of that asset. The tab param carries this (/admin/studio?mode=…) so every
+ * mode is deep-linkable.
  */
-export type StudioMode = "page" | "funnel" | "form" | "copy" | "image";
+export type StudioMode = "page" | "funnel" | "form" | "image";
 
-export const STUDIO_MODES: readonly StudioMode[] = ["page", "funnel", "form", "copy", "image"];
+export const STUDIO_MODES: readonly StudioMode[] = ["page", "funnel", "form", "image"];
 
 export function isStudioMode(value: unknown): value is StudioMode {
   return typeof value === "string" && (STUDIO_MODES as readonly string[]).includes(value);
@@ -160,11 +163,14 @@ export const EMPTY_CLARIFYING: ClarifyingState = { questions: [], answers: {} };
 // type. §2/§9: nothing here is vertical or finance-specific; it is generic authoring state.
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
-/** The five artifact TYPES a session can author — the studio's own modes. */
-export type StudioArtifactType = "page" | "form" | "funnel" | "copy" | "image";
+/** The four artifact TYPES a session can author — the studio's own modes. (Standalone copy is a
+ *  Paige-chat capability, never a Studio artifact type — §18/§21.) */
+export type StudioArtifactType = "page" | "form" | "funnel" | "image";
 
-/** The kind as PERSISTED in the manifest / accepted by link_session_artifact. copy and image
- *  both persist as 'content' (marketing_content); page/form/funnel pass through. */
+/** The kind as PERSISTED in the manifest / accepted by link_session_artifact. 'image' persists as
+ *  'content' (marketing_content); page/form/funnel pass through. LEGACY copy rows also persist as
+ *  'content' — kept in the union so a pre-existing saved-copy ref parses and degrades gracefully
+ *  (listed read-only), never orphaned or thrown on (§13). */
 export type SessionArtifactKind = "page" | "form" | "funnel" | "content";
 
 /** The session lifecycle, distinct from any one artifact's status. */

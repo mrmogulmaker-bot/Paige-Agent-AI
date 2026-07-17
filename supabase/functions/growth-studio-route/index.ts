@@ -3,10 +3,15 @@
 // type before describing what they want").
 //
 // One brief in, one cheap judgment out: is the operator asking for a landing/lead PAGE, a
-// standalone FORM (no page around it), marketing COPY (text only — a post, email, ad,
-// caption), or an IMAGE. This is a routing hint, not a generation — the actual draft for
-// whichever artifact wins still runs through its own seam (growth-page-draft,
-// growth-form-draft, content-draft, generate-image). Nothing here writes to the database.
+// multi-step FUNNEL, a standalone FORM (no page around it), or an IMAGE. This is a routing hint,
+// not a generation — the actual draft for whichever artifact wins still runs through its own seam
+// (growth-page-draft, growth-funnel-draft, growth-form-draft, generate-image). Nothing here writes
+// to the database.
+//
+// STANDALONE COPY is NOT a Studio artifact type (§18/§21): a brief that is purely marketing text
+// (a post, email, ad, caption, SMS) is something Paige writes directly in chat, never a Studio
+// artifact. A words-only brief classifies as "page" (the nearest real asset); Paige's chat is
+// copy's one home.
 //
 // ── CONTRACT ────────────────────────────────────────────────────────────────
 // POST (JWT or service-role bearer required)
@@ -14,7 +19,7 @@
 //   Request:
 //     { brief: string }   // REQUIRED. >= 5 chars after trim.
 //
-//   200  { artifact: "page"|"form"|"copy"|"image", reasoning: string }
+//   200  { artifact: "page"|"funnel"|"form"|"image", reasoning: string }
 //        ALWAYS 200 with a real artifact — a model miss or unparseable reply degrades to
 //        "page" (the most capable/flexible fallback) rather than failing the request. A
 //        legitimate brief must never dead-end on a classifier hiccup (§13).
@@ -61,8 +66,8 @@ const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type StudioArtifact = "page" | "funnel" | "form" | "copy" | "image";
-const VALID_ARTIFACTS: readonly StudioArtifact[] = ["page", "funnel", "form", "copy", "image"];
+type StudioArtifact = "page" | "funnel" | "form" | "image";
+const VALID_ARTIFACTS: readonly StudioArtifact[] = ["page", "funnel", "form", "image"];
 
 function isStudioArtifact(v: unknown): v is StudioArtifact {
   return typeof v === "string" && (VALID_ARTIFACTS as readonly string[]).includes(v);
@@ -92,18 +97,19 @@ function parseJwtClaims(token: string): Record<string, unknown> | null {
   }
 }
 
-const SYSTEM = `You classify a one-sentence creation brief for a client-based service business's marketing studio into exactly ONE of five artifact types:
+const SYSTEM = `You classify a one-sentence creation brief for a client-based service business's marketing studio into exactly ONE of four artifact types:
 
 "page" — a SINGLE landing/lead page: a registration page, a sales page, a lead-magnet opt-in, a waitlist, an event page. One web address, multiple sections, but ONE page.
 "funnel" — a SEQUENCE of pages/steps, not one page: a landing page THEN an intake form/application THEN a thank-you; a lead funnel, an application funnel, an opt-in-to-booking flow, a "capture then qualify" flow. Choose this when the operator describes a multi-step path a lead moves THROUGH, or explicitly says "funnel".
 "form" — a standalone form or questionnaire, requested WITHOUT a page around it — an intake form, an application, a survey, a screening questionnaire the operator wants on its own.
-"copy" — marketing text only, not a webpage — a social post, an email, an ad, a caption, a blog outline, an SMS. No page, no form, just words.
 "image" — a single image or graphic — a promo graphic, a social visual, an ad image, a photo-style asset.
+
+IMPORTANT — standalone marketing TEXT is NOT one of these types. A brief that is purely words for a post, email, ad, caption, SMS, or blog outline — no page, no form, no funnel, no image asked for — is something Paige writes directly in chat, not a Studio artifact. When a brief is only words like that, classify it as "page" (the nearest real asset the studio builds); the studio never produces a bare-copy artifact.
 
 Read the brief and decide which ONE the operator is actually asking for. "funnel" wins over "page" only when there's a real multi-step path (capture → qualify → confirm) or the word "funnel"; a single opt-in or sales page is "page". If it's otherwise ambiguous, choose "page" — it's the most capable fallback.
 
 Return ONLY a single JSON object, no prose, no markdown fences:
-{"artifact": "page"|"funnel"|"form"|"copy"|"image", "reasoning": "one short sentence"}`;
+{"artifact": "page"|"funnel"|"form"|"image", "reasoning": "one short sentence"}`;
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });

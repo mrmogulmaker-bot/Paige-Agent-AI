@@ -19,7 +19,6 @@ import {
   Pencil,
   Star,
   Trash2,
-  Type,
   Wand2,
   type LucideIcon,
 } from "lucide-react";
@@ -60,7 +59,6 @@ const ARTIFACT_GLYPH: Record<StudioArtifactType, LucideIcon> = {
   page: LayoutGrid,
   form: FileText,
   funnel: GitBranch,
-  copy: Type,
   image: ImageIcon,
 };
 

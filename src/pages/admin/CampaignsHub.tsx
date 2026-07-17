@@ -1,6 +1,6 @@
 // Campaigns Hub — single home for outbound marketing & acquisition.
 //
-// The Vibe Studio (the conversational page/funnel/form/copy/image builder) was PROMOTED to
+// The Vibe Studio (the conversational page/funnel/form/image builder) was PROMOTED to
 // its own full-page route at /admin/studio (§18: one capability, one home). This hub no
 // longer mounts it — any legacy ?tab=studio / ?tab=content link, and every library "New …"
 // action, REDIRECTS to /admin/studio carrying mode + pageId through.
@@ -28,9 +28,10 @@ const GROWTH_TABS = new Set(["pages", "funnels", "forms", "integrations"]);
 export default function CampaignsHub() {
   const [params, setParams] = useSearchParams();
   const rawTab = params.get("tab") ?? "overview";
-  // LEGACY ?tab=content → the consolidated Studio, landing on copy mode (the old Content
-  // Studio's primary surface). Rendered as the studio tab in the SAME frame — no blank
-  // flash, no 404 — while the effect below rewrites the URL.
+  // LEGACY ?tab=content → the consolidated Studio, landing on image mode (the surviving Content
+  // Studio creative surface, which carries the library button so legacy content users keep
+  // library access). Rendered as the studio tab in the SAME frame — no blank flash, no 404 —
+  // while the redirect below rewrites the URL. (Copy is no longer a Studio mode — §18/§21.)
   const tab = rawTab === "content" ? "studio" : rawTab;
   const isGrowth = GROWTH_TABS.has(tab);
   const isStudio = tab === "studio";
@@ -43,7 +44,7 @@ export default function CampaignsHub() {
   const mode: StudioMode = isStudioMode(modeParam)
     ? modeParam
     : rawTab === "content"
-      ? "copy"
+      ? "image"
       : "page";
 
   // The embedded Growth libraries refetch on mount; the Studio now lives on its own route

@@ -21,12 +21,11 @@ import type {
   StudioMode,
 } from "./studio-types";
 
-/** The mode switcher's words. One studio, five outputs. */
+/** The mode switcher's words. One studio, four outputs. */
 export const MODE_LABELS: Record<StudioMode, string> = {
   page: "Page",
   funnel: "Funnel",
   form: "Form",
-  copy: "Copy",
   image: "Image",
 };
 
@@ -43,10 +42,6 @@ export const MODE_RAIL: Record<StudioMode, { heading: string; description: strin
   form: {
     heading: "Describe the form",
     description: "Pick the questions, name it, and it's live-ready in one move.",
-  },
-  copy: {
-    heading: "What should Paige write?",
-    description: "A brief in, on-brand drafts out — edit them until they're yours.",
   },
   image: {
     heading: "Describe the image",
@@ -143,56 +138,12 @@ export const MODE_EMPTY: Record<StudioMode, { title: string; description: string
     title: "Your form previews here",
     description: "Pick a template on the left and you'll see every question before it's created.",
   },
-  copy: {
-    title: "Paige is ready to write",
-    description: "Fill in a brief and Paige drafts on-brand copy you can edit, save, and reuse.",
-  },
   image: {
     title: "Your image appears here",
     description:
       "Describe what you need — a promo graphic, a social visual, an ad image — and Paige creates it.",
   },
 };
-
-/**
- * Starting briefs for copy mode — the same discipline as INTENT_CHIPS: real, editable
- * briefs spread across the audience (§2: coaches, consultants, agencies, advisors,
- * thought leaders — zero finance wording), each modeling what a good copy brief looks like.
- */
-export const COPY_CHIPS: IntentChip[] = [
-  {
-    id: "program-announcement",
-    label: "Program announcement",
-    seed:
-      "Announce my new 6-week client onboarding program. Key points: faster ramp, weekly " +
-      "check-ins, a results guarantee. Aim it at consultants scaling their practice, and end " +
-      "with one clear ask: book a call.",
-  },
-  {
-    id: "welcome-email",
-    label: "Welcome email",
-    seed:
-      "A welcome email for a new client who just signed. Set the tone for how we work, tell " +
-      "them exactly what happens in the first week, and give them the one thing to do before " +
-      "our first session.",
-  },
-  {
-    id: "reengage-lead",
-    label: "Re-engage a lead",
-    seed:
-      "A short follow-up for a lead who asked about working together three weeks ago and went " +
-      "quiet. Warm, zero pressure, one question that's easy to answer, and a low-effort next " +
-      "step: reply or grab a time.",
-  },
-  {
-    id: "workshop-promo",
-    label: "Workshop promo post",
-    seed:
-      "A social post promoting my live workshop for agency owners on running client delivery " +
-      "without being the bottleneck. Name the problem, tease the three things we cover, and " +
-      "close with: save your seat.",
-  },
-];
 
 /** The narration for each phase of a run. Every line names work that actually happens —
  *  the phase ticker is not decoration, it is a report (§13). It reads as Paige's TEAM at
@@ -210,33 +161,25 @@ export const GENERATION_NOTES: Record<Exclude<GenerationPhase, "idle">, string> 
 };
 
 /**
- * The full-frame "building" narration for the single-call artifact types (copy, image). Unlike
- * the page path — a streamed run with real phases — these are ONE non-streamed model call with
- * no measurable phases, so the building screen runs INDETERMINATE: a real elapsed clock, no
- * fabricated progress bar (§13). Each line names the teammate on Paige's crew who actually does
- * the work (§8/§14). §3 voice (no "AI-powered"/"streamline"), §2-clean.
+ * The full-frame "building" narration for the single-call artifact type (image). Unlike the page
+ * path — a streamed run with real phases — this is ONE non-streamed model call with no measurable
+ * phases, so the building screen runs INDETERMINATE: a real elapsed clock, no fabricated progress
+ * bar (§13). Each line names the teammate on Paige's crew who actually does the work (§8/§14). §3
+ * voice (no "AI-powered"/"streamline"), §2-clean.
  */
-export const BUILDING_NOTES: Record<"copy" | "image", { agent: string; note: string }> = {
-  copy: { agent: "Copy agent", note: "Paige is writing your copy." },
+export const BUILDING_NOTES: Record<"image", { agent: string; note: string }> = {
   image: { agent: "Design agent", note: "Paige is rendering your image." },
 };
 
 /**
- * The AMBIENT narration rotation for the single-call types (copy, image). The building screen
- * cycles one of these lines at a time off the wall-clock — never a checklist, never a check, no
- * ordered "step 1 of 5", because there ARE no measurable phases here (§13: nothing may imply a
- * completion the seam can't report). They read as a craftsperson at work, not a progress bar.
- * First line matches BUILDING_NOTES so the opening frame names the job plainly. §3 voice
- * (no "AI-powered"/"streamline"/"seamless"/"empower"), §2-clean.
+ * The AMBIENT narration rotation for the single-call type (image). The building screen cycles one
+ * of these lines at a time off the wall-clock — never a checklist, never a check, no ordered
+ * "step 1 of 5", because there ARE no measurable phases here (§13: nothing may imply a completion
+ * the seam can't report). They read as a craftsperson at work, not a progress bar. First line
+ * matches BUILDING_NOTES so the opening frame names the job plainly. §3 voice (no "AI-powered"/
+ * "streamline"/"seamless"/"empower"), §2-clean.
  */
-export const BUILDING_ROTATION: Record<"copy" | "image", string[]> = {
-  copy: [
-    "Paige is writing your copy.",
-    "Finding the line that lands.",
-    "Weighing every word against your brand.",
-    "Cutting the fluff, keeping the point.",
-    "Making it sound like you.",
-  ],
+export const BUILDING_ROTATION: Record<"image", string[]> = {
   image: [
     "Paige is rendering your image.",
     "Composing the frame.",

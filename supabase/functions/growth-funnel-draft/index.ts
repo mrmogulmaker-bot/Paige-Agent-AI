@@ -144,9 +144,14 @@ VOICE (§3): direct, confident, mogul-founder. No "AI-powered", no "seamless", n
 
 DEFAULTS (§2): never introduce credit, funding, lending, financing, or "readiness/funding score" language unless the operator's own brief explicitly asks for it. Keep it generic to client-service businesses.
 
+COPY BAR (raises the quality of the copy the downstream page/form generators write): each sub-brief must be concrete enough that the page generator can write direct-response copy from it, not vague filler. So:
+- Name a SPECIFIC outcome the offer delivers (a real result, ideally with a timeframe or number when the operator gave one) — never "grow your business".
+- Name the EXACT audience (e.g. "consultants booked out but doing all delivery themselves"), not "everyone".
+- Name ONE clear action the lead takes. Never invent facts, testimonials, prices, or stats the operator didn't give — a specific brief means specific about what's REAL, never fabricated (§13/§15).
+
 Rules:
-- "landing_brief" must be a complete, specific brief for a single landing page that captures the offer in the operator's brief — the hook, who it's for, and the call to action. One or two sentences.
-- "form_brief" must describe the intake questions that qualify or onboard the lead for THIS offer — the real questions, in order. One or two sentences. If the funnel genuinely needs no separate intake form beyond the page's own signup (a bare opt-in), return form_brief as an empty string and form_name as an empty string.
+- "landing_brief" must be a complete, specific brief for a single landing page that captures the offer in the operator's brief — the hook, the specific outcome, who exactly it's for, and the one call to action (per the COPY BAR above). One or two sentences.
+- "form_brief" must describe the intake questions that qualify or onboard the lead for THIS offer — the real questions, in order, in plain human wording. One or two sentences. If the funnel genuinely needs no separate intake form beyond the page's own signup (a bare opt-in), return form_brief as an empty string and form_name as an empty string.
 - "form_name" is a short human label for the form (e.g. "Application", "Discovery intake"), or "" if there is no form.
 - "goal" is one short line naming the outcome the funnel drives, or "".
 
