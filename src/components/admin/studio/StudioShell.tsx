@@ -841,7 +841,12 @@ export function StudioShell({
         if (derived) {
           autoNamedRef.current = true;
           void renameStudioSession({ tenantId, sessionId, title: derived })
-            .then((renamed) => onManifestChange?.(renamed))
+            .then((renamed) => {
+              // Named exactly once: stop the first-artifact-save path from firing a SECOND,
+              // competing rename (which would race this one and could disagree on a long title).
+              firstLinkRef.current = false;
+              onManifestChange?.(renamed);
+            })
             .catch((err) => {
               autoNamedRef.current = false; // let a later build retry the name
               console.warn("[studio] auto-name on first generate failed (non-fatal):", err);
