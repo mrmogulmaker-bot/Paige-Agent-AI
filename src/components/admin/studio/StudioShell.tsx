@@ -73,6 +73,7 @@ import {
   publishPage,
   renameSessionArtifactRef,
   renameStudioSession,
+  deriveProjectName,
   reviseBlock,
   savePageDraft,
   shouldClarify,
@@ -375,6 +376,11 @@ export function StudioShell({
   // True until the session's FIRST artifact is linked — the save that flips it names the project
   // from the real artifact. A resumed session that already has artifacts starts false.
   const firstLinkRef = useRef(true);
+  // True once this session has been auto-named (#294) — from the first generation's real title,
+  // so the rail + gallery never show "Untitled" while there's real content. A resumed session that
+  // already has artifacts is an established, likely-already-named project; it starts true so a
+  // regeneration never silently overwrites a name the operator (or the first build) already set.
+  const autoNamedRef = useRef(false);
 
   /** Attach a saved artifact to the owning session and reflect it in state (§10/§19). Best-effort
    *  and non-fatal: a link hiccup must never fail the save the operator just performed (§13). On
@@ -522,7 +528,10 @@ export function StudioShell({
     }));
     // A restored snapshot with artifacts already reflects a session past its first save — don't
     // re-title on the next link.
-    if ((snapshot.artifacts?.length ?? 0) > 0) firstLinkRef.current = false;
+    if ((snapshot.artifacts?.length ?? 0) > 0) {
+      firstLinkRef.current = false;
+      autoNamedRef.current = true;
+    }
     toast({
       title: "Draft restored",
       description: "Picked up right where you left off — hit Save to make it permanent.",
@@ -596,6 +605,9 @@ export function StudioShell({
       .then((loaded) => {
         if (!live) return;
         firstLinkRef.current = loaded.artifacts.length === 0;
+        // An established session (already has artifacts) is already named — don't re-title it on a
+        // later regeneration. A fresh/empty resumed session may still auto-name on its first build.
+        autoNamedRef.current = loaded.artifacts.length > 0;
         setState((s) => {
           // Always adopt the session's identity + manifest.
           const base: ShellState = { ...s, sessionId, artifacts: loaded.artifacts };
@@ -819,8 +831,25 @@ export function StudioShell({
         error: null,
       }));
       reset();
+
+      // Auto-name the project the instant it has real content (#294) — best-effort, once per
+      // session. Named from the generated page's own title (falling back to the brief) via the
+      // same rename seam first-save uses, so the rail + gallery stop showing "Untitled" without
+      // waiting for a save. Non-fatal: a rename failure never blocks the canvas.
+      if (tenantId && sessionId && !autoNamedRef.current) {
+        const derived = deriveProjectName(seo.title, compiledBrief);
+        if (derived) {
+          autoNamedRef.current = true;
+          void renameStudioSession({ tenantId, sessionId, title: derived })
+            .then((renamed) => onManifestChange?.(renamed))
+            .catch((err) => {
+              autoNamedRef.current = false; // let a later build retry the name
+              console.warn("[studio] auto-name on first generate failed (non-fatal):", err);
+            });
+        }
+      }
     },
-    [state.blocks, state.attachments, generate, reset],
+    [state.blocks, state.attachments, generate, reset, tenantId, sessionId, onManifestChange],
   );
 
   // ── the clarifying gate (§15) — a thin or questionnaire-signaling brief is grounded in a

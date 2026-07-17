@@ -2122,6 +2122,36 @@ export async function touchStudioSession(input: {
   return rowToSessionMeta(row);
 }
 
+/**
+ * Derive a human project name from what a generation actually produced — so a Studio project is
+ * never left as "Untitled" the moment it has real content (#294). Preference order, best first:
+ *   1. the generated page's own SEO/hero title (`seo.title`) — already a crafted, specific line;
+ *   2. failing that, the operator's brief, trimmed to its first clause and sentence-cased — a
+ *      real signal of intent, not a placeholder;
+ *   3. a last-resort generic ("New project") that still beats a bare "Untitled".
+ * All paths collapse whitespace and hard-cap the length so a runaway title can't bloat the rail
+ * or the gallery card. Returns "" only when there is genuinely nothing real to name from, so the
+ * caller can choose to skip the rename rather than write an empty title.
+ */
+export function deriveProjectName(
+  seoTitle: string | null | undefined,
+  brief: string | null | undefined,
+): string {
+  const clean = (s: string | null | undefined) => (typeof s === "string" ? s.replace(/\s+/g, " ").trim() : "");
+  const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+  const seo = clean(seoTitle);
+  if (seo) return seo.slice(0, 80);
+
+  const b = clean(brief);
+  if (b) {
+    // First clause/sentence of the brief — a real title beats echoing the whole prompt.
+    const firstClause = b.split(/[.!?\n]/)[0].trim();
+    return cap((firstClause || b).slice(0, 60)).trim();
+  }
+  return "";
+}
+
 /** Retitle the project — called on first artifact save to name it from the real artifact. */
 export async function renameStudioSession(input: {
   tenantId: string;
