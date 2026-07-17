@@ -23,12 +23,12 @@
 // Not on Generate, not on Save, not on a chip, not on the selection outline (that's
 // indigo `--ring`).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Loader2, Send, Sparkles, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useGeneratePage } from "@/hooks/useGeneratePage";
 import { useToast } from "@/hooks/use-toast";
-import type { GrowthBlock, GrowthFormSchema } from "@/lib/growth";
+import type { GrowthAsset, GrowthBlock, GrowthFormSchema } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
 import { EmptyState, PageShell, SectionCard } from "@/components/ui/page";
 import {
@@ -267,7 +267,16 @@ export function StudioShell({
   const tenantId = tenantIdProp ?? activeTenantId ?? null;
   const tenantSlug = tenantSlugProp ?? activeTenant?.slug ?? null;
 
-  const [state, setState] = useState<ShellState>(EMPTY_SHELL);
+  // HOME hands off any composer-uploaded attachments on nav state (same channel as brief/autostart).
+  // Seed them into the INITIAL shell state (render 0) so every generateWholePage closure — including
+  // the autostart-fired one, which runs only after loadSession's round-trip — reads them. Present
+  // from the first render means no stale-closure timing risk. (Ephemeral: a hard reload during the
+  // build loses them, like an unsent brief — durable carry would need a schema change, out of scope.)
+  const location = useLocation();
+  const initialAttachments = (location.state as { attachments?: GrowthAsset[] } | null)?.attachments;
+  const [state, setState] = useState<ShellState>(() =>
+    initialAttachments?.length ? { ...EMPTY_SHELL, attachments: initialAttachments } : EMPTY_SHELL,
+  );
   const { generation, isGenerating, generate, cancel, reset } = useGeneratePage(tenantId);
 
   // Studio-local dark/light — completely separate from the platform's own next-themes state
