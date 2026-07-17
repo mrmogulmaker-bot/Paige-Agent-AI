@@ -794,6 +794,41 @@ All colors MUST be HSL.
     }
   }
 
+  /* Studio HOME composer chips — a LIVING gold glow that breathes back and forth (owner ask,
+     2026-07-17). SUBTLE by design (§11): a soft, low-opacity gold halo that reads "alive"
+     without a solid fill or heavy ring, so it never out-competes the gold ↑ submit act below.
+     Token-only gold via --gold (theme-aware — set in :root and inherited unchanged by .dark, so it
+     resolves identically in both themes). The hairline
+     gold BORDER lives on the chip's Tailwind class; this class owns only the pulsing halo, kept at
+     a small blur/spread so it never out-glows the submit and never shifts layout (box-shadow). */
+  /* Peak reach kept to 7px (blur only, 0 spread) so the halo clears the chip row's vertical
+     padding and never paints flat-clipped by the row's overflow-x-auto scroll container. */
+  @keyframes studio-chip-glow {
+    0%, 100% { box-shadow: 0 0 4px 0 hsl(var(--gold) / 0.20); }
+    50%      { box-shadow: 0 0 7px 0 hsl(var(--gold) / 0.42); }
+  }
+  .studio-chip-glow {
+    animation: studio-chip-glow 2.4s ease-in-out infinite;
+  }
+  /* Stagger the pulse per chip so the row shimmers ORGANICALLY instead of blinking in unison (a
+     synchronized row of gold halos out-competes the gold ↑ submit act — §11/§22 balance). nth-OF-TYPE
+     skips the leading "Try" <span>: the chips are the only <button>s in the row, so of-type(1..) maps
+     to chip 1.. regardless of the span. Non-uniform delays read alive, not mechanical. */
+  .studio-chip-glow:nth-of-type(1) { animation-delay: 0s; }
+  .studio-chip-glow:nth-of-type(2) { animation-delay: 0.5s; }
+  .studio-chip-glow:nth-of-type(3) { animation-delay: 1.1s; }
+  .studio-chip-glow:nth-of-type(4) { animation-delay: 0.3s; }
+  .studio-chip-glow:nth-of-type(5) { animation-delay: 0.8s; }
+  .studio-chip-glow:nth-of-type(n+6) { animation-delay: 1.4s; }
+  /* Motion-safe (mandatory, per-primitive): freeze to a STATIC subtle gold ring — never a hard
+     cut to nothing. */
+  @media (prefers-reduced-motion: reduce) {
+    .studio-chip-glow {
+      animation: none;
+      box-shadow: 0 0 5px 0 hsl(var(--gold) / 0.22);
+    }
+  }
+
   .animate-slide-up {
     animation: slide-up-fade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }

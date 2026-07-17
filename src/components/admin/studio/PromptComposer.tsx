@@ -310,14 +310,34 @@ export function PromptComposer({
             the box so they're discoverable the instant the builder opens, and gone once you type.
             Same border-b rhythm as the rows below. FilterChip active=false is border/muted, no gold. */}
         {showDockChips && (
-          <div className="flex items-center gap-1.5 overflow-x-auto border-b border-border/50 px-4 pb-2.5 pt-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div
+            className={cn(
+              "flex items-center gap-1.5 overflow-x-auto border-b border-border/50 px-4 pb-2.5 pt-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+              // HOME/bare only: extra vertical padding so the chips' animated gold halo has room and
+              // is never flat-clipped by this row's overflow-x-auto scroll box (the halo peaks at 7px;
+              // this gives ≥14px each side). Builder dock keeps its tighter pb-2.5/pt-3.
+              !framed && "pb-3.5 pt-3.5",
+            )}
+          >
             <span className="shrink-0 text-[11px] font-medium text-muted-foreground">Try</span>
             {chips!.map((chip) => (
               <FilterChip
                 key={chip.id}
                 active={false}
                 onClick={() => onChange(chip.seed)}
-                className="shrink-0 whitespace-nowrap border-[hsl(var(--studio-glass-border)/0.7)] bg-[hsl(var(--foreground)/0.04)]"
+                className={cn(
+                  "shrink-0 whitespace-nowrap",
+                  // Builder dock (framed): the existing neutral glass chip — untouched, no regression.
+                  framed && "border-[hsl(var(--studio-glass-border)/0.7)] bg-[hsl(var(--foreground)/0.04)]",
+                  // HOME/bare (owner ask, 2026-07-17): a smaller gold OVAL pill with a LIVING gold glow.
+                  // Border/bg are set ONLY here (not stacked on the glass values) so the gold wins with
+                  // no CSS source-order ambiguity. The pulsing (staggered) halo lives in .studio-chip-glow
+                  // (src/index.css). Gold stays SUBTLE (§11) — the gold ↑ submit below is the primary act.
+                  !framed &&
+                    "studio-chip-glow rounded-full px-2.5 py-0.5 text-[11px] text-foreground " +
+                      "border-[hsl(var(--gold)/0.45)] bg-[hsl(var(--gold)/0.06)] " +
+                      "hover:border-[hsl(var(--gold)/0.7)] hover:bg-[hsl(var(--gold)/0.1)] hover:text-foreground",
+                )}
               >
                 {chip.label}
               </FilterChip>
