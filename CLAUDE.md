@@ -544,6 +544,34 @@ as fact.
 real thumbnails, alive motion where it earns its pixels — or is it a flat palette flip?"* If the latter, it
 isn't done.
 
+## 23. Color is emotional — every palette is chosen for the feeling it evokes, and light ≠ dark.
+
+**Directive (owner: Antonio, 2026-07-17) — MANDATORY, platform-wide.** Color is not decoration; it is
+**emotional signaling**. Certain colors and color relationships reliably invoke certain feelings, and that
+is well-documented — so **every color decision on every surface is made with color→emotion intent**, not by
+picking "a darker shade" or "a lighter shade." This is a standing standard we design by *everywhere* (the
+whole Vibe Studio and the whole platform), not a one-off. It reloads every session precisely so it is never
+forgotten.
+
+- **Design for the feeling, not just the value.** Choose hue, saturation, and temperature for the emotion the
+  surface should evoke — e.g. **light** themes lean open · fresh · clear · trustworthy · energizing;
+  **dark** themes lean focused · premium · immersive · calm-power. Gold is the act/approve/celebration
+  accent (§11); indigo is the calm, credible ground (§6). Never reach for a color just because it "fills the
+  box."
+- **Light mode must be genuinely LIGHT; dark mode genuinely DARK — a clear, felt distinction.** A human
+  instantly sees the difference between a lighter surface and a darker one; the toggle must deliver that.
+  **Light mode does NOT mean "slightly less dark," and it never means the cheesy gray** (§11) — it means a
+  real, bright, premium light theme with depth from **elevation + hairline borders + soft shadow**, not from
+  gray fills and not from darkening. Dark mode is a real dark theme with layered depth (§22). Flipping the
+  theme anywhere on the platform must produce an **unmistakable** light↔dark change on **every** surface — no
+  surface hardcoded to one theme so the toggle looks dead.
+- **Still §-bound.** Token-only (no hardcoded hex), AA contrast in **both** themes, on-brand (indigo + gold,
+  §6), gold spent only on the act (§11). Emotional intent never overrides accessibility or the gold budget —
+  it *guides the choices within* them.
+- **The test, every time:** *"Did I pick this color for the emotion it creates and the story it tells — and
+  is my light theme actually light and my dark theme actually dark, clearly distinct — or did I just reach
+  for a value?"* If it's just a value (or light ≈ dark), it isn't done.
+
 ## 18. Check for redundancy before you build — one home per capability, never two.
 
 **Directive (owner: Antonio, 2026-07-15):** Before starting any build, the first question is not
