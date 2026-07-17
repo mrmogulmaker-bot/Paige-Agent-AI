@@ -474,6 +474,63 @@ confusing people with all these multiple tabs. Nobody does that."*
   the session — a tab, a chip, a mode button — instead of just talking to Paige in the one
   session and letting the rail hold what they've made?"* If there's a type-tab, it's wrong.
 
+## 22. The Vibe Studio is benchmarked against best-in-class — motion, 3D, and craft are the mandatory bar.
+
+**Directive (owner: Antonio, 2026-07-17).** The Vibe Studio is developed against the best AI-builder
+studios in the world — **Lovable and Emergent** — and the broader best-in-class motion/3D web (Bolt · v0 ·
+Framer · the Awwwards/Codrops/Three.js lineage), studied 2026-07-17 (synthesis parked at
+`scratchpad/studio-motion-3d-plan.md`). **That study is now the STANDING BAR:** every Studio surface is
+built to it, and the verifier + compliance officer (§5/§11) judge every Studio ship **against this
+standard, not just against itself.** The owner's line is the whole point — *"you just made it dark, that's
+not design"*: **depth, motion, and craft are the bar; a palette flip never is.**
+
+- **Depth from LAYERED surfaces, not darkness.** Best-in-class builds depth from a 3-tier elevation stack
+  (base → card → raised) + hairline borders + consistent radii tokens (a real scale: 6/8/12/16/24/28) —
+  never a flat fill. Our chrome is layered indigo/violet elevation tokens with hairline borders. **Flat =
+  fail; "made it dark" ≠ designed.**
+- **One accent, spent on the act.** Best-in-class reserves exactly one color for the CTA/interactive moment
+  (Lovable's blue). Ours is **gold — ONLY on the primary act**; everything else neutral/indigo (§11).
+- **Type carries the hierarchy — weight + size + tight NEGATIVE tracking on display sizes** (the "expensive"
+  tell). A real scale (display → title → body → caption; `tabular-nums` for metrics). Weak/default type = fail.
+- **Real thumbnails, real hover, refined borders.** Project cards render **REAL scaled artifact previews**
+  (never a glyph-in-a-box placeholder), lift on hover (spring, motion-safe), and use a tokenized border — a
+  traveling **gold beam ONLY on the actively-building card**, indigo/plain everywhere else.
+- **The composer is ONE tight command bar that IS the hero** — compact, dense inline affordances in a footer
+  row, a blinking caret, no banner above it (§11 banner rule), no artifact-type chips (§18/§21).
+- **The build cutscene is the marquee "video-game" moment** — a cinematic split: streamed *human-readable*
+  build steps + a progressive skeleton of the artifact-to-be + the living PaigeMark as hero of the wait +
+  **named-agent handoff** (§8 "they're hiring her whole team," made visible in motion) + a **self-verify
+  "scan" beat** (§5 verifier, made visible) — resolving **INTO the session/rail (§21)**, never a dead spinner
+  or modal. Streamed lines reflect the **ACTUAL** phases, never a script that plays regardless (§13 honesty).
+- **Transitions are one continuous act** — shared-element FLIP (dashboard card → build → studio), spring not
+  duration, staggered reveals (§6 continuity).
+- **The chrome is ALIVE** — the hero field flows (a real animated shader gradient, not a static arc); the
+  sidebar carries ambient "stardust." Alive, not decorative.
+
+**Fidelity doctrine (where the GPU earns its pixels):**
+- **Heavy WebGL is spent in EXACTLY two places — the hero and the build cutscene** — each one shader quad /
+  one weighted object at capped DPR. Everything else (sidebar stardust, cards, composer, transitions) is
+  lightweight CSS + framer-motion. Concentrate motion where it earns its pixels; never plaster GPU work on a
+  working surface (§11).
+- **Build our own primitives — no new dependency by default.** The 3D/motion stack already ships (`three` ·
+  `@react-three/fiber` · `drei` · `framer-motion` · `gsap`) with a working WebGL precedent (`PaigeScene`).
+  New surfaces reuse it and add primitives to the shared `ui/page` layer (§18: one home, don't scaffold or
+  fork). A new npm dep is a *proposal* (§13/§14 cost-low), never a reflex.
+- **Every effect writes its OWN reduced-motion fallback** — these libraries don't ship one: gradient speed→0,
+  particles paused, beams static, morph→instant cut. Motion-safe is per-primitive, not an afterthought.
+  Token-only, AA in **both** themes, gold only on the act — all still bind.
+
+**Honesty caveat (§13) — do not over-claim.** The competitor build-cutscene details are **SECONDARY**: both
+studios are auth-gated, so their loading/handoff moments were reconstructed from reviews/walkthroughs, not
+seen first-hand; the heavy-shader hero/cutscene is imported from the directly-inspectable Awwwards/Codrops
+lineage, **not proven** to be a competitor's own studio behavior; borrowed tokens are extractor-approximate.
+Build these as **our** interpretation of a well-attested pattern — never tell anyone "Lovable does exactly X"
+as fact.
+
+**The test, every time:** *"Does this Studio surface clear the best-in-class bar — layered depth, real type,
+real thumbnails, alive motion where it earns its pixels — or is it a flat palette flip?"* If the latter, it
+isn't done.
+
 ## 18. Check for redundancy before you build — one home per capability, never two.
 
 **Directive (owner: Antonio, 2026-07-15):** Before starting any build, the first question is not
