@@ -59,25 +59,41 @@ const DESKTOP_MIN_WIDTH = 1024;
 const MOBILE_WIDTH = 390;
 const INITIAL_FRAME_HEIGHT = 720;
 
-/** Copy the parent document's style sources into the frame. Tailwind (a <style> tag in dev,
- *  a <link rel="stylesheet"> in prod) AND the `.gp-*` keyframes both live there — without
- *  this the preview renders completely unstyled. */
-function cloneStyleSources(doc: Document) {
+/** Copy the parent document's style sources into the frame and RETURN the cloned <link>s so the
+ *  caller can wait for them to load before painting the tree (Tailwind is an inline <style> in
+ *  dev — applies synchronously — but a `<link rel="stylesheet">` in prod, which loads async; if
+ *  the tree paints before it lands the preview flashes/looks unstyled, the "no CSS" the owner saw).
+ *  Also carries constructable adoptedStyleSheets, which a plain node-clone would silently drop. */
+function cloneStyleSources(doc: Document): HTMLLinkElement[] {
   const sources = document.querySelectorAll<HTMLStyleElement | HTMLLinkElement>(
     'style, link[rel="stylesheet"]',
   );
+  const links: HTMLLinkElement[] = [];
   sources.forEach((node) => {
     const clone = node.cloneNode(true) as HTMLStyleElement | HTMLLinkElement;
     // Reading `.href` yields the fully-resolved absolute URL, so the clone can't resolve
     // against the frame's about:blank base and 404.
-    if (node instanceof HTMLLinkElement && clone instanceof HTMLLinkElement) clone.href = node.href;
+    if (node instanceof HTMLLinkElement && clone instanceof HTMLLinkElement) {
+      clone.href = node.href;
+      links.push(clone);
+    }
     doc.head.appendChild(clone);
   });
+  // Constructable stylesheets (CSS-in-JS / some libs) live only on adoptedStyleSheets — a DOM
+  // clone never sees them. Best-effort copy; wrapped because cross-document adoption can throw.
+  try {
+    if (document.adoptedStyleSheets?.length) {
+      doc.adoptedStyleSheets = [...document.adoptedStyleSheets];
+    }
+  } catch {
+    /* constructed-sheet sharing not permitted in this engine — the <style>/<link> clones cover it */
+  }
   // Carry the light/dark class + data-theme the admin shell set, so the preview honors the
   // same color scheme the operator is looking at.
   doc.documentElement.className = document.documentElement.className;
   const themeAttr = document.documentElement.getAttribute("data-theme");
   if (themeAttr) doc.documentElement.setAttribute("data-theme", themeAttr);
+  return links;
 }
 
 interface BlockRect {
@@ -113,21 +129,68 @@ export function LivePreview({
   const isEmpty = blocks.length === 0 && trailingSkeletons <= 0;
 
   // ── the frame document: written ONCE, then only resized ────────────────────────────
+  // The tree is portaled in only AFTER the frame's stylesheets are in, so it never paints a
+  // frame of unstyled content (the "no CSS" flash the owner saw): in prod Tailwind is an async
+  // <link> that lands a beat after the doc is written; painting before it loads shows a raw stack.
+  // We write the doc, clone the styles, then flip frameBody only once every cloned <link> has
+  // fired load/error (or a short timeout elapses so one hung sheet never wedges the canvas). If
+  // the iframe's contentDocument isn't ready yet, we self-heal off its 'load' event instead of
+  // giving up forever.
   useEffect(() => {
     if (isEmpty) return;
     const frame = frameRef.current;
-    const doc = frame?.contentDocument;
-    if (!frame || !doc) return;
+    if (!frame) return;
 
-    doc.open();
-    doc.write('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
-    doc.close();
-    cloneStyleSources(doc);
-    doc.body.style.margin = "0";
-    doc.body.style.overflowX = "hidden";
-    setFrameBody(doc.body);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
-    return () => setFrameBody(null);
+    const paint = () => {
+      const doc = frame.contentDocument;
+      if (cancelled || !doc) return;
+      doc.open();
+      doc.write('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>');
+      doc.close();
+      const links = cloneStyleSources(doc);
+      doc.body.style.margin = "0";
+      doc.body.style.overflowX = "hidden";
+
+      const reveal = () => {
+        if (cancelled) return;
+        if (timer) clearTimeout(timer);
+        setFrameBody(doc.body);
+      };
+      // Wait for the cross-doc stylesheet <link>s to actually load; <style> clones (dev) apply
+      // synchronously and aren't tracked, so a dev/no-link frame reveals immediately.
+      const pending = links.filter((l) => !l.sheet);
+      if (pending.length === 0) {
+        reveal();
+      } else {
+        let left = pending.length;
+        const one = () => {
+          if (--left <= 0) reveal();
+        };
+        pending.forEach((l) => {
+          l.addEventListener("load", one, { once: true });
+          l.addEventListener("error", one, { once: true });
+        });
+        // Safety net: never let a slow/blocked sheet hold the canvas hostage past ~1.2s.
+        timer = setTimeout(reveal, 1200);
+      }
+    };
+
+    if (frame.contentDocument) {
+      paint();
+    } else {
+      // about:blank not ready yet — paint once it is (self-heals the permanent-blank path).
+      frame.addEventListener("load", paint, { once: true });
+    }
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      frame.removeEventListener("load", paint);
+      setFrameBody(null);
+    };
   }, [isEmpty, reloadNonce]);
 
   // ── the pane width, so a narrow rail scales the desktop frame instead of clipping it ──

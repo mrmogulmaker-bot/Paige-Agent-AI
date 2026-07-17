@@ -16,8 +16,8 @@
 // Gold budget: the submit is indigo by default (`variant="default"`) — in the builder the act
 // moment is Publish (§11). The Studio HOME passes `submitVariant="gold"` so its "Start building"
 // is the single gold ACT on that surface.
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
-import { ArrowUp, FileText, Image as ImageIcon, Loader2, Plus, RefreshCw, Send, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowUp, FileText, Image as ImageIcon, Loader2, NotebookPen, Paperclip, RefreshCw, Send, X } from "lucide-react";
 import type { GrowthAsset, GrowthBlock } from "@/lib/growth";
 import { GROWTH_ASSET_ACCEPT, GROWTH_ASSET_MAX_COUNT } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,17 @@ export interface IntentChip {
    *  magic — the operator sees exactly what Paige is about to be asked (§15). */
   seed: string;
 }
+
+/** A large block the operator pasted, lifted OUT of the textarea into its own chip (the Claude
+ *  paste-as-file pattern) so the composer stays a clean one-liner instead of a wall of text. */
+interface PastedNote {
+  id: string;
+  text: string;
+  label: string;
+}
+/** A paste this big (chars OR lines) becomes a note chip instead of flooding the input. */
+const PASTE_TO_NOTE_CHARS = 700;
+const PASTE_TO_NOTE_LINES = 8;
 
 export interface PromptComposerProps {
   /** "page" = whole-page brief. "section" = conversational edit of one selected block. */
@@ -84,6 +95,11 @@ export interface PromptComposerProps {
   /** Send-button shape. Omit and it derives from `submitVariant`: gold → a labeled button
    *  ("Start building" on HOME), indigo → a circular ↑ (the builder dock, Lovable-parity). */
   sendShape?: "circle" | "label";
+  /** Where the suggestion chips render. "above" (default) keeps the row ABOVE the dock
+   *  (HOME/Copy/Image). "dock" moves them INSIDE the box as a compact scroll row so they're
+   *  discoverable in the builder without a bottom-pinned row nobody sees (§18 — one chips
+   *  concept, placement-controlled). */
+  chipPlacement?: "above" | "dock";
   className?: string;
 }
 
@@ -120,10 +136,12 @@ export function PromptComposer({
   submitVariant = "default",
   surface = "framed",
   sendShape,
+  chipPlacement = "above",
   className,
 }: PromptComposerProps) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [notes, setNotes] = useState<PastedNote[]>([]);
   const sectionMode = mode === "section" && !!target;
   const framed = surface === "framed";
   // Labeled by default so every meaningful CTA ("Draft with Paige", "Generate image", "Start
@@ -131,7 +149,10 @@ export function PromptComposer({
   // passing sendShape="circle" — that's the one surface whose send carries no standalone label.
   const resolvedSendShape = sendShape ?? "label";
   const attachSlotsLeft = GROWTH_ASSET_MAX_COUNT - attachments.length;
-  const showChips = !sectionMode && !!chips && chips.length > 0 && value.trim().length === 0;
+  const showChips =
+    chipPlacement === "above" && !sectionMode && !!chips && chips.length > 0 && value.trim().length === 0;
+  const showDockChips =
+    chipPlacement === "dock" && !sectionMode && !!chips && chips.length > 0 && value.trim().length === 0;
 
   // Grow with the writing, up to MAX_ROWS, then scroll INSIDE the textarea — the dock's height
   // is bounded so the send button below it never scrolls out of reach. No jumpy fixed box.
@@ -153,12 +174,21 @@ export function PromptComposer({
     if (sectionMode) ref.current?.focus();
   }, [sectionMode, target?.index]);
 
-  const canSubmit = !busy && !disabled && value.trim().length >= (sectionMode ? 2 : 5);
+  // A pasted note alone can satisfy the length gate — the brief may live entirely in the note.
+  const hasNote = !sectionMode && notes.length > 0;
+  const canSubmit = !busy && !disabled && (value.trim().length >= (sectionMode ? 2 : 5) || hasNote);
 
   const submit = useCallback(() => {
     if (!canSubmit) return;
-    onSubmit(value.trim());
-  }, [canSubmit, onSubmit, value]);
+    // Fold any pasted notes into the brief (§13 — the model receives the full pasted context),
+    // then clear them so the next brief starts fresh.
+    const composed =
+      sectionMode || notes.length === 0
+        ? value.trim()
+        : [value.trim(), ...notes.map((n) => n.text)].filter(Boolean).join("\n\n");
+    onSubmit(composed);
+    if (!sectionMode && notes.length > 0) setNotes([]);
+  }, [canSubmit, onSubmit, value, notes, sectionMode]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -166,6 +196,25 @@ export function PromptComposer({
       submit();
     }
   };
+
+  // Claude-style paste-as-notepad: a big paste (chars OR lines) becomes a note CHIP instead of
+  // dumping a wall of text into the one-line composer. Small pastes fall through untouched.
+  const onPaste = useCallback(
+    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      if (sectionMode) return;
+      const text = e.clipboardData.getData("text");
+      if (!text) return;
+      const lineCount = text.split(/\r\n|\r|\n/).length;
+      const isLarge = text.length >= PASTE_TO_NOTE_CHARS || lineCount >= PASTE_TO_NOTE_LINES;
+      if (!isLarge) return;
+      e.preventDefault();
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const firstLine = trimmed.split(/\r\n|\r|\n/)[0].slice(0, 40).trim();
+      setNotes((prev) => [...prev, { id: crypto.randomUUID(), text: trimmed, label: firstLine || "Pasted note" }]);
+    },
+    [sectionMode],
+  );
 
   const onFileInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -237,6 +286,25 @@ export function PromptComposer({
           ],
         )}
       >
+        {/* In-dock suggestion chips (builder) — a compact single-line scroll row at the TOP of
+            the box so they're discoverable the instant the builder opens, and gone once you type.
+            Same border-b rhythm as the rows below. FilterChip active=false is border/muted, no gold. */}
+        {showDockChips && (
+          <div className="flex items-center gap-1.5 overflow-x-auto border-b border-border/50 px-4 pb-2.5 pt-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">Try</span>
+            {chips!.map((chip) => (
+              <FilterChip
+                key={chip.id}
+                active={false}
+                onClick={() => onChange(chip.seed)}
+                className="shrink-0 whitespace-nowrap"
+              >
+                {chip.label}
+              </FilterChip>
+            ))}
+          </div>
+        )}
+
         {/* Uploaded reference/deliverable files — INSIDE the dock now, above the textarea, so the
             box holds its own context (the Lovable pattern). A hairline divider separates them. */}
         {!sectionMode && attachments.length > 0 && (
@@ -267,12 +335,40 @@ export function PromptComposer({
           </div>
         )}
 
+        {/* Pasted notes — a big paste lifts OUT of the textarea into its own chip (Claude pattern),
+            so the composer stays a clean line. Folded back into the brief on submit (§13). */}
+        {!sectionMode && notes.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-border/50 px-4 pb-2.5 pt-3">
+            {notes.map((note) => (
+              <span
+                key={note.id}
+                className="inline-flex max-w-[240px] items-center gap-1.5 rounded-full border border-border bg-muted/50 py-1 pl-2.5 pr-1.5 text-xs text-foreground"
+              >
+                <NotebookPen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="truncate">{note.label}</span>
+                <span className="shrink-0 text-[10px] text-muted-foreground">
+                  {note.text.length.toLocaleString()} chars
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setNotes((prev) => prev.filter((n) => n.id !== note.id))}
+                  aria-label={`Remove pasted note ${note.label}`}
+                  className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                >
+                  <X className="h-3 w-3" aria-hidden />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
         <Textarea
           id="studio-composer"
           ref={ref}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           disabled={disabled}
           rows={minRowsResolved}
           placeholder={sectionMode ? SECTION_PLACEHOLDER : placeholder ?? PAGE_PLACEHOLDER}
@@ -305,22 +401,23 @@ export function PromptComposer({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
+                size="sm"
                 disabled={disabled || attachmentsBusy || attachSlotsLeft <= 0}
                 onClick={() => fileInputRef.current?.click()}
-                aria-label="Attach a file"
+                aria-label="Add attachment or context"
                 title={
                   attachSlotsLeft <= 0
                     ? `Up to ${GROWTH_ASSET_MAX_COUNT} files`
                     : "Attach reference material or the deliverable file"
                 }
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                className="h-8 gap-1.5 text-muted-foreground hover:text-foreground"
               >
                 {attachmentsBusy ? (
                   <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
                 ) : (
-                  <Plus className="h-4 w-4" aria-hidden />
+                  <Paperclip className="h-4 w-4" aria-hidden />
                 )}
+                <span className="hidden sm:inline">Attach</span>
               </Button>
             </>
           )}

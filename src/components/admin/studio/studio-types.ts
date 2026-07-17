@@ -257,6 +257,10 @@ export interface StudioState {
   suggestedDeliveryAssetUrl: string | null;
   /** The whole-page brief. PRESERVED across section-mode retargeting. */
   brief: string;
+  /** The live composer INPUT (page mode). Ephemeral and DECOUPLED from `brief`: starts empty
+   *  on an already-built project, clears on submit, and is never the source Rebuild reads — so
+   *  returning to a built project shows a clean box while `brief` keeps the last brief. */
+  composerValue: string;
   /** The in-flight section instruction (section mode only). */
   instruction: string;
   mode: PageCanvasMode;

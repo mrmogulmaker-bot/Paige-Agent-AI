@@ -48,6 +48,7 @@ import { PromptComposer } from "./PromptComposer";
 import { PublishDialog, kebabSlug } from "./PublishDialog";
 import { StudioTopBar } from "./StudioTopBar";
 import { StudioRailHeading, StudioSplit } from "./StudioChrome";
+import { useStudioImmersion } from "./StudioImmersion";
 import { CopyMode } from "./modes/CopyMode";
 import { ImageMode } from "./modes/ImageMode";
 import { FormMode } from "./modes/FormMode";
@@ -165,6 +166,7 @@ const EMPTY_SHELL: ShellState = {
   attachments: [],
   suggestedDeliveryAssetUrl: null,
   brief: "",
+  composerValue: "",
   instruction: "",
   mode: "compose",
   clarifying: EMPTY_CLARIFYING,
@@ -275,6 +277,25 @@ export function StudioShell({
       return next;
     });
   }, []);
+
+  // The Lovable/Replit "watch it build full-width" moment. FIRST build ONLY, and ONLY on the
+  // page/funnel surface: gated on `isGenerating` (RUNNING_PHASES.has(generation.phase)) — NOT
+  // state.mode==="generating", which stays stuck after a FAILED run (the error lives in
+  // generation.phase, not state.mode) and would strand both rails retracted+inert forever (crew
+  // catch). isGenerating clears the instant a run ends (done OR error), so the rails always slide
+  // back. blocks.length===0 keeps a REGENERATE in the normal split; the (page|funnel) gate keeps a
+  // Copy/Form/Image surface from ever retracting the rail with no immersive canvas showing. Reads
+  // reactive state, never the non-reactive blocksBeforeRun ref. Published up to StudioLayout so the
+  // OUTER project rail retracts too; the inner rail gets the same flag via StudioSplit below.
+  const { setImmersive } = useStudioImmersion();
+  const firstBuildGenerating =
+    isGenerating && state.blocks.length === 0 && (mode === "page" || mode === "funnel");
+  useEffect(() => {
+    setImmersive(firstBuildGenerating);
+    // Clear on unmount so leaving a mid-build project never reopens the gallery with a hidden rail
+    // (§13 — the UI never lies about state); the layout's !onProject effect is the extra backstop.
+    return () => setImmersive(false);
+  }, [firstBuildGenerating, setImmersive]);
 
   // Modes stay mounted once visited, so switching outputs never eats in-progress work.
   const [visited, setVisited] = useState<ReadonlySet<StudioMode>>(() => new Set([mode]));
@@ -490,6 +511,7 @@ export function StudioShell({
       seo: snapshot.seo,
       formSchema: snapshot.formSchema,
       brief: snapshot.brief,
+      composerValue: snapshot.composerValue ?? "",
       mode: snapshot.mode,
       clarifying: snapshot.clarifying,
       selectedIndex: snapshot.selectedIndex,
@@ -567,7 +589,7 @@ export function StudioShell({
     const restored = draftRestoreRef.current.key === key && draftRestoreRef.current.applied;
     // Seed the brief instantly from the navigation state so the composer isn't blank for a beat
     // (loadSession then confirms it from the durable seed_brief).
-    if (initialBrief && !restored) patch({ brief: initialBrief });
+    if (initialBrief && !restored) patch({ composerValue: initialBrief });
 
     let live = true;
     loadSession({ tenantId, sessionId })
@@ -594,6 +616,10 @@ export function StudioShell({
               seo: loaded.primary.seo,
               mode: loaded.primary.blocks.length > 0 ? "canvas" : "compose",
               dirty: false,
+              // A RETURN to an already-built project opens a CLEAN composer — the old brief never
+              // sticks in the box (owner: "no sticky words"). `brief` is left as `base`'s "" here;
+              // Rebuild stays disabled until a fresh brief is submitted, which is correct.
+              composerValue: "",
               publishedUrl: null,
               error: null,
             };
@@ -601,7 +627,10 @@ export function StudioShell({
           // Zero-artifact (fresh) session — seed the composer from the durable brief.
           return {
             ...base,
-            brief: s.brief || loaded.session.seedBrief || initialBrief || "",
+            // Seed the LIVE composer (not `brief`) so the operator sees what they typed on Home;
+            // `brief` is written on submit by runGenerate. A RETURN to a built project (other
+            // branch) leaves composerValue empty → a clean box, no sticky words.
+            composerValue: s.composerValue || loaded.session.seedBrief || initialBrief || "",
             mode: "compose",
             error: null,
           };
@@ -1002,7 +1031,7 @@ export function StudioShell({
     funnelIntendedRef.current = false;
     classifiedOnceRef.current = false;
     modeChipClickedRef.current = false;
-    patch({ brief: "", error: null });
+    patch({ brief: "", composerValue: "", error: null });
     if (mode === "funnel") onModeChange?.("page");
   }, [mode, onModeChange, patch]);
 
@@ -1095,6 +1124,10 @@ export function StudioShell({
         void handleSectionEdit(value);
         return;
       }
+      // Clear the LIVE composer the instant we submit — `value` is already captured, so the build
+      // is unaffected, and returning to this project shows a clean box (no sticky words). The
+      // durable `brief` (Rebuild's source) is written separately by runGenerate.
+      patch({ composerValue: "" });
       // Committed to a funnel this session (built, building, entered via funnel intent, or a
       // prior funnel build that failed) — a new brief (re)builds the funnel in this same
       // surface (§19), and a post-failure retry stays a funnel instead of falling through to
@@ -1169,7 +1202,10 @@ export function StudioShell({
     // snapshot over whatever's already stored, which would otherwise surface a hollow
     // "Draft restored" toast on the next mount for content that was never really there.
     const hasContent =
-      state.blocks.length > 0 || state.brief.trim().length > 0 || state.title.trim().length > 0;
+      state.blocks.length > 0 ||
+      state.brief.trim().length > 0 ||
+      state.composerValue.trim().length > 0 ||
+      state.title.trim().length > 0;
     if (!hasContent) return;
     const key = studioDraftKey(tenantId, sessionId ?? null, state.pageId);
     const snapshot: PageDraftSnapshot = {
@@ -1186,6 +1222,7 @@ export function StudioShell({
       seo: state.seo,
       formSchema: state.formSchema,
       brief: state.brief,
+      composerValue: state.composerValue,
       mode: state.mode,
       clarifying: state.clarifying,
       selectedIndex: state.selectedIndex,
@@ -1210,6 +1247,7 @@ export function StudioShell({
     state.seo,
     state.formSchema,
     state.brief,
+    state.composerValue,
     state.mode,
     state.clarifying,
     state.selectedIndex,
@@ -1440,6 +1478,7 @@ export function StudioShell({
              hidden only for the form/copy/image modes that own their own surface. ── */}
         <StudioSplit
           className={mode === "page" || mode === "funnel" ? undefined : "hidden"}
+          immersive={firstBuildGenerating}
           railHeader={
             funnelActive ? (
               <StudioRailHeading
@@ -1550,8 +1589,8 @@ export function StudioShell({
             ) : (
               <PromptComposer
                 mode={target ? "section" : "page"}
-                value={target ? state.instruction : state.brief}
-                onChange={(value) => patch(target ? { instruction: value } : { brief: value })}
+                value={target ? state.instruction : state.composerValue}
+                onChange={(value) => patch(target ? { instruction: value } : { composerValue: value })}
                 onSubmit={(value) => handleBriefSubmit(value)}
                 busy={busy || classifying || funnelBuilding}
                 busyLabel={
@@ -1572,6 +1611,7 @@ export function StudioShell({
                 attachmentsBusy={attachmentsBusy}
                 chips={INTENT_CHIPS}
                 sendShape="circle"
+                chipPlacement="dock"
               />
             )
           }

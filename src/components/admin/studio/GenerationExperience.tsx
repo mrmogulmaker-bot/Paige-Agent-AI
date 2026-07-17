@@ -15,6 +15,7 @@
 // same renderer, same theme resolver, same footer child — and the stage steps aside.
 // A failure narrates itself right here with a Retry; a dead model never paints a
 // successful, empty page.
+import { useEffect, useRef } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { GrowthPageTheme } from "@/lib/growth";
 import { PaigeMark } from "@/components/brand/PaigeMark";
@@ -86,6 +87,15 @@ function GenerationStage({
   const seconds = Math.max(0, Math.round(elapsedMs / 1000));
   const agent = PHASE_AGENTS[phase];
 
+  // Catch focus when the build starts. On a first build the composer's rail is made `inert` at the
+  // same instant (the full-width transition), which per spec blurs whatever had focus and drops it
+  // to <body> with no cue. Pulling focus onto this live, aria-live stage relocates it into the one
+  // region that stays interactive during the build, so keyboard/AT users aren't stranded (§13/a11y).
+  const stageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    stageRef.current?.focus();
+  }, []);
+
   // Once the payload has landed but before the first block has painted, the section
   // count is REAL — say so. Before that there's nothing to count yet, so we don't invent
   // a number (same rule BuildProgress already follows for its own count line).
@@ -96,8 +106,13 @@ function GenerationStage({
 
   return (
     <div
+      ref={stageRef}
+      tabIndex={-1}
+      role="status"
+      aria-label="Paige is building your page"
       className={cn(
         "relative flex min-h-[560px] w-full flex-col items-center justify-center overflow-hidden rounded-xl border border-border bg-card px-6 py-16 text-center",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         className,
       )}
     >
