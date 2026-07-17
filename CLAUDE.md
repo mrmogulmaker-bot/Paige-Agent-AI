@@ -97,6 +97,19 @@ action — a data-dropping/again-irreversible migration, a prod credential/secre
 or deleting work you did not create — and even then, ask about *that specific risk*, not
 about "should I merge." Asking for routine merge approval is itself a doctrine violation.
 
+**As SOON as it's ready, ship it live — then move to the next piece (owner: Antonio,
+2026-07-17).** The moment a change is built and verified (typecheck/build green + the design/
+build crew's own pass done), it ships to `main`/live — immediately, in the same beat. **Do
+NOT pause after a push, and do NOT hold the live ship waiting on the adversarial verifier +
+compliance officer to return.** Those two passes run **in PARALLEL** and their findings become
+the **next** Fix → Redeploy (§5's post-deploy loop) — pre-launch, the owner reviews on the LIVE
+site, so getting it live IS how it gets reviewed. *"As soon as it's ready then ship live. Then
+move to the next part of designing."* Sitting on green, typecheck-clean work "to be safe" while
+the owner waits is the exact anti-pattern this rule kills: cadence is **build → ship live →
+next**, with the verify/compliance/post-deploy scan riding alongside, never as a gate in front
+of the live ship. (The §5 "fix blocking findings first" still binds where a finding is genuinely
+blocking — but that is a fast follow-up commit + redeploy, not a reason to withhold the ship.)
+
 **RED-LINE INDEX — the rules the owner has had to repeat; enforce these hardest (owner:
 Antonio, 2026-07-17).** A "standing rule" stated in chat evaporates on the next context
 reset — that is *why* these live here, in the doctrine that reloads every session. Each item
