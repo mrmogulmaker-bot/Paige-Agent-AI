@@ -28,9 +28,11 @@ import {
   createStudioSession,
   ensureSessionForArtifact,
   isStudioError,
+  uploadGrowthAsset,
 } from "@/components/admin/studio/studio";
 import { STUDIO_HOME_CHIPS } from "@/components/admin/studio/studio-copy";
 import type { StudioSessionView } from "@/components/admin/studio/studio-types";
+import type { GrowthAsset } from "@/lib/growth";
 import { useToast } from "@/hooks/use-toast";
 
 const VIEWS: { id: StudioSessionView; label: string }[] = [
@@ -59,7 +61,50 @@ export default function StudioHome() {
   };
   const [brief, setBrief] = useState("");
   const [starting, setStarting] = useState(false);
+  // HOME-local attachment state — reference/deliverable files uploaded INSIDE the composer bar
+  // and carried into the new session (§10/§13 — real Storage URLs via the one upload seam). Mirrors
+  // StudioShell's own wiring so the framed builder dock and this bare HOME composer behave alike.
+  const [attachments, setAttachments] = useState<GrowthAsset[]>([]);
+  const [attachmentsBusy, setAttachmentsBusy] = useState(false);
   const { sessions, loading, error, toggleStar, rename, remove } = useStudioSessions(activeTenantId, view);
+
+  // Upload picked file(s) through the single tenant-scoped seam (`uploadGrowthAsset`) and add each
+  // returned asset (with its REAL public URL) as a removable chip in the composer dock. Per-file
+  // try/catch so one bad file toasts without dropping the rest (§13 honest reporting).
+  const handleFilesSelected = useCallback(
+    async (files: File[]) => {
+      if (!activeTenantId) {
+        toast({
+          title: "Pick a workspace first",
+          description: "Choose a workspace up top, then attach files.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setAttachmentsBusy(true);
+      try {
+        for (const file of files) {
+          try {
+            const asset = await uploadGrowthAsset(activeTenantId, file);
+            setAttachments((prev) => [...prev, asset]);
+          } catch (err) {
+            toast({
+              title: "Couldn't attach that file",
+              description: isStudioError(err) ? err.message : "Try a different file.",
+              variant: "destructive",
+            });
+          }
+        }
+      } finally {
+        setAttachmentsBusy(false);
+      }
+    },
+    [activeTenantId, toast],
+  );
+
+  const handleRemoveAttachment = useCallback((index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  }, []);
 
   // ── hero pointer parallax (§22 "the chrome is ALIVE") ────────────────────────────────
   // On pointer move over the hero, write the cursor position (normalized -1..1) into --px/--py on
@@ -157,7 +202,11 @@ export default function StudioHome() {
         // here on Home, so the shell fires the build itself on arrival (Defect 1 — no second
         // submit). A blank-canvas start (no seed) carries the flag too, but the shell only fires
         // on a non-empty brief, so it just opens a clean composer.
-        navigate(`/admin/studio/${session.id}`, { state: { brief: seed, autostart: true } });
+        // Carry any HOME-uploaded attachments into the new session on nav state — exactly how the
+        // brief already travels — so the autostart build (generateWholePage → draftPage) picks them
+        // up on arrival. They're seeded into the shell's INITIAL state (render 0), before the build
+        // fires, so no stale-closure timing risk.
+        navigate(`/admin/studio/${session.id}`, { state: { brief: seed, autostart: true, attachments } });
       } catch (err) {
         toast({
           title: "Couldn't start a project",
@@ -167,7 +216,7 @@ export default function StudioHome() {
         setStarting(false);
       }
     },
-    [activeTenantId, navigate, toast],
+    [activeTenantId, navigate, toast, attachments],
   );
 
   // While the deep-link shim resolves, hold a crafted full-height loader — never flash the
@@ -253,12 +302,18 @@ export default function StudioHome() {
               coherent with the committed-dark cosmic field it floats on — so PromptComposer's
               app-token text resolves light-on-dark and holds AA (§6/§11). */}
           <motion.div
-            className="mx-auto w-full max-w-lg"
+            className="mx-auto w-full max-w-sm"
             initial={reduce ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 220, damping: 26, mass: 0.9 }}
           >
-            <div className="dark studio-glass-card p-2">
+            {/* One tight command bar that IS the hero (§22): materially narrower (max-w-sm — it now
+                narrows below even the subhead above, a clean funnel down to the command bar) + trimmed
+                padding (p-1.5). The only gold on HOME is the circular ↑ send — the act moment (§11) —
+                via sendShape="circle" + submitVariant="gold". The neutral paperclip attach + removable
+                chips render inside the same bar (uploads go through uploadGrowthAsset; the files ride
+                into the new session on nav state). */}
+            <div className="dark studio-glass-card p-1.5">
               <PromptComposer
                 mode="page"
                 value={brief}
@@ -268,11 +323,16 @@ export default function StudioHome() {
                 helperText=""
                 submitLabel="Start building"
                 submitVariant="gold"
+                sendShape="circle"
                 surface="bare"
                 busy={starting}
                 busyLabel="Spinning up your session…"
                 chips={STUDIO_HOME_CHIPS}
                 minRows={2}
+                attachments={attachments}
+                onFilesSelected={(files) => void handleFilesSelected(files)}
+                onRemoveAttachment={handleRemoveAttachment}
+                attachmentsBusy={attachmentsBusy}
               />
             </div>
           </motion.div>
