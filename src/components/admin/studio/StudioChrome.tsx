@@ -54,10 +54,14 @@ export function StudioSplit({
         {railHeader && <div className="shrink-0 border-b border-border/60 px-4 py-3">{railHeader}</div>}
         <div className="space-y-4 px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">{railBody}</div>
         {railFooter && (
-          // The pinned composer is its own "floating panel" above the scrollable rail body —
-          // an upward shadow says so instead of a bare top border carrying it alone. Same
-          // `--shadow-ink` token as the rail's edge above, for the same dark-mode reason.
-          <div className="shrink-0 overflow-y-auto border-t border-border/60 bg-background px-4 py-3 shadow-[0_-6px_16px_-10px_hsl(var(--shadow-ink)/0.18)] lg:max-h-[50vh]">
+          // The pinned composer dock sits at the bottom — an upward shadow says so instead of a
+          // bare top border carrying it alone (same `--shadow-ink` token as the rail's edge, for
+          // the same dark-mode reason). It is NOT scroll-capped: the composer is one docked box
+          // whose textarea grows then scrolls INTERNALLY, so the whole box never scrolls as a
+          // unit and the send button never leaves the frame (the bug that made it feel like an
+          // "isolated box scrolling up and down"). The conversation/canvas above is the scroll
+          // region; this stays put — the Lovable/v0 dock pattern.
+          <div className="shrink-0 border-t border-border/60 bg-background px-4 py-3 shadow-[0_-6px_16px_-10px_hsl(var(--shadow-ink)/0.18)]">
             {railFooter}
           </div>
         )}
