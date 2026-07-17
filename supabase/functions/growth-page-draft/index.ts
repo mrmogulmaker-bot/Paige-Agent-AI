@@ -91,7 +91,9 @@
 //         REAL brand cascade (resolve_tenant_brand), not hallucinated, so it is truthful.
 //   §14 — model-routed, reasoning tier, never a hardcoded model.
 //   §15 — the model must NOT invent specifics (dates, Zoom links, testimonial names). When the
-//         brief lacks them it emits a clearly-labeled editable token, never fake data. Same rule
+//         brief lacks them it emits ZERO bracketed tokens (a raw "[ADD_DATE]" ships to a live page
+//         AND is hard-rejected by growth_page_publish) — it uses a real value, omits the element, or
+//         words the copy so no missing specific is needed. Never fake data. Same rule
 //         extends to `suggested_delivery`: the model may only ever point at an attachment index
 //         WE actually included (never invent one), and even then this function is the last line
 //         of defense — it drops any index the model returns that doesn't correspond to a
@@ -261,6 +263,43 @@ function parseJwtClaims(token: string): Record<string, unknown> | null {
   }
 }
 
+// The tenant's Playbook — persona (domain/role/tone) + probing questions — turned into a compact
+// "THIS PRACTICE" block for the SYSTEM prompt, so the page reads NATIVE to this business instead
+// of generic-to-the-brief (§7 tenant-authored). A Playbook has no explicit offer/audience field:
+// audience/offer come from persona.domain + persona.role, and the probing questions capture the
+// prospect's real goals/obstacles — the raw material for a SPECIFIC headline outcome. All lengths
+// hard-capped so a large Playbook can't blow the prompt budget. Returns "" when there's nothing
+// real to add (caller then falls back to today's brand-only prompt — §13, never fabricates a persona).
+function buildPracticeBlock(pb: unknown, tagline: string, primary: string, accent: string): string {
+  const cfg = (pb ?? {}) as Record<string, unknown>;
+  const p = (cfg.persona ?? {}) as Record<string, unknown>;
+  const domain = str(p.domain).trim().slice(0, 120);
+  const role = str(p.role).trim().slice(0, 160);
+  const tone = str(p.tone).trim().slice(0, 160);
+  const probes = Array.isArray(cfg.probingQuestions) ? (cfg.probingQuestions as Record<string, unknown>[]) : [];
+  const goals = probes
+    .filter((q) => q && str(q.ask).trim())
+    .slice(0, 4)
+    .map((q) => `- ${str(q.ask).trim().slice(0, 160)} (reveals the prospect's ${str(q.captures || "goal").trim().slice(0, 60)})`)
+    .join("\n");
+  const lines = [
+    domain && `Practice domain: ${domain}`,
+    role && `Who this page speaks for / to: ${role}`,
+    tone && `Voice & tone to hold: ${tone}`,
+    tagline && `Their tagline (use its promise; don't quote it verbatim): "${tagline.slice(0, 200)}"`,
+    `Palette in words: primary ${primary} carries headers/structure; accent ${accent} is spent ONLY on the single act/CTA moment — never decoration.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  if (!lines && !goals) return "";
+  return (
+    `\n\nTHIS PRACTICE — write this page NATIVE to this specific business, never a generic template. Ground every section in what you know about them:\n${lines}` +
+    (goals
+      ? `\n\nWHAT THEIR PROSPECTS ACTUALLY WANT — the practice probes new clients with these; the answers are the dream outcomes and obstacles this page must name. Turn them into the headline's SPECIFIC outcome and the problem you agitate. Do NOT print these questions on the page:\n${goals}`
+      : "")
+  );
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -342,6 +381,7 @@ serve(async (req: Request) => {
     // a tenant sets nothing, so the theme we hand back is the tenant's REAL brand — never a
     // colour the model guessed.
     let brandName = "";
+    let tagline = "";
     let theme: { primary: string; accent: string; font: string | null; logo_url: string | null } = {
       primary: PRIMARY_FLOOR, accent: ACCENT_FLOOR, font: null, logo_url: null,
     };
@@ -355,6 +395,7 @@ serve(async (req: Request) => {
         const row = Array.isArray(b) ? b[0] : b;
         if (row) {
           brandName = str(row.product_name) || str(row.tenant_name) || "";
+          tagline = str(row.tagline) || "";
           theme = {
             primary: str(row.primary_color) || PRIMARY_FLOOR,
             accent: str(row.accent_color) || ACCENT_FLOOR,
@@ -363,6 +404,46 @@ serve(async (req: Request) => {
           };
         }
       }
+    }
+
+    // ── 4a. This practice — the tenant's Playbook persona/voice, so the page reads NATIVE to this
+    // business, not a generic template (§7 tenant-authored). Non-fatal: any failure falls back to
+    // today's brand-only prompt (§13 — degrade, never fabricate). IDOR-safe on both paths: the JWT
+    // path uses the SAME SECURITY-DEFINER get_paige_persona_context() paige-ai-chat uses (resolves
+    // the tenant from auth.uid(), never the body); the service-role path reads only the tenant WE
+    // already resolved in step 3.
+    let practiceBlock = "";
+    let fundingEnabled = false;
+    try {
+      let pb: unknown = null;
+      if (isServiceRole) {
+        if (tenantId) {
+          const admin2 = createClient(supabaseUrl, supabaseServiceKey);
+          const { data: trow } = await admin2.from("tenants").select("features").eq("id", tenantId).maybeSingle();
+          const f = ((trow as { features?: Record<string, unknown> } | null)?.features ?? {}) as Record<string, unknown>;
+          pb = f.playbook_config ?? null;
+          const skills = Array.isArray(f.enabled_skills) ? (f.enabled_skills as unknown[]) : [];
+          // Mirror the SQL COALESCE in get_paige_persona_context (migration ...320000:40-46) so the
+          // headless path gates funding EXACTLY like the JWT path — never looser.
+          fundingEnabled =
+            f.paige_funding_skill === true ||
+            f.paige_funding_skill === "true" ||
+            f.playbook === "funding" ||
+            (!!pb && (pb as Record<string, unknown>).slug === "funding") ||
+            skills.includes("funding");
+        }
+      } else {
+        const authed2 = createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });
+        const { data: pc } = await authed2.rpc("get_paige_persona_context");
+        const row = Array.isArray(pc) ? pc[0] : pc;
+        if (row) {
+          pb = (row as Record<string, unknown>).playbook_config ?? null;
+          fundingEnabled = (row as Record<string, unknown>).funding_enabled === true;
+        }
+      }
+      practiceBlock = buildPracticeBlock(pb, tagline, theme.primary, theme.accent);
+    } catch (e) {
+      console.warn("growth-page-draft: practice profile lookup failed, brand-only fallback:", (e as Error)?.message);
     }
 
     // ── 4b. Attachments — fetch + encode server-side (never trust raw base64 in the body) ───
@@ -375,13 +456,13 @@ serve(async (req: Request) => {
 
 VOICE (§3): direct, confident, mogul-founder. Never use "AI-powered", "streamline", "seamless", or "empower". Write for a broad client-based-services audience — coaches, consultants, agencies, advisors, thought leaders — using inclusive words (practice, business, clients, work) rather than narrowly "coaching".
 
-DEFAULTS (§2): the offer defaults to a coaching-generic play — a webinar/masterclass, a free consultation or strategy call, a coaching program, or a lead magnet. Do NOT introduce credit, funding, lending, loans, financing, or "readiness/funding score" framing UNLESS the brief explicitly asks for it. (If the brief DOES ask for it, that is the operator's own offer and you write it in their voice — the rule is that you never ADD it.)
+DEFAULTS (§2): the offer defaults to a coaching-generic play — a webinar/masterclass, a free consultation or strategy call, a coaching program, or a lead magnet. Do NOT introduce credit, funding, lending, loans, financing, or "readiness/funding score" framing UNLESS the brief explicitly asks for it. (If the brief DOES ask for it, that is the operator's own offer and you write it in their voice — the rule is that you never ADD it.)${practiceBlock}${fundingEnabled ? `\n\nSCOPE (§2 — funding is opt-in ON for THIS tenant): this practice offers funding & capital-raising coaching, so credit, business credit, funding, lenders, and capital strategy ARE in scope for this page — write them in the operator's own voice when the brief calls for them. Never invent offers the practice does not actually provide.` : ""}
 
-COPY CRAFT — the direct-response bar this page is held to (the gap between a page that converts and one that doesn't): name a SPECIFIC dream outcome and timeframe in the headline, never a vague benefit — "your first paying client in 30 days" beats "grow your business." Conversion is a ratio: maximize the reader's perceived likelihood of success (a clear mechanism, real specificity, proof) while minimizing their sense of required time and effort — every section should be doing one of those two jobs. Agitate a real, named problem the reader already recognizes in themselves before you resolve it — a claim with no friction behind it reads as filler. Write with an actual point of view, not corporate-anonymous voice; when it fits the brief, frame the offer as the non-obvious move that works, not the obvious path everyone already tried. Every claim is a concrete number or a labeled placeholder token — never a hollow adjective standing in for a number.
+COPY CRAFT — the direct-response bar this page is held to (the gap between a page that converts and one that doesn't): name a SPECIFIC dream outcome and timeframe in the headline, never a vague benefit — "your first paying client in 30 days" beats "grow your business." Conversion is a ratio: maximize the reader's perceived likelihood of success (a clear mechanism, real specificity, proof) while minimizing their sense of required time and effort — every section should be doing one of those two jobs. Agitate a real, named problem the reader already recognizes in themselves before you resolve it — a claim with no friction behind it reads as filler. Write with an actual point of view, not corporate-anonymous voice; when it fits the brief, frame the offer as the non-obvious move that works, not the obvious path everyone already tried. Every claim is a concrete number you were actually given, or it is cut — never a hollow adjective standing in for a number, and never a bracketed placeholder standing in for one.
 
 TIER CHECK — before you finalize, grade your own draft. Premier / top-level copy is marketplace-scale: a stranger with zero context reads it and feels the specific outcome is real and worth acting on now — sharp enough to sit next to the best-performing page in the category. Low-tier / basic copy is generic filler dressed up as a page — safe, vague, forgettable, written to close the request rather than close the sale. Ask yourself plainly: "is this the kind of copy that actually helps this business sell and grow, or did I just generate something to satisfy the brief?" If any section reads as the latter, rewrite that section before you return the page — never ship the first pass just because it's technically complete.
 
-NO FABRICATION (§15): do NOT invent specifics you were not given — no fake dates, times, Zoom/webinar links, prices, testimonial names, quotes, or statistics. When the brief lacks a specific, either omit that element OR write a clearly-labeled editable placeholder token in square brackets, ALL-CAPS with underscores, for the operator to fill, e.g. "[ADD_WEBINAR_DATE]", "[PASTE_REGISTRATION_LINK]", "[ADD_CLIENT_RESULT]". Use that exact ALL_CAPS_UNDERSCORE bracket shape so the publish step can detect an unfilled placeholder. A bracketed editable token is expected and fine; a fabricated concrete fact is not.
+NO FABRICATION, NO PLACEHOLDERS (§15): do NOT invent specifics you were not given — no fake dates, times, Zoom/webinar links, prices, testimonial names, quotes, or statistics. And do NOT emit a bracketed editable token either — no "[ADD_WEBINAR_DATE]", "[PASTE_LINK]", "[YOUR_RESULT]", or any [BRACKETED] token, ALL-CAPS or not. A raw placeholder ships straight to a live, prospect-facing page and reads as broken. When you don't have a specific, do ONE of three things: (a) use a real value the brief or the THIS PRACTICE context above actually gives you; (b) OMIT the element entirely — drop the countdown, the dated line, the price, the unattributed testimonial; a shorter page with only real content is correct and premium; or (c) word the copy so it needs no missing specific — "Save your spot for the next live masterclass" not "on [DATE]", "Book a call" not a made-up time. Output zero bracketed tokens.
 
 OUTPUT — return ONLY a single JSON object, no prose, no markdown fences:
 {
