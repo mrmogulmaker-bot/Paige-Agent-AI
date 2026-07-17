@@ -54,21 +54,26 @@ export function StudioSplit({
         {railHeader && <div className="shrink-0 border-b border-border/60 px-4 py-3">{railHeader}</div>}
         <div className="space-y-4 px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">{railBody}</div>
         {railFooter && (
-          // The pinned composer is its own "floating panel" above the scrollable rail body —
-          // an upward shadow says so instead of a bare top border carrying it alone. Same
-          // `--shadow-ink` token as the rail's edge above, for the same dark-mode reason.
-          <div className="shrink-0 overflow-y-auto border-t border-border/60 bg-background px-4 py-3 shadow-[0_-6px_16px_-10px_hsl(var(--shadow-ink)/0.18)] lg:max-h-[50vh]">
+          // The pinned composer dock sits at the bottom — an upward shadow says so instead of a
+          // bare top border carrying it alone (same `--shadow-ink` token as the rail's edge, for
+          // the same dark-mode reason). It is NOT scroll-capped: the composer is one docked box
+          // whose textarea grows then scrolls INTERNALLY, so the whole box never scrolls as a
+          // unit and the send button never leaves the frame (the bug that made it feel like an
+          // "isolated box scrolling up and down"). The conversation/canvas above is the scroll
+          // region; this stays put — the Lovable/v0 dock pattern.
+          <div className="shrink-0 border-t border-border/60 bg-background px-4 py-3 shadow-[0_-6px_16px_-10px_hsl(var(--shadow-ink)/0.18)]">
             {railFooter}
           </div>
         )}
       </div>
-      {/* `.studio-drafting-grid` (src/index.css) carries the same muted top-to-bottom gradient
-          this used to have inline, PLUS a faint 22px dot-grid on top — a recessed DRAFTING
-          SURFACE the rendered page floats on (the Lovable/Figma pattern this file already
-          named), not one flat gray fill. The dots are --foreground-tinted so they auto-invert
-          to stay a low-contrast tonal mark in both themes (correct for a texture — the mirror
-          of why the shadows use --shadow-ink). The existing inset shadow is preserved verbatim. */}
-      <div className="studio-drafting-grid min-w-0 flex-1 p-4 shadow-[inset_0_2px_16px_-6px_hsl(var(--shadow-ink)/0.12)] md:p-6 lg:min-h-0 lg:overflow-y-auto">
+      {/* `.studio-drafting-grid` (src/index.css) is a recessed PHOTOGRAPHIC well the rendered page
+          floats on (the Lovable/v0 preview pane) — a top-light glow + a bottom vignette over a
+          solid well color, NOT the old wireframe dot-grid (the "sketch" the owner named). Here we
+          layer the deep inset shadow that gives the well its concave lip: a 1px top highlight
+          (--foreground, so it stays a faint light edge in both themes) plus a large soft inset
+          cast in fixed shadow-ink. Roomier padding (p-6 → md:p-10) so the artifact breathes and
+          reads as a hero on a surface, not a full-bleed fill jammed to the edges (§11). */}
+      <div className="studio-drafting-grid min-w-0 flex-1 p-6 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.04),inset_0_18px_50px_-24px_hsl(var(--studio-ink)/0.7)] md:p-10 lg:min-h-0 lg:overflow-y-auto">
         {canvas}
       </div>
     </div>

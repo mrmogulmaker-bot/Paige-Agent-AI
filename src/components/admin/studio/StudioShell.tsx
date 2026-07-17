@@ -1571,6 +1571,7 @@ export function StudioShell({
                 onRemoveAttachment={handleRemoveAttachment}
                 attachmentsBusy={attachmentsBusy}
                 chips={INTENT_CHIPS}
+                sendShape="circle"
               />
             )
           }

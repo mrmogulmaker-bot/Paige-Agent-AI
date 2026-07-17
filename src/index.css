@@ -172,11 +172,25 @@ All colors MUST be HSL.
     --studio-rail-bg:      222 42% 98%;
     --studio-on-hero:      0 0% 100%;
     --studio-scrim:        236 60% 4%;
+
+    /* Drafting WELL — the recessed surface the rendered page floats on (the Lovable/v0 preview
+       pane, not a wireframe grid). Light values: a soft cool gray a step BELOW --card (white)
+       so the page card lifts and casts. `well-glow` is the top-light that gives the recess its
+       lit lip. */
+    --studio-well:      224 26% 90%;
+    --studio-well-glow:   0  0% 100%;
   }
 
-  /* Only the theme-aware glass/rail flip for the dark app theme — the cosmic FIELD tokens
-     above are already dark and are inherited unchanged (same element matches both selectors). */
-  .dark .studio-surface {
+  /* The theme-aware glass/rail flip for a DARK studio. It carries BOTH selectors for the same
+     reason the well tokens below do: `.dark .studio-surface` catches the PLATFORM theme going
+     dark (`.dark` an ancestor of the surface), and `.studio-surface .dark` catches the
+     STUDIO-LOCAL toggle (its `dark` class sits on StudioFrame, a DESCENDANT). Any in-frame
+     element that consumes a `--studio-glass-*` token — the composer glass card, the rail, and
+     now LivePreview's browser-chrome strip (`--studio-glass-solid`) — needs the local-toggle
+     flip too, or it renders a near-white bar in a dark studio (the cosmic FIELD tokens above
+     are already dark and inherited unchanged). */
+  .dark .studio-surface,
+  .studio-surface .dark {
     --studio-glass-bg:     222 40% 12%;
     --studio-glass-border: 220 30% 30%;
     /* A step BELOW the dark --card (~8% L) so the bg-card composer input sits ABOVE the glass
@@ -184,6 +198,20 @@ All colors MUST be HSL.
     --studio-glass-solid:  230 38% 6%;
     --studio-rail-bg:      234 44% 7%;
     --studio-scrim:        236 60% 3%;
+  }
+
+  /* The drafting WELL flips for a DARK studio in two distinct ways, so it carries BOTH selectors:
+     `.dark .studio-surface` catches the PLATFORM theme being dark (`.dark` is an ancestor of the
+     surface), and `.studio-surface .dark` catches the STUDIO-LOCAL toggle (its `dark` class sits on
+     StudioFrame, a DESCENDANT of `.studio-surface`, and StudioFrame is an ancestor of the
+     `.studio-drafting-grid` that consumes these — so the override must live on that inner `.dark`,
+     not only the outer one). Dark well: a deep indigo-charcoal a touch cooler than the field, with a
+     lifted top-glow lip so the recess still reads lit from above. `--studio-ink` is theme-fixed
+     (declared once on `.studio-surface`) and needs no dark variant — it is the shadow ink. */
+  .dark .studio-surface,
+  .studio-surface .dark {
+    --studio-well:      235 42% 6%;
+    --studio-well-glow: 240 45% 14%;
   }
 }
 
@@ -291,23 +319,21 @@ All colors MUST be HSL.
     box-shadow: var(--shadow-glow-lg);
   }
 
-  /* Studio drafting surface — the Vibe Studio canvas well. Two stacked background layers on
-     one element: (layer 1) a faint 22px dot-grid tinted from --foreground, and (layer 2) the
-     same muted top-to-bottom tonal gradient the well used inline before. Reads as a recessed
-     drafting/blueprint surface the rendered page floats on (the Lovable/Figma pattern), not a
-     flat gray fill. NO .dark override, deliberately: --muted flips per theme (unchanged from
-     the inline gradient), and --foreground flips near-white in the dark studio / near-black in
-     light — for a TEXTURE that auto-inversion is exactly right (subtle light dots on charcoal,
-     subtle dark dots on near-white), the mirror image of why a SHADOW must instead use the
-     fixed-ink --shadow-ink. Held at 0.04 opacity / 1px dots: "felt, not seen" — the failure
-     mode is invisible, never busy. background-attachment defaults to scroll so the surface
-     stays put as canvas content scrolls. */
+  /* Studio drafting surface — the Vibe Studio canvas WELL. A recessed, photographic pane the
+     rendered page floats on (the Lovable/v0 preview surface), NOT a wireframe. The old version
+     stacked a 22px dot-grid on top — the literal "sketch / graph-paper" look the owner called
+     out — which is gone. Now two soft radial washes over a solid well color: (1) a top-down
+     glow lip (`--studio-well-glow`) so the recess reads LIT from above, and (2) a bottom
+     vignette in fixed shadow-ink (`--studio-ink`) so it sinks at the base — together a real
+     concave well. The well color + glow flip per studio theme (tokens defined on
+     `.studio-surface` / `.dark .studio-surface, .studio-surface .dark`); `--studio-ink` is
+     theme-fixed because it is shadow, not fill (§11: a shadow never rides a theme-flipping
+     token). background-attachment defaults to scroll so the well stays put as content scrolls. */
   .studio-drafting-grid {
+    background-color: hsl(var(--studio-well));
     background-image:
-      radial-gradient(hsl(var(--foreground) / 0.04) 1px, transparent 1.5px),
-      linear-gradient(to bottom, hsl(var(--muted) / 0.2), hsl(var(--muted) / 0.4));
-    background-size: 22px 22px, 100% 100%;
-    background-position: 0 0, 0 0;
+      radial-gradient(120% 80% at 50% 0%, hsl(var(--studio-well-glow) / 0.55), transparent 60%),
+      radial-gradient(100% 100% at 50% 120%, hsl(var(--studio-ink) / 0.5), transparent 55%);
   }
 
   /* ── Vibe Studio "Cosmic Paige" hero field. Tokens resolve from the enclosing

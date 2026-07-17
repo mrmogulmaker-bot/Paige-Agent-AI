@@ -184,6 +184,7 @@ export default function StudioHome() {
               helperText="One sentence is enough to start — Paige asks for anything she needs, then builds it with her team."
               submitLabel="Start building"
               submitVariant="gold"
+              surface="bare"
               busy={starting}
               busyLabel="Spinning up your session…"
               chips={STUDIO_HOME_CHIPS}
