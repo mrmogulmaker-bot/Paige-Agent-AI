@@ -26,7 +26,7 @@
 // indigo `--ring`).
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Loader2, Send, Sparkles, Wand2 } from "lucide-react";
+import { Send, Sparkles, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useGeneratePage } from "@/hooks/useGeneratePage";
 import { useToast } from "@/hooks/use-toast";
@@ -2222,12 +2222,12 @@ export function StudioShell({
         canvas={
           <div className="relative h-full">
             {sessionCanvas}
-            {/* In-flight follow-up: keep the current artifact, lay a live indigo scan-line over it
-                (§11 gold reserved for the act; §13 clears on onBusy(false)). */}
+            {/* In-flight FOLLOW-UP: the prior artifact stays on stage; lay the premium branded
+                "Paige is creating" layer over it (#292 Fix C) — a living PaigeMark ribbon + the real
+                streamed note + shooting-star field, replacing the bare scan-line. Ambient, never an
+                opaque cover; reduce-safe; §11 gold reserved for the act. Clears on onBusy(false). */}
             {chatBusy && canvasArtifact && (
-              <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
-                <div className={cn("h-0.5 w-full origin-left bg-primary/70", !reduceMotion && "animate-pulse")} />
-              </div>
+              <SessionBuildingOverlay note={chatNote} elapsedMs={chatElapsedMs} reduce={!!reduceMotion} />
             )}
           </div>
         }
