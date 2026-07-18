@@ -32,6 +32,21 @@ convene the team. The conductor may delegate freely and decide who is on the cre
 crew there must be — with a verifier and (per §5) a compliance officer on anything that
 ships. Catching yourself mid-solo is the signal to stop and staff the team.
 
+**THE HARD GATE — a mechanical STOP before the first build action (owner: Antonio, 2026-07-18).**
+Prose alone has failed this rule more than once ("where's your team, my friend?"), so like §18
+it is now a real gate, not a reminder. **Before the FIRST `Edit`/`Write`/build action on any
+substantive task, the crew must already be dispatched via the Workflow tool** — state, out loud,
+who is on it (name the specialists + the verifier). The trigger is objective and self-catching:
+*if you have written or edited any product code on a substantive task and no Workflow crew was
+convened for it, you are ALREADY in violation — stop immediately and staff the crew before the
+next action.* A single upfront research/Explore agent is a good scout, but it is **not** the crew
+and does not satisfy this gate — the build/verify/compliance team is what the gate requires.
+Do not let "I'll just wire this one piece first, then convene" happen: that *is* the solo, every
+time. The only exemptions are the genuinely trivial (a one-liner, a rename, a status/deploy
+check). When in doubt, the gate resolves to **convene**. The Workflow does not have to be heavy —
+right-size it (2–3 specialists on a small diff, more on a real feature) — but it must exist and
+must run before the work is called done.
+
 ## 2. Content rule — client-based service businesses, never consumer finance.
 
 The product and all marketing are for **client-based service businesses** —
@@ -770,3 +785,30 @@ Read the doc for the full engine/stage/governance detail; the load-bearing point
   operator tooling into consumer marketplace fails the test and does not ship.
 - **The test, every time:** *"Which engine does this feed, which governance law binds it, and which
   existing primitive does it extend?"* If a build can't place itself on the map, it isn't ready.
+
+## 24. Operational efficiency — automate the repeat, never re-derive the pipeline.
+
+**Directive (owner: Antonio, 2026-07-18):** we stop paying the same tax twice. When a manual,
+multi-step operation shows up a second time, that is the signal to **automate it once, document
+it, and never hand-run it again** — the opposite of re-solving the same problem every session.
+The operational runbook is **`docs/OPS.md`** — read it before any deploy / CI / infra work so the
+mechanics (project ref, per-function auth, deploy path) are never re-derived from scratch.
+
+- **Edge functions deploy themselves on merge.** `.github/workflows/deploy-edge-functions.yml`
+  auto-deploys exactly the functions whose bundle changed (following `_shared` imports
+  transitively, via `.github/scripts/edge-affected.py`) on every push to `main` touching
+  `supabase/functions/**`, and moves the `edge-live` tag. **Do NOT hand-marshal an edge function
+  through the MCP `deploy_edge_function` tool** — that is the exact expensive manual step this
+  kills. Merge to `main` and let CI ship it. (Requires the `SUPABASE_ACCESS_TOKEN` repo secret,
+  which is set.) A manual MCP deploy is a last resort only when CI is unavailable, and §13 still
+  binds: re-fetch and byte-diff against the repo afterward.
+- **`/edge-drift`** reports which functions are ahead of prod (a cheap `edge-live..HEAD` git diff).
+  Run it to confirm a change is live; on `main` with CI healthy, drift is zero.
+- **Task-list hygiene.** The live task list reloads into context **every turn** — keeping finished
+  items in it is pure per-turn overhead. Periodically archive completed tasks to **`docs/DONE.md`**
+  and delete them from the live list (`TaskUpdate status: deleted`). Keep the runway, not the
+  graveyard.
+- **The test, every time:** *"Am I about to hand-run a multi-step operation I (or a past session)
+  already ran before?"* If yes, stop — automate it (a command, a CI job, a script), file it in
+  `docs/OPS.md`, and never repeat it. Re-deriving a known pipeline is itself the waste this section
+  exists to end.
