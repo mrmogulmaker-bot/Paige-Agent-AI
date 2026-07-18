@@ -309,10 +309,17 @@ serve(async (req: Request) => {
     let contentId: string | null = null;
     if (tenantId && publicUrl) {
       const title = prompt.slice(0, 60) + (prompt.length > 60 ? "…" : "");
-      const { data: cid, error: saveErr } = await admin.rpc("save_marketing_content", {
+      const saveArgs = {
         p_kind: "image", p_title: title, p_image_url: publicUrl, p_image_path: path,
-        p_size: sizeKey, p_brief: prompt.slice(0, 500), p_id: reuseContentId, p_tenant_id: tenantId,
-      });
+        p_size: sizeKey, p_brief: prompt.slice(0, 500), p_tenant_id: tenantId,
+      };
+      let { data: cid, error: saveErr } = await admin.rpc("save_marketing_content", { ...saveArgs, p_id: reuseContentId });
+      // If a reuse target went stale (row deleted mid-session → CONTENT_NOT_FOUND), don't orphan the
+      // freshly-generated image: fall back to a fresh INSERT so it still lands tracked in the library
+      // (it starts a new version lineage instead of stacking, which is the honest outcome, §13).
+      if (saveErr && reuseContentId && /CONTENT_NOT_FOUND/.test(saveErr.message)) {
+        ({ data: cid, error: saveErr } = await admin.rpc("save_marketing_content", { ...saveArgs, p_id: null }));
+      }
       if (saveErr) console.error("library save failed:", saveErr.message);
       else contentId = (cid as string) ?? null;
     }
