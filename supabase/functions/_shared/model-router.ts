@@ -213,6 +213,8 @@ import { ideogramImage } from "./ideogram.ts";
 import { replicateRun } from "./replicate.ts";
 import { meshyTextTo3d } from "./meshy.ts";
 import { geminiImage } from "./gemini-image.ts";
+import { renderDoc, type DocFormat } from "./doc-render.ts";
+import { elevenlabsTts } from "./elevenlabs.ts";
 
 // Re-export the shared vocabulary from its one home (§12) so a caller imports everything it
 // needs from the router, not from three files.
@@ -370,20 +372,56 @@ const threeDCell: RouteCell = {
   },
 };
 
-// audio-voice — ElevenLabs. Its provider client lands in a follow-on lane; until then this is a
-// CLEAN needs_config degrade (§13), never a fake/silent audio result.
+// audio-voice — ElevenLabs text-to-speech. Fail-CLOSED at the client (NeedsConfigError when
+// ELEVENLABS_API_KEY is unset) → callModel turns it into an honest needs_config degrade; never a
+// fake/silent audio result (§13). The client returns raw mp3 bytes (artifact_bytes) which the
+// router persists to studio-deliverables. task may carry {voiceId|voice_id}; model_override → modelId.
 const voiceCell: RouteCell = {
   provider: "elevenlabs",
-  justification: "ElevenLabs voice synthesis — client wired in a follow-on lane; clean needs_config degrade until then (§13).",
-  invoke: () => { throw new NeedsConfigError("elevenlabs", "audio-voice (ElevenLabs) client is not wired yet"); },
+  justification: "ElevenLabs voice synthesis — text→narration mp3; honest needs_config degrade until ELEVENLABS_API_KEY is set (§13).",
+  invoke: (task, model) => {
+    const v = (task as any)?.voiceId ?? (task as any)?.voice_id;
+    return elevenlabsTts({
+      text: taskText(task),
+      voiceId: typeof v === "string" ? v : undefined,
+      modelId: model,
+    });
+  },
 };
 
-// doc-render — PDF/eBook rendering is an explicitly DEFERRED wave (§19). Clean needs_config stub
-// so a caller gets an honest "not yet," never a broken document.
+// doc-render — in-band document renderers (pdf/docx/pptx/epub) via pure-JS/npm libs (doc-render.ts).
+// Each format is INDEPENDENTLY fail-closed there: a broken lib import/render throws NeedsConfigError
+// for THAT format only → callModel degrades it to honest needs_config, never a fake/broken document
+// (§13). task is {format,title,content,style}; renderDoc returns bytes+mime the router persists.
 const docRenderCell: RouteCell = {
   provider: "doc-render",
-  justification: "Doc render (PDF/eBook) — deferred wave; clean needs_config stub, never a fake document (§13/§19).",
-  invoke: () => { throw new NeedsConfigError("doc-render", "doc-render is a deferred capability"); },
+  justification: "In-band doc renderers (pdf/docx/pptx/epub) — pure-JS/npm libs, each independently fail-closed to needs_config (§13/§19).",
+  invoke: async (task) => {
+    const started = Date.now();
+    const t = (task && typeof task === "object") ? (task as Record<string, unknown>) : {};
+    const format = typeof t.format === "string" ? (t.format as DocFormat) : undefined;
+    const title = typeof t.title === "string" ? t.title : undefined;
+    // content: explicit content/blocks/markdown wins; else fall back to the raw task text.
+    const content = t.content ?? t.blocks ?? t.markdown ?? t.text ?? taskText(task);
+    const style = (t.style && typeof t.style === "object") ? (t.style as Record<string, unknown>) : undefined;
+    // HTML-FIDELITY is the DEFERRED path (Lane C — a hardened headless-Chromium microservice, see
+    // docs/doc-render-decision.md). The in-band renderers treat an HTML string as plain text, which would
+    // silently produce a doc with visible <tags> — wrong, not fake. So an explicit html request degrades
+    // honestly to needs_config until that microservice lands, rather than rendering literal markup (§13).
+    if (t.mode === "html" || typeof t.html === "string" || format === ("html" as DocFormat)) {
+      throw new NeedsConfigError("doc-render:html-fidelity", "HTML→PDF fidelity is not yet configured (deferred microservice)");
+    }
+    // A missing/unknown format is an honest fail-closed inside renderDoc (throws NeedsConfigError),
+    // caught by callModel as needs_config — never a fabricated document.
+    const rendered = await renderDoc({ format: format as DocFormat, title, content, style });
+    return {
+      artifact_bytes: rendered.bytes,
+      artifact_mime: rendered.mime,
+      provider: "doc-render",
+      model: format ?? "doc",
+      latency_ms: Date.now() - started,
+    };
+  },
 };
 
 // The full (modality × tier) map. Every cell carries its own justification so the route choices
@@ -530,6 +568,9 @@ function extFor(mime: string | undefined, modality: Modality): string {
   if (m.includes("mpeg") || m.includes("mp3")) return "mp3";
   if (m.includes("wav")) return "wav";
   if (m.includes("pdf")) return "pdf";
+  if (m.includes("wordprocessingml")) return "docx";
+  if (m.includes("presentationml")) return "pptx";
+  if (m.includes("epub")) return "epub";
   if (m.includes("markdown")) return "md";
   if (m.includes("text")) return "txt";
   if (modality === "3d") return "glb";
