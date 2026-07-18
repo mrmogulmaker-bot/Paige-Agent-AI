@@ -4310,12 +4310,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "generate_image",
-              description: "Admin/coach only. Generate a marketing image from a text description (logos, social graphics, ad creative, hero images). Returns a public URL the operator can use or download. If image generation isn't configured, returns needs_config — tell the operator to add the image key. Safe to run; no side effects beyond storing the image.",
+              description: "Admin/coach only. Generate a marketing image from a text description (logos, social graphics, ad creative, hero images). Returns a public URL the operator can use or download. If image generation isn't configured, returns needs_config — tell the operator to add the image key. Safe to run; no side effects beyond storing the image.\n\nPICK THE BEST PROVIDER for the brief (omit to use the fast, cheap default): 'replicate' for premium photoreal/artistic HERO art (Flux — the top-quality option); 'ideogram' when the image must contain LEGIBLE TEXT — logos, typographic posters, ad creatives with words, thumbnails with a headline; 'gemini' for a fast, low-cost default (general marketing/social graphics); 'openai' for an alternate style when the default result isn't landing. If a chosen provider's key isn't set, generation auto-falls-back to a configured one and the result reports which provider actually served it.",
               parameters: {
                 type: "object",
                 properties: {
                   prompt: { type: "string", description: "Detailed description of the image to create." },
-                  size: { type: "string", enum: ["square", "portrait", "landscape"], description: "Aspect ratio. Default square." }
+                  size: { type: "string", enum: ["square", "portrait", "landscape"], description: "Aspect ratio. Default square." },
+                  provider: { type: "string", enum: ["gemini", "openai", "replicate", "ideogram"], description: "Which image model to use — see the picking guidance above. Omit for the fast default (gemini)." },
+                  model: { type: "string", description: "Optional specific model variant, ONLY for replicate (e.g. black-forest-labs/flux-1.1-pro, flux-dev, flux-schnell) or ideogram (V_2, V_2_TURBO). Omit to use the provider's default." }
                 },
                 required: ["prompt"]
               }
@@ -6428,7 +6430,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               result = { success: true, channel: (cd as any)?.channel, drafts: (cd as any)?.drafts ?? [] };
             } else if (tc.function.name === "generate_image") {
               const { data: img, error } = await supabaseClient.functions.invoke("generate-image", {
-                body: { prompt: args.prompt, size: args.size ?? "square", tenant_id: personaCtx?.tenant_id ?? null },
+                body: {
+                  prompt: args.prompt,
+                  size: args.size ?? "square",
+                  provider: args.provider ?? undefined,
+                  model: args.model ?? undefined,
+                  tenant_id: personaCtx?.tenant_id ?? null,
+                },
               });
               if (error) throw error;
               if ((img as any)?.needs_config) {
@@ -6437,8 +6445,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 throw new Error((img as any).error);
               } else {
                 // content_id is load-bearing for the Studio session link (#292) — without it the
-                // image never reaches the project canvas. Keep it on the result.
-                result = { success: true, url: (img as any)?.url, size: (img as any)?.size, content_id: (img as any)?.content_id ?? null };
+                // image never reaches the project canvas. Keep it on the result. provider is the one
+                // that ACTUALLY served (may differ from requested when a key was absent → fell back).
+                result = { success: true, url: (img as any)?.url, size: (img as any)?.size, provider: (img as any)?.provider, model: (img as any)?.model, content_id: (img as any)?.content_id ?? null };
               }
             } else if (tc.function.name === "calendar_book_meeting") {
               // Confirm is enforced by the central autonomy gate above (a booking
