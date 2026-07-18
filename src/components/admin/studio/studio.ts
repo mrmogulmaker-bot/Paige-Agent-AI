@@ -26,6 +26,8 @@ import { GROWTH_BRAND_FLOOR, buildGrowthBrandFloor } from "@/components/growth/g
 import { CLARIFYING_QUESTIONS, STUDIO_ERROR_COPY, briefFromKbDoc, kbChipLabel } from "./studio-copy";
 import type {
   IntentChip,
+  LibraryItem,
+  LibraryKind,
   SessionArtifactKind,
   SessionArtifactRef,
   StudioArtifactType,
@@ -961,6 +963,81 @@ export async function saveImageToLibrary(input: SaveImageInput): Promise<SavedCo
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
+// Media Library — the curation-of-winners layer (#284, §10/§12/§18)
+//   A thin membership over the real stores: page/funnel/form live in growth_*, image/copy in
+//   marketing_content. save_to_library/remove_from_library/list_library are the Paige-callable
+//   seams (§10) so she can keep/unkeep/list a tenant's saved work by voice, not only by click.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/** Keep one artifact in the tenant's media library (idempotent — re-keeping refreshes it). The
+ *  title/thumbnail snapshot is what the library card shows; the pointer (kind+artifactId) resolves
+ *  the live source. Returns the membership row id. */
+export async function saveToLibrary(input: {
+  tenantId: string;
+  kind: LibraryKind;
+  artifactId: string;
+  title?: string;
+  thumbnailUrl?: string | null;
+  note?: string | null;
+}): Promise<{ id: string }> {
+  const tenantId = requireTenant(input.tenantId);
+  if (!input.artifactId) throw studioError("SAVE_FAILED", null, "There's nothing to save yet.");
+  const id = await rpc<string | null>(
+    "save_to_library",
+    {
+      p_kind: input.kind,
+      p_artifact_id: input.artifactId,
+      p_title: input.title?.trim() || null,
+      p_thumbnail_url: input.thumbnailUrl ?? null,
+      p_note: input.note ?? null,
+      p_tenant_id: tenantId,
+    },
+    "SAVE_FAILED",
+  );
+  if (!id) throw studioError("SAVE_FAILED", id);
+  return { id };
+}
+
+/** Drop one artifact from the library — by membership id, or by kind+artifactId (so a Save button
+ *  can toggle without tracking the membership id). */
+export async function removeFromLibrary(input: {
+  id?: string;
+  kind?: LibraryKind;
+  artifactId?: string;
+}): Promise<boolean> {
+  const ok = await rpc<boolean | null>(
+    "remove_from_library",
+    { p_id: input.id ?? null, p_kind: input.kind ?? null, p_artifact_id: input.artifactId ?? null },
+    "SAVE_FAILED",
+  );
+  return ok === true;
+}
+
+/** List the tenant's kept artifacts (newest first), optionally filtered to one kind. */
+export async function listLibrary(input: {
+  tenantId: string;
+  kind?: LibraryKind;
+  limit?: number;
+}): Promise<LibraryItem[]> {
+  const tenantId = requireTenant(input.tenantId);
+  const rows = await rpc<Record<string, unknown>[] | null>(
+    "list_library",
+    { p_kind: input.kind ?? null, p_limit: input.limit ?? 200, p_tenant_id: tenantId },
+    "UNKNOWN",
+  );
+  return (Array.isArray(rows) ? rows : []).map((r) => ({
+    id: String(r.id),
+    kind: r.artifact_kind as LibraryKind,
+    artifactId: String(r.artifact_id),
+    title: typeof r.title === "string" ? r.title : "Untitled",
+    thumbnailUrl: typeof r.thumbnail_url === "string" ? r.thumbnail_url : null,
+    note: typeof r.note === "string" ? r.note : null,
+    tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
+    savedAt: typeof r.saved_at === "string" ? r.saved_at : "",
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
 // Save — rpc growth_page_upsert
 // ═══════════════════════════════════════════════════════════════════════════════════════
 
@@ -1133,7 +1210,7 @@ export type LearnResult =
  */
 export async function learnFromArtifact(input: {
   tenantId: string;
-  artifactType: "page" | "funnel";
+  artifactType: LibraryKind;
   artifactId: string;
   confirmed?: boolean;
   signal?: AbortSignal;

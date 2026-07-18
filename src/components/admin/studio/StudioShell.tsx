@@ -80,6 +80,7 @@ import {
   preflightPublish,
   publishFunnelCascade,
   publishPage,
+  saveToLibrary,
   renameSessionArtifactRef,
   renameStudioSession,
   deriveProjectName,
@@ -114,6 +115,7 @@ import {
 import {
   EMPTY_CLARIFYING,
   type ModeToolbarState,
+  type LibraryKind,
   type StudioArtifactType,
   type StudioError,
   type StudioErrorCode,
@@ -163,6 +165,26 @@ export interface StudioShellProps {
 /** Generation lives in useGeneratePage (the abort path + the honest ticker belong together);
  *  the shell owns everything else in StudioState verbatim. */
 type ShellState = Omit<StudioState, "generation">;
+
+/** The first real image URL a page's blocks carry — used as the library card's thumbnail so a kept
+ *  page shows an actual preview, not a glyph (§22). Scans the image-bearing fields across block
+ *  shapes; returns null when the page has no image (the card falls back to a page glyph). */
+function firstBlockImageUrl(blocks: GrowthBlock[]): string | null {
+  const KEYS = ["image_url", "url", "src", "background_image", "image", "cover_image"];
+  const isUrl = (v: unknown): v is string =>
+    typeof v === "string" && /^https?:\/\//.test(v) && /\.(png|jpe?g|webp|gif|avif)(\?|$)/i.test(v);
+  for (const raw of blocks ?? []) {
+    const b = raw as unknown as Record<string, unknown>;
+    for (const k of KEYS) if (isUrl(b?.[k])) return b[k] as string;
+    const imgs = b?.images;
+    if (Array.isArray(imgs)) {
+      for (const im of imgs as Record<string, unknown>[]) {
+        for (const k of KEYS) if (isUrl(im?.[k])) return im[k] as string;
+      }
+    }
+  }
+  return null;
+}
 
 const EMPTY_SHELL: ShellState = {
   tenantId: null,
@@ -399,6 +421,7 @@ export function StudioShell({
   const [funnelBuilding, setFunnelBuilding] = useState(false);
   const [funnelPublishing, setFunnelPublishing] = useState(false);
   const [funnelUrl, setFunnelUrl] = useState<string | null>(null);
+  const [savingToLibrary, setSavingToLibrary] = useState(false);
   // The session committed to building a funnel — set when the classifier says "funnel" OR when
   // the operator entered via the funnel intent (mode="funnel"). Load-bearing on RETRY: if a
   // funnel build fails (funnel stays null), a resubmit must rebuild a FUNNEL, never silently
@@ -1125,7 +1148,7 @@ export function StudioShell({
   // only saves on the tenant's explicit click. 'learned' reports the real win; 'blocked'/'error'
   // say nothing (never claim a save that didn't happen).
   const runLearn = useCallback(
-    async (artifactType: "page" | "funnel", artifactId: string, confirmed = false) => {
+    async (artifactType: LibraryKind, artifactId: string, confirmed = false) => {
       if (!tenantId || !artifactId) return;
       const res = await learnFromArtifact({ tenantId, artifactType, artifactId, confirmed });
       if (res.kind === "learned") {
@@ -1145,6 +1168,38 @@ export function StudioShell({
     },
     [tenantId, toast],
   );
+
+  // ── deliberate keep: save THIS page to the media library (#284) ─────────────────────────────
+  // The winner-curation act, distinct from publish. Ensures the page is saved first (a library row
+  // must point at a real growth_pages id), keeps it via the save_to_library seam, then fires the
+  // confirm-gated learn (a deliberate keep is a strong voice signal, §7/§15). Honest (§13): reports
+  // only a keep that actually persisted.
+  const handleSaveToLibrary = useCallback(async () => {
+    if (!tenantId) return;
+    setSavingToLibrary(true);
+    try {
+      const saved = await saveDraft();
+      const pageId = saved?.id ?? state.pageId;
+      if (!pageId) {
+        toast({ title: "Nothing to save yet", description: "Build a little more first.", variant: "destructive" });
+        return;
+      }
+      // Give the winners board a REAL preview, not a glyph (§22): the first image the page carries
+      // (hero/image/media/gallery block). Falls back to no thumbnail (the card shows a page glyph).
+      const thumbnailUrl = firstBlockImageUrl(state.blocks);
+      await saveToLibrary({ tenantId, kind: "page", artifactId: pageId, title: state.title || "Untitled page", thumbnailUrl });
+      toast({ title: "Kept in your library", description: "This page is saved to your media library." });
+      void runLearn("page", pageId);
+    } catch (err) {
+      toast({
+        title: "Couldn't save to your library",
+        description: isStudioError(err) ? err.message : "Try again in a moment.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingToLibrary(false);
+    }
+  }, [tenantId, saveDraft, state.pageId, state.title, runLearn, toast]);
 
   const handlePublish = useCallback(async () => {
     patch({ publishing: true, error: null });
@@ -1271,8 +1326,11 @@ export function StudioShell({
       setFunnelUrl(url);
       toast({ title: "Funnel is live", description: url ? `Live at ${url}` : "Your funnel is published." });
       onFunnelCreated?.();
-      // Feed the just-published funnel into the tenant's brain (never blocks publish, §13).
-      void runLearn("funnel", funnel.funnelId);
+      // A published funnel is a keeper — file it in the media library, then teach the brain from it
+      // (both best-effort, never block the publish, §13).
+      void saveToLibrary({ tenantId, kind: "funnel", artifactId: funnel.funnelId, title: funnel.name })
+        .then(() => runLearn("funnel", funnel.funnelId))
+        .catch(() => runLearn("funnel", funnel.funnelId));
     } catch (err) {
       // §13: if the entry page went live before the funnel step failed, say so — don't let the
       // flow keep showing the page as a draft when it is actually on the internet.
@@ -1695,6 +1753,8 @@ export function StudioShell({
           onPublish={() => patch({ publishOpen: true, publishedUrl: null, error: null })}
           publishing={state.publishing}
           publishDisabled={state.publishing || busy || state.blocks.length === 0}
+          onSaveToLibrary={state.blocks.length > 0 ? () => void handleSaveToLibrary() : undefined}
+          savingToLibrary={savingToLibrary}
           onOpenLibrary={() => setLibraryOpen(true)}
           modeBar={modeBars[mode] ?? null}
           funnelActive={funnelActive}
@@ -1888,9 +1948,10 @@ export function StudioShell({
             with the Studio instead of being forced dark (owner 2026-07-17: no surface hardcoded). */}
         <SheetContent className={cn(studioDark ? "dark" : "studio-surface", "w-full overflow-y-auto border-border bg-background text-foreground sm:max-w-2xl")}>
           <SheetHeader>
-            <SheetTitle>Content library</SheetTitle>
+            <SheetTitle>Assets</SheetTitle>
             <SheetDescription>
-              Everything you've saved — copy and images — ready to reuse across your campaigns.
+              Every image and piece of copy you've made here. Keep the winners to your Saved library
+              from the rail — this is the full working set.
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4">

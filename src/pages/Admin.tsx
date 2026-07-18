@@ -102,6 +102,7 @@ const WorkflowsList = lazy(() => import("@/pages/admin/WorkflowsList"));
 const CampaignsHub = lazy(() => import("@/pages/admin/CampaignsHub"));
 const VibeStudio = lazy(() => import("@/pages/admin/VibeStudio"));
 const StudioHome = lazy(() => import("@/pages/admin/StudioHome"));
+const StudioLibrary = lazy(() => import("@/pages/admin/StudioLibrary"));
 const StudioNew = lazy(() => import("@/pages/admin/StudioNew"));
 // Eager — small chrome, always on the studio branch, renders the persistent rail + <Outlet/>.
 import StudioLayout from "@/components/admin/studio/StudioLayout";
@@ -479,6 +480,9 @@ const Admin = () => {
           } />
           <Route path="new" element={
             <Suspense fallback={<SuspenseFallback />}><StudioNew /></Suspense>
+          } />
+          <Route path="library" element={
+            <Suspense fallback={<SuspenseFallback />}><StudioLibrary /></Suspense>
           } />
           <Route path=":sessionId" element={
             <Suspense fallback={<SuspenseFallback />}><VibeStudio /></Suspense>
