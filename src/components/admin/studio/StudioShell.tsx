@@ -2135,6 +2135,12 @@ export function StudioShell({
         onSelect={(next) => setCanvasArtifact({ kind: "content", id: next.id, title: next.title, url: next.url })}
         onSave={handleKeepContent}
         reduceMotion={!!reduceMotion}
+        // A follow-up render on an image stage does NOT get the scrim overlay below — the canvas owns
+        // its own tuck→render→pop handoff (owner 2026-07-18): the current creative recedes toward the
+        // strip and the cleared stage renders the next round (§22). It's driven by these three props.
+        busy={chatBusy}
+        buildNote={chatNote}
+        buildElapsedMs={chatElapsedMs}
       />
     );
   } else if (canvasArtifact?.kind === "funnel") {
@@ -2222,11 +2228,15 @@ export function StudioShell({
         canvas={
           <div className="relative h-full">
             {sessionCanvas}
-            {/* In-flight FOLLOW-UP: the prior artifact stays on stage; lay the premium branded
-                "Paige is creating" layer over it (#292 Fix C) — a living PaigeMark ribbon + the real
-                streamed note + shooting-star field, replacing the bare scan-line. Ambient, never an
-                opaque cover; reduce-safe; §11 gold reserved for the act. Clears on onBusy(false). */}
-            {chatBusy && canvasArtifact && (
+            {/* In-flight FOLLOW-UP on a NON-image stage (page/doc/funnel/copy/form): the prior artifact
+                stays on stage; lay the premium branded "Paige is creating" layer over it (#292 Fix C) —
+                a living PaigeMark ribbon + the real streamed note + shooting-star field. Ambient, never
+                an opaque cover; reduce-safe; §11 gold reserved for the act. Clears on onBusy(false).
+                The IMAGE stage is EXCLUDED here: it owns a different choreography (owner 2026-07-18) —
+                the current creative tucks toward the strip and the cleared stage renders the next round,
+                driven inside SessionImageCanvas — so a scrim over a frozen image would be exactly the
+                behavior we're replacing. */}
+            {chatBusy && canvasArtifact && !(canvasArtifact.kind === "content" && canvasArtifact.url) && (
               <SessionBuildingOverlay note={chatNote} elapsedMs={chatElapsedMs} reduce={!!reduceMotion} />
             )}
           </div>

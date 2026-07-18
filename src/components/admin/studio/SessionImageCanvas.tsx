@@ -8,10 +8,12 @@
 // image renders exactly as before, just with the toolbar. §11: gold is spent ONLY on the Save act;
 // arrows, strip, download, copy stay neutral/indigo. Token-only, AA both themes, motion-safe.
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Check, ChevronLeft, ChevronRight, Download, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CopyButton } from "./modes/content-shared";
+import { StudioBuildingScreen } from "./StudioBuildingScreen";
 import type { SessionArtifactRef } from "./studio-types";
 
 /** The current image on the canvas — the narrowed canvasArtifact (url guaranteed present). */
@@ -31,6 +33,16 @@ interface SessionImageCanvasProps {
   /** Keep the current image in the tenant's Saved library. Resolves true only on a real persist (§13). */
   onSave: (item: { id: string; kind: "image"; title: string; imageUrl: string | null }) => Promise<boolean>;
   reduceMotion: boolean;
+  /** A FOLLOW-UP render is in flight (#292, owner 2026-07-18). When true the current creative TUCKS
+   *  away toward the thumbnail strip (it already lives there via the carousel — never lost, §13) and
+   *  the stage CLEARS to a dedicated branded render surface so the next round gets fresh room to POP
+   *  in. When it flips back false the new (or, on a text-only reply, the same) image springs onto the
+   *  stage. §22: the render moment is where the heavy motion earns its pixels. */
+  busy?: boolean;
+  /** The real streamed note for the in-flight render (drives the render surface's narration, §13). */
+  buildNote?: string | null;
+  /** Real elapsed ms since the follow-up render started — the honest clock on the render surface. */
+  buildElapsedMs?: number;
 }
 
 /** A safe download filename derived from the image's title (never a raw storage key). */
@@ -46,7 +58,16 @@ function filenameFor(img: CanvasImage): string {
 
 /** Render the canvas image + toolbar, and — only when the session holds more than one image —
  *  the carousel chrome (prev/next + thumbnail strip) to move through the set inline. */
-export function SessionImageCanvas({ current, images, onSelect, onSave, reduceMotion }: SessionImageCanvasProps) {
+export function SessionImageCanvas({
+  current,
+  images,
+  onSelect,
+  onSave,
+  reduceMotion,
+  busy = false,
+  buildNote = null,
+  buildElapsedMs = 0,
+}: SessionImageCanvasProps) {
   // "Saved ✓" is truthful state (§13): a current id lands here ONLY after onSave resolves true.
   const [savedIds, setSavedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -122,52 +143,131 @@ export function SessionImageCanvas({ current, images, onSelect, onSave, reduceMo
     }
   };
 
+  // ── The stage figure (the real creative) and the branded render surface — the two states the
+  //    main stage swaps between. Prev/next hug the letterbox edges so they never cover the subject.
+  const stageImage = (
+    <div className="relative flex max-h-full max-w-full items-center justify-center">
+      <figure className="relative max-h-full max-w-full overflow-hidden rounded-xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-card shadow-[0_24px_60px_-24px_hsl(var(--studio-ink)/0.7)]">
+        <img
+          src={current.url}
+          alt={current.title || "Generated image"}
+          className="block max-h-[calc(100vh-16rem)] max-w-full object-contain"
+          loading="eager"
+        />
+      </figure>
+      {hasCarousel && (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Previous image"
+            onClick={() => go(-1)}
+            className="absolute left-2 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border-border/70 bg-background/85 backdrop-blur-sm hover:bg-background"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Next image"
+            onClick={() => go(1)}
+            className="absolute right-2 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border-border/70 bg-background/85 backdrop-blur-sm hover:bg-background"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </>
+      )}
+    </div>
+  );
+
+  // The dedicated branded RENDER surface that owns the cleared stage while the next round renders
+  // (owner 2026-07-18: "room to render the next round", not a scrim over a frozen image). Reuses the
+  // §22 cutscene primitive (living PaigeMark + aurora + streamed note + honest elapsed) and layers
+  // the shipped token/white shooting-star field on top (§12/§18 — reuse, no new keyframes). Under
+  // reduce, StudioBuildingScreen calms its own layers and the star field is hidden.
+  const renderSurface = (
+    <div className="relative h-full w-full overflow-hidden rounded-xl">
+      <StudioBuildingScreen
+        indeterminate
+        note={buildNote?.trim() || "Rendering your next image…"}
+        agent="Design agent"
+        elapsedMs={buildElapsedMs}
+        reduce={reduceMotion}
+        ariaLabel="Rendering your next image"
+      />
+      {!reduceMotion && <div aria-hidden className="studio-shooting" />}
+    </div>
+  );
+
   return (
     <div
       ref={containerRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="grid h-full place-items-center p-2"
+      className="h-full p-2"
     >
-      <div className="flex max-h-full min-h-0 w-full max-w-full flex-col items-center gap-2">
-        {/* Image → the real asset, letterboxed WHOLE (never cropped/stretched, §13) on a layered
-            card (§22). Prev/next sit over the letterbox edges so they never cover the subject. */}
-        <div className="relative flex min-h-0 items-center justify-center">
-          <figure className="relative max-h-full max-w-full overflow-hidden rounded-xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-card shadow-[0_24px_60px_-24px_hsl(var(--studio-ink)/0.7)]">
-            <img
-              src={current.url}
-              alt={current.title || "Generated image"}
-              className="block max-h-[calc(100vh-16rem)] max-w-full object-contain"
-              loading="eager"
-            />
-          </figure>
-          {hasCarousel && (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label="Previous image"
-                onClick={() => go(-1)}
-                className="absolute left-2 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border-border/70 bg-background/85 backdrop-blur-sm hover:bg-background"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label="Next image"
-                onClick={() => go(1)}
-                className="absolute right-2 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full border-border/70 bg-background/85 backdrop-blur-sm hover:bg-background"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </>
+      <div className="flex h-full w-full max-w-full flex-col items-center gap-2">
+        {/* The main STAGE — swaps between the creative and the render surface. On a follow-up render
+            the current image TUCKS toward the strip (exit: recede up + scale toward bottom origin)
+            while the render surface takes the cleared stage; when the artifact lands, the new (or,
+            on a text-only reply, the same) image springs back in (§22). Motion-safe: under reduce
+            the swap is instant — no AnimatePresence, no transforms (§11/§25). */}
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center">
+          {reduceMotion ? (
+            <div className="absolute inset-0 grid place-items-center">
+              {busy ? renderSurface : stageImage}
+            </div>
+          ) : (
+            // `custom={busy}` reaches the EXITING image so the dramatic TUCK (recede up + shrink
+            // toward the strip) fires ONLY when the render surface is taking the stage. A manual
+            // carousel flip (current.id changes while not busy) leaves with a light crossfade instead
+            // of the full tuck, so flipping the set stays snappy (§25 — motion serves the moment).
+            <AnimatePresence initial={false} custom={busy}>
+              {busy ? (
+                <motion.div
+                  key="render"
+                  className="absolute inset-0"
+                  initial={{ opacity: 0, scale: 1.015 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 1.015 }}
+                  transition={{ type: "spring", stiffness: 220, damping: 26 }}
+                >
+                  {renderSurface}
+                </motion.div>
+              ) : (
+                <motion.div
+                  key={`img:${current.id}`}
+                  className="absolute inset-0 grid place-items-center"
+                  style={{ transformOrigin: "bottom center" }}
+                  custom={busy}
+                  variants={{
+                    initial: { opacity: 0, scale: 0.85, y: 0 },
+                    animate: { opacity: 1, scale: 1, y: 0 },
+                    // toRender = the render surface is taking over → tuck toward the strip; else a
+                    // light crossfade (manual flip). The tucked creative is never lost — it lives in
+                    // the thumbnail strip below (§13).
+                    exit: (toRender: boolean) =>
+                      toRender
+                        ? { opacity: 0, scale: 0.42, y: "-40%" }
+                        : { opacity: 0, scale: 0.98, y: 0 },
+                  }}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  transition={{ type: "spring", stiffness: 260, damping: 26, mass: 0.9 }}
+                >
+                  {stageImage}
+                </motion.div>
+              )}
+            </AnimatePresence>
           )}
         </div>
 
-        {/* Toolbar — copy/download/save on the image (never over it). Gold only on the Save act (§11). */}
+        {/* Toolbar — copy/download/save on the image (never over it). Gold only on the Save act (§11).
+            Hidden while a render is in flight: there is no live stage image to act on then. */}
+        {!busy && (
         <div className="flex w-full max-w-full flex-wrap items-center justify-center gap-2">
           {hasCarousel && (
             <span className="mr-1 text-xs tabular-nums text-muted-foreground" aria-live="polite">
@@ -207,9 +307,12 @@ export function SessionImageCanvas({ current, images, onSelect, onSave, reduceMo
             </Button>
           )}
         </div>
+        )}
 
         {/* Thumbnail strip — flip through the set. A labeled group of buttons (NOT ARIA tabs — there
-            is no controlled tabpanel); the active thumb is ringed indigo, never gold (§11). */}
+            is no controlled tabpanel); the active thumb is ringed indigo, never gold (§11). Stays
+            mounted through a render so the tucked-away creatives remain reachable (owner 2026-07-18,
+            §13 — nothing is lost). During a render the "active" ring tracks the last-current image. */}
         {hasCarousel && (
           <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1" role="group" aria-label="Images in this set">
             {images.map((ref, i) => {
