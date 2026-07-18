@@ -7,7 +7,7 @@
 // this navigates WITHIN the current image set; it is NOT an artifact-type tab strip). A single
 // image renders exactly as before, just with the toolbar. §11: gold is spent ONLY on the Save act;
 // arrows, strip, download, copy stay neutral/indigo. Token-only, AA both themes, motion-safe.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Download, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -33,12 +33,28 @@ interface SessionImageCanvasProps {
   reduceMotion: boolean;
 }
 
+/** A safe download filename derived from the image's title (never a raw storage key). */
+function filenameFor(img: CanvasImage): string {
+  const base =
+    (img.title || "image")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "image";
+  return `${base}.png`;
+}
+
 /** Render the canvas image + toolbar, and — only when the session holds more than one image —
  *  the carousel chrome (prev/next + thumbnail strip) to move through the set inline. */
 export function SessionImageCanvas({ current, images, onSelect, onSave, reduceMotion }: SessionImageCanvasProps) {
   // "Saved ✓" is truthful state (§13): a current id lands here ONLY after onSave resolves true.
   const [savedIds, setSavedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+  // Scope keyboard nav to the canvas: only act when the pointer is over it or focus is inside it,
+  // so Arrow keys never hijack the rest of the surface (scroll regions, other controls).
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState(false);
 
   const currentIndex = images.findIndex((r) => r.id === current.id);
   // Chrome only when there is a real set AND the current image is part of it (a fresh build whose
@@ -51,8 +67,8 @@ export function SessionImageCanvas({ current, images, onSelect, onSave, reduceMo
     if (next?.thumbnailUrl) onSelect({ id: next.id, title: next.title, url: next.thumbnailUrl });
   };
 
-  // Keyboard left/right — but never hijack arrow keys while the chat textarea (or any field) has
-  // focus, so typing a brief stays unaffected.
+  // Keyboard left/right — scoped to the canvas (hover or focus-within) and never while a text
+  // field is focused, so typing a brief elsewhere is untouched.
   useEffect(() => {
     if (!hasCarousel) return;
     const onKey = (e: KeyboardEvent) => {
@@ -60,12 +76,15 @@ export function SessionImageCanvas({ current, images, onSelect, onSave, reduceMo
       const el = document.activeElement as HTMLElement | null;
       const tag = el?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || el?.isContentEditable) return;
+      const c = containerRef.current;
+      if (!c || (!hovered && !c.contains(el))) return; // only when the canvas is the user's focus
       e.preventDefault();
       go(e.key === "ArrowLeft" ? -1 : 1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasCarousel, currentIndex, images, hovered]);
 
   const isSaved = savedIds.has(current.id);
   const isSaving = savingId === current.id;
@@ -77,8 +96,39 @@ export function SessionImageCanvas({ current, images, onSelect, onSave, reduceMo
     if (ok) setSavedIds((prev) => new Set(prev).add(current.id));
   };
 
+  // Real download (§13 — the owner's ask is to DOWNLOAD, not open a tab): fetch the asset to a blob
+  // and save it. The `download` attribute is ignored for cross-origin storage URLs, so the anchor
+  // trick alone just navigates; fetching the blob forces a genuine file save. If the fetch is CORS-
+  // blocked, fall back to opening the asset so the user can still right-click-save (never a dead end).
+  const handleDownload = async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const resp = await fetch(current.url);
+      if (!resp.ok) throw new Error(`fetch ${resp.status}`);
+      const blob = await resp.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = filenameFor(current);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+    } catch {
+      window.open(current.url, "_blank", "noopener,noreferrer");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
-    <div className="grid h-full place-items-center p-2">
+    <div
+      ref={containerRef}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="grid h-full place-items-center p-2"
+    >
       <div className="flex max-h-full min-h-0 w-full max-w-full flex-col items-center gap-2">
         {/* Image → the real asset, letterboxed WHOLE (never cropped/stretched, §13) on a layered
             card (§22). Prev/next sit over the letterbox edges so they never cover the subject. */}
@@ -125,10 +175,20 @@ export function SessionImageCanvas({ current, images, onSelect, onSave, reduceMo
             </span>
           )}
           <CopyButton text={current.url} label="Copy image URL" />
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <a href={current.url} download target="_blank" rel="noreferrer">
-              <Download className="h-3.5 w-3.5" /> Download
-            </a>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => void handleDownload()}
+            disabled={downloading}
+          >
+            {downloading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            Download
           </Button>
           {isSaved ? (
             // Post-save: neutral confirmation, NOT gold — the act moment has passed (§11).
@@ -148,26 +208,26 @@ export function SessionImageCanvas({ current, images, onSelect, onSave, reduceMo
           )}
         </div>
 
-        {/* Thumbnail strip — flip through the set. Active thumb ringed in indigo, never gold (§11). */}
+        {/* Thumbnail strip — flip through the set. A labeled group of buttons (NOT ARIA tabs — there
+            is no controlled tabpanel); the active thumb is ringed indigo, never gold (§11). */}
         {hasCarousel && (
-          <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Images in this set">
+          <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1" role="group" aria-label="Images in this set">
             {images.map((ref, i) => {
               const active = i === currentIndex;
               return (
                 <button
                   key={`${ref.kind}:${ref.id}`}
                   type="button"
-                  role="tab"
-                  aria-selected={active}
+                  aria-current={active ? "true" : undefined}
                   aria-label={ref.title || `Image ${i + 1}`}
                   onClick={() => ref.thumbnailUrl && onSelect({ id: ref.id, title: ref.title, url: ref.thumbnailUrl })}
                   className={cn(
-                    "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-muted/30 outline-none transition-colors",
+                    "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-muted/30 outline-none",
                     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                     active
                       ? "border-primary ring-2 ring-primary"
                       : "border-border/70 hover:border-primary/50",
-                    !reduceMotion && "motion-safe:duration-150",
+                    !reduceMotion && "transition-colors",
                   )}
                 >
                   {ref.thumbnailUrl && (

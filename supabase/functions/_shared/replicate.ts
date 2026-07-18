@@ -16,7 +16,11 @@ const POLL_TIMEOUT_MS = 180_000; // 3 min — Flux/premium renders can take a wh
 const POLL_INTERVAL_MS = 2_000;
 
 function replicateToken(): string {
-  const k = Deno.env.get("REPLICATE_API_TOKEN");
+  // Accept EITHER the canonical REPLICATE_API_TOKEN or the common REPLICATE_API_KEY alias — operators
+  // set it under both names in the wild, and a name mismatch is exactly the kind of silent gap that
+  // masquerades as "not configured" (§13). Whichever is present wins; only when NEITHER is set do we
+  // fail closed.
+  const k = Deno.env.get("REPLICATE_API_TOKEN") || Deno.env.get("REPLICATE_API_KEY");
   if (!k) throw new NeedsConfigError("replicate");
   return k;
 }
