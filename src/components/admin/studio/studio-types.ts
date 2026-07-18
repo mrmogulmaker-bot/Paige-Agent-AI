@@ -100,7 +100,7 @@ export interface StudioSeoDraft {
 /** The five creative types the Media Library curates (#284). A saved library row points at the
  *  real source in its own store — page/funnel/form → growth_*, image/copy → marketing_content —
  *  never a copy of the content (§18 one home). */
-export type LibraryKind = "page" | "funnel" | "form" | "image" | "copy";
+export type LibraryKind = "page" | "funnel" | "form" | "image" | "video" | "copy";
 
 /** One kept-in-the-library artifact, as list_library returns it: a display snapshot + a typed
  *  pointer back to the live source. A row whose source was deleted still renders (its kept title

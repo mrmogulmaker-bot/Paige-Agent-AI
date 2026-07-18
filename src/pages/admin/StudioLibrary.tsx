@@ -8,9 +8,11 @@
 // §11: compact header (the board leads), real thumbnails not glyph-in-a-box where we have them.
 // The ONE gold act on this surface is Upload — bringing outside media in is a persist/act, like
 // "Save to my library" back in the builder; everything else here stays neutral/browse.
-// "Copy link" is IMAGE-ONLY on purpose: an image's thumbnailUrl IS its public asset URL, but a
-// page/funnel's is only a cover snapshot, so a real page/funnel public link is a tracked follow-up.
-// Re-opening a non-image artifact and bulk/zip export are tracked follow-ups.
+// "Copy link" is for MEDIA (image/video) on purpose: a media asset's thumbnailUrl IS its public
+// asset URL, but a page/funnel's is only a cover snapshot, so a real page/funnel public link is a
+// tracked follow-up.
+// Re-opening a non-image artifact, bulk/zip export, and a captured first-frame poster for videos
+// (so the board never shows a blank <video> tile) are tracked follow-ups (#317).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { listLibrary, removeFromLibrary, uploadToLibrary } from "@/components/admin/studio/studio";
@@ -19,7 +21,8 @@ import type { LibraryItem, LibraryKind } from "@/components/admin/studio/studio-
 import { SectionCard, EmptyState, Toolbar, FilterChip } from "@/components/ui/page";
 import { LabelChip } from "@/components/admin/studio/modes/content-shared";
 import { Button } from "@/components/ui/button";
-import { Check, ClipboardList, Download, FileText, Image as ImageIcon, Link2, LibraryBig, Loader2, Route as RouteIcon, Trash2, Type, Upload } from "lucide-react";
+import { Check, ClipboardList, Download, FileText, Film, Image as ImageIcon, Link2, LibraryBig, Loader2, Route as RouteIcon, Trash2, Type, Upload } from "lucide-react";
+import { GROWTH_MEDIA_ACCEPT } from "@/lib/growth";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,14 +34,15 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: "funnel", label: "Funnels" },
   { value: "form", label: "Forms" },
   { value: "image", label: "Images" },
+  { value: "video", label: "Videos" },
   { value: "copy", label: "Copy" },
 ];
 
 const KIND_LABEL: Record<LibraryKind, string> = {
-  page: "Page", funnel: "Funnel", form: "Form", image: "Image", copy: "Copy",
+  page: "Page", funnel: "Funnel", form: "Form", image: "Image", video: "Video", copy: "Copy",
 };
 const KIND_ICON: Record<LibraryKind, LucideIcon> = {
-  page: FileText, funnel: RouteIcon, form: ClipboardList, image: ImageIcon, copy: Type,
+  page: FileText, funnel: RouteIcon, form: ClipboardList, image: ImageIcon, video: Film, copy: Type,
 };
 
 export default function StudioLibrary() {
@@ -101,8 +105,8 @@ export default function StudioLibrary() {
   };
 
   // The shareable/callable public link for a piece of media (the URL you paste elsewhere, or hand
-  // to Paige in a session). Image-only: for an image the thumbnailUrl IS the public asset URL; a
-  // page/funnel cover snapshot is NOT a link to the page, so we don't offer it there (§13 honesty).
+  // to Paige in a session). Media-only (image/video): a media asset's thumbnailUrl IS its public
+  // asset URL; a page/funnel cover snapshot is NOT a link to the page, so we don't offer it there (§13).
   const copyLink = async (item: LibraryItem) => {
     if (!item.thumbnailUrl) return;
     const url = item.thumbnailUrl;
@@ -141,14 +145,14 @@ export default function StudioLibrary() {
         </span>
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-lg font-semibold text-foreground">Saved library</h1>
-          <p className="truncate text-sm text-muted-foreground">The winners you kept — plus anything you bring in. Every page, funnel, form, image, and piece of copy, in one place.</p>
+          <p className="truncate text-sm text-muted-foreground">The winners you kept — plus anything you bring in. Every page, funnel, form, image, video, and piece of copy, in one place.</p>
         </div>
         {/* Bring outside artifacts in. Upload is THE add-to-library act on this surface, so it earns
             the gold (§11); everything else here is neutral/browse. */}
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
+          accept={GROWTH_MEDIA_ACCEPT}
           multiple
           hidden
           tabIndex={-1}
@@ -183,7 +187,7 @@ export default function StudioLibrary() {
           <EmptyState
             icon={LibraryBig}
             title={filter === "all" ? "Nothing saved yet" : `No ${KIND_LABEL[filter as LibraryKind].toLowerCase()}s saved yet`}
-            description="When you build something you love, hit “Save to my library” and it lands here — or Upload your own images to bring outside media in. Everything's ready to reuse across your campaigns."
+            description="When you build something you love, hit “Save to my library” and it lands here — or Upload your own images and videos to bring outside media in. Everything's ready to reuse across your campaigns."
           />
         </SectionCard>
       ) : (
@@ -192,7 +196,19 @@ export default function StudioLibrary() {
             const Icon = KIND_ICON[item.kind];
             return (
               <SectionCard key={item.id} className="flex flex-col overflow-hidden" padded={false}>
-                {item.thumbnailUrl ? (
+                {item.kind === "video" && item.thumbnailUrl ? (
+                  // artifact_kind is the authoritative render discriminator: a video's thumbnailUrl
+                  // is the media URL, so play it inline (controls, muted, no autoplay — motion-safe).
+                  <video
+                    src={item.thumbnailUrl}
+                    controls
+                    muted
+                    playsInline
+                    preload="metadata"
+                    aria-label={item.title}
+                    className="aspect-video w-full bg-muted object-cover"
+                  />
+                ) : item.thumbnailUrl ? (
                   <div className="aspect-video overflow-hidden bg-muted/30">
                     <img src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" loading="lazy" />
                   </div>
@@ -208,7 +224,7 @@ export default function StudioLibrary() {
                   </div>
                   {item.note && <p className="line-clamp-2 text-xs text-muted-foreground">{item.note}</p>}
                   <div className="mt-auto flex items-center gap-1">
-                    {item.kind === "image" && item.thumbnailUrl && (
+                    {(item.kind === "image" || item.kind === "video") && item.thumbnailUrl && (
                       <Button
                         variant="ghost" size="sm" className="gap-1.5"
                         onClick={() => void copyLink(item)}
@@ -219,7 +235,7 @@ export default function StudioLibrary() {
                           : <><Link2 className="h-3.5 w-3.5" /> Copy link</>}
                       </Button>
                     )}
-                    {item.kind === "image" && item.thumbnailUrl && (
+                    {(item.kind === "image" || item.kind === "video") && item.thumbnailUrl && (
                       <Button asChild variant="ghost" size="sm" className="gap-1.5">
                         <a href={item.thumbnailUrl} download target="_blank" rel="noreferrer">
                           <Download className="h-3.5 w-3.5" /> Download
