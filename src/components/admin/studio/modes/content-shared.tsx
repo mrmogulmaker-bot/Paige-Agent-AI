@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { supabase } from "@/integrations/supabase/client";
 import { SectionCard, EmptyState, Toolbar, FilterChip } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
-import { Check, Copy, Download, Library, Trash2 } from "lucide-react";
+import { BookmarkPlus, Check, Copy, Download, Library, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export type Channel =
@@ -76,10 +76,34 @@ export function CopyButton({ text, label = "Copy" }: { text: string; label?: str
 }
 
 // ─── Library ──────────────────────────────────────────────────────────────────
-export function LibraryPanel({ tenantId, active }: { tenantId: string | null; active: boolean }) {
+export function LibraryPanel({
+  tenantId,
+  active,
+  onKeep,
+}: {
+  tenantId: string | null;
+  active: boolean;
+  /** Promote this working-set item into the tenant's Saved library (#314). Resolves true only on a
+   *  keep that actually persisted. Owned by the shell (StudioShell.keepInLibrary) so this panel just
+   *  surfaces the button; absent when there's nowhere to keep to. */
+  onKeep?: (item: { id: string; kind: "text" | "image"; title: string; imageUrl: string | null }) => Promise<boolean>;
+}) {
   const [rows, setRows] = useState<LibraryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "text" | "image">("all");
+  const [keptId, setKeptId] = useState<string | null>(null);
+  const [keepingId, setKeepingId] = useState<string | null>(null);
+
+  const keep = useCallback(async (r: LibraryRow) => {
+    if (!onKeep) return;
+    setKeepingId(r.id);
+    try {
+      const ok = await onKeep({ id: r.id, kind: r.kind, title: r.title, imageUrl: r.image_url });
+      if (ok) { setKeptId(r.id); setTimeout(() => setKeptId((k) => (k === r.id ? null : k)), 1600); }
+    } finally {
+      setKeepingId((k) => (k === r.id ? null : k));
+    }
+  }, [onKeep]);
 
   const load = useCallback(async () => {
     if (!tenantId) { setRows([]); setLoading(false); return; }
@@ -164,6 +188,20 @@ export function LibraryPanel({ tenantId, active }: { tenantId: string | null; ac
                       <a href={r.image_url} download target="_blank" rel="noreferrer">
                         <Download className="h-3.5 w-3.5" /> Download
                       </a>
+                    </Button>
+                  )}
+                  {onKeep && (
+                    <Button
+                      variant="ghost" size="sm" className="gap-1.5"
+                      // Disabled through the "Kept" confirmation window too, so a second click can't
+                      // re-fire the keep (and re-trigger the learn prompt) before it reverts.
+                      disabled={keepingId === r.id || keptId === r.id}
+                      onClick={() => void keep(r)}
+                      title="Keep this in your Saved library"
+                    >
+                      {keptId === r.id
+                        ? <><Check className="h-3.5 w-3.5 text-[var(--success)]" /> Kept</>
+                        : <><BookmarkPlus className="h-3.5 w-3.5" /> Keep</>}
                     </Button>
                   )}
                   <Button
