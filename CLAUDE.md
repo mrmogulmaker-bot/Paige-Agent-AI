@@ -814,3 +814,55 @@ re-derived from scratch.
   already ran before?"* If yes, stop — automate it (a command, a CI job, a script), file it in
   `docs/OPS.md`, and never repeat it. Re-deriving a known pipeline is itself the waste this section
   exists to end.
+
+## 25. Design taste — see it before you ship it.
+
+**Directive (owner: Antonio, 2026-07-18):** §11 already sets the world-class *floor* — tokens,
+gold discipline, the primitive layer, no amateur tells. §25 is the layer above it: **taste.** A
+surface can pass every §11 rule (correct tokens, AA contrast, right primitives) and still look
+*off* — flat, generic, cheesy, un-designed — in a way no lint catches. The only reliable way to
+know is to **look at the rendered thing** and hold it, honestly, next to the best UIs in the world
+(Linear · Stripe · Vercel · Framer · Raycast). This is **platform-wide** — it binds *every* Paige
+UI surface (landing, sign-up, admin, tenant onboarding, Studio, marketplace, growth hub, Super
+Admin, tenant portal), not just the Studio. Wherever earlier doctrine says "Studio surface," for
+taste read "any Paige UI surface."
+
+- **See it before you ship it — the screenshot review loop.** Where the Chrome MCP
+  (`mcp__claude-in-chrome__*`) is available, the design work is not done until the surface has been
+  **rendered and looked at** — a screenshot captured, compared frame-to-frame against the reference
+  library (§ below), and iterated until it holds up. Static code review cannot see a flat hierarchy,
+  a dead gradient, or spacing that reads as generic-admin; a rendered pixel can. Capture, critique,
+  fix, re-capture — loop until it stands next to the references without embarrassment.
+- **Honest degradation (§13).** Our own UI is auth-gated and many environments have **no** Chrome
+  MCP. When the rendered loop is unavailable, say so plainly and fall back to **code-level taste
+  review**: the design critic reads the JSX/CSS/tokens against `docs/design-references/CHEESY-TELLS.md`
+  and the primitive layer (`@/components/ui/page`), and judges taste from the source. This is a real,
+  useful pass — but it is a *fallback*, and the doc must never claim a screenshot was captured when it
+  was not. Public/marketing surfaces (the landing page) *are* renderable and should run the full loop
+  in an interactive Chrome-MCP session.
+- **The reference library is the source of visual truth** (`docs/design-references/`). It is where we
+  keep the annotated taste knowledge — what makes Linear's hierarchy read as expensive, how Stripe
+  spends one accent, why Vercel's empty states never feel empty — mapped onto *our* system (the
+  primitive layer, gold-on-the-act, indigo ground). The critic compares against it during design *and*
+  during critique. It is curated, not a dumping ground (§12: a reference earns its place).
+- **A mandatory design-critic crew seat — distinct from the §5 compliance officer.** Every
+  design-touching shipment carries a **design critic** on the crew (§1), and this seat is *not* the
+  same as the §5 compliance/standards officer. The compliance officer judges the **floor**: correct,
+  SOP-adherent, §2/§3/§6/§9/§11/§18-clean, best-in-class *bar*. The design critic judges **taste**:
+  does this specific pixel arrangement look world-class, or does it look off — and it answers with a
+  verdict, not a rubber stamp. Both run; a green compliance pass does not waive the taste pass, and a
+  clean typecheck never substitutes for having looked.
+- **The CHEESY-TELLS catalog binds the crew.** `docs/design-references/CHEESY-TELLS.md` is the
+  enumerated anti-pattern list — stock hero imagery, gradient buttons, card-on-card nesting,
+  hand-rolled tables instead of `DataTableShell`, native `<select>`/`<input type=checkbox>`,
+  emoji-as-icons, "AI-powered"/"seamless" copy (§3), motion without `useReducedMotion`, flat
+  "made-it-dark" depth (§22/§23), and the rest. The critic runs the surface against this list every
+  time and reports the hits by name; a surface that trips a tell is not done until it's fixed or the
+  exception is justified in writing.
+- **The critic's brief lives at** `docs/design-references/DESIGN-CRITIC-PROMPT.md` — role, process,
+  and the SHIP / ITERATE / BLOCK output shape (references-compared + blockers/should-fix/nits +
+  cheesy-tell hits), including the code-level variant for headless environments.
+- **The test, every time:** *"Would a screenshot of this surface stand next to Linear, Stripe, and
+  Vercel without embarrassment?"* If you can't answer because you never rendered it (and Chrome MCP
+  was available), you're not done. If it would look flat, generic, or cheesy beside them, it isn't
+  done either — iterate until it holds.
