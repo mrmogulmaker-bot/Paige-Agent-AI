@@ -24,6 +24,7 @@
  * table/function names (that's what EmptyState is for).
  */
 export { GlyphPlate } from "./GlyphPlate";
+export { ArtifactPreview, type ArtifactPreviewKind, type ArtifactPreviewProps } from "./ArtifactPreview";
 export { PageShell } from "./PageShell";
 export { PageHeader, type PageHeaderProps } from "./PageHeader";
 export { SectionCard } from "./SectionCard";

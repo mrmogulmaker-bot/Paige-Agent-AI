@@ -103,6 +103,12 @@ export interface StudioTopBarProps {
    *  controls: a read-only project title, the device toggle, Assets, theme, and the ⋯ actions. */
   sessionChrome?: boolean;
 
+  /** Whether the desktop/mobile preview toggle actually DOES anything on the current canvas. The
+   *  toggle only drives a page/funnel (LivePreview) render; on an image/document/copy/form canvas it
+   *  would be an inert affordance, so the session shell gates it to the canvas states where it's
+   *  live (§25 — no dead controls). Defaults to true, so non-session callers are unaffected. */
+  deviceApplicable?: boolean;
+
   // — funnel / form modes (published by the mounted mode component) —
   modeBar?: ModeToolbarState | null;
 
@@ -149,6 +155,7 @@ export function StudioTopBar({
   savingToLibrary = false,
   onOpenLibrary,
   sessionChrome = false,
+  deviceApplicable = true,
   modeBar,
   funnelActive = false,
   funnelLive = false,
@@ -169,7 +176,11 @@ export function StudioTopBar({
   // The lean canvas controls that DO belong in the session: a read-only project title and the
   // desktop/mobile preview toggle (a passive view aid, not a task), plus Assets below.
   const showTitle = isPage || sessionChrome;
-  const showDevice = (isPage || sessionChrome) && !!onDeviceChange;
+  // In the session, the toggle only shows when it actually drives the canvas (page/funnel) — never
+  // an inert control on an image/document/copy/form canvas (§25). The legacy page surface (isPage)
+  // is always applicable.
+  const showDevice =
+    (isPage || (sessionChrome && deviceApplicable)) && !!onDeviceChange;
   const showAssets = (hasLibrary || sessionChrome) && !!onOpenLibrary;
 
   // Delete-project confirm (§11: the shared AlertDialog, never confirm()). Reached from the

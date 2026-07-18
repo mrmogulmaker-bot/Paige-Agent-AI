@@ -158,6 +158,10 @@ All colors MUST be HSL.
     --studio-star:  210 40% 92%;
     --studio-orbit: 41 82% 62%;
 
+    /* The white light-sheen the branded artifact-cover gradient casts (ArtifactPreview fallback +
+       ProjectCard cover). Tokenized so the whole cover stack is 100% token-only (§11 zero hex). */
+    --studio-sheen: 0 0% 100%;
+
     /* Deep cosmic ink — the fixed near-black the title glow + glass-card shadow cast with,
        so those effects read the same over the committed-dark field in either theme (a shadow
        must use fixed ink, never a theme-flipping token — §11). */
@@ -227,6 +231,63 @@ All colors MUST be HSL.
     --primary: 255 60% 12%;
     --primary-light: 255 50% 22%;
     --gold-dark: 36 70% 32%;
+
+    /* ── LIGHT HERO FIELD (owner: Antonio, 2026-07-18 — §23 "light must be genuinely LIGHT; the
+       toggle unmistakable on the first viewport"). This REVERSES the earlier "planetarium is dark
+       in both themes" call: in LIGHT mode the hero field is now a genuinely bright, premium light
+       aurora — a crisp indigo-tinted off-white with a soft violet dawn bloom — with DARK text and
+       depth from ELEVATION + soft shadow (the floating glass composer card), not from a night sky.
+       The dark planetarium is retained untouched for dark mode (the base .studio-surface values +
+       the .studio-surface.dark block), so flipping the theme now produces an unmistakable light↔dark
+       change on the FIRST viewport. Token-only; dark text on the light field stays AA. */
+    --studio-hero-from: 240 60% 99.5%;
+    --studio-hero-via:  246 62% 97.5%;
+    --studio-hero-via2: 252 56% 96%;
+    --studio-hero-to:   240 50% 98.5%;
+    --studio-hero-gradient:
+      radial-gradient(120% 90% at 50% 0%, hsl(252 78% 93% / 0.85), transparent 62%),
+      radial-gradient(80% 60% at 82% 8%, hsl(224 84% 92% / 0.6), transparent 60%),
+      linear-gradient(
+        160deg,
+        hsl(var(--studio-hero-from)) 0%,
+        hsl(var(--studio-hero-via))  40%,
+        hsl(var(--studio-hero-via2)) 72%,
+        hsl(var(--studio-hero-to))  100%
+      );
+    /* Hero text flips to a deep indigo ink (was fixed white) so it reads on the light field. */
+    --studio-on-hero: 222 87% 14%;
+    /* The text scrim behind the H1 becomes a soft near-white lift (was deep ink) — a gentle halo,
+       not a dark blob, on the light field. */
+    --studio-scrim: 240 60% 100%;
+    /* Decorative accents softened + recolored for the light field: the night-sky star/comet motif
+       hides in light (see the layer overrides below), so `--studio-star` just needs a dim indigo. */
+    --studio-star:          250 40% 72%;
+    --studio-nebula-gold:   41 80% 72%;
+    --studio-nebula-blue:   224 82% 78%;
+    --studio-nebula-indigo: 252 70% 80%;
+    --studio-orbit:         250 55% 74%;
+  }
+
+  /* The LIGHT hero is a bright field, not a planetarium: the night-sky layers (stars, comet,
+     shooting streaks, orbit ring) are a dark-sky motif and read as grit on a light field, so they
+     stand down in light mode. The nebula blooms stay — softened + spread — as the light aurora's
+     gentle violet/blue depth, and the composer card's own elevation + soft shadow carry the rest
+     (§23 depth from elevation, not darkness). Dark mode keeps the full planetarium untouched. */
+  .studio-surface:not(.dark) .studio-stars,
+  .studio-surface:not(.dark) .studio-comet,
+  .studio-surface:not(.dark) .studio-shooting,
+  .studio-surface:not(.dark) .studio-orbit {
+    opacity: 0;
+  }
+  .studio-surface:not(.dark) .studio-nebula::before,
+  .studio-surface:not(.dark) .studio-nebula::after {
+    filter: blur(96px);
+    opacity: 0.55;
+  }
+  /* Title glow: the dark field's blue neon + near-black ink halo would read as a smudge on light —
+     swap to a clean, faint emboss so the H1 stays crisp dark-on-light. */
+  .studio-surface:not(.dark) .studio-title-glow {
+    text-shadow: 0 1px 1px hsl(var(--studio-on-hero) / 0.06);
   }
 
   /* The glass/rail/chrome flip for a DARK studio, driven ONLY by the Studio-local signal. It

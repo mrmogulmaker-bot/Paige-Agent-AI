@@ -36,7 +36,10 @@ export function useStudioSessions(
   view: StudioSessionView,
 ): UseStudioSessions {
   const [sessions, setSessions] = useState<StudioSessionCard[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Start TRUE: the hook fetches on mount, so the first paint is a load, not an empty result. This
+  // stops the gallery from flashing a false "no projects" empty state (and the full-height hero) for a
+  // returning tenant before the first fetch resolves — it shows the crafted skeleton instead.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Bumped by refresh() and every view/tenant change; guards against a stale in-flight response

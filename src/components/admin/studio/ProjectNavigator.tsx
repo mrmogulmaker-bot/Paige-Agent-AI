@@ -21,6 +21,7 @@
 // "active" highlight (a stale one would lie once a chat build moves the canvas on, §13).
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
   ClipboardList,
@@ -34,6 +35,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ArtifactPreview, type ArtifactPreviewKind } from "@/components/ui/page";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { createSessionArtifact, isStudioError } from "./studio";
@@ -64,6 +66,22 @@ function faceForRef(ref: SessionArtifactRef): RefFace {
   }
 }
 
+/** The ArtifactPreview kind for a manifest ref — 'content' disambiguates to image (carries a real
+ *  Storage URL) or copy (doesn't), mirroring faceForRef so the mini-thumb matches the label. */
+function previewKindForRef(ref: SessionArtifactRef): ArtifactPreviewKind {
+  switch (ref.kind) {
+    case "page":
+      return "page";
+    case "form":
+      return "form";
+    case "funnel":
+      return "funnel";
+    case "content":
+    default:
+      return ref.thumbnailUrl ? "image" : "copy";
+  }
+}
+
 function ArtifactRow({
   artifact,
   collapsed,
@@ -74,16 +92,30 @@ function ArtifactRow({
   /** Reopen this artifact onto the session canvas (#290). Every row is openable now. */
   onOpen: () => void;
 }) {
+  const reduce = useReducedMotion();
   const face = faceForRef(artifact);
-  const Icon = face.icon;
   const label = artifact.title?.trim() || `Untitled ${face.typeLabel.toLowerCase()}`;
   // No persistent "active" highlight: ?open is a one-shot command the shell consumes, so a highlight
   // would go stale (lie) the moment a chat build moves the canvas on (§13). Every row is openable.
 
-  const glyph = (
-    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-[hsl(var(--studio-glass-border)/0.5)] text-muted-foreground transition-colors group-hover:text-foreground">
-      <Icon className="h-3.5 w-3.5" aria-hidden />
-    </span>
+  // A small REAL mini-thumbnail (§22) — the shared ArtifactPreview: a page/image ref shows its real
+  // captured thumb / Storage URL, everything else the branded compact fallback (glyph on an indigo
+  // tile). It lifts on hover with a spring — the parent button's "lift" hover state propagates here,
+  // so the rail reads as a living manifest, not a file tree. Reduced motion drops the lift.
+  const thumb = (
+    <motion.span
+      variants={reduce ? undefined : { lift: { y: -2, scale: 1.06 } }}
+      transition={{ type: "spring", stiffness: 400, damping: 22 }}
+      className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg border border-[hsl(var(--studio-glass-border)/0.5)] bg-[hsl(var(--studio-canvas))]"
+    >
+      <ArtifactPreview
+        kind={previewKindForRef(artifact)}
+        thumbnailUrl={artifact.thumbnailUrl}
+        seed={artifact.id}
+        compact
+        reduce={!!reduce}
+      />
+    </motion.span>
   );
 
   const body = !collapsed && (
@@ -94,14 +126,15 @@ function ArtifactRow({
   );
 
   const base = cn(
-    "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+    "group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
     collapsed && "justify-center px-0",
   );
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onOpen}
+      whileHover={reduce ? undefined : "lift"}
       title={collapsed ? `${label} · ${face.typeLabel}` : undefined}
       className={cn(
         base,
@@ -109,9 +142,9 @@ function ArtifactRow({
         "text-muted-foreground hover:bg-[hsl(var(--studio-glass-border)/0.25)] hover:text-foreground",
       )}
     >
-      {glyph}
+      {thumb}
       {body}
-    </button>
+    </motion.button>
   );
 }
 

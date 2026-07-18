@@ -33,7 +33,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import type { GrowthAsset, GrowthBlock, GrowthFormSchema } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
-import { EmptyState, PageShell, SectionCard } from "@/components/ui/page";
+import { ArtifactPreview, EmptyState, PageShell, SectionCard } from "@/components/ui/page";
 import {
   Sheet,
   SheetContent,
@@ -2257,21 +2257,23 @@ export function StudioShell({
     );
   } else if (reopened?.kind === "copy") {
     // Reopened COPY (#290) — a chat deliverable (§21) shown read-only as its REAL saved words, never
-    // dressed up as a designed asset (§13). Editing happens in the chat.
+    // dressed up as a designed asset (§13). Promoted to a DOCUMENT-GRADE sheet via the shared
+    // ArtifactPreview primitive (§12/§18): the paper SHEET_CLS + a real reading measure, so read-only
+    // copy presents like a real deliverable instead of a plain text dump. Editing happens in the chat.
     sessionCanvas = (
       <div className="grid h-full place-items-center p-4 md:p-6">
-        <SectionCard className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden">
-          <div className="border-b border-border/60 px-5 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Copy</p>
-            <h3 className="mt-0.5 truncate font-display text-sm font-semibold text-foreground">{reopened.copy.title}</h3>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{reopened.copy.body}</p>
-          </div>
-          <div className="border-t border-border/60 px-5 py-2.5">
-            <p className="text-xs text-muted-foreground">Ask your design agent in the chat to rewrite or repurpose this.</p>
-          </div>
-        </SectionCard>
+        <div className="flex max-h-full w-full max-w-2xl flex-col gap-3">
+          <ArtifactPreview
+            variant="sheet"
+            kind="copy"
+            title={reopened.copy.title}
+            copyText={reopened.copy.body}
+            className="min-h-0"
+          />
+          <p className="text-center text-xs text-muted-foreground">
+            Ask your design agent in the chat to rewrite or repurpose this.
+          </p>
+        </div>
       </div>
     );
   } else if (reopened?.kind === "form") {
@@ -2309,6 +2311,9 @@ export function StudioShell({
         title={state.title}
         device={state.device}
         onDeviceChange={(device) => patch({ device })}
+        // The device toggle only drives a page/funnel (LivePreview) render — gate it to those canvas
+        // states so it's never an inert control on an image/document/copy/form canvas (§25).
+        deviceApplicable={canvasArtifact?.kind === "page"}
         onOpenLibrary={() => setLibraryOpen(true)}
         onDeleteProject={() => void handleDeleteProject()}
         projectTitle={state.title}

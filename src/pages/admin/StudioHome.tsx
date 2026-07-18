@@ -21,6 +21,7 @@ import {
   Toolbar,
 } from "@/components/ui/page";
 import { PaigeMark } from "@/components/brand/PaigeMark";
+import { cn } from "@/lib/utils";
 import { PromptComposer } from "@/components/admin/studio/PromptComposer";
 import { ProjectCard } from "@/components/admin/studio/ProjectCard";
 import { useStudioSessions } from "@/components/admin/studio/useStudioSessions";
@@ -257,6 +258,14 @@ export default function StudioHome() {
   }
 
   const isTemplates = view === "templates";
+  // OWNER HERO CALL #1 (2026-07-18) — the full-viewport cosmic field is the FIRST-RUN moment; a
+  // RETURNING tenant with projects gets a COMPACT composer band so "Your projects" peeks above the
+  // fold on return (§11 above-the-fold). Empty/first-run keeps the full cinematic field (§22
+  // composer-as-hero). Keyed on real data (sessions.length), so it only collapses once we KNOW
+  // there's work below — no flash-then-shrink for a first-run tenant.
+  // `|| loading` (the hook now starts loading=true) holds the compact band through the first fetch, so
+  // a returning tenant never sees a full-height hero + false "no projects" flash before their work loads.
+  const compactHero = sessions.length > 0 || loading;
 
   // StudioLayout owns the immersive frame (its own left rail); the home returns a scrollable
   // dashboard body: a vibrant gradient hero with the centered composer, then the projects.
@@ -279,7 +288,13 @@ export default function StudioHome() {
           stays balanced instead of clinging to the top. */}
       <section
         ref={heroRef}
-        className="studio-hero relative flex min-h-[calc(100vh-5.5rem)] flex-col justify-center overflow-hidden px-4 py-12 md:py-16"
+        className={cn(
+          "studio-hero relative flex flex-col justify-center overflow-hidden px-4",
+          // Full cinematic field for first-run/empty; a compact command band on return (#1).
+          compactHero
+            ? "min-h-0 py-8 md:py-10"
+            : "min-h-[calc(100vh-5.5rem)] py-12 md:py-16",
+        )}
       >
         {/* Decorative cosmic layers, back → front. All aria-hidden + pointer-events-none,
             motion-safe (frozen under prefers-reduced-motion) and pointer-parallaxed at their own
@@ -298,24 +313,40 @@ export default function StudioHome() {
         />
 
         <div className="relative z-[1] mx-auto w-full max-w-2xl">
-          <div className="mb-7 flex flex-col items-center gap-3 text-center">
+          {/* The text cluster tightens (and drops the subhead + shrinks the mark) in the compact
+              band so the composer + "Your projects" sit close together on return. Colors read the
+              theme-aware --studio-on-hero token (dark ink on the light field, white on the dark
+              planetarium) so the hero flips with the toggle (§23), never hardcoded white. */}
+          <div
+            className={cn(
+              "flex flex-col items-center text-center",
+              compactHero ? "mb-4 gap-2" : "mb-7 gap-3",
+            )}
+          >
             <span className="studio-mark-halo inline-flex">
-              <PaigeMark className="h-11 w-11" />
+              <PaigeMark className={compactHero ? "h-9 w-9" : "h-11 w-11"} />
             </span>
-            {/* Eyebrow: airier tracking + a dimmer white so the H1 clearly outranks it (#2). */}
-            <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/70">
+            {/* Eyebrow: airier tracking + a dimmer on-hero ink so the H1 clearly outranks it (#2). */}
+            <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[hsl(var(--studio-on-hero)/0.7)]">
               Vibe Studio
             </span>
             {/* H1: at 44–48px Bricolage wants far tighter tracking than the blunt global -0.01em —
                 override to a real display tightness so the hero reads crafted, not soft (#2). */}
-            <h1 className="studio-title-glow max-w-xl font-display text-4xl font-semibold leading-[1.03] tracking-[-0.025em] text-white text-balance md:text-5xl md:tracking-[-0.03em]">
+            <h1
+              className={cn(
+                "studio-title-glow max-w-xl font-display font-semibold leading-[1.03] tracking-[-0.025em] text-[hsl(var(--studio-on-hero))] text-balance md:tracking-[-0.03em]",
+                compactHero ? "text-3xl md:text-4xl" : "text-4xl md:text-5xl",
+              )}
+            >
               What do you want to build?
             </h1>
-            {/* Subhead: a tuned measure (~2 lines) + relaxed leading + a step-back white, so it
-                supports the H1 instead of ribboning wide across the field (#2). */}
-            <p className="max-w-md text-[15px] leading-relaxed text-white/70 text-balance md:text-base">
-              Describe it in a sentence — Paige works out the shape and builds it with her team.
-            </p>
+            {/* Subhead: a tuned measure (~2 lines) + relaxed leading + a step-back on-hero ink, so it
+                supports the H1 instead of ribboning wide (#2). Hidden in the compact band. */}
+            {!compactHero && (
+              <p className="max-w-md text-[15px] leading-relaxed text-[hsl(var(--studio-on-hero)/0.72)] text-balance md:text-base">
+                Describe it in a sentence — Paige works out the shape and builds it with her team.
+              </p>
+            )}
           </div>
           {/* The composer is deliberately COMPACT (owner: "why is this window so big"): the in-card
               heading and helper are GONE (the hero subhead above already carries the instruction), so
@@ -442,7 +473,18 @@ export default function StudioHome() {
             />
           </SectionCard>
         ) : (
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-4">
+          // A parent stagger (spring, motion-safe) so the grid resolves as ONE continuous act, not
+          // N independent fades (§22 transitions). Each ProjectCard is a variant child (hidden→show);
+          // under reduced motion the container drops the stagger and the children rest at show (#6).
+          <motion.ul
+            className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,16rem),1fr))] gap-4"
+            variants={{
+              hidden: {},
+              show: { transition: { staggerChildren: reduce ? 0 : 0.045 } },
+            }}
+            initial="hidden"
+            animate="show"
+          >
             {sessions.map((s) => (
               <ProjectCard
                 key={s.id}
@@ -478,7 +520,7 @@ export default function StudioHome() {
                 }
               />
             ))}
-          </ul>
+          </motion.ul>
         )}
       </div>
     </div>
