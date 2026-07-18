@@ -287,6 +287,9 @@ function Block({ block, allBlocks }: { block: StudioDocBlock; allBlocks: StudioD
               <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{caption}</p>
             </div>
           )}
+          {/* Scroll the table itself on a narrow phone so a long item + amount never pushes the whole
+              sheet (and the page body) into horizontal scroll (§11 responsive). */}
+          <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left">
             <tbody>
               {rows.map((r, i) => (
@@ -308,6 +311,7 @@ function Block({ block, allBlocks }: { block: StudioDocBlock; allBlocks: StudioD
               </tfoot>
             )}
           </table>
+          </div>
         </div>
       );
     }

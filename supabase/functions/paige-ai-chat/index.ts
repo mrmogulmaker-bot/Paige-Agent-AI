@@ -6489,14 +6489,19 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // ALL-CAPS tokens ([CLIENT NAME], [DATE], [AMOUNT], [SCOPE]) are the classic proposal
               // failure: refuse and tell the agent to get the real specifics from the customer first.
               // The `(?!\()` tail excludes markdown links like [Read more](url) — those are not placeholders.
-              const PLACEHOLDER_RE = /\[[A-Z][A-Z0-9 _/&.-]{2,}\](?!\()/;
+              // Keyword-anchored + case-INSENSITIVE: LLMs emit Title-Case blanks ([Client Name],
+              // [Your Company], [Date]) far more than ALL-CAPS, so an all-caps-only test (the earlier
+              // version) let the common form through. Anchoring to real placeholder words also drops the
+              // [NASDAQ]-style all-caps false-positive; the `(?!\()` tail still spares markdown links.
+              const PLACEHOLDER_RE = /\[[^\]]*\b(CLIENT|NAME|DATE|AMOUNT|SCOPE|COMPANY|PRICE|COST|ADDRESS|EMAIL|PHONE|YOUR|INSERT|TBD|TODO|XXX)\b[^\]]*\](?!\()/i;
               const hasPlaceholder = (v: unknown): boolean => {
                 if (typeof v === "string") return PLACEHOLDER_RE.test(v);
                 if (Array.isArray(v)) return v.some(hasPlaceholder);
                 if (v && typeof v === "object") return Object.values(v).some(hasPlaceholder);
                 return false;
               };
-              if (blocks.length && blocks.some((b: any) => hasPlaceholder(b))) {
+              // Scan the title too (the cover can be synthesized from args.title AFTER this guard).
+              if (blocks.length && (hasPlaceholder(args.title) || blocks.some((b: any) => hasPlaceholder(b)))) {
                 result = { success: false, error: "This still has fill-in-the-blank placeholders like [CLIENT NAME], [DATE], or [AMOUNT]. Get the real client name, scope, pricing, and dates from the customer first — ask them, then build it with the real details." };
               } else if (!blocks.length) {
                 result = { success: false, error: "No document content was produced — try describing the document again." };
