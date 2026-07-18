@@ -53,6 +53,7 @@ import { PublishDialog, kebabSlug } from "./PublishDialog";
 import { StudioTopBar } from "./StudioTopBar";
 import { StudioRailHeading, StudioSplit } from "./StudioChrome";
 import { StudioChat, type StudioChatArtifact } from "./StudioChat";
+import { DocumentPreview } from "./DocumentPreview";
 import { StudioBuildingScreen, useElapsedMs } from "./StudioBuildingScreen";
 import { useReducedMotion } from "framer-motion";
 import { useStudioImmersion } from "./StudioImmersion";
@@ -78,6 +79,7 @@ import {
   learnFromArtifact,
   linkSessionArtifact,
   loadBrandFloor,
+  loadDocument,
   loadPageDraft,
   loadSession,
   openSessionArtifact,
@@ -99,6 +101,7 @@ import {
   type BuiltFunnel,
   type OpenedArtifact,
   type PublishPageResult,
+  type StudioDocument,
 } from "./studio";
 import {
   clearPageDraftSnapshot,
@@ -411,6 +414,8 @@ export function StudioShell({
   const [canvasArtifact, setCanvasArtifact] = useState<StudioChatArtifact | null>(null);
   const [openedPage, setOpenedPage] = useState<OpenedArtifact | null>(null);
   const [pageHydrating, setPageHydrating] = useState(false);
+  const [openedDocument, setOpenedDocument] = useState<StudioDocument | null>(null);
+  const [docHydrating, setDocHydrating] = useState(false);
   const [chatBusy, setChatBusy] = useState(false);
   const [chatNote, setChatNote] = useState<string | null>(null);
   const chatElapsedMs = useElapsedMs(chatBusy);
@@ -431,6 +436,18 @@ export function StudioShell({
     void openSessionArtifact({ tenantId, ref })
       .then((opened) => { if (live) { setOpenedPage(opened); setPageHydrating(false); } })
       .catch(() => { if (live) setPageHydrating(false); });
+    return () => { live = false; };
+  }, [tenantId, canvasArtifact]);
+
+  // Hydrate a document artifact's blocks for DocumentPreview (#119/#292). The paige_artifact frame
+  // carries just {kind:'document', id: content_id}; the blocks live in the marketing_content row.
+  useEffect(() => {
+    if (!tenantId || !canvasArtifact || canvasArtifact.kind !== "document") { setOpenedDocument(null); setDocHydrating(false); return; }
+    let live = true;
+    setDocHydrating(true);
+    void loadDocument(tenantId, canvasArtifact.id)
+      .then((doc) => { if (live) { setOpenedDocument(doc); setDocHydrating(false); } })
+      .catch(() => { if (live) setDocHydrating(false); });
     return () => { live = false; };
   }, [tenantId, canvasArtifact]);
 
@@ -1831,6 +1848,21 @@ export function StudioShell({
     // Page linked, blocks still loading — hold the building state, don't flash the empty (verify #5).
     sessionCanvas = (
       <StudioBuildingScreen indeterminate note="Bringing your page onto the canvas…" agent="Design agent" elapsedMs={chatElapsedMs} reduce={!!reduceMotion} ariaLabel="Loading your page" />
+    );
+  } else if (canvasArtifact?.kind === "document") {
+    // Document (guide/one-pager/ebook…) — hold the building state until its blocks hydrate, then draw
+    // the premium document sheet. A hydrate miss (row gone/corrupt) falls to an honest empty (§13).
+    sessionCanvas = docHydrating ? (
+      <StudioBuildingScreen indeterminate note="Laying out your document…" agent="Design agent" elapsedMs={chatElapsedMs} reduce={!!reduceMotion} ariaLabel="Loading your document" />
+    ) : openedDocument ? (
+      <DocumentPreview document={openedDocument} />
+    ) : (
+      <div className="grid h-full place-items-center">
+        <SectionCard className="max-w-md">
+          <EmptyState icon={Wand2} tone="brand" title="Your document is saved"
+            description="It’s filed to this project. Ask your design agent to change any section and it rebuilds it here." />
+        </SectionCard>
+      </div>
     );
   } else if (canvasArtifact?.kind === "content" && canvasArtifact.url) {
     // Image → the real asset, letterboxed WHOLE (never cropped/stretched, §13) on a layered card (§22).

@@ -37,10 +37,10 @@ interface Choices { prompt: string; options: ChoiceOption[]; multi?: boolean }
 /** What the conversation last put on the canvas — server-authoritative (from the paige_artifact
  *  frame), so the parent renders EXACTLY what was built, never a guessed manifest index. */
 export interface StudioChatArtifact {
-  kind: "page" | "funnel" | "content";
+  kind: "page" | "funnel" | "content" | "document";
   id: string;
   title: string;
-  url: string | null; // present for an image (content); null for page/funnel
+  url: string | null; // present for an image (content); null for page/funnel/document
 }
 
 export function StudioChat({

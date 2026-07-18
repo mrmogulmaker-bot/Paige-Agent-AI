@@ -31,6 +31,9 @@ import type {
   SessionArtifactKind,
   SessionArtifactRef,
   StudioArtifactType,
+  StudioDocBlock,
+  StudioDocType,
+  StudioDocument,
   StudioError,
   StudioErrorCode,
   StudioSeoDraft,
@@ -50,6 +53,9 @@ export type {
   SessionArtifactKind,
   SessionArtifactRef,
   StudioArtifactType,
+  StudioDocBlock,
+  StudioDocType,
+  StudioDocument,
   StudioSessionCard,
   StudioSessionMeta,
   StudioSessionStatus,
@@ -2682,6 +2688,34 @@ export async function openSessionArtifact(input: {
   }
   // funnel / content (or a form with no slug) — the mode component hydrates from the ref itself.
   return { kind: ref.kind, type, ref };
+}
+
+/** Hydrate a DOCUMENT (#119/#292) for the canvas — fetch the marketing_content row (kind='document')
+ *  and parse its structured block JSON. Tenant-scoped (explicit filter + RLS, §9). Returns null if the
+ *  row is gone or isn't a document (never throws — the canvas falls back to an honest empty, §13). */
+export async function loadDocument(tenantId: string, contentId: string): Promise<StudioDocument | null> {
+  const tid = requireTenant(tenantId);
+  const { data, error } = await (supabase as unknown as {
+    from: (t: string) => {
+      select: (c: string) => { eq: (k: string, v: string) => { eq: (k: string, v: string) => { maybeSingle: () => Promise<{ data: { id: string; title: string | null; body: string | null; kind: string } | null; error: unknown }> } } };
+    };
+  })
+    .from("marketing_content")
+    .select("id, title, body, kind")
+    .eq("id", contentId)
+    .eq("tenant_id", tid)
+    .maybeSingle();
+  if (error || !data || data.kind !== "document" || !data.body) return null;
+  try {
+    const parsed = JSON.parse(data.body) as { docType?: string; title?: string; blocks?: unknown };
+    const blocks = Array.isArray(parsed.blocks) ? (parsed.blocks as StudioDocBlock[]) : [];
+    if (!blocks.length) return null;
+    const docType = (["guide", "one_pager", "ebook", "checklist", "worksheet"].includes(String(parsed.docType))
+      ? parsed.docType : "guide") as StudioDocType;
+    return { id: data.id, title: data.title || parsed.title || "Untitled document", docType, blocks };
+  } catch {
+    return null; // corrupt body — degrade to empty, never throw (§13)
+  }
 }
 
 /** Remove an artifact from THIS project's manifest. Never deletes the underlying library row

@@ -192,6 +192,34 @@ export type StudioArtifactType = "page" | "form" | "funnel" | "image";
  *  (listed read-only), never orphaned or thrown on (§13). */
 export type SessionArtifactKind = "page" | "form" | "funnel" | "content";
 
+/** #119/#292 — a long-form DOCUMENT the design agent authored (guide, one-pager, ebook, checklist,
+ *  worksheet). It persists as a marketing_content row kind='document' whose body carries this shape as
+ *  JSON, and links to the session under the existing manifest kind='content' (§18 — no new store/kind).
+ *  The renderer draws these blocks as a premium, book/one-pager-grade document on the studio canvas. */
+export type StudioDocType = "guide" | "one_pager" | "ebook" | "checklist" | "worksheet";
+
+/** One designed unit of a document — the block vocabulary the agent authors and the renderer draws.
+ *  A permissive shape (all fields optional beyond `type`) so a slightly-off block from the model
+ *  degrades to a sensible render instead of throwing (§13). Kept deliberately small for slice one;
+ *  figure/worksheet-field/pricing-table/toc are tracked follow-ups. */
+export type StudioDocBlock =
+  | { type: "cover"; eyebrow?: string; title: string; subhead?: string }
+  | { type: "section-header"; number?: number; kicker?: string; title: string }
+  | { type: "prose"; markdown: string }
+  | { type: "callout"; variant?: "tip" | "warning" | "key-insight" | "definition" | "example" | "do-this"; title?: string; body: string }
+  | { type: "pull-quote"; quote: string; attribution?: string }
+  | { type: "list"; style?: "bullet" | "numbered" | "checklist"; items: string[] }
+  | { type: "stat"; value: string; label: string }
+  | { type: "cta"; headline: string; action: string; href?: string };
+
+/** A hydrated document ready to render — the parsed marketing_content body plus its id/title. */
+export interface StudioDocument {
+  id: string;
+  title: string;
+  docType: StudioDocType;
+  blocks: StudioDocBlock[];
+}
+
 /** The session lifecycle, distinct from any one artifact's status. */
 export type StudioSessionStatus = "draft" | "building" | "published" | "archived";
 

@@ -1169,3 +1169,17 @@ All colors MUST be HSL.
     .build-pushin, .build-drift-slow { animation: none; }
   }
 }
+
+/* #292/#119 — Print / Save as PDF for a Studio document. The button toggles `paige-doc-printing`
+   on <html>; while printing, hide everything except the document sheet so the browser's native
+   Save-as-PDF captures just the document (an honest, universal export; a true server-rendered PDF
+   binary is a tracked fast-follow). Standard visibility trick — layout is preserved. */
+@media print {
+  html.paige-doc-printing body * { visibility: hidden !important; }
+  html.paige-doc-printing [data-paige-doc-sheet],
+  html.paige-doc-printing [data-paige-doc-sheet] * { visibility: visible !important; }
+  html.paige-doc-printing [data-paige-doc-sheet] {
+    position: absolute; left: 0; top: 0; width: 100%;
+    border: none !important; box-shadow: none !important; border-radius: 0 !important;
+  }
+}

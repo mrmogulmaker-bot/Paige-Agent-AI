@@ -4358,6 +4358,50 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "document_generate",
+              description: "Admin/coach only. Build a finished, on-brand LONG-FORM DOCUMENT — a guide, one-pager, ebook, checklist, or worksheet — and save it. Use when the operator/customer asks for a document, guide, ebook, PDF, one-pager, checklist, worksheet, lead magnet, or 'something they can hand out/download'. YOU author the whole document as an ordered list of design BLOCKS (below) — do NOT describe it, produce it. It renders on the studio canvas and the customer can Print / Save as PDF. Craft bar (never a 'Word dump'): the FIRST block is ALWAYS a 'cover'; lead every section with a benefit-stating header, not a bare label; vary the blocks — never more than ~3 'prose' blocks in a row without a callout/list/pull-quote/stat/section-header between them; short paragraphs; second person, active voice, one concrete example or number per section; exactly ONE primary 'cta'. Coaching-generic; never introduce credit/funding/finance framing unless the customer explicitly asked for it.",
+              parameters: {
+                type: "object",
+                properties: {
+                  doc_type: { type: "string", enum: ["guide", "one_pager", "ebook", "checklist", "worksheet"], description: "Which kind of document. Infer it from the request." },
+                  title: { type: "string", description: "The document's title (benefit-led and specific, not the bare topic)." },
+                  brief: { type: "string", description: "Optional one-line brief/prompt that produced it." },
+                  blocks: {
+                    type: "array",
+                    description: "The document as an ordered list of design blocks. The first block MUST be type 'cover'.",
+                    items: {
+                      type: "object",
+                      properties: {
+                        type: { type: "string", enum: ["cover", "section-header", "prose", "callout", "pull-quote", "list", "stat", "cta"], description: "The block kind." },
+                        eyebrow: { type: "string", description: "cover: small kicker above the title." },
+                        title: { type: "string", description: "cover/section-header: the heading." },
+                        subhead: { type: "string", description: "cover: one-line promise/outcome under the title." },
+                        kicker: { type: "string", description: "section-header: small label above the heading." },
+                        number: { type: "number", description: "section-header: optional section number." },
+                        markdown: { type: "string", description: "prose: 1-4 short paragraphs of body copy (markdown)." },
+                        variant: { type: "string", enum: ["tip", "warning", "key-insight", "definition", "example", "do-this"], description: "callout: which kind of callout." },
+                        body: { type: "string", description: "callout: the callout text." },
+                        quote: { type: "string", description: "pull-quote: the quote." },
+                        attribution: { type: "string", description: "pull-quote: who said it (optional)." },
+                        style: { type: "string", enum: ["bullet", "numbered", "checklist"], description: "list: the list style." },
+                        items: { type: "array", items: { type: "string" }, description: "list: the list items." },
+                        value: { type: "string", description: "stat: the big number/value." },
+                        label: { type: "string", description: "stat: what the value measures." },
+                        headline: { type: "string", description: "cta: the call-to-action headline." },
+                        action: { type: "string", description: "cta: the button label (one imperative ask)." },
+                        href: { type: "string", description: "cta: optional link." }
+                      },
+                      required: ["type"]
+                    }
+                  }
+                },
+                required: ["doc_type", "title", "blocks"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "growth_list",
               description: "Admin/coach only. List the tenant's landing pages (growth pages) with their slug, title, status (draft/published/archived), and — for published pages — the real public URL. Read-only; safe to run. Use when the operator asks 'what pages do I have?', 'show my landing pages', or before saving/publishing so you can reference an existing page by id.",
               parameters: { type: "object", properties: {} }
@@ -5179,7 +5223,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "deal_create", "deal_move_stage",
       "member_grant_role", "member_revoke_role",
       "calendar_book_meeting", "program_enroll",
-      "draft_marketing_content", "generate_image", "content_save",
+      "draft_marketing_content", "generate_image", "content_save", "document_generate",
       "growth_page_save", "growth_page_publish",
       "growth_funnel_build", "growth_funnel_publish",
       "action_file", "action_advance",
@@ -5216,6 +5260,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       draft_marketing_content: "drafting marketing content",
       generate_image: "generating an image",
       content_save: "saving content",
+      document_generate: "building a document",
       growth_page_save: "saving a landing page draft",
       growth_page_publish: "publishing a landing page",
       growth_funnel_build: "building a funnel",
@@ -6043,6 +6088,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "generate_image" ||
           tc.function.name === "draft_marketing_content" ||
           tc.function.name === "content_save" ||
+          tc.function.name === "document_generate" ||
           tc.function.name === "growth_list" ||
           tc.function.name === "growth_page_generate" ||
           tc.function.name === "growth_page_save" ||
@@ -6395,6 +6441,31 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               });
               if (error) throw error;
               result = { success: true, content_id: cid };
+            } else if (tc.function.name === "document_generate") {
+              // #119/#292 — the agent authored the whole document as design blocks; persist it as a
+              // marketing_content row kind='document' (body = the block JSON). Keep only known block
+              // types so a slightly-off block degrades instead of breaking the render (§13); ensure a
+              // cover leads. Returns only what actually persisted.
+              const ALLOWED_DOC_BLOCKS = new Set(["cover", "section-header", "prose", "callout", "pull-quote", "list", "stat", "cta"]);
+              const docType = ["guide", "one_pager", "ebook", "checklist", "worksheet"].includes(args.doc_type) ? args.doc_type : "guide";
+              let blocks = (Array.isArray(args.blocks) ? args.blocks : [])
+                .filter((b: any) => b && typeof b === "object" && ALLOWED_DOC_BLOCKS.has(b.type))
+                .slice(0, 80);
+              if (!blocks.length) {
+                result = { success: false, error: "No document content was produced — try describing the document again." };
+              } else {
+                if (blocks[0].type !== "cover") blocks = [{ type: "cover", title: String(args.title ?? "Untitled document") }, ...blocks];
+                const docTitle = String(args.title ?? (blocks[0] as any).title ?? "Untitled document").slice(0, 200);
+                const { data: cid, error } = await supabaseClient.rpc("save_marketing_content", {
+                  p_kind: "document",
+                  p_title: docTitle,
+                  p_body: JSON.stringify({ docType, title: docTitle, blocks }),
+                  p_brief: args.brief ?? null,
+                  p_tenant_id: personaCtx?.tenant_id ?? null,
+                });
+                if (error) throw error;
+                result = { success: true, content_id: cid, title: docTitle, doc_type: docType, blocks: blocks.length };
+              }
             } else if (tc.function.name === "growth_list") {
               // Caller-authed read, EXPLICITLY tenant-pinned (§9). Don't rely on RLS
               // alone: a platform admin's manage-RLS would span tenants, and the URLs
@@ -6901,10 +6972,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // open — pure copy is a chat deliverable and is deliberately NOT put on the canvas.
             if (studioSessionId && result && (result as any).success) {
               const r = result as any;
-              const link: { kind: string; id: string; visual: boolean; url: string | null } | null =
+              // `kind` is what the MANIFEST stores (link_session_artifact — constrained to
+              // page/form/funnel/content); `frameKind` (when it differs) is what the CLIENT renders.
+              // A document persists under manifest kind 'content' (no new manifest kind, §18) but the
+              // canvas must render it as a document, so it streams frameKind 'document'.
+              const link: { kind: string; id: string; visual: boolean; url: string | null; frameKind?: string } | null =
                 tc.function.name === "growth_page_save" && r.page_id ? { kind: "page", id: r.page_id, visual: true, url: null }
                 : tc.function.name === "growth_funnel_build" && r.funnel_id ? { kind: "funnel", id: r.funnel_id, visual: true, url: null }
                 : tc.function.name === "generate_image" && r.content_id ? { kind: "content", id: r.content_id, visual: true, url: r.url ?? null }
+                : tc.function.name === "document_generate" && r.content_id ? { kind: "content", id: r.content_id, visual: true, url: null, frameKind: "document" }
                 : tc.function.name === "content_save" && r.content_id ? { kind: "content", id: r.content_id, visual: false, url: null }
                 : null;
               if (link) {
@@ -6913,7 +6989,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                     p_session_id: studioSessionId, p_kind: link.kind, p_artifact_id: link.id, p_tenant_id: null,
                   });
                   r.studio_session_id = studioSessionId;
-                  if (link.visual) studioLinked.push({ kind: link.kind, id: link.id, title: String(r.title ?? r.slug ?? ""), url: link.url });
+                  if (link.visual) studioLinked.push({ kind: link.frameKind ?? link.kind, id: link.id, title: String(r.title ?? r.slug ?? ""), url: link.url });
                 } catch (e) { console.warn("[paige] studio artifact link failed:", (e as Error)?.message); }
               }
             }
