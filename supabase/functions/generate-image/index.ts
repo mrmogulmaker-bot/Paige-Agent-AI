@@ -47,8 +47,9 @@ serve(async (req: Request) => {
     const size = SIZE_MAP[body?.size] ?? "1024x1024";
     const tenantId = body?.tenant_id ?? null;
     // provider: "gemini" (default) or "openai" (the escalation path — caller re-requests this
-    // when a customer isn't happy with the default result). Any other value 400s rather than
-    // silently falling back, so the caller knows their request wasn't honored as asked.
+    // when a customer isn't happy with the default result). An UNKNOWN value 400s so the caller
+    // knows their request wasn't honored. (A KNOWN provider whose KEY is missing is handled below:
+    // it falls back to whichever provider IS configured, reporting which one actually served it.)
     const requestedProvider = String(body?.provider ?? "gemini").toLowerCase();
     if (requestedProvider !== "gemini" && requestedProvider !== "openai") {
       return new Response(JSON.stringify({ error: `Unknown image provider "${requestedProvider}".` }), {
@@ -61,14 +62,28 @@ serve(async (req: Request) => {
 
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    const provider = requestedProvider === "openai" ? "openai" : "gemini";
-    const providerKey = provider === "openai" ? OPENAI_API_KEY : GEMINI_API_KEY;
+    // Which providers this function can actually SEE at runtime (booleans only — never the key
+    // values). Returned in the needs_config response so a misconfigured/wrong-scoped secret is
+    // self-diagnosing rather than a mystery ("it says off but I set the key").
+    const configured = { gemini: !!GEMINI_API_KEY, openai: !!OPENAI_API_KEY };
+
+    // Honor the requested provider when ITS key is live; otherwise FALL BACK to whichever provider is
+    // actually configured. A missing default-provider (Gemini) key must never hard-fail generation when
+    // the other provider is ready — we generate with what's live and report which provider served it.
+    // Only when NEITHER key is visible do we return an honest needs_config (owner: "OpenAI is set" — so
+    // a Gemini-key gap alone should never have blocked the carousel).
+    let provider: "gemini" | "openai" = requestedProvider === "openai" ? "openai" : "gemini";
+    let providerKey = provider === "openai" ? OPENAI_API_KEY : GEMINI_API_KEY;
     if (!providerKey) {
-      console.warn(`generate-image: ${provider} key not set`);
+      if (OPENAI_API_KEY) { provider = "openai"; providerKey = OPENAI_API_KEY; }
+      else if (GEMINI_API_KEY) { provider = "gemini"; providerKey = GEMINI_API_KEY; }
+    }
+    if (!providerKey) {
+      console.warn("generate-image: no image provider key set (gemini + openai both absent)");
       return new Response(JSON.stringify({
-        error: `Image generation via ${provider} isn't switched on yet.`,
+        error: "Image generation isn't switched on yet — no image provider key is set. Add GEMINI_API_KEY or OPENAI_API_KEY to this project's Supabase Edge Function secrets.",
         needs_config: true,
-        provider,
+        configured,
       }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
