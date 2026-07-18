@@ -101,14 +101,7 @@ export function StudioChat({
             .in("role", ["user", "assistant"])
             .order("seq", { ascending: true });
           if (live) {
-            const hydrated = ((turns ?? []) as ChatMsg[]).map((t) => ({ role: t.role, content: t.content }));
-            setMessages(hydrated);
-            // Autostart handoff (§3): a brand-new project with a seed brief and no turns yet builds
-            // its FIRST artifact through this chat — once, guarded per session so it never re-fires.
-            if (hydrated.length === 0 && seedBrief && seedBrief.trim() && seededRef.current !== sessionId) {
-              seededRef.current = sessionId;
-              setTimeout(() => { if (live) void send(seedBrief.trim()); }, 0);
-            }
+            setMessages(((turns ?? []) as ChatMsg[]).map((t) => ({ role: t.role, content: t.content })));
           }
         }
       } catch {
@@ -119,6 +112,20 @@ export function StudioChat({
     })();
     return () => { live = false; };
   }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Autostart handoff (§3 / post-deploy fix): a brand-new project fires its FIRST build through THIS
+  // chat. `sessionSeedBrief` arrives ASYNC (the parent resolves it after loadSession), often AFTER
+  // this component mounts — so the seed can't live in the thread-ensure effect's mount closure. This
+  // dedicated effect fires the moment ALL of {thread ready · not loading · no turns yet · brief
+  // present} hold, guarded per-session so it never double-fires.
+  useEffect(() => {
+    if (!sessionId || !threadId || loading || sending) return;
+    if (messages.length > 0) return;
+    const brief = seedBrief?.trim();
+    if (!brief || seededRef.current === sessionId) return;
+    seededRef.current = sessionId;
+    void send(brief);
+  }, [sessionId, threadId, loading, sending, messages.length, seedBrief]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep the transcript pinned to the latest as it streams.
   useEffect(() => {

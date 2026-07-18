@@ -6320,7 +6320,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               } else if ((img as any)?.error) {
                 throw new Error((img as any).error);
               } else {
-                result = { success: true, url: (img as any)?.url, size: (img as any)?.size };
+                // content_id is load-bearing for the Studio session link (#292) — without it the
+                // image never reaches the project canvas. Keep it on the result.
+                result = { success: true, url: (img as any)?.url, size: (img as any)?.size, content_id: (img as any)?.content_id ?? null };
               }
             } else if (tc.function.name === "calendar_book_meeting") {
               // Confirm is enforced by the central autonomy gate above (a booking
@@ -7276,6 +7278,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_choices: frame })}\n\n`));
                 finalAssistantText = frame.prompt;
                 forcedTermination = true;
+                // Empty (non-null) finalChunks so the post-loop does NOT fire a second closing
+                // completion — the question IS the whole assistant turn (§13/§94: keep it re-readable,
+                // don't append stray model text after the chips).
+                finalChunks = [];
                 break;
               }
             }
