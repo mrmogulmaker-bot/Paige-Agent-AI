@@ -192,24 +192,55 @@ export type StudioArtifactType = "page" | "form" | "funnel" | "image";
  *  (listed read-only), never orphaned or thrown on (§13). */
 export type SessionArtifactKind = "page" | "form" | "funnel" | "content";
 
-/** #119/#292 — a long-form DOCUMENT the design agent authored (guide, one-pager, ebook, checklist,
- *  worksheet). It persists as a marketing_content row kind='document' whose body carries this shape as
- *  JSON, and links to the session under the existing manifest kind='content' (§18 — no new store/kind).
- *  The renderer draws these blocks as a premium, book/one-pager-grade document on the studio canvas. */
-export type StudioDocType = "guide" | "one_pager" | "ebook" | "checklist" | "worksheet";
+/** #119/#292/#319 — a long-form DOCUMENT the design agent authored (guide, one-pager, ebook, checklist,
+ *  worksheet, proposal). It persists as a marketing_content row kind='document' whose body carries this
+ *  shape as JSON, and links to the session under the existing manifest kind='content' (§18 — no new
+ *  store/kind). The renderer draws these blocks as a premium, book/one-pager-grade document on the studio
+ *  canvas. Each doc_type has a distinct block skeleton (encoded in the document_generate tool) so a
+ *  worksheet/ebook/proposal stops degrading into a generic guide. */
+export type StudioDocType = "guide" | "one_pager" | "ebook" | "checklist" | "worksheet" | "proposal";
 
 /** One designed unit of a document — the block vocabulary the agent authors and the renderer draws.
  *  A permissive shape (all fields optional beyond `type`) so a slightly-off block from the model
- *  degrades to a sensible render instead of throwing (§13). Kept deliberately small for slice one;
- *  figure/worksheet-field/pricing-table/toc are tracked follow-ups. */
+ *  degrades to a sensible render instead of throwing (§13). The #319 additions make worksheet/ebook/
+ *  proposal genuinely first-class: `worksheet-field` is a REAL printable blank the user fills in,
+ *  `chapter-divider` is the ebook signature, `toc` a table of contents, `pricing-table` a proposal's
+ *  line-item investment table (a generic $ amount — §2: never lending/credit). Image/figure blocks
+ *  stay out of scope this slice (image generation is off without a key). */
 export type StudioDocBlock =
   | { type: "cover"; eyebrow?: string; title: string; subhead?: string }
   | { type: "section-header"; number?: number; kicker?: string; title: string }
+  | { type: "chapter-divider"; number?: number; kicker?: string; title: string; subhead?: string }
+  | { type: "toc"; title?: string; entries?: string[] }
   | { type: "prose"; markdown: string }
   | { type: "callout"; variant?: "tip" | "warning" | "key-insight" | "definition" | "example" | "do-this"; title?: string; body: string }
   | { type: "pull-quote"; quote: string; attribution?: string }
   | { type: "list"; style?: "bullet" | "numbered" | "checklist"; items: string[] }
   | { type: "stat"; value: string; label: string }
+  | {
+      type: "worksheet-field";
+      /** The kind of blank: one ruled line, N ruled lines, an open box, a numbered rating scale, or a
+       *  check + blank. Defaults to "lines" when omitted/unknown so a bare field still renders real. */
+      field?: "line" | "lines" | "box" | "scale" | "checkbox";
+      /** The prompt/question printed above the blank — what the user is answering. */
+      label: string;
+      helper?: string;
+      /** "lines": how many ruled lines to draw (clamped 1–12; default 3). */
+      lines?: number;
+      /** "scale": the numbered endpoints (default 1–5) and their anchor captions. */
+      scaleMin?: number;
+      scaleMax?: number;
+      minLabel?: string;
+      maxLabel?: string;
+    }
+  | {
+      type: "pricing-table";
+      caption?: string;
+      /** Line items — `amount` is a plain currency string the agent sets (e.g. "$2,500", "$500/mo").
+       *  §2: generic pricing only, never credit/lending/finance framing unless the tenant asked. */
+      rows: { item: string; detail?: string; amount: string }[];
+      total?: string;
+    }
   | { type: "cta"; headline: string; action: string; href?: string };
 
 /** A hydrated document ready to render — the parsed marketing_content body plus its id/title. */

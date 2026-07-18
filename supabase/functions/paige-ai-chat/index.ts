@@ -4359,12 +4359,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "document_generate",
-              description: "Admin/coach only. Build a finished, on-brand LONG-FORM DOCUMENT — a guide, one-pager, ebook, checklist, or worksheet — and save it. Use when the operator/customer asks for a document, guide, ebook, PDF, one-pager, checklist, worksheet, lead magnet, or 'something they can hand out/download'. YOU author the whole document as an ordered list of design BLOCKS (below) — do NOT describe it, produce it. It renders on the studio canvas and the customer can Print / Save as PDF. Craft bar (never a 'Word dump'): the FIRST block is ALWAYS a 'cover'; lead every section with a benefit-stating header, not a bare label; vary the blocks — never more than ~3 'prose' blocks in a row without a callout/list/pull-quote/stat/section-header between them; short paragraphs; second person, active voice, one concrete example or number per section; exactly ONE primary 'cta'. Coaching-generic; never introduce credit/funding/finance framing unless the customer explicitly asked for it.",
+              description: "Admin/coach only. Build a finished, on-brand LONG-FORM DOCUMENT — a guide, one-pager, ebook, checklist, worksheet, or proposal — and save it. Use when the operator/customer asks for a document, guide, ebook, PDF, one-pager, checklist, worksheet, proposal, quote, statement of work, lead magnet, or 'something they can hand out/download'. YOU author the whole document as an ordered list of design BLOCKS (below) — do NOT describe it, produce it. It renders on the studio canvas and the customer can Print / Save as PDF. Craft bar (never a 'Word dump'): the FIRST block is ALWAYS a 'cover'; lead every section with a benefit-stating header, not a bare label; vary the blocks — never more than ~3 'prose' blocks in a row without a callout/list/pull-quote/stat between them; short paragraphs; second person, active voice, one concrete example or number per section; exactly ONE primary 'cta'. Coaching-generic; never introduce credit/funding/finance framing unless the customer explicitly asked for it.\n\nMATCH THE BLOCK SHAPE TO THE doc_type — a worksheet is not a guide, an ebook is not a one-pager, a proposal is not a checklist:\n• guide — cover → optional toc → repeated (section-header + prose/callout/list/stat), ~3-6 sections → one cta. Teaching depth.\n• one_pager — cover → 1-2 section-headers → tight prose + a stat + a short list → one cta. Fits one page; no toc, no chapters.\n• ebook — cover → toc → per chapter: chapter-divider + prose/pull-quote/callout (3+ chapters) → cta. The chapter-divider OPENS each chapter — it is the ebook signature; a guide with no chapter-dividers is NOT an ebook.\n• checklist — cover → short intro prose → list(style:\"checklist\") grouped under section-headers → optional cta. Mostly checkable items.\n• worksheet — cover → brief prose per section → worksheet-field blocks the user FILLS IN (line/lines/box/scale/checkbox) → optional cta. A worksheet MUST contain worksheet-field blocks (real blanks); with none it is just a guide and is wrong.\n• proposal — cover (client + project) → prose (their goals / your understanding) → section-header 'Scope' + list → section-header 'Timeline' + prose/list with REAL dates → section-header 'Investment' + pricing-table (rows + total) → cta ('Approve & start'). A proposal MUST carry a pricing-table and real client name, scope, and dates.\n\nPROPOSALS NEED REAL SPECIFICS — NEVER ship [PLACEHOLDER]s. A proposal is worthless with [CLIENT NAME]/[SCOPE]/[AMOUNT]/[DATE] in it. Before building a proposal, make sure you actually know: the client's real name, what they're buying (scope), the price(s), and the start/delivery dates. Pull them from the brief/brand/contact when present; otherwise ASK the customer FIRST — use ask_choices for pricing tiers or packaging where you can offer 2-4 concrete options, or just ask in chat for the name and dates. The system REJECTS any document that still contains bracketed placeholder tokens (e.g. [CLIENT NAME], [DATE], [AMOUNT]) — resolve them from real data or by asking, never guess.",
               parameters: {
                 type: "object",
                 properties: {
-                  doc_type: { type: "string", enum: ["guide", "one_pager", "ebook", "checklist", "worksheet"], description: "Which kind of document. Infer it from the request." },
-                  title: { type: "string", description: "The document's title (benefit-led and specific, not the bare topic)." },
+                  doc_type: { type: "string", enum: ["guide", "one_pager", "ebook", "checklist", "worksheet", "proposal"], description: "Which kind of document. Infer it from the request, then follow that type's block skeleton above." },
+                  title: { type: "string", description: "The document's title (benefit-led and specific, not the bare topic). For a proposal, name the client + engagement." },
                   brief: { type: "string", description: "Optional one-line brief/prompt that produced it." },
                   blocks: {
                     type: "array",
@@ -4372,12 +4372,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                     items: {
                       type: "object",
                       properties: {
-                        type: { type: "string", enum: ["cover", "section-header", "prose", "callout", "pull-quote", "list", "stat", "cta"], description: "The block kind." },
+                        type: { type: "string", enum: ["cover", "section-header", "chapter-divider", "toc", "prose", "callout", "pull-quote", "list", "stat", "worksheet-field", "pricing-table", "cta"], description: "The block kind." },
                         eyebrow: { type: "string", description: "cover: small kicker above the title." },
-                        title: { type: "string", description: "cover/section-header: the heading." },
-                        subhead: { type: "string", description: "cover: one-line promise/outcome under the title." },
-                        kicker: { type: "string", description: "section-header: small label above the heading." },
-                        number: { type: "number", description: "section-header: optional section number." },
+                        title: { type: "string", description: "cover/section-header/chapter-divider: the heading. toc: optional heading (defaults to 'Contents')." },
+                        subhead: { type: "string", description: "cover/chapter-divider: one-line promise/outcome under the title." },
+                        kicker: { type: "string", description: "section-header/chapter-divider: small label above the heading." },
+                        number: { type: "number", description: "section-header/chapter-divider: optional section/chapter number." },
+                        entries: { type: "array", items: { type: "string" }, description: "toc: explicit contents lines. OMIT to auto-build the table of contents from your section-header/chapter-divider titles." },
                         markdown: { type: "string", description: "prose: 1-4 short paragraphs of body copy (markdown)." },
                         variant: { type: "string", enum: ["tip", "warning", "key-insight", "definition", "example", "do-this"], description: "callout: which kind of callout." },
                         body: { type: "string", description: "callout: the callout text." },
@@ -4386,7 +4387,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                         style: { type: "string", enum: ["bullet", "numbered", "checklist"], description: "list: the list style." },
                         items: { type: "array", items: { type: "string" }, description: "list: the list items." },
                         value: { type: "string", description: "stat: the big number/value." },
-                        label: { type: "string", description: "stat: what the value measures." },
+                        label: { type: "string", description: "stat: what the value measures. worksheet-field: the prompt/question printed above the blank." },
+                        field: { type: "string", enum: ["line", "lines", "box", "scale", "checkbox"], description: "worksheet-field: the kind of blank — 'lines' = N ruled lines (set lines:), 'box' = an open box, 'scale' = a numbered rating row (set scaleMin/scaleMax/minLabel/maxLabel), 'line' = one blank, 'checkbox' = a check + blank. Defaults to 'lines'." },
+                        helper: { type: "string", description: "worksheet-field: optional hint under the prompt." },
+                        lines: { type: "number", description: "worksheet-field (field:'lines'): how many ruled lines to draw (1-12; default 3)." },
+                        scaleMin: { type: "number", description: "worksheet-field (field:'scale'): low end of the scale (default 1)." },
+                        scaleMax: { type: "number", description: "worksheet-field (field:'scale'): high end of the scale (default 5)." },
+                        minLabel: { type: "string", description: "worksheet-field (field:'scale'): caption under the low end." },
+                        maxLabel: { type: "string", description: "worksheet-field (field:'scale'): caption under the high end." },
+                        caption: { type: "string", description: "pricing-table: optional label above the table (e.g. 'Investment')." },
+                        rows: { type: "array", description: "pricing-table: the line items.", items: { type: "object", properties: { item: { type: "string", description: "what the line is." }, detail: { type: "string", description: "optional sub-line detail." }, amount: { type: "string", description: "a plain currency string you set, e.g. '$2,500' or '$500/mo'. Generic pricing — never credit/lending/finance unless asked." } }, required: ["item", "amount"] } },
+                        total: { type: "string", description: "pricing-table: optional total row value (a currency string)." },
                         headline: { type: "string", description: "cta: the call-to-action headline." },
                         action: { type: "string", description: "cta: the button label (one imperative ask)." },
                         href: { type: "string", description: "cta: optional link." }
@@ -6446,7 +6457,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // marketing_content row kind='document' (body = the block JSON). Keep only known block
               // types so a slightly-off block degrades instead of breaking the render (§13); ensure a
               // cover leads. Returns only what actually persisted.
-              const docType = ["guide", "one_pager", "ebook", "checklist", "worksheet"].includes(args.doc_type) ? args.doc_type : "guide";
+              const docType = ["guide", "one_pager", "ebook", "checklist", "worksheet", "proposal"].includes(args.doc_type) ? args.doc_type : "guide";
               // Keep only blocks whose REQUIRED content field is the right type — a well-typed `type`
               // with a mis-typed value (a list of objects, a non-string markdown) is dropped here so
               // nothing malformed persists (§13; the renderer also coerces defensively).
@@ -6456,11 +6467,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 switch (b.type) {
                   case "cover": return _s(b.title);
                   case "section-header": return _s(b.title);
+                  case "chapter-divider": return _s(b.title);
+                  // toc auto-builds from the doc's own headings when it carries no explicit entries, so
+                  // it is always structurally valid; the renderer drops it if nothing resolves.
+                  case "toc": return true;
                   case "prose": return _s(b.markdown);
                   case "callout": return _s(b.body);
                   case "pull-quote": return _s(b.quote);
                   case "stat": return _s(b.value) || _s(b.label);
                   case "list": return Array.isArray(b.items) && b.items.some((x: unknown) => _s(x));
+                  case "worksheet-field": return _s(b.label);
+                  case "pricing-table": return Array.isArray(b.rows) && b.rows.some((r: any) => _s(r?.item) || _s(r?.amount));
                   case "cta": return _s(b.headline) || _s(b.action);
                   default: return false;
                 }
@@ -6468,7 +6485,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               let blocks = (Array.isArray(args.blocks) ? args.blocks : [])
                 .filter(validDocBlock)
                 .slice(0, 80);
-              if (!blocks.length) {
+              // §15/§13 — a document must never ship with fill-in-the-blank placeholders. Bracketed
+              // ALL-CAPS tokens ([CLIENT NAME], [DATE], [AMOUNT], [SCOPE]) are the classic proposal
+              // failure: refuse and tell the agent to get the real specifics from the customer first.
+              // The `(?!\()` tail excludes markdown links like [Read more](url) — those are not placeholders.
+              const PLACEHOLDER_RE = /\[[A-Z][A-Z0-9 _/&.-]{2,}\](?!\()/;
+              const hasPlaceholder = (v: unknown): boolean => {
+                if (typeof v === "string") return PLACEHOLDER_RE.test(v);
+                if (Array.isArray(v)) return v.some(hasPlaceholder);
+                if (v && typeof v === "object") return Object.values(v).some(hasPlaceholder);
+                return false;
+              };
+              if (blocks.length && blocks.some((b: any) => hasPlaceholder(b))) {
+                result = { success: false, error: "This still has fill-in-the-blank placeholders like [CLIENT NAME], [DATE], or [AMOUNT]. Get the real client name, scope, pricing, and dates from the customer first — ask them, then build it with the real details." };
+              } else if (!blocks.length) {
                 result = { success: false, error: "No document content was produced — try describing the document again." };
               } else {
                 if (blocks[0].type !== "cover") blocks = [{ type: "cover", title: String(args.title ?? "Untitled document") }, ...blocks];

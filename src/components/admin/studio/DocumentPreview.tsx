@@ -58,7 +58,15 @@ function Prose({ markdown }: { markdown: unknown }) {
   );
 }
 
-function Block({ block }: { block: StudioDocBlock }) {
+/** Clamp a model-authored number to a safe integer range (§13 — a NaN/absurd count never breaks the
+ *  render; it falls back to `fallback`, then to [min,max]). */
+function clampInt(v: unknown, min: number, max: number, fallback: number): number {
+  const n = Math.trunc(Number(v));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+
+function Block({ block, allBlocks }: { block: StudioDocBlock; allBlocks: StudioDocBlock[] }) {
   switch (block.type) {
     case "cover":
       return (
@@ -89,6 +97,56 @@ function Block({ block }: { block: StudioDocBlock }) {
           <div className="mt-3 h-px w-full bg-[hsl(var(--border))]" aria-hidden />
         </div>
       );
+    case "chapter-divider": {
+      // The ebook signature: a chapter opens on its own, centered, on a fresh printed page. The big
+      // numeral is an INDIGO tint, never gold (§11 — gold is only the act moment, which a document has none of).
+      const title = str(block.title);
+      if (!title) return null;
+      const hasNumber = typeof block.number === "number" && Number.isFinite(block.number);
+      return (
+        <div className="break-before-page break-inside-avoid py-6 text-center md:py-10">
+          <div className="mx-auto mb-6 h-px w-14 bg-[hsl(var(--primary)/0.45)]" aria-hidden />
+          {str(block.kicker) && (
+            <p className="mb-3 text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-primary">{str(block.kicker)}</p>
+          )}
+          {hasNumber && (
+            <div className="font-display text-[clamp(3rem,7vw,5rem)] font-bold leading-none tracking-[-0.03em] text-[hsl(var(--primary)/0.28)]">
+              {String(block.number).padStart(2, "0")}
+            </div>
+          )}
+          <h2 className="mt-3 font-display text-[clamp(1.75rem,3.5vw,2.5rem)] font-bold leading-[1.1] tracking-[-0.02em] text-foreground">{title}</h2>
+          {str(block.subhead) && (
+            <p className="mx-auto mt-4 max-w-[42ch] text-lg leading-relaxed text-muted-foreground">{str(block.subhead)}</p>
+          )}
+          <div className="mx-auto mt-6 h-px w-14 bg-[hsl(var(--primary)/0.45)]" aria-hidden />
+        </div>
+      );
+    }
+    case "toc": {
+      // Explicit entries win; otherwise auto-build from the document's own section/chapter titles so the
+      // agent never has to hand-maintain a contents list that can drift from the headings (§13).
+      const explicit = (Array.isArray(block.entries) ? block.entries : []).map(str).filter(Boolean);
+      const entries = explicit.length
+        ? explicit
+        : allBlocks
+            .filter((b) => b.type === "section-header" || b.type === "chapter-divider")
+            .map((b) => str((b as { title?: unknown }).title))
+            .filter(Boolean);
+      if (!entries.length) return null;
+      return (
+        <nav className="break-inside-avoid rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.2)] px-6 py-5 md:px-7 md:py-6">
+          <p className="mb-4 font-display text-lg font-semibold tracking-tight text-foreground">{str(block.title) || "Contents"}</p>
+          <ol className="space-y-0">
+            {entries.map((entry, i) => (
+              <li key={i} className="flex items-baseline gap-3 border-b border-[hsl(var(--border)/0.6)] py-2.5 last:border-b-0">
+                <span className="font-display text-sm font-semibold tabular-nums text-primary">{String(i + 1).padStart(2, "0")}</span>
+                <span className="flex-1 text-[0.975rem] leading-snug text-foreground/90">{entry}</span>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      );
+    }
     case "prose":
       return <Prose markdown={block.markdown} />;
     case "callout": {
@@ -152,6 +210,105 @@ function Block({ block }: { block: StudioDocBlock }) {
         <Tag className={cn("space-y-2 pl-5 text-[1.0625rem] leading-relaxed text-foreground/90", block.style === "numbered" ? "list-decimal" : "list-disc")}>
           {items.map((it, i) => <li key={i} className="pl-1">{it}</li>)}
         </Tag>
+      );
+    }
+    case "worksheet-field": {
+      // A REAL blank the user prints and fills in — never faked "sample" content (§13/§15). The prompt
+      // sits above; the blank below is genuinely empty. break-inside-avoid keeps a field whole on a page.
+      const label = str(block.label);
+      if (!label) return null;
+      const helper = str(block.helper);
+      const kind = ["line", "lines", "box", "scale", "checkbox"].includes(String(block.field)) ? String(block.field) : "lines";
+      const rule = "h-8 border-b border-[hsl(var(--border))]";
+      let fill: ReactNode;
+      if (kind === "line") {
+        fill = <div className={rule} aria-hidden />;
+      } else if (kind === "box") {
+        fill = <div className="min-h-[7rem] rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.2)]" aria-hidden />;
+      } else if (kind === "checkbox") {
+        fill = (
+          <div className="flex items-center gap-3">
+            <span className="h-5 w-5 shrink-0 rounded border-2 border-[hsl(var(--border))]" aria-hidden />
+            <div className="h-8 flex-1 border-b border-[hsl(var(--border))]" aria-hidden />
+          </div>
+        );
+      } else if (kind === "scale") {
+        const lo = clampInt(block.scaleMin, 0, 9, 1);
+        const hi = clampInt(block.scaleMax, lo + 1, lo + 10, Math.max(lo + 4, lo + 1));
+        const ticks: number[] = [];
+        for (let n = lo; n <= hi; n++) ticks.push(n);
+        const minLabel = str(block.minLabel);
+        const maxLabel = str(block.maxLabel);
+        fill = (
+          <div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              {ticks.map((n) => (
+                <span key={n} className="grid h-9 w-9 place-items-center rounded-full border border-[hsl(var(--border))] text-sm font-semibold tabular-nums text-foreground/70">{n}</span>
+              ))}
+            </div>
+            {(minLabel || maxLabel) && (
+              <div className="mt-2 flex justify-between text-[0.72rem] text-muted-foreground">
+                <span>{minLabel}</span>
+                <span>{maxLabel}</span>
+              </div>
+            )}
+          </div>
+        );
+      } else {
+        const n = clampInt(block.lines, 1, 12, 3);
+        fill = (
+          <div className="space-y-5">
+            {Array.from({ length: n }).map((_, i) => <div key={i} className={rule} aria-hidden />)}
+          </div>
+        );
+      }
+      return (
+        <div className="break-inside-avoid rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.12)] px-5 py-4">
+          <div className="mb-3">
+            <p className="text-[0.95rem] font-semibold leading-snug text-foreground">{label}</p>
+            {helper && <p className="mt-1 text-[0.8rem] leading-relaxed text-muted-foreground">{helper}</p>}
+          </div>
+          {fill}
+        </div>
+      );
+    }
+    case "pricing-table": {
+      // A proposal's line-item investment table. Coerce every cell to a string; drop empty rows (§13).
+      const rows = (Array.isArray(block.rows) ? block.rows : [])
+        .map((r) => ({ item: str((r as { item?: unknown })?.item), detail: str((r as { detail?: unknown })?.detail), amount: str((r as { amount?: unknown })?.amount) }))
+        .filter((r) => r.item || r.amount);
+      if (!rows.length) return null;
+      const total = str(block.total);
+      const caption = str(block.caption);
+      return (
+        <div className="break-inside-avoid overflow-hidden rounded-2xl border border-[hsl(var(--border))]">
+          {caption && (
+            <div className="border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.3)] px-6 py-3">
+              <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{caption}</p>
+            </div>
+          )}
+          <table className="w-full border-collapse text-left">
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-b border-[hsl(var(--border)/0.7)]">
+                  <td className="px-6 py-4 align-top">
+                    <div className="text-[0.975rem] font-medium text-foreground">{r.item}</div>
+                    {r.detail && <div className="mt-0.5 text-[0.85rem] leading-relaxed text-muted-foreground">{r.detail}</div>}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-right align-top font-display text-[0.975rem] font-semibold tabular-nums text-foreground">{r.amount}</td>
+                </tr>
+              ))}
+            </tbody>
+            {total && (
+              <tfoot>
+                <tr className="bg-[hsl(var(--muted)/0.3)]">
+                  <td className="px-6 py-4 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Total</td>
+                  <td className="whitespace-nowrap px-6 py-4 text-right font-display text-lg font-bold tabular-nums text-foreground">{total}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
       );
     }
     case "cta": {
@@ -232,7 +389,7 @@ export function DocumentPreview({ document, className }: { document: StudioDocum
             data-paige-doc-sheet
             className="space-y-8 rounded-2xl border border-[hsl(var(--border))] bg-card px-6 py-8 shadow-[0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)] md:px-12 md:py-12"
           >
-            {blocks.map((b, i) => <Block key={i} block={b} />)}
+            {blocks.map((b, i) => <Block key={i} block={b} allBlocks={blocks} />)}
           </article>
         </DocBoundary>
       </div>
