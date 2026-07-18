@@ -10,12 +10,13 @@
 // and re-hosts in studio-deliverables (Ideogram's URLs expire).
 
 import { NeedsConfigError, type ProviderCallResult } from "./provider-types.ts";
+import { envKey } from "./env-key.ts";
 
 const IDEOGRAM_URL = Deno.env.get("IDEOGRAM_BASE_URL") ?? "https://api.ideogram.ai/generate";
 const DEFAULT_MODEL = "V_2";
 
 function ideogramKey(): string {
-  const k = Deno.env.get("IDEOGRAM_API_KEY");
+  const k = envKey("IDEOGRAM_API_KEY");
   if (!k) throw new NeedsConfigError("ideogram");
   return k;
 }

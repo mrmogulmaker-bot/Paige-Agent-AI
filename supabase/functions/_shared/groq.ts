@@ -9,12 +9,13 @@
 // NeedsConfigError("groq"). Key never logged/echoed/placed in a result. Mirrors claude.ts.
 
 import { NeedsConfigError, type ProviderCallResult } from "./provider-types.ts";
+import { envKey } from "./env-key.ts";
 
 const GROQ_BASE = Deno.env.get("GROQ_BASE_URL") ?? "https://api.groq.com/openai/v1";
 const DEFAULT_MODEL = "llama-3.3-70b-versatile";
 
 function groqKey(): string {
-  const k = Deno.env.get("GROQ_API_KEY");
+  const k = envKey("GROQ_API_KEY");
   if (!k) throw new NeedsConfigError("groq");
   return k;
 }

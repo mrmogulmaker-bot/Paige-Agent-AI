@@ -9,13 +9,14 @@
 // logged, echoed, or placed in a result field. Mirrors the fetch style of claude.ts.
 
 import { NeedsConfigError, type ProviderCallResult } from "./provider-types.ts";
+import { envKey } from "./env-key.ts";
 
 const OPENAI_BASE = Deno.env.get("OPENAI_BASE_URL") ?? "https://api.openai.com/v1";
 const DEFAULT_CHAT_MODEL = "gpt-4o";
 const IMAGE_MODEL = "gpt-image-1";
 
 function openaiKey(): string {
-  const k = Deno.env.get("OPENAI_API_KEY");
+  const k = envKey("OPENAI_API_KEY");
   if (!k) throw new NeedsConfigError("openai");
   return k;
 }

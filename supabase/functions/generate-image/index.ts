@@ -11,6 +11,7 @@
 // it has no verified image-generation models in its catalog (§13 — do not assume otherwise).
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { envKey } from "../_shared/env-key.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -60,8 +61,8 @@ serve(async (req: Request) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const GEMINI_API_KEY = envKey("GEMINI_API_KEY");
+    const OPENAI_API_KEY = envKey("OPENAI_API_KEY");
     // Which providers this function can actually SEE at runtime (booleans only — never the key
     // values). Returned in the needs_config response so a misconfigured/wrong-scoped secret is
     // self-diagnosing rather than a mystery ("it says off but I set the key").
@@ -120,10 +121,12 @@ serve(async (req: Request) => {
       // parts. Model id is env-overridable in case Google renames/versions it.
       const geminiModel = Deno.env.get("GEMINI_IMAGE_MODEL") ?? "gemini-2.5-flash-image";
       const gem = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${providerKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          // Key in the x-goog-api-key header, NOT the URL — a network-level fetch reject echoes the
+          // request URL into a TypeError, which would leak ?key=<secret> into logs (§13).
+          headers: { "Content-Type": "application/json", "x-goog-api-key": providerKey },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { responseModalities: ["IMAGE"] },

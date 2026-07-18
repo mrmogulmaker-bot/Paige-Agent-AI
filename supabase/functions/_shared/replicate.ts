@@ -10,6 +10,7 @@
 // echoed/placed in a result. Returns a vendor-hosted URL (artifact_url) the router re-hosts.
 
 import { NeedsConfigError, type ProviderCallResult } from "./provider-types.ts";
+import { envKey } from "./env-key.ts";
 
 const REPLICATE_BASE = Deno.env.get("REPLICATE_BASE_URL") ?? "https://api.replicate.com/v1";
 const POLL_TIMEOUT_MS = 180_000; // 3 min — Flux/premium renders can take a while
@@ -18,9 +19,9 @@ const POLL_INTERVAL_MS = 2_000;
 function replicateToken(): string {
   // Accept EITHER the canonical REPLICATE_API_TOKEN or the common REPLICATE_API_KEY alias — operators
   // set it under both names in the wild, and a name mismatch is exactly the kind of silent gap that
-  // masquerades as "not configured" (§13). Whichever is present wins; only when NEITHER is set do we
-  // fail closed.
-  const k = Deno.env.get("REPLICATE_API_TOKEN") || Deno.env.get("REPLICATE_API_KEY");
+  // masquerades as "not configured" (§13). Whichever is present wins (now case-tolerant too, via
+  // envKey); only when NEITHER is set do we fail closed.
+  const k = envKey("REPLICATE_API_TOKEN", "REPLICATE_API_KEY");
   if (!k) throw new NeedsConfigError("replicate");
   return k;
 }

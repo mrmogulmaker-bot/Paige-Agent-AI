@@ -54,7 +54,7 @@ export interface Route {
 // Featherless is OpenAI-compatible. Base URL is env-overridable so we can retune without a
 // deploy. A wrong/removed model id is caught by the fallback, never a hard failure.
 const FEATHERLESS_BASE = Deno.env.get("FEATHERLESS_BASE_URL") ?? "https://api.featherless.ai/v1";
-function featherlessKey(): string | undefined { return Deno.env.get("FEATHERLESS_API_KEY") || undefined; }
+function featherlessKey(): string | undefined { return envKey("FEATHERLESS_API_KEY") || undefined; }
 
 // Per-job-kind Featherless model map, specialized instead of one 8B for everything (owner
 // directive 2026-07-15: "don't default and assume" — every id below was checked against
@@ -202,6 +202,7 @@ import {
   financeDefaultPrefilter,
 } from "./model-router-gates.ts";
 import { assertModelAllowed } from "./model-allowlist.ts";
+import { envKey } from "./env-key.ts";
 import {
   NeedsConfigError,
   NotYetConfiguredError,
@@ -321,7 +322,7 @@ async function claudeText(task: unknown, model?: string): Promise<ProviderCallRe
 // (NeedsConfig) when the key is entirely absent so the router degrades honestly instead of a
 // silent Claude substitution (that substitution is `routedChatCompletion`'s job, not callModel's).
 async function featherlessProvider(messages: { role: string; content: unknown }[], model?: string): Promise<ProviderCallResult> {
-  if (!Deno.env.get("FEATHERLESS_API_KEY")) throw new NeedsConfigError("featherless");
+  if (!envKey("FEATHERLESS_API_KEY")) throw new NeedsConfigError("featherless");
   const started = Date.now();
   const m = model || FEATHERLESS_CHEAP_FALLBACK_MODEL;
   const data = await featherlessChat({ messages, max_tokens: 2048 }, m);

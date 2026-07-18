@@ -12,6 +12,7 @@
 // travels only in the xi-api-key header and is NEVER logged/echoed/placed in a result.
 
 import { NeedsConfigError, type ProviderCallResult } from "./provider-types.ts";
+import { envKey } from "./env-key.ts";
 
 const ELEVENLABS_BASE = Deno.env.get("ELEVENLABS_BASE_URL") ?? "https://api.elevenlabs.io/v1";
 const DEFAULT_MODEL = Deno.env.get("ELEVENLABS_MODEL") ?? "eleven_multilingual_v2";
@@ -19,7 +20,7 @@ const DEFAULT_MODEL = Deno.env.get("ELEVENLABS_MODEL") ?? "eleven_multilingual_v
 const DEFAULT_VOICE = Deno.env.get("ELEVENLABS_VOICE_ID") ?? "21m00Tcm4TlvDq8ikWAM";
 
 function elevenlabsKey(): string {
-  const k = Deno.env.get("ELEVENLABS_API_KEY");
+  const k = envKey("ELEVENLABS_API_KEY");
   if (!k) throw new NeedsConfigError("elevenlabs");
   return k;
 }

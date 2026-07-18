@@ -9,6 +9,7 @@
 // placed in a result. Returns the vendor-hosted .glb URL (artifact_url) the router re-hosts.
 
 import { NeedsConfigError, type ProviderCallResult } from "./provider-types.ts";
+import { envKey } from "./env-key.ts";
 
 const MESHY_BASE = Deno.env.get("MESHY_BASE_URL") ?? "https://api.meshy.ai";
 const POLL_TIMEOUT_MS = 300_000; // 5 min — mesh generation is slow
@@ -16,7 +17,7 @@ const POLL_INTERVAL_MS = 5_000;
 const MODEL_TAG = "meshy-text-to-3d"; // reported as the model id in the result
 
 function meshyKey(): string {
-  const k = Deno.env.get("MESHY_API_KEY");
+  const k = envKey("MESHY_API_KEY");
   if (!k) throw new NeedsConfigError("meshy");
   return k;
 }

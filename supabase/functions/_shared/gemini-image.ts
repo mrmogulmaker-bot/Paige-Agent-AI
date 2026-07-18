@@ -11,12 +11,13 @@
 // the router hosts the PNG itself in studio-deliverables (Gemini returns no hosted URL).
 
 import { NeedsConfigError, type ProviderCallResult } from "./provider-types.ts";
+import { envKey } from "./env-key.ts";
 
 const GEMINI_BASE = Deno.env.get("GEMINI_BASE_URL") ?? "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_MODEL = Deno.env.get("GEMINI_IMAGE_MODEL") ?? "gemini-2.5-flash-image";
 
 function geminiKey(): string {
-  const k = Deno.env.get("GEMINI_API_KEY");
+  const k = envKey("GEMINI_API_KEY");
   if (!k) throw new NeedsConfigError("gemini");
   return k;
 }
