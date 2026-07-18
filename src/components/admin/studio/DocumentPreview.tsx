@@ -10,16 +10,31 @@
 // spent here (§11 — gold is only the act/approve moment on the chrome); the document's own CTA renders
 // on the neutral/indigo primary, and headings are ink/indigo.
 //
+// Robustness (§13 — "degrades, never throws"): a block that passed the server's type filter may still
+// carry a mis-typed VALUE (a list whose items are objects, a prose whose markdown is a number). Every
+// field is coerced to a safe primitive at render, react-markdown only ever receives a string, and the
+// whole sheet is wrapped in an ErrorBoundary so even an unforeseen render error degrades to an honest
+// empty state instead of crashing the studio canvas.
+//
 // "Print / Save as PDF" is HONEST (§13): it opens the browser's native print dialog (whose "Save as
 // PDF" is a real, universal export) over a print-scoped view of just this sheet — it is NOT a
 // server-rendered PDF binary (that, plus ebook pagination, is a tracked fast-follow). It's labeled for
 // exactly what it does.
-import { useCallback } from "react";
+import { Component, useCallback, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
-import { Printer } from "lucide-react";
+import { FileText, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { SectionCard, EmptyState } from "@/components/ui/page";
 import type { StudioDocBlock, StudioDocument } from "./studio-types";
+
+// Coerce any model-authored value to a safe display string (§13 — a mis-typed field never crashes the
+// render; it degrades to text or empty). Objects/arrays fold to "" rather than reaching React as a child.
+function str(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return "";
+}
 
 const CALLOUT_TONE: Record<string, { bar: string; tint: string; label: string }> = {
   tip: { bar: "--success", tint: "--success", label: "Tip" },
@@ -30,12 +45,15 @@ const CALLOUT_TONE: Record<string, { bar: string; tint: string; label: string }>
   example: { bar: "--muted-foreground", tint: "--muted-foreground", label: "Example" },
 };
 
-/** Prose renders through react-markdown with token-styled elements so a heading/link/list inside body
- *  copy stays on-brand and readable (measure-capped by the parent). */
-function Prose({ markdown }: { markdown: string }) {
+/** Prose renders through react-markdown with token-styled elements. The input is ALWAYS coerced to a
+ *  string first (react-markdown v10 throws on a truthy non-string), so a mis-typed markdown value
+ *  degrades to an empty block instead of crashing the surface. */
+function Prose({ markdown }: { markdown: unknown }) {
+  const text = str(markdown);
+  if (!text) return null;
   return (
     <div className="max-w-[68ch] text-[1.0625rem] leading-[1.7] text-foreground/90 [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_em]:italic [&_strong]:font-semibold [&_strong]:text-foreground [&_p]:mt-4 first:[&_p]:mt-0 [&_h3]:mt-6 [&_h3]:font-display [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:tracking-tight [&_ul]:mt-4 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mt-4 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mt-1.5">
-      <ReactMarkdown>{markdown}</ReactMarkdown>
+      <ReactMarkdown>{text}</ReactMarkdown>
     </div>
   );
 }
@@ -45,28 +63,28 @@ function Block({ block }: { block: StudioDocBlock }) {
     case "cover":
       return (
         <header className="relative overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-gradient-to-br from-[hsl(var(--primary)/0.10)] via-[hsl(var(--card))] to-[hsl(var(--card))] px-8 py-12 md:px-12 md:py-16">
-          {block.eyebrow && (
-            <p className="mb-4 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-primary">{block.eyebrow}</p>
+          {str(block.eyebrow) && (
+            <p className="mb-4 text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-primary">{str(block.eyebrow)}</p>
           )}
           <h1 className="font-display text-[clamp(2rem,4vw,3rem)] font-bold leading-[1.05] tracking-[-0.02em] text-foreground">
-            {block.title}
+            {str(block.title) || "Untitled"}
           </h1>
-          {block.subhead && (
-            <p className="mt-5 max-w-[46ch] text-lg leading-relaxed text-muted-foreground">{block.subhead}</p>
+          {str(block.subhead) && (
+            <p className="mt-5 max-w-[46ch] text-lg leading-relaxed text-muted-foreground">{str(block.subhead)}</p>
           )}
         </header>
       );
     case "section-header":
       return (
         <div className="mt-2">
-          {block.kicker && (
-            <p className="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-primary">{block.kicker}</p>
+          {str(block.kicker) && (
+            <p className="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.16em] text-primary">{str(block.kicker)}</p>
           )}
           <h2 className="flex items-baseline gap-3 font-display text-2xl font-semibold tracking-tight text-foreground md:text-[1.7rem]">
-            {typeof block.number === "number" && (
+            {typeof block.number === "number" && Number.isFinite(block.number) && (
               <span className="text-base font-semibold tabular-nums text-muted-foreground">{String(block.number).padStart(2, "0")}</span>
             )}
-            <span>{block.title}</span>
+            <span>{str(block.title)}</span>
           </h2>
           <div className="mt-3 h-px w-full bg-[hsl(var(--border))]" aria-hidden />
         </div>
@@ -74,7 +92,9 @@ function Block({ block }: { block: StudioDocBlock }) {
     case "prose":
       return <Prose markdown={block.markdown} />;
     case "callout": {
-      const tone = CALLOUT_TONE[block.variant ?? "key-insight"] ?? CALLOUT_TONE["key-insight"];
+      const tone = CALLOUT_TONE[String(block.variant ?? "key-insight")] ?? CALLOUT_TONE["key-insight"];
+      const body = str(block.body);
+      if (!body) return null;
       return (
         <aside
           className="rounded-xl border border-l-4 p-5"
@@ -84,29 +104,37 @@ function Block({ block }: { block: StudioDocBlock }) {
             background: `hsl(var(${tone.tint}) / 0.06)`,
           }}
         >
-          <p className="mb-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.14em]" style={{ color: `hsl(var(${tone.bar}))` }}>
-            {block.title || tone.label}
+          {/* Label in foreground (AA-safe in both themes) with a colored dot carrying the semantic
+              tone — amber/green-as-small-text would fail AA in light mode (§11/§23). */}
+          <p className="mb-1.5 flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-foreground/80">
+            <span className="h-2 w-2 rounded-full" style={{ background: `hsl(var(${tone.bar}))` }} aria-hidden />
+            {str(block.title) || tone.label}
           </p>
-          <p className="text-[0.975rem] leading-relaxed text-foreground/90">{block.body}</p>
+          <p className="text-[0.975rem] leading-relaxed text-foreground/90">{body}</p>
         </aside>
       );
     }
-    case "pull-quote":
+    case "pull-quote": {
+      const quote = str(block.quote);
+      if (!quote) return null;
       return (
         <blockquote className="border-l-2 border-primary/50 py-1 pl-6">
-          <p className="font-display text-xl font-medium italic leading-snug text-foreground md:text-2xl">“{block.quote}”</p>
-          {block.attribution && <footer className="mt-3 text-sm text-muted-foreground">— {block.attribution}</footer>}
+          <p className="font-display text-xl font-medium italic leading-snug text-foreground md:text-2xl">“{quote}”</p>
+          {str(block.attribution) && <footer className="mt-3 text-sm text-muted-foreground">— {str(block.attribution)}</footer>}
         </blockquote>
       );
+    }
     case "stat":
       return (
         <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.4)] px-6 py-5">
-          <div className="font-display text-4xl font-bold tabular-nums tracking-tight text-foreground">{block.value}</div>
-          <div className="mt-1 text-sm text-muted-foreground">{block.label}</div>
+          <div className="font-display text-4xl font-bold tabular-nums tracking-tight text-foreground">{str(block.value)}</div>
+          <div className="mt-1 text-sm text-muted-foreground">{str(block.label)}</div>
         </div>
       );
     case "list": {
-      const items = Array.isArray(block.items) ? block.items : [];
+      // Coerce to an array of strings — a list whose items are objects/numbers degrades cleanly (§13).
+      const items = (Array.isArray(block.items) ? block.items : []).map(str).filter(Boolean);
+      if (!items.length) return null;
       if (block.style === "checklist") {
         return (
           <ul className="space-y-2.5">
@@ -126,33 +154,67 @@ function Block({ block }: { block: StudioDocBlock }) {
         </Tag>
       );
     }
-    case "cta":
+    case "cta": {
+      const headline = str(block.headline);
+      const action = str(block.action) || "Get started";
+      const href = str(block.href);
+      const actionCls = "mt-5 inline-flex items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground";
       return (
         <div className="rounded-2xl border border-[hsl(var(--primary)/0.3)] bg-[hsl(var(--primary)/0.06)] px-8 py-9 text-center">
-          <p className="font-display text-xl font-semibold tracking-tight text-foreground md:text-2xl">{block.headline}</p>
-          <span className="mt-5 inline-flex items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground">
-            {block.action}
-          </span>
+          {headline && <p className="font-display text-xl font-semibold tracking-tight text-foreground md:text-2xl">{headline}</p>}
+          {/* Render a real link when the doc carries an href (§13 — don't persist what you ignore);
+              otherwise a non-interactive chip so it reads as the document's call-to-action. */}
+          {href ? (
+            <a href={href} target="_blank" rel="noopener noreferrer" className={actionCls}>{action}</a>
+          ) : (
+            <span className={actionCls}>{action}</span>
+          )}
         </div>
       );
+    }
     default:
       return null;
   }
 }
 
+/** Per-block boundary is impractical (they're siblings), so one boundary wraps the whole sheet: an
+ *  unforeseen render error degrades to an honest empty state, never a crashed studio canvas (§13). */
+class DocBoundary extends Component<{ children: ReactNode; fallback: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(err: unknown) { console.warn("[studio] document render failed:", err); }
+  render() { return this.state.failed ? this.props.fallback : this.props.children; }
+}
+
+const DOC_EMPTY = (
+  <div className="grid h-full place-items-center">
+    <SectionCard className="max-w-md">
+      <EmptyState icon={FileText} tone="brand" title="Your document is saved"
+        description="It’s filed to this project. Ask your design agent to rebuild it and it appears here." />
+    </SectionCard>
+  </div>
+);
+
 export function DocumentPreview({ document, className }: { document: StudioDocument; className?: string }) {
   // Print / Save as PDF — the browser's native dialog over a print-scoped view of just this sheet.
   // A body-level class + the @media print rules in index.css hide the rest of the app while printing.
+  // A safety timeout also clears the class in case `afterprint` never fires (headless/print-to-file).
   const onPrint = useCallback(() => {
     const root = window.document.documentElement;
     root.classList.add("paige-doc-printing");
+    let done = false;
     const cleanup = () => {
+      if (done) return;
+      done = true;
       root.classList.remove("paige-doc-printing");
       window.removeEventListener("afterprint", cleanup);
     };
     window.addEventListener("afterprint", cleanup);
+    window.setTimeout(cleanup, 60_000);
     window.print();
   }, []);
+
+  const blocks = Array.isArray(document.blocks) ? document.blocks : [];
 
   return (
     <div className={cn("h-full overflow-y-auto", className)}>
@@ -164,13 +226,15 @@ export function DocumentPreview({ document, className }: { document: StudioDocum
             Print / Save as PDF
           </Button>
         </div>
-        {/* The paper sheet — layered depth via border + soft shadow (§22), never a flat fill. */}
-        <article
-          data-paige-doc-sheet
-          className="space-y-8 rounded-2xl border border-[hsl(var(--border))] bg-card px-6 py-8 shadow-[0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)] md:px-12 md:py-12"
-        >
-          {document.blocks.map((b, i) => <Block key={i} block={b} />)}
-        </article>
+        <DocBoundary fallback={DOC_EMPTY}>
+          {/* The paper sheet — layered depth via border + soft shadow (§22), never a flat fill. */}
+          <article
+            data-paige-doc-sheet
+            className="space-y-8 rounded-2xl border border-[hsl(var(--border))] bg-card px-6 py-8 shadow-[0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)] md:px-12 md:py-12"
+          >
+            {blocks.map((b, i) => <Block key={i} block={b} />)}
+          </article>
+        </DocBoundary>
       </div>
     </div>
   );

@@ -6446,10 +6446,27 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // marketing_content row kind='document' (body = the block JSON). Keep only known block
               // types so a slightly-off block degrades instead of breaking the render (§13); ensure a
               // cover leads. Returns only what actually persisted.
-              const ALLOWED_DOC_BLOCKS = new Set(["cover", "section-header", "prose", "callout", "pull-quote", "list", "stat", "cta"]);
               const docType = ["guide", "one_pager", "ebook", "checklist", "worksheet"].includes(args.doc_type) ? args.doc_type : "guide";
+              // Keep only blocks whose REQUIRED content field is the right type — a well-typed `type`
+              // with a mis-typed value (a list of objects, a non-string markdown) is dropped here so
+              // nothing malformed persists (§13; the renderer also coerces defensively).
+              const _s = (v: unknown) => typeof v === "string" && v.trim().length > 0;
+              const validDocBlock = (b: any): boolean => {
+                if (!b || typeof b !== "object") return false;
+                switch (b.type) {
+                  case "cover": return _s(b.title);
+                  case "section-header": return _s(b.title);
+                  case "prose": return _s(b.markdown);
+                  case "callout": return _s(b.body);
+                  case "pull-quote": return _s(b.quote);
+                  case "stat": return _s(b.value) || _s(b.label);
+                  case "list": return Array.isArray(b.items) && b.items.some((x: unknown) => _s(x));
+                  case "cta": return _s(b.headline) || _s(b.action);
+                  default: return false;
+                }
+              };
               let blocks = (Array.isArray(args.blocks) ? args.blocks : [])
-                .filter((b: any) => b && typeof b === "object" && ALLOWED_DOC_BLOCKS.has(b.type))
+                .filter(validDocBlock)
                 .slice(0, 80);
               if (!blocks.length) {
                 result = { success: false, error: "No document content was produced — try describing the document again." };
