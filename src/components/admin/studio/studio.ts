@@ -1013,6 +1013,40 @@ export async function removeFromLibrary(input: {
   return ok === true;
 }
 
+/** Bring an OUTSIDE artifact into the tenant's media library (owner ask 2026-07-18): upload the
+ *  file through the ONE existing upload seam (uploadGrowthAsset → tenant-scoped growth-assets
+ *  bucket, MIME/size-validated), file it into the tenant's content store (marketing_content), then
+ *  KEEP it in the library. No new bucket, no new upload path (§18). Images only in v1 — a document
+ *  needs a library 'file' kind (tracked). No learn fires here: an uploaded external asset is not the
+ *  tenant's authored voice (unlike a Studio-generated image, whose prompt IS signal). */
+export async function uploadToLibrary(tenantId: string, file: File): Promise<LibraryItem> {
+  const tid = requireTenant(tenantId);
+  const asset = await uploadGrowthAsset(tid, file); // throws on bad MIME / oversize (§13 honest)
+  if (asset.kind !== "image") {
+    throw studioError("SAVE_FAILED", null, "The library takes images for now — document support is on the way.");
+  }
+  const title = (file.name || "Upload").replace(/\.[^.]+$/, "").slice(0, 80) || "Upload";
+  // File it into marketing_content (kind='image') so it's a real content row the library can point at.
+  const saved = await saveImageToLibrary({ tenantId: tid, title, url: asset.url, size: "square", brief: title });
+  // The upload is a 3-step non-atomic write (storage → content row → library membership). If the
+  // membership step fails, roll the content row back so we don't leave an orphan the tenant sees in
+  // their Assets while the caller was truthfully told the upload failed (§13 — no partial pretend).
+  let id: string | null;
+  try {
+    id = await rpc<string | null>(
+      "save_to_library",
+      { p_kind: "image", p_artifact_id: saved.id, p_title: title, p_thumbnail_url: asset.url, p_tenant_id: tid },
+      "SAVE_FAILED",
+    );
+    if (!id) throw studioError("SAVE_FAILED", id);
+  } catch (err) {
+    // Best-effort compensating delete; swallow its own failure so the original error surfaces.
+    try { await rpc<boolean>("delete_marketing_content", { p_id: saved.id }, "SAVE_FAILED"); } catch { /* orphan cleanup is best-effort */ }
+    throw err;
+  }
+  return { id: String(id), kind: "image", artifactId: saved.id, title, thumbnailUrl: asset.url, note: null, tags: [], savedAt: new Date().toISOString() };
+}
+
 /** List the tenant's kept artifacts (newest first), optionally filtered to one kind. */
 export async function listLibrary(input: {
   tenantId: string;

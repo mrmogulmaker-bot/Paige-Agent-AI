@@ -5,17 +5,21 @@
 // (save_to_library / remove_from_library / list_library), this page is just one caller (§10).
 //
 // §18/§21: ONE destination, filtered by kind INSIDE — never a type-picker the human clears first.
-// §11: compact header (the board leads), real thumbnails not glyph-in-a-box where we have them,
-// gold spent nowhere here (this is a browse surface; the gold ACT is the "Save to library" moment
-// back in the builder). Re-opening a non-image artifact and bulk/zip export are tracked follow-ups.
-import { useCallback, useEffect, useMemo, useState } from "react";
+// §11: compact header (the board leads), real thumbnails not glyph-in-a-box where we have them.
+// The ONE gold act on this surface is Upload — bringing outside media in is a persist/act, like
+// "Save to my library" back in the builder; everything else here stays neutral/browse.
+// "Copy link" is IMAGE-ONLY on purpose: an image's thumbnailUrl IS its public asset URL, but a
+// page/funnel's is only a cover snapshot, so a real page/funnel public link is a tracked follow-up.
+// Re-opening a non-image artifact and bulk/zip export are tracked follow-ups.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { listLibrary, removeFromLibrary } from "@/components/admin/studio/studio";
+import { listLibrary, removeFromLibrary, uploadToLibrary } from "@/components/admin/studio/studio";
+import { isStudioError } from "@/components/admin/studio/studio";
 import type { LibraryItem, LibraryKind } from "@/components/admin/studio/studio-types";
 import { SectionCard, EmptyState, Toolbar, FilterChip } from "@/components/ui/page";
 import { LabelChip } from "@/components/admin/studio/modes/content-shared";
 import { Button } from "@/components/ui/button";
-import { ClipboardList, Download, FileText, Image as ImageIcon, LibraryBig, Route as RouteIcon, Trash2, Type } from "lucide-react";
+import { Check, ClipboardList, Download, FileText, Image as ImageIcon, Link2, LibraryBig, Loader2, Route as RouteIcon, Trash2, Type, Upload } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -42,6 +46,9 @@ export default function StudioLibrary() {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("all");
+  const [uploading, setUploading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     if (!activeTenantId) { setItems([]); setLoading(false); return; }
@@ -70,6 +77,57 @@ export default function StudioLibrary() {
     }
   };
 
+  // Bring an OUTSIDE artifact in (owner ask): upload → file → keep, all through the existing seam.
+  const handleUpload = async (files: FileList | null) => {
+    if (!files?.length || !activeTenantId) return;
+    setUploading(true);
+    try {
+      const added: LibraryItem[] = [];
+      for (const file of Array.from(files)) {
+        try {
+          added.push(await uploadToLibrary(activeTenantId, file));
+        } catch (err) {
+          toast.error(isStudioError(err) ? err.message : `Couldn't upload ${file.name}.`);
+        }
+      }
+      if (added.length) {
+        setItems((r) => [...added, ...r]); // §13: only what actually uploaded
+        toast.success(added.length === 1 ? "Added to your library." : `${added.length} added to your library.`);
+      }
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = ""; // allow re-picking the same file
+    }
+  };
+
+  // The shareable/callable public link for a piece of media (the URL you paste elsewhere, or hand
+  // to Paige in a session). Image-only: for an image the thumbnailUrl IS the public asset URL; a
+  // page/funnel cover snapshot is NOT a link to the page, so we don't offer it there (§13 honesty).
+  const copyLink = async (item: LibraryItem) => {
+    if (!item.thumbnailUrl) return;
+    const url = item.thumbnailUrl;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        // Fallback for insecure contexts / older browsers where the Clipboard API is unavailable.
+        const ta = document.createElement("textarea");
+        ta.value = url;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        if (!ok) throw new Error("copy unavailable");
+      }
+      setCopiedId(item.id);
+      setTimeout(() => setCopiedId((c) => (c === item.id ? null : c)), 1400);
+    } catch {
+      toast.error("Couldn't copy the link.");
+    }
+  };
+
   const shown = useMemo(
     () => items.filter((r) => filter === "all" || r.kind === filter),
     [items, filter],
@@ -81,10 +139,26 @@ export default function StudioLibrary() {
         <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius)] border border-border bg-muted/40 text-foreground">
           <LibraryBig className="h-4 w-4" aria-hidden />
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="font-display text-lg font-semibold text-foreground">Saved library</h1>
-          <p className="truncate text-sm text-muted-foreground">The winners you kept — every page, funnel, form, image, and piece of copy, in one place.</p>
+          <p className="truncate text-sm text-muted-foreground">The winners you kept — plus anything you bring in. Every page, funnel, form, image, and piece of copy, in one place.</p>
         </div>
+        {/* Bring outside artifacts in. Upload is THE add-to-library act on this surface, so it earns
+            the gold (§11); everything else here is neutral/browse. */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          tabIndex={-1}
+          aria-hidden
+          onChange={(e) => void handleUpload(e.target.files)}
+        />
+        <Button variant="gold" size="sm" className="shrink-0 gap-1.5" disabled={uploading} onClick={() => fileRef.current?.click()}>
+          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden /> : <Upload className="h-3.5 w-3.5" aria-hidden />}
+          Upload
+        </Button>
       </header>
 
       <Toolbar>
@@ -109,7 +183,7 @@ export default function StudioLibrary() {
           <EmptyState
             icon={LibraryBig}
             title={filter === "all" ? "Nothing saved yet" : `No ${KIND_LABEL[filter as LibraryKind].toLowerCase()}s saved yet`}
-            description="When you build something you love, hit “Save to my library” and it lands here — ready to reuse across your campaigns."
+            description="When you build something you love, hit “Save to my library” and it lands here — or Upload your own images to bring outside media in. Everything's ready to reuse across your campaigns."
           />
         </SectionCard>
       ) : (
@@ -134,6 +208,17 @@ export default function StudioLibrary() {
                   </div>
                   {item.note && <p className="line-clamp-2 text-xs text-muted-foreground">{item.note}</p>}
                   <div className="mt-auto flex items-center gap-1">
+                    {item.kind === "image" && item.thumbnailUrl && (
+                      <Button
+                        variant="ghost" size="sm" className="gap-1.5"
+                        onClick={() => void copyLink(item)}
+                        title="Copy the shareable link"
+                      >
+                        {copiedId === item.id
+                          ? <><Check className="h-3.5 w-3.5 text-[var(--success)]" /> Copied</>
+                          : <><Link2 className="h-3.5 w-3.5" /> Copy link</>}
+                      </Button>
+                    )}
                     {item.kind === "image" && item.thumbnailUrl && (
                       <Button asChild variant="ghost" size="sm" className="gap-1.5">
                         <a href={item.thumbnailUrl} download target="_blank" rel="noreferrer">
