@@ -31,6 +31,14 @@ export interface KnowledgeChunk {
   title?: string;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Metadata-only telemetry hash (never store the raw brief text — same posture as kb-search). */
+async function sha256(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /**
  * Retrieve the tenant's own knowledge most relevant to a brief. Returns [] on ANY problem
  * (no tenant, short brief, missing VOYAGE key, embed/RPC failure) — the caller degrades to
@@ -44,7 +52,10 @@ export async function retrieveTenantKnowledge(
   matchCount = 5,
 ): Promise<KnowledgeChunk[]> {
   const q = (brief ?? "").trim();
-  if (!tenantId || q.length < 5) return [];
+  // Defense-in-depth (§9): callers already pass a server-resolved tenant, but the helper is one
+  // step from a SECURITY DEFINER RPC over the service-role key — so reject anything that isn't a
+  // well-formed UUID rather than trust the argument blindly.
+  if (!tenantId || !UUID_RE.test(tenantId) || q.length < 5) return [];
 
   const url = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -74,13 +85,37 @@ export async function retrieveTenantKnowledge(
       console.warn("studio-brain: match_tenant_knowledge failed:", error.message);
       return [];
     }
-    return (Array.isArray(data) ? data : [])
+    const chunks = (Array.isArray(data) ? data : [])
       .map((row: Record<string, unknown>) => ({
         content: typeof row?.content === "string" ? row.content : "",
         similarity: Number(row?.similarity ?? 0),
         title: typeof row?.title === "string" ? row.title : undefined,
       }))
       .filter((c) => c.content.trim().length > 0);
+
+    // Fire-and-forget telemetry — metadata ONLY (sha256 of the brief, never the raw text), so the
+    // platform's KB-quality dashboard sees Studio grounding just like it sees kb-search/chat
+    // retrieval. Non-blocking: a telemetry failure never touches the §13 non-fatal contract.
+    try {
+      const hash = await sha256(q);
+      admin
+        .from("kb_query_telemetry")
+        .insert({
+          tenant_id: tenantId,
+          query_hash: hash,
+          query_length: q.length,
+          query_intent_tags: ["studio"],
+          result_count: chunks.length,
+          top_similarity: Number(chunks[0]?.similarity ?? 0).toFixed(4),
+          had_tenant_match: chunks.length > 0,
+          had_global_match: false,
+        })
+        .then(({ error: tErr }) => {
+          if (tErr) console.warn("studio-brain: telemetry insert:", tErr.message);
+        });
+    } catch (_e) { /* telemetry is best-effort only */ }
+
+    return chunks;
   } catch (e) {
     console.warn("studio-brain: retrieval failed:", (e as Error)?.message);
     return [];
