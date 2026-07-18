@@ -1169,11 +1169,34 @@ export function StudioShell({
     [tenantId, toast],
   );
 
-  // ── deliberate keep: save THIS page to the media library (#284) ─────────────────────────────
-  // The winner-curation act, distinct from publish. Ensures the page is saved first (a library row
-  // must point at a real growth_pages id), keeps it via the save_to_library seam, then fires the
-  // confirm-gated learn (a deliberate keep is a strong voice signal, §7/§15). Honest (§13): reports
-  // only a keep that actually persisted.
+  // ── deliberate keep: promote ONE artifact into the Saved media library (#284/#314) ──────────────
+  // The winner-curation act (distinct from publish), shared by every keepable surface: the page
+  // top-bar keep, and the Assets panel's per-item keep for images and copy (#314). Keeps via the
+  // save_to_library seam, then fires the confirm-gated learn — a deliberate keep is a strong voice
+  // signal (§7/§15). Honest (§13): returns true only on a keep that actually persisted; owns no busy
+  // state so each caller can drive its own spinner/feedback.
+  const keepInLibrary = useCallback(
+    async (kind: LibraryKind, artifactId: string, title: string, thumbnailUrl?: string | null): Promise<boolean> => {
+      if (!tenantId || !artifactId) return false;
+      try {
+        await saveToLibrary({ tenantId, kind, artifactId, title, thumbnailUrl: thumbnailUrl ?? null });
+        toast({ title: "Kept in your library", description: "Saved to your media library." });
+        void runLearn(kind, artifactId); // best-effort; never blocks or fails the keep (§13)
+        return true;
+      } catch (err) {
+        toast({
+          title: "Couldn't save to your library",
+          description: isStudioError(err) ? err.message : "Try again in a moment.",
+          variant: "destructive",
+        });
+        return false;
+      }
+    },
+    [tenantId, runLearn, toast],
+  );
+
+  // The page keep: ensure the page is saved first (a library row must point at a real growth_pages
+  // id), give the board a REAL preview thumbnail (§22), then keep it.
   const handleSaveToLibrary = useCallback(async () => {
     if (!tenantId) return;
     setSavingToLibrary(true);
@@ -1184,22 +1207,19 @@ export function StudioShell({
         toast({ title: "Nothing to save yet", description: "Build a little more first.", variant: "destructive" });
         return;
       }
-      // Give the winners board a REAL preview, not a glyph (§22): the first image the page carries
-      // (hero/image/media/gallery block). Falls back to no thumbnail (the card shows a page glyph).
-      const thumbnailUrl = firstBlockImageUrl(state.blocks);
-      await saveToLibrary({ tenantId, kind: "page", artifactId: pageId, title: state.title || "Untitled page", thumbnailUrl });
-      toast({ title: "Kept in your library", description: "This page is saved to your media library." });
-      void runLearn("page", pageId);
-    } catch (err) {
-      toast({
-        title: "Couldn't save to your library",
-        description: isStudioError(err) ? err.message : "Try again in a moment.",
-        variant: "destructive",
-      });
+      await keepInLibrary("page", pageId, state.title || "Untitled page", firstBlockImageUrl(state.blocks));
     } finally {
       setSavingToLibrary(false);
     }
-  }, [tenantId, saveDraft, state.pageId, state.title, runLearn, toast]);
+  }, [tenantId, saveDraft, state.pageId, state.title, state.blocks, keepInLibrary, toast]);
+
+  // The Assets-panel keep (#314): promote an image or a piece of copy (marketing_content) into the
+  // Saved library. An image carries its URL as the board thumbnail; copy has none (a copy glyph).
+  const handleKeepContent = useCallback(
+    (item: { id: string; kind: "text" | "image"; title: string; imageUrl: string | null }): Promise<boolean> =>
+      keepInLibrary(item.kind === "image" ? "image" : "copy", item.id, item.title || "Untitled", item.imageUrl),
+    [keepInLibrary],
+  );
 
   const handlePublish = useCallback(async () => {
     patch({ publishing: true, error: null });
@@ -1950,12 +1970,13 @@ export function StudioShell({
           <SheetHeader>
             <SheetTitle>Assets</SheetTitle>
             <SheetDescription>
-              Every image and piece of copy you've made here. Keep the winners to your Saved library
-              from the rail — this is the full working set.
+              Every image and piece of copy you've made here — the full working set. Hit
+              <span className="font-medium text-foreground"> Keep</span> on the winners to promote them
+              to your Saved library.
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4">
-            <LibraryPanel tenantId={tenantId} active={libraryOpen} />
+            <LibraryPanel tenantId={tenantId} active={libraryOpen} onKeep={handleKeepContent} />
           </div>
         </SheetContent>
       </Sheet>
