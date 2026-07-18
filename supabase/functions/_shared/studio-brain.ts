@@ -29,6 +29,10 @@ export interface KnowledgeChunk {
   content: string;
   similarity: number;
   title?: string;
+  /** True when this chunk came from a Studio-published artifact (category='studio'). Used by
+   *  buildKnowledgeBlock to keep the model's own re-published output from crowding out the
+   *  tenant's authentic uploaded material (#310 Slice B feedback-loop guard, §13). */
+  studioOrigin?: boolean;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -85,13 +89,38 @@ export async function retrieveTenantKnowledge(
       console.warn("studio-brain: match_tenant_knowledge failed:", error.message);
       return [];
     }
-    const chunks = (Array.isArray(data) ? data : [])
+    const chunks: (KnowledgeChunk & { docId?: string })[] = (Array.isArray(data) ? data : [])
       .map((row: Record<string, unknown>) => ({
         content: typeof row?.content === "string" ? row.content : "",
         similarity: Number(row?.similarity ?? 0),
         title: typeof row?.title === "string" ? row.title : undefined,
+        docId: typeof row?.doc_id === "string" ? row.doc_id : undefined,
       }))
       .filter((c) => c.content.trim().length > 0);
+
+    // Feedback-loop guard (§13): flag chunks that came from a Studio-published artifact so
+    // buildKnowledgeBlock can stop the model's own re-published copy from crowding out the
+    // practice's authentic uploaded material (the echo-chamber risk when generation → publish →
+    // re-ingest → generation). Migration-free: a cheap docs lookup by id (studio origin is marked
+    // by category='studio' / source_url 'studio://…', set by the Slice B ingest seam). Best-effort
+    // — retrieval still works if this annotation fails.
+    try {
+      const docIds = [...new Set(chunks.map((c) => c.docId).filter(Boolean))] as string[];
+      if (docIds.length) {
+        const { data: docs } = await admin
+          .from("tenant_knowledge_docs")
+          .select("id, category, source_url")
+          .in("id", docIds);
+        const studioDocs = new Set(
+          (Array.isArray(docs) ? docs : [])
+            .filter((d: Record<string, unknown>) =>
+              d?.category === "studio" ||
+              (typeof d?.source_url === "string" && d.source_url.startsWith("studio://")))
+            .map((d: Record<string, unknown>) => d.id as string),
+        );
+        for (const c of chunks) if (c.docId && studioDocs.has(c.docId)) c.studioOrigin = true;
+      }
+    } catch (_e) { /* annotation is best-effort; retrieval still works without it */ }
 
     // Fire-and-forget telemetry — metadata ONLY (sha256 of the brief, never the raw text), so the
     // platform's KB-quality dashboard sees Studio grounding just like it sees kb-search/chat
@@ -130,16 +159,30 @@ export async function retrieveTenantKnowledge(
  */
 export function buildKnowledgeBlock(
   chunks: KnowledgeChunk[],
-  opts?: { minSimilarity?: number; maxChars?: number; maxChunks?: number },
+  opts?: { minSimilarity?: number; maxChars?: number; maxChunks?: number; maxStudioChunks?: number },
 ): string {
   const min = opts?.minSimilarity ?? 0.25;
   const maxChars = opts?.maxChars ?? 2400;
   const maxChunks = opts?.maxChunks ?? 5;
+  const maxStudio = opts?.maxStudioChunks ?? 2;
 
-  const kept = chunks
+  // Feedback-loop guard (§13): rank Studio-origin chunks with a small penalty and cap how many can
+  // appear, so the model's own re-published copy reinforces voice without drowning out the tenant's
+  // authentic uploaded/pasted/scanned material (their real transcripts, methods, proof).
+  const scored = chunks
     .filter((c) => c.content.trim().length >= 40 && c.similarity >= min)
-    .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, maxChunks);
+    .map((c) => ({ c, score: c.studioOrigin ? c.similarity * 0.85 : c.similarity }))
+    .sort((a, b) => b.score - a.score);
+  const kept: KnowledgeChunk[] = [];
+  let studioUsed = 0;
+  for (const { c } of scored) {
+    if (kept.length >= maxChunks) break;
+    if (c.studioOrigin) {
+      if (studioUsed >= maxStudio) continue;
+      studioUsed++;
+    }
+    kept.push(c);
+  }
   if (!kept.length) return "";
 
   let budget = maxChars;
