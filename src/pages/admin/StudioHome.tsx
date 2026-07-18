@@ -28,10 +28,11 @@ import {
   createStudioSession,
   ensureSessionForArtifact,
   isStudioError,
+  loadKbSuggestionChips,
   uploadGrowthAsset,
 } from "@/components/admin/studio/studio";
 import { STUDIO_HOME_CHIPS } from "@/components/admin/studio/studio-copy";
-import type { StudioSessionView } from "@/components/admin/studio/studio-types";
+import type { IntentChip, StudioSessionView } from "@/components/admin/studio/studio-types";
 import type { GrowthAsset } from "@/lib/growth";
 import { useToast } from "@/hooks/use-toast";
 
@@ -184,6 +185,29 @@ export default function StudioHome() {
     };
   }, [shimPageId, activeTenantId, navigate, toast]);
 
+  // The brain's READ direction on the home composer (#310 Slice C): seed the starter chips from the
+  // tenant's OWN knowledge base so building opens tuned to THEIR offers. Best-effort (§13) — any
+  // problem leaves kbChips null and the composer falls back to the generic STUDIO_HOME_CHIPS.
+  const [kbChips, setKbChips] = useState<IntentChip[] | null>(null);
+  useEffect(() => {
+    if (!activeTenantId) return;
+    let live = true;
+    loadKbSuggestionChips(activeTenantId)
+      .then((chips) => {
+        if (live) setKbChips(chips);
+      })
+      .catch(() => {
+        if (live) setKbChips(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [activeTenantId]);
+  // Lead with the tenant's own KB suggestions, then top up with the generic set; cap at 5 so the
+  // dock row stays compact (§11). Falls back to the static set whenever the KB has nothing to offer.
+  const homeChips: IntentChip[] =
+    kbChips && kbChips.length > 0 ? [...kbChips, ...STUDIO_HOME_CHIPS].slice(0, 5) : STUDIO_HOME_CHIPS;
+
   // The single entry (§18): a brief seeds a NEW session; the builder classifies the shape.
   const startSession = useCallback(
     async (seed?: string) => {
@@ -327,7 +351,7 @@ export default function StudioHome() {
                 surface="bare"
                 busy={starting}
                 busyLabel="Spinning up your session…"
-                chips={STUDIO_HOME_CHIPS}
+                chips={homeChips}
                 chipPlacement="dock"
                 minRows={1}
                 attachments={attachments}

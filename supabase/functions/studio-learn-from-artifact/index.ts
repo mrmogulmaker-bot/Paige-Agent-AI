@@ -97,9 +97,14 @@ serve(async (req: Request) => {
     const tenantId = str((artifact as Record<string, unknown>).tenant_id);
     if (!UUID_RE.test(tenantId)) return json(500, { error: "Artifact has no valid tenant." });
 
-    // Only PUBLISHED work teaches the brain (§13/§15): a draft is unfinished thinking, not the
-    // practice's committed voice — learning from it would poison retrieval with abandoned copy.
-    if (str((artifact as Record<string, unknown>).status) !== "published") {
+    // Only LIVE work teaches the brain (§13/§15): a draft is unfinished thinking, not the practice's
+    // committed voice — learning from it would poison retrieval with abandoned copy. The "is it live"
+    // status is artifact-type specific: growth_page_publish sets a page to 'published', but
+    // growth_funnel_publish sets a funnel to 'active' (the public read policy keys on 'active' too).
+    // Checking a single literal here silently killed the whole funnel-learn path (a published funnel
+    // read as not_published), so the guard is type-aware.
+    const liveStatus = artifactType === "page" ? "published" : "active";
+    if (str((artifact as Record<string, unknown>).status) !== liveStatus) {
       return json(200, {
         ok: false, error: "not_published",
         message: `Publish this ${artifactType} first — I only learn from work you've shipped, not drafts.`,
