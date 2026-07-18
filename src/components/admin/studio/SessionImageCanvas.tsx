@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CopyButton } from "./modes/content-shared";
 import { StudioBuildingScreen } from "./StudioBuildingScreen";
-import type { SessionArtifactRef } from "./studio-types";
+import { ArtifactStrip } from "./ArtifactStrip";
+import { VersionStrip } from "./VersionStrip";
+import type { ArtifactVersion, SessionArtifactRef } from "./studio-types";
 
 /** The current image on the canvas — the narrowed canvasArtifact (url guaranteed present). */
 export interface CanvasImage {
@@ -43,6 +45,14 @@ interface SessionImageCanvasProps {
   buildNote?: string | null;
   /** Real elapsed ms since the follow-up render started — the honest clock on the render surface. */
   buildElapsedMs?: number;
+  /** #331 — the append-only VERSION history of the CURRENT image's lineage (newest first). A SECOND
+   *  strip renders below the image-SET strip only when this holds >1 (siblings vs revisions stay
+   *  distinct axes; a single-version image shows no history — §13). Empty/absent = no version strip. */
+  versions?: ArtifactVersion[];
+  /** Restore a prior version to live. Resolves true only on a real persist (§13). */
+  onRevertVersion?: (versionId: string) => Promise<boolean>;
+  /** True while a restore is in flight (drives the revert button's spinner). */
+  reverting?: boolean;
 }
 
 /** A safe download filename derived from the image's title (never a raw storage key). */
@@ -67,6 +77,9 @@ export function SessionImageCanvas({
   busy = false,
   buildNote = null,
   buildElapsedMs = 0,
+  versions = [],
+  onRevertVersion,
+  reverting = false,
 }: SessionImageCanvasProps) {
   // "Saved ✓" is truthful state (§13): a current id lands here ONLY after onSave resolves true.
   const [savedIds, setSavedIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -76,6 +89,20 @@ export function SessionImageCanvas({
   // so Arrow keys never hijack the rest of the surface (scroll regions, other controls).
   const containerRef = useRef<HTMLDivElement>(null);
   const [hovered, setHovered] = useState(false);
+
+  // #331 — the version being PREVIEWED on the stage (local, never touches canvasArtifact so the
+  // version list doesn't reload out from under the strip). null = show the live current image. Snaps
+  // back to null whenever the image changes or a new version arrives (the live head wins, §13).
+  const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
+  useEffect(() => {
+    setPreviewVersionId(null);
+  }, [current.id, versions.length]);
+  const hasVersions = versions.length > 1;
+  const currentVersionId = versions.find((v) => v.isCurrent)?.id ?? null;
+  const previewVersion = previewVersionId ? versions.find((v) => v.id === previewVersionId) ?? null : null;
+  // The image on the stage: a previewed prior version's snapshot when one is selected, else the live one.
+  const displayUrl = previewVersion?.thumbnailUrl ?? current.url;
+  const stageKey = previewVersion ? `ver:${previewVersion.id}` : `img:${current.id}`;
 
   const currentIndex = images.findIndex((r) => r.id === current.id);
   // Chrome only when there is a real set AND the current image is part of it (a fresh build whose
@@ -149,7 +176,7 @@ export function SessionImageCanvas({
     <div className="relative flex max-h-full max-w-full items-center justify-center">
       <figure className="relative max-h-full max-w-full overflow-hidden rounded-xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-card shadow-[0_24px_60px_-24px_hsl(var(--studio-ink)/0.7)]">
         <img
-          src={current.url}
+          src={displayUrl}
           alt={current.title || "Generated image"}
           className="block max-h-[calc(100vh-16rem)] max-w-full object-contain"
           loading="eager"
@@ -241,7 +268,7 @@ export function SessionImageCanvas({
                 </motion.div>
               ) : (
                 <motion.div
-                  key={`img:${current.id}`}
+                  key={stageKey}
                   className="absolute inset-0 grid place-items-center"
                   style={{ transformOrigin: "bottom center" }}
                   custom={busy}
@@ -311,40 +338,47 @@ export function SessionImageCanvas({
           )}
         </div>
 
-        {/* Thumbnail strip — flip through the set. A labeled group of buttons (NOT ARIA tabs — there
-            is no controlled tabpanel); the active thumb is ringed indigo, never gold (§11). Stays
-            mounted through a render so the tucked-away creatives remain reachable (owner 2026-07-18,
-            §13 — nothing is lost). During a render the "active" ring tracks the last-current image. */}
+        {/* Thumbnail strip — flip through the SET (siblings of one turn). Built on the shared
+            ArtifactStrip primitive (§18 — one strip, reused by the version strip + page rail too). A
+            labeled group of buttons (NOT ARIA tabs — no controlled tabpanel); the active thumb rings
+            indigo, never gold (§11). Stays mounted through a render so tucked-away creatives remain
+            reachable (§13). During a render the "active" ring tracks the last-current image. */}
         {hasCarousel && (
-          <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1" role="group" aria-label="Images in this set">
-            {images.map((ref, i) => {
-              const active = i === currentIndex;
-              return (
-                <button
-                  key={`${ref.kind}:${ref.id}`}
-                  type="button"
-                  aria-current={active ? "true" : undefined}
-                  aria-label={ref.title || `Image ${i + 1}`}
-                  // During a render the strip stays visible (tucked creatives remain reachable) but is
-                  // not clickable — selecting mid-render would swap the stage image under the render.
-                  disabled={busy}
-                  onClick={() => !busy && ref.thumbnailUrl && onSelect({ id: ref.id, title: ref.title, url: ref.thumbnailUrl })}
-                  className={cn(
-                    "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-muted/30 outline-none disabled:opacity-60",
-                    "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                    active
-                      ? "border-primary ring-2 ring-primary"
-                      : "border-border/70 hover:border-primary/50",
-                    !reduceMotion && "transition-colors",
-                  )}
-                >
-                  {ref.thumbnailUrl && (
-                    <img src={ref.thumbnailUrl} alt="" aria-hidden className="h-full w-full object-cover" loading="lazy" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          <ArtifactStrip
+            ariaLabel="Images in this set"
+            items={images.map((ref, i) => ({
+              id: ref.id,
+              label: ref.title || `Image ${i + 1}`,
+              ref,
+            }))}
+            activeId={current.id}
+            disabled={busy}
+            reduceMotion={reduceMotion}
+            onSelect={(item) =>
+              item.ref.thumbnailUrl && onSelect({ id: item.ref.id, title: item.ref.title, url: item.ref.thumbnailUrl })
+            }
+            renderThumb={(item) =>
+              item.ref.thumbnailUrl ? (
+                <img src={item.ref.thumbnailUrl} alt="" aria-hidden className="h-full w-full object-cover" loading="lazy" />
+              ) : null
+            }
+          />
+        )}
+
+        {/* VERSION strip — a SECOND, distinct axis (the revisions of the CURRENT image), shown only when
+            this image was genuinely iterated (>1 version). Selecting a prior version previews its snapshot
+            on the stage via the light-crossfade branch (previewVersionId → stageKey); "Revert to this
+            version" restores it to live. Never a fabricated history for a single-version image (§13). */}
+        {hasVersions && (
+          <VersionStrip
+            versions={versions}
+            selectedId={previewVersionId ?? currentVersionId}
+            onSelect={(v) => setPreviewVersionId(v.id)}
+            onRevert={(v) => void onRevertVersion?.(v.id)}
+            reduceMotion={reduceMotion}
+            disabled={busy}
+            reverting={reverting}
+          />
         )}
       </div>
     </div>

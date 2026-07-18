@@ -20,12 +20,24 @@
 // PDF" is a real, universal export) over a print-scoped view of just this sheet — it is NOT a
 // server-rendered PDF binary (that, plus ebook pagination, is a tracked fast-follow). It's labeled for
 // exactly what it does.
-import { Component, useCallback, type ReactNode } from "react";
+import {
+  Component,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import ReactMarkdown from "react-markdown";
-import { FileText, Printer } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ChevronLeft, ChevronRight, FileText, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { SectionCard, EmptyState } from "@/components/ui/page";
+import { ArtifactStrip } from "./ArtifactStrip";
 import type { StudioDocBlock, StudioDocument } from "./studio-types";
 
 // Coerce any model-authored value to a safe display string (§13 — a mis-typed field never crashes the
@@ -356,6 +368,243 @@ const DOC_EMPTY = (
   </div>
 );
 
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Paged viewer (#331) — a long document (real page breaks / lots of content) switches from the
+// single continuous sheet to a PAGE model: a left page-thumbnail rail + one page on screen, while
+// ALL pages still render inside [data-paige-doc-sheet] for a full Save-as-PDF export (§13 — the paged
+// view must NEVER shrink the print to just the current page). A short doc keeps today's single sheet
+// (exactly 1 page — page count is derived from the real content, never fabricated).
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/** One paginated page — a group of the document's own blocks. `status` is 'ready' today; 'building'
+ *  exists for the OPTIONAL per-block stream (a not-yet-arrived page shows a skeleton) and is never
+ *  set from fabricated data (§13). */
+interface DocPage {
+  index: number;
+  blocks: StudioDocBlock[];
+  status: "ready" | "building";
+}
+
+// Measurement + render must share these so a page's measured height matches what it draws.
+const PAGE_CONTENT_W = 720; // px — the sheet's inner content width the paginator measures against
+const PAGE_BUDGET_PX = 940; // px — a Letter-ish page height budget for the soft (height) break
+const PAGE_GAP_PX = 32; // px — space-y-8 between blocks, added to accumulated height
+
+/** Hard page-break groups — deterministic, no measurement. A new page starts at index 0, at every
+ *  `chapter-divider` (it carries break-before-page), and at any later `cover`. Each group is a run of
+ *  {block,i} whose i indexes back into the original blocks array (for measured height lookup). */
+function splitHardGroups(blocks: StudioDocBlock[]): { items: { block: StudioDocBlock; i: number }[] }[] {
+  const groups: { items: { block: StudioDocBlock; i: number }[] }[] = [];
+  let cur: { block: StudioDocBlock; i: number }[] = [];
+  blocks.forEach((block, i) => {
+    const isHardBreak = block.type === "chapter-divider" || (block.type === "cover" && i > 0);
+    if (isHardBreak && cur.length) {
+      groups.push({ items: cur });
+      cur = [];
+    }
+    cur.push({ block, i });
+  });
+  if (cur.length) groups.push({ items: cur });
+  return groups.length ? groups : [{ items: [] }];
+}
+
+/** Group the document's blocks into pages. Hard breaks split first (cover/chapter-divider); within a
+ *  hard group, soft-break by measured accumulated height against the page budget. Blocks are atomic
+ *  (never split mid-block), which honors break-inside-avoid on toc/worksheet-field/pricing-table for
+ *  free. Heights are read ONCE (useLayoutEffect, before paint — no flash) from the off-screen full
+ *  tree at `measureRef`; until measured, pages are the hard groups (correct, just possibly tall). A
+ *  short doc with no hard breaks and little content yields exactly 1 page (§13). */
+function usePaginatedBlocks(blocks: StudioDocBlock[], measureRef: RefObject<HTMLElement>): DocPage[] {
+  const hardGroups = useMemo(() => splitHardGroups(blocks), [blocks]);
+  const [pages, setPages] = useState<DocPage[]>(() =>
+    hardGroups.map((g, index) => ({ index, blocks: g.items.map((it) => it.block), status: "ready" as const })),
+  );
+
+  useLayoutEffect(() => {
+    const el = measureRef.current;
+    if (!el) {
+      setPages(hardGroups.map((g, index) => ({ index, blocks: g.items.map((it) => it.block), status: "ready" as const })));
+      return;
+    }
+    // Measure each block's rendered height off the off-screen full tree (keyed by data-block-index).
+    const heights = new Map<number, number>();
+    el.querySelectorAll<HTMLElement>("[data-block-index]").forEach((node) => {
+      const idx = Number(node.getAttribute("data-block-index"));
+      if (Number.isFinite(idx)) heights.set(idx, node.offsetHeight);
+    });
+
+    const next: DocPage[] = [];
+    let pageIndex = 0;
+    for (const group of hardGroups) {
+      let acc = 0;
+      let curBlocks: StudioDocBlock[] = [];
+      for (const item of group.items) {
+        const h = (heights.get(item.i) ?? 0) + PAGE_GAP_PX;
+        // Start a fresh page when adding this block would overflow the budget — but never emit an
+        // empty page (a single over-tall block gets its own page rather than being dropped).
+        if (curBlocks.length && acc + h > PAGE_BUDGET_PX) {
+          next.push({ index: pageIndex++, blocks: curBlocks, status: "ready" });
+          curBlocks = [];
+          acc = 0;
+        }
+        curBlocks.push(item.block);
+        acc += h;
+      }
+      next.push({ index: pageIndex++, blocks: curBlocks, status: "ready" });
+    }
+    setPages(next.length ? next : [{ index: 0, blocks: [], status: "ready" }]);
+  }, [hardGroups, measureRef]);
+
+  return pages;
+}
+
+/** The paper-sheet styling, shared by the on-screen page, the single-sheet path, and the print tree,
+ *  so every surface reads as the same document (§22 layered depth — border + soft shadow, never flat). */
+const SHEET_CLS =
+  "space-y-8 rounded-2xl border border-[hsl(var(--border))] bg-card shadow-[0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)]";
+
+/** A single page's blocks, drawn on the paper sheet. Memoized: the rail renders one of these per page
+ *  (scaled) and re-render churn on a 40-page doc would jank (a tracked virtualization fast-follow). */
+function PageSheet({ blocks, allBlocks, className }: { blocks: StudioDocBlock[]; allBlocks: StudioDocBlock[]; className?: string }) {
+  return (
+    <article className={cn(SHEET_CLS, "px-6 py-8", className)}>
+      {blocks.map((b, i) => (
+        <Block key={i} block={b} allBlocks={allBlocks} />
+      ))}
+    </article>
+  );
+}
+
+/** The left page-thumbnail rail — reuses the shared ArtifactStrip (vertical), with REAL CSS-scaled page
+ *  renders as thumbnails (§22 — never a glyph-in-a-box). A not-yet-ready page (optional per-block stream)
+ *  shows a skeleton shimmer. Token-only, indigo active ring (never gold, §11). */
+function PageThumbRail({
+  pages,
+  allBlocks,
+  currentPage,
+  onSelect,
+  reduceMotion,
+}: {
+  pages: DocPage[];
+  allBlocks: StudioDocBlock[];
+  currentPage: number;
+  onSelect: (index: number) => void;
+  reduceMotion: boolean;
+}) {
+  const items = pages.map((p) => ({ id: String(p.index), label: `Page ${p.index + 1}`, caption: String(p.index + 1), page: p }));
+  const scale = 60 / PAGE_CONTENT_W; // tile inner width ≈ 60px
+  return (
+    <div className="h-full min-h-0 shrink-0">
+      <ArtifactStrip
+        orientation="vertical"
+        className="h-full min-h-0"
+        ariaLabel="Pages"
+        thumbClassName="h-[5.25rem] w-[3.75rem] bg-card"
+        items={items}
+        activeId={String(currentPage)}
+        reduceMotion={reduceMotion}
+        onSelect={(it) => onSelect(it.page.index)}
+        renderThumb={(it) =>
+          it.page.status === "building" ? (
+            <Skeleton className="h-full w-full rounded-none motion-reduce:animate-none" />
+          ) : (
+            // A REAL scaled render of the page — the document's own blocks, shrunk. pointer-events-none
+            // so the tile stays one click target; overflow-hidden crops to the tile.
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              <div
+                className="origin-top-left"
+                style={{ width: PAGE_CONTENT_W, transform: `scale(${scale})` }}
+                aria-hidden
+              >
+                <div className="space-y-8 px-6 py-8">
+                  {it.page.blocks.map((b, i) => (
+                    <Block key={i} block={b} allBlocks={allBlocks} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )
+        }
+      />
+    </div>
+  );
+}
+
+/** The paged view: rail + one page on screen + prev/next. Print-hidden — the full print tree lives in
+ *  DocumentPreview so Save-as-PDF always captures the whole document (§13). */
+function DocumentPager({
+  pages,
+  allBlocks,
+  reduceMotion,
+}: {
+  pages: DocPage[];
+  allBlocks: StudioDocBlock[];
+  reduceMotion: boolean;
+}) {
+  const [currentPage, setCurrentPage] = useState(0);
+  // Repagination (re-measure) can shrink the page count — never point past the end.
+  useLayoutEffect(() => {
+    setCurrentPage((p) => Math.min(p, pages.length - 1));
+  }, [pages.length]);
+  const safePage = Math.min(currentPage, pages.length - 1);
+  const page = pages[safePage] ?? pages[0];
+
+  const pageView = (
+    <div className="mx-auto w-[720px] max-w-full">
+      <PageSheet blocks={page.blocks} allBlocks={allBlocks} />
+    </div>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 gap-4 print:hidden">
+      <PageThumbRail pages={pages} allBlocks={allBlocks} currentPage={safePage} onSelect={setCurrentPage} reduceMotion={reduceMotion} />
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1">
+          {reduceMotion ? (
+            pageView
+          ) : (
+            // A light crossfade on page change — reuses opacity, no new keyframes (§22). Motion-safe
+            // mirror is the branch above.
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div key={safePage} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+                {pageView}
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </div>
+        {/* Page nav — neutral, no gold (§11). tabular-nums so the counter doesn't jitter. */}
+        <div className="flex shrink-0 items-center justify-center gap-3 py-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="Previous page"
+            disabled={safePage <= 0}
+            onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">
+            Page {safePage + 1} / {pages.length}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8"
+            aria-label="Next page"
+            disabled={safePage >= pages.length - 1}
+            onClick={() => setCurrentPage((p) => Math.min(pages.length - 1, p + 1))}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DocumentPreview({ document, className }: { document: StudioDocument; className?: string }) {
   // Print / Save as PDF — the browser's native dialog over a print-scoped view of just this sheet.
   // A body-level class + the @media print rules in index.css hide the rest of the app while printing.
@@ -375,11 +624,46 @@ export function DocumentPreview({ document, className }: { document: StudioDocum
     window.print();
   }, []);
 
-  const blocks = Array.isArray(document.blocks) ? document.blocks : [];
+  const reduceMotion = !!useReducedMotion();
+  const blocks = useMemo(() => (Array.isArray(document.blocks) ? document.blocks : []), [document.blocks]);
+
+  // The paginator measures block heights off a MEASUREMENT tree (below): `fixed`, zero-footprint
+  // (h-0 w-0 overflow-hidden), so its 720px content lays out and is measurable but contributes NOTHING
+  // to scroll or flow and is never seen/printed. Measured ONCE per blocks change (§ risk: no per-page
+  // re-measure). Kept separate from the print tree so neither a horizontal-scroll edge nor a clipping
+  // ancestor can break the other.
+  const measureRef = useRef<HTMLDivElement>(null);
+  const pages = usePaginatedBlocks(blocks, measureRef);
+  const paged = pages.length > 1;
 
   return (
-    <div className={cn("h-full overflow-y-auto", className)}>
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 px-1 py-1">
+    <div className={cn("h-full", paged ? "flex flex-col overflow-hidden" : "overflow-y-auto", className)}>
+      {/* Measurement tree — fixed + clipped to 0×0 so it never scrolls, shows, or prints; the inner
+          720px column still lays out (real offsetHeights). aria-hidden: a measurement twin only. */}
+      <div aria-hidden className="pointer-events-none fixed left-0 top-0 -z-50 h-0 w-0 overflow-hidden print:hidden">
+        <div ref={measureRef} className="w-[720px] space-y-8 px-6 py-8">
+          {blocks.map((b, i) => (
+            <div key={i} data-block-index={i}>
+              <Block block={b} allBlocks={blocks} />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Print-only FULL document (paged mode only) — display:none on screen, block for print, carrying
+          data-paige-doc-sheet so the browser's Save-as-PDF captures the WHOLE document even though only
+          one page is on screen (§13 — the paged view must never shrink the export). In single-sheet mode
+          the visible sheet below already carries data-paige-doc-sheet, so this isn't rendered (no dup). */}
+      {paged && (
+        <article
+          data-paige-doc-sheet
+          className="hidden space-y-8 rounded-2xl border border-[hsl(var(--border))] bg-card px-6 py-8 print:block"
+        >
+          {blocks.map((b, i) => <Block key={i} block={b} allBlocks={blocks} />)}
+        </article>
+      )}
+
+      <div className={cn("mx-auto flex w-full max-w-3xl flex-col gap-3 px-1 py-1", paged && "h-full min-h-0")}>
         {/* Toolbar — neutral, no gold (§11). Honest label: it's the browser's Save-as-PDF. */}
         <div className="flex shrink-0 items-center justify-end print:hidden">
           <Button variant="outline" size="sm" onClick={onPrint} className="gap-2">
@@ -388,13 +672,22 @@ export function DocumentPreview({ document, className }: { document: StudioDocum
           </Button>
         </div>
         <DocBoundary fallback={DOC_EMPTY}>
-          {/* The paper sheet — layered depth via border + soft shadow (§22), never a flat fill. */}
-          <article
-            data-paige-doc-sheet
-            className="space-y-8 rounded-2xl border border-[hsl(var(--border))] bg-card px-6 py-8 shadow-[0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)] md:px-12 md:py-12"
-          >
-            {blocks.map((b, i) => <Block key={i} block={b} allBlocks={blocks} />)}
-          </article>
+          {paged ? (
+            // Long document → the paged view (rail + one page). The whole document still prints via the
+            // off-screen data-paige-doc-sheet tree above.
+            <div className="min-h-0 flex-1">
+              <DocumentPager pages={pages} allBlocks={blocks} reduceMotion={reduceMotion} />
+            </div>
+          ) : (
+            // Short document → today's single continuous sheet, unchanged (this one carries
+            // data-paige-doc-sheet and prints directly). Layered depth via border + soft shadow (§22).
+            <article
+              data-paige-doc-sheet
+              className="space-y-8 rounded-2xl border border-[hsl(var(--border))] bg-card px-6 py-8 shadow-[0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)] md:px-12 md:py-12"
+            >
+              {blocks.map((b, i) => <Block key={i} block={b} allBlocks={blocks} />)}
+            </article>
+          )}
         </DocBoundary>
       </div>
     </div>

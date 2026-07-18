@@ -69,6 +69,7 @@ import { FormMode } from "./modes/FormMode";
 import { FunnelFlow } from "./modes/FunnelFlow";
 import { LibraryPanel } from "./modes/content-shared";
 import { SessionImageCanvas } from "./SessionImageCanvas";
+import { VersionBar } from "./VersionStrip";
 import {
   STUDIO_ERROR_COPY,
   buildFunnelFromDraft,
@@ -81,6 +82,8 @@ import {
   isStudioError,
   learnFromArtifact,
   linkSessionArtifact,
+  listArtifactVersions,
+  restoreArtifactVersion,
   loadBrandFloor,
   loadContent,
   loadDocument,
@@ -133,6 +136,7 @@ import {
   type StudioError,
   type StudioErrorCode,
   type StudioMode,
+  type ArtifactVersion,
   type SessionArtifactKind,
   type SessionArtifactRef,
   type StudioSeoDraft,
@@ -147,6 +151,23 @@ import {
 function isUnnamedProject(title: string | null | undefined): boolean {
   const s = (title ?? "").trim().toLowerCase();
   return s === "" || s === "untitled project" || s === "untitled";
+}
+
+/** #331 — map a canvas artifact's FRAME kind to the MANIFEST kind the version RPCs key on. A document
+ *  streams frameKind 'document' but persists (and versions) under 'content' (marketing_content); image
+ *  is already 'content'; page/funnel pass through. Copy/form have no in-canvas version strip here. */
+function versionKindForCanvas(kind: StudioChatArtifact["kind"] | null | undefined): SessionArtifactKind | null {
+  switch (kind) {
+    case "page":
+      return "page";
+    case "funnel":
+      return "funnel";
+    case "content":
+    case "document":
+      return "content";
+    default:
+      return null;
+  }
 }
 
 /**
@@ -514,6 +535,11 @@ export function StudioShell({
   const [pageHydrating, setPageHydrating] = useState(false);
   const [openedDocument, setOpenedDocument] = useState<StudioDocument | null>(null);
   const [docHydrating, setDocHydrating] = useState(false);
+  // #331 — the append-only VERSION stack of whatever artifact is on the canvas, loaded from the DB so
+  // it survives reload (the owner's bug). Read-through: the linkage RPC in paige-ai-chat appends a
+  // version server-side on every session-bound write; this effect just re-lists them for the canvas.
+  const [canvasVersions, setCanvasVersions] = useState<ArtifactVersion[]>([]);
+  const [reverting, setReverting] = useState(false);
   // #290 — reopen states the build pipeline never puts on the canvas: a form has no in-Studio
   // renderer yet (honest "built" state), copy is a chat deliverable shown read-only. Cleared the
   // instant a real build lands (handleCanvasArtifact).
@@ -584,6 +610,54 @@ export function StudioShell({
       .catch(() => { if (live) setDocHydrating(false); });
     return () => { live = false; };
   }, [tenantId, canvasArtifact]);
+
+  // Load the VERSION stack for whatever artifact is on the canvas (#331) — mirrors the openedDocument
+  // effect above. Read straight from the DB so a version history is durable across reload. A
+  // single-version (or version-less) artifact yields <2 rows and the strips render nothing (§13).
+  useEffect(() => {
+    const kind = versionKindForCanvas(canvasArtifact?.kind);
+    if (!tenantId || !sessionId || !canvasArtifact || !kind) { setCanvasVersions([]); return; }
+    let live = true;
+    void listArtifactVersions({ tenantId, sessionId, kind, artifactId: canvasArtifact.id })
+      .then((vs) => { if (live) setCanvasVersions(vs); })
+      .catch(() => { if (live) setCanvasVersions([]); });
+    return () => { live = false; };
+  }, [tenantId, sessionId, canvasArtifact]);
+
+  // Restore a prior version to live (#331). Replays the snapshot into the live library row server-side,
+  // then re-lists the stack (so is_current tracks the reverted head) and re-hydrates the on-canvas
+  // artifact so the stage reflects the reverted content — never a stale view (§13). Returns the honest
+  // boolean the strips report on.
+  const handleRevertVersion = useCallback(async (versionId: string): Promise<boolean> => {
+    if (!tenantId) return false;
+    setReverting(true);
+    const ok = await restoreArtifactVersion({ tenantId, versionId });
+    setReverting(false);
+    if (!ok) return false;
+    const art = canvasArtifact;
+    const kind = versionKindForCanvas(art?.kind);
+    if (sessionId && art && kind) {
+      try {
+        const vs = await listArtifactVersions({ tenantId, sessionId, kind, artifactId: art.id });
+        setCanvasVersions(vs);
+        const reverted = vs.find((v) => v.id === versionId) ?? null;
+        // Reflect the reverted content on the stage per artifact type.
+        if (art.kind === "content" && reverted?.thumbnailUrl) {
+          setCanvasArtifact((prev) => (prev && prev.id === art.id ? { ...prev, url: reverted.thumbnailUrl } : prev));
+        } else if (art.kind === "document") {
+          const doc = await loadDocument(tenantId, art.id);
+          if (doc) setOpenedDocument(doc);
+        } else if (art.kind === "page") {
+          const ref: SessionArtifactRef = { kind: "page", id: art.id, title: art.title, slug: null, thumbnailUrl: null, addedAt: null };
+          const opened = await openSessionArtifact({ tenantId, ref });
+          setOpenedPage(opened);
+        }
+      } catch (err) {
+        console.warn("[studio] post-revert refresh failed (non-fatal):", err);
+      }
+    }
+    return true;
+  }, [tenantId, sessionId, canvasArtifact]);
 
   // Reopen a SAVED artifact from the project rail onto THIS canvas (#290/§21). Resolves the one-shot
   // ?open ref to the SAME canvas states a fresh build uses, then reports back so the parent clears the
@@ -2095,13 +2169,24 @@ export function StudioShell({
     );
   } else if (sessionPageOpen) {
     sessionCanvas = (
-      <LivePreview
-        blocks={sessionPageOpen.page.blocks}
-        theme={sessionPageOpen.page.theme}
-        brandFloor={state.brandFloor}
-        tenantId={tenantId ?? undefined}
-        device={state.device}
-      />
+      <div className="flex h-full flex-col">
+        <div className="min-h-0 flex-1">
+          <LivePreview
+            blocks={sessionPageOpen.page.blocks}
+            theme={sessionPageOpen.page.theme}
+            brandFloor={state.brandFloor}
+            tenantId={tenantId ?? undefined}
+            device={state.device}
+          />
+        </div>
+        {/* #331 — version history + revert for the page. Compact bar, never a banner (§11). Only
+            renders when the page was genuinely iterated (>1 version). */}
+        {canvasVersions.length > 1 && (
+          <div className="shrink-0 border-t border-border/50 px-2 py-2">
+            <VersionBar versions={canvasVersions} onRevert={(v) => void handleRevertVersion(v.id)} reduceMotion={!!reduceMotion} reverting={reverting} />
+          </div>
+        )}
+      </div>
     );
   } else if (canvasArtifact?.kind === "page" && pageHydrating) {
     // Page linked, blocks still loading — hold the building state, don't flash the empty (verify #5).
@@ -2114,7 +2199,18 @@ export function StudioShell({
     sessionCanvas = docHydrating ? (
       <StudioBuildingScreen indeterminate note="Laying out your document…" agent="Design agent" elapsedMs={chatElapsedMs} reduce={!!reduceMotion} ariaLabel="Loading your document" />
     ) : openedDocument ? (
-      <DocumentPreview document={openedDocument} />
+      <div className="flex h-full flex-col">
+        <div className="min-h-0 flex-1">
+          <DocumentPreview document={openedDocument} />
+        </div>
+        {/* #331 — version history + revert for the document. Compact bar, never a banner (§11). Only
+            renders when the document was genuinely iterated (>1 version). */}
+        {canvasVersions.length > 1 && (
+          <div className="shrink-0 border-t border-border/50 px-2 py-2">
+            <VersionBar versions={canvasVersions} onRevert={(v) => void handleRevertVersion(v.id)} reduceMotion={!!reduceMotion} reverting={reverting} />
+          </div>
+        )}
+      </div>
     ) : (
       <div className="grid h-full place-items-center">
         <SectionCard className="max-w-md">
@@ -2141,6 +2237,11 @@ export function StudioShell({
         busy={chatBusy}
         buildNote={chatNote}
         buildElapsedMs={chatElapsedMs}
+        // #331 — the image's own version history (a SECOND strip inside the canvas, distinct from the
+        // image-SET carousel). Only shows when this image was genuinely iterated (>1 version).
+        versions={canvasVersions}
+        onRevertVersion={handleRevertVersion}
+        reverting={reverting}
       />
     );
   } else if (canvasArtifact?.kind === "funnel") {

@@ -7067,6 +7067,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   });
                   r.studio_session_id = studioSessionId;
                   if (link.visual) studioLinked.push({ kind: link.frameKind ?? link.kind, id: link.id, title: String(r.title ?? r.slug ?? ""), url: link.url });
+                  // VERSION STACKING (#331) — append the just-persisted live state as the artifact's
+                  // new head so a version stack survives reload (the owner's bug: N regenerations used
+                  // to collapse into one row and the stack lived only in client state). First write = v1,
+                  // each iterate = v_{n+1} + flips is_current, all server-side and durable. The RPC
+                  // RE-READS the row itself (generic to_jsonb) so we pass no snapshot and there's no
+                  // drift. Its OWN try/catch: a version-save miss must never fail the build the owner
+                  // already got (§13 non-fatal) — the link above already succeeded and streamed.
+                  try {
+                    await supabaseClient.rpc("save_artifact_version", {
+                      p_session_id: studioSessionId, p_kind: link.kind, p_artifact_id: link.id, p_tenant_id: null,
+                    });
+                  } catch (ve) { console.warn("[paige] studio artifact version save failed (non-fatal):", (ve as Error)?.message); }
                 } catch (e) { console.warn("[paige] studio artifact link failed:", (e as Error)?.message); }
               }
             }

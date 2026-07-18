@@ -269,6 +269,26 @@ export interface SessionArtifactRef {
   addedAt: string | null;
 }
 
+/** #331 — one append-only VERSION snapshot of an artifact, as list_artifact_versions returns it
+ *  (studio_artifact_versions, snake→camel). The stack is read straight from the DB on every reload,
+ *  so a version history can never again live only in client state and vanish (§13, the owner's bug).
+ *  `isCurrent` marks the version the live library row reflects; `thumbnailUrl` is the snapshot's own
+ *  image (present for image content, null for page/doc/funnel — never a fabricated glyph, §22/§13). */
+export interface ArtifactVersion {
+  id: string;
+  /** 1,2,3… per (session,kind,lineage). The strip's caption (tabular-nums "v3"). */
+  versionNo: number;
+  /** The version the live artifact currently reflects — drives the "Live" badge + revert affordance. */
+  isCurrent: boolean;
+  /** Manifest kind: page | form | funnel | content (a document persists under 'content'). */
+  kind: SessionArtifactKind;
+  /** The artifact this version belongs to (its own id) — the lineage key. */
+  lineageId: string;
+  title: string | null;
+  thumbnailUrl: string | null;
+  createdAt: string;
+}
+
 /** The full session row, camelCased — the builder's resume payload. */
 export interface StudioSessionMeta {
   id: string;

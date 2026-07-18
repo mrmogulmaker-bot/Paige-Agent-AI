@@ -25,6 +25,7 @@ import { detectGrowthAssetKind, growthUploadContentType, GROWTH_ASSET_MAX_BYTES 
 import { GROWTH_BRAND_FLOOR, buildGrowthBrandFloor } from "@/components/growth/growth-theme";
 import { CLARIFYING_QUESTIONS, STUDIO_ERROR_COPY, briefFromKbDoc, kbChipLabel } from "./studio-copy";
 import type {
+  ArtifactVersion,
   IntentChip,
   LibraryItem,
   LibraryKind,
@@ -2744,6 +2745,91 @@ export async function loadContent(tenantId: string, contentId: string): Promise<
     .maybeSingle();
   if (error || !data || !data.body?.trim()) return null;
   return { id: data.id, title: data.title || "Untitled copy", body: data.body };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// Version stacking (#331) — the append-only history seam (§10 Paige-callable, §9 tenant-pinned).
+// list/restore travel the SECURITY DEFINER RPCs; save runs server-side in the edge fn on every
+// session-bound write, so the client never has to author a snapshot.
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/** The studio_artifact_versions row exactly as the RPCs return it (snake_case). `snapshot` is the
+ *  self-contained content payload — never rendered client-side (revert replays it server-side), so
+ *  it's left as `unknown` and not mapped onto the camel type. */
+interface StudioArtifactVersionRow {
+  id: string;
+  tenant_id: string;
+  session_id: string;
+  kind: string;
+  lineage_id: string;
+  version_no: number;
+  is_current: boolean;
+  snapshot: unknown;
+  title: string | null;
+  thumbnail_url: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+function rowToArtifactVersion(row: StudioArtifactVersionRow): ArtifactVersion {
+  return {
+    id: row.id,
+    versionNo: row.version_no,
+    isCurrent: !!row.is_current,
+    kind: (["page", "form", "funnel", "content"].includes(row.kind) ? row.kind : "content") as SessionArtifactKind,
+    lineageId: row.lineage_id,
+    title: row.title,
+    thumbnailUrl: row.thumbnail_url,
+    createdAt: row.created_at,
+  };
+}
+
+/** The version stack for one artifact inside one session, newest first (as the RPC orders it).
+ *  Tenant-pinned + RLS-gated (§9). Returns [] on any miss — the strip simply doesn't render a
+ *  history it can't prove (§13 — never a fabricated version). */
+export async function listArtifactVersions(input: {
+  tenantId: string;
+  sessionId: string;
+  kind: SessionArtifactKind;
+  artifactId: string;
+}): Promise<ArtifactVersion[]> {
+  const tenantId = requireTenant(input.tenantId);
+  if (!input.sessionId || !input.artifactId) return [];
+  try {
+    const rows = await rpc<StudioArtifactVersionRow[] | null>(
+      "list_artifact_versions",
+      { p_session_id: input.sessionId, p_kind: input.kind, p_artifact_id: input.artifactId, p_tenant_id: tenantId },
+      "NOT_FOUND",
+    );
+    return (rows ?? []).map(rowToArtifactVersion);
+  } catch (err) {
+    console.warn("[studio] list versions failed (non-fatal):", err);
+    return [];
+  }
+}
+
+/** Restore a past version: replays its snapshot back into the live library row and moves the
+ *  is_current pointer to it (append-only — no history is deleted, §13). §13-HONEST boolean: resolves
+ *  true ONLY on a real server persist; a forbidden/unsupported/miss returns false so the UI never
+ *  claims a revert that didn't happen. (page + content restore ship now; funnel/form is a tracked
+ *  follow-up and returns false with a logged reason, §19.) */
+export async function restoreArtifactVersion(input: {
+  tenantId: string;
+  versionId: string;
+}): Promise<boolean> {
+  requireTenant(input.tenantId);
+  if (!input.versionId) return false;
+  try {
+    const row = await rpc<StudioArtifactVersionRow | null>(
+      "restore_artifact_version",
+      { p_version_id: input.versionId, p_tenant_id: input.tenantId },
+      "EDIT_FAILED",
+    );
+    return !!row?.id;
+  } catch (err) {
+    console.warn("[studio] restore version failed (non-fatal):", err);
+    return false;
+  }
 }
 
 /** Remove an artifact from THIS project's manifest. Never deletes the underlying library row
