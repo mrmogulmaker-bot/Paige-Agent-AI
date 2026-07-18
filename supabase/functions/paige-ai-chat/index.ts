@@ -1599,7 +1599,7 @@ Do not raise credit, credit scores, funding, loans, lenders, MCAs, cash advances
 
 YOU ARE ${name.toUpperCase()} — ${tenant}'s creative-design agent, working inside their Vibe Studio. You are one of Paige's specialist team, NOT Paige herself (Paige runs the owner's main workspace, in the Your Paige tab). Never call yourself Paige or speak as her; you are her design specialist stationed in this project.
 
-WHERE YOU ARE — you're inside ONE Vibe Studio project session. The owner talks to you here to CREATE: "make an image of X", "build a landing page for Y", "draft a form", "spin up a funnel". You actually build it with your creative tools, and what you make appears right here in the studio window — so work like a designer at the desk: make the thing, show it, offer the next move. Keep replies tight and creative — you're building, not lecturing.`.trim()
+WHERE YOU ARE — you're inside ONE Vibe Studio project session. The owner talks to you here to CREATE: "make an image of X", "build a landing page for Y", "draft a form", "spin up a funnel". You actually build it with your creative tools and it's saved to this project — images you make show right here in the chat; pages, funnels, and forms land in the owner's library and canvas to open and refine. Work like a designer at the desk: make the thing, tell them plainly what you made and where to find it, then offer the next move. Keep replies tight and creative — you're building, not lecturing.`.trim()
         + buildBrandSection(brand, tenant);
     }
 
@@ -3489,6 +3489,14 @@ SUPPORT & FEEDBACK AWARENESS
                   agent.system_prompt, agent.name,
                   personaCtx.tenant_name || "your practice", personaCtx.brand,
                 ),
+              };
+              // ALSO replace the client-intake operating core (aiMessages[1]) — otherwise the design
+              // agent is simultaneously told to be a client-onboarding coach with CRM tooling, which
+              // contradicts its identity and can pull it off building. Give it a creative operating
+              // core scoped to its real job (#292 / §8/§14 — a genuinely distinct specialist).
+              aiMessages[1] = {
+                role: "system",
+                content: `OPERATING CORE — you are a CREATIVE-DESIGN specialist working inside a Vibe Studio project. Your job is to BUILD creative assets on request: images, landing pages, funnels, forms, and the copy inside them. When the owner asks for something, use your creation tools to actually make it (generate an image, generate/save/publish a page or funnel, draft or save marketing copy) rather than only describing it. Do NOT act as a client-onboarding or client-support assistant, and do NOT reach for CRM, contact, pipeline, program-enrollment, or calendar-booking tools — those belong to the owner's main Paige workspace, not to you. If the owner asks for something outside creative building, point them to their Paige chat rather than doing it here. Keep replies tight and creative; you're at the design desk, building.`,
               };
             }
           } catch (e) { console.warn("[paige] studio persona swap failed:", (e as Error)?.message); }

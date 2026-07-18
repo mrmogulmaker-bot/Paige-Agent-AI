@@ -1977,11 +1977,11 @@ export function StudioShell({
         >
           <SheetHeader className="border-b border-border px-4 py-3">
             <SheetTitle className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-[var(--gold-dark)]" aria-hidden />
+              <Sparkles className="h-4 w-4 text-muted-foreground" aria-hidden />
               Design chat
             </SheetTitle>
             <SheetDescription className="text-left">
-              Your creative-design agent, right in this project. Ask it to make images, pages, forms — it builds and shows you here.
+              Your creative-design agent, right in this project. Ask it to make images, pages, funnels, or forms — it builds them into this project (images show here; pages and forms open from your library).
             </SheetDescription>
           </SheetHeader>
           <StudioChat sessionId={sessionId} tenantId={tenantId} className="min-h-0 flex-1" />

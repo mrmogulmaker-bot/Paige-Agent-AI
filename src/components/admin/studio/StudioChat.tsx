@@ -114,7 +114,13 @@ export function StudioChat({
     setSending(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { toast.error("Please sign in again."); setSending(false); return; }
+      if (!session) {
+        setMessages(messages); // roll back the optimistic pair — nothing was sent (§13)
+        setInput(trimmed);     // give them their words back
+        toast.error("Please sign in again.");
+        setSending(false);
+        return;
+      }
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
@@ -170,7 +176,7 @@ export function StudioChat({
       {images.length > 0 && (
         <div className="shrink-0 border-b border-[hsl(var(--studio-chrome-border)/0.5)] px-4 py-3">
           <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            <Sparkles className="h-3.5 w-3.5" aria-hidden /> Made in this session
+            <Sparkles className="h-3.5 w-3.5" aria-hidden /> Recent images
           </div>
           <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {images.map((img) => (
