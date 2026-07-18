@@ -21,7 +21,12 @@
 // Until FEATHERLESS_API_KEY is set every job resolves to Claude, so adopting this is safe
 // today and the cheap tier activates automatically once the key lands.
 
-import { chatCompletionCompat, type ClaudeTier } from "./claude.ts";
+import {
+  chatCompletionCompat,
+  type ClaudeTier,
+  CLAUDE_REASONING,
+  CLAUDE_CLASSIFICATION,
+} from "./claude.ts";
 
 // ── Job taxonomy ────────────────────────────────────────────────────────────
 export type JobKind =
@@ -170,4 +175,627 @@ export async function claudeVoicePolish(draft: string, brandVoice?: string): Pro
     const out = resp?.choices?.[0]?.message?.content;
     return typeof out === "string" && out.trim().length > 1 ? out.trim() : d;
   } catch { return d; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// FULL-MODALITY MODEL ROUTER (Vibe Studio) — EXTENDS the text-only seam above.
+//
+// The text-only `pickRoute`/`routedChatCompletion` above answers "which model for a text JOB
+// KIND." This section answers the bigger question the Vibe Studio needs: "which provider for
+// which MODALITY at which cost TIER" — text, image, image-with-text, 3d, audio-voice, doc-render
+// — behind ONE fail-closed seam (`callModel`) that no caller has to remember doctrine to use.
+//
+// The doctrine gates (§9/§17/§2 pre-gen, §3 post-gen) live in the PURE `model-router-gates.ts`;
+// the allow-list in `model-allowlist.ts`; each provider in its own fail-closed client. This file
+// is the INTEGRATOR: run gates → resolve route → allow-list any override → call provider →
+// (§3 voice) → persist the artifact → audit. Every existing export above stays untouched (§12).
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import {
+  type Modality,
+  type Tier,
+  type GateInput,
+  DoctrineViolation,
+  runPreGenerationGates,
+  voiceViolations,
+  financeDefaultPrefilter,
+} from "./model-router-gates.ts";
+import { assertModelAllowed } from "./model-allowlist.ts";
+import {
+  NeedsConfigError,
+  NotYetConfiguredError,
+  type ProviderCallResult,
+} from "./provider-types.ts";
+import { openaiImage } from "./openai.ts";
+import { groqChat } from "./groq.ts";
+import { ideogramImage } from "./ideogram.ts";
+import { replicateRun } from "./replicate.ts";
+import { meshyTextTo3d } from "./meshy.ts";
+import { geminiImage } from "./gemini-image.ts";
+
+// Re-export the shared vocabulary from its one home (§12) so a caller imports everything it
+// needs from the router, not from three files.
+export type { Modality, Tier } from "./model-router-gates.ts";
+export { NeedsConfigError, NotYetConfiguredError } from "./provider-types.ts";
+export { DoctrineViolation } from "./model-router-gates.ts";
+
+// ── Public contract ──────────────────────────────────────────────────────────────────────
+export interface CallOpts {
+  tenantId: string;
+  actorRole?: string;
+  /** The acting user's id — stamped as studio_deliverable.created_by (falls back to the system NIL uuid). */
+  actorUserId?: string;
+  is_customer_send?: boolean;
+  is_approval_decision?: boolean;
+  is_platform_default?: boolean;
+  model_override?: string;
+  callerFunction?: string;
+  brandVoice?: string;
+  /** Persist this generation as a studio_deliverable (bucket object + provenance row). Defaults to
+   *  true for binary artifacts and false for TEXT — text is only a deliverable when the caller says
+   *  so (persist:true), so high-volume internal text (classify/summarize) doesn't churn storage. */
+  persist?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ModelResult {
+  artifact_url?: string;
+  content?: string;
+  provider: string;
+  model: string;
+  tier: Tier;
+  modality: Modality;
+  tokens_in?: number;
+  tokens_out?: number;
+  cost_estimate_usd?: number;
+  latency_ms: number;
+  needs_config?: boolean;
+  deliverable_id?: string;
+}
+
+// The system/Paige actor when no human user id is supplied (created_by is NOT NULL). No FK, so a
+// nil uuid is a safe "produced by the service-role router" stamp.
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+const DEFAULT_FLUX_MODEL = "black-forest-labs/flux-dev";
+
+// ── Task normalization ─────────────────────────────────────────────────────────────────────
+/** Extract the human-readable prompt/task text: a string as-is; {prompt}/{content}/{text}; else JSON. */
+function taskText(task: unknown): string {
+  if (typeof task === "string") return task;
+  if (task && typeof task === "object") {
+    const t = task as Record<string, unknown>;
+    if (typeof t.prompt === "string") return t.prompt;
+    if (typeof t.content === "string") return t.content;
+    if (typeof t.text === "string") return t.text;
+  }
+  try { return JSON.stringify(task ?? ""); } catch { return String(task ?? ""); }
+}
+
+/** Text calls: use an explicit {messages} array if present, else wrap the task text as one user turn. */
+function taskMessages(task: unknown): { role: string; content: unknown }[] {
+  if (task && typeof task === "object" && Array.isArray((task as any).messages)) {
+    return (task as any).messages;
+  }
+  return [{ role: "user", content: taskText(task) }];
+}
+
+function sizeOf(task: unknown): string | undefined {
+  const s = (task as any)?.size;
+  return typeof s === "string" ? s : undefined;
+}
+function aspectOf(task: unknown): string | undefined {
+  const a = (task as any)?.aspect ?? (task as any)?.aspect_ratio;
+  return typeof a === "string" ? a : undefined;
+}
+function fluxInput(task: unknown): Record<string, unknown> {
+  const input: Record<string, unknown> = { prompt: taskText(task) };
+  const ar = aspectOf(task);
+  if (ar) input.aspect_ratio = ar;
+  return input;
+}
+
+// ── Provider adapters that need a wrapper to speak ProviderCallResult ───────────────────────
+// Claude text (frontier tier). Fail-closed on a missing ANTHROPIC_API_KEY so text degrades the
+// same honest way every other modality does. model_override picks the tier (reasoning default).
+async function claudeText(task: unknown, model?: string): Promise<ProviderCallResult> {
+  if (!Deno.env.get("ANTHROPIC_API_KEY")) throw new NeedsConfigError("anthropic");
+  const started = Date.now();
+  const tier: ClaudeTier =
+    model === "classification" || model === "claude-haiku-4-5" ? "classification" : "reasoning";
+  const resp = await chatCompletionCompat({ messages: taskMessages(task) as any, max_tokens: 2048 }, tier);
+  const content = resp?.choices?.[0]?.message?.content ?? "";
+  return {
+    content: typeof content === "string" ? content : JSON.stringify(content),
+    provider: "anthropic",
+    model: resp?.model ?? (tier === "reasoning" ? CLAUDE_REASONING : CLAUDE_CLASSIFICATION),
+    tokens_in: resp?.usage?.prompt_tokens,
+    tokens_out: resp?.usage?.completion_tokens,
+    latency_ms: Date.now() - started,
+  };
+}
+
+// Featherless open-flexible text — reuses the fail-safe featherlessChat above, but fail-CLOSED
+// (NeedsConfig) when the key is entirely absent so the router degrades honestly instead of a
+// silent Claude substitution (that substitution is `routedChatCompletion`'s job, not callModel's).
+async function featherlessProvider(messages: { role: string; content: unknown }[], model?: string): Promise<ProviderCallResult> {
+  if (!Deno.env.get("FEATHERLESS_API_KEY")) throw new NeedsConfigError("featherless");
+  const started = Date.now();
+  const m = model || FEATHERLESS_CHEAP_FALLBACK_MODEL;
+  const data = await featherlessChat({ messages, max_tokens: 2048 }, m);
+  if (!data) throw new Error("Featherless call failed or returned no choice");
+  const content = data?.choices?.[0]?.message?.content ?? "";
+  return {
+    content: typeof content === "string" ? content : JSON.stringify(content),
+    provider: "featherless",
+    model: data?.model ?? m,
+    tokens_in: data?.usage?.prompt_tokens,
+    tokens_out: data?.usage?.completion_tokens,
+    latency_ms: Date.now() - started,
+  };
+}
+
+// ── The route table: (modality, tier) → provider cell ───────────────────────────────────────
+interface RouteCell {
+  provider: string;                 // provider slug for the allow-list + audit + cost
+  justification: string;            // one-line rationale for THIS cell (documented per §11/§13)
+  invoke: (task: unknown, model?: string) => Promise<ProviderCallResult>;
+}
+
+// image-with-text is the SAME cell at every tier: Ideogram is the only lane that renders legible
+// typography inside the image, so tier is a cost hint (V_2 vs V_2_TURBO via model_override), not a
+// provider switch (§18 — one home per capability).
+const imageWithTextCell: RouteCell = {
+  provider: "ideogram",
+  justification: "Ideogram — the only lane that renders legible words INSIDE the image (ad creatives/posters/thumbnails); routed here at every tier.",
+  invoke: (task, model) => ideogramImage({ prompt: taskText(task), aspect: aspectOf(task), model }),
+};
+
+// 3d — Meshy primary; on a missing Meshy key, fall back to a Replicate 3D model IF one is
+// configured (STUDIO_REPLICATE_3D_MODEL). Otherwise the NeedsConfigError propagates and callModel
+// degrades honestly — never a fake mesh (§13).
+const threeDCell: RouteCell = {
+  provider: "meshy",
+  justification: "Meshy text-to-3D primary (frontier=meshy-5 / open-fast=meshy-4 via override); Replicate 3D backup when configured.",
+  invoke: async (task, model) => {
+    try {
+      return await meshyTextTo3d({ prompt: taskText(task), ai_model: model });
+    } catch (e) {
+      if (e instanceof NeedsConfigError) {
+        const backup = Deno.env.get("STUDIO_REPLICATE_3D_MODEL");
+        if (backup) return await replicateRun({ model: backup, input: { prompt: taskText(task) } });
+      }
+      throw e;
+    }
+  },
+};
+
+// audio-voice — ElevenLabs. Its provider client lands in a follow-on lane; until then this is a
+// CLEAN needs_config degrade (§13), never a fake/silent audio result.
+const voiceCell: RouteCell = {
+  provider: "elevenlabs",
+  justification: "ElevenLabs voice synthesis — client wired in a follow-on lane; clean needs_config degrade until then (§13).",
+  invoke: () => { throw new NeedsConfigError("elevenlabs", "audio-voice (ElevenLabs) client is not wired yet"); },
+};
+
+// doc-render — PDF/eBook rendering is an explicitly DEFERRED wave (§19). Clean needs_config stub
+// so a caller gets an honest "not yet," never a broken document.
+const docRenderCell: RouteCell = {
+  provider: "doc-render",
+  justification: "Doc render (PDF/eBook) — deferred wave; clean needs_config stub, never a fake document (§13/§19).",
+  invoke: () => { throw new NeedsConfigError("doc-render", "doc-render is a deferred capability"); },
+};
+
+// The full (modality × tier) map. Every cell carries its own justification so the route choices
+// are auditable in code (§11/§13). A missing cell (e.g. 3d/open-flexible, any video-*) resolves to
+// a clean NotYetConfigured reject in callModel — never a silent wrong-provider substitution.
+const ROUTE_TABLE: Partial<Record<Modality, Partial<Record<Tier, RouteCell>>>> = {
+  text: {
+    frontier: {
+      provider: "anthropic",
+      justification: "Claude reasoning — the ONLY tier §17 permits for a customer send / approval decision; best judgment & voice.",
+      invoke: (task, model) => claudeText(task, model),
+    },
+    "open-fast": {
+      provider: "groq",
+      justification: "Groq Llama 3.3 70B — very low latency/cost for high-volume drafts & classification-adjacent text (never a send, §17).",
+      invoke: (task, model) => groqChat({ messages: taskMessages(task), model }),
+    },
+    "open-flexible": {
+      provider: "featherless",
+      justification: "Featherless — flat-rate open-weight host; caller may pin any allow-listed open model via model_override.",
+      invoke: (task, model) => featherlessProvider(taskMessages(task), model),
+    },
+  },
+  image: {
+    "open-fast": {
+      provider: "gemini",
+      justification: "Gemini 2.5 Flash Image — the cheap/strong DEFAULT for hero & marketing art (owner directive 2026-07-15).",
+      invoke: (task, model) => geminiImage({ prompt: taskText(task), model }),
+    },
+    "open-flexible": {
+      provider: "replicate",
+      justification: "Replicate Flux family — premium/tunable image; caller picks flux-dev/schnell/1.1-pro/kontext via model_override.",
+      invoke: (task, model) => replicateRun({ model: model || DEFAULT_FLUX_MODEL, input: fluxInput(task) }),
+    },
+    frontier: {
+      provider: "openai",
+      justification: "OpenAI gpt-image-1 — frontier image ESCALATION when the Gemini/Flux result isn't right.",
+      invoke: (task) => openaiImage({ prompt: taskText(task), size: sizeOf(task) }),
+    },
+  },
+  "image-with-text": {
+    frontier: imageWithTextCell,
+    "open-fast": imageWithTextCell,
+    "open-flexible": imageWithTextCell,
+  },
+  "3d": {
+    frontier: threeDCell,
+    "open-fast": threeDCell,
+  },
+  "audio-voice": {
+    frontier: voiceCell,
+    "open-fast": voiceCell,
+    "open-flexible": voiceCell,
+  },
+  "doc-render": {
+    frontier: docRenderCell,
+    "open-fast": docRenderCell,
+    "open-flexible": docRenderCell,
+  },
+};
+
+// ── Cost estimator (CLEARLY-LABELED ESTIMATES, not billed figures) ──────────────────────────
+// Rough public list prices as of 2026-07; text is $/1K tokens, binary is $/artifact. These are
+// planning estimates recorded on the deliverable, NOT an invoice — the true cost is the provider's.
+const COST_ESTIMATES = {
+  text_per_1k: {
+    anthropic: { in: 0.003, out: 0.015 },   // Claude reasoning tier
+    openai: { in: 0.0025, out: 0.010 },      // gpt-4o
+    groq: { in: 0.00059, out: 0.00079 },     // Llama 3.3 70B
+    featherless: { in: 0.0002, out: 0.0002 },// flat-plan host; nominal per-token estimate
+  },
+  per_artifact: {
+    gemini: 0.039,      // Gemini flash image
+    openai: 0.040,      // gpt-image-1 (1024²)
+    ideogram: 0.080,    // V_2 typography image
+    replicate: 0.030,   // Flux dev/schnell class
+    meshy: 0.200,       // text-to-3D preview
+    elevenlabs: 0.030,  // ~1k chars of TTS
+  },
+} as const;
+
+function round4(n: number): number { return Math.round(n * 10000) / 10000; }
+
+/** A clearly-labeled ESTIMATE of this call's cost in USD (undefined when we have no basis). */
+function estimateCost(provider: string, modality: Modality, tokensIn?: number, tokensOut?: number): number | undefined {
+  const kIn = (tokensIn ?? 0) / 1000;
+  const kOut = (tokensOut ?? 0) / 1000;
+  if (modality === "text") {
+    const c = (COST_ESTIMATES.text_per_1k as Record<string, { in: number; out: number }>)[provider];
+    return c ? round4(kIn * c.in + kOut * c.out) : undefined;
+  }
+  // openai text is handled above; here openai means gpt-image-1.
+  const per = (COST_ESTIMATES.per_artifact as Record<string, number>)[provider];
+  return per;
+}
+
+// ── Service-role client (lazy) for audit + deliverable persistence ──────────────────────────
+let _admin: ReturnType<typeof createClient> | null = null;
+function getAdmin(): ReturnType<typeof createClient> | null {
+  if (_admin) return _admin;
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !key) return null; // no service context (e.g. offline) — audit/persist become no-ops
+  _admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return _admin;
+}
+
+// A short, non-reversible hash of the task text so a violation/audit record can reference WHICH
+// task without ever logging the raw content or any PII it may contain (§11/§13). FNV-1a, hex.
+function hashTask(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+// Best-effort audit into paige_audit_log. NEVER contains an API key/secret, and NEVER blocks the
+// call — a logging hiccup must not fail a generation (§13). Column shape mirrors paige-mcp's audit().
+async function auditRouter(action: string, opts: CallOpts, payload: Record<string, unknown>): Promise<void> {
+  try {
+    const admin = getAdmin();
+    if (!admin) return;
+    await admin.from("paige_audit_log").insert({
+      tenant_id: opts.tenantId || null,
+      actor_user_id: opts.actorUserId ?? null,
+      actor_role: opts.actorRole ?? null,
+      action,
+      target_type: "model_router",
+      payload,
+    });
+  } catch (e) {
+    console.error("model-router: audit failed:", (e as Error)?.message);
+  }
+}
+
+function extFor(mime: string | undefined, modality: Modality): string {
+  const m = (mime || "").toLowerCase();
+  if (m.includes("png")) return "png";
+  if (m.includes("jpeg") || m.includes("jpg")) return "jpg";
+  if (m.includes("webp")) return "webp";
+  if (m.includes("gltf-binary") || m.includes("glb")) return "glb";
+  if (m.includes("mpeg") || m.includes("mp3")) return "mp3";
+  if (m.includes("wav")) return "wav";
+  if (m.includes("pdf")) return "pdf";
+  if (m.includes("markdown")) return "md";
+  if (m.includes("text")) return "txt";
+  if (modality === "3d") return "glb";
+  if (modality === "audio-voice") return "mp3";
+  if (modality === "image" || modality === "image-with-text") return "png";
+  return "bin";
+}
+
+// Persist the produced artifact (inline bytes, a downloaded vendor URL, or text content) into the
+// private studio-deliverables bucket under a leading tenant_id path segment, then insert the
+// studio_deliverable provenance row and mint a 30-day signed URL. Fail-SOFT: on any persistence
+// error we log and return what we have — a generation is never lost because hosting hiccuped (§13).
+async function persistDeliverable(
+  result: ProviderCallResult,
+  modality: Modality,
+  tier: Tier,
+  opts: CallOpts,
+  cost: number | undefined,
+): Promise<{ deliverable_id?: string; artifact_url?: string }> {
+  const admin = getAdmin();
+  if (!admin) return {};
+  try {
+    let storageKey: string | undefined;
+    let signedUrl: string | undefined;
+    let bytes: Uint8Array | undefined;
+    let mime = result.artifact_mime;
+
+    if (result.artifact_bytes) {
+      bytes = result.artifact_bytes;
+    } else if (result.artifact_url) {
+      const dl = await fetch(result.artifact_url);
+      if (dl.ok) {
+        bytes = new Uint8Array(await dl.arrayBuffer());
+        mime = mime ?? dl.headers.get("content-type") ?? "application/octet-stream";
+      } else {
+        console.error("model-router: vendor artifact download failed:", dl.status);
+      }
+    } else if (typeof result.content === "string" && result.content.length) {
+      bytes = new TextEncoder().encode(result.content);
+      mime = mime ?? "text/plain; charset=utf-8";
+    }
+
+    if (bytes) {
+      const ext = extFor(mime, modality);
+      storageKey = `${opts.tenantId}/${modality}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+      const up = await admin.storage.from("studio-deliverables").upload(storageKey, bytes, {
+        contentType: mime,
+        upsert: false,
+      });
+      if (up.error) {
+        console.error("model-router: deliverable upload failed:", up.error.message);
+        storageKey = undefined;
+      } else {
+        const signed = await admin.storage.from("studio-deliverables").createSignedUrl(storageKey, 30 * 24 * 60 * 60);
+        signedUrl = signed.data?.signedUrl ?? undefined;
+      }
+    }
+
+    const { data, error } = await admin
+      .from("studio_deliverable")
+      .insert({
+        tenant_id: opts.tenantId,
+        mode: opts.callerFunction ?? modality,
+        modality,
+        artifact_storage_key: storageKey ?? null,
+        provider: result.provider,
+        model: result.model,
+        tier,
+        cost_estimate_usd: cost ?? null,
+        created_by: opts.actorUserId ?? NIL_UUID,
+        metadata: {
+          caller_function: opts.callerFunction ?? null,
+          tokens_in: result.tokens_in ?? null,
+          tokens_out: result.tokens_out ?? null,
+          latency_ms: result.latency_ms,
+          brand_voice: opts.brandVoice ?? null,
+          ...(opts.metadata ?? {}),
+        },
+      })
+      .select("id")
+      .single();
+
+    if (error) {
+      console.error("model-router: deliverable insert failed:", error.message);
+      return { artifact_url: signedUrl ?? result.artifact_url };
+    }
+    return { deliverable_id: (data as any)?.id, artifact_url: signedUrl ?? result.artifact_url };
+  } catch (e) {
+    console.error("model-router: persist failed:", (e as Error)?.message);
+    return { artifact_url: result.artifact_url };
+  }
+}
+
+/**
+ * callModel — the ONE full-modality seam. Enforces doctrine at the boundary so no caller must
+ * remember it, in this exact order:
+ *   1. PRE-generation gates (§9 scope → §17 send/approval tier → §2 finance-in-default). A
+ *      DoctrineViolation is audited then RE-THROWN — the call does not proceed.
+ *   2. Resolve the (modality, tier) route; an unserved combo (3d/open-flexible, video-*, …) is a
+ *      clean NotYetConfigured reject.
+ *   3. Allow-list any untrusted model_override for the cell's provider.
+ *   4. Call the provider. A NeedsConfig/NotYetConfigured is an HONEST degrade → { needs_config:true }
+ *      (never thrown, never faked).
+ *   5. POST-generation §3 voice gate on customer-send text — rewrite up to 2×, else throw.
+ *   6. Persist the artifact (bucket + studio_deliverable row + 30-day signed URL).
+ *   7. Best-effort success audit.
+ */
+export async function callModel(
+  modality: Modality,
+  tier: Tier,
+  task: unknown,
+  opts: CallOpts,
+): Promise<ModelResult> {
+  const started = Date.now();
+  const text = taskText(task);
+
+  // 1) PRE-generation doctrine gates. Fail-closed: audit + re-throw on violation.
+  const gateInput: GateInput = {
+    modality,
+    tier,
+    tenantId: opts.tenantId,
+    actorRole: opts.actorRole,
+    is_customer_send: opts.is_customer_send,
+    is_approval_decision: opts.is_approval_decision,
+    is_platform_default: opts.is_platform_default,
+    taskText: text,
+  };
+  try {
+    runPreGenerationGates(gateInput);
+  } catch (e) {
+    if (e instanceof DoctrineViolation) {
+      await auditRouter("model_router.doctrine_violation", opts, {
+        code: e.code,
+        modality,
+        tier,
+        reason: e.message,
+        task_hash: hashTask(text),
+        caller_function: opts.callerFunction ?? null,
+        ...(e.detail?.phrase ? { phrase: e.detail.phrase } : {}),
+      });
+    }
+    throw e;
+  }
+
+  // 2) Resolve the route. No cell = a modality/tier we don't serve yet (incl. any video-*). Degrade
+  //    to the SAME honest needs_config shape a provider-raised NeedsConfig produces (one shape for
+  //    "can't do this yet", so a caller never has to handle both a throw and a flag).
+  const cell = ROUTE_TABLE[modality]?.[tier];
+  if (!cell) {
+    return { provider: "unconfigured", model: "", tier, modality, latency_ms: Date.now() - started, needs_config: true };
+  }
+
+  // 3) Any caller-supplied model_override is untrusted — it must be on the provider's allow-list. A
+  //    smuggled/renamed/expensive id is a spend-abuse signal (§13/§14): audit it before re-throwing.
+  const sensitive = Boolean(opts.is_customer_send) || Boolean(opts.is_approval_decision);
+  if (opts.model_override) {
+    try {
+      assertModelAllowed(cell.provider, opts.model_override);
+    } catch (e) {
+      if (e instanceof DoctrineViolation) {
+        await auditRouter("model_router.doctrine_violation", opts, {
+          code: e.code,
+          modality,
+          tier,
+          provider: cell.provider,
+          model_override: opts.model_override,
+          task_hash: hashTask(text),
+          caller_function: opts.callerFunction ?? null,
+        });
+      }
+      throw e;
+    }
+  }
+
+  // 4) Call the provider. NeedsConfig/NotYetConfigured → honest needs_config degrade (never fake success).
+  //    A SENSITIVE text call (customer send / approval decision) ignores a downgrading model_override —
+  //    §17 hardens these to Claude's REASONING tier, so we never let a caller pin them to Haiku.
+  const effectiveOverride = (sensitive && modality === "text") ? undefined : opts.model_override;
+  let result: ProviderCallResult;
+  try {
+    result = await cell.invoke(task, effectiveOverride);
+  } catch (e) {
+    if (e instanceof NeedsConfigError || e instanceof NotYetConfiguredError) {
+      const provider = e instanceof NeedsConfigError ? e.provider : cell.provider;
+      return {
+        provider,
+        model: opts.model_override ?? "",
+        tier,
+        modality,
+        latency_ms: Date.now() - started,
+        needs_config: true,
+      };
+    }
+    throw e;
+  }
+
+  // 5) POST-generation doctrine on SHIPPED text — copy that reaches a customer (is_customer_send) OR
+  //    ships to every tenant as a platform default (is_platform_default). §3 voice: rewrite up to 2×,
+  //    else throw + audit. §2: a clean platform-default PROMPT can still yield finance/credit OUTPUT —
+  //    re-scan the generated text and reject it, closing the door §2's input-only prefilter left ajar.
+  if (modality === "text" && typeof result.content === "string") {
+    const shipped = Boolean(opts.is_customer_send) || Boolean(opts.is_platform_default);
+    if (shipped) {
+      let out = result.content;
+      let attempts = 0;
+      while (voiceViolations(out).length > 0 && attempts < 2) {
+        out = await claudeVoicePolish(out, opts.brandVoice);
+        attempts++;
+      }
+      const remaining = voiceViolations(out);
+      if (remaining.length > 0) {
+        await auditRouter("model_router.voice_violation", opts, {
+          modality, tier, provider: result.provider, tells: remaining,
+          task_hash: hashTask(text), caller_function: opts.callerFunction ?? null,
+        });
+        throw new DoctrineViolation("§3", "shipped copy still contains banned voice after rewrite; needs human review", {
+          tells: remaining,
+        });
+      }
+      result.content = out;
+    }
+    if (Boolean(opts.is_platform_default)) {
+      const phrase = financeDefaultPrefilter(result.content);
+      if (phrase) {
+        await auditRouter("model_router.doctrine_violation", opts, {
+          code: "§2", modality, tier, provider: result.provider, phrase,
+          scan: "output", task_hash: hashTask(text), caller_function: opts.callerFunction ?? null,
+        });
+        throw new DoctrineViolation("§2", "generated platform-default text contains finance/credit language", { phrase });
+      }
+    }
+  }
+
+  // 6) Persist the produced artifact + provenance row; attach deliverable_id + a 30-day signed URL.
+  //    Binary artifacts always persist; TEXT persists only when the caller asks (persist:true) — so
+  //    high-volume internal text routed here doesn't churn storage with never-read .txt deliverables.
+  const cost = estimateCost(result.provider, modality, result.tokens_in, result.tokens_out);
+  const shouldPersist = opts.persist ?? (modality !== "text");
+  const persisted: { deliverable_id?: string; artifact_url?: string } = shouldPersist
+    ? await persistDeliverable(result, modality, tier, opts, cost)
+    : {};
+
+  // 7) Best-effort success audit (never blocks the return).
+  await auditRouter("model_router.call", opts, {
+    modality,
+    tier,
+    provider: result.provider,
+    model: result.model,
+    tokens_in: result.tokens_in ?? null,
+    tokens_out: result.tokens_out ?? null,
+    cost_estimate_usd: cost ?? null,
+    latency_ms: result.latency_ms,
+    caller_function: opts.callerFunction ?? null,
+  });
+
+  return {
+    artifact_url: persisted.artifact_url ?? result.artifact_url,
+    content: result.content,
+    provider: result.provider,
+    model: result.model,
+    tier,
+    modality,
+    tokens_in: result.tokens_in,
+    tokens_out: result.tokens_out,
+    cost_estimate_usd: cost,
+    latency_ms: result.latency_ms,
+    deliverable_id: persisted.deliverable_id,
+  };
 }
