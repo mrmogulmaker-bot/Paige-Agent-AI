@@ -162,6 +162,7 @@ export function StudioChat({
       }
     } catch (e) {
       setMessages(messages); // roll back the optimistic pair
+      setInput(trimmed);     // give the owner their words back — never lose typed text on a transient error
       toast.error(e instanceof Error ? e.message : "The chat hit a snag.");
     } finally {
       setSending(false);
