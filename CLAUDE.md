@@ -791,8 +791,10 @@ Read the doc for the full engine/stage/governance detail; the load-bearing point
 **Directive (owner: Antonio, 2026-07-18):** we stop paying the same tax twice. When a manual,
 multi-step operation shows up a second time, that is the signal to **automate it once, document
 it, and never hand-run it again** — the opposite of re-solving the same problem every session.
-The operational runbook is **`docs/OPS.md`** — read it before any deploy / CI / infra work so the
-mechanics (project ref, per-function auth, deploy path) are never re-derived from scratch.
+The edge-function deploy runbook is a **nested `CLAUDE.md` at `supabase/functions/CLAUDE.md`** — it
+**auto-loads** whenever a session works on functions (no "remember to open a doc" — that pattern is
+exactly what fails), so the mechanics (project ref, per-function auth, deploy path) are never
+re-derived from scratch.
 
 - **Edge functions deploy themselves on merge.** `.github/workflows/deploy-edge-functions.yml`
   auto-deploys exactly the functions whose bundle changed (following `_shared` imports
