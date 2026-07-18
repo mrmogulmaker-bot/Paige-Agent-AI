@@ -12,6 +12,7 @@
 // thread, hydrates its turns, streams a turn, lifts the newest artifact + busy/step to the parent
 // canvas, and renders the agent's clickable option chips (`ask_choices`).
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
@@ -19,7 +20,7 @@ import { PromptComposer } from "./PromptComposer";
 import { uploadGrowthAsset } from "./studio";
 import type { GrowthAsset } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
-import { Check, Loader2, Sparkles } from "lucide-react";
+import { Check, Clock, Image as ImageIcon, Loader2, Sparkles, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -48,6 +49,15 @@ const db = supabase as unknown as {
 interface ChatMsg { role: "user" | "assistant"; content: string }
 interface ChoiceOption { label: string; value: string }
 interface Choices { prompt: string; options: ChoiceOption[]; multi?: boolean }
+
+/** A brief the customer STAGED while the agent was mid-turn (roadmap #155). The single-active-command
+ *  gate is unchanged — only ONE turn is ever in flight — but a new submission no longer blocks: it
+ *  lands here in a FIFO queue and auto-dispatches the moment the current turn returns (the "time
+ *  unlock"). Each entry carries its OWN attachment snapshot (the tray it was staged with), so what
+ *  ran is exactly what was staged — nothing crosses wires with a later message (§13). */
+interface QueuedBrief { id: string; text: string; attachments: GrowthAsset[] }
+/** Cap the staging depth so it stays a "next few" affordance, not an unbounded backlog. */
+const MAX_QUEUE = 5;
 
 /** What the conversation last put on the canvas — server-authoritative (from the paige_artifact
  *  frame), so the parent renders EXACTLY what was built, never a guessed manifest index. */
@@ -91,7 +101,10 @@ export function StudioChat({
   const [multiPicks, setMultiPicks] = useState<Set<string>>(new Set());
   const [attachments, setAttachments] = useState<GrowthAsset[]>([]); // reference images dropped in-chat
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
+  const [queue, setQueue] = useState<QueuedBrief[]>([]); // briefs staged while the agent is busy (#155)
+  const [queuePaused, setQueuePaused] = useState(false); // a turn failed — hold the rest, don't fire into a failing state (§13)
   const scrollRef = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
 
   // Parent callbacks held in refs so a new function identity never re-fires the sync effects.
   const cb = useRef({ onBusy, onNote, onArtifact });
@@ -153,11 +166,13 @@ export function StudioChat({
 
   // Send a turn. `display` lets a tapped chip show its friendly label while the model receives the
   // canonical value.
-  const send = useCallback(async (text: string, opts?: { display?: string }) => {
+  const send = useCallback(async (text: string, opts?: { display?: string; attachments?: GrowthAsset[]; queuedItem?: QueuedBrief }) => {
     const trimmed = text.trim();
-    // The reference images the customer dropped this turn — snapshot before we clear the tray, so an
+    // A queued dispatch carries the attachment snapshot it was STAGED with (opts.attachments); a
+    // manual/immediate turn uses whatever's live in the tray. Snapshot before we clear the tray, so an
     // image-only turn ("here, build from this") still carries them. Images alone are a valid turn (N4).
-    const turnAttachments = attachments;
+    const usingLiveAttachments = opts?.attachments === undefined;
+    const turnAttachments = opts?.attachments ?? attachments;
     const hasImages = turnAttachments.length > 0;
     if ((!trimmed && !hasImages) || sending || !threadId) return;
     setInput("");
@@ -177,10 +192,7 @@ export function StudioChat({
     let ok = false;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setMessages(messages); setInput(trimmed); // roll back; give them their words back (§13)
-        toast.error("Please sign in again."); setSending(false); return;
-      }
+      if (!session) throw new Error("Please sign in again."); // handled uniformly below (roll back + pause)
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
@@ -239,18 +251,67 @@ export function StudioChat({
       }
       ok = true;
     } catch (e) {
-      setMessages(messages); setInput(trimmed); // roll back; never lose typed text on a transient error
+      setMessages(messages); // roll back the optimistic turn
+      // §13 nothing lost. A MANUAL turn's text goes back into the composer. A QUEUED turn goes back to
+      // the FRONT of the queue (never clobber whatever the customer may now be typing) — it stays a
+      // visible chip and re-runs on Resume.
+      if (opts?.queuedItem) setQueue((q) => [opts.queuedItem!, ...q]);
+      else setInput(trimmed);
       toast.error(e instanceof Error ? e.message : "The chat hit a snag.");
     } finally {
       setSending(false);
       setNote(null);
-      // Clear the reference-image tray only on a clean turn (N3) — a failed turn keeps them so the
-      // customer doesn't have to re-attach after rolling back.
-      if (ok && hasImages) setAttachments([]);
+      // Clear the reference-image tray only on a clean turn that USED the live tray (N3) — a failed
+      // turn keeps them, and a queued dispatch used its own snapshot so it must not wipe the live tray.
+      if (ok && hasImages && usingLiveAttachments) setAttachments([]);
+      // The queue only auto-advances after a SUCCESSFUL turn; a failure pauses it (§13) so the rest is
+      // never fired into a failing state. A clean turn clears any prior pause so the "time unlock" runs.
+      setQueuePaused(!ok);
       // Hand the parent exactly what the server said it built this turn (null = keep the stage).
       cb.current.onArtifact?.(gotArtifact);
     }
   }, [messages, sending, threadId, attachments]);
+
+  // The customer submitted from the composer. Idle → send immediately (unchanged). Busy → STAGE it in
+  // the FIFO queue instead of blocking (the single-active-command gate is preserved: exactly one turn
+  // in flight). The tray it was staged with rides along on the queued entry, then clears so they can
+  // stage a fresh one. Queue is capped (MAX_QUEUE) with a gentle toast rather than an unbounded backlog.
+  const onComposerSubmit = useCallback((text: string) => {
+    const trimmed = text.trim();
+    const live = attachments;
+    const hasImages = live.length > 0;
+    if (!trimmed && !hasImages) return;
+    if (sending) {
+      if (queue.length >= MAX_QUEUE) {
+        toast(`That's the max of ${MAX_QUEUE} staged — they'll run first, then send more.`);
+        return; // keep their text + attachments; nothing lost
+      }
+      setQueue((q) => [...q, { id: crypto.randomUUID(), text: trimmed, attachments: live }]);
+      setInput("");
+      if (hasImages) setAttachments([]); // captured onto the queued entry above
+      return;
+    }
+    void send(text);
+  }, [sending, queue.length, attachments, send]);
+
+  const onRemoveQueued = useCallback((id: string) => {
+    setQueue((q) => q.filter((it) => it.id !== id));
+  }, []);
+
+  // The "time unlock" (#155): the queue is only ever populated WHILE a turn is in flight, so this fires
+  // exactly on the busy→idle edge — dispatch the next staged brief, which flips `sending` back true and
+  // re-gates this until it returns, draining one-at-a-time. Paused (a prior failure) holds it.
+  useEffect(() => {
+    if (sending || queuePaused || queue.length === 0 || !threadId) return;
+    const head = queue[0];
+    setQueue((q) => q.slice(1));
+    void send(head.text, { attachments: head.attachments, queuedItem: head });
+  }, [sending, queuePaused, queue, threadId, send]);
+
+  // A drained queue has nothing left to resume — drop any lingering pause so the banner never sticks.
+  useEffect(() => {
+    if (queue.length === 0 && queuePaused) setQueuePaused(false);
+  }, [queue.length, queuePaused]);
 
   // The customer dropped image(s) into the chat — upload each to the tenant's growth-assets bucket so
   // it has a public URL the server can fetch + base64-inline as build input. Images only in-chat (§18:
@@ -388,19 +449,99 @@ export function StudioChat({
         )}
       </div>
 
-      {/* Composer — reuse the ONE studio composer (§18), circular send, docked. Always live, so a
-          chip is always optional (the customer can just talk). */}
+      {/* Composer — reuse the ONE studio composer (§18/§21: NOT a new surface, just the chat input),
+          circular send, docked. Always live, so a submission is never blocked: idle it sends, busy it
+          STAGES below. */}
       <div className="shrink-0 px-3 pb-3">
+        {/* Staged briefs (#155) — compact removable chips in the SAME visual language as the note/
+            attachment chips above (§12/§18), never gold (§11: gold is only the act). Motion-safe
+            enter/exit via framer-motion, guarded by useReducedMotion. */}
+        {queue.length > 0 && (
+          <div className="mb-2 space-y-1.5">
+            <div className="flex items-center justify-between gap-2 px-1">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                <Clock className="h-3 w-3" aria-hidden />
+                {queuePaused ? "Queue paused" : `Up next · ${queue.length}`}
+              </span>
+              {queuePaused ? (
+                <button
+                  type="button"
+                  onClick={() => setQueuePaused(false)}
+                  className="rounded-md px-1.5 py-0.5 text-[11px] font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                >
+                  Resume
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setQueue([])}
+                  className="rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5" aria-live="polite">
+              <AnimatePresence initial={false}>
+                {queue.map((item, i) => (
+                  <motion.span
+                    key={item.id}
+                    layout={!reduce}
+                    initial={reduce ? false : { opacity: 0, y: 4, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
+                    transition={{ duration: reduce ? 0 : 0.16 }}
+                    className="inline-flex max-w-[240px] items-center gap-1.5 rounded-full border border-border bg-muted/50 py-1 pl-2 pr-1.5 text-xs text-foreground"
+                  >
+                    <span className="shrink-0 tabular-nums text-[10px] font-medium text-muted-foreground">{i + 1}</span>
+                    <span className="truncate">
+                      {item.text || `${item.attachments.length} reference image${item.attachments.length > 1 ? "s" : ""}`}
+                    </span>
+                    {item.text && item.attachments.length > 0 && (
+                      <span className="inline-flex shrink-0 items-center gap-0.5 text-[10px] text-muted-foreground">
+                        <ImageIcon className="h-3 w-3" aria-hidden />
+                        {item.attachments.length}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => onRemoveQueued(item.id)}
+                      aria-label={`Remove staged command ${i + 1}`}
+                      className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    >
+                      <X className="h-3 w-3" aria-hidden />
+                    </button>
+                  </motion.span>
+                ))}
+              </AnimatePresence>
+            </div>
+            {queuePaused && (
+              <p className="px-1 text-[11px] text-muted-foreground">
+                A command didn’t send. Resume to retry, or remove staged ones to drop them.
+              </p>
+            )}
+          </div>
+        )}
+
         <PromptComposer
           mode="page"
           value={input}
           onChange={setInput}
-          onSubmit={(v) => void send(v)}
-          busy={sending}
+          onSubmit={onComposerSubmit}
+          // Never gate the submit on `sending` — staging must work while the agent is busy. The live
+          // "working" state is shown in the transcript bubble + the helper line below, not by locking
+          // the composer.
+          busy={false}
           disabled={loading || !threadId}
           enterSubmits
           placeholder="Tell your design agent what to make…"
-          helperText=""
+          helperText={
+            sending
+              ? queue.length >= MAX_QUEUE
+                ? `Queue’s full (${MAX_QUEUE}) — these run first.`
+                : "Agent’s on it — your next message queues and runs the moment this one’s done."
+              : ""
+          }
           submitLabel="Send"
           busyLabel="Working…"
           sendShape="circle"
