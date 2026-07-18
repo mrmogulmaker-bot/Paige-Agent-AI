@@ -866,3 +866,41 @@ taste read "any Paige UI surface."
   Vercel without embarrassment?"* If you can't answer because you never rendered it (and Chrome MCP
   was available), you're not done. If it would look flat, generic, or cheesy beside them, it isn't
   done either — iterate until it holds.
+
+## 26. Paige learns — the Compound AI System (prompt-forge + semantic memory).
+
+**Directive (owner: Antonio, 2026-07-18):** Paige does not fire a raw prompt at a model and hope.
+Every design she produces is **forged** from reusable DNA and, when it genuinely lands, **remembered**
+so the next one is better. This is the compound loop — *forge → generate → remember → retrieve* — that
+makes the practice's creative brain compound over time (§7 the intelligence is the moat; §15 Paige is
+the innovative one; §14 she never works from a blank page). Two phases, both tenant-authored per
+Playbook and §9-clean.
+
+- **Phase A — the prompt-forge (`_shared/prompt-forge.ts`).** A generation prompt is assembled, never
+  hand-typed: a versioned **template** (the DNA, in `paige_prompt_template`) is filled with the
+  tenant's real, **present-only** brand tokens (`_shared/brand-tokens.ts` — it OMITS whatever the
+  tenant hasn't set; §15 never a `[PLACEHOLDER]`), the caller's brief, and the standing
+  **anti-patterns** (`_shared/cheesy-tells.ts`, the runtime mirror of §25's CHEESY-TELLS catalog) —
+  then run through the **existing** `callModel` seam. The forge EXTENDS, never rivals (§18): it builds
+  a task and calls the router; there is no parallel router, no second embedder, no rival vocab.
+- **The 8 platform-default templates are the DNA of every Paige design** — coaching-generic,
+  §2-clean (zero credit/funding/lender language in any default), §3 voice, senior brand-designer bar,
+  each ending in an explicit `Avoid: {{anti_patterns}}` clause. A tenant's OWN template always wins
+  over the default (§7). Platform defaults live under the operator seam (§9), never authored by a
+  tenant.
+- **Phase B — semantic memory (`paige_prompt_memory`).** On a **genuine** success only (§13 — never on
+  a `needs_config`/errored call, never a fabricated `artifact_url`), the forge remembers the prompt +
+  its produced artifact as a vector, so future forges retrieve what worked for *this* tenant. A memory
+  is the tenant's private learning — tenant-scoped, never shared cross-tenant (§9).
+- **ONE embedding space — voyage-3 @ 1024 dims** (`_shared/voyage.ts` `voyageEmbedOne`). This is the
+  single canonical space: **no** rival embedding client, and **no** path that routes an embedding to a
+  frontier/generation model (the §17 structural gate — voyage-only). Every embedding row is **tagged**
+  `embedding_model='voyage-3'`, `embedding_dim=1024`, and the existing embedding tables carry the same
+  tag columns, so the space is auditable and can never silently mix incomparable vectors.
+- **Doctrine binds the seam, not the caller.** The forge runs the **existing** gates (§9 scope +
+  throw-on-missing-tenantId, §17 tier, §2 finance-in-default via the existing finance guard) before it
+  generates, sets `tenant_id` **explicitly** on every audit/memory insert, labels `cost_estimate_usd`
+  an **estimate**, and reports only what actually happened (§13).
+- **The test, every time:** *"Did Paige forge this from the DNA and the tenant's brand — steered off
+  the cheesy tells — and, if it truly landed, did she remember it in the one voyage-3 space, honestly?"*
+  If she typed a raw prompt, stood up a second embedder, or stored a hoped-for result, it isn't done.
