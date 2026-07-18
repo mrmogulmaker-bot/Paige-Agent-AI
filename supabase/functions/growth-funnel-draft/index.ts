@@ -75,6 +75,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { chatCompletionCompat } from "../_shared/claude.ts";
 import { routedChatCompletion } from "../_shared/model-router.ts";
 import { extractJson, str } from "../_shared/growth-blocks.ts";
+import { retrieveTenantKnowledge, buildKnowledgeBlock } from "../_shared/studio-brain.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -216,8 +217,19 @@ serve(async (req: Request) => {
     }
 
     // ── 4. Plan the funnel (reasoning tier, §14) ─────────────────────────────
+    // The Studio's brain (#310): ground the funnel PLAN in this practice's own knowledge, so the
+    // name and the sub-briefs it hands the page/form drafters are native to the business. The
+    // composed page/form drafts each retrieve their own KB context too (Slice A), so the whole
+    // funnel is brain-aware end to end. Non-fatal (§13); IDOR-safe on the tenant WE resolved (§9).
+    let knowledgeBlock = "";
+    try {
+      knowledgeBlock = buildKnowledgeBlock(await retrieveTenantKnowledge(tenantId, brief, 5));
+    } catch (e) {
+      console.warn("growth-funnel-draft: KB retrieval failed, no brain context:", (e as Error)?.message);
+    }
+
     const messages = [
-      { role: "system", content: PLAN_SYSTEM },
+      { role: "system", content: PLAN_SYSTEM + knowledgeBlock },
       { role: "user", content: `Brief: ${brief}` },
     ];
     let plan: any = null;
