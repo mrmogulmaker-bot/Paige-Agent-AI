@@ -5291,6 +5291,36 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       }
     };
 
+    // #292 — inside a Studio session, give the design agent the clickable-decision tool (studio-gated
+    // so main Paige never gains it). Handled as a turn-ender in the stream loop, not a backend call.
+    if (studioSessionId) {
+      toolDefs.push({
+        type: "function",
+        function: {
+          name: "ask_choices",
+          description: "Ask the customer ONE decision as tappable option chips instead of prose. Use ONLY when genuinely uncertain AND you can name 2-4 concrete directions. One decision per call; at most one clarify round, then build. Every option must map to something you will actually build once they pick — no dead-end or coming-soon choices.",
+          parameters: {
+            type: "object",
+            required: ["prompt", "options"],
+            properties: {
+              prompt: { type: "string", description: "Short question, in-voice (<=12 words)." },
+              options: {
+                type: "array", minItems: 2, maxItems: 4,
+                items: {
+                  type: "object", required: ["label", "value"],
+                  properties: {
+                    label: { type: "string", description: "2-4 words shown on the chip." },
+                    value: { type: "string", description: "Canonical string sent back as the answer." },
+                  },
+                },
+              },
+              multi: { type: "boolean", description: "true = pick several then Continue; default single-select." },
+            },
+          },
+        },
+      } as any);
+    }
+
     // Advertise the confirm flag on every mutating tool so the model knows the
     // second (confirm:true) step exists. Read-only tools are untouched.
     for (const def of toolDefs) {
@@ -7231,6 +7261,24 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const { content, toolCalls, allChunks, hasToolCall } = await consumeRound(currentResponse);
             if (!hasToolCall) { finalChunks = allChunks; finalAssistantText = content; break; }
             const realCalls = toolCalls.filter((tc: any) => tc && tc.function?.name);
+            // #292 — ask_choices is a TURN-ENDER, not a backend call: the design agent is asking the
+            // customer a clickable decision. Emit the chips as a paige_choices frame, persist the
+            // question as the assistant turn (§13 re-readable), and stop this turn — the tapped chip
+            // comes back as the next user message. Studio-gated so main Paige never triggers it.
+            const chooseTc = studioSessionId ? realCalls.find((tc: any) => tc.function?.name === "ask_choices") : undefined;
+            if (chooseTc) {
+              let a: any = {}; try { a = JSON.parse(chooseTc.function.arguments ?? "{}"); } catch { /* keep {} */ }
+              const opts = Array.isArray(a.options)
+                ? a.options.filter((o: any) => o && typeof o.label === "string" && typeof o.value === "string").slice(0, 4)
+                : [];
+              const frame = { prompt: String(a.prompt ?? "").slice(0, 300), options: opts, multi: !!a.multi };
+              if (frame.options.length >= 2) {
+                controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_choices: frame })}\n\n`));
+                finalAssistantText = frame.prompt;
+                forcedTermination = true;
+                break;
+              }
+            }
             const sig = JSON.stringify(realCalls.map((tc: any) => [tc.function.name, tc.function.arguments]));
             // No-progress: the model re-emitted the exact same call(s) as an earlier
             // round. Do NOT execute again (a repeated propose_action would double-queue
