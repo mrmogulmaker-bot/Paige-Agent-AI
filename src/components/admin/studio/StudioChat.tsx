@@ -1,16 +1,21 @@
-// The Vibe Studio session's OWN chat (#292) — a LEAN, create-focused conversation with the tenant's
-// creative-design agent (one of Paige's specialists, NOT Paige; §8/§14). You talk to it here to
-// CREATE — "make an image of X", "build a landing page for Y" — it runs the real generation tools and
-// what it makes renders right here in the session window.
+// The Vibe Studio session's OWN chat (#292) — the LIVE, two-way conversation with the tenant's
+// creative-design agent (one of Paige's specialists, NOT Paige; §8/§14). The customer only talks:
+// "make an image of X", "build a landing page for Y", "make the headline bolder" — the agent runs
+// the real generation tools and what it makes renders on the project canvas to the RIGHT of this
+// chat. This is the whole session surface: no mode tabs, no type picker, one conversation (§18/§21).
 //
-// §18: this is NOT a second chat system and NOT the full Your-Paige console. It reuses the existing
-// paige-ai-chat streaming engine + paige_chat_threads/paige_chat_turns; the identity is swapped to the
-// design-studio sub-agent server-side (gated on the thread's studio_session_id). This surface only:
-// ensures the session's thread, hydrates its turns, streams a turn, and renders what got created.
+// §18: NOT a second chat system and NOT the full Your-Paige console. It reuses the paige-ai-chat
+// streaming engine + paige_chat_threads/paige_chat_turns; the identity is swapped to the
+// design-studio sub-agent server-side (gated on the thread's studio_session_id), and the same gate
+// LINKS what it creates to the project and streams back a `paige_artifact` frame naming exactly what
+// to render (server-authoritative — the client never guesses). This surface: ensures the session's
+// thread, hydrates its turns, streams a turn, lifts the newest artifact + busy/step to the parent
+// canvas, and renders the agent's clickable option chips (`ask_choices`).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PromptComposer } from "./PromptComposer";
-import { Loader2, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Check, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -22,50 +27,59 @@ const db = supabase as unknown as {
 };
 
 interface ChatMsg { role: "user" | "assistant"; content: string }
-interface MadeImage { id: string; url: string; title: string }
+interface ChoiceOption { label: string; value: string }
+interface Choices { prompt: string; options: ChoiceOption[]; multi?: boolean }
+
+/** What the conversation last put on the canvas — server-authoritative (from the paige_artifact
+ *  frame), so the parent renders EXACTLY what was built, never a guessed manifest index. */
+export interface StudioChatArtifact {
+  kind: "page" | "funnel" | "content";
+  id: string;
+  title: string;
+  url: string | null; // present for an image (content); null for page/funnel
+}
 
 export function StudioChat({
   sessionId,
   tenantId,
   className,
+  seedBrief,
+  onBusy,
+  onNote,
+  onArtifact,
 }: {
   sessionId: string | null;
   tenantId: string | null;
   className?: string;
+  /** The dashboard→session brief. Auto-sent ONCE as the first turn when the session is brand new
+   *  (no prior turns), so the initial build runs through THIS chat, not a second engine. */
+  seedBrief?: string | null;
+  /** True while a turn streams — lets the canvas show a live "building" state, not a dead pane. */
+  onBusy?: (busy: boolean) => void;
+  /** The latest real streamed step label — the honest cutscene narration (§13). */
+  onNote?: (note: string | null) => void;
+  /** The artifact this turn produced (from the server's paige_artifact frame). Null = no visual
+   *  artifact this turn (e.g. a pure-copy or chat-only reply) — the parent keeps the current stage. */
+  onArtifact?: (artifact: StudioChatArtifact | null) => void;
 }) {
   const [threadId, setThreadId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [note, setNote] = useState<string | null>(null); // live "working…" line
-  const [images, setImages] = useState<MadeImage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [choices, setChoices] = useState<Choices | null>(null); // pending clickable options
+  const [multiPicks, setMultiPicks] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Only images created from THIS working session forward render in the window (Phase 1 — true
-  // session-artifact linking is a tracked follow-up). Captured once per mount, before any turn.
-  const openedAtRef = useRef<string>(new Date().toISOString());
 
-  // Pull the tenant's images created since this session opened — what the agent has made here.
-  const refreshImages = useCallback(async () => {
-    if (!tenantId) return;
-    try {
-      const { data } = await db
-        .from("marketing_content")
-        .select("id, title, image_url, created_at")
-        .eq("tenant_id", tenantId)
-        .eq("kind", "image")
-        .gte("created_at", openedAtRef.current)
-        .order("created_at", { ascending: false })
-        .limit(24);
-      setImages(
-        ((data ?? []) as Array<{ id: string; title: string | null; image_url: string | null }>)
-          .filter((r) => !!r.image_url)
-          .map((r) => ({ id: r.id, url: r.image_url as string, title: r.title || "Image" })),
-      );
-    } catch { /* the strip is best-effort; a miss never blocks the chat */ }
-  }, [tenantId]);
+  // Parent callbacks held in refs so a new function identity never re-fires the sync effects.
+  const cb = useRef({ onBusy, onNote, onArtifact });
+  useEffect(() => { cb.current = { onBusy, onNote, onArtifact }; }, [onBusy, onNote, onArtifact]);
+  useEffect(() => { cb.current.onBusy?.(sending); }, [sending]);
+  useEffect(() => { cb.current.onNote?.(note); }, [note]);
 
   // Ensure the session's thread + hydrate its turns whenever the session changes.
+  const seededRef = useRef<string | null>(null);
   useEffect(() => {
     let live = true;
     if (!sessionId) { setThreadId(null); setMessages([]); setLoading(false); return; }
@@ -85,7 +99,14 @@ export function StudioChat({
             .in("role", ["user", "assistant"])
             .order("seq", { ascending: true });
           if (live) {
-            setMessages(((turns ?? []) as ChatMsg[]).map((t) => ({ role: t.role, content: t.content })));
+            const hydrated = ((turns ?? []) as ChatMsg[]).map((t) => ({ role: t.role, content: t.content }));
+            setMessages(hydrated);
+            // Autostart handoff (§3): a brand-new project with a seed brief and no turns yet builds
+            // its FIRST artifact through this chat — once, guarded per session so it never re-fires.
+            if (hydrated.length === 0 && seedBrief && seedBrief.trim() && seededRef.current !== sessionId) {
+              seededRef.current = sessionId;
+              setTimeout(() => { if (live) void send(seedBrief.trim()); }, 0);
+            }
           }
         }
       } catch {
@@ -95,30 +116,40 @@ export function StudioChat({
       }
     })();
     return () => { live = false; };
-  }, [sessionId]);
-
-  useEffect(() => { void refreshImages(); }, [refreshImages]);
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep the transcript pinned to the latest as it streams.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, note]);
+  }, [messages, note, choices]);
 
-  const send = useCallback(async (text: string) => {
+  // Send a turn. `display` lets a tapped chip show its friendly label while the model receives the
+  // canonical value.
+  const send = useCallback(async (text: string, opts?: { display?: string }) => {
     const trimmed = text.trim();
     if (!trimmed || sending || !threadId) return;
     setInput("");
     setNote(null);
-    const next = [...messages, { role: "user" as const, content: trimmed }];
+    setChoices(null); // answering (or a fresh turn) clears any pending decision (guards double-fire)
+    setMultiPicks(new Set());
+    const shown = opts?.display ?? trimmed;
+    const next = [...messages, { role: "user" as const, content: shown }];
+    // What the MODEL receives (canonical value); the transcript shows `shown`.
+    const modelMessages = [...messages, { role: "user" as const, content: trimmed }];
     setMessages([...next, { role: "assistant", content: "" }]);
     setSending(true);
+    let gotChoices = false;
+    let gotArtifact: StudioChatArtifact | null = null;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { toast.error("Please sign in again."); setSending(false); return; }
+      if (!session) {
+        setMessages(messages); setInput(trimmed); // roll back; give them their words back (§13)
+        toast.error("Please sign in again."); setSending(false); return;
+      }
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ messages: next, threadId }),
+        body: JSON.stringify({ messages: modelMessages, threadId }),
       });
       if (!resp.ok) throw new Error(resp.status === 429 ? "Give it a moment — too many requests." : "The chat hit a snag.");
 
@@ -142,6 +173,17 @@ export function StudioChat({
           try {
             const parsed = JSON.parse(payload);
             if (parsed.paige_step) { setNote(parsed.paige_step?.label ?? null); continue; }
+            // The agent asked a clickable decision — render its chips under the question (§13-honest:
+            // chips appear ONLY when the model actually emits them; the prompt IS the assistant turn).
+            if (parsed.paige_choices) {
+              gotChoices = true;
+              const c = parsed.paige_choices as Choices;
+              setChoices(c);
+              if (!assistant.trim()) { assistant = c.prompt; setMessages([...next, { role: "assistant", content: assistant }]); }
+              continue;
+            }
+            // The server named exactly what to render on the canvas this turn.
+            if (parsed.paige_artifact) { gotArtifact = parsed.paige_artifact as StudioChatArtifact; continue; }
             const delta = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (delta) {
               assistant += delta;
@@ -150,41 +192,35 @@ export function StudioChat({
           } catch { buffer = line + "\n" + buffer; break; } // partial JSON — re-buffer
         }
       }
-      // §13: if the stream produced nothing, say so honestly rather than leave an empty bubble.
-      if (!assistant.trim()) {
+      // §13: nothing streamed AND no chips → say so honestly rather than leave an empty bubble.
+      if (!assistant.trim() && !gotChoices) {
         setMessages([...next, { role: "assistant", content: "I didn't catch that — try saying it another way?" }]);
       }
     } catch (e) {
-      setMessages(messages); // roll back the optimistic pair
+      setMessages(messages); setInput(trimmed); // roll back; never lose typed text on a transient error
       toast.error(e instanceof Error ? e.message : "The chat hit a snag.");
     } finally {
       setSending(false);
       setNote(null);
-      void refreshImages(); // whatever got created this turn now appears in the window
+      // Hand the parent exactly what the server said it built this turn (null = keep the stage).
+      cb.current.onArtifact?.(gotArtifact);
     }
-  }, [messages, sending, threadId, refreshImages]);
+  }, [messages, sending, threadId]);
+
+  const isLastAssistant = (i: number) => i === messages.length - 1 && messages[i]?.role === "assistant";
 
   return (
     <div className={cn("flex h-full min-h-0 flex-col", className)}>
-      {/* What the agent has made this session — renders right in the window (the owner's ask). */}
-      {images.length > 0 && (
-        <div className="shrink-0 border-b border-[hsl(var(--studio-chrome-border)/0.5)] px-4 py-3">
-          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            <Sparkles className="h-3.5 w-3.5" aria-hidden /> Made in this session
-          </div>
-          <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {images.map((img) => (
-              <a
-                key={img.id} href={img.url} target="_blank" rel="noreferrer"
-                className="group relative block h-24 w-24 shrink-0 overflow-hidden rounded-[var(--radius)] border border-[hsl(var(--studio-chrome-border)/0.6)] bg-black/20"
-                title={img.title}
-              >
-                <img src={img.url} alt={img.title} className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 motion-reduce:transform-none" loading="lazy" />
-              </a>
-            ))}
-          </div>
+      {/* Who you're talking to — the tenant's design specialist, never Paige (§8/§14). */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-[hsl(var(--studio-chrome-border)/0.5)] px-4 py-3">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full border border-[hsl(var(--studio-chrome-border)/0.6)] bg-[hsl(var(--foreground)/0.04)] text-foreground">
+          <Sparkles className="h-3.5 w-3.5" aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-foreground">Design agent</p>
+          <p className="truncate text-[11px] text-muted-foreground">Your creative specialist — building right here</p>
         </div>
-      )}
+      </div>
 
       {/* Transcript */}
       <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
@@ -199,12 +235,12 @@ export function StudioChat({
             </span>
             <p className="text-sm text-foreground">Tell me what you want to make.</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              “Make an image of a sunrise over mountains.” · “Build a landing page for my coaching offer.” · “Draft a discovery form.”
+              “Build a landing page for my coaching offer.” · “Make an image of a sunrise over mountains.” · “Draft a discovery form.” · “Make the headline bolder.”
             </p>
           </div>
         ) : (
           messages.map((m, i) => (
-            <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+            <div key={i} className={cn("flex flex-col", m.role === "user" ? "items-end" : "items-start")}>
               <div
                 className={cn(
                   "max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
@@ -220,12 +256,66 @@ export function StudioChat({
                   </span>
                 ) : null)}
               </div>
+
+              {/* Clickable option chips — the agent asked a decision; tap one (or several) and it
+                  becomes a real user turn. §11: gold reserved for the multi-select Continue act. */}
+              {choices && isLastAssistant(i) && (
+                <div className="mt-2 max-w-[85%]" role={choices.multi ? "listbox" : "radiogroup"} aria-label={choices.prompt}>
+                  <div className="flex flex-wrap gap-2">
+                    {choices.options.map((opt) => {
+                      const picked = multiPicks.has(opt.value);
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          role={choices.multi ? "option" : "radio"}
+                          aria-checked={choices.multi ? picked : undefined}
+                          disabled={sending}
+                          onClick={() => {
+                            if (choices.multi) {
+                              setMultiPicks((prev) => {
+                                const nextSet = new Set(prev);
+                                nextSet.has(opt.value) ? nextSet.delete(opt.value) : nextSet.add(opt.value);
+                                return nextSet;
+                              });
+                            } else {
+                              void send(opt.value, { display: opt.label });
+                            }
+                          }}
+                          className={cn(
+                            "inline-flex min-h-[40px] items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm transition-colors motion-reduce:transition-none disabled:opacity-50",
+                            picked
+                              ? "border-primary/70 bg-[hsl(var(--ring)/0.14)] font-medium text-foreground"
+                              : "border-[hsl(var(--studio-chrome-border)/0.6)] bg-[hsl(var(--foreground)/0.03)] text-foreground hover:bg-[hsl(var(--foreground)/0.06)]",
+                          )}
+                        >
+                          {picked && <Check className="h-3.5 w-3.5 text-primary" aria-hidden />}
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {choices.multi && (
+                    <Button
+                      variant="gold" size="sm" className="mt-2"
+                      disabled={sending || multiPicks.size === 0}
+                      onClick={() => {
+                        const picks = choices.options.filter((o) => multiPicks.has(o.value));
+                        void send(picks.map((p) => p.value).join(", "), { display: picks.map((p) => p.label).join(" · ") });
+                      }}
+                    >
+                      Continue
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           ))
         )}
       </div>
 
-      {/* Composer — reuse the ONE studio composer (§18), circular send, docked. */}
+      {/* Composer — reuse the ONE studio composer (§18), circular send, docked. Always live, so a
+          chip is always optional (the customer can just talk). */}
       <div className="shrink-0 px-3 pb-3">
         <PromptComposer
           mode="page"
