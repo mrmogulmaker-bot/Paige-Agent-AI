@@ -73,6 +73,7 @@ export function StudioChat({
   tenantId,
   className,
   seedBrief,
+  canvasArtifact,
   onBusy,
   onNote,
   onArtifact,
@@ -83,6 +84,10 @@ export function StudioChat({
   /** The dashboard→session brief. Auto-sent ONCE as the first turn when the session is brand new
    *  (no prior turns), so the initial build runs through THIS chat, not a second engine. */
   seedBrief?: string | null;
+  /** What's currently on the canvas (server-authoritative). Sent up to paige-ai-chat so the model
+   *  can UPDATE that same artifact in place — keeping its version history — when the turn refines it,
+   *  instead of minting a fresh sibling every regeneration (#292 image/document version stacking). */
+  canvasArtifact?: StudioChatArtifact | null;
   /** True while a turn streams — lets the canvas show a live "building" state, not a dead pane. */
   onBusy?: (busy: boolean) => void;
   /** The latest real streamed step label — the honest cutscene narration (§13). */
@@ -209,6 +214,9 @@ export function StudioChat({
           attachments: hasImages
             ? turnAttachments.map((a) => ({ url: a.url, name: a.name, mimeType: a.mimeType, kind: a.kind }))
             : undefined,
+          // What's on the canvas right now — so the model can refine THAT artifact in place (keeping
+          // its version history) rather than mint a new sibling when this turn is an edit (#292).
+          canvasArtifact: canvasArtifact ? { id: canvasArtifact.id, kind: canvasArtifact.kind } : undefined,
         }),
       });
       if (!resp.ok) throw new Error(resp.status === 429 ? "Give it a moment — too many requests." : "The chat hit a snag.");
@@ -277,7 +285,7 @@ export function StudioChat({
       // Hand the parent exactly what the server said it built this turn (null = keep the stage).
       cb.current.onArtifact?.(gotArtifact);
     }
-  }, [messages, sending, threadId, attachments]);
+  }, [messages, sending, threadId, attachments, canvasArtifact]);
 
   // The customer submitted from the composer. Idle → send immediately (unchanged). Busy → STAGE it in
   // the FIFO queue instead of blocking (the single-active-command gate is preserved: exactly one turn

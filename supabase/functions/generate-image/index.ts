@@ -106,6 +106,10 @@ serve(async (req: Request) => {
     const size = SIZE_MAP[sizeKey] ?? "1024x1024";
     const aspect = ASPECT_MAP[sizeKey] ?? "1:1";
     const tenantId = body?.tenant_id ?? null;
+    // #292 — when set (by paige-ai-chat, already clamped to the exact on-canvas image row), reuse that
+    // marketing_content row instead of inserting a fresh one, so the Studio artifact's version history
+    // stacks (v2, v3…) rather than minting a new sibling every regeneration. Null → insert as before.
+    const reuseContentId: string | null = typeof body?.reuse_content_id === "string" ? body.reuse_content_id : null;
     // provider: gemini (default) | openai | replicate | ideogram. An UNKNOWN value 400s so the
     // caller knows their request wasn't honored. A KNOWN provider whose KEY is missing is handled
     // below: it falls back to whichever provider IS configured, reporting which one actually served.
@@ -307,7 +311,7 @@ serve(async (req: Request) => {
       const title = prompt.slice(0, 60) + (prompt.length > 60 ? "…" : "");
       const { data: cid, error: saveErr } = await admin.rpc("save_marketing_content", {
         p_kind: "image", p_title: title, p_image_url: publicUrl, p_image_path: path,
-        p_size: sizeKey, p_brief: prompt.slice(0, 500), p_tenant_id: tenantId,
+        p_size: sizeKey, p_brief: prompt.slice(0, 500), p_id: reuseContentId, p_tenant_id: tenantId,
       });
       if (saveErr) console.error("library save failed:", saveErr.message);
       else contentId = (cid as string) ?? null;

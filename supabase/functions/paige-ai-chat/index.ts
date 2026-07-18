@@ -191,6 +191,14 @@ const messageSchema = z.object({
   // When set, paige-ai-chat persists both turns + rehydrates recall server-side (#94).
   threadId: z.string().uuid().nullable().optional(),
   clientContext: z.string().max(100000).optional().transform((v) => (v && v.length > 50000 ? v.slice(0, 50000) : v)),
+  // #292 — what's currently on the Studio canvas. Lets the model UPDATE that artifact in place
+  // (stacking its version history) when a turn refines it, instead of minting a fresh sibling. The
+  // reuse id is CLAMPED server-side to this exact on-canvas row of the matching type — a model that
+  // echoes an arbitrary id can never clobber another artifact (§13).
+  canvasArtifact: z.object({
+    id: z.string().uuid(),
+    kind: z.enum(["page", "funnel", "content", "document"]),
+  }).nullable().optional(),
   // Client-provided local clock so Paige can greet/refer to time in the
   // user's actual timezone instead of server UTC.
   userTime: z.string().max(64).optional(),
@@ -437,7 +445,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext, userTime, userTimezone, userTimeFormatted } = validatedData;
+    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext, userTime, userTimezone, userTimeFormatted, canvasArtifact } = validatedData;
 
     // ── Paige Context Rail — Step 4 CLIENT emitter: file 'client.message' when a
     // PORTAL CLIENT sends a message, so Paige-the-orchestrator (owner rail) and the
@@ -3520,6 +3528,20 @@ SUPPORT & FEEDBACK AWARENESS
               }
             }
           } catch (e) { console.warn("[paige] studio persona swap failed:", (e as Error)?.message); }
+          // #292 — tell the design agent what's already on the canvas so a REFINE turn updates that
+          // same artifact (keeping its version history) instead of minting a new sibling. Only images
+          // (content) and documents need the hint — pages/funnels already reuse by their own id via
+          // growth_page_save/funnel save. The reuse id is clamped server-side to this exact row, so
+          // the model can only ever refine what's actually on the canvas (§13/§18: the plan decides
+          // reuse-vs-new, never a human toggle).
+          if (canvasArtifact && (canvasArtifact.kind === "content" || canvasArtifact.kind === "document")) {
+            const canvasLabel = canvasArtifact.kind === "document" ? "document" : "image";
+            const canvasTool = canvasArtifact.kind === "document" ? "document_generate" : "generate_image";
+            aiMessages.splice(2, 0, {
+              role: "system",
+              content: `CANVAS STATE — the artifact currently on the canvas is a ${canvasLabel} (content id ${canvasArtifact.id}). If the user is refining, adjusting, or regenerating THAT ${canvasLabel}, pass target_content_id:"${canvasArtifact.id}" to ${canvasTool} so it updates in place and keeps its version history. If they instead want a brand-new/additional ${canvasLabel}, OMIT target_content_id so it's created as a separate asset — never overwrite the on-canvas one when they asked for a new one.`,
+            });
+          }
         }
         if (th?.summary) {
           // After persona + systemPrompt, before operator/CRM context.
@@ -4317,7 +4339,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   prompt: { type: "string", description: "Detailed description of the image to create." },
                   size: { type: "string", enum: ["square", "portrait", "landscape"], description: "Aspect ratio. Default square." },
                   provider: { type: "string", enum: ["gemini", "openai", "replicate", "ideogram"], description: "Which image model to use — see the picking guidance above. Omit for the fast default (gemini)." },
-                  model: { type: "string", description: "Optional specific model variant, ONLY for replicate (e.g. black-forest-labs/flux-1.1-pro, flux-dev, flux-schnell) or ideogram (V_2, V_2_TURBO). Omit to use the provider's default." }
+                  model: { type: "string", description: "Optional specific model variant, ONLY for replicate (e.g. black-forest-labs/flux-1.1-pro, flux-dev, flux-schnell) or ideogram (V_2, V_2_TURBO). Omit to use the provider's default." },
+                  target_content_id: { type: "string", description: "Set to the on-canvas artifact's id (see CANVAS STATE) ONLY when the user is refining/regenerating the image already on the canvas — this updates that same image in place and keeps its version history. OMIT it to create a brand-new/additional image as a separate asset. Never pass an id for a genuinely new image." }
                 },
                 required: ["prompt"]
               }
@@ -4368,6 +4391,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   doc_type: { type: "string", enum: ["guide", "one_pager", "ebook", "checklist", "worksheet", "proposal"], description: "Which kind of document. Infer it from the request, then follow that type's block skeleton above." },
                   title: { type: "string", description: "The document's title (benefit-led and specific, not the bare topic). For a proposal, name the client + engagement." },
                   brief: { type: "string", description: "Optional one-line brief/prompt that produced it." },
+                  target_content_id: { type: "string", description: "Set to the on-canvas artifact's id (see CANVAS STATE) ONLY when the user is refining/revising the document already on the canvas — this updates that same document in place and keeps its version history. OMIT it to create a brand-new/additional document as a separate asset. Never pass an id for a genuinely new document." },
                   blocks: {
                     type: "array",
                     description: "The document as an ordered list of design blocks. The first block MUST be type 'cover'.",
@@ -6429,6 +6453,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if ((cd as any)?.error) throw new Error((cd as any).error);
               result = { success: true, channel: (cd as any)?.channel, drafts: (cd as any)?.drafts ?? [] };
             } else if (tc.function.name === "generate_image") {
+              // #292 — reuse the on-canvas image row (stack its versions) ONLY when the model targets
+              // the exact image that's actually on the canvas. Any other id → treat as a new asset
+              // (null), so a stray/echoed id can never clobber a different artifact (§13 clamp).
+              const reuseImageId = (canvasArtifact?.kind === "content" && args.target_content_id === canvasArtifact.id)
+                ? canvasArtifact.id : null;
               const { data: img, error } = await supabaseClient.functions.invoke("generate-image", {
                 body: {
                   prompt: args.prompt,
@@ -6436,6 +6465,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   provider: args.provider ?? undefined,
                   model: args.model ?? undefined,
                   tenant_id: personaCtx?.tenant_id ?? null,
+                  reuse_content_id: reuseImageId,
                 },
               });
               if (error) throw error;
@@ -6533,11 +6563,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               } else {
                 if (blocks[0].type !== "cover") blocks = [{ type: "cover", title: String(args.title ?? "Untitled document") }, ...blocks];
                 const docTitle = String(args.title ?? (blocks[0] as any).title ?? "Untitled document").slice(0, 200);
+                // #292 — reuse the on-canvas document row (stack its versions) ONLY when the model
+                // targets the exact document that's actually on the canvas; any other id → new asset
+                // (null), so a stray/echoed id can never overwrite a different artifact (§13 clamp).
+                const reuseDocId = (canvasArtifact?.kind === "document" && args.target_content_id === canvasArtifact.id)
+                  ? canvasArtifact.id : null;
                 const { data: cid, error } = await supabaseClient.rpc("save_marketing_content", {
                   p_kind: "document",
                   p_title: docTitle,
                   p_body: JSON.stringify({ docType, title: docTitle, blocks }),
                   p_brief: args.brief ?? null,
+                  p_id: reuseDocId,
                   p_tenant_id: personaCtx?.tenant_id ?? null,
                 });
                 if (error) throw error;

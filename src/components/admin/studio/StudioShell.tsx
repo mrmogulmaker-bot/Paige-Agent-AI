@@ -2321,6 +2321,7 @@ export function StudioShell({
             sessionId={sessionId}
             tenantId={tenantId}
             seedBrief={sessionSeedBrief}
+            canvasArtifact={canvasArtifact}
             onBusy={setChatBusy}
             onNote={setChatNote}
             onArtifact={handleCanvasArtifact}
