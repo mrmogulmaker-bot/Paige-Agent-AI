@@ -176,7 +176,11 @@ export function PromptComposer({
 
   // A pasted note alone can satisfy the length gate — the brief may live entirely in the note.
   const hasNote = !sectionMode && notes.length > 0;
-  const canSubmit = !busy && !disabled && (value.trim().length >= (sectionMode ? 2 : 5) || hasNote);
+  // A dropped reference image alone is a valid send in a chat surface (#292): the customer can just
+  // hand over an image and say "build from this" without typing (N4). Attachments never satisfy the
+  // section-refine gate (that path takes no attachments).
+  const hasAttachment = !sectionMode && attachments.length > 0;
+  const canSubmit = !busy && !disabled && (value.trim().length >= (sectionMode ? 2 : 5) || hasNote || hasAttachment);
 
   const submit = useCallback(() => {
     if (!canSubmit) return;

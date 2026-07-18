@@ -14,6 +14,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PromptComposer } from "./PromptComposer";
+import { uploadGrowthAsset } from "./studio";
+import type { GrowthAsset } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
 import { Check, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -72,6 +74,8 @@ export function StudioChat({
   const [loading, setLoading] = useState(true);
   const [choices, setChoices] = useState<Choices | null>(null); // pending clickable options
   const [multiPicks, setMultiPicks] = useState<Set<string>>(new Set());
+  const [attachments, setAttachments] = useState<GrowthAsset[]>([]); // reference images dropped in-chat
+  const [attachmentsBusy, setAttachmentsBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Parent callbacks held in refs so a new function identity never re-fires the sync effects.
@@ -111,7 +115,7 @@ export function StudioChat({
       }
     })();
     return () => { live = false; };
-  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   // Autostart handoff (§3 / post-deploy fix): a brand-new project fires its FIRST build through THIS
   // chat. `sessionSeedBrief` arrives ASYNC (the parent resolves it after loadSession), often AFTER
@@ -136,19 +140,26 @@ export function StudioChat({
   // canonical value.
   const send = useCallback(async (text: string, opts?: { display?: string }) => {
     const trimmed = text.trim();
-    if (!trimmed || sending || !threadId) return;
+    // The reference images the customer dropped this turn — snapshot before we clear the tray, so an
+    // image-only turn ("here, build from this") still carries them. Images alone are a valid turn (N4).
+    const turnAttachments = attachments;
+    const hasImages = turnAttachments.length > 0;
+    if ((!trimmed && !hasImages) || sending || !threadId) return;
     setInput("");
     setNote(null);
     setChoices(null); // answering (or a fresh turn) clears any pending decision (guards double-fire)
     setMultiPicks(new Set());
-    const shown = opts?.display ?? trimmed;
+    // Image-only turns still need words for the transcript + the model — give it a natural default.
+    const modelText = trimmed || "Here's a reference image — use it as the starting point for what you build.";
+    const shown = opts?.display ?? (trimmed || (hasImages ? `Shared ${turnAttachments.length} reference image${turnAttachments.length > 1 ? "s" : ""}` : trimmed));
     const next = [...messages, { role: "user" as const, content: shown }];
     // What the MODEL receives (canonical value); the transcript shows `shown`.
-    const modelMessages = [...messages, { role: "user" as const, content: trimmed }];
+    const modelMessages = [...messages, { role: "user" as const, content: modelText }];
     setMessages([...next, { role: "assistant", content: "" }]);
     setSending(true);
     let gotChoices = false;
     let gotArtifact: StudioChatArtifact | null = null;
+    let ok = false;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -158,7 +169,13 @@ export function StudioChat({
       const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/paige-ai-chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ messages: modelMessages, threadId }),
+        body: JSON.stringify({
+          messages: modelMessages,
+          threadId,
+          attachments: hasImages
+            ? turnAttachments.map((a) => ({ url: a.url, name: a.name, mimeType: a.mimeType, kind: a.kind }))
+            : undefined,
+        }),
       });
       if (!resp.ok) throw new Error(resp.status === 429 ? "Give it a moment — too many requests." : "The chat hit a snag.");
 
@@ -205,16 +222,42 @@ export function StudioChat({
       if (!assistant.trim() && !gotChoices) {
         setMessages([...next, { role: "assistant", content: "I didn't catch that — try saying it another way?" }]);
       }
+      ok = true;
     } catch (e) {
       setMessages(messages); setInput(trimmed); // roll back; never lose typed text on a transient error
       toast.error(e instanceof Error ? e.message : "The chat hit a snag.");
     } finally {
       setSending(false);
       setNote(null);
+      // Clear the reference-image tray only on a clean turn (N3) — a failed turn keeps them so the
+      // customer doesn't have to re-attach after rolling back.
+      if (ok && hasImages) setAttachments([]);
       // Hand the parent exactly what the server said it built this turn (null = keep the stage).
       cb.current.onArtifact?.(gotArtifact);
     }
-  }, [messages, sending, threadId]);
+  }, [messages, sending, threadId, attachments]);
+
+  // The customer dropped image(s) into the chat — upload each to the tenant's growth-assets bucket so
+  // it has a public URL the server can fetch + base64-inline as build input. Images only in-chat (§18:
+  // the one composer, no picker) — documents route through the doc-attach path, not this tray.
+  const onFilesSelected = useCallback(async (files: File[]) => {
+    if (!tenantId) { toast.error("Sign in to attach images."); return; }
+    setAttachmentsBusy(true);
+    try {
+      for (const f of files) {
+        const asset = await uploadGrowthAsset(tenantId, f, ["image"]);
+        setAttachments((prev) => (prev.length >= 3 ? prev : [...prev, asset]));
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't attach that image.");
+    } finally {
+      setAttachmentsBusy(false);
+    }
+  }, [tenantId]);
+
+  const onRemoveAttachment = useCallback((index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  }, []);
 
   const isLastAssistant = (i: number) => i === messages.length - 1 && messages[i]?.role === "assistant";
 
@@ -340,6 +383,10 @@ export function StudioChat({
           busyLabel="Working…"
           sendShape="circle"
           minRows={1}
+          attachments={attachments}
+          onFilesSelected={onFilesSelected}
+          onRemoveAttachment={onRemoveAttachment}
+          attachmentsBusy={attachmentsBusy}
         />
       </div>
     </div>

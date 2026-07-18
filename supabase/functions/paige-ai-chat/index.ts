@@ -164,6 +164,15 @@ const messageSchema = z.object({
     /** "pdf" | "image" | "docx" — set by the chat client */
     kind: z.enum(["pdf", "image", "docx"]).optional(),
   }).optional(),
+  /** #292 — reference images the customer dropped into the Studio session chat, as tenant-storage
+   *  URLs. Fed to the design agent as build input for THIS turn (fetched + base64-inlined server-side
+   *  so the multimodal gateway actually sees them). */
+  attachments: z.array(z.object({
+    url: z.string().url(),
+    name: z.string().max(300),
+    mimeType: z.string().max(120),
+    kind: z.enum(["image", "document", "video"]),
+  })).max(3).optional(),
   sessionDocumentContext: z.array(
     z.object({
       fileName: z.string(),
@@ -428,7 +437,7 @@ serve(async (req) => {
       throw error;
     }
 
-    const { messages, document: attachedDocument, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext, userTime, userTimezone, userTimeFormatted } = validatedData;
+    const { messages, document: attachedDocument, attachments: turnAttachments, sessionDocumentContext, generateSessionSummary, sessionMessages, clientId: payloadClientId, threadId: payloadThreadId, clientContext, userTime, userTimezone, userTimeFormatted } = validatedData;
 
     // ── Paige Context Rail — Step 4 CLIENT emitter: file 'client.message' when a
     // PORTAL CLIENT sends a message, so Paige-the-orchestrator (owner rail) and the
@@ -3781,9 +3790,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       // did something, not merely that the operator spoke.)
     }
 
+    // #292 — reference images the customer dropped in the Studio chat: fetch + base64-inline so the
+    // multimodal gateway actually SEES them (a remote https image_url is stringified to TEXT by the
+    // Claude content normalizer — verified — so a URL alone never reaches the model). Best-effort:
+    // a fetch miss drops that one image, never the turn. Gated on studioSessionId so it's session-only.
+    const studioImageParts: any[] = [];
+    const studioImageList: string[] = [];
+    if (studioSessionId && Array.isArray(turnAttachments) && !attachedDocument) {
+      for (const a of turnAttachments.filter((x) => x.kind === "image").slice(0, 3)) {
+        try {
+          const r = await fetch(a.url);
+          if (!r.ok) continue;
+          const buf = new Uint8Array(await r.arrayBuffer());
+          if (buf.length > 6_000_000) continue; // ~6MB guard
+          let bin = ""; for (let j = 0; j < buf.length; j++) bin += String.fromCharCode(buf[j]);
+          studioImageParts.push({ type: "image_url", image_url: { url: `data:${a.mimeType};base64,${btoa(bin)}` } });
+          studioImageList.push(`- ${a.name}: ${a.url}`);
+        } catch { /* skip this image */ }
+      }
+    }
+
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
-      
+
       if (attachedDocument && msg.role === "user" && i === messages.length - 1) {
         const docKind = attachedDocument.kind || (attachedDocument.mimeType === "application/pdf" ? "pdf" : attachedDocument.mimeType?.startsWith("image/") ? "image" : "docx");
         const contentParts: any[] = [];
@@ -3808,6 +3837,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           text: `${msg.content}\n\n${baseInstruction}${docxBlock}`,
         });
         aiMessages.push({ role: "user", content: contentParts });
+      } else if (studioImageParts.length > 0 && msg.role === "user" && i === messages.length - 1) {
+        // #292 — the customer dropped reference image(s) into the Studio chat this turn. Inline them
+        // as image content-parts on the last user message so the designer builds FROM them, and hand
+        // it the exact asset URLs so it can place them by reference when it generates a page/funnel.
+        aiMessages.push({
+          role: "user",
+          content: [
+            ...studioImageParts,
+            {
+              type: "text",
+              text: `${msg.content}\n\n[The customer attached ${studioImageParts.length} reference image(s) in the chat. Use them as build input for what you make this turn — match their style/subject, and when you build a page or funnel you may place these EXACT assets by their URL:\n${studioImageList.join("\n")}]`,
+            },
+          ],
+        });
       } else {
         aiMessages.push({ role: msg.role, content: msg.content });
       }
