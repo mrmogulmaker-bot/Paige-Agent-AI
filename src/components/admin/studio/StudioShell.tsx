@@ -66,6 +66,7 @@ import { ImageMode } from "./modes/ImageMode";
 import { FormMode } from "./modes/FormMode";
 import { FunnelFlow } from "./modes/FunnelFlow";
 import { LibraryPanel } from "./modes/content-shared";
+import { SessionImageCanvas } from "./SessionImageCanvas";
 import {
   STUDIO_ERROR_COPY,
   buildFunnelFromDraft,
@@ -1953,13 +1954,18 @@ export function StudioShell({
       </div>
     );
   } else if (canvasArtifact?.kind === "content" && canvasArtifact.url) {
-    // Image → the real asset, letterboxed WHOLE (never cropped/stretched, §13) on a layered card (§22).
+    // Image → the real asset, letterboxed WHOLE (§13/§22). A design turn can file MANY images to one
+    // session (the server streams only the last as the live artifact), so the canvas is the SET viewer:
+    // it flips through every content ref that carries a thumbnail, with download/copy/save on each
+    // (§18/§21 — navigates WITHIN the set, never an artifact-type tab strip). One image → no chrome.
     sessionCanvas = (
-      <div className="grid h-full place-items-center p-2">
-        <figure className="relative max-h-full max-w-full overflow-hidden rounded-xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-card shadow-[0_24px_60px_-24px_hsl(var(--studio-ink)/0.7)]">
-          <img src={canvasArtifact.url} alt={canvasArtifact.title || "Generated image"} className="block max-h-[calc(100vh-14rem)] max-w-full object-contain" loading="eager" />
-        </figure>
-      </div>
+      <SessionImageCanvas
+        current={{ id: canvasArtifact.id, title: canvasArtifact.title, url: canvasArtifact.url }}
+        images={state.artifacts.filter((a) => a.kind === "content" && !!a.thumbnailUrl)}
+        onSelect={(next) => setCanvasArtifact({ kind: "content", id: next.id, title: next.title, url: next.url })}
+        onSave={handleKeepContent}
+        reduceMotion={!!reduceMotion}
+      />
     );
   } else if (canvasArtifact?.kind === "funnel") {
     // Funnel is ref-only today (no in-Studio step loader yet, #319) — an honest in-session state,
