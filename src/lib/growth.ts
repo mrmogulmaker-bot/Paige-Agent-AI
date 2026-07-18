@@ -100,35 +100,71 @@ export interface GrowthSuccessAction {
 // deliverable behind a lead-magnet form's `download_url` above. One shared shape for both.
 // ────────────────────────────────────────────────────────────────────────────
 
-export type GrowthAssetKind = "image" | "document";
+// image/document are the page-draft REFERENCE kinds (Claude reads them multimodally). `video` is
+// the Media-Library-only kind (a tenant brings their own footage in) — it is deliberately NOT part
+// of GROWTH_ASSET_ACCEPT below, so the page-draft composer never offers it; the media-library caller
+// opts into it via uploadGrowthAsset's allowedKinds param.
+export type GrowthAssetKind = "image" | "document" | "video";
 
-/** Per-kind hard caps — Claude's real per-file vision/document input limits (§13), enforced
- *  both client-side (before upload) and again server-side in growth-page-draft (defense in
- *  depth: never trust a URL's claimed size). */
+/** Per-kind hard caps — images/PDF are Claude's real per-file vision/document input limits (§13),
+ *  enforced client-side and again server-side in growth-page-draft. Video has no server-side
+ *  re-check, so its cap is the true ceiling and is kept EQUAL to the bucket's file_size_limit
+ *  (see 20260718040000_media_library_video.sql) so the enforced limit is honest (§13). */
 export const GROWTH_ASSET_MAX_BYTES: Record<GrowthAssetKind, number> = {
   image: 5 * 1024 * 1024,
   document: 10 * 1024 * 1024,
+  video: 50 * 1024 * 1024,
 };
 
 const GROWTH_ASSET_MIME: Record<GrowthAssetKind, string[]> = {
   image: ["image/jpeg", "image/jpg", "image/png", "image/webp"],
   document: ["application/pdf"],
+  video: ["video/mp4", "video/webm", "video/quicktime"],
 };
 
-/** `<input accept>` string covering every kind this feature supports. */
+/** `<input accept>` string for the page-draft REFERENCE composer — image + document ONLY.
+ *  Video is intentionally excluded here (it is not a page-draft reference kind); the Media
+ *  Library uses its own accept string. */
 export const GROWTH_ASSET_ACCEPT = [...GROWTH_ASSET_MIME.image, ...GROWTH_ASSET_MIME.document].join(",");
+
+/** `<input accept>` for the Media Library upload — image + video (the tenant's own media). */
+export const GROWTH_MEDIA_ACCEPT = [...GROWTH_ASSET_MIME.image, ...GROWTH_ASSET_MIME.video].join(",");
 
 /** Studio brief composer + growth-page-draft both cap attachments at 3 (§13 — a runaway
  *  attachment list is a cost/latency problem, not a feature). */
 export const GROWTH_ASSET_MAX_COUNT = 3;
 
+/** Fallback MIME per kind when a file reports none. Video is refined per-extension in
+ *  growthUploadContentType (a .mov is QuickTime, not mp4). */
+const GROWTH_ASSET_FALLBACK_MIME: Record<GrowthAssetKind, string> = {
+  image: "image/png",
+  document: "application/pdf",
+  video: "video/mp4",
+};
+
+/** The contentType to send Storage: the file's own MIME, or a kind+extension-derived fallback when
+ *  it's empty/unreliable (common for .mov/.webm) — so Storage never infers application/octet-stream
+ *  and rejects the upload against the bucket's allowed_mime_types (§13: a file the UI accepted must
+ *  not 400 at Storage). A .mov resolves to video/quicktime, not a mislabeled video/mp4. */
+export function growthUploadContentType(kind: GrowthAssetKind, name: string, fileType: string | null | undefined): string {
+  if (fileType) return fileType;
+  if (kind === "video") {
+    if (/\.webm$/i.test(name)) return "video/webm";
+    if (/\.mov$/i.test(name)) return "video/quicktime";
+    return "video/mp4";
+  }
+  return GROWTH_ASSET_FALLBACK_MIME[kind];
+}
+
 export function detectGrowthAssetKind(mimeType: string | null | undefined, name: string): GrowthAssetKind | null {
   const m = (mimeType || "").toLowerCase();
   if (GROWTH_ASSET_MIME.image.includes(m)) return "image";
   if (GROWTH_ASSET_MIME.document.includes(m)) return "document";
+  if (GROWTH_ASSET_MIME.video.includes(m)) return "video";
   // Some browsers/servers report an empty or generic mime — fall back to the extension.
   if (/\.pdf$/i.test(name)) return "document";
   if (/\.(jpe?g|png|webp)$/i.test(name)) return "image";
+  if (/\.(mp4|webm|mov)$/i.test(name)) return "video";
   return null;
 }
 

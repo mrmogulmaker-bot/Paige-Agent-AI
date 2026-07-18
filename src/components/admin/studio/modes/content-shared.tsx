@@ -86,8 +86,12 @@ export function LibraryPanel({ tenantId, active }: { tenantId: string | null; ac
     setLoading(true);
     const { data, error } = await supabase
       .from("marketing_content")
+      // This Assets panel only renders text + image. Uploaded videos also live in marketing_content
+      // (kind='video') but their ONE home is the Media Library board (§18) — filter them out here so
+      // a video never surfaces as a blank/broken ghost card on this surface.
       .select("id, kind, channel, title, body, image_url, size, created_at")
       .eq("tenant_id", tenantId)
+      .in("kind", ["text", "image"])
       .order("created_at", { ascending: false })
       .limit(120);
     if (error) toast.error("Couldn't load your library.");

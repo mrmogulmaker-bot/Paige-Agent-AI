@@ -21,7 +21,7 @@
 //      behind the signup section, which is what makes publish's lead-capture guard pass.
 import { supabase } from "@/integrations/supabase/client";
 import type { GrowthAsset, GrowthAssetKind, GrowthBlock, GrowthField, GrowthFormSchema, GrowthPageTheme, GrowthSuccessAction } from "@/lib/growth";
-import { detectGrowthAssetKind, GROWTH_ASSET_MAX_BYTES } from "@/lib/growth";
+import { detectGrowthAssetKind, growthUploadContentType, GROWTH_ASSET_MAX_BYTES } from "@/lib/growth";
 import { GROWTH_BRAND_FLOOR, buildGrowthBrandFloor } from "@/components/growth/growth-theme";
 import { CLARIFYING_QUESTIONS, STUDIO_ERROR_COPY, briefFromKbDoc, kbChipLabel } from "./studio-copy";
 import type {
@@ -362,32 +362,44 @@ const GROWTH_ASSETS_BUCKET = "growth-assets";
 /** Upload one reference/deliverable file to the tenant-scoped, public-read growth-assets
  *  bucket and return its REAL public URL. Path convention matches every other tenant-scoped
  *  bucket in this codebase: <tenant_id>/<uuid>-<filename>. */
-export async function uploadGrowthAsset(tenantId: string, file: File): Promise<GrowthAsset> {
+/** Upload one file to the tenant-scoped growth-assets bucket. `allowedKinds` is the runtime gate
+ *  (NOT the <input accept>, which drag-drop bypasses): the default ['image','document'] keeps every
+ *  existing caller — the page-draft reference composer, DeliveryEditor — unchanged and rejects video;
+ *  the Media Library caller passes ['image','video']. */
+export async function uploadGrowthAsset(
+  tenantId: string,
+  file: File,
+  allowedKinds: readonly GrowthAssetKind[] = ["image", "document"],
+): Promise<GrowthAsset> {
   const tid = requireTenant(tenantId);
   const kind: GrowthAssetKind | null = detectGrowthAssetKind(file.type, file.name);
-  if (!kind) {
-    throw studioError("SAVE_FAILED", null, "Paige can attach JPG, PNG, WEBP, and PDF files.");
+  if (!kind || !allowedKinds.includes(kind)) {
+    // §13: name only the kinds THIS caller actually accepts.
+    const label = allowedKinds.includes("video")
+      ? "JPG, PNG, WEBP, MP4, WEBM, and MOV files"
+      : "JPG, PNG, WEBP, and PDF files";
+    throw studioError("SAVE_FAILED", null, `Paige can attach ${label}.`);
   }
   if (file.size > GROWTH_ASSET_MAX_BYTES[kind]) {
     const capMb = GROWTH_ASSET_MAX_BYTES[kind] / (1024 * 1024);
-    throw studioError(
-      "SAVE_FAILED",
-      null,
-      `That file is too large — the limit is ${capMb}MB for ${kind === "image" ? "images" : "PDFs"}.`,
-    );
+    const noun = kind === "image" ? "images" : kind === "video" ? "videos" : "PDFs";
+    throw studioError("SAVE_FAILED", null, `That file is too large — the limit is ${capMb}MB for ${noun}.`);
   }
   const safeName = file.name.replace(/[^\w.-]/g, "_").slice(0, 120);
   const path = `${tid}/${crypto.randomUUID()}-${safeName}`;
+  // Send an explicit contentType so Storage never infers application/octet-stream (which the bucket's
+  // allowed_mime_types would reject) for a file whose own MIME is empty/unreliable — common for .mov.
+  const contentType = growthUploadContentType(kind, file.name, file.type);
   const { error } = await supabase.storage
     .from(GROWTH_ASSETS_BUCKET)
-    .upload(path, file, { upsert: false, cacheControl: "3600", contentType: file.type || undefined });
+    .upload(path, file, { upsert: false, cacheControl: "3600", contentType });
   if (error) throw toStudioError(error, "SAVE_FAILED");
   const { data } = supabase.storage.from(GROWTH_ASSETS_BUCKET).getPublicUrl(path);
   return {
     url: data.publicUrl,
     path,
     name: file.name,
-    mimeType: file.type || (kind === "document" ? "application/pdf" : "image/png"),
+    mimeType: contentType,
     size: file.size,
     kind,
   };
@@ -1016,35 +1028,51 @@ export async function removeFromLibrary(input: {
 /** Bring an OUTSIDE artifact into the tenant's media library (owner ask 2026-07-18): upload the
  *  file through the ONE existing upload seam (uploadGrowthAsset → tenant-scoped growth-assets
  *  bucket, MIME/size-validated), file it into the tenant's content store (marketing_content), then
- *  KEEP it in the library. No new bucket, no new upload path (§18). Images only in v1 — a document
- *  needs a library 'file' kind (tracked). No learn fires here: an uploaded external asset is not the
- *  tenant's authored voice (unlike a Studio-generated image, whose prompt IS signal). */
+ *  KEEP it in the library. No new bucket, no new upload path (§18). Images AND videos in v1 — a
+ *  document needs a library 'file' kind (tracked, #315 follow-up). No learn fires here: an uploaded
+ *  external asset is not the tenant's authored voice (unlike a Studio-generated image, whose prompt
+ *  IS signal). The marketing_content row kind and the studio_library_items artifact_kind are ALWAYS
+ *  the SAME value (the asset's kind), so the two stores never disagree on what the artifact is (§13). */
 export async function uploadToLibrary(tenantId: string, file: File): Promise<LibraryItem> {
   const tid = requireTenant(tenantId);
-  const asset = await uploadGrowthAsset(tid, file); // throws on bad MIME / oversize (§13 honest)
-  if (asset.kind !== "image") {
-    throw studioError("SAVE_FAILED", null, "The library takes images for now — document support is on the way.");
-  }
+  // image + video only (NOT document — that awaits a library 'file' kind). uploadGrowthAsset enforces
+  // MIME/size and rejects anything else with an honest message (§13).
+  const asset = await uploadGrowthAsset(tid, file, ["image", "video"]);
+  const kind: LibraryKind = asset.kind === "video" ? "video" : "image";
   const title = (file.name || "Upload").replace(/\.[^.]+$/, "").slice(0, 80) || "Upload";
-  // File it into marketing_content (kind='image') so it's a real content row the library can point at.
-  const saved = await saveImageToLibrary({ tenantId: tid, title, url: asset.url, size: "square", brief: title });
-  // The upload is a 3-step non-atomic write (storage → content row → library membership). If the
-  // membership step fails, roll the content row back so we don't leave an orphan the tenant sees in
-  // their Assets while the caller was truthfully told the upload failed (§13 — no partial pretend).
+  // File it into marketing_content directly with p_kind = the asset's kind (NOT saveImageToLibrary,
+  // which hardcodes 'image'). image_url carries the media URL for both image and video.
+  const savedId = await rpc<string | null>(
+    "save_marketing_content",
+    {
+      p_kind: kind,
+      p_title: title,
+      p_image_url: asset.url,
+      p_image_path: asset.path,
+      p_size: kind === "image" ? "square" : null, // size is meaningless on a video
+      p_brief: title,
+      p_tenant_id: tid,
+    },
+    "SAVE_FAILED",
+  );
+  if (!savedId) throw studioError("SAVE_FAILED", savedId);
+  const artifactId = String(savedId);
+  // The keep is a 2nd non-atomic write. If it fails, roll the content row back so no orphan shows in
+  // the tenant's store while the caller was truthfully told the upload failed (§13 — no partial pretend).
   let id: string | null;
   try {
     id = await rpc<string | null>(
       "save_to_library",
-      { p_kind: "image", p_artifact_id: saved.id, p_title: title, p_thumbnail_url: asset.url, p_tenant_id: tid },
+      { p_kind: kind, p_artifact_id: artifactId, p_title: title, p_thumbnail_url: asset.url, p_tenant_id: tid },
       "SAVE_FAILED",
     );
     if (!id) throw studioError("SAVE_FAILED", id);
   } catch (err) {
     // Best-effort compensating delete; swallow its own failure so the original error surfaces.
-    try { await rpc<boolean>("delete_marketing_content", { p_id: saved.id }, "SAVE_FAILED"); } catch { /* orphan cleanup is best-effort */ }
+    try { await rpc<boolean>("delete_marketing_content", { p_id: artifactId }, "SAVE_FAILED"); } catch { /* orphan cleanup is best-effort */ }
     throw err;
   }
-  return { id: String(id), kind: "image", artifactId: saved.id, title, thumbnailUrl: asset.url, note: null, tags: [], savedAt: new Date().toISOString() };
+  return { id: String(id), kind, artifactId, title, thumbnailUrl: asset.url, note: null, tags: [], savedAt: new Date().toISOString() };
 }
 
 /** List the tenant's kept artifacts (newest first), optionally filtered to one kind. */
