@@ -3455,6 +3455,14 @@ SUPPORT & FEEDBACK AWARENESS
     // early context. All writes go through the caller-JWT client so auth.uid() is
     // the owner — the append RPC requires it; a service-role write throws 'auth
     // required'. The client never writes turns (single server-side writer).
+    //
+    // #292 — the Studio project this thread belongs to (NULL for every Your-Paige/contact thread).
+    // When set, artifacts the design agent creates below are LINKED to this project so they render
+    // on the session's live canvas (§9 session-scoped). `studioLinked` collects the VISUAL artifact
+    // the agent made THIS turn so the stream tells the client exactly what to open — never a
+    // guessed manifest index (the manifest is newest-LAST and doesn't re-order on edits).
+    let studioSessionId: string | null = null;
+    const studioLinked: Array<{ kind: string; id: string; title: string; url: string | null }> = [];
     if (payloadThreadId) {
       const latestUserText = [...messages].reverse().find((m: any) => m.role === "user")?.content;
       if (typeof latestUserText === "string" && latestUserText.trim()) {
@@ -3473,6 +3481,7 @@ SUPPORT & FEEDBACK AWARENESS
         // identity (#292). Gated on studio_session_id, which is NULL for EVERY Your-Paige/contact
         // thread — so the main chat's identity is provably untouched by this branch.
         if (th?.studio_session_id) {
+          studioSessionId = String(th.studio_session_id);
           try {
             let q = supabaseClient
               .from("paige_subagents").select("name, system_prompt")
@@ -3490,6 +3499,16 @@ SUPPORT & FEEDBACK AWARENESS
                   personaCtx.tenant_name || "your practice", personaCtx.brand,
                 ),
               };
+              // The generic operating core (aiMessages[1]) casts Paige as a client-onboarding coach
+              // with CRM tooling — that contradicts the design specialist's identity and pulls it
+              // off building. Replace it with a creative operating core scoped to its real job
+              // (#292 / §8/§14). It builds by conversation; it never touches client/CRM/pipeline seams.
+              if (aiMessages[1]) {
+                aiMessages[1] = {
+                  role: "system",
+                  content: `OPERATING CORE — you are a CREATIVE-DESIGN specialist at the design desk inside a Vibe Studio project. Your job is to BUILD creative assets on request — images, landing pages, funnels, forms/questionnaires, and the copy inside them — using your generation tools (generate an image; generate/save/publish a page or funnel; draft or save copy). A described asset is not a delivered asset — actually make it, then it renders on the canvas beside this chat. Do NOT act as a client-onboarding or client-support assistant, and do NOT reach for CRM, contact, pipeline, program-enrollment, or calendar-booking tools — those belong to the owner's main Paige workspace, not to you. If asked for something outside creative building, point them to their Paige chat. Keep replies tight and creative.`,
+                };
+              }
             }
           } catch (e) { console.warn("[paige] studio persona swap failed:", (e as Error)?.message); }
         }
@@ -5272,6 +5291,36 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       }
     };
 
+    // #292 — inside a Studio session, give the design agent the clickable-decision tool (studio-gated
+    // so main Paige never gains it). Handled as a turn-ender in the stream loop, not a backend call.
+    if (studioSessionId) {
+      toolDefs.push({
+        type: "function",
+        function: {
+          name: "ask_choices",
+          description: "Ask the customer ONE decision as tappable option chips instead of prose. Use ONLY when genuinely uncertain AND you can name 2-4 concrete directions. One decision per call; at most one clarify round, then build. Every option must map to something you will actually build once they pick — no dead-end or coming-soon choices.",
+          parameters: {
+            type: "object",
+            required: ["prompt", "options"],
+            properties: {
+              prompt: { type: "string", description: "Short question, in-voice (<=12 words)." },
+              options: {
+                type: "array", minItems: 2, maxItems: 4,
+                items: {
+                  type: "object", required: ["label", "value"],
+                  properties: {
+                    label: { type: "string", description: "2-4 words shown on the chip." },
+                    value: { type: "string", description: "Canonical string sent back as the answer." },
+                  },
+                },
+              },
+              multi: { type: "boolean", description: "true = pick several then Continue; default single-select." },
+            },
+          },
+        },
+      } as any);
+    }
+
     // Advertise the confirm flag on every mutating tool so the model knows the
     // second (confirm:true) step exists. Read-only tools are untouched.
     for (const def of toolDefs) {
@@ -6799,6 +6848,31 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 : { success: true, ...(n8nData as any) };
             }
 
+            // STUDIO SESSION LINKAGE (#292) — when this chat IS a project's design session, attach
+            // whatever the agent just CREATED to that project (renders on the canvas, stays scoped
+            // to this project, §9). Idempotent + IDOR-safe server-side. Non-fatal: a link miss never
+            // fails the creation the owner already got. VISUAL artifacts (page/funnel/image) are
+            // also collected in `studioLinked` so the stream can tell the client exactly what to
+            // open — pure copy is a chat deliverable and is deliberately NOT put on the canvas.
+            if (studioSessionId && result && (result as any).success) {
+              const r = result as any;
+              const link: { kind: string; id: string; visual: boolean; url: string | null } | null =
+                tc.function.name === "growth_page_save" && r.page_id ? { kind: "page", id: r.page_id, visual: true, url: null }
+                : tc.function.name === "growth_funnel_build" && r.funnel_id ? { kind: "funnel", id: r.funnel_id, visual: true, url: null }
+                : tc.function.name === "generate_image" && r.content_id ? { kind: "content", id: r.content_id, visual: true, url: r.url ?? null }
+                : tc.function.name === "content_save" && r.content_id ? { kind: "content", id: r.content_id, visual: false, url: null }
+                : null;
+              if (link) {
+                try {
+                  await supabaseClient.rpc("link_session_artifact", {
+                    p_session_id: studioSessionId, p_kind: link.kind, p_artifact_id: link.id, p_tenant_id: null,
+                  });
+                  r.studio_session_id = studioSessionId;
+                  if (link.visual) studioLinked.push({ kind: link.kind, id: link.id, title: String(r.title ?? r.slug ?? ""), url: link.url });
+                } catch (e) { console.warn("[paige] studio artifact link failed:", (e as Error)?.message); }
+              }
+            }
+
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
           } catch (err) {
             toolResults.push({
@@ -7187,6 +7261,24 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const { content, toolCalls, allChunks, hasToolCall } = await consumeRound(currentResponse);
             if (!hasToolCall) { finalChunks = allChunks; finalAssistantText = content; break; }
             const realCalls = toolCalls.filter((tc: any) => tc && tc.function?.name);
+            // #292 — ask_choices is a TURN-ENDER, not a backend call: the design agent is asking the
+            // customer a clickable decision. Emit the chips as a paige_choices frame, persist the
+            // question as the assistant turn (§13 re-readable), and stop this turn — the tapped chip
+            // comes back as the next user message. Studio-gated so main Paige never triggers it.
+            const chooseTc = studioSessionId ? realCalls.find((tc: any) => tc.function?.name === "ask_choices") : undefined;
+            if (chooseTc) {
+              let a: any = {}; try { a = JSON.parse(chooseTc.function.arguments ?? "{}"); } catch { /* keep {} */ }
+              const opts = Array.isArray(a.options)
+                ? a.options.filter((o: any) => o && typeof o.label === "string" && typeof o.value === "string").slice(0, 4)
+                : [];
+              const frame = { prompt: String(a.prompt ?? "").slice(0, 300), options: opts, multi: !!a.multi };
+              if (frame.options.length >= 2) {
+                controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_choices: frame })}\n\n`));
+                finalAssistantText = frame.prompt;
+                forcedTermination = true;
+                break;
+              }
+            }
             const sig = JSON.stringify(realCalls.map((tc: any) => [tc.function.name, tc.function.arguments]));
             // No-progress: the model re-emitted the exact same call(s) as an earlier
             // round. Do NOT execute again (a repeated propose_action would double-queue
@@ -7267,6 +7359,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // Approvals + confirm cards, then her actual reply.
           if (queuedApprovals.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ approval_queued: queuedApprovals })}\n\n`));
           for (const c of confirmTrace) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_confirm: c })}\n\n`));
+          // #292 — tell the Studio canvas the exact artifact this turn produced (server-authoritative;
+          // the client opens THIS, never a guessed manifest index). Last visual wins if several built.
+          if (studioLinked.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_artifact: studioLinked[studioLinked.length - 1] })}\n\n`));
           if (finalChunks) {
             for (const c of finalChunks) controller.enqueue(c);
           } else if (finalStreamResponse?.ok && finalStreamResponse.body) {

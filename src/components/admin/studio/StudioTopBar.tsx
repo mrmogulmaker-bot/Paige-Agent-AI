@@ -33,7 +33,6 @@ import {
   Bookmark,
   Library,
   Loader2,
-  Sparkles,
   Monitor,
   Moon,
   MoreHorizontal,
@@ -97,8 +96,12 @@ export interface StudioTopBarProps {
 
   // — image mode (the library button; also lists any legacy saved copy rows read-only) —
   onOpenLibrary?: () => void;
-  /** Open the session's creative-design chat (#292). Shown in every session. */
-  onOpenChat?: () => void;
+
+  /** The #292 conversational session (chat left, live canvas right — the standard vibe-studio
+   *  layout). In this mode the bar sheds the page composer's Save/Publish/StatePill (the agent
+   *  builds + publishes by conversation; the customer only talks) and keeps only the canvas
+   *  controls: a read-only project title, the device toggle, Assets, theme, and the ⋯ actions. */
+  sessionChrome?: boolean;
 
   // — funnel / form modes (published by the mounted mode component) —
   modeBar?: ModeToolbarState | null;
@@ -145,7 +148,7 @@ export function StudioTopBar({
   onSaveToLibrary,
   savingToLibrary = false,
   onOpenLibrary,
-  onOpenChat,
+  sessionChrome = false,
   modeBar,
   funnelActive = false,
   funnelLive = false,
@@ -159,8 +162,15 @@ export function StudioTopBar({
 }: StudioTopBarProps) {
   // When a funnel is up, the page-only controls (title, device, Save, Publish, the page
   // StatePill) stand down in favour of the funnel's own act — same surface, different act.
-  const isPage = mode === "page" && !funnelActive;
+  // In the #292 conversational session the composer acts (Save/Publish/StatePill) go away
+  // entirely — the customer only talks; the agent builds and publishes by conversation.
+  const isPage = mode === "page" && !funnelActive && !sessionChrome;
   const hasLibrary = mode === "image";
+  // The lean canvas controls that DO belong in the session: a read-only project title and the
+  // desktop/mobile preview toggle (a passive view aid, not a task), plus Assets below.
+  const showTitle = isPage || sessionChrome;
+  const showDevice = (isPage || sessionChrome) && !!onDeviceChange;
+  const showAssets = (hasLibrary || sessionChrome) && !!onOpenLibrary;
 
   // Delete-project confirm (§11: the shared AlertDialog, never confirm()). Reached from the
   // page Publish split-button's dropdown OR the neutral session ⋯ in every other mode; the
@@ -213,16 +223,23 @@ export function StudioTopBar({
             gate for the operator to clear before Paige has heard the brief. */}
       </div>
 
-      {/* ── the page's name, inline (page mode; hidden when the bar is tight) ── */}
-      {isPage && onTitleChange && (
+      {/* ── the project/page name, inline (hidden when the bar is tight) ── */}
+      {showTitle && (
         <div className="hidden min-w-0 flex-1 px-2 xl:block">
-          <Input
-            value={title ?? ""}
-            onChange={(e) => onTitleChange(e.target.value)}
-            placeholder="Untitled page"
-            aria-label="Page title"
-            className="h-8 w-full max-w-sm border-transparent bg-transparent px-1 font-display text-sm font-semibold focus-visible:border-input"
-          />
+          {sessionChrome ? (
+            // The session shows the name read-only — the customer only talks; renaming isn't a task here.
+            <span className="block max-w-sm truncate px-1 font-display text-sm font-semibold text-foreground">
+              {title?.trim() || "Untitled project"}
+            </span>
+          ) : onTitleChange ? (
+            <Input
+              value={title ?? ""}
+              onChange={(e) => onTitleChange(e.target.value)}
+              placeholder="Untitled page"
+              aria-label="Page title"
+              className="h-8 w-full max-w-sm border-transparent bg-transparent px-1 font-display text-sm font-semibold focus-visible:border-input"
+            />
+          ) : null}
         </div>
       )}
 
@@ -242,7 +259,7 @@ export function StudioTopBar({
         >
           {studioDark ? <Sun className="h-4 w-4" aria-hidden /> : <Moon className="h-4 w-4" aria-hidden />}
         </Button>
-        {isPage && onDeviceChange && (
+        {showDevice && onDeviceChange && (
           // A binary XOR choice belongs in ONE recessed segmented track with a lifted thumb —
           // reads as a single machined control, not two competing pills (the Linear/macOS
           // affordance, and semantically more correct than loose chips). FilterChip stays the
@@ -283,19 +300,10 @@ export function StudioTopBar({
           </StatePill>
         )}
 
-        {onOpenChat && (
-          // The session's creative-design chat (#292) — talk to your design agent to CREATE by
-          // conversation; what it makes renders in the session. Neutral (gold stays on Publish, §11).
-          <Button variant="ghost" size="sm" onClick={onOpenChat} className="gap-1.5">
-            <Sparkles className="h-3.5 w-3.5" aria-hidden />
-            Chat
-          </Button>
-        )}
-
-        {hasLibrary && onOpenLibrary && (
-          // "Assets" = this mode's recent generations/copy (everything filed to marketing_content).
-          // Distinct from the cross-type curated "Saved library" in the rail (§18 — two layers, two
-          // names): assets is everything you've made here; the saved library is the winners you kept.
+        {showAssets && onOpenLibrary && (
+          // "Assets" = everything you've made here (filed to marketing_content). Distinct from the
+          // cross-type curated "Saved library" (§18 — two layers, two names). In the session it's the
+          // one passive way to browse past work by name — never a task the customer must do.
           <Button variant="ghost" size="sm" onClick={onOpenLibrary}>
             <Library className="h-3.5 w-3.5" aria-hidden />
             Assets

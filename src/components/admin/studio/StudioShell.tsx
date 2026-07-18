@@ -51,8 +51,10 @@ import { capturePageThumbnailBlob } from "./page-thumbnail";
 import { PromptComposer } from "./PromptComposer";
 import { PublishDialog, kebabSlug } from "./PublishDialog";
 import { StudioTopBar } from "./StudioTopBar";
-import { StudioChat } from "./StudioChat";
 import { StudioRailHeading, StudioSplit } from "./StudioChrome";
+import { StudioChat, type StudioChatArtifact } from "./StudioChat";
+import { StudioBuildingScreen, useElapsedMs } from "./StudioBuildingScreen";
+import { useReducedMotion } from "framer-motion";
 import { useStudioImmersion } from "./StudioImmersion";
 import {
   STUDIO_THEME_STORAGE_KEY,
@@ -78,6 +80,7 @@ import {
   loadBrandFloor,
   loadPageDraft,
   loadSession,
+  openSessionArtifact,
   preflightPublish,
   publishFunnelCascade,
   publishPage,
@@ -94,6 +97,7 @@ import {
   uploadGrowthAsset,
   uploadPageThumbnail,
   type BuiltFunnel,
+  type OpenedArtifact,
   type PublishPageResult,
 } from "./studio";
 import {
@@ -121,6 +125,7 @@ import {
   type StudioError,
   type StudioErrorCode,
   type StudioMode,
+  type SessionArtifactRef,
   type StudioSeoDraft,
   type StudioSessionMeta,
   type StudioState,
@@ -395,7 +400,39 @@ export function StudioShell({
 
   // The content library, one Sheet — the same LibraryPanel the Content Studio shipped.
   const [libraryOpen, setLibraryOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
+
+  // ── #292 conversational session — the LIVE design canvas ─────────────────────────────
+  // The customer only talks: the chat rail (left) drives everything, and the right-hand canvas
+  // RENDERS what the conversation produced (chat-left / live-canvas-right — the standard vibe-studio
+  // layout). `canvasArtifact` is the exact artifact the SERVER said it built this turn (from the
+  // paige_artifact frame — never a guessed index, §13). `openedPage` hydrates a page's real blocks;
+  // an image rides its own url; a funnel shows an honest "open it to edit" state (loader is #319).
+  const [sessionSeedBrief, setSessionSeedBrief] = useState<string | null>(null);
+  const [canvasArtifact, setCanvasArtifact] = useState<StudioChatArtifact | null>(null);
+  const [openedPage, setOpenedPage] = useState<OpenedArtifact | null>(null);
+  const [pageHydrating, setPageHydrating] = useState(false);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [chatNote, setChatNote] = useState<string | null>(null);
+  const chatElapsedMs = useElapsedMs(chatBusy);
+  const reduceMotion = useReducedMotion();
+
+  // The chat hands up EXACTLY what it built this turn (null = a chat-only/copy turn → keep the
+  // current stage, never blank a good canvas, §13/verify #2).
+  const handleCanvasArtifact = useCallback((a: StudioChatArtifact | null) => {
+    if (a) setCanvasArtifact(a);
+  }, []);
+
+  // Hydrate a page artifact's real blocks for LivePreview; images/funnels need no load.
+  useEffect(() => {
+    if (!tenantId || !canvasArtifact || canvasArtifact.kind !== "page") { setOpenedPage(null); setPageHydrating(false); return; }
+    let live = true;
+    setPageHydrating(true);
+    const ref: SessionArtifactRef = { kind: "page", id: canvasArtifact.id, title: canvasArtifact.title, slug: null, thumbnailUrl: null, addedAt: null };
+    void openSessionArtifact({ tenantId, ref })
+      .then((opened) => { if (live) { setOpenedPage(opened); setPageHydrating(false); } })
+      .catch(() => { if (live) setPageHydrating(false); });
+    return () => { live = false; };
+  }, [tenantId, canvasArtifact]);
 
   // ── Studio Phase 1 — the single entry point (§18) ─────────────────────────────────
   // `classifiedOnceRef` flips true the moment the FIRST brief this session is submitted from
@@ -762,12 +799,14 @@ export function StudioShell({
         // or a second time for the same session (R1, autostartRef).
         const isZeroArtifact = !loaded.primary && loaded.artifacts.length === 0;
         const autostartSeed = (loaded.session.seedBrief ?? initialBrief ?? "").trim();
-        const willAutostart =
-          autostart &&
-          !restored &&
-          isZeroArtifact &&
-          autostartSeed.length > 0 &&
-          autostartRef.current !== sessionId;
+        // #292 — the SESSION's first build now runs through the design CHAT (StudioChat fires the
+        // brief once), NOT the legacy composer. A fresh session with a brief hands that brief to the
+        // chat; the legacy autostart generation stays OFF so the two engines never double-drive the
+        // canvas (§13). `chatSeed` is what the chat auto-sends; `willAutostart` is retired here.
+        const chatSeed =
+          (autostart && !restored && isZeroArtifact && autostartSeed.length > 0 && autostartRef.current !== sessionId)
+            ? autostartSeed : null;
+        const willAutostart = false;
 
         setState((s) => {
           // Always adopt the session's identity + manifest.
@@ -813,13 +852,13 @@ export function StudioShell({
         // Fire OUTSIDE the updater, once. Claim the guard BEFORE firing (R1) so nothing re-fires.
         // Routes through handleBriefSubmit → classifyStudioIntent, so the Home brief builds the
         // RIGHT artifact type (§18/§19), not a forced page.
-        if (willAutostart) {
+        if (chatSeed) {
+          // Hand the dashboard→session brief to the design chat, which fires it once as the first
+          // turn. Claim the guard so a re-entered effect never re-seeds (#292 / verify #3).
           autostartRef.current = sessionId;
-          // Arm the full-screen handoff cutscene for THIS build only — the dashboard→new-session
-          // moment. Disarmed when the build finishes, so later in-session builds stay inline.
-          setAutostartBuild(true);
-          briefSubmitRef.current(loaded.session.seedBrief ?? initialBrief ?? "");
+          setSessionSeedBrief(chatSeed);
         }
+        void willAutostart; // legacy composer autostart retired for the session chat surface
       })
       .catch((err) => {
         if (!live) return;
@@ -1758,6 +1797,142 @@ export function StudioShell({
     );
   }
 
+  // ── #292 — the conversational session's live canvas (chat-left / canvas-right) ─────────
+  // Order: first-build cutscene → open artifact by kind → honest empties. Never reads state.mode
+  // (that's the legacy composer engine); reads chatBusy + canvasArtifact only (§13, verify RISK B).
+  const sessionPageOpen =
+    canvasArtifact?.kind === "page" && openedPage && openedPage.kind === "page" && !("missing" in openedPage && openedPage.missing)
+      ? openedPage : null;
+  let sessionCanvas: ReactNode;
+  if (chatBusy && !canvasArtifact) {
+    // First build, nothing on the stage yet → the honest cutscene (indeterminate: the build runs
+    // server-side, there is no client GenerationState to fake, §13). Gold lives only in PaigeMark.
+    sessionCanvas = (
+      <StudioBuildingScreen
+        indeterminate
+        note={chatNote ?? "Getting to work…"}
+        agent="Design agent"
+        elapsedMs={chatElapsedMs}
+        reduce={!!reduceMotion}
+        ariaLabel="Your design agent is building"
+      />
+    );
+  } else if (sessionPageOpen) {
+    sessionCanvas = (
+      <LivePreview
+        blocks={sessionPageOpen.page.blocks}
+        theme={sessionPageOpen.page.theme}
+        brandFloor={state.brandFloor}
+        tenantId={tenantId ?? undefined}
+        device={state.device}
+      />
+    );
+  } else if (canvasArtifact?.kind === "page" && pageHydrating) {
+    // Page linked, blocks still loading — hold the building state, don't flash the empty (verify #5).
+    sessionCanvas = (
+      <StudioBuildingScreen indeterminate note="Bringing your page onto the canvas…" agent="Design agent" elapsedMs={chatElapsedMs} reduce={!!reduceMotion} ariaLabel="Loading your page" />
+    );
+  } else if (canvasArtifact?.kind === "content" && canvasArtifact.url) {
+    // Image → the real asset, letterboxed WHOLE (never cropped/stretched, §13) on a layered card (§22).
+    sessionCanvas = (
+      <div className="grid h-full place-items-center p-2">
+        <figure className="relative max-h-full max-w-full overflow-hidden rounded-xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-card shadow-[0_24px_60px_-24px_hsl(var(--studio-ink)/0.7)]">
+          <img src={canvasArtifact.url} alt={canvasArtifact.title || "Generated image"} className="block max-h-[calc(100vh-14rem)] max-w-full object-contain" loading="eager" />
+        </figure>
+      </div>
+    );
+  } else if (canvasArtifact?.kind === "funnel") {
+    // Funnel is ref-only today (no in-Studio step loader yet, #319) — an honest in-session state,
+    // never a fabricated preview (§13/§19). Stays IN the session (no navigate-away, §21).
+    sessionCanvas = (
+      <div className="grid h-full place-items-center">
+        <SectionCard className="max-w-md">
+          <EmptyState icon={Wand2} tone="brand" title="Your funnel is built"
+            description="The whole sequence — landing page, intake form, and thank-you — is saved to this project. Ask your design agent to change any step and it rebuilds it here." />
+        </SectionCard>
+      </div>
+    );
+  } else {
+    // First-run: a calm canvas that points at the chat (the starter prompts live in the transcript).
+    sessionCanvas = (
+      <div className="grid h-full place-items-center">
+        <SectionCard className="max-w-md">
+          <EmptyState icon={Sparkles} tone="brand" title="Tell your designer what to make"
+            description="Describe it in the chat — a landing page, an image, a form, a funnel. It appears right here the moment it’s ready." />
+        </SectionCard>
+      </div>
+    );
+  }
+
+  // The whole session surface: lean top bar + chat-left / live-canvas-right. No composer, no mode
+  // tabs, no type picker — the customer only talks (§18/§21).
+  const renderSession = (): ReactNode => (
+    <StudioFrame className={embedded ? className : undefined} dark={studioDark}>
+      <StudioTopBar
+        sessionChrome
+        mode="page"
+        studioDark={studioDark}
+        onToggleStudioTheme={toggleStudioTheme}
+        title={state.title}
+        device={state.device}
+        onDeviceChange={(device) => patch({ device })}
+        onOpenLibrary={() => setLibraryOpen(true)}
+        onDeleteProject={() => void handleDeleteProject()}
+        projectTitle={state.title}
+      />
+      <StudioSplit
+        railBare
+        canvasFirstOnMobile
+        railBody={
+          <StudioChat
+            sessionId={sessionId}
+            tenantId={tenantId}
+            seedBrief={sessionSeedBrief}
+            onBusy={setChatBusy}
+            onNote={setChatNote}
+            onArtifact={handleCanvasArtifact}
+          />
+        }
+        canvas={
+          <div className="relative h-full">
+            {sessionCanvas}
+            {/* In-flight follow-up: keep the current artifact, lay a live indigo scan-line over it
+                (§11 gold reserved for the act; §13 clears on onBusy(false)). */}
+            {chatBusy && canvasArtifact && (
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
+                <div className={cn("h-0.5 w-full origin-left bg-primary/70", !reduceMotion && "animate-pulse")} />
+              </div>
+            )}
+          </div>
+        }
+      />
+    </StudioFrame>
+  );
+
+  if (sessionId) {
+    return wrap(
+      <>
+        {renderSession()}
+        {/* The saved library — the same Assets Sheet the legacy surface uses. */}
+        <Sheet open={libraryOpen} onOpenChange={setLibraryOpen}>
+          <SheetContent className={cn(studioDark ? "dark" : "studio-surface", "w-full overflow-y-auto border-border bg-background text-foreground sm:max-w-2xl")}>
+            <SheetHeader>
+              <SheetTitle>Assets</SheetTitle>
+              <SheetDescription>
+                Every image and piece of copy you've made here — the full working set. Hit
+                <span className="font-medium text-foreground"> Keep</span> on the winners to promote them
+                to your Saved library.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="mt-4">
+              <LibraryPanel tenantId={tenantId} active={libraryOpen} onKeep={handleKeepContent} />
+            </div>
+          </SheetContent>
+        </Sheet>
+      </>,
+    );
+  }
+
   return wrap(
     <>
       <StudioFrame className={embedded ? className : undefined} dark={studioDark}>
@@ -1780,7 +1955,6 @@ export function StudioShell({
           onSaveToLibrary={state.blocks.length > 0 ? () => void handleSaveToLibrary() : undefined}
           savingToLibrary={savingToLibrary}
           onOpenLibrary={() => setLibraryOpen(true)}
-          onOpenChat={sessionId ? () => setChatOpen(true) : undefined}
           modeBar={modeBars[mode] ?? null}
           funnelActive={funnelActive}
           funnelLive={funnelUrl != null}
@@ -1965,28 +2139,6 @@ export function StudioShell({
           />
         )}
       </StudioFrame>
-
-      {/* The session's LIVE CHAT (#292) — inside the project, an ongoing two-way conversation with
-          the tenant's creative-design agent (one of Paige's team, not Paige). Starting a project still
-          runs the normal build loop; this is the maintained chat you keep working in once you're in
-          the session. Session-scoped thread, persists across reloads. */}
-      <Sheet open={chatOpen} onOpenChange={setChatOpen}>
-        <SheetContent
-          side="right"
-          className={cn(studioDark ? "dark" : "studio-surface", "flex w-full flex-col gap-0 border-border bg-background p-0 text-foreground sm:max-w-md")}
-        >
-          <SheetHeader className="border-b border-border px-4 py-3">
-            <SheetTitle className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-[var(--gold-dark)]" aria-hidden />
-              Design chat
-            </SheetTitle>
-            <SheetDescription className="text-left">
-              Your creative-design agent, right in this project. Ask it to make images, pages, forms — it builds and shows you here.
-            </SheetDescription>
-          </SheetHeader>
-          <StudioChat sessionId={sessionId} tenantId={tenantId} className="min-h-0 flex-1" />
-        </SheetContent>
-      </Sheet>
 
       {/* The saved library — the Content Studio's third panel, one Sheet away. */}
       <Sheet open={libraryOpen} onOpenChange={setLibraryOpen}>

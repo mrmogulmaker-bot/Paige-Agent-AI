@@ -29,6 +29,8 @@ export function StudioSplit({
   railFooter,
   canvas,
   immersive = false,
+  railBare = false,
+  canvasFirstOnMobile = false,
   className,
 }: {
   railHeader?: ReactNode;
@@ -39,6 +41,13 @@ export function StudioSplit({
    *  frame edge-to-edge (the Lovable/Replit "watch it build" state). Optional — the other modes
    *  (Form/Image/Copy/Funnel) render StudioSplit without it and stay in the normal split. */
   immersive?: boolean;
+  /** The rail body manages its OWN scroll + docked composer (e.g. StudioChat, the #292 session
+   *  conversation). Skip the default padded/scrolling wrapper + header/footer strips so the child
+   *  fills the column edge-to-edge — no double scroll, no double padding, composer pins. */
+  railBare?: boolean;
+  /** On a CHAT surface, below lg the live preview belongs ON TOP (capped) and the conversation —
+   *  the thing the customer actually drives, with its pinned composer — fills the rest. */
+  canvasFirstOnMobile?: boolean;
   className?: string;
 }) {
   // React 18 renders a declarative `inert={false}` as the string "false" — still inert. Set the DOM
@@ -50,7 +59,7 @@ export function StudioSplit({
   }, [immersive]);
 
   return (
-    <div className={cn("flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row", className)}>
+    <div className={cn("flex flex-col lg:min-h-0 lg:flex-1 lg:flex-row", canvasFirstOnMobile && "max-lg:flex-col-reverse", className)}>
       {/* The rail/canvas seam was a hairline border doing all the separation work (§11) — a
           faint horizontal shadow now carries it at lg+, so the border can soften instead of
           sitting at full strength right next to it. Directional/inset shadows like this one
@@ -80,6 +89,11 @@ export function StudioSplit({
             : "lg:w-[380px] lg:border-r lg:border-[hsl(var(--studio-chrome-border)/0.5)] lg:shadow-[4px_0_16px_-12px_hsl(var(--shadow-ink)/0.16)]",
         )}
       >
+        {railBare ? (
+          // Self-managing rail (StudioChat): fill the column; the child owns scroll + composer.
+          <div className="flex min-h-0 flex-1 flex-col">{railBody}</div>
+        ) : (
+        <>
         {railHeader && <div className="shrink-0 border-b border-[hsl(var(--studio-chrome-border)/0.5)] px-4 py-3">{railHeader}</div>}
         <div className="space-y-4 px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">{railBody}</div>
         {railFooter && (
@@ -97,6 +111,8 @@ export function StudioSplit({
             {railFooter}
           </div>
         )}
+        </>
+        )}
       </div>
       {/* `.studio-drafting-grid` (src/index.css) is a recessed PHOTOGRAPHIC well the rendered page
           floats on (the Lovable/v0 preview pane) — a top-light glow + a bottom vignette over a
@@ -105,7 +121,11 @@ export function StudioSplit({
           (--foreground, so it stays a faint light edge in both themes) plus a large soft inset
           cast in fixed shadow-ink. Roomier padding (p-6 → md:p-10) so the artifact breathes and
           reads as a hero on a surface, not a full-bleed fill jammed to the edges (§11). */}
-      <div className="studio-drafting-grid min-w-0 flex-1 p-6 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.04),inset_0_18px_50px_-24px_hsl(var(--studio-ink)/0.7)] md:p-10 lg:min-h-0 lg:overflow-y-auto">
+      <div className={cn(
+        "studio-drafting-grid min-w-0 flex-1 p-6 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.04),inset_0_18px_50px_-24px_hsl(var(--studio-ink)/0.7)] md:p-10 lg:min-h-0 lg:overflow-y-auto",
+        // Chat surface on mobile: cap the preview so the conversation (below it) leads the screen.
+        canvasFirstOnMobile && "max-lg:h-[42vh] max-lg:shrink-0 max-lg:overflow-y-auto",
+      )}>
         {canvas}
       </div>
     </div>
