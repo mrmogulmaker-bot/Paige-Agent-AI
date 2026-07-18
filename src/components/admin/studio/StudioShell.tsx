@@ -55,6 +55,8 @@ import { StudioRailHeading, StudioSplit } from "./StudioChrome";
 import { StudioChat, type StudioChatArtifact } from "./StudioChat";
 import { DocumentPreview } from "./DocumentPreview";
 import { StudioBuildingScreen, useElapsedMs } from "./StudioBuildingScreen";
+import { PaigeMark } from "@/components/brand/PaigeMark";
+import { GP_SHIMMER } from "@/components/growth/growth-motion";
 import { useReducedMotion } from "framer-motion";
 import { useStudioImmersion } from "./StudioImmersion";
 import {
@@ -137,6 +139,89 @@ import {
   type StudioSessionMeta,
   type StudioState,
 } from "./studio-types";
+
+/** A session whose title is still the platform default has never been auto-named — an image/doc
+ *  chat build links its artifact server-side, so the client rename that pages run never fired and
+ *  the project sat as "Untitled project" in the grid (#292). This is the once-idempotent gate that
+ *  lets the on-load + first-artifact rename claim the name exactly once. */
+function isUnnamedProject(title: string | null | undefined): boolean {
+  const s = (title ?? "").trim().toLowerCase();
+  return s === "" || s === "untitled project" || s === "untitled";
+}
+
+/**
+ * The premium "Paige is creating" layer for a FOLLOW-UP turn — the prior artifact STAYS on the
+ * stage underneath (§21) while this lays an ALIVE, ambient building treatment over it, never an
+ * opaque cover. Replaces the bare pulsing scan-line (#292): a living PaigeMark ribbon + the real
+ * streamed note + an honest elapsed clock, an indeterminate indigo build beam, and the shipped
+ * token/white shooting-star field (§12/§18 reuse — NOT the gold nebula/comet). Every animation is
+ * reduce-gated here → a calm static ribbon (no stars, no pulse, static beam) under reduce (§11).
+ * Gold is reserved for the act: nothing here is gold except PaigeMark's own inherent mark.
+ */
+function SessionBuildingOverlay({
+  note,
+  elapsedMs,
+  reduce,
+}: {
+  note: string | null;
+  elapsedMs: number;
+  reduce: boolean;
+}) {
+  const seconds = Math.max(0, Math.round(elapsedMs / 1000));
+  // Indigo halo (never gold) tinted off the app --primary token; the keyframe is the shipped
+  // .paige-halo-pulse (also used by StudioBuildingScreen's LivingMark), the color is inline.
+  const haloBg =
+    "radial-gradient(circle at 50% 50%, color-mix(in srgb, hsl(var(--primary)) 42%, transparent), transparent 70%)";
+  return (
+    <div
+      className="pointer-events-none absolute inset-0 z-20 overflow-hidden"
+      role="status"
+      aria-label="Paige is creating"
+    >
+      {/* Ambient dim so the ribbon reads over any artifact WITHOUT hiding the work — the top of the
+          canvas stays clear, the scrim only deepens toward the ribbon at the bottom (§11). */}
+      <div
+        aria-hidden
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(to top, hsl(var(--studio-canvas) / 0.60) 0%, hsl(var(--studio-canvas) / 0.10) 42%, transparent 72%)",
+        }}
+      />
+      {/* Occasional token/white shooting streaks — the shipped cosmic field, NOT gold. Hidden under
+          reduce (the CSS holds the streaks at opacity 0 there too — belt and suspenders). */}
+      {!reduce && <div aria-hidden className="studio-shooting" />}
+      {/* Top indeterminate build beam — an indigo shimmer, not a dead hairline. Static fill under
+          reduce so the "something's happening" cue survives without motion. */}
+      <div aria-hidden className="absolute inset-x-0 top-0 h-0.5 overflow-hidden bg-primary/15">
+        {reduce ? (
+          <div className="h-full w-full bg-primary/40" />
+        ) : (
+          <div className={cn("h-full w-full rounded-full", GP_SHIMMER)} />
+        )}
+      </div>
+      {/* The living ribbon — a compact glass pill with a small animated PaigeMark + the real note. */}
+      <div className="absolute inset-x-0 bottom-5 flex justify-center px-4">
+        <div className="flex max-w-[calc(100%-2rem)] items-center gap-3 rounded-full border border-[hsl(var(--studio-chrome-border)/0.6)] bg-[hsl(var(--studio-canvas)/0.86)] px-4 py-2 shadow-lg backdrop-blur">
+          <span className="relative grid h-7 w-7 shrink-0 place-items-center">
+            <span
+              aria-hidden
+              className={cn("absolute inset-[-45%] rounded-full", !reduce && "paige-halo-pulse")}
+              style={{ background: haloBg, transformOrigin: "center" }}
+            />
+            <PaigeMark animated={!reduce} className="relative h-7 w-7" />
+          </span>
+          <span className="min-w-0 truncate font-display text-sm font-medium text-foreground">
+            {note?.trim() || "Paige is creating…"}
+          </span>
+          <span className="ml-1 shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground tabular-nums">
+            {seconds}s
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export interface StudioShellProps {
   /** Tenant scope. Falls back to the active tenant when omitted. */
@@ -455,7 +540,26 @@ export function StudioShell({
     reopenInFlightRef.current = null; // a build supersedes any in-flight content-reopen probe (drop its result)
     setCanvasArtifact(a);
     if (openRef) { reopenResolvedRef.current = `${a.kind}:${a.id}`; onReopenConsumed?.(); }
-  }, [openRef, onReopenConsumed]);
+    // Auto-name a still-untitled session from its FIRST streamed artifact (#292). Image/document
+    // chat builds link server-side and never run the page path's rename, so they sat as "Untitled
+    // project" in the grid — this makes them findable the instant the first piece lands. Best-effort,
+    // once per session (autoNamedRef), never blocks the canvas (§13); flags restore on failure so a
+    // later build (or the first save) can reclaim the name.
+    if (tenantId && sessionId && !autoNamedRef.current) {
+      const derived = deriveProjectName(a.title, null);
+      if (derived) {
+        autoNamedRef.current = true;
+        firstLinkRef.current = false;
+        void renameStudioSession({ tenantId, sessionId, title: derived })
+          .then((renamed) => onManifestChange?.(renamed))
+          .catch((err) => {
+            autoNamedRef.current = false;
+            firstLinkRef.current = true;
+            console.warn("[studio] auto-name on first streamed artifact failed (non-fatal):", err);
+          });
+      }
+    }
+  }, [openRef, onReopenConsumed, tenantId, sessionId, onManifestChange]);
 
   // Hydrate a page artifact's real blocks for LivePreview; images/funnels need no load.
   useEffect(() => {
@@ -564,6 +668,7 @@ export function StudioShell({
   // shipped by the top bar's gold act. `funnel` holds the built funnel; null = ordinary page.
   const [funnel, setFunnel] = useState<BuiltFunnel | null>(null);
   const [funnelBuilding, setFunnelBuilding] = useState(false);
+  const funnelElapsedMs = useElapsedMs(funnelBuilding);
   const [funnelPublishing, setFunnelPublishing] = useState(false);
   const [funnelUrl, setFunnelUrl] = useState<string | null>(null);
   const [savingToLibrary, setSavingToLibrary] = useState(false);
@@ -893,9 +998,12 @@ export function StudioShell({
       .then((loaded) => {
         if (!live) return;
         firstLinkRef.current = loaded.artifacts.length === 0;
-        // An established session (already has artifacts) is already named — don't re-title it on a
-        // later regeneration. A fresh/empty resumed session may still auto-name on its first build.
-        autoNamedRef.current = loaded.artifacts.length > 0;
+        // A session that already has artifacts AND a real (non-default) title is named — don't
+        // re-title it on a later regeneration. But an image/document chat build links its artifact
+        // server-side and never ran the client rename, so it can have artifacts yet still read
+        // "Untitled project" (#292): those stay eligible to auto-name (on-load rename just below,
+        // and the first streamed artifact). A fresh/empty resumed session is likewise eligible.
+        autoNamedRef.current = loaded.artifacts.length > 0 && !isUnnamedProject(loaded.session.title);
 
         // Autostart decision (Defect 1). A fresh session opened WITH build intent from Home fires
         // the build ONCE, straight into runGenerate's brand/clarify gate. Computed OUTSIDE the
@@ -965,6 +1073,65 @@ export function StudioShell({
           setSessionSeedBrief(chatSeed);
         }
         void willAutostart; // legacy composer autostart retired for the session chat surface
+
+        // ── #292 Fix B — REHYDRATE the session canvas on return ────────────────────────────
+        // The session view reads `canvasArtifact`, and NOTHING seeded it on load: loadSession only
+        // hydrates a PAGE primary into legacy state, so a returning image/page/funnel project fell
+        // through to the first-run "Tell your designer what to make" empty even though its work is
+        // saved. Seed the canvas from the most-recent RENDERABLE artifact — preferring the latest
+        // image (a content ref carrying a thumbnail, which draws synchronously), then a page primary,
+        // then a page/funnel/document. Guards (§13): skip a fresh build about to autostart (`chatSeed`),
+        // an explicit rail ?open (the reopen resolver owns it), and restored unsaved local work; and
+        // NEVER clobber a canvas already set (functional `prev ?? seed`) so a live stream/reopen wins.
+        if (!restored && !openRef && !chatSeed) {
+          // artifact_refs are appended newest-LAST (studio_manifest_ops); reverse → newest-first.
+          const newestFirst = [...loaded.artifacts].reverse();
+          const latestImage = newestFirst.find((a) => a.kind === "content" && !!a.thumbnailUrl);
+          if (latestImage) {
+            setCanvasArtifact((prev) => prev ?? { kind: "content", id: latestImage.id, title: latestImage.title, url: latestImage.thumbnailUrl });
+          } else if (loaded.primary) {
+            // The page primary is already in legacy state above; mirror it into the SESSION canvas
+            // (the hydration effect then draws its real blocks via LivePreview).
+            const p = loaded.primary;
+            setCanvasArtifact((prev) => prev ?? { kind: "page", id: p.id, title: p.title, url: null });
+          } else {
+            const newest = newestFirst[0];
+            if (newest?.kind === "page") {
+              setCanvasArtifact((prev) => prev ?? { kind: "page", id: newest.id, title: newest.title, url: null });
+            } else if (newest?.kind === "funnel") {
+              setCanvasArtifact((prev) => prev ?? { kind: "funnel", id: newest.id, title: newest.title, url: null });
+            } else if (newest?.kind === "content") {
+              // A thumbnail-less content ref is a document or a standalone copy — resolve it the SAME
+              // way the rail-reopen does (loadDocument → seed a document sheet). A copy is a chat
+              // deliverable (§21), left to the rail; a genuine miss simply never seeds (§13, no fake).
+              void loadDocument(tenantId, newest.id)
+                .then((doc) => { if (live && doc) setCanvasArtifact((prev) => prev ?? { kind: "document", id: newest.id, title: doc.title || newest.title, url: null }); })
+                .catch(() => { /* unresolved → leave the first-run empty; the rail still opens it */ });
+            }
+          }
+        }
+
+        // ── #292 Fix B — AUTO-NAME an existing untitled project on load ────────────────────
+        // An image/document chat build links server-side, so its project can carry real artifacts yet
+        // still read "Untitled project" in the grid. Derive a name from the first/primary artifact (its
+        // title is a real, crafted signal; the seed brief is the fallback) and rename via the same seam
+        // first-save uses. Idempotent (autoNamedRef, set above) and best-effort — a rename miss never
+        // blocks the canvas (§13); the flags restore so a later build can reclaim the name.
+        if (tenantId && sessionId && loaded.artifacts.length > 0 && !autoNamedRef.current) {
+          const primaryRef = loaded.artifacts[0];
+          const derived = deriveProjectName(primaryRef?.title, loaded.session.seedBrief ?? initialBrief);
+          if (derived) {
+            autoNamedRef.current = true;
+            firstLinkRef.current = false;
+            void renameStudioSession({ tenantId, sessionId, title: derived })
+              .then((renamed) => { if (live) onManifestChange?.(renamed); })
+              .catch((err) => {
+                autoNamedRef.current = false;
+                firstLinkRef.current = true;
+                console.warn("[studio] auto-name on load (untitled resume) failed (non-fatal):", err);
+              });
+          }
+        }
       })
       .catch((err) => {
         if (!live) return;
@@ -977,7 +1144,10 @@ export function StudioShell({
     return () => {
       live = false;
     };
-  }, [tenantId, sessionId, initialBrief, autostart, patch]);
+    // openRef + onManifestChange are read inside (seed guard / rename report). The whole effect is
+    // guarded to run ONCE per session (sessionLoadRef), so a later openRef change just re-enters and
+    // early-returns — adding them keeps the closure honest without re-seeding.
+  }, [tenantId, sessionId, initialBrief, autostart, patch, openRef, onManifestChange]);
 
   // ── derived ───────────────────────────────────────────────────────────────────────
   const canvasBlocks = state.mode === "generating" ? generation.emitted : state.blocks;
@@ -1739,21 +1909,21 @@ export function StudioShell({
     if (funnel) {
       pageCanvas = <FunnelFlow funnel={funnel} url={funnelUrl} />;
     } else if (funnelBuilding) {
-      // Building state — Paige's team drafting the whole funnel (page + form) at once.
+      // Building state — Paige's team drafting the whole funnel (page + form) at once. Routes through
+      // the SAME branded §22 cutscene the page/document build path uses (#292 Fix C) — a living
+      // PaigeMark on the brand aurora field, not a bare gray-card spinner. Indeterminate: the funnel
+      // draft is one server call with no client-measurable phases (§13, honest), so it runs the
+      // ambient regime + an honest elapsed clock. Gold lives only in PaigeMark (§11).
       pageCanvas = (
-        <div className="grid h-full place-items-center">
-          <SectionCard className="max-w-md">
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <Loader2 className="h-6 w-6 animate-spin text-primary motion-reduce:animate-none" aria-hidden />
-              <div>
-                <p className="font-display text-sm font-semibold text-foreground">Building your funnel</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Paige is drafting the landing page and the intake form, then wiring them together.
-                </p>
-              </div>
-            </div>
-          </SectionCard>
-        </div>
+        <StudioBuildingScreen
+          indeterminate
+          note="Building your funnel"
+          detail="Drafting the landing page and the intake form, then wiring them together."
+          agent="Design agent"
+          elapsedMs={funnelElapsedMs}
+          reduce={!!reduceMotion}
+          ariaLabel="Paige is building your funnel"
+        />
       );
     } else {
       // Funnel intent, nothing built yet — a crafted prompt to describe the funnel (never a
