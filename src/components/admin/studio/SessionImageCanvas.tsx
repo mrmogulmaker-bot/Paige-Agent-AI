@@ -83,7 +83,7 @@ export function SessionImageCanvas({
   const hasCarousel = images.length > 1 && currentIndex >= 0;
 
   const go = (delta: number) => {
-    if (!hasCarousel) return;
+    if (!hasCarousel || busy) return; // don't mutate the stage image out from under an in-flight render
     const next = images[(currentIndex + delta + images.length) % images.length];
     if (next?.thumbnailUrl) onSelect({ id: next.id, title: next.title, url: next.thumbnailUrl });
   };
@@ -105,7 +105,7 @@ export function SessionImageCanvas({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasCarousel, currentIndex, images, hovered]);
+  }, [hasCarousel, currentIndex, images, hovered, busy]);
 
   const isSaved = savedIds.has(current.id);
   const isSaving = savingId === current.id;
@@ -191,11 +191,14 @@ export function SessionImageCanvas({
     <div className="relative h-full w-full overflow-hidden rounded-xl">
       <StudioBuildingScreen
         indeterminate
-        note={buildNote?.trim() || "Rendering your next image…"}
+        // Artifact-agnostic fallback: a follow-up on an image stage can produce a page/doc/funnel, not
+        // just another image, so the copy must not claim "image" (§13 honesty). The real streamed note
+        // wins when present; the fallback stays neutral.
+        note={buildNote?.trim() || "Creating the next round…"}
         agent="Design agent"
         elapsedMs={buildElapsedMs}
         reduce={reduceMotion}
-        ariaLabel="Rendering your next image"
+        ariaLabel="Creating the next round"
       />
       {!reduceMotion && <div aria-hidden className="studio-shooting" />}
     </div>
@@ -266,9 +269,9 @@ export function SessionImageCanvas({
         </div>
 
         {/* Toolbar — copy/download/save on the image (never over it). Gold only on the Save act (§11).
-            Hidden while a render is in flight: there is no live stage image to act on then. */}
-        {!busy && (
-        <div className="flex w-full max-w-full flex-wrap items-center justify-center gap-2">
+            Its controls are hidden while a render is in flight (nothing live to act on), but the row
+            RESERVES its height so the stage doesn't jump on each busy↔idle transition (no CLS). */}
+        <div className={cn("flex min-h-9 w-full max-w-full flex-wrap items-center justify-center gap-2", busy && "invisible")} aria-hidden={busy}>
           {hasCarousel && (
             <span className="mr-1 text-xs tabular-nums text-muted-foreground" aria-live="polite">
               {currentIndex + 1} / {images.length}
@@ -307,7 +310,6 @@ export function SessionImageCanvas({
             </Button>
           )}
         </div>
-        )}
 
         {/* Thumbnail strip — flip through the set. A labeled group of buttons (NOT ARIA tabs — there
             is no controlled tabpanel); the active thumb is ringed indigo, never gold (§11). Stays
@@ -323,9 +325,12 @@ export function SessionImageCanvas({
                   type="button"
                   aria-current={active ? "true" : undefined}
                   aria-label={ref.title || `Image ${i + 1}`}
-                  onClick={() => ref.thumbnailUrl && onSelect({ id: ref.id, title: ref.title, url: ref.thumbnailUrl })}
+                  // During a render the strip stays visible (tucked creatives remain reachable) but is
+                  // not clickable — selecting mid-render would swap the stage image under the render.
+                  disabled={busy}
+                  onClick={() => !busy && ref.thumbnailUrl && onSelect({ id: ref.id, title: ref.title, url: ref.thumbnailUrl })}
                   className={cn(
-                    "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-muted/30 outline-none",
+                    "relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-muted/30 outline-none disabled:opacity-60",
                     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                     active
                       ? "border-primary ring-2 ring-primary"
