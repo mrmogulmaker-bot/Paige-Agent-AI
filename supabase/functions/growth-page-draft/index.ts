@@ -111,6 +111,7 @@ import {
   validateBlock,
 } from "../_shared/growth-blocks.ts";
 import { cleanFormSchema, GROWTH_FORM_SCHEMA_SPEC, type CleanFormSchema } from "../_shared/growth-forms.ts";
+import { retrieveTenantKnowledge, buildKnowledgeBlock } from "../_shared/studio-brain.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -446,6 +447,19 @@ serve(async (req: Request) => {
       console.warn("growth-page-draft: practice profile lookup failed, brand-only fallback:", (e as Error)?.message);
     }
 
+    // ── 4a-brain. The Studio's brain (#310) — retrieve this practice's OWN knowledge most
+    // relevant to the brief and fold it into the SYSTEM prompt, so the page drafts against what
+    // the business actually knows (their materials, offers, proof, client language), not just
+    // brand + playbook. Non-fatal (§13): any failure yields "" and we draft brand/playbook-only.
+    // IDOR-safe (§9): reads ONLY the tenant WE resolved in step 3.
+    let knowledgeBlock = "";
+    try {
+      const chunks = await retrieveTenantKnowledge(tenantId, brief, 5);
+      knowledgeBlock = buildKnowledgeBlock(chunks);
+    } catch (e) {
+      console.warn("growth-page-draft: KB retrieval failed, no brain context:", (e as Error)?.message);
+    }
+
     // ── 4b. Attachments — fetch + encode server-side (never trust raw base64 in the body) ───
     const { included: includedAttachments, descriptions: attachmentDescriptions } =
       rawAttachments.length ? await fetchAttachmentBlocks(rawAttachments) : { included: [], descriptions: [] };
@@ -456,7 +470,7 @@ serve(async (req: Request) => {
 
 VOICE (§3): direct, confident, mogul-founder. Never use "AI-powered", "streamline", "seamless", or "empower". Write for a broad client-based-services audience — coaches, consultants, agencies, advisors, thought leaders — using inclusive words (practice, business, clients, work) rather than narrowly "coaching".
 
-DEFAULTS (§2): the offer defaults to a coaching-generic play — a webinar/masterclass, a free consultation or strategy call, a coaching program, or a lead magnet. Do NOT introduce credit, funding, lending, loans, financing, or "readiness/funding score" framing UNLESS the brief explicitly asks for it. (If the brief DOES ask for it, that is the operator's own offer and you write it in their voice — the rule is that you never ADD it.)${practiceBlock}${fundingEnabled ? `\n\nSCOPE (§2 — funding is opt-in ON for THIS tenant): this practice offers funding & capital-raising coaching, so credit, business credit, funding, lenders, and capital strategy ARE in scope for this page — write them in the operator's own voice when the brief calls for them. Never invent offers the practice does not actually provide.` : ""}
+DEFAULTS (§2): the offer defaults to a coaching-generic play — a webinar/masterclass, a free consultation or strategy call, a coaching program, or a lead magnet. Do NOT introduce credit, funding, lending, loans, financing, or "readiness/funding score" framing UNLESS the brief explicitly asks for it. (If the brief DOES ask for it, that is the operator's own offer and you write it in their voice — the rule is that you never ADD it.)${practiceBlock}${knowledgeBlock}${fundingEnabled ? `\n\nSCOPE (§2 — funding is opt-in ON for THIS tenant): this practice offers funding & capital-raising coaching, so credit, business credit, funding, lenders, and capital strategy ARE in scope for this page — write them in the operator's own voice when the brief calls for them. Never invent offers the practice does not actually provide.` : ""}
 
 COPY CRAFT — the direct-response bar this page is held to (the gap between a page that converts and one that doesn't): name a SPECIFIC dream outcome and timeframe in the headline, never a vague benefit — "your first paying client in 30 days" beats "grow your business." Conversion is a ratio: maximize the reader's perceived likelihood of success (a clear mechanism, real specificity, proof) while minimizing their sense of required time and effort — every section should be doing one of those two jobs. Agitate a real, named problem the reader already recognizes in themselves before you resolve it — a claim with no friction behind it reads as filler. Write with an actual point of view, not corporate-anonymous voice; when it fits the brief, frame the offer as the non-obvious move that works, not the obvious path everyone already tried. Every claim is a concrete number you were actually given, or it is cut — never a hollow adjective standing in for a number, and never a bracketed placeholder standing in for one.
 

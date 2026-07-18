@@ -57,6 +57,7 @@ import { chatCompletionCompat } from "../_shared/claude.ts";
 import { routedChatCompletion } from "../_shared/model-router.ts";
 import { extractJson, str } from "../_shared/growth-blocks.ts";
 import { cleanFormSchema, GROWTH_FORM_SCHEMA_SPEC } from "../_shared/growth-forms.ts";
+import { retrieveTenantKnowledge, buildKnowledgeBlock } from "../_shared/studio-brain.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -124,10 +125,17 @@ serve(async (req: Request) => {
     }
 
     // ── 3. Resolve the caller / tenant SERVER-SIDE (same pin as growth-page-draft) ───
+    // The tenant WE resolve is the only one the Studio brain (#310) reads — a JWT caller can
+    // never steer retrieval at a tenant they don't belong to (§9). May be null (operator with
+    // no active tenant); that only means "no brain context", never "trust the body".
+    let tenantId: string | null = null;
     if (isServiceRole) {
       const named = str(body?.tenant_id).trim();
-      if (named && !UUID_RE.test(named)) {
-        return fail(400, "INVALID_TENANT_ID", "tenant_id must be a UUID.");
+      if (named) {
+        if (!UUID_RE.test(named)) {
+          return fail(400, "INVALID_TENANT_ID", "tenant_id must be a UUID.");
+        }
+        tenantId = named;
       }
     } else {
       const authed = createClient(supabaseUrl, supabaseAnonKey, {
@@ -147,6 +155,22 @@ serve(async (req: Request) => {
       if (!roles.some((r: string) => r === "admin" || r === "super_admin" || r === "coach")) {
         return fail(403, "FORBIDDEN", "Admin or coach access required.");
       }
+
+      const { data: resolved, error: tErr } = await authed.rpc("current_user_tenant_id");
+      if (tErr) {
+        console.error("growth-form-draft: tenant resolve failed:", tErr);
+        return fail(500, "INTERNAL", `Could not resolve your workspace: ${tErr.message}`);
+      }
+      tenantId = str(resolved).trim() || null;
+    }
+
+    // The Studio brain (#310): retrieve this practice's own knowledge relevant to the brief so
+    // the questionnaire asks in THEIR terms and captures what THEY actually need. Non-fatal (§13).
+    let knowledgeBlock = "";
+    try {
+      knowledgeBlock = buildKnowledgeBlock(await retrieveTenantKnowledge(tenantId, brief, 5));
+    } catch (e) {
+      console.warn("growth-form-draft: KB retrieval failed, no brain context:", (e as Error)?.message);
     }
 
     // ── 4. The draft ─────────────────────────────────────────────────────────
@@ -158,7 +182,7 @@ LABEL QUALITY: field labels are plain, human, and specific — the exact thing y
 
 DEFAULTS (§2): never introduce credit, funding, lending, financing, or "readiness/funding score" fields unless the operator's own brief explicitly asks for them.
 
-Derive the fields EXACTLY from what the operator described, in the order given — do not invent questions they didn't ask for, and never fabricate placeholder/example values (§15). Never use "ssn4" or "currency" types; use "text" for money- or ID-like answers.
+Derive the fields EXACTLY from what the operator described, in the order given — do not invent questions they didn't ask for, and never fabricate placeholder/example values (§15). Never use "ssn4" or "currency" types; use "text" for money- or ID-like answers.${knowledgeBlock}
 
 Return ONLY a single JSON object, no prose, no markdown fences:
 { "form_schema_json": ${GROWTH_FORM_SCHEMA_SPEC} }`;
