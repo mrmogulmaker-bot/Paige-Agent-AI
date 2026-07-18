@@ -43,10 +43,13 @@ const SIZE_MAP: Record<string, string> = {
 // The studio's size keys → the aspect-ratio string the url-based providers want. Replicate's Flux
 // takes an "W:H" aspect_ratio; ideogram.ts maps the same "W:H" string to its ASPECT_ enum. Unknown
 // keys default to square so a bad size never fails the whole generation (§13).
+// Aligned to SIZE_MAP's own ratios (portrait 1024x1536 = 2:3, landscape 1536x1024 = 3:2) so a silent
+// provider fallback never changes the image's SHAPE for the same size key. Both values are valid Flux
+// aspect_ratio strings and map cleanly to ideogram's ASPECT_2_3 / ASPECT_3_2.
 const ASPECT_MAP: Record<string, string> = {
   square: "1:1",
-  portrait: "9:16",
-  landscape: "16:9",
+  portrait: "2:3",
+  landscape: "3:2",
 };
 
 type Provider = "gemini" | "openai" | "replicate" | "ideogram";
@@ -67,9 +70,19 @@ function b64ToBytes(b64: string): Uint8Array {
 // Fetch a vendor-hosted artifact url and return its bytes (the re-host step for replicate/ideogram,
 // §13 — a vendor url can expire, so we own a permanent copy).
 async function fetchUrlBytes(url: string): Promise<Uint8Array> {
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`Fetching generated image failed (${resp.status}).`);
-  return new Uint8Array(await resp.arrayBuffer());
+  // Bounded: a 30s timeout + a 25MB ceiling so a slow/oversized vendor response degrades to a typed
+  // error instead of hanging the function or ballooning memory (§13 — as robust as the rest of the tail).
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 30_000);
+  try {
+    const resp = await fetch(url, { signal: ctrl.signal });
+    if (!resp.ok) throw new Error(`Fetching generated image failed (${resp.status}).`);
+    const buf = await resp.arrayBuffer();
+    if (buf.byteLength > 25 * 1024 * 1024) throw new Error("Generated image exceeded the 25MB cap.");
+    return new Uint8Array(buf);
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 serve(async (req: Request) => {
@@ -163,6 +176,12 @@ serve(async (req: Request) => {
     // possibly bytes directly. Throws NeedsConfigError when a client can't see its key (folded into
     // the fallback below, never a 500).
     async function generateBytes(provider: Provider): Promise<{ bytes: Uint8Array; model: string }> {
+      // A caller `model` override is scoped to the provider it was requested FOR. On a cross-provider
+      // fallback it is DROPPED — an ideogram version id is meaningless to replicate and vice-versa, and
+      // validating it against the wrong provider's allow-list would throw DoctrineViolation and hard-fail
+      // the whole request instead of degrading (the fallback-poisoning the review caught). Fallback
+      // providers use their own default model.
+      const effectiveModel = provider === requestedProvider ? requestedModel : undefined;
       if (provider === "openai") {
         const oai = await fetch("https://api.openai.com/v1/images/generations", {
           method: "POST",
@@ -183,6 +202,14 @@ serve(async (req: Request) => {
         // response modality returns the image inline as base64 in the first candidate's parts.
         // Model id is env-overridable in case Google renames/versions it.
         const geminiModel = Deno.env.get("GEMINI_IMAGE_MODEL") ?? "gemini-2.5-flash-image";
+        // Gemini image has no aspect param, so a portrait/landscape request would silently return a
+        // squareish image while the library still records the requested size — a truthfulness gap (§13).
+        // Best-effort: nudge the composition via the prompt so the shape matches what we record.
+        const orient = aspect === "2:3"
+          ? "\n\nCompose this as a tall portrait (2:3) image."
+          : aspect === "3:2"
+          ? "\n\nCompose this as a wide landscape (3:2) image."
+          : "";
         const gem = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent`,
           {
@@ -191,7 +218,7 @@ serve(async (req: Request) => {
             // request URL into a TypeError, which would leak ?key=<secret> into logs (§13).
             headers: { "Content-Type": "application/json", "x-goog-api-key": GEMINI_API_KEY! },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
+              contents: [{ parts: [{ text: prompt + orient }] }],
               generationConfig: { responseModalities: ["IMAGE"] },
             }),
           },
@@ -207,16 +234,16 @@ serve(async (req: Request) => {
         return { bytes: b64ToBytes(b64), model: geminiModel };
       }
       if (provider === "replicate") {
-        // Premium Flux. `model` (validated) wins; else an env-pinned default; else a sensible Flux.
-        const fluxModel = requestedModel || Deno.env.get("STUDIO_REPLICATE_IMAGE_MODEL") || DEFAULT_FLUX_MODEL;
-        assertModelAllowed("replicate", requestedModel);
+        // Premium Flux. A scoped `model` override (validated) wins; else an env-pinned default; else Flux.
+        const fluxModel = effectiveModel || Deno.env.get("STUDIO_REPLICATE_IMAGE_MODEL") || DEFAULT_FLUX_MODEL;
+        assertModelAllowed("replicate", effectiveModel);
         const r = await replicateRun({ model: fluxModel, input: { prompt, aspect_ratio: aspect } });
         if (!r.artifact_url) throw new Error("replicate returned no image url.");
         return { bytes: await fetchUrlBytes(r.artifact_url), model: r.model ?? fluxModel };
       }
       // ideogram — text-in-image. Returns artifact_bytes OR a vendor url we re-host.
-      assertModelAllowed("ideogram", requestedModel);
-      const r = await ideogramImage({ prompt, aspect, model: requestedModel });
+      assertModelAllowed("ideogram", effectiveModel);
+      const r = await ideogramImage({ prompt, aspect, model: effectiveModel });
       if (r.artifact_bytes) return { bytes: r.artifact_bytes, model: r.model ?? "V_2" };
       if (r.artifact_url) return { bytes: await fetchUrlBytes(r.artifact_url), model: r.model ?? "V_2" };
       throw new Error("ideogram returned no image.");
