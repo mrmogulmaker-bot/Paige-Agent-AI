@@ -33,6 +33,7 @@ import {
   Bookmark,
   Library,
   Loader2,
+  Sparkles,
   Monitor,
   Moon,
   MoreHorizontal,
@@ -96,6 +97,8 @@ export interface StudioTopBarProps {
 
   // — image mode (the library button; also lists any legacy saved copy rows read-only) —
   onOpenLibrary?: () => void;
+  /** Open the session's creative-design chat (#292). Shown in every session. */
+  onOpenChat?: () => void;
 
   // — funnel / form modes (published by the mounted mode component) —
   modeBar?: ModeToolbarState | null;
@@ -142,6 +145,7 @@ export function StudioTopBar({
   onSaveToLibrary,
   savingToLibrary = false,
   onOpenLibrary,
+  onOpenChat,
   modeBar,
   funnelActive = false,
   funnelLive = false,
@@ -277,6 +281,15 @@ export function StudioTopBar({
           <StatePill state={status === "published" ? (dirty ? "warning" : "on") : "off"}>
             {status === "published" ? (dirty ? "Unpublished changes" : "Live") : "Draft"}
           </StatePill>
+        )}
+
+        {onOpenChat && (
+          // The session's creative-design chat (#292) — talk to your design agent to CREATE by
+          // conversation; what it makes renders in the session. Neutral (gold stays on Publish, §11).
+          <Button variant="ghost" size="sm" onClick={onOpenChat} className="gap-1.5">
+            <Sparkles className="h-3.5 w-3.5" aria-hidden />
+            Chat
+          </Button>
         )}
 
         {hasLibrary && onOpenLibrary && (
