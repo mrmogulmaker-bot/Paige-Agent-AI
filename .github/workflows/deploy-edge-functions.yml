@@ -1,0 +1,102 @@
+# deploy-edge-functions — keep prod edge functions in lockstep with `main`.
+#
+# WHY THIS EXISTS: edge functions do NOT deploy when code merges to main (unlike
+# the frontend). Until this workflow, a merged classifier/prompt/shared-lib change
+# kept running the OLD code in prod until someone deployed it by hand — a recurring,
+# expensive, error-prone step. This closes that gap: on every push to main that
+# touches supabase/functions/**, it deploys exactly the functions whose bundle
+# changed (direct edits AND anything that transitively imports a changed _shared
+# file — see .github/scripts/edge-affected.py) and nothing else.
+#
+# SETUP (one-time, owner): add a repo secret SUPABASE_ACCESS_TOKEN
+#   Settings → Secrets and variables → Actions → New repository secret
+#   Name: SUPABASE_ACCESS_TOKEN
+#   Value: a Supabase personal access token (Supabase dashboard → Account → Access Tokens)
+# Without the secret the job fails loudly with instructions — it never silently no-ops.
+name: deploy-edge-functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+
+# Never run two prod deploys at once; let an in-flight deploy finish rather than
+# cancel it half-way (a cancelled deploy could leave a subset shipped).
+concurrency:
+  group: deploy-edge-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # to move the `edge-live` tag that records what's deployed
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need history to diff before..after
+
+      - name: Compute changed function files
+        id: changed
+        run: |
+          before="${{ github.event.before }}"
+          after="${{ github.sha }}"
+          # First push / force-push / unknown parent → fall back to this commit's parent.
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            before="$(git rev-parse "${after}^" 2>/dev/null || echo "$after")"
+          fi
+          git diff --name-only "$before" "$after" -- 'supabase/functions/**' | tee changed.txt
+          echo "count=$(grep -c . changed.txt || true)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve affected functions
+        id: affected
+        if: steps.changed.outputs.count != '0'
+        run: |
+          python3 .github/scripts/edge-affected.py < changed.txt | tee affected.txt
+          echo "count=$(grep -c . affected.txt || true)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Supabase CLI
+        if: steps.affected.outputs.count != '0'
+        uses: supabase/setup-cli@v1
+        with:
+          # `latest` keeps us current; pin to a specific version here if a CLI
+          # release ever regresses the deploy path.
+          version: latest
+
+      - name: Deploy affected functions
+        if: steps.affected.outputs.count != '0'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN secret is not set — cannot deploy edge functions."
+            echo "::error::Add it in Settings → Secrets and variables → Actions (see this workflow's header)."
+            exit 1
+          fi
+          # project_id lives in supabase/config.toml; verify_jwt per function is read
+          # from config.toml too, so the CLI preserves each function's auth posture.
+          ref="$(sed -n 's/^project_id = "\(.*\)"/\1/p' supabase/config.toml | head -1)"
+          if [ -z "$ref" ]; then echo "::error::could not read project_id from supabase/config.toml"; exit 1; fi
+          echo "Deploying $(grep -c . affected.txt) function(s) to project $ref"
+          fail=0
+          while IFS= read -r fn; do
+            [ -z "$fn" ] && continue
+            echo "::group::deploy $fn"
+            if supabase functions deploy "$fn" --project-ref "$ref"; then
+              echo "✓ deployed $fn"
+            else
+              echo "::error::failed to deploy $fn"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done < affected.txt
+          exit $fail
+
+      - name: Record deployed commit
+        if: success() && steps.affected.outputs.count != '0'
+        run: |
+          # `edge-live` always points at the last commit whose functions are live in
+          # prod. /edge-drift diffs edge-live..HEAD to show what's ahead of prod.
+          git tag -f edge-live "${{ github.sha }}"
+          git push -f origin edge-live
