@@ -97,6 +97,25 @@ export interface StudioSeoDraft {
   description?: string;
 }
 
+/** The five creative types the Media Library curates (#284). A saved library row points at the
+ *  real source in its own store — page/funnel/form → growth_*, image/copy → marketing_content —
+ *  never a copy of the content (§18 one home). */
+export type LibraryKind = "page" | "funnel" | "form" | "image" | "copy";
+
+/** One kept-in-the-library artifact, as list_library returns it: a display snapshot + a typed
+ *  pointer back to the live source. A row whose source was deleted still renders (its kept title
+ *  as a tombstone) — the library never shows a broken card (§13). */
+export interface LibraryItem {
+  id: string;
+  kind: LibraryKind;
+  artifactId: string;
+  title: string;
+  thumbnailUrl: string | null;
+  note: string | null;
+  tags: string[];
+  savedAt: string;
+}
+
 /** A seed brief the operator can drop into the composer and edit. No hidden templates —
  *  what the chip drops in is exactly what Paige is asked (§15). */
 export interface IntentChip {

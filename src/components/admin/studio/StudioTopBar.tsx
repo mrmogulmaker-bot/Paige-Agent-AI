@@ -30,6 +30,7 @@
 // only conversationally; when one is active its gold act (`funnelActive`) replaces the page acts.
 import { useState } from "react";
 import {
+  Bookmark,
   Library,
   Loader2,
   Monitor,
@@ -87,6 +88,11 @@ export interface StudioTopBarProps {
   onPublish?: () => void;
   publishing?: boolean;
   publishDisabled?: boolean;
+  /** Keep THIS page in the tenant's media library (#284) — a deliberate curation act, distinct
+   *  from publish. Neutral (not gold): gold stays on the publish moment (§11). Omit when there's
+   *  no saved page yet to keep. */
+  onSaveToLibrary?: () => void;
+  savingToLibrary?: boolean;
 
   // — image mode (the library button; also lists any legacy saved copy rows read-only) —
   onOpenLibrary?: () => void;
@@ -133,6 +139,8 @@ export function StudioTopBar({
   onPublish,
   publishing = false,
   publishDisabled = false,
+  onSaveToLibrary,
+  savingToLibrary = false,
   onOpenLibrary,
   modeBar,
   funnelActive = false,
@@ -272,9 +280,12 @@ export function StudioTopBar({
         )}
 
         {hasLibrary && onOpenLibrary && (
+          // "Assets" = this mode's recent generations/copy (everything filed to marketing_content).
+          // Distinct from the cross-type curated "Saved library" in the rail (§18 — two layers, two
+          // names): assets is everything you've made here; the saved library is the winners you kept.
           <Button variant="ghost" size="sm" onClick={onOpenLibrary}>
             <Library className="h-3.5 w-3.5" aria-hidden />
-            Library
+            Assets
           </Button>
         )}
 
@@ -308,6 +319,17 @@ export function StudioTopBar({
             actions live in the neutral ⋯ "bubble" beside it (below), never on a gold caret. That
             keeps the gold budget on the single publish moment (§11) while still giving the operator
             the actions menu the owner asked for — one consistent control in every mode. */}
+        {/* Neutral keep — save this page to the media library (#284). Curation, not the act, so it
+            stays off the gold budget (§11); gold remains on Publish alone. */}
+        {isPage && onSaveToLibrary && (
+          <Button variant="outline" size="sm" onClick={onSaveToLibrary} disabled={savingToLibrary} className="gap-1.5">
+            {savingToLibrary
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+              : <Bookmark className="h-3.5 w-3.5" aria-hidden />}
+            Save to library
+          </Button>
+        )}
+
         {isPage && onPublish && (
           <Button variant="gold" size="sm" onClick={onPublish} disabled={publishDisabled}>
             Publish

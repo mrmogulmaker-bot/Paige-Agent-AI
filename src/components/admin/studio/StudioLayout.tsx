@@ -15,6 +15,7 @@ import {
   Clock,
   FolderOpen,
   LayoutTemplate,
+  LibraryBig,
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
@@ -263,6 +264,26 @@ export default function StudioLayout() {
                 <StudioNavItem item={item} collapsed={collapsed} activeView={activeView} onHome={onHome} />
               </li>
             ))}
+            {/* The Media Library — every kept creative across projects (#284). Navigation by
+                NAME, not a type-picker: it's one destination, filtered by kind inside (§18/§21). */}
+            <li className="pt-1">
+              <Link
+                to="/admin/studio/library"
+                aria-current={location.pathname.endsWith("/studio/library") ? "page" : undefined}
+                title={collapsed ? "Saved library" : undefined}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                  location.pathname.endsWith("/studio/library")
+                    ? "bg-[hsl(var(--studio-glass-border)/0.35)] font-medium text-foreground"
+                    : "text-muted-foreground hover:bg-[hsl(var(--studio-glass-border)/0.25)] hover:text-foreground",
+                  collapsed && "justify-center px-0",
+                )}
+              >
+                <LibraryBig className="h-4 w-4 shrink-0" aria-hidden />
+                {!collapsed && <span className="truncate">Saved library</span>}
+              </Link>
+            </li>
           </ul>
         )}
 

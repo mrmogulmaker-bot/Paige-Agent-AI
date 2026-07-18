@@ -8,7 +8,7 @@
 //
 // ── CONTRACT ────────────────────────────────────────────────────────────────
 // POST (JWT or service-role bearer required)
-//   Request: { artifact_type: "page"|"funnel", artifact_id: uuid, confirmed?: boolean }
+//   Request: { artifact_type: "page"|"funnel"|"form"|"image"|"copy", artifact_id: uuid, confirmed?: boolean }
 //   200 { ok:true,  doc_id, chunk_count, learned:true,  message }        — saved to the KB
 //   200 { ok:false, needs_confirm:true, proposal }                      — §15: get a yes first
 //   200 { ok:false, blocked:true, mode:"off", message }                 — tenant turned learning off
@@ -77,19 +77,26 @@ serve(async (req: Request) => {
     const artifactType = str(body.artifact_type).trim();
     const artifactId = str(body.artifact_id).trim();
     const confirmed = body.confirmed === true;
-    if (artifactType !== "page" && artifactType !== "funnel") {
-      return json(400, { error: "artifact_type must be 'page' or 'funnel'." });
-    }
+    // The five creative kinds the brain learns from. page/funnel arrive from the publish trigger;
+    // form/image/copy arrive from the Media Library's deliberate "Save to my library" keep.
+    const SOURCE: Record<string, { table: string; titleCol: string }> = {
+      page: { table: "growth_pages", titleCol: "title" },
+      funnel: { table: "growth_funnels", titleCol: "name" },
+      form: { table: "growth_forms", titleCol: "name" },
+      image: { table: "marketing_content", titleCol: "title" },
+      copy: { table: "marketing_content", titleCol: "title" },
+    };
+    const src = SOURCE[artifactType];
+    if (!src) return json(400, { error: "artifact_type must be page, funnel, form, image, or copy." });
     if (!UUID_RE.test(artifactId)) return json(400, { error: "artifact_id must be a UUID." });
 
     const admin = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ── Resolve the tenant FROM the published artifact row (§9) — never the body/active tenant ──
-    const table = artifactType === "page" ? "growth_pages" : "growth_funnels";
-    const titleCol = artifactType === "page" ? "title" : "name";
+    // ── Resolve the tenant FROM the artifact row (§9) — never the body/active tenant ──
+    // Each kind lives in its own store: page/funnel/form in growth_*, image/copy in marketing_content.
     const { data: artifact, error: aErr } = await admin
-      .from(table)
-      .select(`id, tenant_id, ${titleCol}, status`)
+      .from(src.table)
+      .select(`id, tenant_id, ${src.titleCol}, status`)
       .eq("id", artifactId)
       .maybeSingle();
     if (aErr) return json(500, { error: `Could not read the ${artifactType}: ${aErr.message}` });
@@ -97,18 +104,21 @@ serve(async (req: Request) => {
     const tenantId = str((artifact as Record<string, unknown>).tenant_id);
     if (!UUID_RE.test(tenantId)) return json(500, { error: "Artifact has no valid tenant." });
 
-    // Only LIVE work teaches the brain (§13/§15): a draft is unfinished thinking, not the practice's
-    // committed voice — learning from it would poison retrieval with abandoned copy. The "is it live"
-    // status is artifact-type specific: growth_page_publish sets a page to 'published', but
-    // growth_funnel_publish sets a funnel to 'active' (the public read policy keys on 'active' too).
-    // Checking a single literal here silently killed the whole funnel-learn path (a published funnel
-    // read as not_published), so the guard is type-aware.
-    const liveStatus = artifactType === "page" ? "published" : "active";
-    if (str((artifact as Record<string, unknown>).status) !== liveStatus) {
-      return json(200, {
-        ok: false, error: "not_published",
-        message: `Publish this ${artifactType} first — I only learn from work you've shipped, not drafts.`,
-      });
+    // Live-status gate applies ONLY to the publish-triggered kinds. A draft page/funnel is unfinished
+    // thinking, not the practice's committed voice — learning from it would poison retrieval (§13/§15).
+    // The status value is type-specific: growth_page_publish sets a page 'published', growth_funnel_
+    // publish sets a funnel 'active' (a single literal here silently killed the funnel-learn path).
+    // image/copy/form are learned when a tenant DELIBERATELY saves them to their library — the keep IS
+    // the signal, so there's no publish-state to require (marketing_content.status is draft/archived
+    // housekeeping, not a live state).
+    if (artifactType === "page" || artifactType === "funnel") {
+      const liveStatus = artifactType === "page" ? "published" : "active";
+      if (str((artifact as Record<string, unknown>).status) !== liveStatus) {
+        return json(200, {
+          ok: false, error: "not_published",
+          message: `Publish this ${artifactType} first — I only learn from work you've shipped, not drafts.`,
+        });
+      }
     }
 
     // ── Authorize the caller against the ARTIFACT's tenant (§9 agency-leak guard) ──
@@ -150,17 +160,18 @@ serve(async (req: Request) => {
     if (mode === "confirm" && !confirmed) {
       return json(200, {
         ok: false, needs_confirm: true,
-        proposal: `Want me to teach your Paige from this ${artifactType} you just published, so your next drafts sound even more like you?`,
+        proposal: `Want me to teach your Paige from this ${artifactType}, so your next drafts sound even more like you?`,
       });
     }
 
     // ── Extract the artifact's copy (§12 shared extractors) ────────────────────
-    const artifactTitle = str((artifact as Record<string, unknown>)[titleCol]).trim() || (artifactType === "page" ? "Published page" : "Funnel");
+    const fallbackTitle: Record<string, string> = { page: "Published page", funnel: "Funnel", form: "Form", image: "Image", copy: "Copy" };
+    const artifactTitle = str((artifact as Record<string, unknown>)[src.titleCol]).trim() || fallbackTitle[artifactType];
     let content = "";
     if (artifactType === "page") {
       const { data: page } = await admin.from("growth_pages").select("blocks_json").eq("id", artifactId).maybeSingle();
       content = flattenBlocks((page as Record<string, unknown>)?.blocks_json);
-    } else {
+    } else if (artifactType === "funnel") {
       const parts: string[] = [];
       const goalRow = await admin.from("growth_funnels").select("goal").eq("id", artifactId).maybeSingle();
       const goal = str((goalRow.data as Record<string, unknown>)?.goal).trim();
@@ -182,6 +193,19 @@ serve(async (req: Request) => {
           if (t) parts.push(t);
         }
       }
+      content = parts.join("\n\n");
+    } else if (artifactType === "form") {
+      const { data: f } = await admin.from("growth_forms").select("schema_json").eq("id", artifactId).maybeSingle();
+      content = flattenFormSchema((f as Record<string, unknown>)?.schema_json);
+    } else {
+      // image | copy — both live in marketing_content. The copy's body carries the practice's voice;
+      // an image's brief is the prompt behind it. Titles anchor either.
+      const { data: mc } = await admin.from("marketing_content").select("title, body, brief").eq("id", artifactId).maybeSingle();
+      const m = (mc ?? {}) as Record<string, unknown>;
+      const parts: string[] = [];
+      if (str(m.title).trim()) parts.push(str(m.title).trim());
+      if (str(m.body).trim()) parts.push(str(m.body).trim());
+      if (str(m.brief).trim()) parts.push(str(m.brief).trim());
       content = parts.join("\n\n");
     }
 
