@@ -5563,7 +5563,21 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         if (MUTATING_TOOLS.has(tc.function.name)) {
           let gateArgs: any = {};
           try { gateArgs = JSON.parse(tc.function.arguments || "{}"); } catch { gateArgs = {}; }
-          const autoMode = await resolveToolAutonomy(tc.function.name);
+          let autoMode = await resolveToolAutonomy(tc.function.name);
+          // #292 — inside a STUDIO session the creative BUILD tools run at auto. The Vibe Studio IS the
+          // propose→build surface: the customer already asked, the design agent's core says "build,
+          // don't describe", and StudioChat has no confirm affordance — so confirm-gating these stalls
+          // the agent in an endless "ready to lock these in?" loop that never generates anything (the
+          // reported bug). Drafts/creations only; a tenant 'off' is still respected, and publish
+          // (make-it-LIVE) is deliberately NOT here — going public still asks first.
+          const STUDIO_AUTO_TOOLS = new Set([
+            "generate_image", "content_save", "document_generate",
+            "growth_page_generate", "growth_page_save",
+            "growth_funnel_generate", "growth_funnel_build",
+          ]);
+          if (studioSessionId && STUDIO_AUTO_TOOLS.has(tc.function.name) && autoMode === "confirm") {
+            autoMode = "auto";
+          }
           if (autoMode === "off") {
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, disabled: true, error: `${(TOOL_LABELS[tc.function.name] || "this action").replace(/^./, (c) => c.toUpperCase())} is turned off for this workspace in Paige's autonomy settings. Tell the operator it's disabled (don't mention any internal names) and don't retry.` }) });
             continue;

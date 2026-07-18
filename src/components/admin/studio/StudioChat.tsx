@@ -12,6 +12,8 @@
 // thread, hydrates its turns, streams a turn, lifts the newest artifact + busy/step to the parent
 // canvas, and renders the agent's clickable option chips (`ask_choices`).
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
 import { PromptComposer } from "./PromptComposer";
 import { uploadGrowthAsset } from "./studio";
@@ -20,6 +22,18 @@ import { Button } from "@/components/ui/button";
 import { Check, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+/** The agent writes in markdown (**bold**, lists, links) — render it as prose, never as raw text with
+ *  literal asterisks (owner 2026-07-18: "this has to be a good experience"). Same token-styled
+ *  treatment as DocumentPreview's Prose. Input is coerced to a string first so react-markdown v10
+ *  never throws on a mis-typed value (§13 — degrade, don't crash). User turns stay plain text. */
+function ChatMarkdown({ text }: { text: string }) {
+  return (
+    <div className="[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_em]:italic [&_strong]:font-semibold [&_strong]:text-foreground [&_p]:mt-2 first:[&_p]:mt-0 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mt-1 [&_code]:rounded [&_code]:bg-[hsl(var(--foreground)/0.06)] [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em]">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+    </div>
+  );
+}
 
 // Generated Supabase types don't yet carry the studio thread column/RPC — a scoped cast keeps the
 // call sites honest without loosening the whole client (same pattern as usePaigeThreads).
@@ -295,18 +309,24 @@ export function StudioChat({
             <div key={i} className={cn("flex flex-col", m.role === "user" ? "items-end" : "items-start")}>
               <div
                 className={cn(
-                  "max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
+                  "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
                   m.role === "user"
-                    ? "bg-[hsl(var(--ring)/0.16)] text-foreground"
+                    ? "whitespace-pre-wrap bg-[hsl(var(--ring)/0.16)] text-foreground"
                     : "border border-[hsl(var(--studio-chrome-border)/0.5)] bg-[hsl(var(--foreground)/0.03)] text-foreground",
                 )}
               >
-                {m.content || (sending && i === messages.length - 1 ? (
+                {m.content ? (
+                  m.role === "assistant" ? (
+                    <ChatMarkdown text={m.content} />
+                  ) : (
+                    m.content
+                  )
+                ) : sending && i === messages.length - 1 ? (
                   <span className="inline-flex items-center gap-2 text-muted-foreground">
                     <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
                     {note ?? "Working…"}
                   </span>
-                ) : null)}
+                ) : null}
               </div>
 
               {/* Clickable option chips — the agent asked a decision; tap one (or several) and it

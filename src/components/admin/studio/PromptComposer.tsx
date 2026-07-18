@@ -180,7 +180,9 @@ export function PromptComposer({
   // hand over an image and say "build from this" without typing (N4). Attachments never satisfy the
   // section-refine gate (that path takes no attachments).
   const hasAttachment = !sectionMode && attachments.length > 0;
-  const canSubmit = !busy && !disabled && (value.trim().length >= (sectionMode ? 2 : 5) || hasNote || hasAttachment);
+  // A single non-whitespace character is enough to send in the chat (owner: "I should just have to
+  // type one single character"). A conversational reply ("yes", "ok", "go") must never be blocked.
+  const canSubmit = !busy && !disabled && (value.trim().length >= (sectionMode ? 2 : 1) || hasNote || hasAttachment);
 
   const submit = useCallback(() => {
     if (!canSubmit) return;
