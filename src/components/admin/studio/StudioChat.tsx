@@ -21,10 +21,12 @@ import { toast } from "sonner";
 
 // Generated Supabase types don't yet carry the studio thread column/RPC — a scoped cast keeps the
 // call sites honest without loosening the whole client (same pattern as usePaigeThreads).
+/* eslint-disable @typescript-eslint/no-explicit-any */
 const db = supabase as unknown as {
   from: (t: string) => any;
   rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: any; error: any }>;
 };
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 interface ChatMsg { role: "user" | "assistant"; content: string }
 interface ChoiceOption { label: string; value: string }
@@ -275,7 +277,8 @@ export function StudioChat({
                             if (choices.multi) {
                               setMultiPicks((prev) => {
                                 const nextSet = new Set(prev);
-                                nextSet.has(opt.value) ? nextSet.delete(opt.value) : nextSet.add(opt.value);
+                                if (nextSet.has(opt.value)) nextSet.delete(opt.value);
+                                else nextSet.add(opt.value);
                                 return nextSet;
                               });
                             } else {
