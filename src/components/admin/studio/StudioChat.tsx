@@ -116,7 +116,14 @@ export function StudioChat({
   const seededRef = useRef<string | null>(null);
   useEffect(() => {
     let live = true;
-    if (!sessionId) { setThreadId(null); setMessages([]); setLoading(false); return; }
+    // A session switch must NEVER carry staged briefs across — a command queued in project A would
+    // otherwise auto-dispatch against project B (a §9/§13 cross-session leak). Drop the queue + pause
+    // and reset the thread up front so the auto-dispatch effect can't fire against a stale thread
+    // during the switch.
+    setQueue([]);
+    setQueuePaused(false);
+    setThreadId(null);
+    if (!sessionId) { setMessages([]); setLoading(false); return; }
     setLoading(true);
     (async () => {
       try {
@@ -282,17 +289,24 @@ export function StudioChat({
     const hasImages = live.length > 0;
     if (!trimmed && !hasImages) return;
     if (sending) {
-      if (queue.length >= MAX_QUEUE) {
+      // Enforce the cap INSIDE the functional update so two rapid submits can't both read a stale
+      // length and overshoot MAX_QUEUE. `accepted` reflects whether it actually enqueued.
+      const item = { id: crypto.randomUUID(), text: trimmed, attachments: live };
+      let accepted = true;
+      setQueue((q) => {
+        if (q.length >= MAX_QUEUE) { accepted = false; return q; }
+        return [...q, item];
+      });
+      if (accepted) {
+        setInput("");
+        if (hasImages) setAttachments([]); // captured onto the queued entry above
+      } else {
         toast(`That's the max of ${MAX_QUEUE} staged — they'll run first, then send more.`);
-        return; // keep their text + attachments; nothing lost
       }
-      setQueue((q) => [...q, { id: crypto.randomUUID(), text: trimmed, attachments: live }]);
-      setInput("");
-      if (hasImages) setAttachments([]); // captured onto the queued entry above
       return;
     }
     void send(text);
-  }, [sending, queue.length, attachments, send]);
+  }, [sending, attachments, send]);
 
   const onRemoveQueued = useCallback((id: string) => {
     setQueue((q) => q.filter((it) => it.id !== id));
@@ -491,9 +505,9 @@ export function StudioChat({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.96 }}
                     transition={{ duration: reduce ? 0 : 0.16 }}
-                    className="inline-flex max-w-[240px] items-center gap-1.5 rounded-full border border-border bg-muted/50 py-1 pl-2 pr-1.5 text-xs text-foreground"
+                    className="inline-flex max-w-[240px] items-center gap-1.5 rounded-full border border-[hsl(var(--studio-glass-border)/0.7)] bg-[hsl(var(--foreground)/0.05)] py-1 pl-2 pr-1.5 text-xs text-foreground"
                   >
-                    <span className="shrink-0 tabular-nums text-[10px] font-medium text-muted-foreground">{i + 1}</span>
+                    <span className="shrink-0 tabular-nums text-[11px] font-semibold text-foreground/80">{i + 1}</span>
                     <span className="truncate">
                       {item.text || `${item.attachments.length} reference image${item.attachments.length > 1 ? "s" : ""}`}
                     </span>
