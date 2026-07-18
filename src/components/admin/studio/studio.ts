@@ -23,8 +23,9 @@ import { supabase } from "@/integrations/supabase/client";
 import type { GrowthAsset, GrowthAssetKind, GrowthBlock, GrowthField, GrowthFormSchema, GrowthPageTheme, GrowthSuccessAction } from "@/lib/growth";
 import { detectGrowthAssetKind, GROWTH_ASSET_MAX_BYTES } from "@/lib/growth";
 import { GROWTH_BRAND_FLOOR, buildGrowthBrandFloor } from "@/components/growth/growth-theme";
-import { CLARIFYING_QUESTIONS, STUDIO_ERROR_COPY } from "./studio-copy";
+import { CLARIFYING_QUESTIONS, STUDIO_ERROR_COPY, briefFromKbDoc, kbChipLabel } from "./studio-copy";
 import type {
+  IntentChip,
   SessionArtifactKind,
   SessionArtifactRef,
   StudioArtifactType,
@@ -1101,6 +1102,130 @@ export async function publishAndSave(
 ): Promise<PublishPageResult> {
   const saved = await savePageDraft(input);
   return publishPage({ tenantId: input.tenantId, pageId: saved.id });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════
+// The brain's LEARN direction — studio-learn-from-artifact (#310, §7/§8/§15)
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
+/** The four honest outcomes of asking Paige to learn from a published artifact. Mirrors the
+ *  edge function's documented 200 shapes 1:1 so the caller can be truthful (§13):
+ *   - learned      → it was actually saved to the tenant's KB (report the win)
+ *   - needs_confirm → §15: the tenant must say yes first (default autonomy is 'confirm')
+ *   - blocked      → the tenant turned learning off; say nothing
+ *   - error        → nothing was saved (not published yet, no text, embed down, or a network
+ *                    failure) — NEVER claim a save that didn't happen. */
+export type LearnResult =
+  | { kind: "learned"; docId?: string; chunkCount?: number; message: string }
+  | { kind: "needs_confirm"; proposal: string }
+  | { kind: "blocked" }
+  | { kind: "error" };
+
+/**
+ * Feed a just-published page/funnel back into THIS tenant's own knowledge base so the next draft
+ * is grounded in what they've already shipped (the WRITE half of the Studio brain; studio-brain.ts
+ * is the READ half). This is BEST-EFFORT by construction (§13): the tenant already published — a
+ * KB hiccup must NEVER surface as a publish failure, so every path resolves to a LearnResult and
+ * this function never throws. The tenant is resolved server-side FROM the artifact row (§9), so we
+ * send ONLY artifact_type/artifact_id/confirmed — never a tenant_id in the body. §15 lives in the
+ * edge function: the default 'confirm' autonomy comes back as needs_confirm, and the caller re-calls
+ * with confirmed:true once the tenant agrees.
+ */
+export async function learnFromArtifact(input: {
+  tenantId: string;
+  artifactType: "page" | "funnel";
+  artifactId: string;
+  confirmed?: boolean;
+  signal?: AbortSignal;
+}): Promise<LearnResult> {
+  try {
+    requireTenant(input.tenantId); // caller-side guard only; the function re-resolves from the row (§9)
+    if (!input.artifactId) return { kind: "error" };
+    const headers = await authHeaders();
+    const res = await fetch(`${FUNCTIONS_URL}/studio-learn-from-artifact`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        artifact_type: input.artifactType,
+        artifact_id: input.artifactId,
+        confirmed: input.confirmed === true,
+      }),
+      signal: input.signal,
+    });
+    const body = (await res.json().catch(() => null)) as
+      | {
+          ok?: boolean;
+          learned?: boolean;
+          needs_confirm?: boolean;
+          blocked?: boolean;
+          proposal?: unknown;
+          message?: unknown;
+          doc_id?: unknown;
+          chunk_count?: unknown;
+        }
+      | null;
+    if (!body || typeof body !== "object") return { kind: "error" };
+
+    if (body.ok === true && body.learned) {
+      return {
+        kind: "learned",
+        docId: typeof body.doc_id === "string" ? body.doc_id : undefined,
+        chunkCount: typeof body.chunk_count === "number" ? body.chunk_count : undefined,
+        message: typeof body.message === "string" ? body.message : "Saved to your Paige's knowledge.",
+      };
+    }
+    if (body.needs_confirm && typeof body.proposal === "string") {
+      return { kind: "needs_confirm", proposal: body.proposal };
+    }
+    if (body.blocked) return { kind: "blocked" };
+    return { kind: "error" }; // not_published / no_content / embedding_failed / 4xx — nothing saved (§13)
+  } catch {
+    // Aborts and network failures are non-events for the tenant — they published fine; learning
+    // is a follow-on. Swallow to a silent error so this can never regress the publish (§13).
+    return { kind: "error" };
+  }
+}
+
+/**
+ * The brain's READ direction, surfaced as suggestion chips (#310 Slice C): turn the tenant's OWN
+ * knowledge base into a few "start here" briefs on the Studio home composer, so building opens
+ * already tuned to THEIR offers instead of a generic template. Best-effort (§13): any problem — no
+ * tenant, an empty KB, a read error — resolves to [] so the caller falls back to the static
+ * STUDIO_HOME_CHIPS. The brief each chip drops in is REAL and editable (§15) — no hidden template.
+ * Scoped to the caller's tenant explicitly (§9 defense-in-depth) on top of RLS.
+ */
+export async function loadKbSuggestionChips(
+  tenantId: string,
+  opts?: { limit?: number },
+): Promise<IntentChip[]> {
+  try {
+    const tid = requireTenant(tenantId);
+    const { data, error } = await supabase
+      .from("tenant_knowledge_docs" as never)
+      .select("id, title, summary, category, tags")
+      .eq("tenant_id", tid)
+      // Seed suggestions from the tenant's AUTHORED source material only — never from the brain's
+      // OWN learned echoes (the LEARN seam writes category='studio' rows titled 'Studio — …'). Those
+      // are the freshest rows, so without this they'd sort first and turn the chips self-referential
+      // ("A landing page for Studio — My Page") and leak the 'Studio —' provenance prefix (§11/§13).
+      .neq("category", "studio")
+      .order("created_at", { ascending: false })
+      .limit(Math.min(Math.max(opts?.limit ?? 4, 1), 8));
+    if (error || !Array.isArray(data)) return [];
+    const chips: IntentChip[] = [];
+    for (const raw of data as Record<string, unknown>[]) {
+      const title = typeof raw?.title === "string" ? raw.title.trim() : "";
+      if (!title) continue;
+      const summary = typeof raw?.summary === "string" ? raw.summary : null;
+      const category = typeof raw?.category === "string" ? raw.category : null;
+      const seed = briefFromKbDoc({ title, summary, category });
+      if (!seed) continue;
+      chips.push({ id: `kb-${String(raw?.id ?? title)}`, label: kbChipLabel({ title, category }), seed });
+    }
+    return chips;
+  } catch {
+    return [];
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════

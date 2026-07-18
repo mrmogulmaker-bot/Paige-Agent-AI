@@ -323,6 +323,50 @@ export const STUDIO_HOME_CHIPS: IntentChip[] = [
   },
 ];
 
+// ── KB-tailored home chips (#310 Slice C) ────────────────────────────────────────────────
+// The brain's READ direction on the home composer: STUDIO_HOME_CHIPS above is the generic
+// fallback; when the tenant's own knowledge base has material, loadKbSuggestionChips() maps each
+// doc through these two pure helpers into a real, editable IntentChip. Everything here is derived
+// ONLY from tenant-authored fields (title/summary/category) — no finance/credit default is ever
+// injected (§2), and the brief a chip drops in is exactly what Paige is asked, no hidden template (§15).
+
+/** A short chip label for a KB-derived suggestion. Leads with the doc's TITLE (trimmed to keep the
+ *  dock row compact, §11) because it names the SPECIFIC thing each chip builds — several docs sharing
+ *  a category (e.g. three "Offer" docs) would otherwise collide on one indistinguishable label. Only
+ *  falls back to the category when a doc has no usable title. */
+export function kbChipLabel({ title, category }: { title: string; category: string | null }): string {
+  const t = title.trim();
+  if (t) return t.length <= 28 ? t : `${t.slice(0, 27).trimEnd()}…`;
+  const cat = (category ?? "").trim();
+  if (cat && cat.toLowerCase() !== "studio" && cat.length <= 24) {
+    return cat.replace(/\b\w/g, (m) => m.toUpperCase());
+  }
+  return "Start from your knowledge";
+}
+
+/** Turn one KB doc into a real, editable direct-response brief the tenant can drop in and refine.
+ *  Grounds the ask in THEIR material (title + a clipped summary) and always ends on one clear
+ *  action — the direct-response bar the generators expect. Returns "" if there's nothing to seed. */
+export function briefFromKbDoc({
+  title,
+  summary,
+  category,
+}: {
+  title: string;
+  summary: string | null;
+  category: string | null;
+}): string {
+  const t = title.trim();
+  if (!t) return "";
+  const ctx = (summary ?? "").replace(/\s+/g, " ").trim().slice(0, 240);
+  const noun = (category ?? "").trim().toLowerCase() === "program" ? "program" : "offer";
+  const lead = `A landing page for ${t}.`;
+  const body = ctx
+    ? ` Here's what it's about, in my own words: ${ctx}`
+    : ` Pull the details from what you already know about my ${noun}.`;
+  return `${lead}${body} Speak in my voice, use the specifics above, and end on one clear action for the reader.`;
+}
+
 /** The human name for every block type. The operator never sees a backend type string (§11).
  *  Covers all 19 variants — TypeScript enforces that here. */
 export const BLOCK_LABELS: Record<GrowthBlock["type"], string> = {

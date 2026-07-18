@@ -30,6 +30,7 @@ import { Loader2, Send, Sparkles, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useGeneratePage } from "@/hooks/useGeneratePage";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import type { GrowthAsset, GrowthBlock, GrowthFormSchema } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
 import { EmptyState, PageShell, SectionCard } from "@/components/ui/page";
@@ -71,6 +72,7 @@ import {
   editBlocks,
   isFunnelPublishError,
   isStudioError,
+  learnFromArtifact,
   linkSessionArtifact,
   loadBrandFloor,
   loadPageDraft,
@@ -1116,6 +1118,34 @@ export function StudioShell({
   }, [saveDraft, toast]);
 
   // ── publish (save FIRST, then publish — always, in that order) ─────────────────────
+  // ── the brain's LEARN direction, fired AFTER a successful publish (#310, §15) ───────────────
+  // Best-effort by construction (§13): the artifact already went live, so this can never surface as
+  // a publish failure — learnFromArtifact swallows everything to a LearnResult. Default autonomy is
+  // 'confirm', so the common path is needs_confirm → a transient toast that asks first (§15) and
+  // only saves on the tenant's explicit click. 'learned' reports the real win; 'blocked'/'error'
+  // say nothing (never claim a save that didn't happen).
+  const runLearn = useCallback(
+    async (artifactType: "page" | "funnel", artifactId: string, confirmed = false) => {
+      if (!tenantId || !artifactId) return;
+      const res = await learnFromArtifact({ tenantId, artifactType, artifactId, confirmed });
+      if (res.kind === "learned") {
+        toast({ title: "Paige learned from this", description: res.message });
+      } else if (res.kind === "needs_confirm") {
+        toast({
+          title: "Teach your Paige from this?",
+          description: res.proposal,
+          action: (
+            <ToastAction altText="Save to knowledge base" onClick={() => void runLearn(artifactType, artifactId, true)}>
+              Save
+            </ToastAction>
+          ),
+        });
+      }
+      // blocked / error → silent (§13)
+    },
+    [tenantId, toast],
+  );
+
   const handlePublish = useCallback(async () => {
     patch({ publishing: true, error: null });
     try {
@@ -1139,10 +1169,12 @@ export function StudioShell({
         error: null,
       }));
       onPublished?.(result);
+      // Feed the just-published page into the tenant's brain (never blocks publish, §13).
+      void runLearn("page", result.id);
     } catch (err) {
       patch({ publishing: false, error: asStudioError(err, "PUBLISH_FAILED") });
     }
-  }, [saveDraft, tenantId, onPublished, patch]);
+  }, [saveDraft, tenantId, onPublished, patch, runLearn]);
 
   // ── delete THIS project (session-level, all modes) ─────────────────────────────────
   // The in-session mirror of the gallery's card ⋯ Delete. Wired to the RECOVERABLE tier
@@ -1239,6 +1271,8 @@ export function StudioShell({
       setFunnelUrl(url);
       toast({ title: "Funnel is live", description: url ? `Live at ${url}` : "Your funnel is published." });
       onFunnelCreated?.();
+      // Feed the just-published funnel into the tenant's brain (never blocks publish, §13).
+      void runLearn("funnel", funnel.funnelId);
     } catch (err) {
       // §13: if the entry page went live before the funnel step failed, say so — don't let the
       // flow keep showing the page as a draft when it is actually on the internet.
@@ -1251,7 +1285,7 @@ export function StudioShell({
     } finally {
       setFunnelPublishing(false);
     }
-  }, [tenantId, funnel, patch, toast, onFunnelCreated]);
+  }, [tenantId, funnel, patch, toast, onFunnelCreated, runLearn]);
 
   // ── the conversational per-section edit ───────────────────────────────────────────
   const handleSectionEdit = useCallback(
