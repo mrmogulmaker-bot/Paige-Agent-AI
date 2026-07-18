@@ -51,6 +51,7 @@ import { capturePageThumbnailBlob } from "./page-thumbnail";
 import { PromptComposer } from "./PromptComposer";
 import { PublishDialog, kebabSlug } from "./PublishDialog";
 import { StudioTopBar } from "./StudioTopBar";
+import { StudioChat } from "./StudioChat";
 import { StudioRailHeading, StudioSplit } from "./StudioChrome";
 import { useStudioImmersion } from "./StudioImmersion";
 import {
@@ -394,6 +395,7 @@ export function StudioShell({
 
   // The content library, one Sheet — the same LibraryPanel the Content Studio shipped.
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // ── Studio Phase 1 — the single entry point (§18) ─────────────────────────────────
   // `classifiedOnceRef` flips true the moment the FIRST brief this session is submitted from
@@ -1778,6 +1780,7 @@ export function StudioShell({
           onSaveToLibrary={state.blocks.length > 0 ? () => void handleSaveToLibrary() : undefined}
           savingToLibrary={savingToLibrary}
           onOpenLibrary={() => setLibraryOpen(true)}
+          onOpenChat={sessionId ? () => setChatOpen(true) : undefined}
           modeBar={modeBars[mode] ?? null}
           funnelActive={funnelActive}
           funnelLive={funnelUrl != null}
@@ -1962,6 +1965,28 @@ export function StudioShell({
           />
         )}
       </StudioFrame>
+
+      {/* The session's LIVE CHAT (#292) — inside the project, an ongoing two-way conversation with
+          the tenant's creative-design agent (one of Paige's team, not Paige). Starting a project still
+          runs the normal build loop; this is the maintained chat you keep working in once you're in
+          the session. Session-scoped thread, persists across reloads. */}
+      <Sheet open={chatOpen} onOpenChange={setChatOpen}>
+        <SheetContent
+          side="right"
+          className={cn(studioDark ? "dark" : "studio-surface", "flex w-full flex-col gap-0 border-border bg-background p-0 text-foreground sm:max-w-md")}
+        >
+          <SheetHeader className="border-b border-border px-4 py-3">
+            <SheetTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-[var(--gold-dark)]" aria-hidden />
+              Design chat
+            </SheetTitle>
+            <SheetDescription className="text-left">
+              Your creative-design agent, right in this project. Ask it to make images, pages, forms — it builds and shows you here.
+            </SheetDescription>
+          </SheetHeader>
+          <StudioChat sessionId={sessionId} tenantId={tenantId} className="min-h-0 flex-1" />
+        </SheetContent>
+      </Sheet>
 
       {/* The saved library — the Content Studio's third panel, one Sheet away. */}
       <Sheet open={libraryOpen} onOpenChange={setLibraryOpen}>

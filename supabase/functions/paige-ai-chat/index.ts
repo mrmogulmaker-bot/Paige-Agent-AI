@@ -1588,6 +1588,21 @@ Do not raise credit, credit scores, funding, loans, lenders, MCAs, cash advances
         + buildBrandSection(brand, tenant);
     }
 
+    // Studio-session identity (#292 / §8/§14): inside a Vibe Studio project the chat is NOT Paige —
+    // it's her creative-design specialist (the `design-studio` sub-agent), stationed in that project.
+    // Its identity is purely the agent's own system_prompt; we keep the tenant's brand context so it
+    // designs on-brand, and tell it where it is (creating artifacts that render in the studio window).
+    function buildStudioAgentPersonaBlock(agentPrompt: string, agentName: string, tenantName: string, brand: Record<string, any> | null): string {
+      const tenant = String(tenantName || "this practice").trim();
+      const name = String(agentName || "the Studio design agent").trim();
+      return `${String(agentPrompt || "").trim()}
+
+YOU ARE ${name.toUpperCase()} — ${tenant}'s creative-design agent, working inside their Vibe Studio. You are one of Paige's specialist team, NOT Paige herself (Paige runs the owner's main workspace, in the Your Paige tab). Never call yourself Paige or speak as her; you are her design specialist stationed in this project.
+
+WHERE YOU ARE — you're inside ONE Vibe Studio project session. The owner talks to you here to CREATE: "make an image of X", "build a landing page for Y", "draft a form", "spin up a funnel". You actually build it with your creative tools, and what you make appears right here in the studio window — so work like a designer at the desk: make the thing, show it, offer the next move. Keep replies tight and creative — you're building, not lecturing.`.trim()
+        + buildBrandSection(brand, tenant);
+    }
+
     let personaCtx: { tenant_id: string | null; tenant_name: string | null; playbook_config: any; playbook_slug: string | null; funding_enabled: boolean; brand: Record<string, any> | null } =
       { tenant_id: null, tenant_name: null, playbook_config: null, playbook_slug: null, funding_enabled: false, brand: null };
     try {
@@ -3453,7 +3468,31 @@ SUPPORT & FEEDBACK AWARENESS
       }
       try {
         const { data: th } = await supabaseClient
-          .from("paige_chat_threads").select("summary").eq("id", payloadThreadId).maybeSingle();
+          .from("paige_chat_threads").select("summary, studio_session_id").eq("id", payloadThreadId).maybeSingle();
+        // STUDIO SESSION → swap Paige's persona (aiMessages[0]) for her design-studio specialist's
+        // identity (#292). Gated on studio_session_id, which is NULL for EVERY Your-Paige/contact
+        // thread — so the main chat's identity is provably untouched by this branch.
+        if (th?.studio_session_id) {
+          try {
+            let q = supabaseClient
+              .from("paige_subagents").select("name, system_prompt")
+              .eq("slug", "design-studio").eq("enabled", true);
+            // Prefer a tenant-authored design agent over the platform default (NULLS LAST + limit 1).
+            q = personaCtx.tenant_id
+              ? q.or(`tenant_id.is.null,tenant_id.eq.${personaCtx.tenant_id}`)
+              : q.is("tenant_id", null);
+            const { data: agent } = await q.order("tenant_id", { nullsFirst: false }).limit(1).maybeSingle();
+            if (agent?.system_prompt) {
+              aiMessages[0] = {
+                role: "system",
+                content: buildStudioAgentPersonaBlock(
+                  agent.system_prompt, agent.name,
+                  personaCtx.tenant_name || "your practice", personaCtx.brand,
+                ),
+              };
+            }
+          } catch (e) { console.warn("[paige] studio persona swap failed:", (e as Error)?.message); }
+        }
         if (th?.summary) {
           // After persona + systemPrompt, before operator/CRM context.
           aiMessages.splice(2, 0, {
