@@ -25,12 +25,13 @@ import { toast } from "sonner";
 
 /** The agent writes in markdown (**bold**, lists, links) — render it as prose, never as raw text with
  *  literal asterisks (owner 2026-07-18: "this has to be a good experience"). Same token-styled
- *  treatment as DocumentPreview's Prose. Input is coerced to a string first so react-markdown v10
- *  never throws on a mis-typed value (§13 — degrade, don't crash). User turns stay plain text. */
+ *  treatment as DocumentPreview's Prose. The value is coerced to a string at the boundary (react-markdown
+ *  v10 throws on a truthy non-string), so a mis-typed value degrades to empty rather than crashing the
+ *  whole bubble (§13 — degrade, don't crash). User turns stay plain text. */
 function ChatMarkdown({ text }: { text: string }) {
   return (
     <div className="[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2 [&_em]:italic [&_strong]:font-semibold [&_strong]:text-foreground [&_p]:mt-2 first:[&_p]:mt-0 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mt-1 [&_code]:rounded [&_code]:bg-[hsl(var(--foreground)/0.06)] [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em]">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{String(text ?? "")}</ReactMarkdown>
     </div>
   );
 }

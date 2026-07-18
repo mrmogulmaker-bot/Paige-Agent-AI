@@ -5570,10 +5570,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // the agent in an endless "ready to lock these in?" loop that never generates anything (the
           // reported bug). Drafts/creations only; a tenant 'off' is still respected, and publish
           // (make-it-LIVE) is deliberately NOT here — going public still asks first.
+          // Only the confirm-gated build tools need listing — the pure-draft generators
+          // (growth_page_generate / growth_funnel_generate) are NOT in MUTATING_TOOLS, so they never
+          // reach this block and already run at auto; adding them here would be dead code.
           const STUDIO_AUTO_TOOLS = new Set([
             "generate_image", "content_save", "document_generate",
-            "growth_page_generate", "growth_page_save",
-            "growth_funnel_generate", "growth_funnel_build",
+            "growth_page_save", "growth_funnel_build",
           ]);
           if (studioSessionId && STUDIO_AUTO_TOOLS.has(tc.function.name) && autoMode === "confirm") {
             autoMode = "auto";
