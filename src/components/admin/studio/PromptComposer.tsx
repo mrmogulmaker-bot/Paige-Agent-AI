@@ -54,6 +54,10 @@ export interface PromptComposerProps {
   /** A run is in flight — the input stays readable, the submit swaps to a busy affordance. */
   busy?: boolean;
   disabled?: boolean;
+  /** Chat surfaces only: plain Enter submits (Shift+Enter = newline), like every messaging app.
+   *  Off by default so the multi-line page/section BRIEF keeps Enter as a newline (Cmd/Ctrl+Enter
+   *  submits there). */
+  enterSubmits?: boolean;
   /** Section mode only — what is being edited. */
   target?: { index: number; blockType: GrowthBlock["type"]; label: string } | null;
   /** Leave section mode, return to the whole-page brief. */
@@ -118,6 +122,7 @@ export function PromptComposer({
   onSubmit,
   busy = false,
   disabled = false,
+  enterSubmits = false,
   target = null,
   onClearTarget,
   chips,
@@ -197,7 +202,14 @@ export function PromptComposer({
   }, [canSubmit, onSubmit, value, notes, sectionMode]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Cmd/Ctrl+Enter always submits. On chat surfaces (enterSubmits), plain Enter submits too and
+    // Shift+Enter makes a newline — never submit mid-IME-composition (CJK input) or that eats a keystroke.
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      submit();
+      return;
+    }
+    if (enterSubmits && e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
     }

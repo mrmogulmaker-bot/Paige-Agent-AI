@@ -398,6 +398,7 @@ export function StudioChat({
           onSubmit={(v) => void send(v)}
           busy={sending}
           disabled={loading || !threadId}
+          enterSubmits
           placeholder="Tell your design agent what to make…"
           helperText=""
           submitLabel="Send"
