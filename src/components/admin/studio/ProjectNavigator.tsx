@@ -77,19 +77,11 @@ function ArtifactRow({
   const face = faceForRef(artifact);
   const Icon = face.icon;
   const label = artifact.title?.trim() || `Untitled ${face.typeLabel.toLowerCase()}`;
-  const active = false; // ?open is one-shot; no persistent active highlight (would lie, §13)
-  const interactive = true;
+  // No persistent "active" highlight: ?open is a one-shot command the shell consumes, so a highlight
+  // would go stale (lie) the moment a chat build moves the canvas on (§13). Every row is openable.
 
   const glyph = (
-    <span
-      className={cn(
-        "grid h-6 w-6 shrink-0 place-items-center rounded-md border transition-colors",
-        active
-          ? "border-transparent bg-[hsl(var(--studio-glass-border)/0.6)] text-foreground"
-          : "border-[hsl(var(--studio-glass-border)/0.5)] text-muted-foreground",
-        interactive && "group-hover:text-foreground",
-      )}
-    >
+    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-[hsl(var(--studio-glass-border)/0.5)] text-muted-foreground transition-colors group-hover:text-foreground">
       <Icon className="h-3.5 w-3.5" aria-hidden />
     </span>
   );
@@ -110,14 +102,11 @@ function ArtifactRow({
     <button
       type="button"
       onClick={onOpen}
-      aria-current={active ? "true" : undefined}
       title={collapsed ? `${label} · ${face.typeLabel}` : undefined}
       className={cn(
         base,
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-        active
-          ? "bg-[hsl(var(--studio-glass-border)/0.4)] font-medium text-foreground"
-          : "text-muted-foreground hover:bg-[hsl(var(--studio-glass-border)/0.25)] hover:text-foreground",
+        "text-muted-foreground hover:bg-[hsl(var(--studio-glass-border)/0.25)] hover:text-foreground",
       )}
     >
       {glyph}

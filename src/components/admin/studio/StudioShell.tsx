@@ -435,6 +435,10 @@ export function StudioShell({
     { kind: "form"; title: string } | { kind: "copy"; copy: StudioCopy } | null
   >(null);
   const reopenResolvedRef = useRef<string | null>(null);
+  // The content-reopen probe (document/copy) currently in flight, by key. A ref, not a per-run flag,
+  // so it survives unrelated effect re-runs; a newer reopen or a build clears/overwrites it and the
+  // stale probe's results are dropped (verify fast-follow).
+  const reopenInFlightRef = useRef<string | null>(null);
   const [chatBusy, setChatBusy] = useState(false);
   const [chatNote, setChatNote] = useState<string | null>(null);
   const chatElapsedMs = useElapsedMs(chatBusy);
@@ -447,6 +451,7 @@ export function StudioShell({
   const handleCanvasArtifact = useCallback((a: StudioChatArtifact | null) => {
     if (!a) return;
     setReopened(null);
+    reopenInFlightRef.current = null; // a build supersedes any in-flight content-reopen probe (drop its result)
     setCanvasArtifact(a);
     if (openRef) { reopenResolvedRef.current = `${a.kind}:${a.id}`; onReopenConsumed?.(); }
   }, [openRef, onReopenConsumed]);
@@ -481,10 +486,14 @@ export function StudioShell({
   // kind='content' ref is image | document | copy: thumbnail→image; else loadDocument→document; else
   // loadContent→copy (§13 — a genuinely deleted/unknown id simply never opens, never a fake).
   useEffect(() => {
-    if (!openRef) { reopenResolvedRef.current = null; return; } // param cleared → a later re-open of the same id resolves afresh
+    if (!openRef) { reopenResolvedRef.current = null; reopenInFlightRef.current = null; return; } // param cleared → a later re-open of the same id resolves afresh
     if (!tenantId) return;
     const key = `${openRef.kind}:${openRef.id}`;
-    if (reopenResolvedRef.current === key) return; // guard the resolve→clear render round-trip
+    // Already resolved, or the async probe for THIS exact key is still in flight → do nothing. The
+    // in-flight guard is a ref (not a per-run `live` flag), so an unrelated ?param write (mode/device)
+    // that re-runs this effect mid-load neither tears the fetch down nor starts a duplicate — it just
+    // early-returns and lets the original probe settle (verify fast-follow: the dropped-resolve fix).
+    if (reopenResolvedRef.current === key || reopenInFlightRef.current === key) return;
     const ref = state.artifacts.find((a) => a.id === openRef.id);
 
     // page / funnel resolve immediately — the ref only supplies a cosmetic title; the existing page
@@ -505,27 +514,29 @@ export function StudioShell({
       return;
     }
     // content — thumbnailUrl is load-bearing (image vs document/copy), so WAIT for the manifest ref;
-    // don't stamp resolved until it's in (state.artifacts is a dep, so this retries when it fills).
+    // don't touch the guards until it's in (state.artifacts is a dep, so this retries when it fills).
     if (!ref) return;
-    reopenResolvedRef.current = key;
     if (ref.thumbnailUrl) {
+      reopenResolvedRef.current = key;
       setReopened(null);
       setCanvasArtifact({ kind: "content", id: openRef.id, title: ref.title, url: ref.thumbnailUrl });
       onReopenConsumed?.();
       return;
     }
-    // no thumbnail → document or copy. Probe the reused document loader first, then the copy reader.
-    let live = true;
+    // no thumbnail → document or copy. Mark the key IN-FLIGHT (not resolved) so a re-render doesn't
+    // restart it; a NEWER openRef supersedes it (the ref no longer equals `key` → results are dropped).
+    reopenInFlightRef.current = key;
     void loadDocument(tenantId, openRef.id)
       .then((doc) => {
-        if (!live) return null;
+        if (reopenInFlightRef.current !== key) return null; // superseded by a newer reopen/build
         if (doc) { setReopened(null); setCanvasArtifact({ kind: "document", id: openRef.id, title: doc.title || ref.title, url: null }); return null; }
         return loadContent(tenantId, openRef.id);
       })
-      .then((copy) => { if (live && copy) { setCanvasArtifact(null); setReopened({ kind: "copy", copy }); } })
+      .then((copy) => { if (reopenInFlightRef.current === key && copy) { setCanvasArtifact(null); setReopened({ kind: "copy", copy }); } })
       .catch(() => { /* miss → leave the canvas as-is; the row just doesn't open (§13, never a fake) */ })
-      .finally(() => { if (live) onReopenConsumed?.(); });
-    return () => { live = false; };
+      .finally(() => {
+        if (reopenInFlightRef.current === key) { reopenInFlightRef.current = null; reopenResolvedRef.current = key; onReopenConsumed?.(); }
+      });
   }, [tenantId, openRef, state.artifacts, onReopenConsumed]);
 
   // ── Studio Phase 1 — the single entry point (§18) ─────────────────────────────────
