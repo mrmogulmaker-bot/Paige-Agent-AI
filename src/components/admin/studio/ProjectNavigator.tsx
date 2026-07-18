@@ -13,11 +13,12 @@
 // The one WRITE it performs — "add a page" — goes through the createSessionArtifact seam and
 // hands the returned row back to applyMeta, so the rail and stage re-render in lockstep (§10/§13).
 //
-// Honesty note (§13): only PAGE rows re-open their saved content today (the shell hydrates a page
-// draft via ?pageId). Form/funnel/copy/image are create-only in the builder — it has no
-// "open existing" path yet — so their rows are LISTED (the project's contents, truthfully, §19)
-// but NOT presented as openable, because clicking through to a blank builder and saving would
-// silently mint a duplicate. Re-hydrating them is its own tracked task (Studio Slice-1b follow-up).
+// Reopen (#290): EVERY row now reopens onto the #292 session canvas — clicking one sets ?open=<kind>:
+// <id> on the SAME session route (never the legacy ?pageId builder stage, §21), which the shell
+// resolves to a live render: page→LivePreview, image→the asset, document→DocumentPreview, copy→its
+// real words (read-only), and funnel/form→an honest "built" state (no in-canvas loader yet, #319).
+// ?open is a one-shot command the shell consumes, so the rail deliberately shows no persistent
+// "active" highlight (a stale one would lie once a chat build moves the canvas on, §13).
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -63,30 +64,21 @@ function faceForRef(ref: SessionArtifactRef): RefFace {
   }
 }
 
-/** The deep-link that re-opens a PAGE ref onto the builder stage — the shell hydrates that exact
- *  draft from ?pageId. Only pages re-hydrate today (see the honesty note above). */
-function pageHref(sessionId: string, ref: SessionArtifactRef): string {
-  return `/admin/studio/${sessionId}?mode=page&pageId=${ref.id}`;
-}
-
 function ArtifactRow({
   artifact,
   collapsed,
-  active,
   onOpen,
 }: {
   artifact: SessionArtifactRef;
   collapsed: boolean;
-  active: boolean;
-  /** Present only for rows that can genuinely re-open their saved content (pages today). When
-   *  absent the row is informational — listed but not clickable, so it can't mislead or mint a
-   *  duplicate (§13). */
-  onOpen?: () => void;
+  /** Reopen this artifact onto the session canvas (#290). Every row is openable now. */
+  onOpen: () => void;
 }) {
   const face = faceForRef(artifact);
   const Icon = face.icon;
   const label = artifact.title?.trim() || `Untitled ${face.typeLabel.toLowerCase()}`;
-  const interactive = !!onOpen;
+  const active = false; // ?open is one-shot; no persistent active highlight (would lie, §13)
+  const interactive = true;
 
   const glyph = (
     <span
@@ -105,10 +97,7 @@ function ArtifactRow({
   const body = !collapsed && (
     <span className="flex min-w-0 flex-1 flex-col">
       <span className="truncate leading-tight">{label}</span>
-      <span className="truncate text-[11px] font-normal text-muted-foreground">
-        {face.typeLabel}
-        {!interactive && " · view only for now"}
-      </span>
+      <span className="truncate text-[11px] font-normal text-muted-foreground">{face.typeLabel}</span>
     </span>
   );
 
@@ -116,23 +105,6 @@ function ArtifactRow({
     "group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
     collapsed && "justify-center px-0",
   );
-
-  if (!interactive) {
-    // Listed but not yet reopenable — informational, not a button (no pointer, no hover-as-click).
-    return (
-      <div
-        className={cn(base, "cursor-default text-muted-foreground")}
-        title={
-          collapsed
-            ? `${label} · ${face.typeLabel} — reopening saved ${face.typeLabel.toLowerCase()}s from here is coming`
-            : `Reopening saved ${face.typeLabel.toLowerCase()}s from the project is coming — build new pieces in the chat`
-        }
-      >
-        {glyph}
-        {body}
-      </div>
-    );
-  }
 
   return (
     <button
@@ -163,18 +135,20 @@ export function ProjectNavigator({
 }) {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [adding, setAdding] = useState(false);
 
   const { sessionId, tenantId, artifacts, session: meta, loading, notFound, error } = session;
 
-  const activePageId = params.get("pageId");
-
-  // A page row is the active one when its id matches the ?pageId on the stage.
-  const isActivePage = useCallback(
-    (ref: SessionArtifactRef) => !!activePageId && activePageId === ref.id,
-    [activePageId],
-  );
+  // Reopen ANY artifact onto the #292 session canvas (#290): set ?open=<kind>:<id> on the SAME
+  // session route — never the legacy ?pageId builder stage (§21). The shell resolves + consumes it.
+  const openArtifact = useCallback((ref: SessionArtifactRef) => {
+    const p = new URLSearchParams(params);
+    p.set("open", `${ref.kind}:${ref.id}`);
+    p.delete("pageId"); // leave the legacy builder stage behind — reopen lands on the canvas
+    p.delete("mode");
+    setParams(p, { replace: true }); // refining one session, not a new history entry
+  }, [params, setParams]);
 
   const projectTitle = useMemo(() => meta?.title?.trim() || "Untitled project", [meta]);
 
@@ -190,7 +164,8 @@ export function ProjectNavigator({
       const next = await createSessionArtifact({ tenantId, sessionId, type: "page" });
       session.applyMeta(next);
       const fresh = next.artifacts.find((a) => !before.has(`${a.kind}:${a.id}`));
-      if (fresh) navigate(pageHref(sessionId, fresh));
+      // Open the fresh page onto the #292 canvas (not the legacy ?pageId stage, §21).
+      if (fresh) navigate(`/admin/studio/${sessionId}?open=page:${fresh.id}`);
     } catch (err) {
       toast({
         title: "Couldn't add a page",
@@ -283,10 +258,7 @@ export function ProjectNavigator({
                 <ArtifactRow
                   artifact={ref}
                   collapsed={collapsed}
-                  active={ref.kind === "page" && isActivePage(ref)}
-                  onOpen={
-                    ref.kind === "page" ? () => navigate(pageHref(sessionId, ref)) : undefined
-                  }
+                  onOpen={() => openArtifact(ref)}
                 />
               </li>
             ))}

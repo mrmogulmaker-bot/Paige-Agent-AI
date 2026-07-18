@@ -2718,6 +2718,34 @@ export async function loadDocument(tenantId: string, contentId: string): Promise
   }
 }
 
+/** A reopened COPY/text artifact — the plain saved words for a read-only in-session view (#290).
+ *  Copy is a chat deliverable (§21), not a designed canvas asset, so the canvas renders its REAL text
+ *  and never a fabricated "preview" (§13). */
+export interface StudioCopy { id: string; title: string; body: string }
+
+/** Hydrate a COPY (marketing_content kind='text') for a read-only in-session view. Tenant-scoped
+ *  (explicit filter + RLS, §9). The `kind='text'` filter is load-bearing: it's only reached after
+ *  loadDocument returned null + the ref carries no thumbnail, but loadDocument ALSO returns null for a
+ *  document row with corrupt blocks — without this filter that row's raw block JSON would render
+ *  mislabeled as "Copy" (§11 no-raw-JSON / §13). Null on miss/empty → the canvas leaves the stage
+ *  as-is, never throws. */
+export async function loadContent(tenantId: string, contentId: string): Promise<StudioCopy | null> {
+  const tid = requireTenant(tenantId);
+  const { data, error } = await (supabase as unknown as {
+    from: (t: string) => {
+      select: (c: string) => { eq: (k: string, v: string) => { eq: (k: string, v: string) => { eq: (k: string, v: string) => { maybeSingle: () => Promise<{ data: { id: string; title: string | null; body: string | null } | null; error: unknown }> } } } };
+    };
+  })
+    .from("marketing_content")
+    .select("id, title, body")
+    .eq("id", contentId)
+    .eq("tenant_id", tid)
+    .eq("kind", "text")
+    .maybeSingle();
+  if (error || !data || !data.body?.trim()) return null;
+  return { id: data.id, title: data.title || "Untitled copy", body: data.body };
+}
+
 /** Remove an artifact from THIS project's manifest. Never deletes the underlying library row
  *  (§9) — the artifact stays in its growth_ or marketing_content library. RETURNs the session. */
 export async function unlinkSessionArtifact(input: {

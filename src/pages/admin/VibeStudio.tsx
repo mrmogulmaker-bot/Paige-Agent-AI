@@ -11,10 +11,23 @@
 // about the builder itself changed, only where it lives. The sessions/projects home (Recently
 // viewed / My / Starred / Templates) + resume-a-session land in the next slice; today this is
 // the promotion: its own top-level, full-page room.
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useCallback, useMemo } from "react";
 import { useLocation, useOutletContext, useParams, useSearchParams } from "react-router-dom";
-import { isStudioMode, type StudioMode } from "@/components/admin/studio/studio-types";
+import { isStudioMode, type SessionArtifactKind, type StudioMode } from "@/components/admin/studio/studio-types";
 import type { ActiveStudioSession } from "@/components/admin/studio/useActiveStudioSession";
+
+// #290 — ?open=<kind>:<id> asks the shell to reopen a SAVED artifact from the project rail onto the
+// #292 canvas. Validated so a hand-typed junk param is simply ignored (undefined), never a throw.
+const OPEN_KINDS = new Set<SessionArtifactKind>(["page", "form", "funnel", "content"]);
+function parseOpenRef(raw: string | null): { kind: SessionArtifactKind; id: string } | undefined {
+  if (!raw) return undefined;
+  const i = raw.indexOf(":");
+  if (i <= 0) return undefined;
+  const kind = raw.slice(0, i);
+  const id = raw.slice(i + 1);
+  if (!id || !OPEN_KINDS.has(kind as SessionArtifactKind)) return undefined;
+  return { kind: kind as SessionArtifactKind, id };
+}
 
 // Same lazy split the hub used — the heavy Studio bundle only loads on this route.
 const StudioShell = lazy(() =>
@@ -64,6 +77,9 @@ export default function VibeStudio() {
   const modeParam = params.get("mode");
   const mode: StudioMode = isStudioMode(modeParam) ? modeParam : "page";
   const pageId = params.get("pageId") ?? undefined;
+  // Memoize on the primitive string so the shell's reopen resolver doesn't re-run every render (#290).
+  const openParam = params.get("open");
+  const openRef = useMemo(() => parseOpenRef(openParam), [openParam]);
 
   const setMode = (next: StudioMode) => {
     const p = new URLSearchParams(params);
@@ -71,6 +87,17 @@ export default function VibeStudio() {
     // A mode switch is not a new history entry — the operator is refining one session.
     setParams(p, { replace: true });
   };
+
+  // ?open is a one-shot COMMAND (#290): the shell consumes it — after it resolves the artifact onto
+  // the canvas, and again if a fresh chat build supersedes it — so the URL never lies about "what's
+  // open" once the canvas moves on. Clearing here (VibeStudio owns the URL) keeps the shell the sole
+  // owner of canvas state (§18) — it only reads openRef and reports back that it's done with it.
+  const onReopenConsumed = useCallback(() => {
+    if (!params.has("open")) return;
+    const p = new URLSearchParams(params);
+    p.delete("open");
+    setParams(p, { replace: true });
+  }, [params, setParams]);
 
   return (
     <Suspense fallback={<StudioSkeleton />}>
@@ -81,6 +108,8 @@ export default function VibeStudio() {
         mode={mode}
         onModeChange={setMode}
         pageId={pageId}
+        openRef={openRef}
+        onReopenConsumed={onReopenConsumed}
         onManifestChange={activeSession?.applyMeta}
       />
     </Suspense>

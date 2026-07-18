@@ -79,6 +79,7 @@ import {
   learnFromArtifact,
   linkSessionArtifact,
   loadBrandFloor,
+  loadContent,
   loadDocument,
   loadPageDraft,
   loadSession,
@@ -101,6 +102,7 @@ import {
   type BuiltFunnel,
   type OpenedArtifact,
   type PublishPageResult,
+  type StudioCopy,
   type StudioDocument,
 } from "./studio";
 import {
@@ -128,6 +130,7 @@ import {
   type StudioError,
   type StudioErrorCode,
   type StudioMode,
+  type SessionArtifactKind,
   type SessionArtifactRef,
   type StudioSeoDraft,
   type StudioSessionMeta,
@@ -168,6 +171,13 @@ export interface StudioShellProps {
    *  (StudioLayout) passes its `applyMeta` here so the project navigator in the rail re-renders
    *  from the same row the stage just wrote — one source of truth, no split (Slice 1b). */
   onManifestChange?: (meta: StudioSessionMeta) => void;
+  /** #290 — reopen a SAVED artifact from the project rail onto THIS session canvas (§21). The rail
+   *  sets ?open=<kind>:<id>; the shell resolves it to the same canvas states a fresh build produces. */
+  openRef?: { kind: SessionArtifactKind; id: string };
+  /** The shell finished with the current ?open (resolved it, or a build superseded it) — the parent
+   *  clears the param so it's a one-shot command, never a stale "what's open" lie after the canvas
+   *  moves on (#290). */
+  onReopenConsumed?: () => void;
   className?: string;
 }
 
@@ -289,6 +299,8 @@ export function StudioShell({
   initialBrief,
   autostart = false,
   pageId: pageIdProp,
+  openRef,
+  onReopenConsumed,
   mode = "page",
   onModeChange,
   embedded = false,
@@ -416,16 +428,28 @@ export function StudioShell({
   const [pageHydrating, setPageHydrating] = useState(false);
   const [openedDocument, setOpenedDocument] = useState<StudioDocument | null>(null);
   const [docHydrating, setDocHydrating] = useState(false);
+  // #290 — reopen states the build pipeline never puts on the canvas: a form has no in-Studio
+  // renderer yet (honest "built" state), copy is a chat deliverable shown read-only. Cleared the
+  // instant a real build lands (handleCanvasArtifact).
+  const [reopened, setReopened] = useState<
+    { kind: "form"; title: string } | { kind: "copy"; copy: StudioCopy } | null
+  >(null);
+  const reopenResolvedRef = useRef<string | null>(null);
   const [chatBusy, setChatBusy] = useState(false);
   const [chatNote, setChatNote] = useState<string | null>(null);
   const chatElapsedMs = useElapsedMs(chatBusy);
   const reduceMotion = useReducedMotion();
 
   // The chat hands up EXACTLY what it built this turn (null = a chat-only/copy turn → keep the
-  // current stage, never blank a good canvas, §13/verify #2).
+  // current stage, never blank a good canvas, §13/verify #2). A real build SUPERSEDES any reopen:
+  // clear the reopen-only state and consume a still-pending ?open so the URL/rail never lie about
+  // what's on the canvas once a build moves on (#290 blocking fix).
   const handleCanvasArtifact = useCallback((a: StudioChatArtifact | null) => {
-    if (a) setCanvasArtifact(a);
-  }, []);
+    if (!a) return;
+    setReopened(null);
+    setCanvasArtifact(a);
+    if (openRef) { reopenResolvedRef.current = `${a.kind}:${a.id}`; onReopenConsumed?.(); }
+  }, [openRef, onReopenConsumed]);
 
   // Hydrate a page artifact's real blocks for LivePreview; images/funnels need no load.
   useEffect(() => {
@@ -450,6 +474,59 @@ export function StudioShell({
       .catch(() => { if (live) setDocHydrating(false); });
     return () => { live = false; };
   }, [tenantId, canvasArtifact]);
+
+  // Reopen a SAVED artifact from the project rail onto THIS canvas (#290/§21). Resolves the one-shot
+  // ?open ref to the SAME canvas states a fresh build uses, then reports back so the parent clears the
+  // param — it never lingers to lie about "what's open" after a build moves the canvas on. A manifest
+  // kind='content' ref is image | document | copy: thumbnail→image; else loadDocument→document; else
+  // loadContent→copy (§13 — a genuinely deleted/unknown id simply never opens, never a fake).
+  useEffect(() => {
+    if (!openRef) { reopenResolvedRef.current = null; return; } // param cleared → a later re-open of the same id resolves afresh
+    if (!tenantId) return;
+    const key = `${openRef.kind}:${openRef.id}`;
+    if (reopenResolvedRef.current === key) return; // guard the resolve→clear render round-trip
+    const ref = state.artifacts.find((a) => a.id === openRef.id);
+
+    // page / funnel resolve immediately — the ref only supplies a cosmetic title; the existing page
+    // branch (+ hydration effect) and funnel EmptyState render them.
+    if (openRef.kind === "page" || openRef.kind === "funnel") {
+      reopenResolvedRef.current = key;
+      setReopened(null);
+      setCanvasArtifact({ kind: openRef.kind, id: openRef.id, title: ref?.title ?? "", url: null });
+      onReopenConsumed?.();
+      return;
+    }
+    // form — no in-Studio form renderer yet; an honest "built" state, never a fabricated form (§13).
+    if (openRef.kind === "form") {
+      reopenResolvedRef.current = key;
+      setCanvasArtifact(null);
+      setReopened({ kind: "form", title: ref?.title ?? "" });
+      onReopenConsumed?.();
+      return;
+    }
+    // content — thumbnailUrl is load-bearing (image vs document/copy), so WAIT for the manifest ref;
+    // don't stamp resolved until it's in (state.artifacts is a dep, so this retries when it fills).
+    if (!ref) return;
+    reopenResolvedRef.current = key;
+    if (ref.thumbnailUrl) {
+      setReopened(null);
+      setCanvasArtifact({ kind: "content", id: openRef.id, title: ref.title, url: ref.thumbnailUrl });
+      onReopenConsumed?.();
+      return;
+    }
+    // no thumbnail → document or copy. Probe the reused document loader first, then the copy reader.
+    let live = true;
+    void loadDocument(tenantId, openRef.id)
+      .then((doc) => {
+        if (!live) return null;
+        if (doc) { setReopened(null); setCanvasArtifact({ kind: "document", id: openRef.id, title: doc.title || ref.title, url: null }); return null; }
+        return loadContent(tenantId, openRef.id);
+      })
+      .then((copy) => { if (live && copy) { setCanvasArtifact(null); setReopened({ kind: "copy", copy }); } })
+      .catch(() => { /* miss → leave the canvas as-is; the row just doesn't open (§13, never a fake) */ })
+      .finally(() => { if (live) onReopenConsumed?.(); });
+    return () => { live = false; };
+  }, [tenantId, openRef, state.artifacts, onReopenConsumed]);
 
   // ── Studio Phase 1 — the single entry point (§18) ─────────────────────────────────
   // `classifiedOnceRef` flips true the moment the FIRST brief this session is submitted from
@@ -1881,6 +1958,36 @@ export function StudioShell({
         <SectionCard className="max-w-md">
           <EmptyState icon={Wand2} tone="brand" title="Your funnel is built"
             description="The whole sequence — landing page, intake form, and thank-you — is saved to this project. Ask your design agent to change any step and it rebuilds it here." />
+        </SectionCard>
+      </div>
+    );
+  } else if (reopened?.kind === "copy") {
+    // Reopened COPY (#290) — a chat deliverable (§21) shown read-only as its REAL saved words, never
+    // dressed up as a designed asset (§13). Editing happens in the chat.
+    sessionCanvas = (
+      <div className="grid h-full place-items-center p-4 md:p-6">
+        <SectionCard className="flex max-h-full w-full max-w-2xl flex-col overflow-hidden">
+          <div className="border-b border-border/60 px-5 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Copy</p>
+            <h3 className="mt-0.5 truncate font-display text-sm font-semibold text-foreground">{reopened.copy.title}</h3>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{reopened.copy.body}</p>
+          </div>
+          <div className="border-t border-border/60 px-5 py-2.5">
+            <p className="text-xs text-muted-foreground">Ask your design agent in the chat to rewrite or repurpose this.</p>
+          </div>
+        </SectionCard>
+      </div>
+    );
+  } else if (reopened?.kind === "form") {
+    // Reopened FORM (#290) — no in-Studio form loader yet, so an honest "built" state that mirrors the
+    // funnel branch (§13/§19). A fabricated form preview would lie; this states the truth.
+    sessionCanvas = (
+      <div className="grid h-full place-items-center">
+        <SectionCard className="max-w-md">
+          <EmptyState icon={Wand2} tone="brand" title="Your form is built"
+            description="It’s filed to this project and live for intake. Editing forms on the canvas is coming — ask your design agent in the chat to change any question and it updates it here." />
         </SectionCard>
       </div>
     );
