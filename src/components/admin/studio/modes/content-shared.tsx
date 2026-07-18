@@ -193,7 +193,9 @@ export function LibraryPanel({
                   {onKeep && (
                     <Button
                       variant="ghost" size="sm" className="gap-1.5"
-                      disabled={keepingId === r.id}
+                      // Disabled through the "Kept" confirmation window too, so a second click can't
+                      // re-fire the keep (and re-trigger the learn prompt) before it reverts.
+                      disabled={keepingId === r.id || keptId === r.id}
                       onClick={() => void keep(r)}
                       title="Keep this in your Saved library"
                     >

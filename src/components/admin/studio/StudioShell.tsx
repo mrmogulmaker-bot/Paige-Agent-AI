@@ -1180,7 +1180,9 @@ export function StudioShell({
       if (!tenantId || !artifactId) return false;
       try {
         await saveToLibrary({ tenantId, kind, artifactId, title, thumbnailUrl: thumbnailUrl ?? null });
-        toast({ title: "Kept in your library", description: "Saved to your media library." });
+        // Name the destination exactly as the tenant sees it in the nav ("Saved library"), never the
+        // internal #284 codename "media library" (§6/§13 continuity).
+        toast({ title: "Kept in your library", description: "Added to your Saved library." });
         void runLearn(kind, artifactId); // best-effort; never blocks or fails the keep (§13)
         return true;
       } catch (err) {
