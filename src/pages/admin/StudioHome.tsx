@@ -262,14 +262,17 @@ export default function StudioHome() {
           compactHero ? "py-10 md:py-12" : "py-12 md:py-16",
         )}
       >
-        {/* §30 REBUILD — the hero's decorative BACKGROUND is now the proven landing-page 3D scene
-            (PaigeScene: real three.js, the gold-glass Paige + the flying-saucer companion), mounted
-            as an absolute z-0 layer behind the z-[1] composer. This REPLACES the stripped hand-rolled
-            CSS cosmic field (stars/nebula/comet/orbit/void/grain/scrim) that kept flipping/washing.
-            The wrapper sets the entrance driver, gates on the Studio motion preference, renders the
-            scene DARK-ONLY (light keeps the bright --studio-hero-gradient), and falls back to the
-            gradient when WebGL is unavailable or the 3D throws (§18/§29). */}
-        <StudioHeroScene />
+        {/* §30 REFERENCE ≠ CLONE — the hero's decorative BACKGROUND is the Studio-NATIVE 3D Composition
+            Field (StudioCompositionField: real three.js, a GPU particle field that assembles a page-
+            layout GHOST around Paige's gold light source), mounted as an absolute z-0 layer behind the
+            z-[1] composer. It replaces the earlier verbatim mount of the landing character scene
+            (PaigeScene) — the product metaphor (you describe → Studio composes), not the marketing
+            site's identity. The wrapper gates on the Studio motion preference, renders the scene
+            DARK-ONLY (light keeps the bright --studio-hero-gradient), and falls back to the gradient
+            when WebGL is unavailable or the 3D throws (§18/§29). `composing`/`busy` are pure data
+            (typing → leans legible; submit → gold lock-in) and change no geometry of this frozen
+            section (§28). */}
+        <StudioHeroScene composing={brief.trim().length > 0} busy={starting} />
 
         <div className="relative z-[1] mx-auto w-full max-w-2xl">
           {/* The text cluster tightens (and drops the subhead + shrinks the mark) in the compact
