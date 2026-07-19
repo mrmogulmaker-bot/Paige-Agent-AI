@@ -957,3 +957,34 @@ or consciously judged already-good). It reloads every session so the meaning nev
   contrast, type, controls, motion, real content, pop — and does the surface now look young, vibrant, and
   brand-new next to the best-in-class bar?"* If any item was skipped without a conscious "already good"
   call, the facelift isn't done.
+
+## 28. Approved is FROZEN — once the owner approves a design, do not touch it.
+
+**Directive (owner: Antonio, 2026-07-19):** The moment the owner says **"approve"** (or "approved,"
+"this is perfect," "lock it," "leave it") about a design/surface, that design is **DONE and FROZEN.**
+Take it off the active list and treat it as **change-blocked**: do **not** move it, re-align it, resize
+it, restyle it, "improve" it, or fold it into a later refactor — **not even a pixel** — unless the owner
+**specifically tells you to change that exact thing.** This exists because an approved, dialed-in design
+was silently moved ("You had the hero section aligned perfectly before. I don't know why you moved it")
+and that must never happen again. An approved design is not raw material for the next pass; it is a
+finished, protected asset.
+
+- **On "approve," do two things immediately:** (1) mark the item **DONE** (archive it out of the live
+  task list per §24), and (2) record it as **approved-frozen** — a short note in the task ledger / a
+  `APPROVED-FROZEN (§28)` comment at the surface — so a future session (or a mid-flow crew) knows not to
+  touch it.
+- **Frozen means frozen, even when adjacent work is "right there."** If you're editing a nearby surface
+  and it would be "convenient" to also nudge the frozen one (a shared token, a layout tweak, a facelift
+  sweep), **stop** — a frozen surface is explicitly out of scope for any change you weren't told to make.
+  A §27 facelift, a §11 sweep, a refactor, a "consistency" pass — none of them override a freeze. If a
+  frozen surface genuinely *must* change to keep something else working, **surface it and ask first**
+  (name the exact change), don't just do it.
+- **Only the owner unfreezes.** A frozen design is re-openable **only** by an explicit owner instruction
+  naming that design and the change wanted. Your own judgment that it "could be better," a verifier/critic
+  finding, or a doctrine rule you think applies is **not** license to edit it — raise it, let the owner
+  decide.
+- **This binds the whole platform,** every surface, not just the Studio — any design the owner has
+  approved.
+- **The test, every time:** *"Has the owner approved this exact surface? If yes, did they specifically
+  ask me to change this exact thing? If not — hands off."* If you can't point to an explicit owner
+  instruction to change a frozen design, you do not change it.

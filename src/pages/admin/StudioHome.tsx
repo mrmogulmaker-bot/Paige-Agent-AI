@@ -290,12 +290,15 @@ export default function StudioHome() {
         ref={heroRef}
         className={cn(
           "studio-hero relative flex flex-col justify-center overflow-hidden px-4",
-          // Full cinematic field for first-run/empty; a SLIM command band on return (#1) — a thin
-          // command band (~one composer-row tall, tight py-3/py-4) whose bottom edge sits at the
-          // rail-footer hairline above "Back to Paige", so "Your projects" is right there on return.
-          compactHero
-            ? "min-h-0 py-3 md:py-4"
-            : "min-h-[calc(100vh-5.5rem)] py-12 md:py-16",
+          // The hero is ALWAYS the tall cinematic creative window — its bottom edge aligns with the
+          // rail's footer hairline above "Back to Paige" (calc(100vh - 5.5rem) = viewport minus the
+          // rail footer block), so the field and the rail run to the same line. It is NOT a slim
+          // band: the shooting star / comet / aurora need real room to be seen and read (owner
+          // 2026-07-19). Returning users get a slightly tighter vertical rhythm (leaner cluster,
+          // subhead hidden), but the FIELD height is identical so the alignment never changes.
+          // APPROVED-FROZEN (§28): do not shrink or re-align this without an explicit owner request.
+          "min-h-[calc(100vh-5.5rem)]",
+          compactHero ? "py-10 md:py-12" : "py-12 md:py-16",
         )}
       >
         {/* Decorative cosmic layers, back → front. All aria-hidden + pointer-events-none,
