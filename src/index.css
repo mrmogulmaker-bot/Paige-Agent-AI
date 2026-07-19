@@ -344,15 +344,17 @@ All colors MUST be HSL.
      Own keyframes so dark's blooms are untouched; token-only light violet/blue (§23). */
   .studio-surface:not(.dark) .studio-nebula::before {
     filter: blur(96px);
-    /* §29 light-contrast pass — opacity 0.68 → 0.80 so the violet aurora carries real colour on the
-       near-white field instead of washing out under the heavy blur (§25 err-bold; §23 light stays
-       light — this lifts the decorative bloom, not the base field). */
+    /* LIGHT keeps the BOLD bloom (0.48/0.30) — a bright violet aurora reads as premium colour on the
+       near-white field where it would WASH the dark planetarium (§23/§29, per-theme). This background
+       override is what the dark base no longer carries. */
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.48) 0%, hsl(var(--studio-nebula-gold) / 0.30) 42%, transparent 72%);
     opacity: 0.80;
     animation: studio-aurora-a 42s ease-in-out infinite;
   }
   .studio-surface:not(.dark) .studio-nebula::after {
     filter: blur(96px);
-    /* 0.62 → 0.74 to match — the electric-blue aurora lobe now reads on the bright field. */
+    /* LIGHT keeps the BOLD electric-blue bloom (0.50/0.32). */
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-blue) / 0.50) 0%, hsl(var(--studio-nebula-blue) / 0.32) 42%, transparent 72%);
     opacity: 0.74;
     animation: studio-aurora-b 50s ease-in-out infinite;
   }
@@ -608,10 +610,11 @@ All colors MUST be HSL.
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     background-size: 140px 140px;
     background-repeat: repeat;
-    /* opacity 0.05 → 0.10 (owner 2026-07-19): a 0.05 overlay grain sat below the eye's threshold —
-       this is a real, resolvable film texture over the planetarium now, still far from noisy. */
+    /* DARK grain 0.06 — REGRESSION FIX (owner 2026-07-19): 0.10 overlay grain on the near-black field
+       LIGHTENS it (overlay pushes the noise's bright specks up), adding a gray haze that helped make
+       "dark look like light". 0.06 keeps a real film tooth without hazing the planetarium. */
     mix-blend-mode: overlay;
-    opacity: 0.10;
+    opacity: 0.06;
   }
   .studio-surface:not(.dark) .studio-grain {
     /* 0.035 → 0.08 soft-light: on the bright field soft-light stays clean (won't dirty the whites),
@@ -669,21 +672,23 @@ All colors MUST be HSL.
   }
   .studio-nebula::before {            /* GOLD — signature, low opacity, NOT the act */
     top: -18%; left: -8%; width: 42rem; height: 42rem;
-    /* 3-stop volumetric falloff (fidelity, owner 2026-07-19) — a hot core → mid → transparent so the
-       bloom reads dimensional, not a flat single-stop disc. */
-    /* core/mid 0.34/0.18 → 0.48/0.30 (owner 2026-07-19): the prior "uplift" moved only ~0.06 and
-       stayed sub-threshold under a 70px blur; this is a visible bloom (§25 err-bold), still a soft
-       decorative glow, never a fill and never the act (gold-budget §11). */
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.48) 0%, hsl(var(--studio-nebula-gold) / 0.30) 42%, transparent 72%);
+    /* 3-stop volumetric falloff (fidelity) — a hot core → mid → transparent so the bloom reads
+       dimensional, not a flat single-stop disc. */
+    /* DARK base = RESTRAINED (0.30/0.16). REGRESSION FIX (owner 2026-07-19: "dark mode looks like
+       light mode"): the bold 0.48/0.30 light-contrast value lives in the base, which the DARK
+       planetarium inherits — a bright wide bloom on the 5%-L field washed the black out to pale.
+       Dark keeps the field DEEP; the bold bloom is scoped to LIGHT only below (§23/§29 — light and
+       dark are tuned SEPARATELY, a bright bloom that reads on white washes on black). */
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.30) 0%, hsl(var(--studio-nebula-gold) / 0.16) 42%, transparent 72%);
     /* 42s (was 54s) — the heavy 70px blur hides slow drift, so the dark nebula is sped up + widened
        (keyframe below) to visibly BREATHE (§ Goal C, owner 2026-07-19). */
     animation: studio-nebula-a 42s ease-in-out infinite;
   }
   .studio-nebula::after {             /* ELECTRIC BLUE */
     right: -12%; bottom: -22%; width: 38rem; height: 38rem;
-    /* core/mid 0.36/0.20 → 0.50/0.32 (owner 2026-07-19): matched visible jump to the gold lobe so the
-       electric-blue bloom actually reads under the heavy blur (§25 err-bold), still purely decorative. */
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-blue) / 0.50) 0%, hsl(var(--studio-nebula-blue) / 0.32) 42%, transparent 72%);
+    /* DARK base = RESTRAINED (0.32/0.18) — same regression fix as the gold lobe: the bold 0.50/0.32
+       washed the dark field. Bold value scoped to LIGHT only below. */
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-blue) / 0.32) 0%, hsl(var(--studio-nebula-blue) / 0.18) 42%, transparent 72%);
     animation: studio-nebula-b 48s ease-in-out infinite;
   }
 
