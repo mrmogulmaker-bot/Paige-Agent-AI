@@ -904,3 +904,56 @@ Playbook and §9-clean.
 - **The test, every time:** *"Did Paige forge this from the DNA and the tenant's brand — steered off
   the cheesy tells — and, if it truly landed, did she remember it in the one voyage-3 space, honestly?"*
   If she typed a raw prompt, stood up a second embedder, or stored a hoped-for result, it isn't done.
+
+## 27. "Facelift" is a defined operation — the standing facelift checklist.
+
+**Directive (owner: Antonio, 2026-07-19):** When the owner says **"facelift,"** it is not a vague vibe —
+it is a **defined operation with a standard checklist we run every time**, on *any* surface of the
+platform. The word is the human metaphor: a facelift **pulls slack back, lifts things up, and makes them
+pop** — the surface comes out looking *young, vibrant, and brand-new*, tighter and more alive than
+before. Claude is not human and does not "have a face," so this section removes the ambiguity: "facelift"
+= run the list below, top to bottom, and don't call it done until each item has been considered (fixed,
+or consciously judged already-good). It reloads every session so the meaning never drifts.
+
+- **The facelift checklist — walk it EVERY time (any surface):**
+  1. **Reclaim space / cut the fat.** Remove or shrink anything eating the viewport for no reason — a
+     banner/hero/masthead that pushes the real work below the fold (§11 banner rule). The thing the user
+     came to do leads; decoration earns its pixels or goes.
+  2. **Symmetry & alignment.** Make it genuinely symmetric — consistent spacing rhythm, aligned edges,
+     balanced columns, even gaps. Lopsided/ragged layout is the amateur tell a facelift kills.
+  3. **Definition — bolden the faint.** Thin, barely-there hairlines/borders that we "can't really tell"
+     get a touch more weight so those areas **stand out**; add real **elevation tiers** (base → card →
+     raised) so panels/cards **bulge distinctly** instead of floating at one flat level (§22 layered
+     depth, never "made-it-dark").
+  4. **Contrasting colors.** Deliberate, contrasting color relationships so elements separate and **pop** —
+     figure from ground, active from resting, one section from the next. This lives under §23 (color is
+     emotional; light must be genuinely light, dark genuinely dark) and §11 (AA contrast in BOTH themes,
+     token-only, gold spent ONLY on the act) — a facelift always re-checks contrast against both.
+  5. **Type.** Tighten the type ladder so hierarchy reads at a glance — weight + size + tracking, display
+     sizes with tight negative tracking (the "expensive" tell), `tabular-nums` on figures (§22).
+  6. **Controls.** Button/input **outlines, focus rings, and hover/press states** made crisp and tactile
+     (indigo rings; gold only on the act, §11) — the controls should feel responsive, not flat.
+  7. **Motion — make it alive.** Add or tune the **earned** motion: ambient life (traveling/scan beams,
+     the actively-building card's edge-beam, sidebar stardust, a slow back-and-forth rail light) plus
+     hover/press micro-interactions and continuous-act transitions (§22). Every effect writes its OWN
+     `prefers-reduced-motion` fallback; heavy WebGL is confined to where it earns its pixels.
+  8. **Real content over placeholders.** Real thumbnails/previews, real words, real states — never a
+     glyph-in-a-box or lorem where the actual artifact could show (§13/§22).
+  9. **Distinctiveness / "pop."** The net effect: each element reads as *itself* and the surface looks
+     new — the sum of 1–8, judged by the §25 taste bar ("would a screenshot stand next to Linear /
+     Stripe / Vercel without embarrassment?").
+- **The landing page is the exception.** The **public marketing landing page** is where the *heavy*
+  treatment lives — 3D/WebGL rendering, cinematic hero, the show-stopping stuff — so its "facelift" goes
+  beyond this standard app-surface list. Every *other* surface (admin, Studio, portal, dashboards) gets
+  the standard checklist above; it is not a place for a 3D hero.
+- **A facelift ALWAYS runs the design crew (§1/§5/§11/§25).** Because a facelift is design work by
+  definition, it convenes the crew — design engineer + adversarial verifier + compliance officer +
+  **design critic** — and the crew judges the result **against this checklist**, not just "does it look
+  fine." Slicing a big facelift into shippable slices (§4) is expected; the checklist still binds each.
+- **Everything here stays §-bound.** Token-only, AA in both themes (§11), color chosen for emotion +
+  genuine light↔dark (§23), layered depth (§22), motion-safe, gold only on the act. The checklist tells
+  us *what* to touch; the existing sections govern *how*.
+- **The test, every time:** *"Did I actually walk the whole facelift list — space, symmetry, definition,
+  contrast, type, controls, motion, real content, pop — and does the surface now look young, vibrant, and
+  brand-new next to the best-in-class bar?"* If any item was skipped without a conscious "already good"
+  call, the facelift isn't done.
