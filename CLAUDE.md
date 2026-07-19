@@ -1074,6 +1074,16 @@ design off before we rebuild a brand new one."*
 - **A fresh design usually means REUSING the proven one (§18).** "New direction" almost never means a
   third fragile hand-rolled variant — it means adopting the approach that already works elsewhere (the
   landing 3D hero). Strip-then-rebuild and reuse-don't-rebuild are the same instinct.
+- **When a part of the site already WORKS, reference back to it — don't reinvent it (owner: Antonio,
+  2026-07-19).** Before rebuilding anything, the FIRST question of the diagnostic is: *"is there a part
+  of this platform that already does this correctly?"* If yes, that working part is the base — read it,
+  reference it, reuse its exact pattern (the landing page's real three.js `PaigeScene` is the standing
+  example: it renders a live 3D hero flawlessly, so the Studio hero rebuilds ON it, not on a fourth
+  hand-rolled cosmic field). The proven, working code is the reference implementation; the broken
+  surface adopts it wholesale. Chasing a from-scratch rebuild when a working twin already ships is the
+  waste this rule ends — *"if there's a part of the site that actually works, let's reference back to
+  that part."* This binds every strip-then-rebuild: the rebuild target is the working part, found by
+  the diagnostic, never a blank page.
 - **The tells that you skipped the strip:** the surface *"holds for a moment then flips/washes,"* or
   *"feels like it's on top of the old thing,"* or you're patching the **same** surface a third time.
   That is old code still underneath. Stop layering — go back and strip.
