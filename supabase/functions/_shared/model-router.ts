@@ -216,6 +216,7 @@ import { meshyTextTo3d } from "./meshy.ts";
 import { geminiImage } from "./gemini-image.ts";
 import { renderDoc, type DocFormat } from "./doc-render.ts";
 import { elevenlabsTts } from "./elevenlabs.ts";
+import { traceLLMCall } from "./llm-trace.ts";
 
 // Re-export the shared vocabulary from its one home (§12) so a caller imports everything it
 // needs from the router, not from three files.
@@ -235,6 +236,13 @@ export interface CallOpts {
   model_override?: string;
   callerFunction?: string;
   brandVoice?: string;
+  // §34 Layer-1 trace correlation — all optional + defaulted, so every existing caller compiles
+  // unchanged (additive, §12). taskId groups the traces for one logical task; agentId identifies the
+  // sub-agent (falls back to callerFunction); parentTraceId links a child call to its parent for the
+  // multi-agent tree.
+  taskId?: string;
+  agentId?: string;
+  parentTraceId?: string;
   /** Persist this generation as a studio_deliverable (bucket object + provenance row). Defaults to
    *  true for binary artifacts and false for TEXT — text is only a deliverable when the caller says
    *  so (persist:true), so high-volume internal text (classify/summarize) doesn't churn storage. */
@@ -770,8 +778,23 @@ export async function callModel(
   try {
     result = await cell.invoke(task, effectiveOverride);
   } catch (e) {
+    // §34 L1: trace correlation shared by both outcome branches below.
+    const traceBase = {
+      tenant_id: opts.tenantId,
+      task_id: opts.taskId ?? null,
+      agent_id: opts.agentId ?? opts.callerFunction ?? null,
+      parent_trace_id: opts.parentTraceId ?? null,
+      job_kind: `${modality}:${tier}`,
+      modality,
+      tier,
+      latency_ms: Date.now() - started,
+      input: text,
+      metadata: { caller_function: opts.callerFunction, actor_role: opts.actorRole },
+    } as const;
     if (e instanceof NeedsConfigError || e instanceof NotYetConfiguredError) {
       const provider = e instanceof NeedsConfigError ? e.provider : cell.provider;
+      // Honest needs_config degrade → trace it as such (not a fake success, not an error).
+      traceLLMCall(getAdmin(), { ...traceBase, provider, model: opts.model_override ?? null, status: "needs_config", error_class: "needs_config" });
       return {
         provider,
         model: opts.model_override ?? "",
@@ -781,6 +804,15 @@ export async function callModel(
         needs_config: true,
       };
     }
+    // Real provider error → trace it (scrubbed message) before rethrowing to the caller.
+    traceLLMCall(getAdmin(), {
+      ...traceBase,
+      provider: cell.provider,
+      model: opts.model_override ?? null,
+      status: "error",
+      error_class: (e as Error)?.name ?? "error",
+      error_message: (e as Error)?.message ?? String(e),
+    });
     throw e;
   }
 
@@ -841,6 +873,30 @@ export async function callModel(
     cost_estimate_usd: cost ?? null,
     latency_ms: result.latency_ms,
     caller_function: opts.callerFunction ?? null,
+  });
+
+  // §34 L1: the full trace row (scrubbed + truncated I/O, tokens, cost estimate, correlation). Detached
+  // best-effort — never blocks the return. Output is the produced content or, for a binary artifact, the
+  // deliverable reference (the writer never inlines bytes).
+  traceLLMCall(getAdmin(), {
+    tenant_id: opts.tenantId,
+    task_id: opts.taskId ?? null,
+    agent_id: opts.agentId ?? opts.callerFunction ?? null,
+    parent_trace_id: opts.parentTraceId ?? null,
+    provider: result.provider,
+    model: result.model,
+    job_kind: `${modality}:${tier}`,
+    modality,
+    tier,
+    status: "success",
+    tokens_in: result.tokens_in ?? null,
+    tokens_out: result.tokens_out ?? null,
+    latency_ms: result.latency_ms,
+    cost_estimate_usd: cost ?? null,
+    input: text,
+    output: typeof result.content === "string" ? result.content : (persisted.artifact_url ?? result.artifact_url ?? null),
+    deliverable_id: persisted.deliverable_id ?? null,
+    metadata: { caller_function: opts.callerFunction, actor_role: opts.actorRole },
   });
 
   return {

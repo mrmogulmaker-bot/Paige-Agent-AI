@@ -1,0 +1,169 @@
+// §34 Layer 1 — Observability writer for paige_llm_trace.
+//
+// One row per LLM call. This module owns the three safety properties the adversarial pre-flight
+// demanded (the existing paige_audit_log writer copies the *words* "best-effort, never blocks" but
+// NOT the safety — it logs no raw content and is awaited; a full-I/O trace must do better):
+//
+//   S0 SCRUB — every text that could carry a credential (input, output, error message) is run through
+//      scrubSecrets() BEFORE it leaves this process. input/output MAY still hold tenant/client PII (that
+//      is the point of a trace) but NEVER a secret. We serialize only what we are handed — never Deno.env,
+//      never a raw opts/headers object (metadata is an explicit scalar allowlist).
+//   S1 DETACH — the write is fired through EdgeRuntime.waitUntil (NOT awaited on the response path), so
+//      uploading a multi-KB row never adds latency to the actual generation. Own try/catch, bounded by an
+//      AbortController timeout, never rethrows. Best-effort: MAY drop under isolate teardown (stated
+//      honestly, §13) — we do not claim certainty.
+//   S3 CAP — input/output are truncated to 32KB with truncation flags + original length; binaries are
+//      referenced by deliverable_id, never inlined.
+//
+// Pure Supabase (§34): a service-role insert into one Postgres table. No vendor observability SDK.
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+/** Provenance stamp — bump when the estimator/scrubber/schema changes so a reader knows what produced a row. */
+export const ROUTER_VERSION = "trace-1";
+/** The cost figures in paige_llm_trace are ESTIMATES on this basis — surfaced so no dashboard reads them as a bill. */
+export const COST_BASIS = "list price, in+out tokens, excl caching/thinking/tool round-trips, 2026-07";
+
+const EXCERPT_CAP = 32 * 1024; // 32KB per I/O field (S3). Logged here so the cap is never silent (§24).
+
+// Credential shapes to redact. Allowlist-of-patterns on the WRITE path (S0). Not exhaustive by design —
+// the goal is to catch the well-known provider/cloud key formats that must never land at rest, not to be a
+// perfect DLP. Extend as new shapes appear.
+const SECRET_PATTERNS: RegExp[] = [
+  /sk-ant-[A-Za-z0-9_-]{10,}/g,               // Anthropic
+  /sk-[A-Za-z0-9]{20,}/g,                       // OpenAI / generic sk-
+  /\bAKIA[0-9A-Z]{16}\b/g,                      // AWS access key id
+  /\bASIA[0-9A-Z]{16}\b/g,                      // AWS temp key id
+  /\bxox[baprs]-[A-Za-z0-9-]{10,}/g,            // Slack tokens
+  /\bgh[pousr]_[A-Za-z0-9]{20,}/g,              // GitHub tokens
+  /\bBearer\s+[A-Za-z0-9._-]{12,}/gi,           // Authorization: Bearer …
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, // JWT
+  /([?&](?:token|sig|signature|key|apikey|api_key|access_token)=)[^&\s"']{8,}/gi, // signed-URL query params
+  /\b[A-Fa-f0-9]{64,}\b/g,                      // long hex blobs (keys/hashes pasted inline)
+];
+
+/** Redact known credential shapes. input/output keep their PII (that's the trace's job) but shed secrets. */
+export function scrubSecrets(input: string): string {
+  let s = input;
+  for (const re of SECRET_PATTERNS) s = s.replace(re, "[REDACTED]");
+  // keep the signed-URL param NAME, drop only the value
+  s = s.replace(/([?&](?:token|sig|signature|key|apikey|api_key|access_token)=)\[REDACTED\]/gi, "$1[REDACTED]");
+  return s;
+}
+
+/** Coerce any input/output payload to a bounded, scrubbed string. Returns the excerpt + truncation flags. */
+export function toExcerpt(value: unknown): { text: string | null; truncated: boolean; len: number | null } {
+  if (value === undefined || value === null) return { text: null, truncated: false, len: null };
+  let raw: string;
+  if (typeof value === "string") raw = value;
+  else {
+    try { raw = JSON.stringify(value); } catch { raw = String(value); }
+  }
+  const scrubbed = scrubSecrets(raw);
+  const len = scrubbed.length;
+  if (len <= EXCERPT_CAP) return { text: scrubbed, truncated: false, len };
+  return { text: scrubbed.slice(0, EXCERPT_CAP) + "…[truncated]", truncated: true, len };
+}
+
+/** Only these scalar keys survive into metadata — never a raw opts/headers object (S0/S6). */
+const METADATA_ALLOWLIST = ["caller_function", "actor_role", "retry_of", "attempt", "capped", "low_confidence"] as const;
+function safeMetadata(meta: Record<string, unknown> | undefined): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!meta) return out;
+  for (const k of METADATA_ALLOWLIST) {
+    const v = meta[k];
+    if (v === undefined || v === null) continue;
+    // scalars only — an object/array could smuggle a secret past the allowlist
+    if (typeof v === "string") out[k] = scrubSecrets(v).slice(0, 512);
+    else if (typeof v === "number" || typeof v === "boolean") out[k] = v;
+  }
+  return out;
+}
+
+export interface TraceRow {
+  tenant_id?: string | null;
+  task_id?: string | null;
+  agent_id?: string | null;
+  parent_trace_id?: string | null;
+  provider: string;
+  model?: string | null;
+  job_kind?: string | null;
+  modality?: string | null;
+  tier?: string | null;
+  status: "success" | "error" | "needs_config";
+  tokens_in?: number | null;
+  tokens_out?: number | null;
+  latency_ms?: number | null;
+  cost_estimate_usd?: number | null;
+  /** Raw input payload — scrubbed + truncated here, never stored raw. */
+  input?: unknown;
+  /** Raw output payload — scrubbed + truncated here, never stored raw. */
+  output?: unknown;
+  error_class?: string | null;
+  error_message?: string | null;
+  deliverable_id?: string | null;
+  doctrine_gate_hits?: unknown;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Record one LLM-call trace. DETACHED and best-effort (S1): returns immediately; the insert runs via
+ * EdgeRuntime.waitUntil so it never adds latency to the caller's response and never throws into the
+ * generation path. `admin` is the service-role client (getAdmin()); a null client is a silent no-op.
+ */
+export function traceLLMCall(admin: SupabaseClient | null, row: TraceRow): void {
+  if (!admin) return; // no service context → no-op (honest: no trace rather than a fake one)
+
+  const inp = toExcerpt(row.input);
+  const outp = toExcerpt(row.output);
+  const record = {
+    tenant_id: row.tenant_id ?? null,
+    task_id: row.task_id ?? null,
+    agent_id: row.agent_id ?? null,
+    parent_trace_id: row.parent_trace_id ?? null,
+    provider: row.provider,
+    model: row.model ?? null,
+    job_kind: row.job_kind ?? null,
+    modality: row.modality ?? null,
+    tier: row.tier ?? null,
+    status: row.status,
+    // NULL, never 0, when the provider didn't report — null cost/tokens ≠ zero (S4).
+    tokens_in: row.tokens_in ?? null,
+    tokens_out: row.tokens_out ?? null,
+    latency_ms: row.latency_ms ?? null,
+    cost_estimate_usd: row.cost_estimate_usd ?? null,
+    cost_basis: row.cost_estimate_usd == null ? null : COST_BASIS,
+    input_excerpt: inp.text,
+    output_excerpt: outp.text,
+    input_truncated: inp.truncated,
+    output_truncated: outp.truncated,
+    input_len: inp.len,
+    output_len: outp.len,
+    error_class: row.error_class ?? null,
+    error_message: row.error_message ? scrubSecrets(String(row.error_message)).slice(0, EXCERPT_CAP) : null,
+    deliverable_id: row.deliverable_id ?? null,
+    doctrine_gate_hits: row.doctrine_gate_hits ?? null,
+    router_version: ROUTER_VERSION,
+    metadata: safeMetadata(row.metadata),
+  };
+
+  const write = async () => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000); // bounded so a locked insert can't keep the isolate alive
+    try {
+      await admin.from("paige_llm_trace").insert(record).abortSignal(ctrl.signal);
+    } catch (e) {
+      // Best-effort: a trace hiccup must NEVER surface to the caller. Log loudly, never rethrow (an
+      // unhandled rejection in a detached promise can crash the isolate on some runtimes).
+      console.error("paige_llm_trace: write failed:", (e as Error)?.message);
+    } finally {
+      clearTimeout(t);
+    }
+  };
+
+  // Detach: return to the caller immediately, keep the insert alive after the handler resolves. Fall back
+  // to a plain fire-and-forget where EdgeRuntime is absent (local/test) — with a swallowing catch so a
+  // rejected detached promise never becomes an unhandled rejection.
+  const er = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  if (er?.waitUntil) er.waitUntil(write());
+  else void write().catch(() => {});
+}
