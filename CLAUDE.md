@@ -1212,3 +1212,62 @@ still judges taste at build time; §33 gives the *agent* a taste check at *gener
 - **The test, every time:** *"Before this generated visual reaches the tenant, did the agent SEE it and
   judge it against the bar — or did it ship blind and leave the catching to the owner's eyes?"* If the
   agent never looked, §33 isn't wired.
+
+## 34. Paige owns her intelligence end-to-end. Only the LLM API is external.
+
+**Directive (owner: Antonio, 2026-07-19):** Paige's intelligence infrastructure
+is her moat. Every capability that would be a purchased vendor tool at an
+ordinary company becomes an internal Paige department here. Observability (not
+Langfuse), Evals (not Braintrust), Debugging (not LangSmith), Prompt Engineering
+(not PromptLayer), Reasoning Orchestration (not LangGraph), Talent/Crew (not
+CrewAI), Learning (not W&B), Transparency (not Perplexity's sources panel).
+Every one is built inside Paige.
+
+The only external dependency is the LLM API layer itself — and even that is
+routed across Anthropic + OpenAI + Groq + Featherless + Gemini via the model
+router so no single provider owns Paige. Over time, fine-tuning on Anthropic
+foundation and open-model fallback via Groq further reduces provider
+concentration.
+
+The enterprise pattern: Amazon doesn't rely on FedEx for logistics. Netflix
+stopped relying on Akamai for CDN. Apple designs their own silicon. Every
+company that built a real moat owned their moat-critical infrastructure
+end-to-end and bought only true commodities. Paige follows the same doctrine.
+
+Build discipline: when a §34 layer looks like a vendor buy, name the Paige
+department it would live in and build it. The 20% of vendor features Paige
+actually needs is always less code than integrating the vendor's 100% of
+features. Build only what serves the tenant use cases (coach / consultant /
+agency / thought leader / advisor). Discipline is what makes it 2 weeks not
+2 years per department.
+
+Application beyond intelligence infrastructure: apply this doctrine to every
+platform function build. Anything that touches the moat = Paige department.
+Anything that is true infrastructure commodity (Stripe for payments regulation,
+Twilio last-mile telecom, SendGrid email delivery, cloud compute) = external,
+routed so no single provider owns Paige.
+
+**The 7 internal departments + build state (grounded 2026-07-19, see
+`docs/PAIGE-INTELLIGENCE-GROUNDING-REPORT.md`):** (1) Observability — the
+`paige_llm_trace` store, EXTEND of the router seam; (2) Quality/Evals — NET-NEW;
+(3) Prompt Engineering — EXTEND `paige_prompt_template`; (4) Reasoning — EXTEND
+the visual-critique gate into a general engine (§33 is its runtime home); (5)
+Talent — EXTEND the real `paige_subagents` registry; (6) Learning — EXTEND the
+voyage memory with a reaction→weight loop; (7) Transparency — EXTEND the live
+`ReasoningPanel`. Zero STRIP, zero BUY. **Build order (owner-confirmed):
+L1 → L4 → L2 → L5.**
+
+**Every §34 PR carries these hard gates:** §18 grounding (cite the report section
+that authorizes it) · §30 strip-before-rebuild where flagged (never layer on a
+broken foundation) · §31 real data (real traces, real eval scores — no mocks) ·
+§13 honest reporting (paste the real query result / verdict; no "it works"
+without proof) · §14 crew (run the §33 crew; during bootstrap invoke it manually
+and say so) · §34 vendor-substrate gate (reject any Langfuse/Braintrust/
+LangSmith/PromptLayer/LangGraph/CrewAI/W&B/OTel-LLM import — only LLM APIs via
+the router, pgvector via Supabase, and standard Node/Deno libs are allowed).
+
+- **The test, every time:** *"Does this touch Paige's moat (intelligence, tenant
+  relationship, brand experience)? → build it as a Paige department. Is it a true
+  regulated commodity (payments, telecom, email delivery, compute)? → external,
+  behind the router so no single provider owns Paige."* If a build would put
+  moat-critical data inside a third party, it fails §34 and does not ship.
