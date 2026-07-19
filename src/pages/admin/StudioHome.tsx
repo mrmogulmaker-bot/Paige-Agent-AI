@@ -34,6 +34,7 @@ import {
 } from "@/components/admin/studio/studio";
 import { STUDIO_HOME_CHIPS } from "@/components/admin/studio/studio-copy";
 import { useStudioReducedMotion } from "@/components/admin/studio/StudioTheme";
+import { useStudioCometCanvas } from "@/hooks/useStudioCometCanvas";
 import type { IntentChip, StudioSessionView } from "@/components/admin/studio/studio-types";
 import type { GrowthAsset } from "@/lib/growth";
 import { useToast } from "@/hooks/use-toast";
@@ -120,6 +121,11 @@ export default function StudioHome() {
   // explicitly picks "Reduced" in the rail. Mirrors PaigeScene's shared-`ptr` pattern (§18: reuse).
   const heroRef = useRef<HTMLElement>(null);
   const reduce = useStudioReducedMotion();
+  // §29 — the comet is now a REAL per-frame canvas particle simulation (smooth
+  // orbital motion + a live plasma trail), not a CSS offset-path keyframe. The
+  // hook feeds it brand tokens, gates it on the explicit "Reduced" choice, and
+  // stands it down in light mode (see useStudioCometCanvas).
+  const { canvasRef: cometRef } = useStudioCometCanvas(reduce);
   useEffect(() => {
     if (reduce) return;
     const el = heroRef.current;
@@ -311,7 +317,14 @@ export default function StudioHome() {
         <div aria-hidden className="studio-nebula" />
         <div aria-hidden className="studio-shooting" />
         <div aria-hidden className="studio-orbit" />
-        <div aria-hidden className="studio-comet" />
+        {/* §29 REAL comet — a canvas-2D particle simulation (StudioCometEngine) replacing the old
+            CSS `offset-path` comet. Smooth continuous orbital motion (parametric ellipse on a
+            constantly-advancing angle → no rigid direction-change) + a genuine per-frame plasma
+            trail of shed embers with live flicker. Decorative, aria-hidden, pointer-events-none;
+            mounts in the same z-0 field slot behind the z-[1] composer and carries the same
+            --px/--py parallax as the sibling layers. Motion-safe: the hook pauses the loop (still
+            frame) under the explicit "Reduced" choice and stands the comet down in light mode. */}
+        <canvas ref={cometRef} aria-hidden className="studio-comet-canvas" />
         {/* Fidelity grain (owner 2026-07-19): a subtle inline-SVG feTurbulence texture at very low
             opacity, blended over the cosmic field so the glows read RENDERED, not flat CSS. Painted
             among the z-0 field layers so it textures them all; static → motion-safe. */}

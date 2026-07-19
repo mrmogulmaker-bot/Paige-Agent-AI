@@ -318,7 +318,10 @@ All colors MUST be HSL.
      light-tinted "stardust" that twinkles AND gently falls, and (b) the nebula blooms become a
      slow-drifting LIGHT AURORA on a wider, perceptible path — so flipping to light gives an alive,
      premium field, never a frozen one. Dark mode keeps the full planetarium untouched. */
-  .studio-surface:not(.dark) .studio-comet,
+  /* The comet canvas also stands down in light — but the HOOK clears it (engine.hide()) rather than
+     relying on opacity, so no rAF runs while it's hidden; this opacity:0 is a belt-and-suspenders
+     guard in case tokens resolve before the observer fires. */
+  .studio-surface:not(.dark) .studio-comet-canvas,
   .studio-surface:not(.dark) .studio-shooting,
   .studio-surface:not(.dark) .studio-orbit {
     opacity: 0;
@@ -341,12 +344,16 @@ All colors MUST be HSL.
      Own keyframes so dark's blooms are untouched; token-only light violet/blue (§23). */
   .studio-surface:not(.dark) .studio-nebula::before {
     filter: blur(96px);
-    opacity: 0.68;
+    /* §29 light-contrast pass — opacity 0.68 → 0.80 so the violet aurora carries real colour on the
+       near-white field instead of washing out under the heavy blur (§25 err-bold; §23 light stays
+       light — this lifts the decorative bloom, not the base field). */
+    opacity: 0.80;
     animation: studio-aurora-a 42s ease-in-out infinite;
   }
   .studio-surface:not(.dark) .studio-nebula::after {
     filter: blur(96px);
-    opacity: 0.62;
+    /* 0.62 → 0.74 to match — the electric-blue aurora lobe now reads on the bright field. */
+    opacity: 0.74;
     animation: studio-aurora-b 50s ease-in-out infinite;
   }
   /* Title glow: the dark field's blue neon + near-black ink halo would read as a smudge on light —
@@ -562,19 +569,20 @@ All colors MUST be HSL.
     position: absolute; left: 50%; top: 40%; z-index: 0; pointer-events: none;
     width: min(44rem, 122%); aspect-ratio: 1; translate: -50% -50%;
     border-radius: 9999px;
-    /* Dark: a GENUINELY DEEP cool well (owner 2026-07-19) — lifted 0.52 → 0.62 and, now that the
-       void paints AFTER the scrim (DOM reorder in StudioHome), it reads over the field instead of
-       being flattened under it, so the center is a real deepening for figure/ground, not a whisper. */
-    background: radial-gradient(closest-side, hsl(var(--studio-void) / 0.62), transparent 72%);
-    filter: blur(46px);
+    /* §29 (owner 2026-07-19): the black hole is a LIGHT-mode focal behind the mark ONLY — "we're NOT
+       supposed to have a dark-mode black hole." So the BASE (which applied in dark) paints nothing;
+       the well is supplied solely by the `:not(.dark)` light override below. On the dark planetarium
+       the 5% field already gives the gold mark full figure/ground — no well needed. */
+    background: none;
+    filter: blur(50px);
   }
   .studio-surface:not(.dark) .studio-void {
-    /* Light (owner 2026-07-19, OVERPAINT FIX): a CONCENTRATED cool-violet well right behind the mark,
-       now painted LAST (after the scrim) so it is no longer erased. BOLDENED 0.16 → 0.30 and widened
-       (transparent 60% → 68%) so it reads as a real focal SHADE that gives the warm gold mark genuine
-       figure/ground — clearly perceptible, yet a soft localized cool vignette that fades out well
-       before the edges, so the surrounding field stays genuinely light, never a dark blob (§23). */
-    background: radial-gradient(closest-side, hsl(var(--studio-void) / 0.30), transparent 68%);
+    /* Light black hole (owner 2026-07-19, §29 BOLDENED): a concentrated cool-violet well right behind
+       the mark, painted LAST (after the scrim) so it reads over the field. Lifted 0.30 → 0.44 and the
+       well tightened (transparent 68% → 66%) so it is a CLEARLY visible focal shade that makes the
+       warm gold mark POP (§23 complementary figure/ground) — still a soft localized vignette that
+       fades out before the edges, so the surrounding field stays genuinely light, never a dark blob. */
+    background: radial-gradient(closest-side, hsl(var(--studio-void) / 0.44), transparent 66%);
     filter: blur(50px);
   }
   /* Hero text scrim (owner 2026-07-19, OVERPAINT FIX) — alpha lives here so each theme tunes it.
@@ -693,90 +701,25 @@ All colors MUST be HSL.
     will-change: transform;
   }
 
-  /* (d2) COMET — a real travelling point of light, replacing the old faint conic smear the owner
-     kept calling "static / 1980s". A bright near-WHITE-cored nucleus with a short trailing tail
-     rides the SAME tilted, flattened ellipse as the ring (rotate -24deg + `offset-path: ellipse`
-     matched to the ring's scaleY 0.40 → 20% vertical radius), but the comet element itself is NOT
-     scaleY-crushed, so the nucleus stays a round point of light rather than a squashed oval.
-     `offset-rotate: auto` keeps the tail trailing behind the head along the arc. Period ~13s so the
-     motion is actually PERCEPTIBLE (the old ring was 90s ≈ 4°/sec). Gold is the signature field-glow
-     tone here (the PaigeMark orbit motif), never a resting UI border and never the act (§11). The
-     `translate` property centers; the parallax + tilt live in `transform`, same split as the ring. */
-  .studio-comet {
-    position: absolute; left: 50%; top: 50%; z-index: 0; pointer-events: none;
-    width: min(54rem, 130%); aspect-ratio: 1;
-    translate: -50% -50%;
-    transform: translate3d(calc(var(--px, 0) * 13px), calc(var(--py, 0) * 13px), 0) rotate(-24deg);
+  /* (d2) COMET — §29 REAL RENDER. The old CSS `offset-path` comet (a masked gradient "flame" swept
+     by an offset-distance keyframe) is gone: the owner kept catching it as "rigid / 1980s" at the
+     ellipse ends (offset-path easing gives velocity discontinuities where the arc turns) and "an
+     isolated image" that "definitely isn't flickering" (the flame was a static mask breathing on a
+     keyframe, not a live sim). It is now a canvas-2D PARTICLE simulation — `StudioCometEngine`
+     (src/lib/studio-comet-engine.ts), mounted via `useStudioCometCanvas`. The head rides a
+     parametric ellipse on a constantly-advancing angle (θ += dθ·dt) → perfectly smooth continuous
+     orbit with ZERO rigid direction-change; each frame it sheds ember particles that stream off the
+     travel tangent with per-particle velocity/life/size and per-frame brightness noise (additive
+     'lighter' blend) → a genuine live plasma trail that flickers, not a keyframe. Colours are read
+     from the brand tokens (--studio-orbit/--studio-star/--studio-nebula-gold) so it is theme-aware.
+     This rule only SIZES + PLACES the canvas (full field, z-0 behind the z-[1] composer) and carries
+     the same --px/--py parallax as the sibling layers; all motion lives in JS, gated on the explicit
+     "Reduced" choice + stood down in light by the hook. */
+  .studio-comet-canvas {
+    position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    transform: translate3d(calc(var(--px, 0) * 13px), calc(var(--py, 0) * 13px), 0);
     transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
     will-change: transform;
-  }
-  .studio-comet::before {
-    content: ""; position: absolute; top: 0; left: 0;
-    width: 190px; height: 12px; border-radius: 999px;
-    /* HEAD + PLASMA TAIL in one element. Leading (right) end = a white-hot nucleus; the body is a
-       temperature-ramped teardrop (white/star core → orbit gold → nebula-gold ember → transparent)
-       so the tail reads HOT at the head and COOLER as it trails — not a flat gold bar. The organic
-       taper is an elliptical radial anchored at the head; a turbulence MASK breaks the top/bottom
-       edge into licking tongues so it reads as BURNING, not a decal. offset-rotate:auto keeps
-       "right" = forward, so the flame always streams BEHIND the travel direction along the arc. */
-    background:
-      radial-gradient(closest-side circle at calc(100% - 6px) 50%,
-        hsl(0 0% 100% / 0.98) 0%, hsl(var(--studio-orbit) / 0.95) 44%, transparent 78%),
-      radial-gradient(150% 66% at calc(100% - 6px) 50%,
-        hsl(var(--studio-star) / 0.60) 0%,
-        hsl(var(--studio-orbit) / 0.46) 22%,
-        hsl(var(--studio-nebula-gold) / 0.24) 50%,
-        transparent 84%);
-    /* two-layer ALPHA mask, composited INTERSECT (a pixel shows only where BOTH pass):
-       (1) an elliptical taper anchored at the head → teardrop silhouette;
-       (2) an anisotropic feTurbulence (streaked along travel) → ragged, licking flame edge.
-       Turbulence lives in the SVG's alpha (no feColorMatrix flatten) so match-source masking uses it
-       directly; static image → motion-safe by construction. */
-    -webkit-mask-image:
-      radial-gradient(135% 74% at calc(100% - 6px) 50%, #000 50%, rgba(0,0,0,0) 92%),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='40'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.018 0.12' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='1.3' intercept='0.28'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
-    -webkit-mask-size: 100% 100%, 160px 100%;
-    -webkit-mask-repeat: no-repeat, repeat-x;
-    -webkit-mask-position: center, center;
-    -webkit-mask-composite: source-in;
-    mask-image:
-      radial-gradient(135% 74% at calc(100% - 6px) 50%, #000 50%, rgba(0,0,0,0) 92%),
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='40'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.018 0.12' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='1.3' intercept='0.28'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
-    mask-size: 100% 100%, 160px 100%;
-    mask-repeat: no-repeat, repeat-x;
-    mask-position: center, center;
-    mask-composite: intersect;
-    filter: drop-shadow(0 0 9px hsl(var(--studio-orbit) / 0.70));
-    offset-path: ellipse(50% 20% at 50% 50%);
-    offset-distance: 0%;
-    offset-rotate: auto;
-    /* slow arc sweep (owns offset-distance + the arrive/leave opacity envelope) PLUS a fast, subtle
-       flicker (owns transform + glow only) layered under it, so the plasma BREATHES without ever
-       disturbing the sweep or the fade. 11s cadence unchanged. */
-    animation: studio-comet-run 11s linear infinite, studio-comet-flicker 1.3s ease-in-out infinite;
-    will-change: offset-distance, opacity, transform, filter;
-  }
-  /* SPARKS — a few warm embers shed off the head, welded to the SAME arc + rotation as the nucleus
-     and trailing BEHIND it (box-shadow dots extend along local -x = backward). One combined keyframe
-     carries the weld (offset-distance, identical breakpoints to the head so they never drift apart),
-     the arrive/leave envelope, and an irregular twinkle + backward drift so the embers shimmer and
-     shed. GPU-cheap: only opacity + transform animate; the shadow dots themselves are static. */
-  .studio-comet::after {
-    content: ""; position: absolute; top: 0; left: 0;
-    width: 3px; height: 3px; border-radius: 999px;
-    background: hsl(var(--studio-star) / 0.90);
-    box-shadow:
-      -16px 3px 1.5px 0 hsl(var(--studio-orbit) / 0.85),
-      -30px -4px 1px 0 hsl(var(--studio-nebula-gold) / 0.70),
-      -46px 5px 1.5px 0 hsl(var(--studio-star) / 0.60),
-      -63px -2px 1px 0 hsl(var(--studio-orbit) / 0.55),
-      -82px 4px 1px 0 hsl(var(--studio-nebula-gold) / 0.45);
-    filter: drop-shadow(0 0 4px hsl(var(--studio-orbit) / 0.50));
-    offset-path: ellipse(50% 20% at 50% 50%);
-    offset-distance: 0%;
-    offset-rotate: auto;
-    animation: studio-comet-sparks 11s linear infinite;
-    will-change: offset-distance, opacity, transform;
   }
 
   /* (e) SHOOTING STARS — 1–2 faint diagonal streaks that cross the upper field on long, staggered
@@ -1013,7 +956,13 @@ All colors MUST be HSL.
        lever; raised in both themes so the dust reads as present ambient, still never busy. */
     opacity: 0.92;
   }
-  .studio-surface:not(.dark) .studio-rail-stardust { opacity: 0.85; }
+  .studio-surface:not(.dark) .studio-rail-stardust { opacity: 0.92; }
+  /* TWO staggered mote layers (§29 "rail stars alive"): ::before + ::after carry different mote sets
+     and PULSE out of phase (studio-rail-twinkle at different durations), so individual motes read as
+     twinkling/pulsing lights rather than the whole panel dimming in sync. Both also FALL. In LIGHT
+     the owner's complaint was the motes read as "dead indigo specs" — the light overrides below
+     recolor them to warm GOLD and pulse harder so they read as alive gold pulses on the near-white
+     rail (gold is the cosmic decorative signature here, never a control/act — §11). */
   .studio-rail-stardust::before {
     content: ""; position: absolute; inset: -20%;
     /* BOLDENED again (owner 2026-07-19): on a 1–2px mote SIZE is the biggest lever, so sizes go
@@ -1027,9 +976,45 @@ All colors MUST be HSL.
       radial-gradient(1.6px 1.6px at 46% 88%, hsl(var(--studio-star) / 0.82), transparent);
     background-size: 150px 220px;
     background-repeat: repeat;
-    /* 20s (was 30s) — the rail dust genuinely FALLS now (§ Goal C), not an imperceptible crawl. */
-    animation: studio-rail-fall 20s linear infinite;
-    will-change: background-position;
+    /* 20s (was 30s) — the rail dust genuinely FALLS now (§ Goal C), not an imperceptible crawl. Plus
+       a slow twinkle so the motes PULSE (owner 2026-07-19). */
+    animation: studio-rail-fall 20s linear infinite, studio-rail-twinkle 4.6s ease-in-out infinite;
+    will-change: background-position, opacity;
+  }
+  /* Second, out-of-phase mote layer — offset positions + a different tile + slower fall + a twinkle
+     on a different period/phase, so the two layers cross-fade and the dust genuinely sparkles. */
+  .studio-rail-stardust::after {
+    content: ""; position: absolute; inset: -20%;
+    background-image:
+      radial-gradient(1.6px 1.6px at 52% 20%, hsl(var(--studio-star) / 0.80), transparent),
+      radial-gradient(2.2px 2.2px at 14% 34%, hsl(var(--studio-star) / 0.88), transparent),
+      radial-gradient(1.6px 1.6px at 88% 46%, hsl(var(--studio-star) / 0.74), transparent),
+      radial-gradient(1.6px 1.6px at 36% 66%, hsl(var(--studio-star) / 0.82), transparent),
+      radial-gradient(2.2px 2.2px at 66% 84%, hsl(var(--studio-star) / 0.78), transparent);
+    background-size: 190px 260px;
+    background-repeat: repeat;
+    animation: studio-rail-fall2 27s linear infinite, studio-rail-twinkle 6.1s ease-in-out infinite 1.4s;
+    will-change: background-position, opacity;
+  }
+  /* LIGHT (§29) — recolor both mote layers to warm GOLD so they read as alive gold pulses on the
+     near-white rail instead of dim indigo specs, and pulse a touch harder (own twinkle range). */
+  .studio-surface:not(.dark) .studio-rail-stardust::before {
+    background-image:
+      radial-gradient(1.8px 1.8px at 28% 12%, hsl(var(--studio-nebula-gold) / 0.95), transparent),
+      radial-gradient(1.8px 1.8px at 70% 28%, hsl(var(--studio-nebula-gold) / 0.82), transparent),
+      radial-gradient(2.4px 2.4px at 20% 52%, hsl(var(--studio-nebula-gold) / 0.90), transparent),
+      radial-gradient(1.8px 1.8px at 80% 70%, hsl(var(--studio-nebula-gold) / 0.80), transparent),
+      radial-gradient(1.8px 1.8px at 46% 88%, hsl(var(--studio-nebula-gold) / 0.86), transparent);
+    animation: studio-rail-fall 20s linear infinite, studio-rail-twinkle-lg 4.6s ease-in-out infinite;
+  }
+  .studio-surface:not(.dark) .studio-rail-stardust::after {
+    background-image:
+      radial-gradient(1.8px 1.8px at 52% 20%, hsl(var(--studio-nebula-gold) / 0.84), transparent),
+      radial-gradient(2.4px 2.4px at 14% 34%, hsl(var(--studio-nebula-gold) / 0.92), transparent),
+      radial-gradient(1.8px 1.8px at 88% 46%, hsl(var(--studio-nebula-gold) / 0.78), transparent),
+      radial-gradient(1.8px 1.8px at 36% 66%, hsl(var(--studio-nebula-gold) / 0.86), transparent),
+      radial-gradient(2.4px 2.4px at 66% 84%, hsl(var(--studio-nebula-gold) / 0.82), transparent);
+    animation: studio-rail-fall2 27s linear infinite, studio-rail-twinkle-lg 6.1s ease-in-out infinite 1.4s;
   }
 
   @keyframes studio-twinkle {
@@ -1050,37 +1035,8 @@ All colors MUST be HSL.
     0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
     50%      { transform: translate3d(-9%, -7%, 0) scale(1.15); }
   }
-  @keyframes studio-comet-run {
-    /* the nucleus arcs the ellipse (0→100%) then fades near the wrap, so it reads as a comet
-       ARRIVING and LEAVING on a period, not a dot glued to a ring. offset-distance is GPU-cheap. */
-    0%   { offset-distance: 0%;   opacity: 0; }
-    6%   { opacity: 1; }
-    72%  { opacity: 1; }
-    88%  { offset-distance: 100%; opacity: 0; }
-    100% { offset-distance: 100%; opacity: 0; }
-  }
-  @keyframes studio-comet-flicker {
-    /* subtle plasma breathing: the tail width wobbles and the glow pulses hot↔ember. Owns ONLY
-       transform + filter (never offset-distance/opacity — the sweep owns those), so it can't disturb
-       the arc or the arrive/leave fade. Transform scales in the flame's local frame, THEN the offset
-       transform rides it along the path. GPU-cheap (transform + drop-shadow). */
-    0%, 100% { transform: scaleY(1)    scaleX(1);    filter: drop-shadow(0 0 9px  hsl(var(--studio-orbit) / 0.70)); }
-    22%      { transform: scaleY(1.10) scaleX(0.98); filter: drop-shadow(0 0 13px hsl(var(--studio-orbit) / 0.85)); }
-    46%      { transform: scaleY(0.92) scaleX(1.03); filter: drop-shadow(0 0 8px  hsl(var(--studio-nebula-gold) / 0.72)); }
-    68%      { transform: scaleY(1.06) scaleX(0.99); filter: drop-shadow(0 0 11px hsl(var(--studio-orbit) / 0.80)); }
-  }
-  @keyframes studio-comet-sparks {
-    /* welded to the head: IDENTICAL offset-distance breakpoints (0→88→100) to studio-comet-run so the
-       embers track the nucleus exactly and never drift apart; the intermediate opacity + tiny local
-       -x drift make them twinkle and shed backward. */
-    0%   { offset-distance: 0%;   opacity: 0;    transform: translateX(0); }
-    6%   { opacity: 0.90; }
-    34%  { opacity: 0.70; transform: translateX(-2px); }
-    52%  { opacity: 1;    transform: translateX(0.5px); }
-    72%  { opacity: 0.82; transform: translateX(-1px); }
-    88%  { offset-distance: 100%; opacity: 0; }
-    100% { offset-distance: 100%; opacity: 0; }
-  }
+  /* (§29) The old studio-comet-run / -flicker / -sparks keyframes were removed with the CSS comet —
+     the comet is now a canvas particle sim (StudioCometEngine); all its motion lives in JS. */
   @keyframes studio-shoot {
     /* crosses the field during the first ~11% of the cycle, then stays gone → an occasional event */
     0%   { opacity: 0; transform: translate3d(0, 0, 0) rotate(19deg); }
@@ -1119,6 +1075,22 @@ All colors MUST be HSL.
     from { background-position: 0 0; }
     to   { background-position: 0 220px; }
   }
+  /* Second rail layer FALL — its own tile height (260px) so ::after loops seamlessly on its own drift. */
+  @keyframes studio-rail-fall2 {
+    from { background-position: 0 0; }
+    to   { background-position: 0 260px; }
+  }
+  /* RAIL twinkle — an opacity breath so the motes PULSE like living lights (§29). Dark keeps a gentle
+     range; light (studio-rail-twinkle-lg) pulses harder so the gold dust clearly reads as alive. Two
+     mote layers run this out of phase → individual-ish sparkle, not a synchronized panel dim. */
+  @keyframes studio-rail-twinkle {
+    0%, 100% { opacity: 0.62; }
+    50%      { opacity: 1; }
+  }
+  @keyframes studio-rail-twinkle-lg {
+    0%, 100% { opacity: 0.5; }
+    50%      { opacity: 1; }
+  }
   /* HERO↔PROJECTS divider beam — glide the highlight along the break line. The beam is 20% wide, so
      it travels (100% − 20%) = 80% of the line = 80/20 = 400% of its OWN width; `alternate` bounces it
      back at a steady, decelerating (ease-in-out) pace. Transform-only, no layout. */
@@ -1139,8 +1111,8 @@ All colors MUST be HSL.
   .studio-surface.studio-motion-reduced .studio-stars::after,
   .studio-surface.studio-motion-reduced .studio-nebula::before,
   .studio-surface.studio-motion-reduced .studio-nebula::after,
-  .studio-surface.studio-motion-reduced .studio-comet::before,
-  .studio-surface.studio-motion-reduced .studio-comet::after,
+  /* NB: the comet is a canvas sim now (StudioCometEngine); its "Reduced" freeze is handled in JS
+     (useStudioCometCanvas paints one still frame), so it no longer has CSS pseudos to stop here. */
   .studio-surface.studio-motion-reduced .studio-shooting::before,
   .studio-surface.studio-motion-reduced .studio-shooting::after,
   .studio-surface.studio-motion-reduced .studio-mark-halo::before,
@@ -1153,7 +1125,8 @@ All colors MUST be HSL.
   /* the light mark plate (::after) carries its own freeze; the base freeze above already covers the
      gold-bloom ::before in both themes (§22 per-primitive motion-safety). */
   .studio-surface.studio-motion-reduced:not(.dark) .studio-mark-halo::after,
-  .studio-surface.studio-motion-reduced .studio-rail-stardust::before {
+  .studio-surface.studio-motion-reduced .studio-rail-stardust::before,
+  .studio-surface.studio-motion-reduced .studio-rail-stardust::after {
     animation: none;
   }
   /* Divider beam motion-safety — under the explicit "Reduced" choice the break-line beam rests as a
@@ -1166,11 +1139,8 @@ All colors MUST be HSL.
   }
   .studio-surface.studio-motion-reduced .studio-stars::before { opacity: 0.70; }
   .studio-surface.studio-motion-reduced .studio-stars::after  { transform: none; }
-  /* the comet rests as a still bright point partway along the arc (beautiful at rest, §11), the
-     plasma tail held as a soft static teardrop (flicker frozen → transform:none, base glow shows)
-     and the embers parked welded behind it; the shooting streaks hold hidden — no streak mid-air. */
-  .studio-surface.studio-motion-reduced .studio-comet::before { offset-distance: 34%; opacity: 1; }
-  .studio-surface.studio-motion-reduced .studio-comet::after  { offset-distance: 34%; opacity: 1; transform: none; }
+  /* the comet's "Reduced" rest state (a still bright nucleus + soft static tail) is painted by the
+     canvas engine's renderStaticFrame() — see useStudioCometCanvas — not by CSS. */
   .studio-surface.studio-motion-reduced .studio-shooting::before,
   .studio-surface.studio-motion-reduced .studio-shooting::after { opacity: 0; }
   /* under the explicit choice the parallax JS gate holds --px/--py at 0 (StudioHome); kill the
@@ -1178,7 +1148,7 @@ All colors MUST be HSL.
   .studio-surface.studio-motion-reduced .studio-stars,
   .studio-surface.studio-motion-reduced .studio-nebula,
   .studio-surface.studio-motion-reduced .studio-orbit,
-  .studio-surface.studio-motion-reduced .studio-comet,
+  .studio-surface.studio-motion-reduced .studio-comet-canvas,
   .studio-surface.studio-motion-reduced .studio-shooting { transition: none; }
 
   /* Floating animations inspired by Motion.com */
