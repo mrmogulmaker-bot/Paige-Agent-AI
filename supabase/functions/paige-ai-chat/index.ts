@@ -5487,7 +5487,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // (studioSessionId truthy). Live Your-Paige chat is never affected. Flip STUDIO_THINKING_ENABLED to
     // true to turn it on; while it is false, `paige_thinking` is never added and the request body is
     // byte-for-byte what it is today (buildClaudeRequest only acts on paige_thinking === true).
-    const STUDIO_THINKING_ENABLED = true;
+    const STUDIO_THINKING_ENABLED = false; // HOTFIX: extended-thinking request 400'd the live Studio stream ("chat hit a snag"); disabled pending a real root-cause of the thinking+model interaction (§344). Sonnet lift stays; thinking param is dropped so the call reverts to a plain working stream.
     const paigeThinkingOn = !!studioSessionId && STUDIO_THINKING_ENABLED;
     const response = await gatewayCompat("anthropic", {
       method: "POST",
