@@ -60,10 +60,10 @@ import { StudioTopBar } from "./StudioTopBar";
 import { StudioRailHeading, StudioSplit } from "./StudioChrome";
 import { StudioChat, type StudioChatArtifact } from "./StudioChat";
 import { DocumentPreview } from "./DocumentPreview";
-import { StudioBuildingScreen, useElapsedMs } from "./StudioBuildingScreen";
+import { StudioBuildingScreen, useElapsedMs, type StudioBuildStep } from "./StudioBuildingScreen";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { GP_SHIMMER } from "@/components/growth/growth-motion";
-import { useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useStudioImmersion } from "./StudioImmersion";
 import {
   STUDIO_THEME_STORAGE_KEY,
@@ -580,6 +580,9 @@ export function StudioShell({
   const reopenInFlightRef = useRef<string | null>(null);
   const [chatBusy, setChatBusy] = useState(false);
   const [chatNote, setChatNote] = useState<string | null>(null);
+  // The accumulating REAL step trace for the in-flight turn (§13) — drives the split cutscene's
+  // streamed beats. Reset by the chat at the start of each turn; never fabricated.
+  const [chatSteps, setChatSteps] = useState<StudioBuildStep[]>([]);
   const chatElapsedMs = useElapsedMs(chatBusy);
   const reduceMotion = useReducedMotion();
 
@@ -2231,11 +2234,17 @@ export function StudioShell({
       ? openedPage : null;
   let sessionCanvas: ReactNode;
   if (chatBusy && !canvasArtifact) {
-    // First build, nothing on the stage yet → the honest cutscene (indeterminate: the build runs
-    // server-side, there is no client GenerationState to fake, §13). Gold lives only in PaigeMark.
+    // First build, nothing on the stage yet → the honest SPLIT cutscene (Slice C): the living
+    // PaigeMark + the REAL streamed beats (chatSteps, captured 1:1 from the server) beside a
+    // progressive artifact skeleton. Indeterminate — the build runs server-side, there is no client
+    // GenerationState to fake (§13). The kind isn't classified yet on a first build, so the skeleton
+    // is neutral (artifactKind null → no guessed shape). Gold lives only in PaigeMark.
     sessionCanvas = (
       <StudioBuildingScreen
         indeterminate
+        split
+        steps={chatSteps}
+        artifactKind={null}
         note={chatNote ?? "Getting to work…"}
         agent="Design agent"
         elapsedMs={chatElapsedMs}
@@ -2426,12 +2435,38 @@ export function StudioShell({
             canvasArtifact={canvasArtifact}
             onBusy={setChatBusy}
             onNote={setChatNote}
+            onSteps={setChatSteps}
             onArtifact={handleCanvasArtifact}
           />
         }
         canvas={
           <div className="relative h-full">
-            {sessionCanvas}
+            {/* §22 — the cutscene RESOLVES INTO the session, it never hard-cuts or dead-spins away.
+                A keyed AnimatePresence hand-off: the build stage springs out as the real artifact
+                springs onto the canvas. Keyed COARSELY by build-vs-kind so the marquee first-build →
+                first-artifact moment animates once, while in-set image navigation / same-kind
+                iterations stay put (those own their own in-place choreography). Under reduce it's an
+                instant swap (no scale/fade) — a reduced-motion user gets the cut, honestly. */}
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={
+                  chatBusy && !canvasArtifact
+                    ? "building"
+                    : canvasArtifact
+                      ? `art:${canvasArtifact.kind}`
+                      : reopened
+                        ? `reopen:${reopened.kind}`
+                        : "empty"
+                }
+                className="h-full"
+                initial={reduceMotion ? false : { opacity: 0, scale: 0.985 }}
+                animate={reduceMotion ? {} : { opacity: 1, scale: 1 }}
+                exit={reduceMotion ? {} : { opacity: 0, scale: 1.012 }}
+                transition={{ type: "spring", stiffness: 240, damping: 30 }}
+              >
+                {sessionCanvas}
+              </motion.div>
+            </AnimatePresence>
             {/* In-flight FOLLOW-UP on a NON-image stage (page/doc/funnel/copy/form): the prior artifact
                 stays on stage; lay the premium branded "Paige is creating" layer over it (#292 Fix C) —
                 a living PaigeMark ribbon + the real streamed note + shooting-star field. Ambient, never

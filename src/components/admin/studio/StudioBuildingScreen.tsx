@@ -116,6 +116,7 @@ export interface StudioBuildingScreenProps {
    *  kind isn't classified yet → pass null and the skeleton draws the neutral forming surface, never
    *  a guessed shape (§13). */
   artifactKind?: ArtifactPreviewKind | null;
+}
 
 /** A blurred, brand-toned aurora blob. Positioned by top-left (no transform of our own, so the
  *  reused .gp-aurora-* keyframe fully owns the drift). Brightness eases with --build-energy. */
@@ -359,6 +360,9 @@ export function StudioBuildingScreen({
   beats,
   activeIndex = 0,
   rotation,
+  split = false,
+  steps,
+  artifactKind = null,
 }: StudioBuildingScreenProps) {
   const seconds = Math.max(0, Math.round(elapsedMs / 1000));
   const isIndeterminate = indeterminate ?? stepper == null;
@@ -440,14 +444,30 @@ export function StudioBuildingScreen({
         }}
       />
 
-      {/* Layer 3 — the living mark on its own drift plane, drifting at a different rate than the
-          aurora (parallax). */}
-      <div className={cn("relative", !reduce && "build-drift-slow")}>
-        <LivingMark reduce={reduce} />
-      </div>
+      {split ? (
+        // ── SESSION regime (Slice C) — the cinematic SPLIT. LEFT plane: the living PaigeMark as the
+        // hero of the wait + the streamed REAL beats (settled off the server's own done/error) + the
+        // honest clock. RIGHT plane: the progressive artifact skeleton forming (neutral until the
+        // kind is known). No fabricated phases; the ONLY animated GPU spend stays the aurora + mark
+        // (§22 — motion where it earns its pixels), the beats/skeleton are lightweight framer/CSS.
+        <SplitStage
+          agent={agent}
+          note={note}
+          steps={steps ?? []}
+          artifactKind={artifactKind}
+          seconds={seconds}
+          reduce={reduce}
+        />
+      ) : (
+        <>
+          {/* Layer 3 — the living mark on its own drift plane, drifting at a different rate than the
+              aurora (parallax). */}
+          <div className={cn("relative", !reduce && "build-drift-slow")}>
+            <LivingMark reduce={reduce} />
+          </div>
 
-      {/* Layer 4 — choreographed narration, branched STRICTLY on regime (§13). */}
-      {isIndeterminate ? (
+          {/* Layer 4 — choreographed narration, branched STRICTLY on regime (§13). */}
+          {isIndeterminate ? (
         // COPY/IMAGE: a single rotating ambient line + the honest elapsed clock below. No stack,
         // no checks, no step mapping — nothing implies an ordered completion.
         <div
@@ -477,11 +497,83 @@ export function StudioBuildingScreen({
         </div>
       )}
 
-      {stepper}
+          {stepper}
 
-      <p className="relative mt-4 text-[11px] uppercase tracking-wide text-muted-foreground tabular-nums">
-        {seconds}s elapsed
-      </p>
+          <p className="relative mt-4 text-[11px] uppercase tracking-wide text-muted-foreground tabular-nums">
+            {seconds}s elapsed
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The SESSION-regime split content (Slice C). A responsive two-plane layout inside the aurora stage:
+ *   • LEFT — the living PaigeMark hero, the honest single-actor eyebrow ("Design agent · Paige's
+ *     team", never a fake multi-agent relay §13), the streamed REAL beats (settled off the server's
+ *     own done/error, with an unnamed trailing live pulse), and the wall-clock.
+ *   • RIGHT — the progressive artifact skeleton (ArtifactPreview `skeleton`), neutral until the kind
+ *     is known so it never fakes a shape.
+ * Stacks to one column on narrow canvases (the skeleton drops below). Every effect is reduce-gated.
+ */
+function SplitStage({
+  agent,
+  note,
+  steps,
+  artifactKind,
+  seconds,
+  reduce,
+}: {
+  agent: string;
+  note: string;
+  steps: StudioBuildStep[];
+  artifactKind: ArtifactPreviewKind | null;
+  seconds: number;
+  reduce: boolean;
+}) {
+  // Latest real label drives the trailing unnamed pulse; falls back to the passed note.
+  const liveNote = (steps.length ? steps[steps.length - 1].label : note)?.trim() || "Getting to work…";
+  return (
+    <div className="relative mt-6 grid w-full max-w-5xl grid-cols-1 items-center gap-6 md:mt-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] md:gap-10">
+      {/* LEFT plane — the hero + streamed real beats. */}
+      <div className="flex flex-col items-center text-center md:items-start md:text-left">
+        <div className={cn("relative", !reduce && "build-drift-slow")}>
+          <LivingMark reduce={reduce} />
+        </div>
+        <p className="mt-6 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+          {agent} · Paige's team
+        </p>
+        <ul className="mt-3 w-full max-w-sm space-y-2.5 text-left" aria-live="polite">
+          {steps.length === 0 ? (
+            // No frame has streamed yet — the honest ambient note, never a pre-filled checklist (§13).
+            <LivePulseRow note={liveNote} reduce={reduce} />
+          ) : (
+            <>
+              {steps.map((s) => (
+                <StreamRow key={s.id} step={s} reduce={reduce} />
+              ))}
+              {/* Trailing "still working" cue — unnamed, so it never claims a phase is mid-flight. */}
+              <LivePulseRow note={liveNote} reduce={reduce} />
+            </>
+          )}
+        </ul>
+        <p className="mt-4 text-[11px] uppercase tracking-wide text-muted-foreground tabular-nums">
+          {seconds}s elapsed
+        </p>
+      </div>
+
+      {/* RIGHT plane — the artifact taking shape. A framed, elevated panel so the forming skeleton
+          reads as the deliverable-to-be on the canvas, not a loose shimmer. */}
+      <div
+        className={cn(
+          "relative hidden aspect-[4/3] w-full overflow-hidden rounded-2xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-[hsl(var(--card)/0.55)] shadow-[0_24px_60px_-28px_hsl(var(--foreground)/0.4)] backdrop-blur-sm md:block",
+          !reduce && GP_FADE_RISE,
+        )}
+        aria-hidden
+      >
+        <ArtifactPreview skeleton kind={artifactKind} reduce={reduce} />
+      </div>
     </div>
   );
 }

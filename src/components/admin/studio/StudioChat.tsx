@@ -17,6 +17,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
 import { PromptComposer } from "./PromptComposer";
+import type { StudioBuildStep } from "./StudioBuildingScreen";
 import { uploadGrowthAsset } from "./studio";
 import type { GrowthAsset } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
@@ -76,6 +77,7 @@ export function StudioChat({
   canvasArtifact,
   onBusy,
   onNote,
+  onSteps,
   onArtifact,
 }: {
   sessionId: string | null;
@@ -92,6 +94,10 @@ export function StudioChat({
   onBusy?: (busy: boolean) => void;
   /** The latest real streamed step label — the honest cutscene narration (§13). */
   onNote?: (note: string | null) => void;
+  /** The full ACCUMULATING real step trace for this turn — captured 1:1 from the server's
+   *  `paige_step` frames (kind/label/status/detail), reset at the start of each turn. The split
+   *  build cutscene renders these as settled real beats; nothing here is fabricated (§13). */
+  onSteps?: (steps: StudioBuildStep[]) => void;
   /** The artifact this turn produced (from the server's paige_artifact frame). Null = no visual
    *  artifact this turn (e.g. a pure-copy or chat-only reply) — the parent keeps the current stage. */
   onArtifact?: (artifact: StudioChatArtifact | null) => void;
@@ -101,6 +107,7 @@ export function StudioChat({
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [note, setNote] = useState<string | null>(null); // live "working…" line
+  const [steps, setSteps] = useState<StudioBuildStep[]>([]); // the accumulating REAL step trace (§13)
   const [loading, setLoading] = useState(true);
   const [choices, setChoices] = useState<Choices | null>(null); // pending clickable options
   const [multiPicks, setMultiPicks] = useState<Set<string>>(new Set());
@@ -112,10 +119,11 @@ export function StudioChat({
   const reduce = useReducedMotion();
 
   // Parent callbacks held in refs so a new function identity never re-fires the sync effects.
-  const cb = useRef({ onBusy, onNote, onArtifact });
-  useEffect(() => { cb.current = { onBusy, onNote, onArtifact }; }, [onBusy, onNote, onArtifact]);
+  const cb = useRef({ onBusy, onNote, onSteps, onArtifact });
+  useEffect(() => { cb.current = { onBusy, onNote, onSteps, onArtifact }; }, [onBusy, onNote, onSteps, onArtifact]);
   useEffect(() => { cb.current.onBusy?.(sending); }, [sending]);
   useEffect(() => { cb.current.onNote?.(note); }, [note]);
+  useEffect(() => { cb.current.onSteps?.(steps); }, [steps]);
 
   // Ensure the session's thread + hydrate its turns whenever the session changes.
   const seededRef = useRef<string | null>(null);
@@ -199,6 +207,7 @@ export function StudioChat({
     const modelMessages = [...messages, { role: "user" as const, content: modelText }];
     setMessages([...next, { role: "assistant", content: "" }]);
     setSending(true);
+    setSteps([]); // fresh turn → drop the prior turn's real trace so the cutscene never shows stale beats (§13)
     let gotChoices = false;
     let gotArtifact: StudioChatArtifact | null = null;
     let ok = false;
@@ -240,7 +249,30 @@ export function StudioChat({
           if (payload === "[DONE]") { done = true; break; }
           try {
             const parsed = JSON.parse(payload);
-            if (parsed.paige_step) { setNote(parsed.paige_step?.label ?? null); continue; }
+            if (parsed.paige_step) {
+              // Keep the rolling label (the honest fallback line) AND accumulate the FULL frame into
+              // the real trace — 1:1 from the server, never a fabricated phase (§13). Each frame is
+              // terminal (done/error) when it arrives; dedupe defensively by id.
+              const ps = parsed.paige_step as {
+                id?: unknown; seq?: unknown; kind?: unknown; label?: unknown; status?: unknown; detail?: unknown;
+              };
+              const label = typeof ps.label === "string" ? ps.label : null;
+              setNote(label);
+              if (label) {
+                setSteps((prev) => {
+                  const step: StudioBuildStep = {
+                    id: typeof ps.id === "string" && ps.id ? ps.id : `s:${prev.length}`,
+                    seq: typeof ps.seq === "number" ? ps.seq : prev.length,
+                    kind: ps.kind === "thought" ? "thought" : "action",
+                    label,
+                    status: ps.status === "error" ? "error" : "done",
+                    detail: typeof ps.detail === "string" ? ps.detail : undefined,
+                  };
+                  return prev.some((p) => p.id === step.id) ? prev : [...prev, step];
+                });
+              }
+              continue;
+            }
             // The agent asked a clickable decision — render its chips under the question (§13-honest:
             // chips appear ONLY when the model actually emits them; the prompt IS the assistant turn).
             if (parsed.paige_choices) {
