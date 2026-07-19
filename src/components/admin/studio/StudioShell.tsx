@@ -33,7 +33,13 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import type { GrowthAsset, GrowthBlock, GrowthFormSchema } from "@/lib/growth";
 import { Button } from "@/components/ui/button";
-import { ArtifactPreview, EmptyState, PageShell, SectionCard } from "@/components/ui/page";
+import {
+  ArtifactPreview,
+  EmptyState,
+  PageShell,
+  SectionCard,
+  type FormSectionPreview,
+} from "@/components/ui/page";
 import {
   Sheet,
   SheetContent,
@@ -87,6 +93,8 @@ import {
   loadBrandFloor,
   loadContent,
   loadDocument,
+  loadFormBySlug,
+  loadFunnel,
   loadPageDraft,
   loadSession,
   openSessionArtifact,
@@ -168,6 +176,23 @@ function versionKindForCanvas(kind: StudioChatArtifact["kind"] | null | undefine
     default:
       return null;
   }
+}
+
+/** Project a real form schema down to the ArtifactPreview structural-mini shape (§13 real data —
+ *  labels/types/option-counts are the tenant's actual fields, never invented). Null when empty. */
+function formSectionsForPreview(schema: GrowthFormSchema | null | undefined): FormSectionPreview[] | null {
+  if (!schema?.sections?.length) return null;
+  return schema.sections.map((s) => ({
+    title: s.title,
+    fields: (s.fields ?? []).map((f) => ({
+      // §13 degrade: a legacy/imported/agent-edited field row may lack `label` (schema_json is a raw
+      // blind-cast); coerce to "" so the structural mini never derefs undefined and crashes the canvas.
+      label: f.label ?? "",
+      type: f.type,
+      required: f.required,
+      optionCount: f.options?.length ?? 0,
+    })),
+  }));
 }
 
 /**
@@ -544,7 +569,9 @@ export function StudioShell({
   // renderer yet (honest "built" state), copy is a chat deliverable shown read-only. Cleared the
   // instant a real build lands (handleCanvasArtifact).
   const [reopened, setReopened] = useState<
-    { kind: "form"; title: string } | { kind: "copy"; copy: StudioCopy } | null
+    | { kind: "form"; title: string; schema: GrowthFormSchema | null }
+    | { kind: "copy"; copy: StudioCopy }
+    | null
   >(null);
   const reopenResolvedRef = useRef<string | null>(null);
   // The content-reopen probe (document/copy) currently in flight, by key. A ref, not a per-run flag,
@@ -684,12 +711,35 @@ export function StudioShell({
       onReopenConsumed?.();
       return;
     }
-    // form — no in-Studio form renderer yet; an honest "built" state, never a fabricated form (§13).
+    // form — hydrate the REAL schema (like the document branch) so the canvas renders the tenant's
+    // actual questions, not an EmptyState (#290/Slice B). The manifest ref carries the slug, so WAIT
+    // for it (state.artifacts is a dep → this retries when it fills). A slug-less/tombstoned form
+    // resolves with schema:null and the canvas keeps the honest "built" fallback (§13 — never faked).
     if (openRef.kind === "form") {
-      reopenResolvedRef.current = key;
-      setCanvasArtifact(null);
-      setReopened({ kind: "form", title: ref?.title ?? "" });
-      onReopenConsumed?.();
+      if (!ref) return;
+      const slug = ref.slug?.trim();
+      if (!slug) {
+        reopenResolvedRef.current = key;
+        setCanvasArtifact(null);
+        setReopened({ kind: "form", title: ref.title ?? "", schema: null });
+        onReopenConsumed?.();
+        return;
+      }
+      reopenInFlightRef.current = key;
+      void loadFormBySlug(tenantId, slug)
+        .then((form) => {
+          if (reopenInFlightRef.current !== key) return; // superseded by a newer reopen/build
+          setCanvasArtifact(null);
+          setReopened({ kind: "form", title: form?.name?.trim() || ref.title || "", schema: form?.schema ?? null });
+        })
+        .catch(() => {
+          if (reopenInFlightRef.current !== key) return;
+          setCanvasArtifact(null);
+          setReopened({ kind: "form", title: ref.title ?? "", schema: null });
+        })
+        .finally(() => {
+          if (reopenInFlightRef.current === key) { reopenInFlightRef.current = null; reopenResolvedRef.current = key; onReopenConsumed?.(); }
+        });
       return;
     }
     // content — thumbnailUrl is load-bearing (image vs document/copy), so WAIT for the manifest ref;
@@ -757,6 +807,32 @@ export function StudioShell({
   useEffect(() => {
     if (mode === "funnel") funnelIntendedRef.current = true;
   }, [mode]);
+
+  // ── funnel canvas hydration (#319 / Slice B) ─────────────────────────────────────────
+  // The session-canvas funnel branch renders the REAL step filmstrip. When a funnel lands on the
+  // canvas (fresh build or a rail reopen → canvasArtifact.kind==="funnel"), resolve its real steps:
+  // reuse the fresh in-memory `funnel` when it IS this funnel (no redundant fetch), else loadFunnel.
+  // A hydrate miss (tombstoned row) leaves openedFunnel null → the branch keeps the honest EmptyState.
+  const [openedFunnel, setOpenedFunnel] = useState<BuiltFunnel | null>(null);
+  const [funnelHydrating, setFunnelHydrating] = useState(false);
+  useEffect(() => {
+    if (!tenantId || !canvasArtifact || canvasArtifact.kind !== "funnel") {
+      setOpenedFunnel(null);
+      setFunnelHydrating(false);
+      return;
+    }
+    if (funnel && funnel.funnelId === canvasArtifact.id) {
+      setOpenedFunnel(funnel);
+      setFunnelHydrating(false);
+      return;
+    }
+    let live = true;
+    setFunnelHydrating(true);
+    void loadFunnel(tenantId, canvasArtifact.id)
+      .then((f) => { if (live) { setOpenedFunnel(f); setFunnelHydrating(false); } })
+      .catch(() => { if (live) { setOpenedFunnel(null); setFunnelHydrating(false); } });
+    return () => { live = false; };
+  }, [tenantId, canvasArtifact, funnel]);
 
   // The blocks we hold when a run starts — restored verbatim if the operator stops it, so a
   // cancelled run never leaves a half-painted canvas.
@@ -2245,9 +2321,19 @@ export function StudioShell({
       />
     );
   } else if (canvasArtifact?.kind === "funnel") {
-    // Funnel is ref-only today (no in-Studio step loader yet, #319) — an honest in-session state,
-    // never a fabricated preview (§13/§19). Stays IN the session (no navigate-away, §21).
-    sessionCanvas = (
+    // Funnel — the REAL landing→form→thank-you filmstrip (Slice B, #319), hydrated from the
+    // persisted steps via loadFunnel. Held on the building screen while it loads; a hydrate miss
+    // (tombstoned row) falls to the honest EmptyState — never a fabricated sequence (§13/§19).
+    // Rendered through the EXISTING FunnelFlow renderer (§18 — one home for funnel-steps; the same
+    // visual language a hand-built funnel uses, so an AI funnel and a manual one read as one object).
+    // Stays IN the session (no navigate-away, §21).
+    sessionCanvas = funnelHydrating ? (
+      <StudioBuildingScreen indeterminate note="Bringing your funnel onto the canvas…" agent="Design agent" elapsedMs={chatElapsedMs} reduce={!!reduceMotion} ariaLabel="Loading your funnel" />
+    ) : openedFunnel ? (
+      <div className="h-full overflow-y-auto p-4 md:p-6">
+        <FunnelFlow funnel={openedFunnel} url={null} />
+      </div>
+    ) : (
       <div className="grid h-full place-items-center">
         <SectionCard className="max-w-md">
           <EmptyState icon={Wand2} tone="brand" title="Your funnel is built"
@@ -2277,14 +2363,25 @@ export function StudioShell({
       </div>
     );
   } else if (reopened?.kind === "form") {
-    // Reopened FORM (#290) — no in-Studio form loader yet, so an honest "built" state that mirrors the
-    // funnel branch (§13/§19). A fabricated form preview would lie; this states the truth.
+    // Reopened FORM (#290 / Slice B) — the REAL structural preview of the tenant's actual questions,
+    // hydrated via loadFormBySlug and rendered THROUGH the shared ArtifactPreview primitive (§12/§18)
+    // as a document-grade form sheet. When the schema wasn't hydratable (slug-less/tombstoned) the
+    // sheet shows its own honest built-state copy — never a fabricated form (§13). Editing is in chat.
     sessionCanvas = (
-      <div className="grid h-full place-items-center">
-        <SectionCard className="max-w-md">
-          <EmptyState icon={Wand2} tone="brand" title="Your form is built"
-            description="It’s filed to this project and live for intake. Editing forms on the canvas is coming — ask your design agent in the chat to change any question and it updates it here." />
-        </SectionCard>
+      <div className="grid h-full place-items-center p-4 md:p-6">
+        <div className="flex max-h-full w-full max-w-2xl flex-col gap-3">
+          <ArtifactPreview
+            variant="sheet"
+            kind="form"
+            title={reopened.title}
+            formSections={formSectionsForPreview(reopened.schema)}
+            formSubmitLabel={reopened.schema?.submit_label}
+            className="min-h-0"
+          />
+          <p className="text-center text-xs text-muted-foreground">
+            Ask your design agent in the chat to change any question and it updates here.
+          </p>
+        </div>
       </div>
     );
   } else {

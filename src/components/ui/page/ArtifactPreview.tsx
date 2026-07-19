@@ -16,6 +16,7 @@
 // never a resting decorative gold ring. Token-only; the one white sheen reads --studio-sheen.
 import { useEffect, useState } from "react";
 import {
+  ChevronRight,
   ClipboardList,
   FileText,
   GitBranch,
@@ -42,6 +43,33 @@ const KIND_GLYPH: Record<ArtifactPreviewKind, LucideIcon> = {
   funnel: GitBranch,
 };
 
+// ── Structural-preview shapes (§13 real data, §12/§18 one home) ─────────────────────────
+// Deliberately MINIMAL, primitive-local types — ui/page must not depend on admin/studio or the
+// evolving growth schema, so callers project their real form/funnel data down to these. What the
+// mini/filmstrip render (labels, step titles, statuses) is always the tenant's REAL data; the
+// control/step SHAPES are structural chrome, never invented field values.
+
+/** One real form field, projected for the structural mini. `label` is the tenant's real question. */
+export interface FormFieldPreview {
+  label: string;
+  /** The GrowthFieldType (text|email|select|radio|checkbox|textarea|…) — drives the control shape. */
+  type: string;
+  required?: boolean;
+  /** Real option count for select/radio/checkbox — drives how many option chips the mini draws. */
+  optionCount?: number;
+}
+
+/** One real form section/step, projected for the structural mini. */
+export interface FormSectionPreview {
+  title?: string;
+  fields: FormFieldPreview[];
+}
+
+// NOTE (§18): a funnel's structural render (landing→form→thank-you) lives in ONE home — the studio
+// FunnelFlow renderer (admin/studio/modes/FunnelFlow), which the session canvas uses directly. This
+// primitive never structurally renders a funnel (ui/page must not depend on the growth/studio layer);
+// on a `funnel` kind it resolves to the honest branded fallback (gallery cards / rail).
+
 export interface ArtifactPreviewProps {
   /** The artifact kind — drives the fallback glyph and which real-preview path is taken. */
   kind?: ArtifactPreviewKind | null;
@@ -51,8 +79,14 @@ export interface ArtifactPreviewProps {
   /** The artifact's REAL words (copy). Rendered as a real text render — a scaled snippet in the
    *  default `preview` variant, a full document-grade sheet in `sheet`. Never fabricated (§13). */
   copyText?: string | null;
-  /** Copy sheet title (used by `variant="sheet"`). */
+  /** Copy sheet title, form sheet title, funnel name (used by `variant="sheet"`). */
   title?: string | null;
+  /** The form's REAL sections/fields, projected to the primitive-local shape. When present on a
+   *  `form` kind, renders the structural field-row mini (`preview`) or a document-grade form sheet
+   *  (`sheet`). Absent → the honest branded/EmptyState fallback (§13 — never a fabricated form). */
+  formSections?: FormSectionPreview[] | null;
+  /** The form's real submit label (shown as the mini's neutral submit chip). */
+  formSubmitLabel?: string | null;
   /** A stable seed (the project/session/artifact id) for the deterministic branded-gradient
    *  fallback, so an artifact-less/unsupported preview still reads as ITS distinct cover, never one
    *  shared gray box. */
@@ -216,11 +250,190 @@ function CopySheet({
   );
 }
 
+// ── FORM — a real structural mini of the tenant's actual questions (§22 layered depth) ──────
+// A read-only, non-interactive skeleton of the REAL form: each row shows the real field label +
+// a token-styled control shape sized to the field type. Static (no motion needed); token-only;
+// no gold (a preview is not an act, §11). `dense` shrinks it for a card/rail mini.
+
+/** The token-styled placeholder control for one field — a bar (input), a taller bar (textarea),
+ *  a bar-with-chevron (select), or option chips (radio/checkbox). Never shows fake VALUES — it is
+ *  visibly a blank control, so the mini reads as "this is the form" not "here are answers". */
+function FieldControl({ field, dense }: { field: FormFieldPreview; dense: boolean }) {
+  const t = field.type;
+  const barBase = "rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.45)]";
+  const isBoolCheck = t === "checkbox" && !(field.optionCount && field.optionCount > 0);
+  const hasChips = (t === "radio" || t === "checkbox") && !!field.optionCount && field.optionCount > 0;
+
+  if (isBoolCheck) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className={cn("shrink-0 rounded border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.45)]", dense ? "h-3 w-3" : "h-4 w-4")} />
+        <span className={cn("flex-1 rounded bg-[hsl(var(--muted)/0.35)]", dense ? "h-2" : "h-2.5")} />
+      </div>
+    );
+  }
+  if (hasChips) {
+    const n = Math.min(field.optionCount ?? 0, dense ? 3 : 4);
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {Array.from({ length: n }).map((_, i) => (
+          <span
+            key={i}
+            className={cn(
+              "rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.4)]",
+              dense ? "h-3 w-9" : "h-5 w-16",
+            )}
+          />
+        ))}
+      </div>
+    );
+  }
+  if (t === "textarea" || t === "use_of_funds") {
+    return <div className={cn(barBase, "w-full", dense ? "h-6" : "h-12")} />;
+  }
+  if (t === "select") {
+    return (
+      <div className={cn(barBase, "flex w-full items-center justify-end px-2", dense ? "h-4" : "h-8")}>
+        <ChevronRight aria-hidden className={cn("rotate-90 text-muted-foreground/60", dense ? "h-2.5 w-2.5" : "h-3.5 w-3.5")} />
+      </div>
+    );
+  }
+  return <div className={cn(barBase, "w-full", dense ? "h-4" : "h-8")} />;
+}
+
+/** The structural field-row stack — the real labels, real step chrome, blank token controls. */
+function FormStructure({
+  sections,
+  submitLabel,
+  dense,
+}: {
+  sections: FormSectionPreview[];
+  submitLabel?: string | null;
+  dense: boolean;
+}) {
+  const multi = sections.length > 1;
+  // Mini (dense) shows the FIRST step and a capped field list; the sheet shows every step/field.
+  const shown = dense ? sections.slice(0, 1) : sections;
+  return (
+    <div className={cn("flex flex-col", dense ? "gap-2.5" : "gap-6")}>
+      {multi && (
+        // Real multi-step chrome (mirrors the public renderer, §13) — Step 1 of N + a token bar.
+        <div className={cn("flex flex-col", dense ? "gap-1" : "gap-1.5")}>
+          <div className={cn("flex items-center justify-between font-medium text-muted-foreground", dense ? "text-[7px]" : "text-[11px]")}>
+            <span>Step 1 of {sections.length}</span>
+            <span>{Math.round((1 / sections.length) * 100)}%</span>
+          </div>
+          <div className={cn("overflow-hidden rounded-full bg-[hsl(var(--muted)/0.5)]", dense ? "h-0.5" : "h-1.5")}>
+            <div className="h-full rounded-full bg-primary/70" style={{ width: `${Math.round((1 / sections.length) * 100)}%` }} />
+          </div>
+        </div>
+      )}
+      {shown.map((section, si) => {
+        const fields = dense ? section.fields.slice(0, 5) : section.fields;
+        return (
+          <div key={si} className={cn("flex flex-col", dense ? "gap-2" : "gap-4")}>
+            {section.title?.trim() && (
+              <h4 className={cn("font-semibold tracking-[-0.01em] text-foreground", dense ? "text-[9px] leading-tight" : "text-sm md:text-base")}>
+                {section.title}
+              </h4>
+            )}
+            <div className={cn("grid gap-x-4", dense ? "gap-y-2" : "gap-y-4 sm:grid-cols-2")}>
+              {fields.map((field, fi) => {
+                const wide =
+                  field.type === "textarea" ||
+                  field.type === "checkbox" ||
+                  field.type === "use_of_funds" ||
+                  field.label.toLowerCase().includes("address");
+                return (
+                  <div key={fi} className={cn("flex flex-col", dense ? "gap-1" : "gap-1.5", !dense && wide && "sm:col-span-2")}>
+                    <span className={cn("truncate font-medium text-foreground/80", dense ? "text-[8px] leading-tight" : "text-xs md:text-[13px]")}>
+                      {field.label}
+                      {field.required && <span className="text-muted-foreground/70"> *</span>}
+                    </span>
+                    <FieldControl field={field} dense={dense} />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      {/* Neutral submit chip — indigo/primary-subtle, NOT gold (a preview isn't the act, §11). */}
+      <div className={dense ? "pt-0.5" : "pt-1"}>
+        <span
+          className={cn(
+            "inline-flex items-center justify-center rounded-md bg-[hsl(var(--primary)/0.12)] font-medium text-[hsl(var(--primary))]",
+            dense ? "px-2 py-1 text-[7px]" : "px-4 py-2 text-xs md:text-sm",
+          )}
+        >
+          {submitLabel?.trim() || "Submit"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** The compact form mini — the honest structural preview for a card/rail cover. */
+function FormMini({ sections, submitLabel, className }: { sections: FormSectionPreview[]; submitLabel?: string | null; className?: string }) {
+  return (
+    <div className={cn("relative h-full w-full overflow-hidden bg-[hsl(var(--card))] px-3 py-2.5", className)}>
+      <FormStructure sections={sections} submitLabel={submitLabel} dense />
+      {/* Bottom fade so a clamped field list dissolves rather than hard-cutting a row. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-5"
+        style={{ background: "linear-gradient(to top, hsl(var(--card)), transparent)" }}
+      />
+    </div>
+  );
+}
+
+/** The full document-grade form sheet — the promoted session-canvas form branch. */
+function FormSheet({
+  title,
+  sections,
+  submitLabel,
+  className,
+}: {
+  title?: string | null;
+  sections: FormSectionPreview[] | null;
+  submitLabel?: string | null;
+  className?: string;
+}) {
+  return (
+    <article className={cn(SHEET_CLS, "flex max-h-full w-full flex-col overflow-hidden", className)}>
+      <header className="border-b border-[hsl(var(--border))] px-6 py-4 md:px-8 md:py-5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Form</p>
+        {title?.trim() && (
+          <h3 className="mt-1 truncate font-display text-base font-semibold tracking-[-0.01em] text-foreground md:text-lg">
+            {title}
+          </h3>
+        )}
+      </header>
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 md:px-8 md:py-7">
+        {sections?.length ? (
+          <div className="mx-auto max-w-[52ch]">
+            <FormStructure sections={sections} submitLabel={submitLabel} dense={false} />
+          </div>
+        ) : (
+          // Honest fallback (§13) — the form is filed but its schema wasn't hydratable.
+          <p className="mx-auto max-w-[52ch] text-sm leading-relaxed text-muted-foreground">
+            This form is filed to your project and live for intake. Ask your design agent in the chat
+            to change any question and it updates here.
+          </p>
+        )}
+      </div>
+    </article>
+  );
+}
+
 export function ArtifactPreview({
   kind = null,
   thumbnailUrl = null,
   copyText = null,
   title = null,
+  formSections = null,
+  formSubmitLabel = null,
   seed = "",
   skeleton = false,
   variant = "preview",
@@ -250,8 +463,11 @@ export function ArtifactPreview({
     );
   }
 
-  // SHEET — the full document-grade copy sheet (the session-canvas copy branch).
+  // SHEET — the full document-grade canvas render, per kind (§21 one session, every type).
   if (variant === "sheet") {
+    if (kind === "form") {
+      return <FormSheet title={title} sections={formSections} submitLabel={formSubmitLabel} className={className} />;
+    }
     const body = copyText?.trim()
       ? copyText
       : "This copy is filed to your project. Ask your design agent in the chat to draft or revise it.";
@@ -279,7 +495,13 @@ export function ArtifactPreview({
     return <CopySnippet body={copyText} className={className} />;
   }
 
-  // BRANDED field — the honest zero/unsupported fallback (form / funnel / empty / pre-capture).
+  // FORM mini — a real structural render of the actual questions (when the schema is loaded).
+  if (kind === "form" && formSections?.length) {
+    return <FormMini sections={formSections} submitLabel={formSubmitLabel} className={className} />;
+  }
+
+  // BRANDED field — the honest zero/unsupported fallback (form/funnel with no loaded data, empty,
+  // pre-capture). Never a fabricated preview (§13).
   return <BrandedField seed={seed} kind={kind} compact={compact} className={className} />;
 }
 

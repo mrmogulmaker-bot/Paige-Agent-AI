@@ -1715,6 +1715,99 @@ export async function loadFormBySlug(tenantId: string, slug: string): Promise<Fo
   return { id: row.id, slug: row.slug, name: row.name, schema: row.schema_json, successAction: row.success_action_json ?? null };
 }
 
+/** Reload a persisted funnel into the BuiltFunnel shape for the read-only canvas preview (#319).
+ *  Reads growth_funnels + its ordered growth_funnel_steps and joins each page/form step's real
+ *  title + status, so the filmstrip renders the tenant's REAL sequence — never a fabricated one
+ *  (§13). Tenant-scoped (explicit tenant filter + RLS, §9); read-only, no mutation (§10 seam:
+ *  Paige can call this to reason about a funnel without opening the UI). Returns null when the
+ *  funnel row is gone (tombstoned), so the canvas falls back to the honest EmptyState. Only
+ *  page/form/thankyou steps are surfaced (payment/booking are roadmap and never built here). */
+export async function loadFunnel(tenantId: string, funnelId: string): Promise<BuiltFunnel | null> {
+  const tid = requireTenant(tenantId);
+  if (!funnelId) return null;
+
+  const { data: f, error: fe } = await supabase
+    .from("growth_funnels")
+    .select("id,slug,name,goal,status,entry_page_id")
+    .eq("id", funnelId)
+    .eq("tenant_id", tid)
+    .maybeSingle();
+  if (fe) throw toStudioError(fe, "NOT_FOUND");
+  if (!f) return null;
+  const funnelRow = f as unknown as {
+    id: string; slug: string; name: string; goal: string | null; status: string; entry_page_id: string | null;
+  };
+
+  const { data: stepRows, error: se } = await supabase
+    .from("growth_funnel_steps")
+    .select("order_index,step_type,page_id,form_id")
+    .eq("funnel_id", funnelId)
+    .eq("tenant_id", tid)
+    .order("order_index", { ascending: true });
+  if (se) throw toStudioError(se, "NOT_FOUND");
+  const rows = (stepRows ?? []) as { order_index: number; step_type: string; page_id: string | null; form_id: string | null }[];
+
+  // Resolve real page/form titles + status in one round-trip each (never N+1).
+  const pageIds = [...new Set(rows.filter((r) => r.page_id).map((r) => r.page_id!))];
+  const formIds = [...new Set(rows.filter((r) => r.form_id).map((r) => r.form_id!))];
+  const pageById = new Map<string, { title: string; status: string; slug: string }>();
+  const formById = new Map<string, { name: string; status: string; slug: string }>();
+  if (pageIds.length) {
+    const { data: pages } = await supabase
+      .from("growth_pages").select("id,title,status,slug").eq("tenant_id", tid).in("id", pageIds);
+    for (const p of (pages ?? []) as { id: string; title: string | null; status: string; slug: string }[]) {
+      pageById.set(p.id, { title: p.title?.trim() || "Landing page", status: p.status, slug: p.slug });
+    }
+  }
+  if (formIds.length) {
+    const { data: forms } = await supabase
+      .from("growth_forms").select("id,name,status,slug").eq("tenant_id", tid).in("id", formIds);
+    for (const fm of (forms ?? []) as { id: string; name: string | null; status: string; slug: string }[]) {
+      formById.set(fm.id, { name: fm.name?.trim() || "Intake form", status: fm.status, slug: fm.slug });
+    }
+  }
+
+  const steps: BuiltFunnelStep[] = [];
+  let entryPageId: string | null = funnelRow.entry_page_id;
+  let entryPageStatus: "draft" | "published" = "draft";
+  let entryPageSlug = "";
+  let formId: string | null = null;
+  let formSlug: string | null = null;
+  for (const r of rows) {
+    if (r.step_type === "page" && r.page_id) {
+      const pg = pageById.get(r.page_id);
+      const published = pg?.status === "published";
+      steps.push({ kind: "page", title: pg?.title ?? "Landing page", refId: r.page_id, status: published ? "published" : "draft" });
+      if (!entryPageId || entryPageId === r.page_id) {
+        entryPageId = r.page_id; entryPageStatus = published ? "published" : "draft"; entryPageSlug = pg?.slug ?? "";
+      }
+    } else if (r.step_type === "form" && r.form_id) {
+      const fm = formById.get(r.form_id);
+      steps.push({ kind: "form", title: fm?.name ?? "Intake form", refId: r.form_id, status: fm?.status === "active" ? "active" : "draft" });
+      formId = r.form_id; formSlug = fm?.slug ?? null;
+    } else if (r.step_type === "thankyou") {
+      steps.push({ kind: "thankyou", title: "Thank you", refId: null, status: "included" });
+    }
+    // payment/booking: roadmap step types — never built by buildFunnelFromDraft, skipped here.
+  }
+
+  return {
+    funnelId: funnelRow.id,
+    funnelSlug: funnelRow.slug,
+    name: funnelRow.name,
+    goal: funnelRow.goal,
+    pageId: entryPageId ?? "",
+    pageSlug: entryPageSlug,
+    pageStatus: entryPageStatus,
+    formId,
+    formSlug,
+    // A reopened preview doesn't re-run the page-blank preflight (that's a build-time publish gate);
+    // it's a read-only view, so no blanks are surfaced here (§13 — never invented).
+    pageBlanks: [],
+    steps,
+  };
+}
+
 export interface SaveFormDeliveryInput {
   tenantId: string;
   formId: string;
@@ -1889,7 +1982,13 @@ export async function draftFunnel(brief: string): Promise<FunnelDraft> {
   }
 
   const body = (await res.json().catch(() => null)) as
-    | { name?: string; goal?: string | null; page?: any; form?: any; error?: unknown }
+    | {
+        name?: string;
+        goal?: string | null;
+        page?: Record<string, unknown>;
+        form?: Record<string, unknown>;
+        error?: unknown;
+      }
     | null;
   const fnError = readFnError(body);
   if (fnError || !res.ok) {
