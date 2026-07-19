@@ -26,9 +26,10 @@
 // beats, text) is indigo/token off --build-primary; the settled beat check is INDIGO, never gold.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Check } from "lucide-react";
+import { Check, ShieldCheck, X } from "lucide-react";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { GP_FADE_RISE, GP_SHIMMER } from "@/components/growth/growth-motion";
+import { ArtifactPreview, type ArtifactPreviewKind } from "@/components/ui/page/ArtifactPreview";
 import { cn } from "@/lib/utils";
 
 /** One phase beat in the page-regime vertical stack. */
@@ -37,6 +38,36 @@ export interface BuildBeat {
   agent: string;
   /** The real note for this phase — names work the seam actually performs (§13). */
   note: string;
+}
+
+/**
+ * One REAL streamed build step, captured 1:1 from the server's `paige_step` frame (§13) — never a
+ * fabricated phase off a fixed checklist. The session build loop emits one of these per model round
+ * (a `thought`) and per executed tool (an `action`); every frame is TERMINAL when it arrives (it is
+ * emitted the moment the step resolves), so `status` is the real `done`/`error` the server reported.
+ * The "still working" cue is a separate UNNAMED live pulse (more may be coming), never a claim that a
+ * specific named step is mid-flight.
+ */
+export interface StudioBuildStep {
+  /** Server frame id — the stable React key + dedupe key. */
+  id: string;
+  /** Server sequence number (monotonic within the turn) — preserves real order. */
+  seq: number;
+  /** `thought` (her one-line reasoning for the round) or `action` (a tool she actually ran). */
+  kind: "thought" | "action";
+  /** The real, jargon-free label the server derived from the executed work (§3/§13). */
+  label: string;
+  /** The real outcome the server reported for this step. */
+  status: "done" | "error";
+  /** An optional real detail (e.g. "12 found", "image ready"). */
+  detail?: string;
+  /**
+   * TRUE only when this step is a genuine verification/quality scan (§5 verifier made visible).
+   * DATA-GATED (§13): the session loop does not emit a verify step today, so this is never set and
+   * the "scan" beat stays omitted — the capability is wired but dormant until a real verify step
+   * streams. We NEVER infer it from a loose keyword (a "Checking your contacts" read is not a scan).
+   */
+  verify?: boolean;
 }
 
 export interface StudioBuildingScreenProps {
@@ -72,7 +103,19 @@ export interface StudioBuildingScreenProps {
   /** COPY/IMAGE regime: craft aphorisms to rotate through, one at a time, off the wall-clock.
    *  Ambient by construction — never implies ordered completion (§13). */
   rotation?: string[];
-}
+  /** SESSION regime (Slice C): render the cinematic SPLIT — the living PaigeMark + streamed real
+   *  beats on the left plane, a progressive artifact skeleton on the right. Only the conversational
+   *  session's first-build cutscene sets this; every other indeterminate caller (page/doc/funnel
+   *  hydrate holds) leaves it off and keeps the centered ambient layout unchanged. */
+  split?: boolean;
+  /** SESSION regime: the accumulating REAL step trace (the server's `paige_step` frames, captured
+   *  1:1). Rendered as a settling stack whose row states are the server's own done/error — NOT an
+   *  activeIndex over a fabricated phase list (§13). Empty until the first frame → the honest note. */
+  steps?: StudioBuildStep[];
+  /** SESSION regime: the artifact kind for the forming skeleton, WHEN KNOWN. On a first build the
+   *  kind isn't classified yet → pass null and the skeleton draws the neutral forming surface, never
+   *  a guessed shape (§13). */
+  artifactKind?: ArtifactPreviewKind | null;
 
 /** A blurred, brand-toned aurora blob. Positioned by top-left (no transform of our own, so the
  *  reused .gp-aurora-* keyframe fully owns the drift). Brightness eases with --build-energy. */
@@ -236,6 +279,64 @@ function BeatRow({
           cue BuildProgress uses in the rail. No shimmer under reduce. */}
       {active && !reduce && <div className={cn("ml-[30px] h-1 rounded-full", GP_SHIMMER)} />}
     </Row>
+  );
+}
+
+/** One row of the SESSION-regime streamed-beat stack. Unlike BeatRow, its state is the server's REAL
+ *  terminal status (done/error) — there is no "active" here because every streamed step arrives
+ *  already resolved (§13). A `verify` step (data-gated, dormant today) reads as a calm indigo scan.
+ *  Streams in on mount with a spring; renders plainly under reduce. */
+function StreamRow({ step, reduce }: { step: StudioBuildStep; reduce: boolean }) {
+  const Row = reduce ? "li" : motion.li;
+  const rowMotion = reduce
+    ? {}
+    : {
+        initial: { opacity: 0, y: 8 },
+        animate: { opacity: 1, y: 0 },
+        transition: { type: "spring" as const, stiffness: 260, damping: 24 },
+      };
+  const error = step.status === "error";
+
+  const icon = error ? (
+    // Honest failure — a muted destructive mark, never dressed up as success (§13).
+    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-destructive/15 text-destructive">
+      <X className="h-3 w-3" />
+    </span>
+  ) : step.verify ? (
+    // The self-verify "scan" beat (§5 verifier made visible) — INDIGO, never gold. Only ever renders
+    // when a real verify step streams; dormant until then.
+    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
+      <ShieldCheck className="h-3 w-3" />
+    </span>
+  ) : (
+    // Settled real step — a calm indigo check (§ spec — INDIGO not gold).
+    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
+      <Check className="h-3 w-3" />
+    </span>
+  );
+
+  return (
+    <Row {...rowMotion} className="flex items-center gap-2.5 text-sm">
+      {icon}
+      <span className={cn("min-w-0 truncate", error ? "text-muted-foreground/70" : "text-muted-foreground")}>
+        {step.label}
+        {step.detail && <span className="ml-1.5 text-muted-foreground/60">· {step.detail}</span>}
+      </span>
+    </Row>
+  );
+}
+
+/** The trailing UNNAMED live pulse — the honest "still working, more may come" cue below the settled
+ *  real steps. It claims no phase and no name (§13): just a breathing dot + the latest real note. A
+ *  static dot under reduce. */
+function LivePulseRow({ note, reduce }: { note: string; reduce: boolean }) {
+  return (
+    <li className="flex items-center gap-2.5 text-sm" aria-hidden>
+      <span className="grid h-5 w-5 shrink-0 place-items-center">
+        <span className={cn("h-2 w-2 rounded-full bg-primary", !reduce && "animate-pulse")} />
+      </span>
+      <span className="min-w-0 truncate font-medium text-foreground">{note}</span>
+    </li>
   );
 }
 

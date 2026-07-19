@@ -14,7 +14,7 @@
 //
 // Gold discipline (§11): the fallback glyph plate rests on an INDIGO hairline (ring="indigo"),
 // never a resting decorative gold ring. Token-only; the one white sheen reads --studio-sheen.
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import {
   ChevronRight,
   ClipboardList,
@@ -427,6 +427,136 @@ function FormSheet({
   );
 }
 
+/**
+ * The progressive "artifact forming" skeleton (Slice C) — a token-only wireframe scaffold shown
+ * beside the streamed build beats while an artifact is being made. It reads as the artifact TAKING
+ * SHAPE, not a dead shimmer block.
+ *
+ * HONESTY (§13/§22): the shape is only ever as specific as what is actually known. A KNOWN `kind`
+ * draws that kind's coarse structure (page → chrome + hero + blocks; document/copy → text lines;
+ * image → a framed plate; form → label/field rows; funnel → staged panels). An UNKNOWN kind (the
+ * first build, before anything is classified) draws the NEUTRAL surface — a header + canvas region +
+ * lines — never a specific wrong shape guessed ahead of the real classification.
+ *
+ * MOTION (§11/§22): bars reveal with a staggered gp-fade-rise (the shipped keyframe + --gp-stagger),
+ * so the scaffold assembles top-to-bottom. Under `reduce` no reveal class is applied → the full
+ * scaffold shows static (its resting state is fully visible), so a reduced-motion user still sees the
+ * forming shape without animation. Token-only; no gold (a wait, not an act).
+ */
+function ArtifactFormingSkeleton({
+  kind,
+  reduce,
+  className,
+}: {
+  kind: ArtifactPreviewKind | null;
+  reduce: boolean;
+  className?: string;
+}) {
+  // One wireframe bar/block. `i` sets its reveal order (staggered gp-fade-rise); resting state is
+  // fully visible so reduce (no reveal class) shows it static.
+  const bar = (i: number, cls: string, style?: CSSProperties): ReactNode => (
+    <div
+      key={`${i}:${cls}`}
+      className={cn("rounded-md bg-[hsl(var(--studio-chrome-border)/0.42)]", !reduce && "gp-fade-rise", cls)}
+      style={{ ["--gp-stagger" as string]: `${i * 85}ms`, ...style }}
+    />
+  );
+
+  let body: ReactNode;
+  switch (kind) {
+    case "page":
+      body = (
+        <>
+          <div className="flex items-center gap-1.5">
+            {bar(0, "h-2.5 w-2.5 rounded-full")}
+            {bar(0, "h-2.5 w-2.5 rounded-full")}
+            {bar(0, "h-2.5 w-2.5 rounded-full")}
+            {bar(1, "ml-2 h-3 flex-1 rounded-full")}
+          </div>
+          {bar(2, "min-h-[30%] w-full flex-[2]")}
+          <div className="grid grid-cols-3 gap-2.5">
+            {bar(3, "h-14")}
+            {bar(4, "h-14")}
+            {bar(5, "h-14")}
+          </div>
+          {bar(6, "h-3 w-2/3")}
+          {bar(7, "h-3 w-1/2")}
+        </>
+      );
+      break;
+    case "document":
+    case "copy":
+      body = (
+        <>
+          {bar(0, "h-5 w-2/3")}
+          {bar(1, "h-3 w-full")}
+          {bar(2, "h-3 w-[92%]")}
+          {bar(3, "h-3 w-full")}
+          {bar(4, "h-3 w-[85%]")}
+          {bar(5, "mt-2 h-3 w-full")}
+          {bar(6, "h-3 w-[78%]")}
+          {bar(7, "h-3 w-[88%]")}
+        </>
+      );
+      break;
+    case "image":
+      body = (
+        <div className="grid flex-1 place-items-center">
+          {bar(1, "aspect-square w-3/4 max-w-[70%] rounded-xl")}
+        </div>
+      );
+      break;
+    case "form":
+      body = (
+        <>
+          {bar(0, "h-4 w-1/2")}
+          {[0, 1, 2, 3].map((n) => (
+            <div key={n} className="space-y-1.5">
+              {bar(1 + n, "h-2.5 w-1/3")}
+              {bar(1 + n, "h-8 w-full")}
+            </div>
+          ))}
+          {bar(6, "mt-1 h-8 w-1/3 rounded-full")}
+        </>
+      );
+      break;
+    case "funnel":
+      body = (
+        <div className="flex flex-1 items-center gap-2.5">
+          {[0, 1, 2].map((n) => (
+            <div key={n} className="flex flex-1 items-center gap-2.5">
+              <div className="flex flex-1 flex-col gap-2 rounded-lg border border-[hsl(var(--studio-chrome-border)/0.35)] p-2.5">
+                {bar(1 + n * 2, "h-10 w-full")}
+                {bar(2 + n * 2, "h-2.5 w-2/3")}
+                {bar(2 + n * 2, "h-2.5 w-1/2")}
+              </div>
+              {n < 2 && bar(2 + n * 2, "h-0.5 w-4 shrink-0 self-center")}
+            </div>
+          ))}
+        </div>
+      );
+      break;
+    default:
+      // NEUTRAL — kind not yet known (a first build). A generic surface forming: header, a large
+      // canvas region, a couple of settling lines. Deliberately un-committal (§13).
+      body = (
+        <>
+          {bar(0, "h-3.5 w-2/5 rounded-full")}
+          {bar(1, "min-h-[40%] w-full flex-[2]")}
+          {bar(2, "h-3 w-3/4")}
+          {bar(3, "h-3 w-1/2")}
+        </>
+      );
+      break;
+  }
+
+  return (
+    <div aria-hidden className={cn("flex h-full w-full flex-col gap-2.5 p-5", className)}>
+      {body}
+    </div>
+  );
+}
+
 export function ArtifactPreview({
   kind = null,
   thumbnailUrl = null,
@@ -449,18 +579,13 @@ export function ArtifactPreview({
   // branded fallback forever.
   useEffect(() => { setFailed(false); }, [thumbnailUrl]);
 
-  // SKELETON — a token-only shimmer while an artifact builds (Slice C reuses this). Motion-safe.
+  // SKELETON — the progressive "artifact forming" scaffold the build cutscene shows BESIDE the
+  // streamed beats (Slice C, §22 "a progressive skeleton of the artifact-to-be"). HONEST (§13): a
+  // KNOWN kind draws that kind's coarse wireframe; an unknown kind (a first build, nothing classified
+  // yet) draws a NEUTRAL forming surface — never a specific wrong shape. Motion-safe: bars stagger in
+  // via the shipped gp-fade-rise; under reduce the whole scaffold rests static (no stagger).
   if (skeleton) {
-    return (
-      <div
-        aria-hidden
-        className={cn(
-          "h-full w-full animate-pulse bg-[hsl(var(--studio-chrome-border)/0.3)] motion-reduce:animate-none",
-          reduce && "animate-none",
-          className,
-        )}
-      />
-    );
+    return <ArtifactFormingSkeleton kind={kind} reduce={reduce} className={className} />;
   }
 
   // SHEET — the full document-grade canvas render, per kind (§21 one session, every type).
