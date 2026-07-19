@@ -1137,3 +1137,34 @@ stripped — is exactly what this rule kills.
 - **The test, every time:** *"Am I delivering the COMPLETE thing they asked for, at the fidelity they asked,
   with the REAL assets and proven patterns — or a convenient approximation I'm hoping passes?"* If it's the
   approximation, it isn't done, and shipping it wastes the owner's time and money.
+
+## 32. A green build is NOT a working render — smoke-test the runtime, never fail silently.
+
+**Directive (owner: Antonio, 2026-07-19) — RED-LINE, born from the exact cycle it exists to kill.** We
+burned hours shipping a Studio hero that *compiled clean* (`tsc` 0, `vite` 0) but **crashed or rendered
+nothing at runtime** — and the hero's `SceneBoundary` **silently swallowed the throw**, so the surface
+just "didn't populate" with zero signal, and neither we nor the owner could tell why. *"If we're still
+making the same mistake… I just can't see it."* · *"We spend 5 to 10 hours on mistakes just to get it
+right one time… hard-code the rules so we get this right every single time."* A passing build proves the
+code TYPE-CHECKS; it proves NOTHING about whether it runs. This binds every runtime-heavy / render-heavy
+surface, especially 3D/WebGL, media pipelines, and anything behind a graceful-degradation boundary:
+
+- **A green `tsc`/`vite` is not verification of behavior.** Never report a render/runtime surface as
+  "working" or "shipped" on the strength of the build alone. The build is table stakes, not the check.
+- **Smoke-test the crash-prone runtime logic HEADLESS before shipping.** Where the risky logic is plain
+  JS/three (GLB loading, geometry merges, samplers, env construction, parsing, data transforms), RUN it
+  in Node against the real inputs and assert it doesn't throw and produces non-empty output — the way
+  `scripts/studio-hero-smoke.mjs` loads the real `.glb` and exercises `mergeGeometries` +
+  `MeshSurfaceSampler` + `RoomEnvironment`. If a surface has this kind of logic and no smoke test, write
+  one; it is the cheapest possible way to catch "compiles but crashes."
+- **Error boundaries and try/catch must LOG, never swallow silently.** A boundary that renders `null` on
+  a throw with no `console.error` turns every runtime bug into the same invisible symptom ("nothing
+  rendered"). Every degrade-gracefully path logs its cause loudly, and every crash-prone call site
+  (env-map/PMREM, sampler, loader) is wrapped so a failure degrades to something VISIBLE, not blank.
+- **When you genuinely cannot see the render (headless, no Chrome MCP), say so — and lean HARDER on the
+  headless smoke test + loud logging + a crash-proof, always-visible fallback.** Blindness is not an
+  excuse to ship on a hope (§13); it is the reason to make failure impossible-to-hide and the render
+  impossible-to-blank.
+- **The test, every time:** *"Have I proven this actually RUNS — not just compiles — and if it fails
+  live, will the failure be LOUD and the surface still show SOMETHING, or will it silently blank and send
+  us back into the guess-for-hours cycle?"* If I've only proven it compiles, I have not verified it.

@@ -34,6 +34,14 @@ class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean
   static getDerivedStateFromError() {
     return { failed: true };
   }
+  // Degrade gracefully (never white-screen), but do NOT fail SILENTLY: a runtime throw here used to blank
+  // the whole hero with zero signal, which is exactly how a "compiles-but-crashes-at-runtime" bug hides.
+  // Log it loudly so a live 3D failure is diagnosable in the console instead of looking like "nothing
+  // rendered" (owner 2026-07-19 — break the invisible-crash cycle).
+  componentDidCatch(error: unknown, info: unknown) {
+    // eslint-disable-next-line no-console
+    console.error("[StudioHeroScene] 3D scene crashed — falling back to the gradient. Cause:", error, info);
+  }
   render() {
     return this.state.failed ? null : this.props.children;
   }
