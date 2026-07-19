@@ -19,6 +19,7 @@ export type Modality =
   | "text"
   | "image"
   | "image-with-text"
+  | "vision-critique" // image(s)+text IN → text critique OUT (design-critic §25/§33); Claude-vision/frontier ONLY
   | "3d"
   | "audio-voice"
   | "doc-render";

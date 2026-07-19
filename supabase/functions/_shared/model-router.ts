@@ -468,6 +468,20 @@ const ROUTE_TABLE: Partial<Record<Modality, Partial<Record<Tier, RouteCell>>>> =
     "open-fast": imageWithTextCell,
     "open-flexible": imageWithTextCell,
   },
+  "vision-critique": {
+    // Image(s)+text IN → a text SHIP/ITERATE/BLOCK critique OUT (the design-critic "eyes", §25/§33).
+    // ONLY a frontier cell exists on purpose: open-fast/open-flexible have NO cell, so callModel
+    // resolves them to a clean needs_config degrade (never a wrong-provider substitution) — i.e.
+    // "a design judgment never routes to an open model" is guaranteed STRUCTURALLY, not by a runtime
+    // check. claudeText → chatCompletionCompat → callClaude on CLAUDE_REASONING (claude-sonnet-5,
+    // vision-capable); the caller passes a base64 image data-URI block that toClaudeContent turns
+    // into an Anthropic vision block.
+    frontier: {
+      provider: "anthropic",
+      justification: "Claude reasoning (vision-capable) reads a rendered screenshot and returns a design critique — a judgment, never an open model (no open-tier cell exists here).",
+      invoke: (task, model) => claudeText(task, model),
+    },
+  },
   "3d": {
     frontier: threeDCell,
     "open-fast": threeDCell,
@@ -510,7 +524,9 @@ function round4(n: number): number { return Math.round(n * 10000) / 10000; }
 function estimateCost(provider: string, modality: Modality, tokensIn?: number, tokensOut?: number): number | undefined {
   const kIn = (tokensIn ?? 0) / 1000;
   const kOut = (tokensOut ?? 0) / 1000;
-  if (modality === "text") {
+  // vision-critique is a Claude text-OUT call (image in, critique text out), so it's token-priced
+  // like text — not a per-artifact image cost. Pricing it here gives the §33 cost-cap a real figure.
+  if (modality === "text" || modality === "vision-critique") {
     const c = (COST_ESTIMATES.text_per_1k as Record<string, { in: number; out: number }>)[provider];
     return c ? round4(kIn * c.in + kOut * c.out) : undefined;
   }

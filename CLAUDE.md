@@ -1168,3 +1168,47 @@ surface, especially 3D/WebGL, media pipelines, and anything behind a graceful-de
 - **The test, every time:** *"Have I proven this actually RUNS — not just compiles — and if it fails
   live, will the failure be LOUD and the surface still show SOMETHING, or will it silently blank and send
   us back into the guess-for-hours cycle?"* If I've only proven it compiles, I have not verified it.
+
+## 33. The design agent has EYES — every visual generation is screenshot-critiqued before it ships.
+
+**Directive (owner: Antonio, 2026-07-19).** §25 says "see it before you ship it"; §33 is the machinery
+that makes Paige's design agent actually *do* it, not just us. A generated visual artifact (an image,
+and — once rendered — a page or funnel) is **screenshotted and read by a vision model that returns a
+SHIP / ITERATE / BLOCK verdict** graded against the same anti-pattern vocabulary the generator is
+steered away from (`_shared/cheesy-tells.ts`, §18 one home for the tells). On ITERATE/BLOCK the critic
+hands back a refined prompt and the agent regenerates — closing, in software, the loop the owner keeps
+having to close by eye. This is the runtime counterpart to the human design-critic seat (§25): the crew
+still judges taste at build time; §33 gives the *agent* a taste check at *generation* time.
+
+- **The eyes are three shared seams, never a fourth home (§18).** (1) `services/visual-renderer` — a Fly
+  Playwright service that screenshots a URL or raw HTML (one warm browser; the reason it's a standalone
+  Fly service, not Vercel serverless). (2) `studio-visual-critique` edge function — fetches/renders the
+  screenshot, runs the vision pass through the ONE model seam, returns the verdict + findings, logs the
+  row. (3) `_shared/visual-critique-gate.ts` — the generate→critique→iterate loop any caller drives.
+  An image (already a raster) needs no renderer; a page/funnel (blocks, not pixels) is rendered first.
+- **Claude-vision ONLY, by construction (§17).** The critique routes through `callModel("vision-critique",
+  "frontier")`, whose ROUTE_TABLE has a frontier cell and NO open-tier cell — so a design judgment can
+  never route to an open model; it's structural, not a runtime check. No second vision client.
+- **Hard caps so the loop can't run away (cost is real).** `STUDIO_CRITIQUE_MAX_ITERATIONS` (default 3)
+  and `STUDIO_CRITIQUE_COST_CAP_USD` (default $2). On either cap the verdict is forced to SHIP with
+  `capped:true` — stop iterating, keep the best. Every critique logs its per-call + running cost to
+  `studio_visual_critique_log` (tenant-scoped, §9) so the spend is auditable.
+- **Honest degrade, never a fabricated verdict (§13/§32).** No renderer/model configured → `needs_config`,
+  not a faked SHIP. A critic that errors or returns unparseable output FAILS OPEN to SHIP with
+  `low_confidence:true` and LOGS the malfunction — a broken critic must never BLOCK a legitimate artifact,
+  and never silently. The loop is an ENHANCEMENT wrapped so a failure in it never breaks the generation
+  the user asked for.
+- **§9 tenant isolation.** A JWT caller can only critique for their OWN tenant (derived from
+  `current_user_tenant_id()`, never the request body); a service-role caller (Paige's headless agent)
+  passes the tenant it already resolved. The renderer is shared-secret gated (SSRF-noted).
+- **GATED OFF until the renderer is live.** The whole loop runs only when `STUDIO_VISUAL_CRITIQUE_ENABLED`
+  is `"true"` AND the Fly renderer + `VISUAL_RENDERER_URL`/`_SECRET` are set. With the flag unset, the
+  **product/generation flow is byte-for-byte unchanged** — the `paige-ai-chat` image seam skips the loop
+  entirely. (Honest caveat, §13: the `studio-visual-critique` edge endpoint and its log table DO deploy
+  live and are directly invokable by an admin/coach JWT — inert in the product flow, but reachable — which
+  is exactly why its SSRF guard and §9 tenant-scope must be, and are, correct on merge, not deferred to
+  activation.) This is the §32-honest way to "wire it in" without blind-merging live *product* behavior
+  that can't be verified headless.
+- **The test, every time:** *"Before this generated visual reaches the tenant, did the agent SEE it and
+  judge it against the bar — or did it ship blind and leave the catching to the owner's eyes?"* If the
+  agent never looked, §33 isn't wired.

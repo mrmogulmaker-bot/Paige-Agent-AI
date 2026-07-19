@@ -10,6 +10,10 @@ import { buildStudioWhereYouAre, STUDIO_OPERATING_CORE } from "../_shared/design
 // Tier Rail Spine (Phase D): the SAME declared-rail tier resolver + client-seat
 // allowlist that paige-mcp uses, so a client-portal Paige seat is sealed here too.
 import { getActorTier, clientSeatToolAllowed, type Tier } from "../_shared/actorTier.ts";
+// §25/§33 — the design agent's generate→critique→iterate loop (its "eyes"). GATED OFF by default
+// (STUDIO_VISUAL_CRITIQUE_ENABLED); with the flag unset this is never called and generation is
+// byte-for-byte unchanged. Turned on only once the Fly renderer + secrets are live (owner-gated).
+import { visualCritiqueEnabled, critiqueImageAndIterate } from "../_shared/visual-critique-gate.ts";
 // Redeploy trigger (2026-07-16): the git integration skipped this function on the #88 merge,
 // so the Studio funnel tools (growth_funnel_generate/build/publish) never went live. This
 // no-op comment forces a re-detect so the already-merged tool code deploys. Safe to remove.
@@ -6491,6 +6495,35 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 // image never reaches the project canvas. Keep it on the result. provider is the one
                 // that ACTUALLY served (may differ from requested when a key was absent → fell back).
                 result = { success: true, url: (img as any)?.url, size: (img as any)?.size, provider: (img as any)?.provider, model: (img as any)?.model, content_id: (img as any)?.content_id ?? null };
+
+                // §25/§33 — the design agent's "eyes": screenshot → critique → iterate. GATED OFF by
+                // default (STUDIO_VISUAL_CRITIQUE_ENABLED). When on, ITERATE/BLOCK regenerates from the
+                // critic's refined prompt (reusing content_id so versions stack, #292), up to the §33
+                // cap. A failure in the loop never breaks the image the user asked for (§13).
+                if (visualCritiqueEnabled() && (result as any)?.url) {
+                  const critiqued = await critiqueImageAndIterate({
+                    client: supabaseClient as any,
+                    image: result as any,
+                    brief: String((args as any).prompt ?? ""),
+                    tenantId: personaCtx?.tenant_id ?? null,
+                    regenerate: async (refinedPrompt: string) => {
+                      const { data: rimg, error: rerr } = await supabaseClient.functions.invoke("generate-image", {
+                        body: {
+                          prompt: refinedPrompt,
+                          size: (args as any).size ?? "square",
+                          provider: (args as any).provider ?? undefined,
+                          model: (args as any).model ?? undefined,
+                          tenant_id: personaCtx?.tenant_id ?? null,
+                          reuse_content_id: (result as any)?.content_id ?? reuseImageId,
+                        },
+                      });
+                      if (rerr || (rimg as any)?.error || (rimg as any)?.needs_config || !(rimg as any)?.url) return null;
+                      return { success: true, url: (rimg as any)?.url, size: (rimg as any)?.size, provider: (rimg as any)?.provider, model: (rimg as any)?.model, content_id: (rimg as any)?.content_id ?? null } as any;
+                    },
+                  });
+                  result = critiqued.image as any;
+                  if (critiqued.critique?.ok) (result as any).critique = { verdict: critiqued.critique.verdict, summary: critiqued.critique.summary };
+                }
               }
             } else if (tc.function.name === "calendar_book_meeting") {
               // Confirm is enforced by the central autonomy gate above (a booking
