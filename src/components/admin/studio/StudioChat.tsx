@@ -17,6 +17,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
 import { PromptComposer } from "./PromptComposer";
+import { ReasoningPanel } from "./chat/ReasoningPanel";
+import { AgentChoiceCard } from "./chat/AgentChoiceCard";
 import type { StudioBuildStep } from "./StudioBuildingScreen";
 import { uploadGrowthAsset } from "./studio";
 import type { GrowthAsset } from "@/lib/growth";
@@ -48,8 +50,8 @@ const db = supabase as unknown as {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 interface ChatMsg { role: "user" | "assistant"; content: string }
-interface ChoiceOption { label: string; value: string }
-interface Choices { prompt: string; options: ChoiceOption[]; multi?: boolean }
+interface ChoiceOption { label: string; value: string; description?: string; icon?: string; preview?: string }
+interface Choices { prompt: string; options: ChoiceOption[]; multi?: boolean; allow_other?: boolean }
 
 /** A brief the customer STAGED while the agent was mid-turn (roadmap #155). The single-active-command
  *  gate is unchanged — only ONE turn is ever in flight — but a new submission no longer blocks: it
@@ -108,6 +110,9 @@ export function StudioChat({
   const [sending, setSending] = useState(false);
   const [note, setNote] = useState<string | null>(null); // live "working…" line
   const [steps, setSteps] = useState<StudioBuildStep[]>([]); // the accumulating REAL step trace (§13)
+  const [thinking, setThinking] = useState<string>(""); // U2 — extended-thinking text for THIS turn (distinct channel; empty unless the server opted in, default OFF)
+  const [thinkStartedAt, setThinkStartedAt] = useState<number | null>(null); // U2 — performance.now() when reasoning began (drives the live duration)
+  const [thinkMs, setThinkMs] = useState<number | null>(null); // U2 — frozen reasoning duration once the answer text begins
   const [loading, setLoading] = useState(true);
   const [choices, setChoices] = useState<Choices | null>(null); // pending clickable options
   const [multiPicks, setMultiPicks] = useState<Set<string>>(new Set());
@@ -208,9 +213,13 @@ export function StudioChat({
     setMessages([...next, { role: "assistant", content: "" }]);
     setSending(true);
     setSteps([]); // fresh turn → drop the prior turn's real trace so the cutscene never shows stale beats (§13)
+    setThinking(""); // U2 — fresh turn drops the prior turn's thinking so the collapsible block never shows stale reasoning (§13)
+    setThinkStartedAt(null); setThinkMs(null); // U2 — reset this turn's reasoning duration tracking (§13)
     let gotChoices = false;
     let gotArtifact: StudioChatArtifact | null = null;
     let ok = false;
+    let thinkStart: number | null = null; // U2 — performance.now() when reasoning began this turn (§13 honest timing)
+    let thinkFrozen: number | null = null; // U2 — reasoning duration frozen once the answer text begins
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Please sign in again."); // handled uniformly below (roll back + pause)
@@ -284,8 +293,21 @@ export function StudioChat({
             }
             // The server named exactly what to render on the canvas this turn.
             if (parsed.paige_artifact) { gotArtifact = parsed.paige_artifact as StudioChatArtifact; continue; }
+            // U2 — extended thinking on its DISTINCT channel (`delta.paige_thinking`), GATED OFF by
+            // default server-side. It is NEVER answer text: accumulate it separately so the reasoning
+            // renders in its own dimmed, collapsible block above the reply and never leaks into the
+            // bubble. With the flag off this field never arrives and the branch is dead (byte-identical).
+            const think = parsed.choices?.[0]?.delta?.paige_thinking as string | undefined;
+            if (typeof think === "string") {
+              if (thinkStart == null) { thinkStart = performance.now(); setThinkStartedAt(thinkStart); }
+              setThinking((prev) => prev + think);
+              continue;
+            }
             const delta = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (delta) {
+              // First answer text after reasoning → freeze the thinking duration (thinking always
+              // precedes text in Anthropic's stream), so the panel settles to "Thought for Ns" (§13).
+              if (thinkStart != null && thinkFrozen == null) { thinkFrozen = performance.now() - thinkStart; setThinkMs(thinkFrozen); }
               assistant += delta;
               setMessages([...next, { role: "assistant", content: assistant }]);
             }
@@ -308,6 +330,9 @@ export function StudioChat({
     } finally {
       setSending(false);
       setNote(null);
+      // U2 — reasoning began but never handed off to text (choices-only / empty reply): freeze its
+      // duration at turn end so the panel reads "Thought for Ns", never a forever-ticking timer (§13).
+      if (thinkStart != null && thinkFrozen == null) setThinkMs(performance.now() - thinkStart);
       // Clear the reference-image tray only on a clean turn that USED the live tray (N3) — a failed
       // turn keeps them, and a queued dispatch used its own snapshot so it must not wipe the live tray.
       if (ok && hasImages && usingLiveAttachments) setAttachments([]);
@@ -423,6 +448,17 @@ export function StudioChat({
         ) : (
           messages.map((m, i) => (
             <div key={i} className={cn("flex flex-col", m.role === "user" ? "items-end" : "items-start")}>
+              {/* U2 — extended thinking (GATED OFF by default; only renders when the server streamed
+                  `paige_thinking` this turn). A dimmed, COLLAPSIBLE "Paige is thinking…" block ABOVE the
+                  answer — never mixed into the reply bubble. Motion-safe + token-only (§11). */}
+              {m.role === "assistant" && isLastAssistant(i) && (thinking.trim() || (sending && thinkStartedAt != null)) && (
+                <ReasoningPanel
+                  text={thinking}
+                  active={sending && thinkStartedAt != null && thinkMs == null}
+                  startedAt={thinkStartedAt}
+                  durationMs={thinkMs}
+                />
+              )}
               <div
                 className={cn(
                   "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
@@ -452,6 +488,34 @@ export function StudioChat({
                   <div className="flex flex-wrap gap-2">
                     {choices.options.map((opt) => {
                       const picked = multiPicks.has(opt.value);
+                      const rich = Boolean(opt.description || opt.icon || opt.preview);
+                      const choose = () => {
+                        if (choices.multi) {
+                          setMultiPicks((prev) => {
+                            const nextSet = new Set(prev);
+                            if (nextSet.has(opt.value)) nextSet.delete(opt.value);
+                            else nextSet.add(opt.value);
+                            return nextSet;
+                          });
+                        } else {
+                          void send(opt.value, { display: opt.label });
+                        }
+                      };
+                      // Rich options (description/preview/icon) render as generative-UI CARDS; a bare
+                      // {label,value} stays the compact pill (backward-compat, §12/§18). §11: selection
+                      // is indigo; gold is reserved for the multi-select "Continue" act below.
+                      if (rich) {
+                        return (
+                          <AgentChoiceCard
+                            key={opt.value}
+                            option={opt}
+                            selected={choices.multi ? picked : false}
+                            multi={!!choices.multi}
+                            disabled={sending}
+                            onSelect={choose}
+                          />
+                        );
+                      }
                       return (
                         <button
                           key={opt.value}
@@ -459,18 +523,7 @@ export function StudioChat({
                           role={choices.multi ? "option" : "radio"}
                           aria-checked={choices.multi ? picked : undefined}
                           disabled={sending}
-                          onClick={() => {
-                            if (choices.multi) {
-                              setMultiPicks((prev) => {
-                                const nextSet = new Set(prev);
-                                if (nextSet.has(opt.value)) nextSet.delete(opt.value);
-                                else nextSet.add(opt.value);
-                                return nextSet;
-                              });
-                            } else {
-                              void send(opt.value, { display: opt.label });
-                            }
-                          }}
+                          onClick={choose}
                           className={cn(
                             "inline-flex min-h-[40px] items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm transition-colors motion-reduce:transition-none disabled:opacity-50",
                             picked
@@ -484,6 +537,16 @@ export function StudioChat({
                       );
                     })}
                   </div>
+                  {choices.allow_other && (
+                    <button
+                      type="button"
+                      disabled={sending}
+                      onClick={() => { setChoices(null); setMultiPicks(new Set()); }}
+                      className="mt-2 inline-flex items-center rounded-full px-2 py-1 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] disabled:opacity-50 motion-reduce:transition-none"
+                    >
+                      Something else — I’ll type it
+                    </button>
+                  )}
                   {choices.multi && (
                     <Button
                       variant="gold" size="sm" className="mt-2"

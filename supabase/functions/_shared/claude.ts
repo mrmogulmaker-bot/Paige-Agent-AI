@@ -297,6 +297,17 @@ function buildClaudeRequest(body: OpenAIStyleBody): Record<string, unknown> {
   if (system) req.system = system;
   if (body.temperature != null && !modelRejectsSampling(model)) req.temperature = body.temperature;
   if (tools?.length) { req.tools = tools; req.tool_choice = body.tool_choice ? { type: "auto" } : { type: "auto" }; }
+  // U2 — extended thinking, GATED OFF by default. ONLY when the caller explicitly opts in
+  // (`paige_thinking === true` on the parsed request body) do we emit Anthropic's thinking block.
+  // With the flag absent/false this whole branch is skipped and the request object is byte-for-byte
+  // what it is today. Anthropic requires temperature UNSET and max_tokens > budget_tokens when
+  // thinking is enabled, so we enforce both only on the opt-in path.
+  if ((body as { paige_thinking?: unknown }).paige_thinking === true) {
+    const budget = 8000; // U2 — Studio design-agent extended-thinking budget (spec Upgrade 2)
+    req.thinking = { type: "enabled", budget_tokens: budget };
+    delete req.temperature;
+    if ((req.max_tokens as number) <= budget) req.max_tokens = budget + 2048;
+  }
   return req;
 }
 
@@ -348,12 +359,23 @@ async function streamAnthropicAsOpenAI(
               toolIndex++;
               blockToTool.set(ev.index, toolIndex);
               send(controller, { choices: [{ index: 0, delta: { tool_calls: [{ index: toolIndex, id: ev.content_block.id, type: "function", function: { name: ev.content_block.name, arguments: "" } }] }, finish_reason: null }] });
+            } else if (ev.type === "content_block_start" && ev.content_block?.type === "redacted_thinking") {
+              // U2 — redacted (safety-encrypted) thinking. Surface a marker on the DISTINCT channel so
+              // the client can note it without any answer-text contamination. Only ever present on the
+              // opt-in path; the tool_use / text_delta paths above are unchanged when no thinking arrives.
+              send(controller, { choices: [{ index: 0, delta: { paige_thinking: "", paige_thinking_redacted: true }, finish_reason: null }] });
             } else if (ev.type === "content_block_delta") {
               if (ev.delta?.type === "text_delta") {
                 send(controller, { choices: [{ index: 0, delta: { content: ev.delta.text }, finish_reason: null }] });
               } else if (ev.delta?.type === "input_json_delta") {
                 const ti = blockToTool.get(ev.index) ?? 0;
                 send(controller, { choices: [{ index: 0, delta: { tool_calls: [{ index: ti, function: { arguments: ev.delta.partial_json } }] }, finish_reason: null }] });
+              } else if (ev.delta?.type === "thinking_delta") {
+                // U2 — extended thinking on a DISTINCT channel (`delta.paige_thinking`, never `content`),
+                // so the client tells reasoning apart from answer text. This delta type only arrives when
+                // the request opted in (default OFF), so the text_delta / input_json_delta paths above are
+                // byte-for-byte unchanged when no thinking block is present.
+                send(controller, { choices: [{ index: 0, delta: { paige_thinking: ev.delta.thinking }, finish_reason: null }] });
               }
             } else if (ev.type === "message_delta" && ev.delta?.stop_reason) {
               stopReason = ev.delta.stop_reason;

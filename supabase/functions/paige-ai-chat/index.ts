@@ -4,6 +4,9 @@ import { embeddingsCompat } from "../_shared/voyage.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 import { PME_KNOWLEDGE_BASE } from "../_shared/pme-knowledge-base.ts";
+// #292 / #343 U1 — the Studio design-agent system-prompt WRAPPER (identity + operating core + the
+// generative-UI choice-card rule), externalized so it lives in one editable home (§9/§12/§18).
+import { buildStudioWhereYouAre, STUDIO_OPERATING_CORE } from "../_shared/design-agent-prompt.ts";
 // Tier Rail Spine (Phase D): the SAME declared-rail tier resolver + client-seat
 // allowlist that paige-mcp uses, so a client-portal Paige seat is sealed here too.
 import { getActorTier, clientSeatToolAllowed, type Tier } from "../_shared/actorTier.ts";
@@ -1614,9 +1617,7 @@ Do not raise credit, credit scores, funding, loans, lenders, MCAs, cash advances
       const name = String(agentName || "the Studio design agent").trim();
       return `${String(agentPrompt || "").trim()}
 
-YOU ARE ${name.toUpperCase()} — ${tenant}'s creative-design agent, working inside their Vibe Studio. You are one of Paige's specialist team, NOT Paige herself (Paige runs the owner's main workspace, in the Your Paige tab). Never call yourself Paige or speak as her; you are her design specialist stationed in this project.
-
-WHERE YOU ARE — you're inside ONE Vibe Studio project session. The owner talks to you here to CREATE: "make an image of X", "build a landing page for Y", "draft a form", "spin up a funnel". You actually build it with your creative tools, and what you make appears right here in the studio window — so work like a designer at the desk: make the thing, show it, offer the next move. Keep replies tight and creative — you're building, not lecturing.`.trim()
+${buildStudioWhereYouAre(name, tenant)}`.trim()
         + buildBrandSection(brand, tenant);
     }
 
@@ -3523,7 +3524,7 @@ SUPPORT & FEEDBACK AWARENESS
               if (aiMessages[1]) {
                 aiMessages[1] = {
                   role: "system",
-                  content: `OPERATING CORE — you are a CREATIVE-DESIGN specialist at the design desk inside a Vibe Studio project. Your job is to BUILD creative assets on request — images, landing pages, funnels, forms/questionnaires, and the copy inside them — using your generation tools (generate an image; generate/save/publish a page or funnel; draft or save copy). A described asset is not a delivered asset — actually make it, then it renders on the canvas beside this chat. Do NOT act as a client-onboarding or client-support assistant, and do NOT reach for CRM, contact, pipeline, program-enrollment, or calendar-booking tools — those belong to the owner's main Paige workspace, not to you. If asked for something outside creative building, point them to their Paige chat. Keep replies tight and creative.`,
+                  content: STUDIO_OPERATING_CORE,
                 };
               }
             }
@@ -5423,7 +5424,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         type: "function",
         function: {
           name: "ask_choices",
-          description: "Ask the customer ONE decision as tappable option chips instead of prose. Use ONLY when genuinely uncertain AND you can name 2-4 concrete directions. One decision per call; at most one clarify round, then build. Every option must map to something you will actually build once they pick — no dead-end or coming-soon choices.",
+          description: "Ask the customer ONE decision as tappable choice CARDS instead of prose. Use ONLY when there are 2-4 genuinely distinct paths and you truly need them to pick. Give each option a short label AND a one-line description of what it means; when you have a REAL absolute https image URL that previews the option, include it as `preview` (never invent one). One decision per call; at most one clarify round, then build. Every option must map to something you will actually build once they pick — no dead-end or coming-soon choices.",
           parameters: {
             type: "object",
             required: ["prompt", "options"],
@@ -5434,12 +5435,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 items: {
                   type: "object", required: ["label", "value"],
                   properties: {
-                    label: { type: "string", description: "2-4 words shown on the chip." },
+                    label: { type: "string", description: "2-4 words shown on the card." },
                     value: { type: "string", description: "Canonical string sent back as the answer." },
+                    description: { type: "string", description: "One short line (<=12 words) explaining what this option means." },
+                    preview: { type: "string", description: "OPTIONAL absolute https image URL that visually previews this option (a real reference/thumbnail). Omit if you don't have a real one — never invent a URL." },
                   },
                 },
               },
               multi: { type: "boolean", description: "true = pick several then Continue; default single-select." },
+              allow_other: { type: "boolean", description: "true = also let the customer skip the cards and type their own answer instead." },
             },
           },
         },
@@ -5479,6 +5483,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     };
 
     // Call AI
+    // U2 — extended thinking is GATED OFF by default and is ONLY ever considered on the Studio path
+    // (studioSessionId truthy). Live Your-Paige chat is never affected. Flip STUDIO_THINKING_ENABLED to
+    // true to turn it on; while it is false, `paige_thinking` is never added and the request body is
+    // byte-for-byte what it is today (buildClaudeRequest only acts on paige_thinking === true).
+    const STUDIO_THINKING_ENABLED = true;
+    const paigeThinkingOn = !!studioSessionId && STUDIO_THINKING_ENABLED;
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
@@ -5486,11 +5496,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: attachedDocument ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
+        // U2/§14 — the Studio design agent runs on the REASONING tier (pro ⇒ claude-sonnet-5) so its
+        // extended thinking is a real reasoning model, never Haiku; the doc-attach path already did.
+        model: (studioSessionId || attachedDocument) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
         messages: aiMessages,
         tools: toolDefs,
         tool_choice: "auto",
         stream: true,
+        ...(paigeThinkingOn ? { paige_thinking: true } : {}),
       }),
     });
 
@@ -7515,9 +7528,20 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             if (chooseTc) {
               let a: any = {}; try { a = JSON.parse(chooseTc.function.arguments ?? "{}"); } catch { /* keep {} */ }
               const opts = Array.isArray(a.options)
-                ? a.options.filter((o: any) => o && typeof o.label === "string" && typeof o.value === "string").slice(0, 4)
+                ? a.options
+                    .filter((o: any) => o && typeof o.label === "string" && typeof o.value === "string")
+                    .slice(0, 4)
+                    .map((o: any) => ({
+                      label: String(o.label).slice(0, 60),
+                      value: String(o.value).slice(0, 300),
+                      // U1 — carry the richer card fields through to the client, sanitized + bounded.
+                      // preview is passed ONLY when it's a real absolute http(s) URL (§13 — never
+                      // fabricate; a non-URL is dropped, not rendered as a broken image).
+                      ...(typeof o.description === "string" && o.description.trim() ? { description: String(o.description).slice(0, 160) } : {}),
+                      ...(typeof o.preview === "string" && /^https?:\/\//i.test(o.preview.trim()) ? { preview: o.preview.trim() } : {}),
+                    }))
                 : [];
-              const frame = { prompt: String(a.prompt ?? "").slice(0, 300), options: opts, multi: !!a.multi };
+              const frame = { prompt: String(a.prompt ?? "").slice(0, 300), options: opts, multi: !!a.multi, allow_other: !!a.allow_other };
               if (frame.options.length >= 2) {
                 controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_choices: frame })}\n\n`));
                 finalAssistantText = frame.prompt;
@@ -7591,7 +7615,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             currentResponse = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
+              body: JSON.stringify({ model: studioSessionId ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
             });
             if (!currentResponse.ok) { forcedTermination = true; break; }
           }
@@ -7603,7 +7627,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             finalStreamResponse = await gatewayCompat("anthropic", {
               method: "POST",
               headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ model: "google/gemini-2.5-flash", messages: convo, stream: true }),
+              body: JSON.stringify({ model: studioSessionId ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, stream: true }),
             });
           }
           // Approvals + confirm cards, then her actual reply.
