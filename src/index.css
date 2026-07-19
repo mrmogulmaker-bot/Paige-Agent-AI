@@ -142,6 +142,9 @@ All colors MUST be HSL.
     --studio-hero-to:   236 60% 5%;
     --studio-hero-gradient:
       radial-gradient(120% 90% at 50% 0%, hsl(220 60% 15% / 0.55), transparent 60%),
+      /* second off-center depth bloom (fidelity, owner 2026-07-19) — matches the light field's
+         two-radial stack so the dark field reads dimensional, not a single flat wash. */
+      radial-gradient(70% 55% at 82% 10%, hsl(224 70% 20% / 0.42), transparent 62%),
       linear-gradient(
         160deg,
         hsl(var(--studio-hero-from)) 0%,
@@ -166,6 +169,13 @@ All colors MUST be HSL.
        so those effects read the same over the committed-dark field in either theme (a shadow
        must use fixed ink, never a theme-flipping token — §11). */
     --studio-ink: 236 70% 3%;
+
+    /* Black-hole focal well (owner 2026-07-19) — the hue the faint LOCALIZED vignette behind the
+       mark/title cluster is painted with. Base (dark) reuses the deep ink family so the well reads
+       as a genuine deepening of the already-dark center (alpha carries it, see `.studio-void`); the
+       light theme re-points this to a cool-shifted mid violet so it stays a soft focal shade that
+       makes the warm gold mark POP, never a global darken of the bright field (§23). */
+    --studio-void: 236 70% 3%;
 
     /* Glass composer card + rail — THEME-AWARE (light-theme values here). Retuned OFF the old
        cool-gray onto the indigo/violet BRAND spectrum (§6/§11 — the "stop the gray" fix): the
@@ -282,6 +292,11 @@ All colors MUST be HSL.
        warm mark POPS (§23 color-is-emotional / complementary contrast). Light-only; the dark
        planetarium halo needs no plate (its 5% field already gives the gold full contrast). */
     --studio-mark-plate:    250 72% 60%;
+    /* Light black-hole well — a COOL-shifted mid violet (not deep ink) so the localized vignette
+       behind the mark reads as a soft focal SHADE that lends the warm gold mark figure/ground,
+       while the surrounding bright field stays genuinely light (§23). The low alpha lives on
+       `.studio-void` (:not(.dark)); this token only carries the hue. Pairs with --studio-mark-plate. */
+    --studio-void:          250 40% 30%;
   }
 
   /* The LIGHT hero is a bright field, not a planetarium — but it is now genuinely ALIVE, not a
@@ -523,6 +538,50 @@ All colors MUST be HSL.
      parallax. Transform-only (GPU-composited); the short spring transition eases toward the cursor
      and glides back to rest on pointer-leave. At rest (var default 0) every layer sits still. */
 
+  /* (a) BLACK-HOLE FOCAL — a faint, LOCALIZED radial WELL centered behind the mark/title cluster.
+     NOT a global darken (§23): a soft closest-side vignette that deepens ONLY the focal center so the
+     warm gold mark gains figure/ground and stands out. z-0 → behind the z-[1] cluster and its
+     mark-halo pseudos per the hero stacking order. Static (no keyframe) → motion-safe by construction
+     (nothing added to the reduced-motion block). Held at ~40% top to sit behind the upper-center mark.
+     DARK: a genuine deepening of the already-dark center (higher alpha, ink hue). LIGHT: a much fainter
+     COOL shade (low alpha, cool-violet --studio-void) that reads as a focal well without lifting the
+     bright field off "genuinely light". No parallax → it stays locked behind the mark. */
+  .studio-void {
+    position: absolute; left: 50%; top: 40%; z-index: 0; pointer-events: none;
+    width: min(44rem, 122%); aspect-ratio: 1; translate: -50% -50%;
+    border-radius: 9999px;
+    background: radial-gradient(closest-side, hsl(var(--studio-void) / 0.52), transparent 72%);
+    filter: blur(46px);
+  }
+  .studio-surface:not(.dark) .studio-void {
+    /* Light: a CONCENTRATED cool-violet well right behind the mark — lifted to 0.16 and tightened
+       (transparent by 60%) so it survives the bright white text scrim that paints over the same
+       center and actually gives the gold mark figure/ground (owner ask). Still a whisper of COOL
+       shade over the 98%-L field — never a dark blob, light stays genuinely light (§23). */
+    background: radial-gradient(closest-side, hsl(var(--studio-void) / 0.16), transparent 60%);
+    filter: blur(50px);
+  }
+
+  /* (a2) FIDELITY GRAIN — one inline-SVG feTurbulence texture at very low opacity, blended over the
+     cosmic field so the glows read RENDERED, not flat CSS (owner 2026-07-19: "a little more real,
+     almost like image rendering"). fractalNoise desaturated to mono; `overlay` on the dark
+     planetarium reads as film grain, `soft-light` on the bright field textures without dirtying it
+     (§23). Static background-image → motion-safe by construction (no keyframe, no reduced-motion
+     entry). Painted last among the z-0 field layers (DOM order) so it textures the whole field; z-0
+     keeps it under the z-[1] text cluster. */
+  .studio-grain {
+    position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 140px 140px;
+    background-repeat: repeat;
+    mix-blend-mode: overlay;
+    opacity: 0.05;
+  }
+  .studio-surface:not(.dark) .studio-grain {
+    mix-blend-mode: soft-light;
+    opacity: 0.035;
+  }
+
   /* (b) STARFIELD — two GPU-cheap CSS layers. ::before = far field (tiny, faint, slow twinkle);
      ::after = near field (fewer/larger stars, slow parallax drift) → depth. transform/opacity only. */
   .studio-stars {
@@ -572,14 +631,16 @@ All colors MUST be HSL.
   }
   .studio-nebula::before {            /* GOLD — signature, low opacity, NOT the act */
     top: -18%; left: -8%; width: 42rem; height: 42rem;
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.28), transparent 70%);
+    /* 3-stop volumetric falloff (fidelity, owner 2026-07-19) — a hot core → mid → transparent so the
+       bloom reads dimensional, not a flat single-stop disc. */
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.34) 0%, hsl(var(--studio-nebula-gold) / 0.18) 42%, transparent 72%);
     /* 42s (was 54s) — the heavy 70px blur hides slow drift, so the dark nebula is sped up + widened
        (keyframe below) to visibly BREATHE (§ Goal C, owner 2026-07-19). */
     animation: studio-nebula-a 42s ease-in-out infinite;
   }
   .studio-nebula::after {             /* ELECTRIC BLUE */
     right: -12%; bottom: -22%; width: 38rem; height: 38rem;
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-blue) / 0.30), transparent 70%);
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-blue) / 0.36) 0%, hsl(var(--studio-nebula-blue) / 0.20) 42%, transparent 72%);
     animation: studio-nebula-b 48s ease-in-out infinite;
   }
 
@@ -663,7 +724,9 @@ All colors MUST be HSL.
   .studio-mark-halo::before {
     content: ""; position: absolute; left: 50%; top: 50%; width: 160%; height: 160%;
     translate: -50% -50%; border-radius: 9999px; z-index: -1; pointer-events: none;
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.35), transparent 70%);
+    /* 3-stop corona (fidelity, owner 2026-07-19) — hot gold core → mid → transparent so the mark's
+       halo reads as a rendered bloom, not a flat wash. */
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.42) 0%, hsl(var(--studio-nebula-gold) / 0.22) 45%, transparent 72%);
     filter: blur(10px);
     animation: studio-halo-pulse 6.5s ease-in-out infinite;
     will-change: transform, opacity;
@@ -679,13 +742,13 @@ All colors MUST be HSL.
            now 58% L + higher alpha here), so the mark sits in a warm glow ringed by the cool ground.
      The dark planetarium halo (base ::before over the 5% field) is untouched — it already pops. */
   .studio-surface:not(.dark) .studio-mark-halo::before {
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.5), transparent 72%);
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.58) 0%, hsl(var(--studio-nebula-gold) / 0.3) 45%, transparent 74%);
     filter: blur(12px);
   }
   .studio-surface:not(.dark) .studio-mark-halo::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: 205%; height: 205%;
     translate: -50% -50%; border-radius: 9999px; z-index: -2; pointer-events: none;
-    background: radial-gradient(closest-side, hsl(var(--studio-mark-plate) / 0.3), transparent 68%);
+    background: radial-gradient(closest-side, hsl(var(--studio-mark-plate) / 0.34) 0%, hsl(var(--studio-mark-plate) / 0.16) 48%, transparent 70%);
     filter: blur(18px);
     animation: studio-halo-pulse 6.5s ease-in-out infinite;
     will-change: transform, opacity;
@@ -848,17 +911,21 @@ All colors MUST be HSL.
      in light / star-tinted in dark via --studio-star (defined in both themes). Motion-safe below. */
   .studio-rail-stardust {
     position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
-    opacity: 0.6;
+    /* Tuned UP (owner 2026-07-19: was "really, really faint") — layer opacity is the single biggest
+       lever; raised in both themes so the dust reads as present ambient, still never busy. */
+    opacity: 0.8;
   }
-  .studio-surface:not(.dark) .studio-rail-stardust { opacity: 0.5; }
+  .studio-surface:not(.dark) .studio-rail-stardust { opacity: 0.7; }
   .studio-rail-stardust::before {
     content: ""; position: absolute; inset: -20%;
+    /* dot alphas raised (0.38–0.55 → 0.56–0.72) and sizes nudged up (1px → 1.2px, 1.4px → 1.7px) so
+       each mote stands out a little more without adding density (owner 2026-07-19). */
     background-image:
-      radial-gradient(1px   1px   at 28% 12%, hsl(var(--studio-star) / 0.55), transparent),
-      radial-gradient(1px   1px   at 70% 28%, hsl(var(--studio-star) / 0.40), transparent),
-      radial-gradient(1.4px 1.4px at 20% 52%, hsl(var(--studio-star) / 0.48), transparent),
-      radial-gradient(1px   1px   at 80% 70%, hsl(var(--studio-star) / 0.38), transparent),
-      radial-gradient(1px   1px   at 46% 88%, hsl(var(--studio-star) / 0.44), transparent);
+      radial-gradient(1.2px 1.2px at 28% 12%, hsl(var(--studio-star) / 0.72), transparent),
+      radial-gradient(1.2px 1.2px at 70% 28%, hsl(var(--studio-star) / 0.58), transparent),
+      radial-gradient(1.7px 1.7px at 20% 52%, hsl(var(--studio-star) / 0.66), transparent),
+      radial-gradient(1.2px 1.2px at 80% 70%, hsl(var(--studio-star) / 0.56), transparent),
+      radial-gradient(1.2px 1.2px at 46% 88%, hsl(var(--studio-star) / 0.62), transparent);
     background-size: 150px 220px;
     background-repeat: repeat;
     /* 20s (was 30s) — the rail dust genuinely FALLS now (§ Goal C), not an imperceptible crawl. */

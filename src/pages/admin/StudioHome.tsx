@@ -307,11 +307,19 @@ export default function StudioHome() {
         {/* Decorative cosmic layers, back → front. All aria-hidden + pointer-events-none,
             motion-safe (frozen under prefers-reduced-motion) and pointer-parallaxed at their own
             depth via the section's --px/--py (see the hero handler above). */}
+        {/* Black-hole focal (owner 2026-07-19): a faint, LOCALIZED radial well behind the mark/title
+            cluster that deepens the center for figure/ground — NOT a global darken (§23). Painted
+            first at z-0 so it sits behind everything, including the z-[1] cluster + its mark halo. */}
+        <div aria-hidden className="studio-void" />
         <div aria-hidden className="studio-stars" />
         <div aria-hidden className="studio-nebula" />
         <div aria-hidden className="studio-shooting" />
         <div aria-hidden className="studio-orbit" />
         <div aria-hidden className="studio-comet" />
+        {/* Fidelity grain (owner 2026-07-19): a subtle inline-SVG feTurbulence texture at very low
+            opacity, blended over the cosmic field so the glows read RENDERED, not flat CSS. Painted
+            last among the z-0 field layers so it textures them all; static → motion-safe. */}
+        <div aria-hidden className="studio-grain" />
 
         {/* Soft scrim behind the text cluster — deepens the field under the fixed-white copy. */}
         <div
