@@ -22,6 +22,8 @@ import {
   Plus,
   Star,
   Sun,
+  Zap,
+  ZapOff,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -116,6 +118,44 @@ function StudioThemeToggleRow({
   );
 }
 
+/** The rail's MOTION control — the Studio-LOCAL cinematic-motion preference (owner 2026-07-19). The
+ *  Studio plays full motion by DEFAULT even when the OS asks to reduce (the product's motion is the
+ *  point on a creative surface, §11/§22); this is the accessible opt-out that freezes it. Flips only
+ *  the `studio-motion-reduced` class on the `.studio-surface` root (below), which re-gates the CSS
+ *  freezes to fire on this explicit choice. Styled to match StudioThemeToggleRow. */
+function StudioMotionToggleRow({
+  theme,
+  collapsed,
+}: {
+  theme: StudioThemeValue;
+  collapsed: boolean;
+}) {
+  const rowLabel = theme.studioMotionReduced ? "Full motion" : "Reduce motion";
+  const Icon = theme.studioMotionReduced ? Zap : ZapOff;
+  return (
+    <button
+      type="button"
+      onClick={theme.toggleStudioMotion}
+      aria-pressed={theme.studioMotionReduced}
+      aria-label={
+        theme.studioMotionReduced
+          ? "Turn on full Studio motion"
+          : "Reduce Studio motion for accessibility"
+      }
+      title={collapsed ? rowLabel : undefined}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors",
+        "hover:bg-[hsl(var(--studio-glass-border)/0.3)] hover:text-foreground",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+        collapsed && "justify-center px-0",
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" aria-hidden />
+      {!collapsed && <span className="truncate">{rowLabel}</span>}
+    </button>
+  );
+}
+
 export default function StudioLayout() {
   const location = useLocation();
   const { activeTenantId } = useTenantContext();
@@ -183,6 +223,12 @@ export default function StudioLayout() {
       className={cn(
         "studio-surface flex h-full min-h-0 w-full overflow-hidden bg-[hsl(var(--studio-rail-bg))] text-foreground",
         studioTheme.studioDark && "dark",
+        // Studio-LOCAL motion preference (owner 2026-07-19): by DEFAULT (no class) the cosmic hero,
+        // the living mark, the ambient rail, and the build cutscene all play — even when the OS asks
+        // to reduce motion — because the product's motion is the point on this creative surface
+        // (§11/§22). This class is added ONLY on the explicit "Reduced" choice and re-gates the CSS
+        // freezes (src/index.css) to fire on the choice, not merely on the OS media query.
+        studioTheme.studioMotionReduced && "studio-motion-reduced",
       )}
     >
       {/* ── persistent LEFT RAIL ── */}
@@ -329,6 +375,7 @@ export default function StudioLayout() {
               global platform theme (owner 2026-07-17). */}
           <div className="pt-1">
             <StudioThemeToggleRow theme={studioTheme} collapsed={collapsed} />
+            <StudioMotionToggleRow theme={studioTheme} collapsed={collapsed} />
           </div>
         </div>
       </nav>

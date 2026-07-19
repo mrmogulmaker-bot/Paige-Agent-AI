@@ -557,12 +557,14 @@ All colors MUST be HSL.
   .studio-nebula::before {            /* GOLD — signature, low opacity, NOT the act */
     top: -18%; left: -8%; width: 42rem; height: 42rem;
     background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.28), transparent 70%);
-    animation: studio-nebula-a 54s ease-in-out infinite;
+    /* 42s (was 54s) — the heavy 70px blur hides slow drift, so the dark nebula is sped up + widened
+       (keyframe below) to visibly BREATHE (§ Goal C, owner 2026-07-19). */
+    animation: studio-nebula-a 42s ease-in-out infinite;
   }
   .studio-nebula::after {             /* ELECTRIC BLUE */
     right: -12%; bottom: -22%; width: 38rem; height: 38rem;
     background: radial-gradient(closest-side, hsl(var(--studio-nebula-blue) / 0.30), transparent 70%);
-    animation: studio-nebula-b 64s ease-in-out infinite;
+    animation: studio-nebula-b 48s ease-in-out infinite;
   }
 
   /* (d) ORBIT ECHO — a faint gold ellipse ring tying the hero to the PaigeMark orbit motif.
@@ -613,7 +615,9 @@ All colors MUST be HSL.
     offset-path: ellipse(50% 20% at 50% 50%);
     offset-distance: 0%;
     offset-rotate: auto;
-    animation: studio-comet-run 13s linear infinite;
+    /* 11s (was 13s) — a clearly PERCEPTIBLE sweep cadence (§ Goal C, owner 2026-07-19): the comet
+       visibly arrives and leaves rather than creeping. */
+    animation: studio-comet-run 11s linear infinite;
     will-change: offset-distance, opacity;
   }
 
@@ -730,10 +734,11 @@ All colors MUST be HSL.
       0 12px 26px -12px hsl(var(--shadow-ink) / 0.20),
       inset 0 1px 0 hsl(0 0% 100% / 0.07);
   }
-  @media (prefers-reduced-motion: reduce) {
-    .studio-card { transition: box-shadow 220ms ease, border-color 220ms ease, background-color 220ms ease; }
-    .studio-card:hover { transform: none; }
-  }
+  /* Studio motion preference: the card-hover LIFT rests flat only under the explicit "Reduced" choice
+     (owner 2026-07-19), not merely because the OS asked — the two-class prefix out-specifies the base
+     hover rule above. Color/shadow still cross-fade so hover stays legible. */
+  .studio-surface.studio-motion-reduced .studio-card { transition: box-shadow 220ms ease, border-color 220ms ease, background-color 220ms ease; }
+  .studio-surface.studio-motion-reduced .studio-card:hover { transform: none; }
 
   /* ── Studio PROJECT CARD — the ACTIVELY-BUILDING state (§27 #5a / §22): a traveling GOLD edge-beam
      that sweeps the card's border while Paige's team builds inside it. Gold is sanctioned here
@@ -800,9 +805,9 @@ All colors MUST be HSL.
      in light / star-tinted in dark via --studio-star (defined in both themes). Motion-safe below. */
   .studio-rail-stardust {
     position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
-    opacity: 0.5;
+    opacity: 0.6;
   }
-  .studio-surface:not(.dark) .studio-rail-stardust { opacity: 0.4; }
+  .studio-surface:not(.dark) .studio-rail-stardust { opacity: 0.5; }
   .studio-rail-stardust::before {
     content: ""; position: absolute; inset: -20%;
     background-image:
@@ -813,7 +818,8 @@ All colors MUST be HSL.
       radial-gradient(1px   1px   at 46% 88%, hsl(var(--studio-star) / 0.44), transparent);
     background-size: 150px 220px;
     background-repeat: repeat;
-    animation: studio-rail-fall 30s linear infinite;
+    /* 20s (was 30s) — the rail dust genuinely FALLS now (§ Goal C), not an imperceptible crawl. */
+    animation: studio-rail-fall 20s linear infinite;
     will-change: background-position;
   }
 
@@ -822,16 +828,18 @@ All colors MUST be HSL.
     50%      { opacity: 0.90; }
   }
   @keyframes studio-drift {
+    /* wider near-field parallax swing (§ Goal C) so the near stars visibly drift, not creep. */
     0%, 100% { transform: translate3d(0, 0, 0); }
-    50%      { transform: translate3d(-18px, -12px, 0); }
+    50%      { transform: translate3d(-24px, -16px, 0); }
   }
   @keyframes studio-nebula-a {
+    /* wider amplitude + scale (§ Goal C) so the heavy blur can't hide the drift; the field breathes. */
     0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-    50%      { transform: translate3d(6%, 4%, 0) scale(1.12); }
+    50%      { transform: translate3d(9%, 6%, 0) scale(1.16); }
   }
   @keyframes studio-nebula-b {
     0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-    50%      { transform: translate3d(-6%, -5%, 0) scale(1.10); }
+    50%      { transform: translate3d(-9%, -7%, 0) scale(1.15); }
   }
   @keyframes studio-comet-run {
     /* the nucleus arcs the ellipse (0→100%) then fades near the wrap, so it reads as a comet
@@ -850,8 +858,9 @@ All colors MUST be HSL.
     100% { opacity: 0; transform: translate3d(62vw, 21vw, 0) rotate(19deg); }
   }
   @keyframes studio-halo-pulse {
-    0%, 100% { opacity: 0.78; transform: scale(1); }
-    50%      { opacity: 1;    transform: scale(1.09); }
+    /* a fuller breath (§ Goal C) so the mark's gold bloom is visibly alive around the saturn. */
+    0%, 100% { opacity: 0.72; transform: scale(1); }
+    50%      { opacity: 1;    transform: scale(1.14); }
   }
 
   /* LIGHT-mode aurora drift — wider amplitude than the base nebula (6%/1.12) so the heavy 96px
@@ -890,50 +899,57 @@ All colors MUST be HSL.
     to   { transform: translateY(355%); }
   }
 
-  /* Reduced-motion — freeze every cosmic animation to a still-beautiful frame (§11).
+  /* Studio motion preference (owner 2026-07-19) — the EXPLICIT "Reduced" choice freezes every cosmic
+     animation to the SAME still-beautiful frame the OS media query used to hold (§11), but it is gated
+     on the `.studio-surface.studio-motion-reduced` class, NOT on `prefers-reduced-motion`. Inside this
+     cinematic creative surface the field plays by DEFAULT even when the OS asks to reduce (§11/§22) —
+     the tenant's rail toggle is the accessible opt-out that lands here. The TWO-class prefix
+     (`.studio-surface.studio-motion-reduced`, and `…:not(.dark)` for the light overrides) out-specifies
+     the light-mode animation assignments above so the freeze wins in BOTH themes regardless of order.
      Blooms/arc rest at their 0% keyframe (visible, at rest); stars hold a mid-twinkle glow. */
-  @media (prefers-reduced-motion: reduce) {
-    .studio-stars::before,
-    .studio-stars::after,
-    .studio-nebula::before,
-    .studio-nebula::after,
-    .studio-comet::before,
-    .studio-shooting::before,
-    .studio-shooting::after,
-    .studio-mark-halo::before,
-    /* The light-mode stardust/aurora + the rail stardust each carry their OWN reduced-motion
-       fallback: the light overrides above out-specify the generic freezes, so they are re-listed
-       here at matching specificity to stop cold (§11 / §22 per-primitive motion-safety). */
-    .studio-surface:not(.dark) .studio-stars::before,
-    .studio-surface:not(.dark) .studio-stars::after,
-    .studio-surface:not(.dark) .studio-nebula::before,
-    .studio-surface:not(.dark) .studio-nebula::after,
-    .studio-rail-stardust::before {
-      animation: none;
-    }
-    /* §27 #5a/#5b per-primitive motion-safety — the building beam rests as a STATIC gold arc pinned
-       to one edge (still reads "the act", beautiful at rest, §11), and the rail scanner holds a
-       still, low glow mid-rail rather than a frozen beam parked at the top. */
-    .studio-card--building::after {
-      animation: none;
-      --studio-beam-angle: 300deg;
-    }
-    .studio-rail-scanner {
-      animation: none;
-      transform: translateY(160%);
-      opacity: 0.3;
-    }
-    .studio-stars::before { opacity: 0.70; }
-    .studio-stars::after  { transform: none; }
-    /* the comet rests as a still bright point partway along the arc (beautiful at rest, §11);
-       the shooting streaks hold hidden — no streak frozen mid-air. */
-    .studio-comet::before { offset-distance: 34%; opacity: 1; }
-    .studio-shooting::before,
-    .studio-shooting::after { opacity: 0; }
-    /* parallax has no JS listener under reduced motion (gated in StudioHome), so --px/--py stay 0;
-       kill the smoothing transition too so nothing eases. */
-    .studio-stars, .studio-nebula, .studio-orbit, .studio-comet, .studio-shooting { transition: none; }
+  .studio-surface.studio-motion-reduced .studio-stars::before,
+  .studio-surface.studio-motion-reduced .studio-stars::after,
+  .studio-surface.studio-motion-reduced .studio-nebula::before,
+  .studio-surface.studio-motion-reduced .studio-nebula::after,
+  .studio-surface.studio-motion-reduced .studio-comet::before,
+  .studio-surface.studio-motion-reduced .studio-shooting::before,
+  .studio-surface.studio-motion-reduced .studio-shooting::after,
+  .studio-surface.studio-motion-reduced .studio-mark-halo::before,
+  /* The light-mode stardust/aurora each carry their OWN freeze at the two-class-plus-:not(.dark)
+     specificity so they stop cold under the explicit choice (§11 / §22 per-primitive motion-safety). */
+  .studio-surface.studio-motion-reduced:not(.dark) .studio-stars::before,
+  .studio-surface.studio-motion-reduced:not(.dark) .studio-stars::after,
+  .studio-surface.studio-motion-reduced:not(.dark) .studio-nebula::before,
+  .studio-surface.studio-motion-reduced:not(.dark) .studio-nebula::after,
+  .studio-surface.studio-motion-reduced .studio-rail-stardust::before {
+    animation: none;
   }
+  /* §27 #5a/#5b per-primitive motion-safety — the building beam rests as a STATIC gold arc pinned
+     to one edge (still reads "the act", beautiful at rest, §11), and the rail scanner holds a
+     still, low glow mid-rail rather than a frozen beam parked at the top. */
+  .studio-surface.studio-motion-reduced .studio-card--building::after {
+    animation: none;
+    --studio-beam-angle: 300deg;
+  }
+  .studio-surface.studio-motion-reduced .studio-rail-scanner {
+    animation: none;
+    transform: translateY(160%);
+    opacity: 0.3;
+  }
+  .studio-surface.studio-motion-reduced .studio-stars::before { opacity: 0.70; }
+  .studio-surface.studio-motion-reduced .studio-stars::after  { transform: none; }
+  /* the comet rests as a still bright point partway along the arc (beautiful at rest, §11);
+     the shooting streaks hold hidden — no streak frozen mid-air. */
+  .studio-surface.studio-motion-reduced .studio-comet::before { offset-distance: 34%; opacity: 1; }
+  .studio-surface.studio-motion-reduced .studio-shooting::before,
+  .studio-surface.studio-motion-reduced .studio-shooting::after { opacity: 0; }
+  /* under the explicit choice the parallax JS gate holds --px/--py at 0 (StudioHome); kill the
+     smoothing transition too so nothing eases. */
+  .studio-surface.studio-motion-reduced .studio-stars,
+  .studio-surface.studio-motion-reduced .studio-nebula,
+  .studio-surface.studio-motion-reduced .studio-orbit,
+  .studio-surface.studio-motion-reduced .studio-comet,
+  .studio-surface.studio-motion-reduced .studio-shooting { transition: none; }
 
   /* Floating animations inspired by Motion.com */
   @keyframes float {
@@ -1092,13 +1108,12 @@ All colors MUST be HSL.
   .studio-chip-glow:nth-of-type(4) { animation-delay: 0.3s; }
   .studio-chip-glow:nth-of-type(5) { animation-delay: 0.8s; }
   .studio-chip-glow:nth-of-type(n+6) { animation-delay: 1.4s; }
-  /* Motion-safe (mandatory, per-primitive): freeze to a STATIC subtle gold ring — never a hard
-     cut to nothing. */
-  @media (prefers-reduced-motion: reduce) {
-    .studio-chip-glow {
-      animation: none;
-      box-shadow: 0 0 5px 0 hsl(var(--gold) / 0.22);
-    }
+  /* Studio motion preference: under the explicit "Reduced" choice (owner 2026-07-19) the composer
+     chip pulse freezes to a STATIC subtle gold ring — never a hard cut to nothing. Gated on the
+     class, not the OS flag, so the chips shimmer by default (§11/§22). */
+  .studio-surface.studio-motion-reduced .studio-chip-glow {
+    animation: none;
+    box-shadow: 0 0 5px 0 hsl(var(--gold) / 0.22);
   }
 
   .animate-slide-up {
@@ -1315,7 +1330,21 @@ All colors MUST be HSL.
     .gp-press { transition: none; }
     .gp-press:active { transform: none; }
     .gp-aurora-a, .gp-aurora-b, .gp-aurora-c { animation: none; }
+    /* Studio-only re-enable (owner 2026-07-19): these growth-renderer layers are SHARED with the
+       PUBLIC growth page (which is NOT inside `.studio-surface` and keeps honoring the OS flag above).
+       But INSIDE the Studio the local motion preference governs and defaults to FULL, so the in-Studio
+       page/funnel PREVIEW's ambient aurora stays alive like the rest of the cosmic field even under an
+       OS reduce flag. Only the ambient aurora is revived; the heavier arrival/skeleton/press transforms
+       stay OS-honored (content motion, not ambient). Re-declares the exact base animations at higher
+       specificity so they win inside the query. */
+    .studio-surface:not(.studio-motion-reduced) .gp-aurora-a { animation: gp-aurora-a 24s ease-in-out infinite; }
+    .studio-surface:not(.studio-motion-reduced) .gp-aurora-b { animation: gp-aurora-b 30s ease-in-out infinite; }
+    .studio-surface:not(.studio-motion-reduced) .gp-aurora-c { animation: gp-aurora-c 27s ease-in-out infinite; }
   }
+  /* The explicit Studio "Reduced" choice freezes the shared aurora regardless of the OS flag. */
+  .studio-surface.studio-motion-reduced .gp-aurora-a,
+  .studio-surface.studio-motion-reduced .gp-aurora-b,
+  .studio-surface.studio-motion-reduced .gp-aurora-c { animation: none; }
 
   /* ── Studio generation-stage motion ("Paige presence") — the animated PaigeMark shown
      on the Vibe Studio canvas while a page is drafting (GenerationExperience.tsx). Each
@@ -1392,15 +1421,22 @@ All colors MUST be HSL.
   }
   .build-drift-slow { animation: build-drift-slow 14s ease-in-out infinite; will-change: transform; }
 
-  @media (prefers-reduced-motion: reduce) {
-    .paige-orbit-spin { animation: none; }
-    .paige-orb-breathe { animation: none; }
-    .paige-halo-pulse { animation: none; }
-    .paige-halo-pulse-b { animation: none; }
-    .paige-spark-drift { animation: none; }
-    .build-orbit-1, .build-orbit-2, .build-orbit-3 { animation: none; }
-    .build-pushin, .build-drift-slow { animation: none; }
-  }
+  /* Studio motion preference (owner 2026-07-19): the living mark + build-cutscene motion — the marquee
+     "video-game" moment (§22) — plays by DEFAULT even under an OS reduce flag, and rests only on the
+     explicit "Reduced" choice. These `.paige-*`/`.build-*` classes are ONLY ever applied INSIDE the
+     Studio (PaigeMark renders them solely when `animated`, which is true only on the Studio hero, the
+     generation stage, and the cutscene — never on the public landing/sign-up mark), so gating on
+     `.studio-surface.studio-motion-reduced` covers every place they appear. */
+  .studio-surface.studio-motion-reduced .paige-orbit-spin,
+  .studio-surface.studio-motion-reduced .paige-orb-breathe,
+  .studio-surface.studio-motion-reduced .paige-halo-pulse,
+  .studio-surface.studio-motion-reduced .paige-halo-pulse-b,
+  .studio-surface.studio-motion-reduced .paige-spark-drift,
+  .studio-surface.studio-motion-reduced .build-orbit-1,
+  .studio-surface.studio-motion-reduced .build-orbit-2,
+  .studio-surface.studio-motion-reduced .build-orbit-3,
+  .studio-surface.studio-motion-reduced .build-pushin,
+  .studio-surface.studio-motion-reduced .build-drift-slow { animation: none; }
 }
 
 /* #292/#119 — Print / Save as PDF for a Studio document. The button toggles `paige-doc-printing`

@@ -63,12 +63,13 @@ import { DocumentPreview } from "./DocumentPreview";
 import { StudioBuildingScreen, useElapsedMs, type StudioBuildStep } from "./StudioBuildingScreen";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { GP_SHIMMER } from "@/components/growth/growth-motion";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useStudioImmersion } from "./StudioImmersion";
 import {
   STUDIO_THEME_STORAGE_KEY,
   readStudioDark,
   useStudioTheme,
+  useStudioReducedMotion,
 } from "./StudioTheme";
 import { ImageMode } from "./modes/ImageMode";
 import { FormMode } from "./modes/FormMode";
@@ -584,7 +585,11 @@ export function StudioShell({
   // streamed beats. Reset by the chat at the start of each turn; never fabricated.
   const [chatSteps, setChatSteps] = useState<StudioBuildStep[]>([]);
   const chatElapsedMs = useElapsedMs(chatBusy);
-  const reduceMotion = useReducedMotion();
+  // The Studio-LOCAL motion gate (owner 2026-07-19): the build cutscene — the marquee "video-game"
+  // moment (§22) with its living, named-agent LivingMark — plays by DEFAULT even when the OS asks to
+  // reduce motion, and freezes only on the explicit "Reduced" choice. Falls back to the OS flag when
+  // StudioShell is rendered embedded with no StudioThemeProvider (see useStudioReducedMotion).
+  const reduceMotion = useStudioReducedMotion();
 
   // The chat hands up EXACTLY what it built this turn (null = a chat-only/copy turn → keep the
   // current stage, never blank a good canvas, §13/verify #2). A real build SUPERSEDES any reopen:

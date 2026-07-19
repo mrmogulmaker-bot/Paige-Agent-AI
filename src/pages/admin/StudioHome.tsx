@@ -10,7 +10,7 @@
 // This lists SESSIONS (authoring projects), not the growth_* artifact rows GrowthHub lists (§18).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { motion, useReducedMotion } from "framer-motion";
+import { motion } from "framer-motion";
 import { Loader2, Plus, Wand2 } from "lucide-react";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ import {
   uploadGrowthAsset,
 } from "@/components/admin/studio/studio";
 import { STUDIO_HOME_CHIPS } from "@/components/admin/studio/studio-copy";
+import { useStudioReducedMotion } from "@/components/admin/studio/StudioTheme";
 import type { IntentChip, StudioSessionView } from "@/components/admin/studio/studio-types";
 import type { GrowthAsset } from "@/lib/growth";
 import { useToast } from "@/hooks/use-toast";
@@ -113,10 +114,12 @@ export default function StudioHome() {
   // the section; the decorative CSS layers each read them at their own depth and float toward the
   // cursor, giving the flat cosmic field real 3D parallax. rAF-throttled (one style write per frame,
   // transform-only), and — per the hard constraint — the whole subscription is GATED on
-  // useReducedMotion: no listener at all when the viewer prefers reduced motion, so it rests on a
-  // still frame. Mirrors PaigeScene's shared-`ptr` pointer-tracking pattern (§18: reuse, not reinvent).
+  // useStudioReducedMotion: the Studio-LOCAL motion gate (owner 2026-07-19). It DEFAULTS TO FULL —
+  // the parallax listener runs even when the OS asks to reduce motion, because the cosmic field is
+  // the point on this creative surface (§11/§22) — and rests on a still frame only when the tenant
+  // explicitly picks "Reduced" in the rail. Mirrors PaigeScene's shared-`ptr` pattern (§18: reuse).
   const heroRef = useRef<HTMLElement>(null);
-  const reduce = useReducedMotion();
+  const reduce = useStudioReducedMotion();
   useEffect(() => {
     if (reduce) return;
     const el = heroRef.current;
@@ -328,8 +331,13 @@ export default function StudioHome() {
               compactHero ? "mb-3 gap-1.5" : "mb-7 gap-3",
             )}
           >
+            {/* The hero saturn now has REAL intrinsic motion (owner 2026-07-19): `animated` turns on
+                the orbiting ring, the breathing orb, the pulsing halo, and the drifting companion
+                spark (the `.paige-*` CSS in index.css), so the mark reads ALIVE, not a static decal —
+                atop the `.studio-mark-halo::before` gold breath-bloom. Both rest still only under the
+                explicit Studio "Reduced" choice (`reduce`), never merely because the OS asked. */}
             <span className="studio-mark-halo inline-flex">
-              <PaigeMark className={compactHero ? "h-9 w-9" : "h-11 w-11"} />
+              <PaigeMark className={compactHero ? "h-9 w-9" : "h-11 w-11"} animated={!reduce} />
             </span>
             {/* Eyebrow: airier tracking + a dimmer on-hero ink so the H1 clearly outranks it (#2). */}
             <span className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[hsl(var(--studio-on-hero)/0.7)]">
