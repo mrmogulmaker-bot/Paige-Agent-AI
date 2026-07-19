@@ -303,7 +303,7 @@ function buildClaudeRequest(body: OpenAIStyleBody): Record<string, unknown> {
   // what it is today. Anthropic requires temperature UNSET and max_tokens > budget_tokens when
   // thinking is enabled, so we enforce both only on the opt-in path.
   if ((body as { paige_thinking?: unknown }).paige_thinking === true) {
-    const budget = 2048;
+    const budget = 8000; // U2 — Studio design-agent extended-thinking budget (spec Upgrade 2)
     req.thinking = { type: "enabled", budget_tokens: budget };
     delete req.temperature;
     if ((req.max_tokens as number) <= budget) req.max_tokens = budget + 2048;
