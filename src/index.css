@@ -268,21 +268,43 @@ All colors MUST be HSL.
     --studio-orbit:         250 55% 74%;
   }
 
-  /* The LIGHT hero is a bright field, not a planetarium: the night-sky layers (stars, comet,
-     shooting streaks, orbit ring) are a dark-sky motif and read as grit on a light field, so they
-     stand down in light mode. The nebula blooms stay — softened + spread — as the light aurora's
-     gentle violet/blue depth, and the composer card's own elevation + soft shadow carry the rest
-     (§23 depth from elevation, not darkness). Dark mode keeps the full planetarium untouched. */
-  .studio-surface:not(.dark) .studio-stars,
+  /* The LIGHT hero is a bright field, not a planetarium — but it is now genuinely ALIVE, not a
+     static bloom (owner 2026-07-19, §22/§23: light must be light AND moving). The dark-sky GRIT
+     (comet, shooting streaks, orbit ring) still reads as noise on a bright field, so those three
+     stand down in light. What replaces the static field: (a) the starfield is REVIVED as
+     light-tinted "stardust" that twinkles AND gently falls, and (b) the nebula blooms become a
+     slow-drifting LIGHT AURORA on a wider, perceptible path — so flipping to light gives an alive,
+     premium field, never a frozen one. Dark mode keeps the full planetarium untouched. */
   .studio-surface:not(.dark) .studio-comet,
   .studio-surface:not(.dark) .studio-shooting,
   .studio-surface:not(.dark) .studio-orbit {
     opacity: 0;
   }
-  .studio-surface:not(.dark) .studio-nebula::before,
+  /* (a) LIGHT STARDUST — the same starfield layer, recolored for light (soft indigo via the light
+     --studio-star) and toned down so it reads as premium ambient dust, not grit. The pseudos keep
+     their base twinkle/drift and STACK a seamless one-tile diagonal FALL on top, so the dust drifts
+     downward like slow snow. Own fall keyframes → dark's starfield is untouched. */
+  .studio-surface:not(.dark) .studio-stars {
+    opacity: 0.7;
+  }
+  .studio-surface:not(.dark) .studio-stars::before {
+    animation: studio-twinkle 7s ease-in-out infinite, studio-stardust-fall-a 60s linear infinite;
+  }
+  .studio-surface:not(.dark) .studio-stars::after {
+    animation: studio-drift 46s ease-in-out infinite, studio-stardust-fall-b 78s linear infinite;
+  }
+  /* (b) LIGHT AURORA — the nebula blooms, softened + spread, now drift on a wider, more PERCEPTIBLE
+     path (the heavy 96px blur otherwise hid the base nebula's tiny 6% drift, so it read static).
+     Own keyframes so dark's blooms are untouched; token-only light violet/blue (§23). */
+  .studio-surface:not(.dark) .studio-nebula::before {
+    filter: blur(96px);
+    opacity: 0.6;
+    animation: studio-aurora-a 42s ease-in-out infinite;
+  }
   .studio-surface:not(.dark) .studio-nebula::after {
     filter: blur(96px);
     opacity: 0.55;
+    animation: studio-aurora-b 50s ease-in-out infinite;
   }
   /* Title glow: the dark field's blue neon + near-black ink halo would read as a smudge on light —
      swap to a clean, faint emboss so the H1 stays crisp dark-on-light. */
@@ -701,6 +723,31 @@ All colors MUST be HSL.
     .studio-card:hover { transform: none; }
   }
 
+  /* ── Studio RAIL stardust — a SUBTLE ambient background layer for the persistent left rail
+     (StudioLayout), complementing the hero's cosmic field. Soft star-dust that gently FALLS behind
+     the nav. z-index:-1 keeps it inside the rail's own stacking context (the nav is
+     position:relative + z-20), painting ABOVE the rail fill but BEHIND every nav control —
+     background, never foreground. Very low opacity so it never competes with the nav; light-tinted
+     in light / star-tinted in dark via --studio-star (defined in both themes). Motion-safe below. */
+  .studio-rail-stardust {
+    position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
+    opacity: 0.5;
+  }
+  .studio-surface:not(.dark) .studio-rail-stardust { opacity: 0.4; }
+  .studio-rail-stardust::before {
+    content: ""; position: absolute; inset: -20%;
+    background-image:
+      radial-gradient(1px   1px   at 28% 12%, hsl(var(--studio-star) / 0.55), transparent),
+      radial-gradient(1px   1px   at 70% 28%, hsl(var(--studio-star) / 0.40), transparent),
+      radial-gradient(1.4px 1.4px at 20% 52%, hsl(var(--studio-star) / 0.48), transparent),
+      radial-gradient(1px   1px   at 80% 70%, hsl(var(--studio-star) / 0.38), transparent),
+      radial-gradient(1px   1px   at 46% 88%, hsl(var(--studio-star) / 0.44), transparent);
+    background-size: 150px 220px;
+    background-repeat: repeat;
+    animation: studio-rail-fall 30s linear infinite;
+    will-change: background-position;
+  }
+
   @keyframes studio-twinkle {
     0%, 100% { opacity: 0.45; }
     50%      { opacity: 0.90; }
@@ -738,6 +785,32 @@ All colors MUST be HSL.
     50%      { opacity: 1;    transform: scale(1.09); }
   }
 
+  /* LIGHT-mode aurora drift — wider amplitude than the base nebula (6%/1.12) so the heavy 96px
+     blur can't hide it; the light field visibly breathes. Transform-only (GPU-composited). */
+  @keyframes studio-aurora-a {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50%      { transform: translate3d(14%, 9%, 0) scale(1.22); }
+  }
+  @keyframes studio-aurora-b {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+    50%      { transform: translate3d(-13%, -10%, 0) scale(1.28); }
+  }
+  /* LIGHT-mode stardust FALL — a seamless one-tile diagonal drift-down (tile is square, so moving
+     by exactly one tile in both axes loops with no seam). background-position only (GPU-cheap). */
+  @keyframes studio-stardust-fall-a {   /* ::before tile = 340px */
+    from { background-position: 0 0; }
+    to   { background-position: 340px 340px; }
+  }
+  @keyframes studio-stardust-fall-b {   /* ::after tile = 520px, drifts the other way */
+    from { background-position: 0 0; }
+    to   { background-position: -520px 520px; }
+  }
+  /* RAIL stardust FALL — a seamless one-tile vertical drop (tile height = 220px). */
+  @keyframes studio-rail-fall {
+    from { background-position: 0 0; }
+    to   { background-position: 0 220px; }
+  }
+
   /* Reduced-motion — freeze every cosmic animation to a still-beautiful frame (§11).
      Blooms/arc rest at their 0% keyframe (visible, at rest); stars hold a mid-twinkle glow. */
   @media (prefers-reduced-motion: reduce) {
@@ -748,7 +821,15 @@ All colors MUST be HSL.
     .studio-comet::before,
     .studio-shooting::before,
     .studio-shooting::after,
-    .studio-mark-halo::before {
+    .studio-mark-halo::before,
+    /* The light-mode stardust/aurora + the rail stardust each carry their OWN reduced-motion
+       fallback: the light overrides above out-specify the generic freezes, so they are re-listed
+       here at matching specificity to stop cold (§11 / §22 per-primitive motion-safety). */
+    .studio-surface:not(.dark) .studio-stars::before,
+    .studio-surface:not(.dark) .studio-stars::after,
+    .studio-surface:not(.dark) .studio-nebula::before,
+    .studio-surface:not(.dark) .studio-nebula::after,
+    .studio-rail-stardust::before {
       animation: none;
     }
     .studio-stars::before { opacity: 0.70; }

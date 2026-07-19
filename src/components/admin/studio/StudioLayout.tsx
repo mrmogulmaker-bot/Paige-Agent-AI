@@ -215,6 +215,14 @@ export default function StudioLayout() {
               ),
         )}
       >
+        {/* Ambient FALLING stardust — a SUBTLE background layer that complements the hero's cosmic
+            field (§22 "the chrome is ALIVE"). aria-hidden + pointer-events-none, and z-index:-1 so it
+            sits BEHIND every nav control (the nav is position:relative + z-20 → its own stacking
+            context, so -1 stays inside it, above the rail fill, below the content). Low opacity so it
+            never competes with the nav; light-tinted in light / star-tinted in dark; motion-safe in
+            index.css. */}
+        <div aria-hidden className="studio-rail-stardust" />
+
         {/* brand + collapse toggle. Collapsed = ONLY the (centered) toggle, so the 64px header can
             never overflow (the old layout packed a 28px mark + a non-shrinking 28px toggle + 24px
             padding into 64px and they overlapped, #3). The brand returns the instant the rail

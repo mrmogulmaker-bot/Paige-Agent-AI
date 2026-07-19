@@ -290,9 +290,11 @@ export default function StudioHome() {
         ref={heroRef}
         className={cn(
           "studio-hero relative flex flex-col justify-center overflow-hidden px-4",
-          // Full cinematic field for first-run/empty; a compact command band on return (#1).
+          // Full cinematic field for first-run/empty; a SLIM command band on return (#1) — a thin
+          // command band (~one composer-row tall, tight py-3/py-4) whose bottom edge sits at the
+          // rail-footer hairline above "Back to Paige", so "Your projects" is right there on return.
           compactHero
-            ? "min-h-0 py-8 md:py-10"
+            ? "min-h-0 py-3 md:py-4"
             : "min-h-[calc(100vh-5.5rem)] py-12 md:py-16",
         )}
       >
@@ -320,7 +322,7 @@ export default function StudioHome() {
           <div
             className={cn(
               "flex flex-col items-center text-center",
-              compactHero ? "mb-4 gap-2" : "mb-7 gap-3",
+              compactHero ? "mb-3 gap-1.5" : "mb-7 gap-3",
             )}
           >
             <span className="studio-mark-halo inline-flex">
