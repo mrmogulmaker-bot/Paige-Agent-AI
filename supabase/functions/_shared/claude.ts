@@ -14,6 +14,8 @@
 // Streaming is intentionally NOT handled here — the two streaming call sites
 // (paige-ai-chat, broker-paige-chat) get a dedicated streaming path in R4.
 
+import { traceLLMCall, type TraceCtx } from "./llm-trace.ts";
+
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 
@@ -139,6 +141,10 @@ export interface ClaudeCallOpts {
   toolChoice?: unknown;       // {type:"auto"|"any"|"tool", name?}
   stopSequences?: string[];
   signal?: AbortSignal;
+  /** §34 L1.1 — OPT-IN trace: a DIRECT callClaude caller (one that bypasses callModel/routedChatCompletion)
+   *  passes this to record the call in paige_llm_trace. callModel's internal path leaves it unset, so its
+   *  calls trace once at callModel — never double here. */
+  trace?: TraceCtx;
 }
 
 export interface ClaudeToolUse { id: string; name: string; input: unknown }
@@ -170,31 +176,68 @@ export async function callClaude(opts: ClaudeCallOpts): Promise<ClaudeResult> {
   if (opts.toolChoice) body.tool_choice = opts.toolChoice;
   if (opts.stopSequences?.length) body.stop_sequences = opts.stopSequences;
 
-  const resp = await fetch(ANTHROPIC_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey(),
-      "anthropic-version": ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify(body),
-    signal: opts.signal,
-  });
+  const t0 = Date.now();
+  try {
+    const resp = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey(),
+        "anthropic-version": ANTHROPIC_VERSION,
+      },
+      body: JSON.stringify(body),
+      signal: opts.signal,
+    });
 
-  if (!resp.ok) {
-    const detail = await resp.text().catch(() => "");
-    throw new Error(`Anthropic ${resp.status}: ${detail.slice(0, 500)}`);
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => "");
+      throw new Error(`Anthropic ${resp.status}: ${detail.slice(0, 500)}`);
+    }
+    const data = await resp.json();
+    const blocks: unknown[] = Array.isArray(data?.content) ? data.content : [];
+    const text = blocks
+      .filter((b: any) => b?.type === "text")
+      .map((b: any) => b.text)
+      .join("");
+    const toolUses: ClaudeToolUse[] = blocks
+      .filter((b: any) => b?.type === "tool_use")
+      .map((b: any) => ({ id: b.id, name: b.name, input: b.input }));
+    // §34 L1.1 — opt-in trace for DIRECT callers (never set on the callModel path → no double).
+    if (opts.trace) {
+      traceLLMCall({
+        ...opts.trace,
+        provider: "anthropic",
+        model,
+        job_kind: opts.trace.job_kind ?? "text",
+        modality: "text",
+        status: "success",
+        tokens_in: data?.usage?.input_tokens ?? null,
+        tokens_out: data?.usage?.output_tokens ?? null,
+        latency_ms: Date.now() - t0,
+        input: opts.messages,
+        output: text,
+        metadata: { caller_function: opts.trace.agent_id },
+      });
+    }
+    return { text, toolUses, stopReason: data?.stop_reason ?? null, usage: data?.usage ?? null, raw: data };
+  } catch (e) {
+    if (opts.trace) {
+      traceLLMCall({
+        ...opts.trace,
+        provider: "anthropic",
+        model,
+        job_kind: opts.trace.job_kind ?? "text",
+        modality: "text",
+        status: "error",
+        latency_ms: Date.now() - t0,
+        input: opts.messages,
+        error_class: (e as Error)?.name ?? "error",
+        error_message: (e as Error)?.message ?? String(e),
+        metadata: { caller_function: opts.trace.agent_id },
+      });
+    }
+    throw e;
   }
-  const data = await resp.json();
-  const blocks: unknown[] = Array.isArray(data?.content) ? data.content : [];
-  const text = blocks
-    .filter((b: any) => b?.type === "text")
-    .map((b: any) => b.text)
-    .join("");
-  const toolUses: ClaudeToolUse[] = blocks
-    .filter((b: any) => b?.type === "tool_use")
-    .map((b: any) => ({ id: b.id, name: b.name, input: b.input }));
-  return { text, toolUses, stopReason: data?.stop_reason ?? null, usage: data?.usage ?? null, raw: data };
 }
 
 // ---------------------------------------------------------------------------
@@ -316,7 +359,10 @@ function buildClaudeRequest(body: OpenAIStyleBody): Record<string, unknown> {
 // so existing frontends/edge readers that parse the OpenAI stream keep working.
 async function streamAnthropicAsOpenAI(
   reqBody: Record<string, unknown>,
+  trace?: TraceCtx,
 ): Promise<{ ok: boolean; status: number; body?: ReadableStream<Uint8Array> }> {
+  const streamStarted = Date.now();
+  const streamModel = typeof reqBody?.model === "string" ? reqBody.model : null;
   const resp = await fetch(ANTHROPIC_URL, {
     method: "POST",
     headers: {
@@ -326,7 +372,27 @@ async function streamAnthropicAsOpenAI(
     },
     body: JSON.stringify({ ...reqBody, stream: true }),
   });
-  if (!resp.ok || !resp.body) return { ok: false, status: resp.status };
+  if (!resp.ok || !resp.body) {
+    // §34 L1.1 — a rejected STREAMING request (400/429/500) early-returns before the ReadableStream (and
+    // its finally-trace) is ever built. Without this, the most common streaming failure — the exact 400
+    // the live HOTFIX references — would go UNTRACED and under-report the fleet error rate (§13). Emit it.
+    if (trace) {
+      traceLLMCall({
+        ...trace,
+        provider: "anthropic",
+        model: streamModel,
+        job_kind: trace.job_kind ?? "chat",
+        modality: "text",
+        status: "error",
+        latency_ms: Date.now() - streamStarted,
+        input: (reqBody as { messages?: unknown }).messages,
+        error_class: `http_${resp.status}`,
+        error_message: `Anthropic stream ${resp.status}`,
+        metadata: { caller_function: trace.agent_id },
+      });
+    }
+    return { ok: false, status: resp.status };
+  }
 
   const enc = new TextEncoder();
   const dec = new TextDecoder();
@@ -340,6 +406,12 @@ async function streamAnthropicAsOpenAI(
       let toolIndex = -1;
       const blockToTool = new Map<number, number>();
       let stopReason = "end_turn";
+      // §34 L1.1 — usage/output capture for the streaming trace row (net-new parse: Anthropic ships
+      // input_tokens on message_start and cumulative output_tokens on message_delta).
+      let inTok: number | null = null;
+      let outTok: number | null = null;
+      let outText = "";
+      let streamErrored = false;
       send(controller, { choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] });
       try {
         while (true) {
@@ -355,7 +427,9 @@ async function streamAnthropicAsOpenAI(
             if (!js) continue;
             let ev: any;
             try { ev = JSON.parse(js); } catch { continue; }
-            if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
+            if (ev.type === "message_start") {
+              inTok = ev.message?.usage?.input_tokens ?? inTok;
+            } else if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
               toolIndex++;
               blockToTool.set(ev.index, toolIndex);
               send(controller, { choices: [{ index: 0, delta: { tool_calls: [{ index: toolIndex, id: ev.content_block.id, type: "function", function: { name: ev.content_block.name, arguments: "" } }] }, finish_reason: null }] });
@@ -366,6 +440,7 @@ async function streamAnthropicAsOpenAI(
               send(controller, { choices: [{ index: 0, delta: { paige_thinking: "", paige_thinking_redacted: true }, finish_reason: null }] });
             } else if (ev.type === "content_block_delta") {
               if (ev.delta?.type === "text_delta") {
+                if (outText.length < 40000) outText += ev.delta.text; // bounded — excerpt truncates at 32KB anyway
                 send(controller, { choices: [{ index: 0, delta: { content: ev.delta.text }, finish_reason: null }] });
               } else if (ev.delta?.type === "input_json_delta") {
                 const ti = blockToTool.get(ev.index) ?? 0;
@@ -377,18 +452,39 @@ async function streamAnthropicAsOpenAI(
                 // byte-for-byte unchanged when no thinking block is present.
                 send(controller, { choices: [{ index: 0, delta: { paige_thinking: ev.delta.thinking }, finish_reason: null }] });
               }
-            } else if (ev.type === "message_delta" && ev.delta?.stop_reason) {
-              stopReason = ev.delta.stop_reason;
+            } else if (ev.type === "message_delta") {
+              if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
+              if (ev.usage?.output_tokens != null) outTok = ev.usage.output_tokens; // cumulative final count
             } else if (ev.type === "message_stop") {
               send(controller, { choices: [{ index: 0, delta: {}, finish_reason: stopReason === "tool_use" ? "tool_calls" : "stop" }] });
             }
           }
         }
       } catch (_e) {
+        streamErrored = true;
         // fall through to DONE so the client stream terminates cleanly
       } finally {
         controller.enqueue(enc.encode("data: [DONE]\n\n"));
         controller.close();
+        // §34 L1.1 — one trace row for the whole streamed turn, fired after the stream drains (so tokens
+        // are known). Detached best-effort inside traceLLMCall; honest status if the stream broke midway.
+        if (trace) {
+          traceLLMCall({
+            ...trace,
+            provider: "anthropic",
+            model: streamModel,
+            job_kind: trace.job_kind ?? "chat",
+            modality: "text",
+            status: streamErrored ? "error" : "success",
+            tokens_in: inTok,
+            tokens_out: outTok,
+            latency_ms: Date.now() - streamStarted,
+            input: (reqBody as { messages?: unknown }).messages,
+            output: outText,
+            error_class: streamErrored ? "stream_interrupted" : null,
+            metadata: { caller_function: trace.agent_id },
+          });
+        }
       }
     },
   });
@@ -398,17 +494,51 @@ async function streamAnthropicAsOpenAI(
 export async function gatewayCompat(
   _url: string,
   init: { body?: string; method?: string; headers?: unknown },
+  trace?: TraceCtx,
 ): Promise<{ ok: boolean; status: number; body?: ReadableStream<Uint8Array>; json: () => Promise<any>; text: () => Promise<string> }> {
   const parsed: OpenAIStyleBody & { stream?: boolean } = init?.body ? JSON.parse(init.body) : ({} as any);
+  const started = Date.now();
   try {
     if (parsed.stream === true) {
-      const r = await streamAnthropicAsOpenAI(buildClaudeRequest(parsed));
+      // The streamed turn traces itself when it drains (tokens are only known then). Pass a context
+      // ({} if the caller didn't thread one) so the stream always writes an honest row. §34 L1.1.
+      const r = await streamAnthropicAsOpenAI(buildClaudeRequest(parsed), trace ?? {});
       return { ok: r.ok, status: r.status, body: r.body, json: async () => ({}), text: async () => "" };
     }
     const data = await chatCompletionCompat(parsed);
+    // §34 L1.1 — non-stream gateway call is a DISTINCT entry (not via callModel/routedChatCompletion),
+    // so tracing here never double-counts. Always writes a row (tenant null until a caller threads ctx).
+    const usage = data?.usage ?? {};
+    traceLLMCall({
+      ...(trace ?? {}),
+      provider: "anthropic",
+      model: data?.model ?? (typeof parsed.model === "string" ? parsed.model : null),
+      job_kind: trace?.job_kind ?? "chat",
+      modality: "text",
+      status: "success",
+      tokens_in: usage.prompt_tokens ?? null,
+      tokens_out: usage.completion_tokens ?? null,
+      latency_ms: Date.now() - started,
+      input: parsed.messages,
+      output: data?.choices?.[0]?.message?.content ?? null,
+      metadata: { caller_function: trace?.agent_id },
+    });
     return { ok: true, status: 200, json: async () => data, text: async () => JSON.stringify(data) };
   } catch (e) {
     const msg = String((e as Error)?.message ?? e);
+    traceLLMCall({
+      ...(trace ?? {}),
+      provider: "anthropic",
+      model: typeof parsed.model === "string" ? parsed.model : null,
+      job_kind: trace?.job_kind ?? "chat",
+      modality: "text",
+      status: "error",
+      latency_ms: Date.now() - started,
+      input: parsed.messages,
+      error_class: (e as Error)?.name ?? "error",
+      error_message: msg,
+      metadata: { caller_function: trace?.agent_id },
+    });
     const m = msg.match(/Anthropic (\d{3})/);
     const status = m ? Number(m[1]) : 500;
     return { ok: false, status, json: async () => ({ error: msg }), text: async () => msg };

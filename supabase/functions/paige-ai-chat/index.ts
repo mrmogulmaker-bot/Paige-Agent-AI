@@ -5509,7 +5509,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         stream: true,
         ...(paigeThinkingOn ? { paige_thinking: true } : {}),
       }),
-    });
+    }, { tenant_id: personaCtx.tenant_id, agent_id: studioSessionId ? "studio-design-agent" : "paige-ai-chat", job_kind: "chat" });
 
     if (!response.ok) {
       const errorId = crypto.randomUUID();

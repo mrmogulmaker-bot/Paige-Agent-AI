@@ -146,14 +146,52 @@ async function featherlessChat(body: OpenAIStyleBody, model: string): Promise<an
  * return as gatewayCompat/chatCompletionCompat, so call sites parse choices[0].message
  * unchanged.
  */
-export async function routedChatCompletion(jobKind: JobKind, body: OpenAIStyleBody): Promise<any> {
+export async function routedChatCompletion(jobKind: JobKind, body: OpenAIStyleBody, trace?: TraceCtx): Promise<any> {
   const route = pickRoute(jobKind);
-  if (route.provider === "featherless" && route.model) {
-    const open = await featherlessChat(body, route.model);
-    if (open) return open;
-    // fall through to Claude on any failure
+  const started = Date.now();
+  // §34 L1.1: one trace row per routed text call. This is a DISTINCT entry point (its callers do not go
+  // through callModel), so tracing here never double-counts. The shared helpers it calls
+  // (featherlessChat / chatCompletionCompat / callClaude) do NOT trace — this is the single trace layer
+  // for the routed-text path. Detached best-effort (never blocks the return).
+  const emit = (provider: string, resp: any, status: "success" | "error", err?: unknown) => {
+    const usage = resp?.usage ?? {};
+    const tokensIn = usage.prompt_tokens ?? null;
+    const tokensOut = usage.completion_tokens ?? null;
+    traceLLMCall({
+      tenant_id: trace?.tenant_id ?? null,
+      task_id: trace?.task_id ?? null,
+      agent_id: trace?.agent_id ?? null,
+      parent_trace_id: trace?.parent_trace_id ?? null,
+      provider,
+      model: resp?.model ?? null,
+      job_kind: trace?.job_kind ?? jobKind,
+      modality: "text",
+      tier: route.tier,
+      status,
+      tokens_in: tokensIn,
+      tokens_out: tokensOut,
+      latency_ms: Date.now() - started,
+      cost_estimate_usd: status === "success" ? (estimateCost(provider, "text", tokensIn ?? undefined, tokensOut ?? undefined) ?? null) : null,
+      input: body.messages,
+      output: status === "success" ? (resp?.choices?.[0]?.message?.content ?? null) : null,
+      error_class: status === "error" ? ((err as Error)?.name ?? "error") : null,
+      error_message: status === "error" ? ((err as Error)?.message ?? String(err)) : null,
+      metadata: { caller_function: trace?.agent_id },
+    });
+  };
+  try {
+    if (route.provider === "featherless" && route.model) {
+      const open = await featherlessChat(body, route.model);
+      if (open) { emit("featherless", open, "success"); return open; }
+      // fall through to Claude on any failure
+    }
+    const claudeResp = await chatCompletionCompat(body, route.tier);
+    emit("anthropic", claudeResp, "success");
+    return claudeResp;
+  } catch (e) {
+    emit(route.provider === "featherless" ? "featherless" : "anthropic", null, "error", e);
+    throw e;
   }
-  return chatCompletionCompat(body, route.tier);
 }
 
 /**
@@ -216,7 +254,7 @@ import { meshyTextTo3d } from "./meshy.ts";
 import { geminiImage } from "./gemini-image.ts";
 import { renderDoc, type DocFormat } from "./doc-render.ts";
 import { elevenlabsTts } from "./elevenlabs.ts";
-import { traceLLMCall } from "./llm-trace.ts";
+import { traceLLMCall, type TraceCtx } from "./llm-trace.ts";
 
 // Re-export the shared vocabulary from its one home (§12) so a caller imports everything it
 // needs from the router, not from three files.
@@ -794,7 +832,7 @@ export async function callModel(
     if (e instanceof NeedsConfigError || e instanceof NotYetConfiguredError) {
       const provider = e instanceof NeedsConfigError ? e.provider : cell.provider;
       // Honest needs_config degrade → trace it as such (not a fake success, not an error).
-      traceLLMCall(getAdmin(), { ...traceBase, provider, model: opts.model_override ?? null, status: "needs_config", error_class: "needs_config" });
+      traceLLMCall({ ...traceBase, provider, model: opts.model_override ?? null, status: "needs_config", error_class: "needs_config" });
       return {
         provider,
         model: opts.model_override ?? "",
@@ -805,7 +843,7 @@ export async function callModel(
       };
     }
     // Real provider error → trace it (scrubbed message) before rethrowing to the caller.
-    traceLLMCall(getAdmin(), {
+    traceLLMCall({
       ...traceBase,
       provider: cell.provider,
       model: opts.model_override ?? null,
@@ -878,7 +916,7 @@ export async function callModel(
   // §34 L1: the full trace row (scrubbed + truncated I/O, tokens, cost estimate, correlation). Detached
   // best-effort — never blocks the return. Output is the produced content or, for a binary artifact, the
   // deliverable reference (the writer never inlines bytes).
-  traceLLMCall(getAdmin(), {
+  traceLLMCall({
     tenant_id: opts.tenantId,
     task_id: opts.taskId ?? null,
     agent_id: opts.agentId ?? opts.callerFunction ?? null,

@@ -152,6 +152,7 @@ serve(async (req) => {
         result = await callClaude({
           maxTokens: 32000,
           messages: [{ role: "user", content: [block, { type: "text", text: EXTRACT_PROMPT }] }],
+          trace: { tenant_id: tenant_id ?? null, agent_id: "kb-ingest-file", job_kind: "extract" },
         });
       } catch (e) {
         // Don't leak the raw provider error to the tenant UI; log the detail.
