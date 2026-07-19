@@ -1058,9 +1058,19 @@ lipstick on a design we'd already decided to replace. The owner's words: *"If we
 need to strip all the old stuff away and put an actual fresh design inside of it... strip the entire old
 design off before we rebuild a brand new one."*
 
-- **Strip first, cleanly — delete, don't cover.** Remove the old system's components, CSS, hooks, and
-  state outright — not commented out, not gated off, not painted over. The new design must start from a
-  clean base with nothing underneath to leak, race, flip, or fight it.
+- **Diagnose the old code FIRST — a reasoning step before the strip (owner: Antonio, 2026-07-19).**
+  Stripping is not the reflex; it is the *conclusion* of a diagnostic. Before tearing anything out, run
+  a real read of the existing code and answer, out loud: *what is actually here, why is it failing, and
+  is any of it worth keeping or building on — or is it genuinely a dead-end we should replace?* Sometimes
+  the honest diagnosis is "the bones are fine, the bug is one leaking token" — and then you fix that, you
+  don't strip. Sometimes it's "this whole approach is fighting us and the proven pattern lives elsewhere"
+  — and then you strip with evidence, not vibes. The point: **never strip blind and never layer blind;**
+  decide which one the code actually calls for, and be able to say why. This reasoning step is what keeps
+  us from throwing away good work *and* from patching a corpse.
+- **Strip first, cleanly — delete, don't cover.** Once the diagnostic says replace, remove the old
+  system's components, CSS, hooks, and state outright — not commented out, not gated off, not painted
+  over. The new design must start from a clean base with nothing underneath to leak, race, flip, or
+  fight it.
 - **A fresh design usually means REUSING the proven one (§18).** "New direction" almost never means a
   third fragile hand-rolled variant — it means adopting the approach that already works elsewhere (the
   landing 3D hero). Strip-then-rebuild and reuse-don't-rebuild are the same instinct.
@@ -1072,6 +1082,8 @@ design off before we rebuild a brand new one."*
   the one figuring out the diagnostic when I'm the one asking you to do it."* Diagnose thoroughly and
   own it: before calling a redesign done, confirm the old system is actually **gone**, not just visually
   covered.
-- **The test, every time:** *"Am I building the new design on a CLEAN base, or on top of the old one I
-  was told to replace? Did I actually strip the old out, or just cover it — and did I find that out, or
-  did the owner have to?"* If the old is still under there, it isn't a rebuild.
+- **The test, every time:** *"Did I diagnose the old code before deciding — or did I strip/layer on
+  reflex? Am I building the new design on a CLEAN base, or on top of the old one I was told to replace?
+  Did I actually strip the old out, or just cover it — and did I find that out, or did the owner have
+  to?"* If the old is still under there, it isn't a rebuild — and if I never diagnosed why, I skipped
+  the reasoning step.
