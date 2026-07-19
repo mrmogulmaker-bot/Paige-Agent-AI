@@ -40,7 +40,8 @@ import gsap from "gsap";
 import { useStudioTheme } from "@/components/admin/studio/StudioTheme";
 
 // ── Palette (three.js material literals — NOT CSS UI; the sanctioned PaigeScene exception) ──────────
-const INDIGO = new THREE.Color("#3a2a63");
+const INDIGO = new THREE.Color("#4a3778"); // brightened from #3a2a63 so the dispersed field + thin rows
+                                           // read clearly against the dark hero (§25 err-visible)
 const VIOLET = new THREE.Color("#6f4bd8");
 const GOLD = new THREE.Color("#F0C86A");
 const GOLD_CORE = new THREE.Color("#FFE7A6");
@@ -127,6 +128,10 @@ function Field({ reduced, composing, busy }: { reduced: boolean; composing: bool
   const lightRef = useRef<THREE.PointLight>(null);
 
   const sprite = useMemo(makeSprite, []);
+  // R3F auto-disposes declarative geometry/material on unmount, but NOT a texture assigned as a map —
+  // material.dispose() doesn't cascade to it. The hero unmounts on every route into the build screen, so
+  // without this the CanvasTexture leaks one GPU texture per cycle. Dispose it explicitly (§13).
+  useEffect(() => () => sprite.dispose(), [sprite]);
 
   // Precompute the two position buffers + per-particle offset / cool / warm color, once.
   const data = useMemo(() => {
@@ -138,11 +143,27 @@ function Field({ reduced, composing, busy }: { reduced: boolean; composing: bool
     const position = new Float32Array(COUNT * 3);
     const color = new Float32Array(COUNT * 3);
 
-    // Weight region assignment by area so the ghost's density is even across bars, rows, and cards.
+    // Region density: area-weighted, BUT with a min-quota FLOOR for the thin regions (header + text
+    // rows). Pure area weighting starves the ~0.14-tall rows to ~85 points each — at that sparsity the
+    // "page ghost" collapses into two big cards + a bar and the whole metaphor is lost (§25 err-visible).
+    // The floor guarantees each thin region ≥ROW_MIN points so its line actually READS as a line; the
+    // cards still get the bulk of the budget via their area share of what's left.
+    const ROW_MIN = 170; // floor for a thin region (a bar / text row) — tuned bold so the lines read
+    const isThin = (r: Rect) => r.y1 - r.y0 < 0.5;
     const areas = LAYOUT.map((r) => Math.abs((r.x1 - r.x0) * (r.y1 - r.y0)));
-    const totalArea = areas.reduce((a, b) => a + b, 0);
-    const cum: number[] = [];
-    areas.reduce((acc, a, i) => (cum[i] = acc + a), 0);
+    const floors = LAYOUT.map((r) => (isThin(r) ? ROW_MIN : 0));
+    const floorTotal = floors.reduce((a, b) => a + b, 0);
+    const remaining = Math.max(0, COUNT - floorTotal);
+    const totalArea = areas.reduce((a, b) => a + b, 0) || 1;
+    // Integer quota per region = its floor + its area share of the remaining budget.
+    const quota = LAYOUT.map((_, i) => floors[i] + Math.round((remaining * areas[i]) / totalArea));
+    // Flatten into a per-particle region index; any rounding slack falls into the largest region (a card).
+    const regionIdx = new Int16Array(COUNT);
+    let w = 0;
+    for (let k = 0; k < LAYOUT.length && w < COUNT; k++) {
+      for (let n = 0; n < quota[k] && w < COUNT; n++) regionIdx[w++] = k;
+    }
+    for (; w < COUNT; w++) regionIdx[w] = LAYOUT.length - 1;
 
     const tmp = new THREE.Vector3();
     const c = new THREE.Color();
@@ -153,15 +174,8 @@ function Field({ reduced, composing, busy }: { reduced: boolean; composing: bool
       dispersed[i3 + 1] = (Math.random() * 2 - 1) * DISP.y;
       dispersed[i3 + 2] = (Math.random() * 2 - 1) * DISP.z;
 
-      // Composed: pick a region by area-weighted lottery, then a random point inside it.
-      const roll = Math.random() * totalArea;
-      let r = LAYOUT[0];
-      for (let k = 0; k < LAYOUT.length; k++) {
-        if (roll <= cum[k]) {
-          r = LAYOUT[k];
-          break;
-        }
-      }
+      // Composed: this particle's region is fixed by the floor-aware quota above; pick a random point in it.
+      const r = LAYOUT[regionIdx[i]];
       const cx = r.x0 + Math.random() * (r.x1 - r.x0);
       const cy = r.y0 + Math.random() * (r.y1 - r.y0);
       const cz = (Math.random() * 2 - 1) * 0.18; // a thin slab, not a flat plane, for a little depth
@@ -173,8 +187,9 @@ function Field({ reduced, composing, busy }: { reduced: boolean; composing: bool
 
       // Cool base: mostly indigo with a violet minority, for a living field rather than one flat hue.
       c.copy(Math.random() < 0.28 ? VIOLET : INDIGO);
-      // A touch of per-particle brightness variation so the cloud has depth.
-      const lift = 0.75 + Math.random() * 0.35;
+      // A touch of per-particle brightness variation so the cloud has depth. Floor raised (§25) so no
+      // particle sits so dim it disappears against the dark hero field.
+      const lift = 0.9 + Math.random() * 0.4;
       cool[i3] = c.r * lift;
       cool[i3 + 1] = c.g * lift;
       cool[i3 + 2] = c.b * lift;
