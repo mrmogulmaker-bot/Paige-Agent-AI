@@ -145,12 +145,6 @@ export function ProjectCard({
           // border/fill/shadow/lift; the focus ring stays indigo --ring (never gold).
           "studio-card group relative flex h-full flex-col overflow-hidden rounded-[var(--radius)]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-          // ACTIVELY BUILDING → the traveling GOLD edge-beam (§22/§27 #5a). Gold is sanctioned here
-          // because building IS the act (§11); every other card stays indigo/plain. Static under
-          // reduced motion (index.css). NOTE (§13): the beam lights only when the session row's
-          // status is 'building' — see the honesty note in StudioHome / the build report; no client
-          // write path sets 'building' today, so this is wired behind the real flag, not faked on.
-          session.status === "building" && "studio-card--building",
         )}
       >
         {/* Thumbnail well — the ONE shared ArtifactPreview primitive (§12/§18): a REAL scaled cover

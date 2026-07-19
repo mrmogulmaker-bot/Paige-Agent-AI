@@ -269,12 +269,6 @@ export default function StudioLayout() {
             index.css. */}
         <div aria-hidden className="studio-rail-stardust" />
 
-        {/* Ambient RAIL scanner — a slow INDIGO railing light that bounces up and down the rail's
-            inner edge (owner: "a railing light that bounces back and forth at a slow pace"). Same
-            z-index:-1 stacking as the stardust → above the fill, behind every nav control; NOT gold
-            (ambient chrome is never gold, §11). Motion-safe freeze in index.css. */}
-        <div aria-hidden className="studio-rail-scanner" />
-
         {/* brand + collapse toggle. Collapsed = ONLY the (centered) toggle, so the 64px header can
             never overflow (the old layout packed a 28px mark + a non-shrinking 28px toggle + 24px
             padding into 64px and they overlapped, #3). The brand returns the instant the rail

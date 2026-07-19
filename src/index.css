@@ -740,62 +740,34 @@ All colors MUST be HSL.
   .studio-surface.studio-motion-reduced .studio-card { transition: box-shadow 220ms ease, border-color 220ms ease, background-color 220ms ease; }
   .studio-surface.studio-motion-reduced .studio-card:hover { transform: none; }
 
-  /* ── Studio PROJECT CARD — the ACTIVELY-BUILDING state (§27 #5a / §22): a traveling GOLD edge-beam
-     that sweeps the card's border while Paige's team builds inside it. Gold is sanctioned here
-     because BUILDING IS THE ACT (§11) — every resting card stays indigo/plain; ONLY the building
-     card wears gold, and only in motion. The beam is a masked 1.5px ring (the same border-ring mask
-     the composer frame uses) whose conic-gradient sweep angle animates via @property, so the GPU
-     just spins one angle — no layout, no repaint of the card. Gated in ProjectCard on
-     `session.status === "building"`. Reduced-motion freeze below rests it as a static gold arc. */
-  @property --studio-beam-angle {
-    syntax: "<angle>";
-    inherits: false;
-    initial-value: 0deg;
-  }
-  .studio-card--building {
-    /* a faint resting gold rim under the moving beam so the card reads "the act" even at the instant
-       the sweep is on the far edge — kept low so it never becomes a resting decorative gold border. */
-    border-color: hsl(var(--gold) / 0.45);
-  }
-  .studio-card--building::after {
-    content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
-    border-radius: inherit; padding: 1.5px;
-    background: conic-gradient(from var(--studio-beam-angle),
-      transparent 0deg,
-      transparent 200deg,
-      hsl(var(--gold) / 0.12) 250deg,
-      hsl(var(--gold) / 0.95) 300deg,
-      hsl(var(--gold) / 0.12) 342deg,
-      transparent 360deg);
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-            mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-            mask-composite: exclude;
-    animation: studio-card-beam 2.6s linear infinite;
-    will-change: --studio-beam-angle;
-  }
-
-  /* ── Studio RAIL scanner — a slow INDIGO railing light that bounces up and down the rail's inner
-     edge (owner: "a railing light that bounces back and forth at a slow pace"). A thin vertical
-     highlight in the indigo --ring family (NOT gold — ambient chrome is never gold, §11), pinned a
-     hair inside the right seam so it never collides with the rail's right border. Sits at z-index:-1
-     like the stardust — ABOVE the rail fill, BEHIND every nav control — at low opacity so it
-     complements the stardust and never competes with the nav. transform-only translateY on an
-     ease-in-out alternate loop (the "bounce"); motion-safe freeze below. */
-  .studio-rail-scanner {
-    position: absolute; top: 0; right: 2px; z-index: -1; pointer-events: none;
-    width: 2px; height: 22%;
-    border-radius: 2px;
-    background: linear-gradient(to bottom,
+  /* ── Studio HERO↔PROJECTS break-line beam (owner 2026-07-19): a single steady INDIGO beam that
+     glides back and forth along the divider between the hero and the projects section — "not fast,
+     just a steady pace beam that goes back and forth." The break line is a faint indigo seam; a soft
+     elongated highlight (20% wide, glowing) eases left↔right on an ~11s alternate loop (decelerating
+     at each end so it reads as a living scan, never a hard progress bar). Indigo, NOT gold — ambient
+     chrome is never gold (§11). Transform-only (GPU): the 20%-wide beam travels 400% of its OWN width
+     (= 80% of the line) so it runs flush edge-to-edge, parent-width-independent. Motion-safe freeze
+     under the explicit "Reduced" choice below (rests as a soft centered glow). */
+  .studio-hero-divider {
+    position: relative;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg,
       transparent,
-      hsl(var(--ring) / 0.55) 50%,
+      hsl(var(--studio-chrome-border) / 0.5) 16%,
+      hsl(var(--studio-chrome-border) / 0.5) 84%,
       transparent);
-    filter: blur(0.5px);
-    opacity: 0.7;
-    animation: studio-rail-scan 9s ease-in-out infinite alternate;
+  }
+  .studio-hero-divider::before {
+    content: ""; position: absolute; top: 50%; left: 0; z-index: 1; pointer-events: none;
+    width: 20%; height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, transparent, hsl(var(--ring) / 0.9), transparent);
+    filter: blur(0.4px) drop-shadow(0 0 8px hsl(var(--ring) / 0.55));
+    transform: translate(0, -50%);
+    animation: studio-divider-scan 11s ease-in-out infinite alternate;
     will-change: transform;
   }
-  .studio-surface:not(.dark) .studio-rail-scanner { opacity: 0.55; }
+  .studio-surface:not(.dark) .studio-hero-divider::before { opacity: 0.85; }
 
   /* ── Studio RAIL stardust — a SUBTLE ambient background layer for the persistent left rail
      (StudioLayout), complementing the hero's cosmic field. Soft star-dust that gently FALLS behind
@@ -888,15 +860,12 @@ All colors MUST be HSL.
     from { background-position: 0 0; }
     to   { background-position: 0 220px; }
   }
-  /* BUILDING card beam — spin the conic sweep angle (GPU-cheap, no layout). */
-  @keyframes studio-card-beam {
-    to { --studio-beam-angle: 360deg; }
-  }
-  /* RAIL scanner BOUNCE — travel the rail height. The scanner is 22% tall, so it moves through
-     (100% − 22%) = 78% of the rail = 78/22 ≈ 355% of its own height; `alternate` bounces it back. */
-  @keyframes studio-rail-scan {
-    from { transform: translateY(0); }
-    to   { transform: translateY(355%); }
+  /* HERO↔PROJECTS divider beam — glide the highlight along the break line. The beam is 20% wide, so
+     it travels (100% − 20%) = 80% of the line = 80/20 = 400% of its OWN width; `alternate` bounces it
+     back at a steady, decelerating (ease-in-out) pace. Transform-only, no layout. */
+  @keyframes studio-divider-scan {
+    from { transform: translate(0, -50%); }
+    to   { transform: translate(400%, -50%); }
   }
 
   /* Studio motion preference (owner 2026-07-19) — the EXPLICIT "Reduced" choice freezes every cosmic
@@ -924,17 +893,13 @@ All colors MUST be HSL.
   .studio-surface.studio-motion-reduced .studio-rail-stardust::before {
     animation: none;
   }
-  /* §27 #5a/#5b per-primitive motion-safety — the building beam rests as a STATIC gold arc pinned
-     to one edge (still reads "the act", beautiful at rest, §11), and the rail scanner holds a
-     still, low glow mid-rail rather than a frozen beam parked at the top. */
-  .studio-surface.studio-motion-reduced .studio-card--building::after {
+  /* Divider beam motion-safety — under the explicit "Reduced" choice the break-line beam rests as a
+     soft glow at the CENTER of the line (translate 200% = midpoint of the 0→400% travel), still and
+     beautiful, never a frozen scan parked at one edge. */
+  .studio-surface.studio-motion-reduced .studio-hero-divider::before {
     animation: none;
-    --studio-beam-angle: 300deg;
-  }
-  .studio-surface.studio-motion-reduced .studio-rail-scanner {
-    animation: none;
-    transform: translateY(160%);
-    opacity: 0.3;
+    transform: translate(200%, -50%);
+    opacity: 0.6;
   }
   .studio-surface.studio-motion-reduced .studio-stars::before { opacity: 0.70; }
   .studio-surface.studio-motion-reduced .studio-stars::after  { transform: none; }

@@ -408,6 +408,12 @@ export default function StudioHome() {
         </div>
       </section>
 
+      {/* ── the break-line beam between the hero and the projects (owner 2026-07-19): a steady indigo
+          beam glides back and forth along this divider — the ambient "alive chrome" moment relocated
+          here from the rail (§22). Full-width, aria-hidden, motion-safe (rests centered under the
+          rail's "Reduced" choice). */}
+      <div aria-hidden className="studio-hero-divider" />
+
       {/* ── projects gallery — ONE grid, four filter VIEWS (mirrors the left rail). The anchor:
           the tenant's previous work, right under the hero. */}
       <div className="mx-auto w-full max-w-[90rem] space-y-4 px-4 py-8 md:px-8">
