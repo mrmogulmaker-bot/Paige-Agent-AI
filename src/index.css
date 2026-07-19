@@ -677,25 +677,71 @@ All colors MUST be HSL.
   }
   .studio-comet::before {
     content: ""; position: absolute; top: 0; left: 0;
-    width: 168px; height: 10px; border-radius: 999px;
-    /* leading (right) end = the bright nucleus (white core → gold), trailing (left) = the fading
-       tail. offset-rotate:auto aligns the element's +x axis to the direction of travel, so "right"
-       is always forward along the arc. */
+    width: 190px; height: 12px; border-radius: 999px;
+    /* HEAD + PLASMA TAIL in one element. Leading (right) end = a white-hot nucleus; the body is a
+       temperature-ramped teardrop (white/star core → orbit gold → nebula-gold ember → transparent)
+       so the tail reads HOT at the head and COOLER as it trails — not a flat gold bar. The organic
+       taper is an elliptical radial anchored at the head; a turbulence MASK breaks the top/bottom
+       edge into licking tongues so it reads as BURNING, not a decal. offset-rotate:auto keeps
+       "right" = forward, so the flame always streams BEHIND the travel direction along the arc. */
     background:
-      radial-gradient(closest-side circle at calc(100% - 5px) 50%,
-        hsl(0 0% 100% / 0.98), hsl(var(--studio-orbit) / 0.92) 42%, transparent 74%),
-      linear-gradient(270deg,
-        hsl(var(--studio-orbit) / 0.72) 0%,
-        hsl(var(--studio-orbit) / 0.24) 46%,
-        transparent 92%);
-    filter: drop-shadow(0 0 9px hsl(var(--studio-orbit) / 0.75));
+      radial-gradient(closest-side circle at calc(100% - 6px) 50%,
+        hsl(0 0% 100% / 0.98) 0%, hsl(var(--studio-orbit) / 0.95) 44%, transparent 78%),
+      radial-gradient(150% 66% at calc(100% - 6px) 50%,
+        hsl(var(--studio-star) / 0.60) 0%,
+        hsl(var(--studio-orbit) / 0.46) 22%,
+        hsl(var(--studio-nebula-gold) / 0.24) 50%,
+        transparent 84%);
+    /* two-layer ALPHA mask, composited INTERSECT (a pixel shows only where BOTH pass):
+       (1) an elliptical taper anchored at the head → teardrop silhouette;
+       (2) an anisotropic feTurbulence (streaked along travel) → ragged, licking flame edge.
+       Turbulence lives in the SVG's alpha (no feColorMatrix flatten) so match-source masking uses it
+       directly; static image → motion-safe by construction. */
+    -webkit-mask-image:
+      radial-gradient(135% 74% at calc(100% - 6px) 50%, #000 50%, rgba(0,0,0,0) 92%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='40'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.018 0.12' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='1.3' intercept='0.28'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+    -webkit-mask-size: 100% 100%, 160px 100%;
+    -webkit-mask-repeat: no-repeat, repeat-x;
+    -webkit-mask-position: center, center;
+    -webkit-mask-composite: source-in;
+    mask-image:
+      radial-gradient(135% 74% at calc(100% - 6px) 50%, #000 50%, rgba(0,0,0,0) 92%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='40'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.018 0.12' numOctaves='2' seed='7' stitchTiles='stitch'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='1.3' intercept='0.28'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+    mask-size: 100% 100%, 160px 100%;
+    mask-repeat: no-repeat, repeat-x;
+    mask-position: center, center;
+    mask-composite: intersect;
+    filter: drop-shadow(0 0 9px hsl(var(--studio-orbit) / 0.70));
     offset-path: ellipse(50% 20% at 50% 50%);
     offset-distance: 0%;
     offset-rotate: auto;
-    /* 11s (was 13s) — a clearly PERCEPTIBLE sweep cadence (§ Goal C, owner 2026-07-19): the comet
-       visibly arrives and leaves rather than creeping. */
-    animation: studio-comet-run 11s linear infinite;
-    will-change: offset-distance, opacity;
+    /* slow arc sweep (owns offset-distance + the arrive/leave opacity envelope) PLUS a fast, subtle
+       flicker (owns transform + glow only) layered under it, so the plasma BREATHES without ever
+       disturbing the sweep or the fade. 11s cadence unchanged. */
+    animation: studio-comet-run 11s linear infinite, studio-comet-flicker 1.3s ease-in-out infinite;
+    will-change: offset-distance, opacity, transform, filter;
+  }
+  /* SPARKS — a few warm embers shed off the head, welded to the SAME arc + rotation as the nucleus
+     and trailing BEHIND it (box-shadow dots extend along local -x = backward). One combined keyframe
+     carries the weld (offset-distance, identical breakpoints to the head so they never drift apart),
+     the arrive/leave envelope, and an irregular twinkle + backward drift so the embers shimmer and
+     shed. GPU-cheap: only opacity + transform animate; the shadow dots themselves are static. */
+  .studio-comet::after {
+    content: ""; position: absolute; top: 0; left: 0;
+    width: 3px; height: 3px; border-radius: 999px;
+    background: hsl(var(--studio-star) / 0.90);
+    box-shadow:
+      -16px 3px 1.5px 0 hsl(var(--studio-orbit) / 0.85),
+      -30px -4px 1px 0 hsl(var(--studio-nebula-gold) / 0.70),
+      -46px 5px 1.5px 0 hsl(var(--studio-star) / 0.60),
+      -63px -2px 1px 0 hsl(var(--studio-orbit) / 0.55),
+      -82px 4px 1px 0 hsl(var(--studio-nebula-gold) / 0.45);
+    filter: drop-shadow(0 0 4px hsl(var(--studio-orbit) / 0.50));
+    offset-path: ellipse(50% 20% at 50% 50%);
+    offset-distance: 0%;
+    offset-rotate: auto;
+    animation: studio-comet-sparks 11s linear infinite;
+    will-change: offset-distance, opacity, transform;
   }
 
   /* (e) SHOOTING STARS — 1–2 faint diagonal streaks that cross the upper field on long, staggered
@@ -709,8 +755,17 @@ All colors MUST be HSL.
   .studio-shooting::before,
   .studio-shooting::after {
     content: ""; position: absolute; width: 150px; height: 1.5px; border-radius: 999px; opacity: 0;
-    background: linear-gradient(90deg, transparent, hsl(var(--studio-star) / 0.95));
-    filter: drop-shadow(0 0 4px hsl(var(--studio-star) / 0.55));
+    /* a hot white nucleus at the leading (right) tip + a faint warm ember mid-streak, so each streak
+       reads as a small FLAMING shooting star rather than a flat white dash. Token-only, no extra
+       element or animation (both pseudos are already spent on the two streaks). */
+    background:
+      radial-gradient(closest-side circle at 100% 50%,
+        hsl(0 0% 100% / 0.95) 0%, hsl(var(--studio-star) / 0.90) 45%, transparent 80%),
+      linear-gradient(90deg,
+        transparent 0%,
+        hsl(var(--studio-orbit) / 0.28) 62%,
+        hsl(var(--studio-star) / 0.95) 100%);
+    filter: drop-shadow(0 0 5px hsl(var(--studio-star) / 0.60));
     will-change: transform, opacity;
   }
   .studio-shooting::before { top: 11%; left: -14%; animation: studio-shoot 15s ease-in 4s infinite; }
@@ -960,6 +1015,28 @@ All colors MUST be HSL.
     88%  { offset-distance: 100%; opacity: 0; }
     100% { offset-distance: 100%; opacity: 0; }
   }
+  @keyframes studio-comet-flicker {
+    /* subtle plasma breathing: the tail width wobbles and the glow pulses hot↔ember. Owns ONLY
+       transform + filter (never offset-distance/opacity — the sweep owns those), so it can't disturb
+       the arc or the arrive/leave fade. Transform scales in the flame's local frame, THEN the offset
+       transform rides it along the path. GPU-cheap (transform + drop-shadow). */
+    0%, 100% { transform: scaleY(1)    scaleX(1);    filter: drop-shadow(0 0 9px  hsl(var(--studio-orbit) / 0.70)); }
+    22%      { transform: scaleY(1.10) scaleX(0.98); filter: drop-shadow(0 0 13px hsl(var(--studio-orbit) / 0.85)); }
+    46%      { transform: scaleY(0.92) scaleX(1.03); filter: drop-shadow(0 0 8px  hsl(var(--studio-nebula-gold) / 0.72)); }
+    68%      { transform: scaleY(1.06) scaleX(0.99); filter: drop-shadow(0 0 11px hsl(var(--studio-orbit) / 0.80)); }
+  }
+  @keyframes studio-comet-sparks {
+    /* welded to the head: IDENTICAL offset-distance breakpoints (0→88→100) to studio-comet-run so the
+       embers track the nucleus exactly and never drift apart; the intermediate opacity + tiny local
+       -x drift make them twinkle and shed backward. */
+    0%   { offset-distance: 0%;   opacity: 0;    transform: translateX(0); }
+    6%   { opacity: 0.90; }
+    34%  { opacity: 0.70; transform: translateX(-2px); }
+    52%  { opacity: 1;    transform: translateX(0.5px); }
+    72%  { opacity: 0.82; transform: translateX(-1px); }
+    88%  { offset-distance: 100%; opacity: 0; }
+    100% { offset-distance: 100%; opacity: 0; }
+  }
   @keyframes studio-shoot {
     /* crosses the field during the first ~11% of the cycle, then stays gone → an occasional event */
     0%   { opacity: 0; transform: translate3d(0, 0, 0) rotate(19deg); }
@@ -1019,6 +1096,7 @@ All colors MUST be HSL.
   .studio-surface.studio-motion-reduced .studio-nebula::before,
   .studio-surface.studio-motion-reduced .studio-nebula::after,
   .studio-surface.studio-motion-reduced .studio-comet::before,
+  .studio-surface.studio-motion-reduced .studio-comet::after,
   .studio-surface.studio-motion-reduced .studio-shooting::before,
   .studio-surface.studio-motion-reduced .studio-shooting::after,
   .studio-surface.studio-motion-reduced .studio-mark-halo::before,
@@ -1044,9 +1122,11 @@ All colors MUST be HSL.
   }
   .studio-surface.studio-motion-reduced .studio-stars::before { opacity: 0.70; }
   .studio-surface.studio-motion-reduced .studio-stars::after  { transform: none; }
-  /* the comet rests as a still bright point partway along the arc (beautiful at rest, §11);
-     the shooting streaks hold hidden — no streak frozen mid-air. */
+  /* the comet rests as a still bright point partway along the arc (beautiful at rest, §11), the
+     plasma tail held as a soft static teardrop (flicker frozen → transform:none, base glow shows)
+     and the embers parked welded behind it; the shooting streaks hold hidden — no streak mid-air. */
   .studio-surface.studio-motion-reduced .studio-comet::before { offset-distance: 34%; opacity: 1; }
+  .studio-surface.studio-motion-reduced .studio-comet::after  { offset-distance: 34%; opacity: 1; transform: none; }
   .studio-surface.studio-motion-reduced .studio-shooting::before,
   .studio-surface.studio-motion-reduced .studio-shooting::after { opacity: 0; }
   /* under the explicit choice the parallax JS gate holds --px/--py at 0 (StudioHome); kill the
