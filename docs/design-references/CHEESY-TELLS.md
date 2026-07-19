@@ -85,6 +85,31 @@ Grouped by category. `→` is the fix.
   cinematic moment that resolves *into* the session/rail, never a bare spinner (§22).
 - **Motion for motion's sake** — things bouncing that carry no meaning. → Motion communicates state and
   hierarchy; alive, not decorative.
+- **`animate-bounce` (or any looping bounce/pulse/wiggle) on something that isn't loading.** → A perpetual
+  bounce on a CTA, badge, or icon is the classic amateur tell. Looping motion is reserved for a genuine
+  *pending* state (a spinner, a building beat); resting UI is still. Use a one-shot spring on entrance/
+  hover, not an infinite loop.
+- **Parallax that moves a layer more than ~20% of scroll distance.** → Heavy parallax reads as a 2012
+  template. Keep depth-parallax subtle (≤20% differential), motion-safe, and only where it earns a sense
+  of depth — never a hero image sliding halfway up the viewport.
+- **Durations over ~800ms, or the same duration on everything.** → Long animations feel sluggish and
+  block the user. UI transitions live in ~150–400ms; a cinematic build "cutscene" is the *only* place a
+  longer beat is earned (§22). Vary duration by distance/mass — a chip and a full-screen transition do
+  not share a timing.
+- **Linear easing on organic motion.** → `linear` is for continuous/mechanical loops (a marquee, a
+  progress sweep) only. Anything that starts and stops — reveals, hovers, panels — uses a spring or an
+  ease curve; linear on organic motion feels robotic (§6/§22 "spring, not fixed duration").
+- **Autoplay audio, or video/motion that autoplays with sound.** → Never. Sound is user-initiated,
+  always. Autoplaying audio is an instant trust-break, not a delight.
+- **Motion that doesn't serve *this* moment.** → Every animation answers "what state change or focus does
+  this communicate?" Entrance, state, hover, the build beat — each has a reason. If it's just to look
+  busy, cut it. Alive, not fidgety.
+- **A single global "animate everything" pass** (a blanket fade/slide on every element on mount). →
+  Choreograph: stagger a *few* meaningful reveals; don't fade in the entire page at once. Everything
+  animating equally is the same flat hierarchy tell as one type size — nothing leads.
+- **Scroll-jacking / hijacked native scroll.** → Never intercept or fight the user's scroll. Smooth-scroll
+  (e.g. Lenis) is opt-in polish that still respects wheel/keys and `prefers-reduced-motion`; a section
+  that traps the scroll is a blocker.
 
 ## 6. Copy
 

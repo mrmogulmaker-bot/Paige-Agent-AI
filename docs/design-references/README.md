@@ -6,7 +6,11 @@ This library is where we keep the **taste knowledge** that no lint rule can enco
 best-in-class UI read as expensive, deliberate, and alive — and how that maps onto *our* system
 (the primitive layer `@/components/ui/page`, gold-on-the-act, the indigo ground, tokens only). It is
 the reference the **design critic** (§25) compares against during design and during critique, and the
-counterweight to the enumerated anti-patterns in [`CHEESY-TELLS.md`](./CHEESY-TELLS.md).
+counterweight to the enumerated anti-patterns in [`CHEESY-TELLS.md`](./CHEESY-TELLS.md). The positive
+craft layer — the modern CSS techniques that make a surface read as expensive, and how to reach for them
+inside our token system — lives in [`CSS-EFFECTS.md`](./CSS-EFFECTS.md). Gold discipline is a hard gate:
+its rule is in [`DESIGN-CRITIC-PROMPT.md`](./DESIGN-CRITIC-PROMPT.md) and its automated linter is
+`scripts/gold-discipline-lint.mjs` (`npm run lint:gold` / `lint:gold:test`).
 
 It is **platform-wide.** Landing, sign-up, admin, tenant onboarding, Studio, marketplace, growth hub,
 Super Admin, tenant portal — every Paige surface is held to this bar, not just the Vibe Studio.

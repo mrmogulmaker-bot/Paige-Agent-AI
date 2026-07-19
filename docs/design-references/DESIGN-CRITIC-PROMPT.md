@@ -102,6 +102,45 @@ taste vibes ("make it pop") are not findings.
 
 ---
 
+## §11 GOLD DISCIPLINE — HARD BLOCKER
+
+Gold is the single most-abused token on the platform, so it gets its own non-negotiable gate. **Gold**
+(the `--accent` / `--gold` / `--gold-light` / `--gold-dark` / `--gradient-gold` tokens) is spent **only
+on the act.** Two places, and no others:
+
+1. **Primary CTA fill** — `Button variant="gold"` (the one approve/act/on button in view).
+2. **On/active/selected pill state** — `StatePill state="on"` (`bg-[hsl(var(--gold))]` +
+   `text-[hsl(var(--accent-foreground))]`).
+
+Everywhere else, gold is a **BLOCKER — not a should-fix.** Specifically, gold is **NEVER**:
+
+- **A background fill on a hero / section / card / masthead / panel.** A gold-filled surface
+  (`bg-gold`, `bg-gradient-gold`, `bg-yellow-*`, `bg-[hsl(var(--gold))]`, `background: gold`, a
+  hardcoded gold hex) painting a large surface is the single worst gold tell. **Any gold-as-background
+  fill = BLOCK the ship.** (A *soft* low-alpha gold wash — `bg-gold/5`, or a `radial-gradient(…, hsl(var
+  (--gold)/0.28), transparent)` glow behind a header — is a tint, not a fill; it is allowed, but the
+  critic still eyeballs it: a resting gold tint sprayed across a working surface is a taste tell even
+  when it clears the automated gate.)
+- **A resting border.** Resting borders are hairline neutral/indigo. Gold borders read as "sprayed."
+- **A decorative icon, avatar tint, or glyph plate.** Icons are neutral/indigo; `GlyphPlate` is not gold.
+- **A focus ring.** Focus rings are **indigo** (`--ring`) — always. A gold ring fails the 3:1 contrast
+  bar *and* burns the act-budget.
+- **A selected-row / selected-tab fill** (unless it is literally the on-state pill above).
+- **Body text.** Gold-as-text is `--gold-dark`, and only for a **single headline accent word** — never a
+  run of body copy, never a paragraph, never a label set.
+
+**The automated gate.** A programmatic linter enforces the fill rule so a *generated* artifact can't
+ship a gold masthead unseen: `scripts/gold-discipline-lint.mjs` (run `npm run lint:gold` over a path,
+`npm run lint:gold:test` for the always-green self-test that proves it flags a solid gold fill and
+passes clean act-moment gold). It fires only on **solid** gold fills on large surfaces — the
+unambiguous blocker — and stays silent on act-moment gold and soft washes, so wire `lint:gold:test`
+as the CI gate and run `lint:gold` over generated output. The linter is the floor; **you are the
+taste layer above it** — it cannot see a resting gold border that "reads sprayed," a gold icon, or a
+soft gold wash that still cheapens the surface. Run the gold rule by eye on every surface regardless
+of what the linter says, and report gold misuse as a **BLOCKER** in your verdict.
+
+---
+
 ## The test you enforce
 
 > *"Would a screenshot of this surface stand next to Linear, Stripe, and Vercel without embarrassment?"*
