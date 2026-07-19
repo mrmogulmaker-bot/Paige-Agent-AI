@@ -1084,6 +1084,16 @@ design off before we rebuild a brand new one."*
   waste this rule ends — *"if there's a part of the site that actually works, let's reference back to
   that part."* This binds every strip-then-rebuild: the rebuild target is the working part, found by
   the diagnostic, never a blank page.
+  - **REFERENCE ≠ CLONE (owner: Antonio, 2026-07-19).** "Reference the working part" means adopt its
+    *approach, tech stack, and quality bar* and then design a **fresh surface-native** result — it does
+    **NOT** mean literally drop the other surface's exact scene/component in and call it done. The miss
+    that created this line: told to reference the landing page's working 3D hero, the Studio hero was
+    built as an identical mount of the landing's `PaigeScene` — a clone, not a design. The owner: *"All
+    you did on the hero design was copy exactly what's on our landing page… that's not what I asked
+    for."* Correct pattern: reuse the *proven technique* (real three.js/R3F at that fidelity) to build a
+    hero that is **distinct to this surface** — its own composition, motif, and motion that belong to
+    the Studio's identity, not the marketing site's. Cloning the twin is the shortcut that reads as "not
+    designed." Reference the how; design the what.
 - **The tells that you skipped the strip:** the surface *"holds for a moment then flips/washes,"* or
   *"feels like it's on top of the old thing,"* or you're patching the **same** surface a third time.
   That is old code still underneath. Stop layering — go back and strip.
