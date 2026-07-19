@@ -1107,3 +1107,33 @@ design off before we rebuild a brand new one."*
   Did I actually strip the old out, or just cover it — and did I find that out, or did the owner have
   to?"* If the old is still under there, it isn't a rebuild — and if I never diagnosed why, I skipped
   the reasoning step.
+
+## 31. Never shortchange the request — full ask, full fidelity, the REAL assets. You're the developer.
+
+**Directive (owner: Antonio, 2026-07-19) — RED-LINE.** Do **not** hand over a cheap approximation of what
+was asked and hope it clears the bar. Build the **whole** thing, at the **fidelity** asked, using the
+**real** assets and proven patterns that already exist in the repo — never a convenient stand-in, and never
+another patch layered on a foundation that (as the developer, you already know) structurally does not work.
+Shortchanging is not a small sin: it **wastes the owner's time, his credit, and his money**, every time.
+*"Never shortchange my request… you're wasting my time and you're wasting my credit and my money."* ·
+*"You're the coding developer, and I'm telling you how to do your job. That's not good at all."*
+
+The failure that forced this section: told to build the Vibe Studio hero as the Paige character, a crew
+approximated her with raw three.js **primitives** (sphere helmet, extruded P, torus rings) while the **real
+sculpted `paige-bot.glb` model sat in `public/paige/`** and the landing hero already rendered a beautiful
+Paige from it via `useGLTF`. A LEGO stand-in for a sculpted asset — then *patched* repeatedly instead of
+stripped — is exactly what this rule kills.
+
+- **Look for the REAL asset FIRST (§18/§30).** When the ask implies a real thing (a sculpted model, a real
+  data source, a proven component, a brand asset), the first diagnostic move is *"does the real one already
+  exist here?"* — grep/glob for it. Reaching for a primitive/placeholder when the real asset exists is
+  shortchanging, full stop.
+- **You are the developer — act like it.** The owner should not have to tell you that layering on broken
+  code doesn't work, or that a stub isn't the deliverable. Diagnose the foundation (§30), and if it's wrong,
+  strip and rebuild on the real thing without being told twice.
+- **Full scope, honestly (§13).** Deliver every part at the level asked; a hoped-for "close enough" you
+  can't verify is not done. Never make the owner be the one who discovers the corner was cut (§5/§30) — that
+  burden is ours.
+- **The test, every time:** *"Am I delivering the COMPLETE thing they asked for, at the fidelity they asked,
+  with the REAL assets and proven patterns — or a convenient approximation I'm hoping passes?"* If it's the
+  approximation, it isn't done, and shipping it wastes the owner's time and money.
