@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-export type PillState = "on" | "off" | "pending" | "roadmap" | "included" | "error" | "success" | "warning";
+export type PillState = "on" | "off" | "pending" | "roadmap" | "included" | "error" | "success" | "warning" | "building";
 
 /**
  * The state-carrying word-pill — generalized from the Marketplace SkillCard.
@@ -20,11 +20,15 @@ const STYLES: Record<PillState, string> = {
   roadmap: "bg-muted text-muted-foreground",
   off: "bg-muted text-muted-foreground",
   error: "bg-destructive/15 text-destructive",
+  // Building — the in-flight/act pill. INDIGO, not gold: the gold budget on a building card is
+  // spent on the traveling edge-beam (§11/§22), so the pill stays in the calm indigo ground.
+  building: "bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))]",
 };
 
 const DEFAULT_LABEL: Record<PillState, string> = {
   on: "On", off: "Off", pending: "Pending", roadmap: "Roadmap",
   included: "Included", error: "Error", success: "Active", warning: "Warning",
+  building: "Building",
 };
 
 export function StatePill({

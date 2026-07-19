@@ -145,6 +145,12 @@ export function ProjectCard({
           // border/fill/shadow/lift; the focus ring stays indigo --ring (never gold).
           "studio-card group relative flex h-full flex-col overflow-hidden rounded-[var(--radius)]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+          // ACTIVELY BUILDING → the traveling GOLD edge-beam (§22/§27 #5a). Gold is sanctioned here
+          // because building IS the act (§11); every other card stays indigo/plain. Static under
+          // reduced motion (index.css). NOTE (§13): the beam lights only when the session row's
+          // status is 'building' — see the honesty note in StudioHome / the build report; no client
+          // write path sets 'building' today, so this is wired behind the real flag, not faked on.
+          session.status === "building" && "studio-card--building",
         )}
       >
         {/* Thumbnail well — the ONE shared ArtifactPreview primitive (§12/§18): a REAL scaled cover
@@ -153,12 +159,17 @@ export function ProjectCard({
             INDIGO hairline (§11 — the resting-gold fix). 404/tombstone-safe. The well clips the hover
             zoom (overflow-hidden), so nothing bleeds past the card edge. */}
         <div className="relative aspect-[16/10] overflow-hidden bg-[hsl(var(--studio-canvas))]">
-          <ArtifactPreview
-            kind={session.primaryKind}
-            thumbnailUrl={session.thumbnailUrl}
-            seed={session.id}
-            reduce={!!reduce}
-          />
+          {/* Hover micro-interaction (§27 #5c): the real cover eases a hair toward the viewer as the
+              card lifts — the well clips the zoom (overflow-hidden), so nothing bleeds past the edge.
+              Transform-only, no-oped under reduced motion. */}
+          <div className="absolute inset-0 transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-[1.04] motion-reduce:transform-none motion-reduce:transition-none">
+            <ArtifactPreview
+              kind={session.primaryKind}
+              thumbnailUrl={session.thumbnailUrl}
+              seed={session.id}
+              reduce={!!reduce}
+            />
+          </div>
           {/* Top-right controls — the star and the ⋯ manage menu ride together. The whole cluster
               stops click/keydown from bubbling to the card's role=button, so operating a control
               never also opens the project. Star stays neutral; ⋯ stays neutral — gold is spent
@@ -175,7 +186,7 @@ export function ProjectCard({
                   aria-pressed={session.starred}
                   aria-label={session.starred ? "Unstar project" : "Star project"}
                   onClick={onToggleStar}
-                  className="rounded-full bg-background/80 p-1.5 backdrop-blur transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  className="rounded-full border border-[hsl(var(--studio-glass-border)/0.5)] bg-background/85 p-1.5 shadow-sm backdrop-blur transition-[background-color,border-color,transform] hover:border-[hsl(var(--studio-glass-border)/0.9)] hover:bg-background active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] motion-reduce:active:scale-100"
                 >
                   <Star
                     className={cn(
@@ -192,7 +203,7 @@ export function ProjectCard({
                     <button
                       type="button"
                       aria-label={`Manage ${projectLabel}`}
-                      className="rounded-full bg-background/80 p-1.5 text-muted-foreground backdrop-blur transition-colors hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                      className="rounded-full border border-[hsl(var(--studio-glass-border)/0.5)] bg-background/85 p-1.5 text-muted-foreground shadow-sm backdrop-blur transition-[background-color,border-color,color,transform] hover:border-[hsl(var(--studio-glass-border)/0.9)] hover:bg-background hover:text-foreground active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] motion-reduce:active:scale-100"
                     >
                       <MoreHorizontal className="h-4 w-4" aria-hidden />
                     </button>
@@ -241,12 +252,24 @@ export function ProjectCard({
         {/* Body */}
         <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="truncate font-display text-sm font-semibold leading-tight tracking-[-0.006em] text-foreground">
+            <h3 className="truncate font-display text-sm font-semibold leading-tight tracking-[-0.011em] text-foreground">
               {session.title || "Untitled project"}
             </h3>
             {!isTemplate && (
-              <StatePill state={session.status === "published" ? "on" : "pending"}>
-                {session.status === "published" ? "Live" : "Draft"}
+              <StatePill
+                state={
+                  session.status === "building"
+                    ? "building"
+                    : session.status === "published"
+                      ? "on"
+                      : "pending"
+                }
+              >
+                {session.status === "building"
+                  ? "Building"
+                  : session.status === "published"
+                    ? "Live"
+                    : "Draft"}
               </StatePill>
             )}
           </div>

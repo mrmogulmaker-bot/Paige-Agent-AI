@@ -410,7 +410,7 @@ export default function StudioHome() {
             Your projects
           </h2>
           {!loading && !error && (
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
               {isTemplates
                 ? `${sessions.length} ${sessions.length === 1 ? "template" : "templates"}`
                 : `${sessions.length} ${sessions.length === 1 ? "project" : "projects"}`}
@@ -451,9 +451,13 @@ export default function StudioHome() {
             aria-hidden
           >
             {Array.from({ length: 8 }).map((_, i) => (
+              // Skeleton tiles reuse the SAME `.studio-card` elevation primitive as real cards, so the
+              // loading grid has the identical border/shadow/fill as what resolves in — no jarring
+              // hand-off (§6/§27 #1). `pointer-events-none` so the shared `.studio-card:hover` lift
+              // never fires on a placeholder pulse (aria-hidden hides from AT, not from the pointer).
               <li
                 key={i}
-                className="h-[248px] animate-pulse rounded-[var(--radius)] border border-[hsl(var(--studio-chrome-border)/0.5)] bg-card shadow-[0_1px_2px_hsl(var(--shadow-ink)/0.05),0_5px_16px_-6px_hsl(var(--shadow-ink)/0.12)] motion-reduce:animate-none"
+                className="studio-card pointer-events-none h-[248px] animate-pulse motion-reduce:animate-none"
               />
             ))}
           </ul>
