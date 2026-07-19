@@ -16,7 +16,31 @@
 //      referenced by deliverable_id, never inlined.
 //
 // Pure Supabase (§34): a service-role insert into one Postgres table. No vendor observability SDK.
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+
+// Own the service-role client here (lazy) so EVERY LLM chokepoint can trace with a single
+// traceLLMCall(row) — no caller needs to thread an admin client. Null when there's no service
+// context (offline/local) → the writer is an honest no-op, never a fake row.
+let _admin: SupabaseClient | null = null;
+let _adminTried = false;
+function traceAdmin(): SupabaseClient | null {
+  if (_adminTried) return _admin;
+  _adminTried = true;
+  const url = Deno.env.get("SUPABASE_URL");
+  const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (url && key) _admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return _admin;
+}
+
+/** The minimal correlation context an LLM-call site threads in. All optional — a site with no tenant
+ *  in scope still writes an honest row (tenant_id null), never a fabricated one. */
+export interface TraceCtx {
+  tenant_id?: string | null;
+  task_id?: string | null;
+  agent_id?: string | null;
+  parent_trace_id?: string | null;
+  job_kind?: string | null;
+}
 
 /** Provenance stamp — bump when the estimator/scrubber/schema changes so a reader knows what produced a row. */
 export const ROUTER_VERSION = "trace-1";
@@ -58,10 +82,16 @@ export function toExcerpt(value: unknown): { text: string | null; truncated: boo
   else {
     try { raw = JSON.stringify(value); } catch { raw = String(value); }
   }
-  const scrubbed = scrubSecrets(raw);
-  const len = scrubbed.length;
-  if (len <= EXCERPT_CAP) return { text: scrubbed, truncated: false, len };
-  return { text: scrubbed.slice(0, EXCERPT_CAP) + "…[truncated]", truncated: true, len };
+  const origLen = raw.length; // honest ORIGINAL length, reported even when we truncate before scrubbing
+  if (origLen <= EXCERPT_CAP) {
+    const scrubbed = scrubSecrets(raw);
+    return { text: scrubbed, truncated: false, len: origLen };
+  }
+  // Truncate BEFORE scrubbing so a multi-MB payload (e.g. a base64 PDF passed as input) doesn't run 9
+  // regexes over megabytes on the response path. Scrub a small margin past the cap so a credential
+  // straddling the 32KB boundary is still caught, then trim the display to the cap.
+  const scrubbed = scrubSecrets(raw.slice(0, EXCERPT_CAP + 512));
+  return { text: scrubbed.slice(0, EXCERPT_CAP) + "…[truncated]", truncated: true, len: origLen };
 }
 
 /** Only these scalar keys survive into metadata — never a raw opts/headers object (S0/S6). */
@@ -110,7 +140,8 @@ export interface TraceRow {
  * EdgeRuntime.waitUntil so it never adds latency to the caller's response and never throws into the
  * generation path. `admin` is the service-role client (getAdmin()); a null client is a silent no-op.
  */
-export function traceLLMCall(admin: SupabaseClient | null, row: TraceRow): void {
+export function traceLLMCall(row: TraceRow): void {
+  const admin = traceAdmin();
   if (!admin) return; // no service context → no-op (honest: no trace rather than a fake one)
 
   const inp = toExcerpt(row.input);
