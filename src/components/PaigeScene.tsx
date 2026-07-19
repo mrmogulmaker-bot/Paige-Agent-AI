@@ -342,8 +342,12 @@ function CameraRig() {
   return null;
 }
 
-function Scene() {
-  const reduced = useMemo(prefersReducedMotion, []);
+function Scene({ reduced: reducedProp }: { reduced?: boolean }) {
+  // Landing (PaigeHome) passes nothing → honor the OS reduced-motion flag as before. The Studio
+  // (StudioHeroScene) threads its own explicit "Reduced" preference (default full) in as a prop so
+  // the scene follows the Studio motion gate, not the OS media query (§11/§22).
+  const osReduced = useMemo(prefersReducedMotion, []);
+  const reduced = reducedProp ?? osReduced;
   return (
     <>
       <ambientLight intensity={0.4} color={INDIGO} />
@@ -373,7 +377,7 @@ function Scene() {
   );
 }
 
-export default function PaigeScene() {
+export default function PaigeScene({ reduced }: { reduced?: boolean } = {}) {
   const [ok] = useState(supportsWebGL);
   usePointerTracking();
   if (!ok) return <div className="absolute inset-0" />;
@@ -385,7 +389,7 @@ export default function PaigeScene() {
       style={{ width: "100%", height: "100%" }}
     >
       <Suspense fallback={null}>
-        <Scene />
+        <Scene reduced={reduced} />
       </Suspense>
     </Canvas>
   );

@@ -34,7 +34,7 @@ import {
 } from "@/components/admin/studio/studio";
 import { STUDIO_HOME_CHIPS } from "@/components/admin/studio/studio-copy";
 import { useStudioReducedMotion } from "@/components/admin/studio/StudioTheme";
-import { useStudioCometCanvas } from "@/hooks/useStudioCometCanvas";
+import { StudioHeroScene } from "@/components/admin/studio/StudioHeroScene";
 import type { IntentChip, StudioSessionView } from "@/components/admin/studio/studio-types";
 import type { GrowthAsset } from "@/lib/growth";
 import { useToast } from "@/hooks/use-toast";
@@ -110,57 +110,10 @@ export default function StudioHome() {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  // ── hero pointer parallax (§22 "the chrome is ALIVE") ────────────────────────────────
-  // On pointer move over the hero, write the cursor position (normalized -1..1) into --px/--py on
-  // the section; the decorative CSS layers each read them at their own depth and float toward the
-  // cursor, giving the flat cosmic field real 3D parallax. rAF-throttled (one style write per frame,
-  // transform-only), and — per the hard constraint — the whole subscription is GATED on
-  // useStudioReducedMotion: the Studio-LOCAL motion gate (owner 2026-07-19). It DEFAULTS TO FULL —
-  // the parallax listener runs even when the OS asks to reduce motion, because the cosmic field is
-  // the point on this creative surface (§11/§22) — and rests on a still frame only when the tenant
-  // explicitly picks "Reduced" in the rail. Mirrors PaigeScene's shared-`ptr` pattern (§18: reuse).
-  const heroRef = useRef<HTMLElement>(null);
+  // Studio-LOCAL motion gate (owner 2026-07-19): DEFAULTS TO FULL — the cinematic motion plays even
+  // when the OS asks to reduce, and rests only when the tenant explicitly picks "Reduced" in the rail
+  // (§11/§22). Threaded into the 3D hero scene + the living mark + the gallery stagger below.
   const reduce = useStudioReducedMotion();
-  // §29 — the comet is now a REAL per-frame canvas particle simulation (smooth
-  // orbital motion + a live plasma trail), not a CSS offset-path keyframe. The
-  // hook feeds it brand tokens, gates it on the explicit "Reduced" choice, and
-  // stands it down in light mode (see useStudioCometCanvas).
-  const { canvasRef: cometRef } = useStudioCometCanvas(reduce);
-  useEffect(() => {
-    if (reduce) return;
-    const el = heroRef.current;
-    if (!el) return;
-    let raf = 0;
-    let px = 0;
-    let py = 0;
-    const apply = () => {
-      raf = 0;
-      el.style.setProperty("--px", px.toFixed(3));
-      el.style.setProperty("--py", py.toFixed(3));
-    };
-    const schedule = () => {
-      if (!raf) raf = requestAnimationFrame(apply);
-    };
-    const onMove = (e: PointerEvent) => {
-      const r = el.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) return;
-      px = ((e.clientX - r.left) / r.width) * 2 - 1;
-      py = ((e.clientY - r.top) / r.height) * 2 - 1;
-      schedule();
-    };
-    const onLeave = () => {
-      px = 0;
-      py = 0;
-      schedule();
-    };
-    el.addEventListener("pointermove", onMove, { passive: true });
-    el.addEventListener("pointerleave", onLeave, { passive: true });
-    return () => {
-      el.removeEventListener("pointermove", onMove);
-      el.removeEventListener("pointerleave", onLeave);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [reduce]);
 
   // ── the ?pageId deep-link shim (blocking #5) ────────────────────────────────────────
   // Legacy "Edit in Studio" links land on bare /admin/studio?mode=page&pageId=X. Resolve that
@@ -296,7 +249,6 @@ export default function StudioHome() {
           room to sweep. flex + justify-center re-centers the composer in the taller field so it
           stays balanced instead of clinging to the top. */}
       <section
-        ref={heroRef}
         className={cn(
           "studio-hero relative flex flex-col justify-center overflow-hidden px-4",
           // The hero is ALWAYS the tall cinematic creative window — its bottom edge aligns with the
@@ -310,41 +262,14 @@ export default function StudioHome() {
           compactHero ? "py-10 md:py-12" : "py-12 md:py-16",
         )}
       >
-        {/* Decorative cosmic layers, back → front. All aria-hidden + pointer-events-none,
-            motion-safe (frozen under prefers-reduced-motion) and pointer-parallaxed at their own
-            depth via the section's --px/--py (see the hero handler above). */}
-        <div aria-hidden className="studio-stars" />
-        <div aria-hidden className="studio-nebula" />
-        <div aria-hidden className="studio-shooting" />
-        <div aria-hidden className="studio-orbit" />
-        {/* §29 REAL comet — a canvas-2D particle simulation (StudioCometEngine) replacing the old
-            CSS `offset-path` comet. Smooth continuous orbital motion (parametric ellipse on a
-            constantly-advancing angle → no rigid direction-change) + a genuine per-frame plasma
-            trail of shed embers with live flicker. Decorative, aria-hidden, pointer-events-none;
-            mounts in the same z-0 field slot behind the z-[1] composer and carries the same
-            --px/--py parallax as the sibling layers. Motion-safe: the hook pauses the loop (still
-            frame) under the explicit "Reduced" choice and stands the comet down in light mode. */}
-        <canvas ref={cometRef} aria-hidden className="studio-comet-canvas" />
-        {/* Fidelity grain (owner 2026-07-19): a subtle inline-SVG feTurbulence texture at very low
-            opacity, blended over the cosmic field so the glows read RENDERED, not flat CSS. Painted
-            among the z-0 field layers so it textures them all; static → motion-safe. */}
-        <div aria-hidden className="studio-grain" />
-
-        {/* Soft scrim behind the text cluster (owner 2026-07-19, OVERPAINT FIX): deepens the field
-            under the copy. The alpha is moved OFF this inline style onto `.studio-hero-scrim` so the
-            LIGHT theme can drop it — in light the copy is DARK ink, so a 0.6 white bloom here served
-            no text and only ERASED the cool violet well painted at the same center; light now runs it
-            faint + keyed to a cool hue so it reinforces the well instead of cancelling it (§23). */}
-        <div
-          aria-hidden
-          className="studio-hero-scrim pointer-events-none absolute left-1/2 top-1/2 z-0 h-[360px] w-[min(48rem,92%)] -translate-x-1/2 -translate-y-1/2 rounded-[999px] blur-3xl"
-        />
-
-        {/* Black-hole focal (owner 2026-07-19, OVERPAINT FIX): a faint, LOCALIZED cool radial well
-            behind the mark/title cluster for figure/ground — NOT a global darken (§23). Now painted
-            LAST among the z-0 field layers (AFTER the scrim) so the violet well reads OVER the scrim
-            instead of being cancelled by it; still under the z-[1] cluster + its mark halo. */}
-        <div aria-hidden className="studio-void" />
+        {/* §30 REBUILD — the hero's decorative BACKGROUND is now the proven landing-page 3D scene
+            (PaigeScene: real three.js, the gold-glass Paige + the flying-saucer companion), mounted
+            as an absolute z-0 layer behind the z-[1] composer. This REPLACES the stripped hand-rolled
+            CSS cosmic field (stars/nebula/comet/orbit/void/grain/scrim) that kept flipping/washing.
+            The wrapper sets the entrance driver, gates on the Studio motion preference, renders the
+            scene DARK-ONLY (light keeps the bright --studio-hero-gradient), and falls back to the
+            gradient when WebGL is unavailable or the 3D throws (§18/§29). */}
+        <StudioHeroScene />
 
         <div className="relative z-[1] mx-auto w-full max-w-2xl">
           {/* The text cluster tightens (and drops the subhead + shrinks the mark) in the compact

@@ -311,52 +311,14 @@ All colors MUST be HSL.
     --studio-void:          250 40% 30%;
   }
 
-  /* The LIGHT hero is a bright field, not a planetarium — but it is now genuinely ALIVE, not a
-     static bloom (owner 2026-07-19, §22/§23: light must be light AND moving). The dark-sky GRIT
-     (comet, shooting streaks, orbit ring) still reads as noise on a bright field, so those three
-     stand down in light. What replaces the static field: (a) the starfield is REVIVED as
-     light-tinted "stardust" that twinkles AND gently falls, and (b) the nebula blooms become a
-     slow-drifting LIGHT AURORA on a wider, perceptible path — so flipping to light gives an alive,
-     premium field, never a frozen one. Dark mode keeps the full planetarium untouched. */
-  /* The comet canvas also stands down in light — but the HOOK clears it (engine.hide()) rather than
-     relying on opacity, so no rAF runs while it's hidden; this opacity:0 is a belt-and-suspenders
-     guard in case tokens resolve before the observer fires. */
-  .studio-surface:not(.dark) .studio-comet-canvas,
-  .studio-surface:not(.dark) .studio-shooting,
-  .studio-surface:not(.dark) .studio-orbit {
+  /* §30 — the hand-rolled cosmic field (stars / nebula / comet / orbit / void / grain / scrim) is
+     stripped from the hero; its background is now the proven 3D scene (StudioHeroScene → PaigeScene),
+     which renders DARK-ONLY, so light keeps the genuinely-bright --studio-hero-gradient with no
+     canvas. What remains here: the SHARED shooting-star layer (still used by StudioShell /
+     SessionImageCanvas) reads as night-sky grit on the bright light field, so it stands down in
+     light. */
+  .studio-surface:not(.dark) .studio-shooting {
     opacity: 0;
-  }
-  /* (a) LIGHT STARDUST — the same starfield layer, recolored for light (soft indigo via the light
-     --studio-star) and toned down so it reads as premium ambient dust, not grit. The pseudos keep
-     their base twinkle/drift and STACK a seamless one-tile diagonal FALL on top, so the dust drifts
-     downward like slow snow. Own fall keyframes → dark's starfield is untouched. */
-  .studio-surface:not(.dark) .studio-stars {
-    opacity: 0.82;
-  }
-  .studio-surface:not(.dark) .studio-stars::before {
-    animation: studio-twinkle 7s ease-in-out infinite, studio-stardust-fall-a 60s linear infinite;
-  }
-  .studio-surface:not(.dark) .studio-stars::after {
-    animation: studio-drift 46s ease-in-out infinite, studio-stardust-fall-b 78s linear infinite;
-  }
-  /* (b) LIGHT AURORA — the nebula blooms, softened + spread, now drift on a wider, more PERCEPTIBLE
-     path (the heavy 96px blur otherwise hid the base nebula's tiny 6% drift, so it read static).
-     Own keyframes so dark's blooms are untouched; token-only light violet/blue (§23). */
-  .studio-surface:not(.dark) .studio-nebula::before {
-    filter: blur(96px);
-    /* LIGHT keeps the BOLD bloom (0.48/0.30) — a bright violet aurora reads as premium colour on the
-       near-white field where it would WASH the dark planetarium (§23/§29, per-theme). This background
-       override is what the dark base no longer carries. */
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.48) 0%, hsl(var(--studio-nebula-gold) / 0.30) 42%, transparent 72%);
-    opacity: 0.80;
-    animation: studio-aurora-a 42s ease-in-out infinite;
-  }
-  .studio-surface:not(.dark) .studio-nebula::after {
-    filter: blur(96px);
-    /* LIGHT keeps the BOLD electric-blue bloom (0.50/0.32). */
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-blue) / 0.50) 0%, hsl(var(--studio-nebula-blue) / 0.32) 42%, transparent 72%);
-    opacity: 0.74;
-    animation: studio-aurora-b 50s ease-in-out infinite;
   }
   /* Title glow: the dark field's blue neon + near-black ink halo would read as a smudge on light —
      swap to a clean, faint emboss so the H1 stays crisp dark-on-light. */
@@ -372,6 +334,31 @@ All colors MUST be HSL.
      dictates the Studio (owner 2026-07-17). */
   .studio-surface.dark,
   .studio-surface .dark {
+    /* PLATFORM-TOKEN SHIELD for a DARK Studio (§30 FLIP FIX, owner 2026-07-19). The mirror of the
+       `.studio-surface:not(.dark)` light shield above: the composer (PromptComposer) is built on the
+       PLATFORM tokens (--foreground / --card / --muted / --border / --input / --primary …). Those are
+       re-declared LIGHT on `:not(.dark)` but were NOT re-declared here, so a DARK Studio inherited
+       whatever the platform ancestor set them to — and when the admin/platform theme is LIGHT (no
+       `.dark` on <html>, the common case since the Studio defaults dark), the composer fell through to
+       the `:root` LIGHT values and rendered WHITE-on-dark: the white-composer-in-dark flip. Pinning the
+       platform tokens to their global `.dark` values here makes a dark Studio render dark REGARDLESS of
+       the platform theme, and permanently HOLDS the flip. (These mirror the global `.dark` block; the
+       intentionally-light composer input well is a separate --studio-input token and stays light.) */
+    --background: 265 44% 5%;
+    --foreground: 0 0% 96%;
+    --card: 265 40% 8%;
+    --card-foreground: 0 0% 96%;
+    --popover: 265 40% 8%;
+    --popover-foreground: 0 0% 96%;
+    --muted: 265 30% 13%;
+    --muted-foreground: 265 15% 66%;
+    --border: 270 32% 17%;
+    --border-strong: 270 30% 26%;
+    --input: 270 32% 17%;
+    --primary: 258 65% 56%;
+    --primary-light: 258 60% 66%;
+    --gold-dark: 41 82% 61%;
+
     /* DARK studio (§22/§23 — focused / premium / immersive): a LIT, layered indigo — deep-indigo
        glass, not an unlit CRUD slab. `.studio-surface.dark` is the STUDIO-LOCAL toggle on the root;
        `.studio-surface .dark` catches any inner `dark` scope (StudioFrame). It is deliberately NOT
@@ -543,189 +530,24 @@ All colors MUST be HSL.
       radial-gradient(100% 100% at 50% 120%, hsl(var(--studio-ink) / 0.5), transparent 55%);
   }
 
-  /* ── Vibe Studio "Cosmic Paige" hero field. Tokens resolve from the enclosing
-     `.studio-surface` scope, so every rule below is inert anywhere else. The field is built
-     from explicit layer elements (`.studio-stars`, `.studio-nebula`, `.studio-orbit`) so each
-     gets its own two pseudo-elements. */
+  /* ── Vibe Studio hero field BASE. The hand-rolled CSS cosmic layers that used to paint over this
+     were stripped (§30); the hero's animated background is now the 3D scene (StudioHeroScene →
+     PaigeScene), which mounts as a transparent canvas OVER this gradient. This gradient is what the
+     scene sits on — and what shows through in light mode (scene is dark-only) or when WebGL is
+     unavailable (PaigeScene returns an empty div). Token resolves from the `.studio-surface` scope. */
   .studio-hero {
     background-image: var(--studio-hero-gradient);
     background-color: hsl(var(--studio-hero-to)); /* solid fallback before paint */
   }
 
-  /* Pointer parallax (§22 "the chrome is ALIVE") — each decorative layer reads the hero's
-     `--px`/`--py` (normalized cursor, -1..1, written by a rAF-throttled handler in StudioHome and
-     gated on useReducedMotion so there is NO listener at rest) and floats at its own depth: far
-     field barely stirs, the foreground orbit/comet swing most → the flat field gains real 3D
-     parallax. Transform-only (GPU-composited); the short spring transition eases toward the cursor
-     and glides back to rest on pointer-leave. At rest (var default 0) every layer sits still. */
-
-  /* (a) BLACK-HOLE FOCAL — a faint, LOCALIZED radial WELL centered behind the mark/title cluster.
-     NOT a global darken (§23): a soft closest-side vignette that deepens ONLY the focal center so the
-     warm gold mark gains figure/ground and stands out. z-0 → behind the z-[1] cluster and its
-     mark-halo pseudos per the hero stacking order. Static (no keyframe) → motion-safe by construction
-     (nothing added to the reduced-motion block). Held at ~40% top to sit behind the upper-center mark.
-     DARK: a genuine deepening of the already-dark center (higher alpha, ink hue). LIGHT: a much fainter
-     COOL shade (low alpha, cool-violet --studio-void) that reads as a focal well without lifting the
-     bright field off "genuinely light". No parallax → it stays locked behind the mark. */
-  .studio-void {
-    position: absolute; left: 50%; top: 40%; z-index: 0; pointer-events: none;
-    width: min(44rem, 122%); aspect-ratio: 1; translate: -50% -50%;
-    border-radius: 9999px;
-    /* §29 (owner 2026-07-19): the black hole is a LIGHT-mode focal behind the mark ONLY — "we're NOT
-       supposed to have a dark-mode black hole." So the BASE (which applied in dark) paints nothing;
-       the well is supplied solely by the `:not(.dark)` light override below. On the dark planetarium
-       the 5% field already gives the gold mark full figure/ground — no well needed. */
-    background: none;
-    filter: blur(50px);
-  }
-  .studio-surface:not(.dark) .studio-void {
-    /* Light black hole (owner 2026-07-19, §29 BOLDENED): a concentrated cool-violet well right behind
-       the mark, painted LAST (after the scrim) so it reads over the field. Lifted 0.30 → 0.44 and the
-       well tightened (transparent 68% → 66%) so it is a CLEARLY visible focal shade that makes the
-       warm gold mark POP (§23 complementary figure/ground) — still a soft localized vignette that
-       fades out before the edges, so the surrounding field stays genuinely light, never a dark blob. */
-    background: radial-gradient(closest-side, hsl(var(--studio-void) / 0.44), transparent 66%);
-    filter: blur(50px);
-  }
-  /* Hero text scrim (owner 2026-07-19, OVERPAINT FIX) — alpha lives here so each theme tunes it.
-     Dark keeps the field-deepening 0.6; light drops to 0.12 keyed to the cool --studio-scrim so it
-     lends a faint cool reinforcement to the void's well instead of a bright-white bloom that cancels
-     it. Static (no keyframe) → motion-safe by construction. */
-  .studio-hero-scrim {
-    background: radial-gradient(closest-side, hsl(var(--studio-scrim) / 0.6), transparent);
-  }
-  .studio-surface:not(.dark) .studio-hero-scrim {
-    background: radial-gradient(closest-side, hsl(var(--studio-scrim) / 0.12), transparent);
-  }
-
-  /* (a2) FIDELITY GRAIN — one inline-SVG feTurbulence texture at very low opacity, blended over the
-     cosmic field so the glows read RENDERED, not flat CSS (owner 2026-07-19: "a little more real,
-     almost like image rendering"). fractalNoise desaturated to mono; `overlay` on the dark
-     planetarium reads as film grain, `soft-light` on the bright field textures without dirtying it
-     (§23). Static background-image → motion-safe by construction (no keyframe, no reduced-motion
-     entry). Painted last among the z-0 field layers (DOM order) so it textures the whole field; z-0
-     keeps it under the z-[1] text cluster. */
-  .studio-grain {
-    position: absolute; inset: 0; z-index: 0; pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-size: 140px 140px;
-    background-repeat: repeat;
-    /* DARK grain 0.06 — REGRESSION FIX (owner 2026-07-19): 0.10 overlay grain on the near-black field
-       LIGHTENS it (overlay pushes the noise's bright specks up), adding a gray haze that helped make
-       "dark look like light". 0.06 keeps a real film tooth without hazing the planetarium. */
-    mix-blend-mode: overlay;
-    opacity: 0.06;
-  }
-  .studio-surface:not(.dark) .studio-grain {
-    /* 0.035 → 0.08 soft-light: on the bright field soft-light stays clean (won't dirty the whites),
-       but 0.035 was invisible; 0.08 gives a perceptible rendered tooth without darkening (§23). */
-    mix-blend-mode: soft-light;
-    opacity: 0.08;
-  }
-
-  /* (b) STARFIELD — two GPU-cheap CSS layers. ::before = far field (tiny, faint, slow twinkle);
-     ::after = near field (fewer/larger stars, slow parallax drift) → depth. transform/opacity only. */
-  .studio-stars {
-    position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
-    transform: translate3d(calc(var(--px, 0) * 4px), calc(var(--py, 0) * 4px), 0);
-    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
-    will-change: transform;
-  }
-  .studio-stars::before,
-  .studio-stars::after {
-    content: ""; position: absolute; inset: -20%;
-    background-repeat: repeat; will-change: transform, opacity;
-  }
-  .studio-stars::before {
-    background-image:
-      radial-gradient(1px 1px at 20% 30%, hsl(var(--studio-star) / 0.90), transparent),
-      radial-gradient(1px 1px at 65% 15%, hsl(var(--studio-star) / 0.70), transparent),
-      radial-gradient(1px 1px at 80% 55%, hsl(var(--studio-star) / 0.80), transparent),
-      radial-gradient(1px 1px at 40% 70%, hsl(var(--studio-star) / 0.60), transparent),
-      radial-gradient(1px 1px at 12% 82%, hsl(var(--studio-star) / 0.75), transparent),
-      radial-gradient(1px 1px at 90% 88%, hsl(var(--studio-star) / 0.65), transparent),
-      radial-gradient(1px 1px at 52% 45%, hsl(var(--studio-star) / 0.50), transparent);
-    background-size: 340px 340px;
-    animation: studio-twinkle 7s ease-in-out infinite;
-  }
-  .studio-stars::after {
-    background-image:
-      radial-gradient(1.6px 1.6px at 30% 20%, hsl(var(--studio-star) / 0.95), transparent),
-      radial-gradient(2px   2px   at 75% 40%, hsl(var(--studio-star) / 0.85), transparent),
-      radial-gradient(1.6px 1.6px at 55% 78%, hsl(var(--studio-star) / 0.80), transparent),
-      radial-gradient(1.6px 1.6px at 15% 60%, hsl(var(--studio-star) / 0.70), transparent);
-    background-size: 520px 520px;
-    animation: studio-drift 46s ease-in-out infinite;
-  }
-
-  /* (c) NEBULA — gold + electric-blue soft blooms, large blur, very slow drift/scale. */
-  .studio-nebula {
-    position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
-    transform: translate3d(calc(var(--px, 0) * 8px), calc(var(--py, 0) * 8px), 0);
-    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
-    will-change: transform;
-  }
-  .studio-nebula::before,
-  .studio-nebula::after {
-    content: ""; position: absolute; border-radius: 9999px;
-    filter: blur(70px); will-change: transform;
-  }
-  .studio-nebula::before {            /* GOLD — signature, low opacity, NOT the act */
-    top: -18%; left: -8%; width: 42rem; height: 42rem;
-    /* 3-stop volumetric falloff (fidelity) — a hot core → mid → transparent so the bloom reads
-       dimensional, not a flat single-stop disc. */
-    /* DARK base = RESTRAINED (0.30/0.16). REGRESSION FIX (owner 2026-07-19: "dark mode looks like
-       light mode"): the bold 0.48/0.30 light-contrast value lives in the base, which the DARK
-       planetarium inherits — a bright wide bloom on the 5%-L field washed the black out to pale.
-       Dark keeps the field DEEP; the bold bloom is scoped to LIGHT only below (§23/§29 — light and
-       dark are tuned SEPARATELY, a bright bloom that reads on white washes on black). */
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.30) 0%, hsl(var(--studio-nebula-gold) / 0.16) 42%, transparent 72%);
-    /* 42s (was 54s) — the heavy 70px blur hides slow drift, so the dark nebula is sped up + widened
-       (keyframe below) to visibly BREATHE (§ Goal C, owner 2026-07-19). */
-    animation: studio-nebula-a 42s ease-in-out infinite;
-  }
-  .studio-nebula::after {             /* ELECTRIC BLUE */
-    right: -12%; bottom: -22%; width: 38rem; height: 38rem;
-    /* DARK base = RESTRAINED (0.32/0.18) — same regression fix as the gold lobe: the bold 0.50/0.32
-       washed the dark field. Bold value scoped to LIGHT only below. */
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-blue) / 0.32) 0%, hsl(var(--studio-nebula-blue) / 0.18) 42%, transparent 72%);
-    animation: studio-nebula-b 48s ease-in-out infinite;
-  }
-
-  /* (d) ORBIT ECHO — a faint gold ellipse ring tying the hero to the PaigeMark orbit motif.
-     Tilted -24deg + flattened like the mark's ring. The `translate` property centers the ring
-     independently of `transform`, so centering and the rotate/scale/parallax never fight. */
-  .studio-orbit {
-    position: absolute; left: 50%; top: 50%; z-index: 0; pointer-events: none;
-    width: min(54rem, 130%); aspect-ratio: 1;
-    translate: -50% -50%;
-    transform: translate3d(calc(var(--px, 0) * 10px), calc(var(--py, 0) * 10px), 0) rotate(-24deg) scaleY(0.40);
-    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
-    border-radius: 9999px;
-    border: 1px solid hsl(var(--studio-orbit) / 0.12);
-    will-change: transform;
-  }
-
-  /* (d2) COMET — §29 REAL RENDER. The old CSS `offset-path` comet (a masked gradient "flame" swept
-     by an offset-distance keyframe) is gone: the owner kept catching it as "rigid / 1980s" at the
-     ellipse ends (offset-path easing gives velocity discontinuities where the arc turns) and "an
-     isolated image" that "definitely isn't flickering" (the flame was a static mask breathing on a
-     keyframe, not a live sim). It is now a canvas-2D PARTICLE simulation — `StudioCometEngine`
-     (src/lib/studio-comet-engine.ts), mounted via `useStudioCometCanvas`. The head rides a
-     parametric ellipse on a constantly-advancing angle (θ += dθ·dt) → perfectly smooth continuous
-     orbit with ZERO rigid direction-change; each frame it sheds ember particles that stream off the
-     travel tangent with per-particle velocity/life/size and per-frame brightness noise (additive
-     'lighter' blend) → a genuine live plasma trail that flickers, not a keyframe. Colours are read
-     from the brand tokens (--studio-orbit/--studio-star/--studio-nebula-gold) so it is theme-aware.
-     This rule only SIZES + PLACES the canvas (full field, z-0 behind the z-[1] composer) and carries
-     the same --px/--py parallax as the sibling layers; all motion lives in JS, gated on the explicit
-     "Reduced" choice + stood down in light by the hook. */
-  .studio-comet-canvas {
-    position: absolute; inset: 0; z-index: 0; pointer-events: none;
-    transform: translate3d(calc(var(--px, 0) * 13px), calc(var(--py, 0) * 13px), 0);
-    transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
-    will-change: transform;
-  }
+  /* §30 STRIP (owner 2026-07-19): the hand-rolled cosmic FIELD that lived here — the pointer-parallax
+     driver + `.studio-void` / `.studio-hero-scrim` / `.studio-grain` / `.studio-stars` /
+     `.studio-nebula` / `.studio-orbit` / `.studio-comet-canvas` and their keyframes — has been
+     DELETED, not gated. It kept flipping/washing and was layered patch on patch; the hero's background
+     is now the proven landing-page 3D scene (StudioHeroScene → PaigeScene, real three.js). Only the
+     shared `.studio-shooting` layer (used by StudioShell / SessionImageCanvas) and the composition
+     polish below (`.studio-mark-halo`, `.studio-title-glow`, `.studio-glass-card`) survive. The
+     `--studio-hero-gradient` the 3D canvas sits on is kept (see `.studio-hero` above). */
 
   /* (e) SHOOTING STARS — 1–2 faint diagonal streaks that cross the upper field on long, staggered
      loops, so there's an occasional cinematic "event" rather than a steady loop. Each streak is
@@ -1022,26 +844,8 @@ All colors MUST be HSL.
     animation: studio-rail-fall2 27s linear infinite, studio-rail-twinkle-lg 6.1s ease-in-out infinite 1.4s;
   }
 
-  @keyframes studio-twinkle {
-    0%, 100% { opacity: 0.45; }
-    50%      { opacity: 0.90; }
-  }
-  @keyframes studio-drift {
-    /* wider near-field parallax swing (§ Goal C) so the near stars visibly drift, not creep. */
-    0%, 100% { transform: translate3d(0, 0, 0); }
-    50%      { transform: translate3d(-24px, -16px, 0); }
-  }
-  @keyframes studio-nebula-a {
-    /* wider amplitude + scale (§ Goal C) so the heavy blur can't hide the drift; the field breathes. */
-    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-    50%      { transform: translate3d(9%, 6%, 0) scale(1.16); }
-  }
-  @keyframes studio-nebula-b {
-    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-    50%      { transform: translate3d(-9%, -7%, 0) scale(1.15); }
-  }
-  /* (§29) The old studio-comet-run / -flicker / -sparks keyframes were removed with the CSS comet —
-     the comet is now a canvas particle sim (StudioCometEngine); all its motion lives in JS. */
+  /* §30 STRIP — studio-twinkle / studio-drift / studio-nebula-a / studio-nebula-b were deleted with
+     the stripped starfield + nebula layers (the hero field is now the 3D scene). */
   @keyframes studio-shoot {
     /* crosses the field during the first ~11% of the cycle, then stays gone → an occasional event */
     0%   { opacity: 0; transform: translate3d(0, 0, 0) rotate(19deg); }
@@ -1055,26 +859,8 @@ All colors MUST be HSL.
     50%      { opacity: 1;    transform: scale(1.14); }
   }
 
-  /* LIGHT-mode aurora drift — wider amplitude than the base nebula (6%/1.12) so the heavy 96px
-     blur can't hide it; the light field visibly breathes. Transform-only (GPU-composited). */
-  @keyframes studio-aurora-a {
-    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-    50%      { transform: translate3d(14%, 9%, 0) scale(1.22); }
-  }
-  @keyframes studio-aurora-b {
-    0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
-    50%      { transform: translate3d(-13%, -10%, 0) scale(1.28); }
-  }
-  /* LIGHT-mode stardust FALL — a seamless one-tile diagonal drift-down (tile is square, so moving
-     by exactly one tile in both axes loops with no seam). background-position only (GPU-cheap). */
-  @keyframes studio-stardust-fall-a {   /* ::before tile = 340px */
-    from { background-position: 0 0; }
-    to   { background-position: 340px 340px; }
-  }
-  @keyframes studio-stardust-fall-b {   /* ::after tile = 520px, drifts the other way */
-    from { background-position: 0 0; }
-    to   { background-position: -520px 520px; }
-  }
+  /* §30 STRIP — the LIGHT-mode aurora (studio-aurora-a/-b) and stardust-fall (studio-stardust-fall-a/-b)
+     keyframes were deleted with the stripped light nebula + starfield overrides. */
   /* RAIL stardust FALL — a seamless one-tile vertical drop (tile height = 220px). */
   @keyframes studio-rail-fall {
     from { background-position: 0 0; }
@@ -1112,21 +898,13 @@ All colors MUST be HSL.
      (`.studio-surface.studio-motion-reduced`, and `…:not(.dark)` for the light overrides) out-specifies
      the light-mode animation assignments above so the freeze wins in BOTH themes regardless of order.
      Blooms/arc rest at their 0% keyframe (visible, at rest); stars hold a mid-twinkle glow. */
-  .studio-surface.studio-motion-reduced .studio-stars::before,
-  .studio-surface.studio-motion-reduced .studio-stars::after,
-  .studio-surface.studio-motion-reduced .studio-nebula::before,
-  .studio-surface.studio-motion-reduced .studio-nebula::after,
-  /* NB: the comet is a canvas sim now (StudioCometEngine); its "Reduced" freeze is handled in JS
-     (useStudioCometCanvas paints one still frame), so it no longer has CSS pseudos to stop here. */
+  /* §30 STRIP — the stars/nebula/orbit/comet-canvas reduced-motion freezes went with those layers;
+     the surviving decorative animations (the shared shooting streaks, the living mark halo, the rail
+     stardust) each keep their own freeze here. The 3D hero scene handles its own motion-safety via
+     the `reduced` prop (StudioHeroScene → PaigeScene). */
   .studio-surface.studio-motion-reduced .studio-shooting::before,
   .studio-surface.studio-motion-reduced .studio-shooting::after,
   .studio-surface.studio-motion-reduced .studio-mark-halo::before,
-  /* The light-mode stardust/aurora each carry their OWN freeze at the two-class-plus-:not(.dark)
-     specificity so they stop cold under the explicit choice (§11 / §22 per-primitive motion-safety). */
-  .studio-surface.studio-motion-reduced:not(.dark) .studio-stars::before,
-  .studio-surface.studio-motion-reduced:not(.dark) .studio-stars::after,
-  .studio-surface.studio-motion-reduced:not(.dark) .studio-nebula::before,
-  .studio-surface.studio-motion-reduced:not(.dark) .studio-nebula::after,
   /* the light mark plate (::after) carries its own freeze; the base freeze above already covers the
      gold-bloom ::before in both themes (§22 per-primitive motion-safety). */
   .studio-surface.studio-motion-reduced:not(.dark) .studio-mark-halo::after,
@@ -1142,18 +920,9 @@ All colors MUST be HSL.
     transform: translate(200%, -50%);
     opacity: 0.6;
   }
-  .studio-surface.studio-motion-reduced .studio-stars::before { opacity: 0.70; }
-  .studio-surface.studio-motion-reduced .studio-stars::after  { transform: none; }
-  /* the comet's "Reduced" rest state (a still bright nucleus + soft static tail) is painted by the
-     canvas engine's renderStaticFrame() — see useStudioCometCanvas — not by CSS. */
   .studio-surface.studio-motion-reduced .studio-shooting::before,
   .studio-surface.studio-motion-reduced .studio-shooting::after { opacity: 0; }
-  /* under the explicit choice the parallax JS gate holds --px/--py at 0 (StudioHome); kill the
-     smoothing transition too so nothing eases. */
-  .studio-surface.studio-motion-reduced .studio-stars,
-  .studio-surface.studio-motion-reduced .studio-nebula,
-  .studio-surface.studio-motion-reduced .studio-orbit,
-  .studio-surface.studio-motion-reduced .studio-comet-canvas,
+  /* kill the shared shooting layer's smoothing transition too so nothing eases at rest. */
   .studio-surface.studio-motion-reduced .studio-shooting { transition: none; }
 
   /* Floating animations inspired by Motion.com */
