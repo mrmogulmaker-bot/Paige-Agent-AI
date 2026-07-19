@@ -60,6 +60,7 @@ export function AgentChoiceCard({
           alt=""
           aria-hidden
           loading="lazy"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
           className="h-12 w-12 shrink-0 rounded-lg border border-[hsl(var(--studio-chrome-border)/0.5)] object-cover"
         />
       ) : option.icon ? (
