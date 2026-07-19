@@ -307,10 +307,6 @@ export default function StudioHome() {
         {/* Decorative cosmic layers, back → front. All aria-hidden + pointer-events-none,
             motion-safe (frozen under prefers-reduced-motion) and pointer-parallaxed at their own
             depth via the section's --px/--py (see the hero handler above). */}
-        {/* Black-hole focal (owner 2026-07-19): a faint, LOCALIZED radial well behind the mark/title
-            cluster that deepens the center for figure/ground — NOT a global darken (§23). Painted
-            first at z-0 so it sits behind everything, including the z-[1] cluster + its mark halo. */}
-        <div aria-hidden className="studio-void" />
         <div aria-hidden className="studio-stars" />
         <div aria-hidden className="studio-nebula" />
         <div aria-hidden className="studio-shooting" />
@@ -318,15 +314,24 @@ export default function StudioHome() {
         <div aria-hidden className="studio-comet" />
         {/* Fidelity grain (owner 2026-07-19): a subtle inline-SVG feTurbulence texture at very low
             opacity, blended over the cosmic field so the glows read RENDERED, not flat CSS. Painted
-            last among the z-0 field layers so it textures them all; static → motion-safe. */}
+            among the z-0 field layers so it textures them all; static → motion-safe. */}
         <div aria-hidden className="studio-grain" />
 
-        {/* Soft scrim behind the text cluster — deepens the field under the fixed-white copy. */}
+        {/* Soft scrim behind the text cluster (owner 2026-07-19, OVERPAINT FIX): deepens the field
+            under the copy. The alpha is moved OFF this inline style onto `.studio-hero-scrim` so the
+            LIGHT theme can drop it — in light the copy is DARK ink, so a 0.6 white bloom here served
+            no text and only ERASED the cool violet well painted at the same center; light now runs it
+            faint + keyed to a cool hue so it reinforces the well instead of cancelling it (§23). */}
         <div
           aria-hidden
-          className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[360px] w-[min(48rem,92%)] -translate-x-1/2 -translate-y-1/2 rounded-[999px] blur-3xl"
-          style={{ background: "radial-gradient(closest-side, hsl(var(--studio-scrim) / 0.6), transparent)" }}
+          className="studio-hero-scrim pointer-events-none absolute left-1/2 top-1/2 z-0 h-[360px] w-[min(48rem,92%)] -translate-x-1/2 -translate-y-1/2 rounded-[999px] blur-3xl"
         />
+
+        {/* Black-hole focal (owner 2026-07-19, OVERPAINT FIX): a faint, LOCALIZED cool radial well
+            behind the mark/title cluster for figure/ground — NOT a global darken (§23). Now painted
+            LAST among the z-0 field layers (AFTER the scrim) so the violet well reads OVER the scrim
+            instead of being cancelled by it; still under the z-[1] cluster + its mark halo. */}
+        <div aria-hidden className="studio-void" />
 
         <div className="relative z-[1] mx-auto w-full max-w-2xl">
           {/* The text cluster tightens (and drops the subhead + shrinks the mark) in the compact

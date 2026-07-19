@@ -40,9 +40,16 @@ All colors MUST be HSL.
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 265 14% 90%;
-    --border-strong: 265 13% 82%; /* table dividers, active outlines */
-    --input: 265 14% 90%;
+    /* Light control seams (owner 2026-07-19, §23 "light must not read flat gray"): repointed OFF the
+       near-neutral 265°/14%S gray onto the INDIGO brand family with more saturation + a touch less
+       lightness, so resting button/input/chip outlines carry real indigo presence in light instead
+       of a colorless hairline — the whole "light looks gray, dark looks designed" gap. Still a light
+       hairline (non-text, so AA text contrast N/A; net contrast vs the field is slightly HIGHER than
+       the old 90% gray, not lower) and gold stays reserved for the act (§11 — this is neutral chrome,
+       never gold). The indigo focus ring below is unchanged (already correct). */
+    --border: 250 30% 84%;
+    --border-strong: 250 28% 76%; /* table dividers, active outlines — a deeper indigo sibling */
+    --input: 250 30% 84%;
     --ring: 258 70% 50%; /* indigo focus ring — 7.7:1 on white (gold ring fails 3:1) */
 
     --radius: 0.75rem; /* 12px base — tighter, gives a real hierarchy vs pills/inputs */
@@ -185,8 +192,9 @@ All colors MUST be HSL.
        stack, NOT gray and NOT darkened. Depth reads from the L-ladder (well recess < canvas
        base < rail < dock/card raised < input brightest) + hairline borders + soft ink shadow. */
     --studio-glass-bg:     240 55% 100%;
-    --studio-glass-border: 246 44% 80%;   /* boldened indigo hairline (was 244 40% 86% — too faint to
-                                             read on the near-white composer; §27 "bolden the faint") */
+    --studio-glass-border: 248 46% 74%;   /* boldened indigo hairline again (246 44% 80% → 248 46% 74%,
+                                             owner 2026-07-19) — the composer seam now carries clear
+                                             indigo definition on the near-white field (§27/§23) */
     --studio-glass-solid:  240 44% 99%;   /* near-white composer card fill (§311 light input) */
     --studio-rail-bg:      240 44% 98%;   /* rail column — a clean step up off the canvas */
     --studio-on-hero:      0 0% 100%;
@@ -208,9 +216,10 @@ All colors MUST be HSL.
     --studio-topbar-to:     240 40% 97%;   /* masthead bottom → meets the canvas */
     --studio-rail-solid:    240 42% 97.5%; /* the conversation rail column */
     --studio-dock:          240 52% 99.8%; /* the pinned composer dock — a step above the rail */
-    --studio-chrome-border: 238 34% 81%;   /* boldened indigo region seams (was 240 30% 88% — a card
-                                              edge at /0.72 was near-invisible on the light canvas;
-                                              §27 definition, still an indigo hairline, never gray) */
+    --studio-chrome-border: 240 40% 76%;   /* boldened indigo region seams again (238 34% 81% →
+                                              240 40% 76%, owner 2026-07-19) — the masthead/rail/card
+                                              edges now read as real indigo seams on the light canvas,
+                                              §27 definition, still an indigo hairline, never gray */
 
     /* Drafting WELL — the recessed surface the rendered page floats on (the Lovable/v0 preview
        pane, not a wireframe grid). Light values: a soft indigo-tinted step below the canvas so
@@ -269,9 +278,12 @@ All colors MUST be HSL.
       );
     /* Hero text flips to a deep indigo ink (was fixed white) so it reads on the light field. */
     --studio-on-hero: 222 87% 14%;
-    /* The text scrim behind the H1 becomes a soft near-white lift (was deep ink) — a gentle halo,
-       not a dark blob, on the light field. */
-    --studio-scrim: 240 60% 100%;
+    /* The text scrim behind the H1 (owner 2026-07-19, OVERPAINT FIX): repointed OFF pure white onto
+       the cool-violet well family. In light the copy is DARK ink, so a bright-white bloom here lit
+       nothing and — painted at the same center as the void — CANCELLED the cool well. Keyed to a cool
+       mid-violet and run at a low alpha (`.studio-hero-scrim`, below) it now REINFORCES the well
+       instead of erasing it, while the surrounding field stays genuinely light (§23). */
+    --studio-scrim: 250 44% 42%;
     /* Decorative accents softened + recolored for the light field: the night-sky star/comet motif
        hides in light (see the layer overrides below), so `--studio-star` just needs a dim indigo. */
     /* Decorative accents for the light field — DEEPENED + SATURATED (owner 2026-07-19: "make light
@@ -550,16 +562,30 @@ All colors MUST be HSL.
     position: absolute; left: 50%; top: 40%; z-index: 0; pointer-events: none;
     width: min(44rem, 122%); aspect-ratio: 1; translate: -50% -50%;
     border-radius: 9999px;
-    background: radial-gradient(closest-side, hsl(var(--studio-void) / 0.52), transparent 72%);
+    /* Dark: a GENUINELY DEEP cool well (owner 2026-07-19) — lifted 0.52 → 0.62 and, now that the
+       void paints AFTER the scrim (DOM reorder in StudioHome), it reads over the field instead of
+       being flattened under it, so the center is a real deepening for figure/ground, not a whisper. */
+    background: radial-gradient(closest-side, hsl(var(--studio-void) / 0.62), transparent 72%);
     filter: blur(46px);
   }
   .studio-surface:not(.dark) .studio-void {
-    /* Light: a CONCENTRATED cool-violet well right behind the mark — lifted to 0.16 and tightened
-       (transparent by 60%) so it survives the bright white text scrim that paints over the same
-       center and actually gives the gold mark figure/ground (owner ask). Still a whisper of COOL
-       shade over the 98%-L field — never a dark blob, light stays genuinely light (§23). */
-    background: radial-gradient(closest-side, hsl(var(--studio-void) / 0.16), transparent 60%);
+    /* Light (owner 2026-07-19, OVERPAINT FIX): a CONCENTRATED cool-violet well right behind the mark,
+       now painted LAST (after the scrim) so it is no longer erased. BOLDENED 0.16 → 0.30 and widened
+       (transparent 60% → 68%) so it reads as a real focal SHADE that gives the warm gold mark genuine
+       figure/ground — clearly perceptible, yet a soft localized cool vignette that fades out well
+       before the edges, so the surrounding field stays genuinely light, never a dark blob (§23). */
+    background: radial-gradient(closest-side, hsl(var(--studio-void) / 0.30), transparent 68%);
     filter: blur(50px);
+  }
+  /* Hero text scrim (owner 2026-07-19, OVERPAINT FIX) — alpha lives here so each theme tunes it.
+     Dark keeps the field-deepening 0.6; light drops to 0.12 keyed to the cool --studio-scrim so it
+     lends a faint cool reinforcement to the void's well instead of a bright-white bloom that cancels
+     it. Static (no keyframe) → motion-safe by construction. */
+  .studio-hero-scrim {
+    background: radial-gradient(closest-side, hsl(var(--studio-scrim) / 0.6), transparent);
+  }
+  .studio-surface:not(.dark) .studio-hero-scrim {
+    background: radial-gradient(closest-side, hsl(var(--studio-scrim) / 0.12), transparent);
   }
 
   /* (a2) FIDELITY GRAIN — one inline-SVG feTurbulence texture at very low opacity, blended over the
@@ -574,12 +600,16 @@ All colors MUST be HSL.
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     background-size: 140px 140px;
     background-repeat: repeat;
+    /* opacity 0.05 → 0.10 (owner 2026-07-19): a 0.05 overlay grain sat below the eye's threshold —
+       this is a real, resolvable film texture over the planetarium now, still far from noisy. */
     mix-blend-mode: overlay;
-    opacity: 0.05;
+    opacity: 0.10;
   }
   .studio-surface:not(.dark) .studio-grain {
+    /* 0.035 → 0.08 soft-light: on the bright field soft-light stays clean (won't dirty the whites),
+       but 0.035 was invisible; 0.08 gives a perceptible rendered tooth without darkening (§23). */
     mix-blend-mode: soft-light;
-    opacity: 0.035;
+    opacity: 0.08;
   }
 
   /* (b) STARFIELD — two GPU-cheap CSS layers. ::before = far field (tiny, faint, slow twinkle);
@@ -633,14 +663,19 @@ All colors MUST be HSL.
     top: -18%; left: -8%; width: 42rem; height: 42rem;
     /* 3-stop volumetric falloff (fidelity, owner 2026-07-19) — a hot core → mid → transparent so the
        bloom reads dimensional, not a flat single-stop disc. */
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.34) 0%, hsl(var(--studio-nebula-gold) / 0.18) 42%, transparent 72%);
+    /* core/mid 0.34/0.18 → 0.48/0.30 (owner 2026-07-19): the prior "uplift" moved only ~0.06 and
+       stayed sub-threshold under a 70px blur; this is a visible bloom (§25 err-bold), still a soft
+       decorative glow, never a fill and never the act (gold-budget §11). */
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.48) 0%, hsl(var(--studio-nebula-gold) / 0.30) 42%, transparent 72%);
     /* 42s (was 54s) — the heavy 70px blur hides slow drift, so the dark nebula is sped up + widened
        (keyframe below) to visibly BREATHE (§ Goal C, owner 2026-07-19). */
     animation: studio-nebula-a 42s ease-in-out infinite;
   }
   .studio-nebula::after {             /* ELECTRIC BLUE */
     right: -12%; bottom: -22%; width: 38rem; height: 38rem;
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-blue) / 0.36) 0%, hsl(var(--studio-nebula-blue) / 0.20) 42%, transparent 72%);
+    /* core/mid 0.36/0.20 → 0.50/0.32 (owner 2026-07-19): matched visible jump to the gold lobe so the
+       electric-blue bloom actually reads under the heavy blur (§25 err-bold), still purely decorative. */
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-blue) / 0.50) 0%, hsl(var(--studio-nebula-blue) / 0.32) 42%, transparent 72%);
     animation: studio-nebula-b 48s ease-in-out infinite;
   }
 
@@ -781,7 +816,9 @@ All colors MUST be HSL.
     translate: -50% -50%; border-radius: 9999px; z-index: -1; pointer-events: none;
     /* 3-stop corona (fidelity, owner 2026-07-19) — hot gold core → mid → transparent so the mark's
        halo reads as a rendered bloom, not a flat wash. */
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.42) 0%, hsl(var(--studio-nebula-gold) / 0.22) 45%, transparent 72%);
+    /* core/mid 0.42/0.22 → 0.56/0.34 (owner 2026-07-19): a visible corona around the mark, not a flat
+       wash — err bold so it reads under the 10px blur (§25). Decorative halo, gold-budget-safe (§11). */
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.56) 0%, hsl(var(--studio-nebula-gold) / 0.34) 45%, transparent 72%);
     filter: blur(10px);
     animation: studio-halo-pulse 6.5s ease-in-out infinite;
     will-change: transform, opacity;
@@ -797,13 +834,19 @@ All colors MUST be HSL.
            now 58% L + higher alpha here), so the mark sits in a warm glow ringed by the cool ground.
      The dark planetarium halo (base ::before over the 5% field) is untouched — it already pops. */
   .studio-surface:not(.dark) .studio-mark-halo::before {
-    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.58) 0%, hsl(var(--studio-nebula-gold) / 0.3) 45%, transparent 74%);
+    /* core/mid 0.58/0.30 → 0.74/0.42 (owner 2026-07-19): the warm gold saturn is low-contrast on the
+       near-white field, so its backing bloom needs real presence — boldened so the mark clearly sits
+       in a warm glow (§25 err-bold); mark SVG untouched, gold-budget-safe (decorative halo, §11). */
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.74) 0%, hsl(var(--studio-nebula-gold) / 0.42) 45%, transparent 74%);
     filter: blur(12px);
   }
   .studio-surface:not(.dark) .studio-mark-halo::after {
     content: ""; position: absolute; left: 50%; top: 50%; width: 205%; height: 205%;
     translate: -50% -50%; border-radius: 9999px; z-index: -2; pointer-events: none;
-    background: radial-gradient(closest-side, hsl(var(--studio-mark-plate) / 0.34) 0%, hsl(var(--studio-mark-plate) / 0.16) 48%, transparent 70%);
+    /* core/mid 0.34/0.16 → 0.48/0.26 (owner 2026-07-19): the cool complementary PLATE is what supplies
+       the warm mark's figure/ground on white — boldened so that separation actually registers (§25/§23
+       complementary contrast). A soft blurred bloom set further back (z-index -2), never a hard disc. */
+    background: radial-gradient(closest-side, hsl(var(--studio-mark-plate) / 0.48) 0%, hsl(var(--studio-mark-plate) / 0.26) 48%, transparent 70%);
     filter: blur(18px);
     animation: studio-halo-pulse 6.5s ease-in-out infinite;
     will-change: transform, opacity;
@@ -968,19 +1011,20 @@ All colors MUST be HSL.
     position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
     /* Tuned UP (owner 2026-07-19: was "really, really faint") — layer opacity is the single biggest
        lever; raised in both themes so the dust reads as present ambient, still never busy. */
-    opacity: 0.8;
+    opacity: 0.92;
   }
-  .studio-surface:not(.dark) .studio-rail-stardust { opacity: 0.7; }
+  .studio-surface:not(.dark) .studio-rail-stardust { opacity: 0.85; }
   .studio-rail-stardust::before {
     content: ""; position: absolute; inset: -20%;
-    /* dot alphas raised (0.38–0.55 → 0.56–0.72) and sizes nudged up (1px → 1.2px, 1.4px → 1.7px) so
-       each mote stands out a little more without adding density (owner 2026-07-19). */
+    /* BOLDENED again (owner 2026-07-19): on a 1–2px mote SIZE is the biggest lever, so sizes go
+       1.2px → 1.6px / 1.7px → 2.2px (a ≥0.4px jump, clearly above threshold) and alphas 0.56–0.72 →
+       0.72–0.92, so each mote genuinely reads as present ambient dust without adding density. */
     background-image:
-      radial-gradient(1.2px 1.2px at 28% 12%, hsl(var(--studio-star) / 0.72), transparent),
-      radial-gradient(1.2px 1.2px at 70% 28%, hsl(var(--studio-star) / 0.58), transparent),
-      radial-gradient(1.7px 1.7px at 20% 52%, hsl(var(--studio-star) / 0.66), transparent),
-      radial-gradient(1.2px 1.2px at 80% 70%, hsl(var(--studio-star) / 0.56), transparent),
-      radial-gradient(1.2px 1.2px at 46% 88%, hsl(var(--studio-star) / 0.62), transparent);
+      radial-gradient(1.6px 1.6px at 28% 12%, hsl(var(--studio-star) / 0.92), transparent),
+      radial-gradient(1.6px 1.6px at 70% 28%, hsl(var(--studio-star) / 0.78), transparent),
+      radial-gradient(2.2px 2.2px at 20% 52%, hsl(var(--studio-star) / 0.86), transparent),
+      radial-gradient(1.6px 1.6px at 80% 70%, hsl(var(--studio-star) / 0.76), transparent),
+      radial-gradient(1.6px 1.6px at 46% 88%, hsl(var(--studio-star) / 0.82), transparent);
     background-size: 150px 220px;
     background-repeat: repeat;
     /* 20s (was 30s) — the rail dust genuinely FALLS now (§ Goal C), not an imperceptible crawl. */

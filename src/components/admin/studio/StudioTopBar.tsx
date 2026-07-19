@@ -39,7 +39,6 @@ import {
   Smartphone,
   Sun,
   Trash2,
-  Wand2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -60,7 +59,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { FilterChip, GlyphPlate, StatePill } from "@/components/ui/page";
+import { FilterChip, StatePill } from "@/components/ui/page";
+import { PaigeMark } from "@/components/brand/PaigeMark";
 import { cn } from "@/lib/utils";
 import {
   type DeviceFrame,
@@ -211,7 +211,10 @@ export function StudioTopBar({
       {/* ── identity + the mode switcher ── */}
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex items-center gap-2">
-          <GlyphPlate icon={Wand2} size="sm" />
+          {/* Brand mark, not a generic lucide wand (owner 2026-07-19, §6): the top-left Studio
+              lockup now renders the SAME shared PaigeMark the rail brand (StudioLayout) and the hero
+              (StudioHome) use, so the identity is one continuous system across the whole surface. */}
+          <PaigeMark className="h-6 w-6 shrink-0" />
           <span className="font-display text-sm font-semibold text-foreground">Studio</span>
           {/* Honest state (§13) — the Studio is under active, ongoing development;
               say so rather than let a rough edge read as a bug nobody knows about. */}
