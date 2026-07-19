@@ -493,3 +493,57 @@ export async function captureToMemory(p: CaptureParams): Promise<string | undefi
     return undefined;
   }
 }
+
+// ── recallSimilar() — Phase B: retrieve what worked for THIS tenant ────────────────────────────
+export interface RecalledArtifact {
+  prompt_text: string;
+  artifact_url: string | null;
+  user_intent: string;
+  similarity: number;
+}
+
+/**
+ * Studio #343 (U3) — cross-session recall. Given the incoming brief, return the tenant's top-N most
+ * similar PAST APPROVED artifacts (few-shot anchors: "you built these before — use them"). Called by
+ * the Studio design path before generating.
+ *
+ * §9  — tenant-scoped by EXPLICIT tenantId (never caller-supplied trust); the admin client passes the
+ *       resolved tenant, and match_prompt_memory also constrains on it (+ RLS for authenticated).
+ * §17 — the query embedding is voyage-3 ONLY (voyageEmbedOne), the one canonical 1024-dim space.
+ * §13 — honest + non-blocking: returns [] on ANY miss (no client, embed failure, off-dim, RPC error);
+ *       it never throws and must never stall a turn. Only rows with a real artifact_url come back.
+ */
+export async function recallSimilar(
+  userIntent: string,
+  tenantId: string,
+  topN = 3,
+): Promise<RecalledArtifact[]> {
+  if (!userIntent?.trim() || !tenantId) return [];
+  const admin = getAdmin();
+  if (!admin) return [];
+
+  // §17 structural gate — voyage-3 ONLY, query-side embedding.
+  let embedding: number[];
+  try {
+    embedding = await voyageEmbedOne(userIntent, { inputType: "query" });
+  } catch {
+    return []; // an embed hiccup must not block generation — just skip the anchors
+  }
+  if (!Array.isArray(embedding) || embedding.length !== VOYAGE_DIMS) return [];
+
+  try {
+    const { data, error } = await admin.rpc("match_prompt_memory", {
+      p_tenant_id: tenantId,                          // EXPLICIT (§9)
+      p_query_embedding: embedding,
+      p_match_count: Math.max(1, Math.min(topN, 10)),
+    });
+    if (error) {
+      console.error("prompt-forge: recall failed:", error.message);
+      return [];
+    }
+    return Array.isArray(data) ? (data as RecalledArtifact[]) : [];
+  } catch (e) {
+    console.error("prompt-forge: recall error:", (e as Error)?.message);
+    return [];
+  }
+}
