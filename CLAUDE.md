@@ -1044,3 +1044,34 @@ dial back if needed — never lead with the timid version and wait to be pushed.
 - **The test, every time:** *"Did I open with the bold, real-rendering version the owner actually
   wants — or the safe CSS-minimal one I'd default to and wait to be told to improve?"* If it's the safe
   one, that's the miss. Swing first.
+
+## 30. Changing design DIRECTION means STRIP-THEN-REBUILD — never layer new on old.
+
+**Directive (owner: Antonio, 2026-07-19):** When a surface is going in a genuinely different design
+direction — a new style/approach, not a tweak — the FIRST move is to **strip the entire old design out**,
+then build the fresh one on a clean base. Do **NOT** lay the new design on top of the old. That is how
+you get a fragile Frankenstein that flips, washes, and *"feels like it's laying on top of the old
+design"* — because it **is**. The Vibe Studio hero is the cautionary tale that created this rule: the
+proven landing-page 3D scene (`PaigeScene`, real three.js) was never brought in; instead the old
+hand-rolled CSS cosmic field got patched again and again (comet → flip → wash → black hole), every fix
+lipstick on a design we'd already decided to replace. The owner's words: *"If we're going this deep, we
+need to strip all the old stuff away and put an actual fresh design inside of it... strip the entire old
+design off before we rebuild a brand new one."*
+
+- **Strip first, cleanly — delete, don't cover.** Remove the old system's components, CSS, hooks, and
+  state outright — not commented out, not gated off, not painted over. The new design must start from a
+  clean base with nothing underneath to leak, race, flip, or fight it.
+- **A fresh design usually means REUSING the proven one (§18).** "New direction" almost never means a
+  third fragile hand-rolled variant — it means adopting the approach that already works elsewhere (the
+  landing 3D hero). Strip-then-rebuild and reuse-don't-rebuild are the same instinct.
+- **The tells that you skipped the strip:** the surface *"holds for a moment then flips/washes,"* or
+  *"feels like it's on top of the old thing,"* or you're patching the **same** surface a third time.
+  That is old code still underneath. Stop layering — go back and strip.
+- **The diagnostic is OURS, not the owner's (§13).** The owner must NOT be the one discovering that the
+  new design was layered on the old, or hunting the root cause of a flip. *"I don't want to have to be
+  the one figuring out the diagnostic when I'm the one asking you to do it."* Diagnose thoroughly and
+  own it: before calling a redesign done, confirm the old system is actually **gone**, not just visually
+  covered.
+- **The test, every time:** *"Am I building the new design on a CLEAN base, or on top of the old one I
+  was told to replace? Did I actually strip the old out, or just cover it — and did I find that out, or
+  did the owner have to?"* If the old is still under there, it isn't a rebuild.
