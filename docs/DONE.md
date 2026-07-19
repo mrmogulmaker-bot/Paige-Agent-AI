@@ -128,3 +128,4 @@ Archived 2026-07-18.
 | 309 | Studio = creative/design assets only — remove standalone Copy mode |
 | 311 | Vibe Studio: genuine light/dark distinction across the Studio |
 | 312 | Studio Copy-removal follow-ups: deploy 3 Studio edge fns to prod + copy quality |
+| 345 | Studio Visual-Critique Loop — Fly renderer + studio-visual-critique edge fn + vision-critique router modality + gate + §33 (design agent's eyes); SSRF-hardened, shipped gated-off (PR #139) |
