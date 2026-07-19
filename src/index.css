@@ -175,7 +175,8 @@ All colors MUST be HSL.
        stack, NOT gray and NOT darkened. Depth reads from the L-ladder (well recess < canvas
        base < rail < dock/card raised < input brightest) + hairline borders + soft ink shadow. */
     --studio-glass-bg:     240 55% 100%;
-    --studio-glass-border: 244 40% 86%;   /* refined indigo hairline, was saturated 248 45% 80% */
+    --studio-glass-border: 246 44% 80%;   /* boldened indigo hairline (was 244 40% 86% — too faint to
+                                             read on the near-white composer; §27 "bolden the faint") */
     --studio-glass-solid:  240 44% 99%;   /* near-white composer card fill (§311 light input) */
     --studio-rail-bg:      240 44% 98%;   /* rail column — a clean step up off the canvas */
     --studio-on-hero:      0 0% 100%;
@@ -197,7 +198,9 @@ All colors MUST be HSL.
     --studio-topbar-to:     240 40% 97%;   /* masthead bottom → meets the canvas */
     --studio-rail-solid:    240 42% 97.5%; /* the conversation rail column */
     --studio-dock:          240 52% 99.8%; /* the pinned composer dock — a step above the rail */
-    --studio-chrome-border: 240 30% 88%;   /* refined indigo region seams, never gray */
+    --studio-chrome-border: 238 34% 81%;   /* boldened indigo region seams (was 240 30% 88% — a card
+                                              edge at /0.72 was near-invisible on the light canvas;
+                                              §27 definition, still an indigo hairline, never gray) */
 
     /* Drafting WELL — the recessed surface the rendered page floats on (the Lovable/v0 preview
        pane, not a wireframe grid). Light values: a soft indigo-tinted step below the canvas so
@@ -261,11 +264,24 @@ All colors MUST be HSL.
     --studio-scrim: 240 60% 100%;
     /* Decorative accents softened + recolored for the light field: the night-sky star/comet motif
        hides in light (see the layer overrides below), so `--studio-star` just needs a dim indigo. */
-    --studio-star:          250 40% 72%;
-    --studio-nebula-gold:   41 80% 72%;
-    --studio-nebula-blue:   224 82% 78%;
-    --studio-nebula-indigo: 252 70% 80%;
-    --studio-orbit:         250 55% 74%;
+    /* Decorative accents for the light field — DEEPENED + SATURATED (owner 2026-07-19: "make light
+       a little more decorative"). The old 72–80% L pastels had almost no luminance contrast on the
+       98% field, so the animating aurora/stardust read colorless. Dropping L into the low-60s and
+       raising saturation lets the (already-moving) aurora carry real violet/blue light and the
+       stardust read as premium indigo dust — decorative uplift WITHOUT darkening the field itself
+       (the hero-from/via/to stay bright; §23 light-stays-light). These also feed the light card /
+       glass ambient blooms below, which were invisible at 80% L. */
+    --studio-star:          250 52% 62%;
+    --studio-nebula-gold:   40 92% 58%;
+    --studio-nebula-blue:   222 90% 66%;
+    --studio-nebula-indigo: 252 82% 64%;
+    --studio-orbit:         250 60% 62%;
+    /* Cool violet PLATE behind the warm gold saturn mark (owner's explicit ask). The gold mark is
+       warm at ~62–72% luminance and sits on a near-white field, so it has almost no figure/ground
+       contrast; a cool complementary ground behind it is what supplies the missing separation so the
+       warm mark POPS (§23 color-is-emotional / complementary contrast). Light-only; the dark
+       planetarium halo needs no plate (its 5% field already gives the gold full contrast). */
+    --studio-mark-plate:    250 72% 60%;
   }
 
   /* The LIGHT hero is a bright field, not a planetarium — but it is now genuinely ALIVE, not a
@@ -285,7 +301,7 @@ All colors MUST be HSL.
      their base twinkle/drift and STACK a seamless one-tile diagonal FALL on top, so the dust drifts
      downward like slow snow. Own fall keyframes → dark's starfield is untouched. */
   .studio-surface:not(.dark) .studio-stars {
-    opacity: 0.7;
+    opacity: 0.82;
   }
   .studio-surface:not(.dark) .studio-stars::before {
     animation: studio-twinkle 7s ease-in-out infinite, studio-stardust-fall-a 60s linear infinite;
@@ -298,12 +314,12 @@ All colors MUST be HSL.
      Own keyframes so dark's blooms are untouched; token-only light violet/blue (§23). */
   .studio-surface:not(.dark) .studio-nebula::before {
     filter: blur(96px);
-    opacity: 0.6;
+    opacity: 0.68;
     animation: studio-aurora-a 42s ease-in-out infinite;
   }
   .studio-surface:not(.dark) .studio-nebula::after {
     filter: blur(96px);
-    opacity: 0.55;
+    opacity: 0.62;
     animation: studio-aurora-b 50s ease-in-out infinite;
   }
   /* Title glow: the dark field's blue neon + near-black ink halo would read as a smudge on light —
@@ -652,6 +668,28 @@ All colors MUST be HSL.
     animation: studio-halo-pulse 6.5s ease-in-out infinite;
     will-change: transform, opacity;
   }
+  /* LIGHT mark halo (owner 2026-07-19, explicit ask: the rotating gold saturn is "a little FAINT
+     because it's gold on a white background — put a little highlight behind it"). The SVG is NOT
+     recolored (§ brand mark). Instead the mark gets a TWO-LAYER backing, light-only, so it reads
+     with presence on the near-white field:
+       (a) ::after — a broad COOL violet plate set FURTHER back (z-index -2). The gold saturn is
+           warm and low-contrast on white; a cool complementary ground behind it supplies the
+           figure/ground separation so the warm mark POPS (§23). A soft blurred bloom, never a disc.
+       (b) ::before — a DEEPENED warm gold bloom on top of the plate (light --studio-nebula-gold is
+           now 58% L + higher alpha here), so the mark sits in a warm glow ringed by the cool ground.
+     The dark planetarium halo (base ::before over the 5% field) is untouched — it already pops. */
+  .studio-surface:not(.dark) .studio-mark-halo::before {
+    background: radial-gradient(closest-side, hsl(var(--studio-nebula-gold) / 0.5), transparent 72%);
+    filter: blur(12px);
+  }
+  .studio-surface:not(.dark) .studio-mark-halo::after {
+    content: ""; position: absolute; left: 50%; top: 50%; width: 205%; height: 205%;
+    translate: -50% -50%; border-radius: 9999px; z-index: -2; pointer-events: none;
+    background: radial-gradient(closest-side, hsl(var(--studio-mark-plate) / 0.3), transparent 68%);
+    filter: blur(18px);
+    animation: studio-halo-pulse 6.5s ease-in-out infinite;
+    will-change: transform, opacity;
+  }
   .studio-title-glow {
     text-shadow:
       0 0 1px  hsl(0 0% 100% / 0.35),
@@ -739,6 +777,39 @@ All colors MUST be HSL.
      hover rule above. Color/shadow still cross-fade so hover stays legible. */
   .studio-surface.studio-motion-reduced .studio-card { transition: box-shadow 220ms ease, border-color 220ms ease, background-color 220ms ease; }
   .studio-surface.studio-motion-reduced .studio-card:hover { transform: none; }
+  /* LIGHT card elevation (owner 2026-07-19, §23 depth-without-darkening): in light the fill ladder
+     is imperceptible (canvas 96.5% → card 100% → dock 99.8%), so a white card can only read as
+     RAISED off the light canvas via a bolder hairline (above) + a DEEPER ink shadow + a real indigo
+     ambient bloom (the now-deeper light nebula). The base shadow alphas were tuned for a world where
+     fill also helps; here they're deepened, light-only, so the card genuinely bulges off the slab.
+     Dark cards (fill ladder does the lift there) are untouched. */
+  .studio-surface:not(.dark) .studio-card {
+    box-shadow:
+      0 1px 2px hsl(var(--shadow-ink) / 0.08),
+      0 8px 24px -8px hsl(var(--shadow-ink) / 0.18),
+      0 6px 16px -10px hsl(var(--studio-nebula-indigo) / 0.16),
+      inset 0 1px 0 hsl(0 0% 100% / 0.6);
+  }
+  .studio-surface:not(.dark) .studio-card:hover {
+    box-shadow:
+      0 2px 6px hsl(var(--shadow-ink) / 0.10),
+      0 24px 50px -14px hsl(var(--studio-nebula-indigo) / 0.30),
+      0 12px 24px -12px hsl(var(--shadow-ink) / 0.22),
+      inset 0 1px 0 hsl(0 0% 100% / 0.7);
+  }
+  /* LIGHT composer glass (§22/§23): the "saturated nebula bleeds through the 0.76 translucent fill"
+     depth trick only pays off over the dark cosmic field — on the bright light field the fill is a
+     near-white slab and nothing bleeds, so the composer read flat. Its lift now comes from a raised
+     fill opacity (crisp, not milky) + a deeper ink shadow + a real violet ambient ground glow (the
+     now-deeper light --studio-nebula-indigo). Light-only; the dark glass card is untouched. */
+  .studio-surface:not(.dark) .studio-glass-card {
+    background: hsl(var(--studio-glass-solid) / 0.9);
+    box-shadow:
+      0 30px 70px -24px hsl(var(--studio-nebula-indigo) / 0.28),
+      0 20px 44px -16px hsl(var(--shadow-ink) / 0.16),
+      0 2px 8px hsl(var(--shadow-ink) / 0.10),
+      inset 0 1px 0 hsl(0 0% 100% / 0.9);
+  }
 
   /* ── Studio HERO↔PROJECTS break-line beam (owner 2026-07-19): a single steady INDIGO beam that
      glides back and forth along the divider between the hero and the projects section — "not fast,
@@ -890,6 +961,9 @@ All colors MUST be HSL.
   .studio-surface.studio-motion-reduced:not(.dark) .studio-stars::after,
   .studio-surface.studio-motion-reduced:not(.dark) .studio-nebula::before,
   .studio-surface.studio-motion-reduced:not(.dark) .studio-nebula::after,
+  /* the light mark plate (::after) carries its own freeze; the base freeze above already covers the
+     gold-bloom ::before in both themes (§22 per-primitive motion-safety). */
+  .studio-surface.studio-motion-reduced:not(.dark) .studio-mark-halo::after,
   .studio-surface.studio-motion-reduced .studio-rail-stardust::before {
     animation: none;
   }
