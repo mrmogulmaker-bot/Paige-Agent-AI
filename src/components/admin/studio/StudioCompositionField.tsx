@@ -68,6 +68,18 @@ const WARM_R = 1.9; // particles within this radius of the source warm toward go
 const COUNT = 2200; // bold, clearly-visible density (see perceptibilityNotes)
 const MAX_OFFSET = 0.34; // per-particle stagger so points don't all arrive together (§22 choreography)
 
+// IDLE LOOP as an ALWAYS-ADVANCING phase clock (seconds), NOT a settle-detector. The old machine flipped
+// the target only once |prog-target| fell under a threshold, so any state where that never tripped (a
+// released `composing`, a submit hand-off that left the target pinned high) could linger composed — the
+// "it assembled and stopped" bug. A phase timer advances with dt every frame regardless of where the
+// spring actually is, so the target ALWAYS alternates 0↔1 on schedule and the loop is un-wedgeable (§13).
+// Phases: 0 assemble (target 1) → 1 hold composed → 2 dissolve (target 0) → 3 hold dispersed → repeat.
+const PHASE_DUR = [3.0, 2.8, 2.0, 2.0]; // assemble ~3s · hold composed 2.8s · dissolve ~2s · dispersed ~2s
+                                        // → ~9.8s total, deterministic (owner: composed hold was reading ~13s
+                                        // under the old settle-gated timing; the phase clock makes it exact, §25)
+const IDLE_K = 26; // idle spring stiffness (organic settle, §22 — never a linear tween)
+const COMPOSE_K = 46; // composing bias: visibly FASTER organize than idle (state c, must read as different)
+
 // Shared normalized pointer (-1..1) for a gentle sub-20% parallax. Module-local so it survives a
 // scene remount, mirroring PaigeScene's pattern.
 const ptr = { x: 0, y: 0 };
@@ -237,8 +249,10 @@ function Field({ reduced, composing, busy }: { reduced: boolean; composing: bool
   const progRef = useRef(0); // 0 dispersed ↔ 1 composed
   const velRef = useRef(0);
   const glowRef = useRef(0.28); // source glow 0..1 (ramps with prog; flares on submit)
-  const targetRef = useRef(0); // spring target the idle loop flips between 0 and 1
-  const settledAt = useRef<number | null>(null);
+  const targetRef = useRef(0); // spring target — the phase clock alternates it 0↔1, never a stuck value
+  const phaseRef = useRef(0); // idle phase 0 assemble · 1 hold composed · 2 dissolve · 3 hold dispersed
+  const phaseTimeRef = useRef(0); // seconds elapsed in the current phase (always advances → un-wedgeable)
+  const wasComposing = useRef(false); // edge-detect composing→idle so the field lingers before dissolving
   const lock = useRef({ active: false });
 
   // Submit: a ONE-SHOT GSAP timeline snaps the field into the layout and flares the gold source (the
@@ -246,13 +260,19 @@ function Field({ reduced, composing, busy }: { reduced: boolean; composing: bool
   useEffect(() => {
     if (!busy || reduced) return;
     lock.current.active = true;
+    // The ONE gold moment (§11): snap to composed + a bold flare in ~320ms, then the parent unmounts and
+    // StudioBuildingScreen takes over. glow overshoots to 1.35 so the flare CLEARLY reads before hand-off.
     const o = { p: progRef.current, glow: glowRef.current };
     const tl = gsap.timeline();
     tl.to(o, { p: 1, duration: 0.32, ease: "power2.in", onUpdate: () => (progRef.current = o.p) });
-    tl.to(o, { glow: 1, duration: 0.3, ease: "power2.out", onUpdate: () => (glowRef.current = o.glow) }, 0);
+    tl.to(o, { glow: 1.35, duration: 0.3, ease: "power2.out", onUpdate: () => (glowRef.current = o.glow) }, 0);
     return () => {
       tl.kill();
       lock.current.active = false;
+      // Resume the loop at hold-composed so a released submit lingers then dissolves — never freezes here.
+      phaseRef.current = 1;
+      phaseTimeRef.current = 0;
+      velRef.current = 0;
     };
   }, [busy, reduced]);
 
@@ -261,36 +281,48 @@ function Field({ reduced, composing, busy }: { reduced: boolean; composing: bool
     const step = Math.min(dt, 0.05);
     const t = state.clock.elapsedTime;
 
-    // Drive `prog`. Submit lock owns it outright (GSAP). Otherwise an idle spring toward a target that
-    // the loop flips: dispersed → hold → composed → longer hold → dissolve. `composing` pins the target
-    // high so the field leans legible while the tenant types.
+    // Drive `prog`. Submit lock owns it outright (GSAP). Otherwise a spring chases a target set by two
+    // paths: (b) `composing` pins target=1 and stiffens the spring so the field organizes VISIBLY faster
+    // and brighter than idle; (a) idle runs the ALWAYS-ADVANCING phase clock so the target alternates
+    // 0↔1 on a fixed schedule — the loop can NEVER stick composed because the timer advances every frame
+    // regardless of where the spring is (the un-wedgeable fail-safe, §13/§25).
+    let k = IDLE_K;
+    let glowBase = 0.28;
+    let glowGain = 0.5;
     if (!lock.current.active) {
       if (composing) {
+        // State c — lean legible: pin composed, organize faster, brighten the source.
         targetRef.current = 1;
-        settledAt.current = null;
+        wasComposing.current = true;
+        phaseRef.current = 1; // treat as hold-composed so releasing lingers before it dissolves
+        phaseTimeRef.current = 0;
+        k = COMPOSE_K;
+        glowBase = 0.46; // brighter floor than idle so "composing" reads distinctly (§25 perceptible)
+        glowGain = 0.54;
       } else {
-        const settled = Math.abs(progRef.current - targetRef.current) < 0.02;
-        if (settled) {
-          if (settledAt.current === null) settledAt.current = t;
-          const hold = targetRef.current > 0.5 ? 2.8 : 1.8; // linger longer on the formed page
-          if (t - settledAt.current > hold) {
-            targetRef.current = targetRef.current > 0.5 ? 0 : 1;
-            settledAt.current = null;
-          }
-        } else {
-          settledAt.current = null;
+        // State a/b — the continuous idle loop, driven purely by the phase timer.
+        if (wasComposing.current) {
+          wasComposing.current = false; // just released: hold the composed page, THEN dissolve
+          phaseRef.current = 1;
+          phaseTimeRef.current = 0;
         }
+        phaseTimeRef.current += step;
+        if (phaseTimeRef.current > PHASE_DUR[phaseRef.current]) {
+          phaseRef.current = (phaseRef.current + 1) & 3; // 0→1→2→3→0 forever
+          phaseTimeRef.current = 0;
+        }
+        targetRef.current = phaseRef.current < 2 ? 1 : 0; // phases 0/1 composed, 2/3 dispersed
       }
       // Critically-damped-ish spring (smooth settle, no ugly overshoot) — the organic, non-linear
-      // interpolation §22/CHEESY-TELLS asks for (never a fixed linear tween).
-      const k = 26,
-        c = 10;
+      // interpolation §22/CHEESY-TELLS asks for (never a fixed linear tween). c derived from k to hold
+      // the same near-critical damping when `composing` stiffens the spring.
+      const c = 2 * Math.sqrt(k) * 0.98;
       const a = (targetRef.current - progRef.current) * k - velRef.current * c;
       velRef.current += a * step;
       progRef.current += velRef.current * step;
       // Source glow tracks composition; a gentle breath keeps it alive.
       const breath = 0.06 * (Math.sin(t * 1.1) * 0.5 + 0.5);
-      glowRef.current = 0.28 + 0.5 * clamp01(progRef.current) + breath;
+      glowRef.current = glowBase + glowGain * clamp01(progRef.current) + breath;
     }
 
     const prog = clamp01(progRef.current);
@@ -325,15 +357,17 @@ function Field({ reduced, composing, busy }: { reduced: boolean; composing: bool
       g.rotation.x += (-ptr.y * 0.07 - g.rotation.x) * 0.04;
     }
 
-    // Paige's light SOURCE — brightens as the field composes and flares on the submit lock.
+    // Paige's light SOURCE — a clearly-visible bloomed gold core (§25 err-bold): high opacity floor so it
+    // reads against the dark field even at rest, and it flares on the submit lock (glow overshoots to 1.35,
+    // so scale/intensity use the RAW glow — not clamped — to make the act moment unmistakable).
     const glow = glowRef.current;
     if (coreRef.current) {
       const m = coreRef.current.material as THREE.MeshBasicMaterial;
-      m.opacity = 0.35 + 0.65 * clamp01(glow);
-      const s = 0.85 + 0.5 * clamp01(glow);
+      m.opacity = Math.min(1, 0.5 + 0.6 * clamp01(glow)); // resting ≈0.62, composed ≈1.0
+      const s = 0.95 + 0.6 * glow; // raw glow so the flare visibly balloons the core on submit
       coreRef.current.scale.setScalar(s);
     }
-    if (lightRef.current) lightRef.current.intensity = 3 + 9 * clamp01(glow);
+    if (lightRef.current) lightRef.current.intensity = 4 + 11 * glow; // raw glow → bold flare on submit
   });
 
   return (
@@ -356,10 +390,11 @@ function Field({ reduced, composing, busy }: { reduced: boolean; composing: bool
         />
       </points>
 
-      {/* Paige's light source — a small bloomed gold core the field organizes around. */}
+      {/* Paige's light source — a bloomed gold core the field organizes around. Larger + higher resting
+          opacity than before so it's clearly perceptible against the dark field even at rest (§25). */}
       <mesh ref={coreRef} position={SOURCE}>
-        <sphereGeometry args={[0.16, 24, 24]} />
-        <meshBasicMaterial color={GOLD_CORE} transparent opacity={0.5} depthWrite={false} toneMapped={false} />
+        <sphereGeometry args={[0.5, 28, 28]} />
+        <meshBasicMaterial color={GOLD_CORE} transparent opacity={0.62} depthWrite={false} toneMapped={false} />
       </mesh>
       <pointLight ref={lightRef} position={SOURCE} color={GOLD} intensity={4} distance={7} decay={2} />
       <ambientLight intensity={0.3} color={INDIGO} />
@@ -406,11 +441,11 @@ export default function StudioCompositionField({ reduced = false, composing = fa
         {!reduced && (
           <EffectComposer>
             <Bloom
-              intensity={0.9}
+              intensity={1.7}
               luminanceThreshold={0.62}
               luminanceSmoothing={0.9}
               mipmapBlur
-              radius={0.7}
+              radius={0.9}
             />
           </EffectComposer>
         )}

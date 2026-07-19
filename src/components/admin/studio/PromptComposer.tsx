@@ -147,8 +147,22 @@ export function PromptComposer({
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [notes, setNotes] = useState<PastedNote[]>([]);
+  // Fires a single gold submit ripple on the HOME/bare send act; auto-clears so it plays once.
+  const [pulse, setPulse] = useState(false);
   const sectionMode = mode === "section" && !!target;
   const framed = surface === "framed";
+  // Attachment + pasted-note chips render INSIDE the dock in BOTH modes. Framed = the dark --studio-dock
+  // surface, where platform --foreground/--muted-foreground read fine. BARE (HOME) = the near-white
+  // --studio-input well, where those tokens go near-white → near-white in dark theme (AA fail). So in bare
+  // the chip ink is pinned to the well's own dark ink (--studio-input-fg), mirroring the "Try"/dock-chip
+  // fix (§11/§23 AA in both themes — the blocker the design critic caught).
+  const chipShell = framed
+    ? "border-border bg-muted/50 text-foreground"
+    : "border-[hsl(var(--primary)/0.45)] bg-[hsl(var(--primary)/0.09)] text-[hsl(var(--studio-input-fg))]";
+  const chipMuted = framed ? "text-muted-foreground" : "text-[hsl(var(--studio-input-fg)/0.6)]";
+  const chipClose = framed
+    ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+    : "text-[hsl(var(--studio-input-fg)/0.7)] hover:bg-[hsl(var(--primary)/0.16)] hover:text-[hsl(var(--studio-input-fg))]";
   // Labeled by default so every meaningful CTA ("Draft with Paige", "Generate image", "Start
   // building") keeps its words. The BUILDER dock opts into the circular ↑ (Lovable parity) by
   // passing sendShape="circle" — that's the one surface whose send carries no standalone label.
@@ -199,7 +213,15 @@ export function PromptComposer({
         : [value.trim(), ...notes.map((n) => n.text)].filter(Boolean).join("\n\n");
     onSubmit(composed);
     if (!sectionMode && notes.length > 0) setNotes([]);
-  }, [canSubmit, onSubmit, value, notes, sectionMode]);
+    if (!framed) setPulse(true); // the gold submit ripple renders only on the bare/HOME surface
+  }, [canSubmit, onSubmit, value, notes, sectionMode, framed]);
+
+  // Retire the ripple after one play so re-sends re-trigger it cleanly.
+  useEffect(() => {
+    if (!pulse) return;
+    const t = setTimeout(() => setPulse(false), 700);
+    return () => clearTimeout(t);
+  }, [pulse]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Cmd/Ctrl+Enter always submits. On chat surfaces (enterSubmits), plain Enter submits too and
@@ -321,12 +343,21 @@ export function PromptComposer({
           // field with readable text, never dark-on-dark. §311 (c): exactly ONE accent — a soft
           // indigo focus-within glow (the "glowing blue"), no competing rings. Gold stays only on
           // the ↑ submit (§11).
-          // A resting INNER shadow (not a border) makes the white well read as a distinct input in
-          // light mode without adding a second outline — so it stays ONE frame (the card rim), never
-          // the box-in-a-box the owner flagged. On focus-within the same recess keeps + a stronger
-          // indigo glow (0.32, up from a too-faint 0.18) is a WCAG-visible focus cue on the white field.
-          !framed &&
-            "rounded-2xl bg-[hsl(var(--studio-input))] shadow-[inset_0_1px_2px_hsl(var(--studio-ink)/0.08)] focus-within:shadow-[inset_0_1px_2px_hsl(var(--studio-ink)/0.08),0_0_0_3px_hsl(var(--ring)/0.32)]",
+          // BARE (HOME hero) — a premium glassmorphic command bar (§11/§22/§23). This container is now
+          // the ONE frame (StudioHome dropped its outer studio-glass-card so there's no glass-on-glass
+          // box-in-a-box, §18/§311a). Recipe: a translucent LIGHT fill (--studio-input, near-white in
+          // BOTH themes so the dark-on-light --studio-input-fg text NEVER goes invisible), frosted by a
+          // ~20px backdrop-blur + saturate, a 1px indigo hairline (never gold, §11), an inset top
+          // highlight lip, and a soft ink drop shadow — one elevated glass slab. Focus-within brightens
+          // the hairline and blooms the ONE indigo glow (the single focus cue; no competing rings).
+          // NO-BACKDROP / muddy-glass fallback: the UNPREFIXED bg is a SOLID --studio-input fill with no
+          // blur, so browsers without backdrop-filter still get a crisp, fully-legible input well.
+          !framed && [
+            "rounded-2xl border border-[hsl(var(--studio-glass-border)/0.7)] bg-[hsl(var(--studio-input))]",
+            "supports-[backdrop-filter]:bg-[hsl(var(--studio-input)/0.72)] supports-[backdrop-filter]:backdrop-blur-[20px] supports-[backdrop-filter]:backdrop-saturate-[1.4]",
+            "shadow-[inset_0_1px_0_hsl(0_0%_100%/0.6),0_1px_2px_hsl(var(--studio-ink)/0.06),0_18px_44px_-16px_hsl(var(--shadow-ink)/0.22)]",
+            "focus-within:border-[hsl(var(--studio-glass-border)/0.95)] focus-within:shadow-[inset_0_1px_0_hsl(0_0%_100%/0.6),0_1px_2px_hsl(var(--studio-ink)/0.06),0_18px_44px_-16px_hsl(var(--shadow-ink)/0.22),0_0_0_3px_hsl(var(--ring)/0.32)]",
+          ],
         )}
       >
         {/* In-dock suggestion chips (builder) — a compact single-line scroll row at the TOP of
@@ -349,7 +380,9 @@ export function PromptComposer({
                 // HOME/bare sits on the near-white --studio-input WELL → the theme muted-foreground is
                 // a LIGHT gray in dark mode (fails ~2.3:1 on the white well). Use the well's own dark
                 // ink (--studio-input-fg, same both themes) so "Try" is legible on the well (§11 AA).
-                framed ? "text-muted-foreground" : "text-[hsl(var(--studio-input-fg))]",
+                // HOME/bare: a tracked-out, uppercase, muted eyebrow so "Try" reads editorial (§27
+                // type) on the light glass well — muted via the well's own dark ink at low alpha.
+                framed ? "text-muted-foreground" : "uppercase tracking-[0.16em] text-[hsl(var(--studio-input-fg)/0.55)]",
               )}
             >
               Try
@@ -375,10 +408,13 @@ export function PromptComposer({
                   // Resting fill/hairline are tuned for PRESENCE on the near-white well (§27
                   // definition + pop): a 0.45 indigo hairline + a 0.09 tint give the pill real
                   // intentional weight instead of the near-imperceptible 0.06 that read anemic.
+                  // §27 controls: a subtle INDIGO hover ring (never gold, §11) lands the "pop" the
+                  // spec asks for on top of the edge/fill brighten — an inset indigo ring, motion-free.
                   !framed &&
-                    "rounded-full px-2.5 py-0.5 text-[11px] text-[hsl(var(--studio-input-fg))] " +
+                    "rounded-full px-2.5 py-0.5 text-[11px] font-medium text-[hsl(var(--studio-input-fg))] " +
                       "border-[hsl(var(--primary)/0.45)] bg-[hsl(var(--primary)/0.09)] " +
-                      "hover:border-[hsl(var(--primary)/0.65)] hover:bg-[hsl(var(--primary)/0.14)] hover:text-[hsl(var(--studio-input-fg))]",
+                      "hover:border-[hsl(var(--primary)/0.65)] hover:bg-[hsl(var(--primary)/0.14)] hover:text-[hsl(var(--studio-input-fg))] " +
+                      "hover:ring-1 hover:ring-inset hover:ring-[hsl(var(--ring)/0.4)]",
                 )}
               >
                 {chip.label}
@@ -394,12 +430,15 @@ export function PromptComposer({
             {attachments.map((a, i) => (
               <span
                 key={a.path}
-                className="inline-flex max-w-[220px] items-center gap-1.5 rounded-full border border-border bg-muted/50 py-1 pl-2.5 pr-1.5 text-xs text-foreground"
+                className={cn(
+                  "inline-flex max-w-[220px] items-center gap-1.5 rounded-full border py-1 pl-2.5 pr-1.5 text-xs",
+                  chipShell,
+                )}
               >
                 {a.kind === "image" ? (
-                  <ImageIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                  <ImageIcon className={cn("h-3.5 w-3.5 shrink-0", chipMuted)} aria-hidden />
                 ) : (
-                  <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                  <FileText className={cn("h-3.5 w-3.5 shrink-0", chipMuted)} aria-hidden />
                 )}
                 <span className="truncate">{a.name}</span>
                 {onRemoveAttachment && (
@@ -407,7 +446,10 @@ export function PromptComposer({
                     type="button"
                     onClick={() => onRemoveAttachment(i)}
                     aria-label={`Remove ${a.name}`}
-                    className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    className={cn(
+                      "shrink-0 rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                      chipClose,
+                    )}
                   >
                     <X className="h-3 w-3" aria-hidden />
                   </button>
@@ -424,18 +466,24 @@ export function PromptComposer({
             {notes.map((note) => (
               <span
                 key={note.id}
-                className="inline-flex max-w-[240px] items-center gap-1.5 rounded-full border border-border bg-muted/50 py-1 pl-2.5 pr-1.5 text-xs text-foreground"
+                className={cn(
+                  "inline-flex max-w-[240px] items-center gap-1.5 rounded-full border py-1 pl-2.5 pr-1.5 text-xs",
+                  chipShell,
+                )}
               >
-                <NotebookPen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                <NotebookPen className={cn("h-3.5 w-3.5 shrink-0", chipMuted)} aria-hidden />
                 <span className="truncate">{note.label}</span>
-                <span className="shrink-0 text-[10px] text-muted-foreground">
+                <span className={cn("shrink-0 text-[10px]", chipMuted)}>
                   {note.text.length.toLocaleString()} chars
                 </span>
                 <button
                   type="button"
                   onClick={() => setNotes((prev) => prev.filter((n) => n.id !== note.id))}
                   aria-label={`Remove pasted note ${note.label}`}
-                  className="shrink-0 rounded-full p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                  className={cn(
+                    "shrink-0 rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                    chipClose,
+                  )}
                 >
                   <X className="h-3 w-3" aria-hidden />
                 </button>
@@ -458,10 +506,10 @@ export function PromptComposer({
           // the textarea is a transparent field flush inside it (one cohesive box, not a box
           // in a box). The grow effect above bounds its height; overflow scrolls internally.
           // px-4 aligns the text column with the toolbar's optically-aligned glyph below.
-          // Ring suppression only in FRAMED mode, where the container's focus-within halo IS the
-          // focus indicator. In BARE mode (HOME hero) there is no container halo, so the textarea
-          // keeps its own indigo focus-visible ring — never leave the primary input with no
-          // visible focus state (WCAG 2.4.7).
+          // The textarea's own ring is suppressed in BOTH modes now: framed uses the container's
+          // focus-within halo, and BARE (HOME) now carries its OWN focus-within indigo glow on the glass
+          // container (Agent B's redesign) — so exactly ONE focus indicator per mode, never a second ring
+          // stacked on the field, and never a field with no visible focus state (WCAG 2.4.7).
           className={cn(
             "resize-none border-0 bg-transparent px-4 text-sm leading-relaxed shadow-none",
             // The bare input WELL stays light in both themes (--studio-input), so its text is pinned
@@ -470,13 +518,23 @@ export function PromptComposer({
             // single focus indicator (suppress the textarea's own ring, as framed does); vertical
             // padding is slimmed so the bar stays a slim single line that grows as you type.
             framed && "pb-2 pt-3.5 focus-visible:ring-0 focus-visible:ring-offset-0",
+            // Body >=16px on the glass (text-base overrides the base text-sm via twMerge) so the brief
+            // reads comfortably; text pinned to the always-dark --studio-input-fg (dark-on-light in both
+            // themes, never invisible), placeholder a muted version of it.
             !framed &&
-              "pb-1.5 pt-2.5 text-[hsl(var(--studio-input-fg))] placeholder:text-[hsl(var(--studio-input-fg)/0.5)] focus-visible:ring-0 focus-visible:ring-offset-0",
+              "pb-1.5 pt-2.5 text-base text-[hsl(var(--studio-input-fg))] placeholder:text-[hsl(var(--studio-input-fg)/0.5)] focus-visible:ring-0 focus-visible:ring-offset-0",
           )}
         />
 
-        {/* control row — lives INSIDE the dock, always visible under the textarea */}
-        <div className="flex items-center gap-1.5 px-3 pb-3">
+        {/* control row — lives INSIDE the dock, always visible under the textarea. On HOME/bare a
+            subtle 1px divider (the well's own dark ink at low alpha — legible in both themes) separates
+            the attach/send row from the brief, so the bar reads editorial, not cramped (§27). */}
+        <div
+          className={cn(
+            "flex items-center gap-1.5 px-3 pb-3",
+            !framed && "mt-0.5 border-t border-[hsl(var(--studio-input-fg)/0.1)] pt-2.5",
+          )}
+        >
           {!sectionMode && onFilesSelected && (
             <>
               <input
@@ -548,12 +606,21 @@ export function PromptComposer({
               onClick={submit}
               disabled={!canSubmit}
               aria-label={sectionMode ? "Apply the change" : submitLabel ?? "Build the page"}
-              className={cn("h-9 w-9 shrink-0 rounded-full p-0 disabled:opacity-40", !framed && "ml-auto")}
+              className={cn("h-9 w-9 shrink-0 rounded-full p-0 disabled:opacity-40", !framed && "relative ml-auto")}
             >
+              {/* Submit ripple — a subtle gold pulse emanating from the gold ↑ act (§11: this IS the
+                  one gold moment, so a gold wash here is on-budget). HOME/bare only, never on the
+                  indigo builder circle. Reduced-motion → no ripple (motion-reduce:hidden). */}
+              {!framed && pulse && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 rounded-full bg-[hsl(var(--gold)/0.35)] animate-ping motion-reduce:hidden"
+                />
+              )}
               {busy ? (
-                <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
+                <Loader2 className="relative h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden />
               ) : (
-                <ArrowUp className="h-4 w-4" aria-hidden />
+                <ArrowUp className="relative h-4 w-4" aria-hidden />
               )}
             </Button>
           ) : (
