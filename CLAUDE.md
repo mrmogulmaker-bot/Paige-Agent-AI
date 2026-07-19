@@ -867,6 +867,27 @@ taste read "any Paige UI surface."
   was available), you're not done. If it would look flat, generic, or cheesy beside them, it isn't
   done either — iterate until it holds.
 
+- **VISIBLE-AFTER-DEPLOY is the bar, not "the code is present" (owner: Antonio, 2026-07-19).** A
+  recurring, costly failure: headless crews (no browser to render against) tune effects
+  *conservatively* to avoid overshooting, and conservative lands **below the threshold a human can
+  actually see** — so we ship technically-correct, practically-INVISIBLE code (a 0.035 grain, a 0.06
+  alpha "uplift," a glow nobody perceives), and the owner is the one who catches it live, every time.
+  *"We gotta get on top of our designers and make sure they don't keep writing code that's not visible
+  once we deploy."* This binds every visual change:
+  - **When you cannot render, err BOLD, not safe.** A decorative effect that can't be seen is worth
+    zero. Pick values at the **clearly-visible** end and let the owner dial *down* — under-shooting to
+    invisibility is the failure, not overshooting. "Subtle" is a decision you earn *after* seeing it,
+    never the headless default.
+  - **The verifier/critic MUST check PERCEPTIBILITY and STACKING, not just token-correctness.** Two
+    questions on every visual change: (1) *"Is this delta above what a human eye resolves?"* — a
+    sub-perceptual alpha/blur/size change is a defect, flag it. (2) *"Is this layer overpainted or
+    cancelled by something above it?"* — trace the actual paint order; a focal shade painted UNDER a
+    0.6 white scrim (the real 2026-07-19 bug) nets to nothing. A change that cannot be perceived at
+    render is **not done**, exactly like a broken one.
+  - **This is the twin of the reduced-motion lesson (§11/§22):** motion the OS froze, and depth the
+    stacking cancelled, are the same class of bug — *shipped, correct, and invisible.* Both get caught
+    by asking "will a human actually SEE this after deploy?" before calling it done.
+
 ## 26. Paige learns — the Compound AI System (prompt-forge + semantic memory).
 
 **Directive (owner: Antonio, 2026-07-18):** Paige does not fire a raw prompt at a model and hope.
