@@ -38,7 +38,11 @@ const STAR_GOLD = new THREE.Color("#F0C86A");
 // ── Composition (Studio-native: dead-center, above the composer desk) ────────────────────────────────
 const MODEL_PATH = "/paige/paige-central.glb"; // the SMOOTH glass helmet (not the segmented paige-bot)
 const TARGET_H = 2.3;
-const GROUP_Y = 1.35;
+// Vertical anchor of the whole composition. Lowered 1.35 → 1.05 (owner 2026-07-19, §28 authorized
+// change to the approved hero) so the top of Paige's head + rings clears the viewport top instead of
+// being clipped by it. Only the 3D character/rings/starfield move; the "What do you want to build?"
+// heading + composer are separate HTML and stay put.
+const GROUP_Y = 1.05;
 const CORE_LOCAL: [number, number, number] = [0, -0.05, 0.5]; // chin/throat inner light (below the mouth)
 
 // Particles — a DENSE swarm so the "million particles forming Paige" reads (owner 2026-07-19).
