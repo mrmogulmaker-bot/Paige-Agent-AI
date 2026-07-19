@@ -333,8 +333,23 @@ function StreamRow({ step, reduce }: { step: StudioBuildStep; reduce: boolean })
 function LivePulseRow({ note, reduce }: { note: string; reduce: boolean }) {
   return (
     <li className="flex items-center gap-2.5 text-sm" aria-hidden>
-      <span className="grid h-5 w-5 shrink-0 place-items-center">
-        <span className={cn("h-2 w-2 rounded-full bg-primary", !reduce && "animate-pulse")} />
+      <span className="relative grid h-5 w-5 shrink-0 place-items-center">
+        {/* Crafted breathing cue — a soft halo that expands and fades out around a steady core,
+            not the generic opacity-blink of `animate-pulse`. It reads as a live heartbeat. Under
+            `reduce` neither layer animates and the core rests fully visible (its settled state). */}
+        {!reduce && (
+          <motion.span
+            className="absolute inset-0 rounded-full bg-primary/25"
+            initial={{ scale: 0.55, opacity: 0.55 }}
+            animate={{ scale: [0.55, 1.25, 0.55], opacity: [0.55, 0, 0.55] }}
+            transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+          />
+        )}
+        <motion.span
+          className="relative h-2 w-2 rounded-full bg-primary"
+          animate={reduce ? undefined : { opacity: [0.72, 1, 0.72] }}
+          transition={reduce ? undefined : { duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+        />
       </span>
       <span className="min-w-0 truncate font-medium text-foreground">{note}</span>
     </li>
@@ -508,6 +523,18 @@ export function StudioBuildingScreen({
   );
 }
 
+/** Stable, honest per-kind headline for the split cutscene's display tier. Coaching-generic (§2),
+ *  §3 voice ("Building your …", never "AI-powered"). Falls back to an un-committal line before the
+ *  kind is known so it never claims a shape ahead of classification (§13). */
+const KIND_HEADLINE: Partial<Record<NonNullable<ArtifactPreviewKind>, string>> = {
+  page: "Building your page",
+  document: "Writing your document",
+  copy: "Writing your copy",
+  image: "Rendering your image",
+  form: "Building your form",
+  funnel: "Wiring your funnel",
+};
+
 /**
  * The SESSION-regime split content (Slice C). A responsive two-plane layout inside the aurora stage:
  *   • LEFT — the living PaigeMark hero, the honest single-actor eyebrow ("Design agent · Paige's
@@ -534,6 +561,10 @@ function SplitStage({
 }) {
   // Latest real label drives the trailing unnamed pulse; falls back to the passed note.
   const liveNote = (steps.length ? steps[steps.length - 1].label : note)?.trim() || "Getting to work…";
+  // A STABLE display headline for hierarchy — derived from the known artifact kind so it doesn't
+  // flicker with every streamed step (that live text lives in the beat stack below). Honest (§13):
+  // only as specific as the kind actually is; before classification it stays the un-committal line.
+  const headline = artifactKind ? (KIND_HEADLINE[artifactKind] ?? "Bringing it to life") : "Bringing your idea to life";
   return (
     <div className="relative mt-6 grid w-full max-w-5xl grid-cols-1 items-center gap-6 md:mt-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] md:gap-10">
       {/* LEFT plane — the hero + streamed real beats. */}
@@ -544,7 +575,12 @@ function SplitStage({
         <p className="mt-6 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
           {agent} · Paige's team
         </p>
-        <ul className="mt-3 w-full max-w-sm space-y-2.5 text-left" aria-live="polite">
+        {/* Display tier — the negative-tracked headline that carries the hierarchy (the "expensive"
+            type tell §22). Sits under the eyebrow, above the live beat stack. */}
+        <h2 className="mt-2 font-display text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+          {headline}
+        </h2>
+        <ul className="mt-4 w-full max-w-sm space-y-2.5 text-left" aria-live="polite">
           {steps.length === 0 ? (
             // No frame has streamed yet — the honest ambient note, never a pre-filled checklist (§13).
             <LivePulseRow note={liveNote} reduce={reduce} />

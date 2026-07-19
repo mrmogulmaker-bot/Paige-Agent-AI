@@ -537,15 +537,28 @@ function ArtifactFormingSkeleton({
       );
       break;
     default:
-      // NEUTRAL — kind not yet known (a first build). A generic surface forming: header, a large
-      // canvas region, a couple of settling lines. Deliberately un-committal (§13).
+      // NEUTRAL — kind not yet known (a first build, before classification). Rather than a
+      // page-shaped header+block (which would fake a specific shape), this reads as an artifact
+      // COALESCING: a soft elevated plate settling in with the PaigeMark forming at its heart, and
+      // a couple of settling lines beneath. Deliberately un-committal (§13) — it commits to no kind,
+      // it just says "Paige is bringing something into being." Token-only; the reveal rides the same
+      // staggered gp-fade-rise as the bars, so under `reduce` it rests fully assembled and static.
       body = (
-        <>
-          {bar(0, "h-3.5 w-2/5 rounded-full")}
-          {bar(1, "min-h-[40%] w-full flex-[2]")}
-          {bar(2, "h-3 w-3/4")}
-          {bar(3, "h-3 w-1/2")}
-        </>
+        <div className="grid flex-1 place-items-center gap-3">
+          <div
+            className={cn(
+              "grid aspect-[5/4] w-2/3 max-w-[66%] place-items-center rounded-2xl border border-[hsl(var(--studio-chrome-border)/0.4)] bg-[hsl(var(--studio-chrome-border)/0.16)]",
+              !reduce && "gp-fade-rise",
+            )}
+            style={{ ["--gp-stagger" as string]: "0ms" }}
+          >
+            <PaigeMark className="h-11 w-11 opacity-45" />
+          </div>
+          <div className="flex w-2/3 max-w-[66%] flex-col items-center gap-2">
+            {bar(2, "h-2.5 w-3/4 rounded-full")}
+            {bar(3, "h-2.5 w-1/2 rounded-full")}
+          </div>
+        </div>
       );
       break;
   }
