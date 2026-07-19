@@ -327,15 +327,15 @@ export default function StudioHome() {
           >
             {/* One tight command bar that IS the hero (§22): a slim, LONG horizontal bar as WIDE as
                 the H1 "What do you want to build?" (max-w-xl, end-to-end symmetric), 1-row rest that
-                WRAPS/grows as you type (owner: "slimmer and wider, not taller"). The card follows the
-                Studio
-                theme (no forced `dark`): in LIGHT it's a bright frosted glass panel with a WHITE input
-                and dark text; in DARK a deep indigo glass — flipping unmistakably with the toggle
-                (§311 (b)). The ONE gold on HOME is the circular ↑ send — the act moment (§11) — via
-                sendShape="circle" + submitVariant="gold". A single refined hairline frames it (§311 (a),
-                the studio-glass-card::before rim) and a soft indigo focus glow lives inside (§311 (c)).
-                The neutral paperclip attach + removable chips render inside the same bar. */}
-            <div className="studio-glass-card p-1">
+                WRAPS/grows as you type (owner: "slimmer and wider, not taller"). The glass now lives on
+                the PromptComposer bare container itself (a ~20px backdrop-blur frosted LIGHT well with a
+                1px indigo hairline + inset lip + soft ink shadow), so this wrapper is a bare passthrough
+                — ONE glass frame, never glass-on-glass box-in-a-box (§18/§311a). The composer follows
+                the Studio theme (no forced `dark`): its light --studio-input well keeps a bright field
+                with dark text in BOTH themes (§311b). The ONE gold on HOME is the circular ↑ send — the
+                act moment (§11), with a subtle gold submit ripple — via sendShape="circle" +
+                submitVariant="gold". Focus glow is a soft indigo bloom inside (§311c). */}
+            <div>
               <PromptComposer
                 mode="page"
                 value={brief}
