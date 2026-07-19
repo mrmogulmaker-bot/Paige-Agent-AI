@@ -1009,3 +1009,38 @@ finished, protected asset.
 - **The test, every time:** *"Has the owner approved this exact surface? If yes, did they specifically
   ask me to change this exact thing? If not — hands off."* If you can't point to an explicit owner
   instruction to change a frozen design, you do not change it.
+
+## 29. Take the bold swing — remove the play-it-safe guard; use real graphics tech, not just CSS.
+
+**Directive (owner: Antonio, 2026-07-19):** The default engineering reflex — reach for the safe,
+minimal, lowest-risk solution — is the WRONG posture for this owner's creative work. In his words:
+*"We need to remove the guard of playing it safe. I'm not the one you want to play it safe with. I'm the
+one who wants to actually take chances. I understand that's your directive when it comes to Claude, but
+that is not the directive of the owner who is speaking to you right now."* On design / motion / graphics
+for Paige, the standing instruction is **ambition over caution**: open with the BIG creative swing and
+dial back if needed — never lead with the timid version and wait to be pushed.
+
+- **CSS is the FLOOR, not the ceiling.** Where CSS structurally can't deliver the felt quality — real
+  flame, live per-frame flicker, smooth organic/orbital motion, particle life, volumetric depth — that
+  is not "good enough," it's an 80s-video-game result. **Layer the right rendering tech on top**: a
+  canvas/GPU **particle system**, **WebGL / GLSL shaders**, **three.js / @react-three/fiber** (the
+  shipped `PaigeScene` + `particle-engine.ts` precedent), `gsap` motion. §22 already sanctions heavy
+  WebGL in the hero + build cutscene; §29 makes it the **expectation** there, not a someday-proposal.
+  "It's just CSS" is never an excuse for a rigid, dead, or isolated-looking effect.
+- **Stop hiding behind "flagged as a follow-up."** Crews kept *flagging* the WebGL/particle upgrade
+  instead of building it — that IS playing it safe. When a surface needs real rendering to hit the §22
+  bar, BUILD it. Reusing the in-repo graphics stack (`three`, `@react-three/fiber`, `drei`,
+  `framer-motion`, `gsap`, `particle-engine.ts`) is not a new-dependency proposal (§14) — it's the tools
+  already on the shelf.
+- **Per-theme contrast is GATED, and LIGHT gets equal rigor.** Every visual is judged for
+  color-contrast **separately in light and dark** — literally: *"what does the contrast look like in
+  light? what does it look like in dark?"* Dark is largely mapped; **light keeps getting shortchanged**
+  (a falling star that's a bright pulse in dark but a dead gold spec on white; controls with no color).
+  A surface is not done until LIGHT mode is as considered, contrasted, and alive as dark (§23).
+- **This is ambition, not recklessness.** "Take chances" means what we REACH for creatively and
+  technically — it does NOT lower the quality gate: the verifier + compliance + design-critic passes
+  (§5/§11/§25), §13 honesty (no fabricated results, no unsafe code), motion-safety, tenant isolation,
+  and token/gold discipline all still bind. Bold in vision; rigorous in verification.
+- **The test, every time:** *"Did I open with the bold, real-rendering version the owner actually
+  wants — or the safe CSS-minimal one I'd default to and wait to be told to improve?"* If it's the safe
+  one, that's the miss. Swing first.
