@@ -41,8 +41,8 @@ const TARGET_H = 2.3;
 const GROUP_Y = 1.35;
 const CORE_LOCAL: [number, number, number] = [0, -0.05, 0.5]; // chin/throat inner light (below the mouth)
 
-// Particles
-const COUNT = 2800;
+// Particles — a DENSE swarm so the "million particles forming Paige" reads (owner 2026-07-19).
+const COUNT = 50000;
 const DISP = { x: 7, y: 4, z: 2 }; // half-extents → a wide 14×8×4 starfield filling the hero
 const STAGGER = 0.35; // per-particle arrival stagger (organic gather/scatter)
 
@@ -122,17 +122,25 @@ function makeSprite(): THREE.Texture {
   return tex;
 }
 
-/** A real RoomEnvironment env map so the transmission glass reflects/refracts like glass, not plastic. */
+/** A real RoomEnvironment env map so the transmission glass reflects/refracts like glass, not plastic.
+ *  Wrapped so a WebGL/PMREM throw can NEVER bubble up and blank the whole hero (the SceneBoundary would
+ *  otherwise swallow it silently). Worst case: no env map — the glass reads a touch flatter but VISIBLE. */
 function GlassEnv() {
   const { gl, scene } = useThree();
   useEffect(() => {
-    const pmrem = new THREE.PMREMGenerator(gl);
-    const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environment = envTex;
+    let envTex: THREE.Texture | null = null;
+    let pmrem: THREE.PMREMGenerator | null = null;
+    try {
+      pmrem = new THREE.PMREMGenerator(gl);
+      envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environment = envTex;
+    } catch (e) {
+      console.error("[StudioHero] env map failed (glass will still render):", e);
+    }
     return () => {
-      scene.environment = null;
-      envTex.dispose();
-      pmrem.dispose();
+      if (scene.environment === envTex) scene.environment = null;
+      envTex?.dispose();
+      pmrem?.dispose();
     };
   }, [gl, scene]);
   return null;
@@ -202,7 +210,7 @@ function PaigeField({ reduced, composing, busy }: { reduced: boolean; composing:
       color: CORE_COLOR, emissive: CORE_COLOR, emissiveIntensity: 3.5, transparent: true, toneMapped: false,
     });
     const points = new THREE.PointsMaterial({
-      size: 0.04, map: sprite, alphaMap: sprite, vertexColors: true, transparent: true,
+      size: 0.05, map: sprite, alphaMap: sprite, vertexColors: true, transparent: true,
       depthWrite: false, sizeAttenuation: true, blending: THREE.AdditiveBlending, opacity: 1,
     });
     return { glass, face, ring, core, points };
@@ -239,7 +247,7 @@ function PaigeField({ reduced, composing, busy }: { reduced: boolean; composing:
       position[i3 + 1] = dispersed[i3 + 1];
       position[i3 + 2] = dispersed[i3 + 2];
       offset[i] = Math.random() * STAGGER;
-      c.copy(Math.random() < 0.4 ? STAR_GOLD : STAR_WARM).multiplyScalar(0.7 + Math.random() * 0.5);
+      c.copy(Math.random() < 0.4 ? STAR_GOLD : STAR_WARM).multiplyScalar(0.95 + Math.random() * 0.5);
       color[i3] = c.r; color[i3 + 1] = c.g; color[i3 + 2] = c.b;
     }
     return { targets, dispersed, position, color, offset };
