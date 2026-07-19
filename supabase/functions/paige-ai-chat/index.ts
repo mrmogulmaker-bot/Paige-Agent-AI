@@ -5479,6 +5479,12 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     };
 
     // Call AI
+    // U2 — extended thinking is GATED OFF by default and is ONLY ever considered on the Studio path
+    // (studioSessionId truthy). Live Your-Paige chat is never affected. Flip STUDIO_THINKING_ENABLED to
+    // true to turn it on; while it is false, `paige_thinking` is never added and the request body is
+    // byte-for-byte what it is today (buildClaudeRequest only acts on paige_thinking === true).
+    const STUDIO_THINKING_ENABLED = false;
+    const paigeThinkingOn = !!studioSessionId && STUDIO_THINKING_ENABLED;
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
@@ -5491,6 +5497,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         tools: toolDefs,
         tool_choice: "auto",
         stream: true,
+        ...(paigeThinkingOn ? { paige_thinking: true } : {}),
       }),
     });
 

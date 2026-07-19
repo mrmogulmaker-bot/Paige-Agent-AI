@@ -48,7 +48,7 @@ const db = supabase as unknown as {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 interface ChatMsg { role: "user" | "assistant"; content: string }
-interface ChoiceOption { label: string; value: string }
+interface ChoiceOption { label: string; value: string; description?: string; icon?: string }
 interface Choices { prompt: string; options: ChoiceOption[]; multi?: boolean }
 
 /** A brief the customer STAGED while the agent was mid-turn (roadmap #155). The single-active-command
@@ -108,6 +108,7 @@ export function StudioChat({
   const [sending, setSending] = useState(false);
   const [note, setNote] = useState<string | null>(null); // live "working…" line
   const [steps, setSteps] = useState<StudioBuildStep[]>([]); // the accumulating REAL step trace (§13)
+  const [thinking, setThinking] = useState<string>(""); // U2 — extended-thinking text for THIS turn (distinct channel; empty unless the server opted in, default OFF)
   const [loading, setLoading] = useState(true);
   const [choices, setChoices] = useState<Choices | null>(null); // pending clickable options
   const [multiPicks, setMultiPicks] = useState<Set<string>>(new Set());
@@ -208,6 +209,7 @@ export function StudioChat({
     setMessages([...next, { role: "assistant", content: "" }]);
     setSending(true);
     setSteps([]); // fresh turn → drop the prior turn's real trace so the cutscene never shows stale beats (§13)
+    setThinking(""); // U2 — fresh turn drops the prior turn's thinking so the collapsible block never shows stale reasoning (§13)
     let gotChoices = false;
     let gotArtifact: StudioChatArtifact | null = null;
     let ok = false;
@@ -284,6 +286,12 @@ export function StudioChat({
             }
             // The server named exactly what to render on the canvas this turn.
             if (parsed.paige_artifact) { gotArtifact = parsed.paige_artifact as StudioChatArtifact; continue; }
+            // U2 — extended thinking on its DISTINCT channel (`delta.paige_thinking`), GATED OFF by
+            // default server-side. It is NEVER answer text: accumulate it separately so the reasoning
+            // renders in its own dimmed, collapsible block above the reply and never leaks into the
+            // bubble. With the flag off this field never arrives and the branch is dead (byte-identical).
+            const think = parsed.choices?.[0]?.delta?.paige_thinking as string | undefined;
+            if (typeof think === "string") { setThinking((prev) => prev + think); continue; }
             const delta = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (delta) {
               assistant += delta;
@@ -423,6 +431,17 @@ export function StudioChat({
         ) : (
           messages.map((m, i) => (
             <div key={i} className={cn("flex flex-col", m.role === "user" ? "items-end" : "items-start")}>
+              {/* U2 — extended thinking (GATED OFF by default; only renders when the server streamed
+                  `paige_thinking` this turn). A dimmed, COLLAPSIBLE "Paige is thinking…" block ABOVE the
+                  answer — never mixed into the reply bubble. Motion-safe + token-only (§11). */}
+              {m.role === "assistant" && isLastAssistant(i) && thinking.trim() && (
+                <details className="mb-1.5 max-w-[85%] rounded-xl border border-[hsl(var(--studio-chrome-border)/0.4)] bg-[hsl(var(--foreground)/0.02)] px-3 py-1.5 text-muted-foreground">
+                  <summary className="cursor-pointer list-none text-[11px] font-medium opacity-80 transition-opacity hover:opacity-100 motion-reduce:transition-none">
+                    Paige is thinking…
+                  </summary>
+                  <p className="mt-1.5 whitespace-pre-wrap text-[12px] leading-relaxed opacity-70">{thinking}</p>
+                </details>
+              )}
               <div
                 className={cn(
                   "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
@@ -452,6 +471,7 @@ export function StudioChat({
                   <div className="flex flex-wrap gap-2">
                     {choices.options.map((opt) => {
                       const picked = multiPicks.has(opt.value);
+                      const rich = Boolean(opt.description || opt.icon);
                       return (
                         <button
                           key={opt.value}
@@ -472,14 +492,36 @@ export function StudioChat({
                             }
                           }}
                           className={cn(
-                            "inline-flex min-h-[40px] items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm transition-colors motion-reduce:transition-none disabled:opacity-50",
+                            "border text-sm transition-colors motion-reduce:transition-none disabled:opacity-50",
+                            rich
+                              ? "flex min-h-[40px] w-full items-start gap-2.5 rounded-xl px-3.5 py-3 text-left"
+                              : "inline-flex min-h-[40px] items-center gap-1.5 rounded-full px-3.5 py-1.5",
                             picked
                               ? "border-primary/70 bg-[hsl(var(--ring)/0.14)] font-medium text-foreground"
                               : "border-[hsl(var(--studio-chrome-border)/0.6)] bg-[hsl(var(--foreground)/0.03)] text-foreground hover:bg-[hsl(var(--foreground)/0.06)]",
                           )}
                         >
-                          {picked && <Check className="h-3.5 w-3.5 text-primary" aria-hidden />}
-                          {opt.label}
+                          {rich ? (
+                            <>
+                              {opt.icon && (
+                                <span className="mt-0.5 shrink-0 text-base leading-none" aria-hidden>{opt.icon}</span>
+                              )}
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-1.5 font-medium text-foreground">
+                                  {opt.label}
+                                  {picked && <Check className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />}
+                                </span>
+                                {opt.description && (
+                                  <span className="mt-0.5 block text-xs text-muted-foreground">{opt.description}</span>
+                                )}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              {picked && <Check className="h-3.5 w-3.5 text-primary" aria-hidden />}
+                              {opt.label}
+                            </>
+                          )}
                         </button>
                       );
                     })}
