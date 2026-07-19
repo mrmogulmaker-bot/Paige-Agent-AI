@@ -15,6 +15,7 @@
 // Gold discipline (§11): the fallback glyph plate rests on an INDIGO hairline (ring="indigo"),
 // never a resting decorative gold ring. Token-only; the one white sheen reads --studio-sheen.
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronRight,
   ClipboardList,
@@ -101,6 +102,10 @@ export interface ArtifactPreviewProps {
   compact?: boolean;
   /** Pass useReducedMotion() so the skeleton shimmer / cover zoom rest under reduced motion. */
   reduce?: boolean;
+  /** SESSION forming skeleton (§22): how many REAL build steps have streamed so far. Drives the
+   *  neutral scaffold's progressive "another block locks in" reveal — the wireframe grows as genuine
+   *  work lands (§13 honest), never an idle loop. Decorative-progressive; NOT a claimed percentage. */
+  formingSteps?: number;
   className?: string;
 }
 
@@ -427,6 +432,101 @@ function FormSheet({
   );
 }
 
+// The indigo forming tone — --build-primary when the studio cutscene sets it, the app --primary
+// otherwise (never un-themed, §6). INDIGO/token by rule: the render WAIT is a wait, not an act, so
+// the forming panel is never gold (the PaigeMark keeps its own inherent brand gold).
+const BUILD_TONE = "var(--build-primary, hsl(var(--primary)))";
+
+// Static mote field — a handful of tiny drifting light sparks confined to the panel. Positions are
+// fixed (deterministic, no layout thrash); each loops on its own phase so the field never pulses in
+// lockstep. GPU-cheap: transform (y) + opacity only.
+const FORMING_MOTES = [
+  { left: "18%", top: "30%", size: 3, dur: 3.6, delay: 0 },
+  { left: "72%", top: "22%", size: 2, dur: 4.4, delay: 0.6 },
+  { left: "58%", top: "68%", size: 3, dur: 3.9, delay: 1.1 },
+  { left: "34%", top: "78%", size: 2, dur: 4.8, delay: 0.3 },
+  { left: "84%", top: "54%", size: 2, dur: 4.1, delay: 1.5 },
+] as const;
+
+/**
+ * The ambient "assembling" layer confined to the forming panel — an INDIGO assembly scan beam
+ * sweeping top→bottom (reads as Paige "printing" the artifact into being) + drifting light motes.
+ * Every effect is a self-looping framer-motion transform/opacity animation (GPU-cheap, no numeric
+ * clock, no WebGL). Rendered ONLY when motion is allowed; under reduce the panel rests with no
+ * overlay at all (§11 motion-safe). Token-only, indigo — never gold (a wait, not an act).
+ */
+function FormingAmbience() {
+  const beam = `linear-gradient(180deg, transparent, color-mix(in srgb, ${BUILD_TONE} 55%, transparent), transparent)`;
+  const moteFill = `color-mix(in srgb, ${BUILD_TONE} 62%, white 24%)`;
+  const moteGlow = `0 0 6px 1px color-mix(in srgb, ${BUILD_TONE} 42%, transparent)`;
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+      {/* Assembly scan beam — a soft indigo band travelling down the panel and looping. */}
+      <motion.div
+        className="absolute inset-x-0 h-1/3"
+        style={{ background: beam, opacity: 0.55 }}
+        initial={{ y: "-45%" }}
+        animate={{ y: ["-45%", "150%"] }}
+        transition={{ duration: 3.6, repeat: Infinity, ease: "easeInOut", repeatDelay: 0.4 }}
+      />
+      {/* Drifting light motes — tiny indigo sparks rising and settling on independent phases. */}
+      {FORMING_MOTES.map((m, i) => (
+        <motion.span
+          key={i}
+          className="absolute rounded-full"
+          style={{
+            left: m.left,
+            top: m.top,
+            width: m.size,
+            height: m.size,
+            background: moteFill,
+            boxShadow: moteGlow,
+          }}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: [0, 0.7, 0], y: [6, -12, 6] }}
+          transition={{ duration: m.dur, repeat: Infinity, ease: "easeInOut", delay: m.delay }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The neutral-branch progressive scaffold lines. As real steps stream (`count` grows off
+ * `formingSteps`), additional lines materialize with a staggered spring — the scaffold literally
+ * GROWS as genuine work lands (§13 honest, never an idle loop). Under reduce it renders a fixed,
+ * fully-assembled static set (its resting state), no spring. Token-only, indigo hairline fill.
+ */
+function MaterializingLines({ count, reduce }: { count: number; reduce: boolean }) {
+  const widths = ["w-3/4", "w-1/2", "w-2/3", "w-2/5", "w-3/5"] as const;
+  const lineCls = "h-2.5 rounded-full bg-[hsl(var(--studio-chrome-border)/0.42)]";
+  if (reduce) {
+    return (
+      <div className="flex w-2/3 max-w-[66%] flex-col items-center gap-2">
+        {widths.slice(0, 3).map((w) => (
+          <div key={w} className={cn(lineCls, w)} />
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div className="flex w-2/3 max-w-[66%] flex-col items-center gap-2">
+      <AnimatePresence initial={false}>
+        {widths.slice(0, count).map((w) => (
+          <motion.div
+            key={w}
+            className={cn(lineCls, w)}
+            initial={{ opacity: 0, y: 8, scaleX: 0.6 }}
+            animate={{ opacity: 1, y: 0, scaleX: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 22 }}
+          />
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /**
  * The progressive "artifact forming" skeleton (Slice C) — a token-only wireframe scaffold shown
  * beside the streamed build beats while an artifact is being made. It reads as the artifact TAKING
@@ -446,10 +546,12 @@ function FormSheet({
 function ArtifactFormingSkeleton({
   kind,
   reduce,
+  formingSteps = 0,
   className,
 }: {
   kind: ArtifactPreviewKind | null;
   reduce: boolean;
+  formingSteps?: number;
   className?: string;
 }) {
   // One wireframe bar/block. `i` sets its reveal order (staggered gp-fade-rise); resting state is
@@ -543,29 +645,48 @@ function ArtifactFormingSkeleton({
       // a couple of settling lines beneath. Deliberately un-committal (§13) — it commits to no kind,
       // it just says "Paige is bringing something into being." Token-only; the reveal rides the same
       // staggered gp-fade-rise as the bars, so under `reduce` it rests fully assembled and static.
+      // The neutral coalescing plate is now ALIVE (§22 "video-game" build moment): the PaigeMark
+      // rests inside a soft INDIGO energy halo that breathes, and the scaffold lines beneath
+      // materialize progressively as real steps stream (§13 honest — the wireframe grows with the
+      // work, never an idle loop). Under reduce every loop is gated off and the plate + a fixed set
+      // of lines rest fully assembled and static (its resting state). Token-only; halo is indigo off
+      // --build-primary, gold stays only on the PaigeMark's own inherent brand.
       body = (
         <div className="grid flex-1 place-items-center gap-3">
           <div
             className={cn(
-              "grid aspect-[5/4] w-2/3 max-w-[66%] place-items-center rounded-2xl border border-[hsl(var(--studio-chrome-border)/0.4)] bg-[hsl(var(--studio-chrome-border)/0.16)]",
+              "relative grid aspect-[5/4] w-2/3 max-w-[66%] place-items-center overflow-hidden rounded-2xl border border-[hsl(var(--studio-chrome-border)/0.4)] bg-[hsl(var(--studio-chrome-border)/0.16)]",
               !reduce && "gp-fade-rise",
             )}
             style={{ ["--gp-stagger" as string]: "0ms" }}
           >
-            <PaigeMark className="h-11 w-11 opacity-45" />
+            {/* Breathing indigo energy halo behind the mark — the artifact "warming" at its heart. */}
+            {!reduce && (
+              <motion.span
+                aria-hidden
+                className="absolute inset-0"
+                style={{
+                  background: `radial-gradient(circle at 50% 46%, color-mix(in srgb, ${BUILD_TONE} 32%, transparent), transparent 70%)`,
+                }}
+                animate={{ opacity: [0.35, 0.72, 0.35], scale: [0.94, 1.06, 0.94] }}
+                transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
+              />
+            )}
+            <PaigeMark className="relative h-11 w-11 opacity-45" />
           </div>
-          <div className="flex w-2/3 max-w-[66%] flex-col items-center gap-2">
-            {bar(2, "h-2.5 w-3/4 rounded-full")}
-            {bar(3, "h-2.5 w-1/2 rounded-full")}
-          </div>
+          <MaterializingLines count={Math.min(5, 2 + Math.floor(formingSteps / 2))} reduce={reduce} />
         </div>
       );
       break;
   }
 
   return (
-    <div aria-hidden className={cn("flex h-full w-full flex-col gap-2.5 p-5", className)}>
+    <div aria-hidden className={cn("relative flex h-full w-full flex-col gap-2.5 overflow-hidden p-5", className)}>
       {body}
+      {/* Shared ambient assembly layer — the scan beam + drifting motes that make EVERY kind's
+          forming panel feel like it's being built (§22). Motion-safe: omitted entirely under reduce,
+          so the panel rests as a clean static assembled frame. */}
+      {!reduce && <FormingAmbience />}
     </div>
   );
 }
@@ -582,6 +703,7 @@ export function ArtifactPreview({
   variant = "preview",
   compact = false,
   reduce = false,
+  formingSteps = 0,
   className,
 }: ArtifactPreviewProps) {
   // A thumbnail URL can 404 (a deleted asset, a moved bucket) — fall back to the branded field
@@ -598,7 +720,7 @@ export function ArtifactPreview({
   // yet) draws a NEUTRAL forming surface — never a specific wrong shape. Motion-safe: bars stagger in
   // via the shipped gp-fade-rise; under reduce the whole scaffold rests static (no stagger).
   if (skeleton) {
-    return <ArtifactFormingSkeleton kind={kind} reduce={reduce} className={className} />;
+    return <ArtifactFormingSkeleton kind={kind} reduce={reduce} formingSteps={formingSteps} className={className} />;
   }
 
   // SHEET — the full document-grade canvas render, per kind (§21 one session, every type).

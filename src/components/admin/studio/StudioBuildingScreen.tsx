@@ -608,7 +608,7 @@ function SplitStage({
         )}
         aria-hidden
       >
-        <ArtifactPreview skeleton kind={artifactKind} reduce={reduce} />
+        <ArtifactPreview skeleton kind={artifactKind} reduce={reduce} formingSteps={steps.length} />
       </div>
     </div>
   );
