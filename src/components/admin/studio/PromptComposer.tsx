@@ -342,7 +342,18 @@ export function PromptComposer({
               framed ? "border-b border-border/50 pb-2.5 pt-3" : "pb-2 pt-2.5",
             )}
           >
-            <span className="shrink-0 text-[11px] font-medium text-muted-foreground">Try</span>
+            <span
+              className={cn(
+                "shrink-0 text-[11px] font-medium",
+                // framed builder-dock sits on the DARK --studio-dock → theme muted-foreground reads.
+                // HOME/bare sits on the near-white --studio-input WELL → the theme muted-foreground is
+                // a LIGHT gray in dark mode (fails ~2.3:1 on the white well). Use the well's own dark
+                // ink (--studio-input-fg, same both themes) so "Try" is legible on the well (§11 AA).
+                framed ? "text-muted-foreground" : "text-[hsl(var(--studio-input-fg))]",
+              )}
+            >
+              Try
+            </span>
             {chips!.map((chip) => (
               <FilterChip
                 key={chip.id}
@@ -352,14 +363,22 @@ export function PromptComposer({
                   "shrink-0 whitespace-nowrap",
                   // Builder dock (framed): the existing neutral glass chip — untouched, no regression.
                   framed && "border-[hsl(var(--studio-glass-border)/0.7)] bg-[hsl(var(--foreground)/0.04)]",
-                  // HOME/bare (owner ask, 2026-07-17): a smaller gold OVAL pill with a LIVING gold glow.
-                  // Border/bg are set ONLY here (not stacked on the glass values) so the gold wins with
-                  // no CSS source-order ambiguity. The pulsing (staggered) halo lives in .studio-chip-glow
-                  // (src/index.css). Gold stays SUBTLE (§11) — the gold ↑ submit below is the primary act.
+                  // HOME/bare (owner fix, 2026-07-19): the chip sits on the near-white --studio-input
+                  // WELL, so it must read dark-on-light in BOTH themes. Label = --studio-input-fg (the
+                  // well's own dark ink, same both themes → ~13:1 AA/AAA). Resting = a crisp indigo
+                  // hairline + a soft indigo tint fill (the calm ground, §6/§23); hover brightens edge
+                  // AND fill together (the FilterChip felt-pop idiom, #5). NO gold anywhere at rest —
+                  // gold is reserved for the ↑ submit act only (§11), which is why the old gold
+                  // border/fill + .studio-chip-glow pulse are gone (they washed the label invisible and
+                  // broke the gold budget). Motion is the FilterChip transition-colors hover, reduced-
+                  // motion-safe by construction (no keyframe).
+                  // Resting fill/hairline are tuned for PRESENCE on the near-white well (§27
+                  // definition + pop): a 0.45 indigo hairline + a 0.09 tint give the pill real
+                  // intentional weight instead of the near-imperceptible 0.06 that read anemic.
                   !framed &&
-                    "studio-chip-glow rounded-full px-2.5 py-0.5 text-[11px] text-foreground " +
-                      "border-[hsl(var(--gold)/0.45)] bg-[hsl(var(--gold)/0.06)] " +
-                      "hover:border-[hsl(var(--gold)/0.7)] hover:bg-[hsl(var(--gold)/0.1)] hover:text-foreground",
+                    "rounded-full px-2.5 py-0.5 text-[11px] text-[hsl(var(--studio-input-fg))] " +
+                      "border-[hsl(var(--primary)/0.45)] bg-[hsl(var(--primary)/0.09)] " +
+                      "hover:border-[hsl(var(--primary)/0.65)] hover:bg-[hsl(var(--primary)/0.14)] hover:text-[hsl(var(--studio-input-fg))]",
                 )}
               >
                 {chip.label}
