@@ -102,6 +102,27 @@ const STATUS_TONE: Record<string, string> = {
   error: "text-[hsl(var(--destructive))]",
   needs_config: "text-[hsl(var(--warning))]",
 };
+const STATUS_LABEL: Record<string, string> = {
+  success: "Succeeded",
+  error: "Failed",
+  needs_config: "Needs setup",
+};
+
+// Humanize a raw enum ("needs_config" → "Needs config") and a slug caller id
+// ("research-scout" → "Research Scout") so the trace log reads like a product
+// surface, never raw backend values (§11/§25).
+function humanize(s?: string | null): string {
+  if (!s) return "—";
+  return s.replace(/[_-]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+}
+function titleizeSlug(s?: string | null): string {
+  if (!s) return "—";
+  return s
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 export default function PlatformIntelligence() {
   const metricsQ = useQuery({
@@ -145,17 +166,24 @@ export default function PlatformIntelligence() {
     ? formatDistanceToNow(new Date(metricsQ.dataUpdatedAt), { addSuffix: true })
     : null;
 
+  const hasTokens = has(t.tokens_in) || has(t.tokens_out);
+  // "—" when no row reported tokens (§13 null ≠ zero, matches the Est. spend tile);
+  // a real sum only once at least one side is present.
+  const totalTokens = hasTokens ? (t.tokens_in ?? 0) + (t.tokens_out ?? 0) : null;
   const tokenHint = useMemo(() => {
     if (!has(t.tokens_in) && !has(t.tokens_out)) return undefined;
     return `${compactNum(t.tokens_in)} in · ${compactNum(t.tokens_out)} out`;
   }, [t.tokens_in, t.tokens_out]);
+
+  // Collapse "Cost & routing" to a single column when the fleet is too sparse to
+  // fill a two-column grid (§25 — one lonely provider shouldn't sit marooned).
+  const routingSplit = (t.by_provider?.length ?? 0) + (t.by_tier?.length ?? 0) > 2;
 
   const columns: Column[] = [
     { key: "time", header: "When" },
     { key: "tenant", header: "Workspace" },
     { key: "agent", header: "Caller" },
     { key: "route", header: "Route" },
-    { key: "job", header: "Job" },
     { key: "status", header: "Status" },
     { key: "tokens", header: "Tokens", numeric: true },
     { key: "latency", header: "Latency", numeric: true },
@@ -171,8 +199,9 @@ export default function PlatformIntelligence() {
         description="How Paige's brain runs across the fleet — every LLM call, what it costs, and the live state of her intelligence departments."
       />
 
-      {/* Live status row — refresh cadence + window, with the breathing presence dot (§25). */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+      {/* Live status row — refresh cadence + window, with the breathing presence dot (§25).
+          Pulled up to hug the header block it belongs to, not float as detached meta. */}
+      <div className="-mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <PresenceDot status="online" size="sm" />
           Live · refreshes every 30s
@@ -211,7 +240,7 @@ export default function PlatformIntelligence() {
         />
         <StatTile
           label="Tokens"
-          value={compactNum((t.tokens_in ?? 0) + (t.tokens_out ?? 0))}
+          value={compactNum(totalTokens)}
           icon={Cpu}
           hint={tokenHint}
           loading={loading}
@@ -239,7 +268,7 @@ export default function PlatformIntelligence() {
             description="As Paige runs, the provider and tier mix of her LLM calls appears here."
           />
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2">
+          <div className={`grid gap-6 ${routingSplit ? "sm:grid-cols-2" : ""}`}>
             <div className="space-y-2">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">By provider</h3>
               <ul className="space-y-1.5">
@@ -361,18 +390,22 @@ export default function PlatformIntelligence() {
                 {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
               </TableCell>
               <TableCell className="font-medium">{r.tenant_label ?? "Platform"}</TableCell>
-              <TableCell className="text-sm text-muted-foreground">{r.agent_id ?? "—"}</TableCell>
+              <TableCell className="text-sm">
+                <span className="text-foreground">{titleizeSlug(r.agent_id)}</span>
+                {(r.job_kind || r.modality) && (
+                  <span className="block text-xs text-muted-foreground">{humanize(r.job_kind ?? r.modality)}</span>
+                )}
+              </TableCell>
               <TableCell className="text-sm">
                 <span className="text-foreground">{r.provider ?? "—"}</span>
                 {r.model && <span className="text-muted-foreground"> · {r.model}</span>}
                 {r.tier && <span className="text-muted-foreground"> · {r.tier}</span>}
               </TableCell>
-              <TableCell className="text-sm text-muted-foreground">{r.job_kind ?? r.modality ?? "—"}</TableCell>
               <TableCell className="text-sm">
                 <span className={STATUS_TONE[r.status ?? ""] ?? "text-muted-foreground"}>
-                  {r.status ?? "—"}
+                  {STATUS_LABEL[r.status ?? ""] ?? humanize(r.status)}
                 </span>
-                {r.error_class && <span className="ml-1 text-xs text-muted-foreground">({r.error_class})</span>}
+                {r.error_class && <span className="ml-1 text-xs text-muted-foreground">({humanize(r.error_class)})</span>}
               </TableCell>
               <TableCell className="text-right tabular-nums text-muted-foreground">
                 {has(r.tokens_in) || has(r.tokens_out)

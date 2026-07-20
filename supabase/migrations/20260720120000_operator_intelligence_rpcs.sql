@@ -69,8 +69,9 @@ BEGIN
   SELECT jsonb_build_object(
     'total',           count(*),
     'window_days',     win_days,
-    'tokens_in',       COALESCE(sum(tokens_in), 0)::bigint,
-    'tokens_out',      COALESCE(sum(tokens_out), 0)::bigint,
+    -- NULL (not 0) when no row reported token counts — §13 "null ≠ zero", same honesty as cost below.
+    'tokens_in',       sum(tokens_in)::bigint,
+    'tokens_out',      sum(tokens_out)::bigint,
     -- ESTIMATE; NULL (not 0) when no row carried a cost basis (§13).
     'cost_estimate_usd', sum(cost_estimate_usd),
     'avg_latency_ms',  round(avg(latency_ms))::int,   -- NULL when no latency recorded
