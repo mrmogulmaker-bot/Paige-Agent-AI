@@ -24,6 +24,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { routedChatCompletion } from "../_shared/model-router.ts";
+import { strategizeBeforeReasoning } from "../_shared/reasoning/strategize.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -455,6 +456,7 @@ async function planHop(
   domainHint: string,
   hop: number,
   evidence: Array<{ index: number; title: string; snippet: string }>,
+  strategyHint = "", // §34 L4: optional pre-reasoning steer, appended like domainHint (hop-0, non-degraded only)
 ): Promise<PlanOut> {
   const sys =
     "You are a research planner. Break a research goal into orthogonal, specific web-search " +
@@ -470,6 +472,7 @@ async function planHop(
   const user =
     `RESEARCH GOAL: ${question}\n` +
     (domainHint ? `TOPIC HINT: ${domainHint}\n` : "") +
+    (strategyHint ? `${strategyHint}\n` : "") +
     `HOP: ${hop}\n\nEVIDENCE SO FAR:\n${evidenceBlock}`;
 
   try {
@@ -1483,7 +1486,7 @@ async function persistRun(
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  const t0 = Date.now();
+  let t0 = Date.now();
   const runId = crypto.randomUUID();
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1536,7 +1539,72 @@ serve(async (req) => {
   let stop: StopReason = "max_hops";
   let configured = true;
 
+  // ── §9/#361 server-resolved tenant — NEVER trust a body tenant field ────────
+  // A tenant is derived SERVER-SIDE only. A service-role bearer (every current caller:
+  // paige-ai-chat, subagent-financial-research, lender-research) is trusted to name the
+  // acting user via the already-validated body.user_id — we then look the tenant up
+  // ourselves (profiles.active_tenant_id, else first active tenant_members row — the repo's
+  // canonical resolution, mirrored from admin-list-users). A user JWT is instead pinned to
+  // its OWN tenant via the current_user_tenant_id RLS rpc (the paige-eval pattern); body.user_id
+  // is NOT trusted for a JWT caller. On any miss → null (research still runs; strategize just
+  // gets no memory anchors and writes a platform-null trace — §13 honest-degrade).
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  let resolvedTenantId: string | null = null;
   try {
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const bearer = authHeader.replace(/^Bearer\s+/i, "").trim();
+    const admin = createClient(SUPABASE_URL, SERVICE_KEY);
+    if (bearer && bearer === SERVICE_KEY) {
+      // Trusted service-role caller → derive tenant from the (trusted) body.user_id.
+      const userId = typeof body.user_id === "string" ? body.user_id : "";
+      if (userId) {
+        const { data: prof } = await admin
+          .from("profiles").select("active_tenant_id").eq("user_id", userId).maybeSingle();
+        let tid = (prof?.active_tenant_id as string | null) ?? null;
+        if (!tid) {
+          const { data: memberRows } = await admin
+            .from("tenant_members").select("tenant_id")
+            .eq("user_id", userId).eq("status", "active")
+            .order("joined_at", { ascending: true }).limit(1);
+          tid = (memberRows?.[0]?.tenant_id as string | null) ?? null;
+        }
+        resolvedTenantId = tid && UUID_RE.test(tid) ? tid : null;
+      }
+    } else if (bearer) {
+      // User JWT → pin to the caller's OWN tenant via RLS rpc (body.user_id NOT trusted here).
+      const anon = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user } } = await anon.auth.getUser();
+      if (user) {
+        const { data: activeTenant } = await anon.rpc("current_user_tenant_id");
+        resolvedTenantId = typeof activeTenant === "string" && UUID_RE.test(activeTenant) ? activeTenant : null;
+      }
+    }
+  } catch (e) {
+    console.warn("[paige-deep-research] tenant resolution failed (non-fatal):", (e as Error)?.message);
+    resolvedTenantId = null;
+  }
+
+  try {
+  // §34 L4 phase-1: strategize BEFORE the research loop. Honest-degrade — it NEVER throws and can never
+  // break the run (contract in strategize.ts); its one reason:strategize trace self-writes to L1 (§34).
+  // Only the GENERAL path (planHop) consumes the strategy; dossier mode uses the deterministic
+  // planEntityHop and would discard it — so skip the frontier "plan" call there rather than pay for a
+  // strategy nothing reads (§13/efficiency). General-path runs still land the trace + steer hop-0.
+  const strategy = entityTarget
+    ? null
+    : await strategizeBeforeReasoning({
+        task: question,
+        tenantId: resolvedTenantId,   // §9/#361: server-resolved, NEVER body.user_id
+        taskId: runId,                // correlates the trace to this exact research run
+        // agentId omitted → defaults to "paige-strategist" (the first live paige-strategist trace row)
+      });
+
+  // §32 correctness: reset the wall-clock baseline AFTER strategize so pre-reasoning latency is NOT
+  // billed against the gathering budget. The three WALL_CLOCK_MS comparisons below all read this t0.
+  t0 = Date.now();
+
   // ── Bounded PLAN → SEARCH → READ → GAP-CHECK loop (A3) ────────────────────
   outer:
   for (let hop = 0; hop < effectiveMaxHops; hop++) {
@@ -1563,7 +1631,15 @@ serve(async (req) => {
         .slice(0, 12)
         .map((s, i) => ({ index: i + 1, title: s.title, snippet: (s.content || s.snippet).slice(0, 400) }));
       costUSD += COST.cheapLLM;
-      const plan = await planHop(question, domainHint, hop, evidence);
+      // §34 L4 phase-1: steer ONLY the hop-0 planner, and ONLY with a real (non-degraded) strategy — a
+      // fallback strategy injects nothing (§13). Appended as ONE string, exactly like domainHint above.
+      const strategyHint = (hop === 0 && strategy && !strategy.degraded)
+        ? `STRATEGY: ${strategy.approach}` +
+          (strategy.decomposition.length
+            ? `\nKEY SUB-GOALS:\n${strategy.decomposition.slice(0, 3).map((d) => `- ${d}`).join("\n")}`
+            : "")
+        : "";
+      const plan = await planHop(question, domainHint, hop, evidence, strategyHint);
       if (plan.done && hop > 0) { stop = "answered"; break; }
       queries = plan.queries.slice(0, BND.MAX_QUERIES_PER_HOP);
       if (queries.length === 0) {
