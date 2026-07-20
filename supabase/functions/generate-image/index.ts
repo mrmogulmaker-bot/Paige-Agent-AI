@@ -24,6 +24,10 @@ import { replicateRun } from "../_shared/replicate.ts";
 import { ideogramImage } from "../_shared/ideogram.ts";
 import { assertModelAllowed } from "../_shared/model-allowlist.ts";
 import { NeedsConfigError, NotYetConfiguredError } from "../_shared/provider-types.ts";
+// §26/§34-L6 — WRITE side of the Compound-AI memory, hooked at the ONE shared image seam so EVERY
+// caller (paige-ai-chat's generate_image tool, the Vibe Studio frontend, any future caller) seeds the
+// tenant's voyage-3 memory space — not just one caller (§18 one home). Delegates to captureToMemory.
+import { rememberArtifact } from "../_shared/prompt-forge.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -328,6 +332,43 @@ serve(async (req: Request) => {
       user_id: user.id, entity: "generated_image", action: "generate_image", entity_id: contentId,
       data: { tenant_id: tenantId, path, size, provider: served, model: usedModel, prompt: prompt.slice(0, 200) },
     });
+
+    // §26/§34-L6 — remember this genuinely-produced image so the tenant's memory space learns what
+    // worked, and recall (recallSimilar, wired in paige-deep-research) stops reading an empty table.
+    // Hooked HERE (the shared seam) rather than at any one caller, so paige-ai-chat AND the Vibe Studio
+    // frontend both capture — the seam the user actually creates in. tenantId is membership-VALIDATED
+    // above (is_tenant_member, §9) and the memory is filed under the SAME tenant as the image storage.
+    // Capture EVERY genuinely-produced image (fresh + refine/regen): a refine reuses the content lineage
+    // but the refined image is what the user KEPT, so we must never drop it — dropping the kept version
+    // (and, in the §33 critique loop, keeping only the pre-critique original) would anchor recall on a
+    // discarded attempt. Duplicate/stale rows per lineage are a RANKING concern (dedupe/prefer-latest +
+    // reaction-weight are the tracked Wave-2 follow-ups), not a reason to skip a real artifact here (§13).
+    // DETACHED + best-effort: a capture failure never fails or slows the image the user asked for
+    // (§13/§32); rememberArtifact never throws, skips honestly when tenant/url/intent is absent.
+    if (tenantId && publicUrl) {
+      try {
+        const actorRole = roles.some((r: string) => r === "admin" || r === "super_admin") ? "operator" : "tenant";
+        const memP = rememberArtifact({
+          tenantId,
+          modality: "image",
+          userIntent: prompt,
+          artifactUrl: publicUrl,
+          provider: served,
+          model: usedModel ?? undefined,
+          deliverableId: contentId ?? undefined,
+          actorUserId: user.id,
+          actorRole,
+        }).then(() => {}, (e: unknown) => console.error("[generate-image] memory capture failed:", (e as Error)?.message));
+        // @ts-ignore — EdgeRuntime is available in the Supabase Edge Functions runtime.
+        // Deliberately NO blocking `await memP`: capture must never slow the image response (§32); memP
+        // owns its own .then(ok,onReject) so there is no unhandled rejection when EdgeRuntime is absent.
+        if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(memP);
+      } catch (e) {
+        // Defensive: the capture sits BEFORE the return, so a stray synchronous throw must not turn a
+        // successful image into an error response — swallow it (the image already succeeded).
+        console.error("[generate-image] memory capture dispatch failed:", (e as Error)?.message);
+      }
+    }
 
     return new Response(JSON.stringify({ url: publicUrl, path, size, provider: served, model: usedModel, content_id: contentId }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
