@@ -66,7 +66,8 @@ export interface SpecialistReview {
   /** One-paragraph actionable step synthesized from the union of blockers + improvements (empty on a
    *  clean SHIP). Feeds engine.ts's regenerate step as the refined instruction. */
   refinedInstruction: string;
-  /** How many lenses actually returned a verdict (honest count, §13). */
+  /** How many lenses returned a REAL (non-degraded) verdict — the honest count, so a panel where
+   *  every lens degraded reports 0, not the panel size (§13). */
   lensesRun: number;
   /** True when EVERY verdict degraded — the whole panel added no real judgment; caller ships (§13). */
   degraded: boolean;
@@ -85,7 +86,6 @@ export interface ReviewOpts {
   lenses?: SpecialistLens[];
   /** §9 — EXPLICIT resolved tenant id, for the L1 trace correlation only. Never body-derived. */
   tenantId?: string | null;
-  agentId?: string | null;
   taskId?: string | null;
   /** Correlation parent so the N lens traces are sibling children of one review node (§34-L1). */
   parentTraceId?: string | null;
@@ -259,9 +259,12 @@ export async function reviewBySpecialists(opts: ReviewOpts): Promise<SpecialistR
   const verdicts: SpecialistVerdict[] = settled.map((s, i) =>
     s.status === "fulfilled" ? s.value : degradedVerdict(lenses[i].id));
 
-  const degraded = verdicts.length === 0 || verdicts.every((v) => v.degraded);
+  // lensesRun = lenses that returned a REAL verdict (not a degraded fallback) — the honest count (§13).
+  // A fully-degraded panel (liveCount 0) is `degraded` and fails open to SHIP.
+  const liveCount = verdicts.filter((v) => !v.degraded).length;
+  const degraded = liveCount === 0;
   const { consensus, blockers, refinedInstruction } = aggregate(verdicts);
-  return { verdicts, consensus, blockers, refinedInstruction, lensesRun: verdicts.length, degraded };
+  return { verdicts, consensus, blockers, refinedInstruction, lensesRun: liveCount, degraded };
 }
 
 /**

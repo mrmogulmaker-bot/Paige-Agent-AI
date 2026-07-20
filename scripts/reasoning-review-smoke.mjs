@@ -1,10 +1,11 @@
-// review-test.mjs — headless smoke test for the PURE logic of _shared/reasoning/review.ts.
+// scripts/reasoning-review-smoke.mjs — headless smoke test for the PURE logic of
+// supabase/functions/_shared/reasoning/review.ts.
 //
 // WHY THIS EXISTS: review.ts imports the Deno model-router chain, so it can't be plain-Node imported.
 // The pure, LLM-free logic (parseVerdict + aggregate + reviewToVerdict) is copied VERBATIM below and
-// asserted, mirroring scratchpad/reflect-test.mjs. Keep this in sync with review.ts.
+// asserted. Keep this in sync with review.ts (review.ts cites this path in its NOTE comments).
 //
-// Run:  node scratchpad/review-test.mjs
+// Run:  node scripts/reasoning-review-smoke.mjs
 // Exit: 0 = all pure logic holds; non-zero = a mismatch (fix before shipping).
 
 // ─── VERBATIM from review.ts: parseVerdict ───────────────────────────────────────────────────────
@@ -119,6 +120,26 @@ ok(aggregate([lens("a", "SHIP")]).refinedInstruction === "", "aggregate: clean S
   ok(r.refinedInstruction.includes("fix headline") && r.refinedInstruction.includes("tighten CTA"),
     "aggregate: ITERATE synthesizes blockers + improvements into instruction");
 }
+{
+  // SHIP consensus WITH blockers (a lens can vote SHIP yet list blockers) → refinement still synthesized.
+  const r = aggregate([lens("a", "SHIP", ["nit that slipped in"])]);
+  ok(r.refinedInstruction.includes("nit that slipped in"),
+    "aggregate: SHIP-with-blockers → non-empty refinedInstruction (gate is SHIP AND zero blockers)");
+}
+{
+  // ITERATE/BLOCK carrying NO actionable text → empty refinedInstruction (engine then breaks, keeps artifact).
+  ok(aggregate([lens("a", "BLOCK")]).refinedInstruction === "",
+    "aggregate: BLOCK with no blockers/improvements → empty refinedInstruction");
+}
+{
+  // improvements-only (no blockers) → "Then strengthen…" clause only, and improvements dedup across lenses.
+  const r = aggregate([lens("a", "ITERATE", [], ["dup-imp", "only-a"]), lens("b", "ITERATE", [], ["dup-imp", "only-b"])]);
+  ok(r.refinedInstruction.startsWith("Then strengthen the draft:") &&
+     r.refinedInstruction.includes("dup-imp") && r.refinedInstruction.includes("only-a") &&
+     r.refinedInstruction.includes("only-b") &&
+     r.refinedInstruction.indexOf("dup-imp") === r.refinedInstruction.lastIndexOf("dup-imp"),
+    "aggregate: improvements-only instruction + improvements dedup union");
+}
 
 // ── reviewToVerdict ──
 {
@@ -131,6 +152,13 @@ ok(aggregate([lens("a", "SHIP")]).refinedInstruction === "", "aggregate: clean S
   const v = reviewToVerdict(blockReview);
   ok(v.verdict === "BLOCK" && !v.lowConfidence && v.refinedInstruction.includes("bad"),
     "reviewToVerdict: live BLOCK review → {BLOCK, refinedInstruction}");
+}
+{
+  // the common happy path: a live clean SHIP → {SHIP, empty refinedInstruction, NOT lowConfidence}.
+  const shipReview = { verdicts: [lens("a", "SHIP"), lens("b", "SHIP")], consensus: "SHIP", blockers: [], refinedInstruction: "", lensesRun: 2, degraded: false };
+  const v = reviewToVerdict(shipReview);
+  ok(v.verdict === "SHIP" && !v.lowConfidence && v.refinedInstruction === "",
+    "reviewToVerdict: live clean SHIP → {SHIP, empty instruction, not lowConfidence}");
 }
 
 // ─── report ───
