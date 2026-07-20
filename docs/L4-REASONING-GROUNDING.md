@@ -116,10 +116,10 @@ sees no contract change.
   §13 (honest degrade, fail-open critic) · §14 (crew) · §34 (no vendor SDK — already clean) · §17
   (frontier-only judge modality).
 
-## 7. Dependency gate (owner directive 2026-07-19)
+## 7. Dependency gate (owner directive 2026-07-19) — CLEARED 2026-07-20
 
-**L4 CODE HOLDS until Cowork verifies L1 is live.** L4's `onTrace` writes to `paige_llm_trace`; wiring L4
-before L1 is confirmed live in prod would mean unverifiable trace writes (§31 real-data gate). L1's table is
-merged but **the prod migration-apply pipeline stalled at `20260718221756`**, so `paige_llm_trace` is not yet
-live (see incident task + `docs/PAIGE-INTELLIGENCE-GROUNDING-REPORT.md`). L4 build starts once L1-live is
-confirmed.
+**~~L4 CODE HOLDS until Cowork verifies L1 is live.~~ CLEARED.** L1 is verified **live in prod** (2026-07-20):
+a real chat `paige_llm_trace` row landed, and the one real defect (a `tenant_id` FK that silently dropped
+non-`tenants` traces via the writer's swallowing catch) was fixed and merged (#146). The migration-apply
+pipeline note below is **stale** — the 5 stranded 07-19 migrations were applied and the trace store is live.
+L4 reasoning callers (phase-1+) now emit real `paige_llm_trace` rows, so the §31 real-data gate is satisfied.

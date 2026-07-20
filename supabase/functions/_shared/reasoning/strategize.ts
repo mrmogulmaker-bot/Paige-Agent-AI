@@ -70,7 +70,7 @@ function fallback(task: string, anchorsUsed = 0): StrategyPlan {
 function anchorBlock(anchors: RecalledArtifact[]): string {
   if (!anchors.length) return "";
   const lines = anchors
-    .map((a, i) => `  ${i + 1}. intent: ${a.user_intent?.slice(0, 200) ?? "(n/a)"}${a.similarity != null ? ` (similarity ${a.similarity.toFixed(2)})` : ""}`)
+    .map((a, i) => `  ${i + 1}. intent: ${typeof a.user_intent === "string" ? a.user_intent.slice(0, 200) : "(n/a)"}${typeof a.similarity === "number" ? ` (similarity ${a.similarity.toFixed(2)})` : ""}`)
     .join("\n");
   return `\n\nThis tenant has succeeded on similar work before — use these as anchors for what tends to land here:\n${lines}`;
 }
@@ -83,7 +83,9 @@ const SYSTEM_PROMPT =
   "method. risks = what could go wrong or must be guarded against. successCriteria = the bar the finished " +
   "result must clear. Be concrete and specific to THIS task. Output ONLY the JSON object, no prose, no code fence.";
 
-/** Extract the first JSON object from a model reply that may be fenced or prose-wrapped. */
+/** Extract the first JSON object from a model reply that may be fenced or prose-wrapped.
+ *  NOTE: the pure logic here (+ anchorBlock) is mirrored in scratchpad/strategize-test.mjs for a
+ *  headless smoke test (the Deno import chain blocks a plain-Node import) — keep the two in sync. */
 function parseStrategy(raw: string): Pick<StrategyPlan, "decomposition" | "approach" | "risks" | "successCriteria"> | null {
   if (!raw || typeof raw !== "string") return null;
   // Strip a ```json fence if present, then grab the outermost {...}.
@@ -130,17 +132,18 @@ export async function strategizeBeforeReasoning(opts: StrategizeOpts): Promise<S
     task_id: opts.taskId ?? null,
     job_kind: "reason:strategize",
   };
-  const body = {
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: `Task:\n${task}${anchorBlock(anchors)}` },
-    ],
-    temperature: 0.3,
-    max_tokens: 700,
-  };
-
   let content = "";
   try {
+    // Assemble the request INSIDE the try so even an anchorBlock/assembly throw (e.g. a malformed recall
+    // row) degrades to the fallback rather than escaping into the caller's generation (§13 airtight).
+    const body = {
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: `Task:\n${task}${anchorBlock(anchors)}` },
+      ],
+      temperature: 0.3,
+      max_tokens: 1000, // headroom so a rich strategy doesn't truncate mid-JSON → avoidable silent degrade
+    };
     const resp = await routedChatCompletion("plan", body, trace);
     content = resp?.choices?.[0]?.message?.content ?? "";
   } catch (e) {
