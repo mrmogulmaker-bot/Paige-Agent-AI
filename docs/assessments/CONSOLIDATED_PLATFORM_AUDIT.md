@@ -302,6 +302,84 @@ Load-bearing facts about this codebase that reading the code will not reveal:
 
 ---
 
+## 7.6 Voice layer — architecture decisions locked (2026-07-20)
+
+**Trigger:** Antonio + Cowork architecture conversation on voice agents post-brain-build. Decisions locked here so when the voice slice is sequenced (post-cleanup-queue, in the "Automations surface" tier of Tier 1 owner priorities), Claude Code has the design input ready and doesn't re-derive.
+
+### 7.6.1 Middleware pick: Vapi
+
+- Chosen over: Retell, ElevenLabs Conversational AI, OpenAI Realtime API, DIY Deepgram-Claude-Cartesia.
+- Why: preserves Claude as the reasoning tier (§17), solves the real-time hard problems (WebRTC, VAD, sub-500ms latency, interruption handling), includes phone-number provisioning natively, cheaper per-minute than ElevenLabs Conversational AI, can still use ElevenLabs voices as the TTS backend.
+
+### 7.6.2 Phone number provisioning: Vapi-native default; BYOT-Twilio as premium later
+
+- **Default path (all tenants):** Vapi-provisioned numbers. One vendor, one API, one invoice. Perfect for the first cohort of tenants.
+- **Premium path (advanced tenants):** Vapi supports bring-your-own-Twilio for tenants needing vanity toll-free, international coverage, SIP trunking, SMS-on-same-number. Add when a real tenant asks; not a Day-1 feature.
+- **Explicitly NOT:** wire Twilio into the platform infrastructure directly. Vapi's telephony layer is enough.
+
+### 7.6.3 Voice agent registry: extend `paige_subagents` with `voice_config`
+
+- Add `voice_config jsonb` column to `paige_subagents` (voice_id, personality, tone, greeting_template, model tier).
+- A "voice agent" is a sub-agent with voice metadata attached — no new table, no parallel architecture.
+- Tenants create/customize via existing `subagent-forge` (L5, shipped) — same forge that already creates any other sub-agent.
+- Persona resolution: existing `get_paige_persona_context` extended to return `voice_config` alongside persona → tenant renames Paige → voice agent inherits the new name automatically.
+- Per §16, each of the 10 departments can carry a seeded default voice sub-agent (Sales = warm/professional outbound; Client Experience = welcoming/patient inbound; Finance = gracious/firm retainer reminders). Tenants override with their own via forge.
+
+### 7.6.4 Phone number registry: new `tenant_phone_numbers` table + `/admin/phone-numbers` page
+
+- **Schema:** `tenant_phone_numbers` (tenant_id, e164_number, provider, provider_ref, monthly_cost_cents, assigned_agent_slug, status, created_at).
+- **Edge fn:** `provision-phone-number` — calls Vapi API, records the row, appends to tenant's L2 subscription add-ons (rides the money spine from Lane B).
+- **UI:** new `/admin/phone-numbers` page — list currently-provisioned numbers, "Add a number" flow (search by area code / toll-free / country → select → provision), assign each number to a voice agent via dropdown.
+- Also expose as a marketplace category — a tenant browsing `/admin/marketplace` sees "Phone Numbers" alongside skills, same install-through-subscription pattern as everything else. §12 organize: one home for all tenant-purchasable capabilities.
+
+### 7.6.5 New action-kinds (with autonomy tiers)
+
+Extend `paige_action_kinds` with:
+
+- `voice.outbound-customer-call` — 🟡 confirm default (owner approves script + target pre-dial)
+- `voice.outbound-internal-call` — 🟡 confirm default (calling internal team members: escalations, approval requests, urgency signal, distance-friendly reach)
+- `voice.outbound-internal-call.c_suite` — 🔴 off default (C-suite outreach requires owner-explicit enable; trust here is graduated)
+- `voice.inbound-answer` — 🟢 auto default (front-desk greeter picks up + intake)
+- `voice.follow-up-call` — 🟡 confirm default (scheduled callbacks)
+- `voice.emergency-escalation` — 🟡 confirm default (P0 incidents, immediate approval requests)
+
+All route through the existing `file_action` → `paige-action-worker` → `advance_action` lifecycle (§8, shipped). Same drainer, same audit trail, same approval routing. Zero new architecture — voice is just a new modality on the existing action bus.
+
+### 7.6.6 In-app voice-back (Paige speaks in the chat UI)
+
+- Separate from the phone-call stack — different plumbing, different vendor path.
+- New small edge fn `paige-tts` (Cartesia or ElevenLabs for voice quality) that streams Paige's chat responses as audio when the tenant toggles voice-output on.
+- Not required for the phone-call features; optional user preference.
+
+### 7.6.7 Cost + billing model
+
+- Voice minutes metered per-tenant, aggregated per billing period.
+- Rides the L2 subscription (Lane B money spine) — appears as a line item alongside plan + add-ons.
+- Premium plan tiers get more included minutes; overage billed per-minute at a rate lower than Vapi's list price (small margin for the platform).
+- Phone-number monthly cost is a separate line item under tenant's L2 subscription.
+
+### 7.6.8 Sequencing when voice gets built (post-cleanup-queue)
+
+Not blocking any current lane. When voice is sequenced (Tier 1 Automations surface phase), the natural slice order:
+
+1. Vapi account setup + first API smoke test
+2. Schema extension (`voice_config` on `paige_subagents` + `tenant_phone_numbers` table)
+3. First action-kind (`voice.outbound-customer-call` to Sales dept, one path)
+4. §32 live: one real outbound call to a test number, transcript captured, autonomy-lane approval flow verified end-to-end
+5. Fan out: `voice.inbound-answer` + Client Experience dept
+6. Then: `voice.outbound-internal-call` + management-department integration
+7. Then: `/admin/phone-numbers` self-service UI + marketplace category
+8. Then: `paige-tts` in-app voice-back
+9. Then: BYOT-Twilio premium option
+
+### 7.6.9 What this section does NOT change
+
+- No brain-build layer changes. Voice extends what's shipped (`paige_subagents`, `paige_action_kinds`, action bus, drainer, persona resolver, marketplace, L2 billing) — no rearchitecture.
+- The cleanup queue sequencing stands. Voice comes AFTER cleanup ships.
+- Not in the pitch/prospectus as a current capability until it's actually built and §32-verified live per §7.5.3 honesty check.
+
+---
+
 ## 8. Update rule for this doc
 
 - End of every brain-build session: update §1 (state) + §2 (what changed).
