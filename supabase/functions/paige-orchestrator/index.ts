@@ -3,7 +3,7 @@
 // Routes invocations to local Edge Functions or to LangGraph via paige-bridge.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { routedChatCompletion, pickRoute, DEFAULT_SUBAGENT_JOB_KIND, type JobKind } from "../_shared/model-router.ts";
+import { routedChatCompletion, pickRoute, isJobKind, JOB_KINDS, DEFAULT_SUBAGENT_JOB_KIND, type JobKind } from "../_shared/model-router.ts";
 import { looksLikeFinanceAgent } from "../_shared/finance-gate.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
@@ -31,6 +31,10 @@ interface TenantScope {
   tenantId: string | null;
   fundingEnabled: boolean;
   callerId: string | null;
+  // §9: is this the trusted service-role (platform operator) path, decided by the EXACT-key match
+  // below — never a decoded `role` claim. A WRITE gate (set_agent_job_kind) reuses this signal so it
+  // never re-derives service-vs-user; a forged token can't reach the operator branch.
+  isService: boolean;
 }
 
 /**
@@ -60,7 +64,7 @@ async function resolveTenantScope(req: Request, payload: OrchestratorRequest): P
       return { error: "Invalid tenant_id", status: 400 };
     }
     const fundingEnabled = (payload as { funding_enabled?: boolean }).funding_enabled === true;
-    return { tenantId: bodyTenant, fundingEnabled, callerId: payload.context?.user_id ?? null };
+    return { tenantId: bodyTenant, fundingEnabled, callerId: payload.context?.user_id ?? null, isService: true };
   }
 
   // User/anon caller — derive server-side; the body's tenant_id is never trusted.
@@ -80,16 +84,17 @@ async function resolveTenantScope(req: Request, payload: OrchestratorRequest): P
   } catch (_e) {
     tenantId = null; // honest degrade to platform-defaults; never widen scope on an error
   }
-  return { tenantId, fundingEnabled, callerId };
+  return { tenantId, fundingEnabled, callerId, isService: false };
 }
 
-type Action = "tool_search" | "tool_invoke" | "list_subagents" | "inspect";
+type Action = "tool_search" | "tool_invoke" | "list_subagents" | "inspect" | "set_agent_job_kind";
 
 interface OrchestratorRequest {
   action: Action;
   query?: string;
   domain?: string;
   slug?: string;
+  job_kind?: string; // §34-L5: the routing tier to set on a soft agent (set_agent_job_kind)
   input?: Record<string, unknown>;
   context?: {
     contact_id?: string;
@@ -270,6 +275,123 @@ async function inspectRoster(
   });
 }
 
+// §34-L5 / §10 Talent — the Paige-governable seam to SWAP a soft agent's routing tier by voice/text
+// (not DBA-only). It writes config.job_kind, the exact key invokeSoft reads to pick the model. §18: the
+// ONLY update-an-agent's-config path — subagent-forge only proposes/approves/rejects/lists/disables; it
+// has no config-update action. Reuses pickRoute/isJobKind (no rival router, §14/§34).
+async function setAgentJobKind(
+  payload: OrchestratorRequest,
+  tenantId: string | null,
+  callerId: string | null,
+  isServiceCaller: boolean,
+) {
+  // Validate against the ONE runtime source of truth for JobKinds (model-router) so a typo can't
+  // silently mis-route an agent (§13). Invalid → 422 with the known values named.
+  const jobKind = payload.job_kind;
+  if (!isJobKind(jobKind)) {
+    return fail(
+      `"${String(jobKind)}" is not a known job_kind. Valid job_kinds: ${[...JOB_KINDS].join(", ")}.`,
+      422,
+    );
+  }
+  if (!payload.slug || typeof payload.slug !== "string") {
+    return fail("Missing slug for set_agent_job_kind", 400);
+  }
+
+  // §16/§17 GOVERNANCE gate: retuning an agent's routing tier changes its cost/quality behavior — a
+  // governance mutation. A DIRECT (non-service) caller must therefore be an admin, mirroring subagent-forge
+  // which gates EVERY paige_subagents mutation behind isAdmin. Paige's own calls arrive SERVICE-role
+  // (paige-ai-chat resolved the operator/tenant upstream) and bypass this, so §10 "Paige-governable" still
+  // holds — only a human hitting the orchestrator directly is gated. Checked BEFORE the agent is resolved
+  // so a non-admin caller learns NOTHING about which slugs exist (every slug returns the same 403 — no
+  // existence oracle). callerId is the AUTHENTICATED user id for a non-service caller (resolveTenantScope's
+  // user branch sets it from getUser, never the body); an anon caller (null) resolves to no roles → 403.
+  if (!isServiceCaller) {
+    const { data: roles } = await supabase
+      .from("user_roles").select("role").eq("user_id", callerId ?? "");
+    const isAdmin = (roles ?? []).some((r: { role: string }) => r.role === "admin");
+    if (!isAdmin) return fail("Admin only", 403);
+  }
+
+  // Resolve the target by slug — read its OWN scope + config + runtime + version (NOT tenant-filtered
+  // here on purpose: the §9 decision below needs the agent's real tenant_id to owe the caller the correct
+  // masked response, not a blanket 404 that would hide a legitimate own-agent target).
+  const { data: agent, error } = await supabase
+    .from("paige_subagents")
+    .select("id,slug,tenant_id,runtime,config,version")
+    .eq("slug", payload.slug)
+    .maybeSingle();
+  if (error) throw error;
+  if (!agent) return fail(`Unknown sub-agent: ${payload.slug}`, 404);
+
+  // §9 MUTATION scope — STRICTER than the read-only inspect (the #361/#149 lesson applied to a WRITE):
+  //   • SERVICE-ROLE caller (platform operator) may update ANY agent, incl. a platform default (null).
+  //   • NON-service caller (already proven admin above; tenantId is SERVER-DERIVED, never from the body):
+  //       – its OWN tenant's agent (tenant_id === tenantId) → allowed.
+  //       – a platform default (tenant_id null) → 403 (operator config is off-limits to a tenant; those
+  //         rows are globally visible via inspect/search anyway, so a 403 discloses nothing new).
+  //       – ANOTHER tenant's agent → 404 MASK — never disclose a cross-tenant slug exists (matches the
+  //         invoke path's out-of-scope 404). Closes the cross-tenant existence oracle.
+  if (!isServiceCaller) {
+    if (agent.tenant_id === null) return fail("Not permitted to modify this agent", 403);
+    if (agent.tenant_id !== tenantId) return fail(`Unknown sub-agent: ${payload.slug}`, 404);
+  }
+
+  // Per-agent model routing is a SOFT-runtime capability ONLY today — local agents hardcode their model
+  // downstream and langgraph has no live agent, so a swap there would be a no-op we'd be lying about (§13).
+  if (agent.runtime !== "soft") {
+    return fail(
+      `Per-agent job_kind routing applies only to soft sub-agents today; "${payload.slug}" is runtime='${String(agent.runtime)}'.`,
+      422,
+    );
+  }
+
+  // Resolve the OLD job_kind EXACTLY as invokeSoft/inspect do (raw string → pickRoute; absent → the
+  // default) so before/after tiers are TRUTHFUL, never a cheaper tier than reality (§13). Guard config to
+  // an object first — a spread of a non-object jsonb would corrupt the keys.
+  const cfg = (agent.config && typeof agent.config === "object" && !Array.isArray(agent.config))
+    ? (agent.config as Record<string, unknown>)
+    : {};
+  const oldJobKind = typeof cfg.job_kind === "string" ? cfg.job_kind : DEFAULT_SUBAGENT_JOB_KIND;
+
+  // Merge job_kind into the existing config — PRESERVE every other config key — and bump version. The
+  // update carries an OPTIMISTIC-LOCK guard (.eq version): if a concurrent set/disable already bumped the
+  // row, this matches 0 rows and we return 409 rather than silently losing a write (the filtered-write-
+  // returns-success trap). .select() surfaces the affected count — a filtered update is otherwise silent.
+  const newConfig = { ...cfg, job_kind: jobKind };
+  const nextVersion = (typeof agent.version === "number" ? agent.version : 0) + 1;
+  const { data: updated, error: upErr } = await supabase
+    .from("paige_subagents")
+    .update({ config: newConfig, version: nextVersion })
+    .eq("id", agent.id)
+    .eq("version", agent.version)
+    .select("id");
+  if (upErr) throw upErr;
+  if (!updated || updated.length === 0) {
+    return fail("Agent was modified concurrently — re-read and retry", 409);
+  }
+
+  // §17 governance: an immutable who/when/what trail for the routing-tier change (the old job_kind is
+  // otherwise overwritten with no history). Best-effort — a logging failure must NEVER fail the swap the
+  // caller asked for (§13). Matches the platform paige_audit_log pattern (skill-forge/prompt-forge/mcp).
+  await supabase.from("paige_audit_log").insert({
+    action: "agent_job_kind_set",
+    target_type: "paige_subagents",
+    target_id: agent.id,
+    tenant_id: agent.tenant_id,
+    actor_user_id: (callerId && UUID_RE.test(callerId)) ? callerId : null,
+    actor_role: isServiceCaller ? "service" : "admin",
+    payload: { slug: agent.slug, before: oldJobKind, after: jobKind },
+  }).then(() => {}, () => {});
+
+  return ok({
+    ok: true,
+    slug: agent.slug,
+    before: { job_kind: oldJobKind, tier: pickRoute(oldJobKind as JobKind).tier },
+    after: { job_kind: jobKind, tier: pickRoute(jobKind).tier },
+  });
+}
+
 async function logInvocation(row: Record<string, unknown>) {
   const { data, error } = await supabase
     .from("paige_subagent_invocations")
@@ -345,6 +467,7 @@ async function invokeSoft(
   agent: { slug: string; name: string; system_prompt: string | null; config: Record<string, unknown> | null },
   input: Record<string, unknown>,
   _context: OrchestratorRequest["context"],
+  tenantId: string | null,
 ) {
   if (!agent.system_prompt) return { status: 500, body: { ok: false, error: `Soft agent ${agent.slug} missing system_prompt` } };
   const cfg = (agent.config ?? {}) as Record<string, unknown>;
@@ -355,13 +478,17 @@ async function invokeSoft(
   const jobKind = (typeof cfg.job_kind === "string" ? cfg.job_kind : "internal_first_draft") as JobKind;
   const userPayload = typeof input === "string" ? input : JSON.stringify(input);
   try {
+    // §34-L5 attribution: thread the trace ctx so this routed call lands in paige_llm_trace tagged with
+    // WHICH agent ran it (agent_id is a TEXT column → the stable slug) and the caller's tenant — without
+    // it these rows were writing agent_id=null. A null/absent tenant_id degrades gracefully in the L1
+    // writer (#146/#355), so we never throw on a platform/anon caller. Attribution only — routing unchanged.
     const data = await routedChatCompletion(jobKind, {
       messages: [
         { role: "system", content: agent.system_prompt },
         { role: "user", content: userPayload },
       ],
       max_tokens: 2048,
-    });
+    }, { agent_id: agent.slug, tenant_id: tenantId });
     const answer = (data as { choices?: Array<{ message?: { content?: string } }> })?.choices?.[0]?.message?.content ?? "";
     if (!answer) return { status: 502, body: { ok: false, error: "Model returned no content" } };
     return { status: 200, body: { ok: true, agent: agent.slug, answer } };
@@ -384,7 +511,7 @@ Deno.serve(async (req) => {
   // from an unverified user body. This is the only tenant boundary (service-role client bypasses RLS).
   const scope = await resolveTenantScope(req, payload);
   if ("error" in scope) return fail(scope.error, scope.status);
-  const { tenantId, fundingEnabled, callerId } = scope;
+  const { tenantId, fundingEnabled, callerId, isService } = scope;
   const ctx = { ...payload.context, user_id: payload.context?.user_id ?? callerId ?? undefined };
 
   try {
@@ -397,6 +524,11 @@ Deno.serve(async (req) => {
     if (payload.action === "inspect") {
       const agents = await inspectRoster(payload, tenantId, fundingEnabled, callerId);
       return ok({ ok: true, agents });
+    }
+
+    // §34-L5 / §10: swap a soft agent's routing tier (config.job_kind). §9 WRITE gate lives inside.
+    if (payload.action === "set_agent_job_kind") {
+      return await setAgentJobKind(payload, tenantId, callerId, isService);
     }
 
     if (payload.action !== "tool_invoke") {
@@ -432,6 +564,10 @@ Deno.serve(async (req) => {
     });
 
     let result: { status: number; body: unknown };
+    // §34-L5 / §13 SCOPE NOTE: per-agent model routing (config.job_kind → pickRoute) is wired for SOFT
+    // agents ONLY today — a `local` target hardcodes its model inside its own edge function (unreachable
+    // per-agent from here) and `langgraph` has no live agent. Extending per-agent routing to those runtimes
+    // is a documented follow-up, deliberately NOT faked here (never claim a swap that does nothing, §13).
     if (agent.runtime === "local") {
       if (!agent.edge_function) return fail(`Sub-agent ${agent.slug} has no edge_function configured`, 500);
       result = await invokeLocal(agent.edge_function, payload.input ?? {}, ctx);
@@ -440,6 +576,7 @@ Deno.serve(async (req) => {
         { slug: agent.slug, name: agent.name, system_prompt: agent.system_prompt, config: agent.config },
         payload.input ?? {},
         ctx,
+        tenantId,
       );
     } else {
       if (!agent.langgraph_graph) return fail(`Sub-agent ${agent.slug} has no langgraph_graph configured`, 500);
