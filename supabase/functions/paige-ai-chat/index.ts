@@ -55,11 +55,14 @@ function describeStep(
   switch (name) {
     // Action bus (§8)
     case "action_file": {
-      const toClient = args?.to_department === "client_experience"
-        || /^client\./.test(args?.action_kind ?? "");
-      return toClient
-        ? { label: "Filing this to Client Experience", group: "client", detail: "hand-off" }
-        : { label: "Filing this to Owner Ops", group: "owner", detail: "hand-off" };
+      const dep: string = args?.to_department ?? "";
+      const toClient = dep === "client_experience" || /^client\./.test(args?.action_kind ?? "");
+      if (toClient) return { label: "Filing this to Client Experience", group: "client", detail: "hand-off" };
+      // §16: name the actual destination desk (Marketing, Sales, Finance, …), not always "Owner Ops".
+      const prettyDept = dep
+        ? dep.split(/[_-]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")
+        : "Owner Ops";
+      return { label: `Filing this to ${prettyDept}`, group: "owner", detail: "hand-off" };
     }
     case "action_advance": return { label: "Moving that action forward", group: "owner" };
     case "action_list": return { label: "Checking the team's queue", group: "owner" };
@@ -1650,6 +1653,37 @@ ${buildStudioWhereYouAre(name, tenant)}`.trim()
       console.warn("[paige-ai-chat] persona context resolution failed (defaulting to neutral):", e);
     }
     const fundingEnabled = personaCtx.funding_enabled;
+
+    // ── §16 department registry (10-department org model) ────────────────────
+    // Paige's departments are DATA (paige_departments), not a hardcoded pair. Read
+    // the live registry once so the action-bus tool enums, the display labels, and
+    // the system prompt all source their department set from ONE place (§18) — the
+    // 10-desk "COO for your business" model instead of the 2 legacy desks. Reads
+    // platform-global rows (RLS: any authenticated caller may read enabled depts);
+    // honest-degrades to the two legacy desks if the read ever returns nothing, so
+    // the tools never break (§13).
+    let departments: Array<{ slug: string; name: string; audience: string }> = [];
+    try {
+      const { data: deptRows } = await supabaseClient
+        .from("paige_departments")
+        .select("slug,name,audience")
+        .eq("enabled", true)
+        .order("display_order");
+      departments = (deptRows ?? []) as Array<{ slug: string; name: string; audience: string }>;
+    } catch (e) {
+      console.warn("[paige-ai-chat] department registry read failed (defaulting to legacy 2):", e);
+    }
+    const deptSlugs: string[] = departments.length
+      ? departments.map((d) => d.slug)
+      : ["owner_ops", "client_experience"];
+    const deptNameBySlug: Record<string, string> = Object.fromEntries(
+      departments.map((d) => [d.slug, d.name]),
+    );
+    // "Owner Ops (owner_ops) · Marketing (marketing) · …" — the roster line Paige sees
+    // so she can route work to the right desk by name.
+    const deptRosterLine: string = departments.length
+      ? departments.map((d) => `${d.name} (${d.slug})`).join(" · ")
+      : "Owner Ops (owner_ops) · Client Experience (client_experience)";
 
     // The funding/capital-raising brain is preserved verbatim as an OPT-IN skill
     // (marketplace, #9/#66) — gated behind fundingEnabled so it is NEVER the
@@ -3689,12 +3723,12 @@ The current user is an ADMIN or COACH operating the Paige CRM. You have full rea
 
 Always resolve names/emails to client_id via crm_search_contacts before calling crm_get_contact_summary, crm_update_pipeline_stage, or crm_log_activity. Present results as concise operator briefings — counts, names, dollar amounts, last-touch dates — never raw JSON. When the operator asks about a specific customer, lead with: lifecycle stage, assigned coach, open deal value, last activity, and the next recommended action. You are their CRM co-pilot, not just a chat assistant.
 
-ACTION BUS — you run a team of two departments: Owner Ops (works for the coach) and Client Experience (works for each client). They hand work to each other on your action bus. When work needs to move — a follow-up to send, an at-risk client to flag, a task to queue — file it and drive it:
+ACTION BUS — you run the business's departments and route work between them on your action bus. Your departments: ${deptRosterLine}. Owner Ops works for the coach/consultant/agency and Client Experience works for each client; the specialist desks (marketing, sales, finance, operations, and the rest) own their own lane of work. When work needs to move — a follow-up to send, an at-risk client to flag, a campaign to draft, a task to queue — file it to the department that owns it and drive it:
 - action_file starts a tracked hand-off (pick the action_kind: owner.followup_email, client.followup, client.at_risk, owner.task, owner.onboarding_nudge, client.portal_recommendation, etc.).
 - action_advance moves it: assign a sub-agent (e.g. email-composer), attach a draft (to_status='drafted'), or dismiss it. Attaching a draft to a send-type kind AUTO-FILES it into the coach's approval lane — you never send directly; the coach approves and the platform sends.
 - action_list / action_get show open work. Narrate what you're doing as you file and draft ("Filing a follow-up to Owner Ops… drafting it… routed to you for approval"), so the operator watches you work.
 
-YOUR TEAM — you are the brain, you never grind alone. You conduct a team of specialist sub-agents across two departments: Owner Ops (works for the coach/consultant/agency — pipeline, follow-ups, retention, retainers, campaigns, the daily brief) and Client Experience (works for each client — onboarding, discovery, answers, nurture), plus a shared bench (research, design, scheduling). When a real job arrives, FIRST call list_subagents to see who you already have, then delegate_to_subagent to the right specialist. Delegate by default; you integrate the results — you don't do the heavy lift yourself.
+YOUR TEAM — you are the brain, you never grind alone. You conduct a team of specialist sub-agents across the business's departments: Owner Ops (works for the coach/consultant/agency — pipeline, follow-ups, retention, retainers, campaigns, the daily brief) and Client Experience (works for each client — onboarding, discovery, answers, nurture), plus the specialist desks (marketing, sales, product/curriculum, technology, finance, people, legal, operations) and a shared bench (research, design, scheduling). When a real job arrives, FIRST call list_subagents to see who you already have, then delegate_to_subagent to the right specialist. Delegate by default; you integrate the results — you don't do the heavy lift yourself.
 SPINNING UP A NEW SPECIALIST — only when the roster genuinely lacks the capability, use forge_subagent to create one designed to do that one thing at a high level. Describe it in this practice's own domain terms using ARCHETYPES ("a client", "the contact", "their business") — never a real person's or company's name. A soft agent is definable purely from a system prompt over tools the team already has — it joins the team immediately. A hard agent needs brand-new backend capability — it's filed for an admin in the Approvals Hub and does NOT go live from this chat. REPORT HONESTLY: if it came back soft-shipped, say it's ready and what it does; if it's a hard proposal, say it's queued for approval and will join once approved — never call a pending agent "ready." Never speak a slug or internal name to the operator. Keep the platform's default team coaching/consulting/agency-generic — never forge or describe a credit/funding/lending specialist unless THIS tenant has that offer enabled; if they haven't and they ask, tell them it's an offer they can turn on, don't force it.
 
 AUTOMATIONS (n8n) — if the workspace has connected an n8n account, you have the FULL n8n lifecycle across all their tools: list, get, executions, run, execution_get, validate, create, update, activate, deactivate, archive, delete. n8n_list_workflows shows what exists; n8n_get_executions shows a workflow's run history. n8n_run_workflow FIRES a workflow that has a webhook trigger. Firing is not sending — the tool tells you both, separately, and you never blur them (see AUTOMATION HONESTY below): pass the workflow_id (or its webhook_path) and a payload the workflow expects. So when the operator says "send my workflow list to Telegram" and they have a Telegram-send workflow in n8n, you CAN fire it — but you report what came back, not what you hoped. You can VERIFY a run with n8n_execution_get, DRY-CHECK a design with n8n_validate_workflow before building, turn automations on/off (n8n_activate_workflow / n8n_deactivate_workflow), author or edit them (n8n_create_workflow / n8n_update_workflow — created OFF until activated), and lifecycle-manage with n8n_archive_workflow (reversible, your default) or n8n_delete_workflow (permanent, only on an explicit "delete"). All mutating actions follow the propose→confirm rule unless the workspace set them to autopilot — then you act without the pause, but honesty is NOT autopilot-exempt: even acting on your own you report the true outcome, never a hoped-for one. Validate before you build so a malformed graph gives you specifics to self-repair, not a dead end. The workflow must be active for its webhook to respond; if it's off, offer to turn it on first. If no n8n is connected, the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it ran.
@@ -4559,7 +4593,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   title: { type: "string", description: "Short title for the action." },
                   summary: { type: "string", description: "Optional why/context." },
                   contact_id: { type: "string", description: "clients.id this action is about (optional)." },
-                  to_department: { type: "string", enum: ["owner_ops", "client_experience"], description: "Optional; defaults from the kind." },
+                  to_department: { type: "string", enum: deptSlugs, description: "Optional; the department that owns/acts on this. Defaults from the kind. One of Paige's departments." },
                   priority: { type: "string", enum: ["low", "normal", "high", "urgent"] }
                 },
                 required: ["action_kind", "title"]
@@ -4592,7 +4626,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               parameters: {
                 type: "object",
                 properties: {
-                  to_department: { type: "string", enum: ["owner_ops", "client_experience"] },
+                  to_department: { type: "string", enum: deptSlugs, description: "Filter to one department's queue. One of Paige's departments." },
                   status: { type: "string", enum: ["filed", "assigned", "drafting", "drafted", "pending_approval", "approved", "executing", "done", "dismissed", "blocked"] },
                   contact_id: { type: "string", description: "clients.id to filter to one client." },
                   limit: { type: "number", description: "Max results (default 50, cap 200)." }
@@ -5244,7 +5278,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   description: { type: "string", description: "One line describing when this activity happens." },
                   audience: { type: "string", enum: ["owner", "client", "both"], description: "Who this activity is meant for: the staff/owner, the client, or both." },
                   visibility: { type: "string", enum: ["owner_internal", "client_visible"], description: "owner_internal keeps it staff-only; client_visible lets the client see it in their portal." },
-                  department: { type: "string", enum: ["owner_ops", "client_experience"], description: "Optional. Which of Paige's teams owns this activity — owner_ops (business side) or client_experience (client side). Leave out if it doesn't clearly belong to one." }
+                  department: { type: "string", enum: deptSlugs, description: "Optional. Which of Paige's departments owns this activity. Leave out if it doesn't clearly belong to one." }
                 },
                 required: ["slug", "label", "audience", "visibility"]
               }
@@ -6006,7 +6040,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "Couldn't load the activity kinds right now. Tell the operator you hit a snag and offer to try again." }) });
             } else {
               const rows = Array.isArray(kindRows) ? kindRows : [];
-              const DEPT_LABEL: Record<string, string> = { owner_ops: "Business team", client_experience: "Client team" };
+              // §16: department display names come from the live registry, not a 2-entry hardcode.
+              const DEPT_LABEL: Record<string, string> = deptNameBySlug;
               const kinds = rows
                 .filter((r: any) => r?.enabled !== false)
                 .map((r: any) => ({
