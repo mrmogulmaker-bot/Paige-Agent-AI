@@ -23,6 +23,14 @@ export { captureToMemory, type CaptureParams } from "../prompt-forge.ts";
  * LLM call — the judge's/generator's actual LLM calls trace themselves separately (via callModel), and a
  * reader filters the two apart or reassembles the tree by task_id. Best-effort/detached: traceLLMCall
  * never throws, so this can never break the reasoning loop (§13).
+ *
+ * EVALUATOR CONTRACT (so the status stays honest, §13/§34-L1): the status enum is success|error|
+ * needs_config — there is no "degraded" bucket. The engine treats BOTH a null verdict AND a needsConfig
+ * verdict as a break-and-accept degrade (engine.ts), so to keep the flight recorder's error rate honest,
+ * a reasoning `evaluate` MUST signal an INTENTIONAL degrade with a needsConfig verdict (→ needs_config),
+ * and return `null` ONLY on a genuine evaluator failure (a throw/unparseable result). Under that contract
+ * null→"error" is truthful. The visual-critique adapter already follows it (it returns null on invoke
+ * error, needsConfig on an unconfigured critic).
  */
 export function reasoningOnTrace(ctx: TraceCtx) {
   return (phase: string, row: { iteration: number; verdict: ReasoningVerdict | null; spentUsd: number }): void => {
@@ -33,10 +41,15 @@ export function reasoningOnTrace(ctx: TraceCtx) {
       model: "runReasoning",
       job_kind: ctx.job_kind ?? `reason:${phase}`,
       modality: "reasoning",
-      // Honest status: no verdict → the evaluator degraded/errored; needsConfig → an honest
-      // not-configured degrade; otherwise the step produced a real verdict.
+      // Honest status per the evaluator contract above: null → a genuine evaluator failure (error);
+      // needsConfig → an honest not-configured/intentional degrade; otherwise a real produced verdict
+      // (incl. BLOCK — the STEP succeeded even when the artifact was blocked; the call is in output.verdict).
       status: !v ? "error" : v.needsConfig ? "needs_config" : "success",
-      cost_estimate_usd: typeof row.spentUsd === "number" ? row.spentUsd : null,
+      // NOTE: the engine fires onTrace BEFORE folding this step's costUsd into `spent`, so this is the
+      // RUNNING spend observed BEFORE this step's own eval cost (iteration 0 is always 0). Per-call cost
+      // lives on the separate callModel rows — summing reasoning-engine rows undercounts by one step by
+      // design (it avoids double-counting the eval's own LLM spend).
+      cost_estimate_usd: row.spentUsd,
       // The reasoning OUTPUT of this step — the verdict + findings (scrubbed + truncated by the writer).
       output: v
         ? { verdict: v.verdict, capped: v.capped, lowConfidence: v.lowConfidence, refinedInstruction: v.refinedInstruction, findings: v.findings }
