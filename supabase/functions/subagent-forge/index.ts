@@ -4,6 +4,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { looksLikeFinanceAgent } from "../_shared/finance-gate.ts";
+import { isJobKind, DEFAULT_SUBAGENT_JOB_KIND } from "../_shared/model-router.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -132,6 +133,29 @@ function validateProposal(p: Record<string, unknown>) {
       );
     }
   }
+
+  // §34-L5: normalize + validate config.job_kind — the routing key invokeSoft reads to pick the
+  // agent's cost/quality tier via the model-router. ABSENT → default it to internal_first_draft
+  // (an internal draft Paige integrates). PRESENT-but-invalid → REJECT (422): a silent typo would
+  // mis-route the agent (e.g. downgrade a client-facing final to a cheap open model), so we reject
+  // rather than swallow it. isJobKind/DEFAULT_SUBAGENT_JOB_KIND come from the model-router — the ONE
+  // source of truth, so author-time validation can never skew from invoke-time routing (§18).
+  // A PRESENT config must be a plain object — a string/array/number is malformed and would be
+  // silently dropped, so REJECT it (422) rather than swallow it (§13). Absent config → fresh {}.
+  const configPresent = p.config !== undefined && p.config !== null;
+  const configIsObject = configPresent && typeof p.config === "object" && !Array.isArray(p.config);
+  if (configPresent && !configIsObject) {
+    errors.push(`config must be an object, got ${Array.isArray(p.config) ? "array" : typeof p.config}`);
+  }
+  const cfg = configIsObject ? (p.config as Record<string, unknown>) : {};
+  if (cfg.job_kind === undefined || cfg.job_kind === null) {
+    cfg.job_kind = DEFAULT_SUBAGENT_JOB_KIND;
+  } else if (!isJobKind(cfg.job_kind)) {
+    errors.push(`config.job_kind "${String(cfg.job_kind)}" is not a known job_kind`);
+  }
+  // Persist the normalized config back onto the body so the default rides through to the row
+  // (actionPropose inserts body.config). On a validation error the caller returns before insert.
+  (p as Record<string, unknown>).config = cfg;
 
   return { slug, runtime, errors };
 }

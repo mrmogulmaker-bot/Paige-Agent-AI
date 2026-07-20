@@ -40,9 +40,35 @@ export type JobKind =
 const CHEAP_KINDS = new Set<JobKind>([
   "classify", "extract", "summarize", "score", "tone_check", "internal_first_draft",
 ]);
+// The middle band of the union — Claude reasoning tier, but not side-effecting/sensitive. Named as
+// its own set (not inline literals) so JOB_KINDS below is COMPOSED from all three bands and can
+// never silently omit a member as the union grows.
+const REASONING_KINDS = new Set<JobKind>([
+  "chat", "plan", "propose", "doc_draft",
+]);
 const SENSITIVE_KINDS = new Set<JobKind>([
   "approval_decision", "outbound_final", "client_copy_final", "action_decision",
 ]);
+
+// The complete runtime set of valid JobKinds — the JobKind union is compile-time only, so this is
+// the ONE source of truth a runtime caller (e.g. the subagent-forge config.job_kind validator, §34-L5)
+// checks against, so a silent typo can't mis-route an agent. Read-only + ADDITIVE: it changes no
+// routing behavior. Composed FROM the three band sets so it can never drift from them — a new
+// JobKind added to any band is automatically a member here.
+export const JOB_KINDS: ReadonlySet<JobKind> = new Set<JobKind>([
+  ...CHEAP_KINDS,
+  ...REASONING_KINDS,
+  ...SENSITIVE_KINDS,
+]);
+
+/** Runtime type-guard: is `v` a valid JobKind? The one validator a caller should use. */
+export function isJobKind(v: unknown): v is JobKind {
+  return typeof v === "string" && JOB_KINDS.has(v as JobKind);
+}
+
+/** The default job_kind for a soft sub-agent when none is set — its output is an internal draft
+ *  Paige integrates/reviews (open-model-eligible). Mirrors invokeSoft's inline default (§14). */
+export const DEFAULT_SUBAGENT_JOB_KIND: JobKind = "internal_first_draft";
 
 export interface Route {
   provider: "anthropic" | "featherless";
