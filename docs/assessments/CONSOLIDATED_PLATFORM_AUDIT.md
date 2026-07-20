@@ -51,6 +51,7 @@
 - ✅ **PLATFORM_ASSESSMENT §2/#206 funding cross-tenant leak** — CLOSED as part of #149 orchestrator fix (folded in, verified live).
 - ✅ **Silent-drop on paige_llm_trace tenant_id FK** — CLOSED via #146 (Cowork-flagged this session, Claude Code diagnosed + fixed).
 - ✅ **Orchestrator §9 IDOR + PostgREST injection** — CLOSED via #149.
+- ✅ **Lane A2 Finding 1 — kb-search cross-tenant private-KB read IDOR** — CLOSED (PR #167). `match_tenant_knowledge` was SECURITY DEFINER + GRANTed to `authenticated` + filtered on caller-supplied `p_tenant_id`; any authenticated user could read another tenant's private Tier-2 KB chunks. Fixed with the #149/#361 JWT-caller guard + the edge fn now derives tenant from `current_user_tenant_id()` (never body). §32-verified live (own allowed / foreign 42501 / service-role trusted); both crew auditors returned SHIP. Out-of-scope siblings filed: #380 (Studio drafters' service-role guard bypass), #381 (kb-ingest-doc write side), #382 (or-filter sanitization).
 
 **Net-new since prior audits (this session):**
 - L1 flight recorder + L1.1 text-path tracing (live and receiving rows)
@@ -69,7 +70,7 @@
 - **PLATFORM_ASSESSMENT C1 (password reset queued to Lovable worker that was never deployed).** Still open.
 - **PLATFORM_ASSESSMENT C2 (QuickBooks OAuth callback 401s + unsigned state).** Still open.
 - **PLATFORM_ASSESSMENT D1 (client portal cannot read own tenant's Playbook — every client sees generic default).** Still open — ~30 lines of SQL per the audit.
-- **PLATFORM_ASSESSMENT D2 (action bus has no drainer — no worker/cron picks up filed actions).** Still open. This is §8 in Antonio's doctrine.
+- ~~**PLATFORM_ASSESSMENT D2 (action bus has no drainer).**~~ ✅ **CLOSED** — §8 drainer shipped (#164/#165), paige-action-worker on a */2 cron, post-deploy runtime check confirmed fired + succeeded. This was the last brain layer.
 - **PLATFORM_ASSESSMENT §2 violations (QuickStatsBar unconditional, OnboardingFlow credit-repair modal, Terms/Privacy CROA disclaimer, /app/credit routes unguarded).** Partially addressed via task #7 verticalization compliance debt (currently deferred per brain-first rule).
 - **DRIFT_AUDIT C2 (`provision_tenant` loses agreement gate on rebuild) + C3 (`revoke_platform_access` re-widens on rebuild).** Latent regressions — prod correct, git armed to undo. Still open.
 - **DRIFT_AUDIT H1 (agency_team_roles exists only in prod — 5 rows, 7 RPCs).** Still open — data loss on rebuild.

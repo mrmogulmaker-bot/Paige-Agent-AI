@@ -11,11 +11,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// §9: NO tenant_id field — the tenant is ALWAYS derived from the caller's own identity, never
+// trusted from the body (a body tenant_id was the cross-tenant KB-read IDOR). Zod strips any
+// tenant_id a stale caller still sends.
 const BodySchema = z.object({
   query: z.string().min(2).max(2000),
   match_count: z.number().int().min(1).max(20).optional(),
   intent_tags: z.array(z.string().max(40)).max(10).optional(),
-  tenant_id: z.string().uuid().optional(),
 });
 
 async function sha256(s: string): Promise<string> {
@@ -62,7 +64,6 @@ serve(async (req) => {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const userId = claims.claims.sub as string;
 
     const body = BodySchema.safeParse(await req.json());
     if (!body.success) {
@@ -73,12 +74,16 @@ serve(async (req) => {
     const { query, intent_tags } = body.data;
     const matchCount = body.data.match_count ?? 6;
 
-    let tenantId = body.data.tenant_id ?? null;
-    if (!tenantId) {
-      const { data: prof } = await admin
-        .from("profiles").select("active_tenant_id").eq("user_id", userId).maybeSingle();
-      tenantId = prof?.active_tenant_id ?? null;
-    }
+    // §9: derive the tenant from the CALLER via the hardened resolver (validates membership /
+    // agency / platform-admin against auth.uid()), on the user-scoped client so auth.uid() is the
+    // caller. Never from the request body. current_user_tenant_id() returns the caller's validated
+    // active tenant (or their oldest active membership), or NULL if they have none.
+    const { data: resolvedTenant, error: tenantErr } = await supabase.rpc("current_user_tenant_id");
+    // §13: log a resolver failure loudly rather than silently degrading to global-only results —
+    // the degrade is still SAFE (no tenant search → never a foreign read), but an unexpected error
+    // here is a real signal, not "no tenant". Never swallow it.
+    if (tenantErr) console.warn("[kb-search] current_user_tenant_id:", tenantErr.message);
+    const tenantId = (resolvedTenant as string | null) ?? null;
 
     const queryVec = await embed(query);
 
