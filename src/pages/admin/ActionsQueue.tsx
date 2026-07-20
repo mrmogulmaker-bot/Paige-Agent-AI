@@ -39,13 +39,16 @@ type ActionRow = {
 
 // The bus lifecycle, in order — the filter chips + the KPI "open" grouping key off this.
 const STATUSES = [
-  "filed", "drafting", "drafted", "pending_approval", "approved", "executing", "done", "blocked", "failed", "dismissed",
+  "filed", "assigned", "drafting", "drafted", "pending_approval", "approved", "executing",
+  "done", "blocked", "failed", "dismissed", "expired",
 ] as const;
-const OPEN_STATUSES = new Set(["filed", "drafting", "drafted", "pending_approval", "approved", "executing"]);
+const OPEN_STATUSES = new Set(["filed", "assigned", "drafting", "drafted", "pending_approval", "approved", "executing"]);
 const ATTENTION_STATUSES = new Set(["blocked", "failed"]);
 
 const STATUS_TONE: Record<string, string> = {
   filed: "text-muted-foreground",
+  assigned: "text-[hsl(var(--ring))]",
+  expired: "text-muted-foreground",
   drafting: "text-[hsl(var(--ring))]",
   drafted: "text-[hsl(var(--ring))]",
   pending_approval: "text-[hsl(var(--warning))]",
@@ -60,6 +63,14 @@ const STATUS_TONE: Record<string, string> = {
 function humanize(s?: string | null): string {
   if (!s) return "—";
   return s.replace(/[_-]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+}
+
+// Kinds are dotted internal slugs (e.g. "sales.work_followup"). The department is already shown in the
+// Route column, so render just the readable action — never the raw slug as product UI (§11).
+function prettyKind(slug?: string | null): string {
+  if (!slug) return "—";
+  const action = slug.includes(".") ? slug.slice(slug.indexOf(".") + 1) : slug;
+  return humanize(action);
 }
 
 export default function ActionsQueue() {
@@ -167,7 +178,7 @@ export default function ActionsQueue() {
                 <ArrowRight className="mx-1 inline h-3 w-3" aria-hidden />
                 <span>{humanize(r.to_department)}</span>
               </TableCell>
-              <TableCell className="text-sm text-muted-foreground">{r.action_kind}</TableCell>
+              <TableCell className="text-sm text-muted-foreground" title={r.action_kind}>{prettyKind(r.action_kind)}</TableCell>
               <TableCell className="text-sm">
                 <span className={STATUS_TONE[r.status] ?? "text-muted-foreground"}>{humanize(r.status)}</span>
               </TableCell>

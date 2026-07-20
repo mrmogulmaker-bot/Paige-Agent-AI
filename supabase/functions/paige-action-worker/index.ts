@@ -35,7 +35,13 @@ const jsonHeaders = { ...corsHeaders, "Content-Type": "application/json" };
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ORCHESTRATOR_URL = `${SUPABASE_URL}/functions/v1/paige-orchestrator`;
-const BATCH_LIMIT = 25;
+// INVARIANT: BATCH_LIMIT × INVOKE_TIMEOUT_MS must stay well under claim_filed_actions' 10-min self-heal
+// window. Rows are stamped assigned_at at claim time but drafted serially, so the last row in a batch
+// sits 'drafting' for up to (BATCH_LIMIT × INVOKE_TIMEOUT) before it's reached. 5 × 55s ≈ 4.6 min < 10 min
+// keeps a legitimately-in-flight row from being self-healed and re-claimed under a concurrent tick. (The
+// advance_action approval insert is also idempotent now, so even a race can't double-draft — this just
+// avoids the wasted re-invoke.) At */2 that's up to 150 drafts/hr, ample for the current volume.
+const BATCH_LIMIT = 5;
 const INVOKE_TIMEOUT_MS = 55_000;
 
 function json(body: unknown, status = 200): Response {

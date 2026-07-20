@@ -512,7 +512,7 @@ const Admin = () => {
           <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
         } />
         <Route path="actions" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><ActionsQueue /></Suspense></AdminOnly>
+          <RoleGate allow={["admin"]} allowPlatformStaff><Suspense fallback={<SuspenseFallback />}><ActionsQueue /></Suspense></RoleGate>
         } />
         <Route path="integrations" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><IntegrationsHub /></Suspense></AdminOnly>

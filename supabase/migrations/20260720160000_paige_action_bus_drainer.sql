@@ -26,9 +26,13 @@ CREATE INDEX IF NOT EXISTS idx_pa_drain ON public.paige_actions (filed_at) WHERE
 
 -- ── claim_filed_actions — atomically claim a batch of draft-eligible filed actions ────────────────
 -- Returns { ok, claimed: [ {id, tenant_id, action_kind, contact_id, conversation_id, title, summary,
--- payload, draft_subagent_slug} ] }. Only claims actions whose KIND has a draft_subagent_slug (the ones
--- that actually need an AI draft); record_only / surface_to_client kinds with no draft agent are left
--- for advance_action's own auto/human paths and are NOT swept here. Highest priority first, oldest first.
+-- payload, draft_subagent_slug} ] }. Only claims actions whose KIND is enabled AND has a
+-- draft_subagent_slug (the ones that actually need an AI draft); record_only / surface_to_client kinds
+-- with no draft agent are left for advance_action's own auto/human paths and are NOT swept here.
+-- §16 tier-honoring: a row whose resolved autonomy_lane is 'off' (human-only / AI-briefed) is SKIPPED —
+-- Paige does not draft work a tenant designated human-only. The lane is read from the ROW
+-- (paige_file_action stamps it per-tenant via paige_resolve_autonomy), so a tenant's override wins.
+-- Highest priority first, oldest first.
 CREATE OR REPLACE FUNCTION public.claim_filed_actions(p_limit int DEFAULT 25)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
@@ -54,7 +58,9 @@ BEGIN
     FROM public.paige_actions a
     JOIN public.paige_action_kinds k ON k.slug = a.action_kind
     WHERE a.status = 'filed'
+      AND k.enabled
       AND k.draft_subagent_slug IS NOT NULL
+      AND a.autonomy_lane IS DISTINCT FROM 'off'   -- §16: never draft a human-only action
     ORDER BY
       CASE a.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
       a.filed_at ASC
@@ -85,6 +91,10 @@ BEGIN
 END $$;
 
 -- ── fail_action — terminal error state so a stuck draft surfaces in the queue, never dies silent ──
+-- Only fails a row still in 'drafting' — the state the worker's own claim put it in. If the row already
+-- advanced past drafting (e.g. advance_action committed but its response was lost, so the worker's outer
+-- catch calls fail_action), this is a no-op instead of clobbering a legitimately drafted/pending_approval
+-- row and orphaning its approval (§13 honest state).
 CREATE OR REPLACE FUNCTION public.fail_action(p_action_id uuid, p_error text)
 RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
@@ -99,7 +109,7 @@ BEGIN
      SET status = 'blocked',
          error  = left(COALESCE(p_error, 'draft failed'), 1000)
    WHERE id = p_action_id
-     AND status NOT IN ('done', 'dismissed', 'expired')
+     AND status = 'drafting'
   RETURNING * INTO _row;
 
   IF _row.id IS NULL THEN
