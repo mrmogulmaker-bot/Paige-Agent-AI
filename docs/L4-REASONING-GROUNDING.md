@@ -71,12 +71,27 @@ the `ReasoningVerdict` type + the `onTrace` hook (≈4–6 days per the report).
 |---|---|---|---|---|
 | 1. Strategic Pre-Reasoning | absent (forge does the nearest: template + brand-token + anti-pattern steering) | — | can seed with `recallSimilar` past wins | **net-new (thin)** |
 | 2. Pre-Work Self-Reflection | absent (Reflexion is the model) | — | reflection note → L1 | **net-new** |
-| 3. Multi-Specialist Review | single critic = the 1-specialist case | **plug point:** `paige-orchestrator.searchSubagents`+`tool_invoke` already select/invoke registered agents, §9-scoped | each specialist verdict → L1 with `parent_trace_id` | **partially built** |
+| 3. Multi-Specialist Review | single critic = the 1-specialist case | ~~plug point: `tool_invoke`~~ → **SHIPPED as fixed frontier lenses** (see decision note) | each specialist verdict → L1 with `parent_trace_id` | **SHIPPED** (`_shared/reasoning/review.ts`) |
 | 4. Bounded Iteration | **fully built** (the gate loop + caps) | — | each iteration → L1 via `onTrace` | **built (the seed)** |
 | 5. Learning Capture | absent | — | **`prompt-forge.captureToMemory` is the exact primitive** (honest-on-success, voyage-3/1024, explicit tenant_id); L1 = `traceLLMCall` | **built primitives, unwired** |
 
 Net-new: phases 1–2. Partially built: 3 (single→multi). Built + reusable: 4 (loop) and 5 (`captureToMemory`
 / `traceLLMCall` — L4 just calls them on a SHIP verdict).
+
+### Phase-3 design decision (SHIPPED 2026-07-20) — fixed frontier lenses, NOT `tool_invoke`
+
+The row above originally named `paige-orchestrator.searchSubagents`+`tool_invoke` as the phase-3 plug
+point. **The shipped `review.ts` deliberately does NOT use `tool_invoke`, and a future session must not
+"complete" it by wiring `tool_invoke` in.** Reason (§17): `paige-orchestrator.invokeSoft` defaults soft
+agents to `job_kind="internal_first_draft"`, which is **open-model-eligible** — routing a *judgment*
+through `tool_invoke` could produce an open-model verdict, exactly what §17's frontier-only-judge rule
+forbids. `tool_invoke` also *dispatches* real edge/langgraph agents (cost + side effects + a
+`paige_subagent_invocations` row), whereas a review must be a read-only opinion. So phase-3 = **N fixed
+frontier reasoning lenses** (`CORE_PANEL`: correctness · completeness · risk), each one
+`routedChatCompletion("plan", …)` (frontier-only by construction, like `vision-critique`), pure, no
+registry call. Registered-agent discovery via the orchestrator's **read-only `tool_search`** to *inform
+which lenses to instantiate* remains a possible future enhancement — but `tool_invoke` in the verdict
+path is a rejected design, not a TODO.
 
 ## 4. §17/§34 constraints — inherited for free
 
@@ -111,7 +126,8 @@ sees no contract change.
 - **Net-new:** `_shared/reasoning/engine.ts` (`runReasoning` + `ReasoningVerdict`).
 - **Refactor (behavior-preserving):** `critiqueImageAndIterate` → adapter over `runReasoning`.
 - **New reasoning callers (layered, opt-in):** Strategic Pre-Reasoning (phase 1) + Pre-Work Self-Reflection
-  (phase 2) + Multi-Specialist fan-out (phase 3, via `paige-orchestrator` registry). Phases 4–5 are lifts.
+  (phase 2) + Multi-Specialist fan-out (phase 3, **fixed frontier lenses — NOT the `tool_invoke` registry**;
+  see the phase-3 decision note in §3). Phases 4–5 are lifts.
 - **Hard gates:** §18 (this doc authorizes) · §31 (real reasoning traces to `paige_llm_trace`, no mocks) ·
   §13 (honest degrade, fail-open critic) · §14 (crew) · §34 (no vendor SDK — already clean) · §17
   (frontier-only judge modality).
