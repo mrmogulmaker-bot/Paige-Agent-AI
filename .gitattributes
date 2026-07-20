@@ -1,0 +1,24 @@
+# Normalize line endings to LF in the repo (root cause of the recurring 40+-file CRLF "drift" that
+# showed as uncommitted changes with an empty `git diff -w`). Policy-only: this governs newly-added and
+# touched files; it does NOT renormalize the whole tree on checkout, so it introduces no mass diff.
+* text=auto eol=lf
+
+# Binary assets — never touch line endings or diff as text.
+*.glb    binary
+*.gltf   binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.webp   binary
+*.ico    binary
+*.pdf    binary
+*.docx   binary
+*.xlsx   binary
+*.woff   binary
+*.woff2  binary
+*.ttf    binary
+*.otf    binary
+*.mp4    binary
+*.webm   binary
+*.wasm   binary

@@ -9,6 +9,13 @@
 // GATED OFF BY DEFAULT: the caller only runs this when STUDIO_VISUAL_CRITIQUE_ENABLED === "true" AND
 // the renderer/model are configured. With the flag unset the whole loop is skipped — zero behavior
 // change (§13/§32: no live behavior means nothing to have mis-verified).
+//
+// §34 L4 (Slice 1): the loop logic now lives in the GENERAL engine (_shared/reasoning/engine.ts,
+// runReasoning). This file is the VISUAL adapter over it — `critiqueImageAndIterate` keeps its exact
+// signature + CritiqueResult so its one live caller (paige-ai-chat) is byte-for-byte unchanged; it just
+// injects the visual `generate` (regenerate) + `evaluate` (studio-visual-critique invoke) into the
+// engine. §30 "reference the part that works": the proven loop is generalized, not cloned.
+import { runReasoning, type ReasoningVerdict } from "./reasoning/engine.ts";
 
 export interface CritiqueResult {
   ok: boolean;
@@ -56,42 +63,50 @@ export async function critiqueImageAndIterate<T extends { url?: string }>(opts: 
   regenerate: (refinedPrompt: string) => Promise<T | null>;
 }): Promise<{ image: T; critique: CritiqueResult | null }> {
   const { client, brief, tenantId, regenerate } = opts;
-  let image = opts.image;
-  let critique: CritiqueResult | null = null;
+  // The last CritiqueResult the evaluator returned — preserved so the return shape is IDENTICAL to the
+  // pre-L4 gate (the caller reads `critique` as the raw studio-visual-critique payload).
+  let lastCritique: CritiqueResult | null = null;
 
-  const MAX = Number(Deno.env.get("STUDIO_CRITIQUE_MAX_ITERATIONS") ?? "3");
-  let spent = 0;
-
-  try {
-    for (let iteration = 0; iteration < MAX; iteration++) {
-      if (!image?.url) break;
+  const result = await runReasoning<T>({
+    initial: opts.image,
+    // Replaces the old `!image?.url` viability check — an image is worth critiquing only with a url.
+    isViable: (img) => !!img?.url,
+    // The visual "generate" plug — regenerate from the critic's refined prompt.
+    generate: (refined) => regenerate(refined),
+    // The visual "evaluate" plug — invoke the studio-visual-critique edge fn and map its CritiqueResult
+    // onto the engine's ReasoningVerdict. NOTE: no onTrace is wired — this evaluator is an edge fn that
+    // already traces its own LLM call (callModel), so tracing here too would double-count (§34 L1).
+    evaluate: async (img, iteration, spentUsd): Promise<ReasoningVerdict | null> => {
       const { data, error } = await client.functions.invoke("studio-visual-critique", {
         body: {
-          image_url: image.url,
+          image_url: img.url,
           artifact_kind: "image",
           brief,
           iteration,
-          spent_usd: spent,
+          spent_usd: spentUsd,
           ...(tenantId ? { tenant_id: tenantId } : {}),
         },
       });
-      if (error) { console.error("[visual-critique-gate] invoke error:", error); break; }
-      critique = (data ?? null) as CritiqueResult | null;
-      if (!critique?.ok) break; // needs_config / degrade — accept what we have (§13)
-      spent = typeof critique.spent_usd === "number" ? critique.spent_usd : spent;
+      if (error) {
+        console.error("[visual-critique-gate] invoke error:", error);
+        lastCritique = null; // matches the old behavior: an invoke error left `critique` unassigned
+        return null;
+      }
+      const c = (data ?? null) as CritiqueResult | null;
+      lastCritique = c; // the old loop assigned `critique` right after a successful invoke, even on !ok
+      if (!c || !c.ok) return null; // needs_config / degrade — engine breaks, accept what we have (§13)
+      return {
+        verdict: c.verdict ?? "ITERATE",
+        refinedInstruction: c.refined_prompt,
+        // spent_usd is the RUNNING total from the critic — the engine threads it exactly as the gate did.
+        costUsd: typeof c.spent_usd === "number" ? c.spent_usd : undefined,
+        capped: c.capped,
+        lowConfidence: c.low_confidence,
+        needsConfig: c.needs_config,
+        findings: { blockers: c.blockers, should_fix: c.should_fix, nits: c.nits, cheesy_tells_hit: c.cheesy_tells_hit },
+      };
+    },
+  });
 
-      if (critique.verdict === "SHIP" || critique.capped) break;
-      const refined = (critique.refined_prompt ?? "").trim();
-      if (!refined) break; // ITERATE/BLOCK with no actionable prompt — stop, don't spin
-
-      const next = await regenerate(refined);
-      if (!next?.url) break; // regenerate failed — keep the last good image (§13)
-      image = next;
-    }
-  } catch (e) {
-    // The loop is an ENHANCEMENT — a failure here must never break the generation the user asked for.
-    console.error("[visual-critique-gate] loop error (non-fatal):", e);
-  }
-
-  return { image, critique };
+  return { image: result.artifact, critique: lastCritique };
 }
