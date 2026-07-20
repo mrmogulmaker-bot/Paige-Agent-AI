@@ -182,6 +182,7 @@ const adminNavItems = [
 const GOD_HUBS: Hub[] = [
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
+  { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain },
   { label: "Contacts", href: "/admin/contacts", icon: Contact, aliases: ["/admin/leads"] },
   { label: "Calendar", href: "/admin/calendar", icon: CalendarDays, aliases: ["/admin/bookings"] },
   { label: "Planning", href: "/admin/planning", icon: CalendarClock, aliases: ["/admin/tasks"] },
@@ -222,6 +223,7 @@ const GOD_MORE: MoreItem[] = [
 const GOD_STAFF_HUBS: Hub[] = [
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
+  { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain },
   { label: "Calendar", href: "/admin/calendar", icon: CalendarDays, aliases: ["/admin/bookings"] },
   { label: "Planning", href: "/admin/planning", icon: CalendarClock, aliases: ["/admin/tasks"] },
 ];
