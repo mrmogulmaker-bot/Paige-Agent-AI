@@ -11,9 +11,83 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const LANGGRAPH_BRIDGE_URL = Deno.env.get("LANGGRAPH_BRIDGE_URL") ?? "";
 const LANGGRAPH_BRIDGE_KEY = Deno.env.get("LANGGRAPH_BRIDGE_API_KEY") ?? "";
 
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
+
+// A tenant_id must be a real uuid before it ever touches a PostgREST filter (§9): the tenant scope is
+// the ONLY isolation boundary here because this fn queries with the SERVICE-ROLE client (RLS is bypassed).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// §2/#206: funding is an opt-in offer, never a default — a tenant without funding enabled must not see
+// or invoke its own (or any) funding-domain sub-agent. Mirrors subagent-forge's finance-domain set.
+const FINANCE_DOMAINS = new Set(["credit", "funding", "fundability"]);
+
+function parseJwtClaims(token: string): Record<string, unknown> | null {
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const p = parts[1].replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
+    return JSON.parse(atob(p)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolved, TRUSTED tenant scope for a request. tenant_id is a validated uuid or null (null = the caller
+ *  sees only platform-default agents — safe). Never derived from an unverified request body for a user. */
+interface TenantScope {
+  tenantId: string | null;
+  fundingEnabled: boolean;
+  callerId: string | null;
+}
+
+/**
+ * §9 tenant resolution — the security boundary. TWO trusted paths, never trust a user's body tenant_id:
+ *   • SERVICE-ROLE caller (e.g. paige-ai-chat, which already resolved tenant from the user's JWT upstream):
+ *     accept a uuid-VALIDATED body.tenant_id + body.funding_enabled. A malformed tenant_id is rejected
+ *     (400) so it can never reach the filter.
+ *   • USER (or anon) caller: derive tenant SERVER-SIDE from the JWT via get_paige_persona_context()
+ *     (SECURITY DEFINER, resolves from auth.uid()), which returns the verified tenant_id AND funding_enabled.
+ *     body.tenant_id is IGNORED entirely. An anon token (no user) resolves to null → defaults only.
+ * Returns null tenantId on any miss (honest degrade to platform-defaults, never fail-open to all tenants).
+ */
+async function resolveTenantScope(req: Request, payload: OrchestratorRequest): Promise<TenantScope | { error: string; status: number }> {
+  const auth = req.headers.get("Authorization");
+  if (!auth?.startsWith("Bearer ")) return { error: "Missing bearer token", status: 401 };
+  const token = auth.slice(7);
+  const isServiceRole = parseJwtClaims(token)?.role === "service_role";
+
+  if (isServiceRole) {
+    // Trusted internal caller — it resolved tenant upstream. Still uuid-validate before the filter (§9).
+    const bodyTenant = (payload as { tenant_id?: string | null }).tenant_id ?? null;
+    if (bodyTenant !== null && !UUID_RE.test(String(bodyTenant))) {
+      return { error: "Invalid tenant_id", status: 400 };
+    }
+    const fundingEnabled = (payload as { funding_enabled?: boolean }).funding_enabled === true;
+    return { tenantId: bodyTenant, fundingEnabled, callerId: payload.context?.user_id ?? null };
+  }
+
+  // User/anon caller — derive server-side; the body's tenant_id is never trusted.
+  const authed = createClient(SUPABASE_URL, ANON_KEY, { global: { headers: { Authorization: auth } } });
+  const { data: userData } = await authed.auth.getUser(token);
+  const callerId = userData.user?.id ?? null;
+  let tenantId: string | null = null;
+  let fundingEnabled = false;
+  try {
+    const { data, error } = await authed.rpc("get_paige_persona_context");
+    if (!error) {
+      const row = Array.isArray(data) ? data[0] : data;
+      const t = row?.tenant_id ?? null;
+      tenantId = typeof t === "string" && UUID_RE.test(t) ? t : null;
+      fundingEnabled = row?.funding_enabled === true;
+    }
+  } catch (_e) {
+    tenantId = null; // honest degrade to platform-defaults; never widen scope on an error
+  }
+  return { tenantId, fundingEnabled, callerId };
+}
 
 type Action = "tool_search" | "tool_invoke" | "list_subagents";
 
@@ -44,31 +118,30 @@ function fail(error: string, status = 400, details?: unknown) {
   });
 }
 
-async function getCallerUserId(req: Request): Promise<string | null> {
-  const auth = req.headers.get("Authorization");
-  if (!auth?.startsWith("Bearer ")) return null;
-  const token = auth.slice(7);
-  const { data } = await supabase.auth.getUser(token);
-  return data.user?.id ?? null;
-}
-
-async function searchSubagents(query?: string, domain?: string, tenantId?: string | null) {
+async function searchSubagents(query?: string, domain?: string, tenantId?: string | null, fundingEnabled = false) {
   let q = supabase
     .from("paige_subagents")
     .select("slug,name,domain,description,runtime,triggers,display_order")
     .eq("enabled", true)
-    // §9 isolation: platform defaults (tenant_id null) + this tenant's own agents only.
-    .or(`tenant_id.is.null${tenantId ? `,tenant_id.eq.${tenantId}` : ""}`)
     .order("display_order");
+
+  // §9 isolation: platform defaults (tenant_id null) + THIS tenant's own agents only. tenantId is a
+  // trusted, uuid-validated value from resolveTenantScope (never a raw request body) — the filter is
+  // parameterized (no string-interpolated injection): null tenant → defaults only.
+  q = tenantId ? q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`) : q.is("tenant_id", null);
 
   if (domain) q = q.ilike("domain", `%${domain}%`);
   const { data, error } = await q;
   if (error) throw error;
 
-  if (!query) return data ?? [];
+  // §2/#206: hide funding-domain agents from a tenant that hasn't opted into funding.
+  let rows = data ?? [];
+  if (!fundingEnabled) rows = rows.filter((r) => !FINANCE_DOMAINS.has(String(r.domain).toLowerCase()));
+
+  if (!query) return rows;
 
   const needle = query.toLowerCase();
-  return (data ?? [])
+  return rows
     .map((row) => {
       const hay = [
         row.name,
@@ -201,14 +274,16 @@ Deno.serve(async (req) => {
     return fail("Invalid JSON body", 400);
   }
 
-  const callerId = await getCallerUserId(req);
+  // §9 SECURITY: derive the tenant scope from a TRUSTED source (service-role body or JWT-derived), never
+  // from an unverified user body. This is the only tenant boundary (service-role client bypasses RLS).
+  const scope = await resolveTenantScope(req, payload);
+  if ("error" in scope) return fail(scope.error, scope.status);
+  const { tenantId, fundingEnabled, callerId } = scope;
   const ctx = { ...payload.context, user_id: payload.context?.user_id ?? callerId ?? undefined };
-  // §9: tenant scope for who Paige can see/invoke. paige-ai-chat passes it from personaCtx.
-  const tenantId = (payload as { tenant_id?: string | null }).tenant_id ?? null;
 
   try {
     if (payload.action === "list_subagents" || payload.action === "tool_search") {
-      const matches = await searchSubagents(payload.query, payload.domain, tenantId);
+      const matches = await searchSubagents(payload.query, payload.domain, tenantId, fundingEnabled);
       return ok({ ok: true, matches });
     }
 
@@ -217,15 +292,21 @@ Deno.serve(async (req) => {
     }
     if (!payload.slug) return fail("Missing slug for tool_invoke", 400);
 
-    const { data: agent, error } = await supabase
+    let invQ = supabase
       .from("paige_subagents")
-      .select("slug,name,runtime,edge_function,langgraph_graph,enabled,system_prompt,config,tenant_id")
-      .eq("slug", payload.slug)
-      // §9 isolation: only a platform default or THIS tenant's own agent is invocable.
-      .or(`tenant_id.is.null${tenantId ? `,tenant_id.eq.${tenantId}` : ""}`)
-      .maybeSingle();
+      .select("slug,name,domain,runtime,edge_function,langgraph_graph,enabled,system_prompt,config,tenant_id")
+      .eq("slug", payload.slug);
+    // §9 isolation: only a platform default or THIS tenant's own agent is invocable. Parameterized, and
+    // tenantId is a trusted uuid-or-null from resolveTenantScope (no request-body injection).
+    invQ = tenantId ? invQ.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`) : invQ.is("tenant_id", null);
+    const { data: agent, error } = await invQ.maybeSingle();
     if (error) throw error;
     if (!agent) return fail(`Unknown sub-agent: ${payload.slug}`, 404);
+    // §2/#206: a funding-domain agent is invocable only by a funding-enabled tenant. Return the SAME 404
+    // as an unknown agent — never disclose that a gated agent exists.
+    if (!fundingEnabled && FINANCE_DOMAINS.has(String(agent.domain).toLowerCase())) {
+      return fail(`Unknown sub-agent: ${payload.slug}`, 404);
+    }
     if (!agent.enabled) return fail(`Sub-agent disabled: ${payload.slug}`, 403);
 
     const startedAt = Date.now();

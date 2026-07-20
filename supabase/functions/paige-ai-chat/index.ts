@@ -7188,9 +7188,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // §9: pass the tenant scope so the orchestrator only surfaces/invokes
             // platform defaults + this tenant's own agents.
             const orchTenant = personaCtx?.tenant_id ?? null;
+            // §2/#206: pass the tenant's funding opt-in so the orchestrator gates funding-domain agents.
+            const orchFunding = personaCtx?.funding_enabled === true;
             const body = tc.function.name === "list_subagents"
-              ? { action: "tool_search", query: args.query, domain: args.domain, tenant_id: orchTenant }
-              : { action: "tool_invoke", slug: args.slug, input: args.input ?? {}, tenant_id: orchTenant, context: { contact_id: args.contact_id, user_id: user.id } };
+              ? { action: "tool_search", query: args.query, domain: args.domain, tenant_id: orchTenant, funding_enabled: orchFunding }
+              : { action: "tool_invoke", slug: args.slug, input: args.input ?? {}, tenant_id: orchTenant, funding_enabled: orchFunding, context: { contact_id: args.contact_id, user_id: user.id } };
             const r = await fetch(orchestratorUrl, {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${supabaseServiceKey}`, apikey: supabaseServiceKey },
