@@ -233,6 +233,13 @@ project_id = "xygzykjyynhzqytbqnzu"
   [functions.growth-process-submission]
     verify_jwt = false
 
+  # The §8 action-bus DRAINER — on a */2 cron it claims 'filed' paige_actions whose kind has a drafting
+  # sub-agent, has that agent draft the work through the orchestrator, and advances to 'drafted' (which
+  # routes send-kinds to the approval lane). NOT user-facing (verify_jwt=false): authorized ONLY by the
+  # service-role bearer OR a valid Vault cron token, fail-closed; tenant taken from the CLAIMED row (§9).
+  [functions.paige-action-worker]
+    verify_jwt = false
+
   # The per-site Paige chatbot — the tenant's own Paige answering visitors on their PUBLISHED growth
   # site. NET-NEW ANONYMOUS PUBLIC endpoint (verify_jwt = false): its own controls ARE the gate —
   # tenant resolved server-side from the public slug (never trusted from the body), tool-less +

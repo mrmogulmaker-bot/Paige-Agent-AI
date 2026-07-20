@@ -4612,6 +4612,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   to_status: { type: "string", enum: ["assigned", "drafting", "drafted", "executing", "dismissed"] },
                   draft_content: { type: "object", description: "The drafted output, e.g. {channel,subject,body}. Required when to_status='drafted'." },
                   assigned_subagent_slug: { type: "string", description: "Sub-agent to assign, e.g. email-composer." },
+                  invocation_id: { type: "string", description: "The sub-agent invocation that produced this draft — attach it so the work is attributed to the team member who did it (§13/§14)." },
                   decision_rationale: { type: "string", description: "Why, when dismissing." }
                 },
                 required: ["action_id"]
@@ -6929,6 +6930,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 p_to_status: args.to_status ?? null,
                 p_draft_content: args.draft_content ?? null,
                 p_assigned_subagent_slug: args.assigned_subagent_slug ?? null,
+                p_invocation_id: args.invocation_id ?? null,
                 p_decision_rationale: args.decision_rationale ?? null,
                 p_tenant_id: personaCtx?.tenant_id ?? null,
               });
