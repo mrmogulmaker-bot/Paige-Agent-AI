@@ -3,6 +3,7 @@
 // Hard proposals (need new edge function) route to the Approvals Hub.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { looksLikeFinanceAgent } from "../_shared/finance-gate.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -138,16 +139,13 @@ function validateProposal(p: Record<string, unknown>) {
 // §2 finance gate: funding/credit specialists are NEVER a platform default and
 // never forged for a tenant that hasn't turned that offer on. A tenant WITH the
 // funding skill enabled may forge one, and it is tenant-scoped (never a NULL default).
-const FINANCE_DOMAINS = new Set(["credit", "funding", "fundability"]);
-const FINANCE_KEYWORDS = /\b(loan|lender|credit\s*repair|credit\s*score|funding|fundability|underwrit|tradeline|dispute\s*letter)\b/i;
+// Classification (domain OR keyword) lives in _shared/finance-gate.ts — the ONE home
+// paige-orchestrator's read-time gate shares, so author-time and read-time never skew (§18).
 function financeGate(
   body: Record<string, unknown>,
   opts: { fundingEnabled: boolean; tenantId: string | null },
 ): string | null {
-  const domain = String(body.domain ?? "").toLowerCase();
-  const blob = `${body.name ?? ""} ${body.description ?? ""} ${body.system_prompt ?? ""}`;
-  const looksFinance = FINANCE_DOMAINS.has(domain) || FINANCE_KEYWORDS.test(blob);
-  if (!looksFinance) return null;
+  if (!looksLikeFinanceAgent(body)) return null;
   // Platform default (no tenant) finance agents are prohibited outright (§2/§9).
   if (!opts.tenantId) {
     return "Funding/credit specialists can't live in the platform default team (§2). They ship only as a tenant's own opt-in offer.";

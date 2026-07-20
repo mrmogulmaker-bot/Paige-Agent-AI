@@ -4,6 +4,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { routedChatCompletion, type JobKind } from "../_shared/model-router.ts";
+import { looksLikeFinanceAgent } from "../_shared/finance-gate.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -21,19 +22,8 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 // the ONLY isolation boundary here because this fn queries with the SERVICE-ROLE client (RLS is bypassed).
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // §2/#206: funding is an opt-in offer, never a default — a tenant without funding enabled must not see
-// or invoke its own (or any) funding-domain sub-agent. Mirrors subagent-forge's finance-domain set.
-const FINANCE_DOMAINS = new Set(["credit", "funding", "fundability"]);
-
-function parseJwtClaims(token: string): Record<string, unknown> | null {
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-  try {
-    const p = parts[1].replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
-    return JSON.parse(atob(p)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
+// or invoke a funding/credit sub-agent. Classification (domain OR keyword) is the ONE shared home in
+// _shared/finance-gate.ts, identical to the gate subagent-forge applies at creation time (§18).
 
 /** Resolved, TRUSTED tenant scope for a request. tenant_id is a validated uuid or null (null = the caller
  *  sees only platform-default agents — safe). Never derived from an unverified request body for a user. */
@@ -57,7 +47,11 @@ async function resolveTenantScope(req: Request, payload: OrchestratorRequest): P
   const auth = req.headers.get("Authorization");
   if (!auth?.startsWith("Bearer ")) return { error: "Missing bearer token", status: 401 };
   const token = auth.slice(7);
-  const isServiceRole = parseJwtClaims(token)?.role === "service_role";
+  // Defense-in-depth (§9/§13): trust the service path only on an EXACT match to the real service-role
+  // key — not on an unverified `role` claim decoded from the token. This removes the silent dependency
+  // on the gateway's verify_jwt=true; even if that config ever changed, a forged `role:service_role`
+  // token can't enter the trusted branch. Internal callers (paige-ai-chat, paige-mcp) send this literal.
+  const isServiceRole = token === SERVICE_ROLE_KEY;
 
   if (isServiceRole) {
     // Trusted internal caller — it resolved tenant upstream. Still uuid-validate before the filter (§9).
@@ -134,9 +128,9 @@ async function searchSubagents(query?: string, domain?: string, tenantId?: strin
   const { data, error } = await q;
   if (error) throw error;
 
-  // §2/#206: hide funding-domain agents from a tenant that hasn't opted into funding.
+  // §2/#206: hide funding/credit agents (by domain OR keyword) from a tenant that hasn't opted in.
   let rows = data ?? [];
-  if (!fundingEnabled) rows = rows.filter((r) => !FINANCE_DOMAINS.has(String(r.domain).toLowerCase()));
+  if (!fundingEnabled) rows = rows.filter((r) => !looksLikeFinanceAgent(r));
 
   if (!query) return rows;
 
@@ -294,7 +288,7 @@ Deno.serve(async (req) => {
 
     let invQ = supabase
       .from("paige_subagents")
-      .select("slug,name,domain,runtime,edge_function,langgraph_graph,enabled,system_prompt,config,tenant_id")
+      .select("slug,name,domain,description,runtime,edge_function,langgraph_graph,enabled,system_prompt,config,tenant_id")
       .eq("slug", payload.slug);
     // §9 isolation: only a platform default or THIS tenant's own agent is invocable. Parameterized, and
     // tenantId is a trusted uuid-or-null from resolveTenantScope (no request-body injection).
@@ -302,9 +296,9 @@ Deno.serve(async (req) => {
     const { data: agent, error } = await invQ.maybeSingle();
     if (error) throw error;
     if (!agent) return fail(`Unknown sub-agent: ${payload.slug}`, 404);
-    // §2/#206: a funding-domain agent is invocable only by a funding-enabled tenant. Return the SAME 404
-    // as an unknown agent — never disclose that a gated agent exists.
-    if (!fundingEnabled && FINANCE_DOMAINS.has(String(agent.domain).toLowerCase())) {
+    // §2/#206: a funding/credit agent (by domain OR keyword) is invocable only by a funding-enabled
+    // tenant. Return the SAME 404 as an unknown agent — never disclose that a gated agent exists.
+    if (!fundingEnabled && looksLikeFinanceAgent(agent)) {
       return fail(`Unknown sub-agent: ${payload.slug}`, 404);
     }
     if (!agent.enabled) return fail(`Sub-agent disabled: ${payload.slug}`, 403);
