@@ -55,17 +55,6 @@ function json(status: number, payload: unknown): Response {
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const num = (v: unknown, d: number): number => (typeof v === "number" && Number.isFinite(v) ? v : d);
 
-function parseJwtClaims(token: string): Record<string, unknown> | null {
-  const parts = token.split(".");
-  if (parts.length < 2) return null;
-  try {
-    const p = parts[1].replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
-    return JSON.parse(atob(p)) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -73,7 +62,11 @@ serve(async (req: Request) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) return json(401, { error: "A bearer token is required." });
     const token = authHeader.slice("Bearer ".length).trim();
-    const isServiceRole = parseJwtClaims(token)?.role === "service_role";
+    // §9 defense-in-depth (the #361 paige-orchestrator pattern): trust the service path ONLY on an EXACT
+    // match to the real service-role key — not on a decodable `role` claim. This removes the latent
+    // verify_jwt=false escalation coupling: even if this fn were ever set verify_jwt=false, a forged
+    // {role:"service_role"} token can't equal the secret. Paige's headless agent sends this literal key.
+    const isServiceRole = token === supabaseServiceKey;
 
     let body: Record<string, unknown>;
     try { body = await req.json(); } catch { return json(400, { error: "Request body must be JSON." }); }
@@ -176,8 +169,9 @@ serve(async (req: Request) => {
         .select("id, output_excerpt, job_kind, task_id, created_at")
         .eq("tenant_id", resolvedTenant);
       if (jobKind) q = q.eq("job_kind", jobKind);
-      if (UUID_RE.test(str(traceSelector.task_id)) || str(traceSelector.task_id)) q = q.eq("task_id", str(traceSelector.task_id));
-      if (str(traceSelector.since)) q = q.gte("created_at", str(traceSelector.since));
+      if (str(traceSelector.task_id)) q = q.eq("task_id", str(traceSelector.task_id)); // task_id is a text column
+      const since = str(traceSelector.since);
+      if (since && !Number.isNaN(Date.parse(since))) q = q.gte("created_at", since); // skip a malformed `since` rather than 500
       const limit = Math.max(1, Math.min(Math.floor(num(traceSelector.limit, 50)), MAX_TRACE_LIMIT));
       q = q.order("created_at", { ascending: false }).limit(limit);
       const { data: traceRows, error: tErr } = await q;
@@ -276,6 +270,7 @@ serve(async (req: Request) => {
       .from("paige_eval_run")
       .update({
         status: finalStatus,
+        case_count: result.caseCount, // honest: cases ACTUALLY processed (< inserted count if the cost cap tripped)
         scored_count: result.scoredCount,
         degraded_count: result.degradedCount,
         aggregate_score: result.aggregateScore, // NULL when nothing scored — never 0-coerced (§31)
