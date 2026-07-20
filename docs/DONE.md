@@ -129,3 +129,5 @@ Archived 2026-07-18.
 | 311 | Vibe Studio: genuine light/dark distinction across the Studio |
 | 312 | Studio Copy-removal follow-ups: deploy 3 Studio edge fns to prod + copy quality |
 | 345 | Studio Visual-Critique Loop — Fly renderer + studio-visual-critique edge fn + vision-critique router modality + gate + §33 (design agent's eyes); SSRF-hardened, shipped gated-off (PR #139) |
+| 206 | §2/§9 leak: searchSubagents didn't filter funding_enabled — folded into #361 (shared finance-gate classifier: domain OR keyword, one home for author-time forge + read-time orchestrator) |
+| 361 | §9 SECURITY: paige-orchestrator tenant scoping — closed caller-supplied tenant_id IDOR + PostgREST filter injection (resolveTenantScope: service-role exact-key trust vs JWT-derived tenant; uuid-validated parameterized filters) + §2 funding gate. Live §32-verified against prod: A2 cross-tenant read, A1 injection, A3 cross-tenant invoke all closed (PR #149) |
