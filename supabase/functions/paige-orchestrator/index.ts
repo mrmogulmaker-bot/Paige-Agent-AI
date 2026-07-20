@@ -115,7 +115,10 @@ function fail(error: string, status = 400, details?: unknown) {
 async function searchSubagents(query?: string, domain?: string, tenantId?: string | null, fundingEnabled = false) {
   let q = supabase
     .from("paige_subagents")
-    .select("slug,name,domain,description,runtime,triggers,display_order")
+    // system_prompt is selected only so the §2 finance filter (below) sees the SAME signal fields the
+    // tool_invoke guard does — keeps the listing gate symmetric with the invoke gate. It is filtered
+    // out of the returned rows before they leave this function (see below).
+    .select("slug,name,domain,description,runtime,triggers,display_order,system_prompt")
     .eq("enabled", true)
     .order("display_order");
 
@@ -129,8 +132,11 @@ async function searchSubagents(query?: string, domain?: string, tenantId?: strin
   if (error) throw error;
 
   // §2/#206: hide funding/credit agents (by domain OR keyword) from a tenant that hasn't opted in.
-  let rows = data ?? [];
-  if (!fundingEnabled) rows = rows.filter((r) => !looksLikeFinanceAgent(r));
+  // system_prompt was selected ONLY to feed that classifier — strip it before any row leaves this
+  // function so an agent's internal prompt never rides out in a tool_search response (§9/§13).
+  const raw = data ?? [];
+  const rows = (fundingEnabled ? raw : raw.filter((r) => !looksLikeFinanceAgent(r)))
+    .map(({ system_prompt: _sp, ...rest }) => rest);
 
   if (!query) return rows;
 
