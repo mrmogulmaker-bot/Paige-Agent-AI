@@ -1,20 +1,29 @@
 -- Lane A2 Finding 1 (§9 IDOR) — close cross-tenant private-KB read via match_tenant_knowledge.
 --
+-- Filename version matches the recorded prod history row (supabase_migrations: 20260720224948,
+-- applied via MCP), so repo and prod ledger agree — no phantom-migration drift on a future db push.
+--
 -- match_tenant_knowledge(p_tenant_id, ...) is SECURITY DEFINER, filters `WHERE c.tenant_id =
 -- p_tenant_id` on the CALLER-supplied p_tenant_id, and is GRANTed to `authenticated` — so any
 -- authenticated user could call it directly with another tenant's id and read that tenant's
 -- Tier-2 private knowledge-base chunk content. (The kb-search edge fn also trusted body.tenant_id;
 -- that half is fixed in the function itself.)
 --
--- Fix (the #149 pattern): add a JWT-caller guard. A direct JWT caller (auth.uid() IS NOT NULL) may
--- only search their OWN validated tenant — p_tenant_id must equal current_user_tenant_id() (which
--- itself validates membership/agency/admin, hardened 20260714144656), unless they're a platform
--- admin. A service-role caller (auth.uid() IS NULL — the kb-search edge fn's admin client, which
--- now derives the tenant from the caller before calling) is trusted. Converted to plpgsql only to
--- carry the guard; the query body is byte-identical to the prior sql definition.
+-- Fix (the #149/#361 pattern): add a JWT-caller guard. A direct JWT caller (auth.uid() IS NOT NULL)
+-- may only search their OWN validated tenant — p_tenant_id must equal current_user_tenant_id()
+-- (which itself validates membership/agency/admin, hardened 20260714144656). A service-role caller
+-- (auth.uid() IS NULL — the kb-search edge fn's admin client, which now derives the tenant from the
+-- caller before calling) is trusted. Converted to plpgsql only to carry the guard; the query body is
+-- byte-identical to the prior sql definition.
+--
+-- Platform-admin exemption scope (deliberate, §9): this exempts is_platform_admin() =
+-- {platform_admin, super_admin} — the operator staff role — MATCHING the #149/#361 orchestrator
+-- guard this Lane standardizes on, NOT the narrower God-only is_platform_owner() used by
+-- tenant_sender_identity. Chosen for consistency with the flagship IDOR pattern (operator support
+-- staff can assist any tenant); noted here so the wider blast radius is an explicit decision.
 CREATE OR REPLACE FUNCTION public.match_tenant_knowledge(
   p_tenant_id uuid,
-  p_query_embedding vector,
+  p_query_embedding extensions.vector,
   p_match_count integer DEFAULT 6
 )
  RETURNS TABLE(source_tier text, doc_id uuid, chunk_id uuid, title text, content text, similarity double precision)

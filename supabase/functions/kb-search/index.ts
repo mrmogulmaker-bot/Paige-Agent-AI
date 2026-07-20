@@ -78,7 +78,11 @@ serve(async (req) => {
     // agency / platform-admin against auth.uid()), on the user-scoped client so auth.uid() is the
     // caller. Never from the request body. current_user_tenant_id() returns the caller's validated
     // active tenant (or their oldest active membership), or NULL if they have none.
-    const { data: resolvedTenant } = await supabase.rpc("current_user_tenant_id");
+    const { data: resolvedTenant, error: tenantErr } = await supabase.rpc("current_user_tenant_id");
+    // §13: log a resolver failure loudly rather than silently degrading to global-only results —
+    // the degrade is still SAFE (no tenant search → never a foreign read), but an unexpected error
+    // here is a real signal, not "no tenant". Never swallow it.
+    if (tenantErr) console.warn("[kb-search] current_user_tenant_id:", tenantErr.message);
     const tenantId = (resolvedTenant as string | null) ?? null;
 
     const queryVec = await embed(query);
