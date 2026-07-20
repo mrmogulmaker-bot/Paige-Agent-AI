@@ -65,6 +65,23 @@ const SECRET_PATTERNS: RegExp[] = [
   /\b[A-Fa-f0-9]{64,}\b/g,                      // long hex blobs (keys/hashes pasted inline)
 ];
 
+// A trace's tenant_id is a SOFT correlation id (the DB FK to tenants was dropped — an observability row
+// must never be LOST because its tenant isn't a real tenants row: a God/platform/operator context, a
+// sub-account/agency id not stored in tenants, or a since-deleted tenant). Coerce anything that isn't a
+// well-formed uuid to null so a malformed/empty id (e.g. "" ?? null keeps "") can't throw a 22P02 cast
+// error into the (swallowed) insert. NULL = platform/system row — invisible to every tenant per RLS (§9).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function cleanTenantId(t: string | null | undefined): string | null {
+  if (typeof t !== "string") return null;
+  const s = t.trim();
+  if (!s) return null;
+  if (UUID_RE.test(s)) return s;
+  // Loud, never silent (§32): a non-empty non-uuid tenant_id is a caller bug worth seeing, but the trace
+  // still persists (as a platform/null row) rather than being dropped by the swallowing catch.
+  console.warn("paige_llm_trace: non-uuid tenant_id coerced to null:", s.slice(0, 40));
+  return null;
+}
+
 /** Redact known credential shapes. input/output keep their PII (that's the trace's job) but shed secrets. */
 export function scrubSecrets(input: string): string {
   let s = input;
@@ -147,7 +164,7 @@ export function traceLLMCall(row: TraceRow): void {
   const inp = toExcerpt(row.input);
   const outp = toExcerpt(row.output);
   const record = {
-    tenant_id: row.tenant_id ?? null,
+    tenant_id: cleanTenantId(row.tenant_id),
     task_id: row.task_id ?? null,
     agent_id: row.agent_id ?? null,
     parent_trace_id: row.parent_trace_id ?? null,
