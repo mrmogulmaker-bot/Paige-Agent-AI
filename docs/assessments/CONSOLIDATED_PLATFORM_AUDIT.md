@@ -38,9 +38,9 @@
 - L5 (Talent — Slice 1) — LIVE (#153), inert opt-in: crew-identity columns + 10 dormant review-crew rows + roster inspect + config.job_kind validation; verified in prod, edge redeploy confirmed byte-live
 - §9 orchestrator security hardening (#149) — LIVE, closed cross-tenant IDOR + PostgREST injection + folded #206 funding leak; §32 exploit re-run against prod confirms all three attack vectors closed
 
-**Next in flight:** L5 wiring slice (route local/langgraph agents per-agent + prove a live model swap end-to-end)
+**Brain-in-entirety COMPLETE (end 2026-07-20):** the full §34 build order shipped and is §32-verified live — L5 wiring (#156), L6 captureToMemory (#158), L7-S1 God-view dashboard (#160/#161), §16 10-department formalization (#162/#163), §8 two-way action-bus drainer (#164/#165). The §8 drainer runs on a */2 cron (post-deploy runtime check: fired + succeeded); the last brain layer is live.
 
-**Remaining brain layers (per §34 build order):** L5 wiring → L6 (captureToMemory end-to-end) → L7-S1 (God-view dashboard) → §16 (10-department formalization) → §8 (two-way action bus) → Insights ingest → Automations surface
+**Now in flight — Post-Brain Cleanup Queue (Lane F first):** Lane F CI quality gate — the first typecheck/build/test/lint gate the repo has had (PLATFORM_ASSESSMENT Move 4). See §2 + docs/OPS.md.
 
 ---
 
@@ -56,8 +56,10 @@
 - L1 flight recorder + L1.1 text-path tracing (live and receiving rows)
 - L4 reasoning engine + all 5 phases (inert opt-in code; L4↔L2 loop wired live into paige-deep-research)
 - L2 quality/evals Slice 1 (4 tables, 10 deterministic scorers + frontier rubric_judge, auth-gated edge fn)
-- L5 Talent Slice 1 (crew-identity columns + 10 dormant review-crew rows + roster inspect + forge config.job_kind validation)
-- 9 brain-forward slices merged to main
+- L5 Talent Slice 1 + wiring (crew-identity columns, 10 dormant review-crew rows, roster inspect, per-agent job_kind swap)
+- L6 captureToMemory, L7-S1 God-view intelligence dashboard, §16 10-department formalization
+- **§8 two-way action-bus drainer (#164/#165)** — paige-action-worker on a */2 cron drains filed actions → drafts via the orchestrator → routes to approval; §16 tier-honoring (skips off-lane), idempotent approval insert, atomic claim. Brain-in-entirety complete.
+- **Lane F CI quality gate Slice 1 (PLATFORM_ASSESSMENT Move 4)** — `ci.yml`: build + test hard gates, tsc signature-ratchet (baseline 22, fails on new only), changed-file eslint/gold, added-lines §3/jargon/policy regression lint. Grounding correction: the audit's "deploy ignores config.toml verify_jwt" item was already fixed by the 07-18 deploy-edge-functions.yml. Runbook: docs/OPS.md. **Owner action:** mark `ci / verify` a required status check in branch protection or the gate stays advisory.
 
 **Still open from prior audits (highest severity first):**
 - **PLATFORM_ASSESSMENT A1–A8 (money — no reachable Paige checkout, plan taxonomy fractured six ways, `platform_subscriptions` has zero writers, trial→paid conversion doesn't exist, entitlement bypass, Stripe idempotency inverted, `check-subscription` anon client, no dunning).** All still open. Antonio's ticket list does not surface these as go-live gates but PLATFORM_ASSESSMENT called them the top MVP blocker.
