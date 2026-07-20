@@ -103,7 +103,7 @@ export async function reflectBeforeWork(opts: ReflectOpts): Promise<ReflectionNo
 
   const trace: TraceCtx = {
     tenant_id: opts.tenantId ?? null,
-    agent_id: opts.agentId ?? "paige-strategist",
+    agent_id: opts.agentId ?? "paige-reflector",
     task_id: opts.taskId ?? null,
     job_kind: "reason:reflect",
   };
