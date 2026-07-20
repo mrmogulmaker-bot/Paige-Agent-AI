@@ -376,7 +376,10 @@ export interface CaptureParams {
   tenantId: string;
   modality: Modality;
   provider: string;
-  tier: Tier;
+  /** The routing tier that served this artifact. OPTIONAL: an artifact produced OUTSIDE the router's
+   *  tier system (e.g. a direct image-provider call) has no honest Tier — it is stored NULL (the
+   *  paige_prompt_memory.tier column is nullable) rather than fabricated (§13). */
+  tier?: Tier;
   userIntent: string;
   promptText: string;
   result: ModelResult;
@@ -494,6 +497,82 @@ export async function captureToMemory(p: CaptureParams): Promise<string | undefi
   }
 }
 
+// ── rememberArtifact() — Phase B capture at a NON-forge artifact seam (§34-L6) ─────────────────
+export interface RememberArtifactParams {
+  tenantId: string;
+  modality: Modality;
+  /** The tenant's brief in their own words — this is the text embedded for future recall. */
+  userIntent: string;
+  /** The REAL, produced artifact URL. Required: match_prompt_memory filters artifact_url IS NOT
+   *  NULL, so a URL-less capture would write a row recall could never see (a dishonest end-to-end). */
+  artifactUrl: string;
+  provider: string;
+  /** Concrete model id used, when the seam reports one (falls back to the provider slug — model is
+   *  NOT NULL in the table). */
+  model?: string;
+  /** Router tier, when known. Omitted for a non-router artifact (image-provider call) → stored NULL. */
+  tier?: Tier;
+  /** The persisted content/deliverable row id (soft link), when the seam has one. */
+  deliverableId?: string;
+  actorUserId?: string;
+  actorRole?: string;
+  is_platform_default?: boolean;
+  costEstimateUsd?: number;
+}
+
+/**
+ * Remember a genuinely-produced artifact that was generated OUTSIDE forge() — e.g. the live
+ * paige-ai-chat generate_image seam — so the §26 memory space captures what actually worked for this
+ * tenant, not only forge-originated artifacts. This is the WRITE side of §34-L6 wired at a live
+ * artifact seam (the read side, recallSimilar, is already wired in paige-deep-research).
+ *
+ * §18 — this does NOT fork a second capture path. It adapts the seam's genuine fields into a minimal
+ *        ModelResult and DELEGATES to captureToMemory, inheriting EVERY gate there (§13 honest-capture,
+ *        §17 voyage-3-only embedding, §9 explicit tenant_id, §2 finance re-scan). No template id is
+ *        fabricated — this artifact came from no forge template.
+ * §9  — the caller MUST pass a SERVER-RESOLVED tenantId (never body-trusted). captureToMemory sets
+ *        tenant_id EXPLICITLY on the insert.
+ * §13 — best-effort: returns undefined (never throws) on any miss. An empty artifactUrl skips honestly
+ *        (recall could never surface a URL-less row), so we never plant an unrecallable memory.
+ */
+export async function rememberArtifact(p: RememberArtifactParams): Promise<string | undefined> {
+  if (!p.artifactUrl || !p.artifactUrl.trim()) return undefined; // nothing recall could ever see (§13)
+  // A memory whose intent is empty is a near-meaningless anchor (the embedded text would be blank) —
+  // skip it honestly rather than plant a low-value row that dilutes recall (§13).
+  if (!p.userIntent || !p.userIntent.trim()) return undefined;
+  // deliverable_id is a uuid column — a non-uuid id would throw a cast error and poison the WHOLE insert
+  // AFTER we already paid the embedding cost, silently dropping an otherwise-valid memory. Guard it: a
+  // malformed id degrades to a null soft-link, preserving the memory (§13).
+  const deliverableId = (p.deliverableId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.deliverableId))
+    ? p.deliverableId
+    : undefined;
+  // Adapt the seam's real fields into the minimal ModelResult captureToMemory reads. NOTE: result.tier
+  // is type-only here — captureToMemory persists CaptureParams.tier (passed below), not result.tier.
+  const result: ModelResult = {
+    artifact_url: p.artifactUrl.trim(),
+    provider: p.provider,
+    model: p.model && p.model.trim() ? p.model.trim() : p.provider, // model is NOT NULL — fall back to the served provider, never a fabricated id
+    tier: p.tier ?? "open-flexible",
+    modality: p.modality,
+    latency_ms: 0,
+    needs_config: false, // we are past a genuine success at the call site; the honesty gate still re-checks output
+    deliverable_id: deliverableId,
+    cost_estimate_usd: p.costEstimateUsd,
+  };
+  return captureToMemory({
+    tenantId: p.tenantId,
+    modality: p.modality,
+    provider: p.provider,
+    tier: p.tier,                 // undefined → NULL column (no honest router tier for a direct artifact)
+    userIntent: p.userIntent,
+    promptText: p.userIntent,     // no separate forged prompt at this seam — the brief IS the prompt
+    result,
+    actorUserId: p.actorUserId,
+    actorRole: p.actorRole,
+    is_platform_default: p.is_platform_default,
+  });
+}
+
 // ── recallSimilar() — Phase B: retrieve what worked for THIS tenant ────────────────────────────
 export interface RecalledArtifact {
   prompt_text: string;
@@ -504,8 +583,9 @@ export interface RecalledArtifact {
 
 /**
  * Studio #343 (U3) — cross-session recall. Given the incoming brief, return the tenant's top-N most
- * similar PAST APPROVED artifacts (few-shot anchors: "you built these before — use them"). Called by
- * the Studio design path before generating.
+ * similar PAST PRODUCED artifacts (few-shot anchors: "you built these before — use them"). Called by
+ * the Studio design path before generating. NOTE: anchors are genuinely-produced artifacts, not
+ * approval-filtered — a positive-reaction/rating gate is the deferred §34-L6 Wave-2 weighting loop.
  *
  * §9  — tenant-scoped by EXPLICIT tenantId (never caller-supplied trust); the admin client passes the
  *       resolved tenant, and match_prompt_memory also constrains on it (+ RLS for authenticated).

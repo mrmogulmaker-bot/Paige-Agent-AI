@@ -14,6 +14,11 @@ import { getActorTier, clientSeatToolAllowed, type Tier } from "../_shared/actor
 // (STUDIO_VISUAL_CRITIQUE_ENABLED); with the flag unset this is never called and generation is
 // byte-for-byte unchanged. Turned on only once the Fly renderer + secrets are live (owner-gated).
 import { visualCritiqueEnabled, critiqueImageAndIterate } from "../_shared/visual-critique-gate.ts";
+// §26/§34-L6 — WRITE side of the Compound-AI memory. On a genuine produced artifact (a real image
+// URL), remember it in the ONE voyage-3 space so future forges recall what worked for THIS tenant.
+// Delegates to captureToMemory (its §13/§17/§9/§2 gates are inherited — no second capture path, §18).
+// Best-effort + DETACHED (EdgeRuntime.waitUntil): a capture failure never breaks or slows generation.
+import { rememberArtifact } from "../_shared/prompt-forge.ts";
 // Redeploy trigger (2026-07-16): the git integration skipped this function on the #88 merge,
 // so the Studio funnel tools (growth_funnel_generate/build/publish) never went live. This
 // no-op comment forces a re-detect so the already-merged tool code deploys. Safe to remove.
@@ -6523,6 +6528,35 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   });
                   result = critiqued.image as any;
                   if (critiqued.critique?.ok) (result as any).critique = { verdict: critiqued.critique.verdict, summary: critiqued.critique.summary };
+                }
+
+                // §26/§34-L6 — remember this genuinely-produced image so the tenant's memory space
+                // learns what worked. Captured AFTER the critique loop so the FINAL (possibly
+                // regenerated) URL is what we store. tenant is SERVER-resolved (personaCtx.tenant_id
+                // from get_paige_persona_context — never body-trusted, §9); we skip when it's absent
+                // rather than write an unscoped/guessed row. DETACHED + best-effort: EdgeRuntime.
+                // waitUntil keeps it alive past close, and rememberArtifact never throws into or slows
+                // the generation the user asked for (§13/§32) — a capture miss is logged, never raised.
+                const _finalImg = result as any;
+                if (personaCtx?.tenant_id && _finalImg?.url) {
+                  try {
+                    const memP = rememberArtifact({
+                      tenantId: personaCtx.tenant_id,
+                      modality: "image",
+                      userIntent: String((args as any).prompt ?? ""),
+                      artifactUrl: String(_finalImg.url),
+                      provider: String(_finalImg.provider ?? "unknown"),
+                      model: _finalImg.model ? String(_finalImg.model) : undefined,
+                      deliverableId: _finalImg.content_id ? String(_finalImg.content_id) : undefined,
+                      actorUserId: user?.id ?? undefined,
+                      actorRole: isOperator ? "operator" : "tenant",
+                    }).then(() => {}, (e: unknown) => console.error("[paige] image memory capture failed:", (e as Error)?.message));
+                    // @ts-ignore — EdgeRuntime is available in Supabase Edge Functions runtime.
+                    // Deliberately NO `else await memP` (unlike other waitUntil sites here): capture must
+                    // never block or slow the user's generation (§32). memP already carries its own
+                    // .then(ok,onReject) so there is no unhandled rejection when EdgeRuntime is absent.
+                    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(memP);
+                  } catch (e) { console.error("[paige] image memory capture dispatch failed:", (e as Error)?.message); }
                 }
               }
             } else if (tc.function.name === "calendar_book_meeting") {
