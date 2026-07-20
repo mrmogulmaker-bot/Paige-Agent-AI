@@ -1,0 +1,98 @@
+# ci — the frontend quality gate that did not exist before (PLATFORM_ASSESSMENT Move 4).
+#
+# Until this, CI ran only migration-lint + `npm audit`. There was no typecheck, no build, no
+# test, no lint gate — doctrine was enforced by intention, which does not scale to a repo this
+# size. This adds the real gate: build + tests are hard, type errors ratchet (no NEW ones), and
+# added lines must pass the §3+jargon+policy regression lint / changed files must pass eslint +
+# gold-discipline. Existing baselines (pre-existing tsc errors; §3 copy in shipped files owned by
+# the §2/§3 cleanup lanes; immutable past migrations) are handled by ratchet/added-lines-only so
+# this gate is green on main from day one and actually gets respected instead of ignored.
+#
+# NOTE (§18 seam): migration linting lives in migration-lint.yml (lint_migrations.py). This gate's
+# only migration touch is the regression check for a NEW non-restrictive `USING/WITH CHECK(false)`
+# policy — a class lint_migrations.py does not cover, so no duplication. Keep new migration checks
+# in ONE of these two, not a third.
+#
+# NOTE (required check): a workflow only BLOCKS merges when it's a required status check in branch
+# protection — which can't be set from code. The owner must mark `ci / verify` required in
+# Settings → Branches for this to gate, otherwise it is advisory. See docs/OPS.md.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same ref supersedes an in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need base-sha history for changed-files diffs + the tsc ratchet
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          # No `cache: npm` and `npm install` (not `npm ci`): the repo's canonical lockfile is
+          # bun.lockb (see security-audit.yml), and there is no committed package-lock.json — which
+          # both the npm cache key and `npm ci` require. This mirrors security-audit.yml's install.
+          # A bun-based CI for prod-build fidelity is a tracked Lane F follow-up.
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      # --- Changed-file gates (PR only — a push to main has no PR base). Cheap checks first. -----
+      - name: Compute changed files
+        id: changed
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # AMR: include Renamed files (a rename+edit must still be linted). Same base/head the
+          # regression lint uses, so the two gates never disagree about the change set.
+          all="$(git diff --name-only --diff-filter=AMR "$BASE" "$HEAD" || true)"
+          src="$(echo "$all" | grep -E '^src/.*\.(ts|tsx)$' || true)"
+          echo "src_count=$(printf '%s' "$src" | grep -c . || true)" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$src" | grep -E '.' > changed_src.txt || true
+          echo "Changed src files:"; cat changed_src.txt || true
+
+      - name: tsc baseline may only shrink
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/baseline-guard.mjs
+
+      - name: Regression lint (§3 phrases · jargon · non-restrictive policy — added lines)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.sha }}
+        run: npm run ci:regression
+
+      - name: ESLint (changed src)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
+        run: xargs -r -a changed_src.txt ./node_modules/.bin/eslint
+
+      - name: Gold-discipline (changed src)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
+        run: xargs -r -a changed_src.txt node scripts/gold-discipline-lint.mjs
+
+      # --- Whole-repo hard gates (PR + push). `!cancelled` so one run surfaces every failure. ----
+      - name: Typecheck (ratchet — fails on NEW type errors only)
+        if: ${{ !cancelled() }}
+        run: npm run ci:tsc
+
+      - name: Build
+        if: ${{ !cancelled() }}
+        run: npm run build
+
+      - name: Test
+        if: ${{ !cancelled() }}
+        run: npm run test

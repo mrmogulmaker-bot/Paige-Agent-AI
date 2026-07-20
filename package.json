@@ -10,6 +10,10 @@
     "lint": "eslint .",
     "lint:gold": "node scripts/gold-discipline-lint.mjs src",
     "lint:gold:test": "node scripts/gold-discipline-lint.mjs --self-test",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "test": "vitest run",
+    "ci:tsc": "node scripts/ci/tsc-ratchet.mjs",
+    "ci:regression": "node scripts/ci/regression-lint.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
