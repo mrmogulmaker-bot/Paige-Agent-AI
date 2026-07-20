@@ -610,6 +610,9 @@ Deno.serve(async (req) => {
         subagent: agent.slug,
         runtime: agent.runtime,
         latency_ms: latency,
+        // §13/§14: surface the invocation id so a caller (e.g. the action-bus drainer) can attach it to
+        // the artifact it produced — proving "her TEAM did this", auditable, not Paige acting alone.
+        invocation_id: invocationId,
         result: result.body,
       },
       success ? 200 : result.status,

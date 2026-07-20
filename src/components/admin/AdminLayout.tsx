@@ -119,6 +119,7 @@ const hubs: Hub[] = [
     children: [
       { label: "Workflows", href: "/admin/workflows", icon: Workflow },
       { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
+      { label: "Paige Actions", href: "/admin/actions", icon: ClipboardCheck },
       { label: "Paige Skills", href: "/admin/skills", icon: Bot },
       { label: "Integrations", href: "/admin/integrations", icon: Plug },
       // Tenant Knowledge + Knowledge Review moved into Your Paige → Customize
@@ -130,6 +131,7 @@ const hubs: Hub[] = [
     aliases: [
       "/admin/integrations",
       "/admin/sub-agents",
+      "/admin/actions",
       "/admin/skills",
       "/admin/signatures",
       "/admin/social",
@@ -195,6 +197,7 @@ const GOD_HUBS: Hub[] = [
     children: [
       { label: "Workflows", href: "/admin/workflows", icon: Workflow },
       { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
+      { label: "Paige Actions", href: "/admin/actions", icon: ClipboardCheck },
       { label: "Paige Skills", href: "/admin/skills", icon: Bot },
       { label: "Integrations", href: "/admin/integrations", icon: Plug },
       // Platform-level knowledge surfaces (§9) — the global canon plus the
@@ -205,7 +208,7 @@ const GOD_HUBS: Hub[] = [
       { label: "Network Review", href: "/admin/network-kb", icon: BookOpen },
       { label: "Review Queue", href: "/admin/knowledge", icon: BookOpen },
     ],
-    aliases: ["/admin/sub-agents", "/admin/skills", "/admin/integrations", "/admin/knowledge-base", "/admin/network-kb", "/admin/knowledge"],
+    aliases: ["/admin/sub-agents", "/admin/actions", "/admin/skills", "/admin/integrations", "/admin/knowledge-base", "/admin/network-kb", "/admin/knowledge"],
   },
 ];
 // God "More" menu — calendar setup, support, security, and the platform settings

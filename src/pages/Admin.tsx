@@ -98,6 +98,7 @@ const StageAutomationRules = lazy(() => import("@/pages/admin/StageAutomationRul
 const ReadinessProposalsAdmin = lazy(() => import("@/pages/admin/ReadinessProposalsAdmin"));
 const PlanningAdmin = lazy(() => import("@/pages/admin/PlanningAdmin"));
 const SubAgentsAdmin = lazy(() => import("@/pages/admin/SubAgentsAdmin"));
+const ActionsQueue = lazy(() => import("@/pages/admin/ActionsQueue"));
 const SkillsHub = lazy(() => import("@/pages/admin/SkillsHub"));
 const WorkflowsList = lazy(() => import("@/pages/admin/WorkflowsList"));
 const CampaignsHub = lazy(() => import("@/pages/admin/CampaignsHub"));
@@ -509,6 +510,9 @@ const Admin = () => {
         } />
         <Route path="approvals/:id" element={
           <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
+        } />
+        <Route path="actions" element={
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><ActionsQueue /></Suspense></AdminOnly>
         } />
         <Route path="integrations" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><IntegrationsHub /></Suspense></AdminOnly>
