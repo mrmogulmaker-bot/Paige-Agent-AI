@@ -11,6 +11,13 @@ import { supabase } from "@/integrations/supabase/client";
  * creation uses the existing paige_chat_thread_create. The server (paige-ai-chat)
  * is the single writer of turns — this hook never inserts a turn, so the sidebar
  * never shows a chat the backend didn't actually persist (§13/§15).
+ *
+ * Your-Paige chats ONLY (studio_session_id IS NULL). Studio sessions share this
+ * table (paige_studio_thread_ensure inserts lens='coach', contact_id=NULL,
+ * is_archived=false — indistinguishable here except by studio_session_id), so
+ * without the filter below they bleed into this rail as fake "Studio session"
+ * chats. Their real home is the Studio gallery (StudioHome → useStudioSessions);
+ * excluding them here keeps one home per capability (§18), never orphaning them.
  */
 
 export interface PaigeThread {
@@ -59,6 +66,7 @@ export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: s
         .eq("tenant_id", tenantId)
         .eq("lens", "coach")
         .is("contact_id", null)
+        .is("studio_session_id", null) // exclude Studio-session threads — they live in the Studio gallery (§18)
         .eq("is_archived", false)
         .order("last_message_at", { ascending: false });
       if (error) throw error;
