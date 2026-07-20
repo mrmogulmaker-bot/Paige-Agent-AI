@@ -14,6 +14,8 @@ import { getActorTier, clientSeatToolAllowed, type Tier } from "../_shared/actor
 // (STUDIO_VISUAL_CRITIQUE_ENABLED); with the flag unset this is never called and generation is
 // byte-for-byte unchanged. Turned on only once the Fly renderer + secrets are live (owner-gated).
 import { visualCritiqueEnabled, critiqueImageAndIterate } from "../_shared/visual-critique-gate.ts";
+// §26/§34-L6 image memory: capture lives in the shared `generate-image` edge fn (the ONE home every
+// image caller — this tool AND the Vibe Studio frontend — funnels through), not here, so no import.
 // Redeploy trigger (2026-07-16): the git integration skipped this function on the #88 merge,
 // so the Studio funnel tools (growth_funnel_generate/build/publish) never went live. This
 // no-op comment forces a re-detect so the already-merged tool code deploys. Safe to remove.
@@ -6524,6 +6526,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   result = critiqued.image as any;
                   if (critiqued.critique?.ok) (result as any).critique = { verdict: critiqued.critique.verdict, summary: critiqued.critique.summary };
                 }
+                // §26/§34-L6 image memory is NOT captured here: this generate_image tool invokes the
+                // `generate-image` edge fn, which now remembers the artifact at that ONE shared seam so
+                // BOTH this path and the Vibe Studio frontend capture (§18 one home). Capturing here too
+                // would double-write.
               }
             } else if (tc.function.name === "calendar_book_meeting") {
               // Confirm is enforced by the central autonomy gate above (a booking
