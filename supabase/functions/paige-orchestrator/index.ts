@@ -3,7 +3,7 @@
 // Routes invocations to local Edge Functions or to LangGraph via paige-bridge.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { routedChatCompletion, type JobKind } from "../_shared/model-router.ts";
+import { routedChatCompletion, pickRoute, DEFAULT_SUBAGENT_JOB_KIND, type JobKind } from "../_shared/model-router.ts";
 import { looksLikeFinanceAgent } from "../_shared/finance-gate.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 
@@ -83,7 +83,7 @@ async function resolveTenantScope(req: Request, payload: OrchestratorRequest): P
   return { tenantId, fundingEnabled, callerId };
 }
 
-type Action = "tool_search" | "tool_invoke" | "list_subagents";
+type Action = "tool_search" | "tool_invoke" | "list_subagents" | "inspect";
 
 interface OrchestratorRequest {
   action: Action;
@@ -162,6 +162,112 @@ async function searchSubagents(query?: string, domain?: string, tenantId?: strin
     .sort((a, b) => b.score - a.score)
     .slice(0, 8)
     .map(({ score: _s, ...rest }) => rest);
+}
+
+// §34-L5 Talent — roster INSPECT. A read-only view of the §9-scoped roster with each agent's
+// EFFECTIVE routing tier (what pickRoute resolves its config.job_kind to today) and honest health
+// from its invocation history. It exposes NO system_prompt and NO raw config beyond job_kind (§9/§13).
+interface AgentHealth {
+  invocations: number;         // total invocation rows (every status)
+  success_rate: number | null; // succeeded / (succeeded + failed) — over RESOLVED runs ONLY; null when
+                               // none are resolved yet (never a fabricated score, §13)
+  dispatched: number;          // async langgraph handoffs whose downstream outcome the orchestrator
+                               // can't yet observe — NOT counted as success (would inflate the rate, §13)
+  last_error: string | null;
+}
+
+// Aggregate per-slug health from paige_subagent_invocations. The invocations table carries NO
+// tenant_id column, so we scope by the REQUESTING USER (invoked_by = callerId): a user belongs to
+// exactly one tenant, so this is strictly WITHIN-tenant and can never leak another tenant's activity
+// volume for a shared platform-default agent (§9). No caller id (or no slugs) → honest empty health.
+async function rosterHealthMap(slugs: string[], callerId: string | null): Promise<Record<string, AgentHealth>> {
+  const map: Record<string, AgentHealth> = {};
+  for (const s of slugs) map[s] = { invocations: 0, success_rate: null, dispatched: 0, last_error: null };
+  if (!callerId || slugs.length === 0) return map;
+
+  const { data, error } = await supabase
+    .from("paige_subagent_invocations")
+    .select("subagent_slug,status,error,created_at")
+    .in("subagent_slug", slugs)
+    .eq("invoked_by", callerId)
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.error("[orchestrator] inspect health query failed:", error.message);
+    return map; // honest degrade to empty health, never a fabricated aggregate
+  }
+
+  const agg: Record<string, { total: number; succeeded: number; failed: number; dispatched: number; lastError: string | null; sawFailed: boolean }> = {};
+  for (const row of (data ?? []) as Array<{ subagent_slug: string; status: string; error: string | null }>) {
+    const a = agg[row.subagent_slug] ?? (agg[row.subagent_slug] = { total: 0, succeeded: 0, failed: 0, dispatched: 0, lastError: null, sawFailed: false });
+    a.total++;
+    if (row.status === "succeeded") a.succeeded++;
+    else if (row.status === "failed") {
+      a.failed++;
+      // Rows are newest-first, so the FIRST failed row for a slug is its most recent failure — lock
+      // its error in (even if that row's error is null) so an OLDER failure can't mislabel "last error".
+      if (!a.sawFailed) { a.sawFailed = true; a.lastError = typeof row.error === "string" ? row.error : null; }
+    } else if (row.status === "dispatched") a.dispatched++;
+    // "pending" rows count only toward `invocations` (in-flight, outcome not yet known).
+  }
+  for (const s of slugs) {
+    const a = agg[s];
+    if (!a || a.total === 0) continue;
+    const resolved = a.succeeded + a.failed; // dispatched + pending are outcome-UNKNOWN, excluded from the rate
+    map[s] = {
+      invocations: a.total,
+      success_rate: resolved > 0 ? a.succeeded / resolved : null,
+      dispatched: a.dispatched,
+      last_error: a.lastError,
+    };
+  }
+  return map;
+}
+
+async function inspectRoster(
+  payload: OrchestratorRequest,
+  tenantId: string | null,
+  fundingEnabled: boolean,
+  callerId: string | null,
+) {
+  let q = supabase
+    .from("paige_subagents")
+    // description + system_prompt + config are read ONLY to (a) feed the §2 finance classifier the
+    // SAME signal fields search uses and (b) resolve job_kind. NONE of them leave this function —
+    // inspect returns job_kind alone, never the description text, the prompt, or the raw config (§9/§13).
+    .select("slug,name,domain,description,enabled,tenant_id,system_prompt,config,display_order")
+    .order("display_order");
+  // §9 isolation: platform defaults (tenant_id null) + THIS tenant's own agents only. Same trusted,
+  // parameterized filter searchSubagents uses (tenantId is a uuid-or-null from resolveTenantScope).
+  q = tenantId ? q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`) : q.is("tenant_id", null);
+  if (payload.slug) q = q.eq("slug", payload.slug);
+  if (payload.domain) q = q.ilike("domain", `%${payload.domain}%`);
+  const { data, error } = await q;
+  if (error) throw error;
+
+  // §2/#206: hide funding/credit agents (by domain OR keyword) from a tenant that hasn't opted in —
+  // the SAME gate search/invoke apply, so inspect can't become a side channel that discloses them.
+  const raw = data ?? [];
+  const visible = fundingEnabled ? raw : raw.filter((r) => !looksLikeFinanceAgent(r));
+  const healthMap = await rosterHealthMap(visible.map((r) => r.slug as string), callerId);
+
+  return visible.map((r) => {
+    const cfg = (r.config ?? {}) as Record<string, unknown>;
+    // Resolve job_kind EXACTLY as invokeSoft does at runtime (any string → pickRoute; else the
+    // default) so effective_tier is what this agent WOULD actually route to — never a cheaper tier
+    // than reality. A corrupt/legacy non-JobKind string routes to Claude reasoning via pickRoute's
+    // safe default (§17); we surface that true tier, and the raw stored job_kind, honestly (§13).
+    const rawJobKind = typeof cfg.job_kind === "string" ? cfg.job_kind : DEFAULT_SUBAGENT_JOB_KIND;
+    return {
+      slug: r.slug,
+      name: r.name,
+      domain: r.domain,
+      enabled: r.enabled,
+      tenant_id: r.tenant_id,
+      job_kind: rawJobKind,
+      effective_tier: pickRoute(rawJobKind as JobKind).tier, // what this agent routes to today (§14/§17)
+      health: healthMap[r.slug as string],
+    };
+  });
 }
 
 async function logInvocation(row: Record<string, unknown>) {
@@ -285,6 +391,12 @@ Deno.serve(async (req) => {
     if (payload.action === "list_subagents" || payload.action === "tool_search") {
       const matches = await searchSubagents(payload.query, payload.domain, tenantId, fundingEnabled);
       return ok({ ok: true, matches });
+    }
+
+    // §34-L5: roster inspect — §9-scoped read of the crew with effective tiers + honest health.
+    if (payload.action === "inspect") {
+      const agents = await inspectRoster(payload, tenantId, fundingEnabled, callerId);
+      return ok({ ok: true, agents });
     }
 
     if (payload.action !== "tool_invoke") {
