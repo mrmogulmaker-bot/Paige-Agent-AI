@@ -76,6 +76,11 @@ const PlatformIntelligence = lazy(() => import("@/pages/admin/PlatformIntelligen
 const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
 const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
 const MyReferralsPanel = lazy(() => import("@/components/dashboard/MyReferralsPanel"));
+// Slice 1c-v placeholder container landings (Clients/Team/Setup) — §11 EmptyStates
+// with CTAs into the still-mounted surfaces they will absorb (1c-viii/ix/xi).
+const ClientsHub = lazy(() => import("@/pages/admin/ClientsHub"));
+const TeamHub = lazy(() => import("@/pages/admin/TeamHub"));
+const SetupHub = lazy(() => import("@/pages/admin/SetupHub"));
 const KnowledgeBaseAdmin = lazy(() => import("@/pages/admin/KnowledgeBaseAdmin"));
 const TenantKnowledgeAdmin = lazy(() => import("@/pages/admin/TenantKnowledgeAdmin"));
 const NetworkKbInsights = lazy(() => import("@/pages/admin/NetworkKbInsights"));
@@ -279,6 +284,20 @@ const Admin = () => {
         } />
         <Route path="planning" element={
           <Suspense fallback={<SuspenseFallback />}><PlanningAdmin /></Suspense>
+        } />
+        {/* Slice 1c-v placeholder container landings. No AdminOnly gate — the top-nav
+            items are shown to admin AND coach, so the container is coach-reachable;
+            admin-only CTAs inside are gated per-CTA (RoleGate fallback={<></>}).
+            /admin/clients-hub is distinct from the load-bearing /admin/clients
+            client-file surface (B3). */}
+        <Route path="clients-hub" element={
+          <Suspense fallback={<SuspenseFallback />}><ClientsHub /></Suspense>
+        } />
+        <Route path="team" element={
+          <Suspense fallback={<SuspenseFallback />}><TeamHub /></Suspense>
+        } />
+        <Route path="setup" element={
+          <Suspense fallback={<SuspenseFallback />}><SetupHub /></Suspense>
         } />
         {/* Legacy /admin/tasks now lands on the real Planning hub — the task
             manager the owner asked to be "wired to the admin user". The old

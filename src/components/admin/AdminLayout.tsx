@@ -51,71 +51,45 @@ type Hub = {
   playbook?: "business";
 };
 
+// The tenant top-nav — the 8-item target (Slice 1c-v). Five UNIVERSAL surfaces
+// (Paige · Command Center · Marketplace · Analytics · Setup — work in any Paige-run
+// context, §18 OS north-star) + three business-Playbook-specific surfaces
+// (Clients · Team · Growth). Clients/Team/Setup are placeholder container LANDINGS
+// this slice — their real sub-tab containers build in 1c-viii/ix/xi; until then each
+// carries a §11 EmptyState with CTA links to the still-mounted surfaces it will
+// absorb, so nothing is stranded (§11/§15). Every folded route stays mounted (no
+// 404s); the `aliases` below keep the top-nav highlight + mobile title resolving
+// when a tenant is on any absorbed surface.
 const hubs: Hub[] = [
-  { label: "Dashboard", href: "/admin", icon: BarChart3 },
-  // Tenant KB (+ the tenant's own network-contribution status) now lives inside
-  // Your Paige → Customize Paige → Knowledge; keep the tenant-knowledge route
-  // highlighting this hub for deep-link back-compat. The operator review queues
-  // (/admin/network-kb, /admin/knowledge) are platform-level — they live under
-  // the God console's Automation hub, not here (§9).
-  { label: "Your Paige", href: "/admin/playbook", icon: Bot, aliases: ["/admin/tenant-knowledge"] },
+  // 1 — Paige (was "Your Paige"). URL STAYS /admin/playbook (ledger-drift avoidance).
+  { label: "Paige", href: "/admin/playbook", icon: Bot, aliases: ["/admin/tenant-knowledge"] },
+  // 2 — Command Center (was "Dashboard"). LABEL ONLY; content unchanged at /admin
+  //     (the role-personalized reframe lands in 1c-vii).
+  { label: "Command Center", href: "/admin", icon: BarChart3 },
+  // 3 — Marketplace (universal OS App Store, §18 — repositioned to #3).
   { label: "Marketplace", href: "/admin/marketplace", icon: Store },
-  // Portal Studio — the tenant skins their client-facing portal (/app): brand,
-  // which tabs a client sees + order, and the welcome greeting (§9/§10/§11). A
-  // tenant-scoped surface for every coach/consultant/agency admin; the God console
-  // (GOD_HUBS) deliberately never carries it — the operator doesn't run a client
-  // portal.
-  { label: "Portal Studio", href: "/admin/portal", icon: LayoutTemplate },
+  // 4 — Clients (PLACEHOLDER landing; full container 1c-viii). Distinct route
+  //     /admin/clients-hub so it NEVER hijacks the load-bearing /admin/clients
+  //     client-file surface (B3). Aliases carry every folded client-facing surface.
   {
-    label: "Contacts",
-    href: "/admin/contacts",
-    icon: Contact,
-    children: [
-      { label: "All Contacts", href: "/admin/contacts", icon: Contact },
-      { label: "Lead Enrichment", href: "/admin/leads/enrichment", icon: Contact },
+    label: "Clients",
+    href: "/admin/clients-hub",
+    icon: Users,
+    aliases: [
+      "/admin/clients", "/admin/contacts", "/admin/leads",
+      "/admin/pipeline", "/admin/funding", "/admin/funding-pipeline", "/admin/funding-lens",
+      "/admin/calendar", "/admin/bookings", "/admin/portal",
     ],
-    aliases: ["/admin/leads"],
   },
+  // 5 — Team (PLACEHOLDER landing; full live-ops floor 1c-ix). Also resolves the
+  //     previously-dead /admin/team link (PaigeWhosHere "View all").
   {
-    label: "Pipeline",
-    href: "/admin/pipeline",
-    icon: KanbanSquare,
-    children: [
-      { label: "Deal Pipeline", href: "/admin/pipeline", icon: KanbanSquare },
-      { label: "Funding Journey", href: "/admin/funding-pipeline", icon: Briefcase },
-      { label: "Funding Portfolio", href: "/admin/funding", icon: DollarSign },
-      { label: "Funding Readiness Lens", href: "/admin/funding-lens", icon: TrendingUp },
-    ],
-    aliases: ["/admin/funding", "/admin/funding-pipeline", "/admin/funding-lens"],
+    label: "Team",
+    href: "/admin/team",
+    icon: UserCog,
+    aliases: ["/admin/members", "/admin/coaches"],
   },
-  {
-    label: "Calendar",
-    href: "/admin/calendar",
-    icon: CalendarDays,
-    aliases: ["/admin/bookings"],
-  },
-  // Planning — the task/reminder manager (HubSpot/Asana/GHL parity). Everything
-  // Paige sets and everything staff add manually lives here, tenant/caller-scoped
-  // off the shared plan_* seam. /admin/tasks redirects here for deep-link
-  // back-compat from notifications.
-  {
-    label: "Planning",
-    href: "/admin/planning",
-    icon: CalendarClock,
-    aliases: ["/admin/tasks"],
-  },
-  // Inbox hub dissolved — Conversations live per-contact under Contacts → [contact] → Comms tab.
-  // Bookings rebuilt as personal Calendar (per-user Google/Apple). Support moved to the More menu.
-  // Routes (/admin/communications, /admin/bookings, /admin/support) remain mounted for deep-link back-compat.
-  // Approvals removed from global nav — now scoped per-contact under Contacts → [contact] → Approvals tab.
-  // Routes (/admin/approvals, /admin/approvals/:id) remain mounted for deep-link back-compat from notifications.
-  // Growth — the marketing/creative container (§18: one home). Absorbs Campaigns
-  // and Vibe Studio as sub-tabs. Its own href is /admin/campaigns (NOT /admin/growth,
-  // which redirects). Vibe Studio's child still navigates to /admin/studio, which
-  // still triggers AdminLayout `isStudio` → the immersive room is unchanged.
-  // playbook:"business" — §18 seam (see Hub type); no-op today. Growth sits before
-  // Automation so the tail Growth→Automation→Insights matches the target #6/#7/#8
-  // (the full 8-item reorder is Slice 1c-v).
+  // 6 — Growth (unchanged from 1c-iv: keeps both children + the §18 playbook marker).
   {
     label: "Growth",
     href: "/admin/campaigns",
@@ -127,93 +101,40 @@ const hubs: Hub[] = [
     ],
     aliases: ["/admin/growth"],
   },
+  // 7 — Analytics (was "Insights"). LABEL ONLY; content stays "Reports" at
+  //     /admin/analytics (full tiered Analytics surface is 1c-x). The lone "Reports"
+  //     child pointed at the hub's own href (already collapsed by activeHubs) — drop
+  //     `children` so it renders as a plain link. Aliases preserved.
+  { label: "Analytics", href: "/admin/analytics", icon: TrendingUp, aliases: ["/admin/observability"] },
+  // 8 — Setup (PLACEHOLDER landing; full config/ops consolidation 1c-xi). Aliases
+  //     carry every folded config/ops surface (Automation + its tools, agreements,
+  //     support, maintenance, referrals, brokers, planning, settings).
   {
-    label: "Automation",
-    href: "/admin/workflows",
-    icon: Workflow,
-    children: [
-      { label: "Workflows", href: "/admin/workflows", icon: Workflow },
-      { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
-      { label: "Paige Actions", href: "/admin/actions", icon: ClipboardCheck },
-      { label: "Paige Skills", href: "/admin/skills", icon: Bot },
-      { label: "Integrations", href: "/admin/integrations", icon: Plug },
-      // Tenant Knowledge + Knowledge Review moved into Your Paige → Customize
-      // Paige → Knowledge (§9 seam). Platform-global Knowledge Base is operator-
-      // level now (see GOD_HUBS). Routes stay mounted in Admin.tsx for deep-link
-      // back-compat.
-    ],
-    // Orphan tool routes that conceptually live under Automation.
+    label: "Setup",
+    href: "/admin/setup",
+    icon: Settings,
     aliases: [
-      "/admin/integrations",
-      "/admin/sub-agents",
-      "/admin/actions",
-      "/admin/skills",
-      "/admin/signatures",
-      "/admin/social",
-      "/admin/notifications",
+      "/admin/settings",
+      "/admin/workflows", "/admin/integrations", "/admin/sub-agents",
+      "/admin/actions", "/admin/skills", "/admin/signatures", "/admin/social", "/admin/notifications",
+      "/admin/agreement", "/admin/agreements", "/admin/support", "/admin/maintenance",
+      "/admin/affiliates", "/admin/brokers", "/admin/planning", "/admin/tasks",
     ],
-  },
-  {
-    label: "Insights",
-    href: "/admin/analytics",
-    icon: TrendingUp,
-    children: [
-      { label: "Reports", href: "/admin/analytics", icon: TrendingUp },
-      // Usage Analytics (/admin/observability/usage) and Error Tracking
-      // (/admin/observability/errors) are OPERATOR surfaces — unscoped platform
-      // telemetry (paige_config singleton + cross-tenant counts), not tenant
-      // Insights. Both moved to the God console (GOD_MORE); routes are
-      // PlatformStaffOnly. (§9 operator/tenant seam.)
-    ],
-    aliases: ["/admin/observability"],
   },
 ];
 
 
-// Tools that don't belong to a daily-use hub — tucked into "More".
-// `adminOnly` items are hidden from coaches in the toolbar to match the
-// route-level RoleGate enforcement in Admin.tsx.
-// `funding` items are a funding/credit surface — hidden unless this tenant has
-// opted into the funding Playbook (funding_readiness), per §2. The route is also
-// FundingRoute-guarded so a direct URL can't reach it either.
+// `MoreItem` type retained for the GOD_MORE / GOD_STAFF_MORE operator overflow
+// arrays below. The TENANT "... More" overflow was DELETED in Slice 1c-v — its
+// items re-home under the Setup landing (and Coaches/Members under Team), each
+// reached via a §11 EmptyState CTA on the placeholder while its route stays
+// mounted. Legal Documents was already operator/God from Slice 1c-i.
 type MoreItem = HubChild & { adminOnly?: boolean; funding?: boolean };
-const moreNavItems: MoreItem[] = [
-  // Moved out of the top hub bar into More — a tenant sets its client service
-  // agreement once, so it's a setup surface, not a daily-driver tab.
-  { label: "Client Agreement", href: "/admin/agreement", icon: FileSignature },
-  { label: "Coaches", href: "/admin/coaches", icon: UserCog },
-  { label: "Members & Roles", href: "/admin/members", icon: UserCog, adminOnly: true },
-  // "Referrals" = the staff member's OWN referrals (MyReferralsPanel). The
-  // operator-run affiliate PROGRAM moved to the God console (§9) — see GOD_MORE
-  // "Affiliates" → /admin/platform/affiliates.
-  { label: "Referrals", href: "/admin/affiliates", icon: Share2 },
-  // Brokers = the funding/lending broker network (§2). Funding-gated so generic
-  // coaching/consulting/agency tenants never see it unless they opt into funding.
-  { label: "Brokers", href: "/admin/brokers", icon: Briefcase, adminOnly: true, funding: true },
-  { label: "Support Tickets", href: "/admin/support", icon: LifeBuoy, adminOnly: true },
-  // Maintenance stays here for now: DataMaintenancePanel is a MIXED surface —
-  // it renders funding credit-maintenance tools to funding-opted-in tenant admins
-  // AND an operator-only platform blast. Splitting it (operator blast → God;
-  // credit tools → tenant/funding-gated) is a tracked product decision, so it is
-  // deliberately NOT moved in this §9 nav-hygiene slice.
-  { label: "Maintenance", href: "/admin/maintenance", icon: Wrench, adminOnly: true },
-  // Legal Documents (/admin/legal) is an OPERATOR surface — it authors the
-  // PLATFORM's Terms/Privacy/E-Sign/AI-Disclaimer (versioned legal_documents,
-  // publishing forces platform-wide re-consent). A tenant admin must never edit
-  // the platform's own legal docs. Moved to the God console (GOD_MORE); route is
-  // PlatformStaffOnly. (§9.) "Agreements" (the tenant's OWN client-agreement
-  // config) stays — it is tenant-scoped.
-  { label: "Agreements", href: "/admin/agreements", icon: FileSignature, adminOnly: true },
-  // Settings (/admin/settings) is reached from the header profile dropdown
-  // ("Workspace settings", admin-gated) on desktop and the mobile drawer's
-  // action group — not the "More" overflow (Slice 1c-iii). GOD_MORE keeps its
-  // own operator Settings entry.
-];
 
-const adminNavItems = [
-  ...hubs.flatMap((h) => [{ label: h.label, href: h.href, icon: h.icon }, ...(h.children ?? [])]),
-  ...moreNavItems,
-];
+const adminNavItems = hubs.flatMap((h) => [
+  { label: h.label, href: h.href, icon: h.icon },
+  ...(h.children ?? []),
+]);
 
 // The God console (platform staff) gets its own nav: platform control (Fleet,
 // Team) + the operator's own business tools (contacts=agencies/prospects, comms,
@@ -333,11 +254,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // even if their real role is admin. Real permissions still come from RLS.
   const effectiveRole: "admin" | "coach" =
     userRole === "admin" && canSwitch && lens === "coach" ? "coach" : userRole;
+  // The tenant "... More" overflow was deleted in Slice 1c-v — its items re-home
+  // under the Setup/Team landings. Only the God console still carries a More group.
   const visibleMore = godMode
     ? (isPlatformOwner ? GOD_MORE : GOD_STAFF_MORE)
-    : moreNavItems.filter(
-        (i) => (!i.adminOnly || effectiveRole === "admin") && (!i.funding || fundingEnabled),
-      );
+    : [];
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -358,10 +279,19 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     return location.pathname.startsWith(href);
   };
 
+  // Alias-aware hub match — the single source of truth for BOTH the desktop
+  // highlight and the mobile section title, so a folded surface reached via a
+  // placeholder CTA (e.g. /admin/contacts) still lights up its parent (Clients)
+  // and resolves a real title instead of the "Admin" fallback (Slice 1c-v).
+  const hubIsActive = (hub: Hub) =>
+    isActive(hub.href) ||
+    (hub.children?.some((c) => isActive(c.href)) ?? false) ||
+    (hub.aliases?.some((a) => isActive(a)) ?? false);
+
   const currentSection = godMode
-    ? (activeHubs.find((i) => isActive(i.href))?.label ?? "Platform")
+    ? (activeHubs.find(hubIsActive)?.label ?? "Platform")
     : (adminNavItems.find((i) => isActive(i.href))?.label
-        ?? activeHubs.find((i) => isActive(i.href))?.label
+        ?? activeHubs.find(hubIsActive)?.label
         ?? "Admin");
 
   return (
@@ -501,10 +431,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         {/* Row 2: 7-hub primary nav (desktop) */}
         <div className="hidden md:flex items-center gap-1 px-3 md:px-6 h-11 overflow-x-auto no-scrollbar border-t border-sidebar-border/60">
           {activeHubs.map((hub) => {
-            const hubActive =
-              isActive(hub.href) ||
-              (hub.children?.some((c) => isActive(c.href)) ?? false) ||
-              (hub.aliases?.some((a) => isActive(a)) ?? false);
+            const hubActive = hubIsActive(hub);
 
             const pill = (
               <div
