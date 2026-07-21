@@ -338,9 +338,14 @@ const Admin = () => {
             </Suspense>
           </AdminOnly>
         } />
+        {/* /admin/affiliates is the tenant-facing PERSONAL referrals view — every
+            staff member (admin or coach) sees their OWN referrals here. The
+            operator-run affiliate PROGRAM (leaderboard, applications, commission
+            tiers) is a global/platform surface (no tenant_id) and lives at
+            /admin/platform/affiliates under PlatformStaffOnly (§9). */}
         <Route path="affiliates" element={
           <Suspense fallback={<SuspenseFallback />}>
-            {userRole === "admin" ? <AffiliatesAdmin /> : <MyReferralsPanel />}
+            <MyReferralsPanel />
           </Suspense>
         } />
         <Route path="knowledge-base" element={
@@ -615,6 +620,10 @@ const Admin = () => {
         } />
         <Route path="platform/intelligence" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformIntelligence /></Suspense></PlatformStaffOnly>
+        } />
+        {/* Operator-run affiliate PROGRAM management (global, no tenant_id) — §9. */}
+        <Route path="platform/affiliates" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><AffiliatesAdmin /></Suspense></PlatformStaffOnly>
         } />
       </Routes>
 

@@ -169,7 +169,10 @@ const moreNavItems: MoreItem[] = [
   { label: "Client Agreement", href: "/admin/agreement", icon: FileSignature },
   { label: "Coaches", href: "/admin/coaches", icon: UserCog },
   { label: "Members & Roles", href: "/admin/members", icon: UserCog, adminOnly: true },
-  { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
+  // "Referrals" = the staff member's OWN referrals (MyReferralsPanel). The
+  // operator-run affiliate PROGRAM moved to the God console (§9) — see GOD_MORE
+  // "Affiliates" → /admin/platform/affiliates.
+  { label: "Referrals", href: "/admin/affiliates", icon: Share2 },
   // Brokers = the funding/lending broker network (§2). Funding-gated so generic
   // coaching/consulting/agency tenants never see it unless they opt into funding.
   { label: "Brokers", href: "/admin/brokers", icon: Briefcase, adminOnly: true, funding: true },
@@ -237,6 +240,7 @@ const GOD_MORE: MoreItem[] = [
   { label: "Sends & Tier", href: "/admin/platform/sends", icon: Radio },
   { label: "Sending Identities", href: "/admin/platform/sending", icon: Send },
   { label: "Support", href: "/admin/support", icon: LifeBuoy },
+  { label: "Affiliates", href: "/admin/platform/affiliates", icon: Share2 },
   { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
   { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
   { label: "Legal Documents", href: "/admin/legal", icon: ShieldCheck },
