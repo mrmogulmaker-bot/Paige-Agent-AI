@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate, Radio, Wand2, CircleUser,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate, Radio, Wand2, CircleUser, Sprout,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -42,6 +42,13 @@ type Hub = {
   children?: HubChild[];
   /** Extra path prefixes that should also highlight this hub. */
   aliases?: string[];
+  /** §18 Playbook seam. Absent = universal (shown under every Playbook).
+   *  "business" = this hub belongs to the BUSINESS Playbook only — a future
+   *  household/portfolio Playbook would swap it for its own equivalent surface.
+   *  Business is the only/default Playbook today, so the filter in `activeHubs`
+   *  is a no-op; when Playbooks multiply, gate on the active Playbook there
+   *  (one-line change), same shape as the funding filter. */
+  playbook?: "business";
 };
 
 const hubs: Hub[] = [
@@ -59,11 +66,6 @@ const hubs: Hub[] = [
   // (GOD_HUBS) deliberately never carries it — the operator doesn't run a client
   // portal.
   { label: "Portal Studio", href: "/admin/portal", icon: LayoutTemplate },
-  // Vibe Studio — the full-page conversational creation surface (pages · funnels · forms ·
-  // copy · images). Its own top-level room, distinct from Portal Studio (client-portal
-  // skinning). Staff-visible (a marketing/social hire on a staff seat sees it) — not
-  // owner-only; real access still comes from RLS.
-  { label: "Vibe Studio", href: "/admin/studio", icon: Wand2 },
   {
     label: "Contacts",
     href: "/admin/contacts",
@@ -107,10 +109,22 @@ const hubs: Hub[] = [
   // Routes (/admin/communications, /admin/bookings, /admin/support) remain mounted for deep-link back-compat.
   // Approvals removed from global nav — now scoped per-contact under Contacts → [contact] → Approvals tab.
   // Routes (/admin/approvals, /admin/approvals/:id) remain mounted for deep-link back-compat from notifications.
+  // Growth — the marketing/creative container (§18: one home). Absorbs Campaigns
+  // and Vibe Studio as sub-tabs. Its own href is /admin/campaigns (NOT /admin/growth,
+  // which redirects). Vibe Studio's child still navigates to /admin/studio, which
+  // still triggers AdminLayout `isStudio` → the immersive room is unchanged.
+  // playbook:"business" — §18 seam (see Hub type); no-op today. Growth sits before
+  // Automation so the tail Growth→Automation→Insights matches the target #6/#7/#8
+  // (the full 8-item reorder is Slice 1c-v).
   {
-    label: "Campaigns",
+    label: "Growth",
     href: "/admin/campaigns",
-    icon: Rocket,
+    icon: Sprout,
+    playbook: "business",
+    children: [
+      { label: "Campaigns", href: "/admin/campaigns", icon: Rocket },
+      { label: "Vibe Studio", href: "/admin/studio", icon: Wand2 },
+    ],
     aliases: ["/admin/growth"],
   },
   {
@@ -287,7 +301,13 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // through the AccountSwitcher's "Agency view" row — it is no longer a tab spliced
   // into the tenant menu. This bar is purely "run this one practice."
   const FUNDING_NAV_HREFS = new Set(["/admin/funding", "/admin/funding-pipeline", "/admin/funding-lens"]);
+  // §18 Playbook seam: business is the only Playbook today, so this is a no-op.
+  // When Playbooks multiply, resolve the active Playbook here and any playbook-scoped
+  // hub (e.g. Growth) filters out for tenants not running it — same shape as the
+  // fundingEnabled filter below. One-line change, no engine.
+  const activePlaybook: Hub["playbook"] = "business";
   const activeHubs = (godMode ? (isPlatformOwner ? GOD_HUBS : GOD_STAFF_HUBS) : hubs)
+    .filter((h) => !h.playbook || h.playbook === activePlaybook)
     .map((h) =>
       fundingEnabled ? h : { ...h, children: h.children?.filter((c) => !FUNDING_NAV_HREFS.has(c.href)) },
     )

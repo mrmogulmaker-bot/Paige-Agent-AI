@@ -6,10 +6,11 @@
 // only the <Outlet/>, so the rail never remounts). It applies the `.studio-surface` scope so the
 // vibrant Paige gradient tokens resolve for everything inside — home hero AND builder — and
 // nowhere else (§6/§11 palette exception, contained). The rail is an IN-SURFACE object navigator
-// (projects, the four gallery views, New project) plus a single "Back to Paige" escape — not a
-// second copy of the hub bar (§18), the Lovable/Figma/Linear pattern.
+// (projects, the four gallery views, New project) plus a single "Back to Growth" escape (Vibe
+// Studio lives under the Growth container, Slice 1c-iv) — not a second copy of the hub bar
+// (§18), the Lovable/Figma/Linear pattern.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, Outlet, useLocation, useMatch } from "react-router-dom";
+import { Link, Outlet, useLocation, useMatch, useNavigate } from "react-router-dom";
 import {
   ChevronLeft,
   Clock,
@@ -176,7 +177,13 @@ export default function StudioLayout() {
   // source of truth drives both and they can never diverge.
   const projectMatch = useMatch("/admin/studio/:sessionId");
   const projectId =
-    projectMatch && projectMatch.params.sessionId && projectMatch.params.sessionId !== "new"
+    projectMatch &&
+    projectMatch.params.sessionId &&
+    projectMatch.params.sessionId !== "new" &&
+    // `/admin/studio/library` also matches :sessionId — it's the Media Library, a
+    // GALLERY-level destination, not a project. Excluding it keeps the gallery rail
+    // (VIEW_NAV) + the workspace exit on that route (not a phantom project navigator).
+    projectMatch.params.sessionId !== "library"
       ? projectMatch.params.sessionId
       : null;
   const onProject = !!projectId;
@@ -211,6 +218,22 @@ export default function StudioLayout() {
   }, [immersive]);
 
   const activeView = (new URLSearchParams(location.search).get("view") as StudioSessionView) ?? "recent";
+
+  const navigate = useNavigate();
+  // Esc exits the workspace to Growth — GALLERY ONLY (§21: inside a project the
+  // ProjectNavigator "All projects" owns back; Esc there would be ambiguous). Ignores
+  // typing targets and any Esc a dropdown/dialog already handled (defaultPrevented).
+  useEffect(() => {
+    if (onProject) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      navigate("/admin/campaigns");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onProject, navigate]);
 
   return (
     <StudioImmersionProvider value={immersionValue}>
@@ -268,6 +291,48 @@ export default function StudioLayout() {
             never competes with the nav; light-tinted in light / star-tinted in dark; motion-safe in
             index.css. */}
         <div aria-hidden className="studio-rail-stardust" />
+
+        {/* ── top exit / context. Makes ENTERING explicit and, on the gallery, IS the prominent
+             workspace exit (was a buried footer link). §21: a real back LINK appears ONLY on the
+             gallery (!onProject) → "Back to Growth"; inside a project it degrades to STATIC context
+             ("‹ Growth", not a link) so the ProjectNavigator's "All projects" stays the single
+             unambiguous back — never two at once. Neutral tokens — NO gold (§11). */}
+        {!collapsed &&
+          (onProject ? (
+            <div className="flex h-8 shrink-0 items-center gap-1 px-3 pt-1 text-xs text-muted-foreground/80">
+              <ChevronLeft className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
+              <span className="truncate">Growth</span>
+            </div>
+          ) : (
+            <div className="flex h-8 shrink-0 items-center px-3 pt-1">
+              <Link
+                to="/admin/campaigns"
+                aria-label="Back to Growth"
+                className="group flex items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--studio-glass-border)/0.3)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              >
+                <ChevronLeft className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="font-medium">Back to Growth</span>
+                <kbd className="ml-1 rounded border border-[hsl(var(--studio-glass-border)/0.7)] px-1 text-[10px] font-medium leading-tight text-muted-foreground opacity-60 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  Esc
+                </kbd>
+              </Link>
+            </div>
+          ))}
+
+        {/* Collapsed rail, gallery only: icon-only back at the top (tooltip carries the label).
+             Its own row so the 64px header never overflows. */}
+        {collapsed && !onProject && (
+          <div className="flex shrink-0 justify-center pt-2">
+            <Link
+              to="/admin/campaigns"
+              aria-label="Back to Growth"
+              title="Back to Growth"
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-[hsl(var(--studio-glass-border)/0.3)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+            </Link>
+          </div>
+        )}
 
         {/* brand + collapse toggle. Collapsed = ONLY the (centered) toggle, so the 64px header can
             never overflow (the old layout packed a 28px mark + a non-shrinking 28px toggle + 24px
@@ -341,29 +406,11 @@ export default function StudioLayout() {
           </ul>
         )}
 
-        {/* Theme + (on the gallery only) the way out of the workspace.
-            §21 / owner 2026-07-17: INSIDE a session, "Back to Paige" is a SECOND back control —
-            collapsed it's just a `<` chevron sitting right above the moon, indistinguishable from
-            the project navigator's own "All projects" back-arrow at the top of the rail, and people
-            naturally reach for the bottom one. So it's removed within a project: the top "All
-            projects" backs you out of the SESSION to the gallery, and from the gallery this control
-            backs you out of the WORKSPACE — one unambiguous back per level, never two at once. */}
+        {/* Footer = theme + motion toggles only. The workspace exit ("Back to Growth") moved to
+            the TOP of the rail (Slice 1c-iv) so it's prominent, not buried here. §21 preserved:
+            the top exit is a real link ONLY on the gallery; inside a project it's static context,
+            so the ProjectNavigator "All projects" remains the single session-level back. */}
         <div className="mt-auto shrink-0 border-t border-[hsl(var(--studio-glass-border)/0.6)] p-2">
-          {!onProject && (
-            <Link
-              to="/admin"
-              title={collapsed ? "Back to Paige" : undefined}
-              className={cn(
-                "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground",
-                "hover:bg-[hsl(var(--studio-glass-border)/0.3)] hover:text-foreground",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-                collapsed && "justify-center px-0",
-              )}
-            >
-              <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
-              {!collapsed && "Back to Paige"}
-            </Link>
-          )}
           {/* The Studio-LOCAL theme switch — flips the `.studio-surface` root class only, so the
               gallery/rail flip with the same signal the builder's top-bar toggle uses. Never the
               global platform theme (owner 2026-07-17). */}
@@ -375,8 +422,11 @@ export default function StudioLayout() {
       </nav>
 
       {/* ── main content: the outlet (home hero OR builder). The active-session bundle rides
-           <Outlet context> so the stage reads the SAME loaded project the rail does. ── */}
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+           <Outlet context> so the stage reads the SAME loaded project the rail does. The
+           `studio-enter` one-shot fade fires once on StudioLayout mount (crossing INTO Studio
+           from Growth) — this wrapper is stable across internal route changes, so it never
+           replays when opening a project/library (§6/§22 "one continuous act"). ── */}
+      <div className="studio-enter relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <Outlet context={activeSession} />
       </div>
     </div>
