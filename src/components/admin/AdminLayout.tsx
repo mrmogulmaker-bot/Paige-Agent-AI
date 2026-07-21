@@ -358,9 +358,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                   <button
                     type="button"
                     className="hidden sm:inline-flex ml-2 items-center gap-1 rounded-full border border-accent/40 bg-transparent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent hover:bg-accent/10 transition-colors"
-                    aria-label="Switch role lens"
+                    aria-label="Switch view"
                   >
-                    {lens} lens
+                    View as
                     <ChevronDown className="w-3 h-3 opacity-70" />
                   </button>
                 </DropdownMenuTrigger>
@@ -368,10 +368,10 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                   <DropdownMenuLabel>View as</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => setLens("admin")} className={lens === "admin" ? "bg-muted" : ""}>
-                    <UserCog className="w-4 h-4 mr-2" /> Admin lens
+                    <UserCog className="w-4 h-4 mr-2" /> Admin
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setLens("coach")} className={lens === "coach" ? "bg-muted" : ""}>
-                    <Users className="w-4 h-4 mr-2" /> Coach lens
+                    <Users className="w-4 h-4 mr-2" /> Coach
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

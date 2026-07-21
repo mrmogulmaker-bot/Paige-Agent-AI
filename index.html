@@ -108,8 +108,14 @@
         width: 96px;
         height: 96px;
         border-radius: 50%;
-        background: radial-gradient(circle at 38% 30%, #f3ecff 0%, #c084fc 24%, #a855f7 52%, #6d28d9 100%);
-        box-shadow: 0 0 60px 6px rgba(168, 85, 247, 0.5), inset -10px -12px 30px rgba(76, 29, 149, 0.85);
+        /* Gold orb core — matches the marketing PaigeScene gold (#D4A752 / #F0C86A)
+           for one continuous brand (§6). Hardcoded hex is required here: this splash
+           paints before React/index.css load, so --gold/--accent tokens don't exist
+           yet. The pale-violet ring below is kept — the marketing scene deliberately
+           pairs one gold figure with one violet ring, and it gives the gold orb
+           figure/ground separation. */
+        background: radial-gradient(circle at 38% 30%, #fff6df 0%, #f0c86a 24%, #d4a752 52%, #8a6a22 100%);
+        box-shadow: 0 0 60px 6px rgba(212, 167, 82, 0.5), inset -10px -12px 30px rgba(120, 90, 25, 0.85);
         animation: psxOrb 2.6s ease-in-out infinite;
       }
       .psx-orb::after {
@@ -117,7 +123,7 @@
         position: absolute;
         inset: -45%;
         border-radius: 50%;
-        background: radial-gradient(circle, rgba(168, 85, 247, 0.5), transparent 62%);
+        background: radial-gradient(circle, rgba(212, 167, 82, 0.5), transparent 62%);
         filter: blur(18px);
       }
       /* Orbital rings — tilted ellipses */

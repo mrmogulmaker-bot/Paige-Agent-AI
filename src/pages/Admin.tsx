@@ -83,7 +83,6 @@ const SecurityCanaryAdmin = lazy(() => import("@/pages/admin/SecurityCanaryAdmin
 const LegalAdmin = lazy(() => import("@/pages/admin/LegalAdmin"));
 const DataSourceRegistryAdmin = lazy(() => import("@/pages/admin/DataSourceRegistryAdmin"));
 const AgreementsAdmin = lazy(() => import("@/pages/admin/AgreementsAdmin"));
-const AILearningOverview = lazy(() => import("@/components/admin/AILearningOverview").then(m => ({ default: m.AILearningOverview })));
 const CommunicationsAdmin = lazy(() => import("@/pages/admin/CommunicationsAdmin"));
 const BrokersAdmin = lazy(() => import("@/pages/admin/BrokersAdmin"));
 const AnalyticsDashboard = lazy(() => import("@/pages/admin/AnalyticsDashboard"));
@@ -626,13 +625,11 @@ const Admin = () => {
 
 
 function AdminOverview() {
-  return (
-    <PracticeOverview>
-      <Suspense fallback={<SuspenseFallback />}>
-        <AILearningOverview />
-      </Suspense>
-    </PracticeOverview>
-  );
+  // The tenant Dashboard is the practice overview only. The AI Learning / RAG
+  // telemetry tiles that used to render here were operator/AI-health data (§9)
+  // and internal jargon (§11) — they live on the operator analytics surface
+  // (RagPerformance), not the tenant's first screen.
+  return <PracticeOverview />;
 }
 
 export default Admin;

@@ -83,17 +83,19 @@ export function PaigeCommandBar({ pb, tenantName, counts, knowledgePulse, pendin
               <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
                 {pb.name}
               </span>
-              <button
-                type="button"
-                onClick={() => onOpen("knowledge")}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs transition-colors hover:border-accent hover:text-accent",
-                  knowledgePulse && "ring-1 ring-accent bg-accent/5",
-                )}
-              >
-                <BookOpen className="h-3 w-3" />
-                {counts.docs} {counts.docs === 1 ? "doc" : "docs"} · {counts.chunks} passages
-              </button>
+              {(counts.docs > 0 || counts.chunks > 0) && (
+                <button
+                  type="button"
+                  onClick={() => onOpen("knowledge")}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs transition-colors hover:border-accent hover:text-accent",
+                    knowledgePulse && "ring-1 ring-accent bg-accent/5",
+                  )}
+                >
+                  <BookOpen className="h-3 w-3" />
+                  Knowledge base: {counts.docs} {counts.docs === 1 ? "doc" : "docs"}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -117,16 +119,18 @@ export function PaigeCommandBar({ pb, tenantName, counts, knowledgePulse, pendin
           <span className="font-semibold text-sm truncate">
             {named ? pb.persona.name : "Your Paige"}
           </span>
-          <button
-            type="button"
-            onClick={() => onOpen("knowledge")}
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground shrink-0",
-              knowledgePulse && "ring-1 ring-accent",
-            )}
-          >
-            {counts.docs} {counts.docs === 1 ? "doc" : "docs"}
-          </button>
+          {(counts.docs > 0 || counts.chunks > 0) && (
+            <button
+              type="button"
+              onClick={() => onOpen("knowledge")}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs text-muted-foreground shrink-0",
+                knowledgePulse && "ring-1 ring-accent",
+              )}
+            >
+              {counts.docs} {counts.docs === 1 ? "doc" : "docs"}
+            </button>
+          )}
         </div>
         <MomentumReadout pending={pending} className="shrink-0" />
       </div>

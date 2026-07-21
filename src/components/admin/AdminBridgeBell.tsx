@@ -127,7 +127,7 @@ export function AdminBridgeBell() {
         <Button
           variant="ghost"
           size="icon"
-          aria-label={`Admin notifications${unread > 0 ? ` (${unread} unread)` : ""}`}
+          aria-label={`Notifications${unread > 0 ? ` (${unread} unread)` : ""}`}
           className="relative text-primary-foreground/80 hover:text-primary-foreground hover:bg-sidebar-accent/50"
         >
           <Bell className="w-4 h-4" />
