@@ -365,11 +365,11 @@ const Admin = () => {
           </PlatformStaffOnly>
         } />
         <Route path="security" element={
-          <AdminOnly>
+          <PlatformStaffOnly>
             <Suspense fallback={<SuspenseFallback />}>
               <SecurityCanaryAdmin />
             </Suspense>
-          </AdminOnly>
+          </PlatformStaffOnly>
         } />
         <Route path="legal" element={
           <AdminOnly>
@@ -391,11 +391,13 @@ const Admin = () => {
           </Suspense>
         } />
         <Route path="brokers" element={
-          <AdminOnly>
-            <Suspense fallback={<SuspenseFallback />}>
-              <BrokersAdmin />
-            </Suspense>
-          </AdminOnly>
+          <FundingRoute>
+            <AdminOnly>
+              <Suspense fallback={<SuspenseFallback />}>
+                <BrokersAdmin />
+              </Suspense>
+            </AdminOnly>
+          </FundingRoute>
         } />
         <Route path="support" element={
           <Suspense fallback={<SuspenseFallback />}>
@@ -569,7 +571,7 @@ const Admin = () => {
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><UsageAnalytics /></Suspense></AdminOnly>
         } />
         <Route path="observability/errors" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><ErrorTracking /></Suspense></AdminOnly>
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><ErrorTracking /></Suspense></PlatformStaffOnly>
         } />
         <Route path="integrations/nav" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><NavIntegrationConfig /></Suspense></AdminOnly>
