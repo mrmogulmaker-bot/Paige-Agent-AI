@@ -372,11 +372,11 @@ const Admin = () => {
           </PlatformStaffOnly>
         } />
         <Route path="legal" element={
-          <AdminOnly>
+          <PlatformStaffOnly>
             <Suspense fallback={<SuspenseFallback />}>
               <LegalAdmin />
             </Suspense>
-          </AdminOnly>
+          </PlatformStaffOnly>
         } />
         <Route path="agreements" element={
           <AdminOnly>
@@ -568,7 +568,7 @@ const Admin = () => {
           <Suspense fallback={<SuspenseFallback />}><LeadsEnrichment /></Suspense>
         } />
         <Route path="observability/usage" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><UsageAnalytics /></Suspense></AdminOnly>
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><UsageAnalytics /></Suspense></PlatformStaffOnly>
         } />
         <Route path="observability/errors" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><ErrorTracking /></Suspense></PlatformStaffOnly>
