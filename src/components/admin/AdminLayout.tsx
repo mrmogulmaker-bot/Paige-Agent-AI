@@ -145,10 +145,10 @@ const hubs: Hub[] = [
     icon: TrendingUp,
     children: [
       { label: "Reports", href: "/admin/analytics", icon: TrendingUp },
-      { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
-      // Error Tracking (/admin/observability/errors) is an operator surface — it
-      // reads/writes the platform-global paige_config singleton + unscoped
-      // paige_workflow_runs. Moved to the God console (GOD_MORE); route is
+      // Usage Analytics (/admin/observability/usage) and Error Tracking
+      // (/admin/observability/errors) are OPERATOR surfaces — unscoped platform
+      // telemetry (paige_config singleton + cross-tenant counts), not tenant
+      // Insights. Both moved to the God console (GOD_MORE); routes are
       // PlatformStaffOnly. (§9 operator/tenant seam.)
     ],
     aliases: ["/admin/observability"],
@@ -180,10 +180,12 @@ const moreNavItems: MoreItem[] = [
   // credit tools → tenant/funding-gated) is a tracked product decision, so it is
   // deliberately NOT moved in this §9 nav-hygiene slice.
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench, adminOnly: true },
-  // Security Canary (/admin/security) is an operator surface — its RLS was
-  // narrowed to is_platform_owner() (Move 2 Slice 2d). Moved to the God console
-  // (GOD_MORE, where it already lived); route is PlatformStaffOnly. (§9.)
-  { label: "Legal Documents", href: "/admin/legal", icon: ShieldCheck, adminOnly: true },
+  // Legal Documents (/admin/legal) is an OPERATOR surface — it authors the
+  // PLATFORM's Terms/Privacy/E-Sign/AI-Disclaimer (versioned legal_documents,
+  // publishing forces platform-wide re-consent). A tenant admin must never edit
+  // the platform's own legal docs. Moved to the God console (GOD_MORE); route is
+  // PlatformStaffOnly. (§9.) "Agreements" (the tenant's OWN client-agreement
+  // config) stays — it is tenant-scoped.
   { label: "Agreements", href: "/admin/agreements", icon: FileSignature, adminOnly: true },
   { label: "Settings", href: "/admin/settings", icon: Settings, adminOnly: true },
 ];
@@ -235,7 +237,9 @@ const GOD_MORE: MoreItem[] = [
   { label: "Sends & Tier", href: "/admin/platform/sends", icon: Radio },
   { label: "Sending Identities", href: "/admin/platform/sending", icon: Send },
   { label: "Support", href: "/admin/support", icon: LifeBuoy },
+  { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
   { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
+  { label: "Legal Documents", href: "/admin/legal", icon: ShieldCheck },
   { label: "Security Canary", href: "/admin/security", icon: ShieldCheck },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
