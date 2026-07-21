@@ -6,6 +6,7 @@ import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
   Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate, Radio, Wand2,
+  type LucideIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -33,11 +34,11 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 // 7-hub top bar. Each hub has a primary route and optional sub-routes
 // surfaced via a dropdown so power users can jump deep with one click.
 // Every sub-route still has its own page — this is grouping, not consolidation.
-type HubChild = { label: string; href: string; icon: any };
+type HubChild = { label: string; href: string; icon: LucideIcon };
 type Hub = {
   label: string;
   href: string;
-  icon: any;
+  icon: LucideIcon;
   children?: HubChild[];
   /** Extra path prefixes that should also highlight this hub. */
   aliases?: string[];
