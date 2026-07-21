@@ -1,3 +1,9 @@
+> **SUPERSEDED (2026-07-21).** The single source of truth for Slice 1c is now
+> `docs/audits/platform-ia-slice-1c-handoff.md` (REVISED, FINAL — 8-item nav with
+> Marketplace elevated to position #3 per CLAUDE.md §18 OS north-star). This blueprint's
+> five grounded blockers (B1–B5) are absorbed into that handoff; kept here for reference
+> only. Where the two conflict, the handoff wins.
+
 # IA Slice 1c — Locked Target-IA Blueprint
 
 Owner-locked 2026-07-21 (decision packet → "OK"). Single source of truth for the

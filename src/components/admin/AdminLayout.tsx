@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate, Radio, Wand2,
+  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate, Radio, Wand2, CircleUser,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -190,7 +190,10 @@ const moreNavItems: MoreItem[] = [
   // PlatformStaffOnly. (§9.) "Agreements" (the tenant's OWN client-agreement
   // config) stays — it is tenant-scoped.
   { label: "Agreements", href: "/admin/agreements", icon: FileSignature, adminOnly: true },
-  { label: "Settings", href: "/admin/settings", icon: Settings, adminOnly: true },
+  // Settings (/admin/settings) is reached from the header profile dropdown
+  // ("Workspace settings", admin-gated) on desktop and the mobile drawer's
+  // action group — not the "More" overflow (Slice 1c-iii). GOD_MORE keeps its
+  // own operator Settings entry.
 ];
 
 const adminNavItems = [
@@ -353,6 +356,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           <Link to={godMode ? "/admin/platform/tenants" : "/admin"} className="flex items-center gap-2 min-w-0">
             <PaigeMark className="h-8 w-8 flex-shrink-0" />
             <span className="font-bold text-sm tracking-tight truncate">{PLATFORM.adminName}</span>
+            {/* Passive identity chip only. The multi-hat "View as" switcher used
+                to live here as a DropdownMenu nested INSIDE this <Link> — its
+                trigger click bubbled to the anchor and navigated. It's relocated
+                to the header profile dropdown per handoff §4 (Slice 1c-iii); the
+                chip that hosted it was a switcher affordance, not a lens-status
+                indicator, so nothing ambient is lost for the canSwitch case. */}
             {godMode ? (
               <Badge
                 variant="outline"
@@ -360,37 +369,14 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               >
                 {isPlatformOwner ? "Operator" : "Platform Admin"}
               </Badge>
-            ) : canSwitch ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className="hidden sm:inline-flex ml-2 items-center gap-1 rounded-full border border-accent/40 bg-transparent px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-accent hover:bg-accent/10 transition-colors"
-                    aria-label="Switch view"
-                  >
-                    View as
-                    <ChevronDown className="w-3 h-3 opacity-70" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-52">
-                  <DropdownMenuLabel>View as</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setLens("admin")} className={lens === "admin" ? "bg-muted" : ""}>
-                    <UserCog className="w-4 h-4 mr-2" /> Admin
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setLens("coach")} className={lens === "coach" ? "bg-muted" : ""}>
-                    <Users className="w-4 h-4 mr-2" /> Coach
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
+            ) : !canSwitch ? (
               <Badge
                 variant="outline"
                 className="hidden sm:inline-flex ml-2 text-[10px] font-medium capitalize border-accent/40 text-accent bg-transparent"
               >
                 {userRole}
               </Badge>
-            )}
+            ) : null}
           </Link>
 
           {/* Mobile: current section + menu trigger */}
@@ -418,16 +404,77 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             <AdminBridgeBell />
             <ThemeToggle variant="on-primary" />
 
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleSignOut}
-              disabled={isSigningOut}
-              aria-label="Sign out"
-              className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-sidebar-accent/50"
-            >
-              <LogOut className="w-4 h-4" />
-            </Button>
+            {/* Profile dropdown (Slice 1c-iii): identity + View-as (relocated) +
+                Workspace settings (admin-only) + Sign out. Replaces the bare
+                Sign-out icon. Personal settings + Help/Docs are intentionally
+                omitted — no destination exists yet (filed follow-ups); shipping
+                them would be dead links (§11/§13). */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Account menu"
+                  className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-sidebar-accent/50"
+                >
+                  <CircleUser className="w-5 h-5" />
+                </Button>
+              </DropdownMenuTrigger>
+
+              {godMode ? (
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="flex flex-col gap-0.5">
+                    <span className="text-xs font-normal text-muted-foreground">Platform</span>
+                    <span>{isPlatformOwner ? "Operator" : "Platform Admin"}</span>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} disabled={isSigningOut}>
+                    <LogOut className="w-4 h-4 mr-2" />
+                    {isSigningOut ? "Signing out…" : "Sign out"}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              ) : (
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="flex flex-col gap-0.5">
+                    <span className="text-xs font-normal text-muted-foreground">Signed in as</span>
+                    <span className="capitalize">{userRole}</span>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+
+                  {canSwitch && (
+                    <>
+                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                        View as
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem onClick={() => setLens("admin")} className={lens === "admin" ? "bg-muted" : ""}>
+                        <UserCog className="w-4 h-4 mr-2" /> Admin
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setLens("coach")} className={lens === "coach" ? "bg-muted" : ""}>
+                        <Users className="w-4 h-4 mr-2" /> Coach
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+
+                  {effectiveRole === "admin" && (
+                    <>
+                      <DropdownMenuItem
+                        onClick={() => navigate("/admin/settings")}
+                        className={isActive("/admin/settings") ? "bg-muted" : ""}
+                      >
+                        <Settings className="w-4 h-4 mr-2" /> Workspace settings
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                    </>
+                  )}
+
+                  <DropdownMenuItem onClick={handleSignOut} disabled={isSigningOut}>
+                    <LogOut className="w-4 h-4 mr-2" />
+                    {isSigningOut ? "Signing out…" : "Sign out"}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              )}
+            </DropdownMenu>
           </div>
         </div>
 
@@ -592,6 +639,18 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               <div className="mt-2 pt-2 border-t border-sidebar-border space-y-1">
                 {/* Generic "Switch to Client View" removed — use Impersonate
                     from a specific contact's portal panel instead. */}
+                {/* Workspace settings: relocated off the desktop "More" overflow
+                    into the profile dropdown (Slice 1c-iii); the mobile drawer
+                    keeps a direct admin-gated link so /admin/settings stays
+                    reachable without a mobile profile menu. */}
+                {effectiveRole === "admin" && (
+                  <button
+                    onClick={() => { setMobileNavOpen(false); navigate("/admin/settings"); }}
+                    className="flex items-center gap-3 w-full px-3 py-2.5 rounded-md text-sm text-primary-foreground/80 hover:bg-sidebar-accent/50"
+                  >
+                    <Settings className="w-4 h-4" /> Workspace settings
+                  </button>
+                )}
                 {canAccessBrokerWorkspace && (
                   <button
                     onClick={() => { setMobileNavOpen(false); navigate("/broker/app"); }}
