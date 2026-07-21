@@ -6,6 +6,7 @@ import {
   Users, DollarSign, BarChart3, Settings, LogOut,
   TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
   Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate, Radio, Wand2,
+  type LucideIcon,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -33,11 +34,11 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 // 7-hub top bar. Each hub has a primary route and optional sub-routes
 // surfaced via a dropdown so power users can jump deep with one click.
 // Every sub-route still has its own page — this is grouping, not consolidation.
-type HubChild = { label: string; href: string; icon: any };
+type HubChild = { label: string; href: string; icon: LucideIcon };
 type Hub = {
   label: string;
   href: string;
-  icon: any;
+  icon: LucideIcon;
   children?: HubChild[];
   /** Extra path prefixes that should also highlight this hub. */
   aliases?: string[];
@@ -145,7 +146,10 @@ const hubs: Hub[] = [
     children: [
       { label: "Reports", href: "/admin/analytics", icon: TrendingUp },
       { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
-      { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
+      // Error Tracking (/admin/observability/errors) is an operator surface — it
+      // reads/writes the platform-global paige_config singleton + unscoped
+      // paige_workflow_runs. Moved to the God console (GOD_MORE); route is
+      // PlatformStaffOnly. (§9 operator/tenant seam.)
     ],
     aliases: ["/admin/observability"],
   },
@@ -155,7 +159,10 @@ const hubs: Hub[] = [
 // Tools that don't belong to a daily-use hub — tucked into "More".
 // `adminOnly` items are hidden from coaches in the toolbar to match the
 // route-level RoleGate enforcement in Admin.tsx.
-type MoreItem = HubChild & { adminOnly?: boolean };
+// `funding` items are a funding/credit surface — hidden unless this tenant has
+// opted into the funding Playbook (funding_readiness), per §2. The route is also
+// FundingRoute-guarded so a direct URL can't reach it either.
+type MoreItem = HubChild & { adminOnly?: boolean; funding?: boolean };
 const moreNavItems: MoreItem[] = [
   // Moved out of the top hub bar into More — a tenant sets its client service
   // agreement once, so it's a setup surface, not a daily-driver tab.
@@ -163,10 +170,19 @@ const moreNavItems: MoreItem[] = [
   { label: "Coaches", href: "/admin/coaches", icon: UserCog },
   { label: "Members & Roles", href: "/admin/members", icon: UserCog, adminOnly: true },
   { label: "Affiliates", href: "/admin/affiliates", icon: Share2 },
-  { label: "Brokers", href: "/admin/brokers", icon: Briefcase, adminOnly: true },
+  // Brokers = the funding/lending broker network (§2). Funding-gated so generic
+  // coaching/consulting/agency tenants never see it unless they opt into funding.
+  { label: "Brokers", href: "/admin/brokers", icon: Briefcase, adminOnly: true, funding: true },
   { label: "Support Tickets", href: "/admin/support", icon: LifeBuoy, adminOnly: true },
+  // Maintenance stays here for now: DataMaintenancePanel is a MIXED surface —
+  // it renders funding credit-maintenance tools to funding-opted-in tenant admins
+  // AND an operator-only platform blast. Splitting it (operator blast → God;
+  // credit tools → tenant/funding-gated) is a tracked product decision, so it is
+  // deliberately NOT moved in this §9 nav-hygiene slice.
   { label: "Maintenance", href: "/admin/maintenance", icon: Wrench, adminOnly: true },
-  { label: "Security Canary", href: "/admin/security", icon: ShieldCheck, adminOnly: true },
+  // Security Canary (/admin/security) is an operator surface — its RLS was
+  // narrowed to is_platform_owner() (Move 2 Slice 2d). Moved to the God console
+  // (GOD_MORE, where it already lived); route is PlatformStaffOnly. (§9.)
   { label: "Legal Documents", href: "/admin/legal", icon: ShieldCheck, adminOnly: true },
   { label: "Agreements", href: "/admin/agreements", icon: FileSignature, adminOnly: true },
   { label: "Settings", href: "/admin/settings", icon: Settings, adminOnly: true },
@@ -219,6 +235,7 @@ const GOD_MORE: MoreItem[] = [
   { label: "Sends & Tier", href: "/admin/platform/sends", icon: Radio },
   { label: "Sending Identities", href: "/admin/platform/sending", icon: Send },
   { label: "Support", href: "/admin/support", icon: LifeBuoy },
+  { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
   { label: "Security Canary", href: "/admin/security", icon: ShieldCheck },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
@@ -287,7 +304,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     userRole === "admin" && canSwitch && lens === "coach" ? "coach" : userRole;
   const visibleMore = godMode
     ? (isPlatformOwner ? GOD_MORE : GOD_STAFF_MORE)
-    : moreNavItems.filter((i) => !i.adminOnly || effectiveRole === "admin");
+    : moreNavItems.filter(
+        (i) => (!i.adminOnly || effectiveRole === "admin") && (!i.funding || fundingEnabled),
+      );
 
   useEffect(() => {
     setMobileNavOpen(false);

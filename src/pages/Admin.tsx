@@ -4,12 +4,13 @@ import React, { useEffect, useState, Suspense, lazy as reactLazy } from "react";
 // cached but references hashed JS chunks that no longer exist, dynamic imports
 // throw "Failed to fetch dynamically imported module". We reload once
 // (guarded by sessionStorage) to pick up the fresh index.html.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- universal lazy wrapper: the constraint must admit components of any props shape
 const lazy = <T extends React.ComponentType<any>>(factory: () => Promise<{ default: T }>) =>
   reactLazy(async () => {
     try {
       return await factory();
-    } catch (err: any) {
-      const msg = String(err?.message || err);
+    } catch (err: unknown) {
+      const msg = String((err as { message?: string })?.message || err);
       if (
         /Failed to fetch dynamically imported module|Importing a module script failed/i.test(msg) &&
         !sessionStorage.getItem("__chunk_reload__")
@@ -210,7 +211,7 @@ const Admin = () => {
           .select("role")
           .eq("user_id", user.id);
 
-        const roleList = (roles || []).map((r: any) => r.role);
+        const roleList = (roles || []).map((r: { role: string }) => r.role);
         const isAdmin = roleList.includes("admin");
         const isCoach = roleList.includes("coach");
         // Platform staff (owner / scoped Platform Admin) run the God console and
@@ -365,11 +366,11 @@ const Admin = () => {
           </PlatformStaffOnly>
         } />
         <Route path="security" element={
-          <AdminOnly>
+          <PlatformStaffOnly>
             <Suspense fallback={<SuspenseFallback />}>
               <SecurityCanaryAdmin />
             </Suspense>
-          </AdminOnly>
+          </PlatformStaffOnly>
         } />
         <Route path="legal" element={
           <AdminOnly>
@@ -391,11 +392,13 @@ const Admin = () => {
           </Suspense>
         } />
         <Route path="brokers" element={
-          <AdminOnly>
-            <Suspense fallback={<SuspenseFallback />}>
-              <BrokersAdmin />
-            </Suspense>
-          </AdminOnly>
+          <FundingRoute>
+            <AdminOnly>
+              <Suspense fallback={<SuspenseFallback />}>
+                <BrokersAdmin />
+              </Suspense>
+            </AdminOnly>
+          </FundingRoute>
         } />
         <Route path="support" element={
           <Suspense fallback={<SuspenseFallback />}>
@@ -569,7 +572,7 @@ const Admin = () => {
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><UsageAnalytics /></Suspense></AdminOnly>
         } />
         <Route path="observability/errors" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><ErrorTracking /></Suspense></AdminOnly>
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><ErrorTracking /></Suspense></PlatformStaffOnly>
         } />
         <Route path="integrations/nav" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><NavIntegrationConfig /></Suspense></AdminOnly>
