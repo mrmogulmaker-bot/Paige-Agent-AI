@@ -890,6 +890,19 @@ All colors MUST be HSL.
     to   { transform: translate(400%, -50%); }
   }
 
+  /* Slice 1c-iv — one-shot ENTER fade when crossing INTO Vibe Studio (StudioLayout mount), the
+     "entering a distinct creative room" moment (§6/§22). Follows the Studio motion convention
+     (owner 2026-07-19): plays by DEFAULT, frozen ONLY by the explicit `.studio-motion-reduced`
+     rail toggle — NOT the OS `prefers-reduced-motion` query — so it stays consistent with every
+     other Studio effect. Fires once; the stable outlet wrapper never remounts on internal route
+     changes, so it does not replay when opening a project or the library. */
+  @keyframes studio-enter-fade {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .studio-surface .studio-enter { animation: studio-enter-fade 320ms ease-out both; }
+  .studio-surface.studio-motion-reduced .studio-enter { animation: none; }
+
   /* Studio motion preference (owner 2026-07-19) — the EXPLICIT "Reduced" choice freezes every cosmic
      animation to the SAME still-beautiful frame the OS media query used to hold (§11), but it is gated
      on the `.studio-surface.studio-motion-reduced` class, NOT on `prefers-reduced-motion`. Inside this
