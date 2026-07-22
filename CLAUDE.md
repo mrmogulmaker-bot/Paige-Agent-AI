@@ -1165,6 +1165,29 @@ surface, especially 3D/WebGL, media pipelines, and anything behind a graceful-de
   headless smoke test + loud logging + a crash-proof, always-visible fallback.** Blindness is not an
   excuse to ship on a hope (§13); it is the reason to make failure impossible-to-hide and the render
   impossible-to-blank.
+- **A migration is not DONE until it is PROVEN PERSISTED on prod — a rollback-transaction proof is
+  necessary but NOT sufficient (owner: Antonio, 2026-07-22).** Verifying a migration by running its SQL
+  inside a `BEGIN ... ROLLBACK` proves the SQL *executes without error*; it proves NOTHING about whether
+  the migration is *live and persisted* on prod. This is the exact gap that let 1c-vi (20260722010000)
+  and 1c-viii-a (20260722160000) merge to main while prod's `supabase_migrations.schema_migrations` stayed
+  two versions behind — the migrations 'passed' a rollback proof and were never actually applied, because
+  no CI applied them (the Supabase preview integration only builds branch projects and fails on #275). A
+  rollback proof is the *pre-merge* smoke test (does the SQL run?); it MUST be paired with a *post-merge
+  PERSISTED-APPLY confirmation* before the migration is called done:
+    1. `schema_migrations` on prod (ref xygzykjyynhzqytbqnzu) has ADVANCED to include the new version(s) —
+       confirm the row(s) exist, not just that the SQL could run.
+    2. The objects the migration creates/alters ACTUALLY EXIST on prod (query the table/column/policy/
+       function, don't assume).
+  This confirmation happens automatically via the `.github/workflows/deploy-migrations.yml` pipeline
+  (push-to-main → `supabase db push` → `migration list` verify step → `db-live` tag), which is the §24
+  automation of this rule — do NOT hand-apply what CI now applies. When CI is unavailable, the confirmation
+  is an explicit MCP apply (`mcp__Supabase__apply_migration` or `execute_sql`) followed by a MCP query that
+  shows the schema_migrations row AND the created object, pasted as the proof (§13 — the real query result,
+  never 'it should be applied'). Run the raw `git diff db-live..HEAD -- 'supabase/migrations/**'` (the
+  `db-live` tag is moved by the pipeline to the last commit whose migrations are persisted on prod; a
+  non-empty diff = migrations ahead of prod) to confirm zero drift. The burden of catching a migration that merged-but-never-applied is OURS, not the owner's —
+  'the SQL ran in a rollback' is exactly the false-green this section exists to kill, the schema twin of
+  'it compiled but didn't render.'
 - **The test, every time:** *"Have I proven this actually RUNS — not just compiles — and if it fails
   live, will the failure be LOUD and the surface still show SOMETHING, or will it silently blank and send
   us back into the guess-for-hours cycle?"* If I've only proven it compiles, I have not verified it.
