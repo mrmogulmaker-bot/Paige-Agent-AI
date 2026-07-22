@@ -12,6 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { ApprovalQueueRow } from "@/hooks/usePendingApprovals";
 
@@ -47,15 +48,46 @@ function contactLabel(a: ApprovalQueueRow): string {
   return a.contact_email ?? "—";
 }
 
-export function ApprovalRow({ a }: { a: ApprovalQueueRow }) {
+export function ApprovalRow({
+  a,
+  showDecline = false,
+  onResolved,
+}: {
+  a: ApprovalQueueRow;
+  /** When true, render a ghost "Decline" control with a reason popover (1c-vii
+   *  Drafts panel). Defaults off so existing Live-desk callers are unchanged (§18). */
+  showDecline?: boolean;
+  /** Fired after a successful approve or decline, so a parent list can refresh. */
+  onResolved?: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [collapsing, setCollapsing] = useState(false);
   const [approved, setApproved] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [rationale, setRationale] = useState("");
+  const [rejectBusy, setRejectBusy] = useState(false);
+
+  const decline = async () => {
+    const reason = rationale.trim();
+    if (!reason) { toast.error("Add a quick reason so Paige learns what to change."); return; }
+    setRejectBusy(true);
+    // Reject-with-reason: the same RLS-protected UPDATE ApprovalDetail ships (§18) —
+    // permissive admin|coach + RESTRICTIVE tenant policy gate it server-side.
+    const { error } = await supabase
+      .from("paige_pending_approvals")
+      .update({ status: "rejected", decision_rationale: reason, reviewed_at: new Date().toISOString() })
+      .eq("id", a.id);
+    setRejectBusy(false);
+    if (error) { toast.error(error.message ?? "Couldn't decline that."); return; }
+    setDeclining(false);
+    setCollapsing(true);
+    onResolved?.();
+  };
 
   const dc = a.draft_content as Record<string, unknown> | string | null;
   const fallback =
     typeof dc === "object" && dc !== null
-      ? String((dc as any).subject ?? (dc as any).body ?? (dc as any).preview ?? "")
+      ? String(dc.subject ?? dc.body ?? dc.preview ?? "")
       : String(dc ?? "");
   const summary = a.summary ?? fallback;
   const state = a.sla_state;
@@ -76,6 +108,7 @@ export function ApprovalRow({ a }: { a: ApprovalQueueRow }) {
     // Success beat: flash the check, then collapse. Realtime refresh ticks count.
     setApproved(true);
     setTimeout(() => setCollapsing(true), 240);
+    onResolved?.();
   };
 
   return (
@@ -109,15 +142,39 @@ export function ApprovalRow({ a }: { a: ApprovalQueueRow }) {
               <Button
                 size="sm"
                 onClick={approve}
-                disabled={busy || approved}
+                disabled={busy || approved || rejectBusy}
                 className="h-7 bg-gradient-gold text-accent-foreground hover:opacity-90"
               >
                 {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Approve"}
               </Button>
+              {/* Edit-then-approve routes to the full detail surface (§18 — no inline
+                  duplicate editor); "Decline" is neutral/ghost (gold stays on Approve). */}
               <Button asChild size="sm" variant="ghost" className="h-7">
-                <Link to={`/admin/approvals/${a.id}`}>View</Link>
+                <Link to={`/admin/approvals/${a.id}`}>{showDecline ? "Edit" : "View"}</Link>
               </Button>
+              {showDecline && (
+                <Button size="sm" variant="ghost" className="h-7 text-muted-foreground" onClick={() => setDeclining((d) => !d)} disabled={busy || approved}>
+                  Decline
+                </Button>
+              )}
             </div>
+            {showDecline && declining && (
+              <div className="space-y-2 rounded-md border border-border bg-muted/30 p-2">
+                <Textarea
+                  value={rationale}
+                  onChange={(e) => setRationale(e.target.value)}
+                  rows={2}
+                  placeholder="What needs to change? Paige learns from this."
+                  className="text-sm"
+                />
+                <div className="flex items-center justify-end gap-1.5">
+                  <Button size="sm" variant="ghost" className="h-7" onClick={() => setDeclining(false)} disabled={rejectBusy}>Cancel</Button>
+                  <Button size="sm" variant="outline" className="h-7" onClick={decline} disabled={rejectBusy || !rationale.trim()}>
+                    {rejectBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Decline draft"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

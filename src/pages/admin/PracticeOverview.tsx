@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -27,10 +27,22 @@ import {
 } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
 import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
+import { CommandCenterViewToggle } from "@/components/dashboard/admin/CommandCenterViewToggle";
+import { DraftsAwaitingPanel } from "@/components/dashboard/DraftsAwaitingPanel";
 import { OwnerWelcome, type OnboardingState } from "@/components/onboarding/OwnerWelcome";
-import { usePracticeDashboard } from "@/hooks/usePracticeDashboard";
+import { usePracticeDashboard, type PracticeMetrics } from "@/hooks/usePracticeDashboard";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useUserRoles } from "@/hooks/useUserRoles";
+import { useCommandCenterView } from "@/hooks/useCommandCenterView";
+import {
+  PERSONAS,
+  resolvePersona,
+  TEAM_VIEW_ENABLED,
+  type KpiKey,
+  type RailKey,
+  type CommandCenterView,
+} from "@/lib/roleViews/commandCenterRegistry";
 import { supabase } from "@/integrations/supabase/client";
 
 const usd = (cents: number) =>
@@ -83,18 +95,85 @@ function AttentionItem({
   );
 }
 
+/** KPI tiles keyed by KpiKey. Explicit per-key access (no dynamic metrics[k] index)
+ *  keeps the whole-repo tsc ratchet clean, and each `present` preserves the §13
+ *  "render only when the real key exists" guard — no fabricated zero ever ships. */
+const KPI_META: Record<
+  KpiKey,
+  { present: (m?: PracticeMetrics) => boolean; render: (m: PracticeMetrics | undefined, loading: boolean) => JSX.Element }
+> = {
+  active_clients: {
+    present: (m) => m?.active_clients !== undefined,
+    render: (m, loading) => (
+      <StatTile
+        label="Active clients"
+        value={num(m?.active_clients ?? 0)}
+        icon={Users}
+        loading={loading}
+        hint={m?.new_clients !== undefined && m.new_clients > 0 ? `${num(m.new_clients)} new this period` : undefined}
+      />
+    ),
+  },
+  won_value_cents: {
+    present: (m) => m?.won_value_cents !== undefined,
+    render: (m, loading) => (
+      <StatTile
+        label="Revenue this period"
+        value={usd(m?.won_value_cents ?? 0)}
+        icon={DollarSign}
+        loading={loading}
+        hint={m?.arpc_cents !== undefined ? `${usd(m.arpc_cents)} avg / client` : undefined}
+      />
+    ),
+  },
+  active_retainers: {
+    present: (m) => m?.active_retainers !== undefined,
+    render: (m, loading) => (
+      <StatTile label="Active retainers" value={num(m?.active_retainers ?? 0)} icon={Wallet} loading={loading} />
+    ),
+  },
+  pipeline_value_cents: {
+    present: (m) => m?.pipeline_value_cents !== undefined,
+    render: (m, loading) => (
+      <StatTile label="Pipeline value" value={usd(m?.pipeline_value_cents ?? 0)} icon={TrendingUp} loading={loading} />
+    ),
+  },
+};
+
+const RAIL_META: Record<RailKey, { icon: LucideIcon; label: string; href: string; value: (a?: import("@/hooks/usePracticeDashboard").PracticeAttention) => number | undefined }> = {
+  at_risk_clients: { icon: AlertTriangle, label: "At-risk clients", href: "/admin/clients", value: (a) => a?.at_risk_clients },
+  follow_ups_due: { icon: Clock, label: "Follow-ups due", href: "/admin/approvals", value: (a) => a?.follow_ups_due },
+  upcoming_sessions_7d: { icon: CalendarClock, label: "Sessions next 7 days", href: "/admin/calendar", value: (a) => a?.upcoming_sessions_7d },
+  tasks_due: { icon: CheckSquare, label: "Tasks due", href: "/admin/planning", value: (a) => a?.tasks_due },
+  onboarding_in_progress: { icon: UserPlus, label: "Onboarding in progress", href: "/admin/clients", value: (a) => a?.onboarding_in_progress },
+};
+
 export function PracticeOverview({ children }: { children?: ReactNode }) {
   const { metrics, attention, loading } = usePracticeDashboard();
-  // The rail's act moment: live approvals awaiting this user. usePendingApprovals
-  // subscribes to paige_pending_approvals realtime, so this count is instant.
-  const { items: approvals } = usePendingApprovals({ scope: "mine" });
+  const { roles, userId } = useUserRoles();
+  const { activeTenantId, activeTenant, isPlatformOwner } = useTenantContext();
+
+  // Presentation-only persona resolution — NEVER gates a data read (§9). isOwner is
+  // the tenant-owner flag; resolvePersona returns the highest-authority ACTIVE persona.
+  const isOwner = !!userId && activeTenant?.owner_user_id === userId;
+  const persona = resolvePersona(roles, isOwner);
+  const availableViews = useMemo<CommandCenterView[]>(
+    () => persona.views.filter((v) => v !== "team" || TEAM_VIEW_ENABLED),
+    [persona.views],
+  );
+  const { view, setView, canSwitch } = useCommandCenterView(availableViews, persona.defaultView);
+  // "Whole business" renders the owner composition; content otherwise = the persona.
+  const contentConfig = view === "business" ? PERSONAS.owner : persona;
+
+  // Approvals scope. Business view sees the whole tenant's queue — BUT never for a
+  // platform owner, whose RLS would return every tenant's rows (§9). So a platform
+  // owner falls back to "mine". Non-approver personas simply don't mount the panel.
+  const approvalScope: "all" | "mine" = view === "business" && !isPlatformOwner ? "all" : "mine";
+  const { items: approvals, refresh: refreshApprovals } = usePendingApprovals({ scope: approvalScope });
   const approvalsCount = approvals.length;
 
-  // First-run welcome (§9/§10). Completion state is authoritative in the tenants row,
-  // read through the Paige-callable RPC — never localStorage. We show the guided
-  // welcome only while it's neither dismissed nor completed; it's an above-the-fold,
-  // dismissible panel that never blocks the dashboard underneath.
-  const { activeTenantId, activeTenant } = useTenantContext();
+  // First-run welcome (§9/§10). Completion is authoritative in the tenants row via the
+  // Paige-callable RPC — never localStorage.
   const [welcome, setWelcome] = useState<OnboardingState | null>(null);
   const [welcomeHidden, setWelcomeHidden] = useState(false);
 
@@ -108,127 +187,22 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
       const { data, error } = await supabase.rpc("get_owner_onboarding_state" as any, {
         p_tenant_id: activeTenantId,
       });
-      // Role-gated RPC: a non-owner/admin caller raises — we simply show nothing.
       if (!on || error) return;
       setWelcome((data ?? {}) as OnboardingState);
     })();
     return () => { on = false; };
   }, [activeTenantId]);
 
-  const showWelcome =
-    !welcomeHidden &&
-    welcome !== null &&
-    !welcome.dismissed &&
-    !welcome.completed_at;
+  const showWelcome = !welcomeHidden && welcome !== null && !welcome.dismissed && !welcome.completed_at;
 
-  // Defensive: render a KPI tile only when its key is actually present (§13).
-  const kpis: Array<{ key: string; node: JSX.Element }> = [];
-  if (loading || metrics?.active_clients !== undefined) {
-    kpis.push({
-      key: "active_clients",
-      node: (
-        <StatTile
-          label="Active clients"
-          value={num(metrics?.active_clients ?? 0)}
-          icon={Users}
-          loading={loading}
-          hint={
-            metrics?.new_clients !== undefined && metrics.new_clients > 0
-              ? `${num(metrics.new_clients)} new this period`
-              : undefined
-          }
-        />
-      ),
-    });
-  }
-  if (loading || metrics?.won_value_cents !== undefined) {
-    kpis.push({
-      key: "won_value_cents",
-      node: (
-        <StatTile
-          label="Revenue this period"
-          value={usd(metrics?.won_value_cents ?? 0)}
-          icon={DollarSign}
-          loading={loading}
-          hint={
-            metrics?.arpc_cents !== undefined
-              ? `${usd(metrics.arpc_cents)} avg / client`
-              : undefined
-          }
-        />
-      ),
-    });
-  }
-  if (loading || metrics?.active_retainers !== undefined) {
-    kpis.push({
-      key: "active_retainers",
-      node: (
-        <StatTile
-          label="Active retainers"
-          value={num(metrics?.active_retainers ?? 0)}
-          icon={Wallet}
-          loading={loading}
-        />
-      ),
-    });
-  }
-  if (loading || metrics?.pipeline_value_cents !== undefined) {
-    kpis.push({
-      key: "pipeline_value_cents",
-      node: (
-        <StatTile
-          label="Pipeline value"
-          value={usd(metrics?.pipeline_value_cents ?? 0)}
-          icon={TrendingUp}
-          loading={loading}
-        />
-      ),
-    });
-  }
+  // KPI tiles for this persona/view — explicit per-key, present-guarded (§13).
+  const kpis = contentConfig.kpis
+    .filter((k) => KPI_META[k].present(metrics) || loading)
+    .map((k) => ({ key: k, node: KPI_META[k].render(metrics, loading) }));
 
-  const railItems = [
-    {
-      key: "at_risk_clients",
-      icon: AlertTriangle,
-      label: "At-risk clients",
-      value: attention?.at_risk_clients,
-      href: "/admin/clients",
-    },
-    {
-      key: "follow_ups_due",
-      icon: Clock,
-      label: "Follow-ups due",
-      value: attention?.follow_ups_due,
-      href: "/admin/approvals",
-    },
-    {
-      key: "upcoming_sessions_7d",
-      icon: CalendarClock,
-      label: "Sessions next 7 days",
-      value: attention?.upcoming_sessions_7d,
-      href: "/admin/calendar",
-    },
-    {
-      key: "tasks_due",
-      icon: CheckSquare,
-      label: "Tasks due",
-      value: attention?.tasks_due,
-      href: "/admin/planning",
-    },
-    {
-      key: "onboarding_in_progress",
-      icon: UserPlus,
-      label: "Onboarding in progress",
-      value: attention?.onboarding_in_progress,
-      href: "/admin/clients",
-    },
-  ].filter((i) => i.value !== undefined) as Array<{
-    key: string;
-    icon: LucideIcon;
-    label: string;
-    value: number;
-    href: string;
-  }>;
+  const railItems = contentConfig.rail
+    .map((k) => ({ key: k, ...RAIL_META[k], value: RAIL_META[k].value(attention) }))
+    .filter((i) => i.value !== undefined) as Array<{ key: RailKey; icon: LucideIcon; label: string; href: string; value: number }>;
 
   const attentionTotal = railItems.reduce((sum, i) => sum + i.value, 0);
   const emptyBook =
@@ -240,15 +214,27 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
   const stages = metrics?.deals_by_stage ?? [];
   const activeStages = stages.filter((s) => s.count > 0 || s.value_cents > 0);
 
+  const showKpis = contentConfig.panels.includes("kpis") && kpis.length > 0;
+  const showNeeds = contentConfig.panels.includes("needs_today");
+  const showPipeline = contentConfig.panels.includes("open_pipeline") && metrics?.deals_by_stage !== undefined;
+
   return (
     <PageShell width="wide">
+      {/* Header kept as the existing hero (§28 — no silent restyle of a shipped
+          surface); the personalization is the body. The view toggle + Export are
+          additive actions. */}
       <PageHeader
         variant="hero"
         icon={LayoutDashboard}
         eyebrow="Overview"
         title="Your practice at a glance"
         description="The people you serve, the revenue in motion, and exactly what's waiting on you today."
-        actions={<ExportClientsButton />}
+        actions={
+          <div className="flex items-center gap-2">
+            {canSwitch && <CommandCenterViewToggle views={availableViews} value={view} onChange={setView} />}
+            {contentConfig.showExport && <ExportClientsButton />}
+          </div>
+        }
       />
 
       {showWelcome && activeTenantId && (
@@ -258,10 +244,6 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
           initialState={welcome ?? {}}
           onClose={() => setWelcomeHidden(true)}
         />
-      )}
-
-      {kpis.length > 0 && (
-        <StatRow cols={4}>{kpis.map((k) => <div key={k.key}>{k.node}</div>)}</StatRow>
       )}
 
       {emptyBook ? (
@@ -279,87 +261,91 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
           />
         </SectionCard>
       ) : (
-        <SectionCard
-          title="Needs you today"
-          description="What Paige has teed up for your attention, live."
-          icon={Sparkles}
-          actions={
-            approvalsCount > 0 ? (
-              <Button asChild variant="gold" size="sm">
-                <Link to="/admin/approvals">
-                  Review {num(approvalsCount)} approval{approvalsCount === 1 ? "" : "s"}
-                </Link>
-              </Button>
-            ) : (
-              <StatePill state="success">All clear</StatePill>
-            )
-          }
-        >
-          {railItems.length === 0 ? (
-            <EmptyState
-              icon={Sparkles}
-              title="Nothing needs you right now"
-              description="Paige will raise at-risk clients, due follow-ups, and upcoming sessions here as they come up."
-            />
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {railItems.map((i) => (
-                <AttentionItem
-                  key={i.key}
-                  icon={i.icon}
-                  label={i.label}
-                  count={i.value}
-                  href={i.href}
-                  emphasize={i.key === "at_risk_clients"}
-                />
-              ))}
-            </div>
+        <>
+          {/* Drafts marquee LEADS for approver personas — the live act out-ranks the
+              static KPI context (the one gold approval surface on the page). */}
+          {contentConfig.showApprovalsAct && (
+            <DraftsAwaitingPanel items={approvals} refresh={refreshApprovals} />
           )}
-        </SectionCard>
-      )}
 
-      {!emptyBook && metrics?.deals_by_stage !== undefined && (
-        <SectionCard
-          title="Open pipeline by stage"
-          description="Where your active deals sit right now."
-          icon={TrendingUp}
-          actions={
-            <Button asChild variant="ghost" size="sm">
-              <Link to="/admin/pipeline">
-                Open pipeline <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
-              </Link>
-            </Button>
-          }
-        >
-          {activeStages.length === 0 ? (
-            <EmptyState
-              icon={TrendingUp}
-              title="No open deals yet"
-              description="As you move deals through your pipeline, the value in each stage shows up here."
-            />
-          ) : (
-            <ul className="divide-y divide-border/60">
-              {activeStages.map((s) => (
-                <li
-                  key={s.stage_label}
-                  className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="truncate text-sm font-medium text-foreground">
-                      {s.stage_label}
-                    </span>
-                    <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
-                      {num(s.count)}
-                    </span>
-                  </div>
-                  <span className="shrink-0 font-display text-sm font-semibold tabular-nums text-foreground">
-                    {usd(s.value_cents)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+          {showKpis && (
+            <StatRow cols={Math.max(2, Math.min(kpis.length, 4)) as 2 | 3 | 4}>
+              {kpis.map((k) => <div key={k.key}>{k.node}</div>)}
+            </StatRow>
           )}
-        </SectionCard>
+
+          {showNeeds && (
+            <SectionCard
+              title="Needs you today"
+              description="What Paige has teed up for your attention, live."
+              icon={Sparkles}
+              actions={railItems.length === 0 ? <StatePill state="success">All clear</StatePill> : undefined}
+            >
+              {railItems.length === 0 ? (
+                <EmptyState
+                  icon={Sparkles}
+                  title="Nothing needs you right now"
+                  description="Paige will raise at-risk clients, due follow-ups, and upcoming sessions here as they come up."
+                />
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {railItems.map((i) => (
+                    <AttentionItem
+                      key={i.key}
+                      icon={i.icon}
+                      label={i.label}
+                      count={i.value}
+                      href={i.href}
+                      emphasize={i.key === contentConfig.railEmphasis}
+                    />
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+          )}
+
+          {showPipeline && (
+            <SectionCard
+              title="Open pipeline by stage"
+              description="Where your active deals sit right now."
+              icon={TrendingUp}
+              actions={
+                <Button asChild variant="ghost" size="sm">
+                  <Link to="/admin/pipeline">
+                    Open pipeline <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
+                  </Link>
+                </Button>
+              }
+            >
+              {activeStages.length === 0 ? (
+                <EmptyState
+                  icon={TrendingUp}
+                  title="No open deals yet"
+                  description="As you move deals through your pipeline, the value in each stage shows up here."
+                />
+              ) : (
+                <ul className="divide-y divide-border/60">
+                  {activeStages.map((s) => (
+                    <li
+                      key={s.stage_label}
+                      className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="truncate text-sm font-medium text-foreground">{s.stage_label}</span>
+                        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+                          {num(s.count)}
+                        </span>
+                      </div>
+                      <span className="shrink-0 font-display text-sm font-semibold tabular-nums text-foreground">
+                        {usd(s.value_cents)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </SectionCard>
+          )}
+        </>
       )}
 
       {children}
