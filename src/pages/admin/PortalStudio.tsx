@@ -28,7 +28,7 @@ import type { PortalModuleOverlay } from "@/hooks/useClientPortalConfig";
 import { cn } from "@/lib/utils";
 
 /**
- * Portal Studio (§9/§10/§11) — the ONE tenant-facing surface where a tenant skins
+ * Client Portal (§9/§10/§11) — the ONE tenant-facing surface where a tenant skins
  * the client-facing portal (/app): brand (logo, colors, type), which tabs a client
  * sees + their order, the welcome greeting, and a live "View as Client" preview.
  *
@@ -224,7 +224,7 @@ export default function PortalStudio() {
     return (
       <PageShell width="wide">
         <PageHeader
-          variant="hero" eyebrow="Portal Studio" title="Your client's portal"
+          variant="hero" eyebrow="Client Portal" title="Your client's portal"
           description="Skin the portal your clients live in — brand, tabs, and greeting, in one place."
         />
         <EmptyState icon={Palette} title="No active workspace" description="Pick a workspace to build its client portal." />
@@ -236,7 +236,7 @@ export default function PortalStudio() {
     <PageShell width="wide">
       <PageHeader
         variant="hero"
-        eyebrow="Portal Studio"
+        eyebrow="Client Portal"
         title="Your client's portal"
         description="Everything your clients see when they sign in — your brand, the tabs they get, and how they're greeted. Set it once; Paige carries it everywhere."
         actions={

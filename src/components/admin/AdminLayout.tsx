@@ -80,7 +80,7 @@ const hubs: Hub[] = [
     aliases: [
       "/admin/clients", "/admin/contacts", "/admin/leads",
       "/admin/pipeline", "/admin/funding", "/admin/funding-pipeline", "/admin/funding-lens",
-      "/admin/calendar", "/admin/bookings", "/admin/portal",
+      "/admin/calendar", "/admin/bookings", "/admin/clients-hub/portal",
     ],
   },
   // 5 — Team (PLACEHOLDER landing; full live-ops floor 1c-ix). Also resolves the

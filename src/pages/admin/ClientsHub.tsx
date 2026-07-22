@@ -26,7 +26,7 @@ export default function ClientsHub() {
             <Button asChild variant="outline"><Link to="/admin/leads/enrichment"><Contact className="h-4 w-4" /> Lead Enrichment</Link></Button>
             <Button asChild variant="outline"><Link to="/admin/pipeline"><KanbanSquare className="h-4 w-4" /> Pipeline</Link></Button>
             <Button asChild variant="outline"><Link to="/admin/calendar"><CalendarDays className="h-4 w-4" /> Calendar</Link></Button>
-            <Button asChild variant="outline"><Link to="/admin/portal"><LayoutTemplate className="h-4 w-4" /> Portal Studio</Link></Button>
+            <Button asChild variant="outline"><Link to="/admin/clients-hub/portal"><LayoutTemplate className="h-4 w-4" /> Client Portal</Link></Button>
             {fundingEnabled && (
               <>
                 <Button asChild variant="outline"><Link to="/admin/funding-pipeline"><Briefcase className="h-4 w-4" /> Funding Journey</Link></Button>
