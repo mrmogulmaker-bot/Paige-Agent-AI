@@ -294,6 +294,14 @@ const Admin = () => {
         <Route path="clients-hub" element={
           <Suspense fallback={<SuspenseFallback />}><ClientsHub /></Suspense>
         } />
+        {/* Client Portal (formerly "Portal Studio") — its ONE home is under the
+            Clients container (§9/§12). Reached via the ClientsHub CTA; the old
+            /admin/portal path 301-redirects below so saved deep-links resolve. */}
+        <Route path="clients-hub/portal" element={
+          <AdminOnly>
+            <Suspense fallback={<SuspenseFallback />}><PortalStudio /></Suspense>
+          </AdminOnly>
+        } />
         <Route path="team" element={
           <Suspense fallback={<SuspenseFallback />}><TeamHub /></Suspense>
         } />
@@ -470,13 +478,10 @@ const Admin = () => {
             </Suspense>
           </AdminOnly>
         } />
-        <Route path="portal" element={
-          <AdminOnly>
-            <Suspense fallback={<SuspenseFallback />}>
-              <PortalStudio />
-            </Suspense>
-          </AdminOnly>
-        } />
+        {/* Client Portal moved to /admin/clients-hub/portal (§9/§12). These
+            redirects (SPA equivalent of a 301) keep old links + deep-links live. */}
+        <Route path="portal" element={<Navigate to="/admin/clients-hub/portal" replace />} />
+        <Route path="portal/*" element={<Navigate to="/admin/clients-hub/portal" replace />} />
         <Route path="settings/pipelines" element={
           <AdminOnly>
             <Suspense fallback={<SuspenseFallback />}>

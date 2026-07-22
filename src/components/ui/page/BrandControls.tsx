@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
  * Shared brand-authoring primitives (§11 "add to the layer, don't fork").
  *
  * ColorField (swatch + hex + AA-contrast chip) and LogoUploader (drag/drop image
- * uploader) were lifted out of BrandKitPanel so Portal Studio and the Brand Kit
+ * uploader) were lifted out of BrandKitPanel so Client Portal and the Brand Kit
  * editor drive the exact same controls — one source of truth for how a tenant
  * picks a color or drops a logo. Neutral primitives: no vertical/finance content,
  * gold reserved for the act moment upstream (these controls never wear gold).

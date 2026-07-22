@@ -9,7 +9,7 @@ import type { PortalModuleOverlay } from "@/hooks/useClientPortalConfig";
 // Client-portal nav — the ONE source of truth for how the Playbook module
 // CATALOG + the tenant PRESENTATION OVERLAY resolve into the /app nav (§9/§10).
 // ---------------------------------------------------------------------------
-// AppNav (the live client chrome) and Portal Studio's "View as Client" preview
+// AppNav (the live client chrome) and Client Portal's "View as Client" preview
 // both compute their tab list from these helpers, so the preview can never drift
 // from what a client actually sees (§13 — no fork, one merge rule).
 //
