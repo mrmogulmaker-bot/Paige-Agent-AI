@@ -27,6 +27,8 @@ export interface ScorerInput {
   tenantId?: string | null;
   taskId?: string | null;
   traceId?: string | null;
+  /** Human ground-truth label for this case (e.g. a thumbs rating: "positive"|"negative"). Read by human_label. */
+  label?: string | null;
 }
 
 // Deterministic thresholds used only when a case supplies no explicit threshold via `expected`.
@@ -128,6 +130,16 @@ export const DETERMINISTIC_SCORERS: Record<string, (input: ScorerInput) => Score
     const n = o?.anchorsUsed;
     if (typeof n !== "number" || !Number.isFinite(n)) return det("anchors_used", null, "no numeric `anchorsUsed` on output");
     return det("anchors_used", n > 0 ? 1 : 0);
+  },
+
+  // human ground-truth label (§34-L2 feedback channel) — a chat thumbs rating.
+  // "positive" → 1, "negative" → 0. Zero LLM cost: it IS the human's verdict. No
+  // label → can't score (never a defaulted pass, §31).
+  human_label(input) {
+    const label = typeof input.label === "string" ? input.label.trim().toLowerCase() : "";
+    if (label === "positive") return det("human_label", 1, "human thumbs-up");
+    if (label === "negative") return det("human_label", 0, "human thumbs-down");
+    return det("human_label", null, "no human rating on case");
   },
 
   // the output has a valid StrategyPlan shape: {decomposition[], approach:string, risks[], successCriteria[]}.

@@ -10,6 +10,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useConversation, ConversationProvider } from "@elevenlabs/react";
 import { primeMicAndAudio, startManagedVoiceSession, describeVoiceError } from "@/lib/voice/startVoiceSession";
 import { ResponseFeedback } from "@/components/chat/ResponseFeedback";
+import { MessageMeta } from "@/components/chat/MessageMeta";
+import { SlashCommandMenu } from "@/components/chat/SlashCommandMenu";
 import { useQuery } from "@tanstack/react-query";
 import { getUserClock } from "@/lib/userClock";
 import { useLocation } from "react-router-dom";
@@ -31,6 +33,10 @@ import { PanelLeft } from "lucide-react";
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
 type Message = {
+  /** Stable id — survives array splices; underwrites copy/retry/feedback (1c-vi). */
+  id: string;
+  /** Creation time (ms) — powers the hover timestamp; omitted-time turns hide it. */
+  ts: number;
   role: "user" | "assistant";
   content: string;
   queued?: QueuedApproval[];
@@ -39,6 +45,17 @@ type Message = {
    *  not as a live Approve button (§15 — never re-fire a past action). */
   confirmResolved?: boolean;
 };
+
+// crypto.randomUUID is undefined in some insecure-context / older webviews — guard
+// it so building a message can never white-screen the whole chat (S4).
+const safeUuid = (): string => {
+  try {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch { /* fall through */ }
+  return `m-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+const mkMsg = (m: Omit<Message, "id" | "ts"> & Partial<Pick<Message, "id" | "ts">>): Message =>
+  ({ ...m, id: m.id ?? safeUuid(), ts: m.ts ?? Date.now() });
 
 // Optional, back-compatible props (cc-spec §3). Legacy mounts (Dashboard) pass
 // none of these and behave exactly as before.
@@ -91,19 +108,17 @@ const PaigeAIChatInner = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return null;
       const { data } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
-      const roles = (data || []).map((r: any) => r.role);
+      const roles = (data || []).map((r: { role: string }) => r.role);
       return { isAdmin: roles.includes("admin"), isCoach: roles.includes("coach") };
     },
     staleTime: 5 * 60 * 1000,
   });
   const showFeedback = userRole?.isAdmin || userRole?.isCoach;
   const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: greeting ?? "Hey, how can I help?",
-    },
+    mkMsg({ role: "assistant", content: greeting ?? "Hey, how can I help?" }),
   ]);
   const [input, setInput] = useState("");
+  const [slashActive, setSlashActive] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [steps, setSteps] = useState<PaigeStep[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -168,11 +183,11 @@ const PaigeAIChatInner = ({
       const role = message.source === "ai" ? "assistant" : "user";
       const content = message.message || "";
       if (content) setVoiceTranscript(prev => [...prev, { role, content }]);
-      if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content }]);
-      else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content }]);
+      if (message.source === "ai") setMessages(prev => [...prev, mkMsg({ role: "assistant", content })]);
+      else if (message.source === "user") setMessages(prev => [...prev, mkMsg({ role: "user", content })]);
     },
     onError: (error) => {
-      const e: any = error;
+      const e = error as { name?: string; code?: string | number; reason?: string; message?: string; context?: unknown; stack?: string };
       console.error("[PaigeAIChat] ElevenLabs onError raw:", error);
       console.error("[PaigeAIChat] ElevenLabs onError details:", {
         type: typeof error,
@@ -249,7 +264,7 @@ const PaigeAIChatInner = ({
     } catch (error) {
       console.error("[PaigeAIChat] Error starting voice chat:", error);
       setVoiceModalOpen(false);
-      if (audioCtx) { try { await audioCtx.close(); } catch {} }
+      if (audioCtx) { try { await audioCtx.close(); } catch { /* best-effort close */ } }
       const { title, description } = describeVoiceError(error, isMobile);
       toast({ title, description, variant: "destructive" });
     }
@@ -264,7 +279,10 @@ const PaigeAIChatInner = ({
     const next = !voiceMuted;
     setVoiceMuted(next);
     try {
-      const conv: any = conversation;
+      const conv = conversation as {
+        setMicMuted?: (muted: boolean) => Promise<void> | void;
+        setVolume?: (opts: { volume: number }) => Promise<void> | void;
+      };
       if (typeof conv.setMicMuted === "function") await conv.setMicMuted(next);
       else if (typeof conv.setVolume === "function") await conv.setVolume({ volume: next ? 0 : 1 });
     } catch (err) { console.warn("Mute toggle failed:", err); }
@@ -295,13 +313,19 @@ const PaigeAIChatInner = ({
         const confirm = Array.isArray(b.paige_confirm)
           ? (b.paige_confirm as Array<{ tool: string; summary: string }>)
           : undefined;
-        return {
+        // Honest timestamp: use the turn's stored created_at when present; if the
+        // stored turn has none, omit it and the hover time simply hides (never faked).
+        const tid = (t as { id?: string }).id;
+        const created = (t as { created_at?: string }).created_at;
+        return mkMsg({
+          ...(tid ? { id: tid } : {}),
+          ...(created ? { ts: Date.parse(created) } : {}),
           role: t.role as "user" | "assistant",
           content: t.content,
           queued: queued?.length ? queued : undefined,
           confirm: confirm?.length ? confirm : undefined,
           confirmResolved: true,
-        };
+        });
       });
 
   const selectThread = async (id: string) => {
@@ -309,7 +333,7 @@ const PaigeAIChatInner = ({
     try {
       const turns = await threadsApi.loadTurns(id);
       const hydrated = turnsToMessages(turns);
-      setMessages(hydrated.length ? hydrated : [{ role: "assistant", content: openingGreeting }]);
+      setMessages(hydrated.length ? hydrated : [mkMsg({ role: "assistant", content: openingGreeting })]);
       setActiveThreadId(id);
       setSteps([]);
     } catch (e) {
@@ -321,7 +345,7 @@ const PaigeAIChatInner = ({
   const startNewChat = () => {
     if (isLoading) return; // let the current reply finish before switching context
     setActiveThreadId(null);
-    setMessages([{ role: "assistant", content: openingGreeting }]);
+    setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
     setSteps([]);
     requestAnimationFrame(() => inputRef.current?.focus());
   };
@@ -338,16 +362,17 @@ const PaigeAIChatInner = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads]);
 
-  const handleSend = async (overrideText?: string) => {
-    const text = (overrideText ?? input).trim();
-    if (!text || isLoading) return;
-
-    const userMessage: Message = { role: "user", content: text };
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
-    setInput("");
+  // One turn runner, reused by send + regenerate. `base` ends at the user turn to
+  // answer; `rollback` is the list restored if the turn fails; `userText` seeds the
+  // lazy thread title in history mode. A single assistantId/Ts is threaded through
+  // every streamed setMessages so the bubble never remounts mid-stream (copy/retry/
+  // feedback stay stable).
+  const streamTurn = async (base: Message[], rollback: Message[], userText: string) => {
+    const newMessages = base;
     setIsLoading(true);
     setSteps([]); // fresh "watch her work" trace per turn
+    const assistantId = safeUuid();
+    const assistantTs = Date.now();
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -358,7 +383,7 @@ const PaigeAIChatInner = ({
           description: "Please sign in to use Paige AI.",
           variant: "destructive",
         });
-        setMessages(messages);
+        setMessages(rollback);
         setIsLoading(false);
         return;
       }
@@ -369,14 +394,14 @@ const PaigeAIChatInner = ({
       if (enableHistory) {
         try {
           if (!threadId) {
-            threadId = await threadsApi.ensureThread(text);
+            threadId = await threadsApi.ensureThread(userText);
             setActiveThreadId(threadId);
           }
           setStreamingThreadId(threadId);
         } catch (e) {
           console.error("[PaigeAIChat] ensureThread failed:", e);
           toast({ title: "Couldn't start that chat", description: "Give it another try in a moment.", variant: "destructive" });
-          setMessages(messages);
+          setMessages(rollback);
           setIsLoading(false);
           return;
         }
@@ -401,7 +426,7 @@ const PaigeAIChatInner = ({
             description: "Please wait a moment before sending another message.",
             variant: "destructive",
           });
-          setMessages(messages);
+          setMessages(rollback);
           setIsLoading(false);
           return;
         }
@@ -418,7 +443,7 @@ const PaigeAIChatInner = ({
       let textBuffer = "";
       let streamDone = false;
 
-      setMessages([...newMessages, { role: "assistant", content: "" }]);
+      setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: "" }]);
 
       while (reader && !streamDone) {
         const { done, value } = await reader.read();
@@ -451,19 +476,19 @@ const PaigeAIChatInner = ({
             // Structured event: Paige queued an action to the approvals desk.
             if (Array.isArray(parsed.approval_queued)) {
               queuedThisTurn = parsed.approval_queued as QueuedApproval[];
-              setMessages([...newMessages, { role: "assistant", content: assistantMessage, queued: queuedThisTurn, confirm: confirmThisTurn.length ? confirmThisTurn : undefined }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn, confirm: confirmThisTurn.length ? confirmThisTurn : undefined }]);
               continue;
             }
             // Structured event: Paige is asking to confirm a mutating action → render an approve/deny card.
             if (parsed.paige_confirm?.summary) {
               confirmThisTurn.push({ tool: String(parsed.paige_confirm.tool || "action"), summary: String(parsed.paige_confirm.summary) });
-              setMessages([...newMessages, { role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn] }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn] }]);
               continue;
             }
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
               assistantMessage += content;
-              setMessages([...newMessages, { role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined }]);
             }
           } catch {
             textBuffer = line + "\n" + textBuffer;
@@ -488,10 +513,40 @@ const PaigeAIChatInner = ({
         description: "Failed to send message. Please try again.",
         variant: "destructive",
       });
-      setMessages(messages);
+      setMessages(rollback);
       setIsLoading(false);
       if (enableHistory) setStreamingThreadId(null);
     }
+  };
+
+  const handleSend = async (overrideText?: string) => {
+    const text = (overrideText ?? input).trim();
+    if (!text || isLoading) return;
+    const rollback = messages;
+    const base = [...messages, mkMsg({ role: "user", content: text })];
+    setMessages(base);
+    setInput("");
+    await streamTurn(base, rollback, text);
+  };
+
+  // Regenerate an assistant turn: re-run the nearest preceding user turn and REPLACE
+  // the stale answer (truncate to that user turn, then stream a fresh one). Guarded
+  // against in-flight + live voice. History mode is gated off at the call site (the
+  // server is the single turn-writer; a retry would double-write) until the server
+  // grows a regenerate flag — filed as a fast-follow.
+  const handleRetry = (assistantId: string) => {
+    if (isLoading || conversation.status === "connected") return;
+    const aIdx = messages.findIndex((m) => m.id === assistantId);
+    if (aIdx < 0) return;
+    let uIdx = -1;
+    for (let i = aIdx - 1; i >= 0; i--) {
+      if (messages[i].role === "user") { uIdx = i; break; }
+    }
+    if (uIdx < 0) return; // nothing to regenerate (e.g. the opening greeting)
+    const rollback = messages;
+    const base = messages.slice(0, uIdx + 1);
+    setMessages(base);
+    void streamTurn(base, rollback, messages[uIdx].content);
   };
 
   useEffect(() => {
@@ -503,6 +558,25 @@ const PaigeAIChatInner = ({
   }, []); // cleanup only on unmount
 
   const visibleChips = (chips ?? []).filter((c) => !c.visibleWhenFocused || !!clientId);
+
+  // Slash-command palette (replaces the always-visible chips). The commands ARE the
+  // quick-chips; the menu opens only while the value is a bare "/token" — anchoring
+  // to ^/ means a mid-sentence "/" (e.g. "and/or") never triggers it and a trailing
+  // space closes it, so the value is then sent literally.
+  const slashMatch = /^\/(\S*)$/.exec(input);
+  const slashQuery = slashMatch?.[1] ?? "";
+  const filteredCommands = slashMatch
+    ? visibleChips.filter((c) => c.label.toLowerCase().includes(slashQuery.toLowerCase()))
+    : [];
+  const slashOpen = !!slashMatch && filteredCommands.length > 0 && !isLoading && conversation.status !== "connected";
+  const pickCommand = (c: QuickChip) => { setInput(""); setSlashActive(0); handleChip(c); };
+
+  // The user turn that produced the assistant message at `index` — stored as the
+  // L2 eval-case input alongside the thumbs rating.
+  const precedingUserText = (index: number): string | undefined => {
+    for (let i = index - 1; i >= 0; i--) if (messages[i].role === "user") return messages[i].content;
+    return undefined;
+  };
 
   return (
     <div className={fill ? "w-full h-full" : `max-w-4xl mx-auto w-full ${hideHeader ? "h-full" : "h-[calc(100vh-4rem)]"}`}>
@@ -550,7 +624,7 @@ const PaigeAIChatInner = ({
           <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
             {messages.map((message, index) => (
               <div
-                key={index}
+                key={message.id}
                 className={`flex gap-3 ${
                   message.role === "user" ? "flex-row-reverse" : "flex-row"
                 }`}
@@ -563,7 +637,7 @@ const PaigeAIChatInner = ({
                   />
                 )}
                 <div
-                  className={`max-w-[80%] rounded-lg p-4 ${
+                  className={`group relative max-w-[80%] rounded-lg p-4 ${
                     message.role === "user"
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted/30 border border-border"
@@ -607,14 +681,31 @@ const PaigeAIChatInner = ({
                   })() : (
                     <p className="text-sm">{message.content}</p>
                   )}
-                  {message.role === "assistant" && showFeedback && message.content && (
-                    <div className="mt-2 flex items-center">
-                      <ResponseFeedback
-                        messageContent={message.content}
-                        messageIndex={index}
-                        sessionId={sessionId}
-                      />
-                    </div>
+                  {/* Hover-revealed meta: timestamp + copy (both roles), regenerate
+                      (assistant only, non-history), and the thumbs feedback slot. */}
+                  {message.content && (
+                    <MessageMeta
+                      role={message.role}
+                      content={message.content}
+                      ts={message.ts}
+                      onRetry={
+                        message.role === "assistant" && !enableHistory && index === messages.length - 1 && !isLoading
+                          ? () => handleRetry(message.id)
+                          : undefined
+                      }
+                      feedback={
+                        message.role === "assistant" && showFeedback
+                          ? (
+                            <ResponseFeedback
+                              messageContent={message.content}
+                              messageId={message.id}
+                              userPrompt={precedingUserText(index)}
+                              sessionId={sessionId}
+                            />
+                          )
+                          : undefined
+                      }
+                    />
                   )}
                 </div>
               </div>
@@ -627,40 +718,56 @@ const PaigeAIChatInner = ({
             </div>
           )}
 
-          <div className="border-t border-border p-4 space-y-3">
-            {visibleChips.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pb-0.5 -mb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                {visibleChips.map((chip) => (
-                  <button
-                    key={chip.label}
-                    type="button"
-                    onClick={() => handleChip(chip)}
-                    disabled={isLoading || conversation.status === "connected"}
-                    className="shrink-0 rounded-full border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-[hsl(var(--ring))] hover:text-foreground disabled:opacity-50"
-                  >
-                    {chip.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="flex items-end gap-2">
+          <div className="border-t border-border p-4">
+            {/* Composer + slash palette + inline voice — one relative row so the
+                palette anchors above the input and focus never leaves the Textarea. */}
+            <div className="relative flex items-end gap-2">
+              <SlashCommandMenu
+                open={slashOpen}
+                items={filteredCommands}
+                activeIndex={Math.min(slashActive, Math.max(0, filteredCommands.length - 1))}
+                onHover={setSlashActive}
+                onPick={pickCommand}
+              />
               <Textarea
                 ref={inputRef}
                 value={input}
                 rows={1}
                 onChange={(e) => {
                   setInput(e.target.value);
+                  setSlashActive(0);
                   const el = e.target; el.style.height = "auto";
                   el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
                 }}
                 onKeyDown={(e) => {
+                  // IME composition: don't hijack Enter/nav while composing (N3).
+                  if (e.nativeEvent.isComposing) return;
+                  // Slash palette open → arrows/enter/escape drive the menu.
+                  if (slashOpen) {
+                    if (e.key === "ArrowDown") { e.preventDefault(); setSlashActive((a) => (a + 1) % filteredCommands.length); return; }
+                    if (e.key === "ArrowUp") { e.preventDefault(); setSlashActive((a) => (a - 1 + filteredCommands.length) % filteredCommands.length); return; }
+                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); pickCommand(filteredCommands[Math.min(slashActive, filteredCommands.length - 1)]); return; }
+                    if (e.key === "Escape") { e.preventDefault(); setInput(""); return; }
+                  }
                   // Enter sends; Shift+Enter inserts a newline (so long messages wrap).
                   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
                 }}
-                placeholder={`Ask ${persona.name || "Paige"} anything…`}
+                placeholder={`Message ${persona.name || "Paige"} — type / for commands`}
                 className="max-h-40 min-h-[2.5rem] flex-1 resize-none"
                 disabled={isLoading || conversation.status === "connected"}
               />
+              {/* Inline voice entry/end — ghost, never gold (Send owns the gold act, §11).
+                  text-destructive only in the live/end state (a status color, not gold). */}
+              <Button
+                onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat}
+                variant="ghost"
+                size="icon"
+                aria-label={conversation.status === "connected" ? "End voice chat" : "Start voice chat"}
+                aria-pressed={conversation.status === "connected"}
+                className={conversation.status === "connected" ? "text-destructive" : undefined}
+              >
+                {conversation.status === "connected" ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </Button>
               <Button
                 onClick={() => handleSend()}
                 disabled={isLoading || !input.trim() || conversation.status === "connected"}
@@ -671,24 +778,6 @@ const PaigeAIChatInner = ({
                 {isLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Send className="w-4 h-4" />}
               </Button>
             </div>
-            
-            <Button
-              onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat}
-              variant={conversation.status === "connected" ? "destructive" : "outline"}
-              className="w-full"
-            >
-              {conversation.status === "connected" ? (
-                <>
-                  <MicOff className="w-4 h-4 mr-2" />
-                  End Voice Chat
-                </>
-              ) : (
-                <>
-                  <Mic className="w-4 h-4 mr-2" />
-                  Start Voice Chat
-                </>
-              )}
-            </Button>
           </div>
 
           {/* Voice session UI — scoped to THIS chat card, not the viewport. Owner

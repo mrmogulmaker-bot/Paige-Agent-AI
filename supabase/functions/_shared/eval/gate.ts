@@ -32,6 +32,8 @@ export interface EvalCase {
   output: unknown;
   expected?: unknown;
   rubric?: string;
+  /** Human ground-truth label for this case (e.g. a thumbs rating). Feeds the human_label scorer. */
+  label?: string | null;
 }
 
 export interface RunEvalOpts {
@@ -100,6 +102,7 @@ export async function runEval(opts: RunEvalOpts): Promise<EvalResult> {
       output: c.output,
       expected: c.expected,
       rubric: c.rubric,
+      label: c.label ?? null,
       tenantId: opts.tenantId,
       taskId: opts.taskId,
       traceId: c.sourceTraceId ?? null,
