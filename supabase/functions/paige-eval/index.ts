@@ -75,7 +75,11 @@ serve(async (req: Request) => {
     const datasetId = UUID_RE.test(str(body.dataset_id)) ? str(body.dataset_id) : null;
     const traceSelector = (body.trace_selector && typeof body.trace_selector === "object")
       ? body.trace_selector as Record<string, unknown> : null;
-    if (!datasetId && !traceSelector) return json(400, { error: "Provide dataset_id or trace_selector." });
+    // Human thumbs feedback (§34-L2 feedback channel) — response_quality_feedback rows
+    // as self-contained labeled eval cases, TENANT-SCOPED. No trace join needed.
+    const feedbackSelector = (body.feedback_selector && typeof body.feedback_selector === "object")
+      ? body.feedback_selector as Record<string, unknown> : null;
+    if (!datasetId && !traceSelector && !feedbackSelector) return json(400, { error: "Provide dataset_id, trace_selector, or feedback_selector." });
 
     const scorers = Array.isArray(body.scorers) ? body.scorers.filter((s) => typeof s === "string" && s.trim()) as string[] : [];
     if (scorers.length === 0) return json(400, { error: "scorers[] is required (deterministic names and/or 'rubric_judge')." });
@@ -182,6 +186,34 @@ serve(async (req: Request) => {
         output: r.output_excerpt,
         expected: undefined,
         rubric: requestRubric || undefined,
+      }));
+      effectiveTenant = resolvedTenant;
+    } else if (feedbackSelector) {
+      // Human thumbs feedback as self-contained labeled cases — ALWAYS filtered to the
+      // resolved tenant (the admin client bypasses RLS, so §9 is enforced here in code,
+      // exactly like the trace path). message_content = output, user_prompt = input,
+      // correction_note = expected reference, rating = the human label (human_label scorer).
+      targetKind = targetKind || "feedback_batch";
+      targetRef = targetRef || "response_quality_feedback";
+      let q = admin
+        .from("response_quality_feedback")
+        .select("id, message_content, user_prompt, correction_note, rating, created_at")
+        .eq("tenant_id", resolvedTenant);
+      const rating = str(feedbackSelector.rating);
+      if (rating === "positive" || rating === "negative") q = q.eq("rating", rating);
+      const since = str(feedbackSelector.since);
+      if (since && !Number.isNaN(Date.parse(since))) q = q.gte("created_at", since);
+      const limit = Math.max(1, Math.min(Math.floor(num(feedbackSelector.limit, 50)), MAX_TRACE_LIMIT));
+      q = q.order("created_at", { ascending: false }).limit(limit);
+      const { data: fbRows, error: fErr } = await q;
+      if (fErr) return json(500, { error: `Failed to load feedback: ${fErr.message}` });
+      cases = (fbRows || []).map((r: Record<string, unknown>) => ({
+        caseId: null,
+        sourceTraceId: null,
+        output: r.message_content,
+        expected: (typeof r.correction_note === "string" && r.correction_note.trim()) ? r.correction_note : undefined,
+        rubric: requestRubric || undefined,
+        label: (r.rating as string) ?? null,
       }));
       effectiveTenant = resolvedTenant;
     }

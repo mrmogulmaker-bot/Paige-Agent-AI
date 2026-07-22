@@ -3,7 +3,7 @@
 // Owns the Playbook edit lifecycle (pb / lastSavedPb / dirty / saving) and the
 // one honest Save for the whole object; Knowledge commits per-doc on its own.
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Loader2, Sparkles, X, UserCircle2, SlidersHorizontal } from "lucide-react";
+import { Loader2, Sparkles, X, UserCircle2, SlidersHorizontal, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ReasoningDeck, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -85,6 +85,16 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
   // and the rail mini-card never disagree.
   const [focusedClient, setFocusedClient] = useState<FocusedClient | null>(null);
   const [railOpen, setRailOpen] = useState(false);
+  // Desktop rail collapse — a durable per-user-workspace preference (a rail the
+  // user collapsed should stay collapsed next visit), namespaced by tenant so a
+  // shared browser doesn't bleed one account's UI state into another (S6).
+  const railKey = `paige:workspaceRail:collapsed:${activeTenantId ?? "none"}`;
+  const [railCollapsed, setRailCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem(railKey) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(railKey, railCollapsed ? "1" : "0"); } catch { /* storage unavailable — non-fatal */ }
+  }, [railKey, railCollapsed]);
   const clearFocus = () => setFocusedClient(null);
   const focusProse = useMemo(() => buildFocusProse(focusedClient), [focusedClient]);
 
@@ -214,7 +224,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-[34rem] -mx-3 sm:-mx-4 md:-mx-6 -my-3 sm:-my-4 md:-my-6">
+    <div className="flex flex-col h-full min-h-[34rem]">
       <PaigeCommandBar
         pb={pb}
         tenantName={tenantName}
@@ -261,13 +271,38 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
           </div>
         </section>
 
-        {!isMobile && (
+        {!isMobile && (railCollapsed ? (
+          // Collapsed: a slim always-present reopen affordance (VS Code convention)
+          // so the panel is one click away and never lost.
+          <button
+            type="button"
+            onClick={() => setRailCollapsed(false)}
+            aria-label="Show panel"
+            aria-expanded={false}
+            className="grid w-9 shrink-0 place-items-start justify-center border-l bg-primary/[0.02] py-3 text-muted-foreground transition-colors hover:text-foreground motion-reduce:transition-none"
+          >
+            <PanelRightOpen className="h-4 w-4" />
+          </button>
+        ) : (
           <aside className="flex w-[360px] lg:w-[380px] shrink-0 flex-col border-l bg-primary/[0.055] shadow-[inset_1px_0_0_hsl(var(--border))]">
             {/* One scroll column — reasoning cockpit, customer selector, and the Live
                 desk all flow and share the height instead of the feed being crushed
                 into a sliver. Customize Paige is pinned to the floor, always reachable. */}
             <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="space-y-3 p-3">
+                {/* Neutral label: this panel holds reasoning + the Live desk + Customize,
+                    not just the trace — so "Collapse panel", never "Hide reasoning". */}
+                <div className="flex items-center justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setRailCollapsed(true)}
+                    aria-label="Collapse panel"
+                    aria-expanded
+                    className="rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none"
+                  >
+                    <PanelRightClose className="h-4 w-4" />
+                  </button>
+                </div>
                 <ReasoningDeck trace={trace} personaName={pb.persona.name} />
                 <PaigeSidebarBody {...railProps} />
               </div>
@@ -276,7 +311,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
               <CustomizeFloor onCustomize={railProps.onCustomize} />
             </div>
           </aside>
-        )}
+        ))}
       </div>
 
       {/* Mobile dock — in-flow (not fixed), above nothing it can overlap (S5). */}
@@ -351,7 +386,7 @@ export default function PaigeWorkspace() {
   // client Paige). Do not mount the chat without a tenant.
   if (!activeTenantId) {
     return (
-      <div className="flex flex-col h-full min-h-[24rem] -mx-3 sm:-mx-4 md:-mx-6 -my-3 sm:-my-4 md:-my-6">
+      <div className="flex flex-col h-full min-h-[24rem]">
         <div className="sticky top-0 z-20 border-b bg-primary/[0.04] px-4 lg:px-6 py-3 flex items-center gap-3">
           <PaigeMark className="h-9 w-9" />
           <div>

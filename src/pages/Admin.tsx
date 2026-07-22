@@ -113,6 +113,7 @@ const StudioLibrary = lazy(() => import("@/pages/admin/StudioLibrary"));
 const StudioNew = lazy(() => import("@/pages/admin/StudioNew"));
 // Eager — small chrome, always on the studio branch, renders the persistent rail + <Outlet/>.
 import StudioLayout from "@/components/admin/studio/StudioLayout";
+import PaigeTabsLayout from "@/components/paige/PaigeTabsLayout";
 const WorkflowDetail = lazy(() => import("@/pages/admin/WorkflowDetail"));
 const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
 const WorkflowRunDetail = lazy(() => import("@/pages/admin/WorkflowRunDetail"));
@@ -309,12 +310,8 @@ const Admin = () => {
         } />
         <Route path="growth" element={<Navigate to="/admin/campaigns?tab=pages" replace />} />
         <Route path="growth/*" element={<Navigate to="/admin/campaigns?tab=pages" replace />} />
-        <Route path="sub-agents" element={
-          <Suspense fallback={<SuspenseFallback />}><SubAgentsAdmin /></Suspense>
-        } />
-        <Route path="skills" element={
-          <Suspense fallback={<SuspenseFallback />}><SkillsHub /></Suspense>
-        } />
+        {/* sub-agents · skills · actions · playbook are absorbed into the Paige
+            workspace group below (IA slice 1c-vi) — see the <PaigeTabsLayout> block. */}
         <Route path="clients" element={
           <Suspense fallback={<SuspenseFallback />}>
             <ClientManagementDashboard onViewClient={handleViewClient} onViewInternalClient={handleViewInternalClient} />
@@ -435,13 +432,30 @@ const Admin = () => {
             </Suspense>
           </RoleGate>
         } />
-        <Route path="playbook" element={
-          <AdminOnly>
-            <Suspense fallback={<SuspenseFallback />}>
-              <PlaybookAdmin />
-            </Suspense>
-          </AdminOnly>
-        } />
+        {/* Paige workspace group (IA slice 1c-vi): Chat + absorbed Sub-Agents /
+            Actions / Skills as sub-tabs. The pathless layout adds NO url segment,
+            so child paths stay identical (/admin/playbook, /admin/sub-agents,
+            /admin/actions, /admin/skills) and every deep-link / alias / CTA
+            resolves unchanged. Gates stay on each child element (B5): Chat
+            AdminOnly, Sub-Agents/Skills ungated, Actions admin + platform-staff. */}
+        <Route element={<PaigeTabsLayout />}>
+          <Route path="playbook" element={
+            <AdminOnly>
+              <Suspense fallback={<SuspenseFallback />}>
+                <PlaybookAdmin />
+              </Suspense>
+            </AdminOnly>
+          } />
+          <Route path="sub-agents" element={
+            <Suspense fallback={<SuspenseFallback />}><SubAgentsAdmin /></Suspense>
+          } />
+          <Route path="actions" element={
+            <RoleGate allow={["admin"]} allowPlatformStaff><Suspense fallback={<SuspenseFallback />}><ActionsQueue /></Suspense></RoleGate>
+          } />
+          <Route path="skills" element={
+            <Suspense fallback={<SuspenseFallback />}><SkillsHub /></Suspense>
+          } />
+        </Route>
         <Route path="agreement" element={
           <AdminOnly>
             <Suspense fallback={<SuspenseFallback />}>
@@ -537,9 +551,7 @@ const Admin = () => {
         <Route path="approvals/:id" element={
           <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
         } />
-        <Route path="actions" element={
-          <RoleGate allow={["admin"]} allowPlatformStaff><Suspense fallback={<SuspenseFallback />}><ActionsQueue /></Suspense></RoleGate>
-        } />
+        {/* actions absorbed into the Paige workspace group (1c-vi) above. */}
         <Route path="integrations" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><IntegrationsHub /></Suspense></AdminOnly>
         } />

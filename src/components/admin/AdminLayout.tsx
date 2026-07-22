@@ -62,7 +62,9 @@ type Hub = {
 // when a tenant is on any absorbed surface.
 const hubs: Hub[] = [
   // 1 — Paige (was "Your Paige"). URL STAYS /admin/playbook (ledger-drift avoidance).
-  { label: "Paige", href: "/admin/playbook", icon: Bot, aliases: ["/admin/tenant-knowledge"] },
+  //     Sub-Agents / Actions / Skills are now Paige sub-tabs (1c-vi), so the top-nav
+  //     highlights Paige on those paths too.
+  { label: "Paige", href: "/admin/playbook", icon: Bot, aliases: ["/admin/tenant-knowledge", "/admin/sub-agents", "/admin/actions", "/admin/skills"] },
   // 2 — Command Center (was "Dashboard"). LABEL ONLY; content unchanged at /admin
   //     (the role-personalized reframe lands in 1c-vii).
   { label: "Command Center", href: "/admin", icon: BarChart3 },
@@ -115,8 +117,8 @@ const hubs: Hub[] = [
     icon: Settings,
     aliases: [
       "/admin/settings",
-      "/admin/workflows", "/admin/integrations", "/admin/sub-agents",
-      "/admin/actions", "/admin/skills", "/admin/signatures", "/admin/social", "/admin/notifications",
+      // sub-agents/actions/skills moved to the Paige hub aliases (1c-vi).
+      "/admin/workflows", "/admin/integrations", "/admin/signatures", "/admin/social", "/admin/notifications",
       "/admin/agreement", "/admin/agreements", "/admin/support", "/admin/maintenance",
       "/admin/affiliates", "/admin/brokers", "/admin/planning", "/admin/tasks",
     ],

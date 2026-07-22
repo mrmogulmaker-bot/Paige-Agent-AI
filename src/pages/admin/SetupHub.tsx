@@ -8,7 +8,7 @@
 // is funding-opt-in + admin (§2). Sub-Agents/Actions/Skills ultimately fold into
 // the Paige surface (1c-vi) — surfaced here only for interim reachability.
 import { Link } from "react-router-dom";
-import { Settings, Workflow, Bot, ClipboardCheck, Plug, CalendarClock, Share2, FileSignature, LifeBuoy, Wrench, Briefcase } from "lucide-react";
+import { Settings, Workflow, Plug, CalendarClock, Share2, FileSignature, LifeBuoy, Wrench, Briefcase } from "lucide-react";
 import { PageShell, PageHeader, EmptyState } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
 import { RoleGate } from "@/components/auth/RoleGate";
@@ -26,9 +26,7 @@ export default function SetupHub() {
         action={
           <div className="flex flex-wrap justify-center gap-2">
             <Button asChild variant="outline"><Link to="/admin/workflows"><Workflow className="h-4 w-4" /> Automation</Link></Button>
-            <Button asChild variant="outline"><Link to="/admin/sub-agents"><Bot className="h-4 w-4" /> Sub-Agents</Link></Button>
-            <Button asChild variant="outline"><Link to="/admin/actions"><ClipboardCheck className="h-4 w-4" /> Actions</Link></Button>
-            <Button asChild variant="outline"><Link to="/admin/skills"><Bot className="h-4 w-4" /> Skills</Link></Button>
+            {/* Sub-Agents / Actions / Skills now live as Paige sub-tabs (1c-vi) — one home (§18). */}
             <Button asChild variant="outline"><Link to="/admin/integrations"><Plug className="h-4 w-4" /> Integrations</Link></Button>
             <Button asChild variant="outline"><Link to="/admin/planning"><CalendarClock className="h-4 w-4" /> Planning</Link></Button>
             <Button asChild variant="outline"><Link to="/admin/affiliates"><Share2 className="h-4 w-4" /> Referrals</Link></Button>
