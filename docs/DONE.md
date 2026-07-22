@@ -8,6 +8,8 @@ Archived 2026-07-18.
 
 | # | Completed task |
 |---|---|
+| 411 | IA slice 1c-x-0 — closed the confirmed §9 cross-tenant analytics leak (#411): 3 platform-wide analytics RPCs re-gated has_role('admin')→is_platform_owner() + /admin/analytics wrapped in PlatformStaffOnly. PR #201 (squash ec7e979); §32 emergency MCP apply + dual-layer verified live on prod (schema_migrations 20260722203249 + pg_proc gate confirmed). §13: the leak was a latent gate defect + a broken operator dashboard (grant was already service_role-only), fixed both. Owner live-JWT verify owed → #426. |
+| — | IA slice 1c-x (main) — tiered Analytics surface (tenant + operator lens), extending AnalyticsDashboard. F Paige Contribution (differentiator, created_by-IS-NULL attribution) · C Team History (honest-empty until #422) · B-engagement · A/E operator platform lens (reconciled to platform_subscriptions MRR). UI-only, zero migrations. PR #202 (squash d137523). Crew: verifier SHIP · compliance SHIP · critic ITERATE, zero blockers; all six owner build-brief additions honored. Follow-ups #427/#428/#429; §32 live-check owed → #430. |
 | 420 | IA slice 1c-ix — Team surface (LIVE OPS FLOOR): migration (PR #197, live on prod) + UI (PR #199, squash 9c4d781). Scoreboard · availability rail (real, polled) · handoff queue · members&roles · assignments · comp-v2 reserved. Crew SHIP ×3, §9/§11/§13 clean. §32 post-deploy runtime check owed (headless env; authed /admin/team not renderable) — see #422/#423 producers. |
 | 3 | Migration-chain clean-rebuild sweep + CI lint |
 | 7 | Phase-2 data migration prod → BYO (full 251-table body) |
