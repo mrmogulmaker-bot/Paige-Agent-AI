@@ -76,9 +76,9 @@ const PlatformIntelligence = lazy(() => import("@/pages/admin/PlatformIntelligen
 const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
 const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
 const MyReferralsPanel = lazy(() => import("@/components/dashboard/MyReferralsPanel"));
-// Slice 1c-v placeholder container landings (Clients/Team/Setup) — §11 EmptyStates
-// with CTAs into the still-mounted surfaces they will absorb (1c-viii/ix/xi).
-const ClientsHub = lazy(() => import("@/pages/admin/ClientsHub"));
+// Slice 1c-v placeholder container landings (Team/Setup) — §11 EmptyStates with
+// CTAs into the still-mounted surfaces they will absorb (1c-ix/xi). The Clients
+// placeholder became the real container in 1c-viii-c (ClientsTabsLayout below).
 const TeamHub = lazy(() => import("@/pages/admin/TeamHub"));
 const SetupHub = lazy(() => import("@/pages/admin/SetupHub"));
 const KnowledgeBaseAdmin = lazy(() => import("@/pages/admin/KnowledgeBaseAdmin"));
@@ -96,7 +96,8 @@ const ContactsAdmin = lazy(() => import("@/pages/admin/ContactsAdmin"));
 const ContactDetail = lazy(() => import("@/pages/admin/ContactDetail"));
 const ClientJourney = lazy(() => import("@/pages/admin/ClientJourney"));
 const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
-const PipelineAdmin = lazy(() => import("@/pages/admin/PipelineAdmin"));
+// PipelineAdmin is reused by the Clients container's Pipeline tab (ClientsPipelinePane
+// imports it directly); /admin/pipeline 301-redirects into that tab.
 const PipelineSettings = lazy(() => import("@/pages/admin/PipelineSettings"));
 const CustomFieldsSettings = lazy(() => import("@/pages/admin/CustomFieldsSettings"));
 const StageAutomationRules = lazy(() => import("@/pages/admin/StageAutomationRules"));
@@ -114,6 +115,11 @@ const StudioNew = lazy(() => import("@/pages/admin/StudioNew"));
 // Eager — small chrome, always on the studio branch, renders the persistent rail + <Outlet/>.
 import StudioLayout from "@/components/admin/studio/StudioLayout";
 import PaigeTabsLayout from "@/components/paige/PaigeTabsLayout";
+// Clients container (IA slice 1c-viii-c): pathless layout wraps the reused surfaces
+// (ContactsAdmin · PipelineAdmin · CalendarAdmin · PortalStudio) as sub-tabs.
+import ClientsTabsLayout from "@/components/clients/ClientsTabsLayout";
+const ClientsPipelinePane = lazy(() => import("@/components/clients/ClientsPipelinePane"));
+const ClientsConversations = lazy(() => import("@/pages/admin/ClientsConversations"));
 const WorkflowDetail = lazy(() => import("@/pages/admin/WorkflowDetail"));
 const WorkflowRuns = lazy(() => import("@/pages/admin/WorkflowRuns"));
 const WorkflowRunDetail = lazy(() => import("@/pages/admin/WorkflowRunDetail"));
@@ -268,9 +274,9 @@ const Admin = () => {
     <AdminLayout userRole={userRole}>
       <Routes>
         <Route index element={isPlatformStaff ? <Navigate to="/admin/platform/tenants" replace /> : <AdminOverview />} />
-        <Route path="contacts" element={
-          <Suspense fallback={<SuspenseFallback />}><ContactsAdmin /></Suspense>
-        } />
+        {/* People is now the Clients container index — /admin/contacts 301-redirects
+            there (SPA equivalent). contacts/:id stays a FULL route (Client 360). */}
+        <Route path="contacts" element={<Navigate to="/admin/clients-hub" replace />} />
         <Route path="contacts/:id" element={
           <Suspense fallback={<SuspenseFallback />}><ContactDetail /></Suspense>
         } />
@@ -280,28 +286,43 @@ const Admin = () => {
         <Route path="contacts/:id/journey" element={
           <Suspense fallback={<SuspenseFallback />}><ClientJourney /></Suspense>
         } />
-        <Route path="pipeline" element={
-          <Suspense fallback={<SuspenseFallback />}><PipelineAdmin /></Suspense>
-        } />
+        {/* Pipeline absorbed into the Clients container (1c-viii-c). */}
+        <Route path="pipeline" element={<Navigate to="/admin/clients-hub/pipeline" replace />} />
         <Route path="planning" element={
           <Suspense fallback={<SuspenseFallback />}><PlanningAdmin /></Suspense>
         } />
-        {/* Slice 1c-v placeholder container landings. No AdminOnly gate — the top-nav
-            items are shown to admin AND coach, so the container is coach-reachable;
-            admin-only CTAs inside are gated per-CTA (RoleGate fallback={<></>}).
-            /admin/clients-hub is distinct from the load-bearing /admin/clients
-            client-file surface (B3). */}
-        <Route path="clients-hub" element={
-          <Suspense fallback={<SuspenseFallback />}><ClientsHub /></Suspense>
-        } />
-        {/* Client Portal (formerly "Portal Studio") — its ONE home is under the
-            Clients container (§9/§12). Reached via the ClientsHub CTA; the old
-            /admin/portal path 301-redirects below so saved deep-links resolve. */}
-        <Route path="clients-hub/portal" element={
-          <AdminOnly>
-            <Suspense fallback={<SuspenseFallback />}><PortalStudio /></Suspense>
-          </AdminOnly>
-        } />
+        {/* Clients container (IA slice 1c-viii-c). A pathless <ClientsTabsLayout>
+            renders ONLY the sub-tab strip + <Outlet/> (no "Clients" PageHeader —
+            each child owns its header, §11/§27), wrapping the EXISTING surfaces as
+            five sub-tabs (§18 reuse, no rebuild). Gates stay on each child element.
+            No AdminOnly on the container — the top-nav item is coach-reachable; the
+            Portal child keeps its AdminOnly. /admin/clients-hub is distinct from the
+            load-bearing /admin/clients client-file surface (B3). */}
+        <Route path="clients-hub" element={<ClientsTabsLayout />}>
+          {/* PEOPLE (default) — the enhanced ContactsAdmin (two-axis grid). RLS-only. */}
+          <Route index element={
+            <Suspense fallback={<SuspenseFallback />}><ContactsAdmin /></Suspense>
+          } />
+          {/* PIPELINE — PipelineAdmin Kanban, wrapped so funding quick-links show ONLY
+              for a funding tenant (FundingGate → null when off, §2). */}
+          <Route path="pipeline" element={
+            <Suspense fallback={<SuspenseFallback />}><ClientsPipelinePane /></Suspense>
+          } />
+          {/* CONVERSATIONS — crafted EmptyState placeholder (§11 primitive). */}
+          <Route path="conversations" element={
+            <Suspense fallback={<SuspenseFallback />}><ClientsConversations /></Suspense>
+          } />
+          {/* DELIVERY — CalendarAdmin (its own internal Calendar/List/Settings/Connections tabs). */}
+          <Route path="delivery" element={
+            <Suspense fallback={<SuspenseFallback />}><CalendarAdmin /></Suspense>
+          } />
+          {/* CLIENT PORTAL — unchanged gate (AdminOnly>PortalStudio), now the 5th tab. */}
+          <Route path="portal" element={
+            <AdminOnly>
+              <Suspense fallback={<SuspenseFallback />}><PortalStudio /></Suspense>
+            </AdminOnly>
+          } />
+        </Route>
         <Route path="team" element={
           <Suspense fallback={<SuspenseFallback />}><TeamHub /></Suspense>
         } />
@@ -590,9 +611,10 @@ const Admin = () => {
         <Route path="bookings" element={
           <Suspense fallback={<SuspenseFallback />}><BookingsAdmin /></Suspense>
         } />
-        <Route path="calendar" element={
-          <Suspense fallback={<SuspenseFallback />}><CalendarAdmin /></Suspense>
-        } />
+        {/* Calendar absorbed into the Clients container as Delivery (1c-viii-c).
+            301-redirect the old paths so saved deep-links + notifications resolve. */}
+        <Route path="calendar" element={<Navigate to="/admin/clients-hub/delivery" replace />} />
+        <Route path="calendar/*" element={<Navigate to="/admin/clients-hub/delivery" replace />} />
         <Route path="integrations/meta" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><MetaIntegrationConfig /></Suspense></AdminOnly>
         } />

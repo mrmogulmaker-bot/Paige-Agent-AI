@@ -4,12 +4,20 @@ import type { CommandCenterView } from "@/lib/roleViews/commandCenterRegistry";
 // Persist the Command Center My/Team/Business view per user, mirroring the proven
 // RoleLensContext localStorage shape (lazy-init → snap-to-valid → write-on-change).
 // Pure UI preference; RLS + the tenant-scoped RPCs still enforce real access.
-const STORAGE_KEY = "paige_command_center_view";
+//
+// storageKey defaults to the Command Center key so every existing caller is
+// byte-for-byte unchanged; a second surface (e.g. the Clients container, 1c-viii-c)
+// passes its own key so the two don't stomp each other's persisted choice.
+const DEFAULT_STORAGE_KEY = "paige_command_center_view";
 
-export function useCommandCenterView(available: CommandCenterView[], fallback: CommandCenterView) {
+export function useCommandCenterView(
+  available: CommandCenterView[],
+  fallback: CommandCenterView,
+  storageKey: string = DEFAULT_STORAGE_KEY,
+) {
   const [view, setViewState] = useState<CommandCenterView>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY) as CommandCenterView | null;
+      const saved = localStorage.getItem(storageKey) as CommandCenterView | null;
       // Only accept a saved value the current persona can actually switch to —
       // avoids a one-frame mislabeled chip when a stale value (e.g. "team") is
       // no longer available.
@@ -26,7 +34,7 @@ export function useCommandCenterView(available: CommandCenterView[], fallback: C
 
   const setView = (next: CommandCenterView) => {
     setViewState(next);
-    try { localStorage.setItem(STORAGE_KEY, next); } catch { /* non-fatal */ }
+    try { localStorage.setItem(storageKey, next); } catch { /* non-fatal */ }
   };
 
   return { view, setView, canSwitch: available.length > 1 };
