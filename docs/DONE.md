@@ -8,6 +8,7 @@ Archived 2026-07-18.
 
 | # | Completed task |
 |---|---|
+| 420 | IA slice 1c-ix — Team surface (LIVE OPS FLOOR): migration (PR #197, live on prod) + UI (PR #199, squash 9c4d781). Scoreboard · availability rail (real, polled) · handoff queue · members&roles · assignments · comp-v2 reserved. Crew SHIP ×3, §9/§11/§13 clean. §32 post-deploy runtime check owed (headless env; authed /admin/team not renderable) — see #422/#423 producers. |
 | 3 | Migration-chain clean-rebuild sweep + CI lint |
 | 7 | Phase-2 data migration prod → BYO (full 251-table body) |
 | 8 | Paige strategic deep-dive: market research, comparative analysis, financial projections |
