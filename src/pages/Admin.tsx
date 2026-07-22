@@ -358,15 +358,22 @@ const Admin = () => {
         } />
         <Route path="funding" element={<FundingRoute><Suspense fallback={<SuspenseFallback />}><FundingPortfolioView /></Suspense></FundingRoute>} />
         <Route path="funding-pipeline" element={<FundingRoute><Suspense fallback={<SuspenseFallback />}><FundingPipelineView /></Suspense></FundingRoute>} />
+        {/* 1c-x: route OPENED to tenant staff so tenants reach their OWN analytics
+            (tenant lens). Every platform-wide/operator read stays is_platform_owner-
+            gated INSIDE the surface (view toggle + section guards + server RPC gates).
+            Floor mirrors the 1c-ix Team gate. */}
         <Route path="analytics" element={
-          <PlatformStaffOnly>
+          <RoleGate
+            allow={["admin", "coach", "sales_rep", "cs_rep", "finance", "manager", "owner"]}
+            allowPlatformStaff
+          >
             <Suspense fallback={<SuspenseFallback />}>
               <div className="space-y-8">
                 <AnalyticsDashboard />
                 <FundingGate><FundingMatchAccuracy /></FundingGate>
               </div>
             </Suspense>
-          </PlatformStaffOnly>
+          </RoleGate>
         } />
         <Route path="knowledge" element={
           <PlatformStaffOnly>
