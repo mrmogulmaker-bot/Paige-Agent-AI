@@ -47,11 +47,19 @@ export function ResponseFeedback({ messageContent, messageId, userPrompt, sessio
     agent_id: "paige-ai-chat",
   });
 
+  // response_quality_feedback isn't in the generated Supabase types; insert through a
+  // narrow local shape (no `any`) so both tsc and eslint stay clean. tenant_id is set
+  // server-side by a trigger, so it is intentionally absent from the row here (§9).
+  const insertFeedback = (row: Record<string, unknown>) =>
+    (supabase.from as unknown as (t: string) => {
+      insert: (r: Record<string, unknown>) => Promise<{ error: { message?: string } | null }>;
+    })("response_quality_feedback").insert(row);
+
   const handlePositive = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { error } = await supabase.from("response_quality_feedback" as never).insert({
+      const { error } = await insertFeedback({
         ...baseRow(),
         rating: "positive",
         rated_by: user.id,
@@ -78,7 +86,7 @@ export function ResponseFeedback({ messageContent, messageId, userPrompt, sessio
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
-      const { error } = await supabase.from("response_quality_feedback" as never).insert({
+      const { error } = await insertFeedback({
         ...baseRow(),
         rating: "negative",
         reason_category: reason,
