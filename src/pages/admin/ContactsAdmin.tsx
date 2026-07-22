@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/page";
 import {
   Search, Plus, Download, Users, Briefcase, Sparkles, Tag, Pencil, BanIcon,
-  Star, Filter, Trash2,
+  Star, Filter, Trash2, Flame, Snowflake, ThermometerSun, ThermometerSnowflake, Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -32,6 +32,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useUserRoles } from "@/hooks/useUserRoles";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { useCommandCenterView } from "@/hooks/useCommandCenterView";
+import {
+  resolvePersona, TEAM_VIEW_ENABLED, type CommandCenterView,
+} from "@/lib/roleViews/commandCenterRegistry";
+import { ClientsViewToggle } from "@/components/clients/ClientsViewToggle";
 
 type ClientRow = {
   id: string;
@@ -44,6 +50,10 @@ type ClientRow = {
   funding_goal: number | null;
   status: string;
   lifecycle_stage: string;
+  // Activity-derived heat axis (hot/warm/cool/cold), distinct from lifecycle_stage.
+  // Shipped by 1c-viii-a; arrives via the existing select("*") — NO query change,
+  // NO tenant_id param (§9 RLS-only). NULL until classify_client_temperature runs.
+  temperature: string | null;
   source: string | null;
   tags: string[] | null;
   lead_score: number | null;
@@ -64,11 +74,12 @@ type Rollup = {
   won_value_cents: number;
 };
 
+type SegmentCtx = { meId: string | null; partnerIds: Set<string> };
 type Segment = {
   id: string;
   label: string;
   description: string;
-  match: (c: ClientRow, ctx: { meId: string | null }) => boolean;
+  match: (c: ClientRow, ctx: SegmentCtx) => boolean;
 };
 
 const SEGMENTS: Segment[] = [
@@ -91,6 +102,35 @@ const SEGMENTS: Segment[] = [
     match: (c) => c.lifecycle_stage === "client_churned" },
 ];
 
+// View presets — the second, coarser axis over the same RLS-scoped rows. Each is a
+// Segment (same match shape) so it reuses the existing client-side filter plumbing;
+// they map onto lifecycle_stage (verified values in LIFECYCLE_STAGES) + temperature +
+// client_types, NEVER a new tenant_id param (§9). "All" is the no-preset state.
+const VIEW_PRESETS: Segment[] = [
+  { id: "leads", label: "Leads", description: "New, qualified, and nurturing leads",
+    match: (c) => ["new_lead", "qualified", "nurturing"].includes(c.lifecycle_stage) },
+  { id: "prospects", label: "Prospects", description: "Hot leads and deals in negotiation",
+    match: (c) => ["hot_lead", "negotiating"].includes(c.lifecycle_stage) },
+  { id: "clients", label: "Clients", description: "Won and active clients",
+    match: (c) => ["won", "client_active", "client_paused", "client_funded"].includes(c.lifecycle_stage) },
+  { id: "alumni", label: "Alumni", description: "Alumni and churned clients",
+    match: (c) => ["client_alumni", "client_churned"].includes(c.lifecycle_stage) },
+  { id: "partners", label: "Partners", description: "Partners, referral sources, and vendors",
+    match: (c, ctx) => ctx.partnerIds.has(c.id) },
+  { id: "call_queue", label: "Call Queue", description: "Hot/warm and contactable — call these first",
+    match: (c) => ["hot", "warm"].includes(c.temperature || "") && !c.do_not_contact },
+];
+
+// Narrow, lint-clean accessor for a table not yet in the generated Supabase types.
+// clients.temperature + client_types shipped in 1c-viii-a (20260722160000) but
+// src/integrations/supabase/types.ts was never regenerated for them. Rather than
+// regenerate (which would drag unrelated schema drift into this UI-only slice) or
+// reach for `as any` (the repo lint bans no-explicit-any), we read the table through
+// an `unknown` shim. RLS still enforces access server-side (§9 — no tenant param).
+type UntypedSelect = { select: (columns: string) => PromiseLike<{ data: unknown; error: unknown }> };
+const fromUntyped = (table: string): UntypedSelect =>
+  (supabase.from as unknown as (t: string) => UntypedSelect)(table);
+
 // Retire the lifecycle rainbow: collapse the per-stage color soup into the
 // three semantic pill tones. Label still carries the exact stage name.
 function lifecyclePill(stage: string): PillState {
@@ -98,6 +138,41 @@ function lifecyclePill(stage: string): PillState {
   if (stage === "client_churned") return "error";
   return "pending";
 }
+
+// Temperature → semantic pill tone. Non-gold (§11): a heat signal is not an ACT.
+// §23 CONSCIOUS COLOR CHOICE (heat, not danger): the ramp is the conventional
+// heat map red→amber→indigo→gray = hot→warm→cool→cold, so it reads intuitively at
+// a glance. `hot` reuses the destructive-red *token* deliberately as RED-HOT (highest
+// intent — call them first), NOT as an error signal: this Heat column carries no
+// error/failure pills to collide with, and the Title-case LABEL + distinct icon carry
+// the meaning independent of hue. A dedicated heat token would be the only way to fully
+// separate the two semantics — logged as a follow-up, not blocking.
+function temperaturePill(t: string | null): PillState {
+  switch (t) {
+    case "hot": return "error";     // red-hot — highest intent (see §23 note above)
+    case "warm": return "warning";  // amber
+    case "cool": return "building"; // indigo (cool), NOT gold
+    case "cold": return "off";      // muted (dormant)
+    default: return "off";
+  }
+}
+
+// Distinct glyph per step so the ramp reads by SHAPE, not color alone (§25 — no
+// duplicated-icon tell): flame → sun-thermometer → snow-thermometer → snowflake.
+function temperatureIcon(t: string | null) {
+  switch (t) {
+    case "hot": return <Flame className="h-3 w-3" />;
+    case "warm": return <ThermometerSun className="h-3 w-3" />;
+    case "cool": return <ThermometerSnowflake className="h-3 w-3" />;
+    case "cold": return <Snowflake className="h-3 w-3" />;
+    default: return undefined;
+  }
+}
+
+// Title-case label for the pill — never the raw lowercase enum (§3/§11 polish).
+const TEMPERATURE_LABEL: Record<string, string> = {
+  hot: "Hot", warm: "Warm", cool: "Cool", cold: "Cold",
+};
 
 export default function ContactsAdmin() {
   const navigate = useNavigate();
@@ -115,7 +190,22 @@ export default function ContactsAdmin() {
   const [deleting, setDeleting] = useState(false);
   const [alsoDeleteAuth, setAlsoDeleteAuth] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
-  const { isAdmin } = useUserRoles();
+  // contact_ids that carry a partner/referral/vendor relationship (client_types).
+  // RLS-scoped, no tenant param — powers the Partners view preset (§18: honest, a
+  // real read, never faked from tags).
+  const [partnerIds, setPartnerIds] = useState<Set<string>>(new Set());
+  const { isAdmin, roles, userId } = useUserRoles();
+  const { activeTenant, isPlatformOwner } = useTenantContext();
+
+  // View mode (My Queue / Team View / All) — presentation-only, mirrors the 1c-vii
+  // Command Center pattern EXACTLY. NEVER gates a data read; NO tenant_id param.
+  const isOwner = !!userId && activeTenant?.owner_user_id === userId;
+  const persona = resolvePersona(roles, isOwner);
+  const availableViews = useMemo<CommandCenterView[]>(
+    () => persona.views.filter((v) => v !== "team" || TEAM_VIEW_ENABLED), // Team OFF until 1c-ix
+    [persona.views],
+  );
+  const { view, setView } = useCommandCenterView(availableViews, persona.defaultView, "paige_clients_view");
 
   // URL-synced filters
   const search = searchParams.get("q") || "";
@@ -123,6 +213,7 @@ export default function ContactsAdmin() {
   const coachFilter = searchParams.get("coach") || "all";
   const tagFilter = searchParams.get("tag") || "all";
   const segment = searchParams.get("segment") || "";
+  const preset = searchParams.get("preset") || "";
 
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams);
@@ -139,19 +230,33 @@ export default function ContactsAdmin() {
       const { data: { user } } = await supabase.auth.getUser();
       setMeId(user?.id || null);
 
-      const [clientsRes, rolesRes, rollupRes] = await Promise.all([
+      const [clientsRes, rolesRes, rollupRes, typesRes] = await Promise.all([
         supabase.from("clients").select("*").order("created_at", { ascending: false }),
         supabase.from("user_roles").select("user_id").eq("role", "coach"),
         supabase.from("contact_deal_rollup").select("*"),
+        // RLS-scoped, NO tenant param (§9) — the child rows the parent client can read.
+        fromUntyped("client_types").select("contact_id,type"),
       ]);
       if (clientsRes.error) throw clientsRes.error;
-      setClients((clientsRes.data || []) as ClientRow[]);
+      // `as unknown as` (not `as any`, lint-clean): generated types.ts still lacks the
+      // 1c-viii-a clients.temperature column, so the row shape doesn't overlap ClientRow
+      // until types.ts is regenerated (tracked #234). The column exists at runtime.
+      setClients((clientsRes.data || []) as unknown as ClientRow[]);
 
-      const coachIds = (rolesRes.data || []).map((r: any) => r.user_id);
+      // §32 loud degrade: the Partners preset depends on client_types. If that read
+      // fails, it degrades gracefully (empty Partners) but must NOT be silent.
+      if (typesRes.error) console.warn("client_types read failed — Partners preset will be empty:", typesRes.error);
+      const partnerSet = new Set<string>();
+      ((typesRes.data as { contact_id: string; type: string }[] | null) || []).forEach((t) => {
+        if (["partner", "referral_source", "vendor"].includes(t.type)) partnerSet.add(t.contact_id);
+      });
+      setPartnerIds(partnerSet);
+
+      const coachIds = (rolesRes.data || []).map((r) => r.user_id);
       if (coachIds.length) {
         const { data: profs } = await supabase
           .from("profiles").select("user_id, full_name").in("user_id", coachIds);
-        setCoaches((profs || []).map((p: any) => ({
+        setCoaches((profs || []).map((p) => ({
           user_id: p.user_id, name: p.full_name || "Unnamed Coach",
         })));
       }
@@ -159,8 +264,8 @@ export default function ContactsAdmin() {
       const map: Record<string, Rollup> = {};
       ((rollupRes.data || []) as Rollup[]).forEach((r) => { map[r.contact_id] = r; });
       setRollup(map);
-    } catch (e: any) {
-      toast.error(e.message || "Failed to load contacts");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load contacts");
     } finally {
       setLoading(false);
     }
@@ -176,13 +281,25 @@ export default function ContactsAdmin() {
   }, [clients]);
 
   const filtered = useMemo(() => clients.filter((c) => {
+    // View mode (My Queue / Team View / All). Presentation-only tiering (§9): a
+    // platform owner's RLS spans every tenant, so "All"/business falls back to
+    // assigned-to-me to avoid a cross-tenant leak — EXACT mirror of the 1c-vii fix.
+    // A lower-tier persona has no "business" option at all, so it can only ever see
+    // its own assigned rows. RLS remains the real boundary (not RPC role-tiering).
+    const scopeMine = view === "mine" || (view === "business" && isPlatformOwner);
+    if (scopeMine && meId && c.assigned_coach_user_id !== meId) return false;
+
     if (lifecycle !== "all" && (c.lifecycle_stage || "new_lead") !== lifecycle) return false;
     if (coachFilter === "unassigned" && c.assigned_coach_user_id) return false;
     if (coachFilter !== "all" && coachFilter !== "unassigned" && c.assigned_coach_user_id !== coachFilter) return false;
     if (tagFilter !== "all" && !(c.tags || []).includes(tagFilter)) return false;
+    if (preset) {
+      const p = VIEW_PRESETS.find((x) => x.id === preset);
+      if (p && !p.match(c, { meId, partnerIds })) return false;
+    }
     if (segment) {
       const seg = SEGMENTS.find((s) => s.id === segment);
-      if (seg && !seg.match(c, { meId })) return false;
+      if (seg && !seg.match(c, { meId, partnerIds })) return false;
     }
     if (search) {
       const s = search.toLowerCase();
@@ -190,7 +307,7 @@ export default function ContactsAdmin() {
       if (!hay.includes(s)) return false;
     }
     return true;
-  }), [clients, search, lifecycle, coachFilter, tagFilter, segment, meId]);
+  }), [clients, search, lifecycle, coachFilter, tagFilter, segment, preset, meId, partnerIds, view, isPlatformOwner]);
 
   const stats = useMemo(() => {
     const totalOpenDeals = Object.values(rollup).reduce((a, r) => a + (r.open_deals || 0), 0);
@@ -259,7 +376,8 @@ export default function ContactsAdmin() {
           body: { user_id: deleteTarget.linked_user_id, keep_contact: false },
         });
         if (error) throw error;
-        if ((data as any)?.error) throw new Error((data as any).error);
+        const payload = data as { error?: string } | null;
+        if (payload?.error) throw new Error(payload.error);
       } else {
         await deleteContact(deleteTarget.id);
       }
@@ -272,8 +390,8 @@ export default function ContactsAdmin() {
       });
       setDeleteTarget(null);
       setAlsoDeleteAuth(false);
-    } catch (e: any) {
-      toast.error(e?.message || "Delete failed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
     } finally {
       setDeleting(false);
     }
@@ -293,6 +411,7 @@ export default function ContactsAdmin() {
     },
     { key: "contact", header: "Contact" },
     { key: "lifecycle", header: "Lifecycle" },
+    { key: "temp", header: "Heat" },
     { key: "tags", header: "Tags" },
     { key: "score", header: "Score", numeric: true },
     { key: "deals", header: "Open deals", numeric: true },
@@ -306,10 +425,11 @@ export default function ContactsAdmin() {
       <PageShell width="wide" className="pb-24">
         <PageHeader
           icon={Users}
-          title="Contacts"
+          title="People"
           description="Your CRM contact book — segment, assign, edit, and push straight into the pipeline."
           actions={
             <>
+              <ClientsViewToggle views={availableViews} value={view} onChange={setView} />
               <Button variant="outline" size="sm" onClick={exportCSV}>
                 <Download className="h-4 w-4 mr-1" /> Export {selected.size > 0 ? `(${selected.size})` : "CSV"}
               </Button>
@@ -326,6 +446,29 @@ export default function ContactsAdmin() {
           <StatTile icon={Briefcase} label="Open deals" value={stats.totalOpenDeals.toString()} hint={formatMoney(stats.totalOpenValue)} />
           <StatTile icon={Tag} label="Customers" value={stats.customers.toString()} />
         </StatRow>
+
+        {/* View presets — the coarse Lifecycle × Temperature axis over RLS-scoped rows. */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className="text-xs text-muted-foreground flex items-center gap-1 mr-1">
+            <Eye className="h-3 w-3" /> Views:
+          </span>
+          <FilterChip active={!preset} onClick={() => setParam("preset", "")}>All</FilterChip>
+          {VIEW_PRESETS.map((p) => (
+            <Tooltip key={p.id}>
+              <TooltipTrigger asChild>
+                <span>
+                  <FilterChip
+                    active={preset === p.id}
+                    onClick={() => setParam("preset", preset === p.id ? "" : p.id)}
+                  >
+                    {p.label}
+                  </FilterChip>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{p.description}</TooltipContent>
+            </Tooltip>
+          ))}
+        </div>
 
         {/* Smart segments */}
         <div className="flex flex-wrap gap-2 items-center">
@@ -454,6 +597,17 @@ export default function ContactsAdmin() {
                       ))}
                     </SelectContent>
                   </Select>
+                </TableCell>
+                <TableCell>
+                  {/* §13: temperature is NULL until classify_client_temperature runs —
+                      show an em-dash, never invent a heat value. */}
+                  {c.temperature ? (
+                    <StatePill state={temperaturePill(c.temperature)} icon={temperatureIcon(c.temperature)}>
+                      {TEMPERATURE_LABEL[c.temperature] ?? c.temperature}
+                    </StatePill>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <div className="flex flex-wrap gap-1 max-w-[200px]">
