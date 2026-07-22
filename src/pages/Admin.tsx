@@ -359,12 +359,14 @@ const Admin = () => {
         <Route path="funding" element={<FundingRoute><Suspense fallback={<SuspenseFallback />}><FundingPortfolioView /></Suspense></FundingRoute>} />
         <Route path="funding-pipeline" element={<FundingRoute><Suspense fallback={<SuspenseFallback />}><FundingPipelineView /></Suspense></FundingRoute>} />
         <Route path="analytics" element={
-          <Suspense fallback={<SuspenseFallback />}>
-            <div className="space-y-8">
-              <AnalyticsDashboard />
-              <FundingGate><FundingMatchAccuracy /></FundingGate>
-            </div>
-          </Suspense>
+          <PlatformStaffOnly>
+            <Suspense fallback={<SuspenseFallback />}>
+              <div className="space-y-8">
+                <AnalyticsDashboard />
+                <FundingGate><FundingMatchAccuracy /></FundingGate>
+              </div>
+            </Suspense>
+          </PlatformStaffOnly>
         } />
         <Route path="knowledge" element={
           <PlatformStaffOnly>
