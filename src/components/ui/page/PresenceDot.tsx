@@ -8,16 +8,22 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
  *
  * GOLD DISCIPLINE (§11): a resting presence dot is *status*, never an
  * act/approve/on moment — so online is semantic `--success`, away is
- * `--warning`, offline is a muted grey. Gold is deliberately absent here.
- * The live "breathing" pulse is framer-motion and is switched off under
- * `useReducedMotion` (static dot fallback).
+ * `--warning`, busy is `--info` (teal), offline is a muted grey. Gold is
+ * deliberately absent here (never a presence tone). The live "breathing" pulse is
+ * framer-motion and is switched off under `useReducedMotion` (static dot fallback).
+ *
+ * `busy` (1c-ix, presence_list_effective) uses `--info` (teal) so it reads as a
+ * distinct STATUS — clearly apart from away's amber, and deliberately NOT the indigo
+ * `--primary` that the surrounding interactive chrome (active chips, toggle) already
+ * spends, so a busy dot never looks like UI chrome. Never borrows the gold budget.
  */
 
-export type PresenceStatus = "online" | "away" | "offline";
+export type PresenceStatus = "online" | "away" | "offline" | "busy";
 
 const DOT_TONE: Record<PresenceStatus, string> = {
   online: "bg-[hsl(var(--success))]",
   away: "bg-[hsl(var(--warning))]",
+  busy: "bg-[hsl(var(--info))]",
   offline: "bg-muted-foreground/40",
 };
 
