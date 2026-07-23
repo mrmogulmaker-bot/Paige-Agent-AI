@@ -185,7 +185,7 @@ const GOD_MORE: MoreItem[] = [
   { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
   { label: "Legal Documents", href: "/admin/legal", icon: ShieldCheck },
   { label: "Security Canary", href: "/admin/security", icon: ShieldCheck },
-  { label: "Settings", href: "/admin/settings", icon: Settings },
+  { label: "Platform Settings", href: "/admin/platform/settings", icon: Settings },
 ];
 // Scoped Platform Admins run the fleet — comms/campaigns/settings stay owner-only.
 const GOD_STAFF_HUBS: Hub[] = [
