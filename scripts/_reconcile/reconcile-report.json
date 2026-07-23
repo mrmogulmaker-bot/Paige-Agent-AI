@@ -1,0 +1,798 @@
+{
+  "generatedAt": "2026-07-23T00:28:44.289Z",
+  "dryRun": false,
+  "counts": {
+    "prod_only_rows": 172,
+    "local_only_files": 33,
+    "reconstructed": 139,
+    "quarantined": 1,
+    "renamed": 32,
+    "excluded": 1,
+    "unmatchedLocalOnly": 0,
+    "securityFlags": 0,
+    "twins_total": 32,
+    "missing_total": 140
+  },
+  "execution": {
+    "dryRun": false,
+    "writes": {
+      "executed": 140,
+      "skipped_existing": 0
+    },
+    "renames": {
+      "executed": 32,
+      "skipped_already_applied": 0
+    },
+    "excludes": {
+      "executed": 1,
+      "skipped_already_gone": 0
+    }
+  },
+  "reconstructed": [
+    {
+      "version": "20250908112334",
+      "slug": "remote_bootstrap"
+    },
+    {
+      "version": "20250908112402",
+      "slug": "remote_bootstrap"
+    },
+    {
+      "version": "20250908112841",
+      "slug": "remote_bootstrap"
+    },
+    {
+      "version": "20250908115851",
+      "slug": "remote_bootstrap"
+    },
+    {
+      "version": "20260708174151",
+      "slug": "platform_staff_foundation"
+    },
+    {
+      "version": "20260708195245",
+      "slug": "internal_bookings_no_double_book"
+    },
+    {
+      "version": "20260708203607",
+      "slug": "calendars_first_class"
+    },
+    {
+      "version": "20260708211243",
+      "slug": "calendar_color_coding"
+    },
+    {
+      "version": "20260708215724",
+      "slug": "grant_calendars_authenticated"
+    },
+    {
+      "version": "20260708215844",
+      "slug": "grant_platform_invites_authenticated"
+    },
+    {
+      "version": "20260708220024",
+      "slug": "calendar_groups"
+    },
+    {
+      "version": "20260708223948",
+      "slug": "grant_calendars_service_role"
+    },
+    {
+      "version": "20260708224937",
+      "slug": "calendar_booking_page_branding"
+    },
+    {
+      "version": "20260708225038",
+      "slug": "calendar_meeting_location"
+    },
+    {
+      "version": "20260708231113",
+      "slug": "calendar_notifications_config"
+    },
+    {
+      "version": "20260708232842",
+      "slug": "calendar_multiple_location_options"
+    },
+    {
+      "version": "20260709004618",
+      "slug": "calendar_host_candidates_rpc"
+    },
+    {
+      "version": "20260709140241",
+      "slug": "booking_notifications_ledger"
+    },
+    {
+      "version": "20260709142523",
+      "slug": "calendar_booking_window_and_redirect"
+    },
+    {
+      "version": "20260709145717",
+      "slug": "calendar_intake_questions"
+    },
+    {
+      "version": "20260709152130",
+      "slug": "calendar_appointment_types"
+    },
+    {
+      "version": "20260709152550",
+      "slug": "calendar_date_overrides"
+    },
+    {
+      "version": "20260709155215",
+      "slug": "internal_bookings_no_overlap"
+    },
+    {
+      "version": "20260709162710",
+      "slug": "calendars_collective_class_support"
+    },
+    {
+      "version": "20260709162734",
+      "slug": "internal_bookings_collective_class_support"
+    },
+    {
+      "version": "20260709163608",
+      "slug": "create_class_booking_retry_bound_fix"
+    },
+    {
+      "version": "20260709165836",
+      "slug": "reschedule_class_booking_rpc"
+    },
+    {
+      "version": "20260709175935",
+      "slug": "internal_bookings_rls_restrict_kind_insert"
+    },
+    {
+      "version": "20260709181825",
+      "slug": "create_class_booking_contact_id"
+    },
+    {
+      "version": "20260709192836",
+      "slug": "provision_tenant_and_subaccount"
+    },
+    {
+      "version": "20260709193225",
+      "slug": "provision_tenant_profile_upsert_fix"
+    },
+    {
+      "version": "20260709194711",
+      "slug": "harden_tenant_provisioning"
+    },
+    {
+      "version": "20260709195554",
+      "slug": "tenant_account_types"
+    },
+    {
+      "version": "20260709201129",
+      "slug": "signup_platform_feed"
+    },
+    {
+      "version": "20260709222102",
+      "slug": "set_tenant_playbook"
+    },
+    {
+      "version": "20260709223232",
+      "slug": "set_tenant_playbook_harden"
+    },
+    {
+      "version": "20260709224426",
+      "slug": "accept_tenant_invite_consumer"
+    },
+    {
+      "version": "20260709230052",
+      "slug": "tenant_invite_contact_binding"
+    },
+    {
+      "version": "20260709230513",
+      "slug": "tenant_invite_accept_lastname_fix"
+    },
+    {
+      "version": "20260710000358",
+      "slug": "get_client_portal_brand"
+    },
+    {
+      "version": "20260710001534",
+      "slug": "peek_tenant_invite_email"
+    },
+    {
+      "version": "20260710002222",
+      "slug": "intake_playbook_section"
+    },
+    {
+      "version": "20260710003234",
+      "slug": "tenant_service_agreement"
+    },
+    {
+      "version": "20260710003656",
+      "slug": "tenant_service_agreement_legalname_fix"
+    },
+    {
+      "version": "20260710010040",
+      "slug": "tenant_portal_gateway_brand"
+    },
+    {
+      "version": "20260710011525",
+      "slug": "peek_tenant_portal_brand_drop_tenant_id"
+    },
+    {
+      "version": "20260710013630",
+      "slug": "get_paige_persona_context"
+    },
+    {
+      "version": "20260710022523",
+      "slug": "tenant_skills_toggle"
+    },
+    {
+      "version": "20260710032241",
+      "slug": "neutralize_paige_action_notification"
+    },
+    {
+      "version": "20260710034824",
+      "slug": "kb_chunks_vector_index"
+    },
+    {
+      "version": "20260710045307",
+      "slug": "kb_file_upload"
+    },
+    {
+      "version": "20260710050550",
+      "slug": "kb_bucket_member_write"
+    },
+    {
+      "version": "20260711010002",
+      "slug": "profile_name_split"
+    },
+    {
+      "version": "20260711011051",
+      "slug": "create_internal_booking_rpc"
+    },
+    {
+      "version": "20260711014952",
+      "slug": "marketing_content_library"
+    },
+    {
+      "version": "20260711015800",
+      "slug": "marketing_content_tenant_isolation_fix"
+    },
+    {
+      "version": "20260711024632",
+      "slug": "action_bus"
+    },
+    {
+      "version": "20260711025324",
+      "slug": "action_bus_surface_to_client_fix"
+    },
+    {
+      "version": "20260711032620",
+      "slug": "create_contact_created_by_fix"
+    },
+    {
+      "version": "20260711034659",
+      "slug": "paige_onboarding_tools"
+    },
+    {
+      "version": "20260711130611",
+      "slug": "tenant_email_identity_registry"
+    },
+    {
+      "version": "20260711142434",
+      "slug": "starter_business_provisioner"
+    },
+    {
+      "version": "20260711150659",
+      "slug": "fix_grant_role_overload_ambiguity"
+    },
+    {
+      "version": "20260711154701",
+      "slug": "paige_tool_autonomy"
+    },
+    {
+      "version": "20260711163919",
+      "slug": "tenant_n8n_connections"
+    },
+    {
+      "version": "20260711164246",
+      "slug": "n8n_tools_autonomy_catalog"
+    },
+    {
+      "version": "20260711170529",
+      "slug": "seed_platform_column_key"
+    },
+    {
+      "version": "20260711170638",
+      "slug": "enable_pgcrypto_for_platform_encrypt"
+    },
+    {
+      "version": "20260711172104",
+      "slug": "n8n_run_workflow_autonomy_catalog"
+    },
+    {
+      "version": "20260711173029",
+      "slug": "tenant_workflows_registry"
+    },
+    {
+      "version": "20260711185151",
+      "slug": "forge_tenant_scope"
+    },
+    {
+      "version": "20260711201150",
+      "slug": "paige_owner_chat_persistence"
+    },
+    {
+      "version": "20260711213649",
+      "slug": "brand_schema_and_cascade"
+    },
+    {
+      "version": "20260711213957",
+      "slug": "persona_context_brand"
+    },
+    {
+      "version": "20260711215958",
+      "slug": "brand_cascade_fixups"
+    },
+    {
+      "version": "20260711232610",
+      "slug": "paige_planning"
+    },
+    {
+      "version": "20260711232719",
+      "slug": "paige_planning_horizons_extend"
+    },
+    {
+      "version": "20260711235216",
+      "slug": "default_calendar_provision"
+    },
+    {
+      "version": "20260711235910",
+      "slug": "plan_reminder_cron_schedule"
+    },
+    {
+      "version": "20260712002028",
+      "slug": "planning_audit_fixes"
+    },
+    {
+      "version": "20260712004819",
+      "slug": "avatars_bucket_and_rls"
+    },
+    {
+      "version": "20260712010206",
+      "slug": "avatars_hardening"
+    },
+    {
+      "version": "20260712022552",
+      "slug": "plan_list_contact_and_calendar"
+    },
+    {
+      "version": "20260712033702",
+      "slug": "internal_bookings_team_read_and_realtime"
+    },
+    {
+      "version": "20260712033904",
+      "slug": "calendar_hosts_management"
+    },
+    {
+      "version": "20260712033954",
+      "slug": "create_internal_booking_v2"
+    },
+    {
+      "version": "20260712044124",
+      "slug": "booking_rpc_isolation_hardening"
+    },
+    {
+      "version": "20260712134641",
+      "slug": "cron_token_to_vault_functions"
+    },
+    {
+      "version": "20260712135910",
+      "slug": "cron_token_to_vault"
+    },
+    {
+      "version": "20260712141428",
+      "slug": "user_presence_layer"
+    },
+    {
+      "version": "20260712141503",
+      "slug": "user_presence_realtime_topic_rls"
+    },
+    {
+      "version": "20260712143931",
+      "slug": "harden_paige_chat_threads_own_visibility"
+    },
+    {
+      "version": "20260712163259",
+      "slug": "paige_context_rail_step1_foundation"
+    },
+    {
+      "version": "20260712170753",
+      "slug": "paige_context_rail_step2_realtime"
+    },
+    {
+      "version": "20260712173219",
+      "slug": "paige_context_rail_step2_1_hardening"
+    },
+    {
+      "version": "20260712180708",
+      "slug": "tenant_sender_identity_tenant_guard"
+    },
+    {
+      "version": "20260712182822",
+      "slug": "tier1_per_tenant_default_sender"
+    },
+    {
+      "version": "20260712190245",
+      "slug": "rail_step4_client_emitters"
+    },
+    {
+      "version": "20260712190439",
+      "slug": "rail_step4_client_emitters_hardened"
+    },
+    {
+      "version": "20260712200344",
+      "slug": "rail_step6_governable_god"
+    },
+    {
+      "version": "20260712202034",
+      "slug": "booking_rail_emit"
+    },
+    {
+      "version": "20260712211043",
+      "slug": "per_host_availability"
+    },
+    {
+      "version": "20260712211049",
+      "slug": "public_rate_limits"
+    },
+    {
+      "version": "20260712214735",
+      "slug": "zoom_connection"
+    },
+    {
+      "version": "20260712221139",
+      "slug": "agency_mcp_guards"
+    },
+    {
+      "version": "20260712223000",
+      "slug": "agency_mcp_enter_exit"
+    },
+    {
+      "version": "20260712231157",
+      "slug": "paige_deep_research"
+    },
+    {
+      "version": "20260713004633",
+      "slug": "research_runs_entity_profile"
+    },
+    {
+      "version": "20260713011812",
+      "slug": "agency_view_rpcs"
+    },
+    {
+      "version": "20260713020710",
+      "slug": "portal_config"
+    },
+    {
+      "version": "20260713023715",
+      "slug": "agency_switch_rpcs"
+    },
+    {
+      "version": "20260713023823",
+      "slug": "agency_switch_rpcs_enum_cast_fix"
+    },
+    {
+      "version": "20260713024606",
+      "slug": "paige_thread_tenant_isolation"
+    },
+    {
+      "version": "20260713030834",
+      "slug": "invite_brand_cascade"
+    },
+    {
+      "version": "20260713030936",
+      "slug": "subaccount_owner_invite"
+    },
+    {
+      "version": "20260713034248",
+      "slug": "agency_login_default"
+    },
+    {
+      "version": "20260713042518",
+      "slug": "platform_kb_isolation"
+    },
+    {
+      "version": "20260713140004",
+      "slug": "growth_authoring_seam"
+    },
+    {
+      "version": "20260713152601",
+      "slug": "tier_dashboard_metrics"
+    },
+    {
+      "version": "20260713155653",
+      "slug": "org_blueprint_departments"
+    },
+    {
+      "version": "20260713231153",
+      "slug": "move1_privesc_emergency_core"
+    },
+    {
+      "version": "20260714155542",
+      "slug": "marketplace_registry_spine"
+    },
+    {
+      "version": "20260714160223",
+      "slug": "marketplace_install_seam"
+    },
+    {
+      "version": "20260714161507",
+      "slug": "marketplace_seam_hardening"
+    },
+    {
+      "version": "20260714162420",
+      "slug": "marketplace_list_roadmap"
+    },
+    {
+      "version": "20260714162642",
+      "slug": "marketplace_catalog_read_membership"
+    },
+    {
+      "version": "20260714180518",
+      "slug": "marketplace_bundle_refcount_1_schema"
+    },
+    {
+      "version": "20260714180550",
+      "slug": "marketplace_bundle_refcount_2_finance_guard"
+    },
+    {
+      "version": "20260714180619",
+      "slug": "marketplace_bundle_refcount_3_helpers"
+    },
+    {
+      "version": "20260714180712",
+      "slug": "marketplace_bundle_refcount_4_install_node"
+    },
+    {
+      "version": "20260714180743",
+      "slug": "marketplace_bundle_refcount_5_public_rpcs"
+    },
+    {
+      "version": "20260714181443",
+      "slug": "marketplace_bundle_refcount_6_hardening"
+    },
+    {
+      "version": "20260714192450",
+      "slug": "marketplace_operator_seam_1_freeze_and_auth"
+    },
+    {
+      "version": "20260714192625",
+      "slug": "marketplace_operator_seam_2_upsert_item"
+    },
+    {
+      "version": "20260714192708",
+      "slug": "marketplace_operator_seam_3_publish_version"
+    },
+    {
+      "version": "20260714192756",
+      "slug": "marketplace_operator_seam_4_status_setcurrent_featured_default"
+    },
+    {
+      "version": "20260714192837",
+      "slug": "marketplace_operator_seam_5_deprecate_and_catalog"
+    },
+    {
+      "version": "20260715045512",
+      "slug": "growth_validate_blocks_add_chatbot"
+    },
+    {
+      "version": "20260715231230",
+      "slug": "custom_field_definitions"
+    }
+  ],
+  "renamed": [
+    {
+      "fromFile": "20260714350000_marketplace_mcp_actor_seam.sql",
+      "toFile": "20260714235406_marketplace_mcp_actor_seam.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (7941 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260714092500_growth_notify_repoint.sql",
+      "toFile": "20260715125000_growth_notify_repoint.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (2834 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260715120000_growth_fire_processor_cron_token.sql",
+      "toFile": "20260715125930_growth_fire_submission_processor_cron_token.sql",
+      "drift": false,
+      "note": "MANUAL TWIN (near-miss slug 'growth_fire_processor_cron_token' -> prod name 'growth_fire_submission_processor_cron_token', integrator-verified same migration 2026-07-22). no drift (ADVISORY): normalized local body matches ledger statements."
+    },
+    {
+      "fromFile": "20260715123000_growth_page_form_schema.sql",
+      "toFile": "20260715180549_growth_page_form_schema.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (7667 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260715150000_growth_assets_bucket.sql",
+      "toFile": "20260715223701_growth_assets_bucket.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (1491 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260716090000_custom_field_definitions.sql",
+      "toFile": "20260715231415_custom_field_definitions.sql",
+      "drift": false,
+      "note": "MANUAL TWIN (near-miss slug 'custom_field_definitions' -> prod name 'custom_field_definitions', integrator-verified same migration 2026-07-22). no drift (ADVISORY): normalized local body matches ledger statements."
+    },
+    {
+      "fromFile": "20260716120000_paige_studio_tool_autonomy_catalog.sql",
+      "toFile": "20260716171236_paige_studio_tool_autonomy_catalog.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (2473 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260716130000_studio_sessions_home.sql",
+      "toFile": "20260716182213_studio_sessions_home.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (19273 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260716190000_studio_sessions_create_hardening.sql",
+      "toFile": "20260716191328_studio_sessions_create_hardening.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (2073 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260716214500_studio_rpc_owner_gate_unify.sql",
+      "toFile": "20260716222837_studio_rpc_owner_gate_unify.sql",
+      "drift": true,
+      "note": "DRIFT (ADVISORY): normalized local body (17362 chars) != normalized ledger statements (17211 chars). Keeping LOCAL body as source-of-truth (owner #4); comment-strip heuristic, not a proof — diff logged for review."
+    },
+    {
+      "fromFile": "20260716230000_studio_manifest_ops.sql",
+      "toFile": "20260716224310_studio_manifest_ops.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (11002 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260717150000_growth_blocks_hero_scene_chatbot.sql",
+      "toFile": "20260717150907_growth_blocks_hero_scene_chatbot.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (2874 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260717160000_studio_session_thumbnail.sql",
+      "toFile": "20260717155107_studio_session_thumbnail.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (1445 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260718030000_studio_library_items.sql",
+      "toFile": "20260718031529_studio_library_items.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (8283 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260718040000_media_library_video.sql",
+      "toFile": "20260718035843_media_library_video.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (4882 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260718050000_studio_session_chat_thread.sql",
+      "toFile": "20260718052352_studio_session_chat_thread.sql",
+      "drift": true,
+      "note": "DRIFT (ADVISORY): normalized local body (2362 chars) != normalized ledger statements (2376 chars). Keeping LOCAL body as source-of-truth (owner #4); comment-strip heuristic, not a proof — diff logged for review."
+    },
+    {
+      "fromFile": "20260718060000_studio_design_agent_operating_core.sql",
+      "toFile": "20260718070752_studio_design_agent_operating_core.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (3404 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260718070000_studio_documents.sql",
+      "toFile": "20260718080838_studio_documents.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (4695 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260718080000_studio_design_agent_document_types.sql",
+      "toFile": "20260718150204_studio_design_agent_document_types.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (1350 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260718090000_studio_deliverable.sql",
+      "toFile": "20260718171212_studio_deliverable.sql",
+      "drift": true,
+      "note": "DRIFT (ADVISORY): normalized local body (3096 chars) != normalized ledger statements (3088 chars). Keeping LOCAL body as source-of-truth (owner #4); comment-strip heuristic, not a proof — diff logged for review."
+    },
+    {
+      "fromFile": "20260718120000_embedding_model_tag_columns.sql",
+      "toFile": "20260718205650_embedding_model_tag_columns.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (731 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260718100000_paige_prompt_template.sql",
+      "toFile": "20260718205758_paige_prompt_template.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (12433 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260718110000_paige_prompt_memory.sql",
+      "toFile": "20260718205814_paige_prompt_memory.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (2357 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260718130000_studio_artifact_versions.sql",
+      "toFile": "20260718215817_studio_artifact_versions.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (8313 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260718140000_marketing_content_reuse_image_fields.sql",
+      "toFile": "20260718221756_marketing_content_reuse_image_fields.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (2781 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260720030000_paige_eval.sql",
+      "toFile": "20260720044049_paige_eval.sql",
+      "drift": true,
+      "note": "DRIFT (ADVISORY): normalized local body (7377 chars) != normalized ledger statements (7318 chars). Keeping LOCAL body as source-of-truth (owner #4); comment-strip heuristic, not a proof — diff logged for review."
+    },
+    {
+      "fromFile": "20260720040000_paige_subagents_talent.sql",
+      "toFile": "20260720153024_paige_subagents_talent.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (9241 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260720120000_operator_intelligence_rpcs.sql",
+      "toFile": "20260720193705_operator_intelligence_rpcs.sql",
+      "drift": true,
+      "note": "DRIFT (ADVISORY): normalized local body (5734 chars) != normalized ledger statements (5750 chars). Keeping LOCAL body as source-of-truth (owner #4); comment-strip heuristic, not a proof — diff logged for review."
+    },
+    {
+      "fromFile": "20260720140000_org_departments_action_kinds.sql",
+      "toFile": "20260720200830_org_departments_action_kinds.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (2136 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260720160000_paige_action_bus_drainer.sql",
+      "toFile": "20260720205343_paige_action_bus_drainer.sql",
+      "drift": true,
+      "note": "DRIFT (ADVISORY): normalized local body (2833 chars) != normalized ledger statements (2803 chars). Keeping LOCAL body as source-of-truth (owner #4); comment-strip heuristic, not a proof — diff logged for review."
+    },
+    {
+      "fromFile": "20260720160200_advance_action_idempotent_approval.sql",
+      "toFile": "20260720212213_advance_action_idempotent_approval.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (6935 chars). Heuristic signal, not a proof of equality."
+    },
+    {
+      "fromFile": "20260720160100_paige_action_worker_cron.sql",
+      "toFile": "20260720212838_paige_action_worker_cron.sql",
+      "drift": false,
+      "note": "no drift (ADVISORY): normalized local body matches ledger statements (464 chars). Heuristic signal, not a proof of equality."
+    }
+  ],
+  "quarantined": [
+    {
+      "version": "20250908112911",
+      "slug": "remote_bootstrap_funding_seed_quarantined"
+    }
+  ],
+  "excluded": [
+    {
+      "version": "20260715011405",
+      "file": "20260715011405_79bb6cc5-23cb-403a-b6b4-f118221e0005.sql",
+      "reason": "EXCLUDED_DELETE: orphan with no prod twin; body rebinds a cron to FOREIGN project ref bfmyebsjyuoecmjskqhs (not prod xygzykjyynhzqytbqnzu). Never applied to prod. Owner call #3: delete from repo."
+    }
+  ],
+  "unmatchedLocalOnly": [],
+  "securityFlags": []
+}
