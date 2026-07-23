@@ -220,11 +220,12 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
 
   return (
     <PageShell width="wide">
-      {/* Header kept as the existing hero (§28 — no silent restyle of a shipped
-          surface); the personalization is the body. The view toggle + Export are
-          additive actions. */}
+      {/* Lean compact header (§11 banner rule) — converted from the prior hero per the
+          owner's explicit 1c-p instruction, which unfreezes this exact surface (§28).
+          The personalization is the body; the view toggle + Export ride in the actions
+          slot with their conditional guards intact. */}
       <PageHeader
-        variant="hero"
+        variant="plain"
         icon={LayoutDashboard}
         eyebrow="Overview"
         title="Your practice at a glance"

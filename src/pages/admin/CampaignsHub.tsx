@@ -78,7 +78,7 @@ export default function CampaignsHub() {
       {/* The Studio is a full-height workspace — the hero would push it below the fold. */}
       {!isStudio && (
         <PageHeader
-          variant="hero"
+          variant="plain"
           eyebrow="Growth & Acquisition"
           title="Campaigns"
           icon={Megaphone}
