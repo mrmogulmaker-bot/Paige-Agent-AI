@@ -224,7 +224,7 @@ export default function PortalStudio() {
     return (
       <PageShell width="wide">
         <PageHeader
-          variant="hero" eyebrow="Client Portal" title="Your client's portal"
+          variant="plain" icon={Palette} eyebrow="Client Portal" title="Your client's portal"
           description="Skin the portal your clients live in — brand, tabs, and greeting, in one place."
         />
         <EmptyState icon={Palette} title="No active workspace" description="Pick a workspace to build its client portal." />
@@ -235,13 +235,14 @@ export default function PortalStudio() {
   return (
     <PageShell width="wide">
       <PageHeader
-        variant="hero"
+        variant="plain"
+        icon={Palette}
         eyebrow="Client Portal"
         title="Your client's portal"
-        description="Everything your clients see when they sign in — your brand, the tabs they get, and how they're greeted. Set it once; Paige carries it everywhere."
+        description="Everything your clients see when they sign in — brand, tabs, and greeting. Set it once; Paige carries it everywhere."
         actions={
           <div className="flex items-center gap-3">
-            {dirty && <span className="text-xs text-white/70">Unsaved changes</span>}
+            {dirty && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
             <Button variant="gold" onClick={() => void handleSave()} disabled={!dirty || busy || (brandDirty && invalidHex)}>
               {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
               Save portal
