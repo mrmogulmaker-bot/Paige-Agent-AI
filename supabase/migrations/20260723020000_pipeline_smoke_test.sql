@@ -1,0 +1,16 @@
+-- =============================================================================
+-- Pipeline smoke test — #421 Phase 3 (deliberate NO-OP).
+-- =============================================================================
+-- Purpose: prove the deploy-migrations.yml pipeline applies + PERSISTS a brand-
+-- new migration end-to-end through the STANDARD flow (NOT the §32 MCP fallback),
+-- now that repo<->prod migration history is reconciled (#205 / #421 Phase 2).
+--
+-- This migration changes NOTHING: no DDL, no DML, no schema effect. It exists
+-- only so `supabase db push` has one genuinely-new version to apply and record,
+-- letting us verify the §32 dual layer:
+--   (1) prod supabase_migrations.schema_migrations advances to 20260723020000
+--   (2) the repo `db-live` tag moves to the commit that carries this file
+-- Safe + idempotent on every run (a SELECT changes no state).
+-- Once this lands green, the §32 MCP-apply fallback reverts to true-emergency-only.
+-- =============================================================================
+SELECT 1;
