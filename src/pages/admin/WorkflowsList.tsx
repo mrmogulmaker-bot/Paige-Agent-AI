@@ -49,7 +49,7 @@ interface WorkflowRow {
   sort_order: number;
 }
 
-export default function WorkflowsList() {
+export default function WorkflowsList({ embedded = false }: { embedded?: boolean } = {}) {
   const [rows, setRows] = useState<WorkflowRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -104,15 +104,19 @@ export default function WorkflowsList() {
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
-            <Workflow className="w-6 h-6" /> Workflows
-          </h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Every operation Paige can run. Replaces the Telegram command surface.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+        {/* When embedded (e.g. Setup › Automations), the host surface owns the page
+            header — suppress our own h1 so there's no doubled heading. §11/§18. */}
+        {!embedded && (
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold flex items-center gap-2">
+              <Workflow className="w-6 h-6" /> Workflows
+            </h1>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Every operation Paige can run. Replaces the Telegram command surface.
+            </p>
+          </div>
+        )}
+        <div className="flex items-center gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={sync} disabled={syncing}>
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
             {syncing ? "Syncing…" : "Sync n8n"}

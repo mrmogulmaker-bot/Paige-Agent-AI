@@ -11,18 +11,16 @@
 // keyed to the active tenant — coaches / admins / clients still see exactly what their
 // RLS policies allow.
 import { lazy, Suspense, useState } from "react";
-import { Navigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Megaphone, LayoutGrid, GitBranch, FileText, Plug, Palette, Share2, Facebook, Youtube, Linkedin } from "lucide-react";
-import { PageShell, PageHeader, EmptyState, StatePill } from "@/components/ui/page";
+import { Megaphone, LayoutGrid, GitBranch, FileText, Plug, Palette, Share2, Facebook, Youtube, Linkedin, ExternalLink } from "lucide-react";
+import { PageShell, PageHeader, EmptyState, SectionCard, StatePill } from "@/components/ui/page";
+import { Button } from "@/components/ui/button";
 import { CampaignsOverviewStats } from "@/components/admin/campaigns/CampaignsOverviewStats";
 import { isStudioMode, type StudioMode } from "@/components/admin/studio/studio-types";
 
 const CampaignsOverview = lazy(() => import("@/pages/admin/CampaignsAdmin"));
 const GrowthHub = lazy(() => import("@/pages/admin/GrowthHub"));
-const BrandKitPanel = lazy(() =>
-  import("@/components/admin/brand/BrandKitPanel").then((m) => ({ default: m.BrandKitPanel })),
-);
 const GROWTH_TABS = new Set(["pages", "funnels", "forms", "integrations"]);
 
 export default function CampaignsHub() {
@@ -106,15 +104,21 @@ export default function CampaignsHub() {
           </Suspense>
         </TabsContent>
 
+        {/* Brand is canonical in Setup › Brand (§18 one home). Campaigns keeps the
+            tab as a signpost so the muscle-memory link resolves, not a second editor. */}
         <TabsContent value="brand" className="mt-4">
-          <Suspense fallback={
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,380px)]">
-              <div className="h-96 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
-              <div className="h-80 animate-pulse rounded-xl border border-border bg-muted/40 motion-reduce:animate-none" />
-            </div>
-          }>
-            <BrandKitPanel />
-          </Suspense>
+          <SectionCard
+            icon={Palette}
+            title="Manage your brand in Setup"
+            description="Your logo, colors, and voice now live in one place — Setup › Brand — so every page, email, and asset Paige builds is drawn from the same source."
+          >
+            <Button asChild>
+              <Link to="/admin/setup/brand">
+                Go to Brand
+                <ExternalLink className="w-3.5 h-3.5 ml-1.5" />
+              </Link>
+            </Button>
+          </SectionCard>
         </TabsContent>
 
         <TabsContent value="social" className="mt-4">
