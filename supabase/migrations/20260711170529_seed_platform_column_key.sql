@@ -20,6 +20,7 @@
 -- to "fix" behavior — this is a faithful transcript of the applied prod SQL.
 -- =============================================================================
 
+-- migration-lint-ignore: pattern-3 -- reconciled prod transcript per #421; ON CONFLICT DO NOTHING is INTENTIONAL — the platform column key must never be regenerated on re-run (a DO UPDATE would rotate the key and orphan all existing ciphertext).
 INSERT INTO public._internal_secrets(key, value)
 VALUES ('platform_column_key', encode(gen_random_bytes(32), 'hex'))
 ON CONFLICT (key) DO NOTHING;

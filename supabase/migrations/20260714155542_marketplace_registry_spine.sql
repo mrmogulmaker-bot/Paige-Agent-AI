@@ -241,6 +241,7 @@ CREATE POLICY mp_ledger_read ON public.marketplace_install_ledger FOR SELECT TO 
                        AND v.owner_tenant_id IS NOT NULL AND public.is_tenant_admin(v.owner_tenant_id)));
 
 -- ── Seed: the first-party "Paige" vendor + the current catalog as data ───────
+-- migration-lint-ignore: pattern-1 -- reconciled prod transcript per #421; the hard-coded UUID is the first-party 'paige' vendor PRIMARY KEY (owner_tenant_id NULL) — it is NOT an auth.users FK, so there is no 23503 on a fresh rebuild.
 INSERT INTO public.marketplace_vendors (id, slug, display_name, owner_tenant_id, origin, status, contact_email)
 VALUES ('00000000-0000-4000-a000-000000000a01'::uuid, 'paige', 'Paige Agent AI', NULL, 'first_party', 'verified', 'support@paigeagent.ai')
 ON CONFLICT (slug) DO NOTHING;

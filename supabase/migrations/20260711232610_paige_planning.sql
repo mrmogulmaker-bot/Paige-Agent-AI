@@ -91,7 +91,7 @@ CREATE POLICY plans_read ON public.plans FOR SELECT TO authenticated USING (
         OR owner_user_id = auth.uid() OR created_by = auth.uid()))
 );
 DROP POLICY IF EXISTS plans_no_write ON public.plans;
-CREATE POLICY plans_no_write ON public.plans FOR ALL TO authenticated USING (false) WITH CHECK (false);
+CREATE POLICY plans_no_write ON public.plans FOR ALL TO authenticated USING (false) WITH CHECK (false); -- ci-allow-regression -- reconciled prod transcript per #421; intentional permissive deny — no other permissive write policy grants authenticated on plans, so default-deny already blocks; writes go through SECURITY DEFINER RPCs. RESTRICTIVE-correctness audit #431.
 
 DROP POLICY IF EXISTS plan_items_read ON public.plan_items;
 CREATE POLICY plan_items_read ON public.plan_items FOR SELECT TO authenticated USING (
@@ -101,7 +101,7 @@ CREATE POLICY plan_items_read ON public.plan_items FOR SELECT TO authenticated U
         OR assigned_to_user_id = auth.uid() OR created_by = auth.uid()))
 );
 DROP POLICY IF EXISTS plan_items_no_write ON public.plan_items;
-CREATE POLICY plan_items_no_write ON public.plan_items FOR ALL TO authenticated USING (false) WITH CHECK (false);
+CREATE POLICY plan_items_no_write ON public.plan_items FOR ALL TO authenticated USING (false) WITH CHECK (false); -- ci-allow-regression -- reconciled prod transcript per #421; intentional permissive deny (see plans_no_write). RESTRICTIVE-correctness audit #431.
 
 DROP TRIGGER IF EXISTS trg_plans_stamp ON public.plans;
 CREATE TRIGGER trg_plans_stamp BEFORE INSERT ON public.plans FOR EACH ROW EXECUTE FUNCTION public.stamp_tenant_id();

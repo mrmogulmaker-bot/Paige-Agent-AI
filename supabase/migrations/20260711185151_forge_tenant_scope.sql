@@ -48,6 +48,7 @@ begin
   if _field not in ('proposals_count', 'soft_shipped', 'hard_shipped') then
     raise exception 'invalid quota field: %', _field;
   end if;
+  -- migration-lint-ignore: pattern-1 -- reconciled prod transcript per #421; the hard-coded UUID is a COALESCE sentinel in the ON CONFLICT target, NOT a seeded FK row — the INSERT uses the plpgsql var _tenant_id and seeds no auth.users reference.
   insert into public.paige_subagent_factory_quota (tenant_id, quota_date, proposals_count, soft_shipped, hard_shipped)
     values (_tenant_id, _today, 0, 0, 0)
     on conflict (coalesce(tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), quota_date) do nothing;

@@ -137,11 +137,11 @@ CREATE POLICY pa_tenant_staff_read ON public.paige_actions FOR SELECT TO authent
     OR public.has_role(auth.uid(),'admin'::public.app_role)
   );
 DROP POLICY IF EXISTS pa_no_direct_insert ON public.paige_actions;
-CREATE POLICY pa_no_direct_insert ON public.paige_actions FOR INSERT TO authenticated WITH CHECK (false);
+CREATE POLICY pa_no_direct_insert ON public.paige_actions FOR INSERT TO authenticated WITH CHECK (false); -- ci-allow-regression -- reconciled prod transcript per #421; intentional permissive deny — no other permissive write policy grants authenticated on paige_actions, so default-deny already blocks; writes route through the service_role ALL policy. RESTRICTIVE-correctness audit #431.
 DROP POLICY IF EXISTS pa_no_direct_update ON public.paige_actions;
-CREATE POLICY pa_no_direct_update ON public.paige_actions FOR UPDATE TO authenticated USING (false) WITH CHECK (false);
+CREATE POLICY pa_no_direct_update ON public.paige_actions FOR UPDATE TO authenticated USING (false) WITH CHECK (false); -- ci-allow-regression -- reconciled prod transcript per #421; intentional permissive deny (see pa_no_direct_insert). RESTRICTIVE-correctness audit #431.
 DROP POLICY IF EXISTS pa_no_direct_delete ON public.paige_actions;
-CREATE POLICY pa_no_direct_delete ON public.paige_actions FOR DELETE TO authenticated USING (false);
+CREATE POLICY pa_no_direct_delete ON public.paige_actions FOR DELETE TO authenticated USING (false); -- ci-allow-regression -- reconciled prod transcript per #421; intentional permissive deny (see pa_no_direct_insert). RESTRICTIVE-correctness audit #431.
 DROP POLICY IF EXISTS pa_service_all ON public.paige_actions;
 CREATE POLICY pa_service_all ON public.paige_actions FOR ALL TO service_role USING (true) WITH CHECK (true);
 
