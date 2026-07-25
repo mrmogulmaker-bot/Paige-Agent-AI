@@ -144,7 +144,9 @@ project_id = "xygzykjyynhzqytbqnzu"
   [functions.recalculate-fundability-scores]
     verify_jwt = true
   [functions.refresh-fundability-scores-biannual]
-    verify_jwt = false
+    # Internal biannual dispatcher; never callable by an end-user JWT.
+    # Defense in depth: the function requires service-role or cron authorization.
+    verify_jwt = true
   [functions.send-beta-launch-email]
     verify_jwt = true
   [functions.preview-beta-launch-email]
@@ -188,7 +190,9 @@ project_id = "xygzykjyynhzqytbqnzu"
     verify_jwt = true
 
   [functions.readiness-scan]
-    verify_jwt = false
+    # Internal scheduled scanner. The gateway validates the service-role JWT;
+    # the function also accepts only that bearer or a Vault-backed cron token.
+    verify_jwt = true
 
   [functions.platform-independence-sweep]
     verify_jwt = false
@@ -247,4 +251,3 @@ project_id = "xygzykjyynhzqytbqnzu"
   # only in the tenant's published pages + persona. §2/§3 clean.
   [functions.paige-public-chat]
     verify_jwt = false
-
