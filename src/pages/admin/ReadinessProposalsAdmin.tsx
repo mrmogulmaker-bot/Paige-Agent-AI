@@ -115,7 +115,7 @@ export default function ReadinessProposalsAdmin() {
   // Manual scan removed (§9 producer-inventory reconciliation): readiness-scan
   // is now cron-only and rejects caller-supplied scan parameters. A §9-safe
   // "scan now" (tenant derived server-side, role-gated, rate-limited, audited)
-  // is tracked as a follow-up; the scheduled monthly cron continues the work.
+  // is tracked in #445; the scheduled monthly cron continues the work.
 
   return (
     <div className="p-6 space-y-6">
