@@ -484,6 +484,60 @@ serve(async (req) => {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         logStep("Processing checkout.session.completed", { sessionId: session.id });
+        // === Tenant storefront order (L2 storefront plane) ===
+        // Discriminant: session.metadata.tenant_price_id is Stripe-SIGNED metadata
+        // set by the producer `tenant-checkout-session`. If present, this is a tenant
+        // storefront order — handle it here and short-circuit FIRST, so a storefront
+        // subscription-mode checkout can never be mis-handled by the slot- or
+        // platform-plan blocks below.
+        if (session.metadata?.tenant_price_id) {
+          try {
+            // Only mark complete once the funds are captured. One-time 'payment'
+            // sessions fire already paid; guard anyway for subscription-mode orders.
+            if (session.payment_status === "paid") {
+              // Terminal status is the literal 'complete' — tenant_orders CHECK
+              // allows ('pending','complete','failed','refunded','cancelled');
+              // writing 'paid' throws 23514. StorefrontPanel lights success on 'complete'.
+              // Idempotent: the status='pending' predicate makes a webhook replay a 0-row update.
+              const { data: updated, error: orderErr } = await supabaseAdmin
+                .from("tenant_orders")
+                .update({
+                  status: "complete",
+                  stripe_payment_intent_id: (session.payment_intent as string | null) ?? null,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("stripe_session_id", session.id)
+                .eq("status", "pending")
+                .select("id");
+
+              if (orderErr) {
+                logStep("Storefront order: update failed", {
+                  sessionId: session.id,
+                  error: orderErr.message,
+                });
+              } else {
+                logStep("Storefront order: marked complete", {
+                  sessionId: session.id,
+                  rows: updated?.length ?? 0,
+                });
+              }
+            } else {
+              logStep("Storefront order: skipped, not paid", {
+                sessionId: session.id,
+                payment_status: session.payment_status,
+              });
+            }
+          } catch (storefrontErr) {
+            // A storefront-order failure must never 500 the webhook and block
+            // platform-subscription events. Log and swallow.
+            logStep("Storefront order handler error", {
+              sessionId: session.id,
+              error: String(storefrontErr),
+            });
+          }
+          // IMPORTANT — do NOT fall through to slot / plan blocks.
+          break;
+        }
 
         // === Additional business slot purchase ===
         // Detect by metadata.purpose OR by matching the configured price ID.
