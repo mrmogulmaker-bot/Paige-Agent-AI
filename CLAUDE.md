@@ -1294,3 +1294,163 @@ the router, pgvector via Supabase, and standard Node/Deno libs are allowed).
   regulated commodity (payments, telecom, email delivery, compute)? → external,
   behind the router so no single provider owns Paige."* If a build would put
   moat-critical data inside a third party, it fails §34 and does not ship.
+
+## 35. Paige is the operating system — the OS north star.
+
+**Directive (owner: Antonio):** Paige is not a SaaS platform for coaches. Paige is architected
+from day one to become the **operating system for operational life** — starting with the
+beachhead (SMB client-based businesses, where the AI-COO thesis proves), then expanding to
+households, portfolios, everyday experiences, search integrations, and devices as the OS matures.
+Every architectural decision from here forward serves that trajectory. §35 is canonical and sits
+alongside §7 (Paige as the intelligent portal, current-scope north star) and §17 ($1B Growth Map,
+revenue north star). §35 is the **beyond-scope** north star that shapes how every primitive is
+built so we don't ship corners we later have to undo.
+
+- **Every primitive is OS-shaped, not app-shaped.** The primitives we've built — the action bus
+  (§8), the 10-department model (§16), the reasoning engine (L4), the memory layer (L6), the
+  observability layer (L1), the eval framework (L2), the department dashboard (L7) — are OS-shaped
+  by construction. They aren't "business features." They're the substrate any future context
+  (household, portfolio, device, search result) will run on. Reuse them; do not fork them.
+- **Universal surfaces vs. context-specific surfaces.** The platform has two categories of
+  top-nav real estate. **Universal** surfaces work in ANY Paige-run context — currently Paige,
+  Command Center, Marketplace, Analytics, Setup. **Context-specific** surfaces come from the
+  active Playbook — for the business context these are Clients · Team · Growth; a future
+  household context would swap in Family · Home · Finances; a portfolio context would swap in
+  Assets · Advisors · Investments. Universal surfaces are load-bearing OS infrastructure and
+  never disappear across contexts. Context-specific surfaces swap cleanly per active Playbook.
+- **Marketplace is the App Store for the Paige OS.** Not a Paige feature. Not tucked inside the
+  interaction surface. A first-class destination where the ecosystem lives — tenant-built skills,
+  third-party integrations, community-contributed Playbooks, vertical accelerators, Paige-native
+  capability unlocks, whole business/context templates, eventually a two-sided developer
+  marketplace. Same principle as iOS App Store, Chrome Web Store, Salesforce AppExchange. The
+  discovery surface for the entire ecosystem never sits subordinate to one interaction pattern.
+- **§10 (Paige-callable) is the OS's programmability rule.** The rule that "no feature's logic
+  lives only in a React component" isn't just anti-drift discipline. It's what makes Paige
+  addressable from any future surface — voice, devices, browser extensions, wearables, cars,
+  smart speakers, search integrations, developer APIs. Every callable seam is OS surface area.
+  A React handler as the only path = an OS dead end.
+- **Multi-context via §9, not via forking.** Same core Paige, per-tenant configuration + per-
+  Playbook context. That's how one Paige becomes many Paiges (one per business, one per
+  household, one per portfolio) without forking codebases. §9 tenant/operator seam discipline
+  isn't just security — it's OS scalability.
+- **Honesty about scope.** Slice 1c and current work are business-context OS. Household /
+  portfolio / device contexts are Playbook additions in later waves, not current-scope work.
+  But every decision made now should be evaluated against them so we don't build corners we
+  have to undo. When a design would only work for the business context, name that honestly
+  and file the OS-scaling implication as a follow-up.
+- **The test, every time:** *"Would this design/decision scale cleanly if we pointed Paige at
+  a household instead of a business? Would this primitive/surface work if Paige lived on a
+  phone, watch, car dashboard, or search result? If not, why not — and is that a limitation
+  we're accepting or a design flaw?"* If a build can't answer that, it isn't OS-ready.
+
+## 36. Intuitiveness is the moat — Paige surfaces the work; the user never has to know how to ask.
+
+**Directive (owner: Antonio):** Paige is an **agent-driven surface**, not a user-driven
+prompt window. Every capability we ship must enter through a path where a **non-technical
+user with zero prompt-engineering skill can discover and use it within their first 5
+minutes on the platform.** If a capability requires the user to learn *how to ask* for it,
+we've regressed the category — and the category we're building against (Cursor, GitHub
+Copilot, Claude Code itself, Open Claw, every dev-tool-flavored AI) all fail this test by
+design. Our differentiator is that the user doesn't drive Paige; Paige drives, and the
+user approves. That's not a UX preference; it's the moat.
+
+**Five mechanical patterns that produce intuitiveness — every user-facing build must use
+at least one, ideally several:**
+
+- **Proactive surfacing.** Paige tells the user what needs doing; the user doesn't hunt
+  for it. The "Drafts awaiting you" queue on Command Center is the canonical example.
+  Every capability that produces work should surface into a queue the user opens by
+  default, not a menu the user learns to find.
+- **Draft-first.** Paige does the work, human approves (`autonomy_lane = "confirm"` per
+  §16). The user reviews a completed draft, not a blank prompt. A generated draft with a
+  wrong tone is easier to fix than a blank cursor.
+- **Domain-expert framing.** Paige speaks the user's business language (per-Playbook),
+  not agent language. A funding coach's Paige talks about FICO scores and lender packages;
+  an agency's Paige talks about deliverables and change orders; a fitness coach's Paige
+  talks about workouts and macros. Never *"let me query the database"* or *"I'll invoke
+  the tool"* — that's dev-tool language leaking.
+- **One-click approval.** *Approve* is a button, not a prompt reformulation. If the user
+  has to type back "yes but change X," we've made them the prompt engineer. The one-click
+  path handles the 80%; the drill-down path handles the edge case.
+- **§14 team framing.** The user is **managing** a team, not **driving** a tool. Every
+  affordance ("Paige drafted this for your approval," "Paige noticed X and flagged it,"
+  "Paige is working on Y for you") reinforces the mental model that the user is a
+  manager, not an operator.
+
+**The test, every build, every surface:** *"Could a non-technical coach with zero
+prompt-engineering skill discover this feature within 5 minutes of first login, and use
+it without reading documentation or watching a tutorial?"* If no, the entry point is
+wrong — redesign before shipping. This is the design-critic and adversarial-verifier's
+most important check on any user-facing surface, alongside §11 (world-class visual
+floor).
+
+**Why this is category-defining:** dev-tool-flavored AI products require the user to
+know what they want, how to formulate a prompt, and how to chain outputs. They're
+**capable** but **high-friction**. Their moat is model capability. Ours is category-
+different — we make an AI COO usable by a non-technical business owner. That's a bigger
+addressable market and a fundamentally different UX contract. If we let dev-tool patterns
+leak into Paige — a "chat with Paige" that's actually a blank prompt window, a "run this
+skill" that requires the user to know which skill exists, a feature that only reveals
+itself after the user knows to ask — we've abandoned the moat.
+
+**Related doctrine:** §7 (Paige is the intelligent portal, agent-driven surface) · §11
+(world-class visual/design floor — the visual complement) · §14 (Paige orchestrates a
+team — the mental model) · §15 (Paige is innovative — she proposes; she doesn't wait for
+perfect prompts) · §16 (autonomy tiers — draft-first is the middle tier by design) · §35
+(OS north star — an OS you have to learn how to prompt is not an OS).
+
+## 37. Producer inventory — every contract-changing endpoint audits ALL its callers.
+
+**Directive (owner: Antonio, 2026-07-25):** Every §9 input-hardening PR — and more
+broadly, every change that tightens or alters the request contract of a callable
+endpoint (edge function, RPC, MCP tool, webhook receiver) — MUST include an explicit
+producer inventory as part of §32 verification. Static review can only verify
+*"implemented as described."* It cannot verify *"still works for the legitimate
+callers."* The adversarial verifier must enumerate every producer of the endpoint
+and confirm each one still passes the new guard.
+
+**The producer inventory covers eight caller classes.** For each hardened endpoint,
+walk every one:
+
+- **Frontend callers** — React components, admin surfaces, tenant-facing UI, hooks,
+  service-layer wrappers. Grep the codebase for the endpoint name AND any
+  URL/RPC-name that resolves to it.
+- **Sibling edge functions** — other functions that invoke this one server-to-server,
+  including via `supabase.functions.invoke()` or direct HTTP.
+- **Database triggers** — `AFTER INSERT/UPDATE/DELETE` triggers that call the
+  endpoint via `pg_net` or via a queue-drainer.
+- **`pg_cron` and `pg_net` migrations** — scheduled jobs. Grep every migration for
+  the function name AND the request body shape.
+- **GitHub Actions** — CI workflows that hit the endpoint (deploy previews,
+  smoke tests, scheduled probes).
+- **External webhook and OAuth providers** — third-party services that POST to
+  the endpoint (Stripe, Plaid, iSoftpull, DocuSign, Meta, etc.). Cross-check
+  the provider's actual payload shape against the new guard.
+- **n8n, Zapier, and MCP callers** — Paige-driven tool invocations, workflow
+  automations, other agent frameworks. Grep the MCP tool definitions AND the
+  workflow registry.
+- **Tests and operational scripts** — anything under `scripts/`, `tests/`,
+  `.github/scripts/`, or ad-hoc runbooks that exercises the endpoint.
+
+**The rule, every time:** *"For every legitimate producer I found, does the new
+guard let their exact request shape through?"* If the answer is no for any producer,
+the guard is incomplete — either the producer must change, or the guard must widen
+(with rationale), or the producer must be removed (with a §14 replacement plan).
+No half-hardened endpoints — half-hardened is worse than un-hardened, because it
+looks fixed while orphaned callers hit 4xx or silently stop firing.
+
+**Anchoring case study — Hotfix 1 (2026-07-25):** the readiness-scan §9 hardening
+correctly removed the manual/tenant-scoped scan mode (an IDOR vector), but three
+producers still called the removed contract: (1) the production `pg_cron` migration
+which posted `{trigger_source: "cron"}`, (2) an admin "Run manual scan" button in
+`ReadinessProposalsAdmin.tsx`, (3) a `paige-mcp` tool `trigger_readiness_scan_for_contact`.
+Static verification of the security fix confirmed it was implemented as described —
+but the adversarial verifier's producer inventory caught all three orphaned callers
+before merge. Without the inventory, the security fix would have shipped and
+silently killed the monthly readiness scan while leaving two visibly-broken
+operator/Paige triggers behind. This is the pattern §37 exists to prevent.
+
+**Related doctrine:** §9 (tenant isolation), §13 (world-class engineering — honest
+reporting), §14 (Paige orchestrates a team — the adversarial verifier owns the
+producer inventory), §32 (dual-layer verification — fidelity + behavioral, where
+the producer inventory is the behavioral verifier's mandatory pre-check).
