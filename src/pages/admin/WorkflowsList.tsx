@@ -119,7 +119,7 @@ export default function WorkflowsList({ embedded = false }: { embedded?: boolean
         <div className="flex items-center gap-2 ml-auto">
           <Button variant="outline" size="sm" onClick={sync} disabled={syncing}>
             <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Syncing…" : "Sync n8n"}
+            {syncing ? "Syncing…" : "Sync workflows"}
           </Button>
           <Button asChild variant="outline" size="sm">
             <Link to="/admin/workflows/runs">Recent runs</Link>
@@ -132,8 +132,8 @@ export default function WorkflowsList({ embedded = false }: { embedded?: boolean
           <CardContent className="py-3 flex items-center gap-2 text-sm">
             <AlertTriangle className="w-4 h-4 text-amber-600" />
             <span>
-              <strong>{needsLinkCount}</strong> curated workflow{needsLinkCount === 1 ? "" : "s"} not yet linked to a live n8n workflow.
-              Click <strong>Sync n8n</strong> to resolve by matching workflow names.
+              <strong>{needsLinkCount}</strong> curated workflow{needsLinkCount === 1 ? "" : "s"} not yet linked to a live workflow.
+              Click <strong>Sync workflows</strong> to resolve by matching workflow names.
             </span>
           </CardContent>
         </Card>

@@ -14,23 +14,42 @@
  * — the AI gate reads enabled_skills, and the card must never misrepresent it.
  */
 import { useMemo, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { TrendingUp, Palette, Mic, Workflow, BookOpen, Sparkles, Store } from "lucide-react";
+import {
+  TrendingUp, Palette, Mic, Workflow, BookOpen, Sparkles, Store, Search,
+  Dumbbell, Briefcase, Building2, LineChart,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { PageShell, PageHeader } from "@/components/ui/page";
+import { PageShell, PageHeader, Toolbar, FilterChip, EmptyState, GlyphPlate } from "@/components/ui/page";
 import { SkillCard } from "@/components/marketplace/SkillCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { SKILL_CATEGORIES, type MarketplaceSkill } from "@/lib/marketplace/skills";
 
-const ICONS: Record<string, LucideIcon> = { TrendingUp, Palette, Mic, Workflow, BookOpen };
+const ICONS: Record<string, LucideIcon> = {
+  TrendingUp, Palette, Mic, Workflow, BookOpen, Dumbbell, Briefcase, Building2, LineChart, Sparkles,
+};
+
+// Module-scope grouping helper so the full catalog (chip source) and the filtered
+// catalog (rendered sections) build their maps the same way.
+function groupByCategory(list: CatalogRow[]): Map<string, CatalogRow[]> {
+  const map = new Map<string, CatalogRow[]>();
+  for (const r of list) {
+    const arr = map.get(r.category) ?? [];
+    arr.push(r);
+    map.set(r.category, arr);
+  }
+  return map;
+}
 
 const TYPE_LABEL: Record<string, string> = {
   skill: "Capability", kb_pack: "Knowledge pack", skin: "Portal theme",
@@ -82,6 +101,14 @@ export default function Marketplace() {
   const [saving, setSaving] = useState<string | null>(null);
   const [justArmed, setJustArmed] = useState<string | null>(null);
   const [openSlug, setOpenSlug] = useState<string | null>(null);
+  // Client-side filter state (a filter over already-loaded rows, never a re-fetch
+  // and never a type-gate — §18). Declared with the other hooks so the hook order
+  // is stable across the early returns below.
+  const [query, setQuery] = useState("");
+  const [cat, setCat] = useState<string>("all");
+  const [status, setStatus] = useState<"all" | "available" | "on" | "soon">("all");
+  const reduce = useReducedMotion();
+  const shelfRef = useRef<HTMLDivElement | null>(null);
   // Declared with the other hooks (before any early return) so the hook order is
   // stable — it freezes the opened row so the detail dialog keeps its content
   // through the close animation (assigned below, §11/a11y).
@@ -122,7 +149,7 @@ export default function Marketplace() {
     },
   });
 
-  const rows = catalogQ.data ?? [];
+  const rows = useMemo(() => catalogQ.data ?? [], [catalogQ.data]);
   const feats = featuresQ.data ?? { enabledSkills: [], presetFundingOn: false };
   const loading = catalogQ.isLoading || featuresQ.isLoading;
 
@@ -138,6 +165,41 @@ export default function Marketplace() {
 
   const liveCount = rows.filter((r) => availableFor(r) && isOnFor(r)).length;
   const roadmapCount = rows.filter((r) => !availableFor(r)).length;
+  // The full installable shelf (version != null) — the superset a fresh, 0-on
+  // tenant still sees is NOT empty (#434). Tenant-scoped: derived from this
+  // tenant's catalog rows, never the GLOBAL install_count column (§9/§2).
+  const availableCount = rows.filter(availableFor).length;
+
+  // Client-side filter: keyword (name/tagline/description) AND category AND
+  // status, over the already-loaded rows. Reuses availableFor/isOnFor — no
+  // duplicated logic, no re-fetch (§18 filter, not gate). Cheap over a handful
+  // of rows, so a plain derivation (no memo) keeps the deps trivially correct.
+  const q = query.trim().toLowerCase();
+  const filteredRows = rows.filter((r) => {
+    const matchKeyword =
+      !q ||
+      r.name.toLowerCase().includes(q) ||
+      (r.tagline ?? "").toLowerCase().includes(q) ||
+      (r.description ?? "").toLowerCase().includes(q);
+    const matchCat = cat === "all" || r.category === cat;
+    const matchStatus =
+      status === "all"
+        ? true
+        : status === "available"
+          ? availableFor(r)
+          : status === "on"
+            ? availableFor(r) && isOnFor(r)
+            : /* soon */ !availableFor(r);
+    return matchKeyword && matchCat && matchStatus;
+  });
+
+  const resetFilters = () => {
+    setQuery("");
+    setCat("all");
+    setStatus("all");
+  };
+  const scrollToShelf = () =>
+    shelfRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
 
   const refresh = () =>
     Promise.all([
@@ -193,15 +255,11 @@ export default function Marketplace() {
     }
   };
 
-  const byCategory = useMemo(() => {
-    const map = new Map<string, CatalogRow[]>();
-    for (const r of rows) {
-      const arr = map.get(r.category) ?? [];
-      arr.push(r);
-      map.set(r.category, arr);
-    }
-    return map;
-  }, [rows]);
+  // Two groupings: the FULL catalog powers the (stable) category chips so they
+  // don't vanish as you filter; the FILTERED catalog powers the rendered sections
+  // (so the 01/02 numbering stays contiguous over the visible list).
+  const byCategoryAll = useMemo(() => groupByCategory(rows), [rows]);
+  const byCategory = useMemo(() => groupByCategory(filteredRows), [filteredRows]);
 
   if (!tenantLoading && !activeTenantId) {
     return (
@@ -216,13 +274,25 @@ export default function Marketplace() {
   // Category order follows the curated list; any category not in it falls to the
   // end. Only categories that actually have rows render (so the 01/02 badges are
   // numbered off the VISIBLE list, never skipping).
-  const orderedCategories = [
-    ...SKILL_CATEGORIES,
-    ...[...byCategory.keys()]
-      .filter((k) => !SKILL_CATEGORIES.some((c) => c.key === k))
-      .map((k) => ({ key: k, label: k, blurb: "" })),
-  ];
-  const visibleCategories = orderedCategories.filter((cat) => (byCategory.get(cat.key) ?? []).length > 0);
+  const orderCategories = (map: Map<string, CatalogRow[]>) => {
+    const ordered = [
+      ...SKILL_CATEGORIES,
+      ...[...map.keys()]
+        .filter((k) => !SKILL_CATEGORIES.some((c) => c.key === k))
+        .map((k) => ({ key: k, label: k, blurb: "" })),
+    ];
+    return ordered.filter((c) => (map.get(c.key) ?? []).length > 0);
+  };
+  // Chips derive from the FULL catalog so a chip only shows for a category that
+  // exists, and never disappears mid-filter. Sections derive from the filtered set.
+  const chipCategories = orderCategories(byCategoryAll);
+  const visibleCategories = orderCategories(byCategory);
+
+  // Fresh-tenant first-run: nothing on yet, but there IS something switchable.
+  // Gate on availableCount>0 (not just rows.length>0): if the shelf is all
+  // coming-soon, a gold "switch on your first capability" CTA would point at
+  // nothing (§13 honest, §2 — the CTA is navigational only, never an installer).
+  const showFirstRun = !loading && liveCount === 0 && availableCount > 0;
 
   // Freeze the opened row so the detail dialog keeps its content through the close
   // animation (never a bare, titleless DialogContent flash — §11/a11y).
@@ -240,19 +310,38 @@ export default function Marketplace() {
         description="Give Paige new powers — switch on a capability and she carries it into every client conversation. Your persona, your voice, your journey stay yours."
       />
 
-      {/* Read-only inventory line (not an action — never in the gold budget, §11). */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+      {/* Provenance + read-only inventory (never an action — outside the gold
+          budget, §11). §16: Marketplace is owned by the Product & Curriculum dept.
+          #434: the counter is tenant-scoped ({available} available · {on} on ·
+          {soon} soon) so a fresh, 0-on tenant still sees the shelf isn't empty —
+          it reads this tenant's catalog rows, NEVER the global install_count (§9). */}
+      <div
+        className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums"
+        aria-label={
+          !loading && rows.length > 0
+            ? `Product and Curriculum. ${availableCount} capabilities available, ${liveCount} on, ${roadmapCount} shipping soon.`
+            : "Product and Curriculum"
+        }
+      >
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))]" aria-hidden />
-          {liveCount > 0 ? `${liveCount} live now` : "Ready when you are"}
+          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" aria-hidden />
+          Product &amp; Curriculum
         </span>
-        {roadmapCount > 0 && (
+        {!loading && rows.length > 0 && (
           <>
             <span aria-hidden className="text-border">·</span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" aria-hidden />
-              {roadmapCount} shipping soon
+              <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))]" aria-hidden />
+              {availableCount} available
             </span>
+            <span aria-hidden className="text-border">·</span>
+            <span>{liveCount} on</span>
+            {roadmapCount > 0 && (
+              <>
+                <span aria-hidden className="text-border">·</span>
+                <span>{roadmapCount} soon</span>
+              </>
+            )}
           </>
         )}
       </div>
@@ -272,20 +361,98 @@ export default function Marketplace() {
           </p>
         </CardContent></Card>
       ) : (
-        visibleCategories.map((cat, i) => (
-          <section key={cat.key} className="space-y-4">
+        <>
+          {/* Fresh-tenant first-run nudge — the ONE sanctioned gold act on this
+              surface, and it renders ONLY when liveCount===0, so no Live pill or
+              checked Switch is on screen at the same time (gold budget stays 1).
+              §11: a compact panel, NOT a hero banner. §2/§14: the CTA is
+              navigational (scrolls to the shelf), never an installer. */}
+          {showFirstRun && (
+            <Card className="border-[hsl(var(--primary)/0.3)] bg-[hsl(var(--primary)/0.04)]">
+              <CardContent className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <GlyphPlate icon={Sparkles} size="md" ring="indigo" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Start here
+                    </p>
+                    <h2 className="font-display text-base font-semibold leading-snug text-foreground">
+                      Switch on your first capability to unlock Paige&apos;s domain expertise
+                    </h2>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      Every capability you turn on hands Paige another part of your practice to run.
+                      Pick one to start — she takes it from there.
+                    </p>
+                  </div>
+                </div>
+                <Button variant="gold" size="sm" onClick={scrollToShelf} className="shrink-0">
+                  Browse capabilities
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Search + filter toolbar — a client-side FILTER over already-loaded
+              rows (§18), never a re-fetch and never a pre-classification gate.
+              FilterChip active stays indigo (its primitive enforces this). */}
+          <Toolbar className="gap-y-3">
+            <div className="relative w-full max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search capabilities…"
+                className="pl-9"
+                aria-label="Search capabilities"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <FilterChip active={cat === "all"} onClick={() => setCat("all")}>All</FilterChip>
+              {chipCategories.map((c) => (
+                <FilterChip key={c.key} active={cat === c.key} onClick={() => setCat(c.key)}>
+                  {c.label}
+                </FilterChip>
+              ))}
+              <span className="mx-1 hidden h-4 w-px bg-border sm:block" aria-hidden />
+              <FilterChip active={status === "available"} onClick={() => setStatus((s) => (s === "available" ? "all" : "available"))}>
+                Available
+              </FilterChip>
+              <FilterChip active={status === "on"} onClick={() => setStatus((s) => (s === "on" ? "all" : "on"))}>
+                On
+              </FilterChip>
+              <FilterChip active={status === "soon"} onClick={() => setStatus((s) => (s === "soon" ? "all" : "soon"))}>
+                Coming soon
+              </FilterChip>
+            </div>
+          </Toolbar>
+
+          <div ref={shelfRef} className="space-y-8">
+            {visibleCategories.length === 0 ? (
+              <EmptyState
+                icon={Search}
+                title="Nothing matches that yet"
+                description="No capability fits your search and filters. Clear them to see the full shelf."
+                action={
+                  <Button variant="outline" size="sm" onClick={resetFilters}>
+                    Clear filters
+                  </Button>
+                }
+              />
+            ) : (
+              visibleCategories.map((category, i) => (
+          <section key={category.key} className="space-y-4">
             <div className="flex items-center gap-3">
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary text-[11px] font-semibold text-white">
                 {String(i + 1).padStart(2, "0")}
               </span>
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold leading-tight text-foreground">{cat.label}</h2>
-                {cat.blurb && <p className="text-sm text-muted-foreground">{cat.blurb}</p>}
+                <h2 className="text-lg font-semibold leading-tight text-foreground">{category.label}</h2>
+                {category.blurb && <p className="text-sm text-muted-foreground">{category.blurb}</p>}
               </div>
               <div className="ml-2 hidden h-px flex-1 bg-border/60 sm:block" />
             </div>
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {(byCategory.get(cat.key) ?? []).map((r) => {
+              {(byCategory.get(category.key) ?? []).map((r) => {
                 const Icon = ICONS[r.icon ?? ""] ?? Sparkles;
                 const available = availableFor(r);
                 const lockedOn = lockedOnFor(r);
@@ -317,7 +484,10 @@ export default function Marketplace() {
               })}
             </div>
           </section>
-        ))
+              ))
+            )}
+          </div>
+        </>
       )}
 
       {dialogRow && (
