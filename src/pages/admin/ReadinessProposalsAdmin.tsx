@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
-import { Check, X, RefreshCw, DollarSign, Users, ScanLine } from "lucide-react";
+import { Check, X, DollarSign, Users, ScanLine } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 type Status = "all" | "pending" | "approved" | "rejected" | "expired" | "executed" | "insufficient_data";
@@ -19,8 +19,8 @@ interface Proposal {
   id: string;
   contact_id: string;
   status: string;
-  readiness_delta_json: any;
-  recommended_actions_json: any;
+  readiness_delta_json: { readiness_score_delta?: number; readiness_score_current?: number } | null;
+  recommended_actions_json: { priority?: string; label?: string }[] | null;
   proposed_at: string;
   approved_at: string | null;
   rejected_at: string | null;
@@ -60,7 +60,6 @@ export default function ReadinessProposalsAdmin() {
   const [loading, setLoading] = useState(true);
   const [drawer, setDrawer] = useState<Proposal | null>(null);
   const [rejectReason, setRejectReason] = useState("");
-  const [running, setRunning] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -74,8 +73,8 @@ export default function ReadinessProposalsAdmin() {
       q,
       supabase.from("paige_readiness_scan_runs").select("*").order("started_at", { ascending: false }).limit(10),
     ]);
-    setRows((p ?? []) as any);
-    setRuns((r ?? []) as any);
+    setRows((p ?? []) as unknown as Proposal[]);
+    setRuns((r ?? []) as unknown as ScanRun[]);
     setLoading(false);
   }
 
@@ -113,29 +112,18 @@ export default function ReadinessProposalsAdmin() {
     else { toast({ title: "Proposal rejected" }); setDrawer(null); setRejectReason(""); load(); }
   }
 
-  async function runManualScan() {
-    setRunning(true);
-    const { data, error } = await supabase.functions.invoke("readiness-scan", {
-      body: { trigger_source: "manual" },
-    });
-    setRunning(false);
-    if (error) toast({ title: "Scan failed", description: error.message, variant: "destructive" });
-    else { toast({ title: "Scan started", description: `Dispatched for ${data?.dispatched ?? 0} tenants.` }); load(); }
-  }
+  // Manual scan removed (§9 producer-inventory reconciliation): readiness-scan
+  // is now cron-only and rejects caller-supplied scan parameters. A §9-safe
+  // "scan now" (tenant derived server-side, role-gated, rate-limited, audited)
+  // is tracked in #445; the scheduled monthly cron continues the work.
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Readiness Proposals</h1>
-          <p className="text-sm text-muted-foreground">
-            Scheduled credit + funding readiness scans for BTF clients. Two-phase per §122 — approve before send.
-          </p>
-        </div>
-        <Button onClick={runManualScan} disabled={running} className="gap-2">
-          <RefreshCw className={`h-4 w-4 ${running ? "animate-spin" : ""}`} />
-          {running ? "Scanning..." : "Run scan now"}
-        </Button>
+      <div>
+        <h1 className="text-2xl font-semibold">Readiness Proposals</h1>
+        <p className="text-sm text-muted-foreground">
+          Scheduled credit + funding readiness scans for BTF clients. Two-phase per §122 — approve before send.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -234,7 +222,7 @@ export default function ReadinessProposalsAdmin() {
               <div>
                 <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">Recommended Actions</div>
                 <ul className="space-y-1 text-sm">
-                  {(drawer.recommended_actions_json ?? []).map((a: any, i: number) => (
+                  {(drawer.recommended_actions_json ?? []).map((a, i: number) => (
                     <li key={i} className="flex items-start gap-2">
                       <Badge variant="outline" className="text-[10px]">{a.priority}</Badge>
                       <span>{a.label}</span>

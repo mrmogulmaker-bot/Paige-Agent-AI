@@ -4709,35 +4709,12 @@ mcp.tool("reject_readiness_proposal", {
   },
 });
 
-mcp.tool("trigger_readiness_scan_for_contact", {
-  description: "Fire an ad-hoc readiness scan for a single contact (respects §189 credit_services_enabled flag).",
-  inputSchema: z.object({
-    contact_id: z.string().uuid(),
-    dry_run: z.boolean().default(false),
-  }),
-  handler: async ({ contact_id, dry_run }) => {
-    const tenantId = await actorTenantId();
-    if (!tenantId) return err("tenant_not_resolved");
-    const url = `${SUPABASE_URL.replace(/\/$/, "")}/functions/v1/readiness-scan`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-      },
-      body: JSON.stringify({
-        tenant_id: tenantId,
-        contact_ids: [contact_id],
-        trigger_source: "manual",
-        dry_run,
-      }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) return err(`scan_failed:${res.status}`);
-    await audit("trigger_readiness_scan_for_contact", "clients", contact_id, { dry_run });
-    return ok(body);
-  },
-});
+// Removed trigger_readiness_scan_for_contact MCP tool (§9 producer-inventory
+// reconciliation): readiness-scan is now cron-only and rejects caller-supplied
+// tenant_id/contact_ids/trigger_source/dry_run. A §9-safe per-tenant "scan now"
+// (tenant derived server-side, role-gated, rate-limited, audited) is tracked in
+// #445; the scheduled monthly cron continues the work. Its TOOL_SCOPE and
+// CLIENT_ACTION_LABELS entries are removed below so no dead keys remain.
 
 
 // ---------- HTTP transport + bearer auth ----------
@@ -4882,7 +4859,6 @@ const TOOL_SCOPE: Record<string, Scope> = {
   get_readiness_proposal: "btf.read",
   approve_readiness_proposal: "btf.write",
   reject_readiness_proposal: "btf.write",
-  trigger_readiness_scan_for_contact: "btf.write",
 
   // Agency tier (§25) — management of the caller's own sub-accounts is admin
   // work; the AGENCY audience restriction is the tier gate, not the scope.
@@ -5074,7 +5050,6 @@ const CLIENT_ACTION_LABELS: Record<string, string> = {
   run_workflow: "ran an automation for a client",
   ingest_credit_scores: "recorded a client update",
   ingest_banking_snapshot: "recorded a client update",
-  trigger_readiness_scan_for_contact: "started a client review",
   handle_data_subject_request: "processed a data request for a client",
 };
 
