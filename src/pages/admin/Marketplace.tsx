@@ -233,12 +233,35 @@ export default function Marketplace() {
   };
 
   const uninstall = async (r: CatalogRow) => {
-    const { error } = await supabase.rpc(
+    const { data, error } = await supabase.rpc(
       "uninstall_marketplace_item" as never,
       { _tenant_id: activeTenantId, _item_slug: r.slug } as never,
     );
     if (error) throw error;
-    toast.success(`${r.name} switched off.`);
+    // §13: the toast must report what actually happened, not a hoped-for outcome.
+    // The RPC now clears an orphan skill gate (skill on via preset/direct set, no
+    // install row) AND honestly reports when it retained the gate because a live
+    // bundle or a Playbook still forces it on.
+    const res = (data ?? {}) as Record<string, unknown>;
+    const wasInstalled = res.was_installed === true;
+    const retained = res.retained === true;
+    const gateCleared = res.was_gate_cleared === true;
+    const disabled = Array.isArray(res.skills_disabled) ? res.skills_disabled.length : 0;
+
+    if (retained) {
+      // A live bundle/install OR a Playbook/preset still forces this on — we did NOT
+      // switch it off. Say so honestly; the switch correctly stays ON on reload.
+      const reason = typeof res.retained_reason === "string" ? res.retained_reason : "";
+      toast.info(
+        reason ? `${r.name} stays on — ${reason}.` : `${r.name} stays on — it's still provided elsewhere.`,
+      );
+    } else if (wasInstalled || gateCleared || disabled > 0) {
+      // A real install was torn down, OR an orphan skill gate was actually cleared.
+      toast.success(`${r.name} switched off.`);
+    } else {
+      // Nothing was installed and nothing needed clearing → truthful no-op.
+      toast.info(`${r.name} was already off.`);
+    }
   };
 
   const toggle = async (r: CatalogRow, on: boolean) => {
