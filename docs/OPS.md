@@ -50,3 +50,25 @@ The goal is zero. Do **not** add entries to whitelist a new error — the shrink
   cache — CI uses `npm install` today because the canonical lockfile is `bun.lockb` (task #379).
 - Drive the tsc baseline to zero.
 - Remaining Lane F items (secrets docs / preflight / function manifest) are separate slices.
+
+
+## One-shot cleanups (Lane B-ii-b housekeeping, 2026-07-26)
+
+### Deleting the orphaned `create-payment` edge function
+`create-payment` is deployed on prod but has ZERO repo callers (verified: no `src/**`,
+`supabase/**`, or `scripts/**` reference; no local function directory). It is superseded by
+`tenant-checkout-session`, `add-business-slot-checkout`, and the new
+`marketplace-checkout-session`. Because there is no local `supabase/functions/create-payment/`
+dir, CI (`deploy-edge-functions.yml`) never touches it, so the deployed copy must be removed
+out-of-band via the Management API:
+
+```
+SUPABASE_ACCESS_TOKEN=<token> bash scripts/delete-create-payment.sh
+```
+
+The script `DELETE`s `https://api.supabase.com/v1/projects/xygzykjyynhzqytbqnzu/functions/create-payment`
+and treats a 404 as already-done (idempotent). Run once; it needs no repeat.
+
+Note: the legacy `orders` TABLE is intentionally NOT dropped -- it still has live read-consumers
+(`src/components/dashboard/PaymentHistory.tsx:44`, `supabase/functions/generate-invoice/index.ts:234`)
+plus an inbound FK. Left inert; migration to remove it is a tracked follow-up.

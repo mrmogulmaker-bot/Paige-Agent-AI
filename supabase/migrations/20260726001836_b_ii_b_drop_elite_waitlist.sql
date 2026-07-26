@@ -1,0 +1,12 @@
+-- B-ii-b housekeeping: drop the dead elite_waitlist table.
+-- VERIFIED against prod (xygzykjyynhzqytbqnzu): 0 rows; the ONLY dependent object is its
+-- own BEFORE UPDATE trigger trg_elite_waitlist_updated_at (drops automatically with the
+-- table). NO inbound FK, NO view/rule, NO outbound FK. The shared updated_at function
+-- update_updated_at_column() is used by many other tables and is NOT dropped here.
+-- consumer_waitlist was already dropped (map-reference only) -- no statement for it.
+--
+-- #455 broker_* KEEP-GENERIC: broker = team-member/partner referral, distinct from affiliate -- untouched.
+--
+-- No CASCADE: there are no dependent objects beyond the table's own trigger, so a plain
+-- DROP TABLE IF EXISTS is sufficient and safe. Additive-reverse, no backfill, no data loss risk (0 rows).
+DROP TABLE IF EXISTS public.elite_waitlist;
