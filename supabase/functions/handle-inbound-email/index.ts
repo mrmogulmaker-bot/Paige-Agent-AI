@@ -1,14 +1,155 @@
-// Resend inbound email webhook receiver.
-// Parses inbound email, upserts contact by email, inserts into paige_conversations,
-// then fires customer_support_intake bridge verb so n8n CS Triage can draft a reply.
+// Resend inbound email webhook receiver — Comms Slice C-1 (unified inbox).
+//
+// Flow (doctrine-annotated):
+//   1. Svix HMAC verification (unchanged) — fail closed if RESEND_WEBHOOK_SECRET missing.
+//   2. Normalize the raw Resend payload THROUGH the channel-adapters registry
+//      (§32: getInboundAdapter("email").onEvent(raw) — the abstraction is exercised
+//      live, not merely compiled).
+//   3. Resolve the TENANT from the recipient address/domain -> channel_connectors
+//      (inbound_address then inbound_domain). §9: tenant is NEVER read from the body.
+//      No connector => skip + log (never guess a tenant).
+//   4. Upsert the contact in public.clients with tenant_id = connector.tenant_id (§9).
+//   5. Insert the inbound public.messages row (tenant_id OMITTED — set_message_tenant()
+//      derives it from connector_id). Idempotent on provider_message_id.
+//   6. File a comms-draft-reply paige_action via service role (§8 action bus). The
+//      existing paige-action-worker drainer + email-composer sub-agent + the
+//      trg_comms_file_outbound_draft trigger take it from there.
+//   7. Legacy paige_conversations dual-write + customer_support_intake bridge — GUARDED
+//      and NON-BLOCKING for one release so n8n CS-Triage consumers keep their feed (§37).
+//      Retires as a follow-up once those consumers move to the messages inbox.
+//
+// §13 honesty: C-1 ships INERT — no real Resend inbound domain / channel_connectors
+// row is wired yet. With no connector matching the recipient, every event is skipped
+// (logged). This function is correct and live, but processes nothing until a tenant
+// provisions an inbound email connector.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fireAndForgetBridge } from "../_shared/mmaOsBridge.ts";
+import {
+  getInboundAdapter,
+  registerInboundAdapter,
+  type InboundChannelAdapter,
+  type MessageAttachment,
+  type MessageParty,
+  type NormalizedMessage,
+} from "../_shared/channel-adapters.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, svix-id, svix-timestamp, svix-signature",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, svix-id, svix-timestamp, svix-signature",
 };
 
+// Legacy paige_conversations dual-write + n8n bridge stays on for one release (§37).
+// Set COMMS_LEGACY_DUAL_WRITE="false" to retire it; default is on.
+const LEGACY_DUAL_WRITE = (Deno.env.get("COMMS_LEGACY_DUAL_WRITE") ?? "true") !== "false";
+
+// -----------------------------------------------------------------------------
+// Email inbound adapter (§18: the email channel's inbound normalizer lives here,
+// registered into the ONE channel-adapters registry). onEvent() is a PURE mapping
+// from the raw Resend payload to a NormalizedMessage — it knows only what the
+// provider payload carries. tenant_id / connector_id / contact_id / the final
+// thread_key are resolved by the handler against the DB (the adapter can't do IO).
+// -----------------------------------------------------------------------------
+function normEmail(v: unknown): string {
+  return (v ?? "").toString().trim().toLowerCase();
+}
+
+/** Extract one party {address, display_name} from Resend's varied shapes. */
+function toParty(v: unknown): MessageParty | null {
+  if (!v) return null;
+  if (typeof v === "string") {
+    const addr = normEmail(v);
+    return addr ? { address: addr } : null;
+  }
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    const addr = normEmail(o.email ?? o.address);
+    if (!addr) return null;
+    const name = (o.name ?? o.display_name ?? "").toString().trim();
+    return name ? { address: addr, display_name: name } : { address: addr };
+  }
+  return null;
+}
+
+/** Normalize Resend's `to`/`recipients` (string | object | array) to parties. */
+function toParties(v: unknown): MessageParty[] {
+  if (Array.isArray(v)) {
+    return v.map(toParty).filter((p): p is MessageParty => !!p);
+  }
+  const one = toParty(v);
+  return one ? [one] : [];
+}
+
+const emailInboundAdapter: InboundChannelAdapter = {
+  channel_type: "email",
+  onEvent(raw: unknown): NormalizedMessage {
+    const evt = (raw ?? {}) as Record<string, unknown>;
+    const data = ((evt.data as Record<string, unknown>) ?? evt) as Record<string, unknown>;
+
+    const sender = toParty(data.from) ?? { address: "" };
+    const recipients = toParties(data.to ?? data.recipients);
+
+    const subject = (data.subject ?? "").toString();
+    const bodyText = (data.text ?? data.body ?? "").toString();
+    const bodyHtml = (data.html ?? "").toString();
+    const providerMessageId = (
+      data.message_id ?? data.id ?? evt.id ?? crypto.randomUUID()
+    ).toString();
+
+    // In-reply-to (threading) — best-effort across payload/header shapes.
+    const headers = (data.headers ?? {}) as Record<string, unknown>;
+    const inReplyTo =
+      (data.in_reply_to ?? headers["in-reply-to"] ?? headers["In-Reply-To"] ?? null);
+
+    // Attachments — only map ones carrying a resolvable URL; base64-inline content
+    // is NOT stored as a url (§13 honesty). Count-all preserved in meta.
+    const rawAttachments = Array.isArray(data.attachments) ? data.attachments : [];
+    const attachments: MessageAttachment[] = rawAttachments
+      .map((a): MessageAttachment | null => {
+        const o = (a ?? {}) as Record<string, unknown>;
+        const url = (o.url ?? o.content_url ?? o.download_url ?? "").toString();
+        if (!url) return null;
+        return {
+          url,
+          mime: (o.content_type ?? o.mime ?? undefined) as string | undefined,
+          name: (o.filename ?? o.name ?? undefined) as string | undefined,
+        };
+      })
+      .filter((a): a is MessageAttachment => !!a);
+
+    const receivedAt = (data.created_at ?? data.date ?? evt.created_at ?? null) as
+      | string
+      | null;
+
+    // Provisional thread_key = counterparty (sender) address; the handler prefixes
+    // it with tenant+channel once the tenant is resolved (§9).
+    const counterparty = sender.address;
+
+    return {
+      thread_key: counterparty,
+      channel_type: "email",
+      direction: "inbound",
+      status: "received",
+      sender,
+      recipients,
+      subject: subject || null,
+      body_text: bodyText || null,
+      body_html: bodyHtml || null,
+      attachments,
+      provider_message_id: providerMessageId,
+      in_reply_to_provider_id: inReplyTo ? inReplyTo.toString() : null,
+      meta: {
+        provider: "resend",
+        raw_attachment_count: rawAttachments.length,
+        to: recipients.map((r) => r.address),
+      },
+      sent_at: receivedAt,
+    };
+  },
+};
+registerInboundAdapter(emailInboundAdapter);
+
+// -----------------------------------------------------------------------------
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response("method_not_allowed", { status: 405 });
@@ -17,7 +158,7 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin = createClient(supabaseUrl, serviceKey);
 
-  // Resend uses Svix signing. Require RESEND_WEBHOOK_SECRET; fail closed if missing.
+  // -- 1. Svix HMAC verification (unchanged). Fail closed if secret missing. -----
   const secret = Deno.env.get("RESEND_WEBHOOK_SECRET");
   const rawBody = await req.text();
   if (!secret) {
@@ -47,50 +188,121 @@ Deno.serve(async (req) => {
     return new Response("invalid_signature", { status: 401 });
   }
 
-  let evt: any;
+  let evt: unknown;
   try { evt = JSON.parse(rawBody); } catch {
     return new Response("invalid_json", { status: 400 });
   }
 
-  // Resend inbound payload (best-effort field extraction)
-  const data = evt?.data ?? evt;
-  const fromEmail: string = (data.from?.email || data.from || "").toString().toLowerCase();
-  const subject: string = data.subject ?? "";
-  const bodyText: string = data.text ?? data.html ?? data.body ?? "";
-  const messageId: string = data.message_id ?? data.id ?? evt?.id ?? crypto.randomUUID();
+  // -- 2. Normalize THROUGH the registry (§32 — exercise the abstraction live). ----
+  const adapter = getInboundAdapter("email");
+  if (!adapter) {
+    console.error("[handle-inbound-email] no_email_inbound_adapter_registered");
+    return new Response(JSON.stringify({ ok: false, reason: "no_adapter" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const msg = adapter.onEvent(evt);
 
-  if (!fromEmail || !bodyText) {
+  const fromEmail = msg.sender?.address ?? "";
+  if (!fromEmail || (!msg.body_text && !msg.body_html)) {
     return new Response(JSON.stringify({ ok: false, reason: "missing_fields" }), { status: 200 });
   }
 
-  // Look up or create contact
+  // -- 3. Resolve TENANT from the recipient -> channel_connectors (§9). -----------
+  // The routing key is the address the mail ARRIVED at (a recipient), NEVER the body.
+  const recipientAddresses = (msg.recipients ?? []).map((r) => r.address).filter(Boolean);
+  let connector:
+    | { id: string; tenant_id: string; from_address: string | null; from_name: string | null; reply_to: string | null }
+    | null = null;
+
+  // 3a. Try each recipient as an exact inbound_address (case-insensitive).
+  for (const addr of recipientAddresses) {
+    const { data: byAddr } = await admin
+      .from("channel_connectors")
+      .select("id, tenant_id, from_address, from_name, reply_to")
+      .eq("channel_type", "email")
+      .eq("active", true)
+      .ilike("inbound_address", addr)
+      .limit(1)
+      .maybeSingle();
+    if (byAddr?.tenant_id) { connector = byAddr; break; }
+  }
+
+  // 3b. Fall back to matching the recipient's DOMAIN against inbound_domain.
+  if (!connector) {
+    const domains = Array.from(
+      new Set(recipientAddresses.map((a) => a.split("@")[1]).filter(Boolean)),
+    );
+    for (const dom of domains) {
+      const { data: byDom } = await admin
+        .from("channel_connectors")
+        .select("id, tenant_id, from_address, from_name, reply_to")
+        .eq("channel_type", "email")
+        .eq("active", true)
+        .ilike("inbound_domain", dom)
+        .limit(1)
+        .maybeSingle();
+      if (byDom?.tenant_id) { connector = byDom; break; }
+    }
+  }
+
+  // No connector => we cannot know the tenant. NEVER guess (§9). Skip + log.
+  // This is the INERT state until a tenant provisions an inbound email connector (§13).
+  if (!connector) {
+    console.warn("[handle-inbound-email] no_connector_for_recipient", {
+      recipients: recipientAddresses,
+      provider_message_id: msg.provider_message_id,
+    });
+    return new Response(
+      JSON.stringify({ ok: false, reason: "no_connector", recipients: recipientAddresses }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  }
+
+  const tenantId = connector.tenant_id;
+
+  // -- 4. Upsert the contact in public.clients, tenant-scoped (§9). ---------------
   let contactId: string | null = null;
   const { data: existing } = await admin
     .from("clients")
     .select("id")
+    .eq("tenant_id", tenantId)
     .ilike("email", fromEmail)
+    .limit(1)
     .maybeSingle();
   if (existing?.id) {
     contactId = existing.id;
   } else {
-    // Need a created_by for clients NOT NULL; use platform owner
-    const { data: owner } = await admin
-      .from("app_settings_owner")
-      .select("owner_email")
+    // clients.created_by is NOT NULL. Use the tenant's owner; fall back to the
+    // platform owner user only if the tenant has no owner set.
+    const { data: tenantRow } = await admin
+      .from("tenants")
+      .select("owner_user_id")
+      .eq("id", tenantId)
       .maybeSingle();
-    let createdBy: string | null = null;
-    if (owner?.owner_email) {
-      const { data: ownerUser } = await admin.auth.admin.listUsers();
-      const match = ownerUser?.users?.find((u: any) => (u.email ?? "").toLowerCase() === owner.owner_email.toLowerCase());
-      createdBy = match?.id ?? null;
+    let createdBy: string | null = tenantRow?.owner_user_id ?? null;
+    if (!createdBy) {
+      const { data: owner } = await admin
+        .from("app_settings_owner")
+        .select("owner_email")
+        .maybeSingle();
+      if (owner?.owner_email) {
+        const { data: ownerUsers } = await admin.auth.admin.listUsers();
+        const match = ownerUsers?.users?.find(
+          (u) => (u.email ?? "").toLowerCase() === owner.owner_email.toLowerCase(),
+        );
+        createdBy = match?.id ?? null;
+      }
     }
     if (createdBy) {
       const localPart = fromEmail.split("@")[0];
-      const { data: created } = await admin
+      const firstName = msg.sender?.display_name?.trim() || localPart || "Inbound";
+      const { data: created, error: contactErr } = await admin
         .from("clients")
         .insert({
+          tenant_id: tenantId, // §9 — explicit; never inferred cross-tenant.
           created_by: createdBy,
-          first_name: localPart || "Inbound",
+          first_name: firstName,
           last_name: "",
           email: fromEmail,
           lifecycle_stage: "lead",
@@ -99,44 +311,158 @@ Deno.serve(async (req) => {
         })
         .select("id")
         .single();
+      if (contactErr) {
+        console.error("[handle-inbound-email] contact_insert_error", contactErr);
+      }
       contactId = created?.id ?? null;
+    } else {
+      console.warn("[handle-inbound-email] no_created_by_for_tenant", { tenantId });
     }
   }
 
-  // Insert conversation row (idempotent via unique source_message_id)
-  const { data: convo, error: insertErr } = await admin
-    .from("paige_conversations")
+  // -- 5. Insert the inbound public.messages row (tenant_id omitted -> trigger). ---
+  // Final thread_key = tenant + channel + counterparty (schema aggregation key, §9).
+  const threadKey = `email:${tenantId}:${fromEmail}`;
+  const { data: inserted, error: insertErr } = await admin
+    .from("messages")
     .insert({
-      channel: "email",
+      // tenant_id intentionally OMITTED — set_message_tenant() derives it from connector_id.
+      thread_key: threadKey,
       contact_id: contactId,
+      connector_id: connector.id,
+      channel_type: "email",
       direction: "inbound",
-      subject,
-      body: bodyText,
-      source_message_id: messageId,
-      status: "new",
-      metadata: { from: fromEmail, to: data.to ?? null },
+      status: "received",
+      sender: msg.sender ?? null,
+      recipients: msg.recipients ?? [],
+      subject: msg.subject ?? null,
+      body_text: msg.body_text ?? null,
+      body_html: msg.body_html ?? null,
+      attachments: msg.attachments ?? [],
+      provider_message_id: msg.provider_message_id ?? null,
+      in_reply_to_provider_id: msg.in_reply_to_provider_id ?? null,
+      meta: msg.meta ?? {},
+      sent_at: msg.sent_at ?? new Date().toISOString(),
     })
     .select("id")
     .single();
 
   if (insertErr) {
-    // unique violation = already processed
+    // Unique violation on provider_message_id = webhook retry already processed.
     if (insertErr.code === "23505") {
-      return new Response(JSON.stringify({ ok: true, deduped: true }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, deduped: true }), {
+        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
-    console.error("[handle-inbound-email] insert_error", insertErr);
-    return new Response(JSON.stringify({ ok: false, error: insertErr.message }), { status: 500 });
+    console.error("[handle-inbound-email] messages_insert_error", insertErr);
+    return new Response(JSON.stringify({ ok: false, error: insertErr.message }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const messageId = inserted!.id as string;
+
+  // -- 6. File the comms-draft-reply action (§8 action bus). ----------------------
+  // tenant_id is set EXPLICITLY here — paige_actions has NO tenant-deriving trigger
+  // and its column is NOT NULL. Client Experience files -> Owner Ops drafts ->
+  // coach approves (autonomy 'confirm'). email-composer + the worker + the
+  // trg_comms_file_outbound_draft trigger produce the outbound draft row.
+  try {
+    // §38 sender identity: tenant_sender_identity() is PRIMARY; the connector's
+    // own from_address overrides it (tenant-owned per-channel identity). We do NOT
+    // fork identity resolution — the actual send resolves the same way in send-message.
+    const { data: senderIdentity } = await admin.rpc("tenant_sender_identity", {
+      _tenant_id: tenantId,
+    });
+    const identity = (senderIdentity ?? {}) as Record<string, unknown>;
+    const replyFromAddress =
+      connector.from_address ||
+      (identity.from_address as string | undefined) ||
+      connector.reply_to ||
+      null;
+
+    // Recent thread context for the drafter (last few messages, tenant-scoped).
+    const { data: recent } = await admin
+      .from("messages")
+      .select("direction, sender, recipients, subject, body_text, sent_at")
+      .eq("tenant_id", tenantId)
+      .eq("thread_key", threadKey)
+      .order("sent_at", { ascending: false, nullsFirst: false })
+      .limit(10);
+    const lastMessages = (recent ?? []).slice().reverse();
+
+    const { error: actionErr } = await admin.from("paige_actions").insert({
+      tenant_id: tenantId, // §9 — explicit; NOT NULL, no trigger.
+      action_kind: "comms-draft-reply",
+      from_department: "client_experience",
+      to_department: "owner_ops",
+      status: "filed",
+      autonomy_lane: "confirm",
+      contact_id: contactId,
+      title: "Draft reply to inbound message",
+      summary: msg.subject ? `Re: ${msg.subject}` : "Inbound email reply",
+      created_by_agent: "handle-inbound-email",
+      payload: {
+        channel_type: "email",
+        connector_id: connector.id,
+        thread_key: threadKey,
+        message_id: messageId,
+        inbound_provider_message_id: msg.provider_message_id,
+        reply_from_address: replyFromAddress,
+        reply_to_address: fromEmail,
+        subject: msg.subject,
+        last_messages: lastMessages,
+      },
+    });
+    if (actionErr) {
+      // Non-fatal: the inbound message is safely persisted; the action can be
+      // re-filed. Report honestly, do not fake success (§13).
+      console.error("[handle-inbound-email] action_insert_error", actionErr);
+    }
+  } catch (e) {
+    console.error("[handle-inbound-email] action_file_exception", (e as Error).message);
   }
 
-  fireAndForgetBridge("customer_support_intake", {
-    conversation_id: convo.id,
-    contact_email: fromEmail,
-    channel: "email",
-    subject,
-    body: bodyText,
-  });
+  // -- 7. Legacy paige_conversations dual-write + n8n bridge (GUARDED, §37). -------
+  // Kept for ONE release so existing n8n CS-Triage consumers keep their feed. Fully
+  // NON-BLOCKING: any failure here is logged and never affects the response.
+  // Retires as a follow-up once those consumers read from the messages inbox.
+  if (LEGACY_DUAL_WRITE) {
+    try {
+      const legacyBody = msg.body_text || msg.body_html || "";
+      const { data: convo, error: legacyErr } = await admin
+        .from("paige_conversations")
+        .insert({
+          channel: "email",
+          contact_id: contactId,
+          direction: "inbound",
+          subject: msg.subject ?? "",
+          body: legacyBody,
+          source_message_id: msg.provider_message_id,
+          status: "new",
+          metadata: { from: fromEmail, to: recipientAddresses, tenant_id: tenantId },
+        })
+        .select("id")
+        .single();
+      if (legacyErr) {
+        // 23505 = already mirrored; anything else logged non-fatally.
+        if (legacyErr.code !== "23505") {
+          console.warn("[handle-inbound-email] legacy_convo_insert_warn", legacyErr.message);
+        }
+      } else if (convo?.id) {
+        fireAndForgetBridge("customer_support_intake", {
+          conversation_id: convo.id,
+          contact_email: fromEmail,
+          channel: "email",
+          subject: msg.subject ?? "",
+          body: legacyBody,
+        });
+      }
+    } catch (e) {
+      console.warn("[handle-inbound-email] legacy_dual_write_exception", (e as Error).message);
+    }
+  }
 
-  return new Response(JSON.stringify({ ok: true, conversation_id: convo.id }), {
+  return new Response(JSON.stringify({ ok: true, message_id: messageId, tenant_id: tenantId }), {
     status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 });

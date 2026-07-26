@@ -2,7 +2,24 @@
 // SMS is a tenant-configurable channel: it sends only when the tenant's Twilio
 // A2P registration is approved (config.twilio_a2p_status). Email is the default.
 // Writes every send to paige_messages_audit and mirrors outbound to paige_conversations.
+//
+// Comms C-1 (§18/§32): email now routes THROUGH the shared channel-adapter registry
+// (_shared/channel-adapters.ts) — an email OutboundChannelAdapter is registered here
+// and invoked via getOutboundAdapter("email"), so the abstraction is exercised live,
+// not merely compiled. On a successful send this also writes/patches the tenant-isolated
+// public.messages row (the NormalizedMessage unified-inbox substrate) to status='sent'
+// + provider_message_id — INSERT a fresh outbound row for a direct send, or UPDATE the
+// existing draft row when an approved draft (message_id) is being sent. Idempotent on
+// provider_message_id. The legacy paige_messages_audit write + paige_conversations
+// mirror + JWT gate + SMS path are all preserved unchanged (§37 additive-only).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  getOutboundAdapter,
+  registerOutboundAdapter,
+  type NormalizedMessage,
+  type OutboundChannelAdapter,
+  type OutboundSendContext,
+} from "../_shared/channel-adapters.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,7 +35,64 @@ interface SendBody {
   conversation_id?: string;
   in_reply_to?: string;
   approval_id?: string;
+  // ── Comms C-1 additive fields (all optional; legacy callers omit them) ──
+  // When present, patch this existing draft messages row to 'sent' instead of
+  // inserting a fresh outbound row (the one-click Approve → send flow).
+  message_id?: string;
+  // Unified-inbox linkage for a fresh outbound row (tenant is still server-derived
+  // by the messages trigger from connector_id/contact_id — never from the body, §9).
+  connector_id?: string;
+  thread_key?: string;
 }
+
+// -----------------------------------------------------------------------------
+// §32 — register the EMAIL outbound adapter (Resend) into the shared registry, then
+// send THROUGH it. C-2..C-5 register sms/whatsapp/etc. against the same contract.
+// -----------------------------------------------------------------------------
+const emailOutboundAdapter: OutboundChannelAdapter = {
+  channel_type: "email",
+  // Email has no session window / template / quiet-hours constraints.
+  getSendConstraints() {
+    return null;
+  },
+  async send(msg: NormalizedMessage, ctx: OutboundSendContext) {
+    const resendKey = ctx.providerApiKey;
+    if (!resendKey) {
+      return { ok: false, status: "failed" as const, error: "RESEND_API_KEY missing" };
+    }
+    const name = ctx.from.display_name?.replace(/[<>",\r\n]/g, " ").replace(/\s+/g, " ").trim();
+    const fromHeader = name ? `${name} <${ctx.from.address}>` : ctx.from.address;
+
+    const headers: Record<string, string> = {};
+    if (msg.in_reply_to_provider_id) headers["In-Reply-To"] = msg.in_reply_to_provider_id;
+
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromHeader,
+        to: [ctx.to],
+        reply_to: ctx.replyTo || undefined,
+        subject: msg.subject || "(no subject)",
+        html: msg.body_html || msg.body_text || "",
+        headers: Object.keys(headers).length ? headers : undefined,
+      }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return {
+        ok: false,
+        status: "failed" as const,
+        error: `resend_${res.status}: ${JSON.stringify(json).slice(0, 300)}`,
+      };
+    }
+    return { ok: true, status: "sent" as const, provider_message_id: json?.id ?? null };
+  },
+};
+registerOutboundAdapter(emailOutboundAdapter);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -67,51 +141,107 @@ Deno.serve(async (req) => {
   let errorText: string | null = null;
   let fromAddress: string | null = null;
 
+  // ── Resolve the tenant + connector + sender identity (§9/§38) BEFORE the send ──
+  // Tenant is derived from known, tenant-scoped rows in priority order:
+  //   1. the existing draft messages row (message_id), 2. the contact (contact_id),
+  //   3. the connector (connector_id). Never from the request body directly.
+  // Sender identity: tenant_sender_identity() RPC is PRIMARY (§38 tenant-owned);
+  // the channel_connectors row (from_address/from_name/reply_to) is the fallback;
+  // the platform default sender is the last resort. This never forks §38.
+  let tenantId: string | null = null;
+  let draftRow: { connector_id?: string | null; contact_id?: string | null; thread_key?: string | null; channel_type?: string | null } | null = null;
+  let connectorRow:
+    | { tenant_id?: string | null; from_address?: string | null; from_name?: string | null; reply_to?: string | null }
+    | null = null;
+  let replyTo: string | null = null;
+
+  if (body.message_id) {
+    const { data } = await admin
+      .from("messages")
+      .select("tenant_id, connector_id, contact_id, thread_key, channel_type")
+      .eq("id", body.message_id)
+      .maybeSingle();
+    if (data) {
+      draftRow = data;
+      tenantId = data.tenant_id ?? null;
+    }
+  }
+  const effectiveContactId = body.contact_id ?? draftRow?.contact_id ?? null;
+  const effectiveConnectorId = body.connector_id ?? draftRow?.connector_id ?? null;
+
+  if (!tenantId && effectiveContactId) {
+    const { data: contactRow } = await admin
+      .from("clients")
+      .select("tenant_id")
+      .eq("id", effectiveContactId)
+      .maybeSingle();
+    tenantId = contactRow?.tenant_id ?? null;
+  }
+  if (effectiveConnectorId) {
+    const { data } = await admin
+      .from("channel_connectors")
+      .select("tenant_id, from_address, from_name, reply_to")
+      .eq("id", effectiveConnectorId)
+      .maybeSingle();
+    connectorRow = data ?? null;
+    if (!tenantId) tenantId = connectorRow?.tenant_id ?? null;
+  }
+
   try {
     if (body.channel === "email") {
       const resendKey = Deno.env.get("RESEND_API_KEY");
       if (!resendKey) throw new Error("RESEND_API_KEY missing");
 
-      // Resolve tenant-aware sender. Look up contact's tenant when provided.
-      let tenantId: string | null = null;
-      if (body.contact_id) {
-        const { data: contactRow } = await admin
-          .from("clients")
-          .select("tenant_id")
-          .eq("id", body.contact_id)
-          .maybeSingle();
-        tenantId = contactRow?.tenant_id ?? null;
+      // §38 PRIMARY: tenant-owned sender identity via the shared RPC (service role =>
+      // auth.uid() NULL => trusted cross-tenant resolve of the passed tenant).
+      let senderName: string | null = null;
+      let senderEmail: string | null = null;
+      const { data: ident } = await admin.rpc("tenant_sender_identity", { _tenant_id: tenantId });
+      const identRow = (ident ?? null) as
+        | { from_name?: string | null; from_address?: string | null; reply_to?: string | null }
+        | null;
+      if (identRow) {
+        senderName = identRow.from_name ?? null;
+        senderEmail = identRow.from_address ?? null;
+        replyTo = identRow.reply_to ?? null;
       }
-      const { data: sender } = await admin.rpc("get_tenant_sender", { _tenant_id: tenantId });
-      const senderRow = Array.isArray(sender) ? sender[0] : sender;
-      const senderName = senderRow?.from_name || "Paige Agent";
-      // Last-resort fallback on the VERIFIED sending subdomain (Tier 1 #64) — the
-      // bare apex is not a confirmed Resend sending domain. Post-migration
-      // get_tenant_sender always returns the tenant's <slug>@mail.paigeagent.ai,
-      // so this only fires on an RPC miss; keep it verified so it can still deliver.
-      const senderEmail = senderRow?.from_email || config?.default_from_email || "no-reply@mail.paigeagent.ai";
-      fromAddress = `${senderName} <${senderEmail}>`;
+      // Fallback/override: the connector's own sender identity, then the platform default.
+      senderName = senderName || connectorRow?.from_name || config?.default_from_name || "Paige Agent";
+      // Last-resort fallback on the VERIFIED sending subdomain (Tier 1 #64) — the bare
+      // apex is not a confirmed Resend sending domain. Post-migration the RPC always
+      // returns the tenant's <slug>@mail.paigeagent.ai, so a hardcoded fallback only
+      // fires on an RPC miss; keep it verified so it can still deliver.
+      senderEmail = senderEmail || connectorRow?.from_address || config?.default_from_email || "no-reply@mail.paigeagent.ai";
+      replyTo = replyTo || connectorRow?.reply_to || null;
+      fromAddress = senderName ? `${senderName} <${senderEmail}>` : senderEmail;
 
-      const headers: Record<string, string> = {};
-      if (body.in_reply_to) headers["In-Reply-To"] = body.in_reply_to;
-      const res = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${resendKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          from: fromAddress,
-          to: [body.to],
-          subject: body.subject || "(no subject)",
-          html: body.body,
-          headers: Object.keys(headers).length ? headers : undefined,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(`resend_${res.status}: ${JSON.stringify(json).slice(0, 300)}`);
+      // §32 — build the NormalizedMessage and send THROUGH the registry adapter.
+      const adapter = getOutboundAdapter("email");
+      if (!adapter) throw new Error("no_email_adapter_registered");
+      const outMsg: NormalizedMessage = {
+        thread_key: body.thread_key || draftRow?.thread_key || `email:${body.to}`,
+        channel_type: "email",
+        direction: "outbound",
+        status: "queued",
+        contact_id: effectiveContactId,
+        connector_id: effectiveConnectorId,
+        sender: { address: senderEmail, display_name: senderName ?? undefined },
+        recipients: [{ address: body.to }],
+        subject: body.subject ?? null,
+        body_html: body.body,
+        in_reply_to_provider_id: body.in_reply_to ?? null,
+      };
+      const ctx: OutboundSendContext = {
+        from: { address: senderEmail, display_name: senderName ?? undefined },
+        to: body.to,
+        replyTo,
+        providerApiKey: resendKey,
+        connectorConfig: null,
+      };
+      const delivery = await adapter.send(outMsg, ctx);
       pipe_used = "resend";
-      vendor_message_id = json?.id ?? null;
+      if (!delivery.ok) throw new Error(delivery.error || "resend_send_failed");
+      vendor_message_id = delivery.provider_message_id ?? null;
       status = "sent";
     } else {
       // SMS
@@ -164,6 +294,86 @@ Deno.serve(async (req) => {
     })
     .select("id")
     .single();
+
+  // ── Comms C-1 (§10) — write/patch the tenant-isolated public.messages row so the
+  // unified inbox reflects the send. On success: UPDATE the draft (message_id) → sent,
+  // or INSERT a fresh outbound sent row (tenant server-derived by the messages trigger
+  // from connector_id/contact_id — the body is never trusted, §9). Idempotent on
+  // provider_message_id. On failure with a known draft, mark it failed so the queue
+  // (§36) surfaces the miss. Telemetry-safe: wrapped so a messages-write hiccup can
+  // NEVER change the { status, error } payload this function returns to existing callers.
+  let messageRowId: string | null = null;
+  try {
+    if (status === "sent") {
+      if (body.message_id) {
+        const { data: updated } = await admin
+          .from("messages")
+          .update({
+            status: "sent",
+            provider_message_id: vendor_message_id,
+            in_reply_to_provider_id: body.in_reply_to ?? undefined,
+            error: null,
+            sent_at: new Date().toISOString(),
+          })
+          .eq("id", body.message_id)
+          .select("id")
+          .maybeSingle();
+        messageRowId = updated?.id ?? body.message_id;
+      } else if (effectiveContactId || effectiveConnectorId) {
+        // Idempotency guard: a retried send with the same provider id must not double-insert.
+        let existingId: string | null = null;
+        if (vendor_message_id) {
+          const { data: existing } = await admin
+            .from("messages")
+            .select("id")
+            .eq("provider_message_id", vendor_message_id)
+            .maybeSingle();
+          existingId = existing?.id ?? null;
+        }
+        if (existingId) {
+          messageRowId = existingId;
+        } else {
+          const { data: inserted } = await admin
+            .from("messages")
+            .insert({
+              // tenant_id intentionally OMITTED — set_message_tenant() derives it from
+              // connector_id → contact_id (§9). Requires one of them to be present,
+              // which the branch condition guarantees.
+              thread_key: body.thread_key || `${body.channel}:${body.to}`,
+              contact_id: effectiveContactId,
+              connector_id: effectiveConnectorId,
+              channel_type: body.channel,
+              direction: "outbound",
+              status: "sent",
+              sender: fromAddress
+                ? { address: (fromAddress.match(/<([^>]+)>/)?.[1] ?? fromAddress) }
+                : null,
+              recipients: [{ address: body.to }],
+              subject: body.subject ?? null,
+              body_html: body.channel === "email" ? body.body : null,
+              body_text: body.channel === "email" ? null : body.body,
+              provider_message_id: vendor_message_id,
+              in_reply_to_provider_id: body.in_reply_to ?? null,
+              sent_at: new Date().toISOString(),
+              meta: { source: "send-message", pipe_used },
+            })
+            .select("id")
+            .maybeSingle();
+          messageRowId = inserted?.id ?? null;
+        }
+      }
+    } else if (body.message_id) {
+      const { data: failed } = await admin
+        .from("messages")
+        .update({ status: "failed", error: errorText })
+        .eq("id", body.message_id)
+        .select("id")
+        .maybeSingle();
+      messageRowId = failed?.id ?? body.message_id;
+    }
+  } catch (e) {
+    console.warn("[send-message] messages row write skipped:", (e as Error)?.message);
+  }
 
   if (status === "sent" && body.conversation_id) {
     await admin.from("paige_conversations").insert({
@@ -269,6 +479,8 @@ Deno.serve(async (req) => {
       pipe_used,
       status,
       error: errorText,
+      // Additive (§37): the unified-inbox messages row id, when one was written/patched.
+      message_id: messageRowId,
     }),
     {
       // Always 200 so the client surfaces our structured { status, error } payload
