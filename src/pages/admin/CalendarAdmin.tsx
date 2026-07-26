@@ -350,7 +350,7 @@ export default function CalendarAdmin() {
   return (
     <PageShell width="wide">
       <PageHeader
-        variant="hero"
+        variant="plain"
         eyebrow="Scheduling"
         title="Calendar"
         description="Your team's live schedule — every booking, block, and task on one board, in sync the moment it changes."

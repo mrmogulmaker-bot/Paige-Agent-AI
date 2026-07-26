@@ -154,7 +154,7 @@ export default function SkillsHub() {
   return (
     <PageShell width="wide">
       <PageHeader
-        variant="hero"
+        variant="plain"
         eyebrow="Paige Skills"
         title="Skills Hub"
         description="Reusable recipes Paige can run on demand. She proposes new ones on her own — high-risk skills wait for your confirm on the first three runs."

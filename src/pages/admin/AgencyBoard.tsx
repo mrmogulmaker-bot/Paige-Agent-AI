@@ -400,7 +400,7 @@ export default function AgencyBoard() {
   return (
     <PageShell width="wide">
       <PageHeader
-        variant="hero"
+        variant="plain"
         eyebrow="Paige · Agency Control"
         title="Run your book of businesses."
         description={
@@ -409,10 +409,10 @@ export default function AgencyBoard() {
         }
         actions={
           <Button
-            variant="secondary"
+            variant="outline"
+            size="sm"
             onClick={refreshAll}
             disabled={loading || portfolioLoading}
-            className="bg-white/10 text-white hover:bg-white/20 border-0"
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${loading || portfolioLoading ? "animate-spin" : ""}`} />
             Refresh
