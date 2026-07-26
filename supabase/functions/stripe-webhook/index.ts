@@ -560,12 +560,16 @@ serve(async (req) => {
               const paymentIntentId =
                 (session.payment_intent as string | null) ?? null;
 
-              if (!itemId || !buyerTenantId) {
+              if (!itemId || !buyerTenantId || !actorUserId) {
+                // actorUserId is required by the 5-arg install overload's
+                // is_tenant_admin_as(actor,tenant) gate — guard early + loud so a
+                // missing signed identifier never reaches a pointless invoke.
                 logStep("Marketplace install: missing signed identifiers", {
                   sessionId: session.id,
                   itemSlug,
                   hasItemId: !!itemId,
                   hasTenant: !!buyerTenantId,
+                  hasActor: !!actorUserId,
                 });
               } else {
                 // Drive the EXISTING install writer (§18 — do not fork the ledger).
