@@ -260,3 +260,13 @@ project_id = "xygzykjyynhzqytbqnzu"
   # come here — they install directly via marketplace-install.
   [functions.marketplace-checkout-session]
     verify_jwt = true
+
+  # Tier-1 platform-subscription CREATE leg (B-Platform): create a Stripe Checkout
+  # Session to become a Paige customer (self-serve practice/academy plan). JWT-gated —
+  # the subscriber + tenant are derived from the caller's session
+  # (profiles.active_tenant_id), never trusted from the body (§9). Pre-charge parity
+  # gates on is_tenant_admin_as before any charge; the webhook's
+  # checkout.session.completed arm (discriminant: platform_plan_slug) is the sole
+  # writer of platform_subscriptions (§18). §38 Tier-1 Paige-held rail.
+  [functions.platform-subscription-checkout]
+    verify_jwt = true

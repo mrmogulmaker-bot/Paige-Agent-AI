@@ -100,6 +100,7 @@ const Privacy = lazyWithReload(() => import("./pages/Privacy"));
 const LegalDoc = lazyWithReload(() => import("./pages/LegalDoc"));
 const About = lazyWithReload(() => import("./pages/About"));
 const Pricing = lazyWithReload(() => import("./pages/Pricing"));
+const Welcome = lazyWithReload(() => import("./pages/Welcome"));
 const Blog = lazyWithReload(() => import("./pages/Blog"));
 
 // BTF workspace surface removed — consumer /app dashboard is the single client home. (Sprint 211.b cleanup)
@@ -236,6 +237,9 @@ const App = () => (
            <Route path="/legal/:slug" element={<PageSuspense><LegalDoc /></PageSuspense>} />
             <Route path="/about" element={<PageSuspense><About /></PageSuspense>} />
             <Route path="/pricing" element={<PageSuspense><Pricing /></PageSuspense>} />
+            {/* Post-checkout wait page — absorbs the webhook↔session race, polls for
+                the provisioned tenant, then forwards to /admin (B-Platform). */}
+            <Route path="/welcome" element={<PageSuspense><Welcome /></PageSuspense>} />
             <Route path="/blog" element={<PageSuspense><Blog /></PageSuspense>} />
             <Route path="/affiliates" element={<PageSuspense><AffiliateApply /></PageSuspense>} />
             <Route path="/become-an-affiliate" element={<Navigate to="/affiliates" replace />} />
@@ -281,7 +285,9 @@ const App = () => (
               <Route path="mcc" element={<PageSuspense><BrokerMCC /></PageSuspense>} />
               <Route path="settings" element={<PageSuspense><BrokerSettings /></PageSuspense>} />
             </Route>
-            <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
+            {/* /pricing renders the real Pricing page (declared above); the legacy
+                Navigate to /#pricing was removed so the pay-before-workspace flow
+                lands on the real storefront. */}
 
             {/* Backward-compat: bare /clients links route into the admin workspace */}
             <Route path="/clients" element={<Navigate to="/admin/clients" replace />} />

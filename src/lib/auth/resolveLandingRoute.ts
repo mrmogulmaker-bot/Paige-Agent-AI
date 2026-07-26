@@ -56,13 +56,15 @@ async function resolveAgencyLanding(userId: string): Promise<string | null> {
  *   2. broker / broker_team_member → /broker/app
  *   3. linked client (clients.linked_user_id = user.id) → /onboard/<stage> or /workspace
  *   4. tenant owner/member with no synced role yet → /admin
- *   5. fallback (signed in, no role, no client link, no tenant) → /onboarding
+ *   5. fallback (signed in, no role, no client link, no tenant) → /pricing
  *
- * The front door provisions TENANTS now, and a tenant's own customers arrive
- * only via invite (which links them as a `clients` row). So a signed-in user
- * with no staff role, no client linkage, and no tenant membership is someone
- * who created an account but hasn't stood up their workspace yet — send them
- * to the onboarding gate to provision one, not into the consumer portal.
+ * Pay-before-workspace (B-Platform): a workspace/tenant only exists after a paid
+ * platform subscription (the checkout webhook provisions the tenant). A signed-in
+ * user with no staff role, no client linkage, and no tenant membership therefore has
+ * NOT paid yet — a tenant requires a subscription, so no-tenant ⇒ no active sub. Send
+ * them to /pricing to choose a plan and subscribe, NOT to a free onboarding gate that
+ * would stand up a workspace without payment. Real tenant owners/members are already
+ * caught by branch 4 (→ /admin) BEFORE this fallback, so paid users are unaffected.
  */
 export async function resolveLandingRoute(userId: string): Promise<string> {
   try {
@@ -167,12 +169,16 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
       try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ }
     }
 
-    // Signed in, but no workspace yet → stand one up.
-    return "/onboarding";
+    // Signed in, but no tenant yet ⇒ no active platform subscription (a tenant is
+    // only provisioned after payment). Pay-before-workspace: send them to /pricing to
+    // subscribe, not to a free workspace-provisioning gate.
+    return "/pricing";
   } catch {
-    // On any failure, don't strand them in the consumer portal — the onboarding
-    // gate itself re-checks and forwards anyone who already has a workspace.
-    return "/onboarding";
+    // On any failure, default to /pricing (pay-before-workspace): we can't confirm a
+    // paid workspace here, and /pricing is self-correcting — an already-subscribed
+    // tenant that clicks a plan is routed straight to /admin (already_subscribed).
+    // Real tenant owners are routed to /admin by branch 4 on the happy path.
+    return "/pricing";
   }
 }
 
