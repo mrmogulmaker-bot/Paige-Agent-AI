@@ -244,7 +244,7 @@ export function AddBusinessFlow({ open, onOpenChange }: AddBusinessFlowProps) {
 
     const secondaryCta = isStarter
       ? { label: "Add 1 Slot — $10/mo", action: startSlotCheckout, loading: slotLoading }
-      : { label: "Upgrade to Elite — $297/mo", action: () => { onOpenChange(false); navigate("/elite-waitlist"); } };
+      : { label: "Upgrade to Elite — $297/mo", action: () => { onOpenChange(false); navigate("/pricing"); } };
 
     return (
       <div className="space-y-5">
