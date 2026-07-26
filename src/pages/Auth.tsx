@@ -88,15 +88,18 @@ const Auth = () => {
     supabase.rpc("peek_tenant_invite", { _token: inviteToken })
       .then(({ data, error }) => {
         if (cancelled) return;
-        const row = Array.isArray(data) ? data[0] : data;
-        if (error || !row || (row as any).is_valid === false) {
+        const row = (Array.isArray(data) ? data[0] : data) as
+          | { is_valid?: boolean; tenant_name?: string; brand?: { logo_url?: string; primary_color?: string } }
+          | null
+          | undefined;
+        if (error || !row || row.is_valid === false) {
           setInviteState("invalid");
           return;
         }
         setInviteBrand({
-          tenant_name: (row as any).tenant_name,
-          logo_url: (row as any).brand?.logo_url ?? null,
-          primary_color: (row as any).brand?.primary_color ?? null,
+          tenant_name: row.tenant_name,
+          logo_url: row.brand?.logo_url ?? null,
+          primary_color: row.brand?.primary_color ?? null,
         });
         setInviteState("ready");
       })
@@ -213,13 +216,13 @@ const Auth = () => {
         .from("user_roles")
         .select("role")
         .eq("user_id", userId);
-      const roleList = (roles || []).map((r: any) => r.role);
+      const roleList = ((roles || []) as Array<{ role: string }>).map((r) => r.role);
       if (roleList.includes("broker_team_member")) {
         try {
           const { data: tm } = await supabase.rpc("get_broker_team_member", {
             _auth_user_id: userId,
           });
-          const parentId = (tm as any)?.[0]?.broker_id;
+          const parentId = (tm as Array<{ broker_id?: string }> | null)?.[0]?.broker_id;
           if (parentId) localStorage.setItem("active_broker_id", parentId);
         } catch {
           /* non-blocking */

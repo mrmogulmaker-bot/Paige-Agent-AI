@@ -103,9 +103,12 @@ export default function PlatformInvites() {
   const loadInvites = useCallback(async () => {
     setLoadingList(true);
     try {
-      const { data, error } = await supabase.rpc("list_platform_invites" as never);
+      const { data, error } = (await supabase.rpc("list_platform_invites" as never)) as {
+        data: PlatformInvite[] | null;
+        error: unknown;
+      };
       if (error) throw error;
-      const rows = (Array.isArray(data) ? data : []) as PlatformInvite[];
+      const rows = Array.isArray(data) ? data : [];
       setInvites(rows);
     } catch {
       toast({
@@ -127,15 +130,15 @@ export default function PlatformInvites() {
     setGenerating(true);
     setCopiedFresh(false);
     try {
-      const { data, error } = await supabase.rpc("create_platform_invite" as never, {
+      const { data, error } = (await supabase.rpc("create_platform_invite" as never, {
         _plan_slug: planSlug,
         _trial_period_days: TRIAL_DAYS,
-      } as never);
+      } as never)) as { data: string | { token?: string } | Array<string | { token?: string }> | null; error: unknown };
       if (error) throw error;
       // create_platform_invite RETURNS text (a SCALAR token) — supabase-js hands it
       // back as a plain string. Read it directly; tolerate an array/object shape only
       // defensively so a future RETURNS TABLE change wouldn't silently break this.
-      const raw = Array.isArray(data) ? data[0] : data;
+      const raw = Array.isArray(data) ? (data[0] ?? null) : data;
       const newToken =
         typeof raw === "string"
           ? raw

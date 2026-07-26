@@ -58,17 +58,18 @@ export default function GetStarted() {
     (async () => {
       setLoading(true);
       try {
-        // Types aren't generated for this platform RPC yet — repo convention casts the name.
-        const { data, error } = await supabase.rpc(
+        // Types aren't generated for this platform RPC yet — cast the untyped result
+        // to a concrete nullable shape so strict-null tsc is satisfied without `any`.
+        const { data, error } = (await supabase.rpc(
           "get_platform_invite" as never,
           { _token: token } as never,
-        );
+        )) as { data: InviteInfo | InviteInfo[] | null; error: unknown };
         if (!alive) return;
         if (error) {
           setInvite(null);
         } else {
           // The RPC may return a single row or a one-row set — normalize both.
-          const row = (Array.isArray(data) ? data[0] : data) as InviteInfo | null | undefined;
+          const row = Array.isArray(data) ? (data[0] ?? null) : data;
           setInvite(row ?? null);
         }
       } catch {
