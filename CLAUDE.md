@@ -1432,6 +1432,32 @@ walk every one:
 - **Tests and operational scripts** — anything under `scripts/`, `tests/`,
   `.github/scripts/`, or ad-hoc runbooks that exercises the endpoint.
 
+**Response contracts require the matching consumer inventory.** Before changing any
+endpoint response — including renaming or removing a field, changing an error code,
+altering a wrapper structure, shifting HTTP status semantics, modifying streaming or
+chunking behavior, or renaming envelope keys — audit consumers across the same eight
+classes above. The inventory does not stop at the first caller: responses are often
+chained and re-emitted (for example, webhook → queue → worker), so follow the response
+through every downstream transformer that reads, maps, branches on, stores, or
+forwards specific fields.
+
+- **Verify the exact field-access path.** For every legitimate consumer found, prove
+  that the new response still lets its exact status check, envelope access, field
+  lookup, stream reader, and downstream transformation succeed.
+- **Resolve every break before shipping.** If a missing or changed value can become
+  `undefined` and silently steer downstream logic incorrectly, the contract change
+  is incomplete. Change the consumer, widen the response with explicit rationale and
+  compatibility bounds, or remove the consumer with a §14 replacement plan.
+- **Treat half-changed responses as worse than unchanged responses.** A hard 4xx is
+  visible in logs; a response that appears successful while silently breaking a
+  consumer hides the failure inside downstream logic. Request-producer and
+  response-consumer inventories are therefore both mandatory pre-checks for the §32
+  behavioral verifier.
+- **Anchoring case study — anticipatory amendment (2026-07-26).** No clean, verified
+  response-contract breakage case is being claimed for this amendment. Add the first
+  real case here when a response change and its downstream consumer failure are
+  verified end-to-end; do not retrofit or infer one without evidence (§13).
+
 **The rule, every time:** *"For every legitimate producer I found, does the new
 guard let their exact request shape through?"* If the answer is no for any producer,
 the guard is incomplete — either the producer must change, or the guard must widen
