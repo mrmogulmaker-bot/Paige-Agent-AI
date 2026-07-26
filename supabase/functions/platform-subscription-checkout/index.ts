@@ -15,16 +15,33 @@
 // tenant_id is honored ONLY for a platform owner; everyone else subscribes their own
 // active tenant. The tenant is NEVER trusted from the body (§9).
 //
+// TWO PATHS (B-Platform pay-before-workspace):
+//   • GRANDFATHERED upgrade — the caller ALREADY has a workspace
+//     (profiles.active_tenant_id resolves, or they own a top-level tenant). The signed
+//     metadata CARRIES tenant_id, and the webhook simply upserts the subscription onto
+//     that existing tenant (no provisioning). Full pre-charge gates apply (below).
+//   • ONBOARDING (the dominant new-customer path) — a freshly-signed-up auth user with
+//     NO tenant yet (active_tenant_id NULL AND owns no top-level tenant). We do NOT
+//     require admin/tenant (there is none to be admin of). The signed metadata OMITS
+//     tenant_id — and that ABSENCE is the webhook's signal to PROVISION the tenant +
+//     owner role + subscription on payment (provision_tenant_as, §32 idempotent). The
+//     self-serve/amount gate still applies to this path too.
+//
 // PRE-CHARGE AUTHORIZATION PARITY (§13 — money-movement): before any Stripe session
-// is created we mirror the EXACT gate the webhook fulfillment relies on. The webhook
-// upserts `platform_subscriptions` under the service role, and the only human who may
-// subscribe a tenant is a tenant admin — so we FAIL CLOSED here unless that holds:
-//   • is_tenant_admin_as(actor, tenant) must be true          → else 403 (never charge).
-//     (NO owner bypass — ownership alone does not subscribe a tenant.)
+// is created we mirror the EXACT gate the webhook fulfillment relies on.
 //   • the plan must be SELF-SERVE, i.e. the chosen period's price > 0 → else 400.
 //     (This rejects the enterprise/custom plan, whose prices are 0 → "contact sales".)
-//   • the tenant must NOT already carry a live subscription        → else 409.
-//     (Prevents a double-subscribe; manage/cancel/upgrade is a follow-up surface.)
+//     Applies to BOTH paths — we never mint a $0 recurring session.
+//   • GRANDFATHERED path only — the webhook upserts `platform_subscriptions` onto an
+//     existing tenant under the service role, and the only human who may subscribe a
+//     tenant is a tenant admin — so we FAIL CLOSED unless that holds:
+//       – is_tenant_admin_as(actor, tenant) must be true       → else 403 (never charge).
+//         (NO owner bypass — ownership alone does not subscribe a tenant.)
+//       – the tenant must NOT already carry a live subscription → else 409.
+//         (Prevents a double-subscribe; manage/cancel/upgrade is a follow-up surface.)
+//   • ONBOARDING path — no tenant exists yet, so there is no admin/already-subscribed
+//     gate to run; provision-on-pay creates the owner. We only defensively confirm the
+//     user does NOT already own a top-level tenant (which would make it grandfathered).
 // This guarantees we never capture money we can't cleanly fulfill.
 //
 // §38: this is a Tier-1 Paige-HELD rail — Paige is merchant of record for its own
@@ -131,6 +148,9 @@ Deno.serve(async (req) => {
   // else subscribes their own active tenant (§9 — never trust body tenant_id).
   // is_platform_owner() is auth.uid()-based, so it MUST run on the USER-scoped
   // client — on the service-role client auth.uid() is NULL and it is dead code.
+  // A NULL tenant is NOT an error here: it is the ONBOARDING signal (a freshly-
+  // signed-up auth user with no workspace yet) — the branch below routes it to the
+  // provision-on-pay path.
   let tenantId: string | null = null;
   const bodyTenantId =
     typeof body.tenant_id === "string" ? (body.tenant_id as string) : null;
@@ -145,7 +165,6 @@ Deno.serve(async (req) => {
       .maybeSingle();
     tenantId = prof?.active_tenant_id ?? null;
   }
-  if (!tenantId) return json(400, { error: "No active tenant for this user" });
 
   // ── LOAD the plan (service role) ───────────────────────────────────────────────
   const { data: plan, error: planErr } = await admin
@@ -160,25 +179,11 @@ Deno.serve(async (req) => {
     return json(404, { error: "plan_not_found" });
   }
 
-  // ── PRE-CHARGE AUTHORIZATION PARITY (§13 — money-movement) ─────────────────────
-  // Fail closed BEFORE creating any Stripe session, mirroring exactly what the
-  // webhook's service-role upsert relies on.
-
-  // (1) Admin gate — only a tenant admin may subscribe the tenant. No owner bypass:
-  //     an owner is not automatically an admin of an arbitrary tenant, and the
-  //     webhook's write is tenant-scoped, so we mirror the human gate exactly.
-  const { data: isAdmin, error: adminErr } = await admin.rpc(
-    "is_tenant_admin_as",
-    { _actor: actorUserId, _tenant: tenantId },
-  );
-  if (adminErr) return json(400, { error: adminErr.message });
-  if (isAdmin !== true) {
-    return json(403, { error: "Not authorized for this tenant" });
-  }
-
-  // (2) Self-serve check — enterprise/custom is NOT self-serve (its prices are 0).
-  //     The chosen period's price must be a real, positive amount or we refuse and
-  //     point to sales, rather than mint a $0 recurring session.
+  // ── SELF-SERVE / AMOUNT GATE (§13 — applies to BOTH paths) ─────────────────────
+  // Enterprise/custom is NOT self-serve (its prices are 0). The chosen period's price
+  // must be a real, positive amount or we refuse and point to sales, rather than mint
+  // a $0 recurring session — this fires before EITHER path, so we never open a free
+  // checkout whether the caller is onboarding or grandfathered.
   // Annual falls back to 12× monthly when no explicit annual price is set — this
   // MATCHES what the Setup › Billing card renders (annual = annual_price_cents ??
   // monthly*12), so the UI can never show a Subscribe the edge fn would 400 on.
@@ -198,18 +203,75 @@ Deno.serve(async (req) => {
     });
   }
 
-  // (3) Already-subscribed guard — one live subscription per tenant. A tenant already
-  //     'active'/'trialing'/'past_due' must manage/cancel (follow-up surface), not
-  //     open a second checkout that would create a duplicate subscription row.
-  const { data: existingSub, error: existingErr } = await admin
-    .from("platform_subscriptions")
-    .select("id, status")
-    .eq("tenant_id", tenantId)
-    .in("status", ["active", "trialing", "past_due"])
-    .maybeSingle();
-  if (existingErr) return json(400, { error: existingErr.message });
-  if (existingSub) {
-    return json(409, { error: "already_subscribed" });
+  // ── PATH BRANCH: grandfathered (has workspace) vs onboarding (provision-on-pay) ──
+  // `onboarding` stays true only when the caller has NO tenant at all — that is the
+  // signal to OMIT tenant_id from the signed metadata so the webhook provisions.
+  let onboarding = false;
+  if (tenantId) {
+    // ── GRANDFATHERED: an existing tenant becomes/updates a Paige subscriber ───────
+    // Fail closed BEFORE any Stripe session, mirroring exactly what the webhook's
+    // service-role upsert onto this existing tenant relies on.
+    // (1) Admin gate — only a tenant admin may subscribe the tenant. No owner bypass:
+    //     an owner is not automatically an admin of an arbitrary tenant, and the
+    //     webhook's write is tenant-scoped, so we mirror the human gate exactly.
+    const { data: isAdmin, error: adminErr } = await admin.rpc(
+      "is_tenant_admin_as",
+      { _actor: actorUserId, _tenant: tenantId },
+    );
+    if (adminErr) return json(400, { error: adminErr.message });
+    if (isAdmin !== true) {
+      return json(403, { error: "Not authorized for this tenant" });
+    }
+    // (2) Already-subscribed guard — one live subscription per tenant. A tenant already
+    //     'active'/'trialing'/'past_due' must manage/cancel (follow-up surface), not
+    //     open a second checkout that would create a duplicate subscription row.
+    const { data: existingSub, error: existingErr } = await admin
+      .from("platform_subscriptions")
+      .select("id, status")
+      .eq("tenant_id", tenantId)
+      .in("status", ["active", "trialing", "past_due"])
+      .maybeSingle();
+    if (existingErr) return json(400, { error: existingErr.message });
+    if (existingSub) {
+      return json(409, { error: "already_subscribed" });
+    }
+  } else {
+    // ── ONBOARDING: freshly-signed-up auth user, no workspace yet ──────────────────
+    // Defensive (§32): confirm the user does NOT already OWN a top-level tenant. A
+    // profile whose active_tenant_id merely wasn't backfilled would still own one; if
+    // so, treat this as the grandfathered path against that tenant (never double-
+    // provision — provision_tenant_as is idempotent, but we also refuse to open a
+    // second checkout for an already-subscribed owner).
+    const { data: ownedTenant, error: ownedErr } = await admin
+      .from("tenants")
+      .select("id")
+      .eq("owner_user_id", actorUserId)
+      .is("parent_tenant_id", null)
+      .maybeSingle();
+    if (ownedErr) return json(400, { error: ownedErr.message });
+    if (ownedTenant?.id) {
+      tenantId = ownedTenant.id;
+      const { data: isAdmin, error: adminErr } = await admin.rpc(
+        "is_tenant_admin_as",
+        { _actor: actorUserId, _tenant: tenantId },
+      );
+      if (adminErr) return json(400, { error: adminErr.message });
+      if (isAdmin !== true) {
+        return json(403, { error: "Not authorized for this tenant" });
+      }
+      const { data: existingSub, error: existingErr } = await admin
+        .from("platform_subscriptions")
+        .select("id, status")
+        .eq("tenant_id", tenantId)
+        .in("status", ["active", "trialing", "past_due"])
+        .maybeSingle();
+      if (existingErr) return json(400, { error: existingErr.message });
+      if (existingSub) {
+        return json(409, { error: "already_subscribed" });
+      }
+    } else {
+      onboarding = true;
+    }
   }
 
   // ── PRICE (inline recurring; plan.stripe_price_id is NULL and can't carry annual) ─
@@ -218,13 +280,20 @@ Deno.serve(async (req) => {
   const stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-11-20.acacia" });
 
   const origin = resolveOrigin(req);
+  // Onboarding lands on a post-payment WAIT route (/welcome) — the webhook is
+  // provisioning the tenant asynchronously, so the app polls there until the
+  // workspace + subscription exist. Grandfathered stays on the in-app billing surface.
   const successPath = safePath(
     body.success_path,
-    "/admin/setup/billing?subscribe=success",
+    onboarding
+      ? "/welcome?checkout=success"
+      : "/admin/setup/billing?subscribe=success",
   );
   const cancelPath = safePath(
     body.cancel_path,
-    "/admin/setup/billing?subscribe=cancelled",
+    onboarding
+      ? "/pricing?checkout=cancelled"
+      : "/admin/setup/billing?subscribe=cancelled",
   );
   const successUrl =
     origin +
@@ -238,13 +307,18 @@ Deno.serve(async (req) => {
   // subscription_data so the customer.subscription.* lifecycle events also carry it.
   // NEVER set tenant_price_id / marketplace_item_slug — those are other arms'
   // discriminants and would collide.
+  // ONBOARDING omits tenant_id ON PURPOSE — its ABSENCE is the webhook's signal to
+  // PROVISION a new tenant + owner role for actor_user_id on payment. GRANDFATHERED
+  // carries tenant_id so the webhook upserts onto the existing tenant (no provision).
   const md: Record<string, string> = {
     platform_plan_slug: plan.slug,
     platform_plan_id: String(plan.id),
-    tenant_id: tenantId,
     actor_user_id: actorUserId,
     billing_period: billingPeriod,
   };
+  if (!onboarding && tenantId) {
+    md.tenant_id = tenantId;
+  }
 
   const params: Stripe.Checkout.SessionCreateParams = {
     mode: "subscription",
@@ -269,13 +343,27 @@ Deno.serve(async (req) => {
   };
 
   console.log(
-    `[platform-subscription-checkout] tenant=${tenantId} plan=${plan.slug} ` +
+    `[platform-subscription-checkout] path=${onboarding ? "onboarding" : "grandfathered"} ` +
+      `tenant=${tenantId ?? "(provision-on-pay)"} actor=${actorUserId} plan=${plan.slug} ` +
       `billing_period=${billingPeriod} amount=${Number(amount)}`,
   );
 
+  // §13/§32 double-charge guard: on the ONBOARDING path there is no tenant/sub yet, so
+  // two rapid checkouts (double-click / two tabs) would each mint a DISTINCT Stripe
+  // subscription and the webhook would provision one tenant but attach BOTH subs —
+  // a double charge. A Stripe idempotency key keyed on actor+plan+period makes repeated
+  // create() calls in Stripe's 24h window return the SAME session, so the buyer can
+  // only ever open one live checkout per plan choice. (Grandfathered already guards via
+  // the already-subscribed 409, so the key is scoped to the onboarding lane.)
+  const createOpts = onboarding
+    ? {
+        idempotencyKey: `psub_onboard_${actorUserId}_${plan.slug}_${billingPeriod}`,
+      }
+    : undefined;
+
   let session: Stripe.Checkout.Session;
   try {
-    session = await stripe.checkout.sessions.create(params);
+    session = await stripe.checkout.sessions.create(params, createOpts);
   } catch (e) {
     console.error("[platform-subscription-checkout] stripe error:", e);
     return json(502, {

@@ -693,65 +693,148 @@ serve(async (req) => {
             if (session.payment_status === "paid") {
               const now = new Date().toISOString();
               const planId = session.metadata.platform_plan_id ?? null;
-              const tenantId = session.metadata.tenant_id ?? null;
+              const actorUserId = session.metadata.actor_user_id ?? null;
               const billingPeriod =
                 session.metadata.billing_period ?? "monthly";
               const stripeSubId = (session.subscription as string | null) ?? null;
               const stripeCustId = (session.customer as string | null) ?? null;
+              // The PRESENCE of a signed tenant_id discriminates the two B-Platform
+              // paths: present ⇒ GRANDFATHERED (upsert onto that existing tenant);
+              // absent ⇒ ONBOARDING pay-before-workspace (PROVISION the tenant + owner
+              // role for actor_user_id, then subscribe). The producer sets tenant_id
+              // only on the grandfathered path.
+              const tenantId = session.metadata.tenant_id ?? null;
 
-              if (!planId || !tenantId || !stripeSubId) {
-                logStep("Platform subscription: missing signed identifiers", {
-                  sessionId: session.id,
-                  hasPlan: !!planId,
-                  hasTenant: !!tenantId,
-                  hasSub: !!stripeSubId,
-                });
-              } else {
-                // Idempotent: a webhook replay hits UNIQUE(tenant_id,
-                // stripe_subscription_id) and upserts the same row.
-                const { data: upserted, error: subErr } = await supabaseAdmin
-                  .from("platform_subscriptions")
-                  .upsert(
-                    {
-                      tenant_id: tenantId,
-                      plan_id: planId,
-                      status: "active",
-                      billing_period: billingPeriod,
-                      stripe_subscription_id: stripeSubId,
-                      stripe_customer_id: stripeCustId,
-                      updated_at: now,
-                    },
-                    { onConflict: "tenant_id,stripe_subscription_id" },
-                  )
-                  .select("id");
-
-                if (subErr) {
-                  logStep("Platform subscription: upsert failed", {
+              if (tenantId) {
+                // ── GRANDFATHERED: existing tenant becomes/updates a subscriber ─────
+                if (!planId || !stripeSubId) {
+                  logStep("Platform subscription: missing signed identifiers", {
                     sessionId: session.id,
-                    tenantId,
-                    error: subErr.message,
+                    hasPlan: !!planId,
+                    hasTenant: !!tenantId,
+                    hasSub: !!stripeSubId,
                   });
                 } else {
-                  logStep("Platform subscription: written", {
-                    sessionId: session.id,
-                    tenantId,
-                    rows: upserted?.length ?? 0,
-                  });
+                  // Idempotent: a webhook replay hits UNIQUE(tenant_id,
+                  // stripe_subscription_id) and upserts the same row.
+                  const { data: upserted, error: subErr } = await supabaseAdmin
+                    .from("platform_subscriptions")
+                    .upsert(
+                      {
+                        tenant_id: tenantId,
+                        plan_id: planId,
+                        status: "active",
+                        billing_period: billingPeriod,
+                        stripe_subscription_id: stripeSubId,
+                        stripe_customer_id: stripeCustId,
+                        updated_at: now,
+                      },
+                      { onConflict: "tenant_id,stripe_subscription_id" },
+                    )
+                    .select("id");
 
-                  // Entitlement bridge — flip a still-trial tenant live. Idempotent:
-                  // the status='trial' predicate makes an already-active tenant a
-                  // 0-row update.
-                  const { error: tenantErr } = await supabaseAdmin
-                    .from("tenants")
-                    .update({ status: "active", updated_at: now })
-                    .eq("id", tenantId)
-                    .eq("status", "trial");
-                  if (tenantErr) {
-                    logStep("Platform subscription: tenant activate failed", {
+                  if (subErr) {
+                    logStep("Platform subscription: upsert failed", {
                       sessionId: session.id,
                       tenantId,
-                      error: tenantErr.message,
+                      error: subErr.message,
                     });
+                  } else {
+                    logStep("Platform subscription: written", {
+                      sessionId: session.id,
+                      tenantId,
+                      rows: upserted?.length ?? 0,
+                    });
+
+                    // Entitlement bridge — flip a still-trial tenant live. Idempotent:
+                    // the status='trial' predicate makes an already-active tenant a
+                    // 0-row update.
+                    const { error: tenantErr } = await supabaseAdmin
+                      .from("tenants")
+                      .update({ status: "active", updated_at: now })
+                      .eq("id", tenantId)
+                      .eq("status", "trial");
+                    if (tenantErr) {
+                      logStep("Platform subscription: tenant activate failed", {
+                        sessionId: session.id,
+                        tenantId,
+                        error: tenantErr.message,
+                      });
+                    }
+                  }
+                }
+              } else {
+                // ── ONBOARDING (pay-before-workspace): PROVISION then subscribe ─────
+                // A freshly-signed-up auth user paid before any workspace existed. The
+                // signed metadata carries no tenant_id — so we provision the tenant +
+                // owner role here (provision_tenant_as, a service-role explicit-owner
+                // twin of provision_tenant with NO auth.uid() dependency), then upsert
+                // the subscription onto the newly-provisioned tenant.
+                if (!planId || !actorUserId || !stripeSubId) {
+                  logStep("Platform subscription: onboarding missing signed identifiers", {
+                    sessionId: session.id,
+                    hasPlan: !!planId,
+                    hasActor: !!actorUserId,
+                    hasSub: !!stripeSubId,
+                  });
+                } else {
+                  // §32 idempotent per owner: on a webhook replay provision_tenant_as
+                  // returns the SAME top-level tenant (tenants_one_toplevel_per_owner),
+                  // so the subscription upsert below simply no-ops.
+                  const { data: provData, error: provErr } =
+                    await supabaseAdmin.rpc("provision_tenant_as", {
+                      _owner: actorUserId,
+                      _name: null,
+                      _account_type: "standalone",
+                    });
+                  // rpc returns the single tenants row; handle array/object defensively.
+                  const tenantRow = Array.isArray(provData)
+                    ? provData[0]
+                    : provData;
+                  if (provErr || !tenantRow?.id) {
+                    // Do NOT upsert a subscription with a null tenant — log loudly and
+                    // stop (§13/§32). The charge succeeded; a provisioning failure is a
+                    // surfaced anomaly, not a silently-orphaned subscription row.
+                    logStep("Platform subscription: onboarding provision failed", {
+                      sessionId: session.id,
+                      actorUserId,
+                      error: provErr?.message ?? "provision_tenant_as returned no tenant",
+                    });
+                  } else {
+                    const newTenantId = tenantRow.id as string;
+                    // Idempotent: UNIQUE(tenant_id, stripe_subscription_id) on replay.
+                    // tenant status is already 'active' from provision; owner
+                    // membership + profiles.active_tenant_id are set there too.
+                    const { data: upserted, error: subErr } = await supabaseAdmin
+                      .from("platform_subscriptions")
+                      .upsert(
+                        {
+                          tenant_id: newTenantId,
+                          plan_id: planId,
+                          status: "active",
+                          billing_period: billingPeriod,
+                          stripe_subscription_id: stripeSubId,
+                          stripe_customer_id: stripeCustId,
+                          updated_at: now,
+                        },
+                        { onConflict: "tenant_id,stripe_subscription_id" },
+                      )
+                      .select("id");
+
+                    if (subErr) {
+                      logStep("Platform subscription: onboarding upsert failed", {
+                        sessionId: session.id,
+                        tenantId: newTenantId,
+                        error: subErr.message,
+                      });
+                    } else {
+                      logStep("Platform subscription: provisioned + written", {
+                        sessionId: session.id,
+                        tenantId: newTenantId,
+                        actorUserId,
+                        rows: upserted?.length ?? 0,
+                      });
+                    }
                   }
                 }
               }

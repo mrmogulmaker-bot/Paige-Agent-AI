@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type CSSProperties } from "react";
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,6 +52,15 @@ const Auth = () => {
   const { docs: requiredDocs } = useRequiredSignupDocs();
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Plan intent (pay-before-workspace, B-Platform). When a prospect picks a plan on
+  // /pricing while signed out, they arrive here as /auth?mode=signup&plan=<slug>&billing=<period>.
+  // On a SUCCESSFUL SIGNUP (never login) we skip the normal role redirect and launch
+  // Stripe Checkout for that plan straight away. The ref is set only on the signup
+  // path and cleared on failure, so a later login can't accidentally trigger it; the
+  // launched guard prevents a double-invoke from the two redirect entry points.
+  const signupPlanIntentRef = useRef<{ plan: string; billing: string } | null>(null);
+  const checkoutLaunchedRef = useRef(false);
 
   // Client-invite mode: when a tenant's CUSTOMER arrives here from /join/<token>
   // to sign in/up, the page must wear the TENANT's brand (§6/§9) — never Paige's
@@ -111,20 +120,71 @@ const Auth = () => {
   const headingTitle = isLogin
     ? "Welcome back"
     : isClientInvite ? `Join ${brandName}` : "Start with Paige";
+  const hasPlanIntent = !isLogin && !!searchParams.get("plan");
   const headingSub = isLogin
     ? (isClientInvite ? `Sign in to open your ${brandName} portal` : "Sign in to your workspace")
     : (isClientInvite
         ? `Create your login to open your private client portal with ${brandName}.`
-        : "14 days free · no card required · Paige works on day one");
+        // Plan-intent (paid) signup goes straight to checkout — no free trial, card required.
+        // Don't promise "14 days free · no card required" on that path (§13 honesty).
+        : hasPlanIntent
+          ? "Create your account — checkout is the last step to launch your workspace"
+          : "14 days free · no card required · Paige works on day one");
 
   useEffect(() => {
     setIsLogin(searchParams.get("mode") !== "signup");
   }, [searchParams]);
 
+  // Launch Stripe Checkout for a pending plan intent (post-signup). On any failure we
+  // fall back to /pricing with a toast — the account exists, they just pick again.
+  const launchPlanCheckout = async (plan: string, billing: string) => {
+    if (checkoutLaunchedRef.current) return;
+    checkoutLaunchedRef.current = true;
+    try {
+      const { data, error } = await supabase.functions.invoke("platform-subscription-checkout", {
+        body: { plan_slug: plan, billing_period: billing, success_path: "/welcome?checkout=success" },
+      });
+      if (error) {
+        // supabase-js puts the edge fn's JSON body on error.context (a Response).
+        let code: string | undefined;
+        try {
+          const b = await (error as { context?: Response }).context?.json?.();
+          code = (b as Record<string, unknown> | undefined)?.error as string | undefined;
+        } catch {
+          /* not JSON — treat as generic below */
+        }
+        if (code === "already_subscribed" || code === "already_provisioned") {
+          navigate("/admin", { replace: true });
+          return;
+        }
+        throw new Error(code || error.message || "checkout_failed");
+      }
+      const url = (data as { url?: string } | null)?.url;
+      if (!url) throw new Error("no_checkout_url");
+      window.location.href = url;
+    } catch {
+      toast({
+        title: "Couldn't open checkout",
+        description: "Your account is ready — pick your plan to finish subscribing.",
+        variant: "destructive",
+      });
+      navigate("/pricing", { replace: true });
+    }
+  };
+
   const redirectByRole = async (userId: string) => {
     // Always clear any "preview as client" override on a fresh login so role
     // redirects aren't suppressed by a stale flag from a previous session.
     clearClientViewOverride();
+
+    // Pay-before-workspace: a fresh signup that carried a plan intent goes straight
+    // to Stripe Checkout, not the normal role/onboarding redirect (B-Platform).
+    const planIntent = signupPlanIntentRef.current;
+    if (planIntent) {
+      signupPlanIntentRef.current = null;
+      await launchPlanCheckout(planIntent.plan, planIntent.billing);
+      return;
+    }
 
     // Honor ?next= for invite acceptance flows (e.g. /join/:token).
     // Strict allowlist guard mitigates open-redirect / XSS-via-redirect.
@@ -225,6 +285,18 @@ const Auth = () => {
 
         const consentTimestamp = new Date().toISOString();
 
+        // Capture any plan intent BEFORE we create the account, so it's set before
+        // the sign-in inside signUpTenant fires onAuthStateChange → redirectByRole
+        // (which reads this ref). Cleared on signup failure so a later login/retry
+        // can't inherit it. Client-invite signups never carry a platform plan (§9).
+        if (!isClientInvite) {
+          const planSlug = searchParams.get("plan");
+          if (planSlug) {
+            const billing = searchParams.get("billing") === "annual" ? "annual" : "monthly";
+            signupPlanIntentRef.current = { plan: planSlug, billing };
+          }
+        }
+
         // Create a PRE-CONFIRMED account (email verification isn't wired yet —
         // see tenant-signup edge function) and sign in, so the new owner is
         // routed straight into onboarding instead of hitting the broken
@@ -242,6 +314,9 @@ const Auth = () => {
           });
           newUserId = res.userId;
         } catch (e) {
+          // Signup failed — drop the plan intent so a subsequent login/retry on this
+          // page doesn't inadvertently launch checkout.
+          signupPlanIntentRef.current = null;
           const emsg = (e as Error).message || "";
           let title = "Error";
           let description = emsg || "Couldn't create your account. Please try again.";
@@ -309,7 +384,9 @@ const Auth = () => {
 
         toast({
           title: "Account created!",
-          description: "Welcome! Redirecting to your dashboard...",
+          description: signupPlanIntentRef.current
+            ? "Taking you to secure checkout to finish setting up your plan…"
+            : "Welcome! Redirecting to your dashboard...",
         });
       }
     } catch (error) {
