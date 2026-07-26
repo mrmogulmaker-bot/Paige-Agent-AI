@@ -676,6 +676,103 @@ serve(async (req) => {
           // IMPORTANT — do NOT fall through to slot / plan blocks.
           break;
         }
+
+        // === Platform subscription (Tier-1 Paige-held rail, B-Platform) ===
+        // Discriminant: session.metadata.platform_plan_slug is Stripe-SIGNED metadata
+        // set by the producer `platform-subscription-checkout`. If present, this is a
+        // tenant becoming a Paige customer — write platform_subscriptions here and
+        // short-circuit, so a subscription-mode platform checkout can never be
+        // mis-routed into the slot- or plan-tier blocks below. All identifiers come
+        // from the Stripe-signed metadata, never the request body (§9). The
+        // platform_subscriptions RLS allows only the platform owner to write, so this
+        // service-role upsert is the sole writer (§18).
+        if (session.metadata?.platform_plan_slug) {
+          try {
+            // Only write once funds are captured. subscription-mode sessions complete
+            // paid on success; guard anyway.
+            if (session.payment_status === "paid") {
+              const now = new Date().toISOString();
+              const planId = session.metadata.platform_plan_id ?? null;
+              const tenantId = session.metadata.tenant_id ?? null;
+              const billingPeriod =
+                session.metadata.billing_period ?? "monthly";
+              const stripeSubId = (session.subscription as string | null) ?? null;
+              const stripeCustId = (session.customer as string | null) ?? null;
+
+              if (!planId || !tenantId || !stripeSubId) {
+                logStep("Platform subscription: missing signed identifiers", {
+                  sessionId: session.id,
+                  hasPlan: !!planId,
+                  hasTenant: !!tenantId,
+                  hasSub: !!stripeSubId,
+                });
+              } else {
+                // Idempotent: a webhook replay hits UNIQUE(tenant_id,
+                // stripe_subscription_id) and upserts the same row.
+                const { data: upserted, error: subErr } = await supabaseAdmin
+                  .from("platform_subscriptions")
+                  .upsert(
+                    {
+                      tenant_id: tenantId,
+                      plan_id: planId,
+                      status: "active",
+                      billing_period: billingPeriod,
+                      stripe_subscription_id: stripeSubId,
+                      stripe_customer_id: stripeCustId,
+                      updated_at: now,
+                    },
+                    { onConflict: "tenant_id,stripe_subscription_id" },
+                  )
+                  .select("id");
+
+                if (subErr) {
+                  logStep("Platform subscription: upsert failed", {
+                    sessionId: session.id,
+                    tenantId,
+                    error: subErr.message,
+                  });
+                } else {
+                  logStep("Platform subscription: written", {
+                    sessionId: session.id,
+                    tenantId,
+                    rows: upserted?.length ?? 0,
+                  });
+
+                  // Entitlement bridge — flip a still-trial tenant live. Idempotent:
+                  // the status='trial' predicate makes an already-active tenant a
+                  // 0-row update.
+                  const { error: tenantErr } = await supabaseAdmin
+                    .from("tenants")
+                    .update({ status: "active", updated_at: now })
+                    .eq("id", tenantId)
+                    .eq("status", "trial");
+                  if (tenantErr) {
+                    logStep("Platform subscription: tenant activate failed", {
+                      sessionId: session.id,
+                      tenantId,
+                      error: tenantErr.message,
+                    });
+                  }
+                }
+              }
+            } else {
+              logStep("Platform subscription: skipped, not paid", {
+                sessionId: session.id,
+                payment_status: session.payment_status,
+              });
+            }
+          } catch (platformErr) {
+            // A platform-subscription failure must never 500 the webhook and block
+            // other events. Log and swallow (§13 honest, non-throwing).
+            logStep("Platform subscription handler error", {
+              sessionId: session.id,
+              error: String(platformErr),
+            });
+          }
+          // IMPORTANT — do NOT fall through to slot / plan blocks.
+          break;
+        }
+
         // === Additional business slot purchase ===
         // Detect by metadata.purpose OR by matching the configured price ID.
         let isSlotPurchase =
@@ -955,6 +1052,66 @@ serve(async (req) => {
         const subscription = event.data.object as Stripe.Subscription;
         logStep("Processing customer.subscription.updated", { subscriptionId: subscription.id });
 
+        // === Platform subscription lifecycle (B-Platform) ===
+        // Discriminant: subscription.metadata.platform_plan_slug (set on
+        // subscription_data at checkout). If present, this is a platform-subscription
+        // lifecycle change — sync platform_subscriptions and short-circuit. Existing
+        // user_subscriptions rows carry no platform_plan_slug, so they flow through
+        // unchanged below (§9 — additive, never alters the existing arm).
+        if (subscription.metadata?.platform_plan_slug) {
+          const now = new Date().toISOString();
+          try {
+            // Read the period defensively: the pinned Stripe apiVersion (basil) moved
+            // current_period_start/end off the Subscription object onto its items, so a
+            // basil-shaped payload has them under items.data[0]. A bad/absent epoch must
+            // NOT drop the status sync — build the update with status ALWAYS present and
+            // only attach the period fields when they parse to a valid date.
+            const item = subscription.items?.data?.[0] as
+              | { current_period_start?: number; current_period_end?: number }
+              | undefined;
+            const startEpoch =
+              item?.current_period_start ?? subscription.current_period_start;
+            const endEpoch =
+              item?.current_period_end ?? subscription.current_period_end;
+            const toIso = (epoch: unknown): string | null => {
+              const n = Number(epoch);
+              if (!Number.isFinite(n) || n <= 0) return null;
+              const d = new Date(n * 1000);
+              return Number.isNaN(d.getTime()) ? null : d.toISOString();
+            };
+            const startIso = toIso(startEpoch);
+            const endIso = toIso(endEpoch);
+            const psUpdate: Record<string, unknown> = {
+              status: subscription.status,
+              cancel_at_period_end: subscription.cancel_at_period_end ?? false,
+              updated_at: now,
+            };
+            if (startIso) psUpdate.current_period_start = startIso;
+            if (endIso) psUpdate.current_period_end = endIso;
+            const { error: psErr } = await supabaseAdmin
+              .from("platform_subscriptions")
+              .update(psUpdate)
+              .eq("stripe_subscription_id", subscription.id);
+            if (psErr) {
+              logStep("Platform subscription: lifecycle update failed", {
+                subscriptionId: subscription.id,
+                error: psErr.message,
+              });
+            } else {
+              logStep("Platform subscription: lifecycle updated", {
+                subscriptionId: subscription.id,
+                status: subscription.status,
+              });
+            }
+          } catch (e) {
+            logStep("Platform subscription: lifecycle update error", {
+              subscriptionId: subscription.id,
+              error: String(e),
+            });
+          }
+          break;
+        }
+
         // Detect tier change for `subscription_upgraded` event.
         let fromTier: string | null = null;
         try {
@@ -1004,6 +1161,42 @@ serve(async (req) => {
       case "customer.subscription.deleted": {
         const subscription = event.data.object as Stripe.Subscription;
         logStep("Processing customer.subscription.deleted", { subscriptionId: subscription.id });
+
+        // === Platform subscription cancellation (B-Platform) ===
+        // Discriminant: subscription.metadata.platform_plan_slug. If present, mark the
+        // platform_subscriptions row canceled and short-circuit. We do NOT touch
+        // tenants.status on cancel — dunning/suspension is a follow-up surface.
+        // Additive: user_subscriptions rows have no platform_plan_slug and flow through
+        // unchanged below (§9).
+        if (subscription.metadata?.platform_plan_slug) {
+          const now = new Date().toISOString();
+          try {
+            const { error: psErr } = await supabaseAdmin
+              .from("platform_subscriptions")
+              .update({
+                status: "canceled",
+                cancel_at_period_end: true,
+                updated_at: now,
+              })
+              .eq("stripe_subscription_id", subscription.id);
+            if (psErr) {
+              logStep("Platform subscription: cancel failed", {
+                subscriptionId: subscription.id,
+                error: psErr.message,
+              });
+            } else {
+              logStep("Platform subscription: canceled", {
+                subscriptionId: subscription.id,
+              });
+            }
+          } catch (e) {
+            logStep("Platform subscription: cancel error", {
+              subscriptionId: subscription.id,
+              error: String(e),
+            });
+          }
+          break;
+        }
 
         // Lookup user + tier before mutating, so we can fire analytics with context.
         try {
