@@ -539,6 +539,143 @@ serve(async (req) => {
           break;
         }
 
+        // === Marketplace paid install (Exchange install-revenue plane) ===
+        // Discriminant: session.metadata.marketplace_item_slug is Stripe-SIGNED
+        // metadata set by the producer `marketplace-checkout-session`. If present,
+        // this is a paid marketplace install — complete it here and short-circuit,
+        // so a one-time 'payment' marketplace checkout can never be mis-routed into
+        // the slot- or platform-plan blocks below. All identifiers come from the
+        // Stripe-signed metadata, never the request body (§9). mode is always
+        // 'payment', so this never reaches the subscription-only upsertTierState
+        // arms (#459).
+        if (session.metadata?.marketplace_item_slug) {
+          try {
+            // Only complete once funds are captured. One-time 'payment' sessions
+            // fire already paid; guard anyway.
+            if (session.payment_status === "paid") {
+              const itemSlug = session.metadata.marketplace_item_slug;
+              const itemId = session.metadata.marketplace_item_id ?? null;
+              const buyerTenantId = session.metadata.tenant_id ?? null;
+              const actorUserId = session.metadata.actor_user_id ?? null;
+              const paymentIntentId =
+                (session.payment_intent as string | null) ?? null;
+
+              if (!itemId || !buyerTenantId || !actorUserId) {
+                // actorUserId is required by the 5-arg install overload's
+                // is_tenant_admin_as(actor,tenant) gate — guard early + loud so a
+                // missing signed identifier never reaches a pointless invoke.
+                logStep("Marketplace install: missing signed identifiers", {
+                  sessionId: session.id,
+                  itemSlug,
+                  hasItemId: !!itemId,
+                  hasTenant: !!buyerTenantId,
+                  hasActor: !!actorUserId,
+                });
+              } else {
+                // Drive the EXISTING install writer (§18 — do not fork the ledger).
+                // A service-role invoke lands in the 5-arg actor overload; the RPC
+                // is idempotent on ON CONFLICT (tenant_id,item_id) and writes the
+                // REAL, non-zero ledger row (gross=price_cents; fee/net derived from
+                // take_rate_bps) — no phantom revenue.
+                const { error: installErr } = await supabaseAdmin.functions.invoke(
+                  "marketplace-install",
+                  {
+                    body: {
+                      item_slug: itemSlug,
+                      tenant_id: buyerTenantId,
+                      actor_user_id: actorUserId,
+                      installed_by_agent: "stripe",
+                    },
+                  },
+                );
+                if (installErr) {
+                  logStep("Marketplace install: writer invoke failed", {
+                    sessionId: session.id,
+                    itemSlug,
+                    error: (installErr as any)?.message ?? String(installErr),
+                  });
+                } else {
+                  // Stamp payment refs onto the install row (UNIQUE tenant_id,item_id
+                  // → at most one). Fixed-value UPDATE is self-idempotent.
+                  const { data: installRow, error: findErr } = await supabaseAdmin
+                    .from("marketplace_installs")
+                    .select("id")
+                    .eq("tenant_id", buyerTenantId)
+                    .eq("item_id", itemId)
+                    .maybeSingle();
+
+                  if (findErr || !installRow) {
+                    logStep("Marketplace install: install row not found for stamp", {
+                      sessionId: session.id,
+                      itemSlug,
+                      error: findErr?.message ?? null,
+                    });
+                  } else {
+                    const { error: stampErr } = await supabaseAdmin
+                      .from("marketplace_installs")
+                      .update({
+                        stripe_checkout_session_id: session.id,
+                        stripe_payment_intent_id: paymentIntentId,
+                      })
+                      .eq("id", installRow.id);
+                    if (stampErr) {
+                      logStep("Marketplace install: install stamp failed", {
+                        sessionId: session.id,
+                        error: stampErr.message,
+                      });
+                    }
+
+                    // Stamp stripe_ref onto the newest 'install' ledger row for this
+                    // install, only where still NULL — a replay finds none → 0-row
+                    // update, so it can never double-stamp.
+                    const { data: ledgerRow } = await supabaseAdmin
+                      .from("marketplace_install_ledger")
+                      .select("id")
+                      .eq("install_id", installRow.id)
+                      .eq("event_type", "install")
+                      .is("stripe_ref", null)
+                      .order("occurred_at", { ascending: false })
+                      .limit(1)
+                      .maybeSingle();
+                    if (ledgerRow) {
+                      const { error: ledgerErr } = await supabaseAdmin
+                        .from("marketplace_install_ledger")
+                        .update({ stripe_ref: paymentIntentId })
+                        .eq("id", ledgerRow.id);
+                      if (ledgerErr) {
+                        logStep("Marketplace install: ledger stamp failed", {
+                          sessionId: session.id,
+                          error: ledgerErr.message,
+                        });
+                      }
+                    }
+
+                    logStep("Marketplace install: completed", {
+                      sessionId: session.id,
+                      itemSlug,
+                      installId: installRow.id,
+                      tenantId: buyerTenantId,
+                    });
+                  }
+                }
+              }
+            } else {
+              logStep("Marketplace install: skipped, not paid", {
+                sessionId: session.id,
+                payment_status: session.payment_status,
+              });
+            }
+          } catch (mktErr) {
+            // A marketplace-install failure must never 500 the webhook and block
+            // platform-subscription events. Log and swallow (§13 honest, non-throwing).
+            logStep("Marketplace install handler error", {
+              sessionId: session.id,
+              error: String(mktErr),
+            });
+          }
+          // IMPORTANT — do NOT fall through to slot / plan blocks.
+          break;
+        }
         // === Additional business slot purchase ===
         // Detect by metadata.purpose OR by matching the configured price ID.
         let isSlotPurchase =

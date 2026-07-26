@@ -2,6 +2,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Clock, Lock } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { MarketplaceSkill } from "@/lib/marketplace/skills";
 
@@ -14,6 +15,10 @@ interface Props {
   saving: boolean;
   loading: boolean;
   justArmed: boolean;
+  /** B-ii: paid item — the enable act is a "Get for $X" purchase, not a toggle. */
+  isPaid?: boolean;
+  /** Price in cents, for the paid CTA label. */
+  priceCents?: number;
   onToggle: (on: boolean) => void;
   /** Open the full detail view (whole card is a stretched-link overlay button). */
   onOpen?: () => void;
@@ -29,8 +34,14 @@ interface Props {
  * a SIBLING of the Switch/links (higher-z controls sit above the overlay), so no
  * interactive control is nested inside another.
  */
+/** Whole-dollar when even, cents otherwise — the paid "Get for $X" CTA label. */
+function formatUsd(cents: number): string {
+  const d = cents / 100;
+  return `$${Number.isInteger(d) ? d.toFixed(0) : d.toFixed(2)}`;
+}
+
 export function SkillCard({
-  skill, Icon, isOn, available, lockedOn, saving, loading, justArmed, onToggle, onOpen,
+  skill, Icon, isOn, available, lockedOn, saving, loading, justArmed, onToggle, onOpen, isPaid, priceCents,
 }: Props) {
   const reduce = useReducedMotion();
 
@@ -73,7 +84,9 @@ export function SkillCard({
       ? "On the roadmap."
       : isOn
         ? "On — Paige runs this with every client."
-        : "Off — switch on to add it.";
+        : isPaid
+          ? "One-time purchase — adds it to your Paige."
+          : "Off — switch on to add it.";
 
   return (
     <motion.div
@@ -131,13 +144,28 @@ export function SkillCard({
         </span>
 
         {available && !lockedOn ? (
-          <Switch
-            checked={isOn}
-            disabled={saving || loading}
-            onCheckedChange={onToggle}
-            aria-label={`Toggle ${skill.name}`}
-            className="shrink-0 data-[state=checked]:bg-[hsl(var(--gold))] focus-visible:ring-[hsl(var(--ring))]"
-          />
+          isPaid && !isOn ? (
+            // Paid add-on, not yet owned: the act is a purchase, lit in gold — the ONE
+            // gold moment on the card (§11). Clicking hands off to Stripe checkout.
+            <Button
+              variant="gold"
+              size="sm"
+              disabled={saving || loading}
+              onClick={() => onToggle(true)}
+              aria-label={`Get ${skill.name} for ${formatUsd(priceCents ?? 0)}`}
+              className="shrink-0"
+            >
+              {saving ? "Starting…" : `Get for ${formatUsd(priceCents ?? 0)}`}
+            </Button>
+          ) : (
+            <Switch
+              checked={isOn}
+              disabled={saving || loading}
+              onCheckedChange={onToggle}
+              aria-label={`Toggle ${skill.name}`}
+              className="shrink-0 data-[state=checked]:bg-[hsl(var(--gold))] focus-visible:ring-[hsl(var(--ring))]"
+            />
+          )
         ) : lockedOn ? (
           <a
             href="/admin/your-paige"
