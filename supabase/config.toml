@@ -251,3 +251,12 @@ project_id = "xygzykjyynhzqytbqnzu"
   # only in the tenant's published pages + persona. §2/§3 clean.
   [functions.paige-public-chat]
     verify_jwt = false
+
+  # Marketplace PAID-install revenue leg (B-ii-a): create a Stripe Checkout Session to
+  # buy a paid marketplace item. JWT-gated — the buyer + tenant are derived from the
+  # caller's session (profiles.active_tenant_id), never trusted from the body (§9). The
+  # webhook's checkout.session.completed arm invokes marketplace-install after payment,
+  # so the ledger is still written by the one install writer (§18). Free items do NOT
+  # come here — they install directly via marketplace-install.
+  [functions.marketplace-checkout-session]
+    verify_jwt = true

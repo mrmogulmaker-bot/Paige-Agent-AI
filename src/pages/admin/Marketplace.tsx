@@ -73,6 +73,12 @@ function whatItAdds(itemType: string): string {
   }
 }
 
+// Paid CTA price label — whole dollars when even, cents otherwise (§13, honest).
+function formatCents(cents: number): string {
+  const d = cents / 100;
+  return `$${Number.isInteger(d) ? d.toFixed(0) : d.toFixed(2)}`;
+}
+
 // One row of the declared catalog, as returned by marketplace_catalog_for_tenant.
 type CatalogRow = {
   slug: string;
@@ -208,6 +214,26 @@ export default function Marketplace() {
     ]);
 
   const install = async (r: CatalogRow) => {
+    // B-ii price gate (§17): a paid add-on NEVER installs through the free direct
+    // path — that would write a phantom, unpaid ledger revenue row. Instead we mint
+    // a Stripe checkout session server-side (the buyer tenant is derived from the
+    // JWT there, never trusted from the client — §9) and hand the browser to Stripe.
+    // The install is completed by stripe-webhook on payment, so the ledger row is
+    // only ever written for money that actually cleared (§13). Free items unchanged.
+    const isPaid = (r.pricing_model && r.pricing_model !== "free") || (r.price_cents ?? 0) > 0;
+    if (isPaid) {
+      const { data, error } = await supabase.functions.invoke("marketplace-checkout-session", {
+        body: { item_slug: r.slug },
+      });
+      if (error) throw new Error(error.message ?? "Couldn't start checkout");
+      const res = (data ?? {}) as Record<string, unknown>;
+      if (res.error) throw new Error(String(res.error));
+      const url = typeof res.url === "string" ? res.url : "";
+      if (!url) throw new Error("Checkout isn't available for this item right now.");
+      window.location.href = url; // hand off to Stripe-hosted checkout
+      return;
+    }
+
     // The edge function is the universal install path — it embeds a knowledge
     // pack's docs (which SQL can't) and finalizes through the gated RPC.
     const { data, error } = await supabase.functions.invoke("marketplace-install", {
@@ -497,6 +523,8 @@ export default function Marketplace() {
                     isOn={isOn}
                     available={available}
                     lockedOn={lockedOn}
+                    isPaid={(r.pricing_model && r.pricing_model !== "free") || (r.price_cents ?? 0) > 0}
+                    priceCents={r.price_cents ?? 0}
                     saving={saving === r.slug}
                     loading={loading}
                     justArmed={justArmed === r.slug}
@@ -571,6 +599,7 @@ function MarketplaceDetailDialog({
   const locked = lockedOn(row);
   const on = isOn(row) || locked;
   const busy = saving === row.slug;
+  const isPaid = (row.pricing_model && row.pricing_model !== "free") || (row.price_cents ?? 0) > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -625,19 +654,36 @@ function MarketplaceDetailDialog({
                 ? "On the roadmap — it'll appear here the moment it's ready."
                 : on
                   ? "On — Paige runs this with every client."
-                  : "Off — switch on to add it."}
+                  : isPaid
+                    ? "One-time purchase — secure checkout via Stripe."
+                    : "Off — switch on to add it."}
           </span>
           {isAvail && !locked ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">{on ? "On" : "Off"}</span>
-              <Switch
-                checked={on}
+            isPaid && !on ? (
+              // Paid add-on, not yet owned: the purchase CTA is the ONE gold act on
+              // this dialog (§11). It hands off to Stripe via the same toggle→install
+              // seam; the webhook completes the install once payment clears (§13).
+              <Button
+                variant="gold"
+                size="sm"
                 disabled={busy}
-                onCheckedChange={(v) => onToggle(row, v)}
-                aria-label={`Toggle ${row.name}`}
-                className="data-[state=checked]:bg-[hsl(var(--gold))] focus-visible:ring-[hsl(var(--ring))]"
-              />
-            </div>
+                onClick={() => onToggle(row, true)}
+                aria-label={`Get ${row.name} for ${formatCents(row.price_cents ?? 0)}`}
+              >
+                {busy ? "Starting…" : `Get for ${formatCents(row.price_cents ?? 0)}`}
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">{on ? "On" : "Off"}</span>
+                <Switch
+                  checked={on}
+                  disabled={busy}
+                  onCheckedChange={(v) => onToggle(row, v)}
+                  aria-label={`Toggle ${row.name}`}
+                  className="data-[state=checked]:bg-[hsl(var(--gold))] focus-visible:ring-[hsl(var(--ring))]"
+                />
+              </div>
+            )
           ) : locked ? (
             <Button asChild variant="outline" size="sm">
               <a href="/admin/your-paige">Manage in Your Paige</a>

@@ -4344,7 +4344,7 @@ mcp.tool("marketplace_recommend", {
 });
 
 mcp.tool("marketplace_install", {
-  description: "Install a Marketplace add-on into this practice by its slug. This wires up the item's skills/knowledge for the whole workspace, so confirm with the operator first. Paid add-ons cannot be purchased yet — only free, first-party items install today.",
+  description: "Install a Marketplace add-on into this practice by its slug. Free items install directly. A PAID add-on is purchased, not installed for free — checkout runs in the operator's signed-in Marketplace session (this tool cannot mint the checkout), so for a paid item point the operator to Marketplace to complete purchase; it installs automatically once payment clears. Wiring skills/knowledge affects the whole workspace, so confirm with the operator first.",
   inputSchema: z.object({
     item_slug: z.string().describe("The slug of the item to install (from marketplace_browse)."),
     confirm: z.boolean().optional().describe("Set true only after the operator has explicitly approved installing this item."),
@@ -4361,9 +4361,15 @@ mcp.tool("marketplace_install", {
     // deno-lint-ignore no-explicit-any
     const row = ((cat ?? []) as any[]).find((i) => i.slug === slug);
     if (!row) return err(`No add-on named "${slug}" is available to this workspace.`);
-    // Money-gate (§17): paid add-ons are not purchasable yet — only free items install.
+    // Money-gate (§17): a paid add-on is PURCHASED, never installed for free. The
+    // checkout seam (marketplace-checkout-session) is JWT-gated and derives the buyer
+    // from a real user session (§9) — which this MCP service context does not carry —
+    // so we do NOT mint a checkout here and NEVER fake an install for money that
+    // hasn't cleared (§13). Point the operator to Marketplace to complete purchase,
+    // where it runs in their signed-in session and installs automatically on payment.
+    // Follow-up (§10): a service+actor checkout path would let Paige hand back the link.
     if (Number(row.price_cents || 0) > 0) {
-      return ok({ success: false, paid: true, error: `${row.name} is a paid add-on. Purchasing isn't available yet — I can only install free items right now.` });
+      return ok({ success: false, paid: true, price_cents: Number(row.price_cents || 0), item: row.name, message: `${row.name} is a paid add-on. To purchase, open Marketplace and complete checkout in your signed-in session — it installs automatically once payment clears.` });
     }
     if (row.installed) return ok({ success: true, already_installed: true, item: row.name, message: `${row.name} is already installed.` });
     // Propose→confirm (§15): installing wires skills/knowledge for the WHOLE workspace,
