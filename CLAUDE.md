@@ -1454,3 +1454,60 @@ operator/Paige triggers behind. This is the pattern §37 exists to prevent.
 reporting), §14 (Paige orchestrates a team — the adversarial verifier owns the
 producer inventory), §32 (dual-layer verification — fidelity + behavioral, where
 the producer inventory is the behavioral verifier's mandatory pre-check).
+
+## 38. Money boundary — Paige holds its own rails; tenants bring their own processor for their client revenue.
+
+**Directive (owner: Antonio, 2026-07-25):** Paige accepts payment for its OWN rails —
+platform subscriptions, Marketplace transactions, metered usage (tokens, storage, seats,
+compute), and one-time platform fees. Paige does **NOT** accept payment on behalf of
+tenants for their client revenue: Paige is never merchant of record for a tenant→client
+transaction, never holds tenant client funds, never routes tenant client money through
+Paige's bank. Tenants who bill their own clients **bring their own processor** (Stripe /
+Square / PayPal / whatever), connected per-tenant or per-agency via a dedicated integration
+lane. Paige may facilitate the checkout UX for tenant→client transactions once BYO-processor
+is wired, but the money leg is always tenant→their-processor→their-bank. This is the
+architectural rule; §17's L1/L2/L3/L4 taxonomy is the revenue map — §38 clarifies which
+of those rails Paige holds and which are tenant-side.
+
+- **The three-question gate — every payment surface answers all three before it ships:**
+  (1) Whose money is this — a tenant paying us, or a tenant's client paying the tenant?
+  (2) If tenant→us, which of Paige's own rails does it fund — platform subscription,
+  Marketplace, metered usage, or one-time fee? (3) If tenant→client, is Paige merchant of
+  record or facilitator-only? The answer to (3) must be **facilitator-only**, always.
+- **What Paige holds** (Paige's Stripe, Paige's bank, Paige is merchant of record):
+  Tier 1 platform subscriptions (L1) · Tier 2 Marketplace transactions (paid installs,
+  recurring skill subs, add-ons) · Tier 3 metered usage (Engine-2 tokens / storage / seats /
+  compute / third-party pass-through) · Tier 4 one-time platform fees (setup, migration,
+  credits, ad-hoc enterprise invoicing).
+- **What Paige facilitates but does NOT hold** (tenant's processor, tenant's bank, tenant
+  is merchant of record): tenant→client storefront orders · tenant→client service billing ·
+  tenant→client subscriptions · anything where a tenant is selling to their own customer.
+  Paige may collect a platform application fee via Stripe Connect on facilitated flows
+  where the tenant is on Stripe Connect — that fee itself IS a Paige-held revenue path,
+  but the primary charge is not.
+- **The B-iv Connect posture is direct-charge on tenant-connected account, never
+  destination-charge on Paige's platform account.** Direct-charge = tenant's client's card
+  charges the tenant's OWN Stripe account, Paige only observes via webhook and optionally
+  takes `application_fee_amount`. Destination-charge = Paige is merchant of record, funds
+  hit Paige, Stripe auto-transfers most to tenant — **VIOLATES §38**. If shipped B-iv
+  code assumes destination-charge, that is a §38 violation and must be fixed before
+  storefront plane activation (#458). This is the B-iv-spike deliverable.
+- **Money Spine sequence (Lane B, expanded post-§38):** B-i discovery ✅ → B-iv storefront
+  webhook ✅ (posture verify pending) → B-ii Marketplace paid install (in flight) →
+  **B-Platform** onboarding subscription (NEW) → **B-Meter** tokens/usage (NEW) → B-v
+  Marketplace recurring → B-iii affiliate 3-tier → B-vi IP protection → **DEFERRED**
+  B-Connect tenant BYO-processor lane (Stripe Connect wiring + eventual per-tenant /
+  per-agency API-level connectivity to Square, PayPal, or whatever the tenant runs).
+  Full architecture reference: `docs/doctrine/money-spine-architecture.md`.
+- **Extends existing doctrine, doesn't compete:** §7 (Paige is tenant-authored — same
+  principle for money: tenant brings their own commerce), §9 (tenant/operator seam
+  discipline — the money-side seam is another expression), §17 ($1B growth map — §38
+  clarifies which taxonomy rails Paige holds vs which are tenant-side; L4 consumer-direct
+  is redundant with tenant storefront under §38 and per owner decision both waitlist
+  tables DELETE), §35 (OS north star — the same rule extends to future household /
+  portfolio / device contexts: Paige powers operators everywhere, doesn't hold their money
+  anywhere).
+- **The test, every time:** *"Is this money going INTO Paige's own bank as revenue for a
+  Paige rail, or would activating it put a tenant's client's money through Paige's bank?"*
+  If the latter: Connect direct-charge pattern on tenant's account, or BYO-processor
+  integration on tenant's account. **Never** merchant-of-record on Paige.
