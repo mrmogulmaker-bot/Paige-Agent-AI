@@ -59,7 +59,7 @@ const Auth = () => {
   // Stripe Checkout for that plan straight away. The ref is set only on the signup
   // path and cleared on failure, so a later login can't accidentally trigger it; the
   // launched guard prevents a double-invoke from the two redirect entry points.
-  const signupPlanIntentRef = useRef<{ plan: string; billing: string } | null>(null);
+  const signupPlanIntentRef = useRef<{ plan: string; billing: string; invite?: string } | null>(null);
   const checkoutLaunchedRef = useRef(false);
 
   // Client-invite mode: when a tenant's CUSTOMER arrives here from /join/<token>
@@ -88,15 +88,18 @@ const Auth = () => {
     supabase.rpc("peek_tenant_invite", { _token: inviteToken })
       .then(({ data, error }) => {
         if (cancelled) return;
-        const row = Array.isArray(data) ? data[0] : data;
-        if (error || !row || (row as any).is_valid === false) {
+        const row = (Array.isArray(data) ? data[0] : data) as
+          | { is_valid?: boolean; tenant_name?: string; brand?: { logo_url?: string; primary_color?: string } }
+          | null
+          | undefined;
+        if (error || !row || row.is_valid === false) {
           setInviteState("invalid");
           return;
         }
         setInviteBrand({
-          tenant_name: (row as any).tenant_name,
-          logo_url: (row as any).brand?.logo_url ?? null,
-          primary_color: (row as any).brand?.primary_color ?? null,
+          tenant_name: row.tenant_name,
+          logo_url: row.brand?.logo_url ?? null,
+          primary_color: row.brand?.primary_color ?? null,
         });
         setInviteState("ready");
       })
@@ -121,15 +124,22 @@ const Auth = () => {
     ? "Welcome back"
     : isClientInvite ? `Join ${brandName}` : "Start with Paige";
   const hasPlanIntent = !isLogin && !!searchParams.get("plan");
+  // An invite (issued by the operator) always carries a server-side trial; when one is
+  // present we honestly promise the free trial rather than "checkout is the last step".
+  const hasInvite = !isLogin && !!searchParams.get("invite");
   const headingSub = isLogin
     ? (isClientInvite ? `Sign in to open your ${brandName} portal` : "Sign in to your workspace")
     : (isClientInvite
         ? `Create your login to open your private client portal with ${brandName}.`
-        // Plan-intent (paid) signup goes straight to checkout — no free trial, card required.
-        // Don't promise "14 days free · no card required" on that path (§13 honesty).
-        : hasPlanIntent
-          ? "Create your account — checkout is the last step to launch your workspace"
-          : "14 days free · no card required · Paige works on day one");
+        : hasInvite
+          // Trial length is derived server-side from the token; Auth doesn't hold N,
+          // so we say "a free trial" without fabricating a number (§13 honesty).
+          ? "Your invite includes a free trial — create your account to claim it"
+          // Plan-intent (paid) signup goes straight to checkout, then a 14-day trial —
+          // the card is captured now but only charged when the trial ends (§13 honesty).
+          : hasPlanIntent
+            ? "Create your account — checkout is the last step to start your 14-day free trial"
+            : "Start free · Paige works on day one");
 
   useEffect(() => {
     setIsLogin(searchParams.get("mode") !== "signup");
@@ -137,12 +147,18 @@ const Auth = () => {
 
   // Launch Stripe Checkout for a pending plan intent (post-signup). On any failure we
   // fall back to /pricing with a toast — the account exists, they just pick again.
-  const launchPlanCheckout = async (plan: string, billing: string) => {
+  const launchPlanCheckout = async (plan: string, billing: string, inviteToken?: string) => {
     if (checkoutLaunchedRef.current) return;
     checkoutLaunchedRef.current = true;
     try {
       const { data, error } = await supabase.functions.invoke("platform-subscription-checkout", {
-        body: { plan_slug: plan, billing_period: billing, success_path: "/welcome?checkout=success" },
+        body: {
+          plan_slug: plan,
+          billing_period: billing,
+          success_path: "/welcome?checkout=success",
+          // Only include when present so the un-invited paid path is byte-for-byte unchanged.
+          ...(inviteToken ? { invite_token: inviteToken } : {}),
+        },
       });
       if (error) {
         // supabase-js puts the edge fn's JSON body on error.context (a Response).
@@ -182,7 +198,7 @@ const Auth = () => {
     const planIntent = signupPlanIntentRef.current;
     if (planIntent) {
       signupPlanIntentRef.current = null;
-      await launchPlanCheckout(planIntent.plan, planIntent.billing);
+      await launchPlanCheckout(planIntent.plan, planIntent.billing, planIntent.invite);
       return;
     }
 
@@ -200,13 +216,13 @@ const Auth = () => {
         .from("user_roles")
         .select("role")
         .eq("user_id", userId);
-      const roleList = (roles || []).map((r: any) => r.role);
+      const roleList = ((roles || []) as Array<{ role: string }>).map((r) => r.role);
       if (roleList.includes("broker_team_member")) {
         try {
           const { data: tm } = await supabase.rpc("get_broker_team_member", {
             _auth_user_id: userId,
           });
-          const parentId = (tm as any)?.[0]?.broker_id;
+          const parentId = (tm as Array<{ broker_id?: string }> | null)?.[0]?.broker_id;
           if (parentId) localStorage.setItem("active_broker_id", parentId);
         } catch {
           /* non-blocking */
@@ -293,7 +309,10 @@ const Auth = () => {
           const planSlug = searchParams.get("plan");
           if (planSlug) {
             const billing = searchParams.get("billing") === "annual" ? "annual" : "monthly";
-            signupPlanIntentRef.current = { plan: planSlug, billing };
+            // Invite token (from /get-started) rides along to checkout so the webhook can
+            // resolve the server-side trial and mark the invite consumed (§9 consumption).
+            const invite = searchParams.get("invite") || undefined;
+            signupPlanIntentRef.current = { plan: planSlug, billing, invite };
           }
         }
 

@@ -45,8 +45,8 @@ const PLAN_COPY: Record<
   string,
   { tagline: string; popular?: boolean; features: string[] }
 > = {
-  practice: {
-    tagline: "For solo coaches and small teams launching a Paige-run practice.",
+  solo: {
+    tagline: "For the operator running the whole show themselves.",
     features: [
       "Full CRM + client pipeline",
       "Paige runs your follow-ups & intake",
@@ -55,11 +55,11 @@ const PLAN_COPY: Record<
       "Core automations & workflows",
     ],
   },
-  academy: {
-    tagline: "For coaching academies and agencies running Paige as their operating system.",
+  agency: {
+    tagline: "For the team running many client accounts at once.",
     popular: true,
     features: [
-      "Everything in Practice, plus:",
+      "Everything in Solo, plus:",
       "White-label domain + branding",
       "Sub-agent factory (Paige Skills)",
       "Marketplace tools + workflow fabric",
@@ -70,7 +70,7 @@ const PLAN_COPY: Record<
   enterprise: {
     tagline: "For multi-brand portfolios with bespoke infrastructure needs.",
     features: [
-      "Everything in Academy, plus:",
+      "Everything in Agency, plus:",
       "Dedicated infrastructure",
       "SOC 2 / custom DPA",
       "White-glove migration",
@@ -84,9 +84,9 @@ const PLAN_COPY: Record<
  *  the live fetch resolves and if it fails — same numbers, so no visible drift. */
 const FALLBACK_PLANS: DbPlan[] = [
   {
-    slug: "practice",
-    name: "Practice",
-    description: "For solo coaches and small teams launching on Paige.",
+    slug: "solo",
+    name: "Solo",
+    description: "For the operator running the whole show themselves.",
     monthly_price_cents: 14900,
     annual_price_cents: 149000,
     included_seats: 3,
@@ -94,9 +94,9 @@ const FALLBACK_PLANS: DbPlan[] = [
     is_active: true,
   },
   {
-    slug: "academy",
-    name: "Academy",
-    description: "For coaching academies and agencies running Paige as their operating system.",
+    slug: "agency",
+    name: "Agency",
+    description: "For practices and agencies running Paige as their operating system.",
     monthly_price_cents: 39700,
     annual_price_cents: 397000,
     included_seats: 10,
@@ -211,7 +211,7 @@ export default function Pricing() {
     <>
       <PageHead
         title="Pricing — Paige Agent AI"
-        description="Run your practice on Paige. Transparent platform pricing for coaches, consultants, agencies, and academies — Practice, Academy, and Enterprise."
+        description="Run your business on Paige. Transparent platform pricing for coaches, consultants, agencies, advisors, and thought leaders — Solo, Agency, and Enterprise."
         path="/pricing"
       />
       <div className="min-h-screen bg-background">

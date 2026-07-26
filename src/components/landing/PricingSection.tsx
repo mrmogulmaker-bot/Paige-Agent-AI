@@ -31,9 +31,9 @@ type BusinessTier = {
 
 const businessTiers: BusinessTier[] = [
   {
-    slug: "practice",
-    name: "Practice",
-    layer: "For solo coaches and small teams",
+    slug: "solo",
+    name: "Solo",
+    layer: "For the operator running the whole show",
     price: "$149",
     period: "/mo",
     seats: "3 seats included",
@@ -44,25 +44,25 @@ const businessTiers: BusinessTier[] = [
       "Stripe Connect payouts",
       "Basic automations",
     ],
-    cta: "Start Practice",
+    cta: "Get started",
     popular: false,
   },
   {
-    slug: "academy",
-    name: "Academy",
-    layer: "For coaching academies & broker shops",
+    slug: "agency",
+    name: "Agency",
+    layer: "For practices and agencies with a team",
     price: "$397",
     period: "/mo",
     seats: "10 seats included",
     features: [
-      "Everything in Practice, plus:",
+      "Everything in Solo, plus:",
       "White-label domain + branding",
       "Sub-agent factory (Paige Skills)",
-      "MCP tools + n8n workflows",
+      "Automation & workflow fabric",
       "Client analytics + reporting",
       "Priority support",
     ],
-    cta: "Start Academy",
+    cta: "Get started",
     popular: true,
   },
   {
@@ -73,7 +73,7 @@ const businessTiers: BusinessTier[] = [
     period: "",
     seats: "Unlimited seats",
     features: [
-      "Everything in Academy, plus:",
+      "Everything in Agency, plus:",
       "Multi-tenant orchestration",
       "Dedicated infrastructure",
       "SOC 2 / custom DPA",
@@ -189,7 +189,7 @@ export function PricingSection() {
                       {f.endsWith("plus:") ? (
                         <span className="w-4 h-0.5 mt-2.5 bg-gold flex-shrink-0" />
                       ) : (
-                        <CheckCircle className="w-4 h-4 text-fundability-excellent flex-shrink-0 mt-0.5" />
+                        <CheckCircle className="w-4 h-4 text-[hsl(var(--success))] flex-shrink-0 mt-0.5" />
                       )}
                       <span className="text-sm leading-snug">{f}</span>
                     </li>
@@ -202,7 +202,12 @@ export function PricingSection() {
                       ? "bg-gradient-gold text-primary hover:shadow-glow-lg hover:scale-105"
                       : "border-2 border-gold text-gold-dark hover:bg-gold hover:text-primary bg-transparent"
                   }`}
-                  onClick={() => navigate(tier.price === "Custom" ? "/broker" : "/auth?mode=signup")}
+                  onClick={() =>
+                    tier.price === "Custom"
+                      ? (window.location.href =
+                          "mailto:sales@paigeagent.ai?subject=Enterprise%20Inquiry")
+                      : navigate(`/auth?mode=signup&plan=${tier.slug}&billing=monthly`)
+                  }
                 >
                   {tier.cta}
                 </Button>

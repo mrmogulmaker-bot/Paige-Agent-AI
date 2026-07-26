@@ -5,14 +5,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // When index.html is cached but references hashed JS chunks that no longer
 // exist, dynamic imports throw "Failed to fetch dynamically imported module".
 // We reload once (guarded by sessionStorage) to pick up the fresh index.html.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic accepts any lazy component
 const lazyWithReload = <T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>
 ) =>
   React.lazy(async () => {
     try {
       const mod = await factory();
-      try { sessionStorage.removeItem("__chunk_reload__"); } catch {}
+      try { sessionStorage.removeItem("__chunk_reload__"); } catch { /* best-effort cleanup */ }
       return mod;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic-import error is untyped
     } catch (err: any) {
       const msg = String(err?.message || err);
       if (
@@ -100,6 +102,7 @@ const Privacy = lazyWithReload(() => import("./pages/Privacy"));
 const LegalDoc = lazyWithReload(() => import("./pages/LegalDoc"));
 const About = lazyWithReload(() => import("./pages/About"));
 const Pricing = lazyWithReload(() => import("./pages/Pricing"));
+const GetStarted = lazyWithReload(() => import("./pages/GetStarted"));
 const Welcome = lazyWithReload(() => import("./pages/Welcome"));
 const Blog = lazyWithReload(() => import("./pages/Blog"));
 
@@ -195,6 +198,7 @@ const App = () => (
             <Route path="/book/:slug" element={<PageSuspense><BookingPage /></PageSuspense>} />
             <Route path="/booking/manage" element={<PageSuspense><ManageBooking /></PageSuspense>} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
+            <Route path="/get-started" element={<PageSuspense><GetStarted /></PageSuspense>} />
             <Route path="/onboarding" element={<PageSuspense><Onboarding /></PageSuspense>} />
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />

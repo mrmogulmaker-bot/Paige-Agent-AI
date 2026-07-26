@@ -688,10 +688,23 @@ serve(async (req) => {
         // service-role upsert is the sole writer (§18).
         if (session.metadata?.platform_plan_slug) {
           try {
-            // Only write once funds are captured. subscription-mode sessions complete
-            // paid on success; guard anyway.
-            if (session.payment_status === "paid") {
+            // Provision once the checkout is fulfillable: a PAID session (charged) OR
+            // a trial-start session (no_payment_required — trial_period_days set, no
+            // immediate charge). Anything else is skipped.
+            if (
+              session.payment_status === "paid" ||
+              session.payment_status === "no_payment_required"
+            ) {
               const now = new Date().toISOString();
+              // Trial start ⇒ the subscription is 'trialing'; an immediate charge ⇒
+              // 'active'. no_payment_required in mode:"subscription" (no coupons in
+              // this flow) ⟺ a trial, so this mapping is exact. Do NOT hardcode
+              // "active" — customer.subscription.updated later writes the real
+              // subscription.status ("active") on the first charge.
+              const platformStatus =
+                session.payment_status === "no_payment_required"
+                  ? "trialing"
+                  : "active";
               const planId = session.metadata.platform_plan_id ?? null;
               const actorUserId = session.metadata.actor_user_id ?? null;
               const billingPeriod =
@@ -723,7 +736,7 @@ serve(async (req) => {
                       {
                         tenant_id: tenantId,
                         plan_id: planId,
-                        status: "active",
+                        status: platformStatus,
                         billing_period: billingPeriod,
                         stripe_subscription_id: stripeSubId,
                         stripe_customer_id: stripeCustId,
@@ -743,8 +756,31 @@ serve(async (req) => {
                     logStep("Platform subscription: written", {
                       sessionId: session.id,
                       tenantId,
+                      status: platformStatus,
                       rows: upserted?.length ?? 0,
                     });
+
+                    // Mark a super-admin invite consumed (idempotent per sub;
+                    // replay-safe). Best-effort — a consume failure must not undo the
+                    // subscription. actor is the subscribing tenant admin.
+                    const inviteTok = session.metadata.invite_token ?? null;
+                    if (inviteTok && actorUserId) {
+                      const { error: cErr } = await supabaseAdmin.rpc(
+                        "consume_platform_invite",
+                        {
+                          _token: inviteTok,
+                          _user_id: actorUserId,
+                          _stripe_subscription_id: stripeSubId,
+                        },
+                      );
+                      if (cErr) {
+                        logStep("Platform subscription: invite consume failed", {
+                          sessionId: session.id,
+                          tenantId,
+                          error: cErr.message,
+                        });
+                      }
+                    }
 
                     // Entitlement bridge — flip a still-trial tenant live. Idempotent:
                     // the status='trial' predicate makes an already-active tenant a
@@ -811,7 +847,7 @@ serve(async (req) => {
                         {
                           tenant_id: newTenantId,
                           plan_id: planId,
-                          status: "active",
+                          status: platformStatus,
                           billing_period: billingPeriod,
                           stripe_subscription_id: stripeSubId,
                           stripe_customer_id: stripeCustId,
@@ -832,8 +868,31 @@ serve(async (req) => {
                         sessionId: session.id,
                         tenantId: newTenantId,
                         actorUserId,
+                        status: platformStatus,
                         rows: upserted?.length ?? 0,
                       });
+
+                      // Mark a super-admin invite consumed. The provisioned owner IS
+                      // actorUserId (provision_tenant_as(_owner: actorUserId)).
+                      // Idempotent per sub; best-effort.
+                      const inviteTok = session.metadata.invite_token ?? null;
+                      if (inviteTok) {
+                        const { error: cErr } = await supabaseAdmin.rpc(
+                          "consume_platform_invite",
+                          {
+                            _token: inviteTok,
+                            _user_id: actorUserId,
+                            _stripe_subscription_id: stripeSubId,
+                          },
+                        );
+                        if (cErr) {
+                          logStep("Platform subscription: invite consume failed", {
+                            sessionId: session.id,
+                            tenantId: newTenantId,
+                            error: cErr.message,
+                          });
+                        }
+                      }
                     }
                   }
                 }

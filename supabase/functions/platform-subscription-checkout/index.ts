@@ -127,8 +127,10 @@ Deno.serve(async (req) => {
     return json(400, { error: "invalid_json" });
   }
 
-  const planSlug = String(body.plan_slug ?? "");
-  if (!planSlug) return json(400, { error: "plan_slug_required" });
+  // planSlug may be supplied by the body OR derived from an invite token below,
+  // so it is reassignable and the empty check is deferred until after invite
+  // resolution.
+  let planSlug = String(body.plan_slug ?? "");
 
   const billingPeriod = body.billing_period === "annual" ? "annual" : "monthly";
 
@@ -165,6 +167,36 @@ Deno.serve(async (req) => {
       .maybeSingle();
     tenantId = prof?.active_tenant_id ?? null;
   }
+
+  // ── INVITE TOKEN (super-admin 30-day trial invite) ─────────────────────────────
+  // Optional signed invite. When present, plan + trial length are derived
+  // AUTHORITATIVELY from the token (NEVER the body), so a super-admin invite grants
+  // exactly the plan/trial it was minted for. get_platform_invite is leak-safe
+  // (valid=false for missing/expired/consumed) and never exposes the token table (§9).
+  const inviteToken =
+    typeof body.invite_token === "string" && body.invite_token
+      ? (body.invite_token as string)
+      : null;
+  let inviteTrialDays: number | null = null;
+  if (inviteToken) {
+    const { data: inv, error: invErr } = await admin.rpc("get_platform_invite", {
+      _token: inviteToken,
+    });
+    if (invErr) return json(400, { error: invErr.message });
+    const invRow = Array.isArray(inv) ? inv[0] : inv;
+    if (!invRow || invRow.valid !== true) {
+      return json(400, {
+        error: "invite_invalid",
+        detail: "This invite is invalid, expired, or already used.",
+      });
+    }
+    // The token dictates plan + trial, overriding any body value.
+    planSlug = String(invRow.plan_slug);
+    inviteTrialDays = Number(invRow.trial_period_days) || 30;
+  }
+
+  // Deferred empty-slug guard (post-invite): every path must now have a slug.
+  if (!planSlug) return json(400, { error: "plan_slug_required" });
 
   // ── LOAD the plan (service role) ───────────────────────────────────────────────
   const { data: plan, error: planErr } = await admin
@@ -319,6 +351,17 @@ Deno.serve(async (req) => {
   if (!onboarding && tenantId) {
     md.tenant_id = tenantId;
   }
+  // Carry the invite token in the SIGNED metadata so the webhook can mark it
+  // consumed on provision (§9 — the webhook trusts only signed metadata).
+  if (inviteToken) {
+    md.invite_token = inviteToken;
+  }
+
+  // 14-day self-serve trial by default; an invite dictates its own trial (30d).
+  // Enterprise is already 400'd by the self-serve gate, so every plan reaching
+  // here is solo/agency and receives a trial. Card is collected upfront (Checkout
+  // mode:"subscription"); the first charge fires when the trial ends.
+  const trialDays = inviteTrialDays ?? 14;
 
   const params: Stripe.Checkout.SessionCreateParams = {
     mode: "subscription",
@@ -339,7 +382,7 @@ Deno.serve(async (req) => {
     metadata: md,
     // §38 Tier-1 Paige-held rail: a plain platform charge — Paige is merchant of
     // record, so NO transfer_data / application_fee.
-    subscription_data: { metadata: md },
+    subscription_data: { metadata: md, trial_period_days: trialDays },
   };
 
   console.log(
@@ -355,11 +398,19 @@ Deno.serve(async (req) => {
   // create() calls in Stripe's 24h window return the SAME session, so the buyer can
   // only ever open one live checkout per plan choice. (Grandfathered already guards via
   // the already-subscribed 409, so the key is scoped to the onboarding lane.)
+  // Invite discriminant on the idempotency key so an invite-driven checkout is a
+  // distinct idempotent slot (and the otherwise key-less grandfathered path also
+  // gets a key when an invite is present, preventing a double invite redemption).
+  const inviteSuffix = inviteToken ? `_inv_${inviteToken.slice(0, 16)}` : "";
   const createOpts = onboarding
     ? {
-        idempotencyKey: `psub_onboard_${actorUserId}_${plan.slug}_${billingPeriod}`,
+        idempotencyKey: `psub_onboard_${actorUserId}_${plan.slug}_${billingPeriod}${inviteSuffix}`,
       }
-    : undefined;
+    : inviteToken
+      ? {
+          idempotencyKey: `psub_grand_${tenantId}_${plan.slug}_${billingPeriod}${inviteSuffix}`,
+        }
+      : undefined;
 
   let session: Stripe.Checkout.Session;
   try {

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
-  TrendingUp, Menu, BookOpen, Wrench, Share2, Briefcase, Brain, Building2, LifeBuoy,
+  TrendingUp, Menu, BookOpen, Wrench, Share2, Ticket, Briefcase, Brain, Building2, LifeBuoy,
   Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate, Radio, Wand2, CircleUser, Sprout,
   type LucideIcon,
 } from "lucide-react";
@@ -181,6 +181,7 @@ const GOD_MORE: MoreItem[] = [
   { label: "Sending Identities", href: "/admin/platform/sending", icon: Send },
   { label: "Support", href: "/admin/support", icon: LifeBuoy },
   { label: "Affiliates", href: "/admin/platform/affiliates", icon: Share2 },
+  { label: "Invites", href: "/admin/platform/invites", icon: Ticket },
   { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
   { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
   { label: "Legal Documents", href: "/admin/legal", icon: ShieldCheck },
