@@ -367,16 +367,19 @@ Deno.serve(async (req) => {
   // coach approves (autonomy 'confirm'). email-composer + the worker + the
   // trg_comms_file_outbound_draft trigger produce the outbound draft row.
   try {
-    // §38 sender identity: tenant_sender_identity() is PRIMARY; the connector's
-    // own from_address overrides it (tenant-owned per-channel identity). We do NOT
-    // fork identity resolution — the actual send resolves the same way in send-message.
+    // §38 sender identity: tenant_sender_identity() is PRIMARY; the connector's own
+    // from_address is the fallback/override. This precedence MUST match send-message
+    // exactly (identity primary → connector fallback) — the value we store here is what
+    // the coach reviews on the draft, and send-message recomputes the actual from on
+    // approval. If the two orderings disagree, the coach approves one sender and the
+    // client receives another (silent swap). Kept identical so reviewed == sent.
     const { data: senderIdentity } = await admin.rpc("tenant_sender_identity", {
       _tenant_id: tenantId,
     });
     const identity = (senderIdentity ?? {}) as Record<string, unknown>;
     const replyFromAddress =
-      connector.from_address ||
       (identity.from_address as string | undefined) ||
+      connector.from_address ||
       connector.reply_to ||
       null;
 

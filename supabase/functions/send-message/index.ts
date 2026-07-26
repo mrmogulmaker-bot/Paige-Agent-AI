@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
   // the channel_connectors row (from_address/from_name/reply_to) is the fallback;
   // the platform default sender is the last resort. This never forks §38.
   let tenantId: string | null = null;
-  let draftRow: { connector_id?: string | null; contact_id?: string | null; thread_key?: string | null; channel_type?: string | null } | null = null;
+  let draftRow: { status?: string | null; connector_id?: string | null; contact_id?: string | null; thread_key?: string | null; channel_type?: string | null } | null = null;
   let connectorRow:
     | { tenant_id?: string | null; from_address?: string | null; from_name?: string | null; reply_to?: string | null }
     | null = null;
@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
   if (body.message_id) {
     const { data } = await admin
       .from("messages")
-      .select("tenant_id, connector_id, contact_id, thread_key, channel_type")
+      .select("tenant_id, status, connector_id, contact_id, thread_key, channel_type")
       .eq("id", body.message_id)
       .maybeSingle();
     if (data) {
@@ -185,6 +185,39 @@ Deno.serve(async (req) => {
       .maybeSingle();
     connectorRow = data ?? null;
     if (!tenantId) tenantId = connectorRow?.tenant_id ?? null;
+  }
+
+  // ── §9 caller-tenant gate — BEFORE any send ──────────────────────────────────
+  // tenantId above is resolved from body-referenced rows via the SERVICE-ROLE client
+  // (RLS bypassed), and has_role (L116-118) is GLOBAL — so without this bind a
+  // tenant-A admin/coach could pass a tenant-B message_id / contact_id / connector_id
+  // and send UNDER TENANT B's verified sender identity (tenant_sender_identity below)
+  // and write into B's inbox. Require the resolved tenant to equal the caller's own
+  // (JWT-scoped current_user_tenant_id); the platform owner (God) may act cross-tenant
+  // (§17). This is the same gate the comms.outbound rail block already applies — hoisted
+  // to cover the actual SEND, not just telemetry.
+  const { data: callerTenant } = await userClient.rpc("current_user_tenant_id");
+  const { data: isOwner } = await userClient.rpc("is_platform_owner");
+  if (tenantId && !isOwner && tenantId !== callerTenant) {
+    return new Response(JSON.stringify({ error: "forbidden_cross_tenant" }), {
+      status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  // Pin a context-free send (no tenant-bearing ref) to the caller's own tenant so its
+  // sender identity is the caller's — never a blank that widens. A platform owner with
+  // no active tenant keeps null → platform default sender.
+  if (!tenantId && !isOwner) tenantId = callerTenant ?? null;
+
+  // ── §5 double-submit guard ───────────────────────────────────────────────────
+  // Approving an already sent/queued draft (second tab, stale realtime, network retry)
+  // must NOT re-fire the provider — each provider send mints a fresh provider_message_id
+  // so the unique index cannot dedupe a true double-delivery. Short-circuit idempotently.
+  if (body.message_id && draftRow &&
+      (draftRow.status === "sent" || draftRow.status === "queued")) {
+    return new Response(
+      JSON.stringify({ status: "sent", message_id: body.message_id, deduped: true }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   }
 
   try {
@@ -424,8 +457,8 @@ Deno.serve(async (req) => {
       // caller in tenant A could pass tenant B's contact id and file comms.outbound
       // onto B's owner rail AND B's client-visible feed (§9). The resolver-fallback
       // path below is already scoped to the caller via userClient's JWT, so it can
-      // only ever return an in-tenant contact.
-      const { data: callerTenant } = await userClient.rpc("current_user_tenant_id");
+      // only ever return an in-tenant contact. (callerTenant is resolved once above,
+      // at the pre-send §9 gate, and reused here.)
       let railContactId: string | null = body.contact_id ?? null;
       if (!railContactId) {
         const { data: resolved } = await userClient.rpc("resolve_contact_id", {
