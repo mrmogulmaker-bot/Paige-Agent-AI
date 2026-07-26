@@ -21,7 +21,7 @@ const Privacy = () => {
           <SecurityBadge />
         </div>
         <p className="text-sm text-muted-foreground mb-10">
-          Last updated: April 2026 — written in plain English. You should be able to read this in 5 minutes.
+          Last updated: July 26, 2026 — written in plain English. You should be able to read this in 5 minutes.
         </p>
 
         <div className="prose prose-sm max-w-none space-y-10 text-foreground/90">

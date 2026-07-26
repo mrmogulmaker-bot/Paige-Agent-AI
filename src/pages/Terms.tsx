@@ -17,7 +17,7 @@ const Terms = () => {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <h1 className="text-4xl font-bold mb-2 text-foreground">Terms of Service</h1>
         <p className="text-sm text-muted-foreground mb-10">
-          Last updated: April 18, 2026 — the plain-English agreement for running your practice on Paige.
+          Last updated: July 26, 2026 — the plain-English agreement for running your practice on Paige.
         </p>
 
         <div className="prose prose-sm max-w-none space-y-10 text-foreground/90">
