@@ -348,13 +348,19 @@ export default function ClientsConversations() {
 
   const load = useCallback(async () => {
     // RLS scopes both queries to the caller's tenant (§9) — no client-side tenant filter.
+    // messages + channel_connectors are new in migration 20260726190000 and not yet in the
+    // generated Supabase types (regen tracked in #234/#470), so query them via the loosely
+    // typed handle — the house pattern for not-yet-generated tables — and cast the rows to
+    // the local MessageRow/Connector interfaces below.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
     const [msgRes, connRes] = await Promise.all([
-      supabase
+      sb
         .from("messages")
         .select(MESSAGE_COLS)
         .order("sent_at", { ascending: false, nullsFirst: true })
         .limit(500),
-      supabase
+      sb
         .from("channel_connectors")
         .select("id, channel_type, provider, display_name, from_address, from_name, inbound_address, status, active")
         .order("created_at", { ascending: true }),
