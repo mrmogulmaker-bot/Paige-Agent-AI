@@ -90,6 +90,7 @@ const SetupBilling = lazy(() => import("@/pages/admin/setup/SetupBilling"));
 const SetupPlaybook = lazy(() => import("@/pages/admin/setup/SetupPlaybook"));
 const SetupTeam = lazy(() => import("@/pages/admin/setup/SetupTeam"));
 const PlatformSettings = lazy(() => import("@/pages/admin/PlatformSettings"));
+const PlatformInvites = lazy(() => import("@/pages/admin/PlatformInvites"));
 const KnowledgeBaseAdmin = lazy(() => import("@/pages/admin/KnowledgeBaseAdmin"));
 const TenantKnowledgeAdmin = lazy(() => import("@/pages/admin/TenantKnowledgeAdmin"));
 const NetworkKbInsights = lazy(() => import("@/pages/admin/NetworkKbInsights"));
@@ -725,6 +726,10 @@ const Admin = () => {
         {/* Operator-run affiliate PROGRAM management (global, no tenant_id) — §9. */}
         <Route path="platform/affiliates" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><AffiliatesAdmin /></Suspense></PlatformStaffOnly>
+        } />
+        {/* Operator-issued invite links (God-level, §9) — generate + revoke prospect invites. */}
+        <Route path="platform/invites" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformInvites /></Suspense></PlatformStaffOnly>
         } />
       </Routes>
 

@@ -17,6 +17,7 @@ import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode 
 import { paigeAnim } from "@/lib/paigeAnim";
 import { appUrl } from "@/lib/hostRouting";
 import { PaigeMark } from "@/components/brand/PaigeMark";
+import { supabase } from "@/integrations/supabase/client";
 
 /**
  * PaigeHome — the gold + indigo Paige landing (route "/"). A complete, from-
@@ -88,10 +89,62 @@ const PROOF = [
   { q: "Onboarding, check-ins, recaps — Paige runs all of it. It's like a full ops team.", a: "Author & thought leader · Dallas" },
 ];
 
+// DB-true Solo / Agency / Enterprise (1-A ruling): Solo $149/mo, Agency $397/mo,
+// Enterprise custom. Each entry carries its `slug` so the card CTA wires straight to
+// platform-subscription-checkout; `custom` gates the Enterprise "Talk to us" contact
+// path (no $0 subscribe). §13 — every number matches platform_subscription_plans
+// (14900 / 39700 / 0-sentinel); no phantom $58/$349. Solo & Agency carry a REAL
+// 14-day trial (checkout subscription_data.trial_period_days), so "Start free trial"
+// is honest.
 const PLANS = [
-  { name: "Solo", price: "$58", tagline: "Just you, fully covered.", features: ["Paige runs your CRM & pipeline", "Auto-drafted follow-ups & recaps", "Client welcome sequences", "Cohort check-ins & at-risk flags"], highlight: false },
-  { name: "Practice", price: "$149", tagline: "Where most practices land.", features: ["Everything in Solo", "Custom playbooks per seat", "Advanced signals & analytics", "Priority support"], highlight: true },
-  { name: "Studio", price: "$349", tagline: "For the operator running the whole show.", features: ["Everything in Practice", "Full team roster & routing", "White-label workspace", "Dedicated success partner"], highlight: false },
+  {
+    slug: "solo",
+    name: "Solo",
+    price: "$149",
+    cadence: "/mo",
+    tagline: "For the operator running the whole show themselves.",
+    features: [
+      "Paige runs your pipeline, follow-ups, and client onboarding",
+      "One workspace for every client, deliverable, and next move",
+      "Her team drafts the outreach — you approve in a click",
+      "At-risk clients flagged before they slip",
+    ],
+    cta: "Start free trial",
+    highlight: false,
+    custom: false,
+  },
+  {
+    slug: "agency",
+    name: "Agency",
+    price: "$397",
+    cadence: "/mo",
+    tagline: "For the team running many client accounts at once.",
+    features: [
+      "Everything in Solo, across your whole team",
+      "Unlimited seats and sub-accounts under one roof",
+      "Paige runs each client account and flags what needs you",
+      "Shared playbooks and one command center for the whole book",
+    ],
+    cta: "Start free trial",
+    highlight: true,
+    custom: false,
+  },
+  {
+    slug: "enterprise",
+    name: "Enterprise",
+    price: "Custom",
+    cadence: "",
+    tagline: "For the operator running many businesses at once.",
+    features: [
+      "Every brand and portfolio company, run by Paige under one roof",
+      "A dedicated build team and white-glove onboarding",
+      "Governance, security, and data controls on your terms",
+      "Your own Paige playbooks across every business you own",
+    ],
+    cta: "Talk to us",
+    highlight: false,
+    custom: true,
+  },
 ];
 
 /** Degrade gracefully: if the 3D scene ever throws, drop it and keep the
@@ -405,6 +458,40 @@ export default function PaigeHome() {
   // host split is off). See src/lib/hostRouting.ts.
   const goAuth = (path: string) => window.location.assign(appUrl(path));
   const reduced = usePrefersReducedMotion();
+
+  const [subscribingSlug, setSubscribingSlug] = useState<string | null>(null);
+
+  // Real Tier-1 subscribe — mirrors Pricing.tsx handleSubscribe so the plan choice +
+  // checkout START from the homepage (no scroll-to-pricing indirection). Signed-out
+  // (the landing case): carry plan intent to signup; Auth.tsx auto-launches checkout
+  // when the session lands. goAuth crosses to the app origin where the auth session
+  // actually lives (host split), so on the marketing origin the session is null and
+  // this path is taken — correct.
+  const handleSubscribe = async (slug: string) => {
+    setSubscribingSlug(slug);
+    try {
+      const { data: sessionRes } = await supabase.auth.getSession();
+      if (!sessionRes.session?.user) {
+        goAuth(`/auth?mode=signup&plan=${slug}&billing=monthly`);
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke(
+        "platform-subscription-checkout",
+        { body: { plan_slug: slug, billing_period: "monthly", success_path: "/welcome?checkout=success" } },
+      );
+      if (error) throw error;
+      const url = (data as { url?: string } | null)?.url;
+      if (!url) throw new Error("Checkout didn't return a link.");
+      window.location.href = url;
+    } catch {
+      // Fallback keeps the CTA alive (never a dead button): route to signup with the
+      // plan intent so checkout still starts.
+      goAuth(`/auth?mode=signup&plan=${slug}&billing=monthly`);
+      setSubscribingSlug(null);
+    }
+  };
+  const handleContact = () =>
+    (window.location.href = "mailto:sales@paigeagent.ai?subject=Enterprise%20Inquiry");
   // Auto-play the phone-opening on the first visit of a session; skip for
   // reduced-motion; ?intro forces it. The "Watch the open" button replays it.
   const [showIntro, setShowIntro] = useState(() => {
@@ -515,7 +602,7 @@ export default function PaigeHome() {
         >
           <motion.div variants={rise} className="mb-6 flex items-center gap-3">
             <span className="text-[12px] font-medium uppercase tracking-[0.18em] text-[#F0C86A]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-              Give coaches back their time.
+              Gives you back your time.
             </span>
             <span aria-hidden className="h-px w-10 bg-gradient-to-r from-[#D4A752]/70 to-transparent" />
           </motion.div>
@@ -525,7 +612,7 @@ export default function PaigeHome() {
             style={{ fontFamily: HEAD, fontSize: "clamp(40px, 6.4vw, 92px)", letterSpacing: "-0.03em", lineHeight: 0.96, textShadow: "0 2px 40px rgba(0,0,0,0.85)" }}
           >
             Paige runs your <br />{" "}
-            <span className="bg-gradient-to-br from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">practice.</span>
+            <span className="bg-gradient-to-br from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">business.</span>
           </motion.h1>
           <motion.p
             variants={rise}
@@ -634,7 +721,7 @@ export default function PaigeHome() {
       {/* PROOF */}
       <Section id="proof" className="py-28">
         <motion.h2 variants={rise} className="mb-12 text-center text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
-          Practices that <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">hired Paige.</span>
+          Businesses that <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">hired Paige&rsquo;s team.</span>
         </motion.h2>
         <div className="grid gap-5 md:grid-cols-3">
           {PROOF.map((t) => (
@@ -652,12 +739,12 @@ export default function PaigeHome() {
           Ready to <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">hire me?</span>
         </motion.h2>
         <motion.p variants={rise} className="mx-auto mb-14 max-w-md text-center text-white/60">
-          Every plan · 14-day pilot · no contract · Paige works on day one.
+          Solo &amp; Agency start with a 14-day free trial · your own clients, offers, and pricing · Paige runs the operation from day one.
         </motion.p>
         <div className="grid gap-6 md:grid-cols-3">
           {PLANS.map((p) => (
             <motion.div
-              key={p.name}
+              key={p.slug}
               variants={rise}
               whileHover={{ y: -6, rotateX: 3, rotateY: -3 }}
               style={{ transformPerspective: 900 }}
@@ -668,9 +755,9 @@ export default function PaigeHome() {
               )}
               <div className="text-sm text-white/60">{p.tagline}</div>
               <div className="mb-1 mt-2 text-lg font-semibold" style={{ fontFamily: HEAD }}>{p.name}</div>
-              <div className="mb-6 text-4xl font-black" style={{ fontFamily: HEAD }}>
+              <div className="mb-6 mt-2 text-4xl font-black tabular-nums" style={{ fontFamily: HEAD }}>
                 {p.price}
-                <span className="text-base font-medium text-white/50">/mo</span>
+                {p.cadence && <span className="text-base font-medium text-white/50">{p.cadence}</span>}
               </div>
               <ul className="mb-8 flex-1 space-y-3">
                 {p.features.map((ft) => (
@@ -681,10 +768,11 @@ export default function PaigeHome() {
                 ))}
               </ul>
               <button
-                onClick={() => goAuth("/auth?mode=signup")}
-                className={`rounded-full px-6 py-3 text-sm font-bold transition-transform hover:scale-105 ${p.highlight ? "bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[#241645]" : "border border-white/20 bg-white/5 text-white"}`}
+                onClick={() => (p.custom ? handleContact() : handleSubscribe(p.slug))}
+                disabled={!p.custom && subscribingSlug !== null}
+                className={`rounded-full px-6 py-3 text-sm font-bold transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60 ${p.highlight ? "bg-gradient-to-br from-[#F0C86A] to-[#D4A752] text-[#241645]" : "border border-white/20 bg-white/5 text-white hover:border-[#D4A752]/40"}`}
               >
-                Hire Paige
+                {subscribingSlug === p.slug ? "Starting…" : p.cta}
               </button>
             </motion.div>
           ))}
@@ -696,10 +784,10 @@ export default function PaigeHome() {
         <motion.div variants={rise} className="relative overflow-hidden rounded-3xl border border-[#D4A752]/30 bg-gradient-to-br from-[#D4A752]/[0.14] to-[#6f4bd8]/[0.06] px-8 py-16 text-center">
           <div aria-hidden className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-[#F0C86A]/60 to-transparent" />
           <h2 className="mx-auto max-w-2xl text-4xl font-black md:text-5xl" style={{ fontFamily: HEAD }}>Give yourself back your time.</h2>
-          <p className="mx-auto mt-4 max-w-lg text-white/70">Start free. No card required. Paige is running your operation the moment you connect her.</p>
-          <button onClick={() => goAuth("/auth?mode=signup")} className="mt-8 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-8 py-3 font-bold text-[#241645] transition-transform hover:scale-105">
-            Start with Paige <ArrowRight className="h-4 w-4" />
-          </button>
+          <p className="mx-auto mt-4 max-w-lg text-white/70">Pick your plan and Paige gets to work on day one — Solo and Agency start with a 14-day free trial, your card only charged when it ends.</p>
+          <a href="#pricing" className="mt-8 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-8 py-3 font-bold text-[#241645] transition-transform hover:scale-105">
+            Choose your plan <ArrowRight className="h-4 w-4" />
+          </a>
         </motion.div>
       </Section>
 

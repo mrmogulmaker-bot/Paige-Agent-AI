@@ -100,6 +100,7 @@ const Privacy = lazyWithReload(() => import("./pages/Privacy"));
 const LegalDoc = lazyWithReload(() => import("./pages/LegalDoc"));
 const About = lazyWithReload(() => import("./pages/About"));
 const Pricing = lazyWithReload(() => import("./pages/Pricing"));
+const GetStarted = lazyWithReload(() => import("./pages/GetStarted"));
 const Welcome = lazyWithReload(() => import("./pages/Welcome"));
 const Blog = lazyWithReload(() => import("./pages/Blog"));
 
@@ -195,6 +196,7 @@ const App = () => (
             <Route path="/book/:slug" element={<PageSuspense><BookingPage /></PageSuspense>} />
             <Route path="/booking/manage" element={<PageSuspense><ManageBooking /></PageSuspense>} />
             <Route path="/signup" element={<PageSuspense><PublicSignup /></PageSuspense>} />
+            <Route path="/get-started" element={<PageSuspense><GetStarted /></PageSuspense>} />
             <Route path="/onboarding" element={<PageSuspense><Onboarding /></PageSuspense>} />
             <Route path="/signup/coach-qualify" element={<PageSuspense><SignupCoachQualify /></PageSuspense>} />
             <Route path="/reset-password" element={<PageSuspense><ResetPassword /></PageSuspense>} />
