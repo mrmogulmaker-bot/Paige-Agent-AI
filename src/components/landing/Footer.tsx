@@ -12,8 +12,6 @@ const footerLinks = {
     { name: "About", href: "/about" },
     { name: "Blog", href: "/blog" },
     { name: "Contact", href: "mailto:support@paigeagent.ai" },
-    { name: "Affiliates", href: "/affiliates" },
-    { name: "Broker Program", href: "/broker" },
   ],
   legal: [
     { name: "Terms of Service", href: "/terms" },

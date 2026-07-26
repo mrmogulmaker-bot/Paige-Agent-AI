@@ -8,7 +8,7 @@ const Terms = () => {
     <div className="min-h-screen bg-background">
       <PageHead
         title="Terms of Service — PaigeAgent.ai"
-        description="Platform terms, compliance disclosures, and acceptable use for PaigeAgent.ai — operated by PaigeAgent AI LLC (Wyoming)."
+        description="Platform terms and acceptable use for PaigeAgent.ai — the client-management platform operated by PaigeAgent AI LLC (Wyoming)."
         path="/terms"
       />
       <SiteBackground />
@@ -16,60 +16,25 @@ const Terms = () => {
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <h1 className="text-4xl font-bold mb-2 text-foreground">Terms of Service</h1>
-        <p className="text-sm text-muted-foreground mb-10">Last updated: April 18, 2026</p>
+        <p className="text-sm text-muted-foreground mb-10">
+          Last updated: April 18, 2026 — the plain-English agreement for running your practice on Paige.
+        </p>
 
-        <div className="prose prose-sm max-w-none space-y-8 text-foreground/90">
-          {/* === Repositioning Addendum (April 18, 2026) === */}
-          <section className="border-l-4 border-accent bg-accent/5 p-5 rounded-r-lg">
-            <h2 className="text-xl font-semibold text-foreground mt-0">
-              Important Update — April 18, 2026
-            </h2>
-            <p className="text-sm">
-              <strong>PaigeAgent.ai is now a business funding intelligence platform.</strong>{" "}
-              Effective immediately, we are <strong>not</strong> a Credit Repair Organization (CRO) under the Credit Repair Organizations Act (CROA), 15 U.S.C. § 1679, and we do not provide credit repair services.
-            </p>
-            <p className="text-sm">
-              The Service helps small business owners (a) understand their personal and business credit profiles in the context of business funding eligibility and (b) connect with appropriate capital sources, including SBA loans, term loans, lines of credit, MCAs, and equipment financing. The Service does not generate dispute letters, file disputes with credit bureaus, or take any action to remove, delete, or modify items on your credit report.
-            </p>
-            <p className="text-sm">
-              <strong>Self-help credit disputes:</strong> If you wish to dispute information on your credit report, you have the right to do so directly with the credit bureaus at no cost. The Consumer Financial Protection Bureau (CFPB) provides free dispute templates and instructions at{" "}
-              <a
-                href="https://www.consumerfinance.gov/consumer-tools/credit-reports-and-scores/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                consumerfinance.gov/consumer-tools/credit-reports-and-scores
-              </a>.
-            </p>
-            <p className="text-sm">
-              <strong>Not legal, tax, or financial advice.</strong> Information provided through the Service, including by Paige AI, is for educational and informational purposes only. It is not legal, tax, accounting, or investment advice. Consult licensed professionals for advice specific to your situation.
-            </p>
-            <p className="text-sm">
-              <strong>Not a lender or broker.</strong> PaigeAgent.ai is not a lender, loan broker, financial institution, or registered investment advisor. Funding decisions are made solely by third-party lenders. Display of any lender, product, or estimated funding amount is not a guarantee of approval.
-            </p>
-            <p className="text-sm">
-              <strong>Cancellation.</strong> You may cancel your subscription at any time from your account settings. Cancellation takes effect at the end of the then-current billing period and is no harder than signup.
-            </p>
-            <p className="text-xs text-muted-foreground mt-3">
-              This addendum is being reviewed with our fintech counsel; the full Terms below will be rewritten in a subsequent update. In any conflict between this addendum and the legacy text below, this addendum controls.
-            </p>
-          </section>
-
+        <div className="prose prose-sm max-w-none space-y-10 text-foreground/90">
           <section>
             <h2 className="text-2xl font-semibold text-foreground">1. Acceptance of Terms</h2>
             <p>
-              By accessing or using the PaigeAgent.ai platform ("Service"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree, do not use the Service. PaigeAgent.ai is operated by PaigeAgent.ai ("Company," "we," "us," or "our").
+              By accessing or using the PaigeAgent.ai platform ("Service"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree, do not use the Service. PaigeAgent.ai is operated by PaigeAgent AI LLC ("Company," "we," "us," or "our").
             </p>
           </section>
 
           <section>
             <h2 className="text-2xl font-semibold text-foreground">2. Description of Service</h2>
             <p>
-              PaigeAgent.ai provides AI-powered business funding intelligence tools, personal and business credit profile education, business credit-building guidance, and funding readiness assessment services.
+              PaigeAgent.ai is a client-management platform for coaches, consultants, agencies, thought leaders, and advisors. The Service provides tools to onboard clients, manage relationships and workflows, follow up, schedule, and run the day-to-day of your practice, with Paige — our AI assistant — helping you draft, suggest, and act on your behalf.
             </p>
             <p>
-              <strong>Important:</strong> PaigeAgent.ai is not a credit repair organization as defined under the Credit Repair Organizations Act (CROA), 15 U.S.C. § 1679. We provide technology tools and educational resources. We do not guarantee specific credit score improvements, dispute outcomes, or funding approvals.
+              <strong>Important:</strong> Paige assists with your work but does not replace professional judgment. We provide technology tools and do not guarantee any specific business outcome.
             </p>
           </section>
 
@@ -88,56 +53,26 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">5. Credit Repair & Dispute Services</h2>
+            <h2 className="text-2xl font-semibold text-foreground">5. Subscription &amp; Payments</h2>
             <p>
-              Our platform assists you in exercising your rights under the Fair Credit Reporting Act (FCRA), 15 U.S.C. § 1681, including your right to dispute inaccurate information on your credit reports. You acknowledge that:
-            </p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>All disputes are filed on your behalf and at your direction.</li>
-              <li>We cannot guarantee the removal of any item from your credit report.</li>
-              <li>Results vary based on individual circumstances.</li>
-              <li>You have the right to dispute items directly with credit bureaus at no cost.</li>
-              <li>You may cancel services at any time without penalty per CROA requirements.</li>
-            </ul>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-semibold text-foreground">6. Consent & Authorization</h2>
-            <p>
-              Certain features require your explicit consent, including but not limited to:
-            </p>
-            <ul className="list-disc pl-6 space-y-2">
-              <li>Accessing your credit report data (soft pulls only, which do not affect your credit score).</li>
-              <li>Filing disputes on your behalf with credit bureaus.</li>
-              <li>Sharing data with third-party funding partners.</li>
-              <li>Receiving communications regarding your account.</li>
-            </ul>
-            <p>
-              All consents are logged with timestamps, IP addresses, and session identifiers for compliance purposes. You may revoke consent at any time through your account settings.
+              Access to premium features requires a paid subscription. By subscribing, you agree to pay the applicable fees. Subscriptions automatically renew unless cancelled before the renewal date. You may cancel your subscription at any time from your account settings; cancellation takes effect at the end of the then-current billing period and is no harder than signup. Refunds are handled in accordance with our refund policy.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">7. Subscription & Payments</h2>
+            <h2 className="text-2xl font-semibold text-foreground">6. SMS / Text Message Notifications</h2>
             <p>
-              Access to premium features requires a paid subscription. By subscribing, you agree to pay the applicable fees. Subscriptions automatically renew unless cancelled before the renewal date. Refunds are handled in accordance with our refund policy.
+              Users may opt in to receive SMS notifications from Paige Agent AI LLC by providing their phone number and consent during signup. Msg &amp; data rates may apply. Reply STOP to unsubscribe at any time. Reply HELP for support.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">8. Funding Marketplace</h2>
-            <p>
-              Our funding marketplace displays offers from third-party lenders and financial institutions. PaigeAgent.ai is not a lender, broker, or financial advisor. All funding decisions are made by the respective financial institutions. Display of offers does not constitute an endorsement or guarantee of approval.
-            </p>
-          </section>
-
-          <section>
-            <h2 className="text-2xl font-semibold text-foreground">9. Prohibited Conduct</h2>
+            <h2 className="text-2xl font-semibold text-foreground">7. Prohibited Conduct</h2>
             <p>You agree not to:</p>
             <ul className="list-disc pl-6 space-y-2">
-              <li>Provide false or misleading information in disputes or applications.</li>
+              <li>Provide false or misleading information through the Service.</li>
               <li>Use the Service for any fraudulent or illegal purpose.</li>
-              <li>Attempt to manipulate credit data or misrepresent your identity.</li>
+              <li>Misrepresent your identity or impersonate any person or entity.</li>
               <li>Reverse engineer, decompile, or disassemble any part of the Service.</li>
               <li>Share your account credentials or allow unauthorized access.</li>
               <li>Violate any applicable federal, state, or local law or regulation.</li>
@@ -145,47 +80,47 @@ const Terms = () => {
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">10. Intellectual Property</h2>
+            <h2 className="text-2xl font-semibold text-foreground">8. Intellectual Property</h2>
             <p>
-              All content, features, and functionality of the Service — including the A.C.C.E.L. and B.U.I.L.D. frameworks, Paige AI assistant, and associated materials — are owned by PaigeAgent.ai and are protected by copyright, trademark, and other intellectual property laws.
+              All content, features, and functionality of the Service — including the Paige AI assistant and associated platform materials — are owned by PaigeAgent AI LLC and are protected by copyright, trademark, and other intellectual property laws. Content and records you create and store in the platform remain yours.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">11. Disclaimer of Warranties</h2>
+            <h2 className="text-2xl font-semibold text-foreground">9. Disclaimer of Warranties</h2>
             <p>
-              THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED. WE DO NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, OR SECURE. WE DO NOT GUARANTEE ANY SPECIFIC CREDIT SCORE IMPROVEMENT, DISPUTE OUTCOME, OR FUNDING APPROVAL.
+              THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED. WE DO NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, OR SECURE. WE DO NOT GUARANTEE ANY SPECIFIC BUSINESS OUTCOME.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">12. Limitation of Liability</h2>
+            <h2 className="text-2xl font-semibold text-foreground">10. Limitation of Liability</h2>
             <p>
-              TO THE MAXIMUM EXTENT PERMITTED BY LAW, PAIGEAGENT.AI SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING FROM YOUR USE OF THE SERVICE, INCLUDING BUT NOT LIMITED TO LOSS OF DATA, REVENUE, OR CREDIT OPPORTUNITIES.
+              TO THE MAXIMUM EXTENT PERMITTED BY LAW, PAIGEAGENT AI LLC SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING FROM YOUR USE OF THE SERVICE, INCLUDING BUT NOT LIMITED TO LOSS OF DATA, REVENUE, OR BUSINESS OPPORTUNITIES.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">13. Governing Law & Dispute Resolution</h2>
+            <h2 className="text-2xl font-semibold text-foreground">11. Governing Law &amp; Dispute Resolution</h2>
             <p>
-              These Terms shall be governed by the laws of the United States and the state in which PaigeAgent.ai is incorporated. Any disputes arising under these Terms shall be resolved through binding arbitration in accordance with the rules of the American Arbitration Association.
+              These Terms shall be governed by the laws of the United States and the state in which PaigeAgent AI LLC is incorporated. Any disputes arising under these Terms shall be resolved through binding arbitration in accordance with the rules of the American Arbitration Association.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">14. Changes to Terms</h2>
+            <h2 className="text-2xl font-semibold text-foreground">12. Changes to Terms</h2>
             <p>
               We reserve the right to modify these Terms at any time. We will notify you of material changes via email or in-app notification. Continued use of the Service after changes constitutes acceptance of the updated Terms.
             </p>
           </section>
 
           <section>
-            <h2 className="text-2xl font-semibold text-foreground">15. Contact Information</h2>
+            <h2 className="text-2xl font-semibold text-foreground">13. Contact Information</h2>
             <p>
               If you have questions about these Terms, please contact us at:
             </p>
             <p className="font-medium">
-              PaigeAgent.ai<br />
+              PaigeAgent AI LLC<br />
               Email: support@paigeagent.ai
             </p>
           </section>

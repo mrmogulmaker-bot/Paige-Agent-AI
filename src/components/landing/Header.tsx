@@ -79,8 +79,6 @@ export function Header({ autoHide = false }: { autoHide?: boolean }) {
     { label: "How It Works", href: "#how-paige-works" },
     { label: "What Paige Knows", href: "#what-paige-knows" },
     { label: "Pricing", href: "#pricing" },
-    { label: "Brokers", href: "/broker" },
-    { label: "Partners", href: "/affiliates" },
   ];
 
   return (
