@@ -1,5 +1,8 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+// Master Twilio Basic-auth from the ONE home (twilio.ts) — API Key trio
+// (TWILIO_API_KEY_SID:TWILIO_API_KEY_SECRET); master TWILIO_AUTH_TOKEN absent in prod.
+import { masterBasicAuthHeader } from "../_shared/twilio.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,10 +23,10 @@ serve(async (req) => {
 
   try {
     const twilioAccountSid = Deno.env.get('TWILIO_ACCOUNT_SID');
-    const twilioAuthToken = Deno.env.get('TWILIO_AUTH_TOKEN');
+    const twilioAuthHeader = masterBasicAuthHeader(); // API Key trio (or legacy fallback); null when unconfigured
     const twilioPhoneNumber = Deno.env.get('TWILIO_PHONE_NUMBER');
 
-    if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
+    if (!twilioAccountSid || !twilioAuthHeader || !twilioPhoneNumber) {
       throw new Error('Missing Twilio credentials');
     }
 
@@ -50,7 +53,7 @@ serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${btoa(`${twilioAccountSid}:${twilioAuthToken}`)}`,
+        'Authorization': twilioAuthHeader,
       },
       body: new URLSearchParams({
         To: toE164,

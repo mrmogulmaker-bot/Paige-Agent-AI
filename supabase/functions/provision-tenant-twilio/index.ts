@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     return json({
       needs_config: true,
       error: "twilio_master_not_configured",
-      message: "TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN are not set as edge secrets. No tenant was provisioned.",
+      message: "The master Twilio credentials (TWILIO_ACCOUNT_SID + TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET) are not set as edge secrets. No tenant was provisioned.",
       provisioned: 0,
       results: [],
     });

@@ -54,8 +54,17 @@ export interface TwilioResult<T = Record<string, unknown>> {
 
 /** A resolved Twilio credential pair (either a subaccount's or the platform master's). */
 export interface TwilioCreds {
+  /** AC… — the account the request ACTS ON, used only in the URL path. */
   accountSid: string;
+  /** Basic-auth PASSWORD: an API Key Secret (master path) or a subaccount auth token. */
   authToken: string;
+  /**
+   * SK… — Basic-auth USERNAME for the API-Key auth path (Twilio best-practice). When
+   * present the Basic-auth username is this API Key SID, NOT accountSid; the account is
+   * still addressed by accountSid in the URL path. Absent for the subaccount path, where
+   * the username IS the subaccount SID (accountSid). D2/D3 master creds set this.
+   */
+  apiKeySid?: string;
 }
 
 /** Minimal shape of the tenant_twilio_subaccounts row this helper reads (§9, D1). */
@@ -100,14 +109,22 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * ONCE on a 429 or 5xx (transient), and always resolves to a structured
  * TwilioResult — never leaking the auth token into an error.
  *
- * @param accountSid  The account the credentials authenticate as (master or subaccount).
- * @param authToken   The matching auth token (Basic-auth password). Never logged.
+ * @param accountSid  The account the request ACTS ON (master or subaccount) — used to
+ *                    address the account in the URL path. Also the Basic-auth username
+ *                    UNLESS `authUser` is supplied.
+ * @param authToken   The Basic-auth PASSWORD (a subaccount auth token, or an API Key
+ *                    Secret when `authUser` is an API Key SID). Never logged.
  * @param path        Either an absolute https URL or a path beginning with "/"
  *                    (prefixed with https://api.twilio.com). Lets A2P/TrustHub hosts
  *                    be addressed by passing their full URL.
  * @param method      HTTP verb.
  * @param params      Flat param map. For GET these become the query string; for
  *                    write verbs, the form body.
+ * @param authUser    Optional Basic-auth USERNAME override. When set (e.g. an API Key
+ *                    SID `SK…` for the master path), the Basic-auth username is this
+ *                    instead of `accountSid`, while the URL still addresses `accountSid`.
+ *                    This is how API-Key auth (Twilio best-practice) decouples the
+ *                    credential from the account it acts on.
  */
 export async function twilioRequest<T = Record<string, unknown>>(
   accountSid: string,
@@ -115,8 +132,11 @@ export async function twilioRequest<T = Record<string, unknown>>(
   path: string,
   method: "GET" | "POST" | "DELETE" = "POST",
   params: Record<string, TwilioParamValue> = {},
+  authUser?: string,
 ): Promise<TwilioResult<T>> {
-  if (!accountSid || !authToken) {
+  // The Basic-auth username is the API Key SID when provided, else the account SID.
+  const basicUser = (authUser && authUser.length > 0) ? authUser : accountSid;
+  if (!basicUser || !authToken) {
     return { ok: false, status: 0, error: "twilio_missing_credentials", data: null, needs_config: true };
   }
 
@@ -124,9 +144,10 @@ export async function twilioRequest<T = Record<string, unknown>>(
   let url = isAbsolute ? path : `${TWILIO_API_HOST}${path.startsWith("/") ? path : `/${path}`}`;
 
   const headers: Record<string, string> = {
-    // Token lives ONLY here, never in the URL — so a fetch-reject TypeError (which
-    // echoes the request URL) can never surface the secret.
-    Authorization: "Basic " + btoa(`${accountSid}:${authToken}`),
+    // Credentials live ONLY here, never in the URL — so a fetch-reject TypeError (which
+    // echoes the request URL) can never surface the secret. username = API Key SID
+    // (master, best-practice) or subaccount SID; password = API Key Secret / auth token.
+    Authorization: "Basic " + btoa(`${basicUser}:${authToken}`),
   };
 
   let bodyStr: string | undefined;
@@ -185,15 +206,50 @@ export async function twilioRequest<T = Record<string, unknown>>(
 // -----------------------------------------------------------------------------
 
 /**
- * The platform master Twilio credentials from env (TWILIO_ACCOUNT_SID / _AUTH_TOKEN).
- * Read at CALL time (never module load) so rotation needs no redeploy. Returns null
- * when unset — callers surface a needs_config degrade, never a crash (§13).
+ * The platform master Twilio credentials from env. Read at CALL time (never module
+ * load) so rotation needs no redeploy. Returns null when unset — callers surface a
+ * needs_config degrade, never a crash (§13).
+ *
+ * CREDENTIAL PATTERN (owner-confirmed 2026-07-27): prod carries an API KEY trio —
+ * TWILIO_ACCOUNT_SID + TWILIO_API_KEY_SID (SK…) + TWILIO_API_KEY_SECRET — and NOT the
+ * master TWILIO_AUTH_TOKEN (intentionally absent; Twilio best-practice is scoped,
+ * rotatable API Keys over the all-powerful account Auth Token). So the master Basic-auth
+ * USERNAME is the API Key SID and the PASSWORD is the API Key Secret, while the URL path
+ * still addresses the master Account SID (returned as `accountSid`, threaded to
+ * twilioRequest, and paired with `apiKeySid` as the auth username).
+ *
+ * Legacy fallback: if the API Key trio isn't fully set but a legacy TWILIO_AUTH_TOKEN
+ * IS present (e.g. an older env), fall back to account-SID:auth-token Basic auth so the
+ * change is safe across environments. Prod uses the API Key path.
  */
 export function masterCreds(): TwilioCreds | null {
   const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
-  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
-  if (!accountSid || !authToken) return null;
-  return { accountSid, authToken };
+  if (!accountSid) return null;
+  const apiKeySid = Deno.env.get("TWILIO_API_KEY_SID") ?? "";
+  const apiKeySecret = Deno.env.get("TWILIO_API_KEY_SECRET") ?? "";
+  if (apiKeySid && apiKeySecret) {
+    // Preferred: API Key auth. username = SK…, password = secret, path account = AC….
+    return { accountSid, authToken: apiKeySecret, apiKeySid };
+  }
+  // Legacy fallback: master Auth Token (username = account SID). Prod does NOT carry this.
+  const legacyToken = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+  if (legacyToken) return { accountSid, authToken: legacyToken };
+  return null;
+}
+
+/**
+ * The ready-to-use `Authorization: Basic …` header value for the platform MASTER
+ * account, honoring the API-Key-first credential pattern above (username = API Key SID,
+ * password = API Key Secret; legacy fallback = account SID : auth token). Returns null
+ * when no master credential is configured (honest degrade — the caller surfaces
+ * needs_config, never sends with an empty password). This is the ONE master-auth home
+ * (§18) the legacy inline SMS senders reuse so none of them re-derive the auth pattern.
+ */
+export function masterBasicAuthHeader(): string | null {
+  const m = masterCreds();
+  if (!m) return null;
+  const user = (m.apiKeySid && m.apiKeySid.length > 0) ? m.apiKeySid : m.accountSid;
+  return "Basic " + btoa(`${user}:${m.authToken}`);
 }
 
 // -----------------------------------------------------------------------------
@@ -285,6 +341,7 @@ export async function createSubaccount(friendlyName: string): Promise<TwilioResu
     "/2010-04-01/Accounts.json",
     "POST",
     { FriendlyName: friendlyName },
+    master.apiKeySid, // API Key SID as the Basic-auth username (master path); undefined on legacy fallback
   );
 }
 
@@ -373,6 +430,7 @@ export async function sendSms(
   subaccountSid: string,
   subToken: string,
   opts: SendSmsOptions,
+  authUser?: string,
 ): Promise<TwilioResult> {
   const params: Record<string, TwilioParamValue> = {
     To: opts.to,
@@ -385,12 +443,17 @@ export async function sendSms(
   } else {
     params.From = opts.from;
   }
+  // `authUser` (an API Key SID) is the master-path Basic-auth username for the
+  // Super-Admin +1 470 number, which lives on the MASTER account (not a subaccount).
+  // For the subaccount path it's omitted → username = subaccountSid. The URL always
+  // addresses the account passed as `subaccountSid` (master AC… or subaccount AC…).
   return await twilioRequest(
     subaccountSid,
     subToken,
     `/2010-04-01/Accounts/${encodeURIComponent(subaccountSid)}/Messages.json`,
     "POST",
     params,
+    authUser,
   );
 }
 

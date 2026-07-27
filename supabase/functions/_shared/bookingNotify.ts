@@ -9,8 +9,11 @@
 // ── Twilio SMS ──────────────────────────────────────────────────────────────
 // Reuse the platform's existing Twilio number env when TWILIO_FROM isn't set,
 // so an SMS works with the same credentials the rest of the platform uses.
+// AUTH: the master Basic-auth header comes from the ONE Twilio home (twilio.ts),
+// which uses the API Key trio (TWILIO_API_KEY_SID:TWILIO_API_KEY_SECRET) — the
+// master TWILIO_AUTH_TOKEN is intentionally absent in prod (§18/§13).
+import { masterBasicAuthHeader } from "./twilio.ts";
 const TWILIO_SID = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
-const TWILIO_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
 const TWILIO_FROM = Deno.env.get("TWILIO_FROM") ?? Deno.env.get("TWILIO_PHONE_NUMBER") ?? "";
 
 // Normalize a raw phone to E.164; keeps a leading '+', else assumes US (+1).
@@ -26,16 +29,18 @@ export function toE164(raw: string): string {
 // Minimal Twilio REST send. Returns true ONLY when Twilio accepted the message
 // (§13 — a fire is not a delivery; the caller counts a send only on a true here).
 export async function sendSms(to: string, message: string): Promise<boolean> {
-  if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) return false;
+  const authHeader = masterBasicAuthHeader(); // API Key trio (or legacy fallback); null when unconfigured
+  if (!TWILIO_SID || !authHeader || !TWILIO_FROM) return false;
   const toNum = toE164(to);
   const fromNum = toE164(TWILIO_FROM);
   if (!toNum || !fromNum) return false;
   try {
+    // URL path addresses the master Account SID; auth header is the API-Key Basic auth.
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        Authorization: `Basic ${btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`)}`,
+        Authorization: authHeader,
       },
       body: new URLSearchParams({ To: toNum, From: fromNum, Body: message }),
     });
