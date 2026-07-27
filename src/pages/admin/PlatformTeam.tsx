@@ -151,7 +151,7 @@ export default function PlatformTeam() {
   return (
     <PageShell width="wide">
       <PageHeader
-        variant="hero"
+        variant="plain"
         eyebrow="Platform · Team"
         title="Platform Team"
         description={`Your ${PLATFORM.name} staff. Invite scoped Platform Admins who can run the fleet and support tenants — but never touch billing, other admins, or global config.`}

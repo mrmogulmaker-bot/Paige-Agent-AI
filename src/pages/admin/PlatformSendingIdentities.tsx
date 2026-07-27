@@ -132,7 +132,7 @@ export default function PlatformSendingIdentities() {
   return (
     <PageShell width="wide">
       <PageHeader
-        variant="hero"
+        variant="plain"
         eyebrow="Platform · Email"
         title="Sending Identities"
         description={`Every tenant on ${PLATFORM.name} sends live from its own identity. New workspaces are provisioned automatically — no DNS setup.`}

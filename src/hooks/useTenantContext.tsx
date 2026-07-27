@@ -10,6 +10,7 @@
  * No realtime — this changes rarely. Components call `refresh()` after mutations.
  */
 import { useCallback, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface TenantSummary {
@@ -44,6 +45,19 @@ export function useTenantContext(): TenantContextState {
   const [isPlatformStaff, setIsPlatformStaff] = useState(false);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
+
+  // Scope-staleness guard (§9). Switching the active tenant changes the scope of
+  // EVERY tenant-scoped React Query cache entry, so on a switch we invalidate the
+  // whole cache and let scope-dependent data refetch under the new scope. Guarded
+  // with try/catch so this hook still works if it is ever rendered outside the
+  // app's QueryClientProvider (then invalidation is simply skipped — never a crash).
+  let queryClient: ReturnType<typeof useQueryClient> | null = null;
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- useContext always runs; the throw is post-registration so hook order stays stable.
+    queryClient = useQueryClient();
+  } catch {
+    queryClient = null;
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -91,7 +105,9 @@ export function useTenantContext(): TenantContextState {
     if (!uid) return;
     await supabase.from("profiles").update({ active_tenant_id: tenantId }).eq("user_id", uid);
     setActiveTenantId(tenantId);
-  }, []);
+    // Scope changed for everything — a broad invalidate is correct here (§9).
+    queryClient?.invalidateQueries();
+  }, [queryClient]);
 
   const activeTenant = tenants.find((t) => t.id === activeTenantId) ?? null;
 

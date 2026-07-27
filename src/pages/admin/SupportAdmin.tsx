@@ -311,7 +311,7 @@ export default function SupportAdmin() {
   return (
     <PageShell width="wide">
       <PageHeader
-        variant="hero"
+        variant="plain"
         eyebrow="Support"
         title="Support & Feedback"
         description="Manage client tickets and product feedback in one place."

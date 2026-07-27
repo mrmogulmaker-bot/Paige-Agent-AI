@@ -71,6 +71,18 @@ const PlatformTeam = lazy(() => import("@/pages/admin/PlatformTeam"));
 const PlatformSendingIdentities = lazy(() => import("@/pages/admin/PlatformSendingIdentities"));
 const PlatformSends = lazy(() => import("@/pages/admin/PlatformSends"));
 const PlatformIntelligence = lazy(() => import("@/pages/admin/PlatformIntelligence"));
+// Super Admin restructure (operator console SPINE): 9 NEW operator nav items each
+// land on a real, honest §13 in-development placeholder route (§18 one home each).
+// Deep surfaces are follow-ups. All sit under <PlatformStaffOnly> (§9).
+const MarketplaceOperatorAdmin = lazy(() => import("@/pages/admin/platform/MarketplaceOperatorAdmin"));
+const MoneySpineAdmin = lazy(() => import("@/pages/admin/platform/MoneySpineAdmin"));
+const DoctrineAdmin = lazy(() => import("@/pages/admin/platform/DoctrineAdmin"));
+const PromptForgeAdmin = lazy(() => import("@/pages/admin/platform/PromptForgeAdmin"));
+const ModelRouterAdmin = lazy(() => import("@/pages/admin/platform/ModelRouterAdmin"));
+const ComplianceAdmin = lazy(() => import("@/pages/admin/platform/ComplianceAdmin"));
+const ContentDefaultsAdmin = lazy(() => import("@/pages/admin/platform/ContentDefaultsAdmin"));
+const PlatformAnalyticsAdmin = lazy(() => import("@/pages/admin/platform/PlatformAnalyticsAdmin"));
+const DeployHealthAdmin = lazy(() => import("@/pages/admin/platform/DeployHealthAdmin"));
 const DataMaintenancePanel = lazy(() => import("@/components/admin/DataMaintenancePanel").then(m => ({ default: m.DataMaintenancePanel })));
 const AffiliatesAdmin = lazy(() => import("@/pages/admin/AffiliatesAdmin"));
 const MyReferralsPanel = lazy(() => import("@/components/dashboard/MyReferralsPanel"));
@@ -730,6 +742,41 @@ const Admin = () => {
         {/* Operator-issued invite links (God-level, §9) — generate + revoke prospect invites. */}
         <Route path="platform/invites" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformInvites /></Suspense></PlatformStaffOnly>
+        } />
+        {/* Super Admin restructure — the 9 NEW operator console surfaces (SPINE slice).
+            Each renders one honest §13 in-development placeholder (§18 one home each);
+            deep builds are follow-ups. All gated by <PlatformStaffOnly> (§9 — the nav
+            gate is presentation only; this route wrapper + RLS are the real boundary).
+            FOLLOW-UP: money / doctrine / prompt-forge / compliance / content-defaults /
+            deploy-health are ownerOnly:true in the contract. No PlatformOwnerOnly React
+            guard exists yet, so they use PlatformStaffOnly for now — tighten to
+            owner-only gating when the real surfaces land. */}
+        <Route path="platform/marketplace" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><MarketplaceOperatorAdmin /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/money" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><MoneySpineAdmin /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/doctrine" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><DoctrineAdmin /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/prompt-forge" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PromptForgeAdmin /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/model-router" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><ModelRouterAdmin /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/compliance" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><ComplianceAdmin /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/content-defaults" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><ContentDefaultsAdmin /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/analytics" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformAnalyticsAdmin /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/deploy-health" element={
+          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><DeployHealthAdmin /></Suspense></PlatformStaffOnly>
         } />
       </Routes>
 

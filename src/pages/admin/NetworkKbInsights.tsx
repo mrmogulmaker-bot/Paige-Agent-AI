@@ -101,7 +101,7 @@ export default function NetworkKbInsights() {
   return (
     <PageShell width="wide">
       <PageHeader
-        variant="hero"
+        variant="plain"
         eyebrow="Platform · Network"
         title="Network Insights"
         description="Aggregate signal across every tenant's KB. Metadata only — no raw queries or document content leaves tenant boundaries."

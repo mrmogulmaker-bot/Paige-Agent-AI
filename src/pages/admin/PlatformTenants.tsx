@@ -196,7 +196,7 @@ export default function PlatformTenants() {
   return (
     <PageShell width="wide">
       <PageHeader
-        variant="hero"
+        variant="plain"
         eyebrow="Platform · Fleet"
         title="Fleet Console"
         description={`Every workspace running on ${PLATFORM.name}. Click a tenant to manage its plan, limits, and lifecycle.`}
