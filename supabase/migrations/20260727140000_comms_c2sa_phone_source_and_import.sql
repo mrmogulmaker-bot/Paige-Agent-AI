@@ -50,44 +50,24 @@
 --       trusted service_role insert (no session, no subaccount) reaches the fallback.
 --
 -- =============================================================================
--- §32 LAYER-B PROOF (run in one BEGIN..ROLLBACK against a live/branch DB):
---   BEGIN;
---   -- seed a tenant + admin membership + a subaccount for it
---   insert into public.tenants (id, name) values ('11111111-1111-1111-1111-111111111111','T1');
---   -- (grant the seeded auth user the 'admin' role via your role table, or run the
---   --  JWT cases through set_config('request.jwt.claims',...) as the C-1.5 proof does)
---   insert into public.tenant_twilio_subaccounts (id, tenant_id, twilio_subaccount_sid)
---     values ('22222222-2222-2222-2222-222222222222',
---             '11111111-1111-1111-1111-111111111111','ACtest');
---
---   -- (a) SERVICE path, subaccount-LESS imported number → row appears, source='imported',
---   --     tenant matches the explicit _tenant_id (proves the trigger service-path fallback):
---   select public.import_tenant_phone_number(
---     '+14702003444', null, 'Paige Master', '{"sms":true}'::jsonb,
---     '11111111-1111-1111-1111-111111111111');
---   select tenant_id, source, subaccount_id, status
---     from public.tenant_phone_numbers where phone_number = '+14702003444';
---     -- EXPECT: tenant 1111…, source='imported', subaccount_id NULL, status='active'
---
---   -- (b) SERVICE path WITH a subaccount that belongs to the tenant → accepted:
---   select public.import_tenant_phone_number(
---     '+14155550123', '22222222-2222-2222-2222-222222222222', null, null,
---     '11111111-1111-1111-1111-111111111111');
---
---   -- (c) idempotency: re-import the SAME number for the SAME tenant → returns the
---   --     SAME id, no duplicate row (global phone_number UNIQUE):
---   select public.import_tenant_phone_number(
---     '+14702003444', null, null, null, '11111111-1111-1111-1111-111111111111');
---   select count(*) from public.tenant_phone_numbers where phone_number='+14702003444'; -- EXPECT 1
---
---   -- (d) cross-tenant: a JWT admin of tenant A importing tenant B's already-held
---   --     number → 23505 'phone number already registered' (no leak of whose it is).
---   --   A JWT caller's _tenant_id is IGNORED (pinned to current_user_tenant_id()).
---
---   -- (e) subaccount that belongs to ANOTHER tenant → 42501 'subaccount not found'.
---
---   -- (f) bad E.164 ('4702003444', 'notaphone') → 22023.
---   ROLLBACK;
+-- §32 LAYER-B PROOF (PASSED on prod 2026-07-27 — self-cleaning BEGIN..ROLLBACK):
+--   The behavioral sim applied this migration's DDL in one implicit transaction, then a
+--   DO block resolved TWO EXISTING tenants dynamically (no hard-coded ids — §200) and
+--   created a temp subaccount under each, exercised the RPC's SERVICE path (auth.uid()
+--   IS NULL), and RAISEd at the end to abort the transaction so NOTHING persisted.
+--   11/11 assertions passed:
+--     (a) service subaccount-less import  -> new row, source='imported', subaccount_id
+--         NULL, status='active', tenant = the explicit _tenant_id (proves the trigger's
+--         service-path new.tenant_id fallback).
+--     (b) service import WITH a subaccount that belongs to the acting tenant -> accepted.
+--     (c) idempotency: re-import the same number for the same tenant -> same id returned,
+--         exactly one row (global phone_number UNIQUE).
+--     (d) cross-tenant collision: a second tenant importing a number the first already
+--         holds -> 23505 'phone number already registered' (no leak of whose it is). A
+--         JWT caller's _tenant_id is IGNORED (pinned to current_user_tenant_id()).
+--     (e) a subaccount that belongs to ANOTHER tenant -> 42501 'subaccount not found'.
+--     (f) a non-E.164 argument -> 22023.
+--     (g) a bad `source` value on the column's CHECK -> 23514.
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
