@@ -1654,6 +1654,26 @@ ${buildStudioWhereYouAre(name, tenant)}`.trim()
     }
     const fundingEnabled = personaCtx.funding_enabled;
 
+    // ── §9 working-context capture (owner #489) ──────────────────────────────
+    // The trace's tenant_id carries the caller's PERSONA-context tenant (which, for an agency-scope
+    // session working across a sub-account, resolves to the owned agency — honest per row). To let the
+    // operator Intelligence surface itemize WHICH sub-account that session was actually working on, we
+    // capture the caller's OWN active workspace as a SEPARATE additive field on the trace.
+    // §9: SERVER-DERIVED from the AUTHENTICATED user's profile (`user.id`) via the service client —
+    // NEVER a body-supplied id. §13: honest-degrades to null on any error/absence — a missing working
+    // context must never break the chat or fabricate a value. cleanTenantId (writer) coerces non-uuid→null.
+    let workingContextTenantId: string | null = null;
+    try {
+      const { data: wcProfile } = await supabase
+        .from("profiles")
+        .select("active_tenant_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      workingContextTenantId = (wcProfile?.active_tenant_id as string | null) ?? null;
+    } catch (e) {
+      console.warn("[paige-ai-chat] working-context tenant resolution failed (defaulting to null):", e);
+    }
+
     // ── §16 department registry (10-department org model) ────────────────────
     // Paige's departments are DATA (paige_departments), not a hardcoded pair. Read
     // the live registry once so the action-bus tool enums, the display labels, and
@@ -5546,7 +5566,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         stream: true,
         ...(paigeThinkingOn ? { paige_thinking: true } : {}),
       }),
-    }, { tenant_id: personaCtx.tenant_id, agent_id: studioSessionId ? "studio-design-agent" : "paige-ai-chat", job_kind: "chat" });
+    }, { tenant_id: personaCtx.tenant_id, working_context_tenant_id: workingContextTenantId, agent_id: studioSessionId ? "studio-design-agent" : "paige-ai-chat", job_kind: "chat" });
 
     if (!response.ok) {
       const errorId = crypto.randomUUID();

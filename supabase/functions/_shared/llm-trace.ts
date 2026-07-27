@@ -40,6 +40,10 @@ export interface TraceCtx {
   agent_id?: string | null;
   parent_trace_id?: string | null;
   job_kind?: string | null;
+  /** The caller's OWN active workspace tenant id (owner #489) — server-derived for operator display
+   *  itemization, DISTINCT from tenant_id (the persona-context attribution). Soft ref, coerced to null
+   *  if non-uuid. Optional: a site that doesn't set it writes null (default), never a fabricated id. */
+  working_context_tenant_id?: string | null;
 }
 
 /** Provenance stamp — bump when the estimator/scrubber/schema changes so a reader knows what produced a row. */
@@ -128,6 +132,9 @@ function safeMetadata(meta: Record<string, unknown> | undefined): Record<string,
 
 export interface TraceRow {
   tenant_id?: string | null;
+  /** Owner #489 — the caller's OWN active workspace tenant id, server-derived (never body-supplied),
+   *  captured for operator display itemization. Soft ref (no FK); cleanTenantId coerces non-uuid→null. */
+  working_context_tenant_id?: string | null;
   task_id?: string | null;
   agent_id?: string | null;
   parent_trace_id?: string | null;
@@ -165,6 +172,9 @@ export function traceLLMCall(row: TraceRow): void {
   const outp = toExcerpt(row.output);
   const record = {
     tenant_id: cleanTenantId(row.tenant_id),
+    // Owner #489 — additive, DISTINCT from tenant_id. Same soft-ref coercion so a malformed/non-uuid
+    // working-context id degrades to a null (platform/system) value rather than throwing into the insert.
+    working_context_tenant_id: cleanTenantId(row.working_context_tenant_id),
     task_id: row.task_id ?? null,
     agent_id: row.agent_id ?? null,
     parent_trace_id: row.parent_trace_id ?? null,
