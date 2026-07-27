@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- shadcn chart primitive: recharts payload/props typing is inherently loose; no product `any` added here. */
 import * as React from "react";
 import * as RechartsPrimitive from "recharts";
 
@@ -16,6 +17,40 @@ export type ChartConfig = {
 type ChartContextProps = {
   config: ChartConfig;
 };
+
+/**
+ * The ONE data-viz color scale (§11/§18). Every chart — donut, line, area, bar, funnel —
+ * pulls its series colors from here so the whole dashboard reads as one system; no per-file
+ * `COLORS = [...]` arrays. Backed by the --chart-1..6 tokens (src/index.css), which are
+ * theme-aware (light/dark) and carry ZERO gold (§6: gold is the act color, never a series).
+ * Index into it modulo length for an arbitrary number of series.
+ */
+export const CHART_SERIES = [
+  "hsl(var(--chart-1))",
+  "hsl(var(--chart-2))",
+  "hsl(var(--chart-3))",
+  "hsl(var(--chart-4))",
+  "hsl(var(--chart-5))",
+  "hsl(var(--chart-6))",
+] as const;
+
+/** The color for the Nth series, wrapping around CHART_SERIES. */
+export function chartSeriesColor(index: number): string {
+  return CHART_SERIES[((index % CHART_SERIES.length) + CHART_SERIES.length) % CHART_SERIES.length];
+}
+
+/**
+ * Build a ChartConfig from series keys, auto-assigning CHART_SERIES colors in order.
+ * `keys` may be plain keys (label defaults to the key) or `[key, label]` tuples.
+ * Keeps every chart on the single tokenized scale without hand-writing color strings.
+ */
+export function buildChartConfig(keys: Array<string | [string, React.ReactNode]>): ChartConfig {
+  return keys.reduce<ChartConfig>((acc, entry, i) => {
+    const [key, label] = Array.isArray(entry) ? entry : [entry, entry];
+    acc[key] = { label, color: chartSeriesColor(i) };
+    return acc;
+  }, {});
+}
 
 const ChartContext = React.createContext<ChartContextProps | null>(null);
 

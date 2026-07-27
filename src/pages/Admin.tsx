@@ -67,6 +67,9 @@ const PlaybookAdmin = lazy(() => import("@/pages/admin/PlaybookAdmin"));
 const Marketplace = lazy(() => import("@/pages/admin/Marketplace"));
 const PortalStudio = lazy(() => import("@/pages/admin/PortalStudio"));
 const PlatformTenants = lazy(() => import("@/pages/admin/PlatformTenants"));
+// Operator Command Center — the platform operator's /admin home in godMode (no tenant
+// selected). Superior-to-tenant fleet dashboard; replaces the old Fleet redirect (§9/§30).
+const OperatorCommandCenter = lazy(() => import("@/pages/admin/OperatorCommandCenter"));
 const PlatformTeam = lazy(() => import("@/pages/admin/PlatformTeam"));
 const PlatformSendingIdentities = lazy(() => import("@/pages/admin/PlatformSendingIdentities"));
 const PlatformSends = lazy(() => import("@/pages/admin/PlatformSends"));
@@ -202,7 +205,7 @@ const Admin = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<"admin" | "coach">("admin");
-  const { isPlatformStaff } = useTenantContext();
+  const { isPlatformStaff, activeTenantId, loading: tenantLoading } = useTenantContext();
 
   useEffect(() => {
     let cancelled = false;
@@ -296,7 +299,24 @@ const Admin = () => {
     <AdminLoaderBoundary>
     <AdminLayout userRole={userRole}>
       <Routes>
-        <Route index element={isPlatformStaff ? <Navigate to="/admin/platform/tenants" replace /> : <AdminOverview />} />
+        {/* Operator home: platform staff in godMode (no tenant selected) land on the
+            Operator Command Center — the superior-to-tenant fleet dashboard — INSTEAD of
+            the old Fleet redirect (§9/§30). A staff user WITH a tenant selected keeps the
+            tenant Command Center; non-staff always get it.
+
+            Gate the decision on tenant-context loading: it starts (loading:true,
+            isPlatformStaff:false), so deciding before it resolves would briefly render the
+            TENANT overview for a God user — which then calls a tenant-scoped RPC and 42501s,
+            flashing a broken tenant dashboard as the operator's FIRST impression. Hold the
+            loader until the real mode is known (no data leak either way — the RPC is
+            server-gated — this is purely the first-paint impression). */}
+        <Route index element={
+          tenantLoading
+            ? <SuspenseFallback />
+            : isPlatformStaff && activeTenantId === null
+              ? <Suspense fallback={<SuspenseFallback />}><OperatorCommandCenter /></Suspense>
+              : <AdminOverview />
+        } />
         {/* People is now the Clients container index — /admin/contacts 301-redirects
             there (SPA equivalent). contacts/:id stays a FULL route (Client 360). */}
         <Route path="contacts" element={<Navigate to="/admin/clients-hub" replace />} />
@@ -525,12 +545,17 @@ const Admin = () => {
             resolves unchanged. Gates stay on each child element (B5): Chat
             AdminOnly, Sub-Agents/Skills ungated, Actions admin + platform-staff. */}
         <Route element={<PaigeTabsLayout />}>
+          {/* Paige hub. Widened from AdminOnly → allowPlatformStaff (§9): the operator
+              Command Center's "Open Paige" + the new Paige nav item route here, and a
+              SCOPED Platform Admin (super_admin/platform_admin without the tenant "admin"
+              AppRole, not the hardcoded owner) would otherwise hit the RoleGate wall. The
+              hardcoded owner already cleared it via allowOwner; this admits scoped staff too. */}
           <Route path="playbook" element={
-            <AdminOnly>
+            <RoleGate allow={["admin"]} allowPlatformStaff>
               <Suspense fallback={<SuspenseFallback />}>
                 <PlaybookAdmin />
               </Suspense>
-            </AdminOnly>
+            </RoleGate>
           } />
           <Route path="sub-agents" element={
             <Suspense fallback={<SuspenseFallback />}><SubAgentsAdmin /></Suspense>

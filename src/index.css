@@ -59,6 +59,19 @@ All colors MUST be HSL.
     --warning: 38 92% 50%;
     --info: 174 62% 47%;
 
+    /* ── Data-viz categorical ramp (analytics dashboard, §11) — the ONE chart scale every chart
+       pulls from (CHART_SERIES in ui/chart.tsx); no per-file COLORS arrays. A cohesive cool
+       jewel-tone spread anchored on the brand indigo, NEVER gold (§6: gold is spent only on the
+       act, never a series color). Values are tuned LIGHT here for ≥3:1 non-text graphical contrast
+       (WCAG 1.4.11) against the ~98%L background; the .dark block lifts them for the near-black
+       surface. No hue sits in the gold band (~36–45°). */
+    --chart-1: 255 55% 48%; /* indigo — primary family */
+    --chart-2: 174 62% 38%; /* teal */
+    --chart-3: 280 50% 55%; /* violet */
+    --chart-4: 214 75% 50%; /* blue */
+    --chart-5: 330 62% 52%; /* rose */
+    --chart-6: 240 12% 46%; /* slate neutral */
+
     /* Fundability Score Colors */
     --fundability-excellent: 142 76% 36%;
     --fundability-good: 174 62% 47%;
@@ -129,6 +142,16 @@ All colors MUST be HSL.
     /* Gold-as-TEXT flips to the bright brand gold on dark — the light theme's
        --gold-dark (32% lightness) sinks below AA against a 5%-lightness surface. */
     --gold-dark: 41 82% 61%;
+
+    /* Data-viz ramp on dark — same cohesive cool jewel-tone spread as :root, LIFTED into the
+       mid/upper-60s lightness so each series clears ≥3:1 non-text graphical contrast against the
+       ~5%L dark surfaces. Still NO gold (§6). Mirrors --chart-1..6 above, one home. */
+    --chart-1: 258 70% 68%; /* indigo */
+    --chart-2: 174 55% 55%; /* teal */
+    --chart-3: 280 62% 70%; /* violet */
+    --chart-4: 214 78% 66%; /* blue */
+    --chart-5: 330 72% 68%; /* rose */
+    --chart-6: 240 14% 66%; /* slate neutral */
   }
 
   /* ── Vibe Studio "COSMIC PAIGE" surface — SCOPED palette exception (owner: Antonio, 2026-07-16).

@@ -150,6 +150,9 @@ const adminNavItems = hubs.flatMap((h) => [
 // (Marketplace · Analytics). Owner-only new console surfaces route through
 // GOD_MORE below.
 const GOD_HUBS: Hub[] = [
+  // Paige leads the operator nav (the Command Center's "Open Paige" home, §14) — she
+  // runs the fleet; the operator manages her. URL stays /admin/playbook.
+  { label: "Paige", href: "/admin/playbook", icon: Bot },
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain },
@@ -194,6 +197,7 @@ const GOD_MORE: MoreItem[] = [
 // Compliance, Content Defaults, Deploy Health) stay off the staff nav — the routes
 // agent still enforces owner-only server-side (§9).
 const GOD_STAFF_HUBS: Hub[] = [
+  { label: "Paige", href: "/admin/playbook", icon: Bot },
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain },
@@ -325,7 +329,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         {godMode && <div className="h-0.5 w-full bg-accent" aria-hidden />}
         {/* Row 1: brand + utilities */}
         <div className="flex items-center justify-between gap-3 px-3 md:px-6 h-14">
-          <Link to={godMode ? "/admin/platform/tenants" : "/admin"} className="flex items-center gap-2 min-w-0">
+          <Link to="/admin" className="flex items-center gap-2 min-w-0">
             <PaigeMark className="h-8 w-8 flex-shrink-0" />
             <span className="font-bold text-sm tracking-tight truncate">{PLATFORM.adminName}</span>
             {/* Passive identity chip only. The multi-hat "View as" switcher used
