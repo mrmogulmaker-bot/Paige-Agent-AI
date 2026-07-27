@@ -126,8 +126,13 @@ const VIEW_PRESETS: Segment[] = [
 // src/integrations/supabase/types.ts was never regenerated for them. Rather than
 // regenerate (which would drag unrelated schema drift into this UI-only slice) or
 // reach for `as any` (the repo lint bans no-explicit-any), we read the table through
-// an `unknown` shim. RLS still enforces access server-side (§9 — no tenant param).
-type UntypedSelect = { select: (columns: string) => PromiseLike<{ data: unknown; error: unknown }> };
+// an `unknown` shim. The shim chains `.eq()` so this read carries the SAME explicit
+// active-tenant filter as the typed reads (§9 — see load(): the clients RLS has an
+// is_platform_owner() bypass, so RLS alone is NOT sufficient on a tenant surface).
+type UntypedFilter = PromiseLike<{ data: unknown; error: unknown }> & {
+  eq: (column: string, value: unknown) => UntypedFilter;
+};
+type UntypedSelect = { select: (columns: string) => UntypedFilter };
 const fromUntyped = (table: string): UntypedSelect =>
   (supabase.from as unknown as (t: string) => UntypedSelect)(table);
 
@@ -195,7 +200,7 @@ export default function ContactsAdmin() {
   // real read, never faked from tags).
   const [partnerIds, setPartnerIds] = useState<Set<string>>(new Set());
   const { isAdmin, roles, userId } = useUserRoles();
-  const { activeTenant, isPlatformOwner } = useTenantContext();
+  const { activeTenant, activeTenantId, isPlatformOwner } = useTenantContext();
 
   // View mode (My Queue / Team View / All) — presentation-only, mirrors the 1c-vii
   // Command Center pattern EXACTLY. NEVER gates a data read; NO tenant_id param.
@@ -222,7 +227,12 @@ export default function ContactsAdmin() {
     setSearchParams(next, { replace: true });
   };
 
-  useEffect(() => { load(); }, []);
+  // Re-load whenever the active tenant changes so the §9 explicit-.eq scope always
+  // matches the current workspace. `load` is intentionally NOT in the deps: it is a
+  // fresh closure each render (over the current activeTenantId), so the effect uses
+  // the matching-render `load` — adding it would infinite-loop.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [activeTenantId]);
 
   const load = async () => {
     setLoading(true);
@@ -230,18 +240,41 @@ export default function ContactsAdmin() {
       const { data: { user } } = await supabase.auth.getUser();
       setMeId(user?.id || null);
 
+      // §9 tenant isolation BY CONSTRUCTION. This is a TENANT surface, so every read
+      // + count must be scoped to the active tenant with an EXPLICIT filter — the
+      // clients RLS carries an is_platform_owner() bypass (migration 20260629180214),
+      // so a platform owner's RLS spans EVERY tenant and RLS alone would let the
+      // StatTiles/`stats` memo count cross-tenant rows (the count-vs-list bleed this
+      // fix closes). With NO workspace selected (platform owner at the God tier,
+      // activeTenantId === null) we render a zeroed/empty state, NEVER the all-tenant
+      // rows. Mirrors the CampaignsOverviewStats explicit-.eq pattern (§18).
+      if (!activeTenantId) {
+        setClients([]);
+        setPartnerIds(new Set());
+        setRollup({});
+        setCoaches([]);
+        return;
+      }
+
       const [clientsRes, rolesRes, rollupRes, typesRes] = await Promise.all([
-        supabase.from("clients").select("*").order("created_at", { ascending: false }),
+        supabase.from("clients").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }),
         supabase.from("user_roles").select("user_id").eq("role", "coach"),
+        // contact_deal_rollup is a security_invoker VIEW with NO tenant_id column to
+        // filter on; under the clients owner-bypass it returns cross-tenant rows for
+        // an owner. We therefore scope the rollup MAP below to the tenant's client ids
+        // so the totals in `stats` only ever sum this tenant's deals (§9 count==list).
         supabase.from("contact_deal_rollup").select("*"),
-        // RLS-scoped, NO tenant param (§9) — the child rows the parent client can read.
-        fromUntyped("client_types").select("contact_id,type"),
+        // client_types HAS its own tenant_id (server-derived from the parent client),
+        // so it takes the same explicit active-tenant filter (§9).
+        fromUntyped("client_types").select("contact_id,type").eq("tenant_id", activeTenantId),
       ]);
       if (clientsRes.error) throw clientsRes.error;
       // `as unknown as` (not `as any`, lint-clean): generated types.ts still lacks the
       // 1c-viii-a clients.temperature column, so the row shape doesn't overlap ClientRow
       // until types.ts is regenerated (tracked #234). The column exists at runtime.
-      setClients((clientsRes.data || []) as unknown as ClientRow[]);
+      const tenantClients = (clientsRes.data || []) as unknown as ClientRow[];
+      setClients(tenantClients);
+      const tenantClientIds = new Set(tenantClients.map((c) => c.id));
 
       // §32 loud degrade: the Partners preset depends on client_types. If that read
       // fails, it degrades gracefully (empty Partners) but must NOT be silent.
@@ -261,8 +294,12 @@ export default function ContactsAdmin() {
         })));
       }
 
+      // §9: keep ONLY the rollup rows belonging to this tenant's clients (the view
+      // has no tenant_id to .eq on), so `stats` never sums another tenant's deals.
       const map: Record<string, Rollup> = {};
-      ((rollupRes.data || []) as Rollup[]).forEach((r) => { map[r.contact_id] = r; });
+      ((rollupRes.data || []) as Rollup[]).forEach((r) => {
+        if (tenantClientIds.has(r.contact_id)) map[r.contact_id] = r;
+      });
       setRollup(map);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load contacts");
@@ -281,11 +318,12 @@ export default function ContactsAdmin() {
   }, [clients]);
 
   const filtered = useMemo(() => clients.filter((c) => {
-    // View mode (My Queue / Team View / All). Presentation-only tiering (§9): a
-    // platform owner's RLS spans every tenant, so "All"/business falls back to
-    // assigned-to-me to avoid a cross-tenant leak — EXACT mirror of the 1c-vii fix.
-    // A lower-tier persona has no "business" option at all, so it can only ever see
-    // its own assigned rows. RLS remains the real boundary (not RPC role-tiering).
+    // View mode (My Queue / Team View / All) — PRESENTATION-ONLY persona filter now
+    // (§9). Tenant isolation is enforced upstream by the explicit .eq("tenant_id",
+    // activeTenantId) on the clients read in load(), so `clients` already contains
+    // ONLY the active tenant's rows; this "My Queue" narrowing is no longer
+    // load-bearing for cross-tenant isolation, it just scopes the view to rows
+    // assigned to me. Kept as the 1c-vii persona experience, not a security guard.
     const scopeMine = view === "mine" || (view === "business" && isPlatformOwner);
     if (scopeMine && meId && c.assigned_coach_user_id !== meId) return false;
 
