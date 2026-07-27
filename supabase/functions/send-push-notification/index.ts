@@ -196,6 +196,64 @@ async function sendWebPush(
   return { ok: res.ok, status: res.status, statusText: res.statusText, body };
 }
 
+// ─── Comms C-1.5 (E3): inbox quiet-hours READ-GATE ──────────────────────────
+// Consults the reserved public.notification_preferences row
+// (user_id, 'app', 'comms_inbox'). Returns a skip reason when the user is inside
+// their quiet window. This gates ONLY whether the USER is PINGED — it NEVER gates
+// message delivery/sending (§13). Overnight-aware (start > end wraps midnight);
+// IANA-tz-aware via Intl; day-of-week scoped; fails OPEN (pings) on any bad input.
+// deno-lint-ignore no-explicit-any
+async function isWithinQuietHours(
+  db: any,
+  userId: string,
+): Promise<{ skip: boolean; reason?: string }> {
+  const { data: pref } = await db
+    .from("notification_preferences")
+    .select("enabled, metadata")
+    .eq("user_id", userId)
+    .eq("channel", "app")
+    .eq("alert_type", "comms_inbox")
+    .maybeSingle();
+
+  if (!pref) return { skip: false };                        // no prefs row → ping normally
+  if (pref.enabled === false) return { skip: true, reason: "comms_inbox_pings_off" };
+
+  const m = (pref.metadata ?? {}) as {
+    dnd?: boolean; quiet_start?: string; quiet_end?: string; tz?: string; days?: number[];
+  };
+  if (!m.dnd || !m.quiet_start || !m.quiet_end) return { skip: false };
+
+  const tz = m.tz || "UTC";
+  let hh = 0, mm = 0, dow = 0;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz, hour12: false, hour: "2-digit", minute: "2-digit", weekday: "short",
+    }).formatToParts(new Date());
+    hh = Number(parts.find((p) => p.type === "hour")?.value ?? "0") % 24;
+    mm = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+    const wd = parts.find((p) => p.type === "weekday")?.value ?? "Sun";
+    dow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(wd);
+  } catch {
+    return { skip: false };                                 // bad tz → fail open (ping)
+  }
+
+  const days = Array.isArray(m.days) && m.days.length ? m.days : [0, 1, 2, 3, 4, 5, 6];
+  if (!days.includes(dow)) return { skip: false };          // DND doesn't apply today
+
+  const nowMin = hh * 60 + mm;
+  const [sH, sM] = m.quiet_start.split(":").map(Number);
+  const [eH, eM] = m.quiet_end.split(":").map(Number);
+  if ([sH, sM, eH, eM].some((n) => Number.isNaN(n))) return { skip: false };
+  const startMin = sH * 60 + sM;
+  const endMin = eH * 60 + eM;
+
+  const inWindow = startMin <= endMin
+    ? nowMin >= startMin && nowMin < endMin                 // same-day window
+    : nowMin >= startMin || nowMin < endMin;                // overnight window (start > end)
+
+  return inWindow ? { skip: true, reason: "comms_inbox_quiet_hours" } : { skip: false };
+}
+
 // ─── Main handler ──────────────────────────────────────────────────────────
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -254,6 +312,22 @@ serve(async (req) => {
       return new Response(JSON.stringify({ skipped: true, reason: "push disabled by user" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    // Comms C-1.5 (E3): inbox quiet-hours read-gate. ONLY inbox-activity pings
+    // consult it; every other category is unaffected. This suppresses the PING,
+    // NEVER the send/delivery of the message itself (§13).
+    if (category === "comms_inbox") {
+      const quiet = await isWithinQuietHours(supabase, user_id);
+      if (quiet.skip) {
+        // §13: log the skip reason honestly — never a silent drop.
+        console.log(`[send-push] quiet-hours skip user=${user_id} reason=${quiet.reason}`);
+        // TODO(C-1.5 follow-up): enqueue a digest to fire at the quiet-window end so
+        // the user gets one roll-up of what they missed instead of losing the pings.
+        return new Response(JSON.stringify({ skipped: true, reason: quiet.reason }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     }
 
     const categoryFlagMap: Record<string, keyof typeof prefs> = {

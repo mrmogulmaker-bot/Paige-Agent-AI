@@ -127,6 +127,9 @@ import { dispatchWorkflowRun, MMA_TENANT_ID } from "../_shared/workflowDispatch.
 // Tier Rail Spine (Phase D): one shared tier resolver, off the same declared rail
 // (public.get_actor_access) a human resolves through — so Paige's tier == a human's.
 import { getActorTier, isClientSeatByScopes } from "../_shared/actorTier.ts";
+// Master Twilio Basic-auth from the ONE home (twilio.ts) — API Key trio
+// (TWILIO_API_KEY_SID:TWILIO_API_KEY_SECRET); master TWILIO_AUTH_TOKEN absent in prod.
+import { masterBasicAuthHeader } from "../_shared/twilio.ts";
 
 // Doctrine §118 master-only MCP tools. Hidden from tools/list when caller's
 // tenant != MMA. These are forward-looking — none are implemented yet but the
@@ -2268,9 +2271,9 @@ mcp.tool("send_sms", {
       }
     }
     const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-    const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+    const authHeader = masterBasicAuthHeader(); // API Key trio (or legacy fallback); null when unconfigured
     const fromPhone = Deno.env.get("TWILIO_PHONE_NUMBER");
-    if (!accountSid || !authToken || !fromPhone) return err("twilio_not_configured");
+    if (!accountSid || !authHeader || !fromPhone) return err("twilio_not_configured");
     const send_id = crypto.randomUUID();
     const STOP_SUFFIX = " Reply STOP to unsubscribe.";
     const fullBody = args.body.includes("STOP") ? args.body : (args.body + STOP_SUFFIX).slice(0, 1600);

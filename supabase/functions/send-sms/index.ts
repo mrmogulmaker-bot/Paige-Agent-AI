@@ -2,6 +2,9 @@
 // Called by the notification dispatcher (send-notification) and triggers.
 // Always appends "Reply STOP to unsubscribe" for A2P 10DLC compliance.
 import { createClient } from 'npm:@supabase/supabase-js@2'
+// Master Twilio Basic-auth from the ONE home (twilio.ts) — API Key trio
+// (TWILIO_API_KEY_SID:TWILIO_API_KEY_SECRET), master TWILIO_AUTH_TOKEN absent in prod.
+import { masterBasicAuthHeader } from '../_shared/twilio.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -60,10 +63,10 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const accountSid = Deno.env.get('TWILIO_ACCOUNT_SID')
-  const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
+  const authHeader = masterBasicAuthHeader() // API Key trio (or legacy fallback); null when unconfigured
   const fromPhone = Deno.env.get('TWILIO_PHONE_NUMBER')
 
-  if (!accountSid || !authToken || !fromPhone) {
+  if (!accountSid || !authHeader || !fromPhone) {
     return jsonResp({ error: 'Twilio not configured' }, 500)
   }
 
@@ -130,7 +133,7 @@ Deno.serve(async (req) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${btoa(`${accountSid}:${authToken}`)}`,
+      'Authorization': authHeader,
     },
     body: new URLSearchParams({ To: formattedTo, From: formattedFrom, Body: finalBody }),
   })

@@ -71,12 +71,32 @@ export interface NormalizedMessage {
   sent_at?: string | null;
 }
 
+/**
+ * Minimal service-role client shape an outbound adapter may need (e.g. the SMS
+ * adapter's per-tenant Twilio creds / number / A2P lookups). Structurally
+ * compatible with twilio.ts's SupabaseAdminLike, so a real service-role client
+ * assigns without a cast — kept here dependency-free (§18 one home).
+ */
+export type OutboundAdminClient = {
+  // deno-lint-ignore no-explicit-any
+  from: (table: string) => any;
+  // deno-lint-ignore no-explicit-any
+  rpc: (fn: string, args?: Record<string, unknown>) => any;
+};
+
 /** The result of an outbound send through a provider. */
 export interface Delivery {
   ok: boolean;
   provider_message_id?: string | null;
   status: MessageStatus;
   error?: string | null;
+  // ── C-2 additive (§13 honest degrade). Email never sets these (non-breaking). ──
+  /** true = not a send FAILURE but an unwired/unprovisioned state (no subaccount / no number). */
+  needs_config?: boolean;
+  /** machine reason code surfaced into the send-message response `reason` (e.g. 'a2p_not_approved'). */
+  reason?: string | null;
+  /** adapter-resolved side data the dispatcher records (e.g. { from_number } for the audit row). */
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -122,6 +142,14 @@ export interface OutboundSendContext {
   providerApiKey?: string | null;
   vaultCredentials?: Record<string, string> | null; // per-tenant creds (SMS subaccount, etc.)
   connectorConfig?: Record<string, unknown> | null;
+  // ── C-2 additive: what the SMS adapter needs to resolve creds/number/A2P server-side (§9).
+  //    Email ignores all three (non-breaking). ──
+  /** Service-role client. The SMS adapter uses it for resolveTwilioCreds + tenant number/A2P reads. */
+  admin?: OutboundAdminClient | null;
+  /** Server-derived tenant (never from the request body, §9). Required for SMS; ignored by email. */
+  tenantId?: string | null;
+  /** Per-message DLR StatusCallback URL Twilio POSTs delivery events to. Honest-null when unset. */
+  statusCallbackUrl?: string | null;
 }
 
 // -----------------------------------------------------------------------------
