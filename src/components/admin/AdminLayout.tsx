@@ -495,7 +495,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                 <hub.icon className="w-4 h-4" />
                 <span>{hub.label}</span>
                 {hub.comingSoon && (
-                  <span className="rounded-full bg-primary-foreground/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-primary-foreground/55">
+                  <span className="rounded-full bg-primary-foreground/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-primary-foreground/65">
                     Soon
                   </span>
                 )}
@@ -626,7 +626,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                       }`}
                     >
                       <item.icon className="w-4 h-4" />
-                      {item.label}
+                      <span className="flex-1">{item.label}</span>
+                      {hub.comingSoon && (
+                        <span className="rounded-full bg-primary-foreground/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-primary-foreground/65">
+                          Soon
+                        </span>
+                      )}
                     </Link>
                   ))}
                 </div>
@@ -649,7 +654,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                       }`}
                     >
                       <item.icon className="w-4 h-4" />
-                      {item.label}
+                      <span className="flex-1">{item.label}</span>
+                      {item.comingSoon && (
+                        <span className="rounded-full bg-primary-foreground/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-primary-foreground/65">
+                          Soon
+                        </span>
+                      )}
                     </Link>
                   ))}
                 </>
