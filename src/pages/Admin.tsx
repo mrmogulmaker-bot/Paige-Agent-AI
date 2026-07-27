@@ -54,6 +54,25 @@ const PlatformStaffOnly = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+/** Owner-only gate: the platform OWNER (super_admin), not a scoped Platform Admin.
+ *  Closes the §9 gap the operator nav restructure surfaced — the owner-only console
+ *  surfaces (Money Spine, Doctrine, Prompt-Forge, Compliance overview, Content Defaults,
+ *  Deploy Health) hide their nav tab from scoped staff (canSee: owner), so the ROUTE must
+ *  gate the same way or a staffer could deep-link past the hidden tab. */
+const PlatformOwnerOnly = ({ children }: { children: React.ReactNode }) => {
+  const { loading, isPlatformOwner } = useTenantContext();
+  if (loading) return <div className="p-6 text-sm text-muted-foreground animate-pulse">Checking access…</div>;
+  if (!isPlatformOwner) {
+    return (
+      <div className="max-w-md mx-auto mt-12 rounded-lg border border-border bg-card p-6 text-center">
+        <h2 className="text-lg font-semibold mb-1">Restricted area</h2>
+        <p className="text-sm text-muted-foreground">This area is for the platform owner.</p>
+      </div>
+    );
+  }
+  return <>{children}</>;
+};
+
 
 // Lazy-load admin sub-pages
 const ClientManagementDashboard = lazy(() => import("@/components/dashboard/ClientManagementDashboard").then(m => ({ default: m.ClientManagementDashboard })));
@@ -782,28 +801,28 @@ const Admin = () => {
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><MarketplaceOperatorAdmin /></Suspense></PlatformStaffOnly>
         } />
         <Route path="platform/money" element={
-          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><MoneySpineAdmin /></Suspense></PlatformStaffOnly>
+          <PlatformOwnerOnly><Suspense fallback={<SuspenseFallback />}><MoneySpineAdmin /></Suspense></PlatformOwnerOnly>
         } />
         <Route path="platform/doctrine" element={
-          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><DoctrineAdmin /></Suspense></PlatformStaffOnly>
+          <PlatformOwnerOnly><Suspense fallback={<SuspenseFallback />}><DoctrineAdmin /></Suspense></PlatformOwnerOnly>
         } />
         <Route path="platform/prompt-forge" element={
-          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PromptForgeAdmin /></Suspense></PlatformStaffOnly>
+          <PlatformOwnerOnly><Suspense fallback={<SuspenseFallback />}><PromptForgeAdmin /></Suspense></PlatformOwnerOnly>
         } />
         <Route path="platform/model-router" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><ModelRouterAdmin /></Suspense></PlatformStaffOnly>
         } />
         <Route path="platform/compliance" element={
-          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><ComplianceAdmin /></Suspense></PlatformStaffOnly>
+          <PlatformOwnerOnly><Suspense fallback={<SuspenseFallback />}><ComplianceAdmin /></Suspense></PlatformOwnerOnly>
         } />
         <Route path="platform/content-defaults" element={
-          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><ContentDefaultsAdmin /></Suspense></PlatformStaffOnly>
+          <PlatformOwnerOnly><Suspense fallback={<SuspenseFallback />}><ContentDefaultsAdmin /></Suspense></PlatformOwnerOnly>
         } />
         <Route path="platform/analytics" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformAnalyticsAdmin /></Suspense></PlatformStaffOnly>
         } />
         <Route path="platform/deploy-health" element={
-          <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><DeployHealthAdmin /></Suspense></PlatformStaffOnly>
+          <PlatformOwnerOnly><Suspense fallback={<SuspenseFallback />}><DeployHealthAdmin /></Suspense></PlatformOwnerOnly>
         } />
       </Routes>
 

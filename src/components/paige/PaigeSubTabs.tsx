@@ -16,8 +16,9 @@ type Access = { isAdmin: boolean; isPlatformOwner: boolean; isPlatformStaff: boo
 type Tab = { label: string; href: string; icon: LucideIcon; canSee: (a: Access) => boolean };
 
 const TABS: Tab[] = [
-  // Chat = /admin/playbook, gated AdminOnly (RoleGate allow=["admin"], allowOwner default).
-  { label: "Chat", href: "/admin/playbook", icon: MessageSquare, canSee: (a) => a.isPlatformOwner || a.isAdmin },
+  // Chat = /admin/playbook, RoleGate allow=["admin"] allowPlatformStaff — so a scoped
+  // platform admin is admitted by the route and MUST see the tab (mirror the gate 1:1).
+  { label: "Chat", href: "/admin/playbook", icon: MessageSquare, canSee: (a) => a.isPlatformOwner || a.isAdmin || a.isPlatformStaff },
   // Sub-Agents — ungated route.
   { label: "Sub-Agents", href: "/admin/sub-agents", icon: Bot, canSee: () => true },
   // Actions — RoleGate allow=["admin"] allowPlatformStaff.
@@ -36,10 +37,13 @@ export function PaigeSubTabs() {
   // for an admin. Hold the strip until access is known (S5).
   if (roles.loading || tenant.loading) return null;
 
-  // §9 operator seam: a platform-staff operator reaching these routes via the God
-  // Automation dropdown with NO active tenant is not in a tenant context — don't
-  // paint tenant chrome (the sub-tab strip) into the operator flow.
-  if (tenant.isPlatformStaff && !tenant.activeTenantId) return null;
+  // Paige is a DUAL-USE hub — it exists both in tenant mode (activeTenantId set) and in
+  // the operator God console (godMode: isPlatformStaff && activeTenantId === null). The
+  // four tabs (Chat · Sub-Agents · Actions · Skills) are the SAME in both, so the strip
+  // renders in both (Finding 4). No godMode suppression here: in tenant mode the old
+  // guard never fired (activeTenantId was set), and in operator mode we now WANT the strip.
+  // (Operator-ONLY strips — Fleet/Intelligence/Compliance/Settings — invert this instead,
+  //  rendering only in godMode, so they never paint under the tenant top-bar.)
 
   const access: Access = {
     isAdmin: roles.isAdmin,

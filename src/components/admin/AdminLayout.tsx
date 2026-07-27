@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { OperatorHubStrip } from "@/components/admin/platform/OperatorTabs";
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
@@ -153,66 +154,77 @@ const adminNavItems = hubs.flatMap((h) => [
 // (Fleet · Team · Intelligence) plus the two non-owner-restricted new surfaces
 // (Marketplace · Analytics). Owner-only new console surfaces route through
 // GOD_MORE below.
+// The operator (God) console nav — restructured into 7 hub-and-sub-tab destinations
+// mirroring the TENANT hub pattern (Clients → People/Pipeline/…). The old 16-item
+// "Workspace tools" overflow ("More" dropdown) is DELETED; every destination now lands
+// under exactly ONE hub, its sub-tabs surfaced by a gate-aware *SubTabs strip (the proven
+// ClientsSubTabs primitive, §18 reuse) below the hub bar — never a junk-drawer dropdown.
+// Hubs carry `aliases` so the top-bar highlight follows onto any sub-tab path (hubIsActive).
 const GOD_HUBS: Hub[] = [
-  // Paige leads the operator nav (the Command Center's "Open Paige" home, §14) — she
-  // runs the fleet; the operator manages her. URL stays /admin/playbook.
-  { label: "Paige", href: "/admin/playbook", icon: Bot },
-  { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
-  { label: "Team", href: "/admin/platform/team", icon: UserCog },
-  { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain },
-  // Platform Marketplace (fleet-wide moderation/revenue-share) — DISTINCT from the
-  // tenant /admin/marketplace App Store surface (§9 platform-vs-tenant seam).
-  // In development: renders OperatorSurfacePlaceholder → flagged "Soon" (§13/§36).
+  // 1 — Paige. Reuses the existing PaigeTabsLayout strip (Chat · Sub-Agents · Actions ·
+  //     Skills). Aliases carry the three absorbed leaves so Paige highlights on them.
+  { label: "Paige", href: "/admin/playbook", icon: Bot,
+    aliases: ["/admin/sub-agents", "/admin/actions", "/admin/skills"] },
+  // 2 — Fleet. Absorbs the standalone Team hub + Deploy Health.
+  { label: "Fleet", href: "/admin/platform/tenants", icon: Building2,
+    aliases: ["/admin/platform/team", "/admin/platform/deploy-health"] },
+  // 3 — Intelligence. Live Activity index + the model/money/forge/defaults/usage tools.
+  { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain,
+    aliases: [
+      "/admin/platform/money", "/admin/platform/model-router",
+      "/admin/platform/prompt-forge", "/admin/platform/content-defaults",
+      "/admin/observability/usage",
+    ] },
+  // 4 — Compliance. Compliance + Doctrine (owner) + Legal/Security/Error (staff).
+  { label: "Compliance", href: "/admin/platform/compliance", icon: ShieldCheck,
+    aliases: [
+      "/admin/platform/doctrine", "/admin/legal",
+      "/admin/security", "/admin/observability/errors",
+    ] },
+  // 5 — Marketplace (fleet-wide moderation/revenue). In development → "Soon"; no strip yet.
   { label: "Marketplace", href: "/admin/platform/marketplace", icon: Store, comingSoon: true },
-  // Platform Analytics (fleet funnel/conversion) — DISTINCT from the operator's own
-  // /admin/analytics reports (that stays the related, per-page link, §18).
+  // 6 — Analytics (fleet funnel/conversion). In development → "Soon"; no strip yet.
   { label: "Analytics", href: "/admin/platform/analytics", icon: TrendingUp, comingSoon: true },
+  // 7 — Settings. Platform config + invites + support + send pipes/identities.
+  { label: "Settings", href: "/admin/platform/settings", icon: Settings,
+    aliases: [
+      "/admin/platform/invites", "/admin/support",
+      "/admin/platform/sends", "/admin/platform/sending",
+    ] },
 ];
-// God "More" menu — calendar setup, support, security, and the platform settings
-// hub (comms/SMS, providers, branding). Calendar lives here rather than a full
-// top-level tab: it's a setup tool, not a daily-driver, so the top bar stays
-// focused on the operational essentials.
-const GOD_MORE: MoreItem[] = [
-  // New operator-console surfaces (Super Admin restructure) — owner-only. Kept in
-  // the "More" overflow so the top bar stays lean (§11). Real authz is the
-  // server-side PlatformOwnerOnly route wrappers + RLS; this nav is presentation.
-  // These 7 render OperatorSurfacePlaceholder today — flagged "Soon" so the overflow
-  // honestly signals in-development vs live (§13/§36); deep builds are follow-ups.
-  { label: "Money Spine", href: "/admin/platform/money", icon: DollarSign, comingSoon: true },
-  { label: "Doctrine", href: "/admin/platform/doctrine", icon: BookOpen, comingSoon: true },
-  { label: "Prompt-Forge", href: "/admin/platform/prompt-forge", icon: Wrench, comingSoon: true },
-  { label: "Model Router", href: "/admin/platform/model-router", icon: Plug, comingSoon: true },
-  { label: "Compliance", href: "/admin/platform/compliance", icon: ShieldCheck, comingSoon: true },
-  { label: "Content Defaults", href: "/admin/platform/content-defaults", icon: LayoutTemplate, comingSoon: true },
-  { label: "Deploy Health", href: "/admin/platform/deploy-health", icon: Rocket, comingSoon: true },
-  // Existing operational tools. Affiliates removed from the nav (deliverable #5) —
-  // its route + backing stay mounted, reachable by URL; only the menu item is gone.
-  { label: "Sends & Tier", href: "/admin/platform/sends", icon: Radio },
-  { label: "Sending Identities", href: "/admin/platform/sending", icon: Send },
-  { label: "Support", href: "/admin/support", icon: LifeBuoy },
-  { label: "Invites", href: "/admin/platform/invites", icon: Ticket },
-  { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
-  { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
-  { label: "Legal Documents", href: "/admin/legal", icon: ShieldCheck },
-  { label: "Security Canary", href: "/admin/security", icon: ShieldCheck },
-  { label: "Platform Settings", href: "/admin/platform/settings", icon: Settings },
-];
-// Scoped Platform Admins run the fleet at a minimal tier. They get the platform-
-// control trio + the two non-owner-restricted new surfaces (Marketplace, Analytics,
-// per the contract's ownerOnly:false); Model Router (also ownerOnly:false) rides the
-// overflow. All owner-only console surfaces (Money Spine, Doctrine, Prompt-Forge,
-// Compliance, Content Defaults, Deploy Health) stay off the staff nav — the routes
-// agent still enforces owner-only server-side (§9).
+// Scoped Platform Admins run the fleet at a minimal tier. They see the SAME 7 hubs —
+// the gate-aware *SubTabs strips filter owner-only sub-tabs out per-tab (canSee), and a
+// strip with ≤1 visible tab hides itself, so staff automatically get the lean subset with
+// no separate array to drift. The ONLY divergence is the Compliance hub's default href:
+// GOD_HUBS points it at the owner-only /admin/platform/compliance overview, which would
+// show a "Restricted area" card to staff — so staff land on the first staff-visible tab
+// (/admin/legal) instead. All owner-only console surfaces (Money Spine, Doctrine,
+// Prompt-Forge, Compliance overview, Content Defaults, Deploy Health) stay off the staff
+// strips via canSee AND are enforced owner-only server-side by PlatformOwnerOnly (§9).
 const GOD_STAFF_HUBS: Hub[] = [
-  { label: "Paige", href: "/admin/playbook", icon: Bot },
-  { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
-  { label: "Team", href: "/admin/platform/team", icon: UserCog },
-  { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain },
+  { label: "Paige", href: "/admin/playbook", icon: Bot,
+    aliases: ["/admin/sub-agents", "/admin/actions", "/admin/skills"] },
+  { label: "Fleet", href: "/admin/platform/tenants", icon: Building2,
+    aliases: ["/admin/platform/team", "/admin/platform/deploy-health"] },
+  { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain,
+    aliases: [
+      "/admin/platform/money", "/admin/platform/model-router",
+      "/admin/platform/prompt-forge", "/admin/platform/content-defaults",
+      "/admin/observability/usage",
+    ] },
+  // Staff land on Legal (their first visible Compliance tab), NOT the owner-only overview.
+  { label: "Compliance", href: "/admin/legal", icon: ShieldCheck,
+    aliases: [
+      "/admin/platform/compliance", "/admin/platform/doctrine",
+      "/admin/security", "/admin/observability/errors",
+    ] },
   { label: "Marketplace", href: "/admin/platform/marketplace", icon: Store, comingSoon: true },
   { label: "Analytics", href: "/admin/platform/analytics", icon: TrendingUp, comingSoon: true },
-];
-const GOD_STAFF_MORE: MoreItem[] = [
-  { label: "Model Router", href: "/admin/platform/model-router", icon: Plug, comingSoon: true },
+  { label: "Settings", href: "/admin/platform/settings", icon: Settings,
+    aliases: [
+      "/admin/platform/invites", "/admin/support",
+      "/admin/platform/sends", "/admin/platform/sending",
+    ] },
 ];
 
 interface AdminLayoutProps {
@@ -280,11 +292,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // even if their real role is admin. Real permissions still come from RLS.
   const effectiveRole: "admin" | "coach" =
     userRole === "admin" && canSwitch && lens === "coach" ? "coach" : userRole;
-  // The tenant "... More" overflow was deleted in Slice 1c-v — its items re-home
-  // under the Setup/Team landings. Only the God console still carries a More group.
-  const visibleMore = godMode
-    ? (isPlatformOwner ? GOD_MORE : GOD_STAFF_MORE)
-    : [];
+  // Both the tenant "... More" overflow (Slice 1c-v) AND the God console "Workspace
+  // tools" overflow (Finding 4) are now DELETED — every operator destination re-homes
+  // under one of the 7 hubs + its gate-aware sub-tab strip. No surface uses the More
+  // dropdown anymore; keep the empty list so the (now dead) dropdown JSX self-removes
+  // via its `visibleMore.length > 0` guard.
+  const visibleMore: MoreItem[] = [];
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -579,6 +592,16 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           )}
         </div>
       </header>
+      )}
+
+      {/* Operator hub sub-tab strip (Finding 4) — sits directly beneath the dark hub bar
+          on desktop, mirroring the tenant sub-tab strips. Self-hides outside godMode and
+          on hubs without a strip (Paige has its own via PaigeTabsLayout; Marketplace /
+          Analytics are bare). Desktop-only, matching the row-2 hub bar (mobile uses the drawer). */}
+      {!isStudio && (
+        <div className="hidden md:block shrink-0">
+          <OperatorHubStrip />
+        </div>
       )}
 
       {/* Mobile dropdown drawer */}
