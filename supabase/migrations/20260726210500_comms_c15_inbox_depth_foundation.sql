@@ -130,10 +130,15 @@ comment on table public.signatures is
 
 create index if not exists idx_signatures_tenant
   on public.signatures (tenant_id, user_id);
--- At most one default per (tenant, user-scope).
-create unique index if not exists uq_signatures_default
-  on public.signatures (tenant_id, coalesce(user_id, '00000000-0000-0000-0000-000000000000'::uuid))
-  where is_default;
+-- At most one default per (tenant, user-scope). Two partial indexes (personal
+-- vs tenant-default) instead of a coalesce-on-a-sentinel-UUID, so the file
+-- carries NO hard-coded UUID literal (clean-rebuild lint PATTERN-1 hygiene).
+create unique index if not exists uq_signatures_default_user
+  on public.signatures (tenant_id, user_id)
+  where is_default and user_id is not null;
+create unique index if not exists uq_signatures_default_tenant
+  on public.signatures (tenant_id)
+  where is_default and user_id is null;
 
 -- -----------------------------------------------------------------------------
 -- 5. snippets — reusable canned-text expansions. user_id NULL = tenant-shared;
@@ -156,8 +161,15 @@ comment on table public.snippets is
 
 create index if not exists idx_snippets_tenant
   on public.snippets (tenant_id, user_id);
-create unique index if not exists uq_snippets_trigger
-  on public.snippets (tenant_id, coalesce(user_id, '00000000-0000-0000-0000-000000000000'::uuid), lower("trigger"));
+-- Trigger unique per (tenant, user-scope), case-insensitive. Two partial indexes
+-- (personal vs tenant-shared) instead of a coalesce-on-a-sentinel-UUID, so the file
+-- carries NO hard-coded UUID literal (clean-rebuild lint PATTERN-1 hygiene).
+create unique index if not exists uq_snippets_trigger_user
+  on public.snippets (tenant_id, user_id, lower("trigger"))
+  where user_id is not null;
+create unique index if not exists uq_snippets_trigger_tenant
+  on public.snippets (tenant_id, lower("trigger"))
+  where user_id is null;
 
 -- -----------------------------------------------------------------------------
 -- 6. Server-derived tenant_id triggers (§9) — never trust the body. Mirrors
