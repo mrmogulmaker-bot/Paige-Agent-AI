@@ -6265,11 +6265,40 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const admin = createClient(supabaseUrl, supabaseServiceKey);
             let result: any = { success: false };
 
+            // §9 FAIL-CLOSED: the CRM operator tools read/write tenant business
+            // data through the RLS-BYPASSING service-role `admin` client, so the
+            // tenant MUST be server-derived (personaCtx.tenant_id, resolved from
+            // get_paige_persona_context on the caller's JWT — never body-supplied)
+            // and present. If it can't be resolved, refuse rather than run an
+            // unscoped, fleet-wide query. Mirrors the paige-mcp twin's
+            // `if (!tenantId) return err("tenant_not_resolved")`.
+            const crmTenantId = personaCtx.tenant_id;
+            // Fail-closed ONLY for the RLS-BYPASSING service-role tools — the ones that hit
+            // clients/deals/tasks/communication_log through `admin`. The RPC-based tools that share
+            // this block (crm_create/update/assign_contact, program_*, presence_*, n8n_*, pipeline_*,
+            // deal_*) resolve tenant themselves inside their SECURITY DEFINER RPC, and some
+            // (presence_who_online) INTENTIONALLY run platform-wide for a null-tenant owner — so they
+            // must NOT be refused here. Scoping the guard to the service-role set keeps their behavior
+            // unchanged while still refusing an unscoped fleet-wide read/write.
+            const CRM_SERVICE_TOOLS = new Set([
+              "crm_update_pipeline_stage", "crm_assign_coach", "crm_create_task", "crm_log_activity",
+              "crm_search_contacts", "crm_get_contact_summary", "crm_list_deals", "crm_list_tasks", "crm_pipeline_summary",
+            ]);
+            if (CRM_SERVICE_TOOLS.has(tc.function.name) && !crmTenantId) {
+              toolResults.push({
+                tool_call_id: tc.id,
+                role: "tool",
+                content: JSON.stringify({ success: false, error: "tenant_not_resolved" }),
+              });
+              continue;
+            }
+
             if (tc.function.name === "crm_update_pipeline_stage") {
               const { error } = await admin
                 .from("clients")
                 .update({ status: args.status, updated_at: new Date().toISOString() })
-                .eq("id", args.client_id);
+                .eq("id", args.client_id)
+                .eq("tenant_id", crmTenantId); // §9: only a client in the caller's OWN tenant
               if (error) throw error;
               await admin.from("audit_logs").insert({
                 user_id: user.id,
@@ -6288,7 +6317,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const { error } = await admin
                 .from("clients")
                 .update({ assigned_coach_user_id: coach.id, updated_at: new Date().toISOString() })
-                .in("id", ids);
+                .in("id", ids)
+                .eq("tenant_id", crmTenantId); // §9: never reassign another tenant's clients
               if (error) throw error;
               await admin.from("audit_logs").insert({
                 user_id: user.id,
@@ -6303,6 +6333,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 .from("tasks")
                 .insert({
                   user_id: assignee,
+                  tenant_id: crmTenantId, // §9: stamp the caller's tenant so the row is scoped
                   title: args.title,
                   description: args.description || null,
                   due_date: args.due_date || null,
@@ -7032,7 +7063,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
               let q = admin.from("clients").select(
                 "id, first_name, last_name, email, phone, entity_name, lifecycle_stage, status, source, tags, lead_score, assigned_coach_user_id, last_contacted_at, created_at"
-              );
+              ).eq("tenant_id", crmTenantId);
               if (args.lifecycle_stage) q = q.eq("lifecycle_stage", args.lifecycle_stage);
               if (args.status) q = q.eq("status", args.status);
               if (args.tag) q = q.contains("tags", [args.tag]);
@@ -7057,33 +7088,42 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               result = { success: true, count: data?.length || 0, contacts: data || [] };
             } else if (tc.function.name === "crm_get_contact_summary") {
               const id = args.client_id;
+              // §9 IDOR FIX: scope the contact fetch to the caller's tenant so a
+              // foreign client_id resolves to null → contact_not_found (never
+              // another tenant's contact). Deals are tenant-scoped too as
+              // defense-in-depth; tasks/activities/comms derive from the now
+              // tenant-verified contact/deal ids, so they inherit the scope.
               const [contact, deals, tasksRes, activities] = await Promise.all([
-                admin.from("clients").select("*").eq("id", id).maybeSingle(),
-                admin.from("deals").select("id, title, status, value_cents, currency, stage_id, expected_close_date, updated_at").eq("contact_client_id", id).order("updated_at", { ascending: false }).limit(20),
+                admin.from("clients").select("*").eq("id", id).eq("tenant_id", crmTenantId).maybeSingle(),
+                admin.from("deals").select("id, title, status, value_cents, currency, stage_id, expected_close_date, updated_at").eq("contact_client_id", id).eq("tenant_id", crmTenantId).order("updated_at", { ascending: false }).limit(20),
                 admin.from("tasks").select("id, title, status, due_date, track").eq("biz_id", id).neq("status", "completed").order("due_date", { ascending: true, nullsFirst: false }).limit(20),
                 admin.from("deal_activities").select("id, deal_id, type, summary, created_at").in("deal_id", []).limit(1),
               ]);
               if (contact.error) throw contact.error;
-              let recentActivity: any[] = [];
-              const dealIds = (deals.data || []).map((d: any) => d.id);
-              if (dealIds.length) {
-                const { data: a } = await admin.from("deal_activities").select("id, deal_id, type, summary, created_at").in("deal_id", dealIds).order("created_at", { ascending: false }).limit(10);
-                recentActivity = a || [];
+              if (!contact.data) {
+                result = { success: false, error: "contact_not_found" };
+              } else {
+                let recentActivity: any[] = [];
+                const dealIds = (deals.data || []).map((d: any) => d.id);
+                if (dealIds.length) {
+                  const { data: a } = await admin.from("deal_activities").select("id, deal_id, type, summary, created_at").in("deal_id", dealIds).order("created_at", { ascending: false }).limit(10);
+                  recentActivity = a || [];
+                }
+                const { data: commLog } = await admin.from("communication_log").select("channel, message_type, subject, preview, created_at").eq("user_id", (contact.data as any)?.linked_user_id || "00000000-0000-0000-0000-000000000000").order("created_at", { ascending: false }).limit(10);
+                result = {
+                  success: true,
+                  contact: contact.data,
+                  deals: deals.data || [],
+                  open_tasks: tasksRes.data || [],
+                  recent_deal_activity: recentActivity,
+                  recent_communications: commLog || [],
+                };
               }
-              const { data: commLog } = await admin.from("communication_log").select("channel, message_type, subject, preview, created_at").eq("user_id", (contact.data as any)?.linked_user_id || "00000000-0000-0000-0000-000000000000").order("created_at", { ascending: false }).limit(10);
-              result = {
-                success: true,
-                contact: contact.data,
-                deals: deals.data || [],
-                open_tasks: tasksRes.data || [],
-                recent_deal_activity: recentActivity,
-                recent_communications: commLog || [],
-              };
             } else if (tc.function.name === "crm_list_deals") {
               const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
               let q = admin.from("deals").select(
                 "id, title, status, value_cents, currency, stage_id, expected_close_date, owner_user_id, contact_client_id, updated_at, pipeline_stages!inner(label)"
-              );
+              ).eq("tenant_id", crmTenantId);
               if (!args.status || args.status !== "all") q = q.eq("status", args.status || "open");
               if (args.contact_client_id) q = q.eq("contact_client_id", args.contact_client_id);
               if (args.stage_label) q = q.eq("pipeline_stages.label", args.stage_label);
@@ -7097,7 +7137,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               result = { success: true, count: data?.length || 0, deals: data || [] };
             } else if (tc.function.name === "crm_list_tasks") {
               const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
-              let q = admin.from("tasks").select("id, title, status, due_date, track, user_id, biz_id, deal_id");
+              let q = admin.from("tasks").select("id, title, status, due_date, track, user_id, biz_id, deal_id").eq("tenant_id", crmTenantId);
               if (args.status && args.status !== "all") q = q.eq("status", args.status);
               else q = q.neq("status", "completed");
               if (args.assignee_email) {
@@ -7118,11 +7158,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
               const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString();
               const [byStage, openDeals, openTasks, new7, new30] = await Promise.all([
-                admin.from("clients").select("lifecycle_stage"),
-                admin.from("deals").select("value_cents, stage_id, pipeline_stages!inner(label, probability)").eq("status", "open"),
-                admin.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed"),
-                admin.from("clients").select("id", { count: "exact", head: true }).gte("created_at", sevenDaysAgo),
-                admin.from("clients").select("id", { count: "exact", head: true }).gte("created_at", thirtyDaysAgo),
+                admin.from("clients").select("lifecycle_stage").eq("tenant_id", crmTenantId),
+                admin.from("deals").select("value_cents, stage_id, pipeline_stages!inner(label, probability)").eq("status", "open").eq("tenant_id", crmTenantId),
+                admin.from("tasks").select("id", { count: "exact", head: true }).neq("status", "completed").eq("tenant_id", crmTenantId),
+                admin.from("clients").select("id", { count: "exact", head: true }).gte("created_at", sevenDaysAgo).eq("tenant_id", crmTenantId),
+                admin.from("clients").select("id", { count: "exact", head: true }).gte("created_at", thirtyDaysAgo).eq("tenant_id", crmTenantId),
               ]);
               const lifecycleCounts: Record<string, number> = {};
               for (const r of (byStage.data || []) as any[]) {
