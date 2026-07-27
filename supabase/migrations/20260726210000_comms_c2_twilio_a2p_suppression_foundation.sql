@@ -155,23 +155,38 @@ create index if not exists idx_tenant_a2p_registrations_tenant
 --    contact×channel. Lifting a suppression = DELETE the row.
 -- -----------------------------------------------------------------------------
 create table if not exists public.paige_suppressions (
-  id          uuid primary key default gen_random_uuid(),
-  tenant_id   uuid references public.tenants(id) on delete cascade,  -- server-derived from contact (§9)
-  contact_id  uuid not null references public.clients(id) on delete cascade,
+  id                 uuid primary key default gen_random_uuid(),
+  tenant_id          uuid references public.tenants(id) on delete cascade,  -- server-derived (§9)
+  -- contact_id is now NULLABLE (verify-crew fix #4): a raw `to` send with no resolved
+  -- contact must still be checkable, else the absolute TCPA gate silently skips it.
+  contact_id         uuid references public.clients(id) on delete cascade,
+  -- Normalized recipient key for contactless sends: E.164 for phone, RFC-lowercased +
+  -- plus-tag-folded canonical for email. The pre-send gate looks up by contact_id (when
+  -- resolved) OR address_normalized (always), so a suppressed recipient can never slip through.
+  address_normalized text,
   channel     text not null check (channel in ('sms','email')),
   reason      text not null
       check (reason in ('user_stop','complaint','bounce_hard','manual','unsubscribe_link')),
   source      text not null
       check (source in ('inbound_message','admin_ui','webhook','api')),
   created_at  timestamptz not null default now(),
-  constraint uq_paige_suppressions_contact_channel unique (tenant_id, contact_id, channel)
+  -- At least one key must be present (else the row is unlookupable).
+  constraint chk_paige_suppressions_key
+      check (contact_id is not null or address_normalized is not null)
 );
 
 comment on table public.paige_suppressions is
-  'Comms C-2: TCPA/CTIA suppression list — one active suppression per contact×channel (a STOP/complaint/hard-bounce/manual/unsubscribe). tenant_id server-derived from the client parent (§9). Send paths MUST check this before dispatch. Lifting a suppression = DELETE the row.';
+  'Comms C-2: TCPA/CTIA suppression list — one active suppression per recipient×channel (a STOP/complaint/hard-bounce/manual/unsubscribe). tenant_id server-derived (§9). Keyed by contact_id when resolved OR address_normalized (E.164 phone / canonical email) for contactless sends — the pre-send gate checks BOTH so a raw-`to` send is never skipped. Lifting a suppression = DELETE the row.';
 
-create index if not exists idx_paige_suppressions_lookup
-  on public.paige_suppressions (tenant_id, channel, contact_id);
+-- One active suppression per (tenant, channel, recipient) — recipient = contact_id when
+-- present, else the normalized address. A single unique index over the coalesced key
+-- (verify-crew fix #4 + owner guidance) covers both key types.
+create unique index if not exists uq_paige_suppressions_recipient_channel
+  on public.paige_suppressions (tenant_id, channel, coalesce(contact_id::text, address_normalized));
+create index if not exists idx_paige_suppressions_contact
+  on public.paige_suppressions (tenant_id, channel, contact_id) where contact_id is not null;
+create index if not exists idx_paige_suppressions_address
+  on public.paige_suppressions (tenant_id, channel, address_normalized) where address_normalized is not null;
 
 -- -----------------------------------------------------------------------------
 -- 6. paige_consent_events — APPEND-ONLY consent audit (TCPA opt-in/out evidence).
@@ -179,8 +194,12 @@ create index if not exists idx_paige_suppressions_lookup
 -- -----------------------------------------------------------------------------
 create table if not exists public.paige_consent_events (
   id           uuid primary key default gen_random_uuid(),
-  tenant_id    uuid references public.tenants(id) on delete cascade,  -- server-derived from contact (§9)
-  contact_id   uuid not null references public.clients(id) on delete cascade,
+  tenant_id    uuid references public.tenants(id) on delete cascade,  -- server-derived (§9)
+  -- contact_id NULLABLE + address_normalized (verify-crew fix #4): consent state must be
+  -- resolvable for a contactless recipient the same way suppression is, so the pre-send
+  -- gate can look the latest consent event up by contact_id OR normalized address.
+  contact_id   uuid references public.clients(id) on delete cascade,
+  address_normalized text,
   channel      text not null check (channel in ('sms','email')),
   topic        text,
   action       text not null check (action in ('granted','revoked')),
@@ -188,14 +207,18 @@ create table if not exists public.paige_consent_events (
       check (source in ('signup_form','inbound_message','admin_ui','api')),
   evidence_ref text,                 -- pointer to the proof (message id, form submission, screenshot ref)
   ip           text,                 -- capture IP where available (nullable)
-  created_at   timestamptz not null default now()
+  created_at   timestamptz not null default now(),
+  constraint chk_paige_consent_events_key
+      check (contact_id is not null or address_normalized is not null)
 );
 
 comment on table public.paige_consent_events is
-  'Comms C-2: APPEND-ONLY consent audit (TCPA opt-in/out legal evidence). No updated_at; no update/delete policy and service_role granted only SELECT/INSERT (§13/§17 immutable audit). A revocation is a NEW row (action=revoked), never an edit. tenant_id server-derived from the client parent (§9).';
+  'Comms C-2: APPEND-ONLY consent audit (TCPA opt-in/out legal evidence). No updated_at; no update/delete policy and service_role granted only SELECT/INSERT (§13/§17 immutable audit). A revocation is a NEW row (action=revoked), never an edit. tenant_id server-derived (§9). Keyed by contact_id OR address_normalized so contactless recipients have a resolvable consent state.';
 
 create index if not exists idx_paige_consent_events_contact
-  on public.paige_consent_events (tenant_id, contact_id, created_at desc);
+  on public.paige_consent_events (tenant_id, contact_id, created_at desc) where contact_id is not null;
+create index if not exists idx_paige_consent_events_address
+  on public.paige_consent_events (tenant_id, channel, address_normalized, created_at desc) where address_normalized is not null;
 create index if not exists idx_paige_consent_events_channel
   on public.paige_consent_events (tenant_id, channel, created_at desc);
 
@@ -213,6 +236,19 @@ comment on column public.clients.timezone is
   'Comms C-2/C-1.5: per-contact IANA timezone for scheduled-send + TCPA/quiet-hours. NET-NEW (no prior tz column on clients).';
 comment on column public.clients.timezone_verified is
   'Comms C-2/C-1.5: true once the contact timezone is confirmed (vs inferred). Defaults false.';
+
+-- Client-level DND (amendment #3, flavor 1) — a SOFT per-contact hold (distinct from a
+-- suppression opt-out): the tenant marks a client "don't message right now" (vacation,
+-- hospital, break). Pre-send check #1 BLOCKS with 'dnd_hold' + reason, but the tenant may
+-- override per-send (confirm dialog, logged). dnd_until (optional) auto-clears via a 1-min cron.
+alter table public.clients add column if not exists dnd_active  boolean not null default false;
+alter table public.clients add column if not exists dnd_reason  text;                 -- tenant-authored ("on vacation until 8/15")
+alter table public.clients add column if not exists dnd_until   timestamptz;          -- optional expiry (cron auto-clears)
+alter table public.clients add column if not exists dnd_set_at  timestamptz;          -- audit
+alter table public.clients add column if not exists dnd_set_by  uuid references auth.users(id) on delete set null; -- audit
+
+comment on column public.clients.dnd_active is
+  'Comms C-2 amendment #3: client-level DND — soft per-contact hold. Pre-send check #1 blocks (override-able), distinct from a paige_suppressions opt-out. Cleared by the tenant or by the dnd_until auto-clear cron.';
 
 -- =============================================================================
 -- 8. Server-derived tenant_id triggers (§9) — mirror C-1 exactly.
@@ -290,10 +326,17 @@ security definer
 set search_path = public
 as $$
 begin
+  -- contact_id present → derive from the client parent (spoof-proof, NEW.tenant_id never read).
+  -- contactless row (verify-crew fix #4) → derive from the caller's session tenant
+  -- (server-authoritative, §9). Reject if neither yields a tenant so no orphan/cross-tenant row.
   new.tenant_id := coalesce(
     (select c.tenant_id from public.clients c where c.id = new.contact_id),
     public.current_user_tenant_id()
   );
+  if new.tenant_id is null then
+    raise exception 'set_contact_scoped_tenant: tenant not derivable (no contact_id parent and no session tenant)'
+      using errcode = 'check_violation';
+  end if;
   return new;
 end;
 $$;
@@ -524,3 +567,111 @@ values
   ('+14702003444', null,
    'Paige Master / Super-Admin', 'super_admin_outbound', true)
 on conflict (phone_number) do nothing;
+
+-- =============================================================================
+-- 12. Fix #1 (verify crew) — allow status='blocked' on messages.
+--     The locked pre-send pipeline writes the messages row status='blocked' on a
+--     suppression / consent / client-DND hit (with the reason in meta). C-1
+--     (20260726190000) defined the enum WITHOUT 'blocked', so the first block would
+--     raise 23514 and record nothing — a runtime crash on the legal path. Add it.
+-- =============================================================================
+alter table public.messages drop constraint if exists messages_status_check;
+alter table public.messages add constraint messages_status_check
+  check (status in ('draft','queued','sent','delivered','failed','received','read','blocked'));
+
+comment on constraint messages_status_check on public.messages is
+  'Comms C-2: adds ''blocked'' (pre-send compliance block: suppression/consent/DND). ''queued'' already present covers quiet-hours + scheduled + undo-send.';
+
+-- =============================================================================
+-- 13. Fix #2 (verify crew) — read_channel_secret: the ONLY server-side path an edge
+--     function can decrypt a Vault secret (Deno cannot SELECT vault.decrypted_secrets).
+--     SECURITY DEFINER, service_role EXECUTE only (never authenticated/anon). Mirrors
+--     the cron_token vault-bridge precedent. Used by _shared/twilio.ts resolveTwilioCreds
+--     to read a tenant subaccount's auth token from its channel_connectors.credentials_vault_ref /
+--     tenant_twilio_subaccounts.auth_token_vault_ref. tenant scoping is enforced by the CALLER
+--     (the edge fn resolves tenantId server-authoritatively, §9) — this fn only decrypts a ref.
+-- =============================================================================
+create or replace function public.read_channel_secret(_ref text)
+returns text
+language sql
+security definer
+set search_path = public, vault
+stable
+as $$
+  select decrypted_secret from vault.decrypted_secrets where name = _ref limit 1;
+$$;
+
+revoke all on function public.read_channel_secret(text) from public, anon, authenticated;
+grant execute on function public.read_channel_secret(text) to service_role;
+
+comment on function public.read_channel_secret(text) is
+  'Comms C-2 Vault bridge: decrypt a named Vault secret for an edge function (service_role only). The caller MUST have resolved the tenant server-authoritatively before choosing the ref (§9). Never granted to anon/authenticated.';
+
+-- =============================================================================
+-- 14. tenant_comms_preferences (DND amendment #3, flavor 2) — the tenant's OWN
+--     auto-send quiet hours for ALL Paige outbound (broader than TCPA: email + all
+--     channels). NOT paige_config (that is a platform singleton, id=1 — wrong home).
+--     Pre-send check #4 QUEUES (not blocks) a send that lands in the tenant's window.
+--     One row per tenant; tenant-ADMIN-only writes.
+-- =============================================================================
+create table if not exists public.tenant_comms_preferences (
+  tenant_id                uuid primary key references public.tenants(id) on delete cascade,  -- server-derived (§9)
+  autosend_dnd_enabled     boolean not null default false,
+  autosend_dnd_start       time    not null default '20:00',
+  autosend_dnd_end         time    not null default '08:00',
+  autosend_dnd_timezone    text,                                   -- tenant IANA tz; null → fall back per resolver
+  autosend_dnd_channels    jsonb   not null default '["sms","email"]'::jsonb,  -- which channels the window gates
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now()
+);
+
+comment on table public.tenant_comms_preferences is
+  'Comms C-2 amendment #3: per-tenant auto-send DND (the tenant''s own quiet hours for ALL Paige outbound; pre-send check #4 QUEUEs). One row per tenant, tenant-admin-only. Intentionally NOT paige_config (platform singleton).';
+
+create or replace function public.set_tenant_comms_preferences_tenant()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  new.tenant_id := coalesce(public.current_user_tenant_id(), new.tenant_id);
+  if new.tenant_id is null then
+    raise exception 'set_tenant_comms_preferences_tenant: no session tenant' using errcode = 'check_violation';
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists trg_tenant_comms_preferences_tenant on public.tenant_comms_preferences;
+create trigger trg_tenant_comms_preferences_tenant
+  before insert on public.tenant_comms_preferences
+  for each row execute function public.set_tenant_comms_preferences_tenant();
+
+drop trigger if exists trg_tenant_comms_preferences_updated_at on public.tenant_comms_preferences;
+create trigger trg_tenant_comms_preferences_updated_at
+  before update on public.tenant_comms_preferences
+  for each row execute function public.update_updated_at_column();
+
+alter table public.tenant_comms_preferences enable row level security;
+
+drop policy if exists tenant_comms_preferences_select on public.tenant_comms_preferences;
+create policy tenant_comms_preferences_select on public.tenant_comms_preferences
+  for select using (
+    public.is_platform_owner()
+    or (tenant_id = public.current_user_tenant_id()
+        and public.has_any_role(auth.uid(), array['admin','coach']))
+  );
+-- WRITE = tenant admin only (DND is a policy setting, not a coach action).
+drop policy if exists tenant_comms_preferences_write on public.tenant_comms_preferences;
+create policy tenant_comms_preferences_write on public.tenant_comms_preferences
+  for all using (
+    public.is_platform_owner()
+    or (tenant_id = public.current_user_tenant_id()
+        and public.has_role(auth.uid(), 'admin'::app_role))
+  ) with check (
+    public.is_platform_owner()
+    or (tenant_id = public.current_user_tenant_id()
+        and public.has_role(auth.uid(), 'admin'::app_role))
+  );
+drop policy if exists tenant_comms_preferences_service_all on public.tenant_comms_preferences;
+create policy tenant_comms_preferences_service_all on public.tenant_comms_preferences
+  for all to service_role using (true) with check (true);
+
+grant select, insert, update on public.tenant_comms_preferences to authenticated;
+grant all on public.tenant_comms_preferences to service_role;
