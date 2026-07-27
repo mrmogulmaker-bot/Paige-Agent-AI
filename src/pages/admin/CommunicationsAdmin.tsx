@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Mail, MessageSquare, TrendingUp, AlertTriangle, ShieldCheck } from "lucide-react";
+import { Mail, MessageSquare, TrendingUp, AlertTriangle, ShieldCheck, PhoneCall } from "lucide-react";
 import {
   PageShell,
   PageHeader,
@@ -16,6 +16,7 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { SignaturesTab } from "@/components/admin/comms/SignaturesTab";
 import { SnippetsTab } from "@/components/admin/comms/SnippetsTab";
 import { NotificationsTab } from "@/components/admin/comms/NotificationsTab";
+import { NumbersTab } from "@/components/admin/comms/NumbersTab";
 
 interface LogRow {
   id: string;
@@ -161,6 +162,7 @@ const CommunicationsAdmin = () => {
         <TabsList>
           <TabsTrigger value="recent">Recent Activity</TabsTrigger>
           <TabsTrigger value="failures">Failures ({failures.length})</TabsTrigger>
+          <TabsTrigger value="numbers">Numbers</TabsTrigger>
           <TabsTrigger value="signatures">Signatures</TabsTrigger>
           <TabsTrigger value="snippets">Snippets</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
@@ -239,6 +241,10 @@ const CommunicationsAdmin = () => {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="numbers">
+          <NumbersTab />
         </TabsContent>
 
         <TabsContent value="signatures">
