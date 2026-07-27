@@ -75,8 +75,16 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   // whole cache and let scope-dependent data refetch under the new scope (§9).
   const queryClient = useQueryClient();
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  // `background` = a revalidation fired by an auth event (not the initial mount).
+  // A background load MUST NOT (a) toggle `loading` — that unmounts every consumer
+  // gating on it (PlatformStaffOnly, PaigeWorkspace) mid-session, losing dialog/form
+  // state and flashing a loader on every routine TOKEN_REFRESHED — nor (b) overwrite
+  // an already-valid context with a transient query failure (which would flip an
+  // operator out of platform mode or empty a tenant's workspace). So on background it
+  // stays silent and commits ONLY on a fully-successful read; the first mount keeps
+  // the blocking loader (there's no prior state to preserve) so the gate resolves once.
+  const load = useCallback(async (background = false) => {
+    if (!background) setLoading(true);
     try {
       // getSession() reads the session Supabase restores from localStorage. On a
       // COLD hard-load / deep-link this can already be present when getUser() (a
@@ -87,6 +95,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       const { data: { session } } = await supabase.auth.getSession();
       const uid = session?.user?.id;
       if (!uid) {
+        // No session is authoritative from local storage (getSession, unlike getUser,
+        // doesn't fail transiently on the network) — a real signed-out state. Clear.
         setTenants([]);
         setActiveTenantId(null);
         setIsPlatformOwner(false);
@@ -94,7 +104,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const [{ data: ownerFlag }, { data: staffFlag }, { data: profile }, { data: tenantRows }] = await Promise.all([
+      const [owner, staff, profileRes, tenantsRes] = await Promise.all([
         supabase.rpc("is_platform_owner"),
         supabase.rpc("is_platform_admin"),
         supabase.from("profiles").select("active_tenant_id").eq("user_id", uid).maybeSingle(),
@@ -105,17 +115,23 @@ export function TenantProvider({ children }: { children: ReactNode }) {
           .order("created_at", { ascending: true }),
       ]);
 
-      setIsPlatformOwner(Boolean(ownerFlag));
-      setIsPlatformStaff(Boolean(staffFlag));
-      setTenants((tenantRows ?? []) as TenantSummary[]);
+      // On a BACKGROUND revalidation, never degrade a good state on a transient
+      // failure — bail and keep the last successfully-resolved context; the next auth
+      // event (or a user action) retries. The initial load still commits what resolves
+      // (empty on error is the honest first-paint, corrected by the next event).
+      if (background && (owner.error || staff.error || tenantsRes.error)) return;
+
+      setIsPlatformOwner(Boolean(owner.data));
+      setIsPlatformStaff(Boolean(staff.data));
+      setTenants((tenantsRes.data ?? []) as TenantSummary[]);
       // Platform staff must NOT be auto-scoped into a tenant just because RLS
       // lets them read all of them — they operate at the God tier by default.
       setActiveTenantId(
-        profile?.active_tenant_id ??
-          (staffFlag ? null : (tenantRows?.[0] as TenantSummary | undefined)?.id ?? null),
+        profileRes.data?.active_tenant_id ??
+          (staff.data ? null : (tenantsRes.data?.[0] as TenantSummary | undefined)?.id ?? null),
       );
     } finally {
-      setLoading(false);
+      if (!background) setLoading(false);
     }
   }, []);
 
@@ -125,9 +141,11 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     // rehydrates the session on a hard reload / deep-link; without this listener
     // (this was the ONE auth context missing it) a pre-hydration null latched the
     // staff flags to false forever, stranding an operator on "Restricted area".
+    // These events fire routinely (hourly token refresh, tab refocus), so the re-run
+    // is a BACKGROUND revalidation — no loading flash, no partial-commit on failure.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "SIGNED_OUT") {
-        load();
+        load(true);
       }
     });
     return () => subscription.unsubscribe();
@@ -157,7 +175,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     activeTenantId,
     activeTenant,
     switchTenant,
-    refresh: load,
+    // Always a foreground refresh — wrapped so an event-handler caller (onClick={refresh})
+    // can't pass its event as the `background` arg and silently skip the loader/commit.
+    refresh: () => load(),
   };
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;
