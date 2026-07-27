@@ -71,6 +71,8 @@ type TraceRow = {
   latency_ms: number | null;
   cost_estimate_usd: number | null;
   error_class: string | null;
+  account_type: string | null;   // row-tenant's account_type (e.g. 'agency', 'standalone')
+  parent_name: string | null;    // parent agency name, when the row-tenant has a parent
 };
 
 const has = (v: unknown): boolean => v !== undefined && v !== null;
@@ -389,7 +391,31 @@ export default function PlatformIntelligence() {
               <TableCell className="whitespace-nowrap text-sm tabular-nums text-muted-foreground">
                 {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
               </TableCell>
-              <TableCell className="font-medium">{r.tenant_label ?? "Platform"}</TableCell>
+              {/* Hierarchy-legible workspace (Finding 5, owner item #3). Attribution is
+                  honest per-row (NOT a leak fix); this only surfaces the parent so the
+                  fleet hierarchy reads at a glance. Sub-account → child on top, parent
+                  agency indented with ↳; agency-scope session → agency name + descriptor;
+                  null tenant → "Platform" (unchanged). Token-only, §11. */}
+              <TableCell className="font-medium">
+                {r.parent_name ? (
+                  <div className="leading-tight">
+                    <span className="text-foreground">{r.tenant_label ?? "Platform"}</span>
+                    <span className="mt-0.5 flex items-center gap-1 text-xs font-normal text-muted-foreground">
+                      <span aria-hidden className="text-muted-foreground/70">↳</span>
+                      {r.parent_name}
+                    </span>
+                  </div>
+                ) : r.account_type === "agency" || r.account_type === "enterprise" ? (
+                  <div className="leading-tight">
+                    <span className="text-foreground">{r.tenant_label ?? "Platform"}</span>
+                    <span className="mt-0.5 block text-xs font-normal uppercase tracking-wide text-muted-foreground">
+                      Agency
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-foreground">{r.tenant_label ?? "Platform"}</span>
+                )}
+              </TableCell>
               <TableCell className="text-sm">
                 <span className="text-foreground">{titleizeSlug(r.agent_id)}</span>
                 {(r.job_kind || r.modality) && (
