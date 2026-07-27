@@ -32,6 +32,10 @@ project_id = "xygzykjyynhzqytbqnzu"
   # JWT-gated; self-gates on is_platform_owner() from the caller's JWT (§9).
   [functions.provision-tenant-twilio]
     verify_jwt = true
+  # Comms C-1.5: scheduled-send drainer. Cron-token gated (self-gates in-function on
+  # a service-role bearer OR verify_cron_token), so it runs pre-auth like readiness-scan.
+  [functions.comms-scheduled-drain]
+    verify_jwt = false
   [functions.paige-bridge]
     verify_jwt = false
   [functions.sla-watcher]

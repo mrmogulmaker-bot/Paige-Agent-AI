@@ -51,6 +51,10 @@ interface SendBody {
   // C-2a: explicit staff override of a CLIENT-level do-not-disturb hold (pre-send step 1
   // ONLY). Never overrides suppression/consent (steps 2–3). Audited via the terminal row.
   override_client_dnd?: boolean;
+  // C-1.5 additive: attachments persisted on the messages row (object paths in the private
+  // comms-attachments bucket), and scheduled_for to queue-for-later / undo-send.
+  attachments?: { url: string; mime?: string; name?: string; size?: number }[];
+  scheduled_for?: string;
 }
 
 // -----------------------------------------------------------------------------
@@ -255,19 +259,31 @@ Deno.serve(async (req) => {
   const userClient = createClient(supabaseUrl, Deno.env.get("SUPABASE_ANON_KEY")!, {
     global: { headers: { Authorization: auth } },
   });
-  const { data: { user } } = await userClient.auth.getUser();
-  if (!user) {
-    return new Response(JSON.stringify({ error: "unauthorized" }), {
-      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  }
 
-  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
-  const { data: isCoach } = await admin.rpc("has_role", { _user_id: user.id, _role: "coach" });
-  if (!isAdmin && !isCoach) {
-    return new Response(JSON.stringify({ error: "forbidden" }), {
-      status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  // ── C-1.5: internal-caller branch. The scheduled-send drainer re-enters this fn under a
+  //    service-role bearer to RELEASE a queued row (contract §4). A service-role bearer must
+  //    skip the getUser + admin/coach gate (there is no human user) AND the §9 caller-tenant
+  //    gate (the queued row's own server-derived tenant_id is authoritative). Any OTHER caller
+  //    still goes through the full JWT + role gate unchanged (§37 — legacy callers unaffected).
+  const internalBearer = auth.replace(/^Bearer\s+/i, "").trim();
+  const isInternal = internalBearer.length > 0 && internalBearer === serviceKey;
+
+  let user: { id: string } | null = null;
+  if (!isInternal) {
+    const { data: { user: u } } = await userClient.auth.getUser();
+    if (!u) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    user = u;
+    const { data: isAdmin } = await admin.rpc("has_role", { _user_id: u.id, _role: "admin" });
+    const { data: isCoach } = await admin.rpc("has_role", { _user_id: u.id, _role: "coach" });
+    if (!isAdmin && !isCoach) {
+      return new Response(JSON.stringify({ error: "forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
   }
 
   let body: SendBody;
@@ -353,24 +369,32 @@ Deno.serve(async (req) => {
   // (JWT-scoped current_user_tenant_id); the platform owner (God) may act cross-tenant
   // (§17). This is the same gate the comms.outbound rail block already applies — hoisted
   // to cover the actual SEND, not just telemetry.
-  const { data: callerTenant } = await userClient.rpc("current_user_tenant_id");
-  const { data: isOwner } = await userClient.rpc("is_platform_owner");
-  if (tenantId && !isOwner && tenantId !== callerTenant) {
+  // The internal drainer (isInternal) is exempt: callerTenant/isOwner resolve to null/false
+  // under a service-role bearer, and the queued row's own server-derived tenant_id (from
+  // message_id) is authoritative. Every OTHER caller keeps the full §9 bind unchanged.
+  const { data: callerTenant } = isInternal ? { data: null } : await userClient.rpc("current_user_tenant_id");
+  const { data: isOwner } = isInternal ? { data: false } : await userClient.rpc("is_platform_owner");
+  if (!isInternal && tenantId && !isOwner && tenantId !== callerTenant) {
     return new Response(JSON.stringify({ error: "forbidden_cross_tenant" }), {
       status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
   // Pin a context-free send (no tenant-bearing ref) to the caller's own tenant so its
   // sender identity is the caller's — never a blank that widens. A platform owner with
-  // no active tenant keeps null → platform default sender.
-  if (!tenantId && !isOwner) tenantId = callerTenant ?? null;
+  // no active tenant keeps null → platform default sender. (Internal drain: tenant stays
+  // the queued row's own.)
+  if (!isInternal && !tenantId && !isOwner) tenantId = callerTenant ?? null;
 
   // ── §5 double-submit guard ───────────────────────────────────────────────────
   // Approving an already sent/queued draft (second tab, stale realtime, network retry)
   // must NOT re-fire the provider — each provider send mints a fresh provider_message_id
   // so the unique index cannot dedupe a true double-delivery. Short-circuit idempotently.
+  // C-1.5: a `queued` row is only a double-submit for a NON-internal re-approve; the internal
+  // drainer (isInternal) is RELEASING that queued row and must proceed to the pipeline+send.
+  // A genuinely `sent` row always dedupes (no double-delivery), internal or not.
   if (body.message_id && draftRow &&
-      (draftRow.status === "sent" || draftRow.status === "queued")) {
+      (draftRow.status === "sent" ||
+       (draftRow.status === "queued" && !isInternal))) {
     return new Response(
       JSON.stringify({ status: "sent", message_id: body.message_id, deduped: true }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -383,6 +407,50 @@ Deno.serve(async (req) => {
   // TERMINAL state (blocked|queued) with meta.pre_send and RETURNS 200 (provider never
   // called). 'proceed' falls through to the existing try{} send. 'error' fails CLOSED.
   {
+    // ── C-1.5 scheduled-send (the "6th gate flavor", contract §4) — runs BEFORE steps 1–5.
+    //    A FRESH future schedule (non-internal) writes the row status='queued' + scheduled_for
+    //    and returns WITHOUT calling the provider. The drainer re-enters with scheduled_for
+    //    OMITTED, so this branch is skipped on release and the full pipeline runs. Legacy
+    //    callers never send scheduled_for, so they never see this (§37).
+    if (!isInternal && body.scheduled_for) {
+      const whenMs = Date.parse(body.scheduled_for);
+      if (Number.isFinite(whenMs) && whenMs > Date.now()) {
+        const schedIso = new Date(whenMs).toISOString();
+        const schedMeta = { source: "send-message", pre_send: { step: "scheduled", outcome: "queued_scheduled" } };
+        let schedRowId: string | null = null;
+        try {
+          if (body.message_id) {
+            const { data: patched } = await admin.from("messages").update({
+              status: "queued", scheduled_for: schedIso, meta: schedMeta, error: null,
+            }).eq("id", body.message_id).select("id").maybeSingle();
+            schedRowId = patched?.id ?? body.message_id;
+          } else if (effectiveContactId || effectiveConnectorId) {
+            const { data: inserted } = await admin.from("messages").insert({
+              thread_key: body.thread_key || draftRow?.thread_key || `${body.channel}:${body.to}`,
+              contact_id: effectiveContactId, connector_id: effectiveConnectorId,
+              channel_type: body.channel, direction: "outbound",
+              status: "queued", scheduled_for: schedIso,
+              recipients: [{ address: body.to }], subject: body.subject ?? null,
+              body_html: body.channel === "email" ? body.body : null,
+              body_text: body.channel === "email" ? null : body.body,
+              attachments: body.attachments ?? [],
+              meta: schedMeta,
+            }).select("id").maybeSingle();
+            schedRowId = inserted?.id ?? null;
+          }
+        } catch (e) {
+          console.warn("[send-message] scheduled row write skipped:", (e as Error)?.message);
+        }
+        return new Response(JSON.stringify({
+          audit_id: null, vendor_message_id: null,
+          pipe_used: body.channel === "sms" ? "twilio" : "resend",
+          status: "sent",          // §37: accepted, no hard error; true disposition in `outcome`
+          error: null, message_id: schedRowId,
+          outcome: "queued_scheduled", reason: null, scheduled_for: schedIso,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+    }
+
     const preSend = await runPreSend(admin, {
       tenantId,
       channel: body.channel,
@@ -657,6 +725,7 @@ Deno.serve(async (req) => {
               body_text: body.channel === "email" ? null : body.body,
               provider_message_id: vendor_message_id,
               in_reply_to_provider_id: body.in_reply_to ?? null,
+              attachments: body.attachments ?? [],   // C-1.5: persist for the inbox row
               sent_at: new Date().toISOString(),
               meta: { source: "send-message", pipe_used },
             })
@@ -698,7 +767,7 @@ Deno.serve(async (req) => {
     await admin.from("paige_pending_approvals")
       .update({
         status: status === "sent" ? "approved" : "pending",
-        reviewed_by_user_id: user.id,
+        reviewed_by_user_id: user?.id ?? null,
         reviewed_at: new Date().toISOString(),
         sent_at: status === "sent" ? new Date().toISOString() : null,
         sent_message_audit_id: auditRow?.id ?? null,
