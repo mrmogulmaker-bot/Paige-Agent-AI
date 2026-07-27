@@ -35,6 +35,14 @@ export { PageShell } from "./PageShell";
 export { PageHeader, type PageHeaderProps } from "./PageHeader";
 export { SectionCard } from "./SectionCard";
 export { StatTile, StatRow } from "./StatTile";
+export { StatPill, type StatPillProps, type StatPillTone } from "./StatPill";
+export {
+  DateRangePicker,
+  rangeToDates,
+  type RangeKey,
+  type DateRangeValue,
+  type DateRangePickerProps,
+} from "./DateRangePicker";
 export { DataTableShell, type Column } from "./DataTableShell";
 export { EmptyState } from "./EmptyState";
 export { Toolbar, FilterChip } from "./Toolbar";
