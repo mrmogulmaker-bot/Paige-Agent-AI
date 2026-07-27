@@ -1193,10 +1193,15 @@ surface, especially 3D/WebGL, media pipelines, and anything behind a graceful-de
   running session's capability, not a blanket excuse. For any auth-gated surface, the post-deploy scan MUST
   drive the DEPLOYED surface if the session has browser-driving capability (in-app browser / Chrome MCP /
   Playwright). Which lane runs depends on which agent holds the tool:
-  - **Claude Code (code + verify) — the headless build session.** Runs the code-level + headless smoke pass
-    (typecheck/build/tests + Node smoke on crash-prone runtime logic), and explicitly flags the browser-
-    driven live check as **OWED to the next capable session**. It does NOT get to call an auth-gated surface
-    "verified" on static analysis alone; it names what's owed.
+  - **Claude Code (code + verify) — the build/verify session, lane chosen by CAPABILITY not name.** When it
+    does NOT hold a browser/auth-driving tool (the usual headless remote/CI/cron case): run the code-level +
+    headless smoke pass (typecheck/build/tests + Node smoke on crash-prone runtime logic) and explicitly flag
+    the browser-driven live check as **OWED to the next capable session** — it does NOT get to call an
+    auth-gated surface "verified" on static analysis alone; it names what's owed. But if a Claude Code session
+    DOES hold such a tool (Playwright / in-app browser / Chrome MCP), it IS a capable session and MUST drive
+    the deployed surface itself per the rule above — the deferral is keyed to LACKING the capability, never to
+    the agent's name. (A capable session skipping the live check because it is "Claude Code" is the exact
+    contradiction this wording exists to prevent.)
   - **Cowork (planning + coordination, browser via Chrome MCP) — the drive lane.** Drives the live surface,
     walks the deployed nav, exercises the flow, captures the render, runs the §25 taste check against the
     ACTUAL pixels (not source inference), and reports findings back into the work loop as a first-class step
