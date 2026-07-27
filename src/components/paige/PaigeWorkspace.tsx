@@ -371,7 +371,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
 }
 
 export default function PaigeWorkspace() {
-  const { activeTenantId, activeTenant, loading } = useTenantContext();
+  const { activeTenantId, activeTenant, loading, isPlatformStaff } = useTenantContext();
 
   if (loading) {
     return (
@@ -381,13 +381,25 @@ export default function PaigeWorkspace() {
     );
   }
 
-  // MODE-AWARE (§20/§36): a platform operator with no active tenant is NOT a dead
-  // end. Paige runs at PLATFORM SCOPE — the operator's Chief of Staff for the SaaS
-  // company — mounting the SAME chat with clientId=null and explicit platform-scope
-  // context, never a tenant-default client Paige (§9). Scope follows the MODE
-  // (activeTenantId === null), never message content.
-  if (!activeTenantId) {
+  // MODE-AWARE (§20/§36): a PLATFORM STAFF operator with no active tenant is NOT a
+  // dead end. Paige runs at PLATFORM SCOPE — the operator's Chief of Staff for the
+  // SaaS company — mounting the SAME chat with clientId=null and explicit platform-
+  // scope context, never a tenant-default client Paige (§9). Scope follows the MODE
+  // (activeTenantId === null), never message content. The isPlatformStaff guard is
+  // load-bearing (§9): a non-staff account MUST NEVER see platform-operator framing.
+  if (isPlatformStaff && !activeTenantId) {
     return <PaigePlatformDesk />;
+  }
+
+  // Defense-in-depth (§9): a non-staff user with no active tenant (an unprovisioned
+  // edge case) falls through to a neutral state — NOT the platform desk, and not the
+  // tenant workspace with a null tenant.
+  if (!activeTenantId) {
+    return (
+      <div className="p-8 text-center text-sm text-muted-foreground">
+        No workspace is active yet.
+      </div>
+    );
   }
 
   return (

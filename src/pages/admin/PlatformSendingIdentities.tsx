@@ -58,7 +58,9 @@ export default function PlatformSendingIdentities() {
     setLoading(true);
     try {
       const [list, cfg] = await Promise.all([
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase as any).rpc("list_tenant_sender_identities"),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (supabase as any).rpc("get_platform_email_settings"),
       ]);
       if (list?.error || cfg?.error) {
@@ -261,6 +263,7 @@ function EditIdentitySheet({
   const save = async () => {
     if (!identity) return;
     setSaving(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any).rpc("set_tenant_email_identity", {
       p_tenant_id: identity.tenant_id,
       p_from_name: fromName || null,

@@ -52,18 +52,22 @@ export default function NetworkKbInsights() {
     setLoading(true);
     const [pendingRes, telemRes] = await Promise.all([
       supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .from("tenant_knowledge_docs" as any)
         .select("id, title, summary, category, tags, content, tenant_id, created_by, created_at, tenants(name, slug)")
         .eq("share_to_network", true)
         .eq("network_review_status", "pending")
         .order("created_at", { ascending: false }),
       supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .from("kb_query_telemetry" as any)
         .select("tenant_id, result_count, top_similarity, had_global_match, had_tenant_match, query_intent_tags, created_at")
         .order("created_at", { ascending: false })
         .limit(500),
     ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setPending((pendingRes.data as any) ?? []);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setTelemetry((telemRes.data as any) ?? []);
     setLoading(false);
   }, []);

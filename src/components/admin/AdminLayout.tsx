@@ -304,7 +304,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     (hub.aliases?.some((a) => isActive(a)) ?? false);
 
   const currentSection = godMode
-    ? (activeHubs.find(hubIsActive)?.label ?? "Platform")
+    ? (activeHubs.find(hubIsActive)?.label
+        ?? visibleMore.find((i) => isActive(i.href))?.label
+        ?? "Platform")
     : (adminNavItems.find((i) => isActive(i.href))?.label
         ?? activeHubs.find(hubIsActive)?.label
         ?? "Admin");
@@ -574,6 +576,18 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               </button>
             </div>
             <div className="p-2">
+              {/* Mode switch on mobile (§36 — the switch must be reachable on EVERY
+                  surface, or a staff user with a persisted active tenant is trapped
+                  in tenant mode on a phone with no way back to Platform). Same control
+                  as the desktop utilities row; the dropdown portals above the drawer. */}
+              {isPlatformStaff && (
+                <div className="px-1 pb-2 mb-1 border-b border-sidebar-border">
+                  <div className="px-2 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
+                    Mode
+                  </div>
+                  <TenantSwitcher />
+                </div>
+              )}
               {activeHubs.map((hub) => (
                 <div key={hub.href}>
                   <div className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">

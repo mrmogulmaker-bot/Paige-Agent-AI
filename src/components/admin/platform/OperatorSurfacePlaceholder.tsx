@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, Wrench } from "lucide-react";
 import { Link } from "react-router-dom";
-import { PageShell, PageHeader, SectionCard, GlyphPlate, StatePill } from "@/components/ui/page";
+import { PageShell, PageHeader, SectionCard, StatePill } from "@/components/ui/page";
 
 /**
  * OperatorSurfacePlaceholder — the honest, in-progress landing for a NEW operator
@@ -38,33 +38,28 @@ export function OperatorSurfacePlaceholder({
     <PageShell width="default">
       <PageHeader variant="plain" icon={Icon} eyebrow="Operator console" title={title} />
 
+      {/* The PageHeader above owns the title + glyph + eyebrow (one title, one glyph
+          on the surface — §25: no duplicate-title/duplicate-icon tell). The card
+          carries only the state + what this console will do + the related link. */}
       <SectionCard>
-        <div className="flex flex-col items-start gap-5 py-2 sm:flex-row sm:items-center">
-          <GlyphPlate icon={Icon} size="lg" ring="indigo" />
-          <div className="min-w-0 flex-1 space-y-3">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h2 className="font-display text-lg font-semibold leading-tight text-foreground">
-                {title}
-              </h2>
-              <StatePill state="building">In active development</StatePill>
+        <div className="space-y-3 py-1">
+          <StatePill state="building">In active development</StatePill>
+          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">{purpose}</p>
+          <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            This operator console is being built. It deliberately shows no data yet —
+            the deep surface is a follow-up, and we don&apos;t ship fabricated metrics.
+          </p>
+          {relatedHref && relatedLabel && (
+            <div className="pt-1">
+              <Link
+                to={relatedHref}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+              >
+                {relatedLabel}
+                <ArrowRight className="h-4 w-4" aria-hidden />
+              </Link>
             </div>
-            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">{purpose}</p>
-            <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-              This operator console is being built. It deliberately shows no data yet —
-              the deep surface is a follow-up, and we don&apos;t ship fabricated metrics.
-            </p>
-            {relatedHref && relatedLabel && (
-              <div className="pt-1">
-                <Link
-                  to={relatedHref}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-                >
-                  {relatedLabel}
-                  <ArrowRight className="h-4 w-4" aria-hidden />
-                </Link>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </SectionCard>
     </PageShell>

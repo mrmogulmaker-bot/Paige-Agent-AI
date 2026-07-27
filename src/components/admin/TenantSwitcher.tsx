@@ -50,21 +50,17 @@ export function TenantSwitcher() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         {/* PINNED-AT-TOP operator entry. Selecting it = switchTenant(null) = operator
-            mode. The thin gold LEFT accent is the elevated-mode signal the owner
-            asked for (§11: gold as the "on"/elevated marker, a thin edge — never a
-            fill). Compliance officer to rule on gold-discipline. */}
+            mode. The on-state is carried by the gold Check (below) when Platform is
+            active — §11: gold is spent ONLY on the on/selected moment, never as a
+            resting row accent. The Globe2 icon marks identity, not state. */}
         {isPlatformStaff && (
           <>
             <DropdownMenuLabel>Mode</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => switchTenant(null)}
-              className="relative flex items-center gap-2 pl-4"
+              className="flex items-center gap-2"
             >
-              <span
-                className="absolute left-1 top-1.5 bottom-1.5 w-0.5 rounded-full bg-accent"
-                aria-hidden
-              />
               <Globe2 className="w-4 h-4 text-foreground flex-shrink-0" />
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">Platform</div>

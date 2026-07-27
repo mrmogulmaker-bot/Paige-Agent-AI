@@ -75,6 +75,7 @@ export default function PlatformTenants() {
     });
 
     setRows(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ((tenants ?? []) as any[]).map((t) => ({
         id: t.id,
         slug: t.slug,
