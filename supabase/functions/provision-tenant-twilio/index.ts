@@ -17,8 +17,9 @@
 //  §18 Reuses the ONE Twilio seam (_shared/twilio.ts) and the Vault bridge — no second
 //      Twilio client, no inline REST. Vault write via write_channel_secret (mirrors the
 //      read_channel_secret bridge).
-//  §Reserved-number  This fn NEVER touches platform_phone_numbers or +1 470 200 3444.
-//      It provisions tenant subaccounts only; the reserved master number is out of scope.
+//  §Scope  This fn provisions tenant subaccounts ONLY. The Super Admin's imported
+//      +1 470 200 3444 is a tenant_phone_numbers row (source='imported') on the master
+//      account, managed by the dedicated import seam (C-2s-A / D2) — out of scope here.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createSubaccount, masterCreds } from "../_shared/twilio.ts";
 

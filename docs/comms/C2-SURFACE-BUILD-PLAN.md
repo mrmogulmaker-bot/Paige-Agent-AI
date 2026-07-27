@@ -35,6 +35,20 @@ C-1.5 inbox UI archives + PR #241 merges (per owner sequencing). Folds in both d
 
 ---
 
+## STANDING GREENLIGHT (owner: Antonio, 2026-07-27) — do NOT re-ask between sub-slices
+
+The owner has issued a **standing greenlight** for the ENTIRE C-2 surface program, cued to flow
+build-by-build at the crew's pace: **C-2s-A (plumbing) → C-2s-B (surfaces) → C-2s-C (compliance/DLR)**,
+each on a fresh branch off `main` (merged-PR doctrine), each through the full crew (§1/§5/§25 —
+adversarial verifier + compliance officer + design critic where a UI surface exists) + §32 Layer A+B +
+§37 producer/consumer inventory + §9 server-authoritative tenant derivation + §11/§25/§33 taste bar on
+any UI + §36 5-min test + §13 honest scope (real SIDs only). No merge-approval question between slices
+(§4 merge-on-verified). The ONLY owner-gated step is the LIVE Twilio execution proof (real SID visible
+in the Twilio console) for the backfill RUN, the +1 470 import, and the A2P/TCR submit — the API-Key
+credential pattern is proven (14/14 headless smoke, shipped `2c1bfcb`), so the CODE Layer-B-verifies
+headless and only the "real SID" confirmation waits on the owner. Report per sub-slice in the standard
+shape. When all three ship, C-2 is complete and the Comms program is complete.
+
 ## The 7 deliverables
 
 ### 1. Backfill 8 tenants — provision Twilio subaccount per tenant
@@ -120,6 +134,47 @@ area codes, buys a number, registers A2P, never knowing what Twilio is) · §38 
 - **C-2s-C (compliance + DLR):** List-Unsubscribe + `/u/:token` landing + STOP handler + NL
   classifier + `email_consent_enforced` toggle + `twilio-sms-status-webhook`.
 Each ships through the full C-1 gate (crew → §32 Layer A + B → §37 → report).
+
+## C-2s-A (plumbing) — BUILT + VERIFIED (2026-07-27), what shipped vs. what's live-gated
+
+**Shipped headless (this slice, §32 Layer A+B verified):**
+- `20260727140000_comms_c2sa_phone_source_and_import.sql` — `tenant_phone_numbers.source` enum
+  ('marketplace'|'imported'|'ported', NOT NULL default 'marketplace', backfills existing rows) +
+  a nullable `friendly_name` + `subaccount_id` relaxed to NULLABLE (imported/master numbers have no
+  subaccount) + the `set_tenant_phone_number_tenant` trigger gains a `new.tenant_id` service-path
+  fallback (spoof-safe — mirrors `set_tenant_a2p_registration_tenant`) + the §10 Paige-callable
+  `import_tenant_phone_number(...)` RPC (§9 tenant-pinned, E.164-validated, foreign-subaccount → 42501,
+  cross-tenant collision → 23505 no-leak, idempotent on the global phone UNIQUE, §200 zero hardcoded
+  number/tenant).
+- `send-message/index.ts` — `RESERVED_PLATFORM_NUMBER` const + filter REMOVED; the only isolation is
+  the `.eq('tenant_id', server-derived tenantId)` from-number query (crew-proven sufficient). §37: the
+  from-number path has exactly one producer (`smsOutboundAdapter`); no orphaned callers.
+- The `platform_phone_numbers` DROP is **parked at `docs/comms/c2sa-drop-platform-phone-numbers.sql`**
+  (OUT of `supabase/migrations/**` so `deploy-migrations.yml` cannot auto-apply it — a comment banner
+  is not a gate). It is promoted into `supabase/migrations/` with a fresh timestamp, in its OWN closing
+  PR, ONLY after the live pre-conditions below.
+
+**LIVE owner-gated execution runbook (real SID proof, §13 — NOT done by the slice):**
+1. **Backfill run** — invoke `provision-tenant-twilio` (super-admin JWT) to mint the 8 tenants' Twilio
+   subaccounts incl. Super Admin. Report real ACxx… SIDs.
+2. **+1 470 import** — call `import_tenant_phone_number` **via the SERVICE path with an explicit
+   `_tenant_id` = Super Admin's tenant UUID** (crew Finding 2: the God/owner JWT may have
+   `is_platform_owner()=true` but a NULL `current_user_tenant_id()`, which would 42501 — so drive the
+   import service-side with the resolved tenant id, §200-clean). Confirm the real `tenant_phone_numbers`
+   row (source='imported', subaccount_id NULL).
+3. **Master-creds send mapping (the send-path completion)** — for the +1 470 to actually SEND,
+   `resolveTwilioCreds(tenant)` must yield creds that OWN the number (the MASTER account). Decide at
+   live-setup: either Super Admin's `tenant_twilio_subaccounts` row maps to the master-account creds, or
+   send-message grows a per-number master-creds branch for `source='imported' + subaccount_id IS NULL`.
+   This is the one send-path piece C-2s-A does NOT wire (unverifiable headless); resolve it with the
+   live import so a real outbound from +1 470 returns a real Twilio SID.
+4. **A2P submit** — (C-2s-B/A2P surface) submit brand/campaign on the tenant's account; real TCR SIDs.
+5. **THEN promote the drop** — once #2 + a verified live send from +1 470 exist, move the parked drop
+   into `supabase/migrations/` (fresh timestamp) and merge as the closing PR.
+
+**Non-blocking follow-ups (crew, logged):** Finding 3 — `import_tenant_phone_number` doesn't set
+`is_primary` when the tenant has no primary, and re-import of a released/suspended row doesn't reactivate
+`status`; decide when a tenant holds >1 number (fine for the single +1 470 today, which inserts active).
 
 ## Report shape: same as C-1.5 UI (shipped / crew verdicts / Layer A / Layer B per-item / design
 verdict / honest scope / follow-ups). When all three sub-slices ship, **C-2 is complete and the

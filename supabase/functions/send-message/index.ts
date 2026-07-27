@@ -113,12 +113,18 @@ registerOutboundAdapter(emailOutboundAdapter);
 //   • resolves the tenant's SUBaccount creds via the ONE authenticated seam
 //     (resolveTwilioCreds → read_channel_secret on auth_token_vault_ref),
 //   • requires the tenant's A2P registration to be 'approved' (NEVER a silent send),
-//   • picks the tenant's OWN from-number from tenant_phone_numbers (NEVER
-//     platform_phone_numbers / the reserved +14702003444),
+//   • picks the tenant's OWN from-number from tenant_phone_numbers, scoped to the
+//     caller's server-derived tenant (§9 RLS + the .eq('tenant_id', …) below are the
+//     ONLY isolation — a number living under a tenant IS that tenant's to send from,
+//     including the Super Admin's imported +1 470 200 3444, which is a legitimate
+//     tenant_phone_numbers row (source='imported') on the master account, not a
+//     reserved platform number (D2, C-2s-A). §13 NOTE: isolation is complete, but an
+//     ACTUAL send from a source='imported' master-account number additionally requires
+//     the tenant's tenant_twilio_subaccounts creds to map to the account that OWNS the
+//     number (the master account for +1 470) — a LIVE setup step, not wired by C-2s-A,
 //   • sends via sendSms with a per-message StatusCallback (DLR) URL,
 //   • returns honest structured degrades (needs_config) — never a faked success (§13).
 // -----------------------------------------------------------------------------
-const RESERVED_PLATFORM_NUMBER = "+14702003444"; // §-reserved; never a tenant from-number.
 const SMS_MAX_LEN = 1600; // Twilio concatenated-segment ceiling (composer UX only).
 
 interface TenantNumberRow {
@@ -194,7 +200,14 @@ const smsOutboundAdapter: OutboundChannelAdapter = {
     }
     const messagingServiceSid = a2p.messaging_service_sid || undefined;
 
-    // 3) The tenant's OWN from-number (NEVER platform_phone_numbers / +14702003444).
+    // 3) The tenant's OWN from-number. Isolation is the .eq('tenant_id', …) below +
+    //    §9 RLS — the only from-numbers this tenant can send from are the ones that live
+    //    under its own tenant_id. The Super Admin's imported +1 470 200 3444 is one such
+    //    tenant_phone_numbers row (source='imported', on the master account), so it is a
+    //    legitimate from-number candidate here, not an excluded reserved number (D2).
+    //    §13: resolving it as a candidate is isolation-complete, but SENDING from a
+    //    master-account imported number needs resolveTwilioCreds to yield creds that own
+    //    it (the master account) — a LIVE setup step for the +1 470, gated in the plan.
     const { data: numData, error: numErr } = await admin
       .from("tenant_phone_numbers")
       .select("phone_number, status, is_primary, capabilities")
@@ -212,7 +225,6 @@ const smsOutboundAdapter: OutboundChannelAdapter = {
     const smsCapable = rows.filter(
       (r) =>
         r.phone_number &&
-        r.phone_number !== RESERVED_PLATFORM_NUMBER &&
         (r.capabilities?.sms === undefined || r.capabilities?.sms === true),
     );
     const fromNumber = smsCapable[0]?.phone_number ?? null;
@@ -600,7 +612,8 @@ Deno.serve(async (req) => {
       // SMS — route THROUGH the per-tenant Twilio OutboundChannelAdapter (§18/§32).
       // Replaces the old platform-master-creds + paige_config.default_from_sms_number path
       // (the §9/§38 correction): A2P is per-tenant, creds are the tenant's subaccount, and
-      // the from-number is the tenant's own — never the reserved +14702003444.
+      // the from-number is the tenant's own — resolved from tenant_phone_numbers, isolated
+      // by §9 RLS (D2: no reserved-number exclusion; an imported number is a real from-number).
       const adapter = getOutboundAdapter("sms");
       if (!adapter) throw new Error("no_sms_adapter_registered");
 
