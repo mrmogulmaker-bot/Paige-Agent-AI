@@ -596,12 +596,48 @@ Deno.serve(async (req) => {
         body_html: body.body,
         in_reply_to_provider_id: body.in_reply_to ?? null,
       };
+      // C-2s-C: mint a per-recipient one-click unsubscribe token so this email carries a
+      // List-Unsubscribe / List-Unsubscribe-Post header (RFC 8058, CAN-SPAM). The email
+      // adapter builds the header from ctx.oneClickUrl (buildListUnsubscribeHeaders, §18 one
+      // home). Best-effort: a mint failure must NEVER block the send — the email just ships
+      // without the header (the status quo before this slice), logged honestly (§13).
+      let oneClickUrl: string | undefined;
+      try {
+        const rawToken = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+          .map((b) => b.toString(16).padStart(2, "0")).join("");
+        const hashBuf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawToken));
+        const tokenHash = Array.from(new Uint8Array(hashBuf))
+          .map((b) => b.toString(16).padStart(2, "0")).join("");
+        // Upsert on the tenant-scoped (tenant_id, email) unique (C-2s-C migration): one active
+        // token per recipient per tenant. effectiveContactId lets the unsubscribe handler write
+        // a contact-scoped suppression; tenant_id makes a contactless opt-out resolvable (§9).
+        const { error: mintErr } = await admin
+          .from("email_unsubscribe_tokens")
+          .upsert({
+            token: rawToken,
+            token_hash: tokenHash,
+            email: body.to,
+            contact_id: effectiveContactId ?? null,
+            tenant_id: tenantId,
+            used_at: null,
+          }, { onConflict: "tenant_id,email" });
+        if (mintErr) {
+          console.warn("send-message: unsubscribe token mint failed; sending without List-Unsubscribe:", mintErr.message);
+        } else {
+          oneClickUrl = `${supabaseUrl}/functions/v1/comms-email-unsubscribe?token=${rawToken}`;
+        }
+      } catch (e) {
+        console.warn("send-message: unsubscribe token mint threw; sending without List-Unsubscribe:", (e as Error)?.message);
+      }
+
       const ctx: OutboundSendContext = {
         from: { address: senderEmail, display_name: senderName ?? undefined },
         to: body.to,
         replyTo,
         providerApiKey: resendKey,
         connectorConfig: null,
+        // OutboundSendContext field is listUnsubscribeUrl (the adapter reads it → buildListUnsubscribeHeaders).
+        listUnsubscribeUrl: oneClickUrl ?? null,
       };
       const delivery = await adapter.send(outMsg, ctx);
       pipe_used = "resend";

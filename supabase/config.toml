@@ -57,6 +57,18 @@ project_id = "xygzykjyynhzqytbqnzu"
     verify_jwt = true
   [functions.comms-a2p-submit]
     verify_jwt = true
+  # Comms C-2s-C compliance/DLR:
+  #  - twilio-status-callback: Twilio SMS delivery-receipt (DLR) status-callback. Twilio
+  #    cannot present a Supabase JWT, so verify_jwt=false; the control is x-twilio-signature
+  #    HMAC verification in-function (mirrors handle-inbound-sms). Updates messages.status by
+  #    provider_message_id (the URL send-message already advertises as StatusCallback).
+  #  - comms-email-unsubscribe: tenant email List-Unsubscribe one-click landing. Recipients are
+  #    unauthenticated (RFC 8058 one-click POST from Gmail), so verify_jwt=false; the control is
+  #    the single-use, unguessable 32-byte hashed token. Writes tenant-scoped paige_suppressions.
+  [functions.twilio-status-callback]
+    verify_jwt = false
+  [functions.comms-email-unsubscribe]
+    verify_jwt = false
   # Comms C-1.5: scheduled-send drainer. Cron-token gated (self-gates in-function on
   # a service-role bearer OR verify_cron_token), so it runs pre-auth like readiness-scan.
   [functions.comms-scheduled-drain]

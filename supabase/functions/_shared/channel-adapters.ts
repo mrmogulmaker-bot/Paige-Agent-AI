@@ -150,6 +150,47 @@ export interface OutboundSendContext {
   tenantId?: string | null;
   /** Per-message DLR StatusCallback URL Twilio POSTs delivery events to. Honest-null when unset. */
   statusCallbackUrl?: string | null;
+  // ── C-2s-C additive (email List-Unsubscribe). SMS ignores both (non-breaking). ──
+  /**
+   * RFC 8058 one-click unsubscribe target — a per-recipient TOKENIZED URL pointing at
+   * the tenant unsubscribe handler (comms-email-unsubscribe). The email adapter advertises
+   * it via List-Unsubscribe / List-Unsubscribe-Post. Honest-null when the send has no
+   * opt-out surface (e.g. a 1:1 human reply, or the token could not be minted, §13) — the
+   * adapter then attaches NO opt-out header rather than a broken one. Set by the dispatcher
+   * from the minted token, NEVER from a provider payload or request body.
+   */
+  listUnsubscribeUrl?: string | null;
+  /**
+   * Fixed PLATFORM mailbox for the mailto: arm of List-Unsubscribe (§2 — a platform address,
+   * never a tenant address). Defaults inside buildListUnsubscribeHeaders() when omitted.
+   */
+  listUnsubscribeMailto?: string | null;
+}
+
+/**
+ * RFC 2369 + RFC 8058 List-Unsubscribe header block for OUTBOUND tenant email.
+ *
+ * §18 one home: this is the single place the List-Unsubscribe header shape is authored for the
+ * tenant send path — mirroring the block already in send-transactional-email/index.ts so the two
+ * paths never drift. The email OutboundChannelAdapter (registered in send-message) merges this
+ * into its Resend `headers` when the dispatcher supplies a one-click URL.
+ *
+ * - `oneClickUrl`  the tokenized comms-email-unsubscribe endpoint (verify_jwt=false so Gmail's
+ *                  JWT-less one-click POST reaches it). Per-recipient; carries the opt-out token.
+ * - `mailto`       a FIXED platform mailbox (§2 — never a tenant address).
+ *
+ * Returns `{}` when there is no one-click URL to advertise (§13 honest — never fabricate an
+ * opt-out surface for a message that has none).
+ */
+export function buildListUnsubscribeHeaders(
+  oneClickUrl: string | null | undefined,
+  mailto = "unsubscribe@mail.paigeagent.ai",
+): Record<string, string> {
+  if (!oneClickUrl) return {};
+  return {
+    "List-Unsubscribe": `<${oneClickUrl}>, <mailto:${mailto}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
 }
 
 // -----------------------------------------------------------------------------

@@ -236,6 +236,9 @@ const App = () => (
             <Route path="/admin/*" element={<RequireCompleteSignup><PageSuspense><Admin /></PageSuspense></RequireCompleteSignup>} />
             <Route path="/agency/*" element={<RequireCompleteSignup><PageSuspense><AgencyLayout /></PageSuspense></RequireCompleteSignup>} />
             <Route path="/unsubscribe" element={<PageSuspense><Unsubscribe /></PageSuspense>} />
+            {/* Comms C-2s-C — tenant one-click/footer unsubscribe. SAME Unsubscribe surface (§18),
+                branded /u/:token path form; the component routes the token to comms-email-unsubscribe. */}
+            <Route path="/u/:token" element={<PageSuspense><Unsubscribe /></PageSuspense>} />
            <Route path="/terms" element={<PageSuspense><Terms /></PageSuspense>} />
            <Route path="/privacy" element={<PageSuspense><Privacy /></PageSuspense>} />
            <Route path="/legal/:slug" element={<PageSuspense><LegalDoc /></PageSuspense>} />
