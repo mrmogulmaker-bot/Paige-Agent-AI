@@ -60,14 +60,20 @@ export function ThreadRow({
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onClick())}
       aria-current={active ? "true" : undefined}
       className={cn(
-        "group flex w-full cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
+        "group relative flex w-full cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
         active
-          ? "border-[hsl(var(--border-strong))] bg-muted"
+          // Indigo selection accent bar (Linear/Front pattern). before:content-[''] is REQUIRED —
+          // a Tailwind pseudo-element with no content defaults to content:none and paints nothing.
+          ? "border-[hsl(var(--border-strong))] bg-muted before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-[hsl(var(--primary))] before:content-['']"
           : "border-transparent hover:border-border hover:bg-muted/60",
       )}
     >
-      <ChannelGlyph channel={channel} />
+      {/* Unread rows pop: tint the channel glyph indigo (§27 contrast). Token, AA both themes. */}
+      <ChannelGlyph
+        channel={channel}
+        className={cn(unread && "border-[hsl(var(--primary)/0.4)] bg-[hsl(var(--primary)/0.08)] text-[hsl(var(--primary))]")}
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className={cn("min-w-0 flex-1 truncate text-sm text-foreground", unread ? "font-semibold" : "font-medium")}>
@@ -88,7 +94,8 @@ export function ThreadRow({
 
         <div className="mt-0.5 flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-            {preview?.direction === "outbound" && preview.status !== "draft" ? "You: " : ""}
+            {preview?.direction === "outbound" && preview.status !== "draft"
+              ? <span className="text-muted-foreground/60">You: </span> : ""}
             {preview ? (bodyPreview(preview) || preview.subject || "—") : "—"}
           </span>
           {hasDraft && <StatePill state="building">Draft ready</StatePill>}

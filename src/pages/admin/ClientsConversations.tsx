@@ -15,7 +15,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useSearchParams } from "react-router-dom";
 import {
   MessageCircle, Inbox, Send, Pencil, Loader2, Sparkles, AlertTriangle, Paperclip,
-  Search, SearchX, PanelRight, Clock, X, ImageIcon,
+  Search, SearchX, PanelRight, Clock, X, ImageIcon, ChevronDown,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -176,7 +176,7 @@ function MessageBubble({
             </span>
           </div>
           {m.subject && <p className="mb-1 text-sm font-medium text-foreground">{m.subject}</p>}
-          <p className="whitespace-pre-wrap text-sm text-foreground/90">{body || "—"}</p>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{body || "—"}</p>
           <div className="mt-3 flex items-center gap-2">
             <Button
               variant="gold"
@@ -202,11 +202,13 @@ function MessageBubble({
       <div
         className={cn(
           "max-w-[85%] rounded-xl border p-3 shadow-card",
-          outbound ? "border-primary/25 bg-primary/[0.06]" : "border-border bg-card",
+          // Directional corner tail toward the sender (classic chat polish, pure radius).
+          outbound ? "rounded-br-md border-primary/25 bg-primary/[0.06]" : "rounded-bl-md border-border bg-card",
         )}
       >
+        {/* No per-bubble channel glyph: the whole thread is one channel and direction is
+            already encoded by alignment + bubble color — repeating it is noise (§25 density). */}
         <div className="mb-1 flex items-center gap-2">
-          <ChannelGlyph channel={m.channel_type} className="h-6 w-6 rounded-md" />
           <span className="text-[11px] text-muted-foreground">
             {outbound ? "You" : partyLabel(m.sender) || "Client"}
             <span className="opacity-60">
@@ -287,6 +289,16 @@ export default function ClientsConversations() {
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [signatures, setSignatures] = useState<Signature[]>([]);
   const [appendSignature, setAppendSignature] = useState(true); // email only, default on
+
+  // "Draft with Paige" (#482 Phase-1): on-demand reply drafting via the subagent-email-composer
+  // seam (§18 — same seam ContactCommsPanel proves). Email-only for Phase-1 (the composer is an
+  // EMAIL composer; SMS-native drafting is a fast-follow, §13 — don't route SMS through it and
+  // pretend it's SMS-native). Draft-first, one-click, non-gold assist (§36/§11).
+  const [drafting, setDrafting] = useState(false);
+  const [draftFlags, setDraftFlags] = useState<string[]>([]);
+  const [draftGuideOpen, setDraftGuideOpen] = useState(false);
+  const [draftGuide, setDraftGuide] = useState("");
+  const [draftTone, setDraftTone] = useState<"professional" | "friendly" | "warm" | "direct">("professional");
   const tenantIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -683,6 +695,73 @@ export default function ClientsConversations() {
     setUndo(null); void load();
   }, [load]);
 
+  // ── "Draft with Paige": ask the email-composer sub-agent to draft a reply on demand ──
+  // Reads the thread's last inbound message as context (§36 one-click) + optional guide/tone.
+  // Lands the draft in the composer for review/edit/send — never auto-sends (§36 draft-first).
+  const draftWithPaige = useCallback(async () => {
+    if (!selected) return;
+    // §13: never silently discard the coach's typed reply. Only draft into an empty body.
+    if (body.trim()) {
+      toast.error("You've already started a reply — clear it first to draft with Paige.");
+      return;
+    }
+    setDrafting(true);
+    setDraftFlags([]);
+    try {
+      // §36 context: the client's most recent inbound message (capped so a long thread
+      // doesn't blow the prompt budget — verifier #6).
+      const lastInbound = [...selected.messages].reverse().find((m) => m.direction === "inbound");
+      const lastText = lastInbound ? bodyPreview(lastInbound).slice(0, 1500) : "";
+
+      const { data, error } = await supabase.functions.invoke("subagent-email-composer", {
+        body: {
+          input: {
+            intent: draftGuide.trim() || "Write a reply to the client's most recent message in this conversation.",
+            tone: draftTone,
+            length: "medium",
+            key_points: [lastText ? `Client's last message: ${lastText}` : ""].filter(Boolean),
+            contact_id: selected.contactId ?? undefined,
+            recipient_name: selected.name || undefined,
+            recipient_email: selected.toAddress || undefined,
+            format: "html",
+          },
+          context: { contact_id: selected.contactId ?? undefined },
+        },
+      });
+      // §13/§36 honest error: a non-2xx (compliance_blocked 422, reviewer_unavailable/timeout 503)
+      // returns FunctionsHttpError whose `.message` is the generic "non-2xx status code" — the REAL
+      // reason (summary/error) is in `.context`. Surface that so the coach knows to revise, never a
+      // dev-tool leak.
+      if (error) {
+        let msg = "Paige couldn't draft that — try again.";
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const b = await (error as any).context?.json?.();
+          if (b?.summary || b?.error) msg = b.summary ?? b.error;
+        } catch { /* keep the friendly default */ }
+        throw new Error(msg);
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const draft = (data as any)?.draft ?? data;
+      const text = draft?.body_text || (draft?.body_html ? String(draft.body_html).replace(/<[^>]+>/g, "") : "");
+      if (!text.trim()) throw new Error("Paige returned an empty draft.");
+
+      // Fresh reply — not an edit of the passive draft row (verifier #4): clear any edit binding
+      // so Send dispatches a NEW message, not an update to a stale draft.
+      setEditingDraftId(null);
+      if (draft?.subject && !subject.trim()) setSubject(draft.subject);
+      setBody(text);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setDraftFlags(((data as any)?.compliance_flags ?? []) as string[]);
+      setDraftGuideOpen(false);
+      toast.success("Paige drafted a reply — review before you send.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Paige couldn't draft that — try again.");
+    } finally {
+      setDrafting(false);
+    }
+  }, [selected, body, draftGuide, draftTone, subject]);
+
   // ── Send a fresh reply (or an edited draft) into the selected thread ──────────────
   const send = async () => {
     if (!selected) return;
@@ -836,11 +915,11 @@ export default function ClientsConversations() {
           ) : (
             <>
               {/* Thread header */}
-              <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
+              <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3.5">
                 <ChannelGlyph channel={selected.channel} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-foreground">{selected.name}</p>
-                  <p className="truncate text-[11px] text-muted-foreground">
+                  <p className="truncate text-[11px] text-muted-foreground select-text">
                     {CHANNEL_LABEL[selected.channel]}{selected.toAddress ? ` · ${selected.toAddress}` : ""}
                   </p>
                 </div>
@@ -961,12 +1040,69 @@ export default function ClientsConversations() {
                       />
                     </div>
 
-                    {/* Toolbar: attach · signature toggle · schedule */}
+                    {/* Toolbar: Draft with Paige · attach · signature toggle · schedule */}
                     <div className="flex flex-wrap items-center gap-2">
                       <input
                         ref={fileInputRef} type="file" multiple hidden
                         onChange={(e) => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ""; }}
                       />
+
+                      {/* Draft with Paige — the headline assist. Email-only for Phase-1 (§13).
+                          Out-ranks the utility cluster with an indigo-tinted border (NOT gold —
+                          gold stays on Send/Approve, §11); one-click primary + optional guide popover. */}
+                      {composeChannel === "email" && (
+                        <div className="inline-flex items-center">
+                          <Button
+                            variant="outline" size="sm"
+                            className="h-8 min-w-[8.5rem] justify-center rounded-r-none border-r-0 border-[hsl(var(--primary)/0.4)]"
+                            onClick={() => void draftWithPaige()}
+                            disabled={drafting || sending || uploading || !selected.toAddress}
+                            aria-busy={drafting}
+                            title={!selected.toAddress ? "Add a recipient to draft a reply" : undefined}
+                          >
+                            {drafting
+                              ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                              : <Sparkles className="mr-1.5 h-3.5 w-3.5 text-[hsl(var(--gold-dark))]" />}
+                            {drafting ? "Paige is drafting…" : "Draft with Paige"}
+                          </Button>
+                          <Popover open={draftGuideOpen} onOpenChange={setDraftGuideOpen}>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline" size="sm"
+                                className="h-8 rounded-l-none border-[hsl(var(--primary)/0.4)] px-2"
+                                aria-label="Guide Paige's draft" disabled={drafting}
+                              >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent align="start" className="w-72 space-y-2 p-3">
+                              <label htmlFor="draft-guide" className="block text-[11px] font-medium text-muted-foreground">
+                                Optional — tell Paige the angle &amp; tone
+                              </label>
+                              <Textarea
+                                id="draft-guide" rows={2} value={draftGuide}
+                                onChange={(e) => setDraftGuide(e.target.value)}
+                                placeholder="e.g. Confirm the Thursday call and ask for their intake form"
+                                className="resize-none text-sm"
+                              />
+                              <Select value={draftTone} onValueChange={(v) => setDraftTone(v as typeof draftTone)}>
+                                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="professional">Professional</SelectItem>
+                                  <SelectItem value="friendly">Friendly</SelectItem>
+                                  <SelectItem value="warm">Warm</SelectItem>
+                                  <SelectItem value="direct">Direct</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Button variant="outline" size="sm" className="h-8 w-full"
+                                onClick={() => void draftWithPaige()} disabled={drafting}>
+                                <Sparkles className="mr-1.5 h-3.5 w-3.5 text-[hsl(var(--gold-dark))]" /> Draft it
+                              </Button>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      )}
+
                       <Button variant="outline" size="sm" className="h-8"
                         onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                         {uploading
@@ -1037,6 +1173,14 @@ export default function ClientsConversations() {
                       )}
                     </div>
 
+                    {/* Compliance flags from Paige's draft — tokened, not raw amber (§11). */}
+                    {draftFlags.length > 0 && (
+                      <div className="flex items-start gap-1.5 rounded-md border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] px-2.5 py-1.5 text-[11px] text-[hsl(var(--warning))]">
+                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                        <span><span className="font-medium">Check before sending:</span> {draftFlags.join(" · ")}</span>
+                      </div>
+                    )}
+
                     {/* Send row */}
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] text-muted-foreground">
@@ -1044,7 +1188,7 @@ export default function ClientsConversations() {
                       </span>
                       <Button
                         variant="gold" size="sm" onClick={send}
-                        disabled={sending || uploading || !body.trim() || !selected.toAddress}
+                        disabled={sending || drafting || uploading || !body.trim() || !selected.toAddress}
                         className="h-9"
                       >
                         {sending
