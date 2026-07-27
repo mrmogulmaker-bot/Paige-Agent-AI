@@ -27,12 +27,21 @@ Three follow-ups:
   `paige_consent_events` row (`action='granted'`, the right `channel`, `source='form'`) for the
   recipient **at the moment of intent** (form submission), not via a retroactive flow. This is
   how a tenant seeds email consent if/when they opt into enforcement (see c).
-- **(c) Future enhancement — file as follow-up, NOT day-one.** A per-tenant toggle in
-  `tenant_comms_preferences` for **email-consent enforcement**, for tenants with international
-  audiences (**EU/CA/UK/AU** where opt-in IS legally required) OR who want the higher bar as a
-  deliverability play. Implementation = read the toggle in the pipeline and add `"email"` to the
-  enforced set for that tenant; a one-line flip after the tenant has seeded a prior-relationship
-  backfill. Not a blocker.
+- **(c) Per-tenant email-consent enforcement toggle — OWNER CONFIRMED IN SCOPE (2026-07-27,
+  "yes I do want the international/deliverability bar").** A per-tenant toggle in
+  `tenant_comms_preferences` (add `email_consent_enforced boolean not null default false`) for
+  tenants with international audiences (**EU/CA/UK/AU** where opt-in IS legally required) OR who
+  want the higher bar as a deliverability play. Implementation (in the C-2 compliance/surface
+  slice, additive — NOT a keystone re-fire):
+  1. Migration: add the column to `tenant_comms_preferences`.
+  2. Pipeline: `runPreSend` reads the caller-tenant's `email_consent_enforced`; when true, add
+     `"email"` to the enforced set **for that tenant only**. The **global default stays SMS-only**
+     (US email = CAN-SPAM opt-out, D1); this is per-tenant opt-IN, never a global flip.
+  3. UI: the toggle lives in the tenant comms-preferences surface, with copy explaining it
+     requires seeded email consent (D1b form checkboxes) or a prior-relationship backfill or the
+     tenant will block its own email.
+  This pairs with D1(b): the form-builder dual-consent checkboxes are what seed the `granted`
+  `paige_consent_events` rows that make enforcement meaningful.
 
 ---
 
@@ -49,10 +58,13 @@ Architectural correction — **simpler** than the original reserved-number scope
 - **`platform_phone_numbers` is now REDUNDANT.** Grep (2026-07-27) confirms **no live code
   queries it** — it appears only in the foundation migration (its own CREATE + seed), in
   `send-message` **comments** + the `RESERVED_PLATFORM_NUMBER` constant/filter, and in a
-  `provision-tenant-twilio` **comment**. → **Drop it** (owner-recommended option a) in the C-2
-  surface slice. (Since the foundation migration is still unmerged on PR #241, the surface slice
-  may either amend the foundation to not-create it, or add a drop follow-up migration — pick the
-  smaller diff at build time. Re-grep before dropping.)
+  `provision-tenant-twilio` **comment**. → **Drop it — OWNER CONFIRMED (2026-07-27, "yes we can
+  drop platform_phone_numbers as long as it works like we planned").** The drop is **gated on the
+  Super-Admin-as-tenant model being verified working end-to-end** in the same surface slice (his
+  number lives in `tenant_phone_numbers`, §9 RLS isolates it, the SMS adapter actually resolves +
+  sends from it) BEFORE the table is dropped. Since the foundation migration is still unmerged on
+  PR #241, the surface slice may either amend the foundation to not-create it, or add a drop
+  follow-up migration — pick the smaller diff at build time. Re-grep before dropping.
 
 ### Required code delta in the C-2 surface slice (because the reserved number becomes a real tenant number)
 
