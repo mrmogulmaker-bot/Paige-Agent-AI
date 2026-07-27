@@ -20,6 +20,11 @@ import {
   type OutboundChannelAdapter,
   type OutboundSendContext,
 } from "../_shared/channel-adapters.ts";
+// C-2a: the per-tenant Twilio seam (subaccount creds + send) and the LOCKED pre-send
+// compliance pipeline (SEND-MESSAGE-CONTRACT §3 steps 1–5). SMS routes THROUGH the
+// registry adapter below (no inline master-cred path); every send passes runPreSend first.
+import { resolveTwilioCreds, sendSms, type SupabaseAdminLike } from "../_shared/twilio.ts";
+import { runPreSend } from "../_shared/pre-send-pipeline.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -43,6 +48,9 @@ interface SendBody {
   // by the messages trigger from connector_id/contact_id — never from the body, §9).
   connector_id?: string;
   thread_key?: string;
+  // C-2a: explicit staff override of a CLIENT-level do-not-disturb hold (pre-send step 1
+  // ONLY). Never overrides suppression/consent (steps 2–3). Audited via the terminal row.
+  override_client_dnd?: boolean;
 }
 
 // -----------------------------------------------------------------------------
@@ -94,6 +102,147 @@ const emailOutboundAdapter: OutboundChannelAdapter = {
 };
 registerOutboundAdapter(emailOutboundAdapter);
 
+// -----------------------------------------------------------------------------
+// C-2a §18/§32 — register the SMS outbound adapter (per-tenant Twilio SUBaccount) into
+// the SAME shared registry, then send THROUGH it. Replaces the inline Twilio branch that
+// used platform master creds + paige_config.default_from_sms_number. This adapter:
+//   • resolves the tenant's SUBaccount creds via the ONE authenticated seam
+//     (resolveTwilioCreds → read_channel_secret on auth_token_vault_ref),
+//   • requires the tenant's A2P registration to be 'approved' (NEVER a silent send),
+//   • picks the tenant's OWN from-number from tenant_phone_numbers (NEVER
+//     platform_phone_numbers / the reserved +14702003444),
+//   • sends via sendSms with a per-message StatusCallback (DLR) URL,
+//   • returns honest structured degrades (needs_config) — never a faked success (§13).
+// -----------------------------------------------------------------------------
+const RESERVED_PLATFORM_NUMBER = "+14702003444"; // §-reserved; never a tenant from-number.
+const SMS_MAX_LEN = 1600; // Twilio concatenated-segment ceiling (composer UX only).
+
+interface TenantNumberRow {
+  phone_number: string | null;
+  status: string | null;
+  is_primary: boolean | null;
+  capabilities: Record<string, unknown> | null;
+}
+interface A2pRow {
+  status: string | null;
+  messaging_service_sid: string | null;
+}
+
+const smsOutboundAdapter: OutboundChannelAdapter = {
+  channel_type: "sms",
+
+  // Composer/Send-button constraints (§36). SMS has a length ceiling; quiet-hours +
+  // consent are enforced server-side by the pre-send pipeline (steps 1–5), NOT here.
+  getSendConstraints(thread) {
+    return {
+      mustUseTemplate: false,
+      windowClosesAt: null,
+      requiresHumanEdit: false,
+      quietHoursTz: (thread.config?.quiet_hours_tz as string | undefined) ?? null,
+      maxLength: SMS_MAX_LEN,
+    };
+  },
+
+  async send(msg: NormalizedMessage, ctx: OutboundSendContext) {
+    const admin = ctx.admin as SupabaseAdminLike | null | undefined;
+    const tenantId = ctx.tenantId ?? null;
+
+    // Guard: SMS is a tenant-owned rail (§9/§38). No admin client or no resolved tenant
+    // => cannot resolve creds/number/A2P. Honest degrade, never a blind master-account send.
+    if (!admin || !tenantId) {
+      return {
+        ok: false, status: "failed" as const, needs_config: true,
+        reason: "sms_requires_tenant",
+        error: "sms_requires_tenant: no service-role client / server-derived tenant in context",
+      };
+    }
+
+    // 1) SUBaccount creds via the ONE authenticated seam (Vault-bridged auth token).
+    const creds = await resolveTwilioCreds(admin, tenantId);
+    if (!creds.ok || !creds.data) {
+      return {
+        ok: false, status: "failed" as const,
+        needs_config: creds.needs_config === true,
+        reason: creds.needs_config ? "twilio_subaccount_not_provisioned" : "twilio_creds_lookup_failed",
+        error: creds.error ?? "twilio_subaccount_not_provisioned",
+      };
+    }
+    const { accountSid: subaccountSid, authToken: subToken } = creds.data;
+
+    // 2) A2P 10DLC must be APPROVED for this tenant — else a specific failure, never a send.
+    const { data: a2pData, error: a2pErr } = await admin
+      .from("tenant_a2p_registrations")
+      .select("status, messaging_service_sid")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (a2pErr) {
+      return {
+        ok: false, status: "failed" as const, reason: "a2p_lookup_failed",
+        error: `a2p_lookup_failed: ${String((a2pErr as { message?: string })?.message ?? a2pErr).slice(0, 300)}`,
+      };
+    }
+    const a2p = (a2pData ?? null) as A2pRow | null;
+    if (!a2p || a2p.status !== "approved") {
+      return {
+        ok: false, status: "failed" as const, reason: "a2p_not_approved",
+        error: `a2p_not_approved: tenant A2P registration status is '${a2p?.status ?? "none"}'`,
+      };
+    }
+    const messagingServiceSid = a2p.messaging_service_sid || undefined;
+
+    // 3) The tenant's OWN from-number (NEVER platform_phone_numbers / +14702003444).
+    const { data: numData, error: numErr } = await admin
+      .from("tenant_phone_numbers")
+      .select("phone_number, status, is_primary, capabilities")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .order("is_primary", { ascending: false })
+      .order("purchased_at", { ascending: false, nullsFirst: false });
+    if (numErr) {
+      return {
+        ok: false, status: "failed" as const, reason: "sms_number_lookup_failed",
+        error: `sms_number_lookup_failed: ${String((numErr as { message?: string })?.message ?? numErr).slice(0, 300)}`,
+      };
+    }
+    const rows = (numData ?? []) as TenantNumberRow[];
+    const smsCapable = rows.filter(
+      (r) =>
+        r.phone_number &&
+        r.phone_number !== RESERVED_PLATFORM_NUMBER &&
+        (r.capabilities?.sms === undefined || r.capabilities?.sms === true),
+    );
+    const fromNumber = smsCapable[0]?.phone_number ?? null;
+    if (!fromNumber) {
+      return {
+        ok: false, status: "failed" as const, needs_config: true, reason: "no_sms_number",
+        error: "no_sms_number: tenant has no active SMS-capable phone number",
+      };
+    }
+
+    // 4) Send via the ONE authenticated seam. Body is plain text for SMS.
+    const bodyText = msg.body_text ?? msg.body_html ?? "";
+    const result = await sendSms(subaccountSid, subToken, {
+      from: fromNumber,
+      to: ctx.to,
+      body: bodyText,
+      statusCallback: ctx.statusCallbackUrl ?? undefined,
+      messagingServiceSid, // A2P Messaging Service takes precedence over From when present.
+    });
+    if (!result.ok || !result.data) {
+      return {
+        ok: false, status: "failed" as const, reason: "twilio_send_failed",
+        error: result.error ?? "twilio_send_failed", meta: { from_number: fromNumber },
+      };
+    }
+    const sid = (result.data as { sid?: string }).sid ?? null;
+    return {
+      ok: true, status: "sent" as const, provider_message_id: sid,
+      meta: { from_number: fromNumber, messaging_service_sid: messagingServiceSid ?? null },
+    };
+  },
+};
+registerOutboundAdapter(smsOutboundAdapter);
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -140,6 +289,14 @@ Deno.serve(async (req) => {
   let status: "sent" | "failed" = "failed";
   let errorText: string | null = null;
   let fromAddress: string | null = null;
+  // ── C-2a additive (§37 / SEND-MESSAGE-CONTRACT §5) — the 6-way disposition lives in
+  //    `outcome`; wire `status` stays sent|failed. The pre-send seam (below) early-returns
+  //    for every block/queue case, so this send path only ever resolves sent|failed here. ──
+  let outcome:
+    | "sent" | "failed"
+    | "blocked_client_dnd" | "blocked_suppressed" | "blocked_no_consent"
+    | "queued_tenant_dnd" | "queued_quiet_hours" | "queued_scheduled" = "failed";
+  let reason: string | null = null;
 
   // ── Resolve the tenant + connector + sender identity (§9/§38) BEFORE the send ──
   // Tenant is derived from known, tenant-scoped rows in priority order:
@@ -220,6 +377,101 @@ Deno.serve(async (req) => {
     );
   }
 
+  // ── >>> PRE-SEND PIPELINE SEAM <<< (SEND-MESSAGE-CONTRACT §3 steps 1–5) ──────────
+  // Runs the LOCKED compliance order after §9 tenant derivation + the §5 dedupe guard,
+  // BEFORE any provider call. A block/queue disposition writes the messages row in its
+  // TERMINAL state (blocked|queued) with meta.pre_send and RETURNS 200 (provider never
+  // called). 'proceed' falls through to the existing try{} send. 'error' fails CLOSED.
+  {
+    const preSend = await runPreSend(admin, {
+      tenantId,
+      channel: body.channel,
+      to: body.to,
+      contactId: effectiveContactId,
+      overrideClientDnd: body.override_client_dnd === true,
+    });
+
+    if (!preSend.proceed) {
+      const gatedPipe: "resend" | "twilio" = body.channel === "sms" ? "twilio" : "resend";
+
+      // 'error' = a LEGAL gate (suppression/consent) DB read failed → §13 fail closed.
+      // Recorded as a genuine failure (status:'failed', error set), NOT a policy hold.
+      if (preSend.outcome === "error") {
+        if (body.message_id) {
+          await admin.from("messages")
+            .update({ status: "failed", error: preSend.reason })
+            .eq("id", body.message_id);
+        }
+        const { data: eAudit } = await admin.from("paige_messages_audit").insert({
+          channel: body.channel, pipe_used: gatedPipe, to_address: body.to,
+          from_address: null, subject: body.subject, body: body.body,
+          status: "failed", vendor_message_id: null, error: preSend.reason,
+          contact_id: body.contact_id ?? null,
+          conversation_id: body.conversation_id ?? null, sent_at: null,
+        }).select("id").maybeSingle();
+        return new Response(JSON.stringify({
+          audit_id: eAudit?.id, vendor_message_id: null, pipe_used: gatedPipe,
+          status: "failed", error: preSend.reason, message_id: body.message_id ?? null,
+          outcome: "failed", reason: preSend.reason, scheduled_for: null,
+        }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // blocked_* → terminal 'blocked'; queued_* → terminal 'queued' + scheduled_for.
+      const terminalStatus = preSend.outcome.startsWith("blocked") ? "blocked" : "queued";
+      const preSendMeta = {
+        source: "send-message",
+        pre_send: { step: preSend.outcome, reason: preSend.reason },
+      };
+
+      // Terminal messages row. tenant_id is derived by set_message_tenant() from
+      // connector_id → contact_id (§9). A contactless raw-`to` send (neither present)
+      // cannot derive a tenant through the service-role client, so we skip the inbox row
+      // for that rare case (the disposition is still in paige_messages_audit + response).
+      let preMessageRowId: string | null = null;
+      try {
+        if (body.message_id) {
+          const { data: patched } = await admin.from("messages").update({
+            status: terminalStatus, scheduled_for: preSend.queueUntil,
+            meta: preSendMeta, error: null,
+          }).eq("id", body.message_id).select("id").maybeSingle();
+          preMessageRowId = patched?.id ?? body.message_id;
+        } else if (effectiveContactId || effectiveConnectorId) {
+          const { data: inserted } = await admin.from("messages").insert({
+            thread_key: body.thread_key || draftRow?.thread_key || `${body.channel}:${body.to}`,
+            contact_id: effectiveContactId, connector_id: effectiveConnectorId,
+            channel_type: body.channel, direction: "outbound",
+            status: terminalStatus, scheduled_for: preSend.queueUntil,
+            recipients: [{ address: body.to }], subject: body.subject ?? null,
+            body_html: body.channel === "email" ? body.body : null,
+            body_text: body.channel === "email" ? null : body.body,
+            meta: preSendMeta,
+          }).select("id").maybeSingle();
+          preMessageRowId = inserted?.id ?? null;
+        }
+      } catch (e) {
+        console.warn("[send-message] pre-send terminal row write skipped:", (e as Error)?.message);
+      }
+
+      // Legacy audit: a non-send is 'failed' in paige_messages_audit's enum (predates the
+      // 6-way outcome). error stays NULL for a policy hold (not a failure); reason carries it.
+      const { data: gAudit } = await admin.from("paige_messages_audit").insert({
+        channel: body.channel, pipe_used: gatedPipe, to_address: body.to,
+        from_address: null, subject: body.subject, body: body.body,
+        status: "failed", vendor_message_id: null, error: null,
+        contact_id: body.contact_id ?? null,
+        conversation_id: body.conversation_id ?? null, sent_at: null,
+      }).select("id").maybeSingle();
+
+      return new Response(JSON.stringify({
+        audit_id: gAudit?.id, vendor_message_id: null, pipe_used: gatedPipe,
+        status: "failed",           // §37: never a new status value; disposition is in `outcome`
+        error: null, message_id: preMessageRowId,
+        outcome: preSend.outcome, reason: preSend.reason,
+        scheduled_for: preSend.queueUntil,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+  }
+
   try {
     if (body.channel === "email") {
       const resendKey = Deno.env.get("RESEND_API_KEY");
@@ -277,32 +529,50 @@ Deno.serve(async (req) => {
       vendor_message_id = delivery.provider_message_id ?? null;
       status = "sent";
     } else {
-      // SMS
-      const useTwilio = config?.twilio_a2p_status === "approved";
-      if (useTwilio) {
-        const sid = Deno.env.get("TWILIO_ACCOUNT_SID");
-        const tok = Deno.env.get("TWILIO_AUTH_TOKEN");
-        const from = config?.default_from_sms_number || Deno.env.get("TWILIO_PHONE_NUMBER");
-        if (!sid || !tok || !from) throw new Error("twilio_env_incomplete");
-        fromAddress = from;
-        const params = new URLSearchParams({ To: body.to, From: from, Body: body.body });
-        const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-          method: "POST",
-          headers: {
-            Authorization: "Basic " + btoa(`${sid}:${tok}`),
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: params,
-        });
-        const json = await res.json();
-        if (!res.ok) throw new Error(`twilio_${res.status}: ${JSON.stringify(json).slice(0, 300)}`);
-        pipe_used = "twilio";
-        vendor_message_id = json?.sid ?? null;
-        status = "sent";
-      } else {
-        // SMS not yet available for this tenant (Twilio A2P not approved).
-        throw new Error("no_sms_pipe_available");
+      // SMS — route THROUGH the per-tenant Twilio OutboundChannelAdapter (§18/§32).
+      // Replaces the old platform-master-creds + paige_config.default_from_sms_number path
+      // (the §9/§38 correction): A2P is per-tenant, creds are the tenant's subaccount, and
+      // the from-number is the tenant's own — never the reserved +14702003444.
+      const adapter = getOutboundAdapter("sms");
+      if (!adapter) throw new Error("no_sms_adapter_registered");
+
+      // Per-message DLR StatusCallback endpoint (honest-null if unset → number-level cb).
+      const statusCallbackUrl =
+        Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
+        (supabaseUrl ? `${supabaseUrl}/functions/v1/twilio-status-callback` : null);
+
+      const outMsg: NormalizedMessage = {
+        thread_key: body.thread_key || draftRow?.thread_key || `sms:${body.to}`,
+        channel_type: "sms",
+        direction: "outbound",
+        status: "queued",
+        contact_id: effectiveContactId,
+        connector_id: effectiveConnectorId,
+        recipients: [{ address: body.to }],
+        body_text: body.body, // SMS body is plain text
+      };
+      const ctx: OutboundSendContext = {
+        from: { address: "" },     // real from-number is resolved INSIDE the adapter (§9)
+        to: body.to,
+        admin,                     // service-role client for creds/number/A2P reads
+        tenantId,                  // server-derived (§9), never from body
+        statusCallbackUrl,
+      };
+      const delivery = await adapter.send(outMsg, ctx);
+      pipe_used = "twilio";
+
+      // Record the tenant number the adapter actually used (audit + messages row).
+      const fromUsed = (delivery.meta?.from_number as string | undefined) ?? null;
+      if (fromUsed) fromAddress = fromUsed;
+
+      if (!delivery.ok) {
+        // Honest failure surface (§13): reason/needs_config preserved; status stays 'failed'
+        // (§37). The thrown message lands in errorText for the audit row.
+        reason = delivery.reason ?? (delivery.needs_config ? "needs_config" : null);
+        throw new Error(delivery.error || delivery.reason || "sms_send_failed");
       }
+      vendor_message_id = delivery.provider_message_id ?? null;
+      status = "sent";
     }
   } catch (e) {
     errorText = (e as Error).message.slice(0, 500);
@@ -505,6 +775,12 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Send-path disposition (§37 / contract §5): every block/queue case already early-returned
+  // from the pre-send seam, so here `outcome` only ever mirrors the wire `status` (sent|failed).
+  // reason: prefer the SMS reason code the branch set, else the raw error text on failure.
+  outcome = status; // 'sent' | 'failed'
+  if (status === "failed" && !reason) reason = errorText;
+
   return new Response(
     JSON.stringify({
       audit_id: auditRow?.id,
@@ -514,6 +790,10 @@ Deno.serve(async (req) => {
       error: errorText,
       // Additive (§37): the unified-inbox messages row id, when one was written/patched.
       message_id: messageRowId,
+      // ── C-2a additive (§37 / contract §5) ──
+      outcome,                      // sent|failed here; blocked_*/queued_* from the pre-send seam
+      reason,                       // 'a2p_not_approved' | 'needs_config' | error text | null
+      scheduled_for: null,          // C-1.5 owns non-null echo; null on the send path
     }),
     {
       // Always 200 so the client surfaces our structured { status, error } payload

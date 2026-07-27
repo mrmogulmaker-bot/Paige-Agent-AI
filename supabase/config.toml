@@ -28,6 +28,10 @@ project_id = "xygzykjyynhzqytbqnzu"
   # verify_jwt=true is a redundant gateway layer (both callers present it).
   [functions.notify-team-event]
     verify_jwt = true
+  # Comms C-2a: super-admin tenant Twilio subaccount provisioning/backfill.
+  # JWT-gated; self-gates on is_platform_owner() from the caller's JWT (§9).
+  [functions.provision-tenant-twilio]
+    verify_jwt = true
   [functions.paige-bridge]
     verify_jwt = false
   [functions.sla-watcher]
