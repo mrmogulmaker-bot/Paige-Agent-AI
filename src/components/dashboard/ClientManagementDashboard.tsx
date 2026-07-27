@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- pre-existing legacy `any` debt
+   in this large dashboard; the §9 tenant-scope fix (adding an explicit
+   .eq("tenant_id", …) to the clients read) introduced ZERO new `any`s — a minimal
+   security touch shouldn't retype the whole file. Retyping tracked separately. */
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -142,14 +146,38 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
 
   useEffect(() => {
     fetchAllClients();
-  }, []);
+  }, [activeTenantId]);
 
   const fetchAllClients = async () => {
     setLoading(true);
     try {
+      // §9 tenant isolation BY CONSTRUCTION. This is a TENANT operator surface
+      // (mounted at /admin/clients and the internal coach/admin dashboard — NOT the
+      // God-only console), so the `clients` read carries an EXPLICIT active-tenant
+      // filter: the clients RLS has an is_platform_owner() bypass (migration
+      // 20260629180214), so a platform owner's RLS spans every tenant and the
+      // "Internal Clients" count card (+ active/withEntity + the tab count) would
+      // otherwise bleed cross-tenant rows. With no workspace selected (God tier,
+      // activeTenantId === null) we render the zeroed/empty state, never all-tenant
+      // rows. Mirrors the CampaignsOverviewStats explicit-.eq pattern (§18).
+      //
+      // NOTE / FLAGGED (§13): the `profiles` + `user_roles` reads below (the "auth
+      // users" half — Clients / Team Members count cards) are PLATFORM-GLOBAL tables
+      // with NO tenant_id column, so they cannot be re-scoped with a `.eq()` here.
+      // Those two cards remain platform-wide by construction; correctly scoping them
+      // to the active tenant needs a tenant_members-join or a SECURITY DEFINER RPC,
+      // which is an architecture change beyond this frontend count-leak fix — see the
+      // audit report's flag. Only the tenant-scoped `clients` read is corrected here.
+      if (!activeTenantId) {
+        setInternalClients([]);
+        setAuthClients([]);
+        return;
+      }
+
       const { data: intClients } = await supabase
         .from("clients" as any)
         .select("*")
+        .eq("tenant_id", activeTenantId)
         .order("created_at", { ascending: false });
 
       setInternalClients((intClients as any[] || []) as InternalClient[]);

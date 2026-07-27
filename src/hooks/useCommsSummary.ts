@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 /**
  * Command-center comms rollups for the coach's inbox (Comms C-1.5).
@@ -10,10 +11,14 @@ import { supabase } from "@/integrations/supabase/client";
  * PracticeOverview so a coach sees what's waiting the instant they land (§36
  * proactive surfacing) without opening the inbox.
  *
- * §9: every count is RLS-scoped. `threads` and `messages` RLS already filter to
- * current_user_tenant_id() — there is NO client-side tenant filter and the
- * tenant is NEVER passed from the client. A HEAD count returns only the caller's
- * tenant's rows by construction.
+ * §9: every count carries an EXPLICIT .eq("tenant_id", activeTenantId) filter.
+ * RLS alone is NOT sufficient here: the `messages` and `threads` SELECT policies
+ * (migrations 20260726190000 / 20260726210500) both begin with an
+ * `is_platform_owner() OR ...` disjunct, so a platform owner's RLS spans EVERY
+ * tenant and a bare HEAD count would bleed cross-tenant totals. The active tenant
+ * is context-derived (useTenantContext), NEVER passed from a request body, and the
+ * query is disabled entirely at the God tier (activeTenantId === null) so it shows
+ * zeros rather than the owner's all-tenant counts. Mirrors CampaignsOverviewStats.
  *
  * §13: each count maps 1:1 to a hand-auditable SQL predicate (see the lane
  * report's verification block) — no derived/estimated numbers.
@@ -64,9 +69,14 @@ async function headCount(
 
 export function useCommsSummary() {
   const queryClient = useQueryClient();
+  const { activeTenantId } = useTenantContext();
 
   const query = useQuery({
-    queryKey: ["comms-summary"],
+    queryKey: ["comms-summary", activeTenantId],
+    // §9: only ever run once a workspace is resolved. At the God tier
+    // (activeTenantId === null) the query is disabled → tiles read EMPTY zeros,
+    // never the platform-owner's cross-tenant totals.
+    enabled: !!activeTenantId,
     queryFn: async (): Promise<CommsSummary> => {
       const nowISO = new Date().toISOString();
       const dayEndISO = endOfTodayISO();
@@ -83,6 +93,7 @@ export function useCommsSummary() {
             sb
               .from("messages")
               .select("id", { count: "exact", head: true })
+              .eq("tenant_id", activeTenantId)
               .eq("direction", "outbound")
               .eq("status", "draft"),
           ),
@@ -95,6 +106,7 @@ export function useCommsSummary() {
             sb
               .from("threads")
               .select("id", { count: "exact", head: true })
+              .eq("tenant_id", activeTenantId)
               .eq("last_direction", "outbound")
               .lt("last_message_at", replyCutoffISO)
               .is("archived_at", null)
@@ -106,6 +118,7 @@ export function useCommsSummary() {
             sb
               .from("threads")
               .select("id", { count: "exact", head: true })
+              .eq("tenant_id", activeTenantId)
               .not("snoozed_until", "is", null)
               .gte("snoozed_until", nowISO)
               .lte("snoozed_until", dayEndISO)
@@ -117,6 +130,7 @@ export function useCommsSummary() {
             sb
               .from("messages")
               .select("id", { count: "exact", head: true })
+              .eq("tenant_id", activeTenantId)
               .eq("status", "queued")
               .not("scheduled_for", "is", null),
           ),
