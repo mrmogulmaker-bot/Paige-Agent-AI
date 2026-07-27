@@ -17,6 +17,7 @@ import { SignaturesTab } from "@/components/admin/comms/SignaturesTab";
 import { SnippetsTab } from "@/components/admin/comms/SnippetsTab";
 import { NotificationsTab } from "@/components/admin/comms/NotificationsTab";
 import { NumbersTab } from "@/components/admin/comms/NumbersTab";
+import { A2PTab } from "@/components/admin/comms/A2PTab";
 
 interface LogRow {
   id: string;
@@ -163,6 +164,7 @@ const CommunicationsAdmin = () => {
           <TabsTrigger value="recent">Recent Activity</TabsTrigger>
           <TabsTrigger value="failures">Failures ({failures.length})</TabsTrigger>
           <TabsTrigger value="numbers">Numbers</TabsTrigger>
+          <TabsTrigger value="a2p">A2P</TabsTrigger>
           <TabsTrigger value="signatures">Signatures</TabsTrigger>
           <TabsTrigger value="snippets">Snippets</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
@@ -245,6 +247,10 @@ const CommunicationsAdmin = () => {
 
         <TabsContent value="numbers">
           <NumbersTab />
+        </TabsContent>
+
+        <TabsContent value="a2p">
+          <A2PTab />
         </TabsContent>
 
         <TabsContent value="signatures">

@@ -40,6 +40,23 @@ project_id = "xygzykjyynhzqytbqnzu"
     verify_jwt = true
   [functions.comms-purchase-number]
     verify_jwt = true
+  # Comms C-2s-B-2: A2P 10DLC wrapper (§36 beat-GHL). Both JWT-gated — each re-verifies the
+  # caller, gates on the SAME authority tenant_a2p_registrations RLS enforces (is_platform_owner()
+  # OR admin/coach of the caller's own tenant), and derives the tenant SERVER-SIDE from the caller
+  # JWT (current_user_tenant_id()), never the body (§9). A service-role bearer (Paige headless,
+  # §10) may name the tenant.
+  #  - comms-a2p-draft:  PURE DRAFT, zero DB writes — Paige drafts the campaign copy from the
+  #    tenant Playbook/brand via the ONE model seam (routedChatCompletion, §18). Coaching-generic
+  #    (§2, zero finance). Honest needs_config when no model is configured (§13).
+  #  - comms-a2p-submit: persists the APPROVED copy into tenant_a2p_registrations (§37 producer;
+  #    trigger derives tenant_id) and calls twilio.ts createBrand/createCampaign — which are honest
+  #    needs_config STUBS today, so it NEVER fabricates a SID/approved state (§13). Registration
+  #    status is read by the client directly from tenant_a2p_registrations under RLS (no status
+  #    edge fn — a read the client can do under RLS is a redundant home, §18).
+  [functions.comms-a2p-draft]
+    verify_jwt = true
+  [functions.comms-a2p-submit]
+    verify_jwt = true
   # Comms C-1.5: scheduled-send drainer. Cron-token gated (self-gates in-function on
   # a service-role bearer OR verify_cron_token), so it runs pre-auth like readiness-scan.
   [functions.comms-scheduled-drain]
