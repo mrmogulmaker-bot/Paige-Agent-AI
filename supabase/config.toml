@@ -32,6 +32,14 @@ project_id = "xygzykjyynhzqytbqnzu"
   # JWT-gated; self-gates on is_platform_owner() from the caller's JWT (§9).
   [functions.provision-tenant-twilio]
     verify_jwt = true
+  # Comms C-2s-B: number marketplace. Both JWT-gated — each self-gates in-function on
+  # admin/coach|is_platform_owner() and derives the tenant from the caller JWT
+  # (current_user_tenant_id()), never the body (§9). They authenticate as the tenant's
+  # OWN Twilio subaccount to search/buy; there is no pre-auth caller.
+  [functions.comms-search-numbers]
+    verify_jwt = true
+  [functions.comms-purchase-number]
+    verify_jwt = true
   # Comms C-1.5: scheduled-send drainer. Cron-token gated (self-gates in-function on
   # a service-role bearer OR verify_cron_token), so it runs pre-auth like readiness-scan.
   [functions.comms-scheduled-drain]
