@@ -1188,6 +1188,26 @@ surface, especially 3D/WebGL, media pipelines, and anything behind a graceful-de
   non-empty diff = migrations ahead of prod) to confirm zero drift. The burden of catching a migration that merged-but-never-applied is OURS, not the owner's —
   'the SQL ran in a rollback' is exactly the false-green this section exists to kill, the schema twin of
   'it compiled but didn't render.'
+- **Capability-conditional post-deploy scan for AUTH-GATED surfaces (owner: Antonio, 2026-07-28).** The
+  honest "auth-gated → can't drive headless → owner's live look owed" degrade is now conditional on the
+  running session's capability, not a blanket excuse. For any auth-gated surface, the post-deploy scan MUST
+  drive the DEPLOYED surface if the session has browser-driving capability (in-app browser / Chrome MCP /
+  Playwright). Which lane runs depends on which agent holds the tool:
+  - **Claude Code (code + verify) — the headless build session.** Runs the code-level + headless smoke pass
+    (typecheck/build/tests + Node smoke on crash-prone runtime logic), and explicitly flags the browser-
+    driven live check as **OWED to the next capable session**. It does NOT get to call an auth-gated surface
+    "verified" on static analysis alone; it names what's owed.
+  - **Cowork (planning + coordination, browser via Chrome MCP) — the drive lane.** Drives the live surface,
+    walks the deployed nav, exercises the flow, captures the render, runs the §25 taste check against the
+    ACTUAL pixels (not source inference), and reports findings back into the work loop as a first-class step
+    — NOT owner burden.
+  - **Owner (fallback) — eyeballs only.** Runs the live-look pass only when neither of the above session
+    capabilities is available for that specific surface.
+  Every report states explicitly WHICH path ran and WHICH are owed. Never assume "someone else caught it"
+  (§13). This tightens verification where the tool exists and keeps the honest owed-check where it doesn't;
+  the pre-launch shipping stance (§4) is unchanged. HONEST NOTE: the headless remote/CI/cron sessions (this
+  build's default) have NO browser tool, so for them the owed-to-a-capable-session path is the truthful one
+  — state it, don't imply a drive that didn't happen.
 - **The test, every time:** *"Have I proven this actually RUNS — not just compiles — and if it fails
   live, will the failure be LOUD and the surface still show SOMETHING, or will it silently blank and send
   us back into the guess-for-hours cycle?"* If I've only proven it compiles, I have not verified it.
