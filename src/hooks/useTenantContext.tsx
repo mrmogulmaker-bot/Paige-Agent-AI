@@ -1,15 +1,32 @@
 /**
- * Tenant context — resolves which tenant the current user is "viewing".
+ * Tenant context — the SINGLE source of truth for which tenant the current user
+ * is "viewing", shared across the whole app via a real React Context.
  *
- * - Platform owner (Paige Agent AI master admin): sees every tenant; switching
- *   writes `profiles.active_tenant_id` so the `current_user_tenant_id()` SQL
- *   helper scopes all reads/writes to the chosen tenant.
- * - Tenant member: sees only their own tenant(s); switching also works
- *   when they belong to multiple.
+ * - Platform owner / staff (Paige Agent AI master admin): sees every tenant;
+ *   switching writes `profiles.active_tenant_id` so the `current_user_tenant_id()`
+ *   SQL helper scopes all reads/writes to the chosen tenant. With NO tenant
+ *   selected they operate at the God/platform tier (`activeTenantId === null`).
+ * - Tenant member: sees only their own tenant(s); switching also works when they
+ *   belong to multiple.
+ *
+ * ARCHITECTURE (fixed 2026-07-28): this used to be a plain hook with its own
+ * `useState`, so EVERY caller got an ISOLATED copy of the state — a switch in the
+ * TenantSwitcher never reached AdminLayout's `godMode`, so the operator/tenant
+ * MODE switch silently failed to commit. It is now a genuine provider (one state,
+ * every consumer shares it) mounted once at the app root (App.tsx), mirroring the
+ * other app contexts under `src/contexts/*`. A switch now propagates to every
+ * consumer synchronously AND persists across navigation.
  *
  * No realtime — this changes rarely. Components call `refresh()` after mutations.
  */
-import { useCallback, useEffect, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -39,25 +56,24 @@ interface TenantContextState {
   refresh: () => Promise<void>;
 }
 
-export function useTenantContext(): TenantContextState {
+const TenantContext = createContext<TenantContextState | null>(null);
+
+/**
+ * Mount ONCE at the app root, inside QueryClientProvider (App.tsx). Holds the one
+ * shared tenant-scope state for the whole tree.
+ */
+export function TenantProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isPlatformOwner, setIsPlatformOwner] = useState(false);
   const [isPlatformStaff, setIsPlatformStaff] = useState(false);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
 
-  // Scope-staleness guard (§9). Switching the active tenant changes the scope of
+  // The provider always mounts inside QueryClientProvider (App.tsx), so this is
+  // unconditional and safe. Switching the active tenant changes the scope of
   // EVERY tenant-scoped React Query cache entry, so on a switch we invalidate the
-  // whole cache and let scope-dependent data refetch under the new scope. Guarded
-  // with try/catch so this hook still works if it is ever rendered outside the
-  // app's QueryClientProvider (then invalidation is simply skipped — never a crash).
-  let queryClient: ReturnType<typeof useQueryClient> | null = null;
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- useContext always runs; the throw is post-registration so hook order stays stable.
-    queryClient = useQueryClient();
-  } catch {
-    queryClient = null;
-  }
+  // whole cache and let scope-dependent data refetch under the new scope (§9).
+  const queryClient = useQueryClient();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -103,15 +119,19 @@ export function useTenantContext(): TenantContextState {
     const { data: auth } = await supabase.auth.getUser();
     const uid = auth.user?.id;
     if (!uid) return;
-    await supabase.from("profiles").update({ active_tenant_id: tenantId }).eq("user_id", uid);
+    // Optimistically flip the shared state FIRST so the whole tree (nav mode,
+    // switcher label, data scope) re-renders immediately, then persist. Because
+    // this is the one shared provider, every consumer sees the new value at once —
+    // this is what makes the operator/tenant MODE switch actually commit.
     setActiveTenantId(tenantId);
+    await supabase.from("profiles").update({ active_tenant_id: tenantId }).eq("user_id", uid);
     // Scope changed for everything — a broad invalidate is correct here (§9).
-    queryClient?.invalidateQueries();
+    queryClient.invalidateQueries();
   }, [queryClient]);
 
   const activeTenant = tenants.find((t) => t.id === activeTenantId) ?? null;
 
-  return {
+  const value: TenantContextState = {
     loading,
     isPlatformOwner,
     isPlatformStaff,
@@ -121,4 +141,19 @@ export function useTenantContext(): TenantContextState {
     switchTenant,
     refresh: load,
   };
+
+  return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;
+}
+
+/**
+ * Read the shared tenant context. MUST be used under <TenantProvider> (mounted at
+ * the app root). Throwing here surfaces a mis-mount immediately instead of the old
+ * silent per-component-state bug.
+ */
+export function useTenantContext(): TenantContextState {
+  const ctx = useContext(TenantContext);
+  if (!ctx) {
+    throw new Error("useTenantContext must be used within a <TenantProvider> (see App.tsx).");
+  }
+  return ctx;
 }
