@@ -11,12 +11,27 @@ C-1.5 inbox UI archives + PR #241 merges (per owner sequencing). Folds in both d
   classifier, `email_consent_enforced` toggle), DLR webhook fn, `tenant_phone_numbers.source` enum,
   `RESERVED_PLATFORM_NUMBER` removal, `platform_number_pricing` table, `platform_phone_numbers`
   drop migration.
-- **Gated on live Twilio master creds seeded as prod edge secrets (`TWILIO_ACCOUNT_SID` /
-  `TWILIO_AUTH_TOKEN` — the master account SID is held in prod secrets, not committed here):** the actual 8-tenant
-  backfill RUN (real SIDs, #1), the +1 470 200 3444 import (#2 — the real number), the A2P/TCR
-  submit (#4). I build + verify the code; the LIVE run + "real SID in Twilio console" proof is an
-  execution step once creds are confirmed. Never report provisioned/submitted without the real
-  SID/TCR response.
+- **Gated on live Twilio master creds seeded as prod edge secrets — the API KEY TRIO
+  (`TWILIO_ACCOUNT_SID` + `TWILIO_API_KEY_SID` + `TWILIO_API_KEY_SECRET`; the master
+  `TWILIO_AUTH_TOKEN` is intentionally ABSENT, Twilio best-practice — owner-confirmed 2026-07-27,
+  the SIDs held in prod secrets, not committed here):** the actual 8-tenant backfill RUN (real
+  SIDs, #1), the +1 470 200 3444 import (#2 — the real number), the A2P/TCR submit (#4). I build +
+  verify the code; the LIVE run + "real SID in Twilio console" proof is an execution step once creds
+  are confirmed. Never report provisioned/submitted without the real SID/TCR response.
+  - **Master-auth pattern already landed (`2c1bfcb`, on #241):** `_shared/twilio.ts`
+    `masterCreds()`/`masterBasicAuthHeader()` build Basic auth from the API Key SID:Secret (username
+    = `SK…`, URL path = the Account SID), with a legacy `TWILIO_AUTH_TOKEN` fallback for older envs.
+    Guarded headless by `scripts/twilio-master-auth-smoke.mts` (14/14) + an optional
+    `TWILIO_LIVE_SMOKE=1` `GET /Accounts/{sid}.json` probe. So the live-execution deliverables above
+    will authenticate correctly the moment the trio is present.
+  - **§32/§13 CAVEAT for the compliance slice (#6 DLR + #5 STOP webhooks):** Twilio validates INBOUND
+    webhook signatures with the account **Auth Token** (HMAC), which has NO API-Key equivalent. The
+    legacy inbound validators (`handle-inbound-sms`, `twilio-inbound-webhook`) still read
+    `TWILIO_AUTH_TOKEN` — with it absent in prod, `handle-inbound-sms` degrades to "accepting
+    unsigned" and `twilio-inbound-webhook` to "rejecting". The C-2 inbound/DLR webhooks must validate
+    against the **subaccount's** auth token (in Vault, per number's owning subaccount), or the master
+    Auth Token for the +1 470 master number. Resolve this signature-source decision when building the
+    STOP handler + `twilio-sms-status-webhook`, not later.
 
 ---
 
