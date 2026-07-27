@@ -39,6 +39,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { FloatingChatbot } from "./components/FloatingChatbot";
 import { MetaPixel } from "./components/seo/MetaPixel";
+import { TenantProvider } from "./hooks/useTenantContext";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { DashboardModeProvider } from "./contexts/DashboardModeContext";
 import { RoleLensProvider } from "./contexts/RoleLensContext";
@@ -173,6 +174,11 @@ const App = () => (
   <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
+      {/* One shared tenant-scope context for the whole app (operator/tenant mode +
+          active tenant). Mounted here — inside QueryClientProvider — so a mode
+          switch propagates to every consumer at once (fixes the silent per-
+          component-state mode-switch bug). */}
+      <TenantProvider>
       <SubscriptionProvider>
         <BusinessProvider>
         <DashboardModeProvider>
@@ -310,6 +316,7 @@ const App = () => (
         </DashboardModeProvider>
         </BusinessProvider>
       </SubscriptionProvider>
+      </TenantProvider>
     </TooltipProvider>
   </QueryClientProvider>
   </ThemeProvider>
