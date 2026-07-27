@@ -13,6 +13,11 @@ import {
   UserPlus,
   ArrowRight,
   Sparkles,
+  Inbox,
+  PenLine,
+  MailQuestion,
+  AlarmClock,
+  Send,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -31,6 +36,7 @@ import { CommandCenterViewToggle } from "@/components/dashboard/admin/CommandCen
 import { DraftsAwaitingPanel } from "@/components/dashboard/DraftsAwaitingPanel";
 import { OwnerWelcome, type OnboardingState } from "@/components/onboarding/OwnerWelcome";
 import { usePracticeDashboard, type PracticeMetrics } from "@/hooks/usePracticeDashboard";
+import { useCommsSummary } from "@/hooks/useCommsSummary";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -150,6 +156,7 @@ const RAIL_META: Record<RailKey, { icon: LucideIcon; label: string; href: string
 
 export function PracticeOverview({ children }: { children?: ReactNode }) {
   const { metrics, attention, loading } = usePracticeDashboard();
+  const { summary: comms, loading: commsLoading } = useCommsSummary();
   const { roles, userId } = useUserRoles();
   const { activeTenantId, activeTenant, isPlatformOwner } = useTenantContext();
 
@@ -268,6 +275,73 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
           {contentConfig.showApprovalsAct && (
             <DraftsAwaitingPanel items={approvals} refresh={refreshApprovals} />
           )}
+
+          {/* Comms inbox at-a-glance — proactive surfacing (§36): what's waiting on
+              the coach, one click into the filtered inbox. All tiles NEUTRAL — gold
+              stays reserved for the Approve act in DraftsAwaitingPanel (§11). */}
+          <SectionCard
+            title="Your inbox"
+            description="What's waiting on you across every conversation, live."
+            icon={Inbox}
+            actions={
+              <Button asChild variant="ghost" size="sm">
+                <Link to="/admin/conversations">
+                  Open inbox <ArrowRight className="ml-1 h-4 w-4" aria-hidden />
+                </Link>
+              </Button>
+            }
+          >
+            <StatRow cols={4}>
+              {[
+                {
+                  key: "drafts",
+                  label: "Drafts awaiting you",
+                  value: comms.draftsAwaiting,
+                  icon: PenLine,
+                  href: "/admin/conversations?filter=drafts",
+                  hint: "ready for a one-click send",
+                },
+                {
+                  key: "awaiting-reply",
+                  label: "No reply in 3+ days",
+                  value: comms.awaitingClientReply,
+                  icon: MailQuestion,
+                  href: "/admin/conversations?filter=awaiting-reply",
+                  hint: "you spoke last — time for a nudge",
+                },
+                {
+                  key: "waking-today",
+                  label: "Waking today",
+                  value: comms.wakingToday,
+                  icon: AlarmClock,
+                  href: "/admin/conversations?filter=waking-today",
+                  hint: "snoozed threads coming back",
+                },
+                {
+                  key: "scheduled",
+                  label: "Scheduled to send",
+                  value: comms.scheduledSends,
+                  icon: Send,
+                  href: "/admin/conversations?filter=scheduled",
+                  hint: "queued to go out later",
+                },
+              ].map((t) => (
+                <Link
+                  key={t.key}
+                  to={t.href}
+                  className="block rounded-[var(--radius)] transition-shadow duration-200 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                >
+                  <StatTile
+                    label={t.label}
+                    value={num(t.value)}
+                    icon={t.icon}
+                    loading={commsLoading}
+                    hint={t.value > 0 ? t.hint : undefined}
+                  />
+                </Link>
+              ))}
+            </StatRow>
+          </SectionCard>
 
           {showKpis && (
             <StatRow cols={Math.max(2, Math.min(kpis.length, 4)) as 2 | 3 | 4}>

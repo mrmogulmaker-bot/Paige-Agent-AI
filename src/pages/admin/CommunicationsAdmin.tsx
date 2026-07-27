@@ -13,6 +13,9 @@ import {
   StatePill,
 } from "@/components/ui/page";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { SignaturesTab } from "@/components/admin/comms/SignaturesTab";
+import { SnippetsTab } from "@/components/admin/comms/SnippetsTab";
+import { NotificationsTab } from "@/components/admin/comms/NotificationsTab";
 
 interface LogRow {
   id: string;
@@ -74,6 +77,7 @@ const CommunicationsAdmin = () => {
 
       if (logRes.data) setLogs(logRes.data as LogRow[]);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const allLogs = (allLogsRes.data as any[]) ?? [];
       const emails = allLogs.filter((l) => l.channel === "email");
       const sms = allLogs.filter((l) => l.channel === "sms");
@@ -82,6 +86,7 @@ const CommunicationsAdmin = () => {
       ).length;
       const smsSuccess = sms.filter((l) => ["sent", "delivered", "queued"].includes(l.status)).length;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const prefs = (prefsRes.data as any[]) ?? [];
       const emailOptIn = prefs.filter((p) => p.email_enabled && !p.unsubscribed_all).length;
       const smsOptIn = prefs.filter(
@@ -114,7 +119,7 @@ const CommunicationsAdmin = () => {
   return (
     <PageShell width="wide">
       <PageHeader
-        variant="hero"
+        variant="plain"
         eyebrow="Platform"
         title="Communications"
         description="Email and SMS dispatch overview, plus this month's audit log."
@@ -156,6 +161,9 @@ const CommunicationsAdmin = () => {
         <TabsList>
           <TabsTrigger value="recent">Recent Activity</TabsTrigger>
           <TabsTrigger value="failures">Failures ({failures.length})</TabsTrigger>
+          <TabsTrigger value="signatures">Signatures</TabsTrigger>
+          <TabsTrigger value="snippets">Snippets</TabsTrigger>
+          <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
 
         <TabsContent value="recent">
@@ -231,6 +239,18 @@ const CommunicationsAdmin = () => {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="signatures">
+          <SignaturesTab />
+        </TabsContent>
+
+        <TabsContent value="snippets">
+          <SnippetsTab />
+        </TabsContent>
+
+        <TabsContent value="notifications">
+          <NotificationsTab />
         </TabsContent>
       </Tabs>
     </PageShell>
