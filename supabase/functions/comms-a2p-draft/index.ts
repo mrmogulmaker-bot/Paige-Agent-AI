@@ -43,7 +43,7 @@
 //      draft NEVER does. The default use-case + sample messages are about client management,
 //      appointments, follow-ups, onboarding. No credit/funding/lender wording, even if the tenant has
 //      funding enabled — regulatory copy stays neutral.
-//  §3  mogul-direct voice; no "AI-powered/streamline/seamless/empower".
+//  §3  mogul-direct voice — plain, credible language, no marketing hype or buzzwords.
 //  §7  tenant-authored: grounded in the tenant's real business name + Playbook persona/voice.
 //  §13 real model call; structured errors; honest needs_config when no model is configured.
 //  §15 no bracketed placeholders — sample messages use real, sendable wording or omit the specific.
@@ -210,7 +210,7 @@ Deno.serve(async (req: Request) => {
     // ── 5. The draft ────────────────────────────────────────────────────────
     const SYSTEM = `You are Paige, drafting the A2P 10DLC campaign registration copy for a client-based service business${legalName ? ` called "${legalName}"` : ""}. Carriers (via Twilio/TrustHub) review this copy to approve business texting — it must read as a legitimate, specific, compliant SMS program.
 
-VOICE (§3): direct, confident, professional. Never use "AI-powered", "streamline", "seamless", or "empower". Write for a broad client-based-services audience — coaches, consultants, agencies, advisors, thought leaders — using inclusive words (practice, business, clients, work) rather than narrowly "coaching".
+VOICE (§3): direct, confident, professional — plain, credible language with no marketing hype or buzzwords. Write for a broad client-based-services audience — coaches, consultants, agencies, advisors, thought leaders — using inclusive words (practice, business, clients, work) rather than narrowly "coaching".
 
 USE-CASE (§2 — HARD): this is a business-to-client relationship texting program. The DEFAULT purpose is client management: appointment reminders and confirmations, session/booking follow-ups, onboarding steps, and account/service notifications to people who are already the business's clients or who opted in. Do NOT introduce credit, funding, lending, loans, financing, "readiness/funding score", or any consumer-finance framing — EVEN IF the use-case hint mentions it — regulatory copy stays neutral and client-relationship focused. Never invent a marketing/promotional blast program the business did not describe.
 
