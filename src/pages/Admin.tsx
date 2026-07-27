@@ -39,9 +39,11 @@ const AdminOnly = ({ children }: { children: React.ReactNode }) => (
 
 /** God-tier gate: platform staff (owner or scoped Platform Admin) only. */
 const PlatformStaffOnly = ({ children }: { children: React.ReactNode }) => {
-  const { loading, isPlatformStaff } = useTenantContext();
+  const { loading, isPlatformStaff, isPlatformOwner } = useTenantContext();
   if (loading) return <div className="p-6 text-sm text-muted-foreground animate-pulse">Checking access…</div>;
-  if (!isPlatformStaff) {
+  // An owner is by definition staff — accept either so a partial resolution (owner
+  // flag set before the staff flag) never flashes the restricted panel (§13).
+  if (!isPlatformStaff && !isPlatformOwner) {
     return (
       <div className="max-w-md mx-auto mt-12 rounded-lg border border-border bg-card p-6 text-center">
         <h2 className="text-lg font-semibold mb-1">Restricted area</h2>

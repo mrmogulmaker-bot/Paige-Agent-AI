@@ -78,8 +78,14 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth.user?.id;
+      // getSession() reads the session Supabase restores from localStorage. On a
+      // COLD hard-load / deep-link this can already be present when getUser() (a
+      // network round-trip) would still resolve null — and a null here used to
+      // latch {loading:false, isPlatformStaff:false} for the whole session (the
+      // operator "Restricted area" bug on /admin/platform/*). Pair with the
+      // onAuthStateChange re-run below so a late hydration always re-resolves.
+      const { data: { session } } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
       if (!uid) {
         setTenants([]);
         setActiveTenantId(null);
@@ -113,7 +119,19 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    // Re-resolve when auth settles. The FIRST load() can run before Supabase
+    // rehydrates the session on a hard reload / deep-link; without this listener
+    // (this was the ONE auth context missing it) a pre-hydration null latched the
+    // staff flags to false forever, stranding an operator on "Restricted area".
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "SIGNED_OUT") {
+        load();
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [load]);
 
   const switchTenant = useCallback(async (tenantId: string | null) => {
     const { data: auth } = await supabase.auth.getUser();
