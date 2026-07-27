@@ -1108,13 +1108,29 @@ mcp.tool("get_coach_performance", {
   description: "Performance snapshot for a coach: active clients vs capacity, open/completed task counts (30d), pipeline value, and last activity.",
   inputSchema: z.object({ coach_user_id: z.string() }),
   handler: async ({ coach_user_id }) => {
+    // §9 — coach_user_id is BODY-SUPPLIED and must not be trusted across tenants.
+    // Server-derive the caller's tenant and confirm the requested coach is an
+    // ACTIVE member of it before returning any of their aggregates; a tenant-A
+    // admin passing a tenant-B coach UUID must get nothing. profiles has no
+    // reliable tenant_id, so tenant_members is the authoritative guard. Fail
+    // closed when the tenant can't be resolved (mirrors the twin tools).
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const { data: coachMember } = await admin
+      .from("tenant_members")
+      .select("user_id")
+      .eq("user_id", coach_user_id)
+      .eq("tenant_id", tenantId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (!coachMember) return err("coach_not_in_tenant");
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const [prof, clientsRes, openTasksRes, doneTasksRes, dealsRes] = await Promise.all([
       admin.from("profiles").select("full_name, coach_capacity, coach_accepting_clients").eq("user_id", coach_user_id).maybeSingle(),
-      admin.from("clients").select("id, status").eq("assigned_coach_user_id", coach_user_id),
+      admin.from("clients").select("id, status").eq("assigned_coach_user_id", coach_user_id).eq("tenant_id", tenantId),
       admin.from("tasks").select("id", { count: "exact", head: true }).eq("user_id", coach_user_id).in("status", ["pending", "in_progress"]),
       admin.from("tasks").select("id", { count: "exact", head: true }).eq("user_id", coach_user_id).eq("status", "completed").gte("updated_at", since),
-      admin.from("deals").select("amount").eq("owner_user_id", coach_user_id),
+      admin.from("deals").select("amount").eq("owner_user_id", coach_user_id).eq("tenant_id", tenantId),
     ]);
     const clients = clientsRes.data ?? [];
     const pipeline_value = (dealsRes.data ?? []).reduce((s: number, d: any) => s + Number(d.amount || 0), 0);
@@ -2008,14 +2024,14 @@ mcp.tool("list_workflow_runs", {
     }
     let q = admin
       .from("paige_workflow_runs")
-      .select("id, registry_id, status, n8n_execution_id, langgraph_thread_id, retry_count, error, triggered_by, created_at, completed_at, last_dispatched_at, paige_workflow_registry(key, provider, tenant_id)", { count: "exact" })
+      .select("id, registry_id, status, n8n_execution_id, langgraph_thread_id, retry_count, error, triggered_by, created_at, completed_at, last_dispatched_at, paige_workflow_registry(key, provider, tenant_id)")
       .order("created_at", { ascending: false })
       .limit(limit);
     if (regIdFilter) q = q.eq("registry_id", regIdFilter);
     if (args.status) q = q.eq("status", args.status);
     if (args.triggered_by) q = q.eq("triggered_by", args.triggered_by);
     if (args.since) q = q.gte("created_at", args.since);
-    const { data, error, count } = await q;
+    const { data, error } = await q;
     if (error) return err(error.message);
     // Tenant scope: only runs whose registry tenant_id is null OR matches caller.
     const filtered = (data ?? []).filter((r: any) => {
@@ -2039,7 +2055,11 @@ mcp.tool("list_workflow_runs", {
         error: r.error,
       };
     });
-    return ok({ items: filtered, total: count ?? filtered.length });
+    // §9 — `total` previously used the DB `{ count: "exact" }` computed BEFORE
+    // the JS tenant filter (over registry_id/status/triggered_by/since only), so
+    // it leaked a fleet-wide run count. Report the page-accurate, tenant-scoped
+    // count instead.
+    return ok({ items: filtered, total: filtered.length });
   },
 });
 
