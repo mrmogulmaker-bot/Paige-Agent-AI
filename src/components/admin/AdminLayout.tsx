@@ -42,6 +42,10 @@ type Hub = {
   children?: HubChild[];
   /** Extra path prefixes that should also highlight this hub. */
   aliases?: string[];
+  /** §13/§36: this destination renders an honest in-development placeholder, not a
+   *  live surface. Marks the nav item with a "Soon" pill so a live-looking tab never
+   *  dead-ends into "In active development" with no warning. */
+  comingSoon?: boolean;
   /** §18 Playbook seam. Absent = universal (shown under every Playbook).
    *  "business" = this hub belongs to the BUSINESS Playbook only — a future
    *  household/portfolio Playbook would swap it for its own equivalent surface.
@@ -131,7 +135,7 @@ const hubs: Hub[] = [
 // items re-home under the Setup landing (and Coaches/Members under Team), each
 // reached via a §11 EmptyState CTA on the placeholder while its route stays
 // mounted. Legal Documents was already operator/God from Slice 1c-i.
-type MoreItem = HubChild & { adminOnly?: boolean; funding?: boolean };
+type MoreItem = HubChild & { adminOnly?: boolean; funding?: boolean; comingSoon?: boolean };
 
 const adminNavItems = hubs.flatMap((h) => [
   { label: h.label, href: h.href, icon: h.icon },
@@ -158,10 +162,11 @@ const GOD_HUBS: Hub[] = [
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain },
   // Platform Marketplace (fleet-wide moderation/revenue-share) — DISTINCT from the
   // tenant /admin/marketplace App Store surface (§9 platform-vs-tenant seam).
-  { label: "Marketplace", href: "/admin/platform/marketplace", icon: Store },
+  // In development: renders OperatorSurfacePlaceholder → flagged "Soon" (§13/§36).
+  { label: "Marketplace", href: "/admin/platform/marketplace", icon: Store, comingSoon: true },
   // Platform Analytics (fleet funnel/conversion) — DISTINCT from the operator's own
   // /admin/analytics reports (that stays the related, per-page link, §18).
-  { label: "Analytics", href: "/admin/platform/analytics", icon: TrendingUp },
+  { label: "Analytics", href: "/admin/platform/analytics", icon: TrendingUp, comingSoon: true },
 ];
 // God "More" menu — calendar setup, support, security, and the platform settings
 // hub (comms/SMS, providers, branding). Calendar lives here rather than a full
@@ -171,13 +176,15 @@ const GOD_MORE: MoreItem[] = [
   // New operator-console surfaces (Super Admin restructure) — owner-only. Kept in
   // the "More" overflow so the top bar stays lean (§11). Real authz is the
   // server-side PlatformOwnerOnly route wrappers + RLS; this nav is presentation.
-  { label: "Money Spine", href: "/admin/platform/money", icon: DollarSign },
-  { label: "Doctrine", href: "/admin/platform/doctrine", icon: BookOpen },
-  { label: "Prompt-Forge", href: "/admin/platform/prompt-forge", icon: Wrench },
-  { label: "Model Router", href: "/admin/platform/model-router", icon: Plug },
-  { label: "Compliance", href: "/admin/platform/compliance", icon: ShieldCheck },
-  { label: "Content Defaults", href: "/admin/platform/content-defaults", icon: LayoutTemplate },
-  { label: "Deploy Health", href: "/admin/platform/deploy-health", icon: Rocket },
+  // These 7 render OperatorSurfacePlaceholder today — flagged "Soon" so the overflow
+  // honestly signals in-development vs live (§13/§36); deep builds are follow-ups.
+  { label: "Money Spine", href: "/admin/platform/money", icon: DollarSign, comingSoon: true },
+  { label: "Doctrine", href: "/admin/platform/doctrine", icon: BookOpen, comingSoon: true },
+  { label: "Prompt-Forge", href: "/admin/platform/prompt-forge", icon: Wrench, comingSoon: true },
+  { label: "Model Router", href: "/admin/platform/model-router", icon: Plug, comingSoon: true },
+  { label: "Compliance", href: "/admin/platform/compliance", icon: ShieldCheck, comingSoon: true },
+  { label: "Content Defaults", href: "/admin/platform/content-defaults", icon: LayoutTemplate, comingSoon: true },
+  { label: "Deploy Health", href: "/admin/platform/deploy-health", icon: Rocket, comingSoon: true },
   // Existing operational tools. Affiliates removed from the nav (deliverable #5) —
   // its route + backing stay mounted, reachable by URL; only the menu item is gone.
   { label: "Sends & Tier", href: "/admin/platform/sends", icon: Radio },
@@ -201,11 +208,11 @@ const GOD_STAFF_HUBS: Hub[] = [
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain },
-  { label: "Marketplace", href: "/admin/platform/marketplace", icon: Store },
-  { label: "Analytics", href: "/admin/platform/analytics", icon: TrendingUp },
+  { label: "Marketplace", href: "/admin/platform/marketplace", icon: Store, comingSoon: true },
+  { label: "Analytics", href: "/admin/platform/analytics", icon: TrendingUp, comingSoon: true },
 ];
 const GOD_STAFF_MORE: MoreItem[] = [
-  { label: "Model Router", href: "/admin/platform/model-router", icon: Plug },
+  { label: "Model Router", href: "/admin/platform/model-router", icon: Plug, comingSoon: true },
 ];
 
 interface AdminLayoutProps {
@@ -487,6 +494,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               >
                 <hub.icon className="w-4 h-4" />
                 <span>{hub.label}</span>
+                {hub.comingSoon && (
+                  <span className="rounded-full bg-primary-foreground/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-primary-foreground/65">
+                    Soon
+                  </span>
+                )}
                 {hub.children && <ChevronDown className="w-3.5 h-3.5 opacity-70" />}
                 {hubActive && (
                   <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-accent rounded-t-full" />
@@ -550,7 +562,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                   className={isActive(item.href) ? "bg-muted" : ""}
                 >
                   <item.icon className="w-4 h-4 mr-2" />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {item.comingSoon && (
+                    <span className="ml-2 rounded-full bg-muted px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Soon
+                    </span>
+                  )}
                 </DropdownMenuItem>
               ))}
               {/* Platform Fleet/Team are God-console-only (§9) — they used to be
@@ -609,7 +626,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                       }`}
                     >
                       <item.icon className="w-4 h-4" />
-                      {item.label}
+                      <span className="flex-1">{item.label}</span>
+                      {hub.comingSoon && (
+                        <span className="rounded-full bg-primary-foreground/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-primary-foreground/65">
+                          Soon
+                        </span>
+                      )}
                     </Link>
                   ))}
                 </div>
@@ -632,7 +654,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                       }`}
                     >
                       <item.icon className="w-4 h-4" />
-                      {item.label}
+                      <span className="flex-1">{item.label}</span>
+                      {item.comingSoon && (
+                        <span className="rounded-full bg-primary-foreground/10 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wider text-primary-foreground/65">
+                          Soon
+                        </span>
+                      )}
                     </Link>
                   ))}
                 </>

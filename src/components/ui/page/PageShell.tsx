@@ -25,13 +25,30 @@ export function PageShell({
   width = "default",
   children,
   className,
+  fill = false,
 }: {
   width?: Width;
   children: ReactNode;
   className?: string;
+  /**
+   * Pin the shell to the height its scroll parent gives it (lg+), so a split-pane
+   * or inbox surface can flow through the app's `h-dvh → flex-1 → min-h-0` chain
+   * and let ITS OWN columns own the scroll — instead of a magic `calc(100dvh-…)`
+   * that undershoots the chrome and double-scrolls (the ClientsConversations bug).
+   * Pair with a `lg:min-h-0 lg:flex-1` last child (the pane grid). Below lg the
+   * shell stays a natural-flow block, so stacked mobile keeps normal page scroll.
+   */
+  fill?: boolean;
 }) {
   return (
-    <div className={cn("mx-auto w-full space-y-6 md:space-y-8", WIDTHS[width], className)}>
+    <div
+      className={cn(
+        "mx-auto w-full space-y-6 md:space-y-8",
+        fill && "lg:flex lg:h-full lg:min-h-0 lg:flex-col",
+        WIDTHS[width],
+        className,
+      )}
+    >
       {children}
     </div>
   );

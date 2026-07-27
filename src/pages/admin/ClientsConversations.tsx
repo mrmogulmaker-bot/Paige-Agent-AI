@@ -736,15 +736,19 @@ export default function ClientsConversations() {
   const noChannel = activeConnectors.length === 0;
 
   return (
-    <PageShell width="full">
+    <PageShell width="full" fill>
       <PageHeader
         variant="plain"
         title="Conversations"
         description="Every client thread across email, SMS, WhatsApp, and DMs — with Paige drafting the reply for your one-click approval."
       />
 
+      {/* The pane grid flows as the flex-1 last child of the `fill` shell (lg+), so it
+          consumes exactly the height its scroll parent gives it and its columns' own
+          overflow-y-auto engage — instead of a magic calc(100dvh-…) that undershot the
+          chrome and double-scrolled (Finding 2). Below lg it stacks with natural scroll. */}
       <div className={cn(
-        "grid grid-cols-1 gap-4 lg:h-[calc(100dvh-15rem)]",
+        "grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1",
         selected && railOpen ? "lg:grid-cols-[320px_1fr_300px]" : "lg:grid-cols-[320px_1fr]",
       )}>
         {/* ── LEFT: thread rail ─────────────────────────────────────────────────── */}
