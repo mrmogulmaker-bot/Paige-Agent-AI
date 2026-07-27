@@ -73,6 +73,7 @@ type TraceRow = {
   error_class: string | null;
   account_type: string | null;   // row-tenant's account_type (e.g. 'agency', 'standalone')
   parent_name: string | null;    // parent agency name, when the row-tenant has a parent
+  working_context_label: string | null; // sub-account the session was working on, only when distinct from tenant
 };
 
 const has = (v: unknown): boolean => v !== undefined && v !== null;
@@ -414,6 +415,14 @@ export default function PlatformIntelligence() {
                   </div>
                 ) : (
                   <span className="text-foreground">{r.tenant_label ?? "Platform"}</span>
+                )}
+                {/* Working context (owner item #489). The row's tenant is attributed honestly; when the
+                    session was actually working across a DISTINCT sub-account, the RPC surfaces its name
+                    (null otherwise). Muted, small, indented — mirrors the ↳ parent line; no gold (§11). */}
+                {r.working_context_label && (
+                  <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                    Working on: <span className="text-foreground/80">{r.working_context_label}</span>
+                  </span>
                 )}
               </TableCell>
               <TableCell className="text-sm">
