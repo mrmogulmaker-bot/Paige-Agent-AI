@@ -116,6 +116,7 @@ export default function SupportAdmin() {
           .select("full_name")
           .eq("user_id", uid)
           .maybeSingle();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setAdminName((prof as any)?.full_name || data.user?.email || null);
       }
       await loadAll();
@@ -153,6 +154,7 @@ export default function SupportAdmin() {
           .select("user_id,full_name")
           .in("user_id", userIds);
         profilesById = Object.fromEntries(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (profs ?? []).map((p: any) => [p.user_id, { full_name: p.full_name, email: null as string | null }]),
         );
         // Emails live in auth.users; hydrate via admin-list-users edge function.
@@ -311,7 +313,7 @@ export default function SupportAdmin() {
   return (
     <PageShell width="wide">
       <PageHeader
-        variant="hero"
+        variant="plain"
         eyebrow="Support"
         title="Support & Feedback"
         description="Manage client tickets and product feedback in one place."

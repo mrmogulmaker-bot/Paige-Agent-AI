@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Users, DollarSign, BarChart3, Settings, LogOut,
-  TrendingUp, Menu, BookOpen, Wrench, Share2, Ticket, Briefcase, Brain, Building2, LifeBuoy,
-  Contact, KanbanSquare, Inbox, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Workflow, ClipboardCheck, Plug, Bot, Rocket, ShieldCheck, FileSignature, CalendarDays, CalendarClock, Store, Send, LayoutTemplate, Radio, Wand2, CircleUser, Sprout,
+  TrendingUp, Menu, BookOpen, Wrench, Ticket, Briefcase, Brain, Building2, LifeBuoy,
+  KanbanSquare, CheckSquare, UserCog, ChevronDown, MoreHorizontal, X, Plug, Bot, Rocket, ShieldCheck, FileSignature, Store, Send, LayoutTemplate, Radio, Wand2, CircleUser, Sprout,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -138,49 +138,48 @@ const adminNavItems = hubs.flatMap((h) => [
   ...(h.children ?? []),
 ]);
 
-// The God console (platform staff) gets its own nav: platform control (Fleet,
-// Team) + the operator's own business tools (contacts=agencies/prospects, comms,
-// campaigns, AI automation, calendar). It deliberately omits the client-servicing
-// hubs (Pipeline/Funding/credit) — those are agency-tier, not the platform's job.
+// The operator (God) console nav — the OPERATOR-ONLY surface set (Super Admin
+// restructure, Option B). Selecting "Platform" in the top-right TenantSwitcher
+// puts a platform-staff user here; selecting any tenant drops them into the
+// UNCHANGED tenant `hubs` array above (the §45 dogfood — one home per capability,
+// §18). This set deliberately DROPS the tenant-business hubs it used to carry
+// (Contacts, Calendar, Planning, Inbox, Campaigns, Automation) — those live in
+// tenant mode now; their routes stay mounted (no 404s), only the operator nav
+// items move. LEAN top bar (§11/§67): five hubs — the platform-control trio
+// (Fleet · Team · Intelligence) plus the two non-owner-restricted new surfaces
+// (Marketplace · Analytics). Owner-only new console surfaces route through
+// GOD_MORE below.
 const GOD_HUBS: Hub[] = [
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain },
-  { label: "Contacts", href: "/admin/contacts", icon: Contact, aliases: ["/admin/leads"] },
-  { label: "Calendar", href: "/admin/calendar", icon: CalendarDays, aliases: ["/admin/bookings"] },
-  { label: "Planning", href: "/admin/planning", icon: CalendarClock, aliases: ["/admin/tasks"] },
-  { label: "Inbox", href: "/admin/communications", icon: Inbox },
-  { label: "Campaigns", href: "/admin/campaigns", icon: Rocket, aliases: ["/admin/growth"] },
-  {
-    label: "Automation",
-    href: "/admin/workflows",
-    icon: Workflow,
-    children: [
-      { label: "Workflows", href: "/admin/workflows", icon: Workflow },
-      { label: "Paige Sub-Agents", href: "/admin/sub-agents", icon: Bot },
-      { label: "Paige Actions", href: "/admin/actions", icon: ClipboardCheck },
-      { label: "Paige Skills", href: "/admin/skills", icon: Bot },
-      { label: "Integrations", href: "/admin/integrations", icon: Plug },
-      // Platform-level knowledge surfaces (§9) — the global canon plus the
-      // review queues that approve tenant-shared docs into it. These stay
-      // operator-only; tenants get their own KB + contribution status inside
-      // Your Paige.
-      { label: "Knowledge Base", href: "/admin/knowledge-base", icon: Brain },
-      { label: "Network Review", href: "/admin/network-kb", icon: BookOpen },
-      { label: "Review Queue", href: "/admin/knowledge", icon: BookOpen },
-    ],
-    aliases: ["/admin/sub-agents", "/admin/actions", "/admin/skills", "/admin/integrations", "/admin/knowledge-base", "/admin/network-kb", "/admin/knowledge"],
-  },
+  // Platform Marketplace (fleet-wide moderation/revenue-share) — DISTINCT from the
+  // tenant /admin/marketplace App Store surface (§9 platform-vs-tenant seam).
+  { label: "Marketplace", href: "/admin/platform/marketplace", icon: Store },
+  // Platform Analytics (fleet funnel/conversion) — DISTINCT from the operator's own
+  // /admin/analytics reports (that stays the related, per-page link, §18).
+  { label: "Analytics", href: "/admin/platform/analytics", icon: TrendingUp },
 ];
 // God "More" menu — calendar setup, support, security, and the platform settings
 // hub (comms/SMS, providers, branding). Calendar lives here rather than a full
 // top-level tab: it's a setup tool, not a daily-driver, so the top bar stays
 // focused on the operational essentials.
 const GOD_MORE: MoreItem[] = [
+  // New operator-console surfaces (Super Admin restructure) — owner-only. Kept in
+  // the "More" overflow so the top bar stays lean (§11). Real authz is the
+  // server-side PlatformOwnerOnly route wrappers + RLS; this nav is presentation.
+  { label: "Money Spine", href: "/admin/platform/money", icon: DollarSign },
+  { label: "Doctrine", href: "/admin/platform/doctrine", icon: BookOpen },
+  { label: "Prompt-Forge", href: "/admin/platform/prompt-forge", icon: Wrench },
+  { label: "Model Router", href: "/admin/platform/model-router", icon: Plug },
+  { label: "Compliance", href: "/admin/platform/compliance", icon: ShieldCheck },
+  { label: "Content Defaults", href: "/admin/platform/content-defaults", icon: LayoutTemplate },
+  { label: "Deploy Health", href: "/admin/platform/deploy-health", icon: Rocket },
+  // Existing operational tools. Affiliates removed from the nav (deliverable #5) —
+  // its route + backing stay mounted, reachable by URL; only the menu item is gone.
   { label: "Sends & Tier", href: "/admin/platform/sends", icon: Radio },
   { label: "Sending Identities", href: "/admin/platform/sending", icon: Send },
   { label: "Support", href: "/admin/support", icon: LifeBuoy },
-  { label: "Affiliates", href: "/admin/platform/affiliates", icon: Share2 },
   { label: "Invites", href: "/admin/platform/invites", icon: Ticket },
   { label: "Usage Analytics", href: "/admin/observability/usage", icon: TrendingUp },
   { label: "Error Tracking", href: "/admin/observability/errors", icon: LifeBuoy },
@@ -188,15 +187,22 @@ const GOD_MORE: MoreItem[] = [
   { label: "Security Canary", href: "/admin/security", icon: ShieldCheck },
   { label: "Platform Settings", href: "/admin/platform/settings", icon: Settings },
 ];
-// Scoped Platform Admins run the fleet — comms/campaigns/settings stay owner-only.
+// Scoped Platform Admins run the fleet at a minimal tier. They get the platform-
+// control trio + the two non-owner-restricted new surfaces (Marketplace, Analytics,
+// per the contract's ownerOnly:false); Model Router (also ownerOnly:false) rides the
+// overflow. All owner-only console surfaces (Money Spine, Doctrine, Prompt-Forge,
+// Compliance, Content Defaults, Deploy Health) stay off the staff nav — the routes
+// agent still enforces owner-only server-side (§9).
 const GOD_STAFF_HUBS: Hub[] = [
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2 },
   { label: "Team", href: "/admin/platform/team", icon: UserCog },
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain },
-  { label: "Calendar", href: "/admin/calendar", icon: CalendarDays, aliases: ["/admin/bookings"] },
-  { label: "Planning", href: "/admin/planning", icon: CalendarClock, aliases: ["/admin/tasks"] },
+  { label: "Marketplace", href: "/admin/platform/marketplace", icon: Store },
+  { label: "Analytics", href: "/admin/platform/analytics", icon: TrendingUp },
 ];
-const GOD_STAFF_MORE: MoreItem[] = [];
+const GOD_STAFF_MORE: MoreItem[] = [
+  { label: "Model Router", href: "/admin/platform/model-router", icon: Plug },
+];
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -213,14 +219,20 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     location.pathname === "/admin/studio" || location.pathname.startsWith("/admin/studio/");
   const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
-  const { isPlatformOwner, isPlatformStaff } = useTenantContext();
+  const { isPlatformOwner, isPlatformStaff, activeTenantId, activeTenant } = useTenantContext();
   // Funding surfaces are an opt-in tenant offer (§2/§9) — hidden unless this
   // tenant has chosen the funding preset (which flips the funding_readiness
   // feature). Generic coaching/consulting/agency tenants never see them.
   const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
-  // Platform staff (owner + Platform Admin) run the God console — its own nav of
-  // fleet/platform concerns, not the agency CRM hubs.
-  const godMode = isPlatformStaff;
+  // Option B — the top-right TenantSwitcher IS the mode switch. Platform staff are
+  // in OPERATOR mode (the God console) ONLY while no tenant is selected; the moment
+  // they pick a tenant, godMode flips false and the UNCHANGED tenant `hubs` render
+  // (the §45 dogfood — same tenant IA a real tenant sees). The switcher stays
+  // visible in BOTH modes (rendered below on isPlatformStaff) so "Platform" is
+  // always one click away. NOTE (§9): this gate is PRESENTATION only — the real
+  // authorization boundary is the server-side PlatformStaffOnly route wrappers +
+  // RLS; tenant_id is always server-derived, never trusted from the client.
+  const godMode = isPlatformStaff && activeTenantId === null;
   // The agency operator side is its OWN top-level shell (`/agency`, §9), reached
   // through the AccountSwitcher's "Agency view" row — it is no longer a tab spliced
   // into the tenant menu. This bar is purely "run this one practice."
@@ -292,7 +304,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     (hub.aliases?.some((a) => isActive(a)) ?? false);
 
   const currentSection = godMode
-    ? (activeHubs.find(hubIsActive)?.label ?? "Platform")
+    ? (activeHubs.find(hubIsActive)?.label
+        ?? visibleMore.find((i) => isActive(i.href))?.label
+        ?? "Platform")
     : (adminNavItems.find((i) => isActive(i.href))?.label
         ?? activeHubs.find(hubIsActive)?.label
         ?? "Admin");
@@ -304,6 +318,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
       {/* Top bar — Pipedrive-style horizontal CRM nav. Hidden on Vibe Studio (immersive room). */}
       {!isStudio && (
       <header className="shrink-0 z-40 bg-primary text-primary-foreground border-b border-sidebar-border">
+        {/* Elevated-mode signal (§11 — gold spent on the "on" state): a thin gold
+            top edge shown ONLY in operator mode. In tenant mode it's absent, so the
+            header reads as ordinary tenant chrome. Not a resting decoration — it
+            marks the active elevated platform mode. */}
+        {godMode && <div className="h-0.5 w-full bg-accent" aria-hidden />}
         {/* Row 1: brand + utilities */}
         <div className="flex items-center justify-between gap-3 px-3 md:px-6 h-14">
           <Link to={godMode ? "/admin/platform/tenants" : "/admin"} className="flex items-center gap-2 min-w-0">
@@ -316,11 +335,27 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                 chip that hosted it was a switcher affordance, not a lens-status
                 indicator, so nothing ambient is lost for the canSwitch case. */}
             {godMode ? (
+              <>
+                <Badge
+                  variant="outline"
+                  className="hidden sm:inline-flex ml-2 text-[10px] font-medium uppercase tracking-wide border-accent/40 text-accent bg-transparent"
+                >
+                  {isPlatformOwner ? "Operator" : "Platform Admin"}
+                </Badge>
+                {/* Explicit mode label (§36 — self-explanatory). Gold lives on the
+                    band/pill; this text stays neutral. */}
+                <span className="hidden lg:inline ml-1.5 text-[10px] text-primary-foreground/50">
+                  Platform view
+                </span>
+              </>
+            ) : isPlatformStaff && activeTenant ? (
+              // Tenant mode for a platform-staff user: neutral tenant chrome (the
+              // tenant's name), NO gold — gold is reserved for the elevated mode.
               <Badge
                 variant="outline"
-                className="hidden sm:inline-flex ml-2 text-[10px] font-medium uppercase tracking-wide border-accent/40 text-accent bg-transparent"
+                className="hidden sm:inline-flex ml-2 max-w-[160px] truncate text-[10px] font-medium border-primary-foreground/30 text-primary-foreground/70 bg-transparent"
               >
-                {isPlatformOwner ? "Operator" : "Platform Admin"}
+                {activeTenant.name}
               </Badge>
             ) : !canSwitch ? (
               <Badge
@@ -350,10 +385,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                 null unless the caller owns/admins an agency, so a plain
                 sub-account user never sees it. */}
             <AccountSwitcher />
-            {/* God-level "active tenant / all tenants" filter — lives ONLY in the
-                God console header. Tenant and agency shells use the one
-                AccountSwitcher above. */}
-            {godMode && <TenantSwitcher />}
+            {/* The mode switch (Option B). Visible for ALL platform staff in BOTH
+                modes — NOT gated on godMode, or picking a tenant would make it
+                vanish and trap the user in tenant mode with no way back to
+                "Platform". Regular tenant/agency shells use the AccountSwitcher
+                above; this one is platform-staff only. */}
+            {isPlatformStaff && <TenantSwitcher />}
             <AdminBridgeBell />
             <ThemeToggle variant="on-primary" />
 
@@ -539,6 +576,18 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               </button>
             </div>
             <div className="p-2">
+              {/* Mode switch on mobile (§36 — the switch must be reachable on EVERY
+                  surface, or a staff user with a persisted active tenant is trapped
+                  in tenant mode on a phone with no way back to Platform). Same control
+                  as the desktop utilities row; the dropdown portals above the drawer. */}
+              {isPlatformStaff && (
+                <div className="px-1 pb-2 mb-1 border-b border-sidebar-border">
+                  <div className="px-2 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">
+                    Mode
+                  </div>
+                  <TenantSwitcher />
+                </div>
+              )}
               {activeHubs.map((hub) => (
                 <div key={hub.href}>
                   <div className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-primary-foreground/40">

@@ -3,7 +3,7 @@
 // Owns the Playbook edit lifecycle (pb / lastSavedPb / dirty / saving) and the
 // one honest Save for the whole object; Knowledge commits per-doc on its own.
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Loader2, Sparkles, X, UserCircle2, SlidersHorizontal, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Loader2, X, UserCircle2, SlidersHorizontal, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ReasoningDeck, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -15,13 +15,13 @@ import type { Playbook } from "@/lib/playbook/types";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 import { PaigeWorkspaceProvider, usePaigeWorkspace } from "./PaigeWorkspaceContext";
 import { PaigeCommandBar } from "./PaigeCommandBar";
 import { PaigeSidebarBody, CustomizeFloor } from "./PaigeSidebar";
 import { PaigeRailSheet } from "./PaigeRailSheet";
 import { PaigeConsole } from "./PaigeConsole";
+import { PaigePlatformDesk } from "./PaigePlatformDesk";
 import type { ConsoleSection, RailCounts } from "./PaigeConsoleRail";
 import type { FocusedClient, QuickChip } from "./commandCenterTypes";
 import { buildFocusProse, firstNameOf } from "./commandCenterTypes";
@@ -371,7 +371,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
 }
 
 export default function PaigeWorkspace() {
-  const { activeTenantId, activeTenant, loading } = useTenantContext();
+  const { activeTenantId, activeTenant, loading, isPlatformStaff } = useTenantContext();
 
   if (loading) {
     return (
@@ -381,28 +381,23 @@ export default function PaigeWorkspace() {
     );
   }
 
-  // God-tier operator with no active tenant: render the shell, but there is no
-  // tenant-scoped Paige to talk to (§9 — and there must not be a platform-default
-  // client Paige). Do not mount the chat without a tenant.
+  // MODE-AWARE (§20/§36): a PLATFORM STAFF operator with no active tenant is NOT a
+  // dead end. Paige runs at PLATFORM SCOPE — the operator's Chief of Staff for the
+  // SaaS company — mounting the SAME chat with clientId=null and explicit platform-
+  // scope context, never a tenant-default client Paige (§9). Scope follows the MODE
+  // (activeTenantId === null), never message content. The isPlatformStaff guard is
+  // load-bearing (§9): a non-staff account MUST NEVER see platform-operator framing.
+  if (isPlatformStaff && !activeTenantId) {
+    return <PaigePlatformDesk />;
+  }
+
+  // Defense-in-depth (§9): a non-staff user with no active tenant (an unprovisioned
+  // edge case) falls through to a neutral state — NOT the platform desk, and not the
+  // tenant workspace with a null tenant.
   if (!activeTenantId) {
     return (
-      <div className="flex flex-col h-full min-h-[24rem]">
-        <div className="sticky top-0 z-20 border-b bg-primary/[0.04] px-4 lg:px-6 py-3 flex items-center gap-3">
-          <PaigeMark className="h-9 w-9" />
-          <div>
-            <h1 className="text-base font-semibold">Your Paige</h1>
-            <p className="text-xs text-muted-foreground">Platform level — no workspace selected</p>
-          </div>
-        </div>
-        <div className="flex-1 flex items-center justify-center p-8">
-          <div className="max-w-md text-center space-y-2">
-            <Sparkles className="w-6 h-6 text-primary mx-auto" />
-            <h2 className="text-lg font-semibold">Pick a workspace first</h2>
-            <p className="text-sm text-muted-foreground">
-              You're at the platform level. Switch into a tenant workspace to shape and talk to its Paige.
-            </p>
-          </div>
-        </div>
+      <div className="p-8 text-center text-sm text-muted-foreground">
+        No workspace is active yet.
       </div>
     );
   }
