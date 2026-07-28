@@ -920,7 +920,6 @@ export default function ClientsConversations() {
       <PageHeader
         variant="plain"
         title="Conversations"
-        description="Every client thread across email, SMS, WhatsApp, and DMs — with Paige drafting the reply for your one-click approval."
         actions={
           // §43 — the surface is a tool: start a NEW outbound thread from here. Gold on the
           // act (§11). Disabled honestly when there's no sendable channel to send on (§13).
