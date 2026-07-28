@@ -79,6 +79,10 @@ export interface ClientContact {
   // + Client-Success (cs_primary) owners, but the rail renders Owner ONLY today, so they are
   // not fetched here — no dead columns (§13). Re-add them WITH the team-on-contact display.
   assigned_coach_user_id: string | null;
+  // #121 — the portal fold-out reuses ContactPortalPanel, which needs the linked auth user
+  // (its invite/agreement/impersonate flow keys off it). Pulled from the same clients row,
+  // no extra query.
+  linked_user_id: string | null;
   // C-2 suppression / DND surfaced on the contact card (§ read-only signal)
   dnd_active: boolean | null;
   dnd_reason: string | null;
@@ -120,7 +124,7 @@ export const THREAD_COLS =
   "id, thread_key, contact_id, snoozed_until, archived_at, labels, unread_count, " +
   "last_message_at, last_direction, " +
   "clients:contact_id(id, first_name, last_name, entity_name, entity_type, title, email, phone, status, " +
-  "lifecycle_stage, source, tags, last_contacted_at, assigned_coach_user_id, " +
+  "lifecycle_stage, source, tags, last_contacted_at, assigned_coach_user_id, linked_user_id, " +
   "timezone, created_at, dnd_active, dnd_reason, dnd_until)";
 
 // ── selected-view shape (R1): the DbThread + its loaded messages + all the fields the

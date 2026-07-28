@@ -10,7 +10,7 @@
 // Gold is spent ONLY on the outward-commit act (Send portal invite). Toggles/pickers are
 // neutral/indigo (§11). Controls with no real backing (Calls/Inbound DND, true Followers)
 // are honestly disabled or omitted, never faked (§13).
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Link } from "react-router-dom";
 import { SectionCard, EmptyState, StatePill, GlyphPlate } from "@/components/ui/page";
@@ -18,6 +18,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Accordion, AccordionItem, AccordionTrigger, AccordionContent,
+} from "@/components/ui/accordion";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -28,7 +31,12 @@ import { updateContact } from "@/lib/contacts";
 import {
   User, UserPlus, Mail, Phone, Clock, Copy, ShieldAlert, BellOff, PanelRightClose,
   Send, Loader2, ExternalLink, UserRound, Sparkles, Bell, ClipboardList,
+  FileSignature, CreditCard, Zap,
 } from "lucide-react";
+import { ContactPortalPanel } from "@/components/admin/contacts/ContactPortalPanel";
+import { ContactBillingPanel } from "@/components/admin/contacts/ContactBillingPanel";
+import { ContactAutomationHistory } from "@/components/admin/contacts/ContactAutomationHistory";
+import { ClientOnboardingStatusPanel } from "@/components/admin/contacts/ClientOnboardingStatusPanel";
 import {
   type ClientContact, type MessageRow, type Label, type ChannelType, type Suppression,
   CHANNEL_ICON, CHANNEL_LABEL, LABEL_COLOR, bodyPreview, contactNameFromClient,
@@ -561,9 +569,77 @@ export function ContactCardRail({
               </ul>
             )}
           </div>
+
+          {/* ── Details & history — deep fold-out, COLLAPSED by default (§18 reuse, §67 no
+              scroll-wall). Each section COMPOSES the exact panel ContactDetail mounts — same
+              tenant-scoped seam, no duplicate fetch. Radix unmounts closed content, so a panel
+              queries only when its own section is open. The Accordion is keyed by contact.id and
+              uncontrolled with an empty default, so a contact switch fully remounts it collapsed:
+              zero of the three heavy fetches fire on switch, and no section stays open (or renders
+              a panel for the new contact) across the change. Headers are neutral/indigo — gold
+              stays on the panels' own outward acts. */}
+          <div className="space-y-1.5 pt-1">
+            <p className="px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Details &amp; history
+            </p>
+            <Accordion
+              key={contact.id}
+              type="multiple"
+              defaultValue={[]}
+              className="overflow-hidden rounded-lg border border-border/70"
+            >
+              <FoldSection value="portal" icon={FileSignature} label="Portal & Agreements">
+                <ClientOnboardingStatusPanel contactId={contact.id} />
+                <ContactPortalPanel
+                  contactId={contact.id}
+                  email={contact.email}
+                  linkedUserId={contact.linked_user_id ?? null}
+                />
+              </FoldSection>
+              <FoldSection value="billing" icon={CreditCard} label="Billing">
+                <ContactBillingPanel contactId={contact.id} />
+              </FoldSection>
+              <FoldSection value="automation" icon={Zap} label="Automation" last>
+                <ContactAutomationHistory contactId={contact.id} />
+              </FoldSection>
+            </Accordion>
+          </div>
         </div>
       )}
     </SectionCard>
+  );
+}
+
+/**
+ * One deep fold-out row (#121). The trigger is a neutral section header (icon + label, indigo
+ * on open); the ChevronDown is appended by the AccordionTrigger primitive. Content is the real
+ * ContactDetail panel(s) — mounted only while expanded (Radix default), so each fetch is
+ * lazy and one-at-a-time. Gold is never spent here (§11) — the panels own their own acts.
+ */
+function FoldSection({
+  value, icon: Icon, label, last, children,
+}: {
+  value: string;
+  icon: typeof FileSignature;
+  label: string;
+  last?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <AccordionItem value={value} className={cn("px-3", last ? "border-b-0" : "border-border/60")}>
+      <AccordionTrigger
+        className="rounded-md px-2 py-3 text-xs font-medium text-foreground transition-colors
+          hover:bg-muted/40 hover:no-underline
+          data-[state=open]:font-semibold data-[state=open]:text-[hsl(var(--primary))]
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+      >
+        <span className="flex items-center gap-2">
+          <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+          {label}
+        </span>
+      </AccordionTrigger>
+      <AccordionContent className="space-y-3 pb-3 pt-0">{children}</AccordionContent>
+    </AccordionItem>
   );
 }
 
