@@ -116,21 +116,23 @@ export function ContactCardRail({
   }, []);
 
   // ── team roster for the Owner picker, loaded once ─────────────────────────────
-  // §18 reuse of the shipped #481 seam: get_tenant_people() is a SECURITY DEFINER RPC that
-  // server-derives the tenant (never a param, no IDOR) and joins tenant_members→profiles.
-  // The old direct `user_roles.eq('role','coach')` query was RLS-collapsed — user_roles SELECT
-  // is `is_platform_owner() OR auth.uid()=user_id`, so for EVERY non-owner tenant it returned
-  // only the caller's own row, leaving the picker empty AND rendering an already-assigned
-  // contact falsely as "Unassigned" (the assigned coach's name couldn't resolve). This RPC
-  // returns the real tenant roster for an admin; a non-admin gets an empty set (honest — the
-  // picker options are then empty, but a set owner still resolves below and never shows
-  // "Unassigned"). `roles` rides along so we can offer only the assignable teammates.
+  // get_tenant_assignable_members() is a SECURITY DEFINER RPC that server-derives the tenant
+  // (never a param, no IDOR) via tenant_members and is gated to admin/super_admin/coach — the
+  // SAME caller set as the assign_contact write it feeds (§37 read=write parity). The old direct
+  // `user_roles.eq('role','coach')` query was RLS-collapsed (user_roles SELECT is
+  // `is_platform_owner() OR auth.uid()=user_id`), so every non-owner tenant got only the caller's
+  // own row — empty picker AND assigned contacts falsely reading "Unassigned". This picker RPC
+  // returns the real tenant roster for any staff member who can assign (not just admins), so a
+  // coach sees teammates and can self-assign; a set owner resolves to a real name (falling back to
+  // "Current owner" only if truly unresolvable), never a false "Unassigned". `roles` rides along
+  // so we offer only the assignable ones. Distinct from get_tenant_people (the admin-only rich
+  // directory) — this is the least-privilege picker (§9/§18).
   const [members, setMembers] = useState<Coach[]>([]);
   useEffect(() => {
     let alive = true;
     (async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data } = await (supabase as any).rpc("get_tenant_people");
+      const { data } = await (supabase as any).rpc("get_tenant_assignable_members");
       const rows = (data as { user_id: string; full_name: string | null; roles: string[] | null }[] | null) ?? [];
       if (alive) {
         setMembers(rows.map((r) => ({

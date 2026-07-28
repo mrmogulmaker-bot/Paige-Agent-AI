@@ -495,30 +495,26 @@ export default function ClientsConversations() {
   }, [selectedThread, messagesByKey]);
 
   // ── suppression read for the contact card (tenant RLS-scoped, §9) ───────────────────
-  useEffect(() => {
-    const cid = selectedThread?.contact_id;
-    if (!cid) { setSuppressions([]); return; }
-    let cancelled = false;
-    (async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sb = supabase as any;
-      const { data } = await sb.from("paige_suppressions").select("channel, reason").eq("contact_id", cid);
-      if (!cancelled) setSuppressions((data as Suppression[]) ?? []);
-    })();
-    return () => { cancelled = true; };
-  }, [selectedThread?.contact_id]);
-
-  // A rail DND toggle changes suppressions WITHOUT changing contact_id, so the effect above
-  // (keyed on contact_id) won't re-fire — refresh explicitly on rail change so the DND banner
-  // + the pre-send opt-out guard read fresh state, never a stale block/allow (§13).
-  const refreshSuppressions = useCallback(async () => {
-    const cid = selectedThread?.contact_id ?? null;
-    if (!cid) { setSuppressions([]); return; }
+  // ONE loader, guarded by a monotonic request id so the LATEST request always wins — whether
+  // triggered by a selection change (the effect) or a rail DND toggle (refreshSuppressions).
+  // A rail toggle changes suppressions WITHOUT changing contact_id, so the selection effect alone
+  // wouldn't refresh; and without the shared guard a slow toggle-read for contact A could clobber
+  // a newer read for contact B, staling the pre-send opt-out guard. The shared counter closes both
+  // races cleanly (§13). Server-side pre-send remains authoritative regardless.
+  const suppReqRef = useRef(0);
+  const loadSuppressionsFor = useCallback(async (cid: string | null) => {
+    const req = ++suppReqRef.current;
+    if (!cid) { if (req === suppReqRef.current) setSuppressions([]); return; }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
     const { data } = await sb.from("paige_suppressions").select("channel, reason").eq("contact_id", cid);
-    setSuppressions((data as Suppression[]) ?? []);
-  }, [selectedThread?.contact_id]);
+    if (req === suppReqRef.current) setSuppressions((data as Suppression[]) ?? []);
+  }, []);
+  useEffect(() => { void loadSuppressionsFor(selectedThread?.contact_id ?? null); }, [selectedThread?.contact_id, loadSuppressionsFor]);
+  const refreshSuppressions = useCallback(
+    () => loadSuppressionsFor(selectedThread?.contact_id ?? null),
+    [loadSuppressionsFor, selectedThread?.contact_id],
+  );
 
   // Default the composer channel to the thread's channel when a connector supports it.
   useEffect(() => {
@@ -1343,6 +1339,13 @@ export default function ClientsConversations() {
           pendingSelectRef.current = key;
           setView("active"); setLabelFilter(null); setSearch("");
           void load(); void loadThreads();
+          // Safety valve (§13): if the composed thread never streams in (e.g. a swallowed insert
+          // on the send path returning success with no message row), don't freeze auto-selection
+          // forever — after a bounded wait, release the hold and re-pull so the keep-valid guard
+          // resumes its normal path. Guarded on the same key so a resolved/superseded pick is untouched.
+          window.setTimeout(() => {
+            if (pendingSelectRef.current === key) { pendingSelectRef.current = null; void loadThreads(); }
+          }, 12_000);
         }}
       />
     </PageShell>
