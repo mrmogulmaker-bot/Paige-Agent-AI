@@ -75,7 +75,20 @@ const STATUS_TONE: Record<string, string> = {
   canceled: "bg-muted text-muted-foreground",
 };
 
-export function ContactBillingPanel({ contactId }: { contactId: string }) {
+export function ContactBillingPanel({
+  contactId,
+  dense = false,
+}: {
+  contactId: string;
+  /**
+   * Container-responsive compact mode for narrow mounts (e.g. the ~300px Conversations
+   * contact rail, #121). The panel's default responsive layout keys off the VIEWPORT
+   * (`md:`), which over-widens inside a narrow column on desktop; `dense` forces the
+   * single-column, full-width variants that fit a rail. Default false = ContactDetail
+   * behavior unchanged.
+   */
+  dense?: boolean;
+}) {
   const { enabled: billingEnabled, loading: featureLoading } =
     useTenantFeature("billing_enabled");
 
@@ -243,7 +256,7 @@ export function ContactBillingPanel({ contactId }: { contactId: string }) {
         <CardContent className="space-y-3">
           {enableCreate && (
             <div className="border border-border rounded-md p-3 space-y-3 bg-muted/30">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className={`grid gap-3 ${dense ? "grid-cols-1" : "grid-cols-1 md:grid-cols-3"}`}>
                 <div>
                   <Label className="text-xs">Product / plan</Label>
                   <Select value={selectedPriceId} onValueChange={setSelectedPriceId}>
@@ -387,7 +400,7 @@ export function ContactBillingPanel({ contactId }: { contactId: string }) {
 
                     {changePriceFor === s.id && (
                       <div className="mt-3 border-t pt-3 flex flex-wrap items-end gap-2">
-                        <div className="flex-1 min-w-[200px]">
+                        <div className={`flex-1 ${dense ? "w-full" : "min-w-[200px]"}`}>
                           <Label className="text-xs">New plan</Label>
                           <Select value={newPriceId} onValueChange={setNewPriceId}>
                             <SelectTrigger><SelectValue placeholder="Choose new plan" /></SelectTrigger>

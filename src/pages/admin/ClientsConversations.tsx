@@ -890,30 +890,10 @@ export default function ClientsConversations() {
 
   return (
     <PageShell width="full" fill>
-      <PageHeader
-        variant="plain"
-        title="Conversations"
-        actions={
-          // §43 — the surface is a tool: start a NEW outbound thread from here. Gold on the
-          // act (§11). Disabled honestly when there's no sendable channel to send on (§13).
-          // Suppressed during first-run so the FirstRunOnboarding surface owns the ONE gold
-          // primary act (§11/§36 — never two identical gold acts on one screen).
-          isFirstRun ? undefined : !canCompose ? (
-            <span
-              className="inline-flex"
-              title="Connect an email or SMS channel to start a conversation"
-            >
-              <Button variant="gold" size="sm" disabled>
-                <Plus className="mr-1.5 h-4 w-4" /> New conversation
-              </Button>
-            </span>
-          ) : (
-            <Button variant="gold" size="sm" onClick={() => setComposeOpen(true)}>
-              <Plus className="mr-1.5 h-4 w-4" /> New conversation
-            </Button>
-          )
-        }
-      />
+      {/* §11/§43 header reclaim — the compose CTA moved OFF the header into the LEFT thread
+          rail (GHL pattern: compose sits atop the conversation list), so the header stays a
+          lean title row and the columns carry the real functionality. */}
+      <PageHeader variant="plain" title="Conversations" />
 
       {/* §36 first-run: before a single thread exists, one cohesive guided surface replaces the
           two disconnected empty boxes (left-rail "No conversations yet." + middle "Your unified
@@ -936,7 +916,30 @@ export default function ClientsConversations() {
       )}>
         {/* ── LEFT: thread rail ─────────────────────────────────────────────────── */}
         <SectionCard padded={false} className="flex min-h-0 flex-col overflow-hidden">
-          <div className="border-b border-border/60 px-3 py-2.5">
+          <div className="space-y-2.5 border-b border-border/60 px-3 py-2.5">
+            {/* §43 — start a NEW outbound thread. Relocated off the PageHeader to reclaim
+                header space; lives atop the thread list (GHL pattern), NOT the right rail
+                (which unmounts with no thread selected). Gold on the act (§11); honestly
+                disabled with the same tooltip when there's no sendable channel (§13). The
+                first-run surface owns its own gold act and replaces this whole grid, so no
+                double gold act can appear. */}
+            {!canCompose ? (
+              <span
+                className="flex w-full"
+                title="Connect an email or SMS channel to start a conversation"
+              >
+                <Button variant="gold" size="sm" className="w-full" disabled>
+                  <Plus className="mr-1.5 h-4 w-4" /> New conversation
+                </Button>
+              </span>
+            ) : (
+              <Button
+                variant="gold" size="sm" className="w-full"
+                onClick={() => setComposeOpen(true)}
+              >
+                <Plus className="mr-1.5 h-4 w-4" /> New conversation
+              </Button>
+            )}
             <div className="relative">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -987,7 +990,10 @@ export default function ClientsConversations() {
                   view === "active"
                     ? canCompose
                       ? (
-                        <Button variant="gold" size="sm" onClick={() => setComposeOpen(true)}>
+                        // Secondary (outline), not gold — the always-visible left-rail "New
+                        // conversation" at the top of this column is the ONE gold compose act
+                        // (§11 never two identical gold acts co-visible in one column).
+                        <Button variant="outline" size="sm" onClick={() => setComposeOpen(true)}>
                           <Plus className="mr-1.5 h-4 w-4" /> New conversation
                         </Button>
                       )
