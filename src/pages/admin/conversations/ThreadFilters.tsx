@@ -27,7 +27,7 @@ export function ThreadFilters({
           {INBOX_VIEWS.map((v) => (
             <FilterChip key={v} active={view === v} onClick={() => onView(v)}>
               {FILTER_LABEL[v]}
-              {v === "active" && activeUnread > 0 && (
+              {(v === "active" || v === "unread") && activeUnread > 0 && (
                 <span className="ml-1 tabular-nums text-[10px] opacity-80">{activeUnread}</span>
               )}
             </FilterChip>

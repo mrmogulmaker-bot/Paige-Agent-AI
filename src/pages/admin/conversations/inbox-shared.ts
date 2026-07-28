@@ -64,6 +64,14 @@ export interface ClientContact {
   status: string | null;
   timezone: string | null;
   created_at: string | null;
+  // #482 Phase-2 — relationship facts pulled from the same clients row (self-contained, no extra query).
+  lifecycle_stage: string | null;
+  entity_type: string | null;
+  title: string | null;
+  source: string | null;
+  tags: string[] | null;
+  last_contacted_at: string | null;
+  assigned_coach_user_id: string | null;
   // C-2 suppression / DND surfaced on the contact card (§ read-only signal)
   dnd_active: boolean | null;
   dnd_reason: string | null;
@@ -83,11 +91,29 @@ export interface DbThread {
 }
 export interface Suppression { channel: "sms" | "email"; reason: string }
 
+// #482 Phase-2 — the Agents' log reads Paige's action-bus registry per contact for REAL
+// attribution. RLS on paige_actions pins an authenticated coach/admin to their OWN tenant
+// (tenant_id = current_user_tenant_id()), so the client read is honest + tenant-isolated (§9).
+// §13 note: paige_llm_trace exists (shipped #489) but is task/agent/tenant-scoped with NO
+// contact_id column, so it cannot power a per-CONTACT log — paige_actions.contact_id is the
+// correct source; folding trace-level attribution in later is a tracked follow-up.
+export interface PaigeActionRow {
+  id: string; action_kind: string; title: string; summary: string | null;
+  status: string; autonomy_lane: string; from_department: string; to_department: string;
+  created_by_agent: string | null; assigned_subagent_slug: string | null;
+  filed_at: string; drafted_at: string | null; executed_at: string | null;
+  resolved_at: string | null; error: string | null;
+}
+export const PAIGE_ACTION_COLS =
+  "id, action_kind, title, summary, status, autonomy_lane, from_department, to_department, " +
+  "created_by_agent, assigned_subagent_slug, filed_at, drafted_at, executed_at, resolved_at, error";
+
 // clients join carries dnd_* so the contact card reads the opt-out signal with NO extra fetch.
 export const THREAD_COLS =
   "id, thread_key, contact_id, snoozed_until, archived_at, labels, unread_count, " +
   "last_message_at, last_direction, " +
-  "clients:contact_id(id, first_name, last_name, entity_name, email, phone, status, timezone, " +
+  "clients:contact_id(id, first_name, last_name, entity_name, entity_type, title, email, phone, status, " +
+  "lifecycle_stage, source, tags, last_contacted_at, assigned_coach_user_id, timezone, " +
   "created_at, dnd_active, dnd_reason, dnd_until)";
 
 // ── selected-view shape (R1): the DbThread + its loaded messages + all the fields the
@@ -133,12 +159,12 @@ export const LABEL_COLORS: LabelColor[] = ["indigo", "sky", "violet", "slate"];
 //    views the Command-Center tiles deep-link into (?filter=drafts|awaiting-reply|
 //    waking-today|scheduled). A derived view rides on a base ThreadFilter server query
 //    and narrows client-side via a predicate. Unknown slug → keep the default. ────────
-export type InboxView = ThreadFilter | "drafts" | "awaiting-reply" | "waking-today" | "scheduled";
+export type InboxView = ThreadFilter | "unread" | "drafts" | "awaiting-reply" | "waking-today" | "scheduled";
 export const INBOX_VIEWS: InboxView[] = [
-  "active", "snoozed", "archived", "all", "drafts", "awaiting-reply", "waking-today", "scheduled",
+  "active", "unread", "snoozed", "archived", "all", "drafts", "awaiting-reply", "waking-today", "scheduled",
 ];
 export const FILTER_LABEL: Record<InboxView, string> = {
-  active: "Active", snoozed: "Snoozed", archived: "Archived", all: "All",
+  active: "Active", unread: "Unread", snoozed: "Snoozed", archived: "Archived", all: "All",
   drafts: "Drafts", "awaiting-reply": "Awaiting reply", "waking-today": "Waking today",
   scheduled: "Scheduled",
 };
