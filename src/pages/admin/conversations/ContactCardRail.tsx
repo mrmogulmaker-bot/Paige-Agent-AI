@@ -11,6 +11,7 @@ import {
   type ClientContact, type MessageRow, type Label, type ChannelType, type Suppression,
   CHANNEL_ICON, CHANNEL_LABEL, LABEL_COLOR, bodyPreview, contactNameFromClient,
 } from "./inbox-shared";
+import { AgentsLog } from "./AgentsLog";
 
 function CopyRow({ icon: Icon, value, label }: { icon: typeof Mail; value: string; label: string }) {
   return (
@@ -82,14 +83,22 @@ export function ContactCardRail({
               <p className="truncate text-sm font-semibold text-foreground">
                 {contactNameFromClient(contact) || toAddress || "Unknown contact"}
               </p>
-              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              {(contact.title || contact.entity_name) && (
+                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                  {[contact.title, contact.entity_name].filter(Boolean).join(" · ")}
+                </p>
+              )}
+              {/* ONE status pill; lifecycle stays quiet text so the eye reads status vs stage
+                  without pill-soup (§11/§25). "·" separators keep the meta line scannable. */}
+              <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
                 <StatePill state={contact.status === "active" ? "success" : "pending"}>
                   {contact.status === "active" ? "Active" : (contact.status || "Lead")}
                 </StatePill>
+                {contact.lifecycle_stage && (
+                  <span className="capitalize">{contact.lifecycle_stage.replace(/[-_]/g, " ")}</span>
+                )}
                 {contact.created_at && (
-                  <span className="text-[11px] text-muted-foreground">
-                    Client for {formatDistanceToNow(new Date(contact.created_at))}
-                  </span>
+                  <span>· Client for {formatDistanceToNow(new Date(contact.created_at))}</span>
                 )}
               </div>
             </div>
@@ -159,6 +168,39 @@ export function ContactCardRail({
               </div>
             </div>
           )}
+
+          {/* Key facts — relationship snapshot; each row only when present (§15 no placeholders). */}
+          {(contact.last_contacted_at || contact.source || (contact.tags && contact.tags.length > 0)) && (
+            <div className="space-y-1.5">
+              <p className="px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Key facts</p>
+              {(contact.last_contacted_at || contact.source) && (
+                <div className="space-y-1 px-2 text-xs text-muted-foreground">
+                  {contact.last_contacted_at && (
+                    <p>Last contacted {formatDistanceToNow(new Date(contact.last_contacted_at), { addSuffix: true })}</p>
+                  )}
+                  {contact.source && <p>Source · <span className="text-foreground/80">{contact.source}</span></p>}
+                </div>
+              )}
+              {contact.tags && contact.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 px-2">
+                  {/* tags reuse the label chip family (slate) — one badge system in the rail (§25). */}
+                  {contact.tags.slice(0, 6).map((t) => (
+                    <span key={t} className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium", LABEL_COLOR.slate)}>
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* What Paige did — REAL per-contact action-bus log (§13 honest, RLS tenant-scoped §9). */}
+          <div className="space-y-1">
+            <p className="px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">What Paige did</p>
+            <div className="px-2">
+              <AgentsLog contactId={contact.id} />
+            </div>
+          </div>
 
           {/* Recent activity — from loaded messages, no query */}
           <div className="space-y-1">

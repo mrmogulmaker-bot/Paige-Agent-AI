@@ -15,7 +15,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useSearchParams } from "react-router-dom";
 import {
   MessageCircle, Inbox, Send, Pencil, Loader2, Sparkles, AlertTriangle, Paperclip,
-  Search, SearchX, PanelRight, Clock, X, ImageIcon, ChevronDown,
+  Search, SearchX, PanelRight, Clock, X, ImageIcon, ChevronDown, Bell,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -41,6 +41,9 @@ import {
 import { ThreadRow } from "./conversations/ThreadRow";
 import { ThreadFilters, useLabelCatalog } from "./conversations/ThreadFilters";
 import { ContactCardRail } from "./conversations/ContactCardRail";
+import { SnoozeMenu } from "./conversations/SnoozeMenu";
+import { LabelPopover } from "./conversations/LabelPopover";
+import { QuickAddDialog } from "@/components/planning/QuickAddDialog";
 
 // ── Connector (channel_connectors row — kept local, not in shared) ─────────────────
 interface Connector {
@@ -299,6 +302,9 @@ export default function ClientsConversations() {
   const [draftGuideOpen, setDraftGuideOpen] = useState(false);
   const [draftGuide, setDraftGuide] = useState("");
   const [draftTone, setDraftTone] = useState<"professional" | "friendly" | "warm" | "direct">("professional");
+  // #482 Phase-2 — the current operator's auth id, so the thread-header "Set a reminder"
+  // quick action can file a plan row (plan_set_reminder is keyed to the caller). Server-derived.
+  const [userId, setUserId] = useState<string | null>(null);
   const tenantIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -402,6 +408,11 @@ export default function ClientsConversations() {
     [dbThreads],
   );
 
+  // Resolve the operator's own auth id once (§9 server-derived) for the reminder quick action.
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+  }, []);
+
   // ── derived view predicate (R3): drafts/awaiting-reply/waking-today/scheduled ───────
   const nowMs = Date.now();
   const viewPredicate = useCallback((t: DbThread): boolean => {
@@ -418,6 +429,11 @@ export default function ClientsConversations() {
           && new Date(t.snoozed_until).getTime() <= endOfTodayMs();
       case "scheduled":
         return msgs.some((m) => m.status === "queued" && !!m.scheduled_for);
+      case "unread":
+        // rides the 'active' server base (baseFilter falls through to active); narrows to
+        // genuinely-unread, non-archived, not-future-snoozed threads (§13 real state).
+        return t.unread_count > 0 && !t.archived_at
+          && (!t.snoozed_until || new Date(t.snoozed_until).getTime() <= nowMs);
       default:
         return true;
     }
@@ -922,6 +938,36 @@ export default function ClientsConversations() {
                   <p className="truncate text-[11px] text-muted-foreground select-text">
                     {CHANNEL_LABEL[selected.channel]}{selected.toAddress ? ` · ${selected.toAddress}` : ""}
                   </p>
+                </div>
+                {/* #482 Phase-2 — thread-level quick actions promoted to the open-thread header
+                    (§18 reuse: the same SnoozeMenu/LabelPopover already wired on the list rows), so
+                    label / snooze / archive / remind are reachable without hovering a row. All
+                    icon-only ghost buttons, matching the header control group; gold stays on
+                    Send/Approve (§11). */}
+                <div className="flex items-center gap-1">
+                  <LabelPopover
+                    thread={selected.dbThread} catalog={labelCatalog}
+                    onSetThreadLabels={setThreadLabels} onRenameCatalogLabel={renameCatalogLabel}
+                  />
+                  <SnoozeMenu thread={selected.dbThread} onSnooze={snoozeThread} onArchive={archiveThread} />
+                  {userId && selected.contactId && (
+                    <QuickAddDialog
+                      userId={userId}
+                      contactId={selected.contactId}
+                      contactName={selected.name}
+                      defaultKind="reminder"
+                      onCreated={() => toast.success("Reminder set.")}
+                      trigger={
+                        <Button
+                          variant="ghost" size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                          aria-label="Set a reminder about this contact"
+                        >
+                          <Bell className="h-4 w-4" />
+                        </Button>
+                      }
+                    />
+                  )}
                 </div>
                 {selected.hasDraft && <StatePill state="building">Draft ready</StatePill>}
                 {!railOpen && (
