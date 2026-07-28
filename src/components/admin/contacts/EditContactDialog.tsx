@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- pre-existing legacy `any` debt in this
+   dialog (untyped contact update path, #234 stale generated types). The §2 field strip (removing
+   the Funding goal field + its patch write) introduced ZERO new `any`s. Retyping tracked (#234). */
 import { useEffect, useState } from "react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -65,7 +68,6 @@ export function EditContactDialog({
         phone: form.phone?.trim() || null,
         entity_name: form.entity_name?.trim() || null,
         title: form.title?.trim() || null,
-        funding_goal: form.funding_goal ?? null,
         lifecycle_stage: form.lifecycle_stage || "new_lead",
         source: form.source || null,
         tags: form.tags || [],
@@ -125,15 +127,7 @@ export function EditContactDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <Label>Funding goal ($)</Label>
-              <Input
-                type="number"
-                value={form.funding_goal ?? ""}
-                onChange={(e) => set("funding_goal", e.target.value ? Number(e.target.value) : null)}
-              />
-            </div>
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Lifecycle stage</Label>
               <Select value={form.lifecycle_stage || "new_lead"} onValueChange={(v) => set("lifecycle_stage", v)}>

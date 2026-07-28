@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- pre-existing legacy `any` debt in this
+   dialog (untyped `clients` table insert, #234 stale generated types; legacy `catch (error: any)`).
+   The §2 copy strip (removing the Funding Goal / Monthly Revenue fields) introduced ZERO new `any`s
+   — a minimal §2 touch shouldn't retype the whole file. Retyping tracked separately (#234). */
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -28,8 +32,6 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
     zip_code: "",
     entity_name: "",
     entity_type: "",
-    funding_goal: "",
-    monthly_revenue: "",
     current_notes: "",
   });
 
@@ -59,8 +61,6 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
         zip_code: form.zip_code.trim() || null,
         entity_name: form.entity_name.trim() || null,
         entity_type: form.entity_type || null,
-        funding_goal: form.funding_goal ? Number(form.funding_goal) : null,
-        monthly_revenue: form.monthly_revenue ? Number(form.monthly_revenue) : null,
         current_notes: form.current_notes.trim() || null,
       } as any);
 
@@ -72,8 +72,7 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
       setForm({
         first_name: "", last_name: "", email: "", phone: "",
         street_address: "", city: "", state: "", zip_code: "",
-        entity_name: "", entity_type: "", funding_goal: "",
-        monthly_revenue: "", current_notes: "",
+        entity_name: "", entity_type: "", current_notes: "",
       });
     } catch (error: any) {
       const msg = (error?.message || "").toLowerCase();
@@ -160,17 +159,6 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="funding_goal">Funding Goal ($)</Label>
-              <Input id="funding_goal" type="number" value={form.funding_goal} onChange={(e) => update("funding_goal", e.target.value)} placeholder="250000" />
-            </div>
-            <div>
-              <Label htmlFor="monthly_revenue">Monthly Revenue ($)</Label>
-              <Input id="monthly_revenue" type="number" value={form.monthly_revenue} onChange={(e) => update("monthly_revenue", e.target.value)} placeholder="15000" />
             </div>
           </div>
 

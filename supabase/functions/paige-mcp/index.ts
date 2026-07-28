@@ -279,7 +279,7 @@ mcp.tool("search_contacts", {
 
 mcp.tool("get_contact", {
   description:
-    "Fetch a single contact's full Paige profile, including funding goal, address, owner/coach assignments, and notes.",
+    "Fetch a single contact's full Paige profile, including business details, address, owner/coach assignments, and notes.",
   inputSchema: z.object({ contact_id: z.string().describe("clients.id (uuid)") }),
   handler: async ({ contact_id }) => {
     const tenantId = await actorTenantId();
@@ -4929,7 +4929,7 @@ function toolTier(name: string): McpTier {
 // picker and OAuth consent screen. logo_uri must be a public https URL.
 const PAIGE_LOGO_URI = `${APP_ORIGIN}/mcp-logo.png`;
 const PAIGE_BRAND_NAME = "Paige Agent AI";
-const PAIGE_TAGLINE = "The Entrepreneurial Operating System — credit, capital, and execution in one connected engine.";
+const PAIGE_TAGLINE = "The operating system for client-based businesses — your practice, clients, and execution in one connected engine.";
 
 const DISCOVERY_RESOURCE = {
   resource: PUBLIC_ORIGIN, authorization_servers: [PUBLIC_ORIGIN],

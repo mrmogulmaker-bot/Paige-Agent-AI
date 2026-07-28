@@ -23,7 +23,7 @@ const CoachingReminderEmail = ({
   name,
   sessionDate = 'Tomorrow',
   sessionTime = '10:00 AM EST',
-  coachName = 'Your coach',
+  coachName = 'Your session host',
   joinUrl = 'https://app.paigeagent.ai',
   rescheduleUrl = 'https://app.paigeagent.ai',
   agenda = 'Review your progress, work through your current goals, and set the next steps.',
@@ -31,7 +31,7 @@ const CoachingReminderEmail = ({
 }: CoachingReminderProps) => (
   <Html lang="en" dir="ltr">
     <Head />
-    <Preview>Reminder — your strategy session is {sessionDate}</Preview>
+    <Preview>Reminder — your session is {sessionDate}</Preview>
     <Body style={main}>
       <Container style={container}>
         <Img src={LOGO_URL} alt={SITE_NAME} width="160" height="auto" style={logo} />
@@ -68,13 +68,13 @@ const CoachingReminderEmail = ({
 
 export const template = {
   component: CoachingReminderEmail,
-  subject: '📅 Reminder — Your Strategy Session is Tomorrow',
+  subject: '📅 Reminder — Your Session is Tomorrow',
   displayName: 'Session Reminder',
   previewData: {
-    name: 'Antonio',
+    name: 'Jordan',
     sessionDate: 'Tomorrow',
     sessionTime: '10:00 AM EST',
-    coachName: 'Coach Candace',
+    coachName: 'Alex Rivera',
     agenda: 'Review last month\'s wins, work through your current goals, and lock in your next three action items.',
   },
 } satisfies TemplateEntry

@@ -116,14 +116,14 @@ export const template = {
   subject: (data: Record<string, any>) => subjectFor(data?.eventType ?? 'created', data?.summary),
   displayName: 'Approval Notification',
   previewData: {
-    recipientName: 'Antonio',
+    recipientName: 'Jordan',
     eventType: 'created',
-    category: 'dispute_letter',
-    summary: 'Round 2 dispute letter for Jane Doe — Equifax',
+    category: 'proposal',
+    summary: 'Engagement proposal for Jane Doe — Q3 retainer',
     priority: 2,
     riskLevel: 'medium',
     clientName: 'Jane Doe',
-    submittedBy: 'Coach Candace',
+    submittedBy: 'Paige',
     approvalUrl: 'https://paigeagent.ai/admin/approvals',
   },
 } satisfies TemplateEntry
