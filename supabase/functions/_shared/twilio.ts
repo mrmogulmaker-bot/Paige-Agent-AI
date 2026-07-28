@@ -21,14 +21,18 @@
 //     brand/campaign SID. A missing platform master credential likewise returns a
 //     needs_config result, never a crash.
 //
-// PER-TENANT CREDENTIAL MODEL (§9, LOCKED design D1)
-//   tenant_twilio_subaccounts is the 1-per-tenant ACCOUNT entity: it holds the
-//   Twilio SUBaccount SID + a Vault REF (name) to that subaccount's auth token —
-//   never the raw token. resolveTwilioCreds() reads that row and decrypts the token
-//   through the proven Vault bridge RPC (read_channel_secret), the only server-side
-//   path a Deno edge function can read vault.decrypted_secrets. Master (platform)
-//   creds come from env via masterCreds() and are used ONLY to mint subaccounts and
-//   for the +1 470 super-admin path (D2/D3).
+// PER-TENANT CREDENTIAL MODEL (§9, D1 + C-2a API-Key auth 2026-07-28)
+//   tenant_twilio_subaccounts is the 1-per-tenant ACCOUNT entity: it holds the Twilio
+//   SUBaccount SID + a SUBACCOUNT-scoped API Key SID (api_key_sid, "SK…") + a Vault REF
+//   (name) to that API Key's SECRET — never the raw secret. Under MASTER API-Key auth
+//   Twilio's subaccount-create response OMITS auth_token, so we no longer depend on it;
+//   provisioning mints a subaccount API Key (createSubaccountApiKey) and vaults that
+//   secret. resolveTwilioCreds() reads the row, decrypts the API-Key secret through the
+//   proven Vault bridge RPC (read_channel_secret), and builds Basic auth as
+//   api_key_sid : <secret> (the master API-Key pattern — username is the SK…, NOT the
+//   subaccount SID). Master (platform) creds come from env via masterCreds() and are
+//   used to mint subaccounts, mint subaccount API Keys, and for the +1 470 super-admin
+//   path (D2/D3).
 
 // -----------------------------------------------------------------------------
 // Result + credential shapes
@@ -61,15 +65,19 @@ export interface TwilioCreds {
   /**
    * SK… — Basic-auth USERNAME for the API-Key auth path (Twilio best-practice). When
    * present the Basic-auth username is this API Key SID, NOT accountSid; the account is
-   * still addressed by accountSid in the URL path. Absent for the subaccount path, where
-   * the username IS the subaccount SID (accountSid). D2/D3 master creds set this.
+   * still addressed by accountSid in the URL path. Set on BOTH the master path (D2/D3
+   * master creds) AND the per-subaccount path (C-2a: the subaccount-scoped api_key_sid
+   * resolved by resolveTwilioCreds). Callers thread it to twilioRequest as `authUser`.
    */
   apiKeySid?: string;
 }
 
-/** Minimal shape of the tenant_twilio_subaccounts row this helper reads (§9, D1). */
+/** Minimal shape of the tenant_twilio_subaccounts row this helper reads (§9, D1/C-2a). */
 interface TenantSubaccountRow {
   subaccount_sid: string | null;
+  /** SK… — the subaccount-scoped API Key SID; Basic-auth USERNAME (C-2a). */
+  api_key_sid: string | null;
+  /** Vault ref for the API-Key SECRET (Basic-auth password). Meaning changed in C-2a. */
   auth_token_vault_ref: string | null;
   status?: string | null;
 }
@@ -270,15 +278,22 @@ export type SupabaseAdminLike = {
 
 /**
  * Resolve a tenant's Twilio subaccount credentials: read tenant_twilio_subaccounts
- * for the tenant, then decrypt the auth token from Vault via the read_channel_secret
+ * for the tenant, then decrypt the API-Key SECRET from Vault via the read_channel_secret
  * SECURITY-DEFINER RPC (the only path an edge function can read vault.decrypted_secrets;
  * precedent: cron_token_header()). Returns a TwilioResult<TwilioCreds>:
- *   • ok:true  + data:{accountSid, authToken}          — tenant is provisioned
- *   • ok:false + needs_config:true                     — no subaccount / no vault ref yet
- *   • ok:false + error                                 — a real lookup/decrypt failure
+ *   • ok:true  + data:{accountSid, authToken, apiKeySid} — tenant is provisioned
+ *   • ok:false + needs_config:true                       — no subaccount / no api_key_sid / no vault ref
+ *   • ok:false + error                                   — a real lookup/decrypt failure
+ *
+ * C-2a (owner-confirmed 2026-07-28): the Basic-auth USERNAME is the subaccount-scoped
+ * API Key SID (api_key_sid, "SK…"), NOT the subaccount SID, and the PASSWORD is the
+ * vaulted API-Key SECRET (auth_token_vault_ref now refs that secret). This is exactly
+ * the master API-Key pattern (masterBasicAuthHeader). If api_key_sid is null (a legacy/
+ * none row) we degrade to needs_config rather than send with the WRONG username.
+ * The URL path still addresses the subaccount via accountSid.
  *
  * MUST be called with a SERVICE-ROLE client — the RPC is granted to service_role only,
- * and the token must never transit an anon/authenticated context.
+ * and the secret must never transit an anon/authenticated context.
  */
 export async function resolveTwilioCreds(
   supabaseAdmin: SupabaseAdminLike,
@@ -292,7 +307,7 @@ export async function resolveTwilioCreds(
     .from("tenant_twilio_subaccounts")
     // NOTE: the column is `twilio_subaccount_sid` on tenant_twilio_subaccounts;
     // alias it to subaccount_sid so the reads below stay stable (verify-crew fix #3).
-    .select("subaccount_sid:twilio_subaccount_sid, auth_token_vault_ref, status")
+    .select("subaccount_sid:twilio_subaccount_sid, api_key_sid, auth_token_vault_ref, status")
     .eq("tenant_id", tenantId)
     .maybeSingle();
   const row = data as TenantSubaccountRow | null;
@@ -304,6 +319,12 @@ export async function resolveTwilioCreds(
     // Tenant hasn't been provisioned a Twilio subaccount yet — honest degrade.
     return { ok: false, status: 0, error: "twilio_subaccount_not_provisioned", data: null, needs_config: true };
   }
+  if (!row.api_key_sid) {
+    // Legacy/none row without a subaccount-scoped API Key — under API-Key auth we cannot
+    // send with the subaccount SID as the username, so degrade honestly (§13) instead of
+    // authing with the wrong username (which Twilio would 401).
+    return { ok: false, status: 0, error: "twilio_subaccount_api_key_missing", data: null, needs_config: true };
+  }
 
   const { data: secret, error: secErr } = await supabaseAdmin.rpc("read_channel_secret", {
     _ref: row.auth_token_vault_ref,
@@ -311,12 +332,20 @@ export async function resolveTwilioCreds(
   if (secErr) {
     return { ok: false, status: 0, error: `twilio_vault_read_failed: ${String((secErr as { message?: string })?.message ?? secErr).slice(0, MAX_ERROR_BODY)}`, data: null };
   }
-  const authToken = typeof secret === "string" ? secret : "";
-  if (!authToken) {
+  const apiKeySecret = typeof secret === "string" ? secret : "";
+  if (!apiKeySecret) {
     return { ok: false, status: 0, error: "twilio_vault_ref_empty", data: null, needs_config: true };
   }
 
-  return { ok: true, status: 200, error: null, data: { accountSid: row.subaccount_sid, authToken } };
+  // authToken = API-Key SECRET (password); apiKeySid = SK… (username). accountSid = the
+  // subaccount SID (URL path). twilioRequest uses apiKeySid as the Basic-auth username
+  // whenever the caller threads it through (see sendSms/purchaseNumber/listAvailableNumbers).
+  return {
+    ok: true,
+    status: 200,
+    error: null,
+    data: { accountSid: row.subaccount_sid, authToken: apiKeySecret, apiKeySid: row.api_key_sid },
+  };
 }
 
 // -----------------------------------------------------------------------------
@@ -326,9 +355,13 @@ export async function resolveTwilioCreds(
 /**
  * Create a Twilio SUBaccount under the platform master account (D1: the 1-per-tenant
  * account entity). Uses master creds (env). The response `data.sid` is the subaccount
- * SID and `data.auth_token` its auth token — the caller stores the SID on
- * tenant_twilio_subaccounts and the token in Vault (never in the table).
- * Returns needs_config when master creds are unset.
+ * SID — the caller stores it on tenant_twilio_subaccounts.
+ *
+ * IMPORTANT (C-2a, owner-confirmed 2026-07-28): under MASTER API-KEY auth Twilio's
+ * POST /Accounts.json returns the new subaccount's `sid` but OMITS `auth_token`
+ * (confirmed empirically). So `data.auth_token` may be absent — the caller MUST NOT
+ * depend on it. Instead it mints a subaccount-scoped API Key via createSubaccountApiKey()
+ * and vaults THAT secret. Returns needs_config when master creds are unset.
  */
 export async function createSubaccount(friendlyName: string): Promise<TwilioResult> {
   const master = masterCreds();
@@ -343,6 +376,52 @@ export async function createSubaccount(friendlyName: string): Promise<TwilioResu
     { FriendlyName: friendlyName },
     master.apiKeySid, // API Key SID as the Basic-auth username (master path); undefined on legacy fallback
   );
+}
+
+/** Twilio's response body for a new subaccount API Key (the SECRET is shown ONCE). */
+export interface SubaccountApiKey {
+  /** SK… — the API Key SID (Basic-auth USERNAME). Non-secret. */
+  sid: string;
+  /** The API Key SECRET (Basic-auth PASSWORD). Shown ONCE by Twilio — vault it immediately. */
+  secret: string;
+}
+
+/**
+ * Mint a SUBACCOUNT-scoped API Key on an existing subaccount, authenticated with MASTER
+ * creds (the master API Key is account-scoped, so it can create keys on any subaccount
+ * under the master account). POSTs to /2010-04-01/Accounts/{subaccountSid}/Keys.json;
+ * Twilio returns { sid: "SK…", secret } and the SECRET is shown ONCE. Returns both so
+ * the caller can vault the secret immediately (§34 — the secret is NEVER logged, NEVER
+ * persisted outside Vault). Reuses the ONE Twilio seam (twilioRequest + masterCreds,
+ * §18). Returns needs_config when master creds are unset, and a structured error if
+ * Twilio's response is missing the SK/secret pair (§13 — never a fabricated key).
+ */
+export async function createSubaccountApiKey(subaccountSid: string): Promise<TwilioResult<SubaccountApiKey>> {
+  if (!subaccountSid) {
+    return { ok: false, status: 0, error: "twilio_missing_subaccount_sid", data: null };
+  }
+  const master = masterCreds();
+  if (!master) {
+    return { ok: false, status: 0, error: "twilio_master_not_configured", data: null, needs_config: true };
+  }
+  const res = await twilioRequest<SubaccountApiKey>(
+    // URL path addresses the SUBaccount; Basic-auth is the MASTER API Key (account-scoped).
+    subaccountSid,
+    master.authToken,
+    `/2010-04-01/Accounts/${encodeURIComponent(subaccountSid)}/Keys.json`,
+    "POST",
+    { FriendlyName: "Paige subaccount API key (C-2a)" },
+    master.apiKeySid, // master API Key SID as the Basic-auth username; undefined on legacy fallback
+  );
+  if (!res.ok) return res;
+  const sid = res.data?.sid;
+  const secret = res.data?.secret;
+  if (!sid || !secret) {
+    // Twilio should always return both on a 2xx; guard so a caller never vaults an empty
+    // secret or stores a null SID (§13 — honest, no fabricated key).
+    return { ok: false, status: res.status, error: "twilio_api_key_missing_sid_or_secret", data: null };
+  }
+  return { ok: true, status: res.status, error: null, data: { sid, secret } };
 }
 
 export interface AvailableNumberSearch {
@@ -363,6 +442,7 @@ export async function listAvailableNumbers(
   subaccountSid: string,
   subToken: string,
   opts: AvailableNumberSearch = {},
+  authUser?: string,
 ): Promise<TwilioResult> {
   const country = opts.country || "US";
   const type = opts.type || "Local";
@@ -376,6 +456,10 @@ export async function listAvailableNumbers(
       Contains: opts.contains,
       SmsEnabled: opts.smsEnabled === undefined ? "true" : String(opts.smsEnabled),
     },
+    // C-2a: the subaccount-scoped API Key SID as the Basic-auth username. Omitted →
+    // username falls back to subaccountSid (wrong under API-Key auth), so callers that
+    // resolve via resolveTwilioCreds MUST pass creds.data.apiKeySid here.
+    authUser,
   );
 }
 
@@ -396,6 +480,7 @@ export async function purchaseNumber(
   subToken: string,
   phoneNumber: string,
   opts: PurchaseNumberOptions = {},
+  authUser?: string,
 ): Promise<TwilioResult> {
   return await twilioRequest(
     subaccountSid,
@@ -408,6 +493,10 @@ export async function purchaseNumber(
       SmsUrl: opts.smsUrl,
       StatusCallback: opts.statusCallback,
     },
+    // C-2a: the subaccount-scoped API Key SID as the Basic-auth username. Omitted →
+    // username falls back to subaccountSid (wrong under API-Key auth), so callers that
+    // resolve via resolveTwilioCreds MUST pass creds.data.apiKeySid here.
+    authUser,
   );
 }
 

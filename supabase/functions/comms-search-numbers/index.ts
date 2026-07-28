@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
     country,
     type: toTwilioType(numberType),
     smsEnabled,
-  });
+  }, creds.data.apiKeySid); // C-2a: SK… as the Basic-auth username (API-Key auth)
   if (!search.ok || !search.data) {
     return json({
       needs_config: search.needs_config === true,
