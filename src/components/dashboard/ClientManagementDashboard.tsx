@@ -787,13 +787,10 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                             {c.linked_user_id ? "Linked" : "—"}
                           </Badge>
                         </div>
-                        {(c.entity_name || c.funding_goal || c.monthly_revenue) && (
+                        {(c.entity_name || c.monthly_revenue) && (
                           <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
                             {c.entity_name && (
                               <div className="col-span-2 truncate"><span className="font-medium text-foreground">Entity:</span> {c.entity_name}</div>
-                            )}
-                            {c.funding_goal && (
-                              <div><span className="font-medium text-foreground">Goal:</span> ${Number(c.funding_goal).toLocaleString()}</div>
                             )}
                             {c.monthly_revenue && (
                               <div><span className="font-medium text-foreground">Revenue:</span> ${Number(c.monthly_revenue).toLocaleString()}/mo</div>
@@ -852,7 +849,6 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                           <TableHead>Name</TableHead>
                           <TableHead>Email</TableHead>
                           <TableHead>Entity</TableHead>
-                          <TableHead>Funding Goal</TableHead>
                           <TableHead>Revenue</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Portal</TableHead>
@@ -865,9 +861,6 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                             <TableCell className="font-medium">{c.first_name} {c.last_name}</TableCell>
                             <TableCell className="text-sm">{c.email || "—"}</TableCell>
                             <TableCell className="text-sm">{c.entity_name || "—"}</TableCell>
-                            <TableCell className="font-mono text-sm">
-                              {c.funding_goal ? `$${Number(c.funding_goal).toLocaleString()}` : "—"}
-                            </TableCell>
                             <TableCell className="font-mono text-sm">
                               {c.monthly_revenue ? `$${Number(c.monthly_revenue).toLocaleString()}/mo` : "—"}
                             </TableCell>
