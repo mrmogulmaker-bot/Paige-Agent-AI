@@ -18,8 +18,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // The three-beat mental model (§36 draft-first + one-click-approve), spoken in the
-// coach's language — clients/conversations only, never finance/credit (§2), never
-// "AI-powered"/"seamless"/"streamline" (§3).
+// coach's language — clients/conversations only, never finance/credit (§2), always in
+// Paige's direct §3 voice (no banned marketing clichés).
 const STEPS: { icon: typeof MessageCircle; title: string; body: string }[] = [
   {
     icon: MessageCircle,

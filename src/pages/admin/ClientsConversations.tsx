@@ -374,8 +374,24 @@ export default function ClientsConversations() {
     setThreadsReady(true); // gate the ?contact deep-link on a real first threads pull
   }, [baseFilter]);
 
+  // ── first-run existence probe (UNFILTERED, §9 RLS-scoped) ──────────────────────────
+  // `loadThreads` filters by the current VIEW (active/archived/snoozed), so dbThreads being
+  // empty means "no threads in THIS view", NOT "the account has no threads". First-run must
+  // key off whether the tenant has ANY thread in ANY state — otherwise an account with only
+  // archived/snoozed threads lands on the default active view, sees zero, and gets the
+  // onboarding surface in place of the whole inbox (incl. ThreadFilters), trapping those
+  // existing conversations out of reach. null = not yet known (never flash onboarding early).
+  const [accountHasThreads, setAccountHasThreads] = useState<boolean | null>(null);
+  const checkAccountHasThreads = useCallback(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { count, error } = await (supabase as any).from("threads")
+      .select("thread_key", { count: "exact", head: true });
+    if (!error) setAccountHasThreads((count ?? 0) > 0);
+  }, []);
+
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void loadThreads(); }, [loadThreads]);
+  useEffect(() => { void checkAccountHasThreads(); }, [checkAccountHasThreads]);
 
   // ── Deep-link: ?contact=<id> — the Client-360 "Message {name}" action lands here (§18: the
   // Conversations hub is the ONE comms home now that the old ContactCommsPanel is retired).
@@ -425,7 +441,7 @@ export default function ClientsConversations() {
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => { void load(); void loadThreads(); })
       .subscribe();
     const chT = supabase.channel("comms_threads")
-      .on("postgres_changes", { event: "*", schema: "public", table: "threads" }, () => void loadThreads())
+      .on("postgres_changes", { event: "*", schema: "public", table: "threads" }, () => { void loadThreads(); void checkAccountHasThreads(); })
       .subscribe();
     return () => { void supabase.removeChannel(chM); void supabase.removeChannel(chT); };
   }, [load, loadThreads]);
@@ -922,7 +938,7 @@ export default function ClientsConversations() {
   // snoozed empty keeps its own dedicated EmptyState inside the rail/pane (untouched below).
   const isFirstRun =
     threadsReady && !loading && !searching &&
-    dbThreads.length === 0 &&
+    accountHasThreads === false &&   // UNFILTERED — no threads in ANY state, not just this view
     matchedKeys === null &&
     search.trim() === "" &&
     view === "active" &&
