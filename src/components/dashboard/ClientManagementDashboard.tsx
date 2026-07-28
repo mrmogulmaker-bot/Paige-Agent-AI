@@ -16,7 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye, LogOut, Sparkles, Briefcase, Layers } from "lucide-react";
+import { Users, Search, TrendingUp, UserCheck, UserPlus, Upload, Building2, MoreHorizontal, Trash2, UserCog, ArrowRightLeft, Mail, Send, Eye, LogOut, Sparkles, Layers } from "lucide-react";
 import { AddClientDialog } from "./AddClientDialog";
 import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
@@ -46,9 +46,6 @@ interface AuthClient {
   city: string | null;
   state: string | null;
   created_at: string | null;
-  estimated_fico_eq: number | null;
-  estimated_fico_ex: number | null;
-  estimated_fico_tu: number | null;
   onboarding_completed: boolean | null;
   roles: string[];
   is_minority_owned?: boolean | null;
@@ -57,7 +54,6 @@ interface AuthClient {
   primary_goal_category?: string | null;
   intake_completed?: boolean | null;
   is_complimentary?: boolean | null;
-  has_broker_access?: boolean | null;
 }
 
 interface ClientManagementDashboardProps {
@@ -153,7 +149,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
     try {
       // §9 tenant isolation BY CONSTRUCTION. This is a TENANT operator surface
       // (mounted at /admin/clients and the internal coach/admin dashboard — NOT the
-      // God-only console), so the `clients` read carries an EXPLICIT active-tenant
+      // God-only console). The `clients` read carries an EXPLICIT active-tenant
       // filter: the clients RLS has an is_platform_owner() bypass (migration
       // 20260629180214), so a platform owner's RLS spans every tenant and the
       // "Internal Clients" count card (+ active/withEntity + the tab count) would
@@ -161,13 +157,14 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       // activeTenantId === null) we render the zeroed/empty state, never all-tenant
       // rows. Mirrors the CampaignsOverviewStats explicit-.eq pattern (§18).
       //
-      // NOTE / FLAGGED (§13): the `profiles` + `user_roles` reads below (the "auth
-      // users" half — Clients / Team Members count cards) are PLATFORM-GLOBAL tables
-      // with NO tenant_id column, so they cannot be re-scoped with a `.eq()` here.
-      // Those two cards remain platform-wide by construction; correctly scoping them
-      // to the active tenant needs a tenant_members-join or a SECURITY DEFINER RPC,
-      // which is an architecture change beyond this frontend count-leak fix — see the
-      // audit report's flag. Only the tenant-scoped `clients` read is corrected here.
+      // The "auth users" half below (Clients / Team Members cards + tabs) is now
+      // tenant-scoped too (#481): profiles/user_roles/businesses have NO tenant_id
+      // column and cannot be scoped client-side, so it goes through the
+      // get_tenant_people() SECURITY DEFINER RPC, which server-derives the tenant via
+      // current_user_tenant_id() and joins the roster through tenant_members. NOTE the
+      // seam coupling: this null-tenant short-circuit uses useTenantContext().activeTenantId
+      // while the RPC uses current_user_tenant_id() — both resolve to the caller's
+      // profiles.active_tenant_id, so they agree; keep them aligned if either resolver changes.
       if (!activeTenantId) {
         setInternalClients([]);
         setAuthClients([]);
@@ -194,32 +191,18 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       const isAdmin = roles.includes("admin");
 
       if (isAdmin) {
-        const [profilesRes, allRolesRes, bizRes] = await Promise.all([
-          supabase
-            .from("profiles")
-            .select("user_id, full_name, city, state, created_at, estimated_fico_eq, estimated_fico_ex, estimated_fico_tu, onboarding_completed, primary_goal_category, intake_completed, is_complimentary, has_broker_access")
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("user_roles")
-            .select("user_id, role"),
-          supabase
-            .from("businesses")
-            .select("owner_user_id, is_minority_owned, is_women_owned, is_veteran_owned"),
-        ]);
-
-        const allRoles = allRolesRes.data || [];
-        const allBiz = (bizRes.data || []) as any[];
-        const enriched = (profilesRes.data || []).map((p: any) => {
-          const ownerBiz = allBiz.filter((b) => b.owner_user_id === p.user_id);
-          return {
-            ...p,
-            roles: allRoles.filter((r: any) => r.user_id === p.user_id).map((r: any) => r.role),
-            is_minority_owned: ownerBiz.some((b) => b.is_minority_owned === true),
-            is_women_owned: ownerBiz.some((b) => b.is_women_owned === true),
-            is_veteran_owned: ownerBiz.some((b) => b.is_veteran_owned === true),
-          };
-        });
-        setAuthClients(enriched as AuthClient[]);
+        // §9/§2 (#481): profiles/user_roles/businesses have NO tenant_id column and cannot be
+        // scoped client-side. get_tenant_people() is a SECURITY DEFINER RPC that server-derives
+        // the tenant from current_user_tenant_id() (never a param, no IDOR), returns only THIS
+        // tenant's active members joined to profiles/user_roles/businesses, and is gated by
+        // has_role(admin) least-privilege. Null tenant (operator, no workspace) => empty set; no
+        // FICO/credit fields on this coaching-generic surface. `supabase as any` matches the file
+        // family's house pattern (generated types are stale for this new RPC, #234). NOTE: roles
+        // arrive alpha-sorted from the RPC's array_agg (vs the old DB row order) — cosmetic only,
+        // roles[0] just seeds the role Select's defaultValue and updateUserRole rewrites all roles.
+        const { data: people, error: peopleErr } = await (supabase as any).rpc("get_tenant_people");
+        if (peopleErr) throw peopleErr;
+        setAuthClients((people as AuthClient[]) || []);
       }
     } catch (err) {
       console.error("Error loading clients:", err);
@@ -275,53 +258,6 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
     } catch (err: any) {
       console.error("Error updating role:", err);
       toast.error("Failed to update role");
-    }
-  };
-
-  // Grant or revoke broker workspace access for any user. When granting,
-  // also auto-create an approved broker_profiles row if one doesn't exist
-  // so admins/coaches can immediately use /broker/app.
-  const toggleBrokerAccess = async (client: AuthClient) => {
-    const willGrant = !client.has_broker_access;
-    try {
-      const { error: profErr } = await supabase
-        .from("profiles")
-        .update({ has_broker_access: willGrant } as any)
-        .eq("user_id", client.user_id);
-      if (profErr) throw profErr;
-
-      if (willGrant) {
-        // Ensure a broker_profiles row exists (idempotent).
-        const { data: existing } = await supabase
-          .from("broker_profiles")
-          .select("id")
-          .eq("user_id", client.user_id)
-          .maybeSingle();
-
-        if (!existing) {
-          const fallbackName = (client.full_name || "Broker") + " — Broker Workspace";
-          const { error: brokerErr } = await supabase
-            .from("broker_profiles")
-            .insert([{
-              user_id: client.user_id,
-              business_name: fallbackName,
-              broker_type: "internal",
-              status: "approved",
-              approved_at: new Date().toISOString(),
-            } as any]);
-          if (brokerErr) throw brokerErr;
-        }
-      }
-
-      toast.success(
-        willGrant
-          ? `Granted broker workspace access to ${client.full_name || "user"}`
-          : `Revoked broker workspace access for ${client.full_name || "user"}`
-      );
-      fetchAllClients();
-    } catch (err: any) {
-      console.error("Error toggling broker access:", err);
-      toast.error(err.message || "Failed to update broker access");
     }
   };
 
@@ -546,10 +482,6 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                 <ArrowRightLeft className="w-4 h-4 mr-2" /> Move to Internal
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => toggleBrokerAccess(c)}>
-              <Briefcase className="w-4 h-4 mr-2" />
-              {c.has_broker_access ? "Revoke Broker Access" : "Grant Broker Access"}
-            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => openLimitDialog(c)}>
               <Layers className="w-4 h-4 mr-2" />
               Set Business Limit
@@ -576,7 +508,6 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
         {/* Mobile card list */}
         <div className="space-y-3 md:hidden">
           {filtered.map((c) => {
-            const bestFICO = Math.max(c.estimated_fico_eq || 0, c.estimated_fico_ex || 0, c.estimated_fico_tu || 0);
             const primaryRole = c.roles?.[0] || "user";
             const goalLabel = c.primary_goal_category
               ? c.primary_goal_category.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
@@ -600,11 +531,6 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                       </p>
                     )}
                   </div>
-                  {bestFICO > 0 && (
-                    <Badge variant={bestFICO >= 700 ? "default" : bestFICO >= 600 ? "secondary" : "destructive"} className="shrink-0">
-                      {bestFICO}
-                    </Badge>
-                  )}
                 </div>
                 {goalLabel && (
                   <div>
@@ -644,7 +570,6 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                 <TableHead>Name</TableHead>
                 <TableHead>Location</TableHead>
                 <TableHead>Goal</TableHead>
-                <TableHead>FICO</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -652,7 +577,6 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
             </TableHeader>
             <TableBody>
               {filtered.map((c) => {
-                const bestFICO = Math.max(c.estimated_fico_eq || 0, c.estimated_fico_ex || 0, c.estimated_fico_tu || 0);
                 const primaryRole = c.roles?.[0] || "user";
                 const goalLabel = c.primary_goal_category
                   ? c.primary_goal_category.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase())
@@ -679,13 +603,6 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                       ) : (
                         <span className="text-xs text-muted-foreground">No intake</span>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      {bestFICO > 0 ? (
-                        <Badge variant={bestFICO >= 700 ? "default" : bestFICO >= 600 ? "secondary" : "destructive"}>
-                          {bestFICO}
-                        </Badge>
-                      ) : "—"}
                     </TableCell>
                     <TableCell>
                       <Select
