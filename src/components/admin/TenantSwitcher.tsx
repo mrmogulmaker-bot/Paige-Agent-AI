@@ -85,7 +85,9 @@ export function TenantSwitcher() {
               <div className="min-w-0">
                 <div className="truncate text-sm">{t.name}</div>
                 <div className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {t.plan_offer ?? "—"} · {t.status}
+                  {t.slug === PLATFORM.defaultsTenantSlug
+                    ? "System · Platform defaults"
+                    : `${t.plan_offer ?? "—"} · ${t.status}`}
                 </div>
               </div>
             </div>

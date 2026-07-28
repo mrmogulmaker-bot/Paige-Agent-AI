@@ -26,6 +26,7 @@ import { useNavigate, Routes, Route, useParams, Navigate } from "react-router-do
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { PracticeOverview } from "@/pages/admin/PracticeOverview";
+import NotFound from "./NotFound";
 import { toast } from "sonner";
 import { RoleGate } from "@/components/auth/RoleGate";
 import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
@@ -824,6 +825,16 @@ const Admin = () => {
         <Route path="platform/deploy-health" element={
           <PlatformOwnerOnly><Suspense fallback={<SuspenseFallback />}><DeployHealthAdmin /></Suspense></PlatformOwnerOnly>
         } />
+        {/* Orphan-path redirects (F1/F24): known stray URLs land on their real surface
+            instead of a silent blank. The operator command-center home is the index route
+            (/admin); the security surface is /admin/security. */}
+        <Route path="command-center" element={<Navigate to="/admin" replace />} />
+        <Route path="platform/security-canary" element={<Navigate to="/admin/security" replace />} />
+        {/* Scoped catch-all: any other unmatched /admin/* path renders a real 404 INSIDE the
+            admin shell instead of a blank content area (the App-level "*" NotFound can't fire
+            here — the outer /admin/* route already consumed the match). Specificity ranking
+            keeps this lowest priority regardless of position. */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
 
     </AdminLayout>

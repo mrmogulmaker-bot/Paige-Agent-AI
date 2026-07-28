@@ -326,12 +326,21 @@ export const fundingCoach: Playbook = {
   },
 };
 
-/** The starter Playbook library a tenant picks from at onboarding. */
+/** The starter Playbook library a tenant picks from at onboarding.
+ *  Coaching-generic ONLY. Funding is deliberately NOT here: per owner ruling
+ *  (§2) it is a Marketplace opt-in, never a default preset shown to every
+ *  tenant in a picker. fundingCoach stays DEFINED + slug-resolvable via
+ *  RESOLVABLE_PLAYBOOKS below so an already-opted-in tenant still renders. */
 export const PLAYBOOK_LIBRARY: Playbook[] = [
   generalDefault,
   coachingDefault,
   fitnessCoach,
   businessConsultant,
   marketingAgency,
-  fundingCoach,
 ];
+
+/** Every slug-resolvable playbook, INCLUDING opt-in verticals (funding). Used
+ *  ONLY to resolve a tenant's already-stored slug (getPlaybookBySlug) — never
+ *  rendered in a preset picker. Keeps funding resolvable without re-exposing it
+ *  as a selectable default (§2). */
+export const RESOLVABLE_PLAYBOOKS: Playbook[] = [...PLAYBOOK_LIBRARY, fundingCoach];

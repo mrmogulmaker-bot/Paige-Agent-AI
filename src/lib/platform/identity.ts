@@ -26,6 +26,9 @@ export const PLATFORM = {
   allTenantsLabel: "Paige Agent AI",
   /** Sub-label under the master identity in the tenant switcher. */
   platformScopeLabel: "Platform · all tenants",
+  /** Slug of the operator-owned tenant that HOLDS the platform defaults (§9). It is
+   *  NOT a customer — never render its status ('trial') or plan as if it were one. */
+  defaultsTenantSlug: "paige-platform-defaults",
 } as const;
 
 export type PlatformIdentity = typeof PLATFORM;

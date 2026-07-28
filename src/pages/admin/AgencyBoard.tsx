@@ -538,7 +538,7 @@ export default function AgencyBoard() {
                   <SelectItem value={INHERIT_PLAYBOOK}>Inherit from our agency</SelectItem>
                   {PLAYBOOK_LIBRARY.map((p) => (
                     <SelectItem key={p.slug} value={p.slug}>
-                      {p.slug === "funding" ? `${p.name} (opt-in)` : p.name}
+                      {p.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
