@@ -33,9 +33,13 @@
 -- work (a channel-enum ALTER + the matching pre-send/voice gate).
 --
 -- §37 consumer note: the downstream reader is the pre-send gate
--- (_shared/pre-send-pipeline.ts STEP 2), which is channel-scoped, so an
--- admin-added 'email'/'sms' suppression is honored by every send path immediately
--- with no code change and no consumer break.
+-- (_shared/pre-send-pipeline.ts STEP 2). This RPC keys the suppression by contact_id ONLY —
+-- it does NOT write the address_normalized fallback that the contactless webhook writers
+-- (handle-inbound-sms STOP, comms-email-unsubscribe) set for sends that carry no contact_id.
+-- That is correct for THIS surface: every Conversations send carries the contact_id, so the
+-- gate matches by contact + channel and the opt-out is honored immediately, no consumer break.
+-- It is intentionally NOT the broader claim that a purely address-matched (contactless) send
+-- would be blocked by this row — that path is covered by the webhook writers' address rows.
 -- =============================================================================
 
 create or replace function public.set_contact_channel_suppression(

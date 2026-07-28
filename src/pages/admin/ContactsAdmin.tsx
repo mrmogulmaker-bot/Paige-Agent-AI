@@ -296,12 +296,21 @@ export default function ContactsAdmin() {
       // the view so the GROUP BY collapses from O(all-platform) to O(tenant). Zero semantic
       // change (§9 count==list): the map already discarded non-tenant rows below; this just
       // stops FETCHING them. Runs after clients resolve (needs their ids), not in parallel.
+      // Chunk the id list: a single .in() over the ENTIRE tenant client set can blow the
+      // request-URL length ceiling (HTTP 414) for a large tenant and SILENTLY return empty
+      // deal stats. Batching keeps the tenant-scoping (no cross-tenant read, §9) AND stays
+      // under the URL cap; 200/chunk is well below the limit even for full uuids. Runs the
+      // batches concurrently so the perf win over the old unbounded read holds.
       const map: Record<string, Rollup> = {};
-      if (tenantClientIds.size) {
-        const { data: rollupData, error: rollupErr } = await supabase
-          .from("contact_deal_rollup").select("*")
-          .in("contact_id", Array.from(tenantClientIds));
-        if (rollupErr) console.warn("contact_deal_rollup read failed — deal stats will be empty:", rollupErr);
+      const rollupIds = Array.from(tenantClientIds);
+      const ROLLUP_CHUNK = 200;
+      const rollupBatches: string[][] = [];
+      for (let i = 0; i < rollupIds.length; i += ROLLUP_CHUNK) rollupBatches.push(rollupIds.slice(i, i + ROLLUP_CHUNK));
+      const rollupResults = await Promise.all(
+        rollupBatches.map((batch) => supabase.from("contact_deal_rollup").select("*").in("contact_id", batch)),
+      );
+      for (const { data: rollupData, error: rollupErr } of rollupResults) {
+        if (rollupErr) { console.warn("contact_deal_rollup read failed — deal stats will be empty:", rollupErr); continue; }
         ((rollupData || []) as Rollup[]).forEach((r) => {
           if (tenantClientIds.has(r.contact_id)) map[r.contact_id] = r;
         });

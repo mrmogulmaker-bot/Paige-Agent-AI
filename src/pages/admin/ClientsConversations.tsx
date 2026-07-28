@@ -263,6 +263,9 @@ export default function ClientsConversations() {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // A freshly composed thread may not have streamed into dbThreads yet — hold its key so the
+  // keep-valid-selection guard doesn't clobber the pick to visibleThreads[0] in the gap.
+  const pendingSelectRef = useRef<string | null>(null);
 
   // C-1.5 threads-as-source-of-truth
   const [dbThreads, setDbThreads] = useState<DbThread[]>([]);
@@ -454,9 +457,19 @@ export default function ClientsConversations() {
 
   // keep a valid selection as threads stream in
   useEffect(() => {
+    // Hold a just-composed selection until its thread arrives in dbThreads — don't clobber it
+    // to visibleThreads[0] in the gap (compose selection race). Honor it the moment it lands.
+    if (pendingSelectRef.current) {
+      if (dbThreads.some((t) => t.thread_key === pendingSelectRef.current)) {
+        const key = pendingSelectRef.current;
+        pendingSelectRef.current = null;
+        setSelectedKey(key);
+      }
+      return;
+    }
     if (visibleThreads.length === 0) { if (selectedKey !== null) setSelectedKey(null); return; }
     if (!selectedKey || !visibleThreads.some((t) => t.thread_key === selectedKey)) setSelectedKey(visibleThreads[0].thread_key);
-  }, [visibleThreads, selectedKey]);
+  }, [visibleThreads, selectedKey, dbThreads]);
 
   const selectedThread = useMemo(() => dbThreads.find((t) => t.thread_key === selectedKey) ?? null, [dbThreads, selectedKey]);
 
@@ -493,6 +506,18 @@ export default function ClientsConversations() {
       if (!cancelled) setSuppressions((data as Suppression[]) ?? []);
     })();
     return () => { cancelled = true; };
+  }, [selectedThread?.contact_id]);
+
+  // A rail DND toggle changes suppressions WITHOUT changing contact_id, so the effect above
+  // (keyed on contact_id) won't re-fire — refresh explicitly on rail change so the DND banner
+  // + the pre-send opt-out guard read fresh state, never a stale block/allow (§13).
+  const refreshSuppressions = useCallback(async () => {
+    const cid = selectedThread?.contact_id ?? null;
+    if (!cid) { setSuppressions([]); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    const { data } = await sb.from("paige_suppressions").select("channel, reason").eq("contact_id", cid);
+    setSuppressions((data as Suppression[]) ?? []);
   }, [selectedThread?.contact_id]);
 
   // Default the composer channel to the thread's channel when a connector supports it.
@@ -825,6 +850,10 @@ export default function ClientsConversations() {
   };
 
   const noChannel = activeConnectors.length === 0;
+  // send-message only handles email|sms today, so "New conversation" needs a SENDABLE channel.
+  // A whatsapp-only tenant HAS a connector (noChannel=false) but the compose modal would be a
+  // dead-end — gate the CTA on a real sendable channel, not merely any channel (§13/§43).
+  const canCompose = activeConnectors.some((c) => c.channel_type === "email" || c.channel_type === "sms");
 
   return (
     <PageShell width="full" fill>
@@ -834,11 +863,11 @@ export default function ClientsConversations() {
         description="Every client thread across email, SMS, WhatsApp, and DMs — with Paige drafting the reply for your one-click approval."
         actions={
           // §43 — the surface is a tool: start a NEW outbound thread from here. Gold on the
-          // act (§11). Disabled honestly when there's no channel to send on (§13).
-          noChannel ? (
+          // act (§11). Disabled honestly when there's no sendable channel to send on (§13).
+          !canCompose ? (
             <span
               className="inline-flex"
-              title="Connect a channel first to start a conversation"
+              title="Connect an email or SMS channel to start a conversation"
             >
               <Button variant="gold" size="sm" disabled>
                 <Plus className="mr-1.5 h-4 w-4" /> New conversation
@@ -904,22 +933,22 @@ export default function ClientsConversations() {
                 title={view === "archived" ? "Nothing archived." : view === "snoozed" ? "Nothing snoozed." : "No conversations yet."}
                 description={
                   view === "active"
-                    ? noChannel
-                      ? "Connect a channel and the moment a client emails or messages, their thread lands here — with Paige's draft reply ready for your approval."
+                    ? !canCompose
+                      ? "Connect an email or SMS channel and the moment a client reaches out, their thread lands here — with Paige's draft reply ready for your approval."
                       : "Start a new conversation, or the moment a client reaches out their thread lands here — with Paige's draft reply ready for your approval."
                     : "When you snooze or archive a conversation, it shows up here."
                 }
                 action={
                   view === "active"
-                    ? noChannel
+                    ? canCompose
                       ? (
-                        <Button variant="outline" size="sm" asChild>
-                          <Link to="/admin/settings">Connect a channel</Link>
+                        <Button variant="gold" size="sm" onClick={() => setComposeOpen(true)}>
+                          <Plus className="mr-1.5 h-4 w-4" /> New conversation
                         </Button>
                       )
                       : (
-                        <Button variant="gold" size="sm" onClick={() => setComposeOpen(true)}>
-                          <Plus className="mr-1.5 h-4 w-4" /> New conversation
+                        <Button variant="outline" size="sm" asChild>
+                          <Link to="/admin/settings">Connect a channel</Link>
                         </Button>
                       )
                     : undefined
@@ -1295,7 +1324,7 @@ export default function ClientsConversations() {
             userId={userId}
             tenantId={tenantIdRef.current}
             onClose={() => setRailOpen(false)}
-            onChanged={() => { void load(); void loadThreads(); }}
+            onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
           />
         )}
       </div>
@@ -1307,7 +1336,14 @@ export default function ClientsConversations() {
         onOpenChange={setComposeOpen}
         activeConnectors={activeConnectors}
         tenantId={tenantIdRef.current}
-        onSent={(key) => { void load(); void loadThreads(); setSelectedKey(key); }}
+        onSent={(key) => {
+          // §36 proactive surfacing: drop any filter that would hide the just-created thread,
+          // then reload. pendingSelectRef holds the pick until the new row streams in, so the
+          // keep-valid-selection guard can't clobber it to visibleThreads[0] first (race fix).
+          pendingSelectRef.current = key;
+          setView("active"); setLabelFilter(null); setSearch("");
+          void load(); void loadThreads();
+        }}
       />
     </PageShell>
   );

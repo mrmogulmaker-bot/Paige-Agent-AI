@@ -10,7 +10,7 @@
 // Gold is spent ONLY on the outward-commit act (Send portal invite). Toggles/pickers are
 // neutral/indigo (§11). Controls with no real backing (Calls/Inbound DND, true Followers)
 // are honestly disabled or omitted, never faked (§13).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { Link } from "react-router-dom";
 import { SectionCard, EmptyState, StatePill, GlyphPlate } from "@/components/ui/page";
@@ -38,7 +38,10 @@ import { TagPicker } from "@/components/admin/contacts/TagPicker";
 import { ContactDealsSection } from "@/components/admin/contacts/ContactDealsSection";
 import { QuickAddDialog } from "@/components/planning/QuickAddDialog";
 
-interface Coach { user_id: string; name: string }
+interface Coach { user_id: string; name: string; roles: string[] }
+
+// Roles that can OWN a contact (mirror ClientManagementDashboard's team split).
+const ASSIGNABLE_ROLES = new Set(["admin", "super_admin", "coach", "moderator"]);
 
 function CopyRow({ icon: Icon, value, label }: { icon: typeof Mail; value: string; label: string }) {
   return (
@@ -112,22 +115,37 @@ export function ContactCardRail({
     return () => clearInterval(id);
   }, []);
 
-  // ── team roster for the Owner picker (coach role → profile name), loaded once ──
-  const [coaches, setCoaches] = useState<Coach[]>([]);
+  // ── team roster for the Owner picker, loaded once ─────────────────────────────
+  // §18 reuse of the shipped #481 seam: get_tenant_people() is a SECURITY DEFINER RPC that
+  // server-derives the tenant (never a param, no IDOR) and joins tenant_members→profiles.
+  // The old direct `user_roles.eq('role','coach')` query was RLS-collapsed — user_roles SELECT
+  // is `is_platform_owner() OR auth.uid()=user_id`, so for EVERY non-owner tenant it returned
+  // only the caller's own row, leaving the picker empty AND rendering an already-assigned
+  // contact falsely as "Unassigned" (the assigned coach's name couldn't resolve). This RPC
+  // returns the real tenant roster for an admin; a non-admin gets an empty set (honest — the
+  // picker options are then empty, but a set owner still resolves below and never shows
+  // "Unassigned"). `roles` rides along so we can offer only the assignable teammates.
+  const [members, setMembers] = useState<Coach[]>([]);
   useEffect(() => {
     let alive = true;
     (async () => {
-      const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
-      const ids = ((roles as { user_id: string }[] | null) ?? []).map((r) => r.user_id);
-      if (!ids.length) { if (alive) setCoaches([]); return; }
-      const { data: profs } = await supabase.from("profiles").select("user_id, full_name").in("user_id", ids);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase as any).rpc("get_tenant_people");
+      const rows = (data as { user_id: string; full_name: string | null; roles: string[] | null }[] | null) ?? [];
       if (alive) {
-        setCoaches(((profs as { user_id: string; full_name: string | null }[] | null) ?? [])
-          .map((p) => ({ user_id: p.user_id, name: p.full_name || "Teammate" })));
+        setMembers(rows.map((r) => ({
+          user_id: r.user_id, name: r.full_name || "Teammate", roles: r.roles ?? [],
+        })));
       }
     })();
     return () => { alive = false; };
   }, []);
+
+  // Only teammates who can own a contact appear as picker options.
+  const assignable = useMemo(
+    () => members.filter((m) => m.roles.some((r) => ASSIGNABLE_ROLES.has(r))),
+    [members],
+  );
 
   // ── local state seeded from props (optimistic writes reconcile via onChanged) ──
   const [localTags, setLocalTags] = useState<string[]>([]);
@@ -247,7 +265,12 @@ export function ContactCardRail({
     }
   }, [contact, tenantId]);
 
-  const ownerName = ownerId ? (coaches.find((c) => c.user_id === ownerId)?.name ?? "Assigned") : null;
+  // Resolve from the FULL roster (not just assignable) so a set owner always shows a real
+  // name for an admin; a non-admin (empty roster) falls back to "Current owner" — honest,
+  // and still never the false "Unassigned" (§13).
+  const ownerName = ownerId
+    ? (members.find((m) => m.user_id === ownerId)?.name ?? "Current owner")
+    : null;
 
   return (
     <SectionCard padded={false} className="flex min-h-0 flex-col overflow-hidden">
@@ -345,9 +368,15 @@ export function ContactCardRail({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="unassigned">Unassigned</SelectItem>
-                {coaches.map((c) => (
+                {assignable.map((c) => (
                   <SelectItem key={c.user_id} value={c.user_id}>{c.name}</SelectItem>
                 ))}
+                {/* A set owner not in the assignable list (non-admin viewer with an empty
+                    roster, or an owner whose role isn't assignable) still shows its real/known
+                    name so the trigger never falsely reads "Unassigned" (§13). */}
+                {ownerId && !assignable.some((c) => c.user_id === ownerId) && (
+                  <SelectItem value={ownerId}>{ownerName ?? "Current owner"}</SelectItem>
+                )}
               </SelectContent>
             </Select>
             {ownerName && (
@@ -491,7 +520,7 @@ export function ContactCardRail({
               {/* Opportunities / deals — the Pipeline's own create path. */}
               <div className="space-y-1.5 rounded-lg border border-border bg-card/60 p-3">
                 <div className="flex items-center gap-1.5">
-                  <Sparkles className="h-3.5 w-3.5 text-[hsl(var(--gold-dark))]" />
+                  <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Opportunities</p>
                 </div>
                 <ContactDealsSection contactId={contact.id} />

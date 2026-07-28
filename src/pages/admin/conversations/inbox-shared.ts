@@ -71,11 +71,11 @@ export interface ClientContact {
   source: string | null;
   tags: string[] | null;
   last_contacted_at: string | null;
-  // Ownership trio (§16 departments) — assigned_coach is the primary "Owner"; lead_owner
-  // (Sales) + cs_primary (Client Success) render as the "Team on this contact" (Slice 1B rail).
+  // Ownership — assigned_coach is the contact's primary "Owner" (the Conversations rail's
+  // Owner picker, written via assign_contact). The clients row also carries Sales (lead_owner)
+  // + Client-Success (cs_primary) owners, but the rail renders Owner ONLY today, so they are
+  // not fetched here — no dead columns (§13). Re-add them WITH the team-on-contact display.
   assigned_coach_user_id: string | null;
-  lead_owner_user_id: string | null;
-  cs_primary_user_id: string | null;
   // C-2 suppression / DND surfaced on the contact card (§ read-only signal)
   dnd_active: boolean | null;
   dnd_reason: string | null;
@@ -117,8 +117,8 @@ export const THREAD_COLS =
   "id, thread_key, contact_id, snoozed_until, archived_at, labels, unread_count, " +
   "last_message_at, last_direction, " +
   "clients:contact_id(id, first_name, last_name, entity_name, entity_type, title, email, phone, status, " +
-  "lifecycle_stage, source, tags, last_contacted_at, assigned_coach_user_id, lead_owner_user_id, " +
-  "cs_primary_user_id, timezone, created_at, dnd_active, dnd_reason, dnd_until)";
+  "lifecycle_stage, source, tags, last_contacted_at, assigned_coach_user_id, " +
+  "timezone, created_at, dnd_active, dnd_reason, dnd_until)";
 
 // ── selected-view shape (R1): the DbThread + its loaded messages + all the fields the
 //    composer / approve / signature seams read. Typed once here, consumed in the page. ─
