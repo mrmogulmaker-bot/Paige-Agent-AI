@@ -26,7 +26,7 @@ import { useNavigate, Routes, Route, useParams, Navigate } from "react-router-do
 import { supabase } from "@/integrations/supabase/client";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { PracticeOverview } from "@/pages/admin/PracticeOverview";
-import NotFound from "./NotFound";
+import { AdminNotFound } from "@/pages/admin/AdminNotFound";
 import { toast } from "sonner";
 import { RoleGate } from "@/components/auth/RoleGate";
 import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
@@ -832,9 +832,11 @@ const Admin = () => {
         <Route path="platform/security-canary" element={<Navigate to="/admin/security" replace />} />
         {/* Scoped catch-all: any other unmatched /admin/* path renders a real 404 INSIDE the
             admin shell instead of a blank content area (the App-level "*" NotFound can't fire
-            here — the outer /admin/* route already consumed the match). Specificity ranking
-            keeps this lowest priority regardless of position. */}
-        <Route path="*" element={<NotFound />} />
+            here — the outer /admin/* route already consumed the match). Uses AdminNotFound
+            (token-aware, SPA-recovering) rather than the marketing NotFound so it reads
+            correctly in the dark admin theme and keeps the operator inside the app (§11/§23).
+            Specificity ranking keeps this lowest priority regardless of position. */}
+        <Route path="*" element={<AdminNotFound />} />
       </Routes>
 
     </AdminLayout>
