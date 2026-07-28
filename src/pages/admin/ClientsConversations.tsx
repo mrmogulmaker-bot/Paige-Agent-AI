@@ -1059,7 +1059,7 @@ export default function ClientsConversations() {
         <FirstRunOnboarding
           canCompose={canCompose}
           onCompose={() => setComposeOpen(true)}
-          connectHref="/admin/settings"
+          connectHref="/admin/integrations"
         />
       ) : (
       /* The pane grid flows as the flex-1 last child of the `fill` shell (lg+), so it
@@ -1274,7 +1274,7 @@ export default function ClientsConversations() {
                       )
                       : (
                         <Button variant="outline" size="sm" asChild>
-                          <Link to="/admin/settings">Connect a channel</Link>
+                          <Link to="/admin/integrations">Connect a channel</Link>
                         </Button>
                       )
                     : undefined
@@ -1414,10 +1414,10 @@ export default function ClientsConversations() {
                   <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="flex items-start gap-2 text-xs text-muted-foreground">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
-                      <span>Connect a channel and Paige sends from here — inbound messages already land in this inbox on their own.</span>
+                      <span>Connect a channel and Paige sends from here — inbound messages start landing in this inbox once a channel is live.</span>
                     </p>
                     <Button variant="gold" size="sm" asChild className="shrink-0 self-start sm:self-auto">
-                      <Link to="/admin/settings">
+                      <Link to="/admin/integrations">
                         <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
                       </Link>
                     </Button>
