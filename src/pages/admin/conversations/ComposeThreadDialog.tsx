@@ -5,7 +5,7 @@
 // reads, subagent-email-composer for "Draft with Paige", and the ONE send-message seam via
 // the shared readSendResult (§37) + canonicalThreadKey (the fragmentation fix). The only new
 // code is this shell + the address resolver. Gold is spent ONLY on Send (§11).
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Loader2, Send, Clock, Sparkles, ChevronDown, X, AlertTriangle, UserRound } from "lucide-react";
+import { Loader2, Send, Clock, Sparkles, ChevronDown, X, AlertTriangle, UserRound, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 import { CustomerSelector } from "@/components/paige/CustomerSelector";
 import { NewContactDialog } from "@/components/admin/contacts/NewContactDialog";
@@ -26,7 +26,9 @@ import type { FocusedClient } from "@/components/paige/commandCenterTypes";
 import {
   type ChannelType, type EmailTemplate, CHANNEL_ICON, CHANNEL_LABEL,
   canonicalThreadKey, readSendResult, resolveMergeVars, UNDO_WINDOW_MS,
+  useCommsAttachments,
 } from "./inbox-shared";
+import { AttachmentChip } from "./AttachmentChip";
 
 // Structural subset of the page's Connector — only what the channel picker needs.
 export interface ComposeConnector {
@@ -93,6 +95,16 @@ export function ComposeThreadDialog({
   // unlike the reply composer — has no signature to carry the sign-off, so resolve it here (§13).
   const [coachName, setCoachName] = useState("");
 
+  // Attachments — the SAME shared upload seam the reply composer uses (§18 one home): same
+  // private bucket, same tenant-scoped object-path, same 10MB cap. EMAIL-ONLY here (see the
+  // §13 honest note at the attach UI): send-message persists attachments on the row but does
+  // NOT deliver them as Twilio MMS media, so we never offer them on the SMS path.
+  const {
+    attachments, uploading, uploadFiles, removeAttachment,
+    reset: resetAttachments,
+  } = useCommsAttachments(() => tenantId);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Reset everything on open (mirror the reply composer's reset-on-open).
   useEffect(() => {
     if (!open) return;
@@ -107,6 +119,7 @@ export function ComposeThreadDialog({
     setDraftGuide("");
     setDraftGuideOpen(false);
     setNewContactOpen(false);
+    resetAttachments();
     // Resolve the operator's name once per open so {{coach_name}} in a saved template renders
     // (mirrors the retired panel; §37 the picker must not silently blank a supported merge var).
     void (async () => {
@@ -244,7 +257,7 @@ export function ComposeThreadDialog({
 
   const canSend =
     !!client && !!channel && !!toAddress && !!body.trim() &&
-    (channel !== "email" || !!subject.trim()) && !sending && !drafting;
+    (channel !== "email" || !!subject.trim()) && !sending && !drafting && !uploading;
 
   const send = async () => {
     if (!client || !channel) { toast.error("Pick a recipient and channel first."); return; }
@@ -273,6 +286,11 @@ export function ComposeThreadDialog({
           connector_id: connector?.id ?? undefined,
           thread_key: threadKey,
           scheduled_for: iso,
+          // Attachment parity with the reply composer — the EXACT `attachments` shape
+          // send-message already accepts from the reply path (object paths in the private
+          // comms-attachments bucket). Email-only (§13): the attach UI is gated to email and
+          // the SMS path never carries them, so this only ships on an email send.
+          attachments: channel === "email" && attachments.length ? attachments : undefined,
           // NO message_id → forces the insert-fresh-outbound path; the trigger creates the
           // thread row with tenant_id server-derived (§9).
         },
@@ -417,6 +435,37 @@ export function ComposeThreadDialog({
                 className="resize-none"
               />
             </div>
+
+            {/* Attachments — EMAIL-ONLY parity with the reply composer, through the ONE shared
+                upload seam (§18). §13 honest note: send-message persists `attachments` on the
+                messages row (inbox render) but does NOT deliver Twilio MMS media, so the SMS
+                path never offers them — email only, matching Draft-with-Paige's email scope. */}
+            {channel === "email" && (
+              <div className="space-y-1.5">
+                <input
+                  ref={fileInputRef} type="file" multiple hidden
+                  onChange={(e) => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ""; }}
+                />
+                {attachments.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {attachments.map((a) => (
+                      <AttachmentChip key={a.url} a={a} onRemove={() => void removeAttachment(a)} />
+                    ))}
+                  </div>
+                )}
+                <Button
+                  variant="outline" size="sm" className="h-8"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading || sending || !client}
+                  title={!client ? "Pick a recipient first" : undefined}
+                >
+                  {uploading
+                    ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    : <Paperclip className="mr-1.5 h-3.5 w-3.5" />}
+                  {uploading ? "Attaching…" : "Attach"}
+                </Button>
+              </div>
+            )}
 
             {/* Draft with Paige — email only, non-gold indigo assist (gold is Send, §11). */}
             {channel === "email" && (

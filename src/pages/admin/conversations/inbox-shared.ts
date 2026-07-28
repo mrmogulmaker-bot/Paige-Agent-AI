@@ -2,6 +2,9 @@
 // The real public.messages row + the C-1.5 public.threads aggregate + tenant-authored
 // label vocabulary + snooze presets. Queried via `supabase as any` (house pattern —
 // threads/messages are not in generated types yet, #234/#470).
+import { useCallback, useRef, useState } from "react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Mail, MessageSquare, MessageCircle, Instagram, Facebook, Phone,
 } from "lucide-react";
@@ -213,6 +216,69 @@ export const resolveMergeVars = (text: string, ctx: Record<string, string>): str
 //    which IS "until they reply" — no fabricated flag column (§13/§31). ───────────────
 export const SNOOZE_SENTINEL_UNTIL_REPLY = "9999-12-31T00:00:00.000Z";
 export const isUntilReply = (iso: string | null) => iso === SNOOZE_SENTINEL_UNTIL_REPLY;
+
+// ── composer attachments (§18 ONE home — the reply composer AND the compose-new modal
+//    upload through this exact hook, so there is a single upload/remove implementation:
+//    same private bucket, same tenant-scoped object-path convention, same 10MB cap, same
+//    validation + toast error handling). Attachments are stored as OBJECT PATHS (never a
+//    public URL) and passed to send-message as the `attachments` array. ──────────────────
+export const COMMS_ATTACH_BUCKET = "comms-attachments";
+export const MAX_ATTACH_BYTES = 10 * 1024 * 1024; // 10MB/file — matches the bucket ceiling
+export const isImageMime = (m?: string) => !!m && m.startsWith("image/");
+
+export interface CommsAttachmentsApi {
+  attachments: Attachment[];
+  uploading: boolean;
+  /** Upload each file to the private bucket (skipping >10MB) and stage the object paths. */
+  uploadFiles: (files: FileList | File[]) => Promise<void>;
+  /** Drop a staged attachment and best-effort delete its object from the bucket. */
+  removeAttachment: (a: Attachment) => Promise<void>;
+  /** Clear all staged attachments (does NOT delete objects — call on composer reset). */
+  reset: () => void;
+}
+
+/**
+ * The ONE comms upload/stage/remove implementation (§18). `getTenantId` is read through a
+ * live ref so the returned callbacks stay stable while always seeing the latest tenant —
+ * the reply composer resolves it from a ref, the compose-new modal from a prop; both work.
+ * Object-path convention: `${tenantId}/${uuid}-${sanitizedName}` (byte-identical to the
+ * shipped reply-composer path so a compose-new attachment and a reply attachment are
+ * indistinguishable to send-message and the private-bucket RLS).
+ */
+export function useCommsAttachments(getTenantId: () => string | null): CommsAttachmentsApi {
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const tenantIdFn = useRef(getTenantId);
+  tenantIdFn.current = getTenantId;
+
+  const uploadFiles = useCallback(async (files: FileList | File[]) => {
+    const tenantId = tenantIdFn.current();
+    if (!tenantId) { toast.error("Couldn't resolve your workspace — refresh and retry."); return; }
+    setUploading(true);
+    const next: Attachment[] = [];
+    try {
+      for (const f of Array.from(files)) {
+        if (f.size > MAX_ATTACH_BYTES) { toast.error(`${f.name} is over 10MB.`); continue; }
+        const path = `${tenantId}/${crypto.randomUUID()}-${f.name.replace(/[^\w.-]+/g, "_")}`;
+        const { error } = await supabase.storage.from(COMMS_ATTACH_BUCKET).upload(path, f, {
+          contentType: f.type || "application/octet-stream", upsert: false,
+        });
+        if (error) { toast.error(`Couldn't attach ${f.name}.`); continue; }
+        next.push({ url: path, mime: f.type || "application/octet-stream", name: f.name, size: f.size });
+      }
+      if (next.length) setAttachments((a) => [...a, ...next]);
+    } finally { setUploading(false); }
+  }, []);
+
+  const removeAttachment = useCallback(async (a: Attachment) => {
+    setAttachments((cur) => cur.filter((x) => x.url !== a.url));
+    if (a.url) await supabase.storage.from(COMMS_ATTACH_BUCKET).remove([a.url]);
+  }, []);
+
+  const reset = useCallback(() => setAttachments([]), []);
+
+  return { attachments, uploading, uploadFiles, removeAttachment, reset };
+}
 
 // ── outbound send seam helpers (§18 one home — reused by the reply composer AND
 //    the compose-new modal so both read the send-message result identically) ──────────

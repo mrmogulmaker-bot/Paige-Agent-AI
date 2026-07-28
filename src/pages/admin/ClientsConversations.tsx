@@ -15,7 +15,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useSearchParams, Link } from "react-router-dom";
 import {
   MessageCircle, Inbox, Send, Pencil, Loader2, Sparkles, AlertTriangle, Paperclip,
-  Search, SearchX, PanelRight, Clock, X, ImageIcon, ChevronDown, Bell, Plus,
+  Search, SearchX, PanelRight, Clock, X, ChevronDown, Bell, Plus,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,12 +32,14 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { toast } from "sonner";
 
 import {
-  type ChannelType, type Attachment, type MessageRow, type DbThread, type Label,
+  type ChannelType, type MessageRow, type DbThread, type Label,
   type ThreadFilter, type Suppression, type SelectedView, type InboxView, type EmailTemplate,
   MESSAGE_COLS, THREAD_COLS, CHANNEL_ICON, CHANNEL_LABEL,
   partyLabel, bodyPreview, msgTime, contactNameFromClient,
   INBOX_VIEWS, endOfTodayMs, readSendResult, resolveMergeVars, UNDO_WINDOW_MS,
+  useCommsAttachments,
 } from "./conversations/inbox-shared";
+import { AttachmentChip } from "./conversations/AttachmentChip";
 import { ComposeThreadDialog } from "./conversations/ComposeThreadDialog";
 import { FirstRunOnboarding } from "./conversations/FirstRunOnboarding";
 import { ThreadRow } from "./conversations/ThreadRow";
@@ -61,9 +63,8 @@ interface Connector {
 }
 
 // ── Composer depth (Comms C-1.5) ────────────────────────────────────────────────
-// UNDO_WINDOW_MS now lives in inbox-shared (§18 — reused by the compose-new modal too).
-const COMMS_ATTACH_BUCKET = "comms-attachments";
-const MAX_ATTACH_BYTES = 10 * 1024 * 1024;     // 10MB/file — matches the bucket ceiling
+// UNDO_WINDOW_MS + the comms-attachment bucket/cap/upload hook now live in inbox-shared
+// (§18 — the compose-new modal uploads through the exact same seam).
 
 interface Snippet {
   id: string; user_id: string | null; trigger: string; name: string;
@@ -91,8 +92,6 @@ function mergeContext(sel: SelectedView | null, sig?: Signature, snip?: Snippet)
 // resolveMergeVars now lives in inbox-shared (§18 one home — the compose-new modal + the
 // ported email-template picker resolve merge vars through the exact same helper).
 
-const isImageMime = (m?: string) => !!m && m.startsWith("image/");
-
 // ── Status pill mapping for a single message ─────────────────────────────────────
 function messageStatusPill(m: MessageRow) {
   if (m.status === "failed") return <StatePill state="error">Failed</StatePill>;
@@ -111,42 +110,6 @@ function ChannelGlyph({ channel, className }: { channel: ChannelType; className?
       title={CHANNEL_LABEL[channel]} aria-label={CHANNEL_LABEL[channel]}
     >
       <Icon className="h-4 w-4" aria-hidden />
-    </span>
-  );
-}
-
-// ── Attachment chip — object-path only (private bucket). Images preview via a short-lived
-// signed URL; everything else shows a paperclip. Remove deletes the object + drops state.
-function AttachmentChip({ a, onRemove }: { a: Attachment; onRemove: () => void }) {
-  const [preview, setPreview] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    if (isImageMime(a.mime) && a.url) {
-      supabase.storage
-        .from(COMMS_ATTACH_BUCKET)
-        .createSignedUrl(a.url, 300)
-        .then(({ data }) => { if (alive) setPreview(data?.signedUrl ?? null); });
-    }
-    return () => { alive = false; };
-  }, [a.url, a.mime]);
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[11px] text-foreground">
-      {preview ? (
-        <img src={preview} alt="" className="h-5 w-5 rounded object-cover" />
-      ) : isImageMime(a.mime) ? (
-        <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-      ) : (
-        <Paperclip className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-      )}
-      <span className="max-w-[140px] truncate">{a.name || "attachment"}</span>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-        aria-label={`Remove ${a.name || "attachment"}`}
-      >
-        <X className="h-3 w-3" />
-      </button>
     </span>
   );
 }
@@ -294,9 +257,13 @@ export default function ClientsConversations() {
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Composer depth state
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [uploading, setUploading] = useState(false);
+  // Composer depth state. Attachments run through the ONE shared upload seam (§18) — the
+  // exact hook the compose-new modal uses — reading the resolved tenant from the ref below.
+  const tenantIdRef = useRef<string | null>(null);
+  const {
+    attachments, uploading, uploadFiles, removeAttachment,
+    reset: resetAttachments,
+  } = useCommsAttachments(() => tenantIdRef.current);
   const [dragOver, setDragOver] = useState(false);
   const [scheduledFor, setScheduledFor] = useState<string | null>(null); // ISO | null
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -318,7 +285,6 @@ export default function ClientsConversations() {
   // #482 Phase-2 — the current operator's auth id, so the thread-header "Set a reminder"
   // quick action can file a plan row (plan_set_reminder is keyed to the caller). Server-derived.
   const [userId, setUserId] = useState<string | null>(null);
-  const tenantIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Deep-link: read ?filter=<view> once; unknown slug → keep default (never blank). ─
@@ -700,30 +666,8 @@ export default function ClientsConversations() {
     bottomRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "end" });
   };
 
-  // ── (a) Attachment upload → private bucket; store the OBJECT PATH ────────────────
-  const uploadFiles = useCallback(async (files: FileList | File[]) => {
-    const tenantId = tenantIdRef.current;
-    if (!tenantId) { toast.error("Couldn't resolve your workspace — refresh and retry."); return; }
-    setUploading(true);
-    const next: Attachment[] = [];
-    try {
-      for (const f of Array.from(files)) {
-        if (f.size > MAX_ATTACH_BYTES) { toast.error(`${f.name} is over 10MB.`); continue; }
-        const path = `${tenantId}/${crypto.randomUUID()}-${f.name.replace(/[^\w.-]+/g, "_")}`;
-        const { error } = await supabase.storage.from(COMMS_ATTACH_BUCKET).upload(path, f, {
-          contentType: f.type || "application/octet-stream", upsert: false,
-        });
-        if (error) { toast.error(`Couldn't attach ${f.name}.`); continue; }
-        next.push({ url: path, mime: f.type || "application/octet-stream", name: f.name, size: f.size });
-      }
-      if (next.length) setAttachments((a) => [...a, ...next]);
-    } finally { setUploading(false); }
-  }, []);
-
-  const removeAttachment = useCallback(async (a: Attachment) => {
-    setAttachments((cur) => cur.filter((x) => x.url !== a.url));
-    if (a.url) await supabase.storage.from(COMMS_ATTACH_BUCKET).remove([a.url]);
-  }, []);
+  // Attachment upload/remove now come from useCommsAttachments (§18 one home) — the
+  // compose-new modal uploads through the identical seam, so the two can never drift.
 
   // ── (d) Snippet #trigger expansion on a word-boundary keystroke ─────────────────
   const handleBodyChange = useCallback((val: string) => {
@@ -755,9 +699,9 @@ export default function ClientsConversations() {
   const hasSignature = composeChannel === "email" && !!effectiveSignature();
 
   const resetComposer = useCallback(() => {
-    setBody(""); setSubject(""); setAttachments([]);
+    setBody(""); setSubject(""); resetAttachments();
     setScheduledFor(null); setEditingDraftId(null);
-  }, []);
+  }, [resetAttachments]);
 
   // ── Insert a saved email template (ported from the retired ContactCommsPanel, §31) — resolves
   //    {{merge}} vars against the selected thread's contact and lands subject+body for review/edit.
