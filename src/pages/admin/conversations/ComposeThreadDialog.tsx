@@ -88,6 +88,10 @@ export function ComposeThreadDialog({
   const [draftGuide, setDraftGuide] = useState("");
   const [draftTone, setDraftTone] = useState<DraftTone>("professional");
   const [newContactOpen, setNewContactOpen] = useState(false);
+  // Operator's display name for a template's {{coach_name}} sign-off (§37): the retired
+  // ContactCommsPanel resolved it from the current user's profile, and this compose surface —
+  // unlike the reply composer — has no signature to carry the sign-off, so resolve it here (§13).
+  const [coachName, setCoachName] = useState("");
 
   // Reset everything on open (mirror the reply composer's reset-on-open).
   useEffect(() => {
@@ -103,6 +107,16 @@ export function ComposeThreadDialog({
     setDraftGuide("");
     setDraftGuideOpen(false);
     setNewContactOpen(false);
+    // Resolve the operator's name once per open so {{coach_name}} in a saved template renders
+    // (mirrors the retired panel; §37 the picker must not silently blank a supported merge var).
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setCoachName(""); return; }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: prof } = await (supabase as any)
+        .from("profiles").select("full_name").eq("user_id", user.id).maybeSingle();
+      setCoachName(((prof?.full_name as string | null) ?? "").trim());
+    })();
     // Pre-address when opened from a Client-360 "Message {name}" deep-link (§18/§31): resolve
     // the contact's email/phone/name through the same one-row read the search-select uses.
     if (initialContact?.id) void hydrateClient(initialContact.id, initialContact.name ?? "");
@@ -216,13 +230,17 @@ export function ComposeThreadDialog({
     const ctx: Record<string, string> = {
       first_name: client.first_name ?? "",
       last_name: client.last_name ?? "",
-      full_name: client.name ?? "",
+      // {{full_name}} is the CONTACT's personal name — derive it from first+last (matching the
+      // reply composer's mergeContext), never client.name, which is the company for an entity
+      // contact (hydrateClient prefers entity_name). Fall back to client.name only if unnamed.
+      full_name: [client.first_name, client.last_name].filter(Boolean).join(" ").trim() || client.name || "",
       client_name: client.name ?? "",
       entity_name: client.entity_name ?? "",
+      coach_name: coachName,
     };
     setSubject(resolveMergeVars(t.subject ?? "", ctx));
     setBody(resolveMergeVars(t.body_markdown || (t.body_html ? t.body_html.replace(/<[^>]+>/g, "") : ""), ctx));
-  }, [emailTemplates, client]);
+  }, [emailTemplates, client, coachName]);
 
   const canSend =
     !!client && !!channel && !!toAddress && !!body.trim() &&

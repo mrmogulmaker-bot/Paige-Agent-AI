@@ -327,47 +327,6 @@ export default function ClientsConversations() {
     if (v && (INBOX_VIEWS as string[]).includes(v)) setView(v as InboxView);
   }, [searchParams]);
 
-  // ── Deep-link: ?contact=<id> — the Client-360 "Message {name}" action lands here (§18: the
-  // Conversations hub is the ONE comms home now that the old ContactCommsPanel is retired).
-  // Once the first threads pull is in: if a thread already exists for that contact, auto-select
-  // it via the same pendingSelectRef machinery a fresh compose uses; if none exists yet, open the
-  // composer pre-addressed to the contact. Handled once per contact-id so realtime thread updates
-  // don't re-fire it (mirrors the ?filter= pattern above). ─────────────────────────────────────
-  const contactSeekHandledRef = useRef<string | null>(null);
-  useEffect(() => {
-    const cid = searchParams.get("contact");
-    if (!cid || !cid.trim()) return;
-    if (!threadsReady) return;                          // wait for a real first threads pull
-    if (contactSeekHandledRef.current === cid) return;  // act on each contact-param exactly once
-    contactSeekHandledRef.current = cid;
-    const match = dbThreads.find((t) => t.contact_id === cid);
-    if (match) {
-      pendingSelectRef.current = match.thread_key;
-      setView("active"); setLabelFilter(null); setSearch("");
-      void loadThreads(); // re-pull bumps dbThreads → the keep-valid-selection guard honors the pick
-      return;
-    }
-    // Not in the active set — the contact's ONLY thread may be ARCHIVED or SNOOZED (both excluded by
-    // the default active pull), so probe the threads table directly (tenant-scoped by RLS, §9) before
-    // falling back to a fresh compose. If any thread exists, switch to the "all" view (which surfaces
-    // archived/snoozed) and hold the pick; only compose when the contact genuinely has no thread (§13).
-    void (async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data } = await (supabase as any).from("threads")
-        .select("thread_key").eq("contact_id", cid)
-        .order("last_message_at", { ascending: false, nullsFirst: false }).limit(1);
-      const key = (data as { thread_key: string }[] | null)?.[0]?.thread_key ?? null;
-      if (key) {
-        pendingSelectRef.current = key;
-        setView("all"); setLabelFilter(null); setSearch("");
-        void loadThreads();
-      } else {
-        setComposeContact({ id: cid });
-        setComposeOpen(true);
-      }
-    })();
-  }, [searchParams, threadsReady, dbThreads, loadThreads]);
-
   // ── message pull (500-row) + connectors + composer resources (R2: one reconciled load) ─
   const load = useCallback(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -416,6 +375,48 @@ export default function ClientsConversations() {
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void loadThreads(); }, [loadThreads]);
+
+  // ── Deep-link: ?contact=<id> — the Client-360 "Message {name}" action lands here (§18: the
+  // Conversations hub is the ONE comms home now that the old ContactCommsPanel is retired).
+  // Declared AFTER loadThreads so the dep array reads an initialized binding (no TDZ, TS2448).
+  // Once the first threads pull is in: if a thread already exists for that contact, auto-select
+  // it via the same pendingSelectRef machinery a fresh compose uses; if none exists yet, open the
+  // composer pre-addressed to the contact. Handled once per contact-id so realtime thread updates
+  // don't re-fire it (mirrors the ?filter= pattern above). ─────────────────────────────────────
+  const contactSeekHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    const cid = searchParams.get("contact");
+    if (!cid || !cid.trim()) return;
+    if (!threadsReady) return;                          // wait for a real first threads pull
+    if (contactSeekHandledRef.current === cid) return;  // act on each contact-param exactly once
+    contactSeekHandledRef.current = cid;
+    const match = dbThreads.find((t) => t.contact_id === cid);
+    if (match) {
+      pendingSelectRef.current = match.thread_key;
+      setView("active"); setLabelFilter(null); setSearch("");
+      void loadThreads(); // re-pull bumps dbThreads → the keep-valid-selection guard honors the pick
+      return;
+    }
+    // Not in the active set — the contact's ONLY thread may be ARCHIVED or SNOOZED (both excluded by
+    // the default active pull), so probe the threads table directly (tenant-scoped by RLS, §9) before
+    // falling back to a fresh compose. If any thread exists, switch to the "all" view (which surfaces
+    // archived/snoozed) and hold the pick; only compose when the contact genuinely has no thread (§13).
+    void (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase as any).from("threads")
+        .select("thread_key").eq("contact_id", cid)
+        .order("last_message_at", { ascending: false, nullsFirst: false }).limit(1);
+      const key = (data as { thread_key: string }[] | null)?.[0]?.thread_key ?? null;
+      if (key) {
+        pendingSelectRef.current = key;
+        setView("all"); setLabelFilter(null); setSearch("");
+        void loadThreads();
+      } else {
+        setComposeContact({ id: cid });
+        setComposeOpen(true);
+      }
+    })();
+  }, [searchParams, threadsReady, dbThreads, loadThreads]);
 
   // ── realtime: messages + threads (§7 two-way, live unread/snooze/archive) ───────────
   useEffect(() => {
