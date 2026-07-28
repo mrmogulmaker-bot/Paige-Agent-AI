@@ -177,7 +177,10 @@ const smsOutboundAdapter: OutboundChannelAdapter = {
         error: creds.error ?? "twilio_subaccount_not_provisioned",
       };
     }
-    const { accountSid: subaccountSid, authToken: subToken } = creds.data;
+    // C-2a: apiKeySid (SK…) is the Basic-auth USERNAME under API-Key auth; subToken is the
+    // API-Key SECRET (password). resolveTwilioCreds returns needs_config if api_key_sid is
+    // null, so on this path apiKeySid is always present.
+    const { accountSid: subaccountSid, authToken: subToken, apiKeySid: subApiKeySid } = creds.data;
 
     // 2) A2P 10DLC must be APPROVED for this tenant — else a specific failure, never a send.
     const { data: a2pData, error: a2pErr } = await admin
@@ -243,7 +246,7 @@ const smsOutboundAdapter: OutboundChannelAdapter = {
       body: bodyText,
       statusCallback: ctx.statusCallbackUrl ?? undefined,
       messagingServiceSid, // A2P Messaging Service takes precedence over From when present.
-    });
+    }, subApiKeySid); // C-2a: SK… as the Basic-auth username (API-Key auth)
     if (!result.ok || !result.data) {
       return {
         ok: false, status: "failed" as const, reason: "twilio_send_failed",

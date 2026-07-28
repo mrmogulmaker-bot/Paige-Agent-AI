@@ -156,7 +156,7 @@ Deno.serve(async (req) => {
     smsUrl,
     statusCallback,
     friendlyName: friendlyName ?? undefined,
-  });
+  }, creds.data.apiKeySid); // C-2a: SK… as the Basic-auth username (API-Key auth)
   if (!bought.ok || !bought.data) {
     return json({
       needs_config: bought.needs_config === true,
