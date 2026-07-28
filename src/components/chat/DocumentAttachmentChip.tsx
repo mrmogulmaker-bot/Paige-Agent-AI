@@ -46,10 +46,10 @@ export function DocumentAttachmentChip({
     <div className="flex items-center gap-2 bg-muted border border-border rounded-lg px-3 py-1.5 text-sm w-fit max-w-full">
       <KindIcon kind={kind} />
       <div className="min-w-0">
-        <p className="truncate max-w-[200px] text-foreground text-[13px] leading-tight">
+        <p className="truncate max-w-[200px] text-foreground text-sm leading-tight">
           {fileName}
         </p>
-        <p className="text-[10px] text-muted-foreground leading-tight">
+        <p className="text-xs text-muted-foreground leading-tight">
           {kindLabel(kind)}
           {sizeLabel ? ` · ${sizeLabel}` : ""}
         </p>
