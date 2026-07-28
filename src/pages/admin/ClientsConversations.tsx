@@ -514,8 +514,16 @@ export default function ClientsConversations() {
         (matchedKeys === null || matchedKeys.has(t.thread_key)) &&
         (labelFilter === null || (t.labels ?? []).some((l) => l.id === labelFilter)) &&
         viewPredicate(t)),
-      sort),
-    [dbThreads, matchedKeys, labelFilter, viewPredicate, sort]);
+      sort,
+      // Name (A–Z) alphabetizes by the SAME display name ThreadRow shows — contact name, else the
+      // preview party's name/address — so null-contact threads sort where the user sees them, not
+      // as "" (Codex P2, §13).
+      (t) => {
+        const p = previewByKey.get(t.thread_key);
+        return contactNameFromClient(t.clients)
+          || (p ? partyLabel(p.direction === "inbound" ? p.sender : p.recipients?.[0]) : "");
+      }),
+    [dbThreads, matchedKeys, labelFilter, viewPredicate, sort, previewByKey]);
 
   const activeConnectors = useMemo(() => connectors.filter((c) => c.active && c.status === "active"), [connectors]);
 
@@ -735,8 +743,13 @@ export default function ClientsConversations() {
     if ((e.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) return;
     if (visibleThreads.length === 0) return;
     const keys = visibleThreads.map((t) => t.thread_key);
-    // Base the cursor on the current highlight; fall back to the open thread, else nothing yet.
-    const baseKey = cursorKey && keys.includes(cursorKey) ? cursorKey
+    // Base actions on the row the user is ACTUALLY focused on (every row is tabbable), THEN fall
+    // back to the keyboard cursor, then the open thread — so tabbing to a row and pressing an
+    // arrow / `x` never moves focus or toggles selection on a different, unfocused conversation
+    // (§13 a11y correctness — Codex P2).
+    const focusedKey = (e.target as HTMLElement).closest?.("[data-thread-key]")?.getAttribute("data-thread-key") ?? null;
+    const baseKey = focusedKey && keys.includes(focusedKey) ? focusedKey
+      : cursorKey && keys.includes(cursorKey) ? cursorKey
       : selectedKey && keys.includes(selectedKey) ? selectedKey : null;
     if (e.key === "Enter") { e.preventDefault(); if (baseKey) { selectThread(baseKey); paneRef.current?.focus(); } return; }
     if (e.key === "x" || e.key === "X") { e.preventDefault(); if (baseKey) toggleSelect(baseKey, { shiftKey: false }); return; }
@@ -1159,7 +1172,7 @@ export default function ClientsConversations() {
                 animate={reduce ? { opacity: 1 } : { height: "auto", opacity: 1 }}
                 exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
                 transition={{ duration: reduce ? 0 : 0.16 }}
-                className="flex items-center gap-1 overflow-hidden border-b border-[hsl(var(--primary)/0.25)] bg-[hsl(var(--primary)/0.05)] px-2 py-1.5"
+                className="flex flex-wrap items-center gap-1 overflow-hidden border-b border-[hsl(var(--primary)/0.25)] bg-[hsl(var(--primary)/0.05)] px-2 py-1.5"
               >
                 <span className="mr-1 pl-1 text-xs font-medium tabular-nums text-foreground">{selectedVisibleCount} selected</span>
                 <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" disabled={bulkBusy} onClick={bulkArchive}>

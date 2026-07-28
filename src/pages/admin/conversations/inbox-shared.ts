@@ -206,9 +206,16 @@ export function contactNameFromClient(c: ClientContact | ClientJoin | null): str
 /** Row density. Persisted to localStorage so a coach's choice survives reloads. */
 export type Density = "comfortable" | "compact";
 export const DENSITY_STORAGE_KEY = "conv.density";
-export const readDensity = (): Density =>
-  (typeof localStorage !== "undefined" && localStorage.getItem(DENSITY_STORAGE_KEY) === "compact")
-    ? "compact" : "comfortable";
+export const readDensity = (): Density => {
+  // localStorage ACCESS can throw (SecurityError) in sandboxed / privacy-blocked contexts, not
+  // just be undefined — and this runs in a useState initializer, so an uncaught throw fails the
+  // whole Conversations render. Catch it and fall back to comfortable (§13/§32 — never crash).
+  try {
+    return localStorage.getItem(DENSITY_STORAGE_KEY) === "compact" ? "compact" : "comfortable";
+  } catch {
+    return "comfortable";
+  }
+};
 
 /** Client-side sort of the ALREADY-loaded, ALREADY-filtered rail (composes AFTER the
  *  server state filter + client view/label/search filters — pure, no new query §9). */
@@ -220,15 +227,22 @@ export const SORT_LABEL: Record<ThreadSort, string> = {
   name: "Name (A–Z)",
 };
 const threadTs = (t: DbThread) => (t.last_message_at ? new Date(t.last_message_at).getTime() : 0);
-/** Stable sort (Array.sort is stable in modern engines → equal keys keep incoming order). */
-export function sortThreads(threads: DbThread[], mode: ThreadSort): DbThread[] {
+/** Stable sort (Array.sort is stable in modern engines → equal keys keep incoming order).
+ *  `nameOf` lets the caller pass the SAME display-name fallback ThreadRow renders (contact name,
+ *  else the preview party's name/address) so Name (A–Z) alphabetizes by what the user actually
+ *  sees — not an empty string for threads whose client join is null (§13). Defaults to the
+ *  contact name alone for callers that don't have preview data. */
+export function sortThreads(
+  threads: DbThread[],
+  mode: ThreadSort,
+  nameOf: (t: DbThread) => string = (t) => contactNameFromClient(t.clients),
+): DbThread[] {
   const arr = [...threads];
   switch (mode) {
     case "name":
       return arr.sort((a, b) =>
-        contactNameFromClient(a.clients).localeCompare(
-          contactNameFromClient(b.clients), undefined, { sensitivity: "base" },
-        ) || threadTs(b) - threadTs(a));
+        nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: "base" })
+        || threadTs(b) - threadTs(a));
     case "unread":
       return arr.sort((a, b) =>
         (b.unread_count > 0 ? 1 : 0) - (a.unread_count > 0 ? 1 : 0) || threadTs(b) - threadTs(a));
