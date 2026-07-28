@@ -24,8 +24,8 @@ import { CustomerSelector } from "@/components/paige/CustomerSelector";
 import { NewContactDialog } from "@/components/admin/contacts/NewContactDialog";
 import type { FocusedClient } from "@/components/paige/commandCenterTypes";
 import {
-  type ChannelType, CHANNEL_ICON, CHANNEL_LABEL,
-  canonicalThreadKey, readSendResult, UNDO_WINDOW_MS,
+  type ChannelType, type EmailTemplate, CHANNEL_ICON, CHANNEL_LABEL,
+  canonicalThreadKey, readSendResult, resolveMergeVars, UNDO_WINDOW_MS,
 } from "./inbox-shared";
 
 // Structural subset of the page's Connector — only what the channel picker needs.
@@ -40,6 +40,10 @@ interface PickedClient {
   name: string;
   email: string | null;
   phone: string | null;
+  // Carried for {{merge}} resolution in the ported email-template picker (§31).
+  first_name?: string | null;
+  last_name?: string | null;
+  entity_name?: string | null;
 }
 
 type DraftTone = "professional" | "friendly" | "warm" | "direct";
@@ -49,12 +53,19 @@ export function ComposeThreadDialog({
   onOpenChange,
   activeConnectors,
   tenantId,
+  initialContact,
+  emailTemplates = [],
   onSent,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   activeConnectors: ComposeConnector[];
   tenantId: string | null;
+  /** Pre-address the composer to this contact when opened from a Client-360 "Message {name}"
+   *  deep-link (§18/§31). Resolved via the same hydrateClient the search-select path uses. */
+  initialContact?: { id: string; name?: string };
+  /** Saved email templates the coach can insert (ported from the retired ContactCommsPanel, §31). */
+  emailTemplates?: EmailTemplate[];
   /** Fired after a successful send with the canonical thread_key so the page can refresh
    *  and open the new/merged thread (§36 proactive surfacing). */
   onSent: (threadKey: string) => void;
@@ -77,6 +88,10 @@ export function ComposeThreadDialog({
   const [draftGuide, setDraftGuide] = useState("");
   const [draftTone, setDraftTone] = useState<DraftTone>("professional");
   const [newContactOpen, setNewContactOpen] = useState(false);
+  // Operator's display name for a template's {{coach_name}} sign-off (§37): the retired
+  // ContactCommsPanel resolved it from the current user's profile, and this compose surface —
+  // unlike the reply composer — has no signature to carry the sign-off, so resolve it here (§13).
+  const [coachName, setCoachName] = useState("");
 
   // Reset everything on open (mirror the reply composer's reset-on-open).
   useEffect(() => {
@@ -92,6 +107,19 @@ export function ComposeThreadDialog({
     setDraftGuide("");
     setDraftGuideOpen(false);
     setNewContactOpen(false);
+    // Resolve the operator's name once per open so {{coach_name}} in a saved template renders
+    // (mirrors the retired panel; §37 the picker must not silently blank a supported merge var).
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setCoachName(""); return; }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: prof } = await (supabase as any)
+        .from("profiles").select("full_name").eq("user_id", user.id).maybeSingle();
+      setCoachName(((prof?.full_name as string | null) ?? "").trim());
+    })();
+    // Pre-address when opened from a Client-360 "Message {name}" deep-link (§18/§31): resolve
+    // the contact's email/phone/name through the same one-row read the search-select uses.
+    if (initialContact?.id) void hydrateClient(initialContact.id, initialContact.name ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -113,7 +141,11 @@ export function ComposeThreadDialog({
       [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
       fallbackName ||
       "Contact";
-    setClient({ id, name, email: row.email ?? null, phone: row.phone ?? null });
+    setClient({
+      id, name, email: row.email ?? null, phone: row.phone ?? null,
+      first_name: row.first_name ?? null, last_name: row.last_name ?? null,
+      entity_name: row.entity_name ?? null,
+    });
   }, []);
 
   const onPick = (f: FocusedClient) => {
@@ -189,6 +221,26 @@ export function ComposeThreadDialog({
       setDrafting(false);
     }
   }, [client, body, draftGuide, draftTone, subject]);
+
+  // Insert a saved email template (ported from the retired ContactCommsPanel, §31) — resolves
+  // {{merge}} vars against the picked contact and lands subject+body for review/edit.
+  const applyTemplate = useCallback((key: string) => {
+    const t = emailTemplates.find((x) => x.template_key === key);
+    if (!t || !client) return;
+    const ctx: Record<string, string> = {
+      first_name: client.first_name ?? "",
+      last_name: client.last_name ?? "",
+      // {{full_name}} is the CONTACT's personal name — derive it from first+last (matching the
+      // reply composer's mergeContext), never client.name, which is the company for an entity
+      // contact (hydrateClient prefers entity_name). Fall back to client.name only if unnamed.
+      full_name: [client.first_name, client.last_name].filter(Boolean).join(" ").trim() || client.name || "",
+      client_name: client.name ?? "",
+      entity_name: client.entity_name ?? "",
+      coach_name: coachName,
+    };
+    setSubject(resolveMergeVars(t.subject ?? "", ctx));
+    setBody(resolveMergeVars(t.body_markdown || (t.body_html ? t.body_html.replace(/<[^>]+>/g, "") : ""), ctx));
+  }, [emailTemplates, client, coachName]);
 
   const canSend =
     !!client && !!channel && !!toAddress && !!body.trim() &&
@@ -418,6 +470,23 @@ export function ComposeThreadDialog({
                   </PopoverContent>
                 </Popover>
               </div>
+            )}
+
+            {/* Saved email templates (ported §31) — email-only, needs a picked recipient to
+                resolve {{merge}} vars. Non-gold utility (§11). */}
+            {channel === "email" && client && emailTemplates.length > 0 && (
+              <Select onValueChange={applyTemplate}>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Insert a saved template…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {emailTemplates.map((t) => (
+                    <SelectItem key={t.template_key} value={t.template_key}>
+                      <span className="mr-1.5 text-xs text-muted-foreground">[{t.category}]</span>{t.subject}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
 
             {/* Compliance flags from Paige's draft — tokened (§11). */}

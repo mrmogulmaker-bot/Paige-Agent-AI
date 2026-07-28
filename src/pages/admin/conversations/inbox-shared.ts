@@ -193,6 +193,21 @@ export function contactNameFromClient(c: ClientContact | ClientJoin | null): str
   return named || "";
 }
 
+// ── email template (canned full-email inserts). Ported into the ONE comms home (§18/§31)
+//    from the retired admin ContactCommsPanel. A template is DISTINCT from a snippet (an
+//    inline #trigger fragment with NO subject) and a signature (a sign-off) — it is a full
+//    subject+body starting point a coach picks and edits, so snippets do not supersede it. ─
+export interface EmailTemplate {
+  template_key: string;
+  subject: string;
+  body_markdown: string;
+  body_html: string | null;
+  category: string;
+}
+/** Resolve {{token}} merge vars; an unknown token drops to "" so a raw token never ships (§13/§15). */
+export const resolveMergeVars = (text: string, ctx: Record<string, string>): string =>
+  text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k: string) => ctx[k] ?? "");
+
 // ── snooze presets. "Until they reply" = far-future sentinel; the shipped inbound
 //    trigger (trg_messages_upsert_thread) clears snoozed_until on the next inbound,
 //    which IS "until they reply" — no fabricated flag column (§13/§31). ───────────────
