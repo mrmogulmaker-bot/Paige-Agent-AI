@@ -17,7 +17,7 @@
 import { Link, useLocation } from "react-router-dom";
 import {
   Building2, UserCog, Rocket, Radio, DollarSign, Plug, Wrench, LayoutTemplate,
-  TrendingUp, ShieldCheck, BookOpen, FileSignature, LifeBuoy, Settings, Ticket, Send,
+  TrendingUp, ShieldCheck, BookOpen, FileSignature, LifeBuoy, Settings, Ticket, Send, Bug,
   type LucideIcon,
 } from "lucide-react";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -58,7 +58,7 @@ const COMPLIANCE_TABS: OperatorTab[] = [
   { label: "Doctrine",        href: "/admin/platform/doctrine",    icon: BookOpen,      canSee: owner, comingSoon: true },
   { label: "Legal Documents", href: "/admin/legal",                icon: FileSignature, canSee: staff },
   { label: "Security Canary", href: "/admin/security",             icon: ShieldCheck,   canSee: staff },
-  { label: "Error Tracking",  href: "/admin/observability/errors", icon: LifeBuoy,      canSee: staff },
+  { label: "Error Tracking",  href: "/admin/observability/errors", icon: Bug,           canSee: staff },
 ];
 
 const PLATFORM_SETTINGS_TABS: OperatorTab[] = [

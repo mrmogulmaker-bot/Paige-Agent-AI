@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageShell, PageHeader, SectionCard } from "@/components/ui/page";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,22 +49,23 @@ export default function ErrorTracking() {
     : null;
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
-      <div className="flex items-center gap-2">
-        <Bug className="size-5" />
-        <h1 className="text-2xl font-semibold tracking-tight">Error Tracking</h1>
-      </div>
+    <PageShell width="wide">
+      <PageHeader
+        icon={Bug}
+        eyebrow="Platform · Observability"
+        title="Error Tracking"
+        description="Sentry frontend error tunnel and the most recent failed workflow runs."
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Sentry</CardTitle>
-          <CardDescription>
-            {hasSentry
-              ? "Frontend errors are tunneled through /functions/v1/sentry-tunnel."
-              : "Sentry disabled — add VITE_SENTRY_DSN + SENTRY_DSN secrets to enable."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+      <SectionCard
+        title="Sentry"
+        description={
+          hasSentry
+            ? "Frontend errors are tunneled through /functions/v1/sentry-tunnel."
+            : "Sentry disabled — add VITE_SENTRY_DSN + SENTRY_DSN secrets to enable."
+        }
+      >
+        <div className="space-y-3">
           <Badge variant={hasSentry ? "default" : "secondary"}>{hasSentry ? "Connected" : "Disabled"}</Badge>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1">
@@ -84,15 +85,14 @@ export default function ErrorTracking() {
               </Button>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </SectionCard>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent failed workflow runs</CardTitle>
-          <CardDescription>From paige_workflow_runs · last 25 failures.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
+      <SectionCard
+        title="Recent failed workflow runs"
+        description="From paige_workflow_runs · last 25 failures."
+      >
+        <div className="space-y-2">
           {recent.length === 0 && <p className="text-sm text-muted-foreground">No failed runs.</p>}
           {recent.map((r) => (
             <div key={r.id} className="rounded-md border p-3 text-sm">
@@ -103,8 +103,8 @@ export default function ErrorTracking() {
               {r.error && <div className="mt-1 text-xs text-destructive whitespace-pre-wrap">{r.error}</div>}
             </div>
           ))}
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+      </SectionCard>
+    </PageShell>
   );
 }

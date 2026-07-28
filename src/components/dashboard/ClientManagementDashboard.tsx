@@ -246,6 +246,28 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
   const activeCount = internalClients.filter((c) => c.status === "active").length;
   const withEntity = internalClients.filter((c) => c.entity_name).length;
 
+  // F4 (§13 honesty): the "Team Members" KPI subtitle was a hardcoded "Admin / Coach / Mod"
+  // that implied a role breakdown the data doesn't have. Compute the REAL mix and render
+  // only the non-zero segments (a member may hold >1 role, so counts can exceed the total).
+  const teamRoleCounts = teamUsers.reduce(
+    (acc, u) => {
+      const r = u.roles || [];
+      if (r.includes("admin")) acc.admin++;
+      if (r.includes("coach")) acc.coach++;
+      if (r.includes("moderator")) acc.moderator++;
+      return acc;
+    },
+    { admin: 0, coach: 0, moderator: 0 },
+  );
+  const teamRoleSummary =
+    [
+      teamRoleCounts.admin ? `${teamRoleCounts.admin} Admin` : null,
+      teamRoleCounts.coach ? `${teamRoleCounts.coach} Coach` : null,
+      teamRoleCounts.moderator ? `${teamRoleCounts.moderator} Mod` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "No team members";
+
   // --- Actions ---
 
   const updateUserRole = async (userId: string, newRole: string) => {
@@ -459,6 +481,19 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       return <p className="text-center text-muted-foreground py-8">No users found.</p>;
     }
 
+    // F2 (§11 no-placeholder): a member with no profile name must not render as a bare
+    // em-dash. Fall back to a real, role-derived label ("Unnamed admin"/"Unnamed member").
+    // (get_tenant_people returns no email, so an email fallback isn't available here.)
+    const roleNoun = (role: string) => {
+      switch (role) {
+        case "admin": return "admin";
+        case "coach": return "coach";
+        case "moderator": return "moderator";
+        case "affiliate": return "affiliate";
+        default: return "member";
+      }
+    };
+
     const renderRowActions = (c: AuthClient, sizeClass: string) => (
       <div className="flex items-center justify-end gap-1">
         <Button size="sm" variant="outline" className={sizeClass} onClick={() => onViewClient(c.user_id)}>
@@ -517,7 +552,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium truncate">{c.full_name || "—"}</span>
+                      <span className="font-medium truncate">{c.full_name?.trim() || `Unnamed ${roleNoun(primaryRole)}`}</span>
                       {c.is_complimentary && (
                         <Badge className="bg-gradient-gold text-foreground border-0 text-[10px] flex items-center gap-1 px-1.5 py-0">
                           <Sparkles className="w-3 h-3" />
@@ -532,7 +567,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                     )}
                   </div>
                 </div>
-                {goalLabel && (
+                {showPromoteToInternal && goalLabel && (
                   <div>
                     <Badge variant="secondary" className="bg-gradient-gold text-foreground border-0 text-[10px]">
                       {goalLabel}
@@ -569,7 +604,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Location</TableHead>
-                <TableHead>Goal</TableHead>
+                {showPromoteToInternal && <TableHead>Goal</TableHead>}
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
@@ -585,7 +620,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                   <TableRow key={c.user_id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
-                        <span>{c.full_name || "—"}</span>
+                        <span>{c.full_name?.trim() || `Unnamed ${roleNoun(primaryRole)}`}</span>
                         {c.is_complimentary && (
                           <Badge className="bg-gradient-gold text-foreground border-0 text-[10px] flex items-center gap-1 px-1.5 py-0">
                             <Sparkles className="w-3 h-3" />
@@ -595,15 +630,17 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                       </div>
                     </TableCell>
                     <TableCell>{c.city && c.state ? `${c.city}, ${c.state}` : "—"}</TableCell>
-                    <TableCell>
-                      {goalLabel ? (
-                        <Badge variant="secondary" className="bg-gradient-gold text-foreground border-0 text-[10px]">
-                          {goalLabel}
-                        </Badge>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">No intake</span>
-                      )}
-                    </TableCell>
+                    {showPromoteToInternal && (
+                      <TableCell>
+                        {goalLabel ? (
+                          <Badge variant="secondary" className="bg-gradient-gold text-foreground border-0 text-[10px]">
+                            {goalLabel}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">No intake</span>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Select
                         defaultValue={primaryRole}
@@ -683,7 +720,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{teamUsers.length}</div>
-            <p className="text-xs text-muted-foreground">Admin / Coach / Mod</p>
+            <p className="text-xs text-muted-foreground">{teamRoleSummary}</p>
           </CardContent>
         </Card>
       </div>

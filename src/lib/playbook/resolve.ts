@@ -17,13 +17,16 @@
 // so it simply resolves to the coaching default.
 
 import { supabase } from "@/integrations/supabase/client";
-import { generalDefault, PLAYBOOK_LIBRARY } from "./presets";
+import { generalDefault, RESOLVABLE_PLAYBOOKS } from "./presets";
 import type { IntakeField, JourneyStage, Playbook, ProbingQuestion, QuickAction } from "./types";
 
 /** Resolve a playbook by slug, falling back to the coaching default. */
 export function getPlaybookBySlug(slug?: string | null): Playbook {
   if (!slug) return generalDefault;
-  return PLAYBOOK_LIBRARY.find((p) => p.slug === slug) ?? generalDefault;
+  // Resolve over the FULL set (incl. opt-in verticals like funding) so an
+  // already-opted-in tenant's stored slug still renders its persona, even though
+  // funding is not offered as a picker default (§2). See presets.ts.
+  return RESOLVABLE_PLAYBOOKS.find((p) => p.slug === slug) ?? generalDefault;
 }
 
 // --- Shape guards for a tenant-authored playbook stored as JSON data ---------
