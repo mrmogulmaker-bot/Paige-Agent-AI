@@ -39,6 +39,7 @@ import {
   INBOX_VIEWS, endOfTodayMs, readSendResult, resolveMergeVars, UNDO_WINDOW_MS,
 } from "./conversations/inbox-shared";
 import { ComposeThreadDialog } from "./conversations/ComposeThreadDialog";
+import { FirstRunOnboarding } from "./conversations/FirstRunOnboarding";
 import { ThreadRow } from "./conversations/ThreadRow";
 import { ThreadFilters, useLabelCatalog } from "./conversations/ThreadFilters";
 import { ContactCardRail } from "./conversations/ContactCardRail";
@@ -915,6 +916,18 @@ export default function ClientsConversations() {
   // dead-end — gate the CTA on a real sendable channel, not merely any channel (§13/§43).
   const canCompose = activeConnectors.some((c) => c.channel_type === "email" || c.channel_type === "sms");
 
+  // The GENUINE first-run zero-state (§36): the account has no threads at all AND nothing is
+  // narrowing the view — no active search, no label filter, the default "active" view. Only then
+  // do we show the one guided FirstRunOnboarding surface. A search-no-match or a filtered/archived/
+  // snoozed empty keeps its own dedicated EmptyState inside the rail/pane (untouched below).
+  const isFirstRun =
+    threadsReady && !loading && !searching &&
+    dbThreads.length === 0 &&
+    matchedKeys === null &&
+    search.trim() === "" &&
+    view === "active" &&
+    labelFilter === null;
+
   return (
     <PageShell width="full" fill>
       <PageHeader
@@ -923,7 +936,9 @@ export default function ClientsConversations() {
         actions={
           // §43 — the surface is a tool: start a NEW outbound thread from here. Gold on the
           // act (§11). Disabled honestly when there's no sendable channel to send on (§13).
-          !canCompose ? (
+          // Suppressed during first-run so the FirstRunOnboarding surface owns the ONE gold
+          // primary act (§11/§36 — never two identical gold acts on one screen).
+          isFirstRun ? undefined : !canCompose ? (
             <span
               className="inline-flex"
               title="Connect an email or SMS channel to start a conversation"
@@ -940,10 +955,21 @@ export default function ClientsConversations() {
         }
       />
 
-      {/* The pane grid flows as the flex-1 last child of the `fill` shell (lg+), so it
+      {/* §36 first-run: before a single thread exists, one cohesive guided surface replaces the
+          two disconnected empty boxes (left-rail "No conversations yet." + middle "Your unified
+          inbox.") — it teaches the model and offers ONE honest next step. Everything else (search-
+          no-match, filtered/archived/snoozed empties) keeps its own dedicated EmptyState below. */}
+      {isFirstRun ? (
+        <FirstRunOnboarding
+          canCompose={canCompose}
+          onCompose={() => setComposeOpen(true)}
+          connectHref="/admin/settings"
+        />
+      ) : (
+      /* The pane grid flows as the flex-1 last child of the `fill` shell (lg+), so it
           consumes exactly the height its scroll parent gives it and its columns' own
           overflow-y-auto engage — instead of a magic calc(100dvh-…) that undershot the
-          chrome and double-scrolled (Finding 2). Below lg it stacks with natural scroll. */}
+          chrome and double-scrolled (Finding 2). Below lg it stacks with natural scroll. */
       <div className={cn(
         "grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1",
         selected && railOpen ? "lg:grid-cols-[320px_1fr_300px]" : "lg:grid-cols-[320px_1fr]",
@@ -1403,6 +1429,7 @@ export default function ClientsConversations() {
           />
         )}
       </div>
+      )}
 
       {/* §43 — compose a NEW outbound thread (reuses the send-message seam + canonical
           thread key so it merges cleanly with any later inbound reply). */}
