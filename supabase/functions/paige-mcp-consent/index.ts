@@ -1,7 +1,9 @@
 // Helper for the in-app /mcp/authorize consent screen.
 // Action "lookup": returns client info + validated request params. If a Supabase session is
-//   present and the user is an admin (or platform owner), the requested scopes are elevated
-//   to the full admin scope set automatically. Destructive `*.delete` scopes are owner-only.
+//   present, scopes are elevated per the caller's server-derived tier: platform owner —
+//   super_admin role in user_roles OR the bootstrap owner_email — gets the full owner scope
+//   set; tenant owner/admin get the tenant scope set (minus platform.*/*.delete); everyone
+//   else fails closed to zero. Destructive `*.delete` scopes are owner-only.
 // Action "approve": requires the user's Supabase JWT, mints an authz code with the elevated
 //   scopes, returns the redirect URL.
 // Action "deny":    requires the user's JWT, returns the error redirect URL.
@@ -95,13 +97,28 @@ async function computeGrantedScopes(userId: string, userEmail: string | null, re
   let tier: Tier = null;
   let tenantName: string | null = null;
 
-  // 1. Platform Owner — hardcoded global god account (app_settings_owner).
+  // 1. Platform Owner — global god account. TWO independent, server-derived signals,
+  //    EITHER suffices (§9: keyed to the authenticated userId, never client-supplied):
+  //    (a) super_admin role in user_roles — the real grantable platform-operator role
+  //        (is_platform_owner()/is_super_admin() are aliases for it); (b) the bootstrap
+  //    owner_email in app_settings_owner. Using ONLY (b) was the #210 break — a legitimate
+  //    super_admin whose email != owner_email matched no tier and fell through to zero scopes.
   const { data: ownerRow } = await admin
     .from("app_settings_owner").select("owner_email").limit(1).maybeSingle();
-  const isPlatformOwner = !!(ownerRow?.owner_email && userEmail &&
+  const emailIsOwner = !!(ownerRow?.owner_email && userEmail &&
     ownerRow.owner_email.toLowerCase() === userEmail.toLowerCase());
+  // RLS-bypassing service-role read, matched on the authenticated userId. A DB error must
+  // NOT elevate and must NOT crash to 500 — fail CLOSED to "not super_admin" (§13).
+  let roleIsSuperAdmin = false;
+  {
+    const { data: roleRow, error: roleErr } = await admin
+      .from("user_roles").select("role")
+      .eq("user_id", userId).eq("role", "super_admin").maybeSingle();
+    if (roleErr) console.error("[paige-mcp-consent] super_admin role lookup failed", roleErr.message);
+    else roleIsSuperAdmin = !!roleRow;
+  }
 
-  if (isPlatformOwner) {
+  if (emailIsOwner || roleIsSuperAdmin) {
     granted = Array.from(new Set([...base, ...PLATFORM_OWNER_AUTOGRANT]));
     tier = "platform_owner";
     return { granted, tier, tenantName };

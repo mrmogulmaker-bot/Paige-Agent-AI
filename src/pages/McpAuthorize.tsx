@@ -82,6 +82,7 @@ export default function McpAuthorize() {
       throw new Error(err instanceof Error ? err.message : "Network error reaching authorization service");
     }
     const text = await resp.text();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic JSON parse result
     let parsed: any = {};
     try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
     if (!resp.ok || parsed?.error) {
@@ -102,6 +103,13 @@ export default function McpAuthorize() {
           return;
         }
         const data = await callConsent("lookup", session.access_token);
+        // #476: a signed-in but unentitled user (no tier → zero granted scopes) must not see a
+        // ready screen whose "Allow" would 400 invalid_scope. Fail to a clear message up front.
+        if (!Array.isArray(data.scopes) || data.scopes.length === 0) {
+          setError("Your account doesn't have permission to authorize this connection. Ask a platform administrator for access.");
+          setStatus("error");
+          return;
+        }
         setClient(data.client);
         setScopes(data.scopes);
         setTier(data.tier ?? null);

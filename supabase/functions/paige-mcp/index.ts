@@ -4932,7 +4932,11 @@ const PAIGE_BRAND_NAME = "Paige Agent AI";
 const PAIGE_TAGLINE = "The operating system for client-based businesses — your practice, clients, and execution in one connected engine.";
 
 const DISCOVERY_RESOURCE = {
-  resource: PUBLIC_ORIGIN, authorization_servers: [PUBLIC_ORIGIN],
+  // #476: canonical AS is the app origin (paigeagent.ai), per owner-confirmed RFC 8414 topology.
+  // The protected resource IS the edge fn (resource=PUBLIC_ORIGIN), but its authorization server is
+  // paigeagent.ai — so both discovery sources agree and a strict client following
+  // protected-resource.authorization_servers fetches AS metadata from paigeagent.ai (issuer match).
+  resource: PUBLIC_ORIGIN, authorization_servers: [APP_ORIGIN],
   bearer_methods_supported: ["header"], scopes_supported: SUPPORTED_SCOPES,
   resource_documentation: "https://paigeagent.ai/docs/mcp",
   resource_name: PAIGE_BRAND_NAME,
@@ -4943,7 +4947,12 @@ const DISCOVERY_RESOURCE = {
   tos_uri: "https://paigeagent.ai/terms",
 };
 const DISCOVERY_AS = {
-  issuer: PUBLIC_ORIGIN,
+  // #476: issuer is the app origin (paigeagent.ai), NOT the edge origin. RFC 8414 requires the AS
+  // metadata issuer to match the URL it's fetched from; a spec-correct client reaches this metadata
+  // only via protected-resource.authorization_servers=[paigeagent.ai] → fetches paigeagent.ai's
+  // static well-known → issuer matches. token/registration/revocation stay on the edge fn
+  // (RFC 8414 permits AS endpoints off the issuer origin). This kills the cross-origin issuer bug.
+  issuer: APP_ORIGIN,
   authorization_endpoint: `${APP_ORIGIN}/mcp/authorize`,
   token_endpoint: `${PUBLIC_ORIGIN}/oauth/token`,
   registration_endpoint: `${PUBLIC_ORIGIN}/oauth/register`,
