@@ -15,7 +15,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useSearchParams, Link } from "react-router-dom";
 import {
   MessageCircle, Inbox, Send, Pencil, Loader2, Sparkles, AlertTriangle, Paperclip,
-  Search, SearchX, PanelRight, Clock, X, ChevronDown, Bell, Plus,
+  Search, SearchX, PanelRight, Clock, X, ChevronDown, Bell, Plus, PlugZap,
   ArrowUpDown, Rows3, AlignJustify, Archive, Tag, CheckCheck, MessageCircleReply, Check,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -1409,11 +1409,18 @@ export default function ClientsConversations() {
               </div>
 
               {/* Composer */}
-              <div className="border-t border-border/60 bg-muted/30 p-3">
+              <div className="mt-auto border-t border-border/60 bg-muted/30 p-3">
                 {noChannel ? (
-                  <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 text-xs text-muted-foreground">
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
-                    No channel is connected yet — connect one in Setup and Paige can send from here.
+                  <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="flex items-start gap-2 text-xs text-muted-foreground">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
+                      <span>Connect a channel and Paige sends from here — inbound messages already land in this inbox on their own.</span>
+                    </p>
+                    <Button variant="gold" size="sm" asChild className="shrink-0 self-start sm:self-auto">
+                      <Link to="/admin/settings">
+                        <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
+                      </Link>
+                    </Button>
                   </div>
                 ) : (
                   <div className="space-y-2">
