@@ -28,7 +28,6 @@ import { ContactCampaignAttribution } from "@/components/admin/contacts/ContactC
 import { BusinessVerificationCard } from "@/components/admin/contacts/BusinessVerificationCard";
 import { BusinessTabPanel } from "@/components/admin/contacts/BusinessTabPanel";
 import { ClientOrgChartPanel } from "@/components/admin/contacts/ClientOrgChartPanel";
-import { ContactCommsPanel } from "@/components/admin/contacts/ContactCommsPanel";
 import { ContactNotesPanel } from "@/components/admin/contacts/ContactNotesPanel";
 import { ContactFilesPanel } from "@/components/admin/contacts/ContactFilesPanel";
 import { ContactCustomFieldsPanel } from "@/components/admin/contacts/ContactCustomFieldsPanel";
@@ -66,20 +65,46 @@ type Client = {
   created_at: string;
   current_notes?: string | null;
   account_number?: string | null;
+  tenant_id?: string | null;
 };
 
 type Coach = { user_id: string; name: string };
+
+type Business = {
+  id: string;
+  legal_name: string | null;
+  dba: string | null;
+  entity_type: string | null;
+};
+
+// Minimal shapes for the merged Activity-tab feed (communication_log + tasks rows).
+type ActivityRow = {
+  id: string;
+  created_at: string;
+  channel?: string | null;
+  subject?: string | null;
+  message_type?: string | null;
+  preview?: string | null;
+};
+type TaskRow = {
+  id: string;
+  created_at: string;
+  title?: string | null;
+  description?: string | null;
+};
 
 export default function ContactDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [client, setClient] = useState<Client | null>(null);
   const [coaches, setCoaches] = useState<Coach[]>([]);
-  const [activity, setActivity] = useState<any[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [notes, setNotes] = useState<any[]>([]);
-  const [files, setFiles] = useState<any[]>([]);
-  const [businesses, setBusinesses] = useState<Array<{ id: string; legal_name: string | null; dba: string | null; entity_type: string | null }>>([]);
+  const [activity, setActivity] = useState<ActivityRow[]>([]);
+  const [tasks, setTasks] = useState<TaskRow[]>([]);
+  // notes + files are fetched to prime the tab counts; the Notes/Files tabs render
+  // their own self-fetching panels, so these are write-only (never field-accessed).
+  const [notes, setNotes] = useState<unknown[]>([]);
+  const [files, setFiles] = useState<unknown[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -99,10 +124,10 @@ export default function ContactDetail() {
       setClient(c as Client);
 
       const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
-      const coachIds = (roles || []).map((r: any) => r.user_id);
+      const coachIds = (roles || []).map((r: { user_id: string }) => r.user_id);
       if (coachIds.length) {
         const { data: profs } = await supabase.from("profiles").select("user_id, full_name").in("user_id", coachIds);
-        setCoaches((profs || []).map((p: any) => ({ user_id: p.user_id, name: p.full_name || "Unnamed Coach" })));
+        setCoaches((profs || []).map((p: { user_id: string; full_name: string | null }) => ({ user_id: p.user_id, name: p.full_name || "Unnamed Coach" })));
       }
 
       if (c.linked_user_id) {
@@ -113,11 +138,11 @@ export default function ContactDetail() {
           supabase.from("documents").select("*").eq("user_id", c.linked_user_id).order("uploaded_at", { ascending: false }).limit(50),
           supabase.from("businesses").select("id, legal_name, dba, entity_type").eq("owner_user_id", c.linked_user_id).order("created_at", { ascending: false }),
         ]);
-        setActivity(actRes.data || []);
-        setTasks(taskRes.data || []);
-        setNotes(noteRes.data || []);
-        setFiles(fileRes.data || []);
-        setBusinesses((bizRes.data as any) || []);
+        setActivity((actRes.data ?? []) as ActivityRow[]);
+        setTasks((taskRes.data ?? []) as TaskRow[]);
+        setNotes(noteRes.data ?? []);
+        setFiles(fileRes.data ?? []);
+        setBusinesses((bizRes.data ?? []) as Business[]);
       } else {
         const [noteRes, fileRes] = await Promise.all([
           supabase.from("client_memory").select("*").eq("client_id", clientId).eq("is_active", true).order("created_at", { ascending: false }).limit(50),
@@ -127,8 +152,8 @@ export default function ContactDetail() {
         setFiles(fileRes.data || []);
         setBusinesses([]);
       }
-    } catch (e: any) {
-      toast.error(e.message || "Failed to load contact");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load contact");
     } finally {
       setLoading(false);
     }
@@ -256,6 +281,14 @@ export default function ContactDetail() {
           contactDisplay={fullName || client.email || "contact"}
           onLogged={() => id && load(id)}
         />
+        {/* §18 — the Conversations hub is the ONE comms home (this replaced the old in-tab
+            ContactCommsPanel). Deep-link opens/starts this contact's thread there. Non-gold (§11). */}
+        <Button
+          variant="outline" size="sm"
+          onClick={() => navigate(`/admin/clients-hub/conversations?contact=${client.id}`)}
+        >
+          <MessageSquare className="h-4 w-4 mr-1" /> Message {client.first_name || fullName || "contact"}
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
           <Pencil className="h-4 w-4 mr-1" /> Edit
         </Button>
@@ -360,7 +393,6 @@ export default function ContactDetail() {
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="deals"><Briefcase className="h-4 w-4 mr-1" /> Deals</TabsTrigger>
           <TabsTrigger value="activity"><Activity className="h-4 w-4 mr-1" /> Activity</TabsTrigger>
-          <TabsTrigger value="comms"><MessageSquare className="h-4 w-4 mr-1" /> Communications</TabsTrigger>
           <TabsTrigger value="tasks"><CheckSquare className="h-4 w-4 mr-1" /> Tasks</TabsTrigger>
           <TabsTrigger value="notes"><StickyNote className="h-4 w-4 mr-1" /> Notes</TabsTrigger>
           <TabsTrigger value="files"><FileText className="h-4 w-4 mr-1" /> Files</TabsTrigger>
@@ -407,6 +439,23 @@ export default function ContactDetail() {
 
         <TabsContent value="activity">
           <Card><CardContent className="p-4">
+            {/* §31/§18: live two-way Email & SMS now live in the Conversations hub (the one comms
+                home, since the old in-page comms tab was retired). This feed still shows historical
+                logged activity; the full live thread is one click away, so a send from the hub is
+                never "lost" — it's just in its home (§13 honest). */}
+            <button
+              type="button"
+              onClick={() => navigate(`/admin/clients-hub/conversations?contact=${client.id}`)}
+              className="mb-3 flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            >
+              <span className="flex items-center gap-1.5">
+                <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                Email &amp; SMS with this contact live in Conversations.
+              </span>
+              <span className="flex shrink-0 items-center gap-1 font-medium text-foreground">
+                Open thread <ExternalLink className="h-3 w-3" />
+              </span>
+            </button>
             {!client.linked_user_id ? (
               <EmptyMsg msg="No activity yet — this contact hasn't created an account." />
             ) : activity.length === 0 && tasks.length === 0 ? (
@@ -416,7 +465,7 @@ export default function ContactDetail() {
                 {[...activity.map(a => ({ ...a, _kind: "comm" as const })), ...tasks.map(t => ({ ...t, _kind: "task" as const }))]
                   .sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at))
                   .slice(0, 30)
-                  .map((row: any) => (
+                  .map((row) => (
                     <div key={`${row._kind}-${row.id}`} className="flex gap-3 text-sm border-l-2 border-primary/40 pl-3 py-1">
                       <span className="text-xs text-muted-foreground w-28 shrink-0">
                         {formatDistanceToNow(new Date(row.created_at), { addSuffix: true })}
@@ -435,31 +484,16 @@ export default function ContactDetail() {
           </CardContent></Card>
         </TabsContent>
 
-        <TabsContent value="comms">
-          <ContactCommsPanel
-            contact={{
-              id: client.id,
-              first_name: client.first_name,
-              last_name: client.last_name,
-              email: client.email,
-              phone: client.phone,
-              linked_user_id: client.linked_user_id,
-              entity_name: client.entity_name,
-            }}
-            history={activity}
-          />
-        </TabsContent>
-
         <TabsContent value="tasks">
           <ContactPlanningPanel contactId={client.id} contactName={fullName || client.email || null} linkedUserId={client.linked_user_id} />
         </TabsContent>
 
         <TabsContent value="notes">
-          <ContactNotesPanel contactId={client.id} tenantId={(client as any).tenant_id ?? null} />
+          <ContactNotesPanel contactId={client.id} tenantId={client.tenant_id ?? null} />
         </TabsContent>
 
         <TabsContent value="files">
-          <ContactFilesPanel contactId={client.id} tenantId={(client as any).tenant_id ?? null} />
+          <ContactFilesPanel contactId={client.id} tenantId={client.tenant_id ?? null} />
         </TabsContent>
 
         <TabsContent value="business">
@@ -474,7 +508,7 @@ export default function ContactDetail() {
         </TabsContent>
 
         <TabsContent value="custom-fields">
-          <ContactCustomFieldsPanel contactId={client.id} tenantId={(client as any).tenant_id ?? null} />
+          <ContactCustomFieldsPanel contactId={client.id} tenantId={client.tenant_id ?? null} />
         </TabsContent>
 
         {fundingReadinessEnabled && (
@@ -499,7 +533,7 @@ export default function ContactDetail() {
               <EmptyMsg msg="No pending approvals for this contact." />
             ) : (
               <div className="space-y-2">
-                {contactApprovals.map((a: any) => {
+                {contactApprovals.map((a) => {
                   const cat = (a.category ?? a.type ?? "other") as ApprovalCategory;
                   return (
                     <button
@@ -539,10 +573,14 @@ export default function ContactDetail() {
       <EditContactDialog
         open={editOpen}
         onOpenChange={setEditOpen}
+        // Client and EditContactDialog's Contact are structurally near-identical but neither is
+        // assignable to the other (Client lacks do_not_contact; Contact lacks status/linked_user_id).
+        // Bridging awaits the #234 stale-generated-types regen; #502 introduces no new `any`.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         contact={client as any}
         coaches={coaches}
         onSaved={(updated) => {
-          setClient((prev) => prev ? { ...prev, ...(updated as any) } : prev);
+          setClient((prev) => prev ? { ...prev, ...(updated as Partial<Client>) } : prev);
           setEditOpen(false);
         }}
       />
@@ -568,8 +606,8 @@ export default function ContactDetail() {
                   await deleteContact(client.id);
                   toast.success("Contact deleted");
                   navigate("/admin/contacts");
-                } catch (err: any) {
-                  toast.error(err?.message || "Delete failed");
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : "Delete failed");
                   setDeleting(false);
                 }
               }}

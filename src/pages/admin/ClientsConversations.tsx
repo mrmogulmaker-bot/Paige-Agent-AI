@@ -33,10 +33,10 @@ import { toast } from "sonner";
 
 import {
   type ChannelType, type Attachment, type MessageRow, type DbThread, type Label,
-  type ThreadFilter, type Suppression, type SelectedView, type InboxView,
+  type ThreadFilter, type Suppression, type SelectedView, type InboxView, type EmailTemplate,
   MESSAGE_COLS, THREAD_COLS, CHANNEL_ICON, CHANNEL_LABEL,
   partyLabel, bodyPreview, msgTime, contactNameFromClient,
-  INBOX_VIEWS, endOfTodayMs, readSendResult, UNDO_WINDOW_MS,
+  INBOX_VIEWS, endOfTodayMs, readSendResult, resolveMergeVars, UNDO_WINDOW_MS,
 } from "./conversations/inbox-shared";
 import { ComposeThreadDialog } from "./conversations/ComposeThreadDialog";
 import { ThreadRow } from "./conversations/ThreadRow";
@@ -87,8 +87,8 @@ function mergeContext(sel: SelectedView | null, sig?: Signature, snip?: Snippet)
     ...(sig?.variables ?? {}),
   };
 }
-const resolveMergeVars = (text: string, ctx: Record<string, string>) =>
-  text.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, k: string) => ctx[k] ?? "");
+// resolveMergeVars now lives in inbox-shared (§18 one home — the compose-new modal + the
+// ported email-template picker resolve merge vars through the exact same helper).
 
 const isImageMime = (m?: string) => !!m && m.startsWith("image/");
 
@@ -278,6 +278,11 @@ export default function ClientsConversations() {
   const [suppressions, setSuppressions] = useState<Suppression[]>([]);
   // §43 — compose a NEW outbound thread (the surface is a tool, not just a viewer).
   const [composeOpen, setComposeOpen] = useState(false);
+  // When the composer is opened from a Client-360 "Message {name}" deep-link, pre-address it.
+  const [composeContact, setComposeContact] = useState<{ id: string; name?: string } | null>(null);
+  // Gate the ?contact deep-link on a real first threads pull, so an empty (not-yet-loaded)
+  // dbThreads never gets read as "no thread exists" (which would wrongly open the composer).
+  const [threadsReady, setThreadsReady] = useState(false);
 
   // Composer state (reply into the selected thread)
   const [composeChannel, setComposeChannel] = useState<ChannelType | "">("");
@@ -297,10 +302,11 @@ export default function ClientsConversations() {
   const [, setUndo] = useState<{ messageId: string; expiresAt: number } | null>(null);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [signatures, setSignatures] = useState<Signature[]>([]);
+  const [templates, setTemplates] = useState<EmailTemplate[]>([]); // ported email-template picker (§31)
   const [appendSignature, setAppendSignature] = useState(true); // email only, default on
 
   // "Draft with Paige" (#482 Phase-1): on-demand reply drafting via the subagent-email-composer
-  // seam (§18 — same seam ContactCommsPanel proves). Email-only for Phase-1 (the composer is an
+  // seam (§18 — the same seam the compose-new modal uses). Email-only for Phase-1 (the composer is an
   // EMAIL composer; SMS-native drafting is a fast-follow, §13 — don't route SMS through it and
   // pretend it's SMS-native). Draft-first, one-click, non-gold assist (§36/§11).
   const [drafting, setDrafting] = useState(false);
@@ -321,15 +327,57 @@ export default function ClientsConversations() {
     if (v && (INBOX_VIEWS as string[]).includes(v)) setView(v as InboxView);
   }, [searchParams]);
 
+  // ── Deep-link: ?contact=<id> — the Client-360 "Message {name}" action lands here (§18: the
+  // Conversations hub is the ONE comms home now that the old ContactCommsPanel is retired).
+  // Once the first threads pull is in: if a thread already exists for that contact, auto-select
+  // it via the same pendingSelectRef machinery a fresh compose uses; if none exists yet, open the
+  // composer pre-addressed to the contact. Handled once per contact-id so realtime thread updates
+  // don't re-fire it (mirrors the ?filter= pattern above). ─────────────────────────────────────
+  const contactSeekHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    const cid = searchParams.get("contact");
+    if (!cid || !cid.trim()) return;
+    if (!threadsReady) return;                          // wait for a real first threads pull
+    if (contactSeekHandledRef.current === cid) return;  // act on each contact-param exactly once
+    contactSeekHandledRef.current = cid;
+    const match = dbThreads.find((t) => t.contact_id === cid);
+    if (match) {
+      pendingSelectRef.current = match.thread_key;
+      setView("active"); setLabelFilter(null); setSearch("");
+      void loadThreads(); // re-pull bumps dbThreads → the keep-valid-selection guard honors the pick
+      return;
+    }
+    // Not in the active set — the contact's ONLY thread may be ARCHIVED or SNOOZED (both excluded by
+    // the default active pull), so probe the threads table directly (tenant-scoped by RLS, §9) before
+    // falling back to a fresh compose. If any thread exists, switch to the "all" view (which surfaces
+    // archived/snoozed) and hold the pick; only compose when the contact genuinely has no thread (§13).
+    void (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase as any).from("threads")
+        .select("thread_key").eq("contact_id", cid)
+        .order("last_message_at", { ascending: false, nullsFirst: false }).limit(1);
+      const key = (data as { thread_key: string }[] | null)?.[0]?.thread_key ?? null;
+      if (key) {
+        pendingSelectRef.current = key;
+        setView("all"); setLabelFilter(null); setSearch("");
+        void loadThreads();
+      } else {
+        setComposeContact({ id: cid });
+        setComposeOpen(true);
+      }
+    })();
+  }, [searchParams, threadsReady, dbThreads, loadThreads]);
+
   // ── message pull (500-row) + connectors + composer resources (R2: one reconciled load) ─
   const load = useCallback(async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const sb = supabase as any;
-    const [msgRes, connRes, snipRes, sigRes, tidRes] = await Promise.all([
+    const [msgRes, connRes, snipRes, sigRes, tplRes, tidRes] = await Promise.all([
       sb.from("messages").select(MESSAGE_COLS).order("sent_at", { ascending: false, nullsFirst: true }).limit(500),
       sb.from("channel_connectors").select("id, channel_type, provider, display_name, from_address, from_name, inbound_address, status, active").order("created_at", { ascending: true }),
       sb.from("snippets").select("id, user_id, trigger, name, body, variables"),
       sb.from("signatures").select("id, user_id, name, html, variables, is_default"),
+      sb.from("email_templates").select("template_key, subject, body_markdown, body_html, category").eq("active", true).order("category"),
       sb.rpc("current_user_tenant_id"),
     ]);
     if (msgRes.error) toast.error("Couldn't load conversations.");
@@ -337,6 +385,7 @@ export default function ClientsConversations() {
     setConnectors((connRes.data as unknown as Connector[]) ?? []);
     setSnippets((snipRes.data as unknown as Snippet[]) ?? []);
     setSignatures((sigRes.data as unknown as Signature[]) ?? []);
+    setTemplates((tplRes.data as unknown as EmailTemplate[]) ?? []);
     tenantIdRef.current = (tidRes.data as string | null) ?? null;
     setLoading(false);
   }, []);
@@ -362,6 +411,7 @@ export default function ClientsConversations() {
     const { data, error } = await q;
     if (error) toast.error("Couldn't load the inbox.");
     setDbThreads((data as DbThread[]) ?? []);
+    setThreadsReady(true); // gate the ?contact deep-link on a real first threads pull
   }, [baseFilter]);
 
   useEffect(() => { void load(); }, [load]);
@@ -690,6 +740,19 @@ export default function ClientsConversations() {
     setBody(""); setSubject(""); setAttachments([]);
     setScheduledFor(null); setEditingDraftId(null);
   }, []);
+
+  // ── Insert a saved email template (ported from the retired ContactCommsPanel, §31) — resolves
+  //    {{merge}} vars against the selected thread's contact and lands subject+body for review/edit.
+  //    A fresh reply, never an edit of the passive draft row. ({{coach_name}} isn't in the thread
+  //    merge context, so it drops to "" — the signature carries the sign-off, §13-honest note.) ──
+  const applyTemplate = useCallback((key: string) => {
+    const t = templates.find((x) => x.template_key === key);
+    if (!t) return;
+    const ctx = mergeContext(selected);
+    setEditingDraftId(null);
+    setSubject(resolveMergeVars(t.subject ?? "", ctx));
+    setBody(resolveMergeVars(t.body_markdown || (t.body_html ? t.body_html.replace(/<[^>]+>/g, "") : ""), ctx));
+  }, [templates, selected]);
 
   // ── (b)+(c) ONE send body builder + ONE dispatch that reads outcome (§37) ────────
   const buildSendBody = useCallback((overrides: { scheduled_for?: string } = {}) => {
@@ -1205,6 +1268,22 @@ export default function ClientsConversations() {
                         </div>
                       )}
 
+                      {/* Saved email templates (ported §31) — email-only, non-gold utility (§11). */}
+                      {composeChannel === "email" && templates.length > 0 && (
+                        <Select onValueChange={applyTemplate}>
+                          <SelectTrigger className="h-8 w-[190px]">
+                            <SelectValue placeholder="Insert template…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {templates.map((t) => (
+                              <SelectItem key={t.template_key} value={t.template_key}>
+                                <span className="mr-1.5 text-xs text-muted-foreground">[{t.category}]</span>{t.subject}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+
                       <Button variant="outline" size="sm" className="h-8"
                         onClick={() => fileInputRef.current?.click()} disabled={uploading}>
                         {uploading
@@ -1329,9 +1408,11 @@ export default function ClientsConversations() {
           thread key so it merges cleanly with any later inbound reply). */}
       <ComposeThreadDialog
         open={composeOpen}
-        onOpenChange={setComposeOpen}
+        onOpenChange={(v) => { setComposeOpen(v); if (!v) setComposeContact(null); }}
         activeConnectors={activeConnectors}
         tenantId={tenantIdRef.current}
+        initialContact={composeContact ?? undefined}
+        emailTemplates={templates}
         onSent={(key) => {
           // §36 proactive surfacing: drop any filter that would hide the just-created thread,
           // then reload. pendingSelectRef holds the pick until the new row streams in, so the
