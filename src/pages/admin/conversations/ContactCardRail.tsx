@@ -597,7 +597,10 @@ export function ContactCardRail({
                 />
               </FoldSection>
               <FoldSection value="billing" icon={CreditCard} label="Billing">
-                <ContactBillingPanel contactId={contact.id} />
+                {/* dense — the reused panel's default responsive form keys off the VIEWPORT
+                    (md:), which over-widens inside this ~300px rail on desktop; dense forces
+                    the single-column fit (#121, Codex P2). */}
+                <ContactBillingPanel contactId={contact.id} dense />
               </FoldSection>
               <FoldSection value="automation" icon={Zap} label="Automation" last>
                 <ContactAutomationHistory contactId={contact.id} />

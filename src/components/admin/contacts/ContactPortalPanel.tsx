@@ -70,7 +70,7 @@ export function ContactPortalPanel({
   const load = async () => {
     // Invites are now bound to this contact at mint (tenant_invite_tokens.contact_id),
     // so the outstanding/pending state is real: read this contact's consumer tokens.
-    const [{ data: toks }, { data: env }] = await Promise.all([
+    const [{ data: toks }, { data: env }, { data: client }] = await Promise.all([
       supabase
         .from("tenant_invite_tokens")
         .select("id, email, expires_at, last_used_at, created_at, revoked_at")
@@ -84,7 +84,16 @@ export function ContactPortalPanel({
         .select("*")
         .eq("contact_id", contactId)
         .order("sent_at", { ascending: false }),
+      // Authoritative linked-user state, re-read on every load() (§13). The prop only
+      // SEEDS the initial render; a revoke/accept that happened while this panel was
+      // unmounted — e.g. collapsed in the Conversations fold-out (#121), where the
+      // accordion unmounts closed content — would otherwise leave a stale snapshot on
+      // remount (reporting a revoked account as active, or missing a fresh acceptance).
+      supabase.from("clients").select("linked_user_id").eq("id", contactId).maybeSingle(),
     ]);
+    setLocalLinkedUserId(
+      (client as { linked_user_id: string | null } | null)?.linked_user_id ?? null,
+    );
     setInvites(
       ((toks as Array<{ id: string; email: string | null; expires_at: string; last_used_at: string | null; created_at: string }>) || []).map((t) => ({
         id: t.id,
