@@ -256,14 +256,9 @@ export default function ContactsAdmin() {
         return;
       }
 
-      const [clientsRes, rolesRes, rollupRes, typesRes] = await Promise.all([
+      const [clientsRes, rolesRes, typesRes] = await Promise.all([
         supabase.from("clients").select("*").eq("tenant_id", activeTenantId).order("created_at", { ascending: false }),
         supabase.from("user_roles").select("user_id").eq("role", "coach"),
-        // contact_deal_rollup is a security_invoker VIEW with NO tenant_id column to
-        // filter on; under the clients owner-bypass it returns cross-tenant rows for
-        // an owner. We therefore scope the rollup MAP below to the tenant's client ids
-        // so the totals in `stats` only ever sum this tenant's deals (§9 count==list).
-        supabase.from("contact_deal_rollup").select("*"),
         // client_types HAS its own tenant_id (server-derived from the parent client),
         // so it takes the same explicit active-tenant filter (§9).
         fromUntyped("client_types").select("contact_id,type").eq("tenant_id", activeTenantId),
@@ -294,12 +289,23 @@ export default function ContactsAdmin() {
         })));
       }
 
-      // §9: keep ONLY the rollup rows belonging to this tenant's clients (the view
-      // has no tenant_id to .eq on), so `stats` never sums another tenant's deals.
+      // contact_deal_rollup is a security_invoker VIEW with NO tenant_id column, so under
+      // the clients owner-bypass an unbounded read returns cross-tenant rows — for the
+      // platform-owner account that is the ENTIRE platform (the likely 8-10s People-load
+      // culprit, Cowork #113). Bounding by this tenant's client ids pushes the filter into
+      // the view so the GROUP BY collapses from O(all-platform) to O(tenant). Zero semantic
+      // change (§9 count==list): the map already discarded non-tenant rows below; this just
+      // stops FETCHING them. Runs after clients resolve (needs their ids), not in parallel.
       const map: Record<string, Rollup> = {};
-      ((rollupRes.data || []) as Rollup[]).forEach((r) => {
-        if (tenantClientIds.has(r.contact_id)) map[r.contact_id] = r;
-      });
+      if (tenantClientIds.size) {
+        const { data: rollupData, error: rollupErr } = await supabase
+          .from("contact_deal_rollup").select("*")
+          .in("contact_id", Array.from(tenantClientIds));
+        if (rollupErr) console.warn("contact_deal_rollup read failed — deal stats will be empty:", rollupErr);
+        ((rollupData || []) as Rollup[]).forEach((r) => {
+          if (tenantClientIds.has(r.contact_id)) map[r.contact_id] = r;
+        });
+      }
       setRollup(map);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load contacts");

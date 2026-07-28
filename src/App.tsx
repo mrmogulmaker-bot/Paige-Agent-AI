@@ -1,5 +1,6 @@
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { PageSkeleton } from "@/components/ui/page";
 
 // Auto-recover from stale chunk errors after a new deploy.
 // When index.html is cached but references hashed JS chunks that no longer
@@ -145,11 +146,7 @@ const queryClient = new QueryClient({
   },
 });
 
-const SuspenseFallback = () => (
-  <div className="flex items-center justify-center py-12">
-    <div className="animate-pulse text-muted-foreground">Loading...</div>
-  </div>
-);
+const SuspenseFallback = () => <PageSkeleton />;
 
 const PageSuspense = ({ children }: { children: React.ReactNode }) => (
   <React.Suspense fallback={<SuspenseFallback />}>{children}</React.Suspense>

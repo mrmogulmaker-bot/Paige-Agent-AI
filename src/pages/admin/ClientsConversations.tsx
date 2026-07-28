@@ -12,10 +12,10 @@
 // gold ONLY on Send/Approve; realtime on messages + threads; motion-safe; token-only.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import {
   MessageCircle, Inbox, Send, Pencil, Loader2, Sparkles, AlertTriangle, Paperclip,
-  Search, SearchX, PanelRight, Clock, X, ImageIcon, ChevronDown, Bell,
+  Search, SearchX, PanelRight, Clock, X, ImageIcon, ChevronDown, Bell, Plus,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -36,8 +36,9 @@ import {
   type ThreadFilter, type Suppression, type SelectedView, type InboxView,
   MESSAGE_COLS, THREAD_COLS, CHANNEL_ICON, CHANNEL_LABEL,
   partyLabel, bodyPreview, msgTime, contactNameFromClient,
-  INBOX_VIEWS, endOfTodayMs,
+  INBOX_VIEWS, endOfTodayMs, readSendResult, UNDO_WINDOW_MS,
 } from "./conversations/inbox-shared";
+import { ComposeThreadDialog } from "./conversations/ComposeThreadDialog";
 import { ThreadRow } from "./conversations/ThreadRow";
 import { ThreadFilters, useLabelCatalog } from "./conversations/ThreadFilters";
 import { ContactCardRail } from "./conversations/ContactCardRail";
@@ -59,7 +60,7 @@ interface Connector {
 }
 
 // ── Composer depth (Comms C-1.5) ────────────────────────────────────────────────
-const UNDO_WINDOW_MS = 30_000;                 // owner-set 30s undo-send grace window
+// UNDO_WINDOW_MS now lives in inbox-shared (§18 — reused by the compose-new modal too).
 const COMMS_ATTACH_BUCKET = "comms-attachments";
 const MAX_ATTACH_BYTES = 10 * 1024 * 1024;     // 10MB/file — matches the bucket ceiling
 
@@ -272,6 +273,8 @@ export default function ClientsConversations() {
   const [searching, setSearching] = useState(false);
   const [railOpen, setRailOpen] = useState(true);
   const [suppressions, setSuppressions] = useState<Suppression[]>([]);
+  // §43 — compose a NEW outbound thread (the surface is a tool, not just a viewer).
+  const [composeOpen, setComposeOpen] = useState(false);
 
   // Composer state (reply into the selected thread)
   const [composeChannel, setComposeChannel] = useState<ChannelType | "">("");
@@ -689,17 +692,10 @@ export default function ClientsConversations() {
   const dispatchSend = useCallback(async (overrides: { scheduled_for?: string } = {}) => {
     const { data, error } = await supabase.functions.invoke("send-message", { body: buildSendBody(overrides) });
     if (error) throw new Error(error.message);
-    const res = data as {
-      status?: string; outcome?: string; reason?: string; message_id?: string; scheduled_for?: string;
-    };
-    // R7-outcome: trust `outcome` when present; never collapse queued/blocked to "failed".
-    const outcome = res.outcome ?? (
-      res.status === "sent"    ? "sent" :
-      res.status === "queued"  ? (overrides.scheduled_for ? "queued_scheduled" : "queued") :
-      res.status === "blocked" ? "blocked_unknown" :
-      "failed"
-    );
-    return { outcome, reason: res.reason, messageId: res.message_id, scheduledFor: res.scheduled_for };
+    // R7-outcome via the ONE shared parser (inbox-shared) — the compose-new modal reads the
+    // send result through the exact same helper, so reply and compose can never drift (§18/§37).
+    const r = readSendResult(data);
+    return { outcome: r.outcome, reason: r.reason, messageId: r.messageId, scheduledFor: r.scheduledFor };
   }, [buildSendBody]);
 
   const cancelUndo = useCallback(async (messageId: string) => {
@@ -836,6 +832,24 @@ export default function ClientsConversations() {
         variant="plain"
         title="Conversations"
         description="Every client thread across email, SMS, WhatsApp, and DMs — with Paige drafting the reply for your one-click approval."
+        actions={
+          // §43 — the surface is a tool: start a NEW outbound thread from here. Gold on the
+          // act (§11). Disabled honestly when there's no channel to send on (§13).
+          noChannel ? (
+            <span
+              className="inline-flex"
+              title="Connect a channel first to start a conversation"
+            >
+              <Button variant="gold" size="sm" disabled>
+                <Plus className="mr-1.5 h-4 w-4" /> New conversation
+              </Button>
+            </span>
+          ) : (
+            <Button variant="gold" size="sm" onClick={() => setComposeOpen(true)}>
+              <Plus className="mr-1.5 h-4 w-4" /> New conversation
+            </Button>
+          )
+        }
       />
 
       {/* The pane grid flows as the flex-1 last child of the `fill` shell (lg+), so it
@@ -890,8 +904,25 @@ export default function ClientsConversations() {
                 title={view === "archived" ? "Nothing archived." : view === "snoozed" ? "Nothing snoozed." : "No conversations yet."}
                 description={
                   view === "active"
-                    ? "Connect a channel and the moment a client emails or messages, their thread lands here — with Paige's draft reply ready for your approval."
+                    ? noChannel
+                      ? "Connect a channel and the moment a client emails or messages, their thread lands here — with Paige's draft reply ready for your approval."
+                      : "Start a new conversation, or the moment a client reaches out their thread lands here — with Paige's draft reply ready for your approval."
                     : "When you snooze or archive a conversation, it shows up here."
+                }
+                action={
+                  view === "active"
+                    ? noChannel
+                      ? (
+                        <Button variant="outline" size="sm" asChild>
+                          <Link to="/admin/settings">Connect a channel</Link>
+                        </Button>
+                      )
+                      : (
+                        <Button variant="gold" size="sm" onClick={() => setComposeOpen(true)}>
+                          <Plus className="mr-1.5 h-4 w-4" /> New conversation
+                        </Button>
+                      )
+                    : undefined
                 }
                 className="py-10"
               />
@@ -1261,10 +1292,23 @@ export default function ClientsConversations() {
             recentMessages={selected.messages}
             labels={selectedThread?.labels ?? []}
             suppressions={suppressions}
+            userId={userId}
+            tenantId={tenantIdRef.current}
             onClose={() => setRailOpen(false)}
+            onChanged={() => { void load(); void loadThreads(); }}
           />
         )}
       </div>
+
+      {/* §43 — compose a NEW outbound thread (reuses the send-message seam + canonical
+          thread key so it merges cleanly with any later inbound reply). */}
+      <ComposeThreadDialog
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        activeConnectors={activeConnectors}
+        tenantId={tenantIdRef.current}
+        onSent={(key) => { void load(); void loadThreads(); setSelectedKey(key); }}
+      />
     </PageShell>
   );
 }

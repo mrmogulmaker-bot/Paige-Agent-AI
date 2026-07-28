@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Button } from "@/components/ui/button";
-import { ChevronsUpDown, Loader2 } from "lucide-react";
+import { ChevronsUpDown, Loader2, UserPlus } from "lucide-react";
 import type { FocusedClient } from "./commandCenterTypes";
 
 interface ClientRow {
@@ -37,9 +37,13 @@ const sanitize = (s: string) => s.replace(/[,()%*]/g, " ").trim();
 
 interface Props {
   onSelect: (client: FocusedClient) => void;
+  /** When provided, renders a persistent "＋ Create new contact" item at the top of the
+   *  list (used by the Conversations compose-new modal). Omitted callers (e.g. PaigeSidebar)
+   *  see no create affordance — fully backward-compatible. */
+  onRequestCreate?: () => void;
 }
 
-export function CustomerSelector({ onSelect }: Props) {
+export function CustomerSelector({ onSelect, onRequestCreate }: Props) {
   const [open, setOpen] = useState(false);
   const [term, setTerm] = useState("");
   const [rows, setRows] = useState<ClientRow[]>([]);
@@ -97,6 +101,21 @@ export function CustomerSelector({ onSelect }: Props) {
             onValueChange={setTerm}
           />
           <CommandList>
+            {onRequestCreate && (
+              <CommandGroup>
+                <CommandItem
+                  value="__create_new_contact__"
+                  onSelect={() => {
+                    onRequestCreate();
+                    setOpen(false);
+                    setTerm("");
+                  }}
+                >
+                  <UserPlus className="mr-2 h-4 w-4 text-muted-foreground" />
+                  Create new contact
+                </CommandItem>
+              </CommandGroup>
+            )}
             {loading ? (
               <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" /> Searching…

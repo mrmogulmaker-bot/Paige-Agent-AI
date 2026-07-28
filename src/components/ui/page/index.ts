@@ -33,6 +33,7 @@ export {
 } from "./ArtifactPreview";
 export { PageShell } from "./PageShell";
 export { PageHeader, type PageHeaderProps } from "./PageHeader";
+export { PageSkeleton } from "./PageSkeleton";
 export { SectionCard } from "./SectionCard";
 export { StatTile, StatRow } from "./StatTile";
 export { StatPill, type StatPillProps, type StatPillTone } from "./StatPill";
