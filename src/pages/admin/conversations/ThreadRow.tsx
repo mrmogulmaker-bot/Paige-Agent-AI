@@ -1,25 +1,45 @@
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { StatePill } from "@/components/ui/page";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { Clock, Archive } from "lucide-react";
 import {
-  type DbThread, type MessageRow, type Label, type ChannelType,
+  type DbThread, type MessageRow, type Label, type ChannelType, type Density,
   CHANNEL_ICON, CHANNEL_LABEL, LABEL_COLOR, bodyPreview, contactNameFromClient, partyLabel, isUntilReply,
+  initialsFromName, avatarTint,
 } from "./inbox-shared";
 import { SnoozeMenu } from "./SnoozeMenu";
 import { LabelPopover } from "./LabelPopover";
 
-function ChannelGlyph({ channel, className }: { channel: ChannelType; className?: string }) {
+// Real contact avatar: deterministic INITIALS in a tokenized indigo-family circle (no fake
+// photo — clients has no avatar column, §13), with the channel glyph as a small corner badge.
+function ContactAvatar({
+  name, channel, unread, compact,
+}: { name: string; channel: ChannelType; unread: boolean; compact: boolean }) {
   const Icon = CHANNEL_ICON[channel];
   return (
-    <span
-      className={cn(
-        "grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-border bg-muted text-muted-foreground",
-        className,
-      )}
-      title={CHANNEL_LABEL[channel]} aria-label={CHANNEL_LABEL[channel]}
-    >
-      <Icon className="h-4 w-4" aria-hidden />
+    <span className="relative shrink-0">
+      <span
+        className={cn(
+          "grid place-items-center rounded-full border font-semibold",
+          compact ? "h-7 w-7 text-[10px]" : "h-8 w-8 text-[11px]",
+          avatarTint(name),
+          unread && "ring-1 ring-[hsl(var(--primary)/0.35)]",
+        )}
+        aria-hidden
+      >
+        {initialsFromName(name)}
+      </span>
+      <span
+        className={cn(
+          "absolute -bottom-1 -right-1 grid place-items-center rounded-full border-2 border-[hsl(var(--card))] bg-muted text-muted-foreground",
+          compact ? "h-3.5 w-3.5" : "h-4 w-4",
+        )}
+        title={CHANNEL_LABEL[channel]} aria-label={CHANNEL_LABEL[channel]}
+      >
+        <Icon className={compact ? "h-2 w-2" : "h-2.5 w-2.5"} aria-hidden />
+      </span>
     </span>
   );
 }
@@ -27,6 +47,7 @@ function ChannelGlyph({ channel, className }: { channel: ChannelType; className?
 export function ThreadRow({
   thread, preview, channel, active, onClick,
   catalog, onSnooze, onArchive, onSetThreadLabels, onRenameCatalogLabel,
+  density = "comfortable", selected = false, selectionActive = false, onToggleSelect, cursored = false,
 }: {
   thread: DbThread;
   preview: MessageRow | null;
@@ -38,7 +59,14 @@ export function ThreadRow({
   onArchive: (id: string, on: boolean) => void;
   onSetThreadLabels: (threadId: string, labels: Label[]) => void;
   onRenameCatalogLabel: (labelId: string, patch: Partial<Label>) => void;
+  // #121 — ALL optional so existing callers keep working unchanged.
+  density?: Density;                                     // comfortable (default) | compact
+  selected?: boolean;                                    // multi-select checked state
+  selectionActive?: boolean;                             // any selection exists → keep checkboxes visible
+  onToggleSelect?: (e: ReactMouseEvent) => void;         // undefined → no checkbox rendered
+  cursored?: boolean;                                    // keyboard-nav highlight (distinct from `active` open state)
 }) {
+  const compact = density === "compact";
   const name =
     contactNameFromClient(thread.clients) ||
     (preview ? partyLabel(preview.direction === "inbound" ? preview.sender : preview.recipients?.[0]) : "") ||
@@ -56,24 +84,48 @@ export function ThreadRow({
     <div
       role="button"
       tabIndex={0}
+      data-thread-key={thread.thread_key}
       onClick={onClick}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onClick())}
       aria-current={active ? "true" : undefined}
+      aria-selected={onToggleSelect ? selected : undefined}
       className={cn(
-        "group relative flex w-full cursor-pointer items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors",
+        "group relative flex w-full cursor-pointer items-start rounded-lg border text-left transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+        compact ? "gap-2.5 px-3 py-1.5" : "gap-3 px-3 py-2.5",
         active
           // Indigo selection accent bar (Linear/Front pattern). before:content-[''] is REQUIRED —
           // a Tailwind pseudo-element with no content defaults to content:none and paints nothing.
           ? "border-[hsl(var(--border-strong))] bg-muted before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-[hsl(var(--primary))] before:content-['']"
-          : "border-transparent hover:border-border hover:bg-muted/60",
+          : selected
+            ? "border-[hsl(var(--primary)/0.4)] bg-[hsl(var(--primary)/0.06)]"
+            : "border-transparent hover:border-border hover:bg-muted/60",
+        // Keyboard-cursor highlight — an inset indigo ring, orthogonal to the open (`active`) and
+        // multi-select (`selected`) states so a navigating user always sees where the cursor is.
+        cursored && "ring-1 ring-inset ring-[hsl(var(--ring))]",
       )}
     >
-      {/* Unread rows pop: tint the channel glyph indigo (§27 contrast). Token, AA both themes. */}
-      <ChannelGlyph
-        channel={channel}
-        className={cn(unread && "border-[hsl(var(--primary)/0.4)] bg-[hsl(var(--primary)/0.08)] text-[hsl(var(--primary))]")}
-      />
+      {/* Multi-select checkbox — the Checkbox is pointer-events-none so the wrapper owns the
+          click (captures shiftKey for range-select + stopPropagation so it never opens the
+          thread). Visible on hover, or forced visible while a selection is active (§36). */}
+      {onToggleSelect && (
+        <span
+          className={cn(
+            "flex shrink-0 items-center self-center transition-opacity",
+            selected || selectionActive ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+          )}
+          onClick={(e) => { e.stopPropagation(); e.preventDefault(); onToggleSelect(e); }}
+        >
+          <Checkbox
+            checked={selected}
+            tabIndex={-1}
+            aria-label={`Select ${name}`}
+            className="pointer-events-none"
+          />
+        </span>
+      )}
+      {/* Unread rows pop: ring the avatar indigo (§27 contrast). Token, AA both themes. */}
+      <ContactAvatar name={name} channel={channel} unread={unread} compact={compact} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className={cn("min-w-0 flex-1 truncate text-sm text-foreground", unread ? "font-semibold" : "font-medium")}>
@@ -92,7 +144,7 @@ export function ThreadRow({
           )}
         </div>
 
-        <div className="mt-0.5 flex items-center gap-2">
+        <div className={cn("flex items-center gap-2", compact ? "mt-0" : "mt-0.5")}>
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
             {preview?.direction === "outbound" && preview.status !== "draft"
               ? <span className="text-muted-foreground/60">You: </span> : ""}
@@ -102,7 +154,7 @@ export function ThreadRow({
         </div>
 
         {/* state + labels + hover actions */}
-        <div className="mt-1 flex items-center gap-1.5">
+        <div className={cn("flex items-center gap-1.5", compact ? "mt-0.5" : "mt-1")}>
           {/* R-B1: a queued scheduled send is visible in the rail (find-and-cancel surface). */}
           {scheduled && preview?.scheduled_for && (
             <StatePill state="pending" icon={<Clock className="h-2.5 w-2.5" />}>

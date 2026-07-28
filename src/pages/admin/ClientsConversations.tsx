@@ -11,11 +11,12 @@
 // §11/§25 premium on @/components/ui/page + @/components/ui/select (NO native select);
 // gold ONLY on Send/Approve; realtime on messages + threads; motion-safe; token-only.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useSearchParams, Link } from "react-router-dom";
 import {
   MessageCircle, Inbox, Send, Pencil, Loader2, Sparkles, AlertTriangle, Paperclip,
   Search, SearchX, PanelRight, Clock, X, ChevronDown, Bell, Plus,
+  ArrowUpDown, Rows3, AlignJustify, Archive, Tag, CheckCheck, MessageCircleReply, Check,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,15 +30,23 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 
 import {
   type ChannelType, type MessageRow, type DbThread, type Label,
   type ThreadFilter, type Suppression, type SelectedView, type InboxView, type EmailTemplate,
-  MESSAGE_COLS, THREAD_COLS, CHANNEL_ICON, CHANNEL_LABEL,
+  MESSAGE_COLS, THREAD_COLS, CHANNEL_ICON, CHANNEL_LABEL, LABEL_DOT,
   partyLabel, bodyPreview, msgTime, contactNameFromClient,
   INBOX_VIEWS, endOfTodayMs, readSendResult, resolveMergeVars, UNDO_WINDOW_MS,
   useCommsAttachments,
+  type Density, type ThreadSort,
+  THREAD_SORTS, SORT_LABEL, DENSITY_STORAGE_KEY, readDensity, sortThreads, snoozePresets,
+  SNOOZE_SENTINEL_UNTIL_REPLY,
 } from "./conversations/inbox-shared";
 import { AttachmentChip } from "./conversations/AttachmentChip";
 import { ComposeThreadDialog } from "./conversations/ComposeThreadDialog";
@@ -230,6 +239,24 @@ export default function ClientsConversations() {
   // A freshly composed thread may not have streamed into dbThreads yet — hold its key so the
   // keep-valid-selection guard doesn't clobber the pick to visibleThreads[0] in the gap.
   const pendingSelectRef = useRef<string | null>(null);
+
+  // #121 GHL-parity list UX ----------------------------------------------------------
+  // Density persists to localStorage; sort is client-side over the loaded list.
+  const [density, setDensity] = useState<Density>(readDensity);
+  const [sort, setSort] = useState<ThreadSort>("recent");
+  // Multi-select is a Set of thread_key, distinct from the single-open `selectedKey`.
+  const [selection, setSelection] = useState<Set<string>>(() => new Set());
+  const selectAnchorRef = useRef<string | null>(null); // shift-click range anchor
+  const [bulkBusy, setBulkBusy] = useState(false);
+  // #121 keyboard cursor — the highlighted row (Gmail-style). SEPARATE from selectedKey (the OPEN
+  // thread): arrows/j-k move the cursor WITHOUT opening/marking-read (so an unread-first sort never
+  // reorders the row out from under the cursor); Enter opens the cursored row; `x` toggles its
+  // multi-select. Decoupling nav from open is what fixes the unread-sort skip + the keyboard-a11y
+  // gap in one move.
+  const [cursorKey, setCursorKey] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);         // roving-focus target for keyboard nav
+  const paneRef = useRef<HTMLDivElement>(null);         // Enter focuses the thread pane
+  useEffect(() => { try { localStorage.setItem(DENSITY_STORAGE_KEY, density); } catch { /* private mode */ } }, [density]);
 
   // C-1.5 threads-as-source-of-truth
   const [dbThreads, setDbThreads] = useState<DbThread[]>([]);
@@ -479,13 +506,24 @@ export default function ClientsConversations() {
     }
   }, [view, messagesByKey, nowMs]);
 
-  // ── visible threads: state filter is server-side; search + label + view client-side ─
+  // ── visible threads: state filter is server-side; search + label + view client-side.
+  //    #121 sort composes LAST, over the already-filtered list (never a new query, §9). ─
   const visibleThreads = useMemo(() =>
-    dbThreads.filter((t) =>
-      (matchedKeys === null || matchedKeys.has(t.thread_key)) &&
-      (labelFilter === null || (t.labels ?? []).some((l) => l.id === labelFilter)) &&
-      viewPredicate(t)),
-    [dbThreads, matchedKeys, labelFilter, viewPredicate]);
+    sortThreads(
+      dbThreads.filter((t) =>
+        (matchedKeys === null || matchedKeys.has(t.thread_key)) &&
+        (labelFilter === null || (t.labels ?? []).some((l) => l.id === labelFilter)) &&
+        viewPredicate(t)),
+      sort,
+      // Name (A–Z) alphabetizes by the SAME display name ThreadRow shows — contact name, else the
+      // preview party's name/address — so null-contact threads sort where the user sees them, not
+      // as "" (Codex P2, §13).
+      (t) => {
+        const p = previewByKey.get(t.thread_key);
+        return contactNameFromClient(t.clients)
+          || (p ? partyLabel(p.direction === "inbound" ? p.sender : p.recipients?.[0]) : "");
+      }),
+    [dbThreads, matchedKeys, labelFilter, viewPredicate, sort, previewByKey]);
 
   const activeConnectors = useMemo(() => connectors.filter((c) => c.active && c.status === "active"), [connectors]);
 
@@ -574,32 +612,41 @@ export default function ClientsConversations() {
   const optimisticThread = (id: string, patch: Partial<DbThread>) =>
     setDbThreads((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
 
-  const snoozeThread = async (id: string, until: Date | string | null) => {
+  // Each seam returns a success boolean and honors { silent } so the bulk runner (#121) can
+  // reuse the EXACT same path in a loop and report honestly (§13) without per-row toast spam.
+  // Single callers ignore the return + get their toast — behavior unchanged.
+  type MutOpts = { silent?: boolean };
+  const snoozeThread = async (id: string, until: Date | string | null, opts?: MutOpts): Promise<boolean> => {
     const iso = until == null ? null : typeof until === "string" ? until : until.toISOString();
     optimisticThread(id, { snoozed_until: iso });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any).from("threads").update({ snoozed_until: iso }).eq("id", id);
-    if (error) { toast.error("Couldn't snooze that thread."); void loadThreads(); }
-    else toast.success(iso ? "Snoozed." : "Back in your inbox.");
+    if (error) { if (!opts?.silent) toast.error("Couldn't snooze that thread."); void loadThreads(); return false; }
+    if (!opts?.silent) toast.success(iso ? "Snoozed." : "Back in your inbox.");
+    return true;
   };
-  const archiveThread = async (id: string, on: boolean) => {
+  const archiveThread = async (id: string, on: boolean, opts?: MutOpts): Promise<boolean> => {
     const iso = on ? new Date().toISOString() : null;
     optimisticThread(id, { archived_at: iso });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any).from("threads").update({ archived_at: iso }).eq("id", id);
-    if (error) { toast.error("Couldn't update that thread."); void loadThreads(); }
-    else toast.success(on ? "Archived." : "Moved to inbox.");
+    if (error) { if (!opts?.silent) toast.error("Couldn't update that thread."); void loadThreads(); return false; }
+    if (!opts?.silent) toast.success(on ? "Archived." : "Moved to inbox.");
+    return true;
   };
-  const markThreadRead = async (id: string) => {
+  const markThreadRead = async (id: string, opts?: MutOpts): Promise<boolean> => {
     optimisticThread(id, { unread_count: 0 });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (supabase as any).from("threads").update({ unread_count: 0 }).eq("id", id);
+    const { error } = await (supabase as any).from("threads").update({ unread_count: 0 }).eq("id", id);
+    if (error) { void loadThreads(); return false; }
+    return true;
   };
-  const setThreadLabels = async (threadId: string, labels: Label[]) => {
+  const setThreadLabels = async (threadId: string, labels: Label[], opts?: MutOpts): Promise<boolean> => {
     optimisticThread(threadId, { labels });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any).from("threads").update({ labels }).eq("id", threadId);
-    if (error) { toast.error("Couldn't save labels."); void loadThreads(); }
+    if (error) { if (!opts?.silent) toast.error("Couldn't save labels."); void loadThreads(); return false; }
+    return true;
   };
   const renameCatalogLabel = async (labelId: string, patch: Partial<Label>) => {
     const affected = dbThreads.filter((t) => (t.labels ?? []).some((l) => l.id === labelId));
@@ -609,8 +656,117 @@ export default function ClientsConversations() {
 
   const selectThread = (key: string) => {
     setSelectedKey(key);
+    setCursorKey(key); // keep the keyboard cursor on the row the user just opened
     const t = dbThreads.find((x) => x.thread_key === key);
     if (t && t.unread_count > 0) void markThreadRead(t.id);
+  };
+
+  // ── #121 multi-select ─────────────────────────────────────────────────────────────
+  const toggleSelect = (key: string, e: { shiftKey: boolean }) => {
+    setSelection((prev) => {
+      const next = new Set(prev);
+      if (e.shiftKey && selectAnchorRef.current) {
+        const keys = visibleThreads.map((t) => t.thread_key);
+        const a = keys.indexOf(selectAnchorRef.current);
+        const b = keys.indexOf(key);
+        if (a !== -1 && b !== -1) {
+          const [lo, hi] = a < b ? [a, b] : [b, a];
+          for (let i = lo; i <= hi; i++) next.add(keys[i]);
+          selectAnchorRef.current = key;
+          return next;
+        }
+      }
+      if (next.has(key)) next.delete(key); else next.add(key);
+      selectAnchorRef.current = key;
+      return next;
+    });
+  };
+  const allVisibleSelected = visibleThreads.length > 0 && visibleThreads.every((t) => selection.has(t.thread_key));
+  const someVisibleSelected = visibleThreads.some((t) => selection.has(t.thread_key));
+  // Only rows that are BOTH selected AND currently visible can actually be acted on (runBulk
+  // scopes to visible ∩ selection). The bulk bar's count + visibility derive from THIS, never the
+  // raw Set — so the toolbar can never overstate what a bulk action will touch (§13 honesty).
+  const selectedVisibleCount = visibleThreads.reduce((n, t) => n + (selection.has(t.thread_key) ? 1 : 0), 0);
+  const toggleSelectAll = () => {
+    setSelection((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) visibleThreads.forEach((t) => next.delete(t.thread_key));
+      else visibleThreads.forEach((t) => next.add(t.thread_key));
+      return next;
+    });
+    selectAnchorRef.current = null;
+  };
+  const clearSelection = () => { setSelection(new Set()); selectAnchorRef.current = null; };
+  // ANY change that narrows the visible set — view, label filter, OR search — resets the
+  // selection (and the keyboard cursor) so a bulk action can never reach, and the toolbar can
+  // never count, a row the coach can no longer see. The runner is also scoped to visibleThreads
+  // and the bar reads selectedVisibleCount, but resetting here keeps the mental model honest:
+  // change what you're looking at → your selection starts fresh (GHL/Gmail behavior). (§13/§36)
+  useEffect(() => { clearSelection(); setCursorKey(null); }, [view, labelFilter, search]);
+
+  // Bulk runner — reuses the per-thread seams in a loop (§18 no new mutation path), scoped to
+  // the SELECTED ∩ VISIBLE rows, with honest partial reporting (§13: never claim a failed row).
+  const runBulk = async (verb: string, fn: (t: DbThread) => Promise<boolean>) => {
+    const targets = visibleThreads.filter((t) => selection.has(t.thread_key));
+    if (targets.length === 0 || bulkBusy) return;
+    setBulkBusy(true);
+    const results = await Promise.allSettled(targets.map(fn));
+    setBulkBusy(false);
+    const ok = results.filter((r) => r.status === "fulfilled" && r.value === true).length;
+    const fail = results.length - ok;
+    if (fail === 0) toast.success(`${verb} ${ok}.`);
+    else if (ok === 0) toast.error(`Couldn't ${verb.toLowerCase()} any — ${fail} failed.`);
+    else toast.warning(`${ok} of ${results.length} done — ${fail} failed.`);
+    clearSelection();
+  };
+  const bulkArchive = () => runBulk("Archived", (t) => archiveThread(t.id, true, { silent: true }));
+  const bulkMarkRead = () => runBulk("Marked read", (t) => markThreadRead(t.id, { silent: true }));
+  const bulkSnooze = (until: Date | string) => runBulk("Snoozed", (t) => snoozeThread(t.id, until, { silent: true }));
+  const bulkApplyLabel = (label: Label) =>
+    runBulk("Labeled", (t) =>
+      setThreadLabels(
+        t.id,
+        (t.labels ?? []).some((l) => l.id === label.id) ? (t.labels ?? []) : [...(t.labels ?? []), label],
+        { silent: true },
+      ));
+
+  // ── #121 keyboard nav (Gmail-style cursor) ────────────────────────────────────────
+  // Roving focus over the role=button rows. Arrows/j-k move a CURSOR (highlight only) — they do
+  // NOT open or mark-read, so nothing reorders the list under the cursor (an unread-first sort
+  // stays put while you navigate). Enter opens the cursored row; `x` toggles its multi-select
+  // (the keyboard path to build a selection — the row checkbox is pointer-only). The handler
+  // lives on the scroll container, so it only fires when focus is INSIDE the list; it also bails
+  // on any focused input/textarea/contenteditable so typing is never hijacked.
+  const onListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const nav = ["ArrowDown", "ArrowUp", "j", "k", "Enter", "x", "X"];
+    if (!nav.includes(e.key)) return;
+    if ((e.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) return;
+    if (visibleThreads.length === 0) return;
+    const keys = visibleThreads.map((t) => t.thread_key);
+    // Base actions on the row the user is ACTUALLY focused on (every row is tabbable), THEN fall
+    // back to the keyboard cursor, then the open thread — so tabbing to a row and pressing an
+    // arrow / `x` never moves focus or toggles selection on a different, unfocused conversation
+    // (§13 a11y correctness — Codex P2).
+    const focusedKey = (e.target as HTMLElement).closest?.("[data-thread-key]")?.getAttribute("data-thread-key") ?? null;
+    const baseKey = focusedKey && keys.includes(focusedKey) ? focusedKey
+      : cursorKey && keys.includes(cursorKey) ? cursorKey
+      : selectedKey && keys.includes(selectedKey) ? selectedKey : null;
+    if (e.key === "Enter") { e.preventDefault(); if (baseKey) { selectThread(baseKey); paneRef.current?.focus(); } return; }
+    if (e.key === "x" || e.key === "X") { e.preventDefault(); if (baseKey) toggleSelect(baseKey, { shiftKey: false }); return; }
+    e.preventDefault();
+    const dir = (e.key === "ArrowDown" || e.key === "j") ? 1 : -1;
+    const baseIdx = baseKey ? keys.indexOf(baseKey) : -1;
+    // No cursor yet → first Down lands on row 0, first Up on the last row (no off-by-one skip).
+    const nextIdx = baseIdx === -1
+      ? (dir === 1 ? 0 : keys.length - 1)
+      : Math.min(keys.length - 1, Math.max(0, baseIdx + dir)); // clamp at ends
+    const key = keys[nextIdx];
+    setCursorKey(key);
+    requestAnimationFrame(() => {
+      const node = listRef.current?.querySelector<HTMLElement>(`[data-thread-key="${CSS.escape(key)}"]`);
+      node?.scrollIntoView({ block: "nearest" });
+      node?.focus();
+    });
   };
 
   // Cancel a queued scheduled send (R3) — routed through the any handle (typed-RPC ratchet).
@@ -955,12 +1111,131 @@ export default function ClientsConversations() {
             view={view} onView={setView} activeUnread={activeUnread}
             catalog={labelCatalog} labelFilter={labelFilter} onLabelFilter={setLabelFilter}
           />
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+
+          {/* #121 controls: select-all · count · sort · density. Only when the rail has rows. */}
+          {!loading && !searching && visibleThreads.length > 0 && (
+            <div className="flex items-center gap-2 border-b border-border/60 px-3 py-1.5">
+              <Checkbox
+                checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
+                onCheckedChange={toggleSelectAll}
+                aria-label="Select all visible conversations"
+              />
+              <span className="text-[11px] tabular-nums text-muted-foreground">
+                {visibleThreads.length} {visibleThreads.length === 1 ? "conversation" : "conversations"}
+              </span>
+              <div className="ml-auto flex items-center gap-1.5">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground">
+                      <ArrowUpDown className="h-3.5 w-3.5" aria-hidden /> {SORT_LABEL[sort]}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-44">
+                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">Sort by</DropdownMenuLabel>
+                    {THREAD_SORTS.map((s) => (
+                      <DropdownMenuItem key={s} onSelect={() => setSort(s)}>
+                        <Check className={cn("mr-2 h-3.5 w-3.5", sort === s ? "opacity-100" : "opacity-0")} aria-hidden />
+                        {SORT_LABEL[s]}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                {/* Density segmented toggle (native <button>s — §11 only bans native select/checkbox). */}
+                <div className="flex items-center rounded-md border border-border p-0.5" role="group" aria-label="Row density">
+                  {([["comfortable", Rows3, "Comfortable"], ["compact", AlignJustify, "Compact"]] as const).map(([d, Icon, label]) => (
+                    <button
+                      key={d}
+                      type="button"
+                      aria-label={`${label} density`}
+                      aria-pressed={density === d}
+                      onClick={() => setDensity(d)}
+                      className={cn(
+                        "grid h-6 w-6 place-items-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
+                        density === d ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* #121 bulk-action toolbar — appears when a selection exists. NEUTRAL/ghost buttons
+              (management, not an outward commit → no gold, §11). Motion-safe (§25). */}
+          <AnimatePresence initial={false}>
+            {selectedVisibleCount > 0 && (
+              <motion.div
+                key="bulk-bar"
+                initial={reduce ? false : { height: 0, opacity: 0 }}
+                animate={reduce ? { opacity: 1 } : { height: "auto", opacity: 1 }}
+                exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                transition={{ duration: reduce ? 0 : 0.16 }}
+                className="flex flex-wrap items-center gap-1 overflow-hidden border-b border-[hsl(var(--primary)/0.25)] bg-[hsl(var(--primary)/0.05)] px-2 py-1.5"
+              >
+                <span className="mr-1 pl-1 text-xs font-medium tabular-nums text-foreground">{selectedVisibleCount} selected</span>
+                <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" disabled={bulkBusy} onClick={bulkArchive}>
+                  <Archive className="h-3.5 w-3.5" aria-hidden /> Archive
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" disabled={bulkBusy}>
+                      <Clock className="h-3.5 w-3.5" aria-hidden /> Snooze
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48">
+                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">Snooze {selectedVisibleCount}</DropdownMenuLabel>
+                    {snoozePresets().map((p) => (
+                      <DropdownMenuItem key={p.key} onSelect={() => bulkSnooze(p.until)}>
+                        <Clock className="mr-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden /> {p.label}
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuItem onSelect={() => bulkSnooze(SNOOZE_SENTINEL_UNTIL_REPLY)}>
+                      <MessageCircleReply className="mr-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden /> Until they reply
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" disabled={bulkBusy || labelCatalog.length === 0}>
+                      <Tag className="h-3.5 w-3.5" aria-hidden /> Label
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48">
+                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">Apply label</DropdownMenuLabel>
+                    {labelCatalog.length === 0 ? (
+                      <DropdownMenuItem disabled>No labels yet</DropdownMenuItem>
+                    ) : labelCatalog.map((l) => (
+                      <DropdownMenuItem key={l.id} onSelect={() => bulkApplyLabel(l)}>
+                        <span className={cn("mr-2 h-2 w-2 rounded-full", LABEL_DOT[l.color])} aria-hidden /> {l.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" disabled={bulkBusy} onClick={bulkMarkRead}>
+                  <CheckCheck className="h-3.5 w-3.5" aria-hidden /> Mark read
+                </Button>
+                <Button
+                  variant="ghost" size="icon" className="ml-auto h-7 w-7 text-muted-foreground hover:text-foreground"
+                  onClick={clearSelection} aria-label="Clear selection"
+                >
+                  <X className="h-4 w-4" aria-hidden />
+                </Button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div
+            ref={listRef}
+            onKeyDown={onListKeyDown}
+            className="min-h-0 flex-1 overflow-y-auto p-2"
+          >
             {loading || searching ? (
               <div className="space-y-2">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="flex items-start gap-3 rounded-lg px-3 py-2.5">
-                    <Skeleton className="h-8 w-8 rounded-lg" />
+                    <Skeleton className="h-8 w-8 rounded-full" />
                     <div className="flex-1 space-y-1.5">
                       <Skeleton className="h-3.5 w-2/3" />
                       <Skeleton className="h-3 w-full" />
@@ -1015,12 +1290,17 @@ export default function ClientsConversations() {
                     preview={previewByKey.get(t.thread_key) ?? null}
                     channel={previewByKey.get(t.thread_key)?.channel_type ?? "email"}
                     active={t.thread_key === selectedKey}
+                    cursored={t.thread_key === cursorKey}
                     onClick={() => selectThread(t.thread_key)}
                     catalog={labelCatalog}
                     onSnooze={snoozeThread}
                     onArchive={archiveThread}
                     onSetThreadLabels={setThreadLabels}
                     onRenameCatalogLabel={renameCatalogLabel}
+                    density={density}
+                    selected={selection.has(t.thread_key)}
+                    selectionActive={selection.size > 0}
+                    onToggleSelect={(e) => toggleSelect(t.thread_key, e)}
                   />
                 ))}
               </div>
@@ -1041,8 +1321,12 @@ export default function ClientsConversations() {
             </div>
           ) : (
             <>
-              {/* Thread header */}
-              <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3.5">
+              {/* Thread header — also the focus target when Enter is pressed in the rail (#121). */}
+              <div
+                ref={paneRef}
+                tabIndex={-1}
+                className="flex items-center gap-3 border-b border-border/60 px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(var(--ring))]"
+              >
                 <ChannelGlyph channel={selected.channel} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-foreground">{selected.name}</p>

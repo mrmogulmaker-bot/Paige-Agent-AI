@@ -200,6 +200,76 @@ export function contactNameFromClient(c: ClientContact | ClientJoin | null): str
   return named || "";
 }
 
+// ── #121 GHL-parity list UX: density · sort · avatars ───────────────────────────────
+//    Token-only, non-gold (§11); no fabricated photos — INITIALS only (§13).
+
+/** Row density. Persisted to localStorage so a coach's choice survives reloads. */
+export type Density = "comfortable" | "compact";
+export const DENSITY_STORAGE_KEY = "conv.density";
+export const readDensity = (): Density => {
+  // localStorage ACCESS can throw (SecurityError) in sandboxed / privacy-blocked contexts, not
+  // just be undefined — and this runs in a useState initializer, so an uncaught throw fails the
+  // whole Conversations render. Catch it and fall back to comfortable (§13/§32 — never crash).
+  try {
+    return localStorage.getItem(DENSITY_STORAGE_KEY) === "compact" ? "compact" : "comfortable";
+  } catch {
+    return "comfortable";
+  }
+};
+
+/** Client-side sort of the ALREADY-loaded, ALREADY-filtered rail (composes AFTER the
+ *  server state filter + client view/label/search filters — pure, no new query §9). */
+export type ThreadSort = "recent" | "unread" | "name";
+export const THREAD_SORTS: ThreadSort[] = ["recent", "unread", "name"];
+export const SORT_LABEL: Record<ThreadSort, string> = {
+  recent: "Most recent",
+  unread: "Unread first",
+  name: "Name (A–Z)",
+};
+const threadTs = (t: DbThread) => (t.last_message_at ? new Date(t.last_message_at).getTime() : 0);
+/** Stable sort (Array.sort is stable in modern engines → equal keys keep incoming order).
+ *  `nameOf` lets the caller pass the SAME display-name fallback ThreadRow renders (contact name,
+ *  else the preview party's name/address) so Name (A–Z) alphabetizes by what the user actually
+ *  sees — not an empty string for threads whose client join is null (§13). Defaults to the
+ *  contact name alone for callers that don't have preview data. */
+export function sortThreads(
+  threads: DbThread[],
+  mode: ThreadSort,
+  nameOf: (t: DbThread) => string = (t) => contactNameFromClient(t.clients),
+): DbThread[] {
+  const arr = [...threads];
+  switch (mode) {
+    case "name":
+      return arr.sort((a, b) =>
+        nameOf(a).localeCompare(nameOf(b), undefined, { sensitivity: "base" })
+        || threadTs(b) - threadTs(a));
+    case "unread":
+      return arr.sort((a, b) =>
+        (b.unread_count > 0 ? 1 : 0) - (a.unread_count > 0 ? 1 : 0) || threadTs(b) - threadTs(a));
+    default: // recent — newest last_message_at first (current default behavior)
+      return arr.sort((a, b) => threadTs(b) - threadTs(a));
+  }
+}
+
+/** Deterministic 1–2 char initials from a display name (never a fabricated photo, §13). */
+export function initialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+/** Deterministic non-gold tint from the name hash — token-only, AA both themes (§11/§23). */
+export const AVATAR_TINTS: string[] = [
+  "border-[hsl(var(--primary)/0.35)] bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))]",
+  "border-[hsl(var(--info)/0.35)] bg-[hsl(var(--info)/0.12)] text-[hsl(var(--info))]",
+  "border-[hsl(var(--primary-light)/0.4)] bg-[hsl(var(--primary-light)/0.14)] text-[hsl(var(--primary-light))]",
+];
+export function avatarTint(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_TINTS[h % AVATAR_TINTS.length];
+}
+
 // ── email template (canned full-email inserts). Ported into the ONE comms home (§18/§31)
 //    from the retired admin ContactCommsPanel. A template is DISTINCT from a snippet (an
 //    inline #trigger fragment with NO subject) and a signature (a sign-off) — it is a full
