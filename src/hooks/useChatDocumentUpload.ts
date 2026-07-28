@@ -51,12 +51,21 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary);
 }
 
+// The paige-ai-chat edge caps document.textContent at 200k chars (a ZodError → hard 400 above
+// that) and only inlines the first 80k into the model turn. Cap here (§18 one home) so a
+// legitimate long DOCX under the 10MB file gate can't hard-fail the send and silently drop the
+// attachment — lossless vs what the model actually reads.
+const MAX_DOCX_TEXT_CHARS = 80_000;
+
 async function extractDocxText(file: File): Promise<string> {
   // Lazy-load mammoth so it doesn't bloat the initial chunk.
   const mammoth = await import("mammoth/mammoth.browser");
   const arrayBuffer = await file.arrayBuffer();
+  // mammoth's browser build ships no types for extractRawText.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await (mammoth as any).extractRawText({ arrayBuffer });
-  return (result?.value || "").trim();
+  const text = (result?.value || "").trim();
+  return text.length > MAX_DOCX_TEXT_CHARS ? text.slice(0, MAX_DOCX_TEXT_CHARS) : text;
 }
 
 export function useChatDocumentUpload() {

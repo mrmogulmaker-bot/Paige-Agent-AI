@@ -3,7 +3,7 @@ import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/da
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2, Mic, MicOff, Clock } from "lucide-react";
+import { Send, Loader2, Mic, MicOff, Clock, Paperclip } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +29,9 @@ import { useScopedUserId } from "@/hooks/useScopedUserId";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { ThreadRail } from "@/components/dashboard/paige/ThreadRail";
 import { PanelLeft } from "lucide-react";
+import { useChatDocumentUpload, type AttachedDocument, type AttachedDocKind } from "@/hooks/useChatDocumentUpload";
+import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
+import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
@@ -39,6 +42,11 @@ type Message = {
   ts: number;
   role: "user" | "assistant";
   content: string;
+  /** In-session only (not persisted): the attachment sent on a user turn, so the
+   *  transcript shows a document bubble. The extracted content reaches the model
+   *  via the POST `document` field, not this label (§13 — honest, no dead chip). */
+  documentFileName?: string;
+  documentKind?: AttachedDocKind;
   queued?: QueuedApproval[];
   confirm?: Array<{ tool: string; summary: string }>;
   /** True on turns rehydrated from history: their confirm cards render settled,
@@ -126,6 +134,23 @@ const PaigeAIChatInner = ({
   const { toast } = useToast();
   const location = useLocation();
   const currentPageName = getCurrentPageName(location.pathname);
+
+  // Document attachment (#480) — PDF/image/DOCX. Shared hook (§18 one home): docx
+  // is extracted to text client-side, pdf/image ride as base64; 10MB cap. In-session
+  // only (no turn-persistence of the attachment), matching PaigeChat/FloatingChatbot.
+  const {
+    attachedDoc,
+    isDragOver,
+    fileInputRef,
+    acceptString,
+    handleFileSelect,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    removeAttachment,
+    openFilePicker,
+    setAttachedDoc,
+  } = useChatDocumentUpload();
 
   // ── Multi-chat history (#94) — owner "Your Paige" only (enableHistory). ──
   const scopedUserId = useScopedUserId();
@@ -367,7 +392,7 @@ const PaigeAIChatInner = ({
   // lazy thread title in history mode. A single assistantId/Ts is threaded through
   // every streamed setMessages so the bubble never remounts mid-stream (copy/retry/
   // feedback stay stable).
-  const streamTurn = async (base: Message[], rollback: Message[], userText: string) => {
+  const streamTurn = async (base: Message[], rollback: Message[], userText: string, doc?: AttachedDocument | null) => {
     const newMessages = base;
     setIsLoading(true);
     setSteps([]); // fresh "watch her work" trace per turn
@@ -415,7 +440,27 @@ const PaigeAIChatInner = ({
             "Content-Type": "application/json",
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: JSON.stringify({ messages: newMessages, ...(threadId ? { threadId } : {}), ...(clientId ? { clientId } : {}), ...(clientContext ? { clientContext } : {}), ...getUserClock() }),
+          body: JSON.stringify({
+            messages: newMessages,
+            ...(threadId ? { threadId } : {}),
+            ...(clientId ? { clientId } : {}),
+            ...(clientContext ? { clientContext } : {}),
+            // Attachment (#480): the edge inlines pdf/image as image_url and docx
+            // textContent as a text block. Pass the REAL mimeType/kind/textContent
+            // — the hook already extracted docx client-side.
+            ...(doc
+              ? {
+                  document: {
+                    base64: doc.base64,
+                    fileName: doc.name,
+                    mimeType: doc.mimeType,
+                    textContent: doc.textContent,
+                    kind: doc.kind,
+                  },
+                }
+              : {}),
+            ...getUserClock(),
+          }),
         }
       );
 
@@ -521,12 +566,24 @@ const PaigeAIChatInner = ({
 
   const handleSend = async (overrideText?: string) => {
     const text = (overrideText ?? input).trim();
-    if (!text || isLoading) return;
+    // Allow a send with text OR an attachment alone (#480). An override (confirm
+    // card Approve/Deny) never carries a doc, so snapshot only on a real compose.
+    const currentDoc = overrideText === undefined ? attachedDoc : null;
+    if ((!text && !currentDoc) || isLoading) return;
     const rollback = messages;
-    const base = [...messages, mkMsg({ role: "user", content: text })];
+    const userContent = text || (currentDoc ? `Analyze this document: ${currentDoc.name}` : "");
+    const base = [
+      ...messages,
+      mkMsg({
+        role: "user",
+        content: userContent,
+        ...(currentDoc ? { documentFileName: currentDoc.name, documentKind: currentDoc.kind } : {}),
+      }),
+    ];
     setMessages(base);
     setInput("");
-    await streamTurn(base, rollback, text);
+    if (currentDoc) setAttachedDoc(null);
+    await streamTurn(base, rollback, userContent, currentDoc);
   };
 
   // Regenerate an assistant turn: re-run the nearest preceding user turn and REPLACE
@@ -596,7 +653,12 @@ const PaigeAIChatInner = ({
             onMobileOpenChange={setMobileRailOpen}
           />
         )}
-        <div className={enableHistory ? "flex flex-col h-full min-w-0 flex-1" : "contents"}>
+        <div
+          className={enableHistory ? "flex flex-col h-full min-w-0 flex-1" : "contents"}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
         {!hideHeader && (
           <div className="mb-6">
             <h2 className="text-3xl font-bold text-foreground">
@@ -620,6 +682,18 @@ const PaigeAIChatInner = ({
         )}
 
         <Card className="relative flex-1 min-h-0 flex flex-col bg-card border-border shadow-card overflow-hidden">
+          {/* Drop target overlay (#480) — tokened, theme-aware, motion-safe. Solid indigo frame
+              (no dashed "upload-widget" tell, §25); gold stays reserved for the send act (§11/§23).
+              Drag handlers live on the wrapper above so a drop on the header can't escape to the
+              browser (they catch child drops via bubbling). */}
+          {isDragOver && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-none animate-in fade-in duration-150 motion-reduce:animate-none">
+              <div className="rounded-xl border-2 border-primary bg-card px-6 py-4 text-center shadow-lg">
+                <p className="text-sm font-medium text-primary">Drop file here</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">PDF, image, or Word document · up to 10MB</p>
+              </div>
+            </div>
+          )}
           {focusBanner}
           <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
             {messages.map((message, index) => (
@@ -679,7 +753,12 @@ const PaigeAIChatInner = ({
                       </>
                     );
                   })() : (
-                    <p className="text-sm">{message.content}</p>
+                    <>
+                      {message.documentFileName && (
+                        <DocumentMessageBubble fileName={message.documentFileName} kind={message.documentKind} />
+                      )}
+                      {message.content && <p className="text-sm">{message.content}</p>}
+                    </>
                   )}
                   {/* Hover-revealed meta: timestamp + copy (both roles), regenerate
                       (assistant only, non-history), and the thumbs feedback slot. */}
@@ -719,6 +798,27 @@ const PaigeAIChatInner = ({
           )}
 
           <div className="border-t border-border p-4">
+            {/* Hidden picker — accepts ALL supported kinds (pdf/image/docx), not
+                pdf-only. Change resets its value in the hook so re-picking the same
+                file re-fires. */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={acceptString}
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            {/* Pending attachment chip — sits above the input, removable (§13). */}
+            {attachedDoc && (
+              <div className="mb-2">
+                <DocumentAttachmentChip
+                  fileName={attachedDoc.name}
+                  kind={attachedDoc.kind}
+                  sizeBytes={attachedDoc.size}
+                  onRemove={removeAttachment}
+                />
+              </div>
+            )}
             {/* Composer + slash palette + inline voice — one relative row so the
                 palette anchors above the input and focus never leaves the Textarea. */}
             <div className="relative flex items-end gap-2">
@@ -756,6 +856,19 @@ const PaigeAIChatInner = ({
                 className="max-h-40 min-h-[2.5rem] flex-1 resize-none"
                 disabled={isLoading || conversation.status === "connected"}
               />
+              {/* Attach a document (#480) — ghost icon, never gold (Send owns the
+                  gold act, §11). Matches the Mic control. Guarded while a reply is
+                  streaming and while a voice session is live. */}
+              <Button
+                onClick={openFilePicker}
+                variant="ghost"
+                size="icon"
+                aria-label="Attach a document"
+                disabled={isLoading || conversation.status === "connected"}
+                title="Attach a PDF, image, or Word document"
+              >
+                <Paperclip className="w-4 h-4" />
+              </Button>
               {/* Inline voice entry/end — ghost, never gold (Send owns the gold act, §11).
                   text-destructive only in the live/end state (a status color, not gold). */}
               <Button
@@ -770,7 +883,7 @@ const PaigeAIChatInner = ({
               </Button>
               <Button
                 onClick={() => handleSend()}
-                disabled={isLoading || !input.trim() || conversation.status === "connected"}
+                disabled={isLoading || (!input.trim() && !attachedDoc) || conversation.status === "connected"}
                 variant="gold"
                 size="icon"
                 aria-label="Send message"
