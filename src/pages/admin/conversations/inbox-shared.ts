@@ -250,10 +250,17 @@ export function useCommsAttachments(getTenantId: () => string | null): CommsAtta
   const [uploading, setUploading] = useState(false);
   const tenantIdFn = useRef(getTenantId);
   tenantIdFn.current = getTenantId;
+  // Generation token: reset() bumps it. An upload that started before a reset (e.g. the
+  // dialog was cancelled + reopened for a DIFFERENT recipient while a slow upload was in
+  // flight) must NOT stage its stale batch onto the fresh composer — that file could then
+  // be sent to the wrong recipient (§9/§13). We drop + best-effort delete the orphaned
+  // objects instead of appending them.
+  const generation = useRef(0);
 
   const uploadFiles = useCallback(async (files: FileList | File[]) => {
     const tenantId = tenantIdFn.current();
     if (!tenantId) { toast.error("Couldn't resolve your workspace — refresh and retry."); return; }
+    const gen = generation.current;
     setUploading(true);
     const next: Attachment[] = [];
     try {
@@ -266,6 +273,12 @@ export function useCommsAttachments(getTenantId: () => string | null): CommsAtta
         if (error) { toast.error(`Couldn't attach ${f.name}.`); continue; }
         next.push({ url: path, mime: f.type || "application/octet-stream", name: f.name, size: f.size });
       }
+      // Superseded by a reset() while we were uploading → don't stage the stale batch;
+      // clean up the now-orphaned objects (best-effort) so they don't linger in the bucket.
+      if (gen !== generation.current) {
+        if (next.length) void supabase.storage.from(COMMS_ATTACH_BUCKET).remove(next.map((n) => n.url));
+        return;
+      }
       if (next.length) setAttachments((a) => [...a, ...next]);
     } finally { setUploading(false); }
   }, []);
@@ -275,7 +288,7 @@ export function useCommsAttachments(getTenantId: () => string | null): CommsAtta
     if (a.url) await supabase.storage.from(COMMS_ATTACH_BUCKET).remove([a.url]);
   }, []);
 
-  const reset = useCallback(() => setAttachments([]), []);
+  const reset = useCallback(() => { generation.current += 1; setAttachments([]); }, []);
 
   return { attachments, uploading, uploadFiles, removeAttachment, reset };
 }
