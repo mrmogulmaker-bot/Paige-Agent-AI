@@ -39,6 +39,7 @@ import {
   INBOX_VIEWS, endOfTodayMs, readSendResult, resolveMergeVars, UNDO_WINDOW_MS,
 } from "./conversations/inbox-shared";
 import { ComposeThreadDialog } from "./conversations/ComposeThreadDialog";
+import { FirstRunOnboarding } from "./conversations/FirstRunOnboarding";
 import { ThreadRow } from "./conversations/ThreadRow";
 import { ThreadFilters, useLabelCatalog } from "./conversations/ThreadFilters";
 import { ContactCardRail } from "./conversations/ContactCardRail";
@@ -373,8 +374,24 @@ export default function ClientsConversations() {
     setThreadsReady(true); // gate the ?contact deep-link on a real first threads pull
   }, [baseFilter]);
 
+  // ── first-run existence probe (UNFILTERED, §9 RLS-scoped) ──────────────────────────
+  // `loadThreads` filters by the current VIEW (active/archived/snoozed), so dbThreads being
+  // empty means "no threads in THIS view", NOT "the account has no threads". First-run must
+  // key off whether the tenant has ANY thread in ANY state — otherwise an account with only
+  // archived/snoozed threads lands on the default active view, sees zero, and gets the
+  // onboarding surface in place of the whole inbox (incl. ThreadFilters), trapping those
+  // existing conversations out of reach. null = not yet known (never flash onboarding early).
+  const [accountHasThreads, setAccountHasThreads] = useState<boolean | null>(null);
+  const checkAccountHasThreads = useCallback(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { count, error } = await (supabase as any).from("threads")
+      .select("thread_key", { count: "exact", head: true });
+    if (!error) setAccountHasThreads((count ?? 0) > 0);
+  }, []);
+
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { void loadThreads(); }, [loadThreads]);
+  useEffect(() => { void checkAccountHasThreads(); }, [checkAccountHasThreads]);
 
   // ── Deep-link: ?contact=<id> — the Client-360 "Message {name}" action lands here (§18: the
   // Conversations hub is the ONE comms home now that the old ContactCommsPanel is retired).
@@ -424,7 +441,7 @@ export default function ClientsConversations() {
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, () => { void load(); void loadThreads(); })
       .subscribe();
     const chT = supabase.channel("comms_threads")
-      .on("postgres_changes", { event: "*", schema: "public", table: "threads" }, () => void loadThreads())
+      .on("postgres_changes", { event: "*", schema: "public", table: "threads" }, () => { void loadThreads(); void checkAccountHasThreads(); })
       .subscribe();
     return () => { void supabase.removeChannel(chM); void supabase.removeChannel(chT); };
   }, [load, loadThreads]);
@@ -915,6 +932,18 @@ export default function ClientsConversations() {
   // dead-end — gate the CTA on a real sendable channel, not merely any channel (§13/§43).
   const canCompose = activeConnectors.some((c) => c.channel_type === "email" || c.channel_type === "sms");
 
+  // The GENUINE first-run zero-state (§36): the account has no threads at all AND nothing is
+  // narrowing the view — no active search, no label filter, the default "active" view. Only then
+  // do we show the one guided FirstRunOnboarding surface. A search-no-match or a filtered/archived/
+  // snoozed empty keeps its own dedicated EmptyState inside the rail/pane (untouched below).
+  const isFirstRun =
+    threadsReady && !loading && !searching &&
+    accountHasThreads === false &&   // UNFILTERED — no threads in ANY state, not just this view
+    matchedKeys === null &&
+    search.trim() === "" &&
+    view === "active" &&
+    labelFilter === null;
+
   return (
     <PageShell width="full" fill>
       <PageHeader
@@ -923,7 +952,9 @@ export default function ClientsConversations() {
         actions={
           // §43 — the surface is a tool: start a NEW outbound thread from here. Gold on the
           // act (§11). Disabled honestly when there's no sendable channel to send on (§13).
-          !canCompose ? (
+          // Suppressed during first-run so the FirstRunOnboarding surface owns the ONE gold
+          // primary act (§11/§36 — never two identical gold acts on one screen).
+          isFirstRun ? undefined : !canCompose ? (
             <span
               className="inline-flex"
               title="Connect an email or SMS channel to start a conversation"
@@ -940,10 +971,21 @@ export default function ClientsConversations() {
         }
       />
 
-      {/* The pane grid flows as the flex-1 last child of the `fill` shell (lg+), so it
+      {/* §36 first-run: before a single thread exists, one cohesive guided surface replaces the
+          two disconnected empty boxes (left-rail "No conversations yet." + middle "Your unified
+          inbox.") — it teaches the model and offers ONE honest next step. Everything else (search-
+          no-match, filtered/archived/snoozed empties) keeps its own dedicated EmptyState below. */}
+      {isFirstRun ? (
+        <FirstRunOnboarding
+          canCompose={canCompose}
+          onCompose={() => setComposeOpen(true)}
+          connectHref="/admin/settings"
+        />
+      ) : (
+      /* The pane grid flows as the flex-1 last child of the `fill` shell (lg+), so it
           consumes exactly the height its scroll parent gives it and its columns' own
           overflow-y-auto engage — instead of a magic calc(100dvh-…) that undershot the
-          chrome and double-scrolled (Finding 2). Below lg it stacks with natural scroll. */}
+          chrome and double-scrolled (Finding 2). Below lg it stacks with natural scroll. */
       <div className={cn(
         "grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1",
         selected && railOpen ? "lg:grid-cols-[320px_1fr_300px]" : "lg:grid-cols-[320px_1fr]",
@@ -1403,6 +1445,7 @@ export default function ClientsConversations() {
           />
         )}
       </div>
+      )}
 
       {/* §43 — compose a NEW outbound thread (reuses the send-message seam + canonical
           thread key so it merges cleanly with any later inbound reply). */}
