@@ -1,17 +1,47 @@
-import { useEffect, useState } from "react";
+// The Conversations contact rail — a GHL-grade, always-present contact-management panel
+// (Slice 1B, §43). It is NOT a second ContactDetail (§18): ContactDetail stays the deep
+// surface; this is the inline quick-action panel. Every write reuses an existing seam:
+//   Tags   → updateContact (src/lib/contacts.ts)
+//   Owner  → assign_contact RPC (the same Paige tool, §10)
+//   DND    → set_contact_channel_suppression RPC (adds the suppression + consent audit row)
+//   Deals  → ContactDealsSection (the Pipeline's own create path)
+//   Invite → create_tenant_invite_token + send-portal-invite (ContactPortalPanel's flow)
+//   Remind → QuickAddDialog (plan_set_reminder / plan_assign_task)
+// Gold is spent ONLY on the outward-commit act (Send portal invite). Toggles/pickers are
+// neutral/indigo (§11). Controls with no real backing (Calls/Inbound DND, true Followers)
+// are honestly disabled or omitted, never faked (§13).
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
+import { Link } from "react-router-dom";
 import { SectionCard, EmptyState, StatePill, GlyphPlate } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { updateContact } from "@/lib/contacts";
 import {
   User, UserPlus, Mail, Phone, Clock, Copy, ShieldAlert, BellOff, PanelRightClose,
+  Send, Loader2, ExternalLink, UserRound, Sparkles, Bell, ClipboardList,
 } from "lucide-react";
 import {
   type ClientContact, type MessageRow, type Label, type ChannelType, type Suppression,
   CHANNEL_ICON, CHANNEL_LABEL, LABEL_COLOR, bodyPreview, contactNameFromClient,
 } from "./inbox-shared";
 import { AgentsLog } from "./AgentsLog";
+import { TagPicker } from "@/components/admin/contacts/TagPicker";
+import { ContactDealsSection } from "@/components/admin/contacts/ContactDealsSection";
+import { QuickAddDialog } from "@/components/planning/QuickAddDialog";
+
+interface Coach { user_id: string; name: string; roles: string[] }
+
+// Roles that can OWN a contact (mirror ClientManagementDashboard's team split).
+const ASSIGNABLE_ROLES = new Set(["admin", "super_admin", "coach", "moderator"]);
 
 function CopyRow({ icon: Icon, value, label }: { icon: typeof Mail; value: string; label: string }) {
   return (
@@ -29,8 +59,44 @@ function CopyRow({ icon: Icon, value, label }: { icon: typeof Mail; value: strin
   );
 }
 
+/** One per-channel DND row. Email/SMS are live; Calls/Inbound are honestly disabled. */
+function DndRow({
+  channel, label, checked, disabled, busy, onToggle, note,
+}: {
+  channel: ChannelType | "calls" | "inbound";
+  label: string;
+  checked: boolean;
+  disabled?: boolean;
+  busy?: boolean;
+  onToggle?: (v: boolean) => void;
+  note?: string;
+}) {
+  const Icon = channel === "calls" ? Phone : channel === "inbound" ? BellOff : CHANNEL_ICON[channel];
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <p className="text-sm text-foreground">{label}</p>
+          {note && <p className="text-[10px] text-muted-foreground">{note}</p>}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {busy && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        <Switch
+          checked={checked}
+          disabled={disabled || busy}
+          onCheckedChange={onToggle}
+          aria-label={`Do not contact on ${label}`}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ContactCardRail({
-  contact, channel, toAddress, recentMessages, labels, suppressions, onClose,
+  contact, channel, toAddress, recentMessages, labels, suppressions,
+  userId, tenantId, onClose, onChanged,
 }: {
   contact: ClientContact | null;
   channel: ChannelType;
@@ -38,17 +104,175 @@ export function ContactCardRail({
   recentMessages: MessageRow[];
   labels: Label[];
   suppressions: Suppression[];
+  userId: string | null;
+  tenantId: string | null;
   onClose: () => void;
+  onChanged: () => void;
 }) {
-  // Local clock ticks each minute for the contact's timezone (§36 domain nicety).
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
   }, []);
 
+  // ── team roster for the Owner picker, loaded once ─────────────────────────────
+  // get_tenant_assignable_members() is a SECURITY DEFINER RPC that server-derives the tenant
+  // (never a param, no IDOR) via tenant_members and is gated to admin/super_admin/coach — the
+  // SAME caller set as the assign_contact write it feeds (§37 read=write parity). The old direct
+  // `user_roles.eq('role','coach')` query was RLS-collapsed (user_roles SELECT is
+  // `is_platform_owner() OR auth.uid()=user_id`), so every non-owner tenant got only the caller's
+  // own row — empty picker AND assigned contacts falsely reading "Unassigned". This picker RPC
+  // returns the real tenant roster for any staff member who can assign (not just admins), so a
+  // coach sees teammates and can self-assign; a set owner resolves to a real name (falling back to
+  // "Current owner" only if truly unresolvable), never a false "Unassigned". `roles` rides along
+  // so we offer only the assignable ones. Distinct from get_tenant_people (the admin-only rich
+  // directory) — this is the least-privilege picker (§9/§18).
+  const [members, setMembers] = useState<Coach[]>([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await (supabase as any).rpc("get_tenant_assignable_members");
+      const rows = (data as { user_id: string; full_name: string | null; roles: string[] | null }[] | null) ?? [];
+      if (alive) {
+        setMembers(rows.map((r) => ({
+          user_id: r.user_id, name: r.full_name || "Teammate", roles: r.roles ?? [],
+        })));
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Only teammates who can own a contact appear as picker options.
+  const assignable = useMemo(
+    () => members.filter((m) => m.roles.some((r) => ASSIGNABLE_ROLES.has(r))),
+    [members],
+  );
+
+  // ── local state seeded from props (optimistic writes reconcile via onChanged) ──
+  const [localTags, setLocalTags] = useState<string[]>([]);
+  const [tagBusy, setTagBusy] = useState(false);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [ownerBusy, setOwnerBusy] = useState(false);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [dndBusy, setDndBusy] = useState<"email" | "sms" | null>(null);
+  const [emailDnd, setEmailDnd] = useState(false);
+  const [smsDnd, setSmsDnd] = useState(false);
+
+  useEffect(() => {
+    setLocalTags(contact?.tags ?? []);
+    setOwnerId(contact?.assigned_coach_user_id ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contact?.id]);
+
+  useEffect(() => {
+    setEmailDnd(suppressions.some((s) => s.channel === "email"));
+    setSmsDnd(suppressions.some((s) => s.channel === "sms"));
+  }, [suppressions]);
+
   const optedOut = suppressions.length > 0;
   const dnd = !!contact?.dnd_active;
+
+  // ── writes (all §9 RLS/RPC-guarded) ──────────────────────────────────────────
+  const saveTags = useCallback(async (next: string[]) => {
+    if (!contact) return;
+    const prev = localTags;
+    setLocalTags(next);
+    setTagBusy(true);
+    try {
+      await updateContact(contact.id, { tags: next });
+      onChanged();
+    } catch {
+      setLocalTags(prev);
+      toast.error("Couldn't save tags.");
+    } finally {
+      setTagBusy(false);
+    }
+  }, [contact, localTags, onChanged]);
+
+  const assignOwner = useCallback(async (uid: string | null) => {
+    if (!contact) return;
+    const prev = ownerId;
+    setOwnerId(uid);
+    setOwnerBusy(true);
+    try {
+      if (uid === null) {
+        await updateContact(contact.id, { assigned_coach_user_id: null });
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (supabase as any).rpc("assign_contact", {
+          p_contact_id: contact.id, p_user_id: uid, p_role: "coach",
+        });
+        if (error || (data && data.ok === false)) throw new Error(error?.message ?? "assign_failed");
+      }
+      toast.success("Owner updated.");
+      onChanged();
+    } catch (e) {
+      setOwnerId(prev);
+      toast.error(e instanceof Error ? e.message : "Couldn't update the owner.");
+    } finally {
+      setOwnerBusy(false);
+    }
+  }, [contact, ownerId, onChanged]);
+
+  const toggleDnd = useCallback(async (ch: "email" | "sms", value: boolean) => {
+    if (!contact) return;
+    const set = ch === "email" ? setEmailDnd : setSmsDnd;
+    set(value);
+    setDndBusy(ch);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).rpc("set_contact_channel_suppression", {
+        _contact_id: contact.id, _channel: ch, _suppressed: value, _reason: "manual",
+      });
+      if (error) throw new Error(error.message);
+      toast.success(value ? `${CHANNEL_LABEL[ch]} paused for this contact.` : `${CHANNEL_LABEL[ch]} re-enabled.`);
+      onChanged();
+    } catch (e) {
+      set(!value); // revert
+      toast.error(e instanceof Error ? e.message : "Couldn't update do-not-contact.");
+    } finally {
+      setDndBusy(null);
+    }
+  }, [contact, onChanged]);
+
+  const sendPortalInvite = useCallback(async () => {
+    if (!contact) return;
+    if (!contact.email) { toast.error("Add an email to this contact first."); return; }
+    if (!tenantId) { toast.error("No active workspace to invite into."); return; }
+    setInviteBusy(true);
+    try {
+      const { data: tokRes, error: mintErr } = await supabase.rpc("create_tenant_invite_token", {
+        _tenant_id: tenantId,
+        _kind: "consumer",
+        _default_role: "member",
+        _expires_in_days: 30,
+        _max_uses: null,
+        _contact_id: contact.id,
+        _email: contact.email,
+      });
+      if (mintErr) throw mintErr;
+      const row = Array.isArray(tokRes) ? tokRes[0] : tokRes;
+      const token = (row as { token?: string } | null)?.token;
+      if (!token) throw new Error("Couldn't create the invite.");
+      const { data: sent } = await supabase.functions.invoke("send-portal-invite", {
+        body: { token, email: contact.email },
+      });
+      const emailed = (sent as { emailed?: boolean } | null)?.emailed;
+      toast.success(emailed ? `Portal invite emailed to ${contact.email}.` : "Invite created — link ready to share.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't send the portal invite.");
+    } finally {
+      setInviteBusy(false);
+    }
+  }, [contact, tenantId]);
+
+  // Resolve from the FULL roster (not just assignable) so a set owner always shows a real
+  // name for an admin; a non-admin (empty roster) falls back to "Current owner" — honest,
+  // and still never the false "Unassigned" (§13).
+  const ownerName = ownerId
+    ? (members.find((m) => m.user_id === ownerId)?.name ?? "Current owner")
+    : null;
 
   return (
     <SectionCard padded={false} className="flex min-h-0 flex-col overflow-hidden">
@@ -88,8 +312,6 @@ export function ContactCardRail({
                   {[contact.title, contact.entity_name].filter(Boolean).join(" · ")}
                 </p>
               )}
-              {/* ONE status pill; lifecycle stays quiet text so the eye reads status vs stage
-                  without pill-soup (§11/§25). "·" separators keep the meta line scannable. */}
               <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11px] text-muted-foreground">
                 <StatePill state={contact.status === "active" ? "success" : "pending"}>
                   {contact.status === "active" ? "Active" : (contact.status || "Lead")}
@@ -104,7 +326,7 @@ export function ContactCardRail({
             </div>
           </div>
 
-          {/* Opt-out / DND — proactive compliance signal (§13 real states, read-only) */}
+          {/* Opt-out / DND passive signal (the active control lives in the DND tab) */}
           {(optedOut || dnd) && (
             <div className="space-y-1.5 rounded-lg border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] p-2.5">
               {optedOut && (
@@ -131,6 +353,47 @@ export function ContactCardRail({
               )}
             </div>
           )}
+
+          {/* Owner + Team (real: assigned_coach_user_id via assign_contact). */}
+          <div className="space-y-1.5">
+            <p className="px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Owner</p>
+            <Select
+              value={ownerId ?? "unassigned"}
+              onValueChange={(v) => void assignOwner(v === "unassigned" ? null : v)}
+              disabled={ownerBusy}
+            >
+              <SelectTrigger className="h-9">
+                <span className="flex items-center gap-2">
+                  <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
+                  <SelectValue placeholder="Unassigned" />
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+                {assignable.map((c) => (
+                  <SelectItem key={c.user_id} value={c.user_id}>{c.name}</SelectItem>
+                ))}
+                {/* A set owner not in the assignable list (non-admin viewer with an empty
+                    roster, or an owner whose role isn't assignable) still shows its real/known
+                    name so the trigger never falsely reads "Unassigned" (§13). */}
+                {ownerId && !assignable.some((c) => c.user_id === ownerId) && (
+                  <SelectItem value={ownerId}>{ownerName ?? "Current owner"}</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {ownerName && (
+              <p className="px-1 text-[10px] text-muted-foreground">Managed by {ownerName}</p>
+            )}
+          </div>
+
+          {/* Tags — inline add/remove (real: clients.tags via updateContact) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 px-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Tags</p>
+              {tagBusy && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            </div>
+            <TagPicker value={localTags} onChange={(next) => void saveTags(next)} />
+          </div>
 
           {/* Handles */}
           <div className="space-y-0.5">
@@ -169,32 +432,105 @@ export function ContactCardRail({
             </div>
           )}
 
-          {/* Key facts — relationship snapshot; each row only when present (§15 no placeholders). */}
-          {(contact.last_contacted_at || contact.source || (contact.tags && contact.tags.length > 0)) && (
-            <div className="space-y-1.5">
-              <p className="px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Key facts</p>
-              {(contact.last_contacted_at || contact.source) && (
-                <div className="space-y-1 px-2 text-xs text-muted-foreground">
-                  {contact.last_contacted_at && (
-                    <p>Last contacted {formatDistanceToNow(new Date(contact.last_contacted_at), { addSuffix: true })}</p>
-                  )}
-                  {contact.source && <p>Source · <span className="text-foreground/80">{contact.source}</span></p>}
-                </div>
-              )}
-              {contact.tags && contact.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 px-2">
-                  {/* tags reuse the label chip family (slate) — one badge system in the rail (§25). */}
-                  {contact.tags.slice(0, 6).map((t) => (
-                    <span key={t} className={cn("rounded-full border px-2 py-0.5 text-[10px] font-medium", LABEL_COLOR.slate)}>
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          {/* ── Section tabs: All fields / DND / Actions ─────────────────────── */}
+          <Tabs defaultValue="actions" className="pt-1">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="fields">Details</TabsTrigger>
+              <TabsTrigger value="dnd">DND</TabsTrigger>
+              <TabsTrigger value="actions">Actions</TabsTrigger>
+            </TabsList>
 
-          {/* What Paige did — REAL per-contact action-bus log (§13 honest, RLS tenant-scoped §9). */}
+            {/* Details — the high-value fields + a deep link to the full profile (§18). */}
+            <TabsContent value="fields" className="mt-3 space-y-2">
+              <FieldRow label="Email" value={contact.email} />
+              <FieldRow label="Phone" value={contact.phone} />
+              <FieldRow label="Business" value={contact.entity_name} />
+              <FieldRow label="Title" value={contact.title} />
+              <FieldRow label="Source" value={contact.source} />
+              <FieldRow
+                label="Stage"
+                value={contact.lifecycle_stage ? contact.lifecycle_stage.replace(/[-_]/g, " ") : null}
+                capitalize
+              />
+              {contact.last_contacted_at && (
+                <FieldRow
+                  label="Last contacted"
+                  value={formatDistanceToNow(new Date(contact.last_contacted_at), { addSuffix: true })}
+                />
+              )}
+              <Button variant="outline" size="sm" className="mt-1 w-full" asChild>
+                <Link to={`/admin/contacts/${contact.id}`}>
+                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Open full profile
+                </Link>
+              </Button>
+            </TabsContent>
+
+            {/* DND — per-channel opt-out. Email/SMS live; Calls/Inbound honestly disabled. */}
+            <TabsContent value="dnd" className="mt-3 space-y-2">
+              <DndRow
+                channel="email" label="Email" checked={emailDnd}
+                busy={dndBusy === "email"} onToggle={(v) => void toggleDnd("email", v)}
+              />
+              <DndRow
+                channel="sms" label="SMS" checked={smsDnd}
+                busy={dndBusy === "sms"} onToggle={(v) => void toggleDnd("sms", v)}
+              />
+              <DndRow channel="calls" label="Calls" checked={false} disabled note="Coming soon" />
+              <DndRow channel="inbound" label="Inbound" checked={false} disabled note="Coming soon" />
+              <p className="px-1 pt-1 text-[10px] text-muted-foreground">
+                Turning a channel on stops Paige from sending the client anything there.
+              </p>
+            </TabsContent>
+
+            {/* Actions — every one wired to a real seam (§13, no dead buttons). */}
+            <TabsContent value="actions" className="mt-3 space-y-3">
+              {/* Send portal invite — the one gold act (outward commit). */}
+              <Button
+                variant="gold" size="sm" className="w-full"
+                onClick={() => void sendPortalInvite()}
+                disabled={inviteBusy || !contact.email}
+                title={!contact.email ? "Add an email to invite this contact" : undefined}
+              >
+                {inviteBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
+                Send portal invite
+              </Button>
+
+              {/* Reminder + task — real plan_* RPCs via QuickAddDialog. */}
+              {userId && (
+                <div className="grid grid-cols-2 gap-2">
+                  <QuickAddDialog
+                    userId={userId} contactId={contact.id} contactName={contactNameFromClient(contact) || "this contact"}
+                    defaultKind="reminder" onCreated={() => toast.success("Reminder set.")}
+                    trigger={
+                      <Button variant="outline" size="sm" className="w-full">
+                        <Bell className="mr-1.5 h-3.5 w-3.5" /> Reminder
+                      </Button>
+                    }
+                  />
+                  <QuickAddDialog
+                    userId={userId} contactId={contact.id} contactName={contactNameFromClient(contact) || "this contact"}
+                    defaultKind="task" onCreated={() => toast.success("Task assigned.")}
+                    trigger={
+                      <Button variant="outline" size="sm" className="w-full">
+                        <ClipboardList className="mr-1.5 h-3.5 w-3.5" /> Task
+                      </Button>
+                    }
+                  />
+                </div>
+              )}
+
+              {/* Opportunities / deals — the Pipeline's own create path. */}
+              <div className="space-y-1.5 rounded-lg border border-border bg-card/60 p-3">
+                <div className="flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-muted-foreground" />
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Opportunities</p>
+                </div>
+                <ContactDealsSection contactId={contact.id} />
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          {/* What Paige did — REAL per-contact action-bus log (§13, RLS tenant-scoped §9). */}
           <div className="space-y-1">
             <p className="px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">What Paige did</p>
             <div className="px-2">
@@ -228,5 +564,16 @@ export function ContactCardRail({
         </div>
       )}
     </SectionCard>
+  );
+}
+
+/** A read row in the Details tab. Only renders when the value is present (§15 no placeholders). */
+function FieldRow({ label, value, capitalize }: { label: string; value: string | null | undefined; capitalize?: boolean }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start justify-between gap-3 px-1 text-xs">
+      <span className="shrink-0 text-muted-foreground">{label}</span>
+      <span className={cn("min-w-0 truncate text-right text-foreground/90", capitalize && "capitalize")}>{value}</span>
+    </div>
   );
 }

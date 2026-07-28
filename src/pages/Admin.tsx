@@ -24,6 +24,7 @@ const lazy = <T extends React.ComponentType<any>>(factory: () => Promise<{ defau
   });
 import { useNavigate, Routes, Route, useParams, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { PageSkeleton } from "@/components/ui/page";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { PracticeOverview } from "@/pages/admin/PracticeOverview";
 import { AdminNotFound } from "@/pages/admin/AdminNotFound";
@@ -205,11 +206,7 @@ const FundingLensHub = lazy(() => import("@/pages/admin/FundingLensHub"));
 
 
 
-const SuspenseFallback = () => (
-  <div className="flex items-center justify-center py-12">
-    <div className="animate-pulse text-muted-foreground">Loading...</div>
-  </div>
-);
+const SuspenseFallback = () => <PageSkeleton />;
 
 function ClientFileWrapper({ userRole }: { userRole: "admin" | "coach" }) {
   const { userId } = useParams();
@@ -310,9 +307,9 @@ const Admin = () => {
   if (loading) {
     return (
       <AdminLoaderBoundary loading>
-        <div className="flex items-center justify-center min-h-screen bg-background">
-          <div className="animate-pulse text-muted-foreground">Loading admin workspace...</div>
-        </div>
+        {/* Page-shaped skeleton, not a full-screen bare-text splash (§11). The
+            AdminLoaderBoundary still owns the 8s stall CTA + error boundary. */}
+        <PageSkeleton />
       </AdminLoaderBoundary>
     );
   }

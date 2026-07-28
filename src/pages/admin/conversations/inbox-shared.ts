@@ -71,6 +71,10 @@ export interface ClientContact {
   source: string | null;
   tags: string[] | null;
   last_contacted_at: string | null;
+  // Ownership — assigned_coach is the contact's primary "Owner" (the Conversations rail's
+  // Owner picker, written via assign_contact). The clients row also carries Sales (lead_owner)
+  // + Client-Success (cs_primary) owners, but the rail renders Owner ONLY today, so they are
+  // not fetched here — no dead columns (§13). Re-add them WITH the team-on-contact display.
   assigned_coach_user_id: string | null;
   // C-2 suppression / DND surfaced on the contact card (§ read-only signal)
   dnd_active: boolean | null;
@@ -113,8 +117,8 @@ export const THREAD_COLS =
   "id, thread_key, contact_id, snoozed_until, archived_at, labels, unread_count, " +
   "last_message_at, last_direction, " +
   "clients:contact_id(id, first_name, last_name, entity_name, entity_type, title, email, phone, status, " +
-  "lifecycle_stage, source, tags, last_contacted_at, assigned_coach_user_id, timezone, " +
-  "created_at, dnd_active, dnd_reason, dnd_until)";
+  "lifecycle_stage, source, tags, last_contacted_at, assigned_coach_user_id, " +
+  "timezone, created_at, dnd_active, dnd_reason, dnd_until)";
 
 // ── selected-view shape (R1): the DbThread + its loaded messages + all the fields the
 //    composer / approve / signature seams read. Typed once here, consumed in the page. ─
@@ -194,6 +198,68 @@ export function contactNameFromClient(c: ClientContact | ClientJoin | null): str
 //    which IS "until they reply" — no fabricated flag column (§13/§31). ───────────────
 export const SNOOZE_SENTINEL_UNTIL_REPLY = "9999-12-31T00:00:00.000Z";
 export const isUntilReply = (iso: string | null) => iso === SNOOZE_SENTINEL_UNTIL_REPLY;
+
+// ── outbound send seam helpers (§18 one home — reused by the reply composer AND
+//    the compose-new modal so both read the send-message result identically) ──────────
+/** Default undo-send grace window: a fresh send queues this far out so the toast's
+ *  Undo can cancel it before delivery (owner-set 30s). */
+export const UNDO_WINDOW_MS = 30_000;
+
+export interface SendResult {
+  outcome: string;          // sent | queued | queued_scheduled | blocked_* | failed
+  reason: string | null;
+  messageId: string | null;
+  scheduledFor: string | null;
+  deduped: boolean;
+}
+
+/**
+ * The ONE §37-aware parser of the send-message response. The TRUE disposition is
+ * `outcome` (never `status`): pre-send blocks/queues and scheduled sends early-return
+ * 200 with status:"sent" but outcome:"blocked_*"/"queued_*", so reading `status` alone
+ * mis-reports a block/queue as success. When `outcome` is absent (older shape) we derive
+ * it from status + the presence of scheduled_for. Lifted verbatim from dispatchSend so the
+ * reply path and the compose-new path can never drift.
+ */
+export function readSendResult(data: unknown): SendResult {
+  const res = (data ?? {}) as {
+    status?: string; outcome?: string; reason?: string;
+    message_id?: string; scheduled_for?: string; deduped?: boolean;
+  };
+  const outcome = res.outcome ?? (
+    res.status === "sent"    ? "sent" :
+    res.status === "queued"  ? (res.scheduled_for ? "queued_scheduled" : "queued") :
+    res.status === "blocked" ? "blocked_unknown" :
+    "failed"
+  );
+  return {
+    outcome,
+    reason: res.reason ?? null,
+    messageId: res.message_id ?? null,
+    scheduledFor: res.scheduled_for ?? null,
+    deduped: res.deduped ?? false,
+  };
+}
+
+/**
+ * The canonical thread aggregation key — the ONE home for the convention so a
+ * compose-new outbound and a later inbound reply land in the SAME thread (no
+ * fragmentation). This MUST byte-match what the inbound handlers derive:
+ *   handle-inbound-email/index.ts L325 → `email:${tenantId}:${fromEmail}`, and its
+ *   adapter normalizes the sender address via normEmail = trim().toLowerCase()
+ *   (L53/L61/L66) — so email counterparty = address.trim().toLowerCase().
+ * SMS inbound does not yet write unified threads, so the sms key is forward-consistency:
+ * a light E.164-ish normalize (strip everything but digits and a leading +) that a future
+ * inbound-sms thread writer can match. Keep both identical to their inbound twin.
+ * (send-message's own fallback `${channel}:${to}` is NON-canonical and would fragment —
+ * that is exactly why compose-new passes this explicit key.)
+ */
+export function canonicalThreadKey(channel: ChannelType, tenantId: string, counterparty: string): string {
+  const cp = channel === "email"
+    ? counterparty.trim().toLowerCase()
+    : counterparty.replace(/[^\d+]/g, "");
+  return `${channel}:${tenantId}:${cp}`;
+}
 
 export function snoozePresets(now = new Date()): { key: string; label: string; until: Date }[] {
   const laterToday = new Date(now.getTime() + 3 * 3600_000);

@@ -14,7 +14,8 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { NewDealDialog } from "@/components/admin/pipeline/NewDealDialog";
 import { DealDrawer } from "@/components/admin/pipeline/DealDrawer";
 import { PipelineFromProgramDialog } from "@/components/admin/pipeline/PipelineFromProgramDialog";
-import { PageShell, PageHeader, StatRow, StatTile, Toolbar, EmptyState } from "@/components/ui/page";
+import { PageShell, PageHeader, StatRow, StatTile, SectionCard, Toolbar, EmptyState } from "@/components/ui/page";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function PipelineAdmin() {
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -44,10 +45,11 @@ export default function PipelineAdmin() {
     if (data && data.length) setActivePipelineId(data[0].id);
     // load coaches once
     const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
-    const ids = (roles || []).map((r: any) => r.user_id);
+    const ids = ((roles || []) as { user_id: string }[]).map((r) => r.user_id);
     if (ids.length) {
       const { data: profs } = await supabase.from("profiles").select("user_id, full_name").in("user_id", ids);
-      setCoaches((profs || []).map((p: any) => ({ user_id: p.user_id, name: p.full_name || "Coach" })));
+      setCoaches(((profs || []) as { user_id: string; full_name: string | null }[])
+        .map((p) => ({ user_id: p.user_id, name: p.full_name || "Coach" })));
     }
     setLoading(false);
   };
@@ -65,7 +67,8 @@ export default function PipelineAdmin() {
     if (contactIds.length) {
       const { data: cs } = await supabase.from("clients").select("id, first_name, last_name, entity_name").in("id", contactIds);
       const map: Record<string, { name: string; entity: string | null }> = {};
-      (cs || []).forEach((c: any) => {
+      type ContactRow = { id: string; first_name: string | null; last_name: string | null; entity_name: string | null };
+      ((cs || []) as ContactRow[]).forEach((c) => {
         map[c.id] = { name: `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() || "Unnamed", entity: c.entity_name };
       });
       setContactMap(map);
@@ -119,7 +122,18 @@ export default function PipelineAdmin() {
   if (loading) return (
     <PageShell width="wide">
       <PageHeader title="Pipeline" description="Drag deals across stages. Click a card for full context." icon={TrendingUp} />
-      <div className="p-8 text-center text-muted-foreground">Loading pipeline…</div>
+      {/* Board-shaped skeleton — first paint reads as the Kanban, not a bare-text stall (§11). */}
+      <StatRow cols={4}>
+        {[0, 1, 2, 3].map((i) => <StatTile key={i} loading label="" value="" />)}
+      </StatRow>
+      <div className="flex gap-4 overflow-x-auto pb-2">
+        {[0, 1, 2, 3].map((col) => (
+          <SectionCard key={col} className="w-72 shrink-0 space-y-3">
+            <Skeleton className="h-4 w-28" />
+            {[0, 1, 2].map((c) => <Skeleton key={c} className="h-20 w-full rounded-md" />)}
+          </SectionCard>
+        ))}
+      </div>
     </PageShell>
   );
 

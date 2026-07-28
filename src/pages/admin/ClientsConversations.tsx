@@ -12,10 +12,10 @@
 // gold ONLY on Send/Approve; realtime on messages + threads; motion-safe; token-only.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Link } from "react-router-dom";
 import {
   MessageCircle, Inbox, Send, Pencil, Loader2, Sparkles, AlertTriangle, Paperclip,
-  Search, SearchX, PanelRight, Clock, X, ImageIcon, ChevronDown, Bell,
+  Search, SearchX, PanelRight, Clock, X, ImageIcon, ChevronDown, Bell, Plus,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -36,8 +36,9 @@ import {
   type ThreadFilter, type Suppression, type SelectedView, type InboxView,
   MESSAGE_COLS, THREAD_COLS, CHANNEL_ICON, CHANNEL_LABEL,
   partyLabel, bodyPreview, msgTime, contactNameFromClient,
-  INBOX_VIEWS, endOfTodayMs,
+  INBOX_VIEWS, endOfTodayMs, readSendResult, UNDO_WINDOW_MS,
 } from "./conversations/inbox-shared";
+import { ComposeThreadDialog } from "./conversations/ComposeThreadDialog";
 import { ThreadRow } from "./conversations/ThreadRow";
 import { ThreadFilters, useLabelCatalog } from "./conversations/ThreadFilters";
 import { ContactCardRail } from "./conversations/ContactCardRail";
@@ -59,7 +60,7 @@ interface Connector {
 }
 
 // ── Composer depth (Comms C-1.5) ────────────────────────────────────────────────
-const UNDO_WINDOW_MS = 30_000;                 // owner-set 30s undo-send grace window
+// UNDO_WINDOW_MS now lives in inbox-shared (§18 — reused by the compose-new modal too).
 const COMMS_ATTACH_BUCKET = "comms-attachments";
 const MAX_ATTACH_BYTES = 10 * 1024 * 1024;     // 10MB/file — matches the bucket ceiling
 
@@ -262,6 +263,9 @@ export default function ClientsConversations() {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // A freshly composed thread may not have streamed into dbThreads yet — hold its key so the
+  // keep-valid-selection guard doesn't clobber the pick to visibleThreads[0] in the gap.
+  const pendingSelectRef = useRef<string | null>(null);
 
   // C-1.5 threads-as-source-of-truth
   const [dbThreads, setDbThreads] = useState<DbThread[]>([]);
@@ -272,6 +276,8 @@ export default function ClientsConversations() {
   const [searching, setSearching] = useState(false);
   const [railOpen, setRailOpen] = useState(true);
   const [suppressions, setSuppressions] = useState<Suppression[]>([]);
+  // §43 — compose a NEW outbound thread (the surface is a tool, not just a viewer).
+  const [composeOpen, setComposeOpen] = useState(false);
 
   // Composer state (reply into the selected thread)
   const [composeChannel, setComposeChannel] = useState<ChannelType | "">("");
@@ -451,9 +457,19 @@ export default function ClientsConversations() {
 
   // keep a valid selection as threads stream in
   useEffect(() => {
+    // Hold a just-composed selection until its thread arrives in dbThreads — don't clobber it
+    // to visibleThreads[0] in the gap (compose selection race). Honor it the moment it lands.
+    if (pendingSelectRef.current) {
+      if (dbThreads.some((t) => t.thread_key === pendingSelectRef.current)) {
+        const key = pendingSelectRef.current;
+        pendingSelectRef.current = null;
+        setSelectedKey(key);
+      }
+      return;
+    }
     if (visibleThreads.length === 0) { if (selectedKey !== null) setSelectedKey(null); return; }
     if (!selectedKey || !visibleThreads.some((t) => t.thread_key === selectedKey)) setSelectedKey(visibleThreads[0].thread_key);
-  }, [visibleThreads, selectedKey]);
+  }, [visibleThreads, selectedKey, dbThreads]);
 
   const selectedThread = useMemo(() => dbThreads.find((t) => t.thread_key === selectedKey) ?? null, [dbThreads, selectedKey]);
 
@@ -479,18 +495,26 @@ export default function ClientsConversations() {
   }, [selectedThread, messagesByKey]);
 
   // ── suppression read for the contact card (tenant RLS-scoped, §9) ───────────────────
-  useEffect(() => {
-    const cid = selectedThread?.contact_id;
-    if (!cid) { setSuppressions([]); return; }
-    let cancelled = false;
-    (async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sb = supabase as any;
-      const { data } = await sb.from("paige_suppressions").select("channel, reason").eq("contact_id", cid);
-      if (!cancelled) setSuppressions((data as Suppression[]) ?? []);
-    })();
-    return () => { cancelled = true; };
-  }, [selectedThread?.contact_id]);
+  // ONE loader, guarded by a monotonic request id so the LATEST request always wins — whether
+  // triggered by a selection change (the effect) or a rail DND toggle (refreshSuppressions).
+  // A rail toggle changes suppressions WITHOUT changing contact_id, so the selection effect alone
+  // wouldn't refresh; and without the shared guard a slow toggle-read for contact A could clobber
+  // a newer read for contact B, staling the pre-send opt-out guard. The shared counter closes both
+  // races cleanly (§13). Server-side pre-send remains authoritative regardless.
+  const suppReqRef = useRef(0);
+  const loadSuppressionsFor = useCallback(async (cid: string | null) => {
+    const req = ++suppReqRef.current;
+    if (!cid) { if (req === suppReqRef.current) setSuppressions([]); return; }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    const { data } = await sb.from("paige_suppressions").select("channel, reason").eq("contact_id", cid);
+    if (req === suppReqRef.current) setSuppressions((data as Suppression[]) ?? []);
+  }, []);
+  useEffect(() => { void loadSuppressionsFor(selectedThread?.contact_id ?? null); }, [selectedThread?.contact_id, loadSuppressionsFor]);
+  const refreshSuppressions = useCallback(
+    () => loadSuppressionsFor(selectedThread?.contact_id ?? null),
+    [loadSuppressionsFor, selectedThread?.contact_id],
+  );
 
   // Default the composer channel to the thread's channel when a connector supports it.
   useEffect(() => {
@@ -689,17 +713,10 @@ export default function ClientsConversations() {
   const dispatchSend = useCallback(async (overrides: { scheduled_for?: string } = {}) => {
     const { data, error } = await supabase.functions.invoke("send-message", { body: buildSendBody(overrides) });
     if (error) throw new Error(error.message);
-    const res = data as {
-      status?: string; outcome?: string; reason?: string; message_id?: string; scheduled_for?: string;
-    };
-    // R7-outcome: trust `outcome` when present; never collapse queued/blocked to "failed".
-    const outcome = res.outcome ?? (
-      res.status === "sent"    ? "sent" :
-      res.status === "queued"  ? (overrides.scheduled_for ? "queued_scheduled" : "queued") :
-      res.status === "blocked" ? "blocked_unknown" :
-      "failed"
-    );
-    return { outcome, reason: res.reason, messageId: res.message_id, scheduledFor: res.scheduled_for };
+    // R7-outcome via the ONE shared parser (inbox-shared) — the compose-new modal reads the
+    // send result through the exact same helper, so reply and compose can never drift (§18/§37).
+    const r = readSendResult(data);
+    return { outcome: r.outcome, reason: r.reason, messageId: r.messageId, scheduledFor: r.scheduledFor };
   }, [buildSendBody]);
 
   const cancelUndo = useCallback(async (messageId: string) => {
@@ -829,6 +846,10 @@ export default function ClientsConversations() {
   };
 
   const noChannel = activeConnectors.length === 0;
+  // send-message only handles email|sms today, so "New conversation" needs a SENDABLE channel.
+  // A whatsapp-only tenant HAS a connector (noChannel=false) but the compose modal would be a
+  // dead-end — gate the CTA on a real sendable channel, not merely any channel (§13/§43).
+  const canCompose = activeConnectors.some((c) => c.channel_type === "email" || c.channel_type === "sms");
 
   return (
     <PageShell width="full" fill>
@@ -836,6 +857,24 @@ export default function ClientsConversations() {
         variant="plain"
         title="Conversations"
         description="Every client thread across email, SMS, WhatsApp, and DMs — with Paige drafting the reply for your one-click approval."
+        actions={
+          // §43 — the surface is a tool: start a NEW outbound thread from here. Gold on the
+          // act (§11). Disabled honestly when there's no sendable channel to send on (§13).
+          !canCompose ? (
+            <span
+              className="inline-flex"
+              title="Connect an email or SMS channel to start a conversation"
+            >
+              <Button variant="gold" size="sm" disabled>
+                <Plus className="mr-1.5 h-4 w-4" /> New conversation
+              </Button>
+            </span>
+          ) : (
+            <Button variant="gold" size="sm" onClick={() => setComposeOpen(true)}>
+              <Plus className="mr-1.5 h-4 w-4" /> New conversation
+            </Button>
+          )
+        }
       />
 
       {/* The pane grid flows as the flex-1 last child of the `fill` shell (lg+), so it
@@ -890,8 +929,25 @@ export default function ClientsConversations() {
                 title={view === "archived" ? "Nothing archived." : view === "snoozed" ? "Nothing snoozed." : "No conversations yet."}
                 description={
                   view === "active"
-                    ? "Connect a channel and the moment a client emails or messages, their thread lands here — with Paige's draft reply ready for your approval."
+                    ? !canCompose
+                      ? "Connect an email or SMS channel and the moment a client reaches out, their thread lands here — with Paige's draft reply ready for your approval."
+                      : "Start a new conversation, or the moment a client reaches out their thread lands here — with Paige's draft reply ready for your approval."
                     : "When you snooze or archive a conversation, it shows up here."
+                }
+                action={
+                  view === "active"
+                    ? canCompose
+                      ? (
+                        <Button variant="gold" size="sm" onClick={() => setComposeOpen(true)}>
+                          <Plus className="mr-1.5 h-4 w-4" /> New conversation
+                        </Button>
+                      )
+                      : (
+                        <Button variant="outline" size="sm" asChild>
+                          <Link to="/admin/settings">Connect a channel</Link>
+                        </Button>
+                      )
+                    : undefined
                 }
                 className="py-10"
               />
@@ -1261,10 +1317,37 @@ export default function ClientsConversations() {
             recentMessages={selected.messages}
             labels={selectedThread?.labels ?? []}
             suppressions={suppressions}
+            userId={userId}
+            tenantId={tenantIdRef.current}
             onClose={() => setRailOpen(false)}
+            onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
           />
         )}
       </div>
+
+      {/* §43 — compose a NEW outbound thread (reuses the send-message seam + canonical
+          thread key so it merges cleanly with any later inbound reply). */}
+      <ComposeThreadDialog
+        open={composeOpen}
+        onOpenChange={setComposeOpen}
+        activeConnectors={activeConnectors}
+        tenantId={tenantIdRef.current}
+        onSent={(key) => {
+          // §36 proactive surfacing: drop any filter that would hide the just-created thread,
+          // then reload. pendingSelectRef holds the pick until the new row streams in, so the
+          // keep-valid-selection guard can't clobber it to visibleThreads[0] first (race fix).
+          pendingSelectRef.current = key;
+          setView("active"); setLabelFilter(null); setSearch("");
+          void load(); void loadThreads();
+          // Safety valve (§13): if the composed thread never streams in (e.g. a swallowed insert
+          // on the send path returning success with no message row), don't freeze auto-selection
+          // forever — after a bounded wait, release the hold and re-pull so the keep-valid guard
+          // resumes its normal path. Guarded on the same key so a resolved/superseded pick is untouched.
+          window.setTimeout(() => {
+            if (pendingSelectRef.current === key) { pendingSelectRef.current = null; void loadThreads(); }
+          }, 12_000);
+        }}
+      />
     </PageShell>
   );
 }

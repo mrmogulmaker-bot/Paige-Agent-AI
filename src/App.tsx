@@ -145,9 +145,13 @@ const queryClient = new QueryClient({
   },
 });
 
+// Neutral, surface-agnostic route-chunk fallback: this wraps EVERY route — public/marketing
+// (/, /signup, /portal/:slug…), auth, AND admin — so it must NOT paint admin chrome (a
+// PageSkeleton would flash the admin shell on the landing page). Admin surfaces render their
+// own PageSkeleton from Admin.tsx once their chunk loads; here we only bridge the chunk fetch.
 const SuspenseFallback = () => (
-  <div className="flex items-center justify-center py-12">
-    <div className="animate-pulse text-muted-foreground">Loading...</div>
+  <div className="grid min-h-[60vh] place-items-center bg-background" role="status" aria-label="Loading">
+    <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-[hsl(var(--primary))]" />
   </div>
 );
 
