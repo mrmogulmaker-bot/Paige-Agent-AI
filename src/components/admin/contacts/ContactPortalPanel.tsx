@@ -179,13 +179,14 @@ export function ContactPortalPanel({
         body: { user_id: localLinkedUserId, keep_contact: true },
       });
       if (error) throw error;
-      if ((data as any)?.error) throw new Error((data as any).error);
+      const revokeErr = (data as { error?: string } | null)?.error;
+      if (revokeErr) throw new Error(revokeErr);
       toast.success("Paige access revoked. CRM history preserved.");
       setLocalLinkedUserId(null);
       setConfirmRevoke(false);
       await load();
-    } catch (e: any) {
-      toast.error(e?.message || "Revoke failed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Revoke failed");
     } finally {
       setBusy(null);
     }
@@ -197,15 +198,16 @@ export function ContactPortalPanel({
     setBusy(key);
     try {
       const data = await callAdminAccountAction(action, localLinkedUserId);
-      if ((data as any)?.error) throw new Error((data as any).error);
+      const actionErr = (data as { error?: string } | null)?.error;
+      if (actionErr) throw new Error(actionErr);
       toast.success(
         action === "signout_all"
           ? "Client signed out of all devices"
           : "Password reset email sent",
       );
       if (action === "signout_all") setConfirmSignout(false);
-    } catch (e: any) {
-      toast.error(e?.message || "Action failed");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Action failed");
     } finally {
       setBusy(null);
     }
