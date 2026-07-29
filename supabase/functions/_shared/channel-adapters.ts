@@ -148,6 +148,14 @@ export interface OutboundSendContext {
   admin?: OutboundAdminClient | null;
   /** Server-derived tenant (never from the request body, §9). Required for SMS; ignored by email. */
   tenantId?: string | null;
+  // ── #141b additive (Gmail-vs-Resend dispatch INSIDE the email path). The email
+  //    registry key 'email' is Resend's, so a Gmail send is NOT a second 'email' adapter —
+  //    instead the dispatcher threads the connector's provider + Vault ref here and the
+  //    email adapter routes to _shared/gmail.ts when provider==='gmail'. SMS ignores both. ──
+  /** The connector's provider ('gmail' routes email through the Gmail seam; else Resend). */
+  provider?: string | null;
+  /** channel_connectors.credentials_vault_ref — the Vault secret NAME the Gmail seam reads. */
+  credentialsVaultRef?: string | null;
   /** Per-message DLR StatusCallback URL Twilio POSTs delivery events to. Honest-null when unset. */
   statusCallbackUrl?: string | null;
   // ── C-2s-C additive (email List-Unsubscribe). SMS ignores both (non-breaking). ──

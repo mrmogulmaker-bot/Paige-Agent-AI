@@ -24,6 +24,9 @@ import {
 // compliance pipeline (SEND-MESSAGE-CONTRACT §3 steps 1–5). SMS routes THROUGH the
 // registry adapter below (no inline master-cred path); every send passes runPreSend first.
 import { resolveTwilioCreds, sendSms, type SupabaseAdminLike } from "../_shared/twilio.ts";
+// #141b — the ONE authenticated Gmail seam (resolve access token from a connector's
+// Vault ref + send RFC 822). The email adapter dispatches to it when provider==='gmail'.
+import { resolveGmailAccessToken, gmailSend } from "../_shared/gmail.ts";
 import { runPreSend } from "../_shared/pre-send-pipeline.ts";
 
 const corsHeaders = {
@@ -68,6 +71,48 @@ const emailOutboundAdapter: OutboundChannelAdapter = {
     return null;
   },
   async send(msg: NormalizedMessage, ctx: OutboundSendContext) {
+    // ── #141b: Gmail-vs-Resend dispatch INSIDE the email path (§18 — NOT a second
+    //    'email' registry entry). When the connector's provider is 'gmail', send through
+    //    the Gmail seam using the token resolved from its Vault ref; otherwise Resend. ──
+    if (ctx.provider === "gmail") {
+      // ctx.admin (OutboundAdminClient) is structurally { from, rpc } — identical to the
+      // Gmail seam's SupabaseAdminLike (imported from twilio.ts, same shape), so it assigns.
+      const admin = ctx.admin as unknown as SupabaseAdminLike | null | undefined;
+      if (!admin) {
+        return {
+          ok: false, status: "failed" as const, needs_config: true, reason: "gmail_requires_admin",
+          error: "gmail_requires_admin: no service-role client in context",
+        };
+      }
+      const tok = await resolveGmailAccessToken(admin, ctx.credentialsVaultRef ?? null);
+      if (!tok.ok || !tok.data) {
+        return {
+          ok: false, status: "failed" as const,
+          needs_config: tok.needs_config === true,
+          reason: tok.needs_config ? "gmail_oauth_not_configured" : "gmail_token_failed",
+          error: tok.error ?? "gmail_token_failed",
+        };
+      }
+      const sent = await gmailSend(tok.data.accessToken, {
+        from: ctx.from.address,
+        fromName: ctx.from.display_name ?? null,
+        to: ctx.to,
+        subject: msg.subject || "(no subject)",
+        html: msg.body_html ?? null,
+        text: msg.body_text ?? null,
+        inReplyTo: msg.in_reply_to_provider_id ?? null,
+      });
+      if (!sent.ok || !sent.data) {
+        return {
+          ok: false, status: "failed" as const,
+          needs_config: sent.needs_config === true,
+          reason: sent.needs_config ? "gmail_oauth_not_configured" : "gmail_send_failed",
+          error: sent.error ?? "gmail_send_failed",
+        };
+      }
+      return { ok: true, status: "sent" as const, provider_message_id: sent.data.id };
+    }
+
     const resendKey = ctx.providerApiKey;
     if (!resendKey) {
       return { ok: false, status: "failed" as const, error: "RESEND_API_KEY missing" };
@@ -339,7 +384,12 @@ Deno.serve(async (req) => {
   let tenantId: string | null = null;
   let draftRow: { status?: string | null; connector_id?: string | null; contact_id?: string | null; thread_key?: string | null; channel_type?: string | null } | null = null;
   let connectorRow:
-    | { tenant_id?: string | null; from_address?: string | null; from_name?: string | null; reply_to?: string | null }
+    | {
+        tenant_id?: string | null; from_address?: string | null; from_name?: string | null;
+        reply_to?: string | null;
+        // #141b: provider decides Gmail-vs-Resend; credentials_vault_ref feeds the Gmail seam.
+        provider?: string | null; credentials_vault_ref?: string | null; external_account_id?: string | null;
+      }
     | null = null;
   let replyTo: string | null = null;
 
@@ -368,7 +418,9 @@ Deno.serve(async (req) => {
   if (effectiveConnectorId) {
     const { data } = await admin
       .from("channel_connectors")
-      .select("tenant_id, from_address, from_name, reply_to")
+      // #141b: widened to carry provider + credentials_vault_ref + external_account_id so the
+      // email path can route a Gmail connector through the Gmail seam (else Resend).
+      .select("tenant_id, from_address, from_name, reply_to, provider, credentials_vault_ref, external_account_id")
       .eq("id", effectiveConnectorId)
       .maybeSingle();
     connectorRow = data ?? null;
@@ -399,6 +451,23 @@ Deno.serve(async (req) => {
   // no active tenant keeps null → platform default sender. (Internal drain: tenant stays
   // the queued row's own.)
   if (!isInternal && !tenantId && !isOwner) tenantId = callerTenant ?? null;
+
+  // ── §9 (#141b): bind the CONNECTOR to the resolved tenant ────────────────────
+  // connectorRow was fetched via the SERVICE-ROLE admin client (RLS bypassed) keyed by
+  // effectiveConnectorId — which can come straight from body.connector_id (L408). The
+  // caller-tenant gate above only binds the RESOLVED tenantId (from message_id/contact_id),
+  // and that never moves to the connector's own tenant. Without this bind, a tenant-A
+  // caller could pass their A-owned contact_id + a tenant-B connector_id and, for a Gmail
+  // connector, make send-message read tenant B's Vault REFRESH TOKEN and email AS tenant B's
+  // authenticated Gmail identity (L641 force-sets senderEmail = connectorRow.from_address).
+  // Require the connector to belong to the resolved tenant; the platform owner (§17) may act
+  // cross-tenant. Internal drain: isOwner=false, tenantId is the queued row's own, and a
+  // legit queued row's connector shares that tenant — so a mismatch is correctly rejected.
+  if (connectorRow && tenantId && !isOwner && connectorRow.tenant_id !== tenantId) {
+    return new Response(JSON.stringify({ error: "forbidden_cross_tenant_connector" }), {
+      status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   // ── §5 double-submit guard ───────────────────────────────────────────────────
   // Approving an already sent/queued draft (second tab, stale realtime, network retry)
@@ -557,8 +626,11 @@ Deno.serve(async (req) => {
 
   try {
     if (body.channel === "email") {
+      // #141b: a Gmail connector sends via the Gmail seam (its own OAuth creds), so it does
+      // NOT need RESEND_API_KEY. Only the Resend path requires it.
+      const isGmail = connectorRow?.provider === "gmail";
       const resendKey = Deno.env.get("RESEND_API_KEY");
-      if (!resendKey) throw new Error("RESEND_API_KEY missing");
+      if (!resendKey && !isGmail) throw new Error("RESEND_API_KEY missing");
 
       // §38 PRIMARY: tenant-owned sender identity via the shared RPC (service role =>
       // auth.uid() NULL => trusted cross-tenant resolve of the passed tenant).
@@ -581,6 +653,12 @@ Deno.serve(async (req) => {
       // fires on an RPC miss; keep it verified so it can still deliver.
       senderEmail = senderEmail || connectorRow?.from_address || config?.default_from_email || "no-reply@mail.paigeagent.ai";
       replyTo = replyTo || connectorRow?.reply_to || null;
+      // #141b: Google enforces that a gmail.send goes out AS the authenticated address, so the
+      // Gmail connector's own from_address wins over any tenant/platform default sender here.
+      if (isGmail && connectorRow?.from_address) {
+        senderEmail = connectorRow.from_address;
+        senderName = senderName || connectorRow?.from_name || null;
+      }
       fromAddress = senderName ? `${senderName} <${senderEmail}>` : senderEmail;
 
       // §32 — build the NormalizedMessage and send THROUGH the registry adapter.
@@ -641,10 +719,20 @@ Deno.serve(async (req) => {
         connectorConfig: null,
         // OutboundSendContext field is listUnsubscribeUrl (the adapter reads it → buildListUnsubscribeHeaders).
         listUnsubscribeUrl: oneClickUrl ?? null,
+        // #141b: Gmail dispatch INSIDE the email adapter (§18 — not a second 'email' entry).
+        // provider!=='gmail' leaves the Resend path byte-for-byte unchanged.
+        provider: connectorRow?.provider ?? null,
+        credentialsVaultRef: connectorRow?.credentials_vault_ref ?? null,
+        admin,                     // service-role client the Gmail seam uses to read the Vault ref
       };
       const delivery = await adapter.send(outMsg, ctx);
+      // #141b HONEST NOTE (§13): the paige_messages_audit.pipe_used CHECK is
+      // ('resend','twilio','ghl_fallback') — 'gmail' is not yet a legal value, so widening it
+      // is a tracked follow-up (an enum migration carries its own §37 producer inventory). The
+      // Gmail send is recorded here as the email pipe; the TRUE transport is recoverable from
+      // the connector row (connector_id → provider='gmail'), so no information is lost.
       pipe_used = "resend";
-      if (!delivery.ok) throw new Error(delivery.error || "resend_send_failed");
+      if (!delivery.ok) throw new Error(delivery.error || (isGmail ? "gmail_send_failed" : "resend_send_failed"));
       vendor_message_id = delivery.provider_message_id ?? null;
       status = "sent";
     } else {
