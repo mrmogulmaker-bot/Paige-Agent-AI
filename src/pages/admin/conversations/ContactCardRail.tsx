@@ -69,6 +69,18 @@ function optionLabel(options: CustomFieldDefinition["options"], raw: unknown): s
   return v;
 }
 
+/** Parse a stored date value as a LOCAL calendar day. A date-only "YYYY-MM-DD" (what the
+ *  type="date" editor saves) is otherwise read as UTC midnight and renders a day early west of
+ *  UTC (§37 — match the editor's calendar semantics; §13 no off-by-one). */
+function toCalendarDate(value: unknown): Date | null {
+  if (typeof value === "string") {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  const d = new Date(value as string);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 /**
  * Render a custom-field value by its declared type. `value` is jsonb (supabase-js already parsed
  * it to JS). Returns null when the value is absent/malformed so the row is skipped (§15).
@@ -77,10 +89,12 @@ function renderValue(def: CustomFieldDefinition, value: unknown): string | null 
   if (value === null || value === undefined || value === "") return null;
   switch (def.fieldType) {
     case "boolean":
-      return value ? "Yes" : "No";
+      // Match the full editor's normalization (ContactCustomFieldsPanel: value===true||"true"),
+      // so a stored string "false" reads as No on both surfaces (§37) — not truthy-"Yes".
+      return value === true || value === "true" ? "Yes" : "No";
     case "date": {
-      const d = new Date(value as string);
-      return Number.isNaN(d.getTime()) ? null : format(d, "PP");
+      const d = toCalendarDate(value);
+      return d ? format(d, "PP") : null;
     }
     case "select":
       return optionLabel(def.options, value);
