@@ -553,7 +553,11 @@ export function ContactCardRail({
           )}
 
           {/* ── Section tabs: All fields / DND / Actions ─────────────────────── */}
-          <Tabs defaultValue="actions" className="pt-1">
+          {/* key by contact.id: the rail stays mounted across thread switches, so an
+              uncontrolled Tabs would keep its last-clicked value (DND/Actions) and the
+              next contact's Details would NOT lead at 0 clicks (#144). Re-keying remounts
+              just this subtree, resetting to Details on every thread selection. */}
+          <Tabs key={contact.id} defaultValue="fields" className="pt-1">
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="fields">Details</TabsTrigger>
               <TabsTrigger value="dnd">DND</TabsTrigger>
