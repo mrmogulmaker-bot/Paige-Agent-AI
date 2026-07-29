@@ -19,6 +19,7 @@ export function SectionCard({
   interactive = false,
   children,
   className,
+  bodyClassName,
 }: {
   title?: ReactNode;
   description?: ReactNode;
@@ -30,6 +31,14 @@ export function SectionCard({
   interactive?: boolean;
   children?: ReactNode;
   className?: string;
+  /**
+   * Classes for the inner body wrapper (the div around `children`). Needed when the card
+   * itself is a full-height flex column (`className="flex min-h-0 flex-col"`): pass
+   * `bodyClassName="flex min-h-0 flex-1 flex-col"` so the wrapper participates in the column
+   * and the children's own `flex-1`/`mt-auto` resolve against the true card height instead of
+   * collapsing to content height. Defaults to undefined → no change for every other consumer.
+   */
+  bodyClassName?: string;
 }) {
   const hasHeader = title || description || actions || Icon || numbered != null;
   return (
@@ -60,7 +69,7 @@ export function SectionCard({
         </div>
       )}
       {children != null && (
-        <div className={cn(padded && "p-5", hasHeader && padded && "pt-4")}>{children}</div>
+        <div className={cn(padded && "p-5", hasHeader && padded && "pt-4", bodyClassName)}>{children}</div>
       )}
       {footer && <div className="border-t border-border/60 px-5 py-3">{footer}</div>}
     </div>
