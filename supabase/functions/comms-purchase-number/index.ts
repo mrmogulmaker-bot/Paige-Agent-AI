@@ -15,13 +15,17 @@
 //      This is the source='marketplace' producer. Both producers set subaccount_id +
 //      let the trigger derive tenant_id; both are idempotent on the global phone_number
 //      UNIQUE. No third numbers home (§18).
-//  §38 Paige-HELD rail, LOCKED at pure carrier passthrough (#150). The number is bought
-//      into the tenant's subaccount under the platform master account — Paige pays Twilio,
-//      the tenant pays Paige the SAME carrier passthrough cost with ZERO platform markup
-//      (margin comes from §17 L1 subs / L3 usage / L2 marketplace, never the number). This
-//      is NOT Stripe Connect. §13 HONESTY: the CHARGE leg (billing the tenant the carrier
-//      passthrough for this purchase) is NOT wired in this slice — this fn does the Twilio
-//      buy + records the number; the money settlement is a later Money-Spine concern. The
+//  §38 Paige-HELD rail (#150, resale pricing). The number is bought into the tenant's
+//      subaccount under the platform master account — Paige pays Twilio the WHOLESALE cost
+//      (platform_number_pricing.wholesale_cents, $1.15), the tenant pays Paige the RETAIL
+//      price (retail_monthly_cents = wholesale + a flat $0.05 platform fee, ~4.3% on the
+//      $1.15 base — we're a resale platform). The price the marketplace DISPLAYS
+//      (comms-search-numbers now returns retail_monthly_cents) and the price the tenant is
+//      CHARGED are the SAME retail value — never a shown-vs-charged mismatch. This is a
+//      Paige-held platform fee, NOT Stripe Connect. §13 HONESTY: the CHARGE leg (billing the
+//      tenant the retail price for this purchase) is NOT wired in this slice — this fn does
+//      the Twilio buy + records the number; the money settlement is a later Money-Spine
+//      concern, and when wired it MUST bill retail_monthly_cents to match the display. The
 //      response says so (`charge_wired: false`) so no caller mistakes "bought" for "billed".
 //  §18 Reuses the ONE Twilio seam (_shared/twilio.ts purchaseNumber) — no inline REST.
 //  §13 Reports the REAL Twilio PN SID from the purchase response only; on any failure it
@@ -229,8 +233,9 @@ Deno.serve(async (req) => {
     phone_number: boughtNumber,
     sid: pnSid,                                 // §37: the UI reads `sid`. REAL PN SID (§13).
     twilio_sid: pnSid,                          // REAL PN SID only (§13)
-    // §38 HONEST: the number is bought + recorded; billing the tenant the carrier
-    // passthrough (zero markup, #150) for it is NOT wired in this slice (later Money-Spine).
+    // §38 HONEST: the number is bought + recorded; billing the tenant the retail price
+    // (wholesale + $0.05 platform fee, #150) for it is NOT wired in this slice — later
+    // Money-Spine, and when wired it charges retail_monthly_cents to match the display.
     charge_wired: false,
   });
 });
