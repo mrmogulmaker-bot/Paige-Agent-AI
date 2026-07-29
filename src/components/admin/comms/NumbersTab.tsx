@@ -2,11 +2,10 @@
 // "Numbers" tab (§18: one home per capability — the tenant comms hub already exists
 // at /admin/communications; no redundant /app/settings/comms route is scaffolded).
 //
-// A coach searches an area code, sees real numbers priced at the transparent carrier
-// passthrough (§38 Paige-held rail, LOCKED zero-markup #150 — the Twilio wholesale cost
-// from platform_number_pricing, no platform markup), sees each number's capabilities as
-// neutral icons (never a pre-filter, §36 bug #149), and clicks Buy — without ever hearing
-// the word "Twilio" (§36).
+// A coach searches an area code, sees real numbers priced at the retail rate (§38 Paige-held
+// rail, resale platform #150 — the Twilio wholesale cost plus a flat $0.05 platform fee, from
+// platform_number_pricing), sees each number's capabilities as neutral icons (never a
+// pre-filter, §36 bug #149), and clicks Buy — without ever hearing the word "Twilio" (§36).
 //
 // §9: the search + purchase run through the comms-search-numbers / comms-purchase-number
 // edge fns, which derive the tenant server-side and resolve the tenant's OWN subaccount
@@ -36,7 +35,7 @@ import { Label } from "@/components/ui/label";
 // comms-purchase-number ← { phone_number }
 //                       → { purchased|already_owned: true; phone_number; twilio_sid } | { error }
 type RawCapabilities = Record<string, boolean>;
-/** Transparent carrier passthrough (§38, #150): the Twilio wholesale cost, zero markup. */
+/** Retail price (§38, #150): the Twilio wholesale cost plus a flat $0.05 platform fee. */
 interface RetailPrice {
   monthly_cents: number;
   onetime_cents: number | null;
@@ -357,9 +356,9 @@ export function NumbersTab() {
                   <TableCell><CapPills caps={n.capabilities} /></TableCell>
                   <TableCell>
                     {n.retail_price ? (
-                      // §36/§38 honest: this is the carrier passthrough, shown transparently
-                      // with no Paige markup (#150). The title makes that explicit on hover.
-                      <span title="Carrier passthrough — no Paige markup">
+                      // §36/§38 honest: this is the retail price — Twilio wholesale plus a
+                      // flat $0.05 platform fee (#150). The title states that on hover.
+                      <span title="Wholesale + $0.05 platform fee">
                         <span className="font-semibold tabular-nums">{fmtPrice(n.retail_price)}</span>
                         <span className="text-xs text-muted-foreground">/mo</span>
                       </span>

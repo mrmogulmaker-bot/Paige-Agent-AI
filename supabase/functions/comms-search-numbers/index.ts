@@ -1,20 +1,21 @@
 // Comms C-2s-B — number MARKETPLACE search. JWT-gated; a tenant admin/coach searches
-// Twilio's Available Phone Numbers by area code, and each result is tagged with the
-// transparent carrier passthrough price (the real Twilio wholesale cost) from
-// platform_number_pricing. The tenant never sees the word "Twilio" (§36) — they search
-// an area code, see numbers with a price, and (via comms-purchase-number) click Buy.
+// Twilio's Available Phone Numbers by area code, and each result is tagged with the retail
+// price (Twilio wholesale + a flat $0.05 platform fee) from platform_number_pricing. The
+// tenant never sees the word "Twilio" (§36) — they search an area code, see numbers with a
+// price, and (via comms-purchase-number) click Buy.
 //
 // DOCTRINE
 //  §9  tenant is server-DERIVED from the caller JWT (current_user_tenant_id()), NEVER a
 //      body-supplied tenant/subaccount. The search authenticates as the tenant's OWN
 //      Twilio subaccount, resolved via resolveTwilioCreds (Vault) under the service-role
 //      client. A body cannot widen scope or point at another tenant's subaccount.
-//  §38 Pricing is LOCKED at pure carrier passthrough — the price shown = the real Twilio
-//      wholesale cost (wholesale_cents from platform_number_pricing), with ZERO platform
-//      markup (#150). A number is a Paige-held rail (tenant pays Paige, Paige pays Twilio)
-//      but Paige takes NO margin on it — margin comes from §17 L1 subs / L3 usage / L2
-//      marketplace, never the number. This fn only READS the passthrough cost to display
-//      transparently; the charge leg is not here (see comms-purchase-number's honest note).
+//  §38 Paige is a resale platform (#150): the price shown = retail_monthly_cents from
+//      platform_number_pricing = the Twilio wholesale cost ($1.15) PLUS a flat $0.05 platform
+//      fee (~4.3% on the standard number). A number is a Paige-held rail (tenant pays Paige,
+//      Paige pays Twilio); the $0.05 is a Paige-held platform fee, NOT Stripe Connect. This fn
+//      only READS the retail price to display it; the charge leg is not here (see
+//      comms-purchase-number's honest note). wholesale_cents stays the true Twilio cost and is
+//      NOT shown to the tenant.
 //  §36 5-min test: the only filter is area code; results carry a plain dollar price and
 //      capabilities are shown as icons (display, never a pre-filter). No Twilio vocabulary
 //      leaks to the caller.
@@ -23,8 +24,8 @@
 //  §13 needs_config (not a fake list) when the tenant has no subaccount provisioned or
 //      master/subaccount creds are missing. A missing price row degrades to a null
 //      retail_price on that result (honest), never a guessed number. The displayed price
-//      is the DB wholesale_cents column read live (data-driven) — never a hardcoded amount,
-//      because Twilio's wholesale can change and the operator maintains the row.
+//      is the DB retail_monthly_cents column read live (data-driven) — never a hardcoded
+//      amount, because both Twilio's wholesale and the fee are operator-maintained on the row.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { listAvailableNumbers, resolveTwilioCreds, type SupabaseAdminLike } from "../_shared/twilio.ts";
 
@@ -78,10 +79,9 @@ function toTwilioType(t: SearchBody["number_type"]): "Local" | "TollFree" | "Mob
 }
 
 /**
- * The transparent carrier passthrough price attached to each result (§38). monthly_cents
- * is the real Twilio wholesale cost (wholesale_cents) shown with ZERO platform markup.
- * null when no operator price row exists. (The field keeps the name retail_price for the
- * §37 UI contract, but the value is now pure passthrough, not a marked-up retail.)
+ * The retail price attached to each result (§38). monthly_cents is retail_monthly_cents —
+ * the Twilio wholesale cost plus a flat $0.05 platform fee (#150) — the price the tenant
+ * actually pays. null when no operator price row exists.
  */
 interface RetailPrice {
   monthly_cents: number;
@@ -184,15 +184,14 @@ Deno.serve(async (req) => {
   }
 
   // ── Look up the operator pricing row for this (type, country). One row or none. ──
-  // §38 LOCKED passthrough (#150): the DISPLAYED price is wholesale_cents — the real Twilio
-  // wholesale cost — shown transparently with ZERO platform markup. We read the column live
-  // (data-driven); we never hardcode the amount, because Twilio's wholesale can change and
-  // the operator maintains the row. (retail_monthly_cents is neutralized to == wholesale_cents
-  // by migration 20260729120000; reading wholesale_cents here is passthrough-honest even if a
-  // stale marked-up retail value ever lingered.)
+  // §38 resale platform (#150): the DISPLAYED price is retail_monthly_cents — the Twilio
+  // wholesale cost PLUS a flat $0.05 platform fee — the price the tenant actually pays. We
+  // read the column live (data-driven); we never hardcode the amount, because both the Twilio
+  // wholesale and the fee are operator-maintained on the row. wholesale_cents is the true
+  // Twilio cost (for margin / accounting) and is NOT surfaced to the tenant.
   const { data: priceRow } = await admin
     .from("platform_number_pricing")
-    .select("wholesale_cents, retail_onetime_cents, currency, active")
+    .select("retail_monthly_cents, retail_onetime_cents, currency, active")
     .eq("number_type", numberType)
     .eq("country", country)
     .eq("active", true)
@@ -200,7 +199,7 @@ Deno.serve(async (req) => {
 
   const retailDetail: RetailPrice | null = priceRow
     ? {
-      monthly_cents: priceRow.wholesale_cents as number,
+      monthly_cents: priceRow.retail_monthly_cents as number,
       onetime_cents: (priceRow.retail_onetime_cents as number | null) ?? null,
       currency: (priceRow.currency as string) ?? "usd",
     }
