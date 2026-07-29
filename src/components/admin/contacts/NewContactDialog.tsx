@@ -114,7 +114,8 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
         assigned_coach_user_id: coachId === "unassigned" ? null : coachId,
         status: "active",
         created_by: user.id,
-      })
+        created_by_channel_type: "manual", // #10 channel-of-origin (manual New Contact UI)
+      } as never)
       .select("id")
       .single();
     setSaving(false);

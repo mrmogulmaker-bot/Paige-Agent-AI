@@ -387,6 +387,7 @@ async function runExecutor(
             p_title: idn.title,
             p_lifecycle_stage: "lead",
             p_source: "paige_form",
+            p_channel: "form", // #10 channel-of-origin (growth form submission)
             p_tags: [],
             p_primary_offer: null,
             p_notes: null,

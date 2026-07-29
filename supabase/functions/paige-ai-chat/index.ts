@@ -6356,6 +6356,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 p_title: args.title ?? null,
                 p_lifecycle_stage: args.lifecycle_stage ?? "lead",
                 p_source: "paige",
+                p_channel: "api", // #10 channel-of-origin (Paige-in-chat programmatic)
                 p_tags: Array.isArray(args.tags) ? args.tags : [],
                 p_primary_offer: args.primary_offer ?? null,
                 p_notes: args.notes ?? null,

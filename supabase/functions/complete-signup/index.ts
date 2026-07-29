@@ -138,7 +138,7 @@ Deno.serve(async (req) => {
     } else {
       const { data: inserted, error: insErr } = await admin
         .from("clients")
-        .insert({ ...clientPatch, created_by: user.id })
+        .insert({ ...clientPatch, created_by: user.id, created_by_channel_type: "signup" }) // #10 channel-of-origin (self-serve signup)
         .select("id")
         .single();
       if (insErr) {

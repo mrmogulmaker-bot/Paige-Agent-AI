@@ -42,7 +42,7 @@ import { ContactAutomationHistory } from "@/components/admin/contacts/ContactAut
 import { ClientOnboardingStatusPanel } from "@/components/admin/contacts/ClientOnboardingStatusPanel";
 import {
   type ClientContact, type MessageRow, type Label, type ChannelType, type Suppression,
-  CHANNEL_ICON, CHANNEL_LABEL, LABEL_COLOR, bodyPreview, contactNameFromClient,
+  CHANNEL_ICON, CHANNEL_LABEL, CREATED_VIA_LABEL, LABEL_COLOR, bodyPreview, contactNameFromClient,
 } from "./inbox-shared";
 import { AgentsLog } from "./AgentsLog";
 import { TagPicker } from "@/components/admin/contacts/TagPicker";
@@ -382,6 +382,17 @@ export function ContactCardRail({
   const createdByName = contact?.created_by
     ? (members.find((m) => m.user_id === contact.created_by)?.name ?? null)
     : null;
+  // #10 (channel half) — the bounded channel-of-origin, humanized. Composed as "[channel] ([staff])"
+  // e.g. "Instagram (Jordan Lee)". NULL-graceful (§13, never "null (…)"): channel-only when the staff
+  // creator doesn't resolve (a system/import origin), staff-only when the channel is NULL (pre-#10
+  // rows), and the row hides entirely when both are absent.
+  const createdViaChannel = contact?.created_by_channel_type
+    ? (CREATED_VIA_LABEL[contact.created_by_channel_type] ?? null)
+    : null;
+  const createdByDisplay =
+    createdViaChannel && createdByName ? `${createdViaChannel} (${createdByName})`
+    : createdViaChannel ? createdViaChannel
+    : createdByName;
 
   return (
     <SectionCard padded={false} className="flex min-h-0 flex-col overflow-hidden">
@@ -573,7 +584,7 @@ export function ContactCardRail({
                 label="Created"
                 value={contact.created_at ? format(new Date(contact.created_at), "PP") : null}
               />
-              <FieldRow label="Created by" value={createdByName} />
+              <FieldRow label="Created by" value={createdByDisplay} />
 
               {/* #6 custom fields — only fields WITH a value; nothing renders when there are none. */}
               {customFields.length > 0 && (

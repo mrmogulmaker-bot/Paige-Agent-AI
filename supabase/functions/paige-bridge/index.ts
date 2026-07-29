@@ -441,6 +441,7 @@ Deno.serve(async (req) => {
             status: "active",
             source: p.source ?? "mma_bridge",
             lifecycle_stage: "lead",
+            created_by_channel_type: "import", // #10 channel-of-origin (external CRM mirror/sync)
           })
           .select("id")
           .single();
