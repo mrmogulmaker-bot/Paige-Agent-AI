@@ -18,6 +18,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { OperatorHubStrip } from "@/components/admin/platform/OperatorTabs";
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
+import { VoiceDeviceProvider } from "@/lib/voice/VoiceDeviceProvider";
+import { DialPadTrigger } from "@/components/admin/voice/DialPadTrigger";
+import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { AccountSwitcher } from "@/components/admin/AccountSwitcher";
@@ -336,6 +339,10 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         ?? "Admin");
 
   return (
+    <VoiceDeviceProvider>
+    {/* #140 A2 — the ONE dialer surface (a viewport Sheet), rendered once so every
+        trigger + click-to-call opens the SAME pad on ANY breakpoint (§18). */}
+    <DialPadSurface />
     <div className="h-dvh flex flex-col bg-background overflow-hidden">
       {/* Banner intentionally omitted on /admin — it's redundant when already on
           the admin dashboard. AppShell still renders it inside the client view. */}
@@ -391,9 +398,13 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             ) : null}
           </Link>
 
-          {/* Mobile: current section + menu trigger */}
+          {/* Mobile: current section + dialer + menu trigger */}
           <div className="flex md:hidden items-center gap-2">
-            <span className="text-sm font-medium truncate max-w-[140px]">{currentSection}</span>
+            <span className="text-sm font-medium truncate max-w-[120px]">{currentSection}</span>
+            {/* #140 A2 — dialer reachable on mobile too (§36). Same shared pad Sheet
+                as desktop; click-to-call from a contact row on a phone opens a real,
+                dismissible pad, not a detached popover. */}
+            <DialPadTrigger />
             <button
               onClick={() => setMobileNavOpen((v) => !v)}
               className="p-1.5 rounded-md hover:bg-sidebar-accent/50"
@@ -415,6 +426,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                 "Platform". Regular tenant/agency shells use the AccountSwitcher
                 above; this one is platform-staff only. */}
             {isPlatformStaff && <TenantSwitcher />}
+            {/* #140 A2 — the ONE global dialer trigger (§18/§21). Drives the single
+                Device in VoiceDeviceProvider; click-to-call anywhere pops this pad. */}
+            <DialPadTrigger />
             <AdminBridgeBell />
             <ThemeToggle variant="on-primary" />
 
@@ -741,5 +755,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         {children}
       </main>
     </div>
+    </VoiceDeviceProvider>
   );
 }

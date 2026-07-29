@@ -36,6 +36,7 @@ import {
   Send, Loader2, ExternalLink, UserRound, Sparkles, Bell, ClipboardList,
   FileSignature, CreditCard, Zap,
 } from "lucide-react";
+import { CallButton } from "@/components/admin/voice/CallButton";
 import { ContactPortalPanel } from "@/components/admin/contacts/ContactPortalPanel";
 import { ContactBillingPanel } from "@/components/admin/contacts/ContactBillingPanel";
 import { ContactAutomationHistory } from "@/components/admin/contacts/ContactAutomationHistory";
@@ -112,19 +113,25 @@ function renderValue(def: CustomFieldDefinition, value: unknown): string | null 
   }
 }
 
-function CopyRow({ icon: Icon, value, label }: { icon: typeof Mail; value: string; label: string }) {
+function CopyRow({ icon: Icon, value, label, action }: { icon: typeof Mail; value: string; label: string; action?: ReactNode }) {
+  // When an action (e.g. click-to-call) is present, the copy affordance is a nested
+  // button-like span rather than an outer <button> — nested interactive controls are
+  // invalid HTML. The whole row still copies on click.
   return (
-    <button
-      type="button"
-      onClick={() => { navigator.clipboard?.writeText(value); toast.success("Copied."); }}
-      className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs
-        hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-      title={`Copy ${label}`}
-    >
-      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate text-foreground">{value}</span>
-      <Copy className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-    </button>
+    <div className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted">
+      <button
+        type="button"
+        onClick={() => { navigator.clipboard?.writeText(value); toast.success("Copied."); }}
+        className="flex min-w-0 flex-1 items-center gap-2 text-left
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] rounded-sm"
+        title={`Copy ${label}`}
+      >
+        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate text-foreground">{value}</span>
+        <Copy className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      </button>
+      {action}
+    </div>
   );
 }
 
@@ -519,7 +526,9 @@ export function ContactCardRail({
           <div className="space-y-0.5">
             <p className="px-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Reach them</p>
             {contact.email && <CopyRow icon={Mail} value={contact.email} label="email" />}
-            {contact.phone && <CopyRow icon={Phone} value={contact.phone} label="phone" />}
+            {contact.phone && (
+              <CopyRow icon={Phone} value={contact.phone} label="phone" action={<CallButton number={contact.phone} />} />
+            )}
             {toAddress && toAddress !== contact.email && toAddress !== contact.phone && (
               <CopyRow icon={CHANNEL_ICON[channel]} value={toAddress} label={CHANNEL_LABEL[channel]} />
             )}
@@ -567,7 +576,7 @@ export function ContactCardRail({
             {/* Details — the high-value fields + a deep link to the full profile (§18). */}
             <TabsContent value="fields" className="mt-3 space-y-2">
               <FieldRow label="Email" value={contact.email} />
-              <FieldRow label="Phone" value={contact.phone} />
+              <FieldRow label="Phone" value={contact.phone} action={<CallButton number={contact.phone} />} />
               <FieldRow label="Business" value={contact.entity_name} />
               <FieldRow label="Title" value={contact.title} />
               <FieldRow label="Source" value={contact.source} />
@@ -783,12 +792,15 @@ function FoldSection({
 }
 
 /** A read row in the Details tab. Only renders when the value is present (§15 no placeholders). */
-function FieldRow({ label, value, capitalize }: { label: string; value: string | null | undefined; capitalize?: boolean }) {
+function FieldRow({ label, value, capitalize, action }: { label: string; value: string | null | undefined; capitalize?: boolean; action?: ReactNode }) {
   if (!value) return null;
   return (
-    <div className="flex items-start justify-between gap-3 px-1 text-xs">
+    <div className="flex items-center justify-between gap-3 px-1 text-xs">
       <span className="shrink-0 text-muted-foreground">{label}</span>
-      <span className={cn("min-w-0 truncate text-right text-foreground/90", capitalize && "capitalize")}>{value}</span>
+      <span className="flex min-w-0 items-center justify-end gap-1.5">
+        <span className={cn("min-w-0 truncate text-right text-foreground/90", capitalize && "capitalize")}>{value}</span>
+        {action}
+      </span>
     </div>
   );
 }
