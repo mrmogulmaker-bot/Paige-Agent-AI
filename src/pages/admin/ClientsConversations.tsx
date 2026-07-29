@@ -648,6 +648,11 @@ export default function ClientsConversations() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).rpc("delete_conversation", { _thread_id: id });
     if (error || data === false) { toast.error("Couldn't remove that conversation."); void loadThreads(); return false; }
+    // Definitive delete: drop it from local state NOW so it leaves the inbox immediately and the
+    // selection-validity effect can't reselect it — don't wait on Realtime convergence (which the
+    // active view relies on, since visibleThreads doesn't itself filter archived_at). Reversible
+    // toggles (snooze/archive) keep the optimistic patch; a delete is a leave-the-list action.
+    setDbThreads((prev) => prev.filter((t) => t.id !== id));
     toast.success("Conversation removed to Archive.");
     return true;
   };
