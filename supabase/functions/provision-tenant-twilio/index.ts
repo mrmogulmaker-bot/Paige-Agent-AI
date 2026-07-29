@@ -33,7 +33,7 @@
 //      +1 470 200 3444 is a tenant_phone_numbers row (source='imported') on the master
 //      account, managed by the dedicated import seam (C-2s-A / D2) — out of scope here.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { createSubaccount, createSubaccountApiKey, masterCreds } from "../_shared/twilio.ts";
+import { createSubaccount, createSubaccountApiKey, ensureTwimlApp, masterCreds, type SupabaseAdminLike } from "../_shared/twilio.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -64,6 +64,8 @@ interface TenantResult {
   status: "provisioned" | "adopted" | "skipped_existing" | "failed" | "would_provision" | "would_adopt";
   subaccount_sid?: string | null; // REAL Twilio ACxx… on success, else omitted
   api_key_sid?: string | null;     // REAL Twilio SK… on success, else omitted (NEVER the secret, §34)
+  twiml_app_sid?: string | null;   // C-2v (#140 A1): REAL Twilio AP… voice app SID, or null if minting failed
+  twiml_app_error?: string | null; // C-2v: non-fatal — the subaccount row is written; app can be re-minted (idempotent)
   error?: string | null;
 }
 
@@ -257,12 +259,25 @@ Deno.serve(async (req) => {
       continue;
     }
 
+    // 5) Mint + persist the TwiML Application on the subaccount (Voice foundation,
+    //    #140 A1). Reuse the just-minted creds (no extra Vault round-trip). A TwiML-app
+    //    failure is NON-FATAL: the subaccount row is already written, and ensureTwimlApp
+    //    is idempotent on twiml_app_sid, so a re-run backfills the app. Report it (§13)
+    //    so an operator sees which tenants still owe a Voice app.
+    let twimlAppSid: string | null = null;
+    let twimlAppError: string | null = null;
+    const appRes = await ensureTwimlApp(admin as unknown as SupabaseAdminLike, tenantId, {
+      creds: { accountSid: subSid, authToken: apiKeySecret, apiKeySid },
+    });
+    if (appRes.ok && appRes.data) twimlAppSid = appRes.data.applicationSid;
+    else twimlAppError = appRes.error ?? "twiml_app_unavailable";
+
     if (isAdopt) {
       adopted++;
-      results.push({ tenant_id: tenantId, name, status: "adopted", subaccount_sid: subSid, api_key_sid: apiKeySid });
+      results.push({ tenant_id: tenantId, name, status: "adopted", subaccount_sid: subSid, api_key_sid: apiKeySid, twiml_app_sid: twimlAppSid, twiml_app_error: twimlAppError });
     } else {
       provisioned++;
-      results.push({ tenant_id: tenantId, name, status: "provisioned", subaccount_sid: subSid, api_key_sid: apiKeySid });
+      results.push({ tenant_id: tenantId, name, status: "provisioned", subaccount_sid: subSid, api_key_sid: apiKeySid, twiml_app_sid: twimlAppSid, twiml_app_error: twimlAppError });
     }
   }
 
