@@ -596,3 +596,293 @@ export function createCampaign(_input: CreateCampaignInput): Promise<TwilioResul
     needs_config: true,
   });
 }
+
+// -----------------------------------------------------------------------------
+// Voice — Access Token (JWT) + TwiML Application (Comms C-2v, #140 Slice A1)
+// -----------------------------------------------------------------------------
+//
+// Twilio Voice for the browser SDK needs two server-minted things, both built HERE on
+// the ONE Twilio seam (§18 — no second client, no new npm dep):
+//   • a per-subaccount TwiML Application (ensureTwimlApp) whose VoiceUrl points at the
+//     future voice-twiml webhook — the ApplicationSid the outgoing VoiceGrant
+//     references. Minted once per subaccount, reused (idempotent on twiml_app_sid).
+//   • a SHORT-LIVED Access Token JWT (mintVoiceAccessToken), HS256-signed with the
+//     tenant subaccount's API-Key SECRET (Vault, via resolveTwilioCreds), carrying a
+//     VoiceGrant. The browser uses it to register with Twilio and place/receive calls
+//     billed to the tenant subaccount.
+//
+// The token is a bearer credential: whoever holds it can place calls as `identity` on
+// the tenant subaccount, billed to it. So (§9/§13):
+//   • the caller derives `identity` SERVER-SIDE from the verified JWT (tenant + user),
+//     NEVER from the request body — a token can never impersonate another tenant/user;
+//   • the TTL is SHORT (default 600s, hard-capped 3600s) so a leaked token expires fast.
+// No new dependency: the JWT is signed with Web Crypto HMAC (the webhookSig.ts
+// precedent), which also gives full control of Twilio's required `cty:"twilio-fpa;v=1"`
+// header (djwt's Header shape is awkward for the custom content-type). The secret NEVER
+// leaves this module — it is used only as the HMAC key and never logged/returned.
+
+/** SHORT-lived Access Token defaults — a leaked token must expire fast (§9/§13). */
+const VOICE_TOKEN_DEFAULT_TTL_SECONDS = 600; // 10 minutes
+const VOICE_TOKEN_MIN_TTL_SECONDS = 60;
+const VOICE_TOKEN_MAX_TTL_SECONDS = 3600; // hard cap — a body value can only shorten within this
+
+/** base64url (no padding) of a UTF-8 string or raw bytes — JWT segment encoding. */
+function b64url(input: string | Uint8Array): string {
+  const bytes = typeof input === "string" ? new TextEncoder().encode(input) : input;
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** HMAC-SHA256 sign (Web Crypto) — the same primitive as webhookSig.ts. */
+async function hmacSha256Bytes(secret: string, message: string): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return new Uint8Array(sig);
+}
+
+/** Clamp a requested TTL into [MIN, MAX], defaulting when unset/invalid. */
+function clampVoiceTtl(requested?: number): number {
+  const n = typeof requested === "number" && Number.isFinite(requested)
+    ? Math.floor(requested)
+    : VOICE_TOKEN_DEFAULT_TTL_SECONDS;
+  return Math.min(Math.max(n, VOICE_TOKEN_MIN_TTL_SECONDS), VOICE_TOKEN_MAX_TTL_SECONDS);
+}
+
+/**
+ * The VoiceUrl a newly-minted TwiML Application points at — the FUTURE voice-twiml
+ * webhook (Slice B). Nothing calls it in A1; the Application just needs a VoiceUrl to
+ * be created, and storing the intended URL now means the webhook slice doesn't have to
+ * re-point every app. Overridable via VOICE_TWIML_URL for non-default deployments.
+ */
+function defaultVoiceTwimlUrl(): string | null {
+  const explicit = Deno.env.get("VOICE_TWIML_URL");
+  if (explicit && explicit.length > 0) return explicit;
+  const base = (Deno.env.get("SUPABASE_URL") ?? "").replace(/\/$/, "");
+  // §13: return null (not a bogus host) when the base URL is absent. ensureTwimlApp then
+  // degrades to needs_config rather than minting a TwiML app pointed at an invalid VoiceUrl
+  // that would silently misconfigure the subaccount until re-pointed. SUPABASE_URL is always
+  // injected in the edge runtime, so this only guards a genuinely misconfigured deployment.
+  return base ? `${base}/functions/v1/voice-twiml` : null;
+}
+
+/** Minimal shape of the tenant_twilio_subaccounts row ensureTwimlApp reads (C-2v). */
+interface SubaccountVoiceRow {
+  subaccount_sid: string | null;
+  api_key_sid: string | null;
+  auth_token_vault_ref: string | null;
+  twiml_app_sid: string | null;
+}
+
+export interface EnsureTwimlAppResult {
+  /** AP… — the tenant subaccount's TwiML Application SID. */
+  applicationSid: string;
+  /** true when this call created the app; false when it reused an existing one. */
+  created: boolean;
+}
+
+/**
+ * Ensure the tenant subaccount has a TwiML Application (the outgoing VoiceGrant target),
+ * minting it once and persisting twiml_app_sid on tenant_twilio_subaccounts. Idempotent:
+ * if the row already has a twiml_app_sid it is returned without touching Twilio.
+ *
+ *   • ok:true  + data:{applicationSid, created} — app exists/created + persisted
+ *   • needs_config:true                          — subaccount not provisioned / creds missing
+ *   • ok:false + error                           — a real Twilio/persist failure (§13)
+ *
+ * MUST be called with a SERVICE-ROLE client (Vault read + subaccount write). Reuses the
+ * ONE Twilio seam (twilioRequest) and resolveTwilioCreds — no second client (§18). The
+ * caller may pass already-resolved creds (opts.creds) to avoid a second Vault round-trip
+ * (provisioning does this with the just-minted key).
+ */
+export async function ensureTwimlApp(
+  supabaseAdmin: SupabaseAdminLike,
+  tenantId: string,
+  opts: { voiceUrl?: string; creds?: TwilioCreds } = {},
+): Promise<TwilioResult<EnsureTwimlAppResult>> {
+  if (!tenantId) {
+    return { ok: false, status: 0, error: "twilio_missing_tenant_id", data: null };
+  }
+
+  const { data, error: rowErr } = await supabaseAdmin
+    .from("tenant_twilio_subaccounts")
+    .select("subaccount_sid:twilio_subaccount_sid, api_key_sid, auth_token_vault_ref, twiml_app_sid")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  if (rowErr) {
+    return { ok: false, status: 0, error: `twilio_subaccount_lookup_failed: ${String((rowErr as { message?: string })?.message ?? rowErr).slice(0, MAX_ERROR_BODY)}`, data: null };
+  }
+  const row = data as SubaccountVoiceRow | null;
+  if (!row || !row.subaccount_sid) {
+    return { ok: false, status: 0, error: "twilio_subaccount_not_provisioned", data: null, needs_config: true };
+  }
+
+  // Idempotent: already minted → reuse. Never mint a second app for a subaccount.
+  if (row.twiml_app_sid) {
+    return { ok: true, status: 200, error: null, data: { applicationSid: row.twiml_app_sid, created: false } };
+  }
+
+  // Resolve creds (given, or via the Vault bridge) to create the app on the subaccount.
+  let creds = opts.creds;
+  if (!creds) {
+    const r = await resolveTwilioCreds(supabaseAdmin, tenantId);
+    if (!r.ok || !r.data) {
+      return { ok: false, status: r.status, error: r.error, data: null, needs_config: r.needs_config };
+    }
+    creds = r.data;
+  }
+  if (!creds.apiKeySid) {
+    return { ok: false, status: 0, error: "twilio_subaccount_api_key_missing", data: null, needs_config: true };
+  }
+
+  const voiceUrl = opts.voiceUrl && opts.voiceUrl.length > 0 ? opts.voiceUrl : defaultVoiceTwimlUrl();
+  // §13: refuse to mint a TwiML app without a real VoiceUrl (see defaultVoiceTwimlUrl). Better a
+  // needs_config than a subaccount app silently pointed at an invalid host.
+  if (!voiceUrl) {
+    return { ok: false, status: 0, error: "voice_twiml_url_unavailable", data: null, needs_config: true };
+  }
+  const res = await twilioRequest(
+    creds.accountSid, // URL path addresses the SUBaccount
+    creds.authToken, // API-Key SECRET (password)
+    `/2010-04-01/Accounts/${encodeURIComponent(creds.accountSid)}/Applications.json`,
+    "POST",
+    { FriendlyName: "Paige Voice (C-2v)", VoiceUrl: voiceUrl, VoiceMethod: "POST" },
+    creds.apiKeySid, // API Key SID (username) — API-Key auth
+  );
+  if (!res.ok) {
+    return { ok: false, status: res.status, error: res.error, data: null, needs_config: res.needs_config };
+  }
+  const appSid = (res.data as Record<string, unknown> | null)?.sid as string | undefined;
+  if (!appSid) {
+    return { ok: false, status: res.status, error: "twilio_application_missing_sid", data: null };
+  }
+
+  // Persist. `.is('twiml_app_sid', null)` so a concurrent minter that already stored a
+  // SID is never clobbered (the loser's app is a harmless Twilio orphan; primary minter
+  // is single-threaded provisioning, so the race is rare).
+  const { error: uErr } = await supabaseAdmin
+    .from("tenant_twilio_subaccounts")
+    .update({ twiml_app_sid: appSid })
+    .eq("tenant_id", tenantId)
+    .is("twiml_app_sid", null);
+  if (uErr) {
+    // The app was created at Twilio but persistence failed — report honestly so an
+    // operator can reconcile; never return a success that isn't stored (§13).
+    return {
+      ok: false,
+      status: 0,
+      error: `twiml_app_persist_failed: ${String((uErr as { message?: string })?.message ?? uErr).slice(0, MAX_ERROR_BODY)}`,
+      data: { applicationSid: appSid, created: true },
+    };
+  }
+  // Re-read the authoritative value (a concurrent minter may have won the update race).
+  const { data: after } = await supabaseAdmin
+    .from("tenant_twilio_subaccounts")
+    .select("twiml_app_sid")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+  const finalSid = (after as { twiml_app_sid: string | null } | null)?.twiml_app_sid ?? appSid;
+  return { ok: true, status: res.status, error: null, data: { applicationSid: finalSid, created: true } };
+}
+
+export interface VoiceAccessToken {
+  /** The signed Twilio Access Token JWT (bearer — SHORT-lived). */
+  token: string;
+  /** The server-derived, tenant-scoped principal the token acts as. */
+  identity: string;
+  /** Unix seconds at which the token expires. */
+  expiresAt: number;
+  /** The (clamped) TTL actually applied, in seconds. */
+  ttlSeconds: number;
+  /** AP… — the TwiML Application the outgoing VoiceGrant references. */
+  applicationSid: string;
+}
+
+/**
+ * Mint a SHORT-lived Twilio Voice Access Token for `identity`, HS256-signed with the
+ * tenant subaccount's API-Key SECRET (Vault). Resolves creds + ensures the TwiML app,
+ * then builds the JWT:
+ *   header  { alg:"HS256", typ:"JWT", cty:"twilio-fpa;v=1" }
+ *   iss     = apiKeySid (SK…)          sub = accountSid (the tenant SUBaccount, AC…)
+ *   iat/nbf = now       exp = now + ttl (SHORT — clamped to [60,3600], default 600)
+ *   grants  { identity, voice:{ incoming:{allow:true}, outgoing:{application_sid} } }
+ *
+ * §9/§13 — the CALLER derives `identity` server-side from the verified JWT and passes
+ * it here; this helper NEVER reads a request body and REJECTS a blank identity, so a
+ * token can never be minted for a caller-forged principal. Returns:
+ *   • ok:true  + data:{token, identity, expiresAt, ttlSeconds, applicationSid}
+ *   • needs_config:true — subaccount/app not provisioned (never a fabricated token)
+ *   • ok:false + error  — a real resolve/sign failure
+ *
+ * MUST be called with a SERVICE-ROLE client (Vault + subaccount access).
+ */
+export async function mintVoiceAccessToken(
+  supabaseAdmin: SupabaseAdminLike,
+  opts: { tenantId: string; identity: string; ttlSeconds?: number; voiceUrl?: string },
+): Promise<TwilioResult<VoiceAccessToken>> {
+  const { tenantId, identity } = opts;
+  if (!tenantId) {
+    return { ok: false, status: 0, error: "twilio_missing_tenant_id", data: null };
+  }
+  // §9/§13: identity MUST be a non-empty, server-derived principal. A blank identity is
+  // a caller bug (it forgot to derive from the JWT), not a token we sign.
+  if (!identity || identity.length === 0) {
+    return { ok: false, status: 0, error: "voice_identity_required", data: null };
+  }
+
+  // Resolve the tenant subaccount creds (Vault). needs_config when unprovisioned.
+  const credsRes = await resolveTwilioCreds(supabaseAdmin, tenantId);
+  if (!credsRes.ok || !credsRes.data) {
+    return { ok: false, status: credsRes.status, error: credsRes.error ?? "twilio_creds_unavailable", data: null, needs_config: credsRes.needs_config };
+  }
+  const creds = credsRes.data;
+  if (!creds.apiKeySid) {
+    return { ok: false, status: 0, error: "twilio_subaccount_api_key_missing", data: null, needs_config: true };
+  }
+
+  // Ensure the tenant's TwiML app exists (the outgoing VoiceGrant references it). Reuse
+  // the creds we already resolved — no second Vault round-trip.
+  const appRes = await ensureTwimlApp(supabaseAdmin, tenantId, { creds, voiceUrl: opts.voiceUrl });
+  if (!appRes.ok || !appRes.data) {
+    return { ok: false, status: appRes.status, error: appRes.error ?? "twiml_app_unavailable", data: null, needs_config: appRes.needs_config };
+  }
+  const applicationSid = appRes.data.applicationSid;
+
+  const ttlSeconds = clampVoiceTtl(opts.ttlSeconds);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const expiresAt = nowSec + ttlSeconds;
+  // Backdate nbf by 30s to absorb clock skew between us and Twilio's registrar. An nbf set
+  // to exactly `now` makes the token momentarily "not yet valid" if Twilio's clock lags ours,
+  // an intermittent device-registration/first-call flake that compiles clean but fails live
+  // (§32). exp still bounds the token; twilio-node omits nbf entirely, so this is a superset.
+  const nbfSec = nowSec - 30;
+
+  const header = { typ: "JWT", alg: "HS256", cty: "twilio-fpa;v=1" };
+  const payload = {
+    jti: `${creds.apiKeySid}-${nowSec}`,
+    iss: creds.apiKeySid, // SK… (API Key SID)
+    sub: creds.accountSid, // AC… (the tenant SUBaccount SID the token acts on)
+    iat: nowSec,
+    nbf: nbfSec,
+    exp: expiresAt,
+    grants: {
+      identity,
+      voice: {
+        incoming: { allow: true },
+        outgoing: { application_sid: applicationSid },
+      },
+    },
+  };
+
+  const signingInput = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
+  const sig = await hmacSha256Bytes(creds.authToken, signingInput);
+  const token = `${signingInput}.${b64url(sig)}`;
+
+  return { ok: true, status: 200, error: null, data: { token, identity, expiresAt, ttlSeconds, applicationSid } };
+}
