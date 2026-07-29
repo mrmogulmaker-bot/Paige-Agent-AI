@@ -13,7 +13,8 @@
 //      access-token grant; the inbound To is the dialed number). These builders only shape
 //      XML — the resolver (index.ts) enforces that a caller is only ever bridged to the
 //      tenant that owns the number. No trusted-body tenant anywhere.
-//  §3  Every <Say> is plain, human, jargon-free — no backend/table names, no "AI-powered".
+//  §3  Every <Say> is plain, human, jargon-free — no backend/table names, no marketing
+//      buzzwords; Paige speaks like a person, never like a product one-sheet.
 //  §13 The "not set up" / "no one available" paths speak an honest message and hang up —
 //      never dial a bogus callerId, never silently drop.
 
