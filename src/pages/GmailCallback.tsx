@@ -21,9 +21,7 @@ function safeReturnOrigin(value: unknown): string | null {
         host === "paigeagent.ai" ||
         host === "www.paigeagent.ai" ||
         host === "app.paigeagent.ai" ||
-        host === "portal.mogulmakeracademy.com" ||
-        host.endsWith(".vercel.app") ||
-        host.endsWith(".lovable.app")
+        host.endsWith(".vercel.app")
       ));
     return allowed ? url.origin : null;
   } catch {

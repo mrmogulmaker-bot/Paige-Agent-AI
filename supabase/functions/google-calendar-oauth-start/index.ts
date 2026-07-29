@@ -40,10 +40,7 @@ function allowedReturnOrigin(origin: string): string | null {
       url.protocol === "https:" && (
         host === "paigeagent.ai" ||
         host === "www.paigeagent.ai" ||
-        host === "app.paigeagent.ai" ||
-        host === "portal.mogulmakeracademy.com" ||
-        host.endsWith(".lovable.app") ||
-        host.endsWith(".lovableproject.com")
+        host === "app.paigeagent.ai"
       );
     return allowed ? url.origin : null;
   } catch {

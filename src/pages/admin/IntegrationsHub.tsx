@@ -32,7 +32,6 @@ import {
 type ConfigShape = {
   ghl_pit_ref: string | null;
   ghl_location_id: string | null;
-  gmail_default_sender: string | null;
   langsmith_project: string | null;
   posthog_project_url: string | null;
   sentry_org_slug: string | null;
@@ -64,7 +63,6 @@ const tiles = [
   { key: "zapier", icon: Zap, short: "Zapier", title: "Zapier MCP", description: "Expose thousands of apps to Paige via the MCP client.", long: "Paige reaches thousands of apps through one connection, so she can act inside tools you already use without any custom wiring.", href: "/admin/integrations/zapier" },
   { key: "telegram", icon: Send, short: "Telegram", title: "Telegram Alerts", description: "Bot channel for admin alerts and overdue approvals.", long: "Paige pings you on Telegram the moment something needs a decision — an approval waiting, an alert worth your eyes.", href: "/admin/integrations/telegram" },
   { key: "email", icon: Mail, short: "Email", title: "Email (Custom Domain)", description: "Send and receive email from your unified inbox under your own verified domain.", long: "Paige sends and receives email from one inbox under your own verified domain, so every message looks and lands like it came from you.", href: "/admin/integrations/email" },
-  { key: "gmail", icon: MessageSquare, short: "Gmail", title: "Gmail (Founder Inbox)", description: "Deliverability-sensitive sends via OAuth.", long: "For the sends that must land in the inbox, Paige delivers through your connected Gmail account with your reputation behind them.", href: "/admin/integrations/gmail" },
   { key: "firecrawl", icon: Search, short: "Firecrawl", title: "Firecrawl Web Search", description: "Live web research and site crawling.", long: "Paige researches the live web and reads sites for you — pulling in what she needs to answer well and act on current information.", href: "/admin/integrations" },
   { key: "langsmith", icon: Activity, short: "AI Activity", title: "AI Activity (LangSmith)", description: "Recent traces, cost and latency for all AI calls.", long: "See exactly what Paige's team is doing behind the scenes — recent work, what it cost, and how fast it ran.", href: "/admin/integrations/ai-activity" },
   { key: "docusign", icon: FileSignature, short: "DocuSign", title: "DocuSign", description: "VIP apps, coach agreements, DFY engagement letters, term sheets.", long: "Paige prepares and sends agreements for signature, then tracks each one until it's signed — no more chasing paperwork.", href: "/admin/integrations/docusign" },
@@ -87,7 +85,7 @@ type Tile = (typeof tiles)[number];
 const CATEGORIES: { id: string; label: string; icon: LucideIcon; keys: string[] }[] = [
   { id: "automation", label: "Automation & workflows", icon: Workflow, keys: ["n8n", "zapier"] },
   { id: "revenue", label: "Revenue & payments", icon: CreditCard, keys: ["stripe"] },
-  { id: "comms", label: "Communications", icon: MessageSquare, keys: ["email", "gmail", "telegram"] },
+  { id: "comms", label: "Communications", icon: MessageSquare, keys: ["email", "telegram"] },
   { id: "scheduling", label: "Scheduling & signatures", icon: CalendarClock, keys: ["cal", "docusign"] },
   { id: "marketing", label: "Marketing & audiences", icon: Share2, keys: ["meta", "meta_pixel"] },
   { id: "research", label: "Research & enrichment", icon: UserSearch, keys: ["firecrawl", "apollo"] },
@@ -135,7 +133,7 @@ export default function IntegrationsHub() {
       const sb = supabase as any;
       const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
       const [cfg, n8n, mcp, tg, sub, env, bkg, soc, enr, email] = await Promise.all([
-        sb.from("paige_config").select("ghl_pit_ref, ghl_location_id, gmail_default_sender, langsmith_project, posthog_project_url, sentry_org_slug, meta_default_page_id, cal_default_event_type_id, apollo_auto_enrich, docusign_templates").eq("id", 1).maybeSingle(),
+        sb.from("paige_config").select("ghl_pit_ref, ghl_location_id, langsmith_project, posthog_project_url, sentry_org_slug, meta_default_page_id, cal_default_event_type_id, apollo_auto_enrich, docusign_templates").eq("id", 1).maybeSingle(),
         sb.rpc("get_tenant_n8n_connection"),
         sb.from("paige_mcp_connections").select("id", { count: "exact", head: true }).eq("enabled", true),
         sb.from("paige_telegram_config").select("default_admin_chat_id").eq("id", 1).maybeSingle(),
@@ -185,7 +183,6 @@ export default function IntegrationsHub() {
       case "zapier": return counts.mcp > 0 ? { state: "success", label: `${counts.mcp} active` } : { state: "off", label: "Not configured" };
       case "telegram": return counts.telegramConfigured ? { state: "success", label: "Active" } : { state: "off", label: "Not configured" };
       case "email": return counts.emailConnected ? { state: "success", label: "Connected" } : { state: "off", label: "Not connected" };
-      case "gmail": return config?.gmail_default_sender ? { state: "success", label: config.gmail_default_sender } : { state: "off", label: "Not connected" };
       case "firecrawl": return { state: "success", label: "Active" };
       case "langsmith": return config?.langsmith_project ? { state: "success", label: config.langsmith_project } : { state: "off", label: "Disabled" };
       case "docusign": return counts.envelopes > 0 ? { state: "success", label: `${counts.envelopes} envelope${counts.envelopes === 1 ? "" : "s"}` } : { state: "off", label: "Not configured" };
@@ -215,7 +212,6 @@ export default function IntegrationsHub() {
       case "zapier": return [{ label: "Active MCP actions", value: String(counts.mcp) }];
       case "telegram": return [{ label: "Admin channel", value: counts.telegramConfigured ? "Configured" : "Not set" }];
       case "email": return [{ label: "Inbox", value: counts.emailConnected ? "Connected" : "Not connected" }];
-      case "gmail": return config?.gmail_default_sender ? [{ label: "Sending as", value: config.gmail_default_sender }] : [];
       case "langsmith": return config?.langsmith_project ? [{ label: "Project", value: config.langsmith_project }] : [];
       case "posthog": return config?.posthog_project_url ? [{ label: "Project", value: config.posthog_project_url }] : [];
       case "sentry": return config?.sentry_org_slug ? [{ label: "Organization", value: config.sentry_org_slug }] : [];

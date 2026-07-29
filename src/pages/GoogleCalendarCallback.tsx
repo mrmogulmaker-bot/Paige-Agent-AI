@@ -18,9 +18,7 @@ function safeReturnOrigin(value: unknown): string | null {
         host === "paigeagent.ai" ||
         host === "www.paigeagent.ai" ||
         host === "app.paigeagent.ai" ||
-        host === "portal.mogulmakeracademy.com" ||
-        host.endsWith(".vercel.app") ||
-        host.endsWith(".lovable.app")
+        host.endsWith(".vercel.app")
       ));
     return allowed ? url.origin : null;
   } catch {
@@ -65,15 +63,16 @@ export default function GoogleCalendarCallback() {
       const { data, error } = await supabase.functions.invoke("google-calendar-oauth-callback", {
         body: { code, state: stateParam, origin: window.location.origin },
       });
-      if (error || (data as any)?.error) {
+      const result = data as { error?: string; google_email?: string; return_origin?: string } | null;
+      if (error || result?.error) {
         setState("error");
-        setMessage((data as any)?.error ?? error?.message ?? "Failed to complete connection.");
+        setMessage(result?.error ?? error?.message ?? "Failed to complete connection.");
         return;
       }
       setState("ok");
-      setMessage(`Connected${(data as any)?.google_email ? ` as ${(data as any).google_email}` : ""}. Redirecting...`);
+      setMessage(`Connected${result?.google_email ? ` as ${result.google_email}` : ""}. Redirecting...`);
       toast.success("Google Calendar connected");
-      const returnOrigin = safeReturnOrigin((data as any)?.return_origin);
+      const returnOrigin = safeReturnOrigin(result?.return_origin);
       setTimeout(() => {
         const dest = isStaffRef.current ? "/admin/calendar" : "/app/settings?tab=accounts";
         if (returnOrigin && returnOrigin !== window.location.origin) {
