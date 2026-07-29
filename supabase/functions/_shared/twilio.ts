@@ -791,6 +791,71 @@ export async function ensureTwimlApp(
   return { ok: true, status: res.status, error: null, data: { applicationSid: finalSid, created: true } };
 }
 
+// -----------------------------------------------------------------------------
+// Twilio request-signature validation (X-Twilio-Signature) — the ONE home (§18)
+// -----------------------------------------------------------------------------
+//
+// Twilio signs every webhook it POSTs with X-Twilio-Signature: an HMAC-SHA1 over
+// the full request URL + the POST params sorted by key and concatenated as
+// key+value (no separators), base64-encoded, keyed by the Auth Token of the
+// account that owns the resource. Three inbound-SMS/DLR functions each carried an
+// INLINE copy of this (handle-inbound-sms, twilio-status-callback,
+// twilio-inbound-webhook). The voice-twiml webhook needs the same check, so per
+// §18 the canonical implementation now lives HERE and voice-twiml reuses it rather
+// than forking a fourth copy. (The three SMS copies are left untouched in this
+// slice — refactoring them is a §37-scoped follow-up, not a voice deliverable.)
+//
+// PURE + TESTABLE (§32): computeTwilioSignature is a deterministic function of
+// (authToken, url, rawBody) — a Node smoke can mint a signature with a known token
+// and assert validateTwilioSignature accepts it and rejects a tampered body.
+
+/**
+ * Compute the base64 X-Twilio-Signature Twilio would send for a form-encoded POST:
+ *   base64( HMAC-SHA1( authToken, url + Σ sortedByKey(key + value) ) )
+ * `rawBody` is the raw application/x-www-form-urlencoded body. Params are sorted by
+ * key (stable, duplicate-key-safe via URLSearchParams entry order) exactly as the
+ * legacy inline SMS validators did, so the two agree byte-for-byte.
+ */
+export async function computeTwilioSignature(
+  authToken: string,
+  url: string,
+  rawBody: string,
+): Promise<string> {
+  const params = new URLSearchParams(rawBody);
+  const sorted = [...params.entries()].sort(([a], [b]) => a.localeCompare(b));
+  const concatenated = url + sorted.map(([k, v]) => k + v).join("");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(authToken),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"],
+  );
+  const buf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(concatenated));
+  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+
+/**
+ * Validate an incoming X-Twilio-Signature against the recomputed value. Returns
+ * false for a missing signature or a mismatch. The caller supplies the Auth Token
+ * (a subaccount's or the master's) — this helper is agnostic to which. The compare
+ * is length-then-char (Web Crypto has no timing-safe compare in this runtime; the
+ * secret is the HMAC key, never revealed by the comparison of two base64 digests).
+ */
+export async function validateTwilioSignature(
+  authToken: string,
+  signature: string | null | undefined,
+  url: string,
+  rawBody: string,
+): Promise<boolean> {
+  if (!authToken || !signature) return false;
+  const computed = await computeTwilioSignature(authToken, url, rawBody);
+  if (computed.length !== signature.length) return false;
+  let diff = 0;
+  for (let i = 0; i < computed.length; i++) diff |= computed.charCodeAt(i) ^ signature.charCodeAt(i);
+  return diff === 0;
+}
+
 export interface VoiceAccessToken {
   /** The signed Twilio Access Token JWT (bearer — SHORT-lived). */
   token: string;

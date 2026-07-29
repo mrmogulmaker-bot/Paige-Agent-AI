@@ -21,6 +21,7 @@ import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { VoiceDeviceProvider } from "@/lib/voice/VoiceDeviceProvider";
 import { DialPadTrigger } from "@/components/admin/voice/DialPadTrigger";
 import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
+import { IncomingCallOverlay } from "@/components/admin/voice/IncomingCallOverlay";
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { AccountSwitcher } from "@/components/admin/AccountSwitcher";
@@ -343,6 +344,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     {/* #140 A2 — the ONE dialer surface (a viewport Sheet), rendered once so every
         trigger + click-to-call opens the SAME pad on ANY breakpoint (§18). */}
     <DialPadSurface />
+    {/* #140 A3 — the ONE inbound ringing overlay. Rendered once so an incoming call
+        pops the same accept/reject surface on ANY route/breakpoint (§18/§47). */}
+    <IncomingCallOverlay />
     <div className="h-dvh flex flex-col bg-background overflow-hidden">
       {/* Banner intentionally omitted on /admin — it's redundant when already on
           the admin dashboard. AppShell still renders it inside the client view. */}

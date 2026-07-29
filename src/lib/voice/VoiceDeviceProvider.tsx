@@ -37,6 +37,7 @@ export type VoiceStatus =
   | "idle" // no Device yet (nothing has asked to call)
   | "connecting" // fetching token / registering / dialing
   | "ready" // Device registered, no active call
+  | "ringing" // an INBOUND call is ringing, awaiting accept/reject (A3)
   | "in_call" // a call is live
   | "needs_config" // A1 token fn returned needs_config — voice not provisioned
   | "error"; // token/Device/mic failure — carries a human reason
@@ -46,6 +47,12 @@ export interface ActiveCallInfo {
   number: string;
   /** epoch ms when the call connected — the DialPad renders a timer off this. */
   startedAt: number;
+}
+
+/** An inbound call ringing the browser, awaiting accept/reject (A3). */
+export interface IncomingCallInfo {
+  /** The external caller's number (From), display form; falls back to "Unknown caller". */
+  from: string;
 }
 
 interface VoiceDeviceValue {
@@ -59,6 +66,15 @@ interface VoiceDeviceValue {
   muted: boolean;
   toggleMute: () => void;
   activeCall: ActiveCallInfo | null;
+  /** Send a DTMF tone on the LIVE call (in-call keypad). No-op when no call is live. */
+  sendDigit: (digit: string) => void;
+
+  // ── Inbound (A3): a ringing call awaiting the operator's accept/reject ──
+  incomingCall: IncomingCallInfo | null;
+  /** Accept the ringing inbound call — wires it exactly like an outbound call. */
+  acceptIncoming: () => void;
+  /** Reject the ringing inbound call. */
+  rejectIncoming: () => void;
 
   // ── Dialer UI wiring (so a click-to-call anywhere drives the one top-nav pad) ──
   dialerOpen: boolean;
@@ -136,11 +152,14 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
   const [reason, setReason] = useState<string | null>(null);
   const [muted, setMuted] = useState(false);
   const [activeCall, setActiveCall] = useState<ActiveCallInfo | null>(null);
+  const [incomingCall, setIncomingCall] = useState<IncomingCallInfo | null>(null);
   const [dialerOpen, setDialerOpen] = useState(false);
   const [draft, setDraft] = useState("");
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
+  // The ringing inbound Call, held until the operator accepts or rejects it (A3).
+  const incomingRef = useRef<Call | null>(null);
   // Guards concurrent boots (pad opens + click-to-call fire together).
   const bootingRef = useRef<Promise<Device | null> | null>(null);
   const mountedRef = useRef(true);
@@ -256,14 +275,40 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
         }
       });
 
-      // A2 does NOT own inbound (A3 does). Stub so an incoming call can't crash the
-      // shell: reject it politely rather than auto-answering or throwing.
+      // A3 — real inbound handling. Twilio hands us the ringing Call; we surface it as
+      // the IncomingCallOverlay (accept/reject) rather than auto-answering.
       device.on("incoming", (incoming: Call) => {
-        try {
-          incoming.reject();
-        } catch {
-          /* no-op — A3 wires real inbound handling */
+        // Single-call guard (A3 is single-call; multi-call is a tracked follow-up): if a
+        // call is already LIVE or another is already RINGING, auto-reject the new one so
+        // we never drop the active call or stack two ringing overlays.
+        if (callRef.current || incomingRef.current) {
+          try {
+            incoming.reject();
+          } catch {
+            /* ignore — nothing to surface for the rejected second call */
+          }
+          return;
         }
+        incomingRef.current = incoming;
+        // Twilio populates call parameters with the caller's From on an inbound call.
+        const fromRaw =
+          incoming.parameters?.From ??
+          incoming.parameters?.from ??
+          "";
+        safeSet(setIncomingCall, { from: fromRaw && fromRaw.length > 0 ? fromRaw : "Unknown caller" });
+        safeSet(setStatus, "ringing");
+
+        // If the caller hangs up (or Twilio cancels) BEFORE we accept, clear the overlay.
+        const clearRinging = () => {
+          if (incomingRef.current === incoming) incomingRef.current = null;
+          safeSet(setIncomingCall, null);
+          // Only fall back to ready/idle if this ring never became the live call.
+          if (!callRef.current) safeSet(setStatus, deviceRef.current ? "ready" : "idle");
+        };
+        incoming.on("cancel", clearRinging);
+        incoming.on("disconnect", clearRinging);
+        incoming.on("reject", clearRinging);
+        incoming.on("error", clearRinging);
       });
 
       try {
@@ -380,6 +425,53 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
     setMuted(next);
   }, []);
 
+  // §3/§36: while a call is LIVE the keypad sends DTMF tones (touch-tone), not draft edits.
+  // Only 0-9, *, # are valid DTMF; anything else is ignored so a stray key can't error.
+  const sendDigit = useCallback((digit: string) => {
+    const c = callRef.current;
+    if (!c) return;
+    if (!/^[0-9*#]$/.test(digit)) return;
+    try {
+      c.sendDigits(digit);
+    } catch {
+      /* a transient signaling blip on a tone is non-fatal; the call continues */
+    }
+  }, []);
+
+  // ── Inbound accept/reject (A3) ────────────────────────────────────────────────
+  const acceptIncoming = useCallback(() => {
+    const incoming = incomingRef.current;
+    if (!incoming) return;
+    // Clear the ringing surface FIRST so the overlay dismisses immediately on tap.
+    incomingRef.current = null;
+    const callerFrom = incomingCall?.from ?? "Unknown caller";
+    safeSet(setIncomingCall, null);
+    safeSet(setStatus, "connecting");
+    try {
+      incoming.accept();
+      // Reuse the SAME wiring as outbound so the in-call surface (timer + mute + DTMF +
+      // destructive hang-up) behaves identically for an accepted inbound call.
+      wireCall(incoming, callerFrom);
+    } catch {
+      safeSet(setStatus, deviceRef.current ? "ready" : "idle");
+      safeSet(setReason, "Couldn't answer the call. Try again.");
+    }
+  }, [incomingCall, wireCall, safeSet]);
+
+  const rejectIncoming = useCallback(() => {
+    const incoming = incomingRef.current;
+    incomingRef.current = null;
+    safeSet(setIncomingCall, null);
+    safeSet(setStatus, deviceRef.current ? "ready" : "idle");
+    if (incoming) {
+      try {
+        incoming.reject();
+      } catch {
+        /* the ring's own listeners already reset state */
+      }
+    }
+  }, [safeSet]);
+
   const openDialerWith = useCallback(
     (number: string) => {
       setDraft(number);
@@ -407,12 +499,19 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
         /* ignore */
       }
       try {
+        // Reject a still-ringing inbound call so we never leak an unanswered ring.
+        incomingRef.current?.reject();
+      } catch {
+        /* ignore */
+      }
+      try {
         deviceRef.current?.destroy();
       } catch {
         /* ignore */
       }
       deviceRef.current = null;
       callRef.current = null;
+      incomingRef.current = null;
     };
   }, []);
 
@@ -425,6 +524,10 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       muted,
       toggleMute,
       activeCall,
+      sendDigit,
+      incomingCall,
+      acceptIncoming,
+      rejectIncoming,
       dialerOpen,
       setDialerOpen,
       draft,
@@ -441,6 +544,10 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       muted,
       toggleMute,
       activeCall,
+      sendDigit,
+      incomingCall,
+      acceptIncoming,
+      rejectIncoming,
       dialerOpen,
       draft,
       openDialerWith,
