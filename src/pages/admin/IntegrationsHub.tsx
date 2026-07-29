@@ -8,7 +8,7 @@ import { CalendarConnectorsPanel } from "@/components/admin/settings/CalendarCon
 import {
   Workflow, CreditCard, MessageSquare, Send, Zap, Search, Activity,
   ExternalLink, FileSignature, CalendarClock, BarChart3, Bug, Share2, UserSearch,
-  Building2, ShieldCheck, Landmark, Plug,
+  Building2, ShieldCheck, Landmark, Plug, Mail,
 } from "lucide-react";
 
 
@@ -34,6 +34,7 @@ type Counts = {
   bookings: number;
   socialPosts: number;
   enrichments: number;
+  emailConnected: boolean;
 };
 
 const tiles = [
@@ -41,6 +42,7 @@ const tiles = [
   { key: "stripe", icon: CreditCard, title: "Stripe Revenue", description: "Live subscription events, MRR delta and churn alerts.", href: "/admin/integrations/subscriptions" },
   { key: "zapier", icon: Zap, title: "Zapier MCP", description: "Expose thousands of apps to Paige via the MCP client.", href: "/admin/integrations/zapier" },
   { key: "telegram", icon: Send, title: "Telegram Alerts", description: "Bot channel for admin alerts and overdue approvals.", href: "/admin/integrations/telegram" },
+  { key: "email", icon: Mail, title: "Email (Custom Domain)", description: "Send and receive email from your unified inbox under your own verified domain.", href: "/admin/integrations/email" },
   { key: "gmail", icon: MessageSquare, title: "Gmail (Founder Inbox)", description: "Deliverability-sensitive sends via OAuth.", href: "/admin/integrations/gmail" },
   { key: "firecrawl", icon: Search, title: "Firecrawl Web Search", description: "Live web research and site crawling.", href: "/admin/integrations" },
   { key: "langsmith", icon: Activity, title: "AI Activity (LangSmith)", description: "Recent traces, cost and latency for all AI calls.", href: "/admin/integrations/ai-activity" },
@@ -61,26 +63,33 @@ export default function IntegrationsHub() {
   const [config, setConfig] = useState<ConfigShape | null>(null);
   const [counts, setCounts] = useState<Counts>({
     n8n: 0, mcp: 0, telegramConfigured: false, recentSubscriptionEvents: 0,
-    envelopes: 0, bookings: 0, socialPosts: 0, enrichments: 0,
+    envelopes: 0, bookings: 0, socialPosts: 0, enrichments: 0, emailConnected: false,
   });
 
   useEffect(() => {
     void (async () => {
+      // channel_connectors isn't in the generated types yet (like messages/snippets
+      // in ClientsConversations); route through the same `any` client the rest of the
+      // Conversations surface uses so an untyped table doesn't cascade `never` into the
+      // sibling queries' `.eq()` chains. Results are re-typed on assignment below.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sb = supabase as any;
       const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-      const [cfg, n8n, mcp, tg, sub, env, bkg, soc, enr] = await Promise.all([
-        supabase.from("paige_config").select("ghl_pit_ref, ghl_location_id, gmail_default_sender, langsmith_project, posthog_project_url, sentry_org_slug, meta_default_page_id, cal_default_event_type_id, apollo_auto_enrich, docusign_templates").eq("id", 1).maybeSingle(),
-        (supabase as any).rpc("get_tenant_n8n_connection"),
-        supabase.from("paige_mcp_connections").select("id", { count: "exact", head: true }).eq("enabled", true),
-        supabase.from("paige_telegram_config").select("default_admin_chat_id").eq("id", 1).maybeSingle(),
-        supabase.from("paige_subscription_events").select("id", { count: "exact", head: true }).gte("created_at", since),
-        supabase.from("paige_signature_envelopes").select("id", { count: "exact", head: true }),
-        supabase.from("paige_bookings").select("id", { count: "exact", head: true }).gte("scheduled_at", new Date(Date.now() - 30 * 86_400_000).toISOString()),
-        supabase.from("paige_social_posts").select("id", { count: "exact", head: true }),
-        supabase.from("paige_enrichment_log").select("id", { count: "exact", head: true }).gte("created_at", since),
+      const [cfg, n8n, mcp, tg, sub, env, bkg, soc, enr, email] = await Promise.all([
+        sb.from("paige_config").select("ghl_pit_ref, ghl_location_id, gmail_default_sender, langsmith_project, posthog_project_url, sentry_org_slug, meta_default_page_id, cal_default_event_type_id, apollo_auto_enrich, docusign_templates").eq("id", 1).maybeSingle(),
+        sb.rpc("get_tenant_n8n_connection"),
+        sb.from("paige_mcp_connections").select("id", { count: "exact", head: true }).eq("enabled", true),
+        sb.from("paige_telegram_config").select("default_admin_chat_id").eq("id", 1).maybeSingle(),
+        sb.from("paige_subscription_events").select("id", { count: "exact", head: true }).gte("created_at", since),
+        sb.from("paige_signature_envelopes").select("id", { count: "exact", head: true }),
+        sb.from("paige_bookings").select("id", { count: "exact", head: true }).gte("scheduled_at", new Date(Date.now() - 30 * 86_400_000).toISOString()),
+        sb.from("paige_social_posts").select("id", { count: "exact", head: true }),
+        sb.from("paige_enrichment_log").select("id", { count: "exact", head: true }).gte("created_at", since),
+        sb.from("channel_connectors").select("id", { count: "exact", head: true }).eq("channel_type", "email").eq("active", true).eq("status", "active"),
       ]);
       setConfig(cfg.data as ConfigShape | null);
       setCounts({
-        n8n: (n8n as any)?.data?.configured ? 1 : 0,
+        n8n: (n8n as { data?: { configured?: boolean } | null } | null)?.data?.configured ? 1 : 0,
         mcp: mcp.count ?? 0,
         telegramConfigured: Boolean(tg.data?.default_admin_chat_id),
         recentSubscriptionEvents: sub.count ?? 0,
@@ -88,6 +97,7 @@ export default function IntegrationsHub() {
         bookings: bkg.count ?? 0,
         socialPosts: soc.count ?? 0,
         enrichments: enr.count ?? 0,
+        emailConnected: (email.count ?? 0) > 0,
       });
     })();
   }, []);
@@ -102,6 +112,7 @@ export default function IntegrationsHub() {
       case "ghl": return config?.ghl_location_id ? { state: "success", label: "Connected" } : { state: "off", label: "Not configured" };
       case "zapier": return counts.mcp > 0 ? { state: "success", label: `${counts.mcp} active` } : { state: "off", label: "Not configured" };
       case "telegram": return counts.telegramConfigured ? { state: "success", label: "Active" } : { state: "off", label: "Not configured" };
+      case "email": return counts.emailConnected ? { state: "success", label: "Connected" } : { state: "off", label: "Not connected" };
       case "gmail": return config?.gmail_default_sender ? { state: "success", label: config.gmail_default_sender } : { state: "off", label: "Not connected" };
       case "firecrawl": return { state: "success", label: "Active" };
       case "langsmith": return config?.langsmith_project ? { state: "success", label: config.langsmith_project } : { state: "off", label: "Disabled" };
