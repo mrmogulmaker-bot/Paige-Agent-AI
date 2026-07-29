@@ -11,7 +11,7 @@
 // neutral/indigo (§11). Controls with no real backing (Calls/Inbound DND, true Followers)
 // are honestly disabled or omitted, never faked (§13).
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { Link } from "react-router-dom";
 import { SectionCard, EmptyState, StatePill, GlyphPlate } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,9 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { updateContact } from "@/lib/contacts";
+import {
+  listCustomFieldDefinitions, listClientCustomFieldValues, type CustomFieldDefinition,
+} from "@/lib/customFields";
 import {
   User, UserPlus, Mail, Phone, Clock, Copy, ShieldAlert, BellOff, PanelRightClose,
   Send, Loader2, ExternalLink, UserRound, Sparkles, Bell, ClipboardList,
@@ -50,6 +53,64 @@ interface Coach { user_id: string; name: string; roles: string[] }
 
 // Roles that can OWN a contact (mirror ClientManagementDashboard's team split).
 const ASSIGNABLE_ROLES = new Set(["admin", "super_admin", "coach", "moderator"]);
+
+// #6 Custom-field surfacing — the tenant's client custom-field definitions + this contact's values,
+// read through the ONE canonical seam (@/lib/customFields, §18/§12 — same fetch Paige and the
+// settings authoring UI use), which coerces `options` to a real array and scopes by tenant + RLS.
+interface ResolvedCustomField { def: CustomFieldDefinition; display: string }
+
+/** Look up an option's human label (falls back to the raw stored value). */
+function optionLabel(options: CustomFieldDefinition["options"], raw: unknown): string {
+  const v = String(raw);
+  const opts = Array.isArray(options) ? options : [];
+  for (const o of opts) {
+    if (o.value === v) return o.label ?? o.value;
+  }
+  return v;
+}
+
+/** Parse a stored date value as a LOCAL calendar day. A date-only "YYYY-MM-DD" (what the
+ *  type="date" editor saves) is otherwise read as UTC midnight and renders a day early west of
+ *  UTC (§37 — match the editor's calendar semantics; §13 no off-by-one). */
+function toCalendarDate(value: unknown): Date | null {
+  if (typeof value === "string") {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  const d = new Date(value as string);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Render a custom-field value by its declared type. `value` is jsonb (supabase-js already parsed
+ * it to JS). Returns null when the value is absent/malformed so the row is skipped (§15).
+ */
+function renderValue(def: CustomFieldDefinition, value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  switch (def.fieldType) {
+    case "boolean":
+      // Match the full editor's normalization (ContactCustomFieldsPanel: value===true||"true"),
+      // so a stored string "false" reads as No on both surfaces (§37) — not truthy-"Yes".
+      return value === true || value === "true" ? "Yes" : "No";
+    case "date": {
+      const d = toCalendarDate(value);
+      return d ? format(d, "PP") : null;
+    }
+    case "select":
+      return optionLabel(def.options, value);
+    case "multiselect": {
+      const arr = Array.isArray(value) ? value : [value];
+      const labels = arr.map((v) => optionLabel(def.options, v)).filter(Boolean);
+      return labels.length ? labels.join(", ") : null;
+    }
+    case "number":
+    case "text":
+    default: {
+      const s = String(value);
+      return s.length ? s : null;
+    }
+  }
+}
 
 function CopyRow({ icon: Icon, value, label }: { icon: typeof Mail; value: string; label: string }) {
   return (
@@ -156,6 +217,40 @@ export function ContactCardRail({
     () => members.filter((m) => m.roles.some((r) => ASSIGNABLE_ROLES.has(r))),
     [members],
   );
+
+  // ── #6 custom fields for THIS contact — the tenant's active client field definitions joined
+  // with this contact's stored values. RLS on both tables pins the read to the caller's tenant
+  // (§9 — no tenant_id from the client). Only fields that actually HAVE a value are surfaced
+  // (§15 no placeholders); an empty result renders nothing. Keyed on contact.id so a switch refetches.
+  const [customFields, setCustomFields] = useState<ResolvedCustomField[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const cid = contact?.id;
+    // Reset FIRST so a contact switch never renders the previous contact's fields under the new
+    // identity while the fetch is in flight (the #270-class stale-render guard).
+    setCustomFields([]);
+    if (!cid || !tenantId) return;
+    (async () => {
+      try {
+        const [defs, valuesByDef] = await Promise.all([
+          listCustomFieldDefinitions(tenantId),
+          listClientCustomFieldValues(cid),
+        ]);
+        if (!alive) return;
+        const resolved: ResolvedCustomField[] = [];
+        for (const def of defs) {
+          const display = renderValue(def, valuesByDef[def.id]);
+          if (display !== null) resolved.push({ def, display });
+        }
+        setCustomFields(resolved);
+      } catch (e) {
+        // Degrade LOUDLY, not silently (§13/§32): a query error or malformed row leaves the
+        // section empty but logs the cause — never an unhandled rejection with no signal.
+        if (alive) { console.error("[ContactCardRail] custom-field load failed", e); setCustomFields([]); }
+      }
+    })();
+    return () => { alive = false; };
+  }, [contact?.id, tenantId]);
 
   // ── local state seeded from props (optimistic writes reconcile via onChanged) ──
   const [localTags, setLocalTags] = useState<string[]>([]);
@@ -280,6 +375,12 @@ export function ContactCardRail({
   // and still never the false "Unassigned" (§13).
   const ownerName = ownerId
     ? (members.find((m) => m.user_id === ownerId)?.name ?? "Current owner")
+    : null;
+
+  // #10 (staff half) — resolve created_by against the already-loaded roster (§18/§37, no second
+  // RPC). A system/import creator matches no member → null → the row hides (§13, never a raw uuid).
+  const createdByName = contact?.created_by
+    ? (members.find((m) => m.user_id === contact.created_by)?.name ?? null)
     : null;
 
   return (
@@ -466,6 +567,26 @@ export function ContactCardRail({
                   value={formatDistanceToNow(new Date(contact.last_contacted_at), { addSuffix: true })}
                 />
               )}
+              {/* #11 created-on (absolute date) + #10 created-by (staff half; hidden when the
+                  creator resolves to no member — §13 never a raw uuid). */}
+              <FieldRow
+                label="Created"
+                value={contact.created_at ? format(new Date(contact.created_at), "PP") : null}
+              />
+              <FieldRow label="Created by" value={createdByName} />
+
+              {/* #6 custom fields — only fields WITH a value; nothing renders when there are none. */}
+              {customFields.length > 0 && (
+                <div className="space-y-2 border-t border-border/60 pt-2">
+                  <p className="px-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Custom fields
+                  </p>
+                  {customFields.map(({ def, display }) => (
+                    <FieldRow key={def.id} label={def.label} value={display} />
+                  ))}
+                </div>
+              )}
+
               <Button variant="outline" size="sm" className="mt-1 w-full" asChild>
                 <Link to={`/admin/contacts/${contact.id}`}>
                   <ExternalLink className="mr-1.5 h-3.5 w-3.5" /> Open full profile
