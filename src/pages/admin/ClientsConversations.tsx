@@ -1093,7 +1093,7 @@ export default function ClientsConversations() {
         selected && railOpen ? "lg:grid-cols-[320px_1fr_300px]" : "lg:grid-cols-[320px_1fr]",
       )}>
         {/* ── LEFT: thread rail ─────────────────────────────────────────────────── */}
-        <SectionCard padded={false} className="flex min-h-0 flex-col overflow-hidden">
+        <SectionCard padded={false} bodyClassName="flex min-h-0 flex-1 flex-col" className="flex min-h-0 flex-col overflow-hidden">
           <div className="space-y-2.5 border-b border-border/60 px-3 py-2.5">
             {/* §43 — start a NEW outbound thread. Relocated off the PageHeader to reclaim
                 header space; lives atop the thread list (GHL pattern), NOT the right rail
@@ -1331,7 +1331,7 @@ export default function ClientsConversations() {
         </SectionCard>
 
         {/* ── MIDDLE: thread detail (scrolls) + composer (footer) ────────────────── */}
-        <SectionCard padded={false} className="flex min-h-0 flex-col overflow-hidden">
+        <SectionCard padded={false} bodyClassName="flex min-h-0 flex-1 flex-col" className="flex min-h-0 flex-col overflow-hidden">
           {!selected ? (
             <div className="grid flex-1 place-items-center">
               <EmptyState
