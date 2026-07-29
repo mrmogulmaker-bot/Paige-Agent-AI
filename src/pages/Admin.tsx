@@ -192,6 +192,7 @@ const SubscriptionsRevenue = lazy(() => import("@/pages/admin/SubscriptionsReven
 const ZapierIntegrationConfig = lazy(() => import("@/pages/admin/ZapierIntegrationConfig"));
 const TelegramIntegrationConfig = lazy(() => import("@/pages/admin/TelegramIntegrationConfig"));
 const GmailIntegrationConfig = lazy(() => import("@/pages/admin/GmailIntegrationConfig"));
+const EmailIntegrationConfig = lazy(() => import("@/pages/admin/EmailIntegrationConfig"));
 
 const AiActivity = lazy(() => import("@/pages/admin/AiActivity"));
 const DocuSignConfig = lazy(() => import("@/pages/admin/DocuSignConfig"));
@@ -713,6 +714,9 @@ const Admin = () => {
         } />
         <Route path="integrations/gmail" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><GmailIntegrationConfig /></Suspense></AdminOnly>
+        } />
+        <Route path="integrations/email" element={
+          <AdminOnly><Suspense fallback={<SuspenseFallback />}><EmailIntegrationConfig /></Suspense></AdminOnly>
         } />
         <Route path="integrations/ai-activity" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><AiActivity /></Suspense></AdminOnly>

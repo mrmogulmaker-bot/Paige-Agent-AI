@@ -1081,7 +1081,7 @@ export default function ClientsConversations() {
         <FirstRunOnboarding
           canCompose={canCompose}
           onCompose={() => setComposeOpen(true)}
-          connectHref="/admin/integrations"
+          connectHref="/admin/integrations/email"
         />
       ) : (
       /* The pane grid flows as the flex-1 last child of the `fill` shell (lg+), so it
@@ -1296,7 +1296,7 @@ export default function ClientsConversations() {
                       )
                       : (
                         <Button variant="outline" size="sm" asChild>
-                          <Link to="/admin/integrations">Connect a channel</Link>
+                          <Link to="/admin/integrations/email">Connect a channel</Link>
                         </Button>
                       )
                     : undefined
@@ -1473,7 +1473,7 @@ export default function ClientsConversations() {
                       <span>Connect a channel and Paige sends from here — inbound messages start landing in this inbox once a channel is live.</span>
                     </p>
                     <Button variant="gold" size="sm" asChild className="shrink-0 self-start sm:self-auto">
-                      <Link to="/admin/integrations">
+                      <Link to="/admin/integrations/email">
                         <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
                       </Link>
                     </Button>
