@@ -21,6 +21,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { resolveFunctionError } from "@/lib/integrations/connectError";
 import { toast } from "sonner";
 import { Link as LinkIcon, Unlink, Loader2, CalendarCheck, Video, Apple } from "lucide-react";
 
@@ -70,7 +71,12 @@ export function CalendarConnectorsPanel() {
     setConnecting(false);
     const url = (data as { authorization_url?: string } | null)?.authorization_url;
     if (error || !url) {
-      toast.error((data as { error?: string } | null)?.error ?? error?.message ?? "Could not start Google OAuth");
+      const { code, message } = await resolveFunctionError({ error, data, action: "connect Google Calendar" });
+      // §13/§36: a "not switched on yet" state is a calm coming-soon notice, not a red
+      // error scream — mirror the Gmail inline-note treatment. Reserve toast.error() for
+      // genuine failures (permission, generic fallback).
+      if (code?.endsWith("_oauth_not_configured")) toast(message);
+      else toast.error(message);
       return;
     }
     window.location.href = url;
@@ -84,7 +90,12 @@ export function CalendarConnectorsPanel() {
     setConnectingZoom(false);
     const url = (data as { authorization_url?: string } | null)?.authorization_url;
     if (error || !url) {
-      toast.error((data as { error?: string } | null)?.error ?? error?.message ?? "Could not start Zoom OAuth");
+      const { code, message } = await resolveFunctionError({ error, data, action: "connect Zoom" });
+      // §13/§36: a "not switched on yet" state is a calm coming-soon notice, not a red
+      // error scream — mirror the Gmail inline-note treatment. Reserve toast.error() for
+      // genuine failures (permission, generic fallback).
+      if (code?.endsWith("_oauth_not_configured")) toast(message);
+      else toast.error(message);
       return;
     }
     window.location.href = url;
@@ -100,7 +111,8 @@ export function CalendarConnectorsPanel() {
     const { data, error } = await supabase.functions.invoke(fn, { body: {} });
     setDisconnecting(false);
     if (error || (data as { error?: string } | null)?.error) {
-      toast.error((data as { error?: string } | null)?.error ?? error?.message ?? "Failed");
+      const action = target === "google" ? "disconnect Google Calendar" : "disconnect Zoom";
+      toast.error((await resolveFunctionError({ error, data, action })).message);
       return;
     }
     toast.success(target === "google" ? "Google Calendar disconnected" : "Zoom disconnected");
