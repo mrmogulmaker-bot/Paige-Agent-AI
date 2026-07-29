@@ -164,6 +164,17 @@ import PaigeTabsLayout from "@/components/paige/PaigeTabsLayout";
 // Clients container (IA slice 1c-viii-c): pathless layout wraps the reused surfaces
 // (ContactsAdmin · PipelineAdmin · CalendarAdmin · PortalStudio) as sub-tabs.
 import ClientsTabsLayout from "@/components/clients/ClientsTabsLayout";
+// Conversations container (Cowork #127 feature #3): a pathless layout adds a subordinate
+// sub-tab strip INSIDE Conversations (index = the inbox, byte-identical to before — §37).
+// Eager like the other layouts — small chrome.
+import ConversationsTabsLayout from "@/components/clients/ConversationsTabsLayout";
+import {
+  ConversationsManualActions,
+  ConversationsSnippets,
+  ConversationsTriggerLinks,
+  ConversationsAnalytics,
+  ConversationsSettings,
+} from "@/pages/admin/conversations/ConversationsSubPages";
 // Setup container (IA slice 1c-xi): pathless-style path-nested layout wraps the 8
 // tenant-config sub-tab pages. Eager like ClientsTabsLayout — small chrome.
 import SetupTabsLayout from "@/components/setup/SetupTabsLayout";
@@ -370,10 +381,22 @@ const Admin = () => {
           <Route path="pipeline" element={
             <Suspense fallback={<SuspenseFallback />}><ClientsPipelinePane /></Suspense>
           } />
-          {/* CONVERSATIONS — crafted EmptyState placeholder (§11 primitive). */}
-          <Route path="conversations" element={
-            <Suspense fallback={<SuspenseFallback />}><ClientsConversations /></Suspense>
-          } />
+          {/* CONVERSATIONS — a pathless <ConversationsTabsLayout> adds a subordinate
+              sub-tab strip (GHL-parity: sections OF Conversations, not top-nav). The
+              index child resolves BYTE-IDENTICAL to /admin/clients-hub/conversations so
+              every existing link/caller still lands on the inbox (§37). Snippets embeds
+              the live SnippetsTab; Settings points to Communications (§18 reuse). The
+              other three are crafted "coming soon" EmptyState stubs (§11). */}
+          <Route path="conversations" element={<ConversationsTabsLayout />}>
+            <Route index element={
+              <Suspense fallback={<SuspenseFallback />}><ClientsConversations /></Suspense>
+            } />
+            <Route path="manual-actions" element={<ConversationsManualActions />} />
+            <Route path="snippets" element={<ConversationsSnippets />} />
+            <Route path="trigger-links" element={<ConversationsTriggerLinks />} />
+            <Route path="analytics" element={<ConversationsAnalytics />} />
+            <Route path="settings" element={<ConversationsSettings />} />
+          </Route>
           {/* DELIVERY — CalendarAdmin (its own internal Calendar/List/Settings/Connections tabs). */}
           <Route path="delivery" element={
             <Suspense fallback={<SuspenseFallback />}><CalendarAdmin /></Suspense>
