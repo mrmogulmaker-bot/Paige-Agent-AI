@@ -12,6 +12,7 @@ import {
   CreditCard, User, Landmark, TrendingUp, Send, Pencil, ClipboardCheck, Trash2, Zap, Wallet, Sparkles,
   ListChecks,
 } from "lucide-react";
+import { CallButton } from "@/components/admin/voice/CallButton";
 import { ContactAutomationHistory } from "@/components/admin/contacts/ContactAutomationHistory";
 import { ContactBillingPanel } from "@/components/admin/contacts/ContactBillingPanel";
 import { ContactPaigePanel } from "@/components/contact/ContactPaigePanel";
@@ -341,7 +342,10 @@ export default function ContactDetail() {
         <Card>
           <CardContent className="p-4 space-y-2 text-sm">
             <div className="flex items-center gap-2 text-muted-foreground"><Mail className="h-4 w-4" /> {client.email || "—"}</div>
-            <div className="flex items-center gap-2 text-muted-foreground"><Phone className="h-4 w-4" /> {client.phone || "—"}</div>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Phone className="h-4 w-4" /> <span className="flex-1">{client.phone || "—"}</span>
+              {client.phone && <CallButton number={client.phone} />}
+            </div>
             <div className="flex items-center gap-2 text-muted-foreground"><Building2 className="h-4 w-4" /> {client.entity_name || "—"}</div>
             <div className="flex items-center gap-2 text-muted-foreground"><DollarSign className="h-4 w-4" /> {client.funding_goal ? `$${Number(client.funding_goal).toLocaleString()} goal` : "No goal set"}</div>
           </CardContent>
