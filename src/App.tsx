@@ -131,6 +131,7 @@ const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
 const ActionItems = lazyWithReload(() => import("./pages/app/ActionItems"));
 const Planning = lazyWithReload(() => import("./pages/app/Planning"));
 const GoogleCalendarCallback = lazyWithReload(() => import("./pages/GoogleCalendarCallback"));
+const GmailCallback = lazyWithReload(() => import("./pages/GmailCallback"));
 
 // Bounces a signed-in-but-incomplete signup (no lane/agreement/workspace yet) to
 // the /onboarding gate. Not lazy — it's a thin wrapper around the app shells.
@@ -217,6 +218,7 @@ const App = () => (
             <Route path="/portal/:tenantSlug" element={<PageSuspense><PortalGateway /></PageSuspense>} />
             <Route path="/mcp/authorize" element={<PageSuspense><McpAuthorize /></PageSuspense>} />
             <Route path="/auth/google-calendar/callback" element={<PageSuspense><GoogleCalendarCallback /></PageSuspense>} />
+            <Route path="/auth/gmail/callback" element={<PageSuspense><GmailCallback /></PageSuspense>} />
 
             {/* New agent-first dashboard */}
             <Route path="/app" element={<RequireCompleteSignup><PageSuspense><AppShell /></PageSuspense></RequireCompleteSignup>}>
