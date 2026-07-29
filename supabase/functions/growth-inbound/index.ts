@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
             status: "active",
             created_by: source.created_by,
             tenant_id: source.tenant_id,
+            created_by_channel_type: "form", // #10 channel-of-origin (external form bridge)
           })
           .select("id")
           .single();

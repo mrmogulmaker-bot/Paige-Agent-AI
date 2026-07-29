@@ -631,6 +631,7 @@ async function findOrCreateContact(
       tenant_id: tenantId, created_by: createdBy,
       first_name: parts[0] || "Guest", last_name: parts.slice(1).join(" "),
       email, phone, source: "booking_page",
+      created_by_channel_type: "form", // #10 channel-of-origin (public booking guest)
     }).select("id").single();
     if (!error) return (created as { id: string }).id;
 

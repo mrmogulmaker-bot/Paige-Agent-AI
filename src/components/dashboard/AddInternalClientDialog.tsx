@@ -62,6 +62,7 @@ export function AddInternalClientDialog({ open, onOpenChange, onClientAdded }: A
         entity_name: form.entity_name.trim() || null,
         entity_type: form.entity_type || null,
         current_notes: form.current_notes.trim() || null,
+        created_by_channel_type: "manual", // #10 channel-of-origin (New Internal Client dialog)
       } as any);
 
       if (error) throw error;

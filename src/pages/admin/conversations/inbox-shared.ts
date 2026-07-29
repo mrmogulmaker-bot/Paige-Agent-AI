@@ -70,6 +70,10 @@ export interface ClientContact {
   // #10 (staff half) — the user who created this contact record, resolved to a member name in the
   // rail (never a raw uuid, §13). Additive read from the same clients row, no extra query.
   created_by: string | null;
+  // #10 (channel half) — the bounded channel this contact first entered through (email/form/import/
+  // api/manual/signup/invite/…). NULL for pre-#10 rows (§13, never guessed). Rendered as
+  // "[channel] ([staff])" in the rail; NULL channel gracefully degrades to just the staff name.
+  created_by_channel_type: string | null;
   // #482 Phase-2 — relationship facts pulled from the same clients row (self-contained, no extra query).
   lifecycle_stage: string | null;
   entity_type: string | null;
@@ -128,7 +132,7 @@ export const THREAD_COLS =
   "last_message_at, last_direction, " +
   "clients:contact_id(id, first_name, last_name, entity_name, entity_type, title, email, phone, status, " +
   "lifecycle_stage, source, tags, last_contacted_at, assigned_coach_user_id, linked_user_id, " +
-  "timezone, created_at, created_by, dnd_active, dnd_reason, dnd_until)";
+  "timezone, created_at, created_by, created_by_channel_type, dnd_active, dnd_reason, dnd_until)";
 
 // ── selected-view shape (R1): the DbThread + its loaded messages + all the fields the
 //    composer / approve / signature seams read. Typed once here, consumed in the page. ─
@@ -152,6 +156,16 @@ export const CHANNEL_ICON: Record<ChannelType, LucideIcon> = {
 export const CHANNEL_LABEL: Record<ChannelType, string> = {
   email: "Email", sms: "SMS", whatsapp: "WhatsApp",
   instagram: "Instagram", facebook: "Facebook", voice: "Voice",
+};
+
+// #10 channel-of-origin — human label for clients.created_by_channel_type (a BROADER vocabulary
+// than ChannelType: message-channels + creation-specific origins). Used by the contact rail's
+// "Created by" row. An unmapped/NULL value falls back to just the staff name (§13, never "null (…)").
+export const CREATED_VIA_LABEL: Record<string, string> = {
+  email: "Email", sms: "SMS", whatsapp: "WhatsApp",
+  instagram: "Instagram", facebook: "Facebook", voice: "Voice",
+  manual: "Manual", form: "Form", import: "Import", api: "Paige",
+  seed: "System", signup: "Sign-up", invite: "Invite",
 };
 
 // ── label color tokens (token-only, non-gold, AA both themes §11/§23) ────────────────

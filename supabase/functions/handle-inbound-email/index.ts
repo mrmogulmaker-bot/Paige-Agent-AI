@@ -308,6 +308,7 @@ Deno.serve(async (req) => {
           lifecycle_stage: "lead",
           source: "inbound_email",
           status: "active",
+          created_by_channel_type: "email", // #10 channel-of-origin
         })
         .select("id")
         .single();

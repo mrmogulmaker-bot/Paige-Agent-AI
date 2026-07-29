@@ -360,6 +360,7 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
         city: client.city,
         state: client.state,
         created_by: user.id,
+        created_by_channel_type: "manual", // #10 channel-of-origin (move auth user → internal client)
       } as any);
 
       if (error) throw error;

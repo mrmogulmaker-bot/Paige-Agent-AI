@@ -45,10 +45,10 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
     setTagsRaw(""); setNotes("");
     (async () => {
       const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "coach");
-      const ids = (roles || []).map((r: any) => r.user_id);
+      const ids = (roles || []).map((r: { user_id: string }) => r.user_id);
       if (ids.length) {
         const { data: profs } = await supabase.from("coach_client_profiles_safe").select("user_id, full_name").in("user_id", ids);
-        setCoaches((profs || []).map((p: any) => ({ user_id: p.user_id, name: p.full_name || "Unnamed Coach" })));
+        setCoaches((profs || []).map((p: { user_id: string; full_name: string | null }) => ({ user_id: p.user_id, name: p.full_name || "Unnamed Coach" })));
       } else setCoaches([]);
     })();
   }, [open]);
@@ -114,14 +114,15 @@ export function NewContactDialog({ open, onOpenChange, onCreated }: Props) {
         assigned_coach_user_id: coachId === "unassigned" ? null : coachId,
         status: "active",
         created_by: user.id,
-      })
+        created_by_channel_type: "manual", // #10 channel-of-origin (manual New Contact UI)
+      } as never)
       .select("id")
       .single();
     setSaving(false);
     if (error) {
       console.error("[NewContactDialog] insert failed", error);
       // 23505 = unique_violation. Race with the pre-check above, or constraint on another column.
-      if ((error as any).code === "23505" || /duplicate key/i.test(error.message || "")) {
+      if ((error as { code?: string }).code === "23505" || /duplicate key/i.test(error.message || "")) {
         if (em) {
           const { data: existing } = await supabase
             .from("clients")

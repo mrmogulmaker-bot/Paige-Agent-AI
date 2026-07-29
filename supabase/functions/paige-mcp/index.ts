@@ -1609,6 +1609,7 @@ mcp.tool("create_contact", {
       current_notes: args.notes ?? null,
       tenant_id,
       created_by: createdBy,
+      created_by_channel_type: "api", // #10 channel-of-origin (Paige/MCP programmatic create)
     };
     const { data, error } = await admin.from("clients").insert(row).select("id, created_at").single();
     if (error) return err(error.message);
