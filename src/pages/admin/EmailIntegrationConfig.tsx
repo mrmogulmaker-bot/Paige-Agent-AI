@@ -11,14 +11,16 @@
  *
  * §11: compact PageHeader variant="plain" (no hero on a working surface), built on
  * the shared primitive layer (PageShell + SectionCard + StatePill). Gmail OAuth
- * (#141b) is now a REAL state-driven Connect/Disconnect control (reads a provider='gmail'
- * channel_connectors row for honest state; on gmail_oauth_not_configured it shows an
- * honest inline note, never a dead button — §13/§31). SMTP (#141c) remains an honest
- * "coming soon" card — modeled on CalendarConnectorsPanel's Apple card.
+ * (#141b) and generic SMTP (#141c) are BOTH real state-driven Connect/Disconnect
+ * controls, each reading its own provider row (provider='gmail' | 'smtp') for honest
+ * state — never a dead button (§13/§31). SMTP shows an inline host/port/username/
+ * password/from form (A2PTab pattern) that invokes smtp-connect, then reloads state.
  */
 import { useEffect, useState } from "react";
 import { PageShell, PageHeader, SectionCard, StatePill } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { EmailDomainsPanel } from "@/components/admin/EmailDomainsPanel";
@@ -36,14 +38,45 @@ type GmailConnector = {
   display_name: string | null;
 };
 
+type SmtpConnector = {
+  from_address: string | null;
+  display_name: string | null;
+};
+
+// A short, honest map of SMTP failure codes → coach-readable copy (§13/§36 — never a raw
+// backend code in the UI, never a silent fail). Falls back to a generic line for anything else.
+const SMTP_ERROR_COPY: Record<string, string> = {
+  smtp_host_not_allowed:
+    "That host or port isn't allowed. Use your provider's public mail server (ports 465, 587, 25, or 2525) — internal addresses are blocked for safety.",
+  smtp_port_not_allowed: "Use a standard mail port: 465, 587, 25, or 2525.",
+  smtp_host_invalid: "That server address doesn't look right — check it and try again.",
+  smtp_host_unresolvable: "We couldn't find that mail server. Double-check the host name.",
+  smtp_host_unreachable: "We couldn't reach that mail server on that port. Check the host and port.",
+  invalid_from_address: "Enter a valid from-address (e.g. you@yourdomain.com).",
+  missing_fields: "Fill in the server, port, username, password, and from-address.",
+  no_tenant_for_user: "Your account isn't attached to a workspace yet.",
+  vault_write_failed: "We couldn't securely store your credentials just now. Try again in a moment.",
+  forbidden: "You don't have permission to connect email for this workspace.",
+};
+
 export default function EmailIntegrationConfig() {
   const [connector, setConnector] = useState<EmailConnector | null>(null);
   const [gmail, setGmail] = useState<GmailConnector | null>(null);
+  const [smtp, setSmtp] = useState<SmtpConnector | null>(null);
   const [loading, setLoading] = useState(true);
   const [gmailBusy, setGmailBusy] = useState(false);
   // Honest inline note when the OAuth flow isn't switched on yet (§13/§31) — never a
   // silent failure behind the Connect button.
   const [gmailNote, setGmailNote] = useState<string | null>(null);
+
+  // SMTP inline form (#141c) — the A2PTab Input+Label pattern. Password is type=password.
+  const [smtpBusy, setSmtpBusy] = useState(false);
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [smtpFrom, setSmtpFrom] = useState("");
+  const [smtpError, setSmtpError] = useState<string | null>(null);
 
   const loadGmail = async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,6 +93,21 @@ export default function EmailIntegrationConfig() {
     setGmail((data as GmailConnector | null) ?? null);
   };
 
+  const loadSmtp = async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sb = supabase as any;
+    // RLS scopes to the caller's tenant (§9). A live SMTP connector is provider='smtp'.
+    const { data } = await sb
+      .from("channel_connectors")
+      .select("from_address, display_name")
+      .eq("channel_type", "email")
+      .eq("provider", "smtp")
+      .eq("active", true)
+      .eq("status", "active")
+      .maybeSingle();
+    setSmtp((data as SmtpConnector | null) ?? null);
+  };
+
   useEffect(() => {
     void (async () => {
       setLoading(true);
@@ -69,13 +117,14 @@ export default function EmailIntegrationConfig() {
       // Conversations surface; the row is re-typed on assignment below.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sb = supabase as any;
-      // Prefer the most recently updated live domain connector (Resend). A Gmail row is
-      // read separately below so it drives its own card, not the sending-domain state.
+      // Prefer the most recently updated live domain connector (Resend). The Gmail and SMTP
+      // rows are read separately below so they drive their OWN cards, not the sending-domain
+      // state — so exclude BOTH providers here (§18: one home each, no double-count).
       const { data } = await sb
         .from("channel_connectors")
         .select("from_address, inbound_domain, display_name")
         .eq("channel_type", "email")
-        .or("provider.is.null,provider.neq.gmail")
+        .or("provider.is.null,and(provider.neq.gmail,provider.neq.smtp)")
         .eq("active", true)
         .eq("status", "active")
         .order("updated_at", { ascending: false })
@@ -83,12 +132,14 @@ export default function EmailIntegrationConfig() {
         .maybeSingle();
       setConnector((data as EmailConnector | null) ?? null);
       await loadGmail();
+      await loadSmtp();
       setLoading(false);
     })();
   }, []);
 
   const connected = Boolean(connector?.from_address);
   const gmailConnected = Boolean(gmail?.from_address);
+  const smtpConnected = Boolean(smtp?.from_address);
 
   // §36: a non-technical coach clicks "Connect Gmail" and signs in — no prompt-engineering.
   // On {error:'gmail_oauth_not_configured'} we show an honest note, never a dead redirect.
@@ -125,6 +176,64 @@ export default function EmailIntegrationConfig() {
     toast.success("Gmail disconnected");
     setGmail(null);
     void loadGmail();
+  };
+
+  // #141c: a coach fills host/port/user/pass/from and it just connects (§36). smtp-connect
+  // SSRF-guards + reachability-tests before provisioning; on failure we show an honest inline
+  // message keyed to the returned code (§13/§31) — never a silent fail behind the button.
+  const connectSmtp = async () => {
+    setSmtpError(null);
+    const portNum = Number(smtpPort);
+    if (!smtpHost.trim() || !Number.isFinite(portNum) || !smtpUser || !smtpPass || !smtpFrom.trim()) {
+      setSmtpError("Fill in the server, port, username, password, and from-address.");
+      return;
+    }
+    setSmtpBusy(true);
+    const { data, error } = await supabase.functions.invoke("smtp-connect", {
+      body: {
+        host: smtpHost.trim(),
+        port: portNum,
+        secure: portNum === 465,
+        username: smtpUser,
+        password: smtpPass,
+        from_address: smtpFrom.trim(),
+      },
+    });
+    setSmtpBusy(false);
+    const errCode = (data as { error?: string } | null)?.error;
+    if (error || errCode) {
+      setSmtpError(
+        (errCode && SMTP_ERROR_COPY[errCode]) ??
+          error?.message ??
+          "We couldn't connect that mail server. Check the details and try again.",
+      );
+      return;
+    }
+    // §13 honest: connect proves the server is REACHABLE (TCP/TLS handshake), not that the
+    // username/password authenticate — denomailer exposes no AUTH-only probe. So don't claim
+    // "connected"; credentials are confirmed on the first real send.
+    toast.success("SMTP saved — we'll confirm delivery on your first send.");
+    // Clear the password from state the moment it's stored server-side; keep host/from for context.
+    setSmtpPass("");
+    void loadSmtp();
+  };
+
+  const disconnectSmtp = async () => {
+    setSmtpBusy(true);
+    const { data, error } = await supabase.functions.invoke("smtp-disconnect", { body: {} });
+    setSmtpBusy(false);
+    const errCode = (data as { error?: string } | null)?.error;
+    if (error || errCode) {
+      toast.error(errCode ?? error?.message ?? "Could not disconnect SMTP");
+      return;
+    }
+    toast.success("SMTP disconnected");
+    setSmtp(null);
+    setSmtpHost("");
+    setSmtpUser("");
+    setSmtpFrom("");
+    setSmtpPort("587");
+    void loadSmtp();
   };
 
   return (
@@ -182,12 +291,12 @@ export default function EmailIntegrationConfig() {
         <EmailDomainsPanel />
       </section>
 
-      {/* Honest upcoming connect methods — no dead buttons (§13). */}
+      {/* Additional connect methods — Gmail OAuth + bring-your-own SMTP. Real state, no dead buttons (§13). */}
       <section className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">More ways to connect</h2>
           <p className="text-sm text-muted-foreground">
-            Additional email connect methods on the way — verify a domain above to go live today.
+            Prefer your existing mailbox? Connect Google or your own SMTP server — no DNS setup needed.
           </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
@@ -235,16 +344,108 @@ export default function EmailIntegrationConfig() {
             )}
           </SectionCard>
 
+          {/* SMTP — bring your own mail server (#141c). Connected → Disconnect; else an inline form. */}
           <SectionCard
             icon={KeyRound}
             title="SMTP"
             description="Bring your own SMTP mail server."
-            actions={<StatePill state="pending">Coming soon</StatePill>}
+            actions={
+              loading ? (
+                <Skeleton className="h-5 w-24 rounded-full" />
+              ) : smtpConnected ? (
+                <StatePill state="success">Connected</StatePill>
+              ) : (
+                <StatePill state="off">Not connected</StatePill>
+              )
+            }
           >
-            <p className="text-sm text-muted-foreground">
-              Point Paige at any SMTP host with your server, port, and credentials to send from an
-              existing mailbox. This connect method is on the roadmap.
-            </p>
+            {loading ? (
+              <Skeleton className="h-4 w-64" />
+            ) : smtpConnected ? (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Paige sends as{" "}
+                  <span className="font-medium text-foreground">{smtp?.from_address}</span> through your
+                  SMTP server. Your credentials are stored encrypted — never shown again. We confirm the
+                  username and password on your first send.
+                </p>
+                <Button variant="outline" size="sm" onClick={() => void disconnectSmtp()} disabled={smtpBusy}>
+                  {smtpBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unlink className="h-4 w-4" />}
+                  Disconnect
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Point Paige at any SMTP host with your server, port, and login to send from an existing
+                  mailbox — no DNS setup.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="smtp-host">SMTP server</Label>
+                    <Input
+                      id="smtp-host"
+                      value={smtpHost}
+                      placeholder="smtp.yourprovider.com"
+                      autoComplete="off"
+                      onChange={(e) => setSmtpHost(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="smtp-port">Port</Label>
+                    <Input
+                      id="smtp-port"
+                      value={smtpPort}
+                      inputMode="numeric"
+                      placeholder="587"
+                      onChange={(e) => setSmtpPort(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="smtp-from">From address</Label>
+                    <Input
+                      id="smtp-from"
+                      value={smtpFrom}
+                      type="email"
+                      placeholder="you@yourdomain.com"
+                      autoComplete="off"
+                      onChange={(e) => setSmtpFrom(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="smtp-user">Username</Label>
+                    <Input
+                      id="smtp-user"
+                      value={smtpUser}
+                      placeholder="you@yourdomain.com"
+                      autoComplete="off"
+                      onChange={(e) => setSmtpUser(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="smtp-pass">Password</Label>
+                    <Input
+                      id="smtp-pass"
+                      value={smtpPass}
+                      type="password"
+                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      onChange={(e) => setSmtpPass(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Use ports 465 (SSL), 587, 25, or 2525. Your login is stored encrypted and used only to
+                  send on your behalf.
+                </p>
+                {smtpError && <p className="text-sm text-destructive">{smtpError}</p>}
+                {/* GOLD — the one act on this card: connect the server (§11). */}
+                <Button variant="gold" size="sm" onClick={() => void connectSmtp()} disabled={smtpBusy}>
+                  {smtpBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <LinkIcon className="h-4 w-4" />}
+                  Connect SMTP
+                </Button>
+              </div>
+            )}
           </SectionCard>
         </div>
       </section>
