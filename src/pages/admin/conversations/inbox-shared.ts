@@ -67,6 +67,9 @@ export interface ClientContact {
   status: string | null;
   timezone: string | null;
   created_at: string | null;
+  // #10 (staff half) — the user who created this contact record, resolved to a member name in the
+  // rail (never a raw uuid, §13). Additive read from the same clients row, no extra query.
+  created_by: string | null;
   // #482 Phase-2 — relationship facts pulled from the same clients row (self-contained, no extra query).
   lifecycle_stage: string | null;
   entity_type: string | null;
@@ -125,7 +128,7 @@ export const THREAD_COLS =
   "last_message_at, last_direction, " +
   "clients:contact_id(id, first_name, last_name, entity_name, entity_type, title, email, phone, status, " +
   "lifecycle_stage, source, tags, last_contacted_at, assigned_coach_user_id, linked_user_id, " +
-  "timezone, created_at, dnd_active, dnd_reason, dnd_until)";
+  "timezone, created_at, created_by, dnd_active, dnd_reason, dnd_until)";
 
 // ── selected-view shape (R1): the DbThread + its loaded messages + all the fields the
 //    composer / approve / signature seams read. Typed once here, consumed in the page. ─
