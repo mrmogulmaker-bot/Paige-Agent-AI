@@ -454,7 +454,11 @@ export async function listAvailableNumbers(
     {
       AreaCode: opts.areaCode,
       Contains: opts.contains,
-      SmsEnabled: opts.smsEnabled === undefined ? "true" : String(opts.smsEnabled),
+      // Capabilities are DISPLAY, not a gate (§36, bug #149): when the caller does not
+      // explicitly constrain SMS, OMIT the SmsEnabled param entirely so Twilio returns
+      // ALL numbers (SMS-capable or not) — undefined is dropped by formEncode. Only pass
+      // the flag when a caller deliberately set it.
+      SmsEnabled: opts.smsEnabled === undefined ? undefined : String(opts.smsEnabled),
     },
     // C-2a: the subaccount-scoped API Key SID as the Basic-auth username. Omitted →
     // username falls back to subaccountSid (wrong under API-Key auth), so callers that

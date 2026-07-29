@@ -1,6 +1,6 @@
 // Comms C-2s-B — number MARKETPLACE search. JWT-gated; a tenant admin/coach searches
-// Twilio's Available Phone Numbers by area code + capabilities, and each result is
-// tagged with the Paige RETAIL price (Twilio wholesale + operator markup) from
+// Twilio's Available Phone Numbers by area code, and each result is tagged with the
+// transparent carrier passthrough price (the real Twilio wholesale cost) from
 // platform_number_pricing. The tenant never sees the word "Twilio" (§36) — they search
 // an area code, see numbers with a price, and (via comms-purchase-number) click Buy.
 //
@@ -9,16 +9,22 @@
 //      body-supplied tenant/subaccount. The search authenticates as the tenant's OWN
 //      Twilio subaccount, resolved via resolveTwilioCreds (Vault) under the service-role
 //      client. A body cannot widen scope or point at another tenant's subaccount.
-//  §38 The retail price shown = wholesale + operator markup from platform_number_pricing
-//      (§7 operator-authored). Paige-held rail — this fn only READS the price to display;
-//      the charge leg is not here (see comms-purchase-number's honest note).
-//  §36 5-min test: filters are area code + capability toggles, results carry a plain
-//      dollar price. No Twilio vocabulary leaks to the caller.
+//  §38 Pricing is LOCKED at pure carrier passthrough — the price shown = the real Twilio
+//      wholesale cost (wholesale_cents from platform_number_pricing), with ZERO platform
+//      markup (#150). A number is a Paige-held rail (tenant pays Paige, Paige pays Twilio)
+//      but Paige takes NO margin on it — margin comes from §17 L1 subs / L3 usage / L2
+//      marketplace, never the number. This fn only READS the passthrough cost to display
+//      transparently; the charge leg is not here (see comms-purchase-number's honest note).
+//  §36 5-min test: the only filter is area code; results carry a plain dollar price and
+//      capabilities are shown as icons (display, never a pre-filter). No Twilio vocabulary
+//      leaks to the caller.
 //  §18 Reuses the ONE Twilio seam (_shared/twilio.ts listAvailableNumbers) — no inline
 //      Twilio REST, no second client.
 //  §13 needs_config (not a fake list) when the tenant has no subaccount provisioned or
 //      master/subaccount creds are missing. A missing price row degrades to a null
-//      retail_price on that result (honest), never a guessed number.
+//      retail_price on that result (honest), never a guessed number. The displayed price
+//      is the DB wholesale_cents column read live (data-driven) — never a hardcoded amount,
+//      because Twilio's wholesale can change and the operator maintains the row.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { listAvailableNumbers, resolveTwilioCreds, type SupabaseAdminLike } from "../_shared/twilio.ts";
 
@@ -29,15 +35,16 @@ const corsHeaders = {
 
 /**
  * Request body — ONLY search filters. Tenant/subaccount are NEVER read from here (§9).
- * §37 dual-contract: the marketplace UI (NumbersTab) sends the camelCase shape
- * { areaCode, sms, mms, voice }; a Paige-headless caller may send the snake_case shape
- * { area_code, contains, country, number_type, sms_enabled }. Both are accepted so the
- * one seam serves both producers without either breaking.
+ * §37 dual-contract: the marketplace UI (NumbersTab) now sends only { area_code } — it no
+ * longer pre-picks a channel (§36, bug #149: capabilities are display, not a gate). A
+ * Paige-headless caller may still send the fuller shape { area_code | areaCode, contains,
+ * country, number_type, sms_enabled | sms/mms/voice }. All are accepted so the one seam
+ * serves both producers without either breaking.
  */
 interface SearchBody {
   /** UI shape: 3-digit area code. */
   areaCode?: string;
-  /** UI capability toggles — require SMS / MMS / voice on the returned numbers. */
+  /** Optional capability constraints for a deliberate headless caller (the UI omits them). */
   sms?: boolean;
   mms?: boolean;
   voice?: boolean;
@@ -48,7 +55,11 @@ interface SearchBody {
   country?: string;
   /** Marketplace number type. Defaults to local. */
   number_type?: "local" | "tollfree" | "mobile";
-  /** Require SMS-capable numbers (default true — this is a messaging product). */
+  /**
+   * Optionally require SMS-capable numbers. UNSET by default (§36, bug #149): the caller
+   * never has to pre-pick a channel to see numbers — capabilities are DISPLAY, not a gate.
+   * Only a caller that deliberately sets this constrains the result set.
+   */
   sms_enabled?: boolean;
 }
 
@@ -66,7 +77,12 @@ function toTwilioType(t: SearchBody["number_type"]): "Local" | "TollFree" | "Mob
   return "Local";
 }
 
-/** The retail price attached to each result (§38). null when no operator price row exists. */
+/**
+ * The transparent carrier passthrough price attached to each result (§38). monthly_cents
+ * is the real Twilio wholesale cost (wholesale_cents) shown with ZERO platform markup.
+ * null when no operator price row exists. (The field keeps the name retail_price for the
+ * §37 UI contract, but the value is now pure passthrough, not a marked-up retail.)
+ */
 interface RetailPrice {
   monthly_cents: number;
   onetime_cents: number | null;
@@ -128,12 +144,13 @@ Deno.serve(async (req) => {
   const country = (body.country && body.country.trim()) ? body.country.trim().toUpperCase() : "US";
   const numberType: SearchBody["number_type"] = body.number_type ?? "local";
   const areaCode = (body.areaCode ?? body.area_code ?? "").trim() || undefined;
-  // SMS is required unless the caller explicitly toggled it off (UI `sms`, headless
-  // `sms_enabled`). This is a messaging product, so the default is SMS-capable.
-  const smsFlag = body.sms ?? body.sms_enabled;
-  const smsEnabled = smsFlag === undefined ? true : smsFlag === true;
-  // MMS/voice are post-filters over Twilio's returned capabilities (the shared search seam
-  // only parameterizes SmsEnabled); when the toggle is on we KEEP only matching numbers.
+  // Capabilities are DISPLAY, not a gate (§36, bug #149): the caller never pre-picks a
+  // channel to see numbers. smsEnabled stays UNDEFINED unless a caller deliberately set it
+  // (UI `sms`, headless `sms_enabled`) — undefined omits the Twilio SmsEnabled param, so
+  // the search returns ALL capability numbers by default.
+  const smsEnabled = body.sms ?? body.sms_enabled;
+  // MMS/voice remain OPTIONAL post-filters for a deliberate headless caller only (the UI
+  // no longer sends them). When explicitly set they KEEP only matching numbers.
   const requireMms = body.mms === true;
   const requireVoice = body.voice === true;
 
@@ -166,10 +183,16 @@ Deno.serve(async (req) => {
     }, search.needs_config ? 200 : 502);
   }
 
-  // ── Look up the operator retail price for this (type, country). One row or none (§38). ──
+  // ── Look up the operator pricing row for this (type, country). One row or none. ──
+  // §38 LOCKED passthrough (#150): the DISPLAYED price is wholesale_cents — the real Twilio
+  // wholesale cost — shown transparently with ZERO platform markup. We read the column live
+  // (data-driven); we never hardcode the amount, because Twilio's wholesale can change and
+  // the operator maintains the row. (retail_monthly_cents is neutralized to == wholesale_cents
+  // by migration 20260729120000; reading wholesale_cents here is passthrough-honest even if a
+  // stale marked-up retail value ever lingered.)
   const { data: priceRow } = await admin
     .from("platform_number_pricing")
-    .select("retail_monthly_cents, retail_onetime_cents, currency, active")
+    .select("wholesale_cents, retail_onetime_cents, currency, active")
     .eq("number_type", numberType)
     .eq("country", country)
     .eq("active", true)
@@ -177,7 +200,7 @@ Deno.serve(async (req) => {
 
   const retailDetail: RetailPrice | null = priceRow
     ? {
-      monthly_cents: priceRow.retail_monthly_cents as number,
+      monthly_cents: priceRow.wholesale_cents as number,
       onetime_cents: (priceRow.retail_onetime_cents as number | null) ?? null,
       currency: (priceRow.currency as string) ?? "usd",
     }

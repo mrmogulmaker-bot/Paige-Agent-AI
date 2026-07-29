@@ -2,9 +2,11 @@
 // "Numbers" tab (§18: one home per capability — the tenant comms hub already exists
 // at /admin/communications; no redundant /app/settings/comms route is scaffolded).
 //
-// A coach searches an area code, sees real Twilio numbers priced at Paige retail
-// (§38 Paige-held rail — wholesale + platform markup from platform_number_pricing),
-// clicks Buy, and gets a number without ever hearing the word "Twilio" (§36).
+// A coach searches an area code, sees real numbers priced at the transparent carrier
+// passthrough (§38 Paige-held rail, LOCKED zero-markup #150 — the Twilio wholesale cost
+// from platform_number_pricing, no platform markup), sees each number's capabilities as
+// neutral icons (never a pre-filter, §36 bug #149), and clicks Buy — without ever hearing
+// the word "Twilio" (§36).
 //
 // §9: the search + purchase run through the comms-search-numbers / comms-purchase-number
 // edge fns, which derive the tenant server-side and resolve the tenant's OWN subaccount
@@ -12,8 +14,8 @@
 // the generated types, so its read goes through (supabase as any) (§13 honest typing).
 // §13: purchased state is only ever shown on a real edge-fn success (a real Twilio SID);
 // a missing subaccount degrades to an honest needs_config state, never a fake number.
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { PhoneCall, Search, Hash, SquarePen } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { PhoneCall, Search, Hash, SquarePen, MessageSquare, Phone, Image, type LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -21,7 +23,6 @@ import {
   DataTableShell,
   EmptyState,
   Toolbar,
-  FilterChip,
   StatePill,
 } from "@/components/ui/page";
 import { TableCell, TableRow } from "@/components/ui/table";
@@ -30,12 +31,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 // ---- Contracts the backend lane ships (matched exactly, §37) -----------------
-// comms-search-numbers  ← { area_code?, sms_enabled? }
+// comms-search-numbers  ← { area_code? }   (sms_enabled is headless-only; the UI never sends it — #149)
 //                       → { numbers: SearchNumber[]; needs_config?: boolean }
 // comms-purchase-number ← { phone_number }
 //                       → { purchased|already_owned: true; phone_number; twilio_sid } | { error }
 type RawCapabilities = Record<string, boolean>;
-/** Paige retail (§38): wholesale + operator markup from platform_number_pricing. */
+/** Transparent carrier passthrough (§38, #150): the Twilio wholesale cost, zero markup. */
 interface RetailPrice {
   monthly_cents: number;
   onetime_cents: number | null;
@@ -56,7 +57,14 @@ interface OwnedNumber {
 }
 
 type Capability = "sms" | "mms" | "voice";
-const CAP_LABELS: Record<Capability, string> = { sms: "SMS", mms: "MMS", voice: "Voice" };
+// Capabilities render as neutral lucide icons (DISPLAY, never a pre-filter — §36 bug #149).
+// Each carries an accessible label so the meaning is never icon-only. Domain-plain wording
+// (§36): what the line can do, not Twilio jargon.
+const CAP_META: Record<Capability, { Icon: LucideIcon; label: string }> = {
+  sms: { Icon: MessageSquare, label: "Texts (SMS)" },
+  mms: { Icon: Image, label: "Picture messages (MMS)" },
+  voice: { Icon: Phone, label: "Calls (voice)" },
+};
 
 /** Case-tolerant read of a Twilio capability flag ({sms} or {SMS}). */
 const hasCap = (c: RawCapabilities | null | undefined, cap: Capability): boolean => {
@@ -95,18 +103,25 @@ const RESULT_COLS = [
 function CapPills({ caps }: { caps: RawCapabilities }) {
   const active = (["sms", "mms", "voice"] as Capability[]).filter((c) => hasCap(caps, c));
   if (active.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
-  // Capability tags are resting METADATA, not the act — neutral chips only. Gold is spent
-  // solely on the Buy button (§11 gold-only-on-act; StatePill state="included" is gold).
+  // Capabilities are resting DISPLAY metadata, not the act — neutral/indigo icons only. Gold
+  // is spent solely on the Buy button (§11 gold-only-on-act). Each icon has an accessible
+  // label + title so it is never meaning-by-color or icon-only.
   return (
-    <div className="flex flex-wrap gap-1">
-      {active.map((c) => (
-        <span
-          key={c}
-          className="inline-flex items-center rounded-md border border-border bg-muted/50 px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground"
-        >
-          {CAP_LABELS[c]}
-        </span>
-      ))}
+    <div className="flex items-center gap-2.5">
+      {active.map((c) => {
+        const { Icon, label } = CAP_META[c];
+        return (
+          <span
+            key={c}
+            role="img"
+            aria-label={label}
+            title={label}
+            className="inline-flex items-center text-muted-foreground"
+          >
+            <Icon className="h-4 w-4" aria-hidden="true" />
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -118,9 +133,9 @@ export function NumbersTab() {
   const [owned, setOwned] = useState<OwnedNumber[]>([]);
   const [ownedLoading, setOwnedLoading] = useState(true);
 
-  // Search state.
+  // Search state. No capability pre-filter — a coach searches an area code and sees ALL
+  // numbers; capabilities are shown as icons per result, never pre-picked (§36 bug #149).
   const [areaCode, setAreaCode] = useState("");
-  const [caps, setCaps] = useState<Record<Capability, boolean>>({ sms: true, mms: false, voice: false });
   const [results, setResults] = useState<SearchNumber[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [needsConfig, setNeedsConfig] = useState(false);
@@ -141,8 +156,6 @@ export function NumbersTab() {
 
   useEffect(() => { void loadOwned(); }, [loadOwned]);
 
-  const toggleCap = (c: Capability) => setCaps((prev) => ({ ...prev, [c]: !prev[c] }));
-
   const areaCodeValid = areaCode === "" || AREA_CODE_RE.test(areaCode);
 
   const runSearch = async () => {
@@ -155,12 +168,11 @@ export function NumbersTab() {
     setResults(null);
     setNeedsConfig(false);
     try {
-      // The search fn filters SMS server-side (sms_enabled); MMS/Voice are refined
-      // client-side over the returned capabilities so the whole filter row stays live.
+      // Area code is the ONLY filter (§36 bug #149): we never send a channel flag, so the
+      // fn returns ALL capability numbers and the coach never pre-picks SMS/MMS/Voice.
       const { data, error } = await supabase.functions.invoke("comms-search-numbers", {
         body: {
           area_code: areaCode || undefined,
-          sms_enabled: caps.sms,
         },
       });
       if (error) throw error;
@@ -202,7 +214,9 @@ export function NumbersTab() {
       }
       toast({
         title: `${fmtE164(payload.phone_number ?? n.phone_number)} is yours`,
-        description: "It's on your practice now — Paige can text and take calls from it.",
+        // §13 A2P honesty: a freshly bought number can take calls right away, but SMS sends
+        // don't turn on until the practice's A2P messaging registration is approved.
+        description: "It's on your practice now — Paige can take calls from it right away. Texting turns on once your practice is approved to send.",
       });
       // Drop it from the results and refresh the owned list from the source of truth.
       setResults((prev) => (prev ? prev.filter((r) => r.phone_number !== n.phone_number) : prev));
@@ -218,30 +232,15 @@ export function NumbersTab() {
     }
   };
 
-  // MMS/Voice are refined client-side over the returned capabilities (the fn filters SMS).
-  const visibleResults = useMemo(() => {
-    if (!results) return null;
-    return results.filter(
-      (n) =>
-        (!caps.mms || hasCap(n.capabilities, "mms")) &&
-        (!caps.voice || hasCap(n.capabilities, "voice")),
-    );
-  }, [results, caps.mms, caps.voice]);
-
   const anySearched = results !== null;
-  const noResults = anySearched && !needsConfig && (visibleResults?.length ?? 0) === 0;
-
-  const capSummary = useMemo(
-    () => (["sms", "mms", "voice"] as Capability[]).filter((c) => caps[c]).map((c) => CAP_LABELS[c]),
-    [caps],
-  );
+  const noResults = anySearched && !needsConfig && (results?.length ?? 0) === 0;
 
   return (
     <div className="space-y-6">
       {/* What the practice already runs on. */}
       <SectionCard
         title="Your numbers"
-        description="The lines Paige texts and takes calls from on your behalf."
+        description="The lines Paige takes calls from — and texts from once messaging is approved — on your behalf."
       >
         <DataTableShell
           columns={OWNED_COLS}
@@ -282,7 +281,7 @@ export function NumbersTab() {
       {/* Find + buy a number. */}
       <SectionCard
         title="Get a number"
-        description="Pick an area code and what it needs to handle. Paige finds it, you own it — one click."
+        description="Enter an area code — Paige finds available numbers, shows what each can do, and you own it in one click."
       >
         <div className="space-y-4">
           <Toolbar className="items-end">
@@ -305,17 +304,6 @@ export function NumbersTab() {
                 </div>
                 <p className="text-xs text-muted-foreground">Leave blank for any.</p>
               </div>
-
-              <div className="space-y-1.5">
-                <Label>Needs to handle</Label>
-                <div className="flex flex-wrap gap-2">
-                  {(["sms", "mms", "voice"] as Capability[]).map((c) => (
-                    <FilterChip key={c} active={caps[c]} onClick={() => toggleCap(c)}>
-                      {CAP_LABELS[c]}
-                    </FilterChip>
-                  ))}
-                </div>
-              </div>
             </div>
 
             <Button onClick={() => void runSearch()} disabled={searching} className="shrink-0">
@@ -334,9 +322,9 @@ export function NumbersTab() {
               icon={Search}
               title="Search to see what's available"
               description={
-                capSummary.length
-                  ? `Paige will pull ${capSummary.join(" + ")} numbers${areaCode ? ` in ${areaCode}` : ""} and price each one.`
-                  : "Pick what it needs to handle, then find numbers to buy."
+                areaCode
+                  ? `Paige will pull available numbers in ${areaCode} and show what each one can do.`
+                  : "Enter an area code (or leave it blank for any), then find numbers to buy."
               }
             />
           ) : needsConfig ? (
@@ -363,16 +351,18 @@ export function NumbersTab() {
               loading={searching}
               isEmpty={false}
             >
-              {(visibleResults ?? []).map((n) => (
+              {(results ?? []).map((n) => (
                 <TableRow key={n.phone_number}>
                   <TableCell className="font-mono text-sm">{fmtE164(n.phone_number)}</TableCell>
                   <TableCell><CapPills caps={n.capabilities} /></TableCell>
                   <TableCell>
                     {n.retail_price ? (
-                      <>
+                      // §36/§38 honest: this is the carrier passthrough, shown transparently
+                      // with no Paige markup (#150). The title makes that explicit on hover.
+                      <span title="Carrier passthrough — no Paige markup">
                         <span className="font-semibold tabular-nums">{fmtPrice(n.retail_price)}</span>
                         <span className="text-xs text-muted-foreground">/mo</span>
-                      </>
+                      </span>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
                     )}

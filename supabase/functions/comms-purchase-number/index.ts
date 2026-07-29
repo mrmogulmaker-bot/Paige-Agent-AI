@@ -15,11 +15,13 @@
 //      This is the source='marketplace' producer. Both producers set subaccount_id +
 //      let the trigger derive tenant_id; both are idempotent on the global phone_number
 //      UNIQUE. No third numbers home (§18).
-//  §38 Paige-HELD rail. The number is bought into the tenant's subaccount under the
-//      platform master account — Paige pays Twilio, the tenant pays Paige. This is NOT
-//      Stripe Connect. §13 HONESTY: the CHARGE leg (billing the tenant Paige's retail
-//      price for this purchase) is NOT wired in this slice — this fn does the Twilio buy
-//      + records the number; the money settlement is a later Money-Spine concern. The
+//  §38 Paige-HELD rail, LOCKED at pure carrier passthrough (#150). The number is bought
+//      into the tenant's subaccount under the platform master account — Paige pays Twilio,
+//      the tenant pays Paige the SAME carrier passthrough cost with ZERO platform markup
+//      (margin comes from §17 L1 subs / L3 usage / L2 marketplace, never the number). This
+//      is NOT Stripe Connect. §13 HONESTY: the CHARGE leg (billing the tenant the carrier
+//      passthrough for this purchase) is NOT wired in this slice — this fn does the Twilio
+//      buy + records the number; the money settlement is a later Money-Spine concern. The
 //      response says so (`charge_wired: false`) so no caller mistakes "bought" for "billed".
 //  §18 Reuses the ONE Twilio seam (_shared/twilio.ts purchaseNumber) — no inline REST.
 //  §13 Reports the REAL Twilio PN SID from the purchase response only; on any failure it
@@ -35,8 +37,8 @@ const corsHeaders = {
 
 /**
  * Request body — the number to buy + an optional label. Tenant is NEVER read here (§9).
- * §37 dual-contract: the marketplace UI sends { phoneNumber }; a Paige-headless caller
- * may send { phone_number }. Both are accepted.
+ * §37 dual-contract: the marketplace UI (NumbersTab.buy) sends { phone_number }; a
+ * Paige-headless caller may send { phoneNumber }. Both are accepted.
  */
 interface PurchaseBody {
   /** E.164 number the tenant chose from comms-search-numbers (e.g. +14155550123). */
@@ -227,8 +229,8 @@ Deno.serve(async (req) => {
     phone_number: boughtNumber,
     sid: pnSid,                                 // §37: the UI reads `sid`. REAL PN SID (§13).
     twilio_sid: pnSid,                          // REAL PN SID only (§13)
-    // §38 HONEST: the number is bought + recorded; billing the tenant Paige's retail price
-    // for it is NOT wired in this slice (later Money-Spine concern).
+    // §38 HONEST: the number is bought + recorded; billing the tenant the carrier
+    // passthrough (zero markup, #150) for it is NOT wired in this slice (later Money-Spine).
     charge_wired: false,
   });
 });
