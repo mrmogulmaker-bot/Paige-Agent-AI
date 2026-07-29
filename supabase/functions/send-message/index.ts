@@ -27,6 +27,10 @@ import { resolveTwilioCreds, sendSms, type SupabaseAdminLike } from "../_shared/
 // #141b — the ONE authenticated Gmail seam (resolve access token from a connector's
 // Vault ref + send RFC 822). The email adapter dispatches to it when provider==='gmail'.
 import { resolveGmailAccessToken, gmailSend } from "../_shared/gmail.ts";
+// #141c — the ONE generic-SMTP seam (resolve {user,pass} from a connector's Vault ref +
+// send through the tenant's OWN SMTP host, SSRF-guarded). The SAME email adapter dispatches
+// to it when provider==='smtp' (§18 — not a second 'email' registry entry).
+import { resolveSmtpCreds, smtpSend } from "../_shared/smtp.ts";
 import { runPreSend } from "../_shared/pre-send-pipeline.ts";
 
 const corsHeaders = {
@@ -111,6 +115,61 @@ const emailOutboundAdapter: OutboundChannelAdapter = {
         };
       }
       return { ok: true, status: "sent" as const, provider_message_id: sent.data.id };
+    }
+
+    // ── #141c: generic-SMTP dispatch INSIDE the email path (§18 — NOT a second 'email'
+    //    registry entry). provider==='smtp' resolves {user,pass} from the connector's Vault
+    //    ref and sends through the tenant's OWN SMTP host (host/port/secure from
+    //    ctx.connectorConfig). SSRF host/port guard lives inside smtpSend. ──
+    if (ctx.provider === "smtp") {
+      const admin = ctx.admin as unknown as SupabaseAdminLike | null | undefined;
+      if (!admin) {
+        return {
+          ok: false, status: "failed" as const, needs_config: true, reason: "smtp_requires_admin",
+          error: "smtp_requires_admin: no service-role client in context",
+        };
+      }
+      const creds = await resolveSmtpCreds(admin, ctx.credentialsVaultRef ?? null);
+      if (!creds.ok || !creds.data) {
+        return {
+          ok: false, status: "failed" as const,
+          needs_config: creds.needs_config === true,
+          reason: creds.needs_config ? "smtp_not_configured" : "smtp_creds_failed",
+          error: creds.error ?? "smtp_creds_failed",
+        };
+      }
+      const cfg = (ctx.connectorConfig ?? {}) as { host?: unknown; port?: unknown; secure?: unknown };
+      const host = typeof cfg.host === "string" ? cfg.host : "";
+      const port = typeof cfg.port === "number" ? cfg.port : Number(cfg.port);
+      const secure = typeof cfg.secure === "boolean" ? cfg.secure : undefined;
+      if (!host || !Number.isFinite(port)) {
+        return {
+          ok: false, status: "failed" as const, needs_config: true, reason: "smtp_not_configured",
+          error: "smtp_not_configured: connector config missing host/port",
+        };
+      }
+      const sent = await smtpSend({
+        host, port, secure: secure ?? null,
+        user: creds.data.user, pass: creds.data.pass,
+        from: ctx.from.address,
+        fromName: ctx.from.display_name ?? null,
+        to: ctx.to,
+        subject: msg.subject || "(no subject)",
+        html: msg.body_html ?? null,
+        text: msg.body_text ?? null,
+        inReplyTo: msg.in_reply_to_provider_id ?? null,
+      });
+      if (!sent.ok) {
+        return {
+          ok: false, status: "failed" as const,
+          needs_config: sent.needs_config === true,
+          reason: sent.needs_config ? "smtp_not_configured" : "smtp_send_failed",
+          error: sent.error ?? "smtp_send_failed",
+        };
+      }
+      // §13: SMTP submission returns no durable id (data.messageId is honestly null); record
+      // the send with a null provider_message_id rather than fabricating one.
+      return { ok: true, status: "sent" as const, provider_message_id: sent.data?.messageId ?? null };
     }
 
     const resendKey = ctx.providerApiKey;
@@ -389,6 +448,8 @@ Deno.serve(async (req) => {
         reply_to?: string | null;
         // #141b: provider decides Gmail-vs-Resend; credentials_vault_ref feeds the Gmail seam.
         provider?: string | null; credentials_vault_ref?: string | null; external_account_id?: string | null;
+        // #141c: non-secret SMTP transport config (host/port/secure) for the provider==='smtp' path.
+        config?: Record<string, unknown> | null;
       }
     | null = null;
   let replyTo: string | null = null;
@@ -420,7 +481,9 @@ Deno.serve(async (req) => {
       .from("channel_connectors")
       // #141b: widened to carry provider + credentials_vault_ref + external_account_id so the
       // email path can route a Gmail connector through the Gmail seam (else Resend).
-      .select("tenant_id, from_address, from_name, reply_to, provider, credentials_vault_ref, external_account_id")
+      // #141c: + config (jsonb host/port/secure) so the provider==='smtp' path can send through
+      // the tenant's own SMTP host. Additive (§37) — Resend/Gmail callers ignore the extra column.
+      .select("tenant_id, from_address, from_name, reply_to, provider, credentials_vault_ref, external_account_id, config")
       .eq("id", effectiveConnectorId)
       .maybeSingle();
     connectorRow = data ?? null;
@@ -627,10 +690,12 @@ Deno.serve(async (req) => {
   try {
     if (body.channel === "email") {
       // #141b: a Gmail connector sends via the Gmail seam (its own OAuth creds), so it does
-      // NOT need RESEND_API_KEY. Only the Resend path requires it.
+      // NOT need RESEND_API_KEY. #141c: an SMTP connector sends via the tenant's own SMTP host,
+      // also NOT needing RESEND_API_KEY. Only the Resend path requires it.
       const isGmail = connectorRow?.provider === "gmail";
+      const isSmtp = connectorRow?.provider === "smtp";
       const resendKey = Deno.env.get("RESEND_API_KEY");
-      if (!resendKey && !isGmail) throw new Error("RESEND_API_KEY missing");
+      if (!resendKey && !isGmail && !isSmtp) throw new Error("RESEND_API_KEY missing");
 
       // §38 PRIMARY: tenant-owned sender identity via the shared RPC (service role =>
       // auth.uid() NULL => trusted cross-tenant resolve of the passed tenant).
@@ -655,7 +720,9 @@ Deno.serve(async (req) => {
       replyTo = replyTo || connectorRow?.reply_to || null;
       // #141b: Google enforces that a gmail.send goes out AS the authenticated address, so the
       // Gmail connector's own from_address wins over any tenant/platform default sender here.
-      if (isGmail && connectorRow?.from_address) {
+      // #141c: an SMTP server likewise typically enforces the envelope-from matching the
+      // authenticated mailbox, so the SMTP connector's own from_address wins too.
+      if ((isGmail || isSmtp) && connectorRow?.from_address) {
         senderEmail = connectorRow.from_address;
         senderName = senderName || connectorRow?.from_name || null;
       }
@@ -716,7 +783,9 @@ Deno.serve(async (req) => {
         to: body.to,
         replyTo,
         providerApiKey: resendKey,
-        connectorConfig: null,
+        // #141c: thread the connector's non-secret SMTP transport config (host/port/secure) so
+        // the provider==='smtp' branch can send through the tenant's own host. null for Resend/Gmail.
+        connectorConfig: isSmtp ? (connectorRow?.config ?? null) : null,
         // OutboundSendContext field is listUnsubscribeUrl (the adapter reads it → buildListUnsubscribeHeaders).
         listUnsubscribeUrl: oneClickUrl ?? null,
         // #141b: Gmail dispatch INSIDE the email adapter (§18 — not a second 'email' entry).
@@ -726,13 +795,17 @@ Deno.serve(async (req) => {
         admin,                     // service-role client the Gmail seam uses to read the Vault ref
       };
       const delivery = await adapter.send(outMsg, ctx);
-      // #141b HONEST NOTE (§13): the paige_messages_audit.pipe_used CHECK is
-      // ('resend','twilio','ghl_fallback') — 'gmail' is not yet a legal value, so widening it
-      // is a tracked follow-up (an enum migration carries its own §37 producer inventory). The
-      // Gmail send is recorded here as the email pipe; the TRUE transport is recoverable from
-      // the connector row (connector_id → provider='gmail'), so no information is lost.
+      // #141b/#141c HONEST NOTE (§13): the paige_messages_audit.pipe_used CHECK is
+      // ('resend','twilio','ghl_fallback') — 'gmail'/'smtp' are not yet legal values, so widening
+      // it is a tracked follow-up (an enum migration carries its own §37 producer inventory). The
+      // Gmail/SMTP send is recorded here as the email pipe; the TRUE transport is recoverable from
+      // the connector row (connector_id → provider='gmail'|'smtp'), so no information is lost.
       pipe_used = "resend";
-      if (!delivery.ok) throw new Error(delivery.error || (isGmail ? "gmail_send_failed" : "resend_send_failed"));
+      if (!delivery.ok) {
+        throw new Error(
+          delivery.error || (isGmail ? "gmail_send_failed" : isSmtp ? "smtp_send_failed" : "resend_send_failed"),
+        );
+      }
       vendor_message_id = delivery.provider_message_id ?? null;
       status = "sent";
     } else {
