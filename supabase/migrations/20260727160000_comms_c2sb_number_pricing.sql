@@ -5,17 +5,20 @@
 -- =============================================================================
 -- DOCTRINE HEADER
 --  §7  OPERATOR-authored default. This table is the platform operator's number-pricing
---      config: the retail price a tenant pays Paige for a number = Twilio wholesale +
---      the operator's markup. It is a coaching-generic PLATFORM default that ships to
---      every tenant, NOT tenant-editable (RLS: is_platform_owner() write only). A tenant
---      READS its retail price (so the marketplace can show a price) but never sets it.
---  §38 Paige-HELD rail. Paige marks up wholesale, the tenant pays Paige, Paige pays
---      Twilio. This is NOT Stripe Connect / merchant-of-record-for-a-tenant — a number
---      is a Paige platform rail (money-spine-architecture). wholesale_cents records what
---      Twilio charges Paige; retail_monthly_cents is what Paige charges the tenant. This
---      migration surfaces the marked-up PRICE + backs the purchase seam; the actual
---      charge/settlement leg is a later Money-Spine concern and is NOT wired by this
---      slice (§13 — the purchase edge fn says so honestly).
+--      config. Pricing is LOCKED at pure carrier passthrough (#150): the price a tenant
+--      pays Paige for a number = the real Twilio wholesale cost, with ZERO platform markup.
+--      It is a coaching-generic PLATFORM default that ships to every tenant, NOT
+--      tenant-editable (RLS: is_platform_owner() write only). A tenant READS the passthrough
+--      price (so the marketplace can show it transparently) but never sets it.
+--  §38 Paige-HELD rail. The tenant pays Paige the carrier passthrough, Paige pays Twilio —
+--      Paige takes NO margin on the number (margin comes from §17 L1 subs / L3 usage / L2
+--      marketplace, never the number). This is NOT Stripe Connect / merchant-of-record-for-
+--      a-tenant — a number is a Paige platform rail (money-spine-architecture). wholesale_cents
+--      records what Twilio charges Paige AND is the price shown to the tenant (passthrough).
+--      retail_monthly_cents is retained for the historical schema shape but is neutralized to
+--      == wholesale_cents by migration 20260729120000. This migration surfaces the passthrough
+--      PRICE + backs the purchase seam; the actual charge/settlement leg is a later Money-Spine
+--      concern and is NOT wired by this slice (§13 — the purchase edge fn says so honestly).
 --  §2  Coaching-generic. A phone number is a neutral sending identity. ZERO finance /
 --      credit / funding / lender wording anywhere in this table, its comments, or its
 --      seed row.
@@ -38,7 +41,8 @@
 -- SCHEMA NOTES (flagged, §13):
 --   (1) The unique key is (number_type, country) — exactly one CURRENT price per
 --       number type per country. A price change is an UPDATE of that row (operator
---       edits the markup); pricing HISTORY is out of scope for this slice (there is no
+--       edits the wholesale passthrough value — there is no markup to edit under the
+--       #150 lock); pricing HISTORY is out of scope for this slice (there is no
 --       downstream consumer of historical number pricing yet).
 --   (2) retail_onetime_cents is NULLABLE — US local/mobile numbers have no setup fee;
 --       a country/type that does can carry one without a schema change.
@@ -56,7 +60,7 @@
 --         wholesale_cents is refused (23514).
 --     (b) the seed inserts exactly one active US 'local' row (idempotent: a second run
 --         of the seed is a no-op via ON CONFLICT (number_type,country) DO NOTHING — the
---         operator's edited markup is never clobbered by a re-apply).
+--         operator's edited passthrough price row is never clobbered by a re-apply).
 --     (c) RLS: a plain authenticated role can SELECT the row (tenants must SEE the retail
 --         price) but a non-owner INSERT/UPDATE is refused by policy (is_platform_owner()
 --         write only); service_role has full access.
@@ -75,9 +79,11 @@ create table if not exists public.platform_number_pricing (
       check (number_type in ('local','tollfree','mobile')),
   -- ISO-3166 alpha-2 country the price applies to (Twilio prices per country).
   country               text not null default 'US',
-  -- What Twilio charges Paige for this number/month (the wholesale cost, §38).
+  -- What Twilio charges Paige for this number/month — the wholesale cost, AND (under the
+  -- LOCKED passthrough doctrine, #150) the exact price shown to the tenant, zero markup (§38).
   wholesale_cents       integer not null check (wholesale_cents >= 0),
-  -- What Paige charges the TENANT per month (wholesale + operator markup, §38).
+  -- Retained for the historical schema shape; neutralized to == wholesale_cents by migration
+  -- 20260729120000 (pure passthrough, no markup). The marketplace reads wholesale_cents (§38).
   retail_monthly_cents  integer not null check (retail_monthly_cents >= 0),
   -- Optional one-time setup fee (US local/mobile = none → NULL).
   retail_onetime_cents  integer check (retail_onetime_cents is null or retail_onetime_cents >= 0),
@@ -88,11 +94,11 @@ create table if not exists public.platform_number_pricing (
 );
 
 comment on table public.platform_number_pricing is
-  'Comms C-2s-B: OPERATOR-authored number retail pricing (§7). retail_monthly_cents = Twilio wholesale_cents + operator markup (§38 Paige-held rail — tenant pays Paige, Paige pays Twilio; NOT Connect). Coaching-generic (§2). RLS: is_platform_owner() write, authenticated read (tenants must SEE their retail price). One current price per (number_type, country); a change is an UPDATE.';
+  'Comms C-2s-B: OPERATOR-authored number pricing (§7). LOCKED at pure carrier passthrough (#150): the tenant pays the Twilio wholesale cost (wholesale_cents) with ZERO platform markup (§38 Paige-held rail — tenant pays Paige, Paige pays Twilio; NOT Connect; margin comes from §17 subs/usage/marketplace, never the number). Coaching-generic (§2). RLS: is_platform_owner() write, authenticated read (tenants must SEE the passthrough price). One current price per (number_type, country); a change is an UPDATE.';
 comment on column public.platform_number_pricing.wholesale_cents is
-  'What Twilio charges Paige per month for this number type/country (§38 cost side). Operator-maintained.';
+  'What Twilio charges Paige per month for this number type/country AND the exact passthrough price shown to the tenant (zero markup, #150/§38). Operator-maintained.';
 comment on column public.platform_number_pricing.retail_monthly_cents is
-  'What Paige charges the tenant per month (wholesale + markup, §38). The marketplace shows this.';
+  'Retained for the historical schema shape; neutralized to == wholesale_cents by 20260729120000 (pure passthrough, no markup). The marketplace reads wholesale_cents (§38).';
 
 -- Exactly one current price per number type per country.
 create unique index if not exists uq_platform_number_pricing_type_country
@@ -100,8 +106,13 @@ create unique index if not exists uq_platform_number_pricing_type_country
 
 -- -----------------------------------------------------------------------------
 -- 2. Seed — one coaching-generic US local default (§7 platform default, §2 neutral).
---    Idempotent: ON CONFLICT DO NOTHING so a re-apply never clobbers an operator's
---    edited markup. Pure pricing config — no id/phone/tenant literal (§200).
+--    Idempotent: ON CONFLICT DO NOTHING so a re-apply never clobbers an operator's edited
+--    row. Pure pricing config — no id/phone/tenant literal (§200).
+--    NOTE (§13/#150): this seed's historical retail_monthly_cents=500 predates the LOCKED
+--    passthrough decision; migration 20260729120000 neutralizes it to == wholesale_cents
+--    (115) so no stale marked-up value lurks. The marketplace already reads wholesale_cents
+--    (115 = the transparent Twilio passthrough), so the displayed price is passthrough
+--    regardless of this legacy literal.
 -- -----------------------------------------------------------------------------
 insert into public.platform_number_pricing
   (number_type, country, wholesale_cents, retail_monthly_cents, retail_onetime_cents, currency, active)
