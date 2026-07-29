@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { EmailDomainsPanel } from "@/components/admin/EmailDomainsPanel";
+import { resolveFunctionError } from "@/lib/integrations/connectError";
 import { toast } from "sonner";
 import { Mail, Inbox, KeyRound, Loader2, Link as LinkIcon, Unlink } from "lucide-react";
 
@@ -43,21 +44,9 @@ type SmtpConnector = {
   display_name: string | null;
 };
 
-// A short, honest map of SMTP failure codes → coach-readable copy (§13/§36 — never a raw
-// backend code in the UI, never a silent fail). Falls back to a generic line for anything else.
-const SMTP_ERROR_COPY: Record<string, string> = {
-  smtp_host_not_allowed:
-    "That host or port isn't allowed. Use your provider's public mail server (ports 465, 587, 25, or 2525) — internal addresses are blocked for safety.",
-  smtp_port_not_allowed: "Use a standard mail port: 465, 587, 25, or 2525.",
-  smtp_host_invalid: "That server address doesn't look right — check it and try again.",
-  smtp_host_unresolvable: "We couldn't find that mail server. Double-check the host name.",
-  smtp_host_unreachable: "We couldn't reach that mail server on that port. Check the host and port.",
-  invalid_from_address: "Enter a valid from-address (e.g. you@yourdomain.com).",
-  missing_fields: "Fill in the server, port, username, password, and from-address.",
-  no_tenant_for_user: "Your account isn't attached to a workspace yet.",
-  vault_write_failed: "We couldn't securely store your credentials just now. Try again in a moment.",
-  forbidden: "You don't have permission to connect email for this workspace.",
-};
+// SMTP + OAuth failure copy now lives in the ONE shared home (§18):
+// `resolveFunctionError` in @/lib/integrations/connectError — every connect/disconnect
+// site on this page consumes it so a tenant never sees a raw framework code.
 
 export default function EmailIntegrationConfig() {
   const [connector, setConnector] = useState<EmailConnector | null>(null);
@@ -149,16 +138,16 @@ export default function EmailIntegrationConfig() {
     const { data, error } = await supabase.functions.invoke("gmail-oauth-start", {
       body: { origin: window.location.origin },
     });
-    const errCode = (data as { error?: string } | null)?.error;
     const url = (data as { authorization_url?: string } | null)?.authorization_url;
-    if (errCode === "gmail_oauth_not_configured") {
-      setGmailBusy(false);
-      setGmailNote("Gmail connect is being wired — the Google sign-in isn't switched on yet. Verify a sending domain above to go live today; we'll enable Gmail shortly.");
-      return;
-    }
     if (error || !url) {
       setGmailBusy(false);
-      toast.error(errCode ?? error?.message ?? "Could not start Gmail connect");
+      const { code, message } = await resolveFunctionError({ error, data, action: "connect Gmail" });
+      // Not switched on yet → an honest inline note, never a red error toast (§13/§36).
+      if (code === "gmail_oauth_not_configured") {
+        setGmailNote(message);
+      } else {
+        toast.error(message);
+      }
       return;
     }
     window.location.href = url; // redirect to Google — busy stays true through navigation
@@ -168,9 +157,8 @@ export default function EmailIntegrationConfig() {
     setGmailBusy(true);
     const { data, error } = await supabase.functions.invoke("gmail-disconnect", { body: {} });
     setGmailBusy(false);
-    const errCode = (data as { error?: string } | null)?.error;
-    if (error || errCode) {
-      toast.error(errCode ?? error?.message ?? "Could not disconnect Gmail");
+    if (error || (data as { error?: string } | null)?.error) {
+      toast.error((await resolveFunctionError({ error, data, action: "disconnect Gmail" })).message);
       return;
     }
     toast.success("Gmail disconnected");
@@ -200,13 +188,8 @@ export default function EmailIntegrationConfig() {
       },
     });
     setSmtpBusy(false);
-    const errCode = (data as { error?: string } | null)?.error;
-    if (error || errCode) {
-      setSmtpError(
-        (errCode && SMTP_ERROR_COPY[errCode]) ??
-          error?.message ??
-          "We couldn't connect that mail server. Check the details and try again.",
-      );
+    if (error || (data as { error?: string } | null)?.error) {
+      setSmtpError((await resolveFunctionError({ error, data, action: "connect your SMTP server" })).message);
       return;
     }
     // §13 honest: connect proves the server is REACHABLE (TCP/TLS handshake), not that the
@@ -222,9 +205,8 @@ export default function EmailIntegrationConfig() {
     setSmtpBusy(true);
     const { data, error } = await supabase.functions.invoke("smtp-disconnect", { body: {} });
     setSmtpBusy(false);
-    const errCode = (data as { error?: string } | null)?.error;
-    if (error || errCode) {
-      toast.error(errCode ?? error?.message ?? "Could not disconnect SMTP");
+    if (error || (data as { error?: string } | null)?.error) {
+      toast.error((await resolveFunctionError({ error, data, action: "disconnect SMTP" })).message);
       return;
     }
     toast.success("SMTP disconnected");
