@@ -47,7 +47,7 @@ export function DialPad() {
   if (!voice) return null;
 
   const {
-    status, reason, draft, setDraft, call, hangup, muted, toggleMute, activeCall,
+    status, reason, draft, setDraft, call, hangup, muted, toggleMute, activeCall, sendDigit,
   } = voice;
 
   const inCall = status === "in_call" || (status === "connecting" && activeCall != null);
@@ -59,6 +59,37 @@ export function DialPad() {
   }
   function backspace() {
     setDraft(draft.slice(0, -1));
+  }
+
+  // The keypad grid is shared by BOTH modes but its digit does different work:
+  //   • pre-call  → composes the number (press → appends to the draft)
+  //   • in-call   → sends a DTMF touch-tone on the live call (sendDigit)
+  // Same control, dual role — made obvious by the caption above each usage (§36).
+  function keypad(onPress: (d: string) => void, ariaVerb: string) {
+    return (
+      <div className="grid grid-cols-3 gap-2">
+        {KEYS.map((k) => (
+          <button
+            key={k.d}
+            type="button"
+            onClick={() => onPress(k.d)}
+            aria-label={`${ariaVerb} ${k.d}`}
+            className={cn(
+              "flex h-12 flex-col items-center justify-center rounded-md border border-border bg-background",
+              "text-lg font-medium text-foreground transition-colors",
+              "hover:bg-secondary hover:border-primary/40",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+              !reduceMotion && "active:scale-[0.97]",
+            )}
+          >
+            <span className="leading-none">{k.d}</span>
+            {k.sub && (
+              <span className="mt-0.5 text-[9px] leading-none tracking-widest text-muted-foreground">{k.sub}</span>
+            )}
+          </button>
+        ))}
+      </div>
+    );
   }
 
   // ── Honest: calling not provisioned (§13) ────────────────────────────────────
@@ -96,6 +127,18 @@ export function DialPad() {
             {status === "connecting" ? "Connecting…" : timer}
           </p>
         </div>
+
+        {/* Mid-call DTMF (A3): while the call is LIVE the keypad sends touch-tones (e.g.
+            navigating an IVR "press 1"), not draft edits. Hidden during the brief
+            "connecting" beat since there's no live call to tone yet. */}
+        {status === "in_call" && (
+          <div className="w-full">
+            <p className="mb-2 text-center text-[11px] uppercase tracking-wider text-muted-foreground">
+              Keypad · sends touch-tones
+            </p>
+            {keypad(sendDigit, "Send tone")}
+          </div>
+        )}
 
         <div className="flex items-center gap-3">
           <Button
@@ -144,27 +187,8 @@ export function DialPad() {
         />
       </div>
 
-      {/* Keypad — all NEUTRAL (§11: no gold on keys). */}
-      <div className="grid grid-cols-3 gap-2">
-        {KEYS.map((k) => (
-          <button
-            key={k.d}
-            type="button"
-            onClick={() => press(k.d)}
-            aria-label={`Dial ${k.d}`}
-            className={cn(
-              "flex h-12 flex-col items-center justify-center rounded-md border border-border bg-background",
-              "text-lg font-medium text-foreground transition-colors",
-              "hover:bg-secondary hover:border-primary/40",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] focus-visible:ring-offset-1 focus-visible:ring-offset-background",
-              !reduceMotion && "active:scale-[0.97]",
-            )}
-          >
-            <span className="leading-none">{k.d}</span>
-            {k.sub && <span className="mt-0.5 text-[9px] leading-none tracking-widest text-muted-foreground">{k.sub}</span>}
-          </button>
-        ))}
-      </div>
+      {/* Keypad — all NEUTRAL (§11: no gold on keys). Pre-call: composes the number. */}
+      {keypad(press, "Dial")}
 
       {/* Row: backspace (neutral) + CALL (the ONE gold act, §11). */}
       <div className="flex items-center gap-2">

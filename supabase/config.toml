@@ -47,6 +47,15 @@ project_id = "xygzykjyynhzqytbqnzu"
   # for the §9 audit trail alongside its comms siblings.
   [functions.voice-access-token]
     verify_jwt = true
+  # Comms C-2v (#140 A3): the voice TwiML webhook the per-tenant TwiML App VoiceUrl targets.
+  # Twilio POSTs here (application/x-www-form-urlencoded) on outbound (From=client:<identity>)
+  # and inbound (To=<tenant number>) — it CANNOT present a Supabase JWT, so verify_jwt=false;
+  # the control is x-twilio-signature HMAC validation in-function (the ONE shared
+  # validateTwilioSignature helper, mirroring handle-inbound-sms). §9: outbound tenant is the
+  # authenticated client identity, inbound tenant is the OWNER of the dialed number — never a
+  # trusted body. A caller is never bridged cross-tenant.
+  [functions.voice-twiml]
+    verify_jwt = false
   # Comms C-2s-B-2: A2P 10DLC wrapper (§36 beat-GHL). Both JWT-gated — each re-verifies the
   # caller, gates on the SAME authority tenant_a2p_registrations RLS enforces (is_platform_owner()
   # OR admin/coach of the caller's own tenant), and derives the tenant SERVER-SIDE from the caller
