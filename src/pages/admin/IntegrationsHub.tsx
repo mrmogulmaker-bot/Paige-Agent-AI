@@ -480,7 +480,9 @@ export default function IntegrationsHub() {
                     // §47/§22 depth: the group is a RECESSED base tier (hairline border,
                     // subtle muted fill, no shadow) so the raised bg-card tiles inside read
                     // as the single elevated layer — base→raised, not card-on-card (§25).
-                    className="scroll-mt-4 rounded-[var(--radius)] border border-border/60 bg-muted/20 px-4"
+                    // scroll-mt clears the sticky toolbar (~56px single-row, taller when it
+                    // wraps) so a rail jump lands the heading BELOW it, not hidden under it.
+                    className="scroll-mt-28 rounded-[var(--radius)] border border-border/60 bg-muted/20 px-4"
                   >
                     <AccordionTrigger className="py-3 hover:no-underline">
                       <span className="flex items-center gap-2.5">
