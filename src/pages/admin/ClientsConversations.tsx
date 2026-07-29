@@ -511,6 +511,24 @@ export default function ClientsConversations() {
     }
   }, [view, messagesByKey, nowMs]);
 
+  // §36 proactive pull: threads sitting in the folded draft-first views (Drafts /
+  // Awaiting reply) still tug the eye — badge the "More" chip trigger with their count
+  // (#148 foldout) so collapsing those moat views to reclaim space never buries the
+  // draft-first surfacing. Predicate mirrors viewPredicate's drafts/awaiting cases.
+  const foldedPending = useMemo(() => {
+    let n = 0;
+    for (const t of dbThreads) {
+      if (t.archived_at) continue;
+      if (t.snoozed_until && new Date(t.snoozed_until).getTime() > nowMs) continue;
+      const msgs = messagesByKey.get(t.thread_key) ?? [];
+      const isDraft = msgs.some((m) => m.status === "draft" && m.direction === "outbound");
+      const isAwaiting = t.last_direction === "outbound" && !!t.last_message_at
+        && (nowMs - new Date(t.last_message_at).getTime()) > 3 * 864e5;
+      if (isDraft || isAwaiting) n++;
+    }
+    return n;
+  }, [dbThreads, messagesByKey, nowMs]);
+
   // ── visible threads: state filter is server-side; search + label + view client-side.
   //    #121 sort composes LAST, over the already-filtered list (never a new query, §9). ─
   const visibleThreads = useMemo(() =>
@@ -1097,19 +1115,18 @@ export default function ClientsConversations() {
           <div className="space-y-2.5 border-b border-border/60 px-3 py-2.5">
             {/* §43 — start a NEW outbound thread. Relocated off the PageHeader to reclaim
                 header space; lives atop the thread list (GHL pattern), NOT the right rail
-                (which unmounts with no thread selected). Gold on the act (§11); honestly
-                disabled with the same tooltip when there's no sendable channel (§13). The
-                first-run surface owns its own gold act and replaces this whole grid, so no
-                double gold act can appear. */}
+                (which unmounts with no thread selected). Gold on the act (§11). With no
+                sendable channel this is NOT a dead disabled button — it routes to setup
+                (§31 no dead-end; §36 the label tells a non-technical coach exactly what to
+                do). The first-run surface owns its own gold act and replaces this whole
+                grid, and the middle-pane connect CTA is outline, so only ONE gold connect
+                act is ever on screen (§11 gold budget). */}
             {!canCompose ? (
-              <span
-                className="flex w-full"
-                title="Connect an email or SMS channel to start a conversation"
-              >
-                <Button variant="gold" size="sm" className="w-full" disabled>
-                  <Plus className="mr-1.5 h-4 w-4" /> New conversation
-                </Button>
-              </span>
+              <Button variant="gold" size="sm" className="w-full" asChild>
+                <Link to="/admin/integrations/email">
+                  <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
+                </Link>
+              </Button>
             ) : (
               <Button
                 variant="gold" size="sm" className="w-full"
@@ -1130,7 +1147,7 @@ export default function ClientsConversations() {
             </div>
           </div>
           <ThreadFilters
-            view={view} onView={setView} activeUnread={activeUnread}
+            view={view} onView={setView} activeUnread={activeUnread} foldedPending={foldedPending}
             catalog={labelCatalog} labelFilter={labelFilter} onLabelFilter={setLabelFilter}
           />
 
@@ -1472,7 +1489,10 @@ export default function ClientsConversations() {
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
                       <span>Connect a channel and Paige sends from here — inbound messages start landing in this inbox once a channel is live.</span>
                     </p>
-                    <Button variant="gold" size="sm" asChild className="shrink-0 self-start sm:self-auto">
+                    {/* Secondary connect CTA → outline, so it never becomes a SECOND gold
+                        "Connect a channel" co-visible with the rail-top gold one (§11 gold
+                        budget; mirrors the empty-state precedent where secondary=outline). */}
+                    <Button variant="outline" size="sm" asChild className="shrink-0 self-start sm:self-auto">
                       <Link to="/admin/integrations/email">
                         <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
                       </Link>

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -14,22 +14,22 @@ export function Toolbar({ children, className }: { children: ReactNode; classNam
 /**
  * A filter pill. Active = indigo (bg-primary), NEVER gold — gold is reserved for
  * the act/approve/on moment, not a resting filter selection.
+ *
+ * forwardRef + prop passthrough so it can be a Radix asChild trigger (Popover/
+ * DropdownMenu) without forking the pill styling — e.g. the Conversations view
+ * foldout (§18: harden the shared primitive, don't clone its classes). `onClick`
+ * now flows through {...rest}, so existing `onClick={...}` callers are unchanged;
+ * a menu-trigger caller can pass `aria-pressed={undefined}` to drop the toggle
+ * semantics while keeping `active` purely for the indigo styling.
  */
-export function FilterChip({
-  active,
-  children,
-  onClick,
-  className,
-}: {
-  active?: boolean;
-  children: ReactNode;
-  onClick?: () => void;
-  className?: string;
-}) {
+export const FilterChip = forwardRef<
+  HTMLButtonElement,
+  { active?: boolean } & ButtonHTMLAttributes<HTMLButtonElement>
+>(({ active, children, className, ...rest }, ref) => {
   return (
     <button
+      ref={ref}
       type="button"
-      onClick={onClick}
       aria-pressed={active}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
@@ -41,8 +41,10 @@ export function FilterChip({
             "border border-border bg-transparent text-muted-foreground hover:border-[hsl(var(--border-strong))] hover:bg-muted hover:text-foreground",
         className,
       )}
+      {...rest}
     >
       {children}
     </button>
   );
-}
+});
+FilterChip.displayName = "FilterChip";
