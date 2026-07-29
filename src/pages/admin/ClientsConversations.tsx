@@ -16,7 +16,7 @@ import { useSearchParams, Link } from "react-router-dom";
 import {
   MessageCircle, Inbox, Send, Pencil, Loader2, Sparkles, AlertTriangle, Paperclip,
   Search, SearchX, PanelRight, Clock, X, ChevronDown, Bell, Plus, PlugZap,
-  ArrowUpDown, Rows3, AlignJustify, Archive, Tag, CheckCheck, MessageCircleReply, Check,
+  ArrowUpDown, Rows3, AlignJustify, Archive, Tag, CheckCheck, MessageCircleReply, Check, Trash2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,6 +31,11 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -632,6 +637,18 @@ export default function ClientsConversations() {
     const { error } = await (supabase as any).from("threads").update({ archived_at: iso }).eq("id", id);
     if (error) { if (!opts?.silent) toast.error("Couldn't update that thread."); void loadThreads(); return false; }
     if (!opts?.silent) toast.success(on ? "Archived." : "Moved to inbox.");
+    return true;
+  };
+  // #4 delete-conversation (Option A: Archive-with-Delete-UX). The trash SOFT-ARCHIVES
+  // via the §10-callable delete_conversation RPC (§39 audit row written server-side).
+  // §9: JWT caller → tenant is server-derived inside the DEFINER fn; we NEVER pass
+  // _tenant_id from the client. Optimistic archive locally; on error/false, reload.
+  const deleteConversation = async (id: string): Promise<boolean> => {
+    optimisticThread(id, { archived_at: new Date().toISOString() });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (supabase as any).rpc("delete_conversation", { _thread_id: id });
+    if (error || data === false) { toast.error("Couldn't remove that conversation."); void loadThreads(); return false; }
+    toast.success("Conversation removed to Archive.");
     return true;
   };
   const markThreadRead = async (id: string, opts?: MutOpts): Promise<boolean> => {
@@ -1363,6 +1380,40 @@ export default function ClientsConversations() {
                       }
                     />
                   )}
+                  {/* #4 delete-conversation — trash sits where GHL users expect it, in the
+                      thread header (§36). Soft-archive via the RPC; destructive/red confirm,
+                      NEVER gold (§11 gold is only the act/approve). */}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost" size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                        aria-label="Delete conversation"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This removes the conversation from your inbox. It stays in your Archive, where you can restore it anytime.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={async () => {
+                            const ok = await deleteConversation(selected.dbThread.id);
+                            if (ok) setSelectedKey(null);
+                          }}
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
                 {selected.hasDraft && <StatePill state="building">Draft ready</StatePill>}
                 {!railOpen && (
