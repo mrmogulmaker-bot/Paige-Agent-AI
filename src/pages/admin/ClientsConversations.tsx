@@ -1465,9 +1465,9 @@ export default function ClientsConversations() {
               </div>
 
               {/* Composer */}
-              <div className="mt-auto border-t border-border/60 bg-muted/30 p-3">
+              <div className="mt-auto border-t border-border/60 bg-muted/30 px-3 py-2">
                 {noChannel ? (
-                  <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                     <p className="flex items-start gap-2 text-xs text-muted-foreground">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
                       <span>Connect a channel and Paige sends from here — inbound messages start landing in this inbox once a channel is live.</span>
