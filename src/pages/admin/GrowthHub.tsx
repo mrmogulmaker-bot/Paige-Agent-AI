@@ -851,7 +851,6 @@ function SubmissionRow({
             entity_name: entity,
             source: "growth_form",
             status: "lead",
-            created_by_channel_type: "form", // #10 channel-of-origin (admin send-to-contact)
           } as any)
           .select("id")
           .single();

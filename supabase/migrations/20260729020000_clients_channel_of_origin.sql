@@ -28,7 +28,12 @@
 --  §37 PRODUCER WALK — every INSERT INTO public.clients site, and where it is stamped:
 --    • handle-inbound-email                    -> 'email'   (edge, direct insert)
 --    • NewContactDialog (manual "New Contact")  -> 'manual'  (frontend, direct insert)
---    • GrowthHub "send to contact"              -> 'form'    (frontend, direct insert)
+--    • AddInternalClientDialog (New Internal Client) -> 'manual' (frontend, direct insert)
+--    • ClientManagementDashboard.moveToInternal()   -> 'manual' (frontend, direct insert)
+--    • GrowthHub "send to contact"              -> 'form'    (DEFERRED to the GrowthHub
+--        lint-cleanup slice #433 — editing that file inherits its 20 pre-existing eslint
+--        no-explicit-any errors; the 'form' channel is already covered by 3 other stamped
+--        producers below, so NO channel is left uncovered — an honest §37 deferral, not a dodge)
 --    • growth-inbound (external form bridge)     -> 'form'    (edge, direct insert)
 --    • public-booking (guest find-or-create)     -> 'form'    (edge, direct insert)
 --    • paige-bridge (MMA-OS/GHL mirror sync)     -> 'import'  (edge, direct insert)

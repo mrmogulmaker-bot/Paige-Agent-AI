@@ -165,7 +165,7 @@ export const CREATED_VIA_LABEL: Record<string, string> = {
   email: "Email", sms: "SMS", whatsapp: "WhatsApp",
   instagram: "Instagram", facebook: "Facebook", voice: "Voice",
   manual: "Manual", form: "Form", import: "Import", api: "Paige",
-  seed: "Seed", signup: "Sign-up", invite: "Invite",
+  seed: "System", signup: "Sign-up", invite: "Invite",
 };
 
 // ── label color tokens (token-only, non-gold, AA both themes §11/§23) ────────────────
