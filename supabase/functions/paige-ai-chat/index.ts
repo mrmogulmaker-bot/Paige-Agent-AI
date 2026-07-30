@@ -1654,39 +1654,31 @@ ${buildStudioWhereYouAre(name, tenant)}`.trim()
     }
     const fundingEnabled = personaCtx.funding_enabled;
 
-    // Tenant domain identity is platform configuration, not conversational memory.
-    // Resolve it every turn from the server-owned tenant slug so Paige can answer
-    // onboarding/domain questions without guessing or asking for information she has.
+    // Tenant domain identity is platform configuration, not conversational
+    // memory. Read the ONE canonical RPC used by Paige, MCP, onboarding, and
+    // settings; never reconstruct hostname/email semantics in this function.
     let tenantDomainContext = "";
     if (personaCtx.tenant_id) {
       try {
-        const [{ data: tenantRow }, { data: emailDomain }] = await Promise.all([
-          admin.from("tenants").select("slug").eq("id", personaCtx.tenant_id).maybeSingle(),
-          admin
-            .from("tenant_email_domains")
-            .select("domain, from_email_local, status")
-            .eq("tenant_id", personaCtx.tenant_id)
-            .eq("is_default", true)
-            .maybeSingle(),
-        ]);
-        const slug = String((tenantRow as any)?.slug || "").trim().toLowerCase();
-        if (slug) {
-          const defaultWebUrl = `https://${slug}.paigeagent.ai`;
-          const sender = emailDomain
-            ? `${(emailDomain as any).from_email_local || "hello"}@${(emailDomain as any).domain}`
-            : null;
+        const { data: identity, error: identityError } = await admin.rpc(
+          "resolve_tenant_domain_identity",
+          { p_tenant_id: personaCtx.tenant_id },
+        );
+        if (identityError) throw identityError;
+        const row = Array.isArray(identity) ? identity[0] : identity;
+        if (row?.default_web_url) {
           tenantDomainContext = `TENANT DOMAIN IDENTITY — SOURCE OF TRUTH
-- This workspace's default website/portal domain is ${defaultWebUrl}.
+- This workspace's default website/portal domain is ${row.default_web_url}.
 - Give that exact URL when the owner asks "what is my domain?" or is onboarding a client.
-- A custom EMAIL sending domain is a separate configuration from the website domain.
-- ${sender
-  ? `The current default email sender is ${sender} (status: ${(emailDomain as any).status || "unknown"}).`
+- A custom EMAIL sending domain is separate from the website domain.
+- ${row.default_email_sender
+  ? `The current default email sender is ${row.default_email_sender} (status: ${row.default_email_status || "unknown"}).`
   : "No custom default email sending domain is configured yet. Explain that the owner can connect one in Setup → Integrations → Email, where Paige provides the DNS records and verification status."}
 - Never call an email sending domain the website domain. Never invent a custom website domain.
 - If the owner wants a custom website domain, explain that their Paige subdomain works now and offer to help with the custom-domain connection workflow.`;
         }
       } catch (e) {
-        console.warn("[paige-ai-chat] tenant domain context unavailable:", e);
+        console.warn("[paige-ai-chat] tenant domain identity unavailable:", e);
       }
     }
 
