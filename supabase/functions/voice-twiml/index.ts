@@ -28,11 +28,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { validateTwilioSignature } from "../_shared/twilio.ts";
 import { normalizePhone } from "../_shared/pre-send-pipeline.ts";
+import { mintStreamToken } from "../_shared/voice-stream-token.ts";
 import {
   buildIdentity,
   buildInboundTwiml,
   buildOutboundTwiml,
   buildSayHangupTwiml,
+  buildStreamStart,
   classifyDirection,
   parseClientCaller,
   CALL_UNAVAILABLE_MESSAGE,
@@ -41,6 +43,38 @@ import {
   UNKNOWN_NUMBER_MESSAGE,
   VOICEMAIL_UNAVAILABLE_MESSAGE,
 } from "./twiml.ts";
+
+/**
+ * #140 B1 — GATED live-call co-pilot fork. Returns the <Start><Stream> XML that forks call audio
+ * to paige-stt, or "" (DEFAULT OFF) so the TwiML is byte-identical to A3 until co-pilot is
+ * activated. Emits the stream ONLY when BOTH VOICE_STT_STREAM_URL (the paige-stt wss URL) AND
+ * VOICE_STREAM_SECRET are set — never an UNauthenticated stream: if the URL is set but the secret
+ * is missing we skip the fork and log loudly (§13) rather than expose an open media endpoint.
+ * The token encodes { tenantId, callSid } and is HMAC-signed; paige-stt derives the tenant from
+ * it (§9), never from a raw parameter. tenantId here is the SAME non-forgeable value already
+ * resolved for the bridge (outbound = authenticated client identity, inbound = number owner).
+ */
+async function buildCoPilotStreamXml(tenantId: string, callSid: string): Promise<string> {
+  const streamUrl = Deno.env.get("VOICE_STT_STREAM_URL") ?? "";
+  if (!streamUrl) return ""; // co-pilot not activated — default OFF, changes nothing
+  const secret = Deno.env.get("VOICE_STREAM_SECRET") ?? "";
+  if (!secret) {
+    console.warn("[voice-twiml] VOICE_STT_STREAM_URL set but VOICE_STREAM_SECRET missing — NOT forking an unauthenticated stream");
+    return "";
+  }
+  if (!tenantId || !callSid) {
+    console.warn("[voice-twiml] co-pilot fork skipped — missing tenantId/callSid", { hasTenant: !!tenantId, hasCall: !!callSid });
+    return "";
+  }
+  try {
+    const token = await mintStreamToken({ secret, tenantId, callSid });
+    // tenantId/callSid are ALSO stamped for logging/debug, but paige-stt trusts ONLY the token.
+    return buildStreamStart(streamUrl, { streamToken: token, tenantId, callSid });
+  } catch (e) {
+    console.error("[voice-twiml] co-pilot token mint failed — bridging without stream", (e as Error)?.message);
+    return "";
+  }
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -155,6 +189,7 @@ Deno.serve(async (req) => {
   const params = new URLSearchParams(rawBody);
   const from = params.get("From") ?? "";
   const to = params.get("To") ?? "";
+  const callSid = params.get("CallSid") ?? ""; // #140 B1 — binds the co-pilot stream token to this call
   const direction = classifyDirection(from);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -182,8 +217,10 @@ Deno.serve(async (req) => {
         });
         return twiml(buildSayHangupTwiml(NO_CALLER_ID_MESSAGE));
       }
-      console.log("[voice-twiml] outbound bridge", { tenantId: caller.tenantId });
-      return twiml(buildOutboundTwiml(callerId, to));
+      // #140 B1: GATED co-pilot fork (default OFF) — non-blocking, before the <Dial> bridge.
+      const streamXml = await buildCoPilotStreamXml(caller.tenantId, callSid);
+      console.log("[voice-twiml] outbound bridge", { tenantId: caller.tenantId, coPilot: streamXml.length > 0 });
+      return twiml(buildOutboundTwiml(callerId, to, streamXml));
     }
 
     // ── INBOUND ──────────────────────────────────────────────────────────────────
@@ -200,8 +237,10 @@ Deno.serve(async (req) => {
       console.warn("[voice-twiml] inbound: tenant has no reachable seat — voicemail message", { tenantId });
       return twiml(buildSayHangupTwiml(VOICEMAIL_UNAVAILABLE_MESSAGE));
     }
-    console.log("[voice-twiml] inbound ring", { tenantId, seats: identities.length });
-    return twiml(buildInboundTwiml(identities));
+    // #140 B1: GATED co-pilot fork (default OFF) — non-blocking, before the <Dial> ring.
+    const streamXml = await buildCoPilotStreamXml(tenantId, callSid);
+    console.log("[voice-twiml] inbound ring", { tenantId, seats: identities.length, coPilot: streamXml.length > 0 });
+    return twiml(buildInboundTwiml(identities, streamXml));
   } catch (e) {
     // §32: never a silent 500 — a runtime fault still answers with a spoken, graceful hangup
     // so the caller/browser hears something, and we log the real cause loudly.
