@@ -174,45 +174,6 @@ function Section({ id, className = "", children }: { id?: string; className?: st
   );
 }
 
-/** Idle 20s → a gentle nudge in Paige's voice. */
-function IdleNudge() {
-  const [show, setShow] = useState(false);
-  useEffect(() => {
-    let timer: number;
-    const reset = () => {
-      setShow(false);
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setShow(true), 20000);
-    };
-    reset();
-    const evts = ["pointermove", "scroll", "keydown", "pointerdown"] as const;
-    evts.forEach((e) => window.addEventListener(e, reset, { passive: true }));
-    return () => {
-      window.clearTimeout(timer);
-      evts.forEach((e) => window.removeEventListener(e, reset));
-    };
-  }, []);
-  return (
-    <motion.div
-      initial={false}
-      animate={show ? { opacity: 1, y: 0, pointerEvents: "auto" } : { opacity: 0, y: 20, pointerEvents: "none" }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed bottom-6 right-6 z-40 w-72 rounded-2xl border border-[#D4A752]/30 bg-[#1a1033]/90 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur-md"
-    >
-      <div className="mb-1.5 flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#D4A752]/20 text-[#F0C86A]">
-          <SparkIcon className="h-3.5 w-3.5" />
-        </span>
-        <span className="text-[13px] font-semibold" style={{ color: OFFWHITE, fontFamily: HEAD }}>Still there?</span>
-      </div>
-      <p className="text-[12.5px] leading-snug text-white/70">Want a demo? I can walk you through a day in my life.</p>
-      <a href="#day" onClick={() => setShow(false)} className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-[#F0C86A]">
-        Show me <ArrowRight className="h-3.5 w-3.5" />
-      </a>
-    </motion.div>
-  );
-}
-
 function FloatingPanels() {
   return (
     <>
@@ -492,13 +453,14 @@ export default function PaigeHome() {
   };
   const handleContact = () =>
     (window.location.href = "mailto:sales@paigeagent.ai?subject=Enterprise%20Inquiry");
-  // Auto-play the phone-opening on the first visit of a session; skip for
-  // reduced-motion; ?intro forces it. The "Watch the open" button replays it.
+  // The cinematic opening is opt-in. Autoplay made the first useful action wait
+  // behind a 5.4s sequence; visitors can still launch it from "Watch Paige open."
   const [showIntro, setShowIntro] = useState(() => {
     try {
-      if (new URLSearchParams(window.location.search).has("intro")) return true;
-      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
-      return sessionStorage.getItem("paige_intro_v1") !== "1";
+      return (
+        new URLSearchParams(window.location.search).has("intro") &&
+        !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      );
     } catch {
       return false;
     }
@@ -553,12 +515,11 @@ export default function PaigeHome() {
       </div>
 
       {showIntro && <IntroSequence onDone={closeIntro} onReveal={revealPaige} />}
-      {!reduced && <IdleNudge />}
 
       {/* All page content rides above the fixed Paige layer */}
       <div className="relative z-10">
       {/* Nav */}
-      <header className="relative z-30 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
+      <header className="sticky top-0 z-30 mx-auto flex w-full max-w-6xl items-center justify-between border-b border-white/[0.08] bg-[#140c27]/70 px-6 py-4 backdrop-blur-xl supports-[backdrop-filter]:bg-[#140c27]/55">
         <a href="#hero" className="flex items-center gap-2.5">
           <PaigeMark className="h-9 w-9" />
           <span className="text-lg font-semibold tracking-tight text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
@@ -622,7 +583,7 @@ export default function PaigeHome() {
             You just do the <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">work.</span>
           </motion.p>
           <motion.p variants={rise} className="mt-6 max-w-lg text-lg leading-relaxed text-[#F8F5EE]/70 md:text-xl [text-shadow:0_2px_20px_rgba(0,0,0,0.7)]">
-            The admin, the follow-ups, the onboarding, the at-risk clients — Paige handles all of it, and runs every move past you before it goes out.
+            Follow-ups, onboarding, client care, and the work between meetings — handled in one place, with you in control.
           </motion.p>
           <motion.div variants={rise} className="mt-8 flex flex-col gap-3 sm:mt-9 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
             <button
@@ -646,12 +607,12 @@ export default function PaigeHome() {
         </motion.div>
 
         <div className="pointer-events-none absolute bottom-7 left-1/2 -translate-x-1/2 text-[10px] font-medium uppercase tracking-[0.3em] text-white/40">
-          Scroll into Paige
+          Meet the operating system
         </div>
       </section>
 
       {/* Below-hero content — frosted so Paige stays a soft glow behind it */}
-      <div className="relative bg-[#140c27]/72 backdrop-blur-md">
+      <div className="relative border-t border-white/[0.06] bg-[#140c27]/82 backdrop-blur-lg">
       {/* WORKSPACE */}
       <Section id="workspace" className="py-28">
         <motion.div variants={rise} className="mx-auto mb-14 max-w-2xl text-center">
@@ -660,7 +621,7 @@ export default function PaigeHome() {
             Step inside where <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">she works.</span>
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-white/60">
-            Pipeline, drafting, workflows, and client engagement — one operation, running whether you're watching or not.
+            Pipeline, drafting, workflows, and client engagement — one calm workspace instead of a stack of disconnected tools.
           </p>
         </motion.div>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
