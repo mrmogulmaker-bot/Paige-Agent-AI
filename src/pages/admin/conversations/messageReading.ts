@@ -8,7 +8,7 @@ const ENTITIES: Record<string, string> = {
   "&amp;": "&",
   "&lt;": "<",
   "&gt;": ">",
-  "&quot;": """,
+  "&quot;": '"',
   "&#39;": "'",
 };
 
