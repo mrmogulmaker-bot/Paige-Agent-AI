@@ -1,10 +1,19 @@
 // Compose a NEW outbound conversation (§43 — Conversations is a tool, not just a viewer).
 // The reply composer only appears once a thread is selected; this modal lets a coach START
-// a thread with any contact. It reuses every existing seam (§18): CustomerSelector +
-// NewContactDialog for the recipient, the channel_connectors the reply composer already
-// reads, subagent-email-composer for "Draft with Paige", and the ONE send-message seam via
-// the shared readSendResult (§37) + canonicalThreadKey (the fragmentation fix). The only new
-// code is this shell + the address resolver. Gold is spent ONLY on Send (§11).
+// a thread with any contact. It reuses every existing seam (§18): CustomerSelector for
+// search-select, the channel_connectors the reply composer already reads,
+// subagent-email-composer for "Draft with Paige", and the ONE send-message seam via the
+// shared readSendResult (§37) + canonicalThreadKey (the fragmentation fix). Gold is spent
+// ONLY on Send (§11).
+//
+// §49 — inline contact create is routed through the ONE atomic RPC `create_and_attach_conversation`
+// (resolve-or-create the contact + find any existing conversation), NOT a raw insert. That RPC
+// is the sole contact-create path on this surface, so a DUPLICATE contact is impossible from the
+// UI (backed by the tenant-scoped UNIQUE indexes on clients). Smart-route: if the RPC reports the
+// contact already existed AND already has a conversation on this channel, we open that thread
+// silently — no dupe, no error (§36 proactive surfacing). Otherwise the resolved contact drops
+// into the composer and Send coalesces into the SAME (tenant, thread_key) thread via the existing
+// message trigger, so no empty thread is ever left behind.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -18,10 +27,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Loader2, Send, Clock, Sparkles, ChevronDown, X, AlertTriangle, UserRound, Paperclip } from "lucide-react";
+import { Loader2, Send, Clock, Sparkles, ChevronDown, X, AlertTriangle, UserRound, Paperclip, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { CustomerSelector } from "@/components/paige/CustomerSelector";
-import { NewContactDialog } from "@/components/admin/contacts/NewContactDialog";
 import type { FocusedClient } from "@/components/paige/commandCenterTypes";
 import {
   type ChannelType, type EmailTemplate, CHANNEL_ICON, CHANNEL_LABEL,
@@ -89,7 +97,14 @@ export function ComposeThreadDialog({
   const [draftGuideOpen, setDraftGuideOpen] = useState(false);
   const [draftGuide, setDraftGuide] = useState("");
   const [draftTone, setDraftTone] = useState<DraftTone>("professional");
-  const [newContactOpen, setNewContactOpen] = useState(false);
+  // §49 inline create-mode — replaces the old stacked NewContactDialog. Routed through the
+  // resolve-or-create RPC so the compose surface can never mint a duplicate contact.
+  const [createMode, setCreateMode] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [cFirst, setCFirst] = useState("");
+  const [cLast, setCLast] = useState("");
+  const [cEmail, setCEmail] = useState("");
+  const [cPhone, setCPhone] = useState("");
   // Operator's display name for a template's {{coach_name}} sign-off (§37): the retired
   // ContactCommsPanel resolved it from the current user's profile, and this compose surface —
   // unlike the reply composer — has no signature to carry the sign-off, so resolve it here (§13).
@@ -118,7 +133,9 @@ export function ComposeThreadDialog({
     setDraftFlags([]);
     setDraftGuide("");
     setDraftGuideOpen(false);
-    setNewContactOpen(false);
+    setCreateMode(false);
+    setCreating(false);
+    setCFirst(""); setCLast(""); setCEmail(""); setCPhone("");
     resetAttachments();
     // Resolve the operator's name once per open so {{coach_name}} in a saved template renders
     // (mirrors the retired panel; §37 the picker must not silently blank a supported merge var).
@@ -168,10 +185,92 @@ export function ComposeThreadDialog({
     void hydrateClient(f.id, f.name);
   };
 
-  const handleContactCreated = (newId: string) => {
-    setNewContactOpen(false);
-    void hydrateClient(newId, "");
+  // Open the inline create form, pre-filling from whatever the coach already typed in the
+  // search box (§36 — an "@" reads as an email, a mostly-digits string as a phone, anything
+  // else as a name). Never make them retype what they just searched.
+  const startCreate = (seed?: string) => {
+    const s = (seed ?? "").trim();
+    setCFirst(""); setCLast(""); setCEmail(""); setCPhone("");
+    if (s.includes("@")) {
+      setCEmail(s);
+    } else if (/^[\d\s()+\-.]+$/.test(s) && s.replace(/\D/g, "").length >= 7) {
+      setCPhone(s);
+    } else if (s) {
+      const parts = s.split(/\s+/);
+      setCFirst(parts[0] ?? "");
+      setCLast(parts.slice(1).join(" "));
+    }
+    setCreateMode(true);
   };
+
+  // §49 resolve-or-create + smart-route. The ONE atomic seam — never a raw client insert —
+  // so this surface cannot create a duplicate contact. If the contact already existed AND has
+  // a live conversation on the chosen channel, open it silently; otherwise drop the resolved
+  // contact into the composer and let Send create the thread (the trigger coalesces on the
+  // same canonical thread_key, so no empty thread is left behind).
+  const submitCreate = useCallback(async () => {
+    const cf = cFirst.trim(), cl = cLast.trim(), ce = cEmail.trim(), cp = cPhone.trim();
+    if (!cf && !cl && !ce && !cp) {
+      toast.error("Add a name, email, or phone first.");
+      return;
+    }
+    setCreating(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any).rpc("create_and_attach_conversation", {
+        p_first_name: cf || null,
+        p_last_name: cl || null,
+        p_email: ce || null,
+        p_phone: cp || null,
+        p_channel: channel || "email",
+        p_tenant_id: tenantId ?? null,
+      });
+      if (error) throw new Error(error.message);
+      const row = (Array.isArray(data) ? data[0] : data) as {
+        contact_id?: string; thread_id?: string | null; thread_key?: string | null;
+        was_existing?: boolean;
+      } | null;
+      if (!row?.contact_id) throw new Error("Paige couldn't add that contact — try again.");
+
+      const displayName = [cf, cl].filter(Boolean).join(" ").trim() || ce || cp || "Contact";
+
+      // Smart-route: they're already in the system with a live conversation on this channel —
+      // open it instead of starting a duplicate (§36, no dupe / no error).
+      if (row.was_existing && row.thread_id && row.thread_key) {
+        toast.message(`You're already talking to ${displayName}`, {
+          description: "Opening that conversation.",
+        });
+        setCreateMode(false);
+        onOpenChange(false);
+        onSent(row.thread_key);
+        return;
+      }
+
+      // Contact resolved (existing without a thread on this channel, or brand-new) — bring
+      // them into the composer so the coach writes and sends from here.
+      if (row.was_existing) {
+        toast.message(`${displayName} is already in your contacts`, {
+          description: "Paige linked them — write your message below.",
+        });
+      }
+      setCreateMode(false);
+      await hydrateClient(row.contact_id, displayName);
+    } catch (e) {
+      // §32: keep the real cause LOUD in the console so a broken seam (e.g. the RPC missing) is not
+      // silently indistinguishable from ordinary user/validation error — the tenant still sees a plain
+      // sentence (§3/§45), never a raw vendor/Postgres string.
+      console.error("[compose] create_and_attach_conversation failed:", e);
+      const raw = e instanceof Error ? e.message : "";
+      const friendly =
+        raw.startsWith("CONVO_NO_IDENTITY") ? "Add a name, email, or phone first." :
+        raw.startsWith("CONVO_FORBIDDEN") ? "You don't have permission to add a contact here." :
+        raw.startsWith("CONVO_") || !raw ? "Paige couldn't add that contact — try again." :
+        raw;
+      toast.error(friendly);
+    } finally {
+      setCreating(false);
+    }
+  }, [cFirst, cLast, cEmail, cPhone, channel, tenantId, hydrateClient, onOpenChange, onSent]);
 
   const toAddress = client
     ? (channel === "email" ? client.email : client.phone) ?? ""
@@ -351,9 +450,8 @@ export function ComposeThreadDialog({
   };
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-lg">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>New conversation</DialogTitle>
             <DialogDescription>
@@ -383,8 +481,73 @@ export function ComposeThreadDialog({
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
+              ) : createMode ? (
+                // §49 inline create — routed through the resolve-or-create RPC (never a raw
+                // insert). Same field patterns as the standalone New Contact form; non-gold
+                // (gold is reserved for Send, §11).
+                <div className="space-y-2.5 rounded-lg border border-border bg-card p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-foreground">New contact</p>
+                    <Button
+                      variant="ghost" size="sm"
+                      className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                      onClick={() => setCreateMode(false)} disabled={creating}
+                    >
+                      Back to search
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">First name</Label>
+                      <Input
+                        value={cFirst} onChange={(e) => setCFirst(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitCreate(); } }}
+                        className="h-9" autoFocus
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Last name</Label>
+                      <Input
+                        value={cLast} onChange={(e) => setCLast(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitCreate(); } }}
+                        className="h-9"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Email</Label>
+                      <Input
+                        type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitCreate(); } }}
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px]">Phone</Label>
+                      <Input
+                        value={cPhone} onChange={(e) => setCPhone(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitCreate(); } }}
+                        className="h-9"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button
+                      variant="default" size="sm" className="h-8"
+                      onClick={() => void submitCreate()}
+                      disabled={creating || (!cFirst.trim() && !cLast.trim() && !cEmail.trim() && !cPhone.trim())}
+                      aria-busy={creating}
+                    >
+                      {creating
+                        ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        : <UserPlus className="mr-1.5 h-3.5 w-3.5" />}
+                      {creating ? "Adding…" : "Add contact"}
+                    </Button>
+                  </div>
+                </div>
               ) : (
-                <CustomerSelector onSelect={onPick} onRequestCreate={() => setNewContactOpen(true)} />
+                <CustomerSelector onSelect={onPick} onRequestCreate={startCreate} />
               )}
               {addressHint && (
                 <p className="flex items-center gap-1 text-[11px] text-[hsl(var(--warning))]">
@@ -613,8 +776,5 @@ export function ComposeThreadDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <NewContactDialog open={newContactOpen} onOpenChange={setNewContactOpen} onCreated={handleContactCreated} />
-    </>
   );
 }
