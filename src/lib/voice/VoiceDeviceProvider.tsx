@@ -32,6 +32,8 @@ import {
 } from "react";
 import type { Call, Device, TwilioError } from "@twilio/voice-sdk";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { useLiveTranscript, type TranscriptLine, type TranscriptState } from "./useLiveTranscript";
 
 export type VoiceStatus =
   | "idle" // no Device yet (nothing has asked to call)
@@ -47,6 +49,16 @@ export interface ActiveCallInfo {
   number: string;
   /** epoch ms when the call connected — the DialPad renders a timer off this. */
   startedAt: number;
+  /**
+   * #140 B2 — the Twilio CallSid of the LIVE call (from `call.parameters.CallSid`), used
+   * to build the live-transcript topic `voice-stt:<tenantId>:<callSid>`. null until Twilio
+   * populates it. HONEST CAVEAT (§13): for an OUTBOUND call this is the same leg the
+   * <Start><Stream> fork runs on, so it matches the stream's callSid; for an INBOUND call
+   * the browser holds the CHILD leg's SID while the stream is keyed to the PARENT — so the
+   * inbound topic can mismatch until voice-twiml passes the parent SID to the <Client>
+   * (a B1 follow-up). Outbound co-pilot works today; inbound is owed that fix.
+   */
+  callSid: string | null;
 }
 
 /** An inbound call ringing the browser, awaiting accept/reject (A3). */
@@ -68,6 +80,12 @@ interface VoiceDeviceValue {
   activeCall: ActiveCallInfo | null;
   /** Send a DTMF tone on the LIVE call (in-call keypad). No-op when no call is live. */
   sendDigit: (digit: string) => void;
+
+  // ── Live-call co-pilot transcript (#140 B2) ──
+  /** Render-ready transcript lines for the LIVE call (committed finals + one interim). */
+  liveTranscript: TranscriptLine[];
+  /** What the transcript subscription is doing: idle | listening | live | reconnecting. */
+  transcriptState: TranscriptState;
 
   // ── Inbound (A3): a ringing call awaiting the operator's accept/reject ──
   incomingCall: IncomingCallInfo | null;
@@ -155,6 +173,19 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
   const [incomingCall, setIncomingCall] = useState<IncomingCallInfo | null>(null);
   const [dialerOpen, setDialerOpen] = useState(false);
   const [draft, setDraft] = useState("");
+
+  // #140 B2 — the live-call co-pilot transcript. The topic is scoped to THIS caller's
+  // tenant (§9): activeTenantId equals current_user_tenant_id() server-side, which the
+  // realtime.messages RLS policy (#557) checks — so a private-channel subscribe can only
+  // ever ride this tenant's own call. Null topic (no live call / unresolved tenant/SID)
+  // tears the channel down. VoiceDeviceProvider mounts only inside AdminLayout, which is
+  // under <TenantProvider>, so this context read is always safe.
+  const { activeTenantId } = useTenantContext();
+  const transcriptTopic =
+    status === "in_call" && activeTenantId && activeCall?.callSid
+      ? `voice-stt:${activeTenantId}:${activeCall.callSid}`
+      : null;
+  const { lines: liveTranscript, state: transcriptState } = useLiveTranscript(transcriptTopic);
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
@@ -341,7 +372,13 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
 
       call.on("accept", () => {
         safeSet(setStatus, "in_call");
-        safeSet(setActiveCall, { number, startedAt: Date.now() });
+        // #140 B2 — capture the CallSid once the call is live so the co-pilot can build
+        // the transcript topic. Twilio populates call.parameters.CallSid by accept.
+        safeSet(setActiveCall, {
+          number,
+          startedAt: Date.now(),
+          callSid: call.parameters?.CallSid ?? null,
+        });
       });
 
       const end = () => {
@@ -393,7 +430,8 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       if (!device) return; // status already set to needs_config/error honestly
 
       safeSet(setStatus, "connecting");
-      safeSet(setActiveCall, { number, startedAt: Date.now() });
+      // callSid is unknown until the call is accepted (set in wireCall's accept handler).
+      safeSet(setActiveCall, { number, startedAt: Date.now(), callSid: null });
       try {
         const outbound = await device.connect({ params: { To: number } });
         wireCall(outbound, number);
@@ -525,6 +563,8 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       toggleMute,
       activeCall,
       sendDigit,
+      liveTranscript,
+      transcriptState,
       incomingCall,
       acceptIncoming,
       rejectIncoming,
@@ -545,6 +585,8 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       toggleMute,
       activeCall,
       sendDigit,
+      liveTranscript,
+      transcriptState,
       incomingCall,
       acceptIncoming,
       rejectIncoming,

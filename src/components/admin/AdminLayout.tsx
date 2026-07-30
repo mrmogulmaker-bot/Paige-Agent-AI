@@ -22,6 +22,7 @@ import { VoiceDeviceProvider } from "@/lib/voice/VoiceDeviceProvider";
 import { DialPadTrigger } from "@/components/admin/voice/DialPadTrigger";
 import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
 import { IncomingCallOverlay } from "@/components/admin/voice/IncomingCallOverlay";
+import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPanel";
 import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { AccountSwitcher } from "@/components/admin/AccountSwitcher";
@@ -347,6 +348,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     {/* #140 A3 — the ONE inbound ringing overlay. Rendered once so an incoming call
         pops the same accept/reject surface on ANY route/breakpoint (§18/§47). */}
     <IncomingCallOverlay />
+    {/* #140 B2 — the ONE live-call co-pilot transcript panel. Rendered once so it
+        appears on ANY surface the moment a call goes live (§18/§47/§48). */}
+    <LiveTranscriptPanel />
     <div className="h-dvh flex flex-col bg-background overflow-hidden">
       {/* Banner intentionally omitted on /admin — it's redundant when already on
           the admin dashboard. AppShell still renders it inside the client view. */}
