@@ -1133,6 +1133,7 @@ export default function ClientsConversations() {
 
   return (
     <PageShell width="full" fill className="lg:flex-1 lg:overflow-hidden">
+      <h1 className="sr-only">Conversations</h1>
       {/* §36 first-run: before a single thread exists, one cohesive guided surface replaces the
           two disconnected empty boxes (left-rail "No conversations yet." + middle "Your unified
           inbox.") — it teaches the model and offers ONE honest next step. Everything else (search-
