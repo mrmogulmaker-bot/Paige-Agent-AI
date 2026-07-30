@@ -38,9 +38,11 @@ const sanitize = (s: string) => s.replace(/[,()%*]/g, " ").trim();
 interface Props {
   onSelect: (client: FocusedClient) => void;
   /** When provided, renders a persistent "＋ Create new contact" item at the top of the
-   *  list (used by the Conversations compose-new modal). Omitted callers (e.g. PaigeSidebar)
-   *  see no create affordance — fully backward-compatible. */
-  onRequestCreate?: () => void;
+   *  list (used by the Conversations compose-new modal). The current search term is handed
+   *  back as `seedTerm` so the create flow can pre-fill the name/email/phone the user already
+   *  typed (§36 — never make them retype it). Omitted callers (e.g. PaigeSidebar) see no
+   *  create affordance — fully backward-compatible. */
+  onRequestCreate?: (seedTerm?: string) => void;
 }
 
 export function CustomerSelector({ onSelect, onRequestCreate }: Props) {
@@ -106,7 +108,7 @@ export function CustomerSelector({ onSelect, onRequestCreate }: Props) {
                 <CommandItem
                   value="__create_new_contact__"
                   onSelect={() => {
-                    onRequestCreate();
+                    onRequestCreate(term.trim() || undefined);
                     setOpen(false);
                     setTerm("");
                   }}
