@@ -1132,7 +1132,7 @@ export default function ClientsConversations() {
     labelFilter === null;
 
   return (
-    <PageShell width="full" fill className="space-y-3 lg:overflow-hidden">
+    <PageShell width="full" fill className="space-y-3 lg:flex-1 lg:overflow-hidden">
       {/* §11/§43 header reclaim — the compose CTA moved OFF the header into the LEFT thread
           rail (GHL pattern: compose sits atop the conversation list), so the header stays a
           lean title row and the columns carry the real functionality. */}
