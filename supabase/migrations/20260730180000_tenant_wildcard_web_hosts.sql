@@ -231,7 +231,7 @@ BEGIN
   -- account_type + parent_tenant_id classify the topology, not inheritance:
   -- agency roots, child standalones, and solo standalones each own their sender.
   IF _tenant.status NOT IN ('trial'::public.tenant_status, 'active'::public.tenant_status)
-     OR _tenant.account_type NOT IN ('agency', 'standalone')
+     OR _tenant.account_type NOT IN ('agency', 'standalone', 'enterprise')
      OR coalesce((_tenant.features ->> 'system_workspace')::boolean, false) THEN
     UPDATE public.channel_connectors
        SET active = false, status = 'disabled'
