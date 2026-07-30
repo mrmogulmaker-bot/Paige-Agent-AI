@@ -51,3 +51,74 @@ GRANT EXECUTE ON FUNCTION public.resolve_tenant_web_host(text) TO anon, authenti
 
 COMMENT ON FUNCTION public.resolve_tenant_web_host(text) IS
   'Validates <tenant-slug>.paigeagent.ai and returns public tenant identity only. Hostname is never authorization.';
+
+
+-- One canonical outward-facing domain identity contract. Every consumer
+-- (Paige chat, Paige MCP, onboarding, settings) reads this seam instead of
+-- reconstructing domains independently.
+CREATE OR REPLACE FUNCTION public.resolve_tenant_domain_identity(p_tenant_id uuid DEFAULT NULL)
+RETURNS TABLE (
+  tenant_id uuid,
+  tenant_slug text,
+  tenant_name text,
+  default_web_hostname text,
+  default_web_url text,
+  default_portal_path text,
+  default_email_domain text,
+  default_email_sender text,
+  default_email_status text
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  _caller uuid := auth.uid();
+  _tenant uuid;
+  _jwt_role text := coalesce(current_setting('request.jwt.claim.role', true), '');
+BEGIN
+  IF _caller IS NOT NULL THEN
+    _tenant := public.current_user_tenant_id();
+  ELSIF _jwt_role = 'service_role' THEN
+    _tenant := p_tenant_id;
+  ELSE
+    RAISE EXCEPTION 'DOMAIN_IDENTITY_AUTH_REQUIRED' USING ERRCODE = '42501';
+  END IF;
+
+  IF _tenant IS NULL THEN
+    RAISE EXCEPTION 'DOMAIN_IDENTITY_TENANT_REQUIRED' USING ERRCODE = '22023';
+  END IF;
+
+  RETURN QUERY
+  SELECT t.id,
+         t.slug,
+         t.name,
+         t.slug || '.paigeagent.ai',
+         'https://' || t.slug || '.paigeagent.ai',
+         '/portal/' || t.slug,
+         ed.domain,
+         CASE
+           WHEN ed.domain IS NULL THEN NULL
+           ELSE coalesce(nullif(ed.from_email_local, ''), 'hello') || '@' || ed.domain
+         END,
+         ed.status::text
+    FROM public.tenants t
+    LEFT JOIN LATERAL (
+      SELECT d.domain, d.from_email_local, d.status
+        FROM public.tenant_email_domains d
+       WHERE d.tenant_id = t.id
+         AND d.is_default = true
+       ORDER BY d.verified_at DESC NULLS LAST, d.created_at DESC
+       LIMIT 1
+    ) ed ON true
+   WHERE t.id = _tenant
+   LIMIT 1;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.resolve_tenant_domain_identity(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.resolve_tenant_domain_identity(uuid) TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.resolve_tenant_domain_identity(uuid) IS
+  'Canonical tenant domain identity for Paige, onboarding, settings, and domain routing. Authenticated callers are pinned to their own tenant; service_role must pass p_tenant_id.';
