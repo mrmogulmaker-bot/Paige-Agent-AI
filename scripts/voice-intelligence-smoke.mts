@@ -170,5 +170,42 @@ console.log("\ncanned call sequence — the shape a real call would produce:");
   check("draft ready points at the approval", s.draftReady?.approvalId === "ap_9");
 }
 
+// ── late draft_ready AFTER the transcript "freezes" (FIX 2 post-call keepalive) ──────────
+// Models the post-call grace window that VoiceDeviceProvider now holds open: the media
+// stream has stopped and the panel has taken its call-end snapshot, but the copilot's async
+// finalize() (draft synthesis + 2 RPCs) emits draft_ready SECONDS later on the SAME still-
+// subscribed channel — feeding the SAME accumulator. The accumulator must fold the late
+// draft in, and a FRESH snapshot (new identity) must carry it so the panel's grace-window
+// refresh re-freezes it and the "Follow-up drafted" affordance appears (§36 the drafted
+// follow-up must actually reach the operator; §13 no fabrication — it appears only because a
+// real draft_ready arrived). This is the surface-side twin of the provider keepalive: the
+// provider keeps the channel alive; this proves the late frame still populates the draft.
+console.log("\nlate draft_ready after freeze — the FIX 2 keepalive contract:");
+{
+  const acc = new CallIntelligenceAccumulator();
+  // During the call: cues + a commitment landed; NO draft yet at the moment the call ends.
+  acc.applyWhisper({ cards: [{ id: "w1", title: "Renewal soon", body: "Signed 11 months ago." }] });
+  acc.applyCommitment({ action_id: "own_1", title: "Send the recap" });
+  const atFreeze = acc.snapshot(); // the snapshot the panel freezes at call-end
+  check("no draft at the moment the transcript freezes", atFreeze.draftReady === null);
+
+  // Post-call grace: the LATE draft_ready arrives on the same channel/accumulator.
+  const changed = acc.applyDraftReady({ approval_id: "ap_late", subject: "Recap + next steps" });
+  check("late draft_ready applies after freeze (a real delta)", changed === true);
+
+  const afterDraft = acc.snapshot();
+  check("late draft populates the draft affordance", afterDraft.draftReady?.approvalId === "ap_late");
+  check(
+    "late draft leaves the prior call's content intact",
+    afterDraft.commitments.length === 1 && afterDraft.whispers.length === 1,
+  );
+  // A fresh snapshot has a NEW identity (and a distinct draft) so React re-renders and the
+  // panel re-freezes WITH the draft — the frozen-at-call-end snapshot is not mutated.
+  check(
+    "the frozen snapshot is not mutated; the refresh is a new object",
+    afterDraft !== atFreeze && atFreeze.draftReady === null,
+  );
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

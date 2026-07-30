@@ -202,8 +202,8 @@ function buildCopilotDeps(ctx: {
               content:
                 "You draft a short, warm follow-up email FROM the coach/consultant/advisor TO the client, " +
                 "based on a call transcript. Capture what was discussed and any next steps or commitments. " +
-                "Direct, confident, human founder voice. Never use \"AI-powered\", \"streamline\", " +
-                "\"seamless\", or \"empower\". Return STRICT JSON: {\"subject\": string, \"body\": string}. " +
+                "Direct, confident, human founder voice — no marketing clichés, no hype adjectives, no filler. " +
+                "Return STRICT JSON: {\"subject\": string, \"body\": string}. " +
                 "Output ONLY the JSON object, no prose, no code fence.",
             },
             { role: "user", content: `Call transcript:\n${transcript.slice(0, 6000)}` },
@@ -411,18 +411,24 @@ Deno.serve((req) => {
         authed = true;
         tenantId = v.tenantId;
         callSid = v.callSid;
-        console.log("[paige-stt] token OK — tenant scoped", { tenantId, callSid, streamSid });
+        // §9 — the call's CLIENT contact_id rides the VERIFIED token (voice-twiml resolved it
+        // tenant-scoped from the counterparty phone). null when no contact matched — the copilot
+        // no-ops contact-linking cleanly (§13). Derived ONLY from the verified payload, never a raw
+        // stream parameter, so it is as non-forgeable as the tenant scope.
+        const contactId = v.contactId;
+        console.log("[paige-stt] token OK — tenant scoped", { tenantId, callSid, streamSid, hasContact: !!contactId });
 
-        // #140 B3 — arm the co-pilot with the just-verified {tenantId, callSid} (§9: derived FROM
-        // the token, never a body). All heavy work rides the pure CallCopilot; seams are wired to
+        // #140 B3 — arm the co-pilot with the just-verified {tenantId, callSid, contactId} (§9: derived
+        // FROM the token, never a body). All heavy work rides the pure CallCopilot; seams are wired to
         // their existing homes and are tenant-scoped to THIS tenant. Degrades honestly if a seam key
         // is absent (recall → [], scan → null, draft → null), so it never breaks the call (§13).
         if (copilotEnabled && admin) {
           copilot = new CallCopilot(
             buildCopilotDeps({ admin, supabaseUrl, serviceKey, tenantId, callSid, streamSid }),
             { costCapUsd: copilotCostCapUsd },
+            { contactId },
           );
-          console.log("[paige-stt] voice co-pilot armed (B3)", { tenantId, callSid, costCapUsd: copilotCostCapUsd });
+          console.log("[paige-stt] voice co-pilot armed (B3)", { tenantId, callSid, costCapUsd: copilotCostCapUsd, hasContact: !!contactId });
         }
 
         // ── open ONE Deepgram Nova-3 stream via the router (§34) ──

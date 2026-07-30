@@ -402,14 +402,13 @@ export function LiveTranscriptPanel() {
   const reduce = useReducedMotion();
 
   const [dismissed, setDismissed] = useState(false);
-  // The transcript captured at the moment the call ended, held until the operator
-  // dismisses it (the provider clears its live buffer when the call goes idle).
+  // The transcript captured after the call ended, held until the operator dismisses it. It
+  // is REFRESHED across the provider's post-call grace window (below) so a late final line
+  // still lands, then persists after the grace window closes and the live buffer resets.
   const [frozen, setFrozen] = useState<TranscriptLine[] | null>(null);
-  // #140 B3 — the intelligence captured at call-end, frozen alongside the transcript so
+  // #140 B3 — the intelligence captured after call-end, frozen alongside the transcript so
   // the operator can still review the cues/commitments/flags/draft after the call drops.
   const [frozenIntel, setFrozenIntel] = useState<CallIntelligence | null>(null);
-  const liveRef = useRef<TranscriptLine[]>([]);
-  const intelRef = useRef<CallIntelligence>(EMPTY_CALL_INTELLIGENCE);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pinnedRef = useRef(true);
 
@@ -417,31 +416,41 @@ export function LiveTranscriptPanel() {
   const liveTranscript = voice?.liveTranscript;
   const liveIntelligence = voice?.liveIntelligence;
 
-  // Mirror the live lines + intelligence while the call is up, so we can freeze both when
-  // the provider tears its buffers down the instant the call ends.
-  useEffect(() => {
-    if (inCall) liveRef.current = liveTranscript ?? [];
-  }, [inCall, liveTranscript]);
-  useEffect(() => {
-    if (inCall) intelRef.current = liveIntelligence ?? EMPTY_CALL_INTELLIGENCE;
-  }, [inCall, liveIntelligence]);
-
-  // On call start: reveal + drop any prior frozen snapshot. On call end WITH content:
-  // freeze it (persist until dismissed). A call that produced nothing leaves frozen null
-  // → the panel simply closes (no dead surface).
+  // On call start: reveal + drop any prior frozen snapshot so the new call starts clean.
   useEffect(() => {
     if (inCall) {
       setDismissed(false);
       setFrozen(null);
       setFrozenIntel(null);
-    } else {
-      if (liveRef.current.length > 0) setFrozen((prev) => prev ?? liveRef.current);
-      const i = intelRef.current;
-      if (i.whispers.length || i.commitments.length || i.atRisk.length || i.draftReady) {
-        setFrozenIntel((prev) => prev ?? i);
-      }
     }
   }, [inCall]);
+
+  // Persist the display from the subscription WHILE IT FEEDS — through the provider's
+  // post-call grace window, where the copilot's async draft_ready (draft synthesis + 2 RPCs,
+  // settled AFTER the media stream stops) and any late final lines / commitments still
+  // arrive on the SAME still-subscribed channel (#140 B3 FIX 2). The provider never blips
+  // the topic to null at call-end, so `liveTranscript`/`liveIntelligence` keep the call's
+  // content across the transition; here, once the call has ended, we PERSIST each latest
+  // non-empty value into frozen state. After the grace window closes the hook resets the
+  // live values to empty — the guards below then KEEP the last good frozen snapshot instead
+  // of wiping the panel to blank (§13/§36). During the call the display reads live directly.
+  useEffect(() => {
+    if (inCall) return;
+    const lines = liveTranscript ?? [];
+    if (lines.length > 0) setFrozen(lines);
+  }, [inCall, liveTranscript]);
+  useEffect(() => {
+    if (inCall) return;
+    const i = liveIntelligence ?? EMPTY_CALL_INTELLIGENCE;
+    // A late event (e.g. the draft_ready we held the channel open for) refreshed live intel
+    // after the call ended — fold the FULL snapshot (during-call cues/commitments + the new
+    // draft) into frozen state so the affordance appears without dropping prior content. A
+    // call that produced nothing never lands here → frozenIntel stays null → the panel
+    // simply closes (no dead surface).
+    if (i.whispers.length || i.commitments.length || i.atRisk.length || i.draftReady) {
+      setFrozenIntel(i);
+    }
+  }, [inCall, liveIntelligence]);
 
   const displayLines = useMemo<TranscriptLine[]>(
     () => (inCall ? (liveTranscript ?? []) : (frozen ?? [])),
@@ -592,7 +601,13 @@ export function LiveTranscriptPanel() {
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-                  onClick={() => setDismissed(true)}
+                  onClick={() => {
+                    setDismissed(true);
+                    // Release the post-call keepalive early — no reason to hold the channel
+                    // for the grace window once the operator has closed the panel (no-op
+                    // during a live call). §13: bounded either way.
+                    voice.endLiveTranscriptGrace();
+                  }}
                   aria-label="Hide live transcript"
                 >
                   <X className="h-4 w-4" />

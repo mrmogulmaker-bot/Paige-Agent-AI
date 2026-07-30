@@ -165,6 +165,25 @@ const good = await verifyStreamToken(SECRET, token, { expectedCallSid: CALL });
 check("valid token verifies", good.ok === true, JSON.stringify(good));
 check("verified tenantId matches (derived from token, not body)", good.ok === true && good.tenantId === T);
 check("verified callSid matches", good.ok === true && good.callSid === CALL);
+// #140 B3 FIX-1 — a token minted WITHOUT a contactId yields contactId=null (backward-compatible:
+// byte-identical pre-B3 payload; the copilot no-ops contact-linking on null, §13).
+check("token WITHOUT ct → verified contactId is null", good.ok === true && good.contactId === null, JSON.stringify(good));
+
+// A token minted WITH a contactId round-trips it through the SIGNED payload (§9 — non-forgeable;
+// paige-stt derives the client link from the verified token, never a raw stream parameter).
+const CONTACT = "33333333-3333-3333-3333-333333333333";
+const tokenWithContact = await mintStreamToken({ secret: SECRET, tenantId: T, callSid: CALL, contactId: CONTACT });
+const withContact = await verifyStreamToken(SECRET, tokenWithContact, { expectedCallSid: CALL });
+check("token WITH ct verifies", withContact.ok === true, JSON.stringify(withContact));
+check("verified contactId round-trips from the signed token", withContact.ok === true && withContact.contactId === CONTACT);
+check("ct token still binds tenant + call", withContact.ok === true && withContact.tenantId === T && withContact.callSid === CALL);
+// A blank/empty contactId is treated as absent (never stamps an empty ct) → contactId null.
+const tokenBlankContact = await mintStreamToken({ secret: SECRET, tenantId: T, callSid: CALL, contactId: "" });
+const blankContact = await verifyStreamToken(SECRET, tokenBlankContact, { expectedCallSid: CALL });
+check("blank contactId minted as absent → verified contactId null", blankContact.ok === true && blankContact.contactId === null);
+// Tampering a ct-bearing token still rejects (the contact link is inside the HMAC-signed payload).
+const tamperedCt = tokenWithContact.slice(0, -3) + (tokenWithContact.slice(-3) === "AAA" ? "BBB" : "AAA");
+check("TAMPERED ct token rejects (contact link is signed)", (await verifyStreamToken(SECRET, tamperedCt, { expectedCallSid: CALL })).ok === false);
 
 const tampered = token.slice(0, -3) + (token.slice(-3) === "AAA" ? "BBB" : "AAA");
 const tamperedRes = await verifyStreamToken(SECRET, tampered, { expectedCallSid: CALL });
