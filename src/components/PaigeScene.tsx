@@ -26,11 +26,11 @@ function usePointerTracking() {
 // Size envelope: Paige is large at the top of the hero and shrinks toward
 // MIN_SCALE as the page scrolls (paigeAnim.scroll 0→1). Kept a touch smaller so
 // the free-floating rings form-fit over the page and read on mobile.
-const TOP_SCALE = 0.92;
+const TOP_SCALE = 0.9;
 const MIN_SCALE = 0.5;
 // Local Y of her head in the centered model (normalized height 3.4 → top ≈ 1.7).
 // The orbital rings sit here. Tune to raise/lower the ring plane on her head.
-const HEAD_Y = 0.9;
+const HEAD_Y = 0.94;
 // On phones she's shrunk so she form-fits the narrow viewport instead of
 // filling it the way she does on a laptop.
 const MOBILE_SCALE = 0.66;
@@ -87,43 +87,77 @@ function supportsWebGL() {
 }
 
 /**
- * Delicate orbital rings around Paige's head — thin, faint elliptical orbits at
- * several tilts (atomic/electron-shell look), larger than the head, crossing in
- * front of and behind it, each a slightly different gold/cream shade and
- * brightness. Each orbit slowly precesses so the set shimmers. Parented to Paige
- * (mounted at her head), so it tracks her gaze, entrance and scroll.
+ * Paige's orbital crown — three restrained, dimensional paths that read as one
+ * identity mark instead of unrelated hoops. The inner gold orbit carries the
+ * visual weight; violet adds depth; the outer pearl orbit is a quiet halo.
  *
- * Structure per ring: an outer group precesses (spins on Y); an inner group
- * holds the fixed tilt; a thin torus at a steep tilt reads as a slim ellipse.
+ * Each path precesses on a different axis and speed. Motion remains subtle and
+ * is slowed further for reduced-motion visitors. The crown is parented to
+ * Paige, so entrance, gaze, scroll scaling, and mobile form-fit stay unified.
  */
-// Two wide, near-edge-on ellipses that cross symmetrically (mirror-tilted on Z),
-// matching the loader's clean two-ring look — one gold, one pale violet.
 const ORBIT_RINGS = [
-  { r: 1.7, tilt: [1.5, 0, 0.34] as [number, number, number], tube: 0.006, color: "#F0C86A", emissive: 1.7, op: 0.65, spin: 0.1 },
-  { r: 1.7, tilt: [1.5, 0, -0.34] as [number, number, number], tube: 0.005, color: "#C9B8E8", emissive: 1.4, op: 0.55, spin: -0.1 },
+  {
+    r: 1.48,
+    tilt: [1.46, 0.08, 0.4] as [number, number, number],
+    tube: 0.009,
+    color: GOLD_HI,
+    emissive: 1.9,
+    op: 0.72,
+    spin: 0.1,
+    drift: 0.018,
+    phase: 0,
+  },
+  {
+    r: 1.7,
+    tilt: [1.52, -0.06, -0.34] as [number, number, number],
+    tube: 0.006,
+    color: "#C9B8E8",
+    emissive: 1.45,
+    op: 0.5,
+    spin: -0.075,
+    drift: 0.014,
+    phase: 2.1,
+  },
+  {
+    r: 1.92,
+    tilt: [1.42, 0.12, 0.08] as [number, number, number],
+    tube: 0.0035,
+    color: OFFWHITE,
+    emissive: 1.15,
+    op: 0.28,
+    spin: 0.045,
+    drift: 0.01,
+    phase: 4.2,
+  },
 ];
+
 function OrbitRings({ reduced }: { reduced: boolean }) {
   const spins = useRef<(THREE.Group | null)[]>([]);
   useFrame((s) => {
     const t = s.clock.elapsedTime;
-    ORBIT_RINGS.forEach((r, i) => {
-      const g = spins.current[i];
-      if (g) g.rotation.y = t * (reduced ? 0.04 : r.spin);
+    ORBIT_RINGS.forEach((ring, i) => {
+      const group = spins.current[i];
+      if (!group) return;
+      const motion = reduced ? 0.25 : 1;
+      group.rotation.y = t * ring.spin * motion;
+      group.rotation.x = Math.sin(t * 0.32 + ring.phase) * ring.drift * motion;
+      group.rotation.z = Math.cos(t * 0.24 + ring.phase) * ring.drift * motion;
     });
   });
+
   return (
-    <group>
-      {ORBIT_RINGS.map((r, i) => (
-        <group key={i} ref={(el) => (spins.current[i] = el)}>
-          <group rotation={r.tilt}>
+    <group rotation={[0.02, 0, 0]}>
+      {ORBIT_RINGS.map((ring, i) => (
+        <group key={ring.r} ref={(el) => (spins.current[i] = el)}>
+          <group rotation={ring.tilt}>
             <mesh>
-              <torusGeometry args={[r.r, r.tube, 12, 220]} />
+              <torusGeometry args={[ring.r, ring.tube, 12, 240]} />
               <meshStandardMaterial
-                color={r.color}
-                emissive={r.color}
-                emissiveIntensity={r.emissive}
+                color={ring.color}
+                emissive={ring.color}
+                emissiveIntensity={ring.emissive}
                 transparent
-                opacity={r.op}
+                opacity={ring.op}
                 toneMapped={false}
                 depthWrite={false}
               />
