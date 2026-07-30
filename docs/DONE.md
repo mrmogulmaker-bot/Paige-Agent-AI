@@ -196,3 +196,25 @@ Codex review: P1 graceful stop-flush (trailing final no longer lost), P2 unexpec
 propagation, P2 prod-cleanup script (delete-retired-voice-functions.sh). §32: dictate smoke
 20/20, tsc 22/22, edge-live→8448902 (paige-dictate deployed, drift 0). OWED: live browser-mic
 walk (auth-gated, Cowork-drivable) + run #569 to delete the 5 lingering Convai edge fns from prod.
+
+## §49 Wave B · #169 — New-Conversation inline contact create + smart-route + dedup seam (2026-07-30)
+Merged PR #298 (squash e4c8f18). Shipped the load-bearing dedup seam: migration 20260730140000
+adds `create_and_attach_conversation(first,last,email,phone,channel,tenant)` — atomic resolve-or-
+create ONE contact per (tenant, normalized email|phone) + smart-route to the person's EXISTING
+thread for the channel (`was_existing`), else return the computed `thread_key` for the first Send
+to coalesce. §9: tenant server-derived (`current_user_tenant_id()`); caller `p_tenant_id` ignored
+for JWT, honored only for service-role (Paige headless). Race-safe TODAY via `pg_advisory_xact_lock`
+on (tenant, key) pending the #169-B UNIQUE indexes. `thread_key` computed to byte-match src
+`canonicalThreadKey` (email lower/trim; phone→[0-9+]). §32 pre-merge rollback smoke on prod caught
++ fixed 3 real defects a green tsc could not: invalid `lifecycle_stage 'lead'`→'new_lead'
+(clients_lifecycle_stage_chk), ambiguous `thread_key` col (qualified `threads.`), FK-invalid
+zero-UUID `created_by` (PATTERN-1, migration-lint). Dedup proven: 2 calls w/ case+whitespace
+variant email → 1 contact row. §32 PERSISTED-APPLY confirmed live on prod (ref xygzykjyynhzqytbqnzu):
+schema_migrations advanced + RPC in pg_proc + row well-formed (4 statements). deploy-migrations run
+went red on an intermittent schema_migrations dup-key tracking-INSERT race (migration still applied
++ recorded; corrected the false "prod BEHIND" alarm on incident #198; race filed as #572). Blocking
+CI green: ci + Security Audit + migration-lint. Frontend New-Conversation modal (inline create +
+smart routing) built by the crew, in the worktree — integration deferred to a fast-follow now that
+the RPC is live. Follow-ups: #570 (#169-B — tenant-scoped partial UNIQUE indexes on
+clients(email|phone) + §37 ON-CONFLICT hardening of all ~13 contact-creation producers — the
+architectural backstop), #571 (archived-thread smart-route edge), #572 (pipeline dup-key race).
