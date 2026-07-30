@@ -37,6 +37,7 @@ import {
   useCommsAttachments,
 } from "./inbox-shared";
 import { AttachmentChip } from "./AttachmentChip";
+import { selectComposeConnector } from "./connectorRouting";
 
 // Structural subset of the page's Connector — only what the channel picker needs.
 export interface ComposeConnector {
@@ -368,7 +369,7 @@ export function ComposeThreadDialog({
     if (!body.trim()) { toast.error("Write a message first."); return; }
     if (channel === "email" && !subject.trim()) { toast.error("Add a subject for the email."); return; }
 
-    const connector = sendable.find((c) => c.id === connectorId && c.channel_type === channel) ?? null;
+    const connector = selectComposeConnector(sendable, connectorId, channel);
     if (!connector) { toast.error("Choose an active sending address."); return; }
     // Canonical key so a later inbound reply MERGES into this thread (not a fragment).
     const threadKey = tenantId
