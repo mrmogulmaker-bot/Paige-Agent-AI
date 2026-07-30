@@ -70,9 +70,12 @@ const Privacy = () => {
 
             <h3 className="text-lg font-medium text-foreground mt-4">Voice Session Content</h3>
             <p>
-              When you talk to Paige using voice, the audio and transcript of that session are
-              processed to understand your request and respond. Voice content is used only to power
-              the feature you invoked and is never sold or used for advertising.
+              When you speak to Paige — dictating a message or talking on a call — your audio is
+              streamed to a speech-to-text provider (Deepgram) to transcribe what you said, and the
+              transcript is processed to understand your request and respond. When Paige replies
+              aloud, your text is sent to a text-to-speech provider to generate the spoken audio.
+              Voice content is used only to power the feature you invoked and is never sold or used
+              for advertising.
             </p>
 
             <h3 className="text-lg font-medium text-foreground mt-4">Calendar Data</h3>
@@ -128,7 +131,8 @@ const Privacy = () => {
               <li><strong>Anthropic</strong> (AI processing for Paige conversations) — subject to their SOC 2 certified data handling</li>
               <li><strong>Supabase</strong> (database and storage) — SOC 2 Type II certified</li>
               <li><strong>Stripe</strong> (payment processing) — PCI DSS Level 1 certified</li>
-              <li><strong>ElevenLabs</strong> (voice processing for Paige voice sessions) — your voice session content only</li>
+              <li><strong>Deepgram</strong> (speech-to-text for voice dictation and calls) — your voice audio and its transcript only</li>
+              <li><strong>ElevenLabs</strong> (text-to-speech voice narration) — the reply text Paige speaks aloud only</li>
               <li><strong>Twilio</strong> (SMS notifications) — your phone number and notification content only</li>
             </ul>
             <p>

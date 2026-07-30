@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Loader2, Mic, MicOff, Paperclip } from "lucide-react";
+import { Send, Loader2, Paperclip } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate, useLocation } from "react-router-dom";
 import { getCurrentPageName, getPageOpeningInstruction } from "@/lib/pageContext";
 import type { User, Session } from "@supabase/supabase-js";
-import { useConversation, ConversationProvider } from "@elevenlabs/react";
+import { DictationMicButton } from "@/components/voice/DictationMicButton";
+import { appendDictation } from "@/lib/voice/useDictation";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
 import { usePaigeMemory } from "@/hooks/usePaigeMemory";
 import { useClientChatContext } from "@/hooks/useClientChatContext";
@@ -18,17 +19,14 @@ import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
 import { extractEntityDiagram } from "@/lib/entityDiagram";
 import { RootCauseCard, extractRootCauseAnalysis } from "@/components/chat/RootCauseCard";
-import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
+import { SyncStatusPanel, type SyncStatus } from "@/components/chat/SyncStatusPanel";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
-import { primeMicAndAudio, startManagedVoiceSession, describeVoiceError } from "@/lib/voice/startVoiceSession";
 import { ExtractionProposalCard, type ExtractionProposal } from "@/components/chat/ExtractionProposalCard";
 import { extractFromMessage } from "@/lib/conversationalExtractor";
 import { fieldToWriteBackUpdate } from "@/lib/extractionProposal";
 import { useProfileSnapshot } from "@/hooks/useProfileSnapshot";
-import { VoiceDock } from "@/components/voice/VoiceDock";
-import type { VoiceModalStatus, VoiceTranscriptEntry } from "@/components/voice/types";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { usePlaybook } from "@/lib/playbook";
 import { useClientPortalBrandState } from "@/hooks/useClientPortalBrand";
@@ -39,7 +37,7 @@ type Message = {
   role: "user" | "assistant";
   content: string;
   documentFileName?: string;
-  syncStatus?: any;
+  syncStatus?: SyncStatus;
   /** Inline extraction proposal rendered as a confirmation card after this message. */
   extractionProposal?: ExtractionProposal;
 };
@@ -102,25 +100,12 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   // Paige's live reasoning trace (#95/#125) — the "watch her work" steps she streams.
   const [steps, setSteps] = useState<PaigeStep[]>([]);
-  const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const sessionIdRef = useRef<string>(crypto.randomUUID());
-
-  // Check mic permission on mount
-  useEffect(() => {
-    if (navigator.permissions) {
-      navigator.permissions.query({ name: "microphone" as PermissionName }).then((result) => {
-        setMicPermission(result.state === 'granted' ? 'granted' : result.state === 'denied' ? 'denied' : 'unknown');
-        result.onchange = () => {
-          setMicPermission(result.state === 'granted' ? 'granted' : result.state === 'denied' ? 'denied' : 'unknown');
-        };
-      }).catch(() => { /* permissions API not supported */ });
-    }
-  }, []);
 
   // When context loads, send a context-aware, PAGE-AWARE opening via the AI
   useEffect(() => {
@@ -149,7 +134,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         // session age = 3600 - (expires_at - now). If that's < 120s, the user
         // just signed in and Paige should give a warm "welcome back."
         const nowSec = Math.floor(Date.now() / 1000);
-        const expiresAt = (freshSession as any).expires_at as number | undefined;
+        const expiresAt = (freshSession as { expires_at?: number }).expires_at;
         const sessionAgeSec = expiresAt ? Math.max(0, 3600 - (expiresAt - nowSec)) : 9999;
         const freshSignIn = sessionAgeSec < 120;
 
@@ -233,246 +218,8 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     setAttachedDoc,
   } = useChatDocumentUpload();
 
-  // --- ElevenLabs voice ---
-  // Track voice messages separately so we can summarize them on disconnect
-  const voiceMessagesRef = useRef<Array<{ role: "user" | "assistant"; content: string }>>([]);
-  // Modal-driven voice UI state
-  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState<VoiceModalStatus>("connecting");
-  const [voiceTranscript, setVoiceTranscript] = useState<VoiceTranscriptEntry[]>([]);
-  const [voiceMuted, setVoiceMuted] = useState(false);
-
-  const conversation = useConversation({
-    // IMPORTANT: Register web_search as a client tool in your ElevenLabs agent dashboard at
-    // elevenlabs.io under your Paige agent → Conversational AI → Tools → Add Client Tool.
-    // Name: web_search
-    // Description: Search the web for current vehicle financing rates, lender requirements, and real-time information.
-    // Parameter: query (string, required) — the search query to execute.
-    clientTools: {
-      web_search: async ({ query }: { query: string }) => {
-        try {
-          const { data, error } = await supabase.functions.invoke("paige-web-search", {
-            body: { query },
-          });
-          if (error) throw error;
-          return JSON.stringify({
-            query,
-            results: data?.results ?? [],
-            note: data?.note,
-          });
-        } catch (err) {
-          console.error("[PaigeChat] web_search tool failed:", err);
-          return JSON.stringify({ error: err instanceof Error ? err.message : "Search failed", results: [] });
-        }
-      },
-    },
-    onConnect: () => {
-      voiceMessagesRef.current = [];
-      setVoiceTranscript([]);
-      setVoiceStatus("listening");
-      setVoiceModalOpen(true);
-    },
-    onDisconnect: async (details) => {
-      console.warn("[PaigeChat] Voice session disconnected", details);
-      setVoiceModalOpen(false);
-      setVoiceStatus("connecting");
-      toast({ title: "Voice chat ended", description: "The conversation has been closed" });
-      // Generate summary + extract preferences from the voice transcript
-      const transcript = voiceMessagesRef.current;
-      if (transcript.length >= 2) {
-        try {
-          const { data: summaryData } = await supabase.functions.invoke("paige-voice-summary", {
-            body: {
-              messages: transcript,
-              sessionId: sessionIdRef.current,
-              clientId,
-              channel: "voice_elevenlabs",
-            },
-          });
-          // Surface any extraction proposal returned from the voice transcript
-          // as an inline confirmation card on the most recent assistant message.
-          const proposal: ExtractionProposal | undefined = summaryData?.extractionProposal;
-          if (proposal && Array.isArray(proposal.fields) && proposal.fields.length > 0) {
-            const filteredFields = proposal.fields.filter(
-              (f) => !declinedFieldsRef.current.has(f.key)
-            );
-            if (filteredFields.length > 0) {
-              const finalProposal: ExtractionProposal = { ...proposal, fields: filteredFields };
-              setMessages(prev => {
-                const next = [...prev];
-                for (let i = next.length - 1; i >= 0; i--) {
-                  if (next[i].role === "assistant") {
-                    next[i] = { ...next[i], extractionProposal: finalProposal };
-                    return next;
-                  }
-                }
-                next.push({ role: "assistant", content: "", extractionProposal: finalProposal });
-                return next;
-              });
-            }
-          }
-        } catch (err) {
-          console.warn("Voice summary failed:", err);
-        }
-      }
-      voiceMessagesRef.current = [];
-    },
-    onMessage: (message) => {
-      const role = message.source === "ai" ? "assistant" : "user";
-      const content = message.message || "";
-      if (content) {
-        voiceMessagesRef.current.push({ role, content });
-        setVoiceTranscript(prev => [...prev, { role, content }]);
-      }
-      if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content }]);
-      else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content }]);
-    },
-    onError: (error) => {
-      const e: any = error;
-      console.error("[PaigeChat] ElevenLabs onError raw:", error);
-      console.error("[PaigeChat] ElevenLabs onError details:", {
-        type: typeof error,
-        name: e?.name,
-        code: e?.code,
-        reason: e?.reason,
-        message: e?.message,
-        context: e?.context,
-        stack: e?.stack,
-        stringified: (() => { try { return JSON.stringify(error); } catch { return String(error); } })(),
-      });
-      const errorMsg = typeof error === 'string' ? error : (e?.message || e?.reason || "Failed to connect to voice chat");
-      // Give mobile-friendly error guidance
-      if (errorMsg.includes("NotAllowed") || errorMsg.includes("Permission")) {
-        toast({
-          title: "Microphone Access Required",
-          description: "Please allow microphone access in your browser settings, then try again.",
-          variant: "destructive",
-        });
-        setMicPermission('denied');
-      } else {
-        toast({ title: "Voice chat error", description: errorMsg, variant: "destructive" });
-      }
-    },
-  });
-
-  // Sync ElevenLabs speaking state -> modal status pill
   useEffect(() => {
-    if (!voiceModalOpen) return;
-    if (conversation.status !== "connected") return;
-    setVoiceStatus(conversation.isSpeaking ? "speaking" : "listening");
-  }, [conversation.isSpeaking, conversation.status, voiceModalOpen]);
-
-  const startVoiceChat = async () => {
-    if (micPermission === 'denied') {
-      toast({
-        title: "Microphone Blocked",
-        description: isMobile
-          ? "Enable microphone in your browser settings. On iPhone: Settings > Safari > Microphone."
-          : "Tap the lock icon in your browser's address bar to enable microphone access.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    let audioCtx: AudioContext | null = null;
-    try {
-      // Open the modal immediately (status: connecting) so user gets feedback.
-      setVoiceTranscript([]);
-      setVoiceMuted(false);
-      setVoiceStatus("connecting");
-      setVoiceModalOpen(true);
-
-      // Prime mic + audio output INSIDE the click gesture (iOS Safari requirement).
-      const primed = await primeMicAndAudio();
-      audioCtx = primed.audioContext;
-      setMicPermission('granted');
-
-      const { data: { session: freshSession } } = await supabase.auth.getSession();
-
-      // Last 5 messages from current chat for continuity context.
-      const recentChatMessages = messages
-        .filter(m => m.content && m.content.trim())
-        .slice(-5)
-        .map(m => ({ role: m.role, content: m.content }));
-
-      // Fetch dynamic, page-aware greeting from edge function.
-      let greeting: string | undefined;
-      try {
-        const { data: greetingData } = await supabase.functions.invoke("paige-voice-greeting", {
-          body: {
-            currentPage: currentPageRef.current,
-            recentChatMessages,
-          },
-          headers: freshSession?.access_token ? { Authorization: `Bearer ${freshSession.access_token}` } : undefined,
-        });
-        greeting = greetingData?.greeting;
-        console.log("[PaigeChat] Voice greeting:", greeting);
-      } catch (greetErr) {
-        console.warn("[PaigeChat] Greeting fetch failed; falling back:", greetErr);
-      }
-
-      const voicePageLine = `Current page: ${currentPageRef.current}`;
-      const historyBlock = recentChatMessages.length > 0
-        ? `\n\nRECENT CHAT HISTORY (last ${recentChatMessages.length} turns — pick up from here):\n${recentChatMessages.map(m => `${m.role === "user" ? "Client" : "Paige"}: ${m.content}`).join("\n")}`
-        : "";
-
-      const voicePersona = `You are ${playbook.persona.name}, ${playbook.persona.role} (${playbook.persona.domain}). Tone: ${playbook.persona.tone}.`;
-      const voiceSystemPrompt = contextBlock
-        ? `${voicePersona} You have this client's records on file — use them to give specific answers and never ask for information you already have.\n\n${voicePageLine}\n\nCLIENT DATA:\n${contextBlock}${historyBlock}\n\nRULES:\n- Reference specifics from the client data above\n- The client is currently viewing the "${currentPageRef.current}" page — assume their questions relate to what they are seeing there\n- Never fabricate data\n- VOICE: Be conversational and concise (1-2 short sentences per turn). Use natural acknowledgments like "Got it", "Right", "Exactly". Never read bullet points aloud — convert to natural speech.\n- Keep the client moving toward their goals`
-        : `${voicePersona} ${voicePageLine}.${historyBlock}\n\nVOICE: Be conversational and concise. Use short sentences and natural acknowledgments.`;
-
-      // NOTE: ElevenLabs rejects `firstMessage` and `prompt` overrides unless
-      // they are explicitly enabled in the agent dashboard config. Sending them
-      // causes a 1008 close ("Override for field 'X' is not allowed by config").
-      // Rely on the agent's dashboard defaults for greeting + system prompt.
-      void voiceSystemPrompt; // built above for future use once overrides are enabled
-      void greeting;
-
-      const voiceSession = await startManagedVoiceSession({
-        conversation,
-        authToken: freshSession?.access_token,
-        logLabel: "[PaigeChat]",
-      });
-      (window as unknown as { __paigeVoiceStart?: number }).__paigeVoiceStart = Date.now();
-      void trackEvent("voice_session_start", "engagement", { page: currentPageRef.current });
-      console.log("[PaigeChat] startSession resolved", voiceSession);
-    } catch (err: any) {
-      console.error("[PaigeChat] Voice start failed:", err);
-      setVoiceModalOpen(false);
-      if (audioCtx) { try { await audioCtx.close(); } catch {} }
-      if (err?.name === "NotAllowedError" || err?.message?.toLowerCase?.().includes("permission")) {
-        setMicPermission('denied');
-      }
-      const { title, description } = describeVoiceError(err, isMobile);
-      toast({ title, description, variant: "destructive" });
-    }
-  };
-
-  const stopVoiceChat = async () => {
-    const startedAt = (window as unknown as { __paigeVoiceStart?: number }).__paigeVoiceStart;
-    const durationSeconds = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0;
-    try { await conversation.endSession(); } catch (e) { console.warn("Error ending session", e); }
-    setVoiceModalOpen(false);
-    void trackEvent("voice_session_end", "engagement", { duration_seconds: durationSeconds });
-  };
-
-  const toggleVoiceMute = useCallback(async () => {
-    const next = !voiceMuted;
-    setVoiceMuted(next);
-    try {
-      const conv: any = conversation;
-      if (typeof conv.setMicMuted === "function") {
-        await conv.setMicMuted(next);
-      } else if (typeof conv.setVolume === "function") {
-        await conv.setVolume({ volume: next ? 0 : 1 });
-      }
-    } catch (err) {
-      console.warn("Mute toggle failed:", err);
-    }
-  }, [conversation, voiceMuted]);
-
-  useEffect(() => {
-    const handleFactoryReset = async () => {
+    const handleFactoryReset = () => {
       contextInjectedRef.current = false;
       resetSession();
       setInput("");
@@ -482,18 +229,11 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
           content: playbook.persona.greeting,
         },
       ]);
-      if (conversation.status === "connected") {
-        try {
-          await conversation.endSession();
-        } catch (error) {
-          console.warn("Error ending voice session after reset", error);
-        }
-      }
     };
 
     window.addEventListener("paige-factory-reset", handleFactoryReset);
     return () => window.removeEventListener("paige-factory-reset", handleFactoryReset);
-  }, [conversation, resetSession]);
+  }, [resetSession, playbook.persona.greeting]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -547,7 +287,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
     });
     if (error) throw error;
 
-    const failed = (data?.results || []).filter((r: any) => !r.success);
+    const failed = (data?.results || []).filter((r: { success?: boolean; error?: string }) => !r.success);
     if (failed.length > 0 && failed.length === selected.length) {
       throw new Error(failed[0]?.error || "Save failed.");
     }
@@ -611,7 +351,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
         return;
       }
 
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         messages: newMessages.map(m => ({
           role: m.role,
           content: m.content,
@@ -660,7 +400,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       let assistantMessage = "";
       let textBuffer = "";
       let streamDone = false;
-      let syncStatus: any = null;
+      let syncStatus: SyncStatus | null = null;
 
       setMessages([...newMessages, { role: "assistant", content: "" }]);
       setSteps([]); // clear last turn's reasoning as this one starts
@@ -894,7 +634,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             <button
               key={action.label}
               onClick={() => handleSend(action.prompt)}
-              disabled={isLoading || conversation.status === "connected"}
+              disabled={isLoading}
               className="text-[10px] sm:text-[11px] px-2.5 py-1 rounded-full border border-border bg-background hover:bg-accent/10 hover:border-accent/40 text-muted-foreground hover:text-gold-dark transition-colors disabled:opacity-50 whitespace-nowrap flex-shrink-0"
             >
               {action.label}
@@ -912,68 +652,37 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
       {/* Input area — safe area padding on mobile */}
       <div className="p-2 sm:p-3 border-t border-border space-y-2 flex-shrink-0 pb-[env(safe-area-inset-bottom,8px)]">
         <div className="flex gap-1.5 sm:gap-2 items-center">
-          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach a document (PDF)">
+          <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-9 sm:w-9 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading} title="Attach a document (PDF)">
             <Paperclip className="w-4 h-4" />
           </Button>
-          {conversation.status !== "connected" && (
-            <Textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-              placeholder={attachedDoc ? "Add a message or send document... (Shift+Enter for new line)" : "Ask Paige anything... (Shift+Enter for new line)"}
-              rows={1}
-              className="flex-1 text-sm min-h-[40px] max-h-[200px] resize-none py-2"
-              disabled={isLoading}
-            />
-          )}
-          {conversation.status !== "connected" && (
-            <Button onClick={() => handleSend()} disabled={isLoading || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90 h-10 w-10" size="icon">
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            </Button>
-          )}
-          {/* Mic button — larger on mobile for easy tapping */}
-          <Button
-            onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat}
-            variant={conversation.status === "connected" ? "destructive" : "secondary"}
-            size="icon"
-            className={`flex-shrink-0 ${isMobile ? "h-10 w-10" : "h-9 w-9"} ${micPermission === 'denied' ? 'opacity-60' : ''}`}
-            title={
-              micPermission === 'denied'
-                ? "Microphone blocked — tap to learn how to enable"
-                : conversation.status === "connected"
-                  ? "End voice chat"
-                  : "Start voice chat with Paige"
-            }
-          >
-            {conversation.status === "connected" ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+          <Textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+            placeholder={attachedDoc ? "Add a message or send document... (Shift+Enter for new line)" : "Ask Paige anything... (Shift+Enter for new line)"}
+            rows={1}
+            className="flex-1 text-sm min-h-[40px] max-h-[200px] resize-none py-2"
+            disabled={isLoading}
+          />
+          {/* Hold-to-dictate — neutral/indigo mic (never gold; Send owns the act, §11).
+              Dictated words append into the composer for the client to edit + send. */}
+          <DictationMicButton
+            onText={(seg) => setInput((prev) => appendDictation(prev, seg))}
+            onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
+            disabled={isLoading}
+            variant="secondary"
+            className={`flex-shrink-0 ${isMobile ? "h-10 w-10" : "h-9 w-9"}`}
+          />
+          <Button onClick={() => handleSend()} disabled={isLoading || (!input.trim() && !attachedDoc)} className="bg-gradient-gold hover:opacity-90 h-10 w-10" size="icon">
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </Button>
         </div>
       </div>
-
-      {/* Voice session UI — scoped to THIS chat widget, not the viewport. Client
-          can keep typing to Paige mid-call via the dock's type-while-talking row. */}
-      <VoiceDock
-        open={voiceModalOpen}
-        status={voiceStatus}
-        isMuted={voiceMuted}
-        pageName={currentPage}
-        transcript={voiceTranscript}
-        onToggleMute={toggleVoiceMute}
-        onEndCall={stopVoiceChat}
-        inputValue={input}
-        onInputChange={setInput}
-        onSendText={() => handleSend()}
-        isSending={isLoading}
-      />
     </div>
   );
 }
 
 export function PaigeChat(props: PaigeChatProps) {
-  return (
-    <ConversationProvider>
-      <PaigeChatInner {...props} />
-    </ConversationProvider>
-  );
+  return <PaigeChatInner {...props} />;
 }

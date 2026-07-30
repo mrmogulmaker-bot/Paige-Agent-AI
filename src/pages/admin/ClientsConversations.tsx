@@ -62,6 +62,8 @@ import { ContactCardRail } from "./conversations/ContactCardRail";
 import { SnoozeMenu } from "./conversations/SnoozeMenu";
 import { LabelPopover } from "./conversations/LabelPopover";
 import { QuickAddDialog } from "@/components/planning/QuickAddDialog";
+import { DictationMicButton } from "@/components/voice/DictationMicButton";
+import { appendDictation } from "@/lib/voice/useDictation";
 
 // ── Connector (channel_connectors row — kept local, not in shared) ─────────────────
 interface Connector {
@@ -284,6 +286,10 @@ export default function ClientsConversations() {
   const [composeChannel, setComposeChannel] = useState<ChannelType | "">("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  // Latest body, so the dictation callback appends onto current text without a
+  // stale closure (it feeds THROUGH handleBodyChange so snippet expansion still runs).
+  const bodyRef = useRef("");
+  useEffect(() => { bodyRef.current = body; }, [body]);
   const [sending, setSending] = useState(false);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
@@ -1564,11 +1570,25 @@ export default function ClientsConversations() {
                       />
                     </div>
 
-                    {/* Toolbar: Draft with Paige · attach · signature toggle · schedule */}
+                    {/* Toolbar: dictate · Draft with Paige · attach · signature toggle · schedule */}
                     <div className="flex flex-wrap items-center gap-2">
                       <input
                         ref={fileInputRef} type="file" multiple hidden
                         onChange={(e) => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ""; }}
+                      />
+
+                      {/* Hold-to-dictate — neutral/indigo utility, matches "Draft with Paige"
+                          (NOT gold — gold stays on Send/Approve, §11). Dictated text feeds
+                          THROUGH handleBodyChange so snippet expansion still runs. */}
+                      <DictationMicButton
+                        onText={(seg) => handleBodyChange(appendDictation(bodyRef.current, seg))}
+                        onError={(msg) => toast.error(msg)}
+                        disabled={sending || drafting || uploading}
+                        variant="outline"
+                        size="sm"
+                        label="Dictate"
+                        activeLabel="Listening…"
+                        className="h-8 border-[hsl(var(--primary)/0.4)]"
                       />
 
                       {/* Draft with Paige — the headline assist. Email-only for Phase-1 (§13).
