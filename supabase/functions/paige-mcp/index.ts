@@ -3843,6 +3843,28 @@ mcp.tool("update_tenant_branding", {
   },
 });
 
+mcp.tool("get_tenant_domain_identity", {
+  description:
+    "Return the caller tenant's canonical default website/portal domain plus its current default email-sending domain. Use this when the owner asks what their domain is, needs an onboarding link, or asks how website and email domains differ. Read-only.",
+  inputSchema: z.object({}).optional() as any,
+  handler: async () => {
+    const tenant_id = await actorTenantId();
+    if (!tenant_id) return err("tenant_not_resolved");
+    const { data, error } = await admin.rpc("resolve_tenant_domain_identity", {
+      p_tenant_id: tenant_id,
+    });
+    if (error) return err(error.message);
+    const identity = Array.isArray(data) ? data[0] : data;
+    if (!identity) return err("tenant_domain_identity_not_found");
+    return ok({
+      identity,
+      guidance: identity.default_email_domain
+        ? "The website/portal domain and email-sending domain are separate configured rails."
+        : "The default website/portal domain is ready. A custom email-sending domain can be connected in Setup → Integrations → Email.",
+    });
+  },
+});
+
 mcp.tool("list_email_domains", {
   description:
     "List the caller tenant's verified + pending sending domains (tenant_email_domains). Shows DNS status, default sender, and Resend domain ID.",
@@ -4851,6 +4873,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   broadcast_system_announcement: "platform.write",
   // Batch #5 — Tenant Admin + Comms (operator-tier inside own tenant)
   update_tenant_branding: "admin.write",
+  get_tenant_domain_identity: "admin.read",
   list_email_domains: "admin.read",
   add_email_domain: "admin.write",
   set_default_email_domain: "admin.write",
