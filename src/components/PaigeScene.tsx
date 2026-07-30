@@ -287,19 +287,19 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
     const mat = new THREE.MeshPhysicalMaterial({
       color: "#F3D7B5",
       emissive: GOLD_HI,
-      emissiveIntensity: 0.08,
+      emissiveIntensity: 0.18,
       metalness: 0.04,
       roughness: 0.08,
       clearcoat: 1,
       clearcoatRoughness: 0.08,
-      transmission: 0.46,
+      transmission: 0.34,
       thickness: 0.72,
       ior: 1.34,
       attenuationColor: new THREE.Color("#D6A96B"),
       attenuationDistance: 2.8,
       envMapIntensity: 2.2,
       transparent: true,
-      opacity: 0.38,
+      opacity: 0.46,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -395,7 +395,10 @@ function CameraRig() {
   useFrame((s) => {
     s.camera.position.x += (ptr.x * 0.5 - s.camera.position.x) * 0.03;
     s.camera.position.y += (0.35 + ptr.y * 0.25 - s.camera.position.y) * 0.03;
-    s.camera.lookAt(0.95, 0.15, 0);
+    const workspaceFocus = THREE.MathUtils.smoothstep(paigeAnim.scroll, 0.42, 1.02);
+    const lateFocus = THREE.MathUtils.smoothstep(paigeAnim.scroll, 1.35, 2.15);
+    const lookX = THREE.MathUtils.lerp(THREE.MathUtils.lerp(0.95, 0, workspaceFocus), 0.7, lateFocus);
+    s.camera.lookAt(lookX, 0.15, 0);
   });
   return null;
 }
@@ -409,7 +412,7 @@ function Scene({ reduced: reducedProp }: { reduced?: boolean }) {
   return (
     <>
       <ambientLight intensity={0.24} color={INDIGO} />
-      <pointLight position={[4, 3, 4]} intensity={18} color={GOLD_HI} decay={2} />
+      <pointLight position={[4, 3, 4]} intensity={26} color={GOLD_HI} decay={2} />
       <pointLight position={[-4, -1, 3]} intensity={8} color={VIOLET} decay={2} />
       <Environment resolution={128}>
         <Lightformer form="rect" intensity={2} color={GOLD_HI} scale={[5, 3, 1]} position={[4, 3, 3]} />
