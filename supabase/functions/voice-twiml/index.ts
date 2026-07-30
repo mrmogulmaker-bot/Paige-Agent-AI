@@ -37,6 +37,8 @@ import {
   buildStreamStart,
   classifyDirection,
   parseClientCaller,
+  sanitizePhoneFilter,
+  voiceThreadKey,
   CALL_UNAVAILABLE_MESSAGE,
   NO_CALLER_ID_MESSAGE,
   OUTBOUND_NO_NUMBER_MESSAGE,
@@ -59,6 +61,7 @@ async function buildCoPilotStreamXml(
   tenantId: string,
   callSid: string,
   counterpartyPhone: string,
+  precomputedContactId: string | null | undefined = undefined,
 ): Promise<string> {
   const streamUrl = Deno.env.get("VOICE_STT_STREAM_URL") ?? "";
   if (!streamUrl) return ""; // co-pilot not activated — default OFF, changes nothing
@@ -77,7 +80,12 @@ async function buildCoPilotStreamXml(
     // resolve a recipient. No match ⇒ null (honest degrade — we NEVER invent/auto-create a contact
     // here; the copilot no-ops contact-linking when null). Gated behind the stream checks above so a
     // contact lookup only runs when the co-pilot fork is actually being minted.
-    const contactId = await resolveContactByPhone(admin, tenantId, counterpartyPhone);
+    // #168: reuse the contact the voice-row writer already resolved/auto-created (avoids a duplicate
+    // lookup and links the co-pilot to the SAME, now-existing contact). Only fall back to a resolve-only
+    // lookup when no value was threaded through (undefined) — an explicit null means "no contact", honored.
+    const contactId = precomputedContactId !== undefined
+      ? precomputedContactId
+      : await resolveContactByPhone(admin, tenantId, counterpartyPhone);
     const token = await mintStreamToken({ secret, tenantId, callSid, contactId });
     // tenantId/callSid are ALSO stamped for logging/debug, but paige-stt trusts ONLY the token (the
     // contactId rides INSIDE the signed token, never as a forgeable <Parameter>).
@@ -134,12 +142,18 @@ async function resolveTenantCallerId(admin: Admin, tenantId: string): Promise<st
  */
 async function resolveContactByPhone(admin: Admin, tenantId: string, phone: string): Promise<string | null> {
   if (!phone || !tenantId) return null;
-  const norm = normalizePhone(phone);
+  // §568: strip BOTH filter operands to [0-9+] before interpolating into the PostgREST `.or()` so a
+  // crafted To/From (e.g. `+1,id.eq.<uuid>`) can't inject a filter clause. An empty raw value ⇒ skip
+  // that operand entirely (an empty `.eq.` would be a malformed/over-broad filter, never emitted).
+  const raw = sanitizePhoneFilter(phone);
+  const norm = sanitizePhoneFilter(normalizePhone(phone));
+  const operands = [...new Set([raw, norm].filter((p) => p.length > 0))].map((p) => `phone.eq.${p}`);
+  if (operands.length === 0) return null;
   const { data, error } = await admin
     .from("clients")
     .select("id")
     .eq("tenant_id", tenantId)
-    .or(`phone.eq.${phone},phone.eq.${norm}`)
+    .or(operands.join(","))
     .limit(1)
     .maybeSingle();
   if (error) {
@@ -196,6 +210,109 @@ async function resolveTenantSeatIdentities(admin: Admin, tenantId: string): Prom
   return [...new Set(ids)];
 }
 
+/**
+ * #168 — write the ONE messages row that makes this call a first-class Conversations entry (§49), and
+ * resolve/auto-create the counterparty contact so the row lands in that person's thread.
+ *
+ * WHY THE CONTACT IS MANDATORY (§9): set_message_tenant() (BEFORE INSERT) derives tenant_id ONLY from
+ * connector_id → contact_id → current_user_tenant_id(). A service-role voice insert has no connector and
+ * no session tenant, so the ONLY way to stamp the correct tenant is via contact_id. We therefore call
+ * create_and_attach_conversation (service-role → p_tenant_id honored because auth.uid() IS NULL) which
+ * resolve-or-creates ONE contact for this phone — auto-creating an unknown INBOUND caller (§49) and
+ * resolving a known one — and returns its id. No contact ⇒ we do NOT write an untenanted, orphaned row.
+ *
+ * IDEMPOTENCY: provider_message_id = the Twilio Call SID (uq_messages_provider_message_id) — a webhook
+ * retry re-inserting the same SID hits 23505 and is a no-op. THREAD COALESCE: thread_key = the canonical
+ * voiceThreadKey (byte-identical to the RPC + src), so trg_messages_upsert_thread folds this call into
+ * the same VOICE thread as any prior call with this contact. thread_key is channel-prefixed
+ * (`voice:` vs `sms:`/`email:`), so voice coalesces with voice — landing in the shared inbox alongside
+ * the contact's own sms/email threads (each channel its own thread), first-class to the same standard.
+ *
+ * §32: this NEVER breaks or delays the <Dial> bridge — every failure path logs loudly and returns
+ * { contactId: null }; the caller bridges regardless. Returns the resolved contactId for the co-pilot
+ * fork to reuse.
+ */
+async function writeVoiceMessageRow(
+  admin: Admin,
+  opts: {
+    tenantId: string;
+    callSid: string;
+    direction: "outbound" | "inbound";
+    counterpartyPhone: string;
+    ownNumber: string;
+  },
+): Promise<{ contactId: string | null }> {
+  const { tenantId, callSid, direction, counterpartyPhone, ownNumber } = opts;
+  try {
+    if (!tenantId || !callSid || !counterpartyPhone) {
+      console.warn("[voice-twiml] voice row skipped — missing key field", {
+        hasTenant: !!tenantId, hasCall: !!callSid, hasCounterparty: !!counterpartyPhone,
+      });
+      return { contactId: null };
+    }
+
+    // Resolve-or-create ONE contact for the counterparty (§9 explicit p_tenant_id on the service-role path).
+    let contactId: string | null = null;
+    const { data: convo, error: convoErr } = await admin.rpc("create_and_attach_conversation", {
+      p_phone: counterpartyPhone,
+      p_channel: "voice",
+      p_tenant_id: tenantId,
+    });
+    if (convoErr) {
+      console.error("[voice-twiml] create_and_attach_conversation failed — call bridges, row NOT written:",
+        convoErr.code, convoErr.message);
+    } else {
+      const row = Array.isArray(convo) ? convo[0] : convo;
+      contactId = (row?.contact_id as string | undefined) ?? null;
+    }
+    if (!contactId) {
+      // §9/§13: never write a null-tenant orphan row. Honest degrade — the call still bridges; the
+      // conversation entry is owed (logged) rather than mis-tenanted.
+      console.error("[voice-twiml] no contact resolved — NOT writing an untenanted voice row", { tenantId, direction });
+      return { contactId: null };
+    }
+
+    // §9: tenant_id OMITTED — set_message_tenant() derives it from contact_id. from/to reflect the two
+    // phone numbers by direction; body_text is a real human line (§15 — no placeholder).
+    const fromAddr = direction === "outbound" ? ownNumber : counterpartyPhone;
+    const toAddr = direction === "outbound" ? counterpartyPhone : ownNumber;
+    const body = direction === "outbound"
+      ? `Outbound call to ${counterpartyPhone}`
+      : `Inbound call from ${counterpartyPhone}`;
+
+    const { error: insErr } = await admin.from("messages").insert({
+      thread_key: voiceThreadKey(tenantId, counterpartyPhone),
+      contact_id: contactId,
+      channel_type: "voice",
+      direction,
+      // §13 honest: the call is initiating. 'initiated' is NOT a valid messages.status value (CHECK is
+      // draft/queued/sent/delivered/failed/received/read) — 'queued' is the honest in-flight value; the
+      // CallStatus completion webhook advances it to delivered/failed + stamps call_duration_seconds.
+      status: "queued",
+      provider_message_id: callSid,
+      sender: fromAddr ? { address: fromAddr } : null,
+      recipients: toAddr ? [{ address: toAddr }] : [],
+      body_text: body,
+      meta: { call: { provider: "twilio", direction, from: fromAddr ?? null, to: toAddr ?? null, call_sid: callSid } },
+      sent_at: new Date().toISOString(),
+    });
+    if (insErr) {
+      if (insErr.code === "23505") {
+        // Twilio re-hit the VoiceUrl for the same Call SID — the row already exists. Idempotent no-op.
+        console.log("[voice-twiml] voice row already present (webhook retry) — dedup", { callSid });
+        return { contactId };
+      }
+      console.error("[voice-twiml] voice row insert failed — call still bridges:", insErr.code, insErr.message);
+      return { contactId };
+    }
+    console.log("[voice-twiml] voice row written", { direction, tenantId, hasContact: true });
+    return { contactId };
+  } catch (e) {
+    console.error("[voice-twiml] writeVoiceMessageRow threw — call still bridges:", (e as Error)?.message);
+    return { contactId: null };
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response("method_not_allowed", { status: 405 });
@@ -234,6 +351,14 @@ Deno.serve(async (req) => {
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin = createClient(supabaseUrl, serviceKey);
 
+  // #168 — where Twilio POSTs the call's terminal status (CallStatus + CallDuration) at call end, so
+  // twilio-status-callback can stamp the voice row's final status + duration. Mirrors send-message's
+  // SMS-DLR URL derivation EXACTLY (env override → default). "" ⇒ the noun emits no statusCallback
+  // (the row stays 'queued'; honest degrade, never a broken dial).
+  const statusCallbackUrl =
+    Deno.env.get("TWILIO_STATUS_CALLBACK_URL") ||
+    (supabaseUrl ? `${supabaseUrl}/functions/v1/twilio-status-callback` : "");
+
   try {
     if (direction === "outbound") {
       // §9: tenant is the AUTHENTICATED client identity Twilio populated From with.
@@ -255,11 +380,16 @@ Deno.serve(async (req) => {
         });
         return twiml(buildSayHangupTwiml(NO_CALLER_ID_MESSAGE));
       }
+      // #168: write the first-class voice Conversations row (resolves/creates the counterparty contact),
+      // BEFORE the co-pilot fork so the fork reuses the same contact. Never breaks the bridge (§32).
+      // OUTBOUND: counterparty = the dialed number (To); the tenant's own number is the presented callerId.
+      const voiceLink = await writeVoiceMessageRow(admin, {
+        tenantId: caller.tenantId, callSid, direction: "outbound", counterpartyPhone: to, ownNumber: callerId,
+      });
       // #140 B1: GATED co-pilot fork (default OFF) — non-blocking, before the <Dial> bridge.
-      // OUTBOUND: the CLIENT counterparty is the dialed number (To) — resolve it to a contact (§9/§13).
-      const streamXml = await buildCoPilotStreamXml(admin, caller.tenantId, callSid, to);
+      const streamXml = await buildCoPilotStreamXml(admin, caller.tenantId, callSid, to, voiceLink.contactId);
       console.log("[voice-twiml] outbound bridge", { tenantId: caller.tenantId, coPilot: streamXml.length > 0 });
-      return twiml(buildOutboundTwiml(callerId, to, streamXml));
+      return twiml(buildOutboundTwiml(callerId, to, streamXml, statusCallbackUrl));
     }
 
     // ── INBOUND ──────────────────────────────────────────────────────────────────
@@ -276,11 +406,16 @@ Deno.serve(async (req) => {
       console.warn("[voice-twiml] inbound: tenant has no reachable seat — voicemail message", { tenantId });
       return twiml(buildSayHangupTwiml(VOICEMAIL_UNAVAILABLE_MESSAGE));
     }
+    // #168: write the first-class voice Conversations row — auto-creates the contact for an UNKNOWN
+    // inbound caller (§49) — BEFORE the co-pilot fork so it reuses the same contact. Never breaks the ring (§32).
+    // INBOUND: counterparty = the external caller (From); the tenant's own number is the dialed To.
+    const voiceLink = await writeVoiceMessageRow(admin, {
+      tenantId, callSid, direction: "inbound", counterpartyPhone: from, ownNumber: to,
+    });
     // #140 B1: GATED co-pilot fork (default OFF) — non-blocking, before the <Dial> ring.
-    // INBOUND: the CLIENT counterparty is the external caller (From) — resolve it to a contact (§9/§13).
-    const streamXml = await buildCoPilotStreamXml(admin, tenantId, callSid, from);
+    const streamXml = await buildCoPilotStreamXml(admin, tenantId, callSid, from, voiceLink.contactId);
     console.log("[voice-twiml] inbound ring", { tenantId, seats: identities.length, coPilot: streamXml.length > 0 });
-    return twiml(buildInboundTwiml(identities, streamXml));
+    return twiml(buildInboundTwiml(identities, streamXml, statusCallbackUrl));
   } catch (e) {
     // §32: never a silent 500 — a runtime fault still answers with a spoken, graceful hangup
     // so the caller/browser hears something, and we log the real cause loudly.

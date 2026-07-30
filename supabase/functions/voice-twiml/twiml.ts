@@ -31,6 +31,45 @@ export function escapeXml(s: string): string {
 const XML_PROLOG = '<?xml version="1.0" encoding="UTF-8"?>';
 
 /**
+ * #168 — sanitize a phone value to the ONLY characters a phone can contain (`[0-9+]`) before it is
+ * interpolated into a PostgREST `.or()` filter (§568). PostgREST parses `,` (OR separator) and `.`
+ * (op separator) as filter syntax, so a crafted To/From like `+1,id.eq.<uuid>` would inject a
+ * clause; stripping to `[0-9+]` makes injection impossible. Returns "" for a value with no phone
+ * characters, so the caller can guard (an empty filter must never widen the query). PURE + smoked.
+ */
+export function sanitizePhoneFilter(phone: string | null | undefined): string {
+  return String(phone ?? "").replace(/[^0-9+]/g, "");
+}
+
+/**
+ * #168 — the canonical VOICE thread_key. BYTE-IDENTICAL to src canonicalThreadKey("voice", …) and to
+ * create_and_attach_conversation's server-side computation: `voice:${tenantId}:${phoneStrippedTo[0-9+]}`.
+ * A voice messages row written with this key coalesces with any prior VOICE call to that contact (the
+ * key is channel-prefixed, so voice threads with voice — sitting in the shared inbox alongside that
+ * contact's sms/email threads) — first-class to the same standard as every channel (§49). PURE
+ * + smoked so a drift from the canonical format is caught headless, never on a live call.
+ */
+export function voiceThreadKey(tenantId: string, phone: string): string {
+  return `voice:${tenantId}:${sanitizePhoneFilter(phone)}`;
+}
+
+/**
+ * #168 — noun-level statusCallback attributes for a <Number>/<Client> dial leg. When a URL is given,
+ * Twilio POSTs the CHILD leg's terminal status (CallStatus + CallDuration, with ParentCallSid = the
+ * parent call's SID) to it at call end — the signal twilio-status-callback uses to stamp the voice
+ * row's final status + duration. Empty URL ⇒ "" so the TwiML stays byte-identical when unwired. We
+ * subscribe ONLY to "completed" (fires for every terminal: completed/busy/no-answer/failed/canceled).
+ */
+function nounStatusCallbackAttrs(statusCallbackUrl: string): string {
+  if (!statusCallbackUrl) return "";
+  return (
+    ` statusCallback="${escapeXml(statusCallbackUrl)}"` +
+    ` statusCallbackEvent="completed"` +
+    ` statusCallbackMethod="POST"`
+  );
+}
+
+/**
  * Direction of a Twilio Voice webhook hit. OUTBOUND = a browser Device placed a call
  * (Twilio sets From to the authenticated `client:<identity>`). INBOUND = an external
  * caller dialed the tenant's Twilio number (From is a PSTN number, not a client).
@@ -107,12 +146,18 @@ export function buildStreamStart(streamUrl: string, params: Record<string, strin
  * after <Response>, BEFORE <Dial>, so the co-pilot transcription runs alongside an uninterrupted
  * bridge. Defaults to "" → byte-identical to the pre-B1 output when streaming is OFF.
  */
-export function buildOutboundTwiml(callerId: string, to: string, streamXml = ""): string {
+export function buildOutboundTwiml(
+  callerId: string,
+  to: string,
+  streamXml = "",
+  statusCallbackUrl = "",
+): string {
+  const cb = nounStatusCallbackAttrs(statusCallbackUrl);
   return (
     `${XML_PROLOG}<Response>` +
     streamXml +
     `<Dial answerOnBridge="true" callerId="${escapeXml(callerId)}">` +
-    `<Number>${escapeXml(to)}</Number>` +
+    `<Number${cb}>${escapeXml(to)}</Number>` +
     `</Dial></Response>`
   );
 }
@@ -124,12 +169,13 @@ export function buildOutboundTwiml(callerId: string, to: string, streamXml = "")
  * number (§9) — this builder never sees another tenant's identity. Empty list is a caller
  * bug; guard by returning the honest voicemail message instead.
  */
-export function buildInboundTwiml(identities: string[], streamXml = ""): string {
+export function buildInboundTwiml(identities: string[], streamXml = "", statusCallbackUrl = ""): string {
   const clients = identities.filter((i) => i && i.length > 0);
   if (clients.length === 0) {
     return buildSayHangupTwiml(VOICEMAIL_UNAVAILABLE_MESSAGE);
   }
-  const inner = clients.map((id) => `<Client>${escapeXml(id)}</Client>`).join("");
+  const cb = nounStatusCallbackAttrs(statusCallbackUrl);
+  const inner = clients.map((id) => `<Client${cb}>${escapeXml(id)}</Client>`).join("");
   // #140 B1: optional <Start><Stream> fork before <Dial> (see buildOutboundTwiml). "" = OFF.
   return (
     `${XML_PROLOG}<Response>` +
