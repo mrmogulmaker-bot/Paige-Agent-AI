@@ -33,7 +33,12 @@ import {
 import type { Call, Device, TwilioError } from "@twilio/voice-sdk";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { useLiveTranscript, type TranscriptLine, type TranscriptState } from "./useLiveTranscript";
+import {
+  useLiveTranscript,
+  type TranscriptLine,
+  type TranscriptState,
+  type CallIntelligence,
+} from "./useLiveTranscript";
 
 export type VoiceStatus =
   | "idle" // no Device yet (nothing has asked to call)
@@ -86,6 +91,10 @@ interface VoiceDeviceValue {
   liveTranscript: TranscriptLine[];
   /** What the transcript subscription is doing: idle | listening | live | reconnecting. */
   transcriptState: TranscriptState;
+
+  // ── Live-call co-pilot INTELLIGENCE (#140 B3) ──
+  /** Whisper cues / commitments / at-risk flags / follow-up draft for the LIVE call. */
+  liveIntelligence: CallIntelligence;
 
   // ── Inbound (A3): a ringing call awaiting the operator's accept/reject ──
   incomingCall: IncomingCallInfo | null;
@@ -185,7 +194,11 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
     status === "in_call" && activeTenantId && activeCall?.callSid
       ? `voice-stt:${activeTenantId}:${activeCall.callSid}`
       : null;
-  const { lines: liveTranscript, state: transcriptState } = useLiveTranscript(transcriptTopic);
+  const {
+    lines: liveTranscript,
+    state: transcriptState,
+    intelligence: liveIntelligence,
+  } = useLiveTranscript(transcriptTopic);
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
@@ -565,6 +578,7 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       sendDigit,
       liveTranscript,
       transcriptState,
+      liveIntelligence,
       incomingCall,
       acceptIncoming,
       rejectIncoming,
@@ -587,6 +601,7 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       sendDigit,
       liveTranscript,
       transcriptState,
+      liveIntelligence,
       incomingCall,
       acceptIncoming,
       rejectIncoming,

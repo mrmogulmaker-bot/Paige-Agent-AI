@@ -27,39 +27,249 @@
 //  §17 A streamed minute → platform_usage_events { event_type:"voice_stt_minute", unit:"minute" }.
 //  verify_jwt=false (config.toml): a Twilio media-stream WS cannot present a Supabase JWT; the
 //  control is the signed stream token, exactly as voice-twiml's control is the x-twilio-signature.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyStreamToken } from "../_shared/voice-stream-token.ts";
 import { parseTwilioFrame, decodeMediaPayload, TWILIO_MEDIA_FRAME_MS } from "../_shared/twilio-media.ts";
 import { planSttStream, openDeepgramSocket, extractDeepgramTranscript } from "../_shared/stt-router.ts";
+// #140 B3 — the live-call INTELLIGENCE layer. paige-stt is the ONE server-side home for a call's
+// verified {tenantId, callSid} (§18): the intelligence runs HERE, driven off the SAME Deepgram
+// finals we already broadcast, so it reuses that verified scope with no re-derivation and no new
+// edge fn. The heavy seams are wired below into the pure, dep-injected CallCopilot (§13/§32).
+import { recallSimilar } from "../_shared/prompt-forge.ts";
+import { retrieveTenantKnowledge } from "../_shared/studio-brain.ts";
+import { reviewBySpecialists, type SpecialistLens } from "../_shared/reasoning/review.ts";
+import { routedChatCompletion } from "../_shared/model-router.ts";
+import {
+  CallCopilot,
+  type CopilotDeps,
+  type CopilotEvent,
+  type FollowupDraft,
+  type WhisperCard,
+} from "../_shared/voice-copilot.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// EdgeRuntime.waitUntil shim — lets the end-of-call auto-draft + meter survive the socket close
+// (the isolate would otherwise be reclaimed once the WS is gone). Falls back to a no-op off-platform.
+const waitUntil = (p: Promise<unknown>): void => {
+  const wu = (globalThis as unknown as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil;
+  if (wu) wu(p);
+};
+
+// ── #140 B3 intelligence seams (wired to the EXISTING homes; §18 reuse) ──────────────────────────
+// The single-minded at-risk reviewer — a CUSTOM lens for reviewBySpecialists (§18: reuse the panel,
+// pass one churn/competitor/frustration lens rather than the design-review CORE_PANEL). It declares
+// its OWN strict-JSON contract (the panel's JSON_TAIL is not exported) matching parseVerdict.
+const AT_RISK_LENS: SpecialistLens = {
+  id: "at_risk",
+  agentId: "paige-voice-at-risk",
+  systemPrompt:
+    "You are Paige's live-call AT-RISK detector. You are given a rolling window of a live call " +
+    "transcript. Judge ONE thing: is the CLIENT showing signals they may leave, churn, or are " +
+    "dissatisfied? Signals include mentioning a competitor, expressing frustration or disappointment, " +
+    "asking to cancel or pause, demanding a discount under pressure, or clear disengagement. Do NOT " +
+    "flag ordinary questions, neutral discussion, or the coach's own words. Return STRICT JSON with " +
+    'exactly these keys: {"verdict": "SHIP" | "ITERATE" | "BLOCK", "blockers": string[], ' +
+    '"improvements": string[], "rationale": string}. Use verdict="BLOCK" for a STRONG at-risk signal, ' +
+    '"ITERATE" for a MILD or early signal, and "SHIP" when there is NO at-risk signal. Put the specific ' +
+    'signal as a short, plain phrase (no jargon) as the FIRST element of "blockers". rationale = one ' +
+    "sentence. Output ONLY the JSON object, no prose, no code fence.",
+};
+
+/** Extract a {subject?, body} follow-up from the model reply (fenced or prose-wrapped). Null when no
+ *  usable body — so a malformed draft degrades to "no draft_ready", never a fabricated one (§13). */
+function parseFollowupJson(raw: string): FollowupDraft | null {
+  if (!raw || typeof raw !== "string") return null;
+  const fenced = raw.replace(/```(?:json)?/gi, "").trim();
+  const start = fenced.indexOf("{");
+  const end = fenced.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  let obj: unknown;
+  try { obj = JSON.parse(fenced.slice(start, end + 1)); } catch { return null; }
+  if (!obj || typeof obj !== "object") return null;
+  const o = obj as Record<string, unknown>;
+  const body = typeof o.body === "string" ? o.body.trim() : "";
+  if (!body) return null;
+  const subject = typeof o.subject === "string" && o.subject.trim() ? o.subject.trim() : undefined;
+  return { body, ...(subject ? { subject } : {}) };
+}
+
 /**
- * Broadcast a transcript to a per-tenant Realtime topic via the stateless Realtime HTTP API
- * (no persistent channel to keep alive in a short-lived socket handler). B2 subscribes to
- * topic `voice-stt:<tenantId>:<callSid>`, event `transcript`. §9: the topic is keyed by the
- * token's tenant + call, so a subscriber only ever receives its own tenant's call audio.
+ * Build the real, tenant-scoped CopilotDeps for one call. EVERY seam call passes the token-verified
+ * tenantId EXPLICITLY (§9) — a JWT body tenant is never involved here; this runs service-role with
+ * the tenant paige-stt already proved. Each dep degrades honestly (returns empty/false/null) rather
+ * than throwing, so a missing key or a slow RPC never breaks the call (§13).
  */
-async function broadcastTranscript(
+function buildCopilotDeps(ctx: {
+  admin: SupabaseClient;
+  supabaseUrl: string;
+  serviceKey: string;
+  tenantId: string;
+  callSid: string;
+  streamSid: string;
+}): CopilotDeps {
+  const { admin, supabaseUrl, serviceKey, tenantId, callSid, streamSid } = ctx;
+  const topic = `voice-stt:${tenantId}:${callSid}`;
+  return {
+    // (1) WHISPER — L6 recall (prior produced artifacts) + tenant knowledge, merged by similarity.
+    recallContext: async (query: string): Promise<WhisperCard[]> => {
+      const cards: WhisperCard[] = [];
+      try {
+        const arts = await recallSimilar(query, tenantId, 3);
+        arts.forEach((a, i) => cards.push({
+          id: `mem-${i}`,
+          title: (a.user_intent || "Prior work").slice(0, 80),
+          body: (a.prompt_text || "").slice(0, 220),
+          source: "Prior work",
+          similarity: Number(a.similarity ?? 0),
+        }));
+      } catch (e) { console.error("[paige-stt] recallSimilar failed", (e as Error)?.message); }
+      try {
+        const chunks = await retrieveTenantKnowledge(tenantId, query, 3);
+        chunks.forEach((c, i) => cards.push({
+          id: `kb-${i}`,
+          title: (c.title || "From the knowledge base").slice(0, 80),
+          body: c.content.slice(0, 220),
+          source: "Knowledge base",
+          similarity: Number(c.similarity ?? 0),
+        }));
+      } catch (e) { console.error("[paige-stt] retrieveTenantKnowledge failed", (e as Error)?.message); }
+      return cards.sort((a, b) => b.similarity - a.similarity).slice(0, 3);
+    },
+    // Action bus — file (owner.task commitment, client.at_risk flag, owner.followup_email draft).
+    fileAction: async ({ kind, title, summary, contactId, payload, priority, dueAt }) => {
+      try {
+        const { data, error } = await admin.rpc("file_action", {
+          p_action_kind: kind,
+          p_title: title,
+          p_summary: summary ?? null,
+          p_contact_id: contactId ?? null,
+          p_payload: { ...(payload ?? {}), call_sid: callSid },
+          p_priority: priority ?? null,
+          p_due_at: dueAt ?? null,
+          p_created_by_agent: "paige_voice_copilot",
+          p_tenant_id: tenantId,
+        });
+        if (error) { console.error("[paige-stt] file_action failed", { code: error.code, message: error.message }); return { ok: false }; }
+        const d = data as { ok?: boolean; action_id?: string } | null;
+        return { ok: !!d?.ok, actionId: d?.action_id };
+      } catch (e) { console.error("[paige-stt] file_action threw", (e as Error)?.message); return { ok: false }; }
+    },
+    // Action bus — advance to "drafted" (owner.followup_email requires approval → lands a cs_draft).
+    advanceAction: async ({ actionId, toStatus, draftContent }) => {
+      try {
+        const { data, error } = await admin.rpc("advance_action", {
+          p_action_id: actionId,
+          p_to_status: toStatus,
+          p_draft_content: draftContent ?? null,
+          p_tenant_id: tenantId,
+        });
+        if (error) { console.error("[paige-stt] advance_action failed", { code: error.code, message: error.message }); return { ok: false }; }
+        const d = data as { ok?: boolean; approval_id?: string | null } | null;
+        return { ok: !!d?.ok, approvalId: d?.approval_id ?? null };
+      } catch (e) { console.error("[paige-stt] advance_action threw", (e as Error)?.message); return { ok: false }; }
+    },
+    // (3) AT_RISK — one custom lens over the rolling window (§17 Claude reasoning; never an open model).
+    scanAtRisk: async (window: string) => {
+      try {
+        const review = await reviewBySpecialists({
+          task:
+            "Assess whether the CLIENT on this live call is showing churn / at-risk signals: competitor " +
+            "mentions, frustration, dissatisfaction, cancellation or discount demands, or disengagement. " +
+            "Judge ONLY the client's risk of leaving.",
+          artifact: window,
+          lenses: [AT_RISK_LENS],
+          tenantId,
+        });
+        if (review.degraded) return null; // no real judgment → no fabricated flag (§13)
+        const v = review.verdicts.find((x) => !x.degraded);
+        const signal = (v?.blockers?.[0] || v?.improvements?.[0] || v?.rationale || "at-risk language").trim();
+        if (review.consensus === "BLOCK") return { flagged: true, level: "high", signal };
+        if (review.consensus === "ITERATE") return { flagged: true, level: "med", signal };
+        return { flagged: false, level: "low", signal: "" };
+      } catch (e) { console.error("[paige-stt] scanAtRisk failed", (e as Error)?.message); return null; }
+    },
+    // (4) AUTO-DRAFT — synthesize the follow-up (Claude reasoning; a draft, human-approved before send).
+    draftFollowup: async (transcript: string) => {
+      try {
+        const resp = await routedChatCompletion("doc_draft", {
+          messages: [
+            {
+              role: "system",
+              content:
+                "You draft a short, warm follow-up email FROM the coach/consultant/advisor TO the client, " +
+                "based on a call transcript. Capture what was discussed and any next steps or commitments. " +
+                "Direct, confident, human founder voice. Never use \"AI-powered\", \"streamline\", " +
+                "\"seamless\", or \"empower\". Return STRICT JSON: {\"subject\": string, \"body\": string}. " +
+                "Output ONLY the JSON object, no prose, no code fence.",
+            },
+            { role: "user", content: `Call transcript:\n${transcript.slice(0, 6000)}` },
+          ],
+          temperature: 0.4,
+          max_tokens: 700,
+        }, { tenant_id: tenantId, agent_id: "paige-voice-followup", job_kind: "doc_draft" });
+        return parseFollowupJson(resp?.choices?.[0]?.message?.content ?? "");
+      } catch (e) { console.error("[paige-stt] draftFollowup failed", (e as Error)?.message); return null; }
+    },
+    // Broadcast the 4 contract events on the SAME private topic B1 uses (§18 — no second channel).
+    broadcast: (event: CopilotEvent, payload: Record<string, unknown>) => {
+      void broadcastEvent(supabaseUrl, serviceKey, topic, event, payload);
+    },
+    // §17 — meter the call's B3 LLM usage once (same platform_usage_events shape as the B1 minute meter).
+    meter: (summary) => {
+      if (summary.llmOps <= 0 && summary.commitments <= 0) return; // nothing genuinely spent → no row (§13)
+      void admin.from("platform_usage_events").insert({
+        tenant_id: tenantId,
+        event_type: "voice_copilot_llm",
+        quantity: summary.llmOps,
+        unit: "operation",
+        metadata: {
+          call_sid: callSid,
+          stream_sid: streamSid,
+          cost_estimate_usd: summary.costEstimateUsd, // LABELED estimate, never a bill (§13)
+          whispers: summary.whispers,
+          at_risk_scans: summary.atRiskScans,
+          commitments: summary.commitments,
+          at_risk_flags: summary.atRiskFlags,
+          draft_filed: summary.draftFiled,
+          capped: summary.capped,
+        },
+      }).then(({ error }) => {
+        if (error) console.error("[paige-stt] copilot meter insert failed", error.message);
+      });
+    },
+  };
+}
+
+/**
+ * Broadcast an event to a per-tenant Realtime topic via the stateless Realtime HTTP API (no
+ * persistent channel to keep alive in a short-lived socket handler). B2 subscribes to topic
+ * `voice-stt:<tenantId>:<callSid>`; B1 emits event "transcript", B3 emits "whisper" | "commitment"
+ * | "at_risk" | "draft_ready" on the SAME topic (§18 — one channel, gated by the #557 RLS). §9: the
+ * topic is keyed by the token's tenant + call, so a subscriber only ever receives its own tenant's
+ * call intelligence.
+ */
+async function broadcastEvent(
   supabaseUrl: string,
   serviceKey: string,
   topic: string,
+  event: string,
   payload: Record<string, unknown>,
 ): Promise<void> {
   try {
     const res = await fetch(`${supabaseUrl.replace(/\/$/, "")}/realtime/v1/api/broadcast`, {
       method: "POST",
       headers: { "Content-Type": "application/json", apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
-      body: JSON.stringify({ messages: [{ topic, event: "transcript", payload }] }),
+      body: JSON.stringify({ messages: [{ topic, event, payload }] }),
     });
     if (!res.ok) {
-      console.error("[paige-stt] realtime broadcast failed", { status: res.status, topic });
+      console.error("[paige-stt] realtime broadcast failed", { status: res.status, topic, event });
     }
   } catch (e) {
-    console.error("[paige-stt] realtime broadcast threw", (e as Error)?.message);
+    console.error("[paige-stt] realtime broadcast threw", { event, message: (e as Error)?.message });
   }
 }
 
@@ -77,6 +287,11 @@ Deno.serve((req) => {
   const streamSecret = Deno.env.get("VOICE_STREAM_SECRET") ?? "";
   const admin = supabaseUrl && serviceKey ? createClient(supabaseUrl, serviceKey) : null;
 
+  // #140 B3 — the co-pilot intelligence layer is ON by default (the moat surface), killable via
+  // VOICE_COPILOT_ENABLED="false". The HARD per-call cost cap across ALL B3 LLM work is env-tunable.
+  const copilotEnabled = (Deno.env.get("VOICE_COPILOT_ENABLED") ?? "true").toLowerCase() !== "false";
+  const copilotCostCapUsd = Number(Deno.env.get("VOICE_COPILOT_COST_CAP_USD") ?? "0.5");
+
   const { socket, response } = Deno.upgradeWebSocket(req);
 
   // ── Per-connection state ────────────────────────────────────────────────────
@@ -89,6 +304,7 @@ Deno.serve((req) => {
   let mediaFrames = 0;
   const pendingAudio: Uint8Array[] = []; // buffer media that arrives before Deepgram opens
   let tornDown = false;
+  let copilot: CallCopilot | null = null; // #140 B3 — armed once the token gates the tenant (below)
 
   const closeTwilio = (code: number, reason: string) => {
     try {
@@ -150,6 +366,16 @@ Deno.serve((req) => {
         console.error("[paige-stt] meter insert threw", (e as Error)?.message);
       }
     }
+
+    // #140 B3 — end-of-call: synthesize the follow-up (→ cs_draft approval + draft_ready), settle any
+    // in-flight whisper/at-risk work, and meter B3 usage. Detached under EdgeRuntime.waitUntil so it
+    // SURVIVES the socket close (the isolate would otherwise be reclaimed). finalize() is idempotent
+    // and never throws (§13), so a second teardown (error+close) can't double-draft or double-meter.
+    if (copilot) {
+      waitUntil(
+        copilot.finalize().catch((e) => console.error("[paige-stt] copilot finalize error", (e as Error)?.message)),
+      );
+    }
   };
 
   socket.onopen = () => {
@@ -187,6 +413,18 @@ Deno.serve((req) => {
         callSid = v.callSid;
         console.log("[paige-stt] token OK — tenant scoped", { tenantId, callSid, streamSid });
 
+        // #140 B3 — arm the co-pilot with the just-verified {tenantId, callSid} (§9: derived FROM
+        // the token, never a body). All heavy work rides the pure CallCopilot; seams are wired to
+        // their existing homes and are tenant-scoped to THIS tenant. Degrades honestly if a seam key
+        // is absent (recall → [], scan → null, draft → null), so it never breaks the call (§13).
+        if (copilotEnabled && admin) {
+          copilot = new CallCopilot(
+            buildCopilotDeps({ admin, supabaseUrl, serviceKey, tenantId, callSid, streamSid }),
+            { costCapUsd: copilotCostCapUsd },
+          );
+          console.log("[paige-stt] voice co-pilot armed (B3)", { tenantId, callSid, costCapUsd: copilotCostCapUsd });
+        }
+
         // ── open ONE Deepgram Nova-3 stream via the router (§34) ──
         const plan = planSttStream("nova-realtime", {});
         if (!plan.ok) {
@@ -220,7 +458,7 @@ Deno.serve((req) => {
           if (!t || !admin) return;
           // §9: topic scoped to the token's tenant + call — B2 subscribes here.
           const topic = `voice-stt:${tenantId}:${callSid}`;
-          void broadcastTranscript(supabaseUrl, serviceKey, topic, {
+          void broadcastEvent(supabaseUrl, serviceKey, topic, "transcript", {
             call_sid: callSid,
             stream_sid: streamSid,
             transcript: t.transcript,
@@ -229,6 +467,12 @@ Deno.serve((req) => {
             confidence: t.confidence ?? null,
             at: new Date().toISOString(),
           });
+          // #140 B3 — feed FINAL utterances to the intelligence layer (interim hypotheses never drive
+          // a bus write or an LLM call). onTranscript returns immediately; heavy work is fired detached
+          // so the audio/WS path stays light. Never throws (§13).
+          if (copilot && (t.isFinal || t.speechFinal)) {
+            copilot.onTranscript({ transcript: t.transcript, isFinal: t.isFinal, speechFinal: t.speechFinal });
+          }
         };
         deepgram.onerror = (e) => {
           // §32: loud, never silent. A Deepgram fault degrades the co-pilot, not the call —
