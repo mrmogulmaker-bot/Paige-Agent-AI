@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -292,6 +293,7 @@ export default function ClientsConversations() {
   const listRef = useRef<HTMLDivElement>(null);         // roving-focus target for keyboard nav
   const paneRef = useRef<HTMLDivElement>(null);         // Enter focuses the thread pane
   useEffect(() => { try { localStorage.setItem(DENSITY_STORAGE_KEY, density); } catch { /* private mode */ } }, [density]);
+  useEffect(() => { setContactDrawerOpen(false); }, [selectedKey]);
 
   // C-1.5 threads-as-source-of-truth
   const [dbThreads, setDbThreads] = useState<DbThread[]>([]);
@@ -301,6 +303,7 @@ export default function ClientsConversations() {
   const [matchedKeys, setMatchedKeys] = useState<Set<string> | null>(null); // null = no active search
   const [searching, setSearching] = useState(false);
   const [railOpen, setRailOpen] = useState(true);
+  const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
   const [suppressions, setSuppressions] = useState<Suppression[]>([]);
   // §43 — compose a NEW outbound thread (the surface is a tool, not just a viewer).
   const [composeOpen, setComposeOpen] = useState(false);
@@ -1483,10 +1486,18 @@ export default function ClientsConversations() {
                   </AlertDialog>
                 </div>
                 {selected.hasDraft && <StatePill state="building">Draft ready</StatePill>}
+                <Button
+                  variant="ghost" size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] xl:hidden"
+                  onClick={() => setContactDrawerOpen(true)}
+                  aria-label="Show contact details"
+                >
+                  <PanelRight className="h-4 w-4" />
+                </Button>
                 {!railOpen && (
                   <Button
                     variant="ghost" size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    className="hidden h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] xl:inline-flex"
                     onClick={() => setRailOpen(true)} aria-label="Show contact panel"
                   >
                     <PanelRight className="h-4 w-4" />
@@ -1836,6 +1847,26 @@ export default function ClientsConversations() {
           </div>
         )}
       </div>
+      )}
+
+      {selected && (
+        <Sheet open={contactDrawerOpen} onOpenChange={setContactDrawerOpen}>
+          <SheetContent side="right" className="flex h-full w-[min(26rem,100vw)] max-w-none flex-col gap-0 p-0">
+            <SheetTitle className="sr-only">Contact details for {selected.name}</SheetTitle>
+            <ContactCardRail
+              contact={selectedThread?.clients ?? null}
+              channel={selected.channel}
+              toAddress={selected.toAddress}
+              recentMessages={selected.messages}
+              labels={selectedThread?.labels ?? []}
+              suppressions={suppressions}
+              userId={userId}
+              tenantId={tenantIdRef.current}
+              onClose={() => setContactDrawerOpen(false)}
+              onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
+            />
+          </SheetContent>
+        </Sheet>
       )}
 
       {/* §43 — compose a NEW outbound thread (reuses the send-message seam + canonical
