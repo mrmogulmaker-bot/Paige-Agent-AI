@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
-import { Globe2, Mail } from "lucide-react";
+import { Copy, Globe2, Mail, MessageSquare } from "lucide-react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { SectionCard, StatePill } from "@/components/ui/page";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 export type TenantDomainIdentity = {
   tenant_id: string;
@@ -32,10 +35,8 @@ export function TenantDomainIdentityCard() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data, error } = await (supabase as any).rpc("resolve_tenant_domain_identity");
       if (cancelled) return;
-      if (error) {
-        setLoadError(true);
-        setIdentity(null);
-      } else {
+      if (error) setLoadError(true);
+      else {
         const row = Array.isArray(data) ? data[0] : data;
         setIdentity((row as TenantDomainIdentity | null) ?? null);
       }
@@ -44,46 +45,56 @@ export function TenantDomainIdentityCard() {
     return () => { cancelled = true; };
   }, []);
 
+  const copy = async (value: string, label: string) => {
+    await navigator.clipboard.writeText(value);
+    toast.success(`${label} copied`);
+  };
+  const outboundReady = Boolean(identity && ["verified", "outbound_ready"].includes(identity.default_email_status));
+
   return (
     <SectionCard
       icon={Globe2}
-      title="Your included addresses"
-      description="Paige gives every workspace a website and an email address immediately. Your own domains are optional."
-      actions={loading ? <Skeleton className="h-5 w-20 rounded-full" /> : loadError ? <StatePill state="error">Needs attention</StatePill> : identity && ["verified", "outbound_ready"].includes(identity.default_email_status) ? <StatePill state="success">Ready to send</StatePill> : <StatePill state="pending">Reserved</StatePill>}
+      title="Included website and email"
+      description="Every workspace receives both addresses. Your own domains remain optional."
+      actions={
+        loading ? <Skeleton className="h-5 w-24 rounded-full" />
+        : loadError ? <StatePill state="error">Action needed</StatePill>
+        : outboundReady ? <StatePill state="success">Ready to send</StatePill>
+        : <StatePill state="pending">Finishing setup</StatePill>
+      }
     >
-      {loading ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          <Skeleton className="h-28 rounded-xl" />
-          <Skeleton className="h-28 rounded-xl" />
-        </div>
-      ) : identity ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-xl border border-border/70 bg-muted/25 p-4">
-            <div className="min-w-0">
-              <div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                <Globe2 className="h-3.5 w-3.5" /> Website
-              </div>
-              <p className="truncate font-medium text-foreground">{identity.default_web_hostname}</p>
-              <p className="mt-1 text-xs text-muted-foreground">Reserved for this workspace. Paige will mark it live after wildcard routing is activated.</p>
+      {loading ? <Skeleton className="h-20 rounded-xl" /> : identity ? (
+        <div className="divide-y divide-border/60 rounded-xl border border-border/70">
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <Globe2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-muted-foreground">Website reserved</p>
+              <p className="truncate text-sm font-medium text-foreground">{identity.default_web_hostname}</p>
             </div>
+            <Button variant="outline" size="sm" onClick={() => void copy(identity.default_web_hostname, "Website address")}>
+              <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy
+            </Button>
           </div>
-
-          <div className="rounded-xl border border-border/70 bg-muted/25 p-4">
-            <div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              <Mail className="h-3.5 w-3.5" /> Email
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-muted-foreground">{outboundReady ? "Email ready for outbound Conversations" : "Email reserved — activation in progress"}</p>
+              <p className="truncate text-sm font-medium text-foreground">{identity.default_email_sender}</p>
             </div>
-            <p className="truncate font-medium text-foreground">{identity.default_email_sender}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {identity.default_email_status === "verified"
-                ? "Your verified custom sender is active in Conversations."
-                : identity.default_email_status === "outbound_ready"
-                  ? "Your included Paige sender is active for outbound Conversations."
-                  : "Your address is reserved while Paige finishes activating the sending channel."}
-            </p>
+            <Button variant="outline" size="sm" onClick={() => void copy(identity.default_email_sender, "Email address")}>
+              <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy
+            </Button>
+            <Button asChild variant="gold" size="sm" disabled={!outboundReady}>
+              <Link to="/admin/clients-hub/conversations?compose=1">
+                <MessageSquare className="mr-1.5 h-3.5 w-3.5" /> Message a client
+              </Link>
+            </Button>
           </div>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">{loadError ? "Paige couldn’t read this workspace’s domain status. Try again or open Email setup." : "Paige is reserving this workspace’s website and email identity."}</p>
+        <p className="text-sm text-muted-foreground">
+          {loadError ? "Paige couldn’t read this workspace’s address status. Refresh or try again shortly." : "Paige is reserving this workspace’s included addresses."}
+        </p>
       )}
     </SectionCard>
   );
