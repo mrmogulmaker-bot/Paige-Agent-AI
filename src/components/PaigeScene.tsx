@@ -88,7 +88,7 @@ function supportsWebGL() {
 }
 
 /**
- * Paige's orbital crown — three restrained paths lifted above the facial plane
+ * Paige's orbital crown — two restrained paths lifted above the facial plane
  * so her face stays unobstructed. The inner gold orbit carries the
  * visual weight; violet adds depth; the outer pearl orbit is a quiet halo.
  *
@@ -112,23 +112,12 @@ const ORBIT_RINGS = [
     r: 2.15,
     tilt: [1.36, -0.12, -0.38] as [number, number, number],
     tube: 0.006,
-    color: "#C9B8E8",
-    emissive: 1.45,
-    op: 0.5,
+    color: OFFWHITE,
+    emissive: 1.35,
+    op: 0.46,
     spin: -0.075,
     drift: 0.014,
     phase: 2.1,
-  },
-  {
-    r: 2.6,
-    tilt: [1.62, 0.16, 0.12] as [number, number, number],
-    tube: 0.0035,
-    color: OFFWHITE,
-    emissive: 1.15,
-    op: 0.28,
-    spin: 0.045,
-    drift: 0.01,
-    phase: 4.2,
   },
 ];
 
