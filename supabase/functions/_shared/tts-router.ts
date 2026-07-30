@@ -69,19 +69,22 @@ export const OPENAI_TTS_VOICES = [
 ] as const;
 export type OpenAiTtsVoice = (typeof OPENAI_TTS_VOICES)[number];
 
-/** The base default voice when a tenant has authored none and no tier default applies. */
-export const DEFAULT_TTS_VOICE: OpenAiTtsVoice = "alloy";
+/** The base default voice when a tenant has authored none and no tier default applies.
+ *  #166 — "nova" is Paige's voice: warm, feminine, on-brand (§3). Every tenant hears her by
+ *  default until they author their own (§7); the prior neutral "alloy" read as masculine on prod. */
+export const DEFAULT_TTS_VOICE: OpenAiTtsVoice = "nova";
 
 // Per-subscription-tier default voice (§7 — a sane default the tenant inherits until they author
 // their own). Keyed by platform plan slug substrings; a real, non-placeholder map. Every value is a
-// valid catalog voice. A tenant's own paige_voice always wins over these (§7).
+// valid catalog voice. A tenant's own paige_voice always wins over these (§7). #166: nova is Paige's
+// default voice at EVERY tier; #167 (Wave C) layers the tenant-facing picker + tier gating on top.
 const TIER_DEFAULT_VOICE: Record<string, OpenAiTtsVoice> = {
-  academy: "nova", // higher tier → the warmer, more premium default
+  academy: "nova",
   enterprise: "nova",
-  agency: "sage",
-  practice: "alloy",
-  starter: "alloy",
-  free: "alloy",
+  agency: "nova",
+  practice: "nova",
+  starter: "nova",
+  free: "nova",
 };
 
 /** Pure: resolve the default voice for a platform plan slug (case-insensitive substring match). */

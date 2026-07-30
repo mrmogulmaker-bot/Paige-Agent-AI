@@ -50,17 +50,17 @@ ok("unknown tier resolves undefined", resolveTtsRoute("nope" as any) === undefin
 console.log("voice validation + defaults");
 ok("alloy is valid", isValidVoice("alloy"));
 ok("garbage is invalid", !isValidVoice("robo-9000"));
-ok("base default is alloy", DEFAULT_TTS_VOICE === "alloy");
+ok("base default is nova (#166 — Paige's voice)", DEFAULT_TTS_VOICE === "nova");
 ok("academy tier default is nova", tierDefaultVoice("academy_pro") === "nova");
-ok("agency tier default is sage", tierDefaultVoice("agency_growth") === "sage");
-ok("unknown plan falls to base default", tierDefaultVoice("mystery_plan") === "alloy");
-ok("null plan falls to base default", tierDefaultVoice(null) === "alloy");
+ok("agency tier default is nova (#166)", tierDefaultVoice("agency_growth") === "nova");
+ok("unknown plan falls to base default", tierDefaultVoice("mystery_plan") === "nova");
+ok("null plan falls to base default", tierDefaultVoice(null) === "nova");
 
 console.log("resolveVoiceId precedence");
 ok("valid requested wins", resolveVoiceId({ requested: "nova", playbookVoice: "echo", planSlug: "academy" }).voice === "nova");
 ok("invalid requested degrades to playbook", resolveVoiceId({ requested: "custom-x", playbookVoice: "echo", planSlug: "academy" }).voice === "echo");
 ok("no requested/playbook uses tier default", resolveVoiceId({ requested: null, playbookVoice: null, planSlug: "academy" }).voice === "nova");
-ok("nothing set uses base default", resolveVoiceId({}).voice === "alloy");
+ok("nothing set uses base default", resolveVoiceId({}).voice === "nova");
 ok("requested source reported", resolveVoiceId({ requested: "nova" }).source === "requested");
 
 console.log("cache key (SHA-256, deterministic + distinct)");
