@@ -67,6 +67,9 @@ function coercePlaybook(raw: unknown): Playbook | null {
     portal: isRecord(raw.portal) && Array.isArray((raw.portal as { modules?: unknown }).modules)
       ? (raw.portal as Playbook["portal"])
       : generalDefault.portal,
+    // Preserve the tenant's authored chat-playback voice (#131) so a full playbook_config
+    // round-trips it; the server (paige-tts) validates it against the OpenAI voice catalog.
+    ...(typeof raw.paige_voice === "string" ? { paige_voice: raw.paige_voice } : {}),
   };
 }
 

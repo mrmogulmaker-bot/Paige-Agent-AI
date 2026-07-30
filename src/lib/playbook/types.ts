@@ -76,4 +76,8 @@ export interface Playbook {
   journey: JourneyStage[];
   intake: IntakeField[];
   portal: PortalConfig;
+  /** The tenant's chosen OpenAI TTS voice for chat playback (#131), e.g. "alloy" / "nova".
+   *  Tenant-authored config-as-data (§7/§10) — written via set_tenant_paige_voice, read by the
+   *  paige-tts edge function. Absent ⇒ paige-tts falls back to the subscription-tier default. */
+  paige_voice?: string;
 }

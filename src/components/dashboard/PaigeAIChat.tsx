@@ -32,6 +32,7 @@ import { PanelLeft } from "lucide-react";
 import { useChatDocumentUpload, type AttachedDocument, type AttachedDocKind } from "@/hooks/useChatDocumentUpload";
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
+import { MessageAudioButton } from "@/components/chat/MessageAudioButton";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
@@ -770,6 +771,11 @@ const PaigeAIChatInner = ({
                       onRetry={
                         message.role === "assistant" && !enableHistory && index === messages.length - 1 && !isLoading
                           ? () => handleRetry(message.id)
+                          : undefined
+                      }
+                      audioSlot={
+                        message.role === "assistant"
+                          ? <MessageAudioButton messageId={message.id} content={message.content} />
                           : undefined
                       }
                       feedback={
