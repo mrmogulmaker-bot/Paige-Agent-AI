@@ -629,7 +629,7 @@ export default function PaigeHome() {
           whileInView="show"
           viewport={{ once: true, margin: "-80px" }}
           variants={stagger}
-          className="relative z-10 flex min-h-[700px] flex-col justify-end"
+          className="relative z-10 flex min-h-[900px] flex-col justify-start pt-[330px] md:pt-[430px]"
         >
           <motion.div variants={rise} className="mb-8 max-w-2xl rounded-[2rem] border border-white/[0.06] bg-[#160b2d]/58 p-7 shadow-2xl shadow-black/20 backdrop-blur-sm md:p-9">
             <div className="mb-4 text-[12px] font-medium uppercase tracking-[0.22em] text-[#F0C86A]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>The workspace</div>
