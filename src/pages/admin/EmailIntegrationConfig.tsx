@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { EmailDomainsPanel } from "@/components/admin/EmailDomainsPanel";
+import { TenantDomainIdentityCard } from "@/components/admin/TenantDomainIdentityCard";
 import { resolveFunctionError } from "@/lib/integrations/connectError";
 import { toast } from "sonner";
 import { Mail, Inbox, KeyRound, Loader2, Link as LinkIcon, Unlink } from "lucide-react";
@@ -224,15 +225,17 @@ export default function EmailIntegrationConfig() {
         variant="plain"
         icon={Mail}
         title="Email"
-        description="Connect a sending domain so Paige can send and receive email from your unified inbox — under your own brand."
+        description="Your Paige website and email are ready now. Connect your own domain or mailbox whenever you want."
         backHref="/admin/integrations"
       />
+
+      <TenantDomainIdentityCard />
 
       {/* Live connection state — read straight from channel_connectors (§13). */}
       <SectionCard
         icon={Inbox}
         title="Email connection"
-        description="Your inbox goes live for sending the moment a domain below is verified."
+        description="Your included Paige email works immediately in Conversations. Custom domains and mailboxes are optional upgrades."
         actions={
           loading ? (
             <Skeleton className="h-5 w-40 rounded-full" />
@@ -248,13 +251,11 @@ export default function EmailIntegrationConfig() {
         ) : connected ? (
           <p className="text-sm text-muted-foreground">
             Paige sends as <span className="font-medium text-foreground">{connector?.from_address}</span>.
-            Replies from your clients land in the inbox once your domain's mail routing (MX / inbound) is
-            pointed at Paige — sending is live now; inbound receipt turns on once that routing is set.
+            You can start an outbound conversation now. If this is your included Paige address, no tenant DNS setup is required.
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            No verified sending domain yet. Add and verify your domain below — as soon as it verifies,
-            your inbox can send and Paige composes on your behalf.
+            Paige is finishing the included email channel for this workspace. Refresh in a moment—custom domain setup is not required.
           </p>
         )}
       </SectionCard>
@@ -263,11 +264,11 @@ export default function EmailIntegrationConfig() {
       <section className="space-y-4">
         <div>
           <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-            <Mail className="h-4 w-4 text-muted-foreground" /> Sending domain
+            <Mail className="h-4 w-4 text-muted-foreground" /> Use your own email domain (optional)
           </h2>
           <p className="text-sm text-muted-foreground">
-            Verify SPF, DKIM, and DMARC for your domain so email sends land from your brand and stay out
-            of spam. Verifying a domain connects your inbox automatically.
+            Your included Paige address stays available out of the box. Add your own domain when you want
+            branded sending; Paige will provide and verify the SPF, DKIM, and DMARC records.
           </p>
         </div>
         <EmailDomainsPanel />
