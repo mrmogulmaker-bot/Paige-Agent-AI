@@ -84,11 +84,17 @@ export function TenantDomainIdentityCard() {
             <Button variant="outline" size="sm" onClick={() => void copy(identity.default_email_sender, "Email address")}>
               <Copy className="mr-1.5 h-3.5 w-3.5" /> Copy
             </Button>
-            <Button asChild variant="gold" size="sm" disabled={!outboundReady}>
-              <Link to="/admin/clients-hub/conversations?compose=1">
-                <MessageSquare className="mr-1.5 h-3.5 w-3.5" /> Message a client
-              </Link>
-            </Button>
+            {outboundReady ? (
+              <Button asChild variant="gold" size="sm">
+                <Link to="/admin/clients-hub/conversations?compose=1">
+                  <MessageSquare className="mr-1.5 h-3.5 w-3.5" /> Message a client
+                </Link>
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" disabled>
+                <MessageSquare className="mr-1.5 h-3.5 w-3.5" /> Activating
+              </Button>
+            )}
           </div>
         </div>
       ) : (
