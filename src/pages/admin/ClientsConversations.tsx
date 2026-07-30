@@ -284,6 +284,7 @@ export default function ClientsConversations() {
 
   // Composer state (reply into the selected thread)
   const [composeChannel, setComposeChannel] = useState<ChannelType | "">("");
+  const [composeConnectorId, setComposeConnectorId] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   // Latest body, so the dictation callback appends onto current text without a
@@ -330,6 +331,15 @@ export default function ClientsConversations() {
   useEffect(() => {
     const v = searchParams.get("filter");
     if (v && (INBOX_VIEWS as string[]).includes(v)) setView(v as InboxView);
+  }, [searchParams]);
+
+  // Command Center and other Paige-governed entry points can open the ONE
+  // existing compose surface directly; no duplicate quick-email modal.
+  useEffect(() => {
+    if (searchParams.get("compose") === "1") {
+      setComposeContact(null);
+      setComposeOpen(true);
+    }
   }, [searchParams]);
 
   // ── message pull (500-row) + connectors + composer resources (R2: one reconciled load) ─
@@ -620,8 +630,15 @@ export default function ClientsConversations() {
   // Default the composer channel to the thread's channel when a connector supports it.
   useEffect(() => {
     if (!selected) return;
-    const supported = activeConnectors.some((c) => c.channel_type === selected.channel);
-    setComposeChannel(supported ? selected.channel : activeConnectors[0]?.channel_type ?? "");
+    const threadConnector = activeConnectors.find(
+      (c) => c.id === selected.connectorId && c.channel_type === selected.channel,
+    );
+    const fallbackConnector = activeConnectors.find((c) => c.channel_type === selected.channel)
+      ?? activeConnectors[0]
+      ?? null;
+    const chosenConnector = threadConnector ?? fallbackConnector;
+    setComposeConnectorId(chosenConnector?.id ?? "");
+    setComposeChannel(chosenConnector?.channel_type ?? "");
     setEditingDraftId(null);
     setSubject("");
     setBody("");
@@ -631,11 +648,6 @@ export default function ClientsConversations() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "end" });
   }, [selectedKey, selected?.messages.length, reduce]);
-
-  const connectorFor = useCallback(
-    (channel: ChannelType | "") => activeConnectors.find((c) => c.channel_type === channel) ?? null,
-    [activeConnectors],
-  );
 
   // ── Thread-state mutations ──────────────────────────────────────────────────────────
   const optimisticThread = (id: string, patch: Partial<DbThread>) =>
@@ -920,7 +932,8 @@ export default function ClientsConversations() {
 
   // ── (b)+(c) ONE send body builder + ONE dispatch that reads outcome (§37) ────────
   const buildSendBody = useCallback((overrides: { scheduled_for?: string } = {}) => {
-    const conn = connectorFor(composeChannel);
+    const conn = activeConnectors.find((c) => c.id === composeConnectorId && c.channel_type === composeChannel) ?? null;
+    if (!conn) throw new Error("Choose an active sending address.");
     const html = composeChannel === "email" ? bodyWithSignature(body.trim()) : body.trim();
     return {
       channel: composeChannel,
@@ -929,12 +942,12 @@ export default function ClientsConversations() {
       body: html,
       contact_id: selected!.contactId ?? undefined,
       thread_key: selected!.key,
-      connector_id: conn?.id ?? selected!.connectorId ?? undefined,
+      connector_id: conn.id,
       message_id: editingDraftId ?? undefined,
       attachments: attachments.length ? attachments : undefined,      // contract §2
       ...(overrides.scheduled_for ? { scheduled_for: overrides.scheduled_for } : {}),
     };
-  }, [composeChannel, connectorFor, bodyWithSignature, body, selected, subject,
+  }, [composeChannel, composeConnectorId, activeConnectors, bodyWithSignature, body, selected, subject,
       editingDraftId, attachments]);
 
   const dispatchSend = useCallback(async (overrides: { scheduled_for?: string } = {}) => {
@@ -1515,18 +1528,28 @@ export default function ClientsConversations() {
                     )}
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <Select value={composeChannel} onValueChange={(v) => setComposeChannel(v as ChannelType)}>
-                        <SelectTrigger className="h-9 w-[160px]">
-                          <SelectValue placeholder="Channel" />
+                      <Select
+                        value={composeConnectorId}
+                        onValueChange={(id) => {
+                          const connector = activeConnectors.find((c) => c.id === id);
+                          setComposeConnectorId(id);
+                          setComposeChannel(connector?.channel_type ?? "");
+                        }}
+                      >
+                        <SelectTrigger className="h-9 min-w-[220px]">
+                          <SelectValue placeholder="Sending address" />
                         </SelectTrigger>
                         <SelectContent>
                           {activeConnectors.map((c) => {
                             const Icon = CHANNEL_ICON[c.channel_type];
                             return (
-                              <SelectItem key={c.id} value={c.channel_type}>
+                              <SelectItem key={c.id} value={c.id}>
                                 <span className="flex items-center gap-2">
                                   <Icon className="h-3.5 w-3.5" />
-                                  {c.display_name?.trim() || CHANNEL_LABEL[c.channel_type]}
+                                  <span>
+                                    {c.display_name?.trim() || CHANNEL_LABEL[c.channel_type]}
+                                    {c.from_address ? <span className="ml-1.5 text-xs text-muted-foreground">· {c.from_address}</span> : null}
+                                  </span>
                                 </span>
                               </SelectItem>
                             );
@@ -1751,7 +1774,7 @@ export default function ClientsConversations() {
                       </span>
                       <Button
                         variant="gold" size="sm" onClick={send}
-                        disabled={sending || drafting || uploading || !body.trim() || !selected.toAddress}
+                        disabled={sending || drafting || uploading || !composeConnectorId || !body.trim() || !selected.toAddress}
                         className="h-9"
                       >
                         {sending
