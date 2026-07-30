@@ -247,3 +247,32 @@ follow-up not a silent flip; §13).
 headless; owed to a capable session / the owner. **Follow-ups:** #568 (handle-inbound-sms `.or()`
 siblings ~L144/L263), #573 (background the pre-bridge voice-row write via `EdgeRuntime.waitUntil` for
 call-connect latency). **§49 Wave B COMPLETE** (Wave A #166/#170 + Wave B #168/#169/#171 all shipped).
+
+## URGENT §37 hotfix · #172 — create_contact invalid lifecycle default 'lead' → 23514 on every chat add (2026-07-30)
+Merged PR #302 (squash 2bdde8a). Owner hit live 2026-07-30: Paige's chat "add a contact" (Tashia
+Anderson) failed; Paige degraded HONESTLY (clear error + manual fallback) — a §13 win we explicitly
+KEPT, not a bug. **Root cause (real prod evidence, §32 pre-merge diagnosis):** `create_contact`'s
+`p_lifecycle_stage` defaulted to `'lead'` and `COALESCE(NULLIF(...,''), 'lead')` — but
+`clients_lifecycle_stage_chk` only allows `new_lead|qualified|nurturing|hot_lead|negotiating|won|
+client_active|client_paused|client_churned|client_funded|client_alumni`. `'lead'` was NEVER valid →
+23514 on every insert that fell back to the default. **Owner's hypothesis (new #169 UNIQUE indexes)
+was DISPROVEN** — no tenant-scoped unique index exists yet (deferred to #570); the check constraint
+was the real culprit. Migration 20260730170000 `CREATE OR REPLACE`s the live 15-arg body changing
+ONLY the two `'lead'` literals → `'new_lead'` (in-place, no overload; §9 gates + email-idempotency
+pre-select + audit insert + grants all preserved byte-for-byte). **§37 producer sweep in the SAME
+PR** — the value-fix in the RPC default alone would NOT have fixed the reported bug: the adversarial
+verifier's producer inventory found `paige-ai-chat crm_create_contact` (the REAL chat path) passes
+`'lead'` EXPLICITLY, bypassing the default. Fixed the literal in all 5 explicit producers:
+`paige-ai-chat:6357` (`?? "new_lead"`), `growth-process-submission:388`, `handle-inbound-email:308`,
+`growth-inbound:88`, `paige-bridge:443` — each tagged `// #172`. **§32 PERSISTED-APPLY confirmed live
+on prod (ref xygzykjyynhzqytbqnzu):** schema_migrations advanced to `20260730170000`; live
+`create_contact` body uses `'new_lead'` with zero bare-`'lead'` default remaining (pg_get_functiondef);
+`git diff db-live..main -- migrations` = 0. **§32 PERSISTED-DEPLOY (5 edge fns):** deploy-edge-functions
+moved `edge-live`→2bdde8a; `git diff edge-live..main` for all 5 fn dirs = 0. Blocking CI green (ci +
+Security Audit + migration-lint). **OWED (§32, headless):** the live "Paige adds a contact successfully"
+end-to-end reproduce — needs a capable/owner session; static + persisted-apply proof done, live JWT walk
+not driven here. **Follow-ups filed:** #575 (complete-signup writes invalid lifecycle `'qualifying'`/
+`'self_serve'` + tier `'btf_interested'`/`'self_serve'` → 23514, possible broken signup path), #576
+(`handle_new_user()` trigger inserts `lifecycle_stage='lead'` inside a swallow → silently drops the
+signup auto-contact), #577 (stale lifecycle-vocabulary sweep on UPDATE + search paths). §49 Wave C #167
+(#563 voice picker) remains owner-directed — NOT auto-started.
