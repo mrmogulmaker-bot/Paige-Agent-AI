@@ -218,20 +218,14 @@ export function OwnerWelcome({ tenantId, accountType, ownerName, initialState, o
 
   return (
     <SectionCard className="overflow-hidden">
-      {/* Warm masthead in Paige's voice — the first thing a new owner reads. */}
-      <div className="flex items-start gap-4 border-b border-border/60 bg-primary/[0.04] px-5 py-5">
-        <PaigeMark className="h-11 w-11 shrink-0" />
-        <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Welcome to Paige
-          </div>
-          <h2 className="mt-0.5 font-display text-xl font-semibold leading-tight text-foreground">
-            Your workspace is ready{greetingName}.
+      <div className="flex items-center gap-3 border-b border-border/60 px-5 py-3">
+        <PaigeMark className="h-8 w-8 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display text-base font-semibold text-foreground">
+            Put Paige to work{greetingName}
           </h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            I'm Paige — I run the front and back of your practice: onboarding the people you serve,
-            surfacing who needs you, and drafting your next move. Here's the shortest path to putting
-            me to work. Do them in any order.
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Complete these working connections in any order. Every action opens the exact surface that owns it.
           </p>
         </div>
       </div>
