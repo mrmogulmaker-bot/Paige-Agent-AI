@@ -31,7 +31,7 @@ const WORKSPACE_SCALE = 1.16;
 const LATE_SCALE = 0.5;
 // Local Y of her head in the centered model (normalized height 3.4 → top ≈ 1.7).
 // The orbital rings sit here. Tune to raise/lower the ring plane on her head.
-const HEAD_Y = 0.94;
+const HEAD_Y = 1.34;
 // On phones she's shrunk so she form-fits the narrow viewport instead of
 // filling it the way she does on a laptop.
 const MOBILE_SCALE = 0.66;
@@ -88,8 +88,8 @@ function supportsWebGL() {
 }
 
 /**
- * Paige's orbital crown — three restrained, dimensional paths that read as one
- * identity mark instead of unrelated hoops. The inner gold orbit carries the
+ * Paige's orbital crown — three restrained paths lifted above the facial plane
+ * so her face stays unobstructed. The inner gold orbit carries the
  * visual weight; violet adds depth; the outer pearl orbit is a quiet halo.
  *
  * Each path precesses on a different axis and speed. Motion remains subtle and
