@@ -61,12 +61,12 @@ const STANDALONE_STEPS: Step[] = [
   },
   {
     key: "add_client",
-    label: "Add your first client",
+    label: "Add and message your first client",
     description:
-      "Bring someone in and Paige starts working both sides — onboarding them and surfacing your next move here.",
-    href: "/admin/clients",
+      "Create the client inside Conversations, write the first email, and keep every reply in the same thread.",
+    href: "/admin/clients-hub/conversations?compose=1",
     icon: UserPlus,
-    cta: "Add your first client",
+    cta: "Start a conversation",
   },
   {
     key: "meet_paige",
