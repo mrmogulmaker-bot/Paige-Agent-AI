@@ -112,7 +112,8 @@ export async function openaiImage(input: OpenAIImageInput): Promise<ProviderCall
 export interface OpenAISpeechInput {
   /** The text to synthesize. Caller is responsible for length capping (OpenAI hard limit 4096). */
   input: string;
-  /** OpenAI voice id (e.g. "alloy"). Defaults to "alloy" — the TTS router resolves the real voice. */
+  /** OpenAI voice id (e.g. "nova"). Defaults to "nova" (Paige's voice, #166) — the TTS router
+   *  normally resolves the real per-tenant voice; this is only the bare-wrapper fallback. */
   voice?: string;
   /** TTS model. Defaults to gpt-4o-mini-tts (the cheap, high-quality default). */
   model?: string;
@@ -135,7 +136,7 @@ export async function openaiSpeech(input: OpenAISpeechInput): Promise<Response> 
     headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
     body: JSON.stringify({
       model: input.model ?? "gpt-4o-mini-tts",
-      voice: input.voice ?? "alloy",
+      voice: input.voice ?? "nova",
       input: input.input,
       response_format: input.format ?? "mp3",
     }),
