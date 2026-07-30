@@ -218,3 +218,32 @@ smart routing) built by the crew, in the worktree — integration deferred to a 
 the RPC is live. Follow-ups: #570 (#169-B — tenant-scoped partial UNIQUE indexes on
 clients(email|phone) + §37 ON-CONFLICT hardening of all ~13 contact-creation producers — the
 architectural backstop), #571 (archived-thread smart-route edge), #572 (pipeline dup-key race).
+
+## §49 Wave B · #168 (voice→Conversations) + #171 (composer reorder) (2026-07-30)
+Merged PR #300 (squash c0c3cbf). **§32 edge-fn PERSISTED-DEPLOY proven** — deploy-edge-functions
+moved `edge-live`→c0c3cbf, `git diff edge-live..main` for voice-twiml + twilio-status-callback = 0.
+**#168 — voice is now a first-class Conversations channel:** every outbound + inbound call writes a
+`channel_type='voice'` message into the contact's UNIFIED thread (coalesced via the same thread_key +
+`trg_messages_upsert_thread` as email/sms), so the operator sees calls inline in the relationship.
+Both `voice-twiml` branches call `create_and_attach_conversation` (service-role, server-resolved
+tenant) → an unknown inbound caller AUTO-CREATES a contact; the returned contact_id/thread_key stamp
+the voice row (tenant_id omitted → `set_message_tenant()` derives it from contact_id; on RPC failure
+the row is SKIPPED + logged, never an orphan null-tenant row, and the `<Dial>` still bridges).
+New Twilio **CallStatus** branch on `twilio-status-callback` (early-returns on CallSid/ParentCallSid,
+SMS/MessageStatus DLR block byte-for-byte intact — §37) stamps final `status` + `call_duration_seconds`,
+idempotent on Call SID (`uq_messages_provider_message_id`). §13 catch: `'initiated'` isn't in the
+`messages.status` CHECK → used `'queued'`→`delivered`/`failed`. **#568 phone `.or()` sanitize fixed**
+in `resolveContactByPhone` (strip to `[0-9+]`, drop empty operands). **NO migration** — the substrate
+(`channel_type='voice'` CHECK, `call_duration_seconds`, thread trigger, the RPC) was already voice-ready.
+New `scripts/voice-conversations-smoke.mjs` 30/0 + existing voice-twiml smoke 35/0 (no regression); tsc
+clean on touched files. §5 two-pass (adversarial verifier + compliance officer) → SHIP.
+**#171 — composer:** verified essentially-already-built; single justified polish — promoted Attach to
+lead the toolbar (`[attach][mic][draft-with-Paige]…[send]`, gold only on Send); `ComposeThreadDialog`
+already consistent. draft-with-Paige kept email-only (the `subagent-email-composer` seam is
+email-shaped html/subject/medium — widening to SMS needs a channel-aware short-form composer, a real
+follow-up not a silent flip; §13).
+**OWED (§32):** the live Twilio PSTN round-trip — that the child-leg statusCallback posts ParentCallSid
+= our stored parent SID and that a real call writes+stamps the row end-to-end — could NOT be driven
+headless; owed to a capable session / the owner. **Follow-ups:** #568 (handle-inbound-sms `.or()`
+siblings ~L144/L263), #573 (background the pre-bridge voice-row write via `EdgeRuntime.waitUntil` for
+call-connect latency). **§49 Wave B COMPLETE** (Wave A #166/#170 + Wave B #168/#169/#171 all shipped).
