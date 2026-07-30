@@ -59,6 +59,7 @@ import { FirstRunOnboarding } from "./conversations/FirstRunOnboarding";
 import { ThreadRow } from "./conversations/ThreadRow";
 import { ThreadFilters, useLabelCatalog } from "./conversations/ThreadFilters";
 import { ContactCardRail } from "./conversations/ContactCardRail";
+import { readableMessageBody, shouldFoldEmail } from "./conversations/messageReading";
 import { SnoozeMenu } from "./conversations/SnoozeMenu";
 import { LabelPopover } from "./conversations/LabelPopover";
 import { QuickAddDialog } from "@/components/planning/QuickAddDialog";
@@ -146,7 +147,10 @@ function MessageBubble({
 }) {
   const outbound = m.direction === "outbound";
   const isDraft = m.status === "draft";
-  const body = bodyPreview(m);
+  const body = readableMessageBody(m);
+  const foldable = shouldFoldEmail(m.channel_type, body);
+  const [expanded, setExpanded] = useState(false);
+  const bodyRegionId = `message-body-${m.id}`;
 
   // A Paige draft is a distinct, approval-forcing card — never a plain sent bubble (§36).
   if (isDraft) {
@@ -203,7 +207,31 @@ function MessageBubble({
           <span className="ml-auto">{messageStatusPill(m)}</span>
         </div>
         {m.subject && <p className="mb-0.5 text-sm font-medium text-foreground">{m.subject}</p>}
-        <p className="whitespace-pre-wrap text-sm text-foreground/90">{body || "—"}</p>
+        <div className="relative">
+          <p
+            id={bodyRegionId}
+            className={cn(
+              "break-words whitespace-pre-wrap text-sm leading-relaxed text-foreground/90",
+              foldable && !expanded && "max-h-40 overflow-hidden pb-4",
+            )}
+          >
+            {body || "—"}
+          </p>
+          {foldable && !expanded && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-card to-transparent" />
+          )}
+        </div>
+        {foldable && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={bodyRegionId}
+            onClick={() => setExpanded((value) => !value)}
+            className="mt-2 min-h-11 w-full rounded-md border border-border/70 bg-muted/40 px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          >
+            {expanded ? "Show less" : "Show full email"}
+          </button>
+        )}
         {!!m.attachments?.length && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {m.attachments.map((a, i) => (
@@ -1104,11 +1132,11 @@ export default function ClientsConversations() {
     labelFilter === null;
 
   return (
-    <PageShell width="full" fill>
+    <PageShell width="full" fill className="space-y-3 lg:overflow-hidden">
       {/* §11/§43 header reclaim — the compose CTA moved OFF the header into the LEFT thread
           rail (GHL pattern: compose sits atop the conversation list), so the header stays a
           lean title row and the columns carry the real functionality. */}
-      <PageHeader variant="plain" title="Conversations" />
+      <PageHeader variant="plain" title="Conversations" className="pb-2" />
 
       {/* §36 first-run: before a single thread exists, one cohesive guided surface replaces the
           two disconnected empty boxes (left-rail "No conversations yet." + middle "Your unified
@@ -1126,8 +1154,10 @@ export default function ClientsConversations() {
           overflow-y-auto engage — instead of a magic calc(100dvh-…) that undershot the
           chrome and double-scrolled (Finding 2). Below lg it stacks with natural scroll. */
       <div className={cn(
-        "grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1",
-        selected && railOpen ? "lg:grid-cols-[320px_1fr_300px]" : "lg:grid-cols-[320px_1fr]",
+        "grid grid-cols-1 gap-3 lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(260px,288px)_minmax(0,1fr)] lg:overflow-hidden xl:gap-4",
+        selected && railOpen
+          ? "xl:grid-cols-[minmax(280px,304px)_minmax(0,1fr)_minmax(280px,320px)] 2xl:grid-cols-[320px_minmax(0,1fr)_320px]"
+          : "xl:grid-cols-[minmax(280px,304px)_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]",
       )}>
         {/* ── LEFT: thread rail ─────────────────────────────────────────────────── */}
         <SectionCard padded={false} bodyClassName="flex min-h-0 flex-1 flex-col" className="flex min-h-0 flex-col overflow-hidden">
@@ -1794,18 +1824,20 @@ export default function ClientsConversations() {
 
         {/* ── RIGHT: contact rail ───────────────────────────────────────────────── */}
         {selected && railOpen && (
-          <ContactCardRail
-            contact={selectedThread?.clients ?? null}
-            channel={selected.channel}
-            toAddress={selected.toAddress}
-            recentMessages={selected.messages}
-            labels={selectedThread?.labels ?? []}
-            suppressions={suppressions}
-            userId={userId}
-            tenantId={tenantIdRef.current}
-            onClose={() => setRailOpen(false)}
-            onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
-          />
+          <div className="hidden min-h-0 overflow-hidden xl:flex">
+            <ContactCardRail
+              contact={selectedThread?.clients ?? null}
+              channel={selected.channel}
+              toAddress={selected.toAddress}
+              recentMessages={selected.messages}
+              labels={selectedThread?.labels ?? []}
+              suppressions={suppressions}
+              userId={userId}
+              tenantId={tenantIdRef.current}
+              onClose={() => setRailOpen(false)}
+              onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
+            />
+          </div>
         )}
       </div>
       )}
