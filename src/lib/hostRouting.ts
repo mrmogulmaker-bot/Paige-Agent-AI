@@ -23,6 +23,7 @@ export const TENANT_HOST_SUFFIX = `.${MARKETING_HOST}`;
 export const RESERVED_TENANT_SUBDOMAINS = new Set([
   "www", "app", "api", "admin", "auth", "mail", "notify", "status", "support",
   "cdn", "assets", "static", "docs", "blog", "mcp", "studio", "staging", "preview",
+  "operator", "dashboard", "setup",
 ]);
 
 /**
@@ -52,13 +53,28 @@ export function computeTenantHostRedirect(
   if (!slug) return null;
 
   const canonicalPortal = `/portal/${encodeURIComponent(slug)}`;
-  if (path === "/") return `${canonicalPortal}${search}${hash}`;
+  const withLocation = (target: string) => `${target}${search}${hash}`;
+  if (path === "/") return withLocation(canonicalPortal);
 
-  const portalMatch = path.match(/^\/portal\/([^/]+)\/?$/);
-  if (portalMatch && decodeURIComponent(portalMatch[1]).toLowerCase() !== slug) {
-    return `${canonicalPortal}${search}${hash}`;
+  // These public routes use opaque booking/form tokens, not tenant slugs. They
+  // remain available on a tenant host and still resolve their tenant server-side.
+  if (/^\/(?:book(?:\/|$)|booking\/manage(?:\/|$)|form\/[^/]+\/?$|unsubscribe(?:\/|$)|u\/[^/]+\/?$)/.test(path)) {
+    return null;
   }
-  return null;
+
+  // Routes whose first segment after the prefix is a tenant slug are always
+  // pinned to the hostname tenant. A wildcard host is routing context—not auth.
+  const tenantPath = path.match(/^\/(portal|store|p|f)\/([^/]+)(\/.*)?$/);
+  if (tenantPath) {
+    let routeSlug = "";
+    try { routeSlug = decodeURIComponent(tenantPath[2]).toLowerCase(); } catch { /* fail closed */ }
+    if (routeSlug === slug) return null;
+    return withLocation(`/${tenantPath[1]}/${encodeURIComponent(slug)}${tenantPath[3] ?? ""}`);
+  }
+
+  // A tenant host is a deliberately narrow public surface. Product, auth,
+  // operator, marketing, and unknown routes fail closed to its canonical portal.
+  return withLocation(canonicalPortal);
 }
 
 // Flip to true once app.paigeagent.ai is live + auth redirect URLs updated.
