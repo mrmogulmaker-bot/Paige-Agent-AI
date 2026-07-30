@@ -147,8 +147,6 @@ project_id = "xygzykjyynhzqytbqnzu"
     verify_jwt = true
   [functions.log-consent]
     verify_jwt = true
-  [functions.paige-voice-chat]
-    verify_jwt = false
   [functions.paige-mcp]
     verify_jwt = false
   [functions.paige-web-search]
@@ -357,3 +355,28 @@ project_id = "xygzykjyynhzqytbqnzu"
   # platform_usage_events (§17); replays hit the tenant-scoped Storage cache and skip OpenAI (§14).
   [functions.paige-tts]
     verify_jwt = true
+
+  # §49 Wave A #170 — paige-dictate: press-to-talk DICTATION (mic → text) for the Paige composers.
+  # A browser WebSocket streams PCM16 (linear16/16k) and receives interim+final transcript. Deepgram
+  # Nova-3 STT is routed via the ONE STT home (_shared/stt-router.ts, §18/§34) — the SAME nova cell
+  # paige-stt uses, just with browser opts { encoding:"linear16", sampleRate:16000, channels:1 }; no
+  # rival Deepgram client, no fork.
+  #
+  # AUTH POSTURE — verify_jwt = FALSE, with in-function JWT validation (documented divergence, §13):
+  # The #170 brief RECOMMENDED verify_jwt=true so the platform gateway enforces the JWT. But a BROWSER
+  # WebSocket CANNOT set an Authorization header (the WS handshake has no header API), so the gateway's
+  # verify_jwt — which reads that header — cannot be satisfied by a browser WS and would REJECT the
+  # upgrade before the function runs. This is the repo's own settled conclusion: EVERY browser/webhook
+  # WS edge fn here is verify_jwt=false (voice-twiml, paige-stt), and the now-deleted paige-voice-chat
+  # authenticated its browser WS exactly this way (short-lived access token in a query param, validated
+  # app-side). The phase2b privileged-function audit records the same: "WebSocket query-token
+  # authentication requires application-level validation." So paige-dictate is verify_jwt=false and does
+  # its OWN §9 gate in-function: it reads the caller's access token from the ?token= query param, calls
+  # auth.getUser() to VERIFY it (invalid ⇒ close the socket, never open Deepgram), and derives the tenant
+  # SERVER-SIDE via current_user_tenant_id() — NEVER a body/query tenantId. The §9 guarantee (identity +
+  # tenant from the VERIFIED JWT, never client-supplied) is identical to the gateway path; only the
+  # enforcement layer differs. The owner/integrator can reverse to verify_jwt=true IF the platform
+  # gateway is later confirmed to accept the token via the WS subprotocol. The anon apikey the gateway
+  # requires for a verify_jwt=false fn rides the ?apikey= query param (public key, standard).
+  [functions.paige-dictate]
+    verify_jwt = false

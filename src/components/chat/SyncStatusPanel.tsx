@@ -1,6 +1,6 @@
 import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
 
-interface SyncStatus {
+export interface SyncStatus {
   success: boolean;
   scores_synced?: { equifax?: number | null; experian?: number | null; transunion?: number | null };
   negative_items_synced?: number;

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { MessageCircle, X, Send, Loader2, Mic, MicOff, Paperclip, ChevronRight, ChevronLeft } from "lucide-react";
+import { MessageCircle, X, Send, Loader2, Paperclip, ChevronRight, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,13 +8,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
-import { useConversation, ConversationProvider } from "@elevenlabs/react";
+import { DictationMicButton } from "@/components/voice/DictationMicButton";
+import { appendDictation } from "@/lib/voice/useDictation";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
 import { usePaigeMemory } from "@/hooks/usePaigeMemory";
 import { useClientChatContext } from "@/hooks/useClientChatContext";
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
-import { SyncStatusPanel } from "@/components/chat/SyncStatusPanel";
+import { SyncStatusPanel, type SyncStatus } from "@/components/chat/SyncStatusPanel";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
 import { extractEntityDiagram } from "@/lib/entityDiagram";
@@ -22,16 +23,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
-import { primeMicAndAudio, startManagedVoiceSession, describeVoiceError } from "@/lib/voice/startVoiceSession";
-import { getCurrentPageName } from "@/lib/pageContext";
-import { VoiceDock } from "@/components/voice/VoiceDock";
-import type { VoiceModalStatus, VoiceTranscriptEntry } from "@/components/voice/types";
 
 type Message = {
   role: "user" | "assistant";
   content: string;
   documentFileName?: string;
-  syncStatus?: any;
+  syncStatus?: SyncStatus;
 };
 
 const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
@@ -45,7 +42,6 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const sessionIdRef = useRef<string>(crypto.randomUUID());
@@ -63,18 +59,6 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
     const handleOpen = () => setIsOpen(true);
     window.addEventListener("paige-open-chat", handleOpen);
     return () => window.removeEventListener("paige-open-chat", handleOpen);
-  }, []);
-
-  // Check mic permission on mount
-  useEffect(() => {
-    if (navigator.permissions) {
-      navigator.permissions.query({ name: "microphone" as PermissionName }).then((result) => {
-        setMicPermission(result.state === 'granted' ? 'granted' : result.state === 'denied' ? 'denied' : 'unknown');
-        result.onchange = () => {
-          setMicPermission(result.state === 'granted' ? 'granted' : result.state === 'denied' ? 'denied' : 'unknown');
-        };
-      }).catch(() => { /* permissions API not supported */ });
-    }
   }, []);
 
   const {
@@ -97,86 +81,6 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
     openFilePicker,
     setAttachedDoc,
   } = useChatDocumentUpload();
-
-  // Modal-driven voice UI state
-  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState<VoiceModalStatus>("connecting");
-  const [voiceTranscript, setVoiceTranscript] = useState<VoiceTranscriptEntry[]>([]);
-  const [voiceMuted, setVoiceMuted] = useState(false);
-  const currentPageName = getCurrentPageName(location.pathname);
-
-  const conversation = useConversation({
-    // IMPORTANT: Register web_search as a client tool in your ElevenLabs agent dashboard at
-    // elevenlabs.io under your Paige agent → Conversational AI → Tools → Add Client Tool.
-    // Name: web_search
-    // Description: Search the web for current vehicle financing rates, lender requirements, and real-time information.
-    // Parameter: query (string, required) — the search query to execute.
-    clientTools: {
-      web_search: async ({ query }: { query: string }) => {
-        try {
-          const { data, error } = await supabase.functions.invoke("paige-web-search", {
-            body: { query },
-          });
-          if (error) throw error;
-          return JSON.stringify({
-            query,
-            results: data?.results ?? [],
-            note: data?.note,
-          });
-        } catch (err) {
-          console.error("[FloatingChatbot] web_search tool failed:", err);
-          return JSON.stringify({ error: err instanceof Error ? err.message : "Search failed", results: [] });
-        }
-      },
-    },
-    onConnect: () => {
-      setVoiceTranscript([]);
-      setVoiceStatus("listening");
-      setVoiceModalOpen(true);
-    },
-    onDisconnect: (details) => {
-      console.warn("[FloatingChatbot] Voice session disconnected", details);
-      setVoiceModalOpen(false);
-      setVoiceStatus("connecting");
-      toast({ title: "Voice chat ended", description: "The conversation has been closed" });
-    },
-    onMessage: (message) => {
-      const role = message.source === "ai" ? "assistant" : "user";
-      const content = message.message || "";
-      if (content) setVoiceTranscript(prev => [...prev, { role, content }]);
-      if (message.source === "ai") setMessages(prev => [...prev, { role: "assistant", content }]);
-      else if (message.source === "user") setMessages(prev => [...prev, { role: "user", content }]);
-    },
-    onError: (error) => {
-      // Verbose logging to capture exact ElevenLabs failure (deprecated voice, bad agent, etc.)
-      const e: any = error;
-      console.error("[FloatingChatbot] ElevenLabs onError raw:", error);
-      console.error("[FloatingChatbot] ElevenLabs onError details:", {
-        type: typeof error,
-        name: e?.name,
-        code: e?.code,
-        reason: e?.reason,
-        message: e?.message,
-        context: e?.context,
-        stack: e?.stack,
-        stringified: (() => { try { return JSON.stringify(error); } catch { return String(error); } })(),
-      });
-      const errorMsg = typeof error === 'string' ? error : (e?.message || e?.reason || "Failed to connect to voice chat");
-      if (errorMsg.includes("NotAllowed") || errorMsg.includes("Permission")) {
-        toast({ title: "Microphone Access Required", description: "Please allow microphone access in your browser settings, then try again.", variant: "destructive" });
-        setMicPermission('denied');
-      } else {
-        toast({ title: "Voice chat error", description: errorMsg, variant: "destructive" });
-      }
-    },
-  });
-
-  // Sync ElevenLabs speaking state -> modal status
-  useEffect(() => {
-    if (!voiceModalOpen) return;
-    if (conversation.status !== "connected") return;
-    setVoiceStatus(conversation.isSpeaking ? "speaking" : "listening");
-  }, [conversation.isSpeaking, conversation.status, voiceModalOpen]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -207,111 +111,8 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
     };
   }, []);
 
-  const startVoiceChat = async () => {
-    if (micPermission === 'denied') {
-      toast({
-        title: "Microphone Blocked",
-        description: isMobile
-          ? "Enable microphone in your browser settings. On iPhone: Settings > Safari > Microphone."
-          : "Tap the lock icon in your browser's address bar to enable microphone access.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    let audioCtx: AudioContext | null = null;
-    try {
-      // Open the modal immediately so user sees feedback while we connect.
-      setVoiceTranscript([]);
-      setVoiceMuted(false);
-      setVoiceStatus("connecting");
-      setVoiceModalOpen(true);
-
-      // 1) Prime mic + audio output INSIDE the click gesture (iOS Safari requirement).
-      const primed = await primeMicAndAudio();
-      audioCtx = primed.audioContext;
-      setMicPermission('granted');
-
-      // 2) Fetch credentials (WebRTC token preferred; signed URL fallback).
-      const { data: { session } } = await supabase.auth.getSession();
-      // Last 5 messages from current chat for continuity context.
-      const recentChatMessages = messages
-        .filter(m => m.content && m.content.trim())
-        .slice(-5)
-        .map(m => ({ role: m.role, content: m.content }));
-
-      // Fetch dynamic, page-aware greeting.
-      let greeting: string | undefined;
-      try {
-        const { data: greetingData } = await supabase.functions.invoke("paige-voice-greeting", {
-          body: { currentPage: currentPageName, recentChatMessages },
-          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
-        });
-        greeting = greetingData?.greeting;
-        console.log("[FloatingChatbot] Voice greeting:", greeting);
-      } catch (greetErr) {
-        console.warn("[FloatingChatbot] Greeting fetch failed; using default:", greetErr);
-      }
-
-      const historyBlock = recentChatMessages.length > 0
-        ? `\n\nRECENT CHAT HISTORY (last ${recentChatMessages.length} turns — pick up from here):\n${recentChatMessages.map(m => `${m.role === "user" ? "Client" : "Paige"}: ${m.content}`).join("\n")}`
-        : "";
-
-      const voiceSystemPrompt = contextBlock
-        ? `You are Paige, the AI business partner for PaigeAgent.ai. You have access to this client's workspace data.\n\nCurrent page: ${currentPageName}\n\nCLIENT DATA:\n${contextBlock}${historyBlock}\n\nRULES:\n- Reference specific details from the client data\n- Never fabricate data\n- VOICE: Be conversational and concise (1-2 short sentences per turn). Use natural acknowledgments like "Got it", "Right". Never read bullet points aloud.\n- Connect insights to the client's business goals when relevant`
-        : `You are Paige, the AI business partner for PaigeAgent.ai. Current page: ${currentPageName}.${historyBlock}\n\nVOICE: Be conversational and concise. Use short sentences and natural acknowledgments.`;
-
-      // ElevenLabs rejects firstMessage/prompt overrides unless explicitly
-      // enabled in the agent dashboard. Skip the override payload so the
-      // session can connect; rely on the agent's default first message.
-      void voiceSystemPrompt;
-      void greeting;
-
-      const voiceSession = await startManagedVoiceSession({
-        conversation,
-        authToken: session?.access_token,
-        logLabel: "[FloatingChatbot]",
-      });
-      console.log("[FloatingChatbot] startSession resolved", voiceSession);
-    } catch (err: any) {
-      console.error("[FloatingChatbot] Voice start failed:", err);
-      console.error("[FloatingChatbot] Voice start error details:", {
-        name: err?.name, code: err?.code, message: err?.message, reason: err?.reason,
-        stringified: (() => { try { return JSON.stringify(err); } catch { return String(err); } })(),
-      });
-      setVoiceModalOpen(false);
-      // Tear down audio context if start failed.
-      if (audioCtx) { try { await audioCtx.close(); } catch {} }
-      if (err?.name === "NotAllowedError" || err?.message?.toLowerCase?.().includes("permission")) {
-        setMicPermission('denied');
-      }
-      const { title, description } = describeVoiceError(err, isMobile);
-      toast({ title, description, variant: "destructive" });
-    }
-  };
-
-  const stopVoiceChat = async () => {
-    try { await conversation.endSession(); } catch (e) { console.warn("Error ending session", e); }
-    setVoiceModalOpen(false);
-  };
-
-  const toggleVoiceMute = useCallback(async () => {
-    const next = !voiceMuted;
-    setVoiceMuted(next);
-    try {
-      const conv: any = conversation;
-      if (typeof conv.setMicMuted === "function") {
-        await conv.setMicMuted(next);
-      } else if (typeof conv.setVolume === "function") {
-        await conv.setVolume({ volume: next ? 0 : 1 });
-      }
-    } catch (err) {
-      console.warn("Mute toggle failed:", err);
-    }
-  }, [conversation, voiceMuted]);
-
   useEffect(() => {
-    const handleFactoryReset = async () => {
+    const handleFactoryReset = () => {
       resetSession();
       setInput("");
       setMessages([
@@ -320,18 +121,11 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
           content: "I don't have any of your workspace data yet. Connect your workspace and I'll get up to speed so I can help you run your business.",
         },
       ]);
-      if (conversation.status === "connected") {
-        try {
-          await conversation.endSession();
-        } catch (error) {
-          console.warn("Error ending widget voice session after reset", error);
-        }
-      }
     };
 
     window.addEventListener("paige-factory-reset", handleFactoryReset);
     return () => window.removeEventListener("paige-factory-reset", handleFactoryReset);
-  }, [conversation, resetSession]);
+  }, [resetSession]);
 
   const handleSend = async () => {
     if ((!input.trim() && !attachedDoc) || isLoading) return;
@@ -357,7 +151,7 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         messages: [...messages, userMessage].map(m => ({
           role: m.role,
           content: m.content,
@@ -393,7 +187,7 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let assistantMessage = "";
-      let syncStatus: any = null;
+      let syncStatus: SyncStatus | null = null;
 
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
@@ -504,9 +298,9 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
   const onFabPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
     const ds = dragStateRef.current;
     dragStateRef.current = null;
-    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
     if (ds?.moved && fabPos) {
-      try { localStorage.setItem(POS_KEY, JSON.stringify(fabPos)); } catch {}
+      try { localStorage.setItem(POS_KEY, JSON.stringify(fabPos)); } catch { /* ignore */ }
       return; // treat as drag, not click
     }
     // treat as click → open
@@ -516,7 +310,7 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
   const togglePocket = () => {
     setPocketed((p) => {
       const next = !p;
-      try { localStorage.setItem(POCKET_KEY, next ? "1" : "0"); } catch {}
+      try { localStorage.setItem(POCKET_KEY, next ? "1" : "0"); } catch { /* ignore */ }
       return next;
     });
   };
@@ -591,8 +385,6 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
               </div>
             </div>
             <div className="flex items-center gap-1">
-              {/* Live voice status lives in the VoiceDock overlay (scoped to this
-                  card), so no duplicate status chrome is needed in the header. */}
               <Button variant="ghost" size="icon" onClick={handleClose} className="h-8 w-8">
                 <X className="h-4 w-4" />
               </Button>
@@ -637,57 +429,31 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
             )}
 
             <div className="flex gap-1.5 sm:gap-2">
-              <Button variant="ghost" size="icon" className="h-10 w-10 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading || conversation.status === "connected"} title="Attach PDF">
+              <Button variant="ghost" size="icon" className="h-10 w-10 flex-shrink-0 text-muted-foreground hover:text-primary" onClick={openFilePicker} disabled={isLoading} title="Attach PDF">
                 <Paperclip className="h-4 w-4" />
               </Button>
-              {conversation.status !== "connected" && (
-                <Input
-                  ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleSend()}
-                  placeholder={attachedDoc ? "Add a message..." : "Ask me anything..."}
-                  disabled={isLoading}
-                  className="h-10"
-                />
-              )}
-              {conversation.status !== "connected" && (
-                <Button onClick={handleSend} disabled={isLoading || (!input.trim() && !attachedDoc)} size="icon" className="h-10 w-10">
-                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
-              )}
-              <Button
-                onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat}
-                variant={conversation.status === "connected" ? "destructive" : "secondary"}
-                size="icon"
-                className={`flex-shrink-0 ${isMobile ? "h-10 w-10" : "h-10 w-10"} ${micPermission === 'denied' ? 'opacity-60' : ''}`}
-                title={
-                  micPermission === 'denied'
-                    ? "Microphone blocked — tap to learn how to enable"
-                    : conversation.status === "connected"
-                      ? "End voice chat"
-                      : "Start voice chat with Paige"
-                }
-              >
-                {conversation.status === "connected" ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              <Input
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleSend()}
+                placeholder={attachedDoc ? "Add a message..." : "Ask me anything..."}
+                disabled={isLoading}
+                className="h-10"
+              />
+              {/* Hold-to-dictate — neutral/indigo mic (never gold; Send owns the act, §11). */}
+              <DictationMicButton
+                onText={(seg) => setInput((prev) => appendDictation(prev, seg))}
+                onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
+                disabled={isLoading}
+                variant="secondary"
+                className="h-10 w-10 flex-shrink-0"
+              />
+              <Button onClick={handleSend} disabled={isLoading || (!input.trim() && !attachedDoc)} size="icon" className="h-10 w-10">
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
             </div>
           </div>
-          {/* Voice session UI — scoped to this card (fixed → its own containing
-              block), so voice covers only the chatbot, never the whole viewport. */}
-          <VoiceDock
-            open={voiceModalOpen}
-            status={voiceStatus}
-            isMuted={voiceMuted}
-            pageName={currentPageName}
-            transcript={voiceTranscript}
-            onToggleMute={toggleVoiceMute}
-            onEndCall={stopVoiceChat}
-            inputValue={input}
-            onInputChange={setInput}
-            onSendText={() => handleSend()}
-            isSending={isLoading}
-          />
         </Card>
       )}
     </>
@@ -696,12 +462,6 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
   return createPortal(chatContent, document.body);
 };
 
-/**
- * v1.x SDK requires useConversation to live inside ConversationProvider.
- * This wrapper preserves the public API so existing imports keep working.
- */
 export const FloatingChatbot = (props: { clientId?: string }) => (
-  <ConversationProvider>
-    <FloatingChatbotInner {...props} />
-  </ConversationProvider>
+  <FloatingChatbotInner {...props} />
 );

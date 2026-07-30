@@ -5,33 +5,51 @@ export class AudioRecorder {
   private processor: ScriptProcessorNode | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
 
-  constructor(private onAudioData: (audioData: Float32Array) => void) {}
+  /**
+   * @param onAudioData  Called per frame with resampled mono Float32 PCM.
+   * @param targetSampleRate  Output rate the frames are resampled to. Defaults
+   *   to 24000 for existing callers; browser dictation passes 16000 so the
+   *   frames match Deepgram's linear16/16k stream (§18 — one recorder, no fork).
+   */
+  constructor(
+    private onAudioData: (audioData: Float32Array) => void,
+    private targetSampleRate: number = 24000,
+  ) {}
 
   async start() {
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          sampleRate: 24000,
+          sampleRate: this.targetSampleRate,
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
         }
       });
-      
+
       this.audioContext = new AudioContext({
-        sampleRate: 24000,
+        sampleRate: this.targetSampleRate,
       });
-      
+
+      // iOS Safari (and some Chrome states) start a fresh AudioContext
+      // "suspended". Because start() is invoked inside the user gesture that
+      // acquired the mic, resuming here unlocks capture so onaudioprocess
+      // actually fires (lifted from the primeMicAndAudio unlock this replaces).
+      if (this.audioContext.state === "suspended") {
+        try { await this.audioContext.resume(); } catch { /* best-effort */ }
+      }
+
       this.source = this.audioContext.createMediaStreamSource(this.stream);
       this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
-      
+
       this.processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0);
-        const sourceRate = this.audioContext?.sampleRate || 24000;
+        const rate = this.targetSampleRate;
+        const sourceRate = this.audioContext?.sampleRate || rate;
         let outputData: Float32Array;
-        if (sourceRate !== 24000) {
-          const ratio = 24000 / sourceRate;
+        if (sourceRate !== rate) {
+          const ratio = rate / sourceRate;
           const newLength = Math.max(1, Math.floor(inputData.length * ratio));
           const resampled = new Float32Array(newLength);
           for (let i = 0; i < newLength; i++) {

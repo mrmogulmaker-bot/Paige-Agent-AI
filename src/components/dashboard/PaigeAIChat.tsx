@@ -1,23 +1,19 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Send, Loader2, Mic, MicOff, Clock, Paperclip } from "lucide-react";
+import { Send, Loader2, Clock, Paperclip } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useConversation, ConversationProvider } from "@elevenlabs/react";
-import { primeMicAndAudio, startManagedVoiceSession, describeVoiceError } from "@/lib/voice/startVoiceSession";
+import { DictationMicButton } from "@/components/voice/DictationMicButton";
+import { appendDictation } from "@/lib/voice/useDictation";
 import { ResponseFeedback } from "@/components/chat/ResponseFeedback";
 import { MessageMeta } from "@/components/chat/MessageMeta";
 import { SlashCommandMenu } from "@/components/chat/SlashCommandMenu";
 import { useQuery } from "@tanstack/react-query";
 import { getUserClock } from "@/lib/userClock";
-import { useLocation } from "react-router-dom";
-import { getCurrentPageName } from "@/lib/pageContext";
-import { VoiceDock } from "@/components/voice/VoiceDock";
-import type { VoiceModalStatus, VoiceTranscriptEntry } from "@/components/voice/types";
 import { EntityDiagramCard } from "@/components/chat/EntityDiagramCard";
 import { extractEntityDiagram } from "@/lib/entityDiagram";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
@@ -133,8 +129,6 @@ const PaigeAIChatInner = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
-  const location = useLocation();
-  const currentPageName = getCurrentPageName(location.pathname);
 
   // Document attachment (#480) — PDF/image/DOCX. Shared hook (§18 one home): docx
   // is extracted to text client-side, pdf/image ride as base64; 10MB cap. In-session
@@ -163,80 +157,6 @@ const PaigeAIChatInner = ({
   const [historyHydrated, setHistoryHydrated] = useState(false);
   const openingGreeting = greeting ?? "Hey, how can I help?";
 
-  // Modal-driven voice UI state
-  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState<VoiceModalStatus>("connecting");
-  const [voiceTranscript, setVoiceTranscript] = useState<VoiceTranscriptEntry[]>([]);
-  const [voiceMuted, setVoiceMuted] = useState(false);
-
-  // ElevenLabs conversation hook
-  const conversation = useConversation({
-    // IMPORTANT: Register web_search as a client tool in your ElevenLabs agent dashboard at
-    // elevenlabs.io under your Paige agent → Conversational AI → Tools → Add Client Tool.
-    // Name: web_search
-    // Description: Search the web for current, real-time information relevant to the client's question.
-    // Parameter: query (string, required) — the search query to execute.
-    clientTools: {
-      web_search: async ({ query }: { query: string }) => {
-        try {
-          const { data, error } = await supabase.functions.invoke("paige-web-search", {
-            body: { query },
-          });
-          if (error) throw error;
-          return JSON.stringify({
-            query,
-            results: data?.results ?? [],
-            note: data?.note,
-          });
-        } catch (err) {
-          console.error("[PaigeAIChat] web_search tool failed:", err);
-          return JSON.stringify({ error: err instanceof Error ? err.message : "Search failed", results: [] });
-        }
-      },
-    },
-    onConnect: () => {
-      setVoiceTranscript([]);
-      setVoiceStatus("listening");
-      setVoiceModalOpen(true);
-    },
-    onDisconnect: (details) => {
-      console.warn("[PaigeAIChat] Voice session disconnected", details);
-      setVoiceModalOpen(false);
-      setVoiceStatus("connecting");
-      toast({ title: "Voice chat ended", description: "The conversation has been closed" });
-    },
-    onMessage: (message) => {
-      const role = message.source === "ai" ? "assistant" : "user";
-      const content = message.message || "";
-      if (content) setVoiceTranscript(prev => [...prev, { role, content }]);
-      if (message.source === "ai") setMessages(prev => [...prev, mkMsg({ role: "assistant", content })]);
-      else if (message.source === "user") setMessages(prev => [...prev, mkMsg({ role: "user", content })]);
-    },
-    onError: (error) => {
-      const e = error as { name?: string; code?: string | number; reason?: string; message?: string; context?: unknown; stack?: string };
-      console.error("[PaigeAIChat] ElevenLabs onError raw:", error);
-      console.error("[PaigeAIChat] ElevenLabs onError details:", {
-        type: typeof error,
-        name: e?.name,
-        code: e?.code,
-        reason: e?.reason,
-        message: e?.message,
-        context: e?.context,
-        stack: e?.stack,
-        stringified: (() => { try { return JSON.stringify(error); } catch { return String(error); } })(),
-      });
-      const msg = typeof error === 'string' ? error : (e?.message || e?.reason || "Failed to connect to voice chat");
-      toast({ title: "Voice chat error", description: msg, variant: "destructive" });
-    },
-  });
-
-  // Sync ElevenLabs speaking state -> modal status
-  useEffect(() => {
-    if (!voiceModalOpen) return;
-    if (conversation.status !== "connected") return;
-    setVoiceStatus(conversation.isSpeaking ? "speaking" : "listening");
-  }, [conversation.isSpeaking, conversation.status, voiceModalOpen]);
-
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -248,73 +168,6 @@ const PaigeAIChatInner = ({
 
   // Collapse the composer back to one line once it's cleared (after send / new chat).
   useEffect(() => { if (input === "" && inputRef.current) inputRef.current.style.height = "auto"; }, [input]);
-
-  // Voice chat functions
-  const startVoiceChat = async () => {
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    let audioCtx: AudioContext | null = null;
-    try {
-      setVoiceTranscript([]);
-      setVoiceMuted(false);
-      setVoiceStatus("connecting");
-      setVoiceModalOpen(true);
-
-      const primed = await primeMicAndAudio();
-      audioCtx = primed.audioContext;
-
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const recentChatMessages = messages.filter(m => m.content?.trim()).slice(-5).map(m => ({ role: m.role, content: m.content }));
-
-      let greeting: string | undefined;
-      try {
-        const { data: greetingData } = await supabase.functions.invoke("paige-voice-greeting", {
-          body: { currentPage: currentPageName, recentChatMessages },
-          headers: session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : undefined,
-        });
-        greeting = greetingData?.greeting;
-        console.log("[PaigeAIChat] Voice greeting:", greeting);
-      } catch (greetErr) {
-        console.warn("[PaigeAIChat] Greeting fetch failed:", greetErr);
-      }
-
-      // ElevenLabs rejects `firstMessage` overrides unless explicitly enabled
-      // in the agent dashboard config — sending one closes the socket with
-      // code 1008. Skip the override and rely on the agent's default greeting.
-      const voiceSession = await startManagedVoiceSession({
-        conversation,
-        authToken: session?.access_token,
-        logLabel: "[PaigeAIChat]",
-      });
-      console.log("[PaigeAIChat] startSession resolved", voiceSession);
-    } catch (error) {
-      console.error("[PaigeAIChat] Error starting voice chat:", error);
-      setVoiceModalOpen(false);
-      if (audioCtx) { try { await audioCtx.close(); } catch { /* best-effort close */ } }
-      const { title, description } = describeVoiceError(error, isMobile);
-      toast({ title, description, variant: "destructive" });
-    }
-  };
-
-  const stopVoiceChat = async () => {
-    try { await conversation.endSession(); } catch (e) { console.warn(e); }
-    setVoiceModalOpen(false);
-  };
-
-  const toggleVoiceMute = useCallback(async () => {
-    const next = !voiceMuted;
-    setVoiceMuted(next);
-    try {
-      const conv = conversation as {
-        setMicMuted?: (muted: boolean) => Promise<void> | void;
-        setVolume?: (opts: { volume: number }) => Promise<void> | void;
-      };
-      if (typeof conv.setMicMuted === "function") await conv.setMicMuted(next);
-      else if (typeof conv.setVolume === "function") await conv.setVolume({ volume: next ? 0 : 1 });
-    } catch (err) { console.warn("Mute toggle failed:", err); }
-  }, [conversation, voiceMuted]);
-
-
 
   // Chip click: prefill the composer + focus so the operator can edit before
   // Paige acts (cc-spec §3). Only chips flagged autoSend dispatch immediately.
@@ -593,7 +446,7 @@ const PaigeAIChatInner = ({
   // server is the single turn-writer; a retry would double-write) until the server
   // grows a regenerate flag — filed as a fast-follow.
   const handleRetry = (assistantId: string) => {
-    if (isLoading || conversation.status === "connected") return;
+    if (isLoading) return;
     const aIdx = messages.findIndex((m) => m.id === assistantId);
     if (aIdx < 0) return;
     let uIdx = -1;
@@ -607,14 +460,6 @@ const PaigeAIChatInner = ({
     void streamTurn(base, rollback, messages[uIdx].content);
   };
 
-  useEffect(() => {
-    return () => {
-      if (conversation.status === "connected") {
-        conversation.endSession();
-      }
-    };
-  }, []); // cleanup only on unmount
-
   const visibleChips = (chips ?? []).filter((c) => !c.visibleWhenFocused || !!clientId);
 
   // Slash-command palette (replaces the always-visible chips). The commands ARE the
@@ -626,7 +471,7 @@ const PaigeAIChatInner = ({
   const filteredCommands = slashMatch
     ? visibleChips.filter((c) => c.label.toLowerCase().includes(slashQuery.toLowerCase()))
     : [];
-  const slashOpen = !!slashMatch && filteredCommands.length > 0 && !isLoading && conversation.status !== "connected";
+  const slashOpen = !!slashMatch && filteredCommands.length > 0 && !isLoading;
   const pickCommand = (c: QuickChip) => { setInput(""); setSlashActive(0); handleChip(c); };
 
   // The user turn that produced the assistant message at `index` — stored as the
@@ -860,36 +705,32 @@ const PaigeAIChatInner = ({
                 }}
                 placeholder={`Message ${persona.name || "Paige"} — type / for commands`}
                 className="max-h-40 min-h-[2.5rem] flex-1 resize-none"
-                disabled={isLoading || conversation.status === "connected"}
+                disabled={isLoading}
               />
               {/* Attach a document (#480) — ghost icon, never gold (Send owns the
                   gold act, §11). Matches the Mic control. Guarded while a reply is
-                  streaming and while a voice session is live. */}
+                  streaming. */}
               <Button
                 onClick={openFilePicker}
                 variant="ghost"
                 size="icon"
                 aria-label="Attach a document"
-                disabled={isLoading || conversation.status === "connected"}
+                disabled={isLoading}
                 title="Attach a PDF, image, or Word document"
               >
                 <Paperclip className="w-4 h-4" />
               </Button>
-              {/* Inline voice entry/end — ghost, never gold (Send owns the gold act, §11).
-                  text-destructive only in the live/end state (a status color, not gold). */}
-              <Button
-                onClick={conversation.status === "connected" ? stopVoiceChat : startVoiceChat}
-                variant="ghost"
-                size="icon"
-                aria-label={conversation.status === "connected" ? "End voice chat" : "Start voice chat"}
-                aria-pressed={conversation.status === "connected"}
-                className={conversation.status === "connected" ? "text-destructive" : undefined}
-              >
-                {conversation.status === "connected" ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-              </Button>
+              {/* Hold-to-dictate — neutral/indigo mic, never gold (Send owns the
+                  gold act, §11). Dictated words append into the composer; the
+                  operator edits before sending. */}
+              <DictationMicButton
+                onText={(seg) => setInput((prev) => appendDictation(prev, seg))}
+                onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
+                disabled={isLoading}
+              />
               <Button
                 onClick={() => handleSend()}
-                disabled={isLoading || (!input.trim() && !attachedDoc) || conversation.status === "connected"}
+                disabled={isLoading || (!input.trim() && !attachedDoc)}
                 variant="gold"
                 size="icon"
                 aria-label="Send message"
@@ -898,22 +739,6 @@ const PaigeAIChatInner = ({
               </Button>
             </div>
           </div>
-
-          {/* Voice session UI — scoped to THIS chat card, not the viewport. Owner
-              can keep typing to Paige mid-call via the dock's type-while-talking row. */}
-          <VoiceDock
-            open={voiceModalOpen}
-            status={voiceStatus}
-            isMuted={voiceMuted}
-            pageName={currentPageName}
-            transcript={voiceTranscript}
-            onToggleMute={toggleVoiceMute}
-            onEndCall={stopVoiceChat}
-            inputValue={input}
-            onInputChange={setInput}
-            onSendText={() => handleSend()}
-            isSending={isLoading}
-          />
         </Card>
         </div>
       </div>
@@ -921,8 +746,4 @@ const PaigeAIChatInner = ({
   );
 };
 
-export const PaigeAIChat = (props: PaigeAIChatProps = {}) => (
-  <ConversationProvider>
-    <PaigeAIChatInner {...props} />
-  </ConversationProvider>
-);
+export const PaigeAIChat = (props: PaigeAIChatProps = {}) => <PaigeAIChatInner {...props} />;
