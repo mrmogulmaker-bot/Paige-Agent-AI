@@ -33,7 +33,12 @@ import {
 import type { Call, Device, TwilioError } from "@twilio/voice-sdk";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { useLiveTranscript, type TranscriptLine, type TranscriptState } from "./useLiveTranscript";
+import {
+  useLiveTranscript,
+  type TranscriptLine,
+  type TranscriptState,
+  type CallIntelligence,
+} from "./useLiveTranscript";
 
 export type VoiceStatus =
   | "idle" // no Device yet (nothing has asked to call)
@@ -86,6 +91,16 @@ interface VoiceDeviceValue {
   liveTranscript: TranscriptLine[];
   /** What the transcript subscription is doing: idle | listening | live | reconnecting. */
   transcriptState: TranscriptState;
+  /**
+   * #140 B3 — drop the POST-CALL transcript keepalive early (the operator dismissed the
+   * panel). The subscription otherwise self-releases when the late draft lands or the
+   * bounded grace window elapses. A no-op while a call is live.
+   */
+  endLiveTranscriptGrace: () => void;
+
+  // ── Live-call co-pilot INTELLIGENCE (#140 B3) ──
+  /** Whisper cues / commitments / at-risk flags / follow-up draft for the LIVE call. */
+  liveIntelligence: CallIntelligence;
 
   // ── Inbound (A3): a ringing call awaiting the operator's accept/reject ──
   incomingCall: IncomingCallInfo | null;
@@ -114,6 +129,18 @@ const VoiceDeviceContext = createContext<VoiceDeviceValue | null>(null);
 // before expiry by default); we just react to it. Kept as a named constant so the
 // §32 refresh path is self-documenting.
 const TOKEN_REFRESH_EVENT = "tokenWillExpire" as const;
+
+// #140 B3 FIX 2 — post-call transcript keepalive. The copilot broadcasts "draft_ready"
+// (and settles any late final lines / commitment / at-risk) from finalize(), which runs
+// draft synthesis + 2 RPCs ASYNC *after* the media stream stops and the call has already
+// left "in_call". If we drop the private channel the instant the call ends, those late
+// broadcasts reach nobody and the "Follow-up drafted" affordance never appears even though
+// the approval WAS created. So we hold the just-ended call's topic subscribed through a
+// bounded grace window: until the draft lands (then a short settle so the panel can freeze
+// it) or TRANSCRIPT_GRACE_MS elapses — whichever comes first. A NEW call supersedes the
+// grace topic immediately, so a fresh stream never inherits the prior call's subscription.
+const TRANSCRIPT_GRACE_MS = 90_000;
+const TRANSCRIPT_GRACE_SETTLE_AFTER_DRAFT_MS = 2_000;
 
 type MintResult =
   | { kind: "token"; token: string }
@@ -177,15 +204,87 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
   // #140 B2 — the live-call co-pilot transcript. The topic is scoped to THIS caller's
   // tenant (§9): activeTenantId equals current_user_tenant_id() server-side, which the
   // realtime.messages RLS policy (#557) checks — so a private-channel subscribe can only
-  // ever ride this tenant's own call. Null topic (no live call / unresolved tenant/SID)
-  // tears the channel down. VoiceDeviceProvider mounts only inside AdminLayout, which is
-  // under <TenantProvider>, so this context read is always safe.
+  // ever ride this tenant's own call. VoiceDeviceProvider mounts only inside AdminLayout,
+  // which is under <TenantProvider>, so this context read is always safe.
   const { activeTenantId } = useTenantContext();
-  const transcriptTopic =
+
+  // The topic WHILE a call is live (null when there's no live call / unresolved tenant/SID).
+  const liveTopic =
     status === "in_call" && activeTenantId && activeCall?.callSid
       ? `voice-stt:${activeTenantId}:${activeCall.callSid}`
       : null;
-  const { lines: liveTranscript, state: transcriptState } = useLiveTranscript(transcriptTopic);
+
+  // #140 B3 FIX 2 — the STICKY subscribed topic. It follows the live call's topic AND is
+  // held open through the post-call grace window (see TRANSCRIPT_GRACE_MS) so the copilot's
+  // LATE draft_ready — synthesized async after the media stream stops — still reaches the
+  // subscribed panel. It is only ever cleared by the grace timer, the post-draft settle,
+  // an explicit dismiss, or a NEW call replacing it — NEVER nulled at call-end.
+  const [subscribedTopic, setSubscribedTopic] = useState<string | null>(null);
+  const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Current live topic, read (never mutated for render) so endLiveTranscriptGrace can refuse
+  // to drop a subscription while a call is actually live.
+  const liveTopicRef = useRef<string | null>(null);
+  liveTopicRef.current = liveTopic;
+
+  // The effective subscription. A live topic ALWAYS wins, so a new call supersedes any
+  // grace-held topic on the SAME render (its string differs by callSid → useLiveTranscript
+  // resets its per-call buffers) — and at call-end `liveTopic` goes null but the sticky
+  // `subscribedTopic` is still the just-ended topic, so the string is UNCHANGED: no null
+  // blip, so the hook keeps the call's accumulated buffers for the late draft to append to.
+  const transcriptTopic = liveTopic ?? subscribedTopic;
+  const {
+    lines: liveTranscript,
+    state: transcriptState,
+    intelligence: liveIntelligence,
+  } = useLiveTranscript(transcriptTopic);
+
+  const clearGraceTimer = useCallback(() => {
+    if (graceTimerRef.current) {
+      clearTimeout(graceTimerRef.current);
+      graceTimerRef.current = null;
+    }
+  }, []);
+
+  // Track the live topic into the sticky subscription and arm/cancel the grace teardown.
+  useEffect(() => {
+    if (liveTopic) {
+      // Live (new or same) — subscribe to it and cancel any pending grace teardown. A new
+      // call's topic REPLACES a grace-held one here (belt-and-suspenders to the render-level
+      // `liveTopic ?? subscribedTopic` supersede) — no cross-call leak (§9).
+      clearGraceTimer();
+      setSubscribedTopic((prev) => (prev === liveTopic ? prev : liveTopic));
+    } else if (subscribedTopic && !graceTimerRef.current) {
+      // The call just ended while we still hold its topic — keep it SUBSCRIBED through the
+      // bounded grace window (the string never blips to null), then tear it down. Capped by
+      // TRANSCRIPT_GRACE_MS whether or not a draft ever arrives.
+      graceTimerRef.current = setTimeout(() => {
+        graceTimerRef.current = null;
+        setSubscribedTopic(null);
+      }, TRANSCRIPT_GRACE_MS);
+    }
+  }, [liveTopic, subscribedTopic, clearGraceTimer]);
+
+  // Post-call only: once the draft we held the channel open for lands, give the panel a beat
+  // to freeze it, then tear the subscription down early (don't wait out the full window).
+  useEffect(() => {
+    if (liveTopic || !subscribedTopic || !liveIntelligence.draftReady) return;
+    clearGraceTimer();
+    graceTimerRef.current = setTimeout(() => {
+      graceTimerRef.current = null;
+      setSubscribedTopic(null);
+    }, TRANSCRIPT_GRACE_SETTLE_AFTER_DRAFT_MS);
+  }, [liveTopic, subscribedTopic, liveIntelligence.draftReady, clearGraceTimer]);
+
+  // Release the grace timer on unmount so a bounded keepalive never outlives the provider.
+  useEffect(() => () => clearGraceTimer(), [clearGraceTimer]);
+
+  // Drop the post-call grace subscription early (the operator dismissed the panel). Refuses
+  // to touch a LIVE call's subscription — only the grace-held keepalive is released.
+  const endLiveTranscriptGrace = useCallback(() => {
+    if (liveTopicRef.current) return;
+    clearGraceTimer();
+    setSubscribedTopic(null);
+  }, [clearGraceTimer]);
 
   const deviceRef = useRef<Device | null>(null);
   const callRef = useRef<Call | null>(null);
@@ -565,6 +664,8 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       sendDigit,
       liveTranscript,
       transcriptState,
+      endLiveTranscriptGrace,
+      liveIntelligence,
       incomingCall,
       acceptIncoming,
       rejectIncoming,
@@ -587,6 +688,8 @@ export function VoiceDeviceProvider({ children }: { children: ReactNode }) {
       sendDigit,
       liveTranscript,
       transcriptState,
+      endLiveTranscriptGrace,
+      liveIntelligence,
       incomingCall,
       acceptIncoming,
       rejectIncoming,

@@ -54,7 +54,12 @@ import {
  * it (§9), never from a raw parameter. tenantId here is the SAME non-forgeable value already
  * resolved for the bridge (outbound = authenticated client identity, inbound = number owner).
  */
-async function buildCoPilotStreamXml(tenantId: string, callSid: string): Promise<string> {
+async function buildCoPilotStreamXml(
+  admin: Admin,
+  tenantId: string,
+  callSid: string,
+  counterpartyPhone: string,
+): Promise<string> {
   const streamUrl = Deno.env.get("VOICE_STT_STREAM_URL") ?? "";
   if (!streamUrl) return ""; // co-pilot not activated — default OFF, changes nothing
   const secret = Deno.env.get("VOICE_STREAM_SECRET") ?? "";
@@ -67,8 +72,15 @@ async function buildCoPilotStreamXml(tenantId: string, callSid: string): Promise
     return "";
   }
   try {
-    const token = await mintStreamToken({ secret, tenantId, callSid });
-    // tenantId/callSid are ALSO stamped for logging/debug, but paige-stt trusts ONLY the token.
+    // §9/§13 — resolve the call's CLIENT counterparty phone → a TENANT-SCOPED contact id so the
+    // co-pilot can link commitments/at-risk flags to the client AND the auto-drafted follow-up can
+    // resolve a recipient. No match ⇒ null (honest degrade — we NEVER invent/auto-create a contact
+    // here; the copilot no-ops contact-linking when null). Gated behind the stream checks above so a
+    // contact lookup only runs when the co-pilot fork is actually being minted.
+    const contactId = await resolveContactByPhone(admin, tenantId, counterpartyPhone);
+    const token = await mintStreamToken({ secret, tenantId, callSid, contactId });
+    // tenantId/callSid are ALSO stamped for logging/debug, but paige-stt trusts ONLY the token (the
+    // contactId rides INSIDE the signed token, never as a forgeable <Parameter>).
     return buildStreamStart(streamUrl, { streamToken: token, tenantId, callSid });
   } catch (e) {
     console.error("[voice-twiml] co-pilot token mint failed — bridging without stream", (e as Error)?.message);
@@ -109,6 +121,32 @@ async function resolveTenantCallerId(admin: Admin, tenantId: string): Promise<st
     return null;
   }
   return (data?.phone_number as string | undefined) ?? null;
+}
+
+/**
+ * §9/§13 — resolve the call's CLIENT counterparty phone → a TENANT-SCOPED contact id. The tenant is
+ * the SAME non-forgeable value already resolved for the bridge (outbound = authenticated identity,
+ * inbound = number owner); the contact is only ever looked up WITHIN that tenant, so a call can never
+ * link to another tenant's client. Matches the stored phone in both the raw (Twilio-E.164) and
+ * normalized forms (defensive against stored-format drift) — the SAME pattern the inbound-SMS reader
+ * uses (§18 one lookup). Returns null when no contact matches — we NEVER invent/auto-create a contact
+ * here; a null contact is an honest degrade the copilot handles (it files the action contactless).
+ */
+async function resolveContactByPhone(admin: Admin, tenantId: string, phone: string): Promise<string | null> {
+  if (!phone || !tenantId) return null;
+  const norm = normalizePhone(phone);
+  const { data, error } = await admin
+    .from("clients")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .or(`phone.eq.${phone},phone.eq.${norm}`)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("[voice-twiml] tenant-scoped contact lookup failed — proceeding contactless:", error.code, error.message);
+    return null;
+  }
+  return (data?.id as string | undefined) ?? null;
 }
 
 /**
@@ -218,7 +256,8 @@ Deno.serve(async (req) => {
         return twiml(buildSayHangupTwiml(NO_CALLER_ID_MESSAGE));
       }
       // #140 B1: GATED co-pilot fork (default OFF) — non-blocking, before the <Dial> bridge.
-      const streamXml = await buildCoPilotStreamXml(caller.tenantId, callSid);
+      // OUTBOUND: the CLIENT counterparty is the dialed number (To) — resolve it to a contact (§9/§13).
+      const streamXml = await buildCoPilotStreamXml(admin, caller.tenantId, callSid, to);
       console.log("[voice-twiml] outbound bridge", { tenantId: caller.tenantId, coPilot: streamXml.length > 0 });
       return twiml(buildOutboundTwiml(callerId, to, streamXml));
     }
@@ -238,7 +277,8 @@ Deno.serve(async (req) => {
       return twiml(buildSayHangupTwiml(VOICEMAIL_UNAVAILABLE_MESSAGE));
     }
     // #140 B1: GATED co-pilot fork (default OFF) — non-blocking, before the <Dial> ring.
-    const streamXml = await buildCoPilotStreamXml(tenantId, callSid);
+    // INBOUND: the CLIENT counterparty is the external caller (From) — resolve it to a contact (§9/§13).
+    const streamXml = await buildCoPilotStreamXml(admin, tenantId, callSid, from);
     console.log("[voice-twiml] inbound ring", { tenantId, seats: identities.length, coPilot: streamXml.length > 0 });
     return twiml(buildInboundTwiml(identities, streamXml));
   } catch (e) {

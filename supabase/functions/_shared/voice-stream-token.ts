@@ -15,7 +15,12 @@
 //
 // FORMAT (compact, self-contained — no DB round-trip on the hot path):
 //   v1.<b64url(payloadJson)>.<b64url(HMAC_SHA256(secret, "v1." + b64url(payloadJson)))>
-//   payload = { t: tenantId, c: callSid, iat: <unix s>, exp: <unix s> }
+//   payload = { t: tenantId, c: callSid, iat: <unix s>, exp: <unix s>, ct?: contactId }
+//   `ct` (the call's resolved CLIENT contact_id) is OPTIONAL: voice-twiml sets it when it could
+//   resolve the counterparty phone → a tenant-scoped contact, and OMITS it otherwise. A token
+//   WITHOUT `ct` is byte-identical to the pre-B3 payload, so it verifies exactly as before and
+//   yields contactId=null. paige-stt derives the contact FROM the verified payload (§9), never
+//   from a raw stream parameter — so the client link is as non-forgeable as the tenant scope.
 //
 // PURE + TESTABLE (§32): mint/verify are deterministic functions of (secret, payload/token).
 // A Node smoke (scripts/voice-stt-smoke.mts) mints with a known secret and asserts verify
@@ -43,6 +48,10 @@ interface StreamTokenPayload {
   c: string;
   iat: number;
   exp: number;
+  /** OPTIONAL — the call's resolved CLIENT contact_id (tenant-scoped), set by voice-twiml when the
+   *  counterparty phone matched a contact; omitted otherwise so the payload stays byte-identical to
+   *  the pre-B3 shape and verifies exactly as before (contactId → null). */
+  ct?: string;
 }
 
 /** base64url (no padding) of a UTF-8 string or raw bytes. */
@@ -100,6 +109,10 @@ export interface MintStreamTokenInput {
   secret: string;
   tenantId: string;
   callSid: string;
+  /** OPTIONAL — the call's resolved CLIENT contact_id. When a non-empty string, it is stamped on the
+   *  signed payload as `ct`; when absent/blank it is OMITTED (byte-identical to the pre-B3 payload).
+   *  NEVER required — a call whose counterparty matched no contact still mints a valid token. */
+  contactId?: string | null;
   ttlSeconds?: number;
   /** Injectable clock for deterministic tests; defaults to Date.now(). */
   nowMs?: number;
@@ -116,11 +129,16 @@ export async function mintStreamToken(input: MintStreamTokenInput): Promise<stri
   if (!tenantId) throw new Error("stream_token_tenant_required");
   if (!callSid) throw new Error("stream_token_call_required");
   const nowSec = Math.floor((input.nowMs ?? Date.now()) / 1000);
+  const contactId = typeof input.contactId === "string" && input.contactId.length > 0
+    ? input.contactId
+    : undefined;
   const payload: StreamTokenPayload = {
     t: tenantId,
     c: callSid,
     iat: nowSec,
     exp: nowSec + clampStreamTtl(input.ttlSeconds),
+    // Only stamp `ct` when present — omitting it keeps a contactless token byte-identical to pre-B3.
+    ...(contactId ? { ct: contactId } : {}),
   };
   const payloadB64 = b64url(JSON.stringify(payload));
   const signingInput = `${TOKEN_VERSION}.${payloadB64}`;
@@ -129,7 +147,7 @@ export async function mintStreamToken(input: MintStreamTokenInput): Promise<stri
 }
 
 export type VerifyStreamTokenResult =
-  | { ok: true; tenantId: string; callSid: string; expiresAt: number }
+  | { ok: true; tenantId: string; callSid: string; expiresAt: number; contactId: string | null }
   | { ok: false; reason: string };
 
 export interface VerifyStreamTokenOpts {
@@ -180,5 +198,8 @@ export async function verifyStreamToken(
     return { ok: false, reason: "call_sid_mismatch" };
   }
 
-  return { ok: true, tenantId: payload.t, callSid: payload.c, expiresAt: payload.exp };
+  // §9 — the contact link rides the VERIFIED payload (never a raw parameter). Absent `ct` (a
+  // contactless or pre-B3 token) ⇒ null, which the copilot no-ops cleanly (§13 honest degrade).
+  const contactId = typeof payload.ct === "string" && payload.ct.length > 0 ? payload.ct : null;
+  return { ok: true, tenantId: payload.t, callSid: payload.c, expiresAt: payload.exp, contactId };
 }

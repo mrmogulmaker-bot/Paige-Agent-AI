@@ -64,6 +64,13 @@ project_id = "xygzykjyynhzqytbqnzu"
   # the tenant FROM the verified token — never a raw body tenantId (§9). A missing/invalid token
   # closes the socket and never opens Deepgram. Deepgram Nova-3 STT is routed via the ONE STT home
   # (_shared/stt-router.ts, §34); streamed minutes meter to platform_usage_events (§17).
+  # #140 B3: the live-call INTELLIGENCE layer runs INLINE here (no new edge fn — §18: paige-stt is the
+  # ONE server-side home for a call's verified {tenantId, callSid}). Off the same Deepgram FINALS it
+  # broadcasts, the pure _shared/voice-copilot.ts drives 4 features wired to EXISTING seams — whisper
+  # (recallSimilar + tenant KB), commitment (file_action owner.task), at-risk (reviewBySpecialists →
+  # file_action client.at_risk), auto-draft (advance_action → cs_draft approval) — broadcast on the
+  # SAME private topic (new events alongside "transcript"), cost-capped + metered (voice_copilot_llm).
+  # verify_jwt stays false for the same reason B1 does: the Twilio media WS presents no Supabase JWT.
   [functions.paige-stt]
     verify_jwt = false
   # Comms C-2s-B-2: A2P 10DLC wrapper (§36 beat-GHL). Both JWT-gated — each re-verifies the
