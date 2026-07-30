@@ -43,6 +43,8 @@ export interface ComposeConnector {
   id: string;
   channel_type: ChannelType;
   display_name: string | null;
+  provider?: string | null;
+  from_address?: string | null;
 }
 
 interface PickedClient {
@@ -87,6 +89,7 @@ export function ComposeThreadDialog({
 
   const [client, setClient] = useState<PickedClient | null>(null);
   const [channel, setChannel] = useState<ChannelType | "">("");
+  const [connectorId, setConnectorId] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [scheduledFor, setScheduledFor] = useState<string | null>(null);
@@ -125,6 +128,7 @@ export function ComposeThreadDialog({
     if (!open) return;
     setClient(null);
     setChannel(sendable[0]?.channel_type ?? "");
+    setConnectorId(sendable[0]?.id ?? "");
     setSubject("");
     setBody("");
     setScheduledFor(null);
@@ -364,7 +368,7 @@ export function ComposeThreadDialog({
     if (!body.trim()) { toast.error("Write a message first."); return; }
     if (channel === "email" && !subject.trim()) { toast.error("Add a subject for the email."); return; }
 
-    const connector = sendable.find((c) => c.channel_type === channel) ?? null;
+    const connector = sendable.find((c) => c.id === connectorId) ?? null;
     // Canonical key so a later inbound reply MERGES into this thread (not a fragment).
     const threadKey = tenantId
       ? canonicalThreadKey(channel, tenantId, toAddress)
@@ -559,7 +563,14 @@ export function ComposeThreadDialog({
             {/* Channel */}
             <div className="space-y-1.5">
               <Label>Channel</Label>
-              <Select value={channel} onValueChange={(v) => setChannel(v as ChannelType)}>
+              <Select
+                value={connectorId}
+                onValueChange={(id) => {
+                  const connector = sendable.find((c) => c.id === id);
+                  setConnectorId(id);
+                  setChannel(connector?.channel_type ?? "");
+                }}
+              >
                 <SelectTrigger className="h-9">
                   <SelectValue placeholder="Choose a channel" />
                 </SelectTrigger>
@@ -567,10 +578,15 @@ export function ComposeThreadDialog({
                   {sendable.map((c) => {
                     const Icon = CHANNEL_ICON[c.channel_type];
                     return (
-                      <SelectItem key={c.id} value={c.channel_type}>
+                      <SelectItem key={c.id} value={c.id}>
                         <span className="flex items-center gap-2">
                           <Icon className="h-3.5 w-3.5" />
-                          {c.display_name?.trim() || CHANNEL_LABEL[c.channel_type]}
+                          <span>
+                            {c.display_name?.trim() || CHANNEL_LABEL[c.channel_type]}
+                            {c.from_address ? (
+                              <span className="ml-1.5 text-xs text-muted-foreground">· {c.from_address}</span>
+                            ) : null}
+                          </span>
                         </span>
                       </SelectItem>
                     );
