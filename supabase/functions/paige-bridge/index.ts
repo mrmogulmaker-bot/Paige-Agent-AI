@@ -440,7 +440,7 @@ Deno.serve(async (req) => {
             email: emailLower,
             status: "active",
             source: p.source ?? "mma_bridge",
-            lifecycle_stage: "lead",
+            lifecycle_stage: "new_lead", // #172: 'lead' violates clients_lifecycle_stage_chk (23514)
             created_by_channel_type: "import", // #10 channel-of-origin (external CRM mirror/sync)
           })
           .select("id")

@@ -385,7 +385,7 @@ async function runExecutor(
             p_phone: idn.phone,
             p_entity_name: idn.entityName,
             p_title: idn.title,
-            p_lifecycle_stage: "lead",
+            p_lifecycle_stage: "new_lead", // #172: 'lead' violates clients_lifecycle_stage_chk (23514)
             p_source: "paige_form",
             p_channel: "form", // #10 channel-of-origin (growth form submission)
             p_tags: [],

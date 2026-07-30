@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
             last_name: lastName || "",
             phone: phone || null,
             source: `external:${source.provider}`,
-            lifecycle_stage: "lead",
+            lifecycle_stage: "new_lead", // #172: 'lead' violates clients_lifecycle_stage_chk (23514)
             status: "active",
             created_by: source.created_by,
             tenant_id: source.tenant_id,
