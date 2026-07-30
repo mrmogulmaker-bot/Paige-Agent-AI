@@ -69,8 +69,13 @@
     <script defer data-domain="paigeagent.ai" src="https://plausible.io/js/script.js"></script>
     <script async src="https://plausible.io/js/pa-6X7R-SykdBdjPO8QpOaQD.js"></script>
     <script>
-      window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{};
-      plausible.init()
+      window.plausible = window.plausible || function () {
+        (window.plausible.q = window.plausible.q || []).push(arguments);
+      };
+      window.plausible.init = window.plausible.init || function (options) {
+        window.plausible.o = options || {};
+      };
+      window.plausible.init();
     </script>
 
     <!-- Cinematic pre-hydration splash — paints before React boots so there
