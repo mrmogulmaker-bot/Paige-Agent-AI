@@ -10,7 +10,6 @@ import {
   Sunrise,
   Flag,
   Check,
-  Sparkles as SparkIcon,
 } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
