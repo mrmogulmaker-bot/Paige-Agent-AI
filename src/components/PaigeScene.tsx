@@ -27,7 +27,8 @@ function usePointerTracking() {
 // MIN_SCALE as the page scrolls (paigeAnim.scroll 0→1). Kept a touch smaller so
 // the free-floating rings form-fit over the page and read on mobile.
 const TOP_SCALE = 0.9;
-const MIN_SCALE = 0.5;
+const WORKSPACE_SCALE = 1.16;
+const LATE_SCALE = 0.5;
 // Local Y of her head in the centered model (normalized height 3.4 → top ≈ 1.7).
 // The orbital rings sit here. Tune to raise/lower the ring plane on her head.
 const HEAD_Y = 0.94;
@@ -97,8 +98,8 @@ function supportsWebGL() {
  */
 const ORBIT_RINGS = [
   {
-    r: 1.48,
-    tilt: [1.46, 0.08, 0.4] as [number, number, number],
+    r: 1.7,
+    tilt: [1.46, 0.08, 0.38] as [number, number, number],
     tube: 0.009,
     color: GOLD_HI,
     emissive: 1.9,
@@ -108,8 +109,8 @@ const ORBIT_RINGS = [
     phase: 0,
   },
   {
-    r: 1.7,
-    tilt: [1.52, -0.06, -0.34] as [number, number, number],
+    r: 2.15,
+    tilt: [1.36, -0.12, -0.38] as [number, number, number],
     tube: 0.006,
     color: "#C9B8E8",
     emissive: 1.45,
@@ -119,8 +120,8 @@ const ORBIT_RINGS = [
     phase: 2.1,
   },
   {
-    r: 1.92,
-    tilt: [1.42, 0.12, 0.08] as [number, number, number],
+    r: 2.6,
+    tilt: [1.62, 0.16, 0.12] as [number, number, number],
     tube: 0.0035,
     color: OFFWHITE,
     emissive: 1.15,
@@ -284,16 +285,21 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
     // reference glass helmet rather than a flat gold form. A true face-inside-
     // glass depth will land fully with the textured re-export.
     const mat = new THREE.MeshPhysicalMaterial({
-      color: GOLD,
+      color: "#F3D7B5",
       emissive: GOLD_HI,
-      emissiveIntensity: 0.32,
-      metalness: 0.3,
-      roughness: 0.16,
+      emissiveIntensity: 0.08,
+      metalness: 0.04,
+      roughness: 0.08,
       clearcoat: 1,
-      clearcoatRoughness: 0.22,
-      envMapIntensity: 2.8,
+      clearcoatRoughness: 0.08,
+      transmission: 0.46,
+      thickness: 0.72,
+      ior: 1.34,
+      attenuationColor: new THREE.Color("#D6A96B"),
+      attenuationDistance: 2.8,
+      envMapIntensity: 2.2,
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.38,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -342,8 +348,26 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
       // gated by the entrance so she grows out of nothing when she pops. Floored
       // to a tiny epsilon (not 0) to avoid a degenerate zero-scale matrix while
       // she's still hidden behind the intro.
-      const size = Math.max(0.0001, e * mobileFactor() * (TOP_SCALE - (TOP_SCALE - MIN_SCALE) * paigeAnim.scroll));
+      const progress = paigeAnim.scroll;
+      const intoWorkspace = THREE.MathUtils.smoothstep(progress, 0.42, 1.02);
+      const beyondWorkspace = THREE.MathUtils.smoothstep(progress, 1.35, 2.15);
+      const workspaceSize = THREE.MathUtils.lerp(TOP_SCALE, WORKSPACE_SCALE, intoWorkspace);
+      const baseSize = THREE.MathUtils.lerp(workspaceSize, LATE_SCALE, beyondWorkspace);
+      const size = Math.max(0.0001, e * mobileFactor() * baseSize);
       group.current.scale.setScalar(size);
+
+      // The same character moves from hero anchor to the centered workspace
+      // reveal, then recedes for the long-form sections. No second renderer.
+      group.current.position.x = THREE.MathUtils.lerp(
+        THREE.MathUtils.lerp(1.65, 0, intoWorkspace),
+        1.45,
+        beyondWorkspace,
+      );
+      group.current.position.y = THREE.MathUtils.lerp(
+        THREE.MathUtils.lerp(-0.4, 0.08, intoWorkspace),
+        -0.65,
+        beyondWorkspace,
+      );
 
       // Gaze — only once she's out (rotation ramps in with the entrance), so the
       // cursor tracking "starts" after the pop, not during it.
@@ -384,9 +408,9 @@ function Scene({ reduced: reducedProp }: { reduced?: boolean }) {
   const reduced = reducedProp ?? osReduced;
   return (
     <>
-      <ambientLight intensity={0.4} color={INDIGO} />
-      <pointLight position={[4, 3, 4]} intensity={32} color={GOLD_HI} decay={2} />
-      <pointLight position={[-4, -1, 3]} intensity={16} color={VIOLET} decay={2} />
+      <ambientLight intensity={0.24} color={INDIGO} />
+      <pointLight position={[4, 3, 4]} intensity={18} color={GOLD_HI} decay={2} />
+      <pointLight position={[-4, -1, 3]} intensity={8} color={VIOLET} decay={2} />
       <Environment resolution={128}>
         <Lightformer form="rect" intensity={2} color={GOLD_HI} scale={[5, 3, 1]} position={[4, 3, 3]} />
         <Lightformer form="rect" intensity={1} color={INDIGO} scale={[6, 4, 1]} position={[-4, 0, 2]} />
