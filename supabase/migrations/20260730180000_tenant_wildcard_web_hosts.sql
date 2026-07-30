@@ -107,7 +107,16 @@ BEGIN
          sender.identity ->> 'source',
          CASE
            WHEN sender.identity ->> 'source' = 'custom_domain' THEN 'verified'
-           ELSE 'ready'
+           WHEN EXISTS (
+             SELECT 1
+               FROM public.channel_connectors c
+              WHERE c.tenant_id = t.id
+                AND c.channel_type = 'email'
+                AND c.active = true
+                AND c.status = 'active'
+                AND lower(c.from_address) = lower(sender.identity ->> 'from_address')
+           ) THEN 'outbound_ready'
+           ELSE 'reserved'
          END
     FROM public.tenants t
     CROSS JOIN LATERAL (
@@ -122,7 +131,7 @@ REVOKE ALL ON FUNCTION public.resolve_tenant_domain_identity(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.resolve_tenant_domain_identity(uuid) TO authenticated, service_role;
 
 COMMENT ON FUNCTION public.resolve_tenant_domain_identity(uuid) IS
-  'Canonical tenant web and email identity for Paige, Conversations, onboarding, and settings. Includes the ready Paige-managed email fallback; authenticated callers are pinned to their own tenant.';
+  'Canonical tenant web and email identity for Paige, Conversations, onboarding, and settings. Distinguishes a reserved Paige address from an active outbound connector; authenticated callers are pinned to their own tenant.';
 
 -- Every eligible customer workspace receives one Paige-managed email connector.
 -- Agency roots, owned subaccounts, and standalone practices remain independent
