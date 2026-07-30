@@ -43,7 +43,15 @@
 // which would corrupt the send occurred-at). The report FLAGS that a first-class
 // messages.delivered_at column is the right home in a follow-up migration.
 
+// #168 VOICE EXTENSION (§18 extend, not fork): this fn now ALSO receives Twilio CALL-status callbacks
+// (the voice-twiml <Number>/<Client> statusCallback), which carry CallSid + CallStatus + CallDuration
+// (never MessageSid). A top-of-handler branch detects and handles those, stamping the voice messages
+// row's terminal status + call_duration_seconds. The SMS DLR path below is UNCHANGED — a call payload
+// has no MessageSid, so it can never reach the message logic (§37: the message branch reads
+// MessageSid/SmsSid, the voice branch reads CallSid; disjoint by construction). The pure CallStatus
+// mapping lives in ./call-status.ts and is smoke-tested headless (§32).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { mapCallStatus, callMatchSids, parseCallDuration } from "./call-status.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -111,6 +119,90 @@ async function verifyTwilio(req: Request, rawBody: string): Promise<boolean> {
   return computed === sig;
 }
 
+/**
+ * #168 — stamp a VOICE messages row's terminal status + call_duration_seconds from a Twilio call-status
+ * callback. Matched on provider_message_id = the parent Call SID (voice-twiml stored it); the child-leg
+ * callback carries ParentCallSid (that parent) + CallSid (the child), so we match on either (callMatchSids).
+ * ADVANCE-ONLY (reuses shouldApply: queued → delivered/failed advances; a duplicate 'completed' won't
+ * regress delivered but STILL records duration). meta.call is merged non-destructively (§13). No matching
+ * voice row ⇒ log + 200, never a fabricated row. Ack 200 on every DB blip so Twilio doesn't hammer retries.
+ */
+async function handleCallStatus(
+  params: URLSearchParams,
+  callSid: string,
+  twilioStatus: string,
+): Promise<Response> {
+  const parentCallSid = params.get("ParentCallSid") ?? "";
+  const mapped = mapCallStatus(twilioStatus);
+  if (!mapped) {
+    console.log(`[twilio-status-callback] unmapped CallStatus="${twilioStatus}" callSid=${callSid} — ack, no update`);
+    return new Response("ok", { status: 200, headers: corsHeaders });
+  }
+  const duration = parseCallDuration(params.get("CallDuration"));
+  const sids = callMatchSids(callSid, parentCallSid);
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const admin = createClient(supabaseUrl, serviceKey);
+
+  // Match the parent-SID voice row. channel_type='voice' is defensive scoping (provider_message_id is
+  // globally unique, so a message row could never collide, but this guarantees we never touch a non-voice row).
+  const { data: row, error: lookupErr } = await admin
+    .from("messages")
+    .select("id, status, meta")
+    .in("provider_message_id", sids)
+    .eq("channel_type", "voice")
+    .maybeSingle();
+
+  if (lookupErr) {
+    console.error("[twilio-status-callback] voice lookup_error", lookupErr, "sids=", sids.join("|"));
+    return new Response("ok", { status: 200, headers: corsHeaders });
+  }
+  if (!row) {
+    // No voice row for this call (e.g. the start-of-call write was skipped on a contactless honest degrade).
+    // Log + 200; NEVER fabricate a row (§13).
+    console.log(`[twilio-status-callback] no voice row for callSid=${callSid} parent=${parentCallSid} — ack, no fabrication`);
+    return new Response("ok", { status: 200, headers: corsHeaders });
+  }
+
+  const nowIso = new Date().toISOString();
+  const currentStatus = String(row.status ?? "");
+  const advance = shouldApply(currentStatus, mapped);
+
+  // Merge the REAL call facts into meta.call non-destructively (§13) — always record what Twilio
+  // reported, even when the status itself does not advance.
+  const prevMeta = (row.meta && typeof row.meta === "object" ? row.meta : {}) as Record<string, unknown>;
+  const prevCall = (prevMeta.call && typeof prevMeta.call === "object" ? prevMeta.call : {}) as Record<string, unknown>;
+  const call: Record<string, unknown> = {
+    ...prevCall,
+    provider: "twilio",
+    provider_status: twilioStatus,
+    mapped_status: mapped,
+    updated_at: nowIso,
+  };
+  if (duration !== null) call.duration_seconds = duration;
+
+  const update: Record<string, unknown> = {
+    meta: { ...prevMeta, call },
+    updated_at: nowIso,
+  };
+  if (advance) update.status = mapped;
+  // Duration is stamped whenever Twilio reports it, independent of the advance-only status guard.
+  if (duration !== null) update.call_duration_seconds = duration;
+
+  const { error: updErr } = await admin.from("messages").update(update).eq("id", row.id);
+  if (updErr) {
+    console.error("[twilio-status-callback] voice update_error", updErr, "callSid=", callSid);
+    return new Response("ok", { status: 200, headers: corsHeaders });
+  }
+
+  console.log(
+    `[twilio-status-callback] voice callSid=${callSid} twilio="${twilioStatus}" mapped=${mapped} ` +
+      `from=${currentStatus} applied=${advance}${duration !== null ? ` dur=${duration}s` : ""}`,
+  );
+  return new Response("ok", { status: 200, headers: corsHeaders });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response("method_not_allowed", { status: 405 });
@@ -120,6 +212,15 @@ Deno.serve(async (req) => {
   if (!verified) return new Response("invalid_signature", { status: 401 });
 
   const params = new URLSearchParams(rawBody);
+
+  // #168 VOICE branch — a call-status callback carries CallSid + CallStatus (never MessageSid). Handle
+  // it and return; the SMS DLR path below is reached ONLY by message callbacks (disjoint fields, §37).
+  const callSid = params.get("CallSid") ?? "";
+  const callStatusRaw = (params.get("CallStatus") ?? "").trim();
+  if (callSid && callStatusRaw) {
+    return await handleCallStatus(params, callSid, callStatusRaw);
+  }
+
   const messageSid = params.get("MessageSid") ?? params.get("SmsSid") ?? "";
   const twilioStatus = (params.get("MessageStatus") ?? params.get("SmsStatus") ?? "").trim();
   const errorCodeRaw = params.get("ErrorCode");

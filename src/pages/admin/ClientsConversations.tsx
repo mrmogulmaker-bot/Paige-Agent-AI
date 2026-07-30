@@ -1570,12 +1570,23 @@ export default function ClientsConversations() {
                       />
                     </div>
 
-                    {/* Toolbar: dictate · Draft with Paige · attach · signature toggle · schedule */}
+                    {/* Toolbar: attach · dictate · Draft with Paige · template · signature · schedule.
+                        Affordances read left→right as [attach][mic][draft] (matches ComposeThreadDialog,
+                        §6), with Send the terminal gold act in its own row below (§11). */}
                     <div className="flex flex-wrap items-center gap-2">
                       <input
                         ref={fileInputRef} type="file" multiple hidden
                         onChange={(e) => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ""; }}
                       />
+
+                      {/* Attach — leads the cluster; neutral/indigo utility (gold is Send, §11). */}
+                      <Button variant="outline" size="sm" className="h-8"
+                        onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                        {uploading
+                          ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          : <Paperclip className="mr-1.5 h-3.5 w-3.5" />}
+                        Attach
+                      </Button>
 
                       {/* Hold-to-dictate — neutral/indigo utility, matches "Draft with Paige"
                           (NOT gold — gold stays on Send/Approve, §11). Dictated text feeds
@@ -1662,14 +1673,6 @@ export default function ClientsConversations() {
                           </SelectContent>
                         </Select>
                       )}
-
-                      <Button variant="outline" size="sm" className="h-8"
-                        onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                        {uploading
-                          ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                          : <Paperclip className="mr-1.5 h-3.5 w-3.5" />}
-                        Attach
-                      </Button>
 
                       {hasSignature && (
                         <Button
