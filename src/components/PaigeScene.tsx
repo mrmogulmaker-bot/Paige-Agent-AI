@@ -29,9 +29,6 @@ function usePointerTracking() {
 const TOP_SCALE = 0.9;
 const WORKSPACE_SCALE = 1.16;
 const LATE_SCALE = 0.5;
-// Local Y of her head in the centered model (normalized height 3.4 → top ≈ 1.7).
-// The orbital rings sit here. Tune to raise/lower the ring plane on her head.
-const HEAD_Y = 1.34;
 // On phones she's shrunk so she form-fits the narrow viewport instead of
 // filling it the way she does on a laptop.
 const MOBILE_SCALE = 0.66;
@@ -85,78 +82,6 @@ function supportsWebGL() {
   } catch {
     return false;
   }
-}
-
-/**
- * Paige's orbital crown — two restrained paths lifted above the facial plane
- * so her face stays unobstructed. The inner gold orbit carries the
- * visual weight; violet adds depth; the outer pearl orbit is a quiet halo.
- *
- * Each path precesses on a different axis and speed. Motion remains subtle and
- * is slowed further for reduced-motion visitors. The crown is parented to
- * Paige, so entrance, gaze, scroll scaling, and mobile form-fit stay unified.
- */
-const ORBIT_RINGS = [
-  {
-    r: 1.7,
-    tilt: [1.46, 0.08, 0.38] as [number, number, number],
-    tube: 0.009,
-    color: GOLD_HI,
-    emissive: 1.9,
-    op: 0.72,
-    spin: 0.1,
-    drift: 0.018,
-    phase: 0,
-  },
-  {
-    r: 2.15,
-    tilt: [1.36, -0.12, -0.38] as [number, number, number],
-    tube: 0.006,
-    color: OFFWHITE,
-    emissive: 1.35,
-    op: 0.46,
-    spin: -0.075,
-    drift: 0.014,
-    phase: 2.1,
-  },
-];
-
-function OrbitRings({ reduced }: { reduced: boolean }) {
-  const spins = useRef<(THREE.Group | null)[]>([]);
-  useFrame((s) => {
-    const t = s.clock.elapsedTime;
-    ORBIT_RINGS.forEach((ring, i) => {
-      const group = spins.current[i];
-      if (!group) return;
-      const motion = reduced ? 0.25 : 1;
-      group.rotation.y = t * ring.spin * motion;
-      group.rotation.x = Math.sin(t * 0.32 + ring.phase) * ring.drift * motion;
-      group.rotation.z = Math.cos(t * 0.24 + ring.phase) * ring.drift * motion;
-    });
-  });
-
-  return (
-    <group rotation={[0.02, 0, 0]}>
-      {ORBIT_RINGS.map((ring, i) => (
-        <group key={ring.r} ref={(el) => (spins.current[i] = el)}>
-          <group rotation={ring.tilt}>
-            <mesh>
-              <torusGeometry args={[ring.r, ring.tube, 12, 240]} />
-              <meshStandardMaterial
-                color={ring.color}
-                emissive={ring.color}
-                emissiveIntensity={ring.emissive}
-                transparent
-                opacity={ring.op}
-                toneMapped={false}
-                depthWrite={false}
-              />
-            </mesh>
-          </group>
-        </group>
-      ))}
-    </group>
-  );
 }
 
 /**
@@ -370,10 +295,6 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
     <group ref={group} position={[1.65, -0.4, 0]}>
       <group ref={inner}>
         <primitive object={model} />
-      </group>
-      {/* Delicate orbital rings around her head (HEAD_Y ≈ head center). */}
-      <group position={[0, HEAD_Y, 0]}>
-        <OrbitRings reduced={reduced} />
       </group>
       <Sparkles count={40} scale={[2.6, 4, 2.6]} position={[0, 0.4, 0]} size={2} speed={reduced ? 0 : 0.25} color={GOLD_HI} opacity={0.7} />
     </group>
