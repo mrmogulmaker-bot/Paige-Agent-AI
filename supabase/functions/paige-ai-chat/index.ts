@@ -6354,7 +6354,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 p_phone: args.phone ?? null,
                 p_entity_name: args.entity_name ?? null,
                 p_title: args.title ?? null,
-                p_lifecycle_stage: args.lifecycle_stage ?? "lead",
+                p_lifecycle_stage: args.lifecycle_stage ?? "new_lead", // #172: 'lead' violates clients_lifecycle_stage_chk (23514)
                 p_source: "paige",
                 p_channel: "api", // #10 channel-of-origin (Paige-in-chat programmatic)
                 p_tags: Array.isArray(args.tags) ? args.tags : [],

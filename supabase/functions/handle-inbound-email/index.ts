@@ -305,7 +305,7 @@ Deno.serve(async (req) => {
           first_name: firstName,
           last_name: "",
           email: fromEmail,
-          lifecycle_stage: "lead",
+          lifecycle_stage: "new_lead", // #172: 'lead' violates clients_lifecycle_stage_chk (23514)
           source: "inbound_email",
           status: "active",
           created_by_channel_type: "email", // #10 channel-of-origin
