@@ -105,6 +105,8 @@ Deno.serve(async (req) => {
   let deepgramOpen = false;
   let started = false; // the client's "start" frame was received (Deepgram opening/open)
   let tornDown = false;
+  let finalizing = false; // client released → we've flushed Deepgram and await its trailing final + close
+  let finalizeTimer: ReturnType<typeof setTimeout> | null = null;
   let audioFrames = 0;
   const pendingAudio: Uint8Array[] = []; // buffer mic audio that arrives before Deepgram finishes opening
 
@@ -118,6 +120,7 @@ Deno.serve(async (req) => {
   const teardown = (why: string) => {
     if (tornDown) return;
     tornDown = true;
+    if (finalizeTimer !== null) { clearTimeout(finalizeTimer); finalizeTimer = null; }
     console.log("[paige-dictate] teardown", { why, userId: user.id, audioFrames });
     if (deepgram) {
       try {
@@ -136,6 +139,29 @@ Deno.serve(async (req) => {
 
   const closeClient = (code: number, reason: string) => {
     try { socket.close(code, reason.slice(0, 120)); } catch { /* already closing */ }
+  };
+
+  // Graceful stop (Codex P1): the client released the button. Ask Deepgram to FLUSH the in-flight
+  // utterance, but keep BOTH sockets open so the trailing FINAL transcript still reaches the client
+  // (the hook appends only is_final text and clears the interim on release — closing immediately would
+  // drop the last phrase). Close on Deepgram's own close (see onclose), with a timeout fallback so a
+  // stalled provider can never hang the socket.
+  const finalizeAndClose = () => {
+    if (tornDown || finalizing) return;
+    if (!deepgram || deepgram.readyState !== WebSocket.OPEN) {
+      // Nothing is streaming yet (or it's already gone) — nothing to flush; close cleanly now.
+      teardown("client_stop_no_stream");
+      closeClient(1000, "stop");
+      return;
+    }
+    finalizing = true;
+    console.log("[paige-dictate] finalizing — flushing for the trailing final", { userId: user.id });
+    try { deepgram.send(JSON.stringify({ type: "CloseStream" })); } catch { /* best effort flush */ }
+    finalizeTimer = setTimeout(() => {
+      console.warn("[paige-dictate] finalize timeout — closing without a provider close", { userId: user.id });
+      teardown("finalize_timeout");
+      closeClient(1000, "stop");
+    }, 2000);
   };
 
   // Open ONE Deepgram Nova-3 stream for browser linear16 audio via the ONE STT home (§18/§34).
@@ -187,6 +213,20 @@ Deno.serve(async (req) => {
     deepgram.onclose = (e) => {
       deepgramOpen = false;
       console.log("[paige-dictate] deepgram closed", { code: e.code, reason: e.reason });
+      if (tornDown) return; // WE initiated the close (client gone / hard teardown) — nothing to do
+      if (finalizing) {
+        // Graceful path: the trailing final has been relayed; close the client cleanly now.
+        if (finalizeTimer !== null) { clearTimeout(finalizeTimer); finalizeTimer = null; }
+        teardown("deepgram_closed_after_finalize");
+        closeClient(1000, "stop");
+        return;
+      }
+      // UNEXPECTED provider close mid-dictation (Codex P2 #190): the client is still "listening" and
+      // its mic frames would buffer to the cap then silently drop while the UI lies. Surface a
+      // jargon-free error and tear the client down so the hook stops capturing (§13/§32/§3).
+      sendError("stt_closed", "Voice typing stopped unexpectedly. Please try again.");
+      teardown("deepgram_unexpected_close");
+      closeClient(1011, "stt_closed");
     };
   };
 
@@ -232,8 +272,7 @@ Deno.serve(async (req) => {
     }
 
     if (type === "stop") {
-      teardown("client_stop");
-      closeClient(1000, "stop");
+      finalizeAndClose(); // flush + await the trailing final, then close (Codex P1)
       return;
     }
 
