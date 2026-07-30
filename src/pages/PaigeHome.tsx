@@ -553,6 +553,12 @@ export default function PaigeHome() {
         <div className="pointer-events-none absolute inset-0">
           <FloatingPanels />
         </div>
+        {/* Mobile depth scrim: preserve the one shared 3D scene while keeping
+            the copy decisively foregrounded on a narrow viewport. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(20,12,39,0.96)_0%,rgba(20,12,39,0.78)_62%,rgba(20,12,39,0.28)_100%)] sm:hidden"
+        />
 
         <motion.div
           variants={stagger}
