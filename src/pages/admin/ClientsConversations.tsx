@@ -21,7 +21,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { PageShell, PageHeader, SectionCard, EmptyState, StatePill } from "@/components/ui/page";
+import { PageShell, SectionCard, EmptyState, StatePill } from "@/components/ui/page";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -59,6 +60,7 @@ import { FirstRunOnboarding } from "./conversations/FirstRunOnboarding";
 import { ThreadRow } from "./conversations/ThreadRow";
 import { ThreadFilters, useLabelCatalog } from "./conversations/ThreadFilters";
 import { ContactCardRail } from "./conversations/ContactCardRail";
+import { readableMessageBody, shouldFoldEmail } from "./conversations/messageReading";
 import { SnoozeMenu } from "./conversations/SnoozeMenu";
 import { LabelPopover } from "./conversations/LabelPopover";
 import { QuickAddDialog } from "@/components/planning/QuickAddDialog";
@@ -146,7 +148,10 @@ function MessageBubble({
 }) {
   const outbound = m.direction === "outbound";
   const isDraft = m.status === "draft";
-  const body = bodyPreview(m);
+  const body = readableMessageBody(m);
+  const foldable = shouldFoldEmail(m.channel_type, body);
+  const [expanded, setExpanded] = useState(false);
+  const bodyRegionId = `message-body-${m.id}`;
 
   // A Paige draft is a distinct, approval-forcing card — never a plain sent bubble (§36).
   if (isDraft) {
@@ -203,7 +208,31 @@ function MessageBubble({
           <span className="ml-auto">{messageStatusPill(m)}</span>
         </div>
         {m.subject && <p className="mb-0.5 text-sm font-medium text-foreground">{m.subject}</p>}
-        <p className="whitespace-pre-wrap text-sm text-foreground/90">{body || "—"}</p>
+        <div className="relative">
+          <p
+            id={bodyRegionId}
+            className={cn(
+              "break-words whitespace-pre-wrap text-sm leading-relaxed text-foreground/90",
+              foldable && !expanded && "max-h-40 overflow-hidden pb-4",
+            )}
+          >
+            {body || "—"}
+          </p>
+          {foldable && !expanded && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-card to-transparent" />
+          )}
+        </div>
+        {foldable && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={bodyRegionId}
+            onClick={() => setExpanded((value) => !value)}
+            className="mt-2 min-h-11 w-full rounded-md border border-border/70 bg-muted/40 px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          >
+            {expanded ? "Show less" : "Show full email"}
+          </button>
+        )}
         {!!m.attachments?.length && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {m.attachments.map((a, i) => (
@@ -264,6 +293,7 @@ export default function ClientsConversations() {
   const listRef = useRef<HTMLDivElement>(null);         // roving-focus target for keyboard nav
   const paneRef = useRef<HTMLDivElement>(null);         // Enter focuses the thread pane
   useEffect(() => { try { localStorage.setItem(DENSITY_STORAGE_KEY, density); } catch { /* private mode */ } }, [density]);
+  useEffect(() => { setContactDrawerOpen(false); }, [selectedKey]);
 
   // C-1.5 threads-as-source-of-truth
   const [dbThreads, setDbThreads] = useState<DbThread[]>([]);
@@ -273,6 +303,7 @@ export default function ClientsConversations() {
   const [matchedKeys, setMatchedKeys] = useState<Set<string> | null>(null); // null = no active search
   const [searching, setSearching] = useState(false);
   const [railOpen, setRailOpen] = useState(true);
+  const [contactDrawerOpen, setContactDrawerOpen] = useState(false);
   const [suppressions, setSuppressions] = useState<Suppression[]>([]);
   // §43 — compose a NEW outbound thread (the surface is a tool, not just a viewer).
   const [composeOpen, setComposeOpen] = useState(false);
@@ -1104,12 +1135,8 @@ export default function ClientsConversations() {
     labelFilter === null;
 
   return (
-    <PageShell width="full" fill>
-      {/* §11/§43 header reclaim — the compose CTA moved OFF the header into the LEFT thread
-          rail (GHL pattern: compose sits atop the conversation list), so the header stays a
-          lean title row and the columns carry the real functionality. */}
-      <PageHeader variant="plain" title="Conversations" />
-
+    <PageShell width="full" fill className="lg:flex-1 lg:overflow-hidden">
+      <h1 className="sr-only">Conversations</h1>
       {/* §36 first-run: before a single thread exists, one cohesive guided surface replaces the
           two disconnected empty boxes (left-rail "No conversations yet." + middle "Your unified
           inbox.") — it teaches the model and offers ONE honest next step. Everything else (search-
@@ -1126,8 +1153,10 @@ export default function ClientsConversations() {
           overflow-y-auto engage — instead of a magic calc(100dvh-…) that undershot the
           chrome and double-scrolled (Finding 2). Below lg it stacks with natural scroll. */
       <div className={cn(
-        "grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1",
-        selected && railOpen ? "lg:grid-cols-[320px_1fr_300px]" : "lg:grid-cols-[320px_1fr]",
+        "grid grid-cols-1 gap-3 lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(260px,288px)_minmax(0,1fr)] lg:overflow-hidden xl:gap-4",
+        selected && railOpen
+          ? "xl:grid-cols-[minmax(280px,304px)_minmax(0,1fr)_minmax(280px,320px)] 2xl:grid-cols-[320px_minmax(0,1fr)_320px]"
+          : "xl:grid-cols-[minmax(280px,304px)_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]",
       )}>
         {/* ── LEFT: thread rail ─────────────────────────────────────────────────── */}
         <SectionCard padded={false} bodyClassName="flex min-h-0 flex-1 flex-col" className="flex min-h-0 flex-col overflow-hidden">
@@ -1457,10 +1486,18 @@ export default function ClientsConversations() {
                   </AlertDialog>
                 </div>
                 {selected.hasDraft && <StatePill state="building">Draft ready</StatePill>}
+                <Button
+                  variant="ghost" size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] xl:hidden"
+                  onClick={() => setContactDrawerOpen(true)}
+                  aria-label="Show contact details"
+                >
+                  <PanelRight className="h-4 w-4" />
+                </Button>
                 {!railOpen && (
                   <Button
                     variant="ghost" size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    className="hidden h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] xl:inline-flex"
                     onClick={() => setRailOpen(true)} aria-label="Show contact panel"
                   >
                     <PanelRight className="h-4 w-4" />
@@ -1588,8 +1625,8 @@ export default function ClientsConversations() {
                         value={body}
                         onChange={(e) => handleBodyChange(e.target.value)}
                         placeholder={`Reply to ${selected.name}…  (drop a file to attach)`}
-                        rows={3}
-                        className="resize-none"
+                        rows={2}
+                        className="min-h-[4.5rem] resize-none focus:min-h-[6rem]"
                       />
                     </div>
 
@@ -1794,20 +1831,42 @@ export default function ClientsConversations() {
 
         {/* ── RIGHT: contact rail ───────────────────────────────────────────────── */}
         {selected && railOpen && (
-          <ContactCardRail
-            contact={selectedThread?.clients ?? null}
-            channel={selected.channel}
-            toAddress={selected.toAddress}
-            recentMessages={selected.messages}
-            labels={selectedThread?.labels ?? []}
-            suppressions={suppressions}
-            userId={userId}
-            tenantId={tenantIdRef.current}
-            onClose={() => setRailOpen(false)}
-            onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
-          />
+          <div className="hidden min-h-0 overflow-hidden xl:flex">
+            <ContactCardRail
+              contact={selectedThread?.clients ?? null}
+              channel={selected.channel}
+              toAddress={selected.toAddress}
+              recentMessages={selected.messages}
+              labels={selectedThread?.labels ?? []}
+              suppressions={suppressions}
+              userId={userId}
+              tenantId={tenantIdRef.current}
+              onClose={() => setRailOpen(false)}
+              onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
+            />
+          </div>
         )}
       </div>
+      )}
+
+      {selected && (
+        <Sheet open={contactDrawerOpen} onOpenChange={setContactDrawerOpen}>
+          <SheetContent side="right" className="flex h-full w-[min(26rem,100vw)] max-w-none flex-col gap-0 p-0">
+            <SheetTitle className="sr-only">Contact details for {selected.name}</SheetTitle>
+            <ContactCardRail
+              contact={selectedThread?.clients ?? null}
+              channel={selected.channel}
+              toAddress={selected.toAddress}
+              recentMessages={selected.messages}
+              labels={selectedThread?.labels ?? []}
+              suppressions={suppressions}
+              userId={userId}
+              tenantId={tenantIdRef.current}
+              onClose={() => setContactDrawerOpen(false)}
+              onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
+            />
+          </SheetContent>
+        </Sheet>
       )}
 
       {/* §43 — compose a NEW outbound thread (reuses the send-message seam + canonical
