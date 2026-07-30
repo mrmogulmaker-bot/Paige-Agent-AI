@@ -21,7 +21,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { PageShell, PageHeader, SectionCard, EmptyState, StatePill } from "@/components/ui/page";
+import { PageShell, SectionCard, EmptyState, StatePill } from "@/components/ui/page";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -1132,12 +1132,7 @@ export default function ClientsConversations() {
     labelFilter === null;
 
   return (
-    <PageShell width="full" fill className="space-y-3 lg:flex-1 lg:overflow-hidden">
-      {/* §11/§43 header reclaim — the compose CTA moved OFF the header into the LEFT thread
-          rail (GHL pattern: compose sits atop the conversation list), so the header stays a
-          lean title row and the columns carry the real functionality. */}
-      <PageHeader variant="plain" title="Conversations" className="pb-2" />
-
+    <PageShell width="full" fill className="lg:flex-1 lg:overflow-hidden">
       {/* §36 first-run: before a single thread exists, one cohesive guided surface replaces the
           two disconnected empty boxes (left-rail "No conversations yet." + middle "Your unified
           inbox.") — it teaches the model and offers ONE honest next step. Everything else (search-
@@ -1618,8 +1613,8 @@ export default function ClientsConversations() {
                         value={body}
                         onChange={(e) => handleBodyChange(e.target.value)}
                         placeholder={`Reply to ${selected.name}…  (drop a file to attach)`}
-                        rows={3}
-                        className="resize-none"
+                        rows={2}
+                        className="min-h-[4.5rem] resize-none focus:min-h-[6rem]"
                       />
                     </div>
 
