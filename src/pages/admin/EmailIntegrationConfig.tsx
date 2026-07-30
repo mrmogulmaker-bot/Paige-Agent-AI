@@ -197,7 +197,7 @@ export default function EmailIntegrationConfig() {
         variant="plain"
         icon={Mail}
         title="Email"
-        description="Your Paige website and email are ready now. Connect your own domain or mailbox whenever you want."
+        description="Your included Paige addresses live here. Paige shows when each one is ready; your own domain or mailbox remains optional."
         backHref="/admin/integrations"
       />
 
