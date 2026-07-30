@@ -15,11 +15,13 @@ interface MessageMetaProps {
   ts?: number;
   /** Present only for assistant turns that can be regenerated. */
   onRetry?: () => void;
+  /** Voice-playback control (assistant turns, #131) or null. Sits in the same action row. */
+  audioSlot?: ReactNode;
   /** The ResponseFeedback element (assistant + staff only) or null. */
   feedback?: ReactNode;
 }
 
-export function MessageMeta({ role, content, ts, onRetry, feedback }: MessageMetaProps) {
+export function MessageMeta({ role, content, ts, onRetry, audioSlot, feedback }: MessageMetaProps) {
   const [copied, setCopied] = useState(false);
   const isUser = role === "user";
 
@@ -42,7 +44,13 @@ export function MessageMeta({ role, content, ts, onRetry, feedback }: MessageMet
     <div
       className={cn(
         "mt-2 flex items-center gap-1",
-        "opacity-0 transition-opacity duration-150 motion-reduce:transition-none",
+        "transition-opacity duration-150 motion-reduce:transition-none",
+        // §36 discoverability: voice playback (#131) is a BRAND-NEW capability a coach
+        // won't think to hover for — so when the speaker is present (assistant turns with
+        // voice), the row rests at a quiet, non-zero opacity so it announces itself, then
+        // rises to full on hover/focus. Conventional affordances (copy/retry/timestamp)
+        // with no speaker keep the clean hover-only gate.
+        audioSlot ? "opacity-60" : "opacity-0",
         "group-hover:opacity-100 focus-within:opacity-100",
         "[@media(hover:none)]:opacity-100", // touch devices have no hover — always show
         isUser && "justify-end",
@@ -63,6 +71,8 @@ export function MessageMeta({ role, content, ts, onRetry, feedback }: MessageMet
           <RotateCcw className={cn("h-3 w-3", tint)} />
         </Button>
       )}
+
+      {audioSlot}
 
       {feedback}
     </div>

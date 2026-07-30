@@ -1,8 +1,11 @@
 // _shared/openai.ts — OpenAI provider client for the Vibe Studio model router.
 //
-// Two capabilities, one vendor:
-//   openaiChat()  — text (the frontier-alt to Claude for reasoning/JSON); OpenAI Chat Completions.
-//   openaiImage() — gpt-image-1 image generation; returned as artifact_bytes (decoded from b64_json).
+// Three capabilities, one vendor (the ONE OpenAI client on the platform — §18/§34):
+//   openaiChat()   — text (the frontier-alt to Claude for reasoning/JSON); OpenAI Chat Completions.
+//   openaiImage()  — gpt-image-1 image generation; returned as artifact_bytes (decoded from b64_json).
+//   openaiSpeech() — text-to-speech (the audio/speech endpoint); returns the streaming Response so a
+//                    caller can pipe the mp3 progressively. The ONLY OpenAI-audio call site — the TTS
+//                    router (_shared/tts-router.ts) routes through THIS, never a second OpenAI client.
 //
 // FAIL-CLOSED (doctrine §13): OPENAI_API_KEY is read at CALL time; if absent we throw
 // NeedsConfigError("openai") — never a generic crash, never a fake result. The key is never
@@ -104,6 +107,44 @@ export async function openaiImage(input: OpenAIImageInput): Promise<ProviderCall
     model: IMAGE_MODEL,
     latency_ms: Date.now() - started,
   };
+}
+
+export interface OpenAISpeechInput {
+  /** The text to synthesize. Caller is responsible for length capping (OpenAI hard limit 4096). */
+  input: string;
+  /** OpenAI voice id (e.g. "alloy"). Defaults to "alloy" — the TTS router resolves the real voice. */
+  voice?: string;
+  /** TTS model. Defaults to gpt-4o-mini-tts (the cheap, high-quality default). */
+  model?: string;
+  /** Response audio container. Defaults to "mp3" (streams to an <audio> element as audio/mpeg). */
+  format?: string;
+}
+
+/**
+ * Text-to-speech via OpenAI's audio/speech endpoint. Returns the raw fetch `Response` so the caller
+ * can stream `resp.body` (a ReadableStream) straight to the client AND tee a copy for caching — a
+ * full-buffer wait is never forced. FAIL-CLOSED (§13): the key is read via openaiKey(), which throws
+ * NeedsConfigError when OPENAI_API_KEY is absent — the router checks presence first and turns that
+ * into an honest needs_config, so this only runs when the key is truly set. A non-2xx from OpenAI
+ * throws with the (truncated, key-free) detail; it never returns a fake/empty audio body.
+ */
+export async function openaiSpeech(input: OpenAISpeechInput): Promise<Response> {
+  const key = openaiKey();
+  const resp = await fetch(`${OPENAI_BASE}/audio/speech`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+    body: JSON.stringify({
+      model: input.model ?? "gpt-4o-mini-tts",
+      voice: input.voice ?? "alloy",
+      input: input.input,
+      response_format: input.format ?? "mp3",
+    }),
+  });
+  if (!resp.ok || !resp.body) {
+    const detail = await resp.text().catch(() => "");
+    throw new Error(`OpenAI speech ${resp.status}: ${detail.slice(0, 500)}`);
+  }
+  return resp;
 }
 
 // Decode a base64 string to bytes without pulling a std dependency.

@@ -341,3 +341,12 @@ project_id = "xygzykjyynhzqytbqnzu"
   # writer of platform_subscriptions (§18). §38 Tier-1 Paige-held rail.
   [functions.platform-subscription-checkout]
     verify_jwt = true
+
+  # #131 — paige-tts: per-message chat voice PLAYBACK. JWT-gated (default posture, but declared
+  # explicitly so it reads clearly next to the verify_jwt=false voice pipes voice-twiml / paige-stt).
+  # A normal authenticated fetch from the chat UI carries the caller's session; the tenant is derived
+  # SERVER-SIDE from the JWT (current_user_tenant_id), NEVER a body tenant_id (§9). OpenAI TTS is
+  # routed via the ONE TTS home (_shared/tts-router.ts, §34); synthesized chars meter to
+  # platform_usage_events (§17); replays hit the tenant-scoped Storage cache and skip OpenAI (§14).
+  [functions.paige-tts]
+    verify_jwt = true
