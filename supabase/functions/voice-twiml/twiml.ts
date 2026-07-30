@@ -82,13 +82,35 @@ export function buildIdentity(tenantId: string, userId: string): string {
 }
 
 /**
+ * #140 B1 — build a non-blocking <Start><Stream> media fork for the live-call co-pilot. This
+ * forks a COPY of the call audio to paige-stt (Deepgram Nova-3) WITHOUT interrupting the bridge:
+ * <Start><Stream> is a fork, so it is placed BEFORE <Dial> in the <Response> and the <Dial>
+ * continues uninterrupted. Every <Parameter> value is XML-escaped; empty values are dropped so a
+ * missing token can't emit an unauthenticated stream (the caller gates on that upstream). Returns
+ * "" when no streamUrl is given, so the builders below stay byte-identical when streaming is OFF.
+ */
+export function buildStreamStart(streamUrl: string, params: Record<string, string> = {}): string {
+  if (!streamUrl) return "";
+  const paramXml = Object.entries(params)
+    .filter(([, v]) => typeof v === "string" && v.length > 0)
+    .map(([k, v]) => `<Parameter name="${escapeXml(k)}" value="${escapeXml(v)}"/>`)
+    .join("");
+  return `<Start><Stream url="${escapeXml(streamUrl)}">${paramXml}</Stream></Start>`;
+}
+
+/**
  * OUTBOUND: bridge the browser caller to the dialed PSTN number, presenting the tenant's
  * OWN caller-ID. Both values are XML-escaped. answerOnBridge keeps the caller hearing
  * ringing (not silence) until the callee answers.
+ *
+ * #140 B1: `streamXml` is an OPTIONAL <Start><Stream> fork (from buildStreamStart) inserted right
+ * after <Response>, BEFORE <Dial>, so the co-pilot transcription runs alongside an uninterrupted
+ * bridge. Defaults to "" → byte-identical to the pre-B1 output when streaming is OFF.
  */
-export function buildOutboundTwiml(callerId: string, to: string): string {
+export function buildOutboundTwiml(callerId: string, to: string, streamXml = ""): string {
   return (
     `${XML_PROLOG}<Response>` +
+    streamXml +
     `<Dial answerOnBridge="true" callerId="${escapeXml(callerId)}">` +
     `<Number>${escapeXml(to)}</Number>` +
     `</Dial></Response>`
@@ -102,14 +124,16 @@ export function buildOutboundTwiml(callerId: string, to: string): string {
  * number (§9) — this builder never sees another tenant's identity. Empty list is a caller
  * bug; guard by returning the honest voicemail message instead.
  */
-export function buildInboundTwiml(identities: string[]): string {
+export function buildInboundTwiml(identities: string[], streamXml = ""): string {
   const clients = identities.filter((i) => i && i.length > 0);
   if (clients.length === 0) {
     return buildSayHangupTwiml(VOICEMAIL_UNAVAILABLE_MESSAGE);
   }
   const inner = clients.map((id) => `<Client>${escapeXml(id)}</Client>`).join("");
+  // #140 B1: optional <Start><Stream> fork before <Dial> (see buildOutboundTwiml). "" = OFF.
   return (
     `${XML_PROLOG}<Response>` +
+    streamXml +
     `<Dial answerOnBridge="true">${inner}</Dial>` +
     `</Response>`
   );

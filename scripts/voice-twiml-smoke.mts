@@ -18,6 +18,7 @@ const {
   buildOutboundTwiml,
   buildInboundTwiml,
   buildSayHangupTwiml,
+  buildStreamStart,
   VOICEMAIL_UNAVAILABLE_MESSAGE,
 } = await import("../supabase/functions/voice-twiml/twiml.ts");
 
@@ -92,6 +93,30 @@ check("say has NO <Reject> (unreachable-verb bug)", !say.includes("<Reject"), sa
 // apostrophe in message is XML-escaped, not raw (injection safety).
 const apos = buildSayHangupTwiml("Calling isn't set up.");
 check("say escapes apostrophe", apos.includes("&apos;") && !apos.includes("isn't"), apos);
+
+// ── #140 B1 §37 contract: the OPTIONAL <Start><Stream> co-pilot fork ──────────
+// The builders gained an optional trailing streamXml arg. Assert the DEFAULT (no arg / "") is
+// byte-identical to the pre-B1 output (co-pilot OFF changes NOTHING), and that when a fork IS
+// passed it lands BEFORE <Dial> (a non-blocking fork, never interrupting the bridge).
+console.log("B1 <Start><Stream> fork:");
+const outNoStream = buildOutboundTwiml("+14155550100", "+14155559999");
+check(
+  "outbound default is unchanged (no <Start>)",
+  outNoStream === '<?xml version="1.0" encoding="UTF-8"?><Response><Dial answerOnBridge="true" callerId="+14155550100"><Number>+14155559999</Number></Dial></Response>',
+  outNoStream,
+);
+const inNoStream = buildInboundTwiml([`${T}.${U}`]);
+check(
+  "inbound default is unchanged (no <Start>)",
+  inNoStream === `<?xml version="1.0" encoding="UTF-8"?><Response><Dial answerOnBridge="true"><Client>${T}.${U}</Client></Dial></Response>`,
+  inNoStream,
+);
+const forkXml = buildStreamStart("wss://ref.functions.supabase.co/functions/v1/paige-stt", { streamToken: "v1.a.b", tenantId: T, callSid: "CA1" });
+check("buildStreamStart wraps <Start><Stream>", forkXml.startsWith("<Start><Stream url=") && forkXml.endsWith("</Stream></Start>"), forkXml);
+check("buildStreamStart('') → '' (fork OFF)", buildStreamStart("") === "");
+check("buildStreamStart escapes param values", buildStreamStart("wss://x", { k: '"><Hangup/>' }).includes("&quot;") && !buildStreamStart("wss://x", { k: '"><Hangup/>' }).includes('"><Hangup/>'));
+const outWithFork = buildOutboundTwiml("+14155550100", "+14155559999", forkXml);
+check("outbound fork lands BEFORE <Dial>", outWithFork.indexOf("<Start>") < outWithFork.indexOf("<Dial") && outWithFork.includes("<Number>+14155559999</Number>"), outWithFork);
 
 // ── Signature validation (the ONE shared helper) ────────────────────────────
 console.log("signature:");
