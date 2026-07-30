@@ -14,16 +14,16 @@ export default function ClientsTabsLayout() {
   const { pathname } = useLocation();
   const isConversationsInbox = pathname === "/admin/clients-hub/conversations";
 
-  // Cancel <main>'s p-3/4/6 so the strip is flush, then re-add one padding owner
-  // around the child surface. The Conversations inbox owns its scrolling inside
-  // the three panes, so its well must constrain height instead of becoming a
-  // competing page-level scroller. Sibling client pages keep natural scrolling.
+  // AdminLayout gives this hub the unpadded, constrained viewport well. This is
+  // now the single padding owner: no negative margins, no shifted 100%-height box,
+  // and no lost pixels at the bottom. The inbox delegates scrolling to its panes;
+  // sibling client pages retain natural document scrolling inside this region.
   return (
-    <div className="flex h-full min-h-0 flex-col -mx-3 -my-3 sm:-mx-4 sm:-my-4 md:-mx-6 md:-my-6">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <ClientsSubTabs />
       <div
         className={cn(
-          "min-h-0 flex-1 p-3 sm:p-4",
+          "flex min-h-0 flex-1 flex-col p-3 sm:p-4",
           isConversationsInbox ? "overflow-hidden" : "overflow-y-auto md:p-6",
         )}
       >
