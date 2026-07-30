@@ -245,6 +245,10 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // Covers the bare home (exact) AND every builder sub-route. No effect on any other route.
   const isStudio =
     location.pathname === "/admin/studio" || location.pathname.startsWith("/admin/studio/");
+  // Clients Hub owns a nested tab shell. Keep the viewport height on this main
+  // flex item and let each child surface choose its one scroll owner; padding
+  // belongs inside ClientsTabsLayout so a negative-margin compensation is never needed.
+  const isClientsHub = location.pathname.startsWith("/admin/clients-hub");
   const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
   const { isPlatformOwner, isPlatformStaff, activeTenantId, activeTenant } = useTenantContext();
@@ -751,13 +755,14 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
       {/* Main content */}
       <main
         className={
-          // Vibe Studio (home AND builder) is an immersive full-bleed room — StudioLayout owns
-          // the viewport, its own left rail, and all internal scroll. `overflow-hidden` lets its
-          // h-full/min-h-0 resolve against this flex-1 main inside the h-dvh column. Every other
-          // route keeps the exact padded, scrollable content well it had before.
+          // Immersive Studio and the nested Clients Hub each own their internal
+          // height/scroll contract. Every other route keeps the padded document
+          // scroller. min-h-0 is required so every flex child may actually shrink.
           isStudio
-            ? "flex-1 overflow-hidden"
-            : `flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] p-3 sm:p-4 md:p-6`
+            ? "min-h-0 flex-1 overflow-hidden"
+            : isClientsHub
+              ? "min-h-0 flex-1 overflow-hidden"
+              : `min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] p-3 sm:p-4 md:p-6`
         }
       >
         {children}
