@@ -1654,6 +1654,34 @@ ${buildStudioWhereYouAre(name, tenant)}`.trim()
     }
     const fundingEnabled = personaCtx.funding_enabled;
 
+    // Tenant domain identity is platform configuration, not conversational
+    // memory. Read the ONE canonical RPC used by Paige, MCP, onboarding, and
+    // settings; never reconstruct hostname/email semantics in this function.
+    let tenantDomainContext = "";
+    if (personaCtx.tenant_id) {
+      try {
+        const { data: identity, error: identityError } = await admin.rpc(
+          "resolve_tenant_domain_identity",
+          { p_tenant_id: personaCtx.tenant_id },
+        );
+        if (identityError) throw identityError;
+        const row = Array.isArray(identity) ? identity[0] : identity;
+        if (row?.default_web_url) {
+          tenantDomainContext = `TENANT DOMAIN IDENTITY — SOURCE OF TRUTH
+- This workspace's default website/portal domain is ${row.default_web_url}.
+- Give that exact URL when the owner asks "what is my domain?" or is onboarding a client.
+- A custom EMAIL sending domain is separate from the website domain.
+- ${row.default_email_sender
+  ? `The current default email sender is ${row.default_email_sender} (status: ${row.default_email_status || "unknown"}).`
+  : "No custom default email sending domain is configured yet. Explain that the owner can connect one in Setup → Integrations → Email, where Paige provides the DNS records and verification status."}
+- Never call an email sending domain the website domain. Never invent a custom website domain.
+- If the owner wants a custom website domain, explain that their Paige subdomain works now and offer to help with the custom-domain connection workflow.`;
+        }
+      } catch (e) {
+        console.warn("[paige-ai-chat] tenant domain identity unavailable:", e);
+      }
+    }
+
     // ── §9 working-context capture (owner #489) ──────────────────────────────
     // The trace's tenant_id carries the caller's PERSONA-context tenant (which, for an agency-scope
     // session working across a sub-account, resolves to the owned agency — honest per row). To let the
@@ -3519,6 +3547,7 @@ SUPPORT & FEEDBACK AWARENESS
     // Build message array — lead with the tenant's persona so identity is set first.
     const aiMessages: any[] = [
       { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice", fundingEnabled, personaCtx.brand) },
+      ...(tenantDomainContext ? [{ role: "system", content: tenantDomainContext }] : []),
       { role: "system", content: systemPrompt },
       // "Watch Paige work" narration (#152): when she's about to USE tools, she first
       // writes one short backstage line saying what she's doing and why. It streams to

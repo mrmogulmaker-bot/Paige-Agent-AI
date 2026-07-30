@@ -26,11 +26,9 @@ function usePointerTracking() {
 // Size envelope: Paige is large at the top of the hero and shrinks toward
 // MIN_SCALE as the page scrolls (paigeAnim.scroll 0→1). Kept a touch smaller so
 // the free-floating rings form-fit over the page and read on mobile.
-const TOP_SCALE = 0.92;
-const MIN_SCALE = 0.5;
-// Local Y of her head in the centered model (normalized height 3.4 → top ≈ 1.7).
-// The orbital rings sit here. Tune to raise/lower the ring plane on her head.
-const HEAD_Y = 0.9;
+const TOP_SCALE = 0.9;
+const WORKSPACE_SCALE = 1.16;
+const LATE_SCALE = 0.5;
 // On phones she's shrunk so she form-fits the narrow viewport instead of
 // filling it the way she does on a laptop.
 const MOBILE_SCALE = 0.66;
@@ -84,55 +82,6 @@ function supportsWebGL() {
   } catch {
     return false;
   }
-}
-
-/**
- * Delicate orbital rings around Paige's head — thin, faint elliptical orbits at
- * several tilts (atomic/electron-shell look), larger than the head, crossing in
- * front of and behind it, each a slightly different gold/cream shade and
- * brightness. Each orbit slowly precesses so the set shimmers. Parented to Paige
- * (mounted at her head), so it tracks her gaze, entrance and scroll.
- *
- * Structure per ring: an outer group precesses (spins on Y); an inner group
- * holds the fixed tilt; a thin torus at a steep tilt reads as a slim ellipse.
- */
-// Two wide, near-edge-on ellipses that cross symmetrically (mirror-tilted on Z),
-// matching the loader's clean two-ring look — one gold, one pale violet.
-const ORBIT_RINGS = [
-  { r: 1.7, tilt: [1.5, 0, 0.34] as [number, number, number], tube: 0.006, color: "#F0C86A", emissive: 1.7, op: 0.65, spin: 0.1 },
-  { r: 1.7, tilt: [1.5, 0, -0.34] as [number, number, number], tube: 0.005, color: "#C9B8E8", emissive: 1.4, op: 0.55, spin: -0.1 },
-];
-function OrbitRings({ reduced }: { reduced: boolean }) {
-  const spins = useRef<(THREE.Group | null)[]>([]);
-  useFrame((s) => {
-    const t = s.clock.elapsedTime;
-    ORBIT_RINGS.forEach((r, i) => {
-      const g = spins.current[i];
-      if (g) g.rotation.y = t * (reduced ? 0.04 : r.spin);
-    });
-  });
-  return (
-    <group>
-      {ORBIT_RINGS.map((r, i) => (
-        <group key={i} ref={(el) => (spins.current[i] = el)}>
-          <group rotation={r.tilt}>
-            <mesh>
-              <torusGeometry args={[r.r, r.tube, 12, 220]} />
-              <meshStandardMaterial
-                color={r.color}
-                emissive={r.color}
-                emissiveIntensity={r.emissive}
-                transparent
-                opacity={r.op}
-                toneMapped={false}
-                depthWrite={false}
-              />
-            </mesh>
-          </group>
-        </group>
-      ))}
-    </group>
-  );
 }
 
 /**
@@ -250,16 +199,21 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
     // reference glass helmet rather than a flat gold form. A true face-inside-
     // glass depth will land fully with the textured re-export.
     const mat = new THREE.MeshPhysicalMaterial({
-      color: GOLD,
+      color: "#F3D7B5",
       emissive: GOLD_HI,
-      emissiveIntensity: 0.32,
-      metalness: 0.3,
-      roughness: 0.16,
+      emissiveIntensity: 0.18,
+      metalness: 0.04,
+      roughness: 0.08,
       clearcoat: 1,
-      clearcoatRoughness: 0.22,
-      envMapIntensity: 2.8,
+      clearcoatRoughness: 0.08,
+      transmission: 0.34,
+      thickness: 0.72,
+      ior: 1.34,
+      attenuationColor: new THREE.Color("#D6A96B"),
+      attenuationDistance: 2.8,
+      envMapIntensity: 2.2,
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.46,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -308,8 +262,26 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
       // gated by the entrance so she grows out of nothing when she pops. Floored
       // to a tiny epsilon (not 0) to avoid a degenerate zero-scale matrix while
       // she's still hidden behind the intro.
-      const size = Math.max(0.0001, e * mobileFactor() * (TOP_SCALE - (TOP_SCALE - MIN_SCALE) * paigeAnim.scroll));
+      const progress = paigeAnim.scroll;
+      const intoWorkspace = THREE.MathUtils.smoothstep(progress, 0.42, 1.02);
+      const beyondWorkspace = THREE.MathUtils.smoothstep(progress, 1.35, 2.15);
+      const workspaceSize = THREE.MathUtils.lerp(TOP_SCALE, WORKSPACE_SCALE, intoWorkspace);
+      const baseSize = THREE.MathUtils.lerp(workspaceSize, LATE_SCALE, beyondWorkspace);
+      const size = Math.max(0.0001, e * mobileFactor() * baseSize);
       group.current.scale.setScalar(size);
+
+      // The same character moves from hero anchor to the centered workspace
+      // reveal, then recedes for the long-form sections. No second renderer.
+      group.current.position.x = THREE.MathUtils.lerp(
+        THREE.MathUtils.lerp(1.65, 0, intoWorkspace),
+        1.45,
+        beyondWorkspace,
+      );
+      group.current.position.y = THREE.MathUtils.lerp(
+        THREE.MathUtils.lerp(-0.4, 0.08, intoWorkspace),
+        -0.65,
+        beyondWorkspace,
+      );
 
       // Gaze — only once she's out (rotation ramps in with the entrance), so the
       // cursor tracking "starts" after the pop, not during it.
@@ -324,10 +296,6 @@ function PaigeCentral({ reduced }: { reduced: boolean }) {
       <group ref={inner}>
         <primitive object={model} />
       </group>
-      {/* Delicate orbital rings around her head (HEAD_Y ≈ head center). */}
-      <group position={[0, HEAD_Y, 0]}>
-        <OrbitRings reduced={reduced} />
-      </group>
       <Sparkles count={40} scale={[2.6, 4, 2.6]} position={[0, 0.4, 0]} size={2} speed={reduced ? 0 : 0.25} color={GOLD_HI} opacity={0.7} />
     </group>
   );
@@ -337,7 +305,10 @@ function CameraRig() {
   useFrame((s) => {
     s.camera.position.x += (ptr.x * 0.5 - s.camera.position.x) * 0.03;
     s.camera.position.y += (0.35 + ptr.y * 0.25 - s.camera.position.y) * 0.03;
-    s.camera.lookAt(0.95, 0.15, 0);
+    const workspaceFocus = THREE.MathUtils.smoothstep(paigeAnim.scroll, 0.42, 1.02);
+    const lateFocus = THREE.MathUtils.smoothstep(paigeAnim.scroll, 1.35, 2.15);
+    const lookX = THREE.MathUtils.lerp(THREE.MathUtils.lerp(0.95, 0, workspaceFocus), 0.7, lateFocus);
+    s.camera.lookAt(lookX, 0.15, 0);
   });
   return null;
 }
@@ -350,9 +321,9 @@ function Scene({ reduced: reducedProp }: { reduced?: boolean }) {
   const reduced = reducedProp ?? osReduced;
   return (
     <>
-      <ambientLight intensity={0.4} color={INDIGO} />
-      <pointLight position={[4, 3, 4]} intensity={32} color={GOLD_HI} decay={2} />
-      <pointLight position={[-4, -1, 3]} intensity={16} color={VIOLET} decay={2} />
+      <ambientLight intensity={0.24} color={INDIGO} />
+      <pointLight position={[4, 3, 4]} intensity={26} color={GOLD_HI} decay={2} />
+      <pointLight position={[-4, -1, 3]} intensity={8} color={VIOLET} decay={2} />
       <Environment resolution={128}>
         <Lightformer form="rect" intensity={2} color={GOLD_HI} scale={[5, 3, 1]} position={[4, 3, 3]} />
         <Lightformer form="rect" intensity={1} color={INDIGO} scale={[6, 4, 1]} position={[-4, 0, 2]} />

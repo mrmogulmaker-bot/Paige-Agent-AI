@@ -17,6 +17,65 @@ import { useLocation } from "react-router-dom";
 
 export const MARKETING_HOST = "paigeagent.ai";
 export const APP_HOST = "app.paigeagent.ai";
+export const TENANT_HOST_SUFFIX = `.${MARKETING_HOST}`;
+
+/** Infrastructure and platform labels must never resolve as tenant identities. */
+export const RESERVED_TENANT_SUBDOMAINS = new Set([
+  "www", "app", "api", "admin", "auth", "mail", "notify", "status", "support",
+  "cdn", "assets", "static", "docs", "blog", "mcp", "studio", "staging", "preview",
+  "operator", "dashboard", "setup",
+]);
+
+/**
+ * Extract a single-label tenant slug from <slug>.paigeagent.ai.
+ *
+ * This is routing context, not authorization: PortalGateway still resolves the
+ * tenant through the server-owned slug contract and its existing tenant gates.
+ */
+export function tenantSlugFromHostname(hostname: string): string | null {
+  const normalized = hostname.trim().toLowerCase().replace(/\.$/, "").split(":")[0];
+  if (!normalized.endsWith(TENANT_HOST_SUFFIX)) return null;
+
+  const label = normalized.slice(0, -TENANT_HOST_SUFFIX.length);
+  if (!label || label.includes(".") || RESERVED_TENANT_SUBDOMAINS.has(label)) return null;
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) return null;
+  return label;
+}
+
+/** Canonicalize a tenant wildcard host to that tenant\'s one public portal. */
+export function computeTenantHostRedirect(
+  hostname: string,
+  path: string,
+  search: string,
+  hash: string,
+): string | null {
+  const slug = tenantSlugFromHostname(hostname);
+  if (!slug) return null;
+
+  const canonicalPortal = `/portal/${encodeURIComponent(slug)}`;
+  const withLocation = (target: string) => `${target}${search}${hash}`;
+  if (path === "/") return withLocation(canonicalPortal);
+
+  // These public routes use opaque booking/form tokens, not tenant slugs. They
+  // remain available on a tenant host and still resolve their tenant server-side.
+  if (/^\/(?:book(?:\/|$)|booking\/manage(?:\/|$)|form\/[^/]+\/?$|unsubscribe(?:\/|$)|u\/[^/]+\/?$)/.test(path)) {
+    return null;
+  }
+
+  // Routes whose first segment after the prefix is a tenant slug are always
+  // pinned to the hostname tenant. A wildcard host is routing context—not auth.
+  const tenantPath = path.match(/^\/(portal|store|p|f)\/([^/]+)(\/.*)?$/);
+  if (tenantPath) {
+    let routeSlug = "";
+    try { routeSlug = decodeURIComponent(tenantPath[2]).toLowerCase(); } catch { /* fail closed */ }
+    if (routeSlug === slug) return null;
+    return withLocation(`/${tenantPath[1]}/${encodeURIComponent(slug)}${tenantPath[3] ?? ""}`);
+  }
+
+  // A tenant host is a deliberately narrow public surface. Product, auth,
+  // operator, marketing, and unknown routes fail closed to its canonical portal.
+  return withLocation(canonicalPortal);
+}
 
 // Flip to true once app.paigeagent.ai is live + auth redirect URLs updated.
 // TEMPORARILY REVERTED TO DORMANT: activating this before app.paigeagent.ai
@@ -58,6 +117,8 @@ export function isMarketingOnlyRoute(path: string): boolean {
  * previews, custom tenant domains) so dev/preview builds are never redirected.
  */
 export function computeHostRedirect(hostname: string, path: string, search: string, hash: string): string | null {
+  const tenantTarget = computeTenantHostRedirect(hostname, path, search, hash);
+  if (tenantTarget) return tenantTarget;
   if (!HOST_SPLIT_ENABLED) return null;
   const onApex = hostname === MARKETING_HOST || hostname === `www.${MARKETING_HOST}`;
   const onApp = hostname === APP_HOST;

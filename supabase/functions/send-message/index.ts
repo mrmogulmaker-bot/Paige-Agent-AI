@@ -445,7 +445,7 @@ Deno.serve(async (req) => {
   let connectorRow:
     | {
         tenant_id?: string | null; from_address?: string | null; from_name?: string | null;
-        reply_to?: string | null;
+        reply_to?: string | null; channel_type?: string | null; status?: string | null; active?: boolean | null;
         // #141b: provider decides Gmail-vs-Resend; credentials_vault_ref feeds the Gmail seam.
         provider?: string | null; credentials_vault_ref?: string | null; external_account_id?: string | null;
         // #141c: non-secret SMTP transport config (host/port/secure) for the provider==='smtp' path.
@@ -483,11 +483,31 @@ Deno.serve(async (req) => {
       // email path can route a Gmail connector through the Gmail seam (else Resend).
       // #141c: + config (jsonb host/port/secure) so the provider==='smtp' path can send through
       // the tenant's own SMTP host. Additive (§37) — Resend/Gmail callers ignore the extra column.
-      .select("tenant_id, from_address, from_name, reply_to, provider, credentials_vault_ref, external_account_id, config")
+      .select("tenant_id, from_address, from_name, reply_to, channel_type, status, active, provider, credentials_vault_ref, external_account_id, config")
       .eq("id", effectiveConnectorId)
       .maybeSingle();
     connectorRow = data ?? null;
-    if (!tenantId) tenantId = connectorRow?.tenant_id ?? null;
+    if (!connectorRow) {
+      return new Response(JSON.stringify({ error: "connector_not_found" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (connectorRow.active !== true || connectorRow.status !== "active") {
+      return new Response(JSON.stringify({ error: "connector_not_active" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (connectorRow.channel_type !== body.channel) {
+      return new Response(JSON.stringify({ error: "connector_channel_mismatch" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (body.message_id && body.connector_id && draftRow?.connector_id && body.connector_id !== draftRow.connector_id) {
+      return new Response(JSON.stringify({ error: "connector_override_forbidden" }), {
+        status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!tenantId) tenantId = connectorRow.tenant_id ?? null;
   }
 
   // ── §9 caller-tenant gate — BEFORE any send ──────────────────────────────────
@@ -526,7 +546,7 @@ Deno.serve(async (req) => {
   // Require the connector to belong to the resolved tenant; the platform owner (§17) may act
   // cross-tenant. Internal drain: isOwner=false, tenantId is the queued row's own, and a
   // legit queued row's connector shares that tenant — so a mismatch is correctly rejected.
-  if (connectorRow && tenantId && !isOwner && connectorRow.tenant_id !== tenantId) {
+  if (connectorRow && tenantId && connectorRow.tenant_id !== tenantId) {
     return new Response(JSON.stringify({ error: "forbidden_cross_tenant_connector" }), {
       status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
@@ -710,22 +730,17 @@ Deno.serve(async (req) => {
         senderEmail = identRow.from_address ?? null;
         replyTo = identRow.reply_to ?? null;
       }
-      // Fallback/override: the connector's own sender identity, then the platform default.
-      senderName = senderName || connectorRow?.from_name || config?.default_from_name || "Paige Agent";
-      // Last-resort fallback on the VERIFIED sending subdomain (Tier 1 #64) — the bare
-      // apex is not a confirmed Resend sending domain. Post-migration the RPC always
-      // returns the tenant's <slug>@mail.paigeagent.ai, so a hardcoded fallback only
-      // fires on an RPC miss; keep it verified so it can still deliver.
-      senderEmail = senderEmail || connectorRow?.from_address || config?.default_from_email || "no-reply@mail.paigeagent.ai";
-      replyTo = replyTo || connectorRow?.reply_to || null;
-      // #141b: Google enforces that a gmail.send goes out AS the authenticated address, so the
-      // Gmail connector's own from_address wins over any tenant/platform default sender here.
-      // #141c: an SMTP server likewise typically enforces the envelope-from matching the
-      // authenticated mailbox, so the SMTP connector's own from_address wins too.
-      if ((isGmail || isSmtp) && connectorRow?.from_address) {
+      // An explicitly selected, active, tenant-bound connector is authoritative for
+      // every provider (managed/custom Resend, Gmail, and SMTP). The shared identity
+      // remains the fallback only for legacy connectorless sends.
+      if (connectorRow?.from_address) {
         senderEmail = connectorRow.from_address;
-        senderName = senderName || connectorRow?.from_name || null;
+        senderName = connectorRow.from_name || senderName;
+        replyTo = connectorRow.reply_to || replyTo;
       }
+      senderName = senderName || config?.default_from_name || "Paige Agent";
+      // Last-resort fallback on the verified shared sending subdomain.
+      senderEmail = senderEmail || config?.default_from_email || "no-reply@mail.paigeagent.ai";
       fromAddress = senderName ? `${senderName} <${senderEmail}>` : senderEmail;
 
       // §32 — build the NormalizedMessage and send THROUGH the registry adapter.

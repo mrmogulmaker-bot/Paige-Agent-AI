@@ -10,7 +10,6 @@ import {
   Sunrise,
   Flag,
   Check,
-  Sparkles as SparkIcon,
 } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
@@ -171,45 +170,6 @@ function Section({ id, className = "", children }: { id?: string; className?: st
     >
       {children}
     </motion.section>
-  );
-}
-
-/** Idle 20s → a gentle nudge in Paige's voice. */
-function IdleNudge() {
-  const [show, setShow] = useState(false);
-  useEffect(() => {
-    let timer: number;
-    const reset = () => {
-      setShow(false);
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => setShow(true), 20000);
-    };
-    reset();
-    const evts = ["pointermove", "scroll", "keydown", "pointerdown"] as const;
-    evts.forEach((e) => window.addEventListener(e, reset, { passive: true }));
-    return () => {
-      window.clearTimeout(timer);
-      evts.forEach((e) => window.removeEventListener(e, reset));
-    };
-  }, []);
-  return (
-    <motion.div
-      initial={false}
-      animate={show ? { opacity: 1, y: 0, pointerEvents: "auto" } : { opacity: 0, y: 20, pointerEvents: "none" }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed bottom-6 right-6 z-40 w-72 rounded-2xl border border-[#D4A752]/30 bg-[#1a1033]/90 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.5)] backdrop-blur-md"
-    >
-      <div className="mb-1.5 flex items-center gap-2">
-        <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#D4A752]/20 text-[#F0C86A]">
-          <SparkIcon className="h-3.5 w-3.5" />
-        </span>
-        <span className="text-[13px] font-semibold" style={{ color: OFFWHITE, fontFamily: HEAD }}>Still there?</span>
-      </div>
-      <p className="text-[12.5px] leading-snug text-white/70">Want a demo? I can walk you through a day in my life.</p>
-      <a href="#day" onClick={() => setShow(false)} className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-[#F0C86A]">
-        Show me <ArrowRight className="h-3.5 w-3.5" />
-      </a>
-    </motion.div>
   );
 }
 
@@ -492,13 +452,14 @@ export default function PaigeHome() {
   };
   const handleContact = () =>
     (window.location.href = "mailto:sales@paigeagent.ai?subject=Enterprise%20Inquiry");
-  // Auto-play the phone-opening on the first visit of a session; skip for
-  // reduced-motion; ?intro forces it. The "Watch the open" button replays it.
+  // The cinematic opening is opt-in. Autoplay made the first useful action wait
+  // behind a 5.4s sequence; visitors can still launch it from "Watch Paige open."
   const [showIntro, setShowIntro] = useState(() => {
     try {
-      if (new URLSearchParams(window.location.search).has("intro")) return true;
-      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
-      return sessionStorage.getItem("paige_intro_v1") !== "1";
+      return (
+        new URLSearchParams(window.location.search).has("intro") &&
+        !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      );
     } catch {
       return false;
     }
@@ -529,7 +490,10 @@ export default function PaigeHome() {
     if (!showIntro) paigeAnim.entrance = 1;
     const onScroll = () => {
       const span = window.innerHeight * 0.9 || 1;
-      paigeAnim.scroll = Math.min(1, Math.max(0, window.scrollY / span));
+      // Keep one continuous animation rail across the page. Values above 1
+      // let the shared Paige renderer distinguish the workspace reveal from
+      // later sections without mounting a second scene.
+      paigeAnim.scroll = Math.max(0, window.scrollY / span);
     };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -553,12 +517,11 @@ export default function PaigeHome() {
       </div>
 
       {showIntro && <IntroSequence onDone={closeIntro} onReveal={revealPaige} />}
-      {!reduced && <IdleNudge />}
 
       {/* All page content rides above the fixed Paige layer */}
       <div className="relative z-10">
       {/* Nav */}
-      <header className="relative z-30 mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
+      <header className="sticky top-0 z-30 mx-auto flex w-full max-w-6xl items-center justify-between border-b border-white/[0.08] bg-[#140c27]/70 px-6 py-4 backdrop-blur-xl supports-[backdrop-filter]:bg-[#140c27]/55">
         <a href="#hero" className="flex items-center gap-2.5">
           <PaigeMark className="h-9 w-9" />
           <span className="text-lg font-semibold tracking-tight text-[#F8F5EE]" style={{ fontFamily: HEAD }}>
@@ -593,6 +556,12 @@ export default function PaigeHome() {
         <div className="pointer-events-none absolute inset-0">
           <FloatingPanels />
         </div>
+        {/* Mobile depth scrim: preserve the one shared 3D scene while keeping
+            the copy decisively foregrounded on a narrow viewport. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(20,12,39,0.96)_0%,rgba(20,12,39,0.78)_62%,rgba(20,12,39,0.28)_100%)] sm:hidden"
+        />
 
         <motion.div
           variants={stagger}
@@ -622,7 +591,7 @@ export default function PaigeHome() {
             You just do the <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">work.</span>
           </motion.p>
           <motion.p variants={rise} className="mt-6 max-w-lg text-lg leading-relaxed text-[#F8F5EE]/70 md:text-xl [text-shadow:0_2px_20px_rgba(0,0,0,0.7)]">
-            The admin, the follow-ups, the onboarding, the at-risk clients — Paige handles all of it, and runs every move past you before it goes out.
+            Follow-ups, onboarding, client care, and the work between meetings — handled in one place, with you in control.
           </motion.p>
           <motion.div variants={rise} className="mt-8 flex flex-col gap-3 sm:mt-9 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
             <button
@@ -646,39 +615,52 @@ export default function PaigeHome() {
         </motion.div>
 
         <div className="pointer-events-none absolute bottom-7 left-1/2 -translate-x-1/2 text-[10px] font-medium uppercase tracking-[0.3em] text-white/40">
-          Scroll into Paige
+          Meet the operating system
         </div>
       </section>
 
       {/* Below-hero content — frosted so Paige stays a soft glow behind it */}
-      <div className="relative bg-[#140c27]/72 backdrop-blur-md">
-      {/* WORKSPACE */}
-      <Section id="workspace" className="py-28">
-        <motion.div variants={rise} className="mx-auto mb-14 max-w-2xl text-center">
-          <div className="mb-4 text-[12px] font-medium uppercase tracking-[0.18em] text-[#F0C86A]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Inside Paige · workspace</div>
-          <h2 className="text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
-            Step inside where <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">she works.</span>
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-white/60">
-            Pipeline, drafting, workflows, and client engagement — one operation, running whether you're watching or not.
-          </p>
+      <div className="relative border-t border-white/[0.06] bg-[#100720]/30">
+      {/* WORKSPACE — one shared Paige scene, revealed instead of duplicated. */}
+      <Section id="workspace" className="relative min-h-[860px] overflow-hidden py-20 md:py-28">
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_52%_38%,rgba(240,200,106,0.09),transparent_34%),linear-gradient(180deg,rgba(20,12,39,0.08),rgba(20,12,39,0.62))]" />
+        <motion.div
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-80px" }}
+          variants={stagger}
+          className="relative z-10 flex min-h-[900px] flex-col justify-start pt-[330px] md:pt-[430px]"
+        >
+          <motion.div variants={rise} className="mb-8 max-w-2xl rounded-[2rem] border border-white/[0.06] bg-[#160b2d]/58 p-7 shadow-2xl shadow-black/20 backdrop-blur-sm md:p-9">
+            <div className="mb-4 text-[12px] font-medium uppercase tracking-[0.22em] text-[#F0C86A]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>The workspace</div>
+            <h2 className="max-w-xl text-4xl font-semibold leading-[0.98] md:text-6xl" style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}>
+              Step inside where Paige works.
+            </h2>
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/70 md:text-lg">
+              Pipelines, drafts, sequences, and the pulse of every client — open a panel and see the surface Paige runs for you.
+            </p>
+          </motion.div>
+
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { icon: Users, t: "Pipeline board", d: "Every client, every stage, and the next move Paige is carrying forward." },
+              { icon: MessageSquare, t: "Drafting window", d: "Follow-ups and recaps written in your voice, ready for review." },
+              { icon: Workflow, t: "Workflow diagram", d: "Onboarding and check-ins that run on one visible rail." },
+              { icon: Trophy, t: "Engagement pulse", d: "Who is thriving, who needs attention, and why Paige surfaced it." },
+            ].map((c) => (
+              <motion.div key={c.t} variants={rise} className="group rounded-2xl border border-white/10 bg-[#21103d]/72 p-6 backdrop-blur-md transition-all hover:border-[#D4A752]/50 hover:bg-[#28144a]/82">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#D4A752]/35 bg-[#D4A752]/12 text-[#F0C86A]">
+                    <c.icon className="h-4 w-4" />
+                  </div>
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-white/40" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Open surface</span>
+                </div>
+                <h3 className="mb-2 text-lg font-semibold" style={{ fontFamily: HEAD }}>{c.t}</h3>
+                <p className="text-sm leading-relaxed text-white/60">{c.d}</p>
+              </motion.div>
+            ))}
+          </div>
         </motion.div>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            { icon: Users, t: "Pipeline board", d: "Every client and where they are — Paige keeps it moving." },
-            { icon: MessageSquare, t: "Drafting window", d: "Follow-ups and recaps written in your voice, ready to send." },
-            { icon: Workflow, t: "Workflow diagram", d: "Onboarding and check-ins that run themselves." },
-            { icon: Trophy, t: "Engagement dashboard", d: "Who's thriving, who needs a nudge — flagged before it slips." },
-          ].map((c) => (
-            <motion.div key={c.t} variants={rise} className="group rounded-2xl border border-white/10 bg-white/[0.03] p-6 transition-all hover:border-[#D4A752]/40 hover:bg-white/[0.06]">
-              <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#D4A752]/25 to-[#F0C86A]/15 text-[#F0C86A]">
-                <c.icon className="h-5 w-5" />
-              </div>
-              <h3 className="mb-2 text-lg font-semibold" style={{ fontFamily: HEAD }}>{c.t}</h3>
-              <p className="text-sm leading-relaxed text-white/60">{c.d}</p>
-            </motion.div>
-          ))}
-        </div>
       </Section>
 
       {/* DAY IN THE LIFE */}

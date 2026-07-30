@@ -24,15 +24,10 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { EmailDomainsPanel } from "@/components/admin/EmailDomainsPanel";
+import { TenantDomainIdentityCard } from "@/components/admin/TenantDomainIdentityCard";
 import { resolveFunctionError } from "@/lib/integrations/connectError";
 import { toast } from "sonner";
-import { Mail, Inbox, KeyRound, Loader2, Link as LinkIcon, Unlink } from "lucide-react";
-
-type EmailConnector = {
-  from_address: string | null;
-  inbound_domain: string | null;
-  display_name: string | null;
-};
+import { ChevronDown, KeyRound, Loader2, Link as LinkIcon, Mail, Unlink } from "lucide-react";
 
 type GmailConnector = {
   from_address: string | null;
@@ -49,7 +44,6 @@ type SmtpConnector = {
 // site on this page consumes it so a tenant never sees a raw framework code.
 
 export default function EmailIntegrationConfig() {
-  const [connector, setConnector] = useState<EmailConnector | null>(null);
   const [gmail, setGmail] = useState<GmailConnector | null>(null);
   const [smtp, setSmtp] = useState<SmtpConnector | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,33 +94,12 @@ export default function EmailIntegrationConfig() {
   useEffect(() => {
     void (async () => {
       setLoading(true);
-      // RLS scopes this to the caller's tenant (§9) — no tenant_id in the query.
-      // channel_connectors isn't in the generated types yet (same as in
-      // ClientsConversations), so route through the `any` client used across the
-      // Conversations surface; the row is re-typed on assignment below.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sb = supabase as any;
-      // Prefer the most recently updated live domain connector (Resend). The Gmail and SMTP
-      // rows are read separately below so they drive their OWN cards, not the sending-domain
-      // state — so exclude BOTH providers here (§18: one home each, no double-count).
-      const { data } = await sb
-        .from("channel_connectors")
-        .select("from_address, inbound_domain, display_name")
-        .eq("channel_type", "email")
-        .or("provider.is.null,and(provider.neq.gmail,provider.neq.smtp)")
-        .eq("active", true)
-        .eq("status", "active")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      setConnector((data as EmailConnector | null) ?? null);
       await loadGmail();
       await loadSmtp();
       setLoading(false);
     })();
   }, []);
 
-  const connected = Boolean(connector?.from_address);
   const gmailConnected = Boolean(gmail?.from_address);
   const smtpConnected = Boolean(smtp?.from_address);
 
@@ -224,64 +197,38 @@ export default function EmailIntegrationConfig() {
         variant="plain"
         icon={Mail}
         title="Email"
-        description="Connect a sending domain so Paige can send and receive email from your unified inbox — under your own brand."
+        description="Your included Paige addresses live here. Paige shows when each one is ready; your own domain or mailbox remains optional."
         backHref="/admin/integrations"
       />
 
-      {/* Live connection state — read straight from channel_connectors (§13). */}
-      <SectionCard
-        icon={Inbox}
-        title="Email connection"
-        description="Your inbox goes live for sending the moment a domain below is verified."
-        actions={
-          loading ? (
-            <Skeleton className="h-5 w-40 rounded-full" />
-          ) : connected ? (
-            <StatePill state="success">Connected</StatePill>
-          ) : (
-            <StatePill state="off">Not connected</StatePill>
-          )
-        }
-      >
-        {loading ? (
-          <Skeleton className="h-4 w-72" />
-        ) : connected ? (
-          <p className="text-sm text-muted-foreground">
-            Paige sends as <span className="font-medium text-foreground">{connector?.from_address}</span>.
-            Replies from your clients land in the inbox once your domain's mail routing (MX / inbound) is
-            pointed at Paige — sending is live now; inbound receipt turns on once that routing is set.
-          </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            No verified sending domain yet. Add and verify your domain below — as soon as it verifies,
-            your inbox can send and Paige composes on your behalf.
-          </p>
-        )}
-      </SectionCard>
+      <TenantDomainIdentityCard />
 
       {/* The domain-verify mechanism — REUSED, not rebuilt (§18). */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-            <Mail className="h-4 w-4 text-muted-foreground" /> Sending domain
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Verify SPF, DKIM, and DMARC for your domain so email sends land from your brand and stay out
-            of spam. Verifying a domain connects your inbox automatically.
-          </p>
+      <details className="group rounded-xl border border-border/70 bg-card">
+        <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+          <Mail className="h-4 w-4 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-foreground">Use your own email domain</h2>
+            <p className="text-xs text-muted-foreground">Optional branding with guided SPF, DKIM, and DMARC verification.</p>
+          </div>
+          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="border-t border-border/60 p-4">
+          <EmailDomainsPanel />
         </div>
-        <EmailDomainsPanel />
-      </section>
+      </details>
 
       {/* Additional connect methods — Gmail OAuth + bring-your-own SMTP. Real state, no dead buttons (§13). */}
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">More ways to connect</h2>
-          <p className="text-sm text-muted-foreground">
-            Prefer your existing mailbox? Connect Google or your own SMTP server — no DNS setup needed.
-          </p>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
+      <details className="group rounded-xl border border-border/70 bg-card">
+        <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+          <KeyRound className="h-4 w-4 text-muted-foreground" />
+          <div className="min-w-0 flex-1">
+            <h2 className="text-sm font-semibold text-foreground">Connect an existing mailbox</h2>
+            <p className="text-xs text-muted-foreground">Optional Gmail, Google Workspace, or SMTP connection.</p>
+          </div>
+          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="grid gap-4 border-t border-border/60 p-4 md:grid-cols-2">
           <SectionCard
             icon={Mail}
             title="Gmail / Google Workspace"
@@ -430,7 +377,7 @@ export default function EmailIntegrationConfig() {
             )}
           </SectionCard>
         </div>
-      </section>
+      </details>
     </PageShell>
   );
 }

@@ -22,7 +22,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
-import { UserPlus, Users, Sparkles, Building2, ArrowRight, Check, Loader2 } from "lucide-react";
+import { UserPlus, Users, Sparkles, Building2, ArrowRight, Check, Loader2, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { SectionCard, GlyphPlate, StatePill } from "@/components/ui/page";
@@ -50,14 +50,23 @@ interface Step {
 // the agency-operator journey (both run a book of sub-accounts).
 const STANDALONE_STEPS: Step[] = [
   {
-    key: "add_client",
+    key: "activate_email",
     primary: true,
-    label: "Add your first client",
+    label: "Activate your Paige email",
     description:
-      "Bring someone in and Paige starts working both sides — onboarding them and surfacing your next move here.",
-    href: "/admin/clients",
+      "Confirm your included sending address, then email a client from Conversations in minutes. Your own domain stays optional.",
+    href: "/admin/integrations/email",
+    icon: Mail,
+    cta: "Activate email",
+  },
+  {
+    key: "add_client",
+    label: "Add and message your first client",
+    description:
+      "Create the client inside Conversations, write the first email, and keep every reply in the same thread.",
+    href: "/admin/clients-hub/conversations?compose=1",
     icon: UserPlus,
-    cta: "Add your first client",
+    cta: "Start a conversation",
   },
   {
     key: "meet_paige",
@@ -81,8 +90,17 @@ const STANDALONE_STEPS: Step[] = [
 
 const AGENCY_STEPS: Step[] = [
   {
-    key: "create_subaccount",
+    key: "activate_email",
     primary: true,
+    label: "Activate your Paige email",
+    description:
+      "Confirm your included sending address, then email a client from Conversations in minutes. Your own domain stays optional.",
+    href: "/admin/integrations/email",
+    icon: Mail,
+    cta: "Activate email",
+  },
+  {
+    key: "create_subaccount",
     label: "Create your first sub-account",
     description:
       "Spin up a child workspace under your agency — its own clients, brand, and pipeline, with your brand on top.",
@@ -142,12 +160,41 @@ export function OwnerWelcome({ tenantId, accountType, ownerName, initialState, o
   // authoritative on the next /admin load via get_owner_onboarding_state.
   const markStep = useCallback(
     (key: string) => {
+      // Email activation is completed by the live connector state below—not by
+      // clicking into setup. A reserved address alone is not a completed channel.
+      if (key === "activate_email") return;
       const next = { ...done, [key]: true };
       setDone(next);
       void persist({ steps: next });
     },
     [done, persist],
   );
+
+  // Keep the onboarding checklist grounded in the same active connector rail
+  // Conversations uses. When the tenant returns from Email setup, this step
+  // completes automatically; clicking the task never fakes completion.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from("channel_connectors")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("channel_type", "email")
+        .eq("active", true)
+        .eq("status", "active")
+        .limit(1);
+      if (cancelled || error || !data?.length) return;
+      setDone((current) => {
+        if (current.activate_email) return current;
+        const next = { ...current, activate_email: true };
+        void persist({ steps: next });
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [tenantId, persist]);
 
   // When the last step is checked, stamp completed_at once so the welcome doesn't
   // reappear, then hand control back to the parent overview.
@@ -171,20 +218,14 @@ export function OwnerWelcome({ tenantId, accountType, ownerName, initialState, o
 
   return (
     <SectionCard className="overflow-hidden">
-      {/* Warm masthead in Paige's voice — the first thing a new owner reads. */}
-      <div className="flex items-start gap-4 border-b border-border/60 bg-primary/[0.04] px-5 py-5">
-        <PaigeMark className="h-11 w-11 shrink-0" />
-        <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Welcome to Paige
-          </div>
-          <h2 className="mt-0.5 font-display text-xl font-semibold leading-tight text-foreground">
-            Your workspace is ready{greetingName}.
+      <div className="flex items-center gap-3 border-b border-border/60 px-5 py-3">
+        <PaigeMark className="h-8 w-8 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display text-base font-semibold text-foreground">
+            Put Paige to work{greetingName}
           </h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            I'm Paige — I run the front and back of your practice: onboarding the people you serve,
-            surfacing who needs you, and drafting your next move. Here's the shortest path to putting
-            me to work. Do them in any order.
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Complete these working connections in any order. Every action opens the exact surface that owns it.
           </p>
         </div>
       </div>
