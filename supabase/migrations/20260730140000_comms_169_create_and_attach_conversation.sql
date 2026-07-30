@@ -41,6 +41,9 @@ DECLARE
   _tkey    text;
   _counterparty text;
   _thread_existed boolean := false;
+  -- created_by must be a REAL auth.users id (FK): the JWT caller when present, else the tenant owner
+  -- for the trusted service-role path (Paige headless). Never a synthetic/zero UUID (would 23503).
+  _creator uuid;
 BEGIN
   -- JWT callers must be admin|coach (a NULL caller is the trusted service-role path, role-gated upstream).
   IF _caller IS NOT NULL AND NOT public.has_any_role(_caller, ARRAY['admin','super_admin','coach']) THEN
@@ -73,21 +76,34 @@ BEGIN
      ORDER BY created_at ASC LIMIT 1;
   END IF;
 
-  -- None found → create ONE (matches create_contact's insert shape/defaults).
+  -- None found → create ONE. created_by must be a REAL auth.users id (FK): the JWT caller if present,
+  -- else the tenant's owner for the trusted service-role path (Paige headless).
   IF _cid IS NULL THEN
+    _creator := _caller;
+    IF _creator IS NULL THEN
+      SELECT owner_user_id INTO _creator FROM public.tenants WHERE id = _tenant;
+    END IF;
+    -- INSERT ... SELECT ... WHERE EXISTS(auth.users) — never a synthetic/zero UUID that would 23503
+    -- on a fresh rebuild (migration-linter PATTERN-1). A missing creator ⇒ zero rows ⇒ honest raise below.
     INSERT INTO public.clients (
       first_name, last_name, email, phone,
       lifecycle_stage, source, status, created_by, tenant_id
-    ) VALUES (
+    )
+    SELECT
       COALESCE(NULLIF(btrim(p_first_name), ''), NULLIF(split_part(COALESCE(_email, ''), '@', 1), ''), 'New'),
       COALESCE(NULLIF(btrim(p_last_name), ''), 'Contact'),
       NULLIF(btrim(p_email), ''), NULLIF(btrim(p_phone), ''),
-      'new_lead', 'conversations', 'active', COALESCE(_caller, '00000000-0000-0000-0000-000000000000'::uuid), _tenant
-    )
+      'new_lead', 'conversations', 'active', _creator, _tenant
+    WHERE EXISTS (SELECT 1 FROM auth.users u WHERE u.id = _creator)
     RETURNING id INTO _cid;
 
+    IF _cid IS NULL THEN
+      RAISE EXCEPTION 'CONVO_NO_CREATOR: could not resolve a valid creator (auth.users) for this tenant'
+        USING ERRCODE = '23503';
+    END IF;
+
     INSERT INTO public.audit_logs (user_id, entity, action, entity_id, data)
-    VALUES (_caller, 'client', 'create_and_attach_conversation', _cid,
+    VALUES (_creator, 'client', 'create_and_attach_conversation', _cid,
             jsonb_build_object('tenant_id', _tenant, 'channel', _channel, 'via', 'conversations_compose'));
   END IF;
 
