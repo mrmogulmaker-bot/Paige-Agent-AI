@@ -359,7 +359,7 @@ export function ComposeThreadDialog({
   }, [emailTemplates, client, coachName]);
 
   const canSend =
-    !!client && !!channel && !!toAddress && !!body.trim() &&
+    !!client && !!channel && !!connectorId && !!toAddress && !!body.trim() &&
     (channel !== "email" || !!subject.trim()) && !sending && !drafting && !uploading;
 
   const send = async () => {
@@ -368,7 +368,8 @@ export function ComposeThreadDialog({
     if (!body.trim()) { toast.error("Write a message first."); return; }
     if (channel === "email" && !subject.trim()) { toast.error("Add a subject for the email."); return; }
 
-    const connector = sendable.find((c) => c.id === connectorId) ?? null;
+    const connector = sendable.find((c) => c.id === connectorId && c.channel_type === channel) ?? null;
+    if (!connector) { toast.error("Choose an active sending address."); return; }
     // Canonical key so a later inbound reply MERGES into this thread (not a fragment).
     const threadKey = tenantId
       ? canonicalThreadKey(channel, tenantId, toAddress)
@@ -386,7 +387,7 @@ export function ComposeThreadDialog({
           subject: channel === "email" ? subject.trim() : undefined,
           body: body.trim(),
           contact_id: client.id,
-          connector_id: connector?.id ?? undefined,
+          connector_id: connector.id,
           thread_key: threadKey,
           scheduled_for: iso,
           // Attachment parity with the reply composer — the EXACT `attachments` shape
