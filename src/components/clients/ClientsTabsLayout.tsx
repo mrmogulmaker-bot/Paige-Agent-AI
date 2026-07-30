@@ -6,17 +6,27 @@
 // ungated. It renders ONLY the strip + <Outlet/> (no "Clients" PageHeader): each
 // child owns its own header, so the strip IS the compact container header and we
 // never double-stack (§11/§27 vertical space).
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { ClientsSubTabs } from "./ClientsSubTabs";
+import { cn } from "@/lib/utils";
 
 export default function ClientsTabsLayout() {
-  // Cancel <main>'s p-3/4/6 so the strip is flush, then re-add that padding for the
-  // PageShell children below. All five children are normal PageShell pages (none is
-  // the full-bleed chat case), so no isChat branch is needed.
+  const { pathname } = useLocation();
+  const isConversationsInbox = pathname === "/admin/clients-hub/conversations";
+
+  // Cancel <main>'s p-3/4/6 so the strip is flush, then re-add one padding owner
+  // around the child surface. The Conversations inbox owns its scrolling inside
+  // the three panes, so its well must constrain height instead of becoming a
+  // competing page-level scroller. Sibling client pages keep natural scrolling.
   return (
     <div className="flex h-full min-h-0 flex-col -mx-3 -my-3 sm:-mx-4 sm:-my-4 md:-mx-6 md:-my-6">
       <ClientsSubTabs />
-      <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
+      <div
+        className={cn(
+          "min-h-0 flex-1 p-3 sm:p-4",
+          isConversationsInbox ? "overflow-hidden" : "overflow-y-auto md:p-6",
+        )}
+      >
         <Outlet />
       </div>
     </div>
