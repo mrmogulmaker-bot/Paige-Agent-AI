@@ -17,9 +17,9 @@ export default function ConversationsTabsLayout() {
   const isInbox = pathname === "/admin/clients-hub/conversations";
 
   return (
-    <div className={cn("flex h-full min-h-0 flex-col", isInbox && "overflow-hidden")}>
+    <div className={cn("flex h-full min-h-0 flex-col", isInbox && "flex-1 overflow-hidden")}>
       <ConversationsSubTabs />
-      <div className={cn("min-h-0 flex-1", isInbox ? "overflow-hidden" : "overflow-y-auto")}>
+      <div className={cn("flex min-h-0 flex-1 flex-col", isInbox ? "overflow-hidden" : "overflow-y-auto")}>
         <Outlet />
       </div>
     </div>
