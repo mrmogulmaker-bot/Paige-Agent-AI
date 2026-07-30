@@ -490,7 +490,10 @@ export default function PaigeHome() {
     if (!showIntro) paigeAnim.entrance = 1;
     const onScroll = () => {
       const span = window.innerHeight * 0.9 || 1;
-      paigeAnim.scroll = Math.min(1, Math.max(0, window.scrollY / span));
+      // Keep one continuous animation rail across the page. Values above 1
+      // let the shared Paige renderer distinguish the workspace reveal from
+      // later sections without mounting a second scene.
+      paigeAnim.scroll = Math.max(0, window.scrollY / span);
     };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -617,34 +620,47 @@ export default function PaigeHome() {
       </section>
 
       {/* Below-hero content — frosted so Paige stays a soft glow behind it */}
-      <div className="relative border-t border-white/[0.06] bg-[#140c27]/82 backdrop-blur-lg">
-      {/* WORKSPACE */}
-      <Section id="workspace" className="py-28">
-        <motion.div variants={rise} className="mx-auto mb-14 max-w-2xl text-center">
-          <div className="mb-4 text-[12px] font-medium uppercase tracking-[0.18em] text-[#F0C86A]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Inside Paige · workspace</div>
-          <h2 className="text-4xl font-bold md:text-5xl" style={{ fontFamily: HEAD }}>
-            Step inside where <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">she works.</span>
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-white/60">
-            Pipeline, drafting, workflows, and client engagement — one calm workspace instead of a stack of disconnected tools.
-          </p>
+      <div className="relative border-t border-white/[0.06] bg-[#100720]/30">
+      {/* WORKSPACE — one shared Paige scene, revealed instead of duplicated. */}
+      <Section id="workspace" className="relative min-h-[860px] overflow-hidden py-20 md:py-28">
+        <div aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_52%_38%,rgba(240,200,106,0.09),transparent_34%),linear-gradient(180deg,rgba(20,12,39,0.08),rgba(20,12,39,0.62))]" />
+        <motion.div
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-80px" }}
+          variants={stagger}
+          className="relative z-10 flex min-h-[700px] flex-col justify-end"
+        >
+          <motion.div variants={rise} className="mb-8 max-w-2xl rounded-[2rem] border border-white/[0.06] bg-[#160b2d]/58 p-7 shadow-2xl shadow-black/20 backdrop-blur-sm md:p-9">
+            <div className="mb-4 text-[12px] font-medium uppercase tracking-[0.22em] text-[#F0C86A]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>The workspace</div>
+            <h2 className="max-w-xl text-4xl font-semibold leading-[0.98] md:text-6xl" style={{ fontFamily: "'Cormorant Garamond', Georgia, serif" }}>
+              Step inside where Paige works.
+            </h2>
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-white/70 md:text-lg">
+              Pipelines, drafts, sequences, and the pulse of every client — open a panel and see the surface Paige runs for you.
+            </p>
+          </motion.div>
+
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { icon: Users, t: "Pipeline board", d: "Every client, every stage, and the next move Paige is carrying forward." },
+              { icon: MessageSquare, t: "Drafting window", d: "Follow-ups and recaps written in your voice, ready for review." },
+              { icon: Workflow, t: "Workflow diagram", d: "Onboarding and check-ins that run on one visible rail." },
+              { icon: Trophy, t: "Engagement pulse", d: "Who is thriving, who needs attention, and why Paige surfaced it." },
+            ].map((c) => (
+              <motion.div key={c.t} variants={rise} className="group rounded-2xl border border-white/10 bg-[#21103d]/72 p-6 backdrop-blur-md transition-all hover:border-[#D4A752]/50 hover:bg-[#28144a]/82">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#D4A752]/35 bg-[#D4A752]/12 text-[#F0C86A]">
+                    <c.icon className="h-4 w-4" />
+                  </div>
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-white/40" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Open surface</span>
+                </div>
+                <h3 className="mb-2 text-lg font-semibold" style={{ fontFamily: HEAD }}>{c.t}</h3>
+                <p className="text-sm leading-relaxed text-white/60">{c.d}</p>
+              </motion.div>
+            ))}
+          </div>
         </motion.div>
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            { icon: Users, t: "Pipeline board", d: "Every client and where they are — Paige keeps it moving." },
-            { icon: MessageSquare, t: "Drafting window", d: "Follow-ups and recaps written in your voice, ready to send." },
-            { icon: Workflow, t: "Workflow diagram", d: "Onboarding and check-ins that run themselves." },
-            { icon: Trophy, t: "Engagement dashboard", d: "Who's thriving, who needs a nudge — flagged before it slips." },
-          ].map((c) => (
-            <motion.div key={c.t} variants={rise} className="group rounded-2xl border border-white/10 bg-white/[0.03] p-6 transition-all hover:border-[#D4A752]/40 hover:bg-white/[0.06]">
-              <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#D4A752]/25 to-[#F0C86A]/15 text-[#F0C86A]">
-                <c.icon className="h-5 w-5" />
-              </div>
-              <h3 className="mb-2 text-lg font-semibold" style={{ fontFamily: HEAD }}>{c.t}</h3>
-              <p className="text-sm leading-relaxed text-white/60">{c.d}</p>
-            </motion.div>
-          ))}
-        </div>
       </Section>
 
       {/* DAY IN THE LIFE */}
