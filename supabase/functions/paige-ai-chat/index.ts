@@ -1654,6 +1654,42 @@ ${buildStudioWhereYouAre(name, tenant)}`.trim()
     }
     const fundingEnabled = personaCtx.funding_enabled;
 
+    // Tenant domain identity is platform configuration, not conversational memory.
+    // Resolve it every turn from the server-owned tenant slug so Paige can answer
+    // onboarding/domain questions without guessing or asking for information she has.
+    let tenantDomainContext = "";
+    if (personaCtx.tenant_id) {
+      try {
+        const [{ data: tenantRow }, { data: emailDomain }] = await Promise.all([
+          admin.from("tenants").select("slug").eq("id", personaCtx.tenant_id).maybeSingle(),
+          admin
+            .from("tenant_email_domains")
+            .select("domain, from_email_local, status")
+            .eq("tenant_id", personaCtx.tenant_id)
+            .eq("is_default", true)
+            .maybeSingle(),
+        ]);
+        const slug = String((tenantRow as any)?.slug || "").trim().toLowerCase();
+        if (slug) {
+          const defaultWebUrl = `https://${slug}.paigeagent.ai`;
+          const sender = emailDomain
+            ? `${(emailDomain as any).from_email_local || "hello"}@${(emailDomain as any).domain}`
+            : null;
+          tenantDomainContext = `TENANT DOMAIN IDENTITY — SOURCE OF TRUTH
+- This workspace's default website/portal domain is ${defaultWebUrl}.
+- Give that exact URL when the owner asks "what is my domain?" or is onboarding a client.
+- A custom EMAIL sending domain is a separate configuration from the website domain.
+- ${sender
+  ? `The current default email sender is ${sender} (status: ${(emailDomain as any).status || "unknown"}).`
+  : "No custom default email sending domain is configured yet. Explain that the owner can connect one in Setup → Integrations → Email, where Paige provides the DNS records and verification status."}
+- Never call an email sending domain the website domain. Never invent a custom website domain.
+- If the owner wants a custom website domain, explain that their Paige subdomain works now and offer to help with the custom-domain connection workflow.`;
+        }
+      } catch (e) {
+        console.warn("[paige-ai-chat] tenant domain context unavailable:", e);
+      }
+    }
+
     // ── §9 working-context capture (owner #489) ──────────────────────────────
     // The trace's tenant_id carries the caller's PERSONA-context tenant (which, for an agency-scope
     // session working across a sub-account, resolves to the owned agency — honest per row). To let the
@@ -3519,6 +3555,7 @@ SUPPORT & FEEDBACK AWARENESS
     // Build message array — lead with the tenant's persona so identity is set first.
     const aiMessages: any[] = [
       { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice", fundingEnabled, personaCtx.brand) },
+      ...(tenantDomainContext ? [{ role: "system", content: tenantDomainContext }] : []),
       { role: "system", content: systemPrompt },
       // "Watch Paige work" narration (#152): when she's about to USE tools, she first
       // writes one short backstage line saying what she's doing and why. It streams to
