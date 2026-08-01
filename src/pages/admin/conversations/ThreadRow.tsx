@@ -75,7 +75,10 @@ export function ThreadRow({
   // business context isn't lost. Mirrors ContactCardRail's identity block (§18 one pattern).
   // Guard: when there's no person name, entity_name is already the PRIMARY label — don't echo
   // it in the subtitle (a whole rail of entity-only contacts would stack the same name twice, §25).
-  const hasPersonName = !!(thread.clients?.first_name || thread.clients?.last_name);
+  // Trim to match contactNameFromClient's own trimming — a whitespace-only first/last name
+  // (import/API data) falls back to entity_name as the PRIMARY, so a raw truthiness check here
+  // would still echo that same entity in the subtitle (Codex P2). Derive from trimmed fields.
+  const hasPersonName = !!(thread.clients?.first_name?.trim() || thread.clients?.last_name?.trim());
   const subtitle = [thread.clients?.title, hasPersonName ? thread.clients?.entity_name : null]
     .filter(Boolean)
     .join(" · ");
