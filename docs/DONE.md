@@ -276,3 +276,37 @@ not driven here. **Follow-ups filed:** #575 (complete-signup writes invalid life
 (`handle_new_user()` trigger inserts `lifecycle_stage='lead'` inside a swallow → silently drops the
 signup auto-contact), #577 (stale lifecycle-vocabulary sweep on UPDATE + search paths). §49 Wave C #167
 (#563 voice picker) remains owner-directed — NOT auto-started.
+
+## §200 platform-operator-tenant seam — replace stale phantom MMA_TENANT_ID (#578, PR #313) — 2026-08-01
+
+The god/platform actor's tenant was pinned to a hardcoded `MMA_TENANT_ID` constant that had gone
+**stale/phantom** — the UUID (`a25194e0…`) matched no tenant row (verified: zero orphan rows anywhere),
+so every god-key tenant-scoped op resolved to a non-existent tenant. Classic §200 failure: one tenant's
+id baked into a platform-wide code path. **Diagnosis (§13):** of the "3 MMA hardcodes," the
+`tenant_sender_identity` `slug='mma'` branch was already superseded live (resolves per-tenant via
+`resolve_tenant_sender`) and the `btf_enabled` `slug='mma'` seed was dead (`btf_enabled` null for every
+tenant) — neither a live bug. The phantom const was the only live one.
+
+**Fix (config-as-data, §18/§10):** new `_shared/platform-operator-tenant.ts` `platformOperatorTenantId(admin)`
+resolves the operator's designated system tenant from `admin_app_settings` (`platform_operator_tenant_id`),
+UUID-validated, **fail-closed null** when unset/malformed/on error (never the phantom, never a default,
+never throws), TTL-cached (60s hit / 10s unset-null / never on error). Three consumers moved in §37
+lockstep: paige-mcp `actorTenantId()` platform branch, the `resolveMarketplaceActor` guard, and
+`workflowDispatch`'s §118 provider gate (implemented **restrict-don't-open** — plain `!==` inside the
+block so an unset operator tenant keeps real tenant callers blocked; god/null and the cron sweeper/undefined
+bypass via the unchanged precondition). Phantom literal deleted from all runtime code. **Behavior unchanged
+until designation** — god ops fail closed honestly instead of hitting a phantom.
+
+**Crew:** resolver architect + §9/§37 adversarial verifier → GO_WITH_GUARDS, all guards applied.
+**§32:** headless smoke `scripts/platform-operator-tenant-smoke.mts` 12/12; grep-clean; prod facts
+verified (phantom has no row + zero orphans; `admin_app_settings` RLS `is_platform_owner()` on read+write
+so no tenant self-designation; `paige_ingestion_proposals.tenant_id` nullable). Merged `4c519f1`; edge-deploy
+CI confirmed — `edge-live` advanced, `git diff edge-live..main -- supabase/functions` empty (paige-mcp +
+dispatch-queued-workflow-runs redeployed).
+
+**Owed (NOT in this PR):** designating a real coaching-generic operator system tenant ("Paige Operations")
+is a one-time prod-data step (fresh auth user + in-tx `provision_tenant` impersonation + `admin_app_settings`
+key) — needs a GoTrue/dashboard session, can't run headless. Runbook:
+`docs/architecture/platform-operator-tenant-200.md`. Live god-key drive verify owed to a capable/Cowork
+session. **Standing rule for #93:** every update gets a per-tier availability + gating check
+(God/Super-Admin · Agency · Tenant · Sub-account · Client) before it's called done.
