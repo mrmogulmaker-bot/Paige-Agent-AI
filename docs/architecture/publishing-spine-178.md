@@ -33,7 +33,24 @@ discovers the codebase.
   `hostRouting.test.ts` SQL↔TS parity guard.
 - §32: full migration + 7 resolver assertions proven in `BEGIN..ROLLBACK` against prod.
 
-## Slice 2 — §9 hardening + web-ownership verification + Vercel attach (NEXT)
+## Slice 2 — §9 hardening + web-ownership verification + Vercel attach ✅ SHIPPED (commit a49f4ed)
+- **Live IDOR closed:** `deriveCallerTenant` (`_shared/tenant-domain-scope.ts`) server-derives the
+  tenant; non-owner forging `body.tenant_id` → 403 + logged; every email by-id op tenant-scoped.
+- **Web verbs:** `web_list/web_add/web_verify/web_set_default/web_remove`. `web_add`/`web_verify`
+  call the SECURITY DEFINER RPCs with the USER's JWT (tenant re-derived there). `web_verify` does
+  the DNS-TXT `_paige-verify.<host>` challenge (loud-log + fail-closed), surfaces 23505 as
+  `host_claimed_by_other_workspace`, then Vercel-attaches on genuine verification (env-gated
+  `VERCEL_API_TOKEN`/`VERCEL_PROJECT_ID`/`VERCEL_TEAM_ID`; honest degrade to attach-pending).
+- **§32:** headless forged-attack smoke `scripts/tenant-domain-scope-smoke.mts` (7/7) proves each
+  cross-tenant attempt is refused. **§37:** the only producer, `EmailDomainsPanel`, still passes
+  (operates on the caller's active tenant == the derived tenant).
+- **Owed:** the live DNS-TXT → verify → Vercel-attach end-to-end (needs a real domain + JWT +
+  the Vercel env secrets set) — owed to a capable/Cowork session; smoke covers the decision logic.
+- **Env to set for live Vercel attach:** `VERCEL_API_TOKEN`, `VERCEL_PROJECT_ID` (+ optional
+  `VERCEL_TEAM_ID`) as Supabase edge-function secrets. Registrar DNS: the tenant points their host
+  at the Vercel target (CNAME to `cname.vercel-dns.com` or the project's assigned target).
+
+## Slice 2 (original plan, for reference) — §9 hardening + web-ownership verification + Vercel attach
 **A live vulnerability to fix first** (`supabase/functions/manage-tenant-domain/index.ts`):
 - L60-62: STOP reading `body.tenant_id` for non-owner callers. Pin every admin to
   `current_user_tenant_id()`; allow an explicit target tenant ONLY in the
