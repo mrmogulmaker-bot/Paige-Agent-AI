@@ -71,6 +71,9 @@ export function ThreadRow({
     contactNameFromClient(thread.clients) ||
     (preview ? partyLabel(preview.direction === "inbound" ? preview.sender : preview.recipients?.[0]) : "") ||
     "Unknown contact";
+  // #175 — person name is primary; surface the org (and role) as a muted subtitle so the
+  // business context isn't lost. Mirrors ContactCardRail's identity block exactly (§18 one pattern).
+  const subtitle = [thread.clients?.title, thread.clients?.entity_name].filter(Boolean).join(" · ");
   const unread = thread.unread_count > 0;
   // R-N2: a draft is simply the latest message sitting as a draft.
   const hasDraft = preview?.status === "draft";
@@ -143,6 +146,10 @@ export function ThreadRow({
             </span>
           )}
         </div>
+
+        {subtitle && (
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</p>
+        )}
 
         <div className={cn("flex items-center gap-2", compact ? "mt-0" : "mt-0.5")}>
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
