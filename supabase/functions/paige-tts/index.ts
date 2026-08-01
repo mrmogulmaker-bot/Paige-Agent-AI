@@ -1,21 +1,28 @@
-// #131 — paige-tts: per-message chat voice PLAYBACK. A JWT-gated HTTP endpoint that synthesizes a
-// Paige/assistant message to speech via OpenAI TTS (routed through the ONE TTS home,
-// _shared/tts-router.ts, §18/§34) and STREAMS the mp3 back so the client's <audio> element plays it.
+// #131/#579 — paige-tts: per-message chat voice PLAYBACK. A JWT-gated HTTP endpoint that synthesizes
+// a Paige/assistant message to speech via the ONE TTS home (_shared/tts-router.ts, §18/§34) and
+// returns the mp3 so the client's <audio> element plays it. ElevenLabs (Paige's primary voice) is the
+// default; OpenAI (nova) is the honest fallback.
 //
 // FLOW
 //   1. §9 GATE — resolve the tenant FROM the JWT (authed.rpc("current_user_tenant_id")), NEVER a
 //      body tenant_id. Any authenticated workspace member may play back a message (playback is
 //      benign; no role gate).
 //   2. Resolve the VOICE (§7 tenant-authored): tenants.features.playbook_config.paige_voice if the
-//      tenant authored one; else the subscription-tier default; else the base default. A caller
-//      body.voice_id (valid catalog voice) wins. Invalid/custom voices degrade — never a 400 (§15).
-//   3. §14 CACHE — key = SHA-256(model:voice:text), path = <tenantId>/<hash>.mp3 in the PRIVATE,
-//      tenant-scoped `tts-cache` bucket (§9 — never cross-tenant). HIT → stream the stored bytes
-//      (zero OpenAI cost, instant), meter with cache_hit:true. MISS → call OpenAI via the router,
-//      TEE the stream (one branch → client, one branch → cache upload), meter with cache_hit:false.
-//   4. §17 METER — chars to platform_usage_events { event_type:"tts_char", unit:"char" }, service-role.
-//   5. §13 HONEST DEGRADE — OPENAI_API_KEY absent → 503 { error:"tts_not_configured" }; the RESERVED
-//      ElevenLabs tier (#132) → 503 { error:"tts_tier_reserved" }. NEVER a fake/empty audio body.
+//      tenant authored one; else the subscription-tier default; else the base default (ElevenLabs
+//      primary). A caller body.voice_id (valid catalog voice, either provider) wins. Invalid/custom
+//      voices degrade — never a 400 (§15). resolveVoiceId returns { provider, id }.
+//   3. PLAN — planTtsSynthesis builds an ORDERED FALLBACK CHAIN of attempts (ElevenLabs primary →
+//      backup → OpenAI nova, gated by which provider keys are present, #579).
+//   4. §14 CACHE + SYNTH — for each attempt: key = SHA-256(provider:model:voice:text), path =
+//      <tenantId>/<hash>.mp3 in the PRIVATE, tenant-scoped `tts-cache` bucket (§9 — never cross-tenant,
+//      never cross-provider). HIT → return stored bytes (zero cost), meter cache_hit:true. MISS →
+//      ElevenLabs (buffered bytes) or OpenAI (streamed + tee); on that attempt's failure, LOUD-log and
+//      fall to the NEXT attempt (§32). The cache key + meter reflect the provider that ACTUALLY
+//      rendered — never the intended one (§13).
+//   5. §17 METER — chars to platform_usage_events { event_type:"tts_char", unit:"char" }, service-role,
+//      with the true provider/voice/model + a fell_back flag (§13/§17 honest).
+//   6. §13 HONEST DEGRADE — NEITHER provider keyed → 503 { error:"tts_not_configured" }; every keyed
+//      attempt errored → 502 { error:"tts_synth_failed" }. NEVER a fake/empty audio body.
 //
 // verify_jwt=true (config.toml): a normal authenticated fetch from the chat UI. The Authorization
 // header carries the caller's session; the tenant is derived server-side from it.
@@ -27,6 +34,7 @@ import {
   ttsCacheKey,
   synthesizeSpeechStream,
 } from "../_shared/tts-router.ts";
+import { elevenlabsTts } from "../_shared/elevenlabs.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -133,96 +141,122 @@ serve(async (req: Request) => {
       console.warn("[paige-tts] plan read failed (using base default):", (e as Error)?.message);
     }
 
-    const { voice, source: voiceSource } = resolveVoiceId({ requested: requestedVoice, playbookVoice, planSlug });
+    const { voice: resolvedVoice, source: voiceSource } = resolveVoiceId({ requested: requestedVoice, playbookVoice, planSlug });
 
-    // ── Plan the synthesis (honest degrade before any cost) ──
-    const plan = planTtsSynthesis("openai-standard", voice);
+    // ── Plan the synthesis as an ORDERED FALLBACK CHAIN (honest degrade before any cost, #579) ──
+    const plan = planTtsSynthesis(resolvedVoice);
     if (!plan.ok) {
-      if ("needs_config" in plan) {
-        console.error("[paige-tts] OPENAI_API_KEY absent — honest needs_config degrade");
-        return json({ error: "tts_not_configured" }, 503);
-      }
-      if ("reserved" in plan) {
-        console.warn("[paige-tts] reserved marketplace tier requested (#132) — not wired");
-        return json({ error: "tts_tier_reserved" }, 503);
-      }
-      console.error("[paige-tts] route error:", plan.error);
-      return json({ error: "tts_route_error" }, 500);
+      // needs_config = NEITHER provider keyed. Honest 503 — MessageAudioButton keys its disabled
+      // state off this exact code (§37), so it must not change.
+      console.error("[paige-tts] no TTS provider configured (ElevenLabs + OpenAI both absent) — honest needs_config degrade");
+      return json({ error: "tts_not_configured" }, 503);
     }
 
-    const cacheKey = await ttsCacheKey(capped, plan.voice, plan.model);
-    const cachePath = `${tenantId}/${cacheKey}.mp3`; // §9 tenant-scoped path
+    // Try each attempt in order; on an attempt's failure LOUD-log and fall to the next (§32). The
+    // cache key + meter are computed PER ATTEMPT from the provider/voice that will ACTUALLY serve, so
+    // an OpenAI-fallback render can never be stored under (or reported as) the ElevenLabs slot (§13).
+    let lastErr: string | null = null;
+    for (let i = 0; i < plan.attempts.length; i++) {
+      const attempt = plan.attempts[i];
+      const usedVoice = attempt.provider === "elevenlabs" ? attempt.voiceId : attempt.voice;
+      const fellBack = i > 0;
+      const cacheKey = await ttsCacheKey(capped, attempt.provider, usedVoice, attempt.model);
+      const cachePath = `${tenantId}/${cacheKey}.mp3`; // §9 tenant-scoped; provider is in the key
 
-    // ── §14 CACHE LOOKUP — a HIT skips OpenAI entirely ──
-    try {
-      const { data: cached } = await admin.storage.from(CACHE_BUCKET).download(cachePath);
-      if (cached) {
-        const buf = await cached.arrayBuffer();
-        console.log("[paige-tts] cache HIT", { tenantId, voice: plan.voice, bytes: buf.byteLength });
-        runAfter(
-          meterChars(admin, tenantId, capped.length, {
-            voice: plan.voice,
-            model: plan.model,
-            tier: plan.provider,
-            voice_source: voiceSource,
-            cache_hit: true,
-          }),
-        );
-        return new Response(buf, { headers: audioHeaders });
-      }
-    } catch {
-      // Not cached (or bucket read miss) — fall through to synth. Never fatal.
-    }
-
-    // ── §14 CACHE MISS — synthesize, TEE (client + cache), meter ──
-    let openaiResp: Response;
-    try {
-      openaiResp = await synthesizeSpeechStream({ model: plan.model, voice: plan.voice }, capped);
-    } catch (e) {
-      // A live OpenAI failure — honest, never a fake audio body (§13/§32).
-      console.error("[paige-tts] OpenAI synth failed:", (e as Error)?.message);
-      return json({ error: "tts_synth_failed" }, 502);
-    }
-    const srcBody = openaiResp.body;
-    if (!srcBody) {
-      console.error("[paige-tts] OpenAI returned no body");
-      return json({ error: "tts_synth_failed" }, 502);
-    }
-
-    const [clientStream, cacheStream] = srcBody.tee();
-
-    // Background: drain the cache branch, upload to the tenant-scoped path (upsert), then meter.
-    runAfter(
-      (async () => {
-        const chunks: Uint8Array[] = [];
-        const reader = cacheStream.getReader();
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) chunks.push(value);
+      // ── §14 CACHE LOOKUP (per-attempt key) — a HIT returns immediately ──
+      try {
+        const { data: cached } = await admin.storage.from(CACHE_BUCKET).download(cachePath);
+        if (cached) {
+          const buf = await cached.arrayBuffer();
+          console.log("[paige-tts] cache HIT", { tenantId, provider: attempt.provider, voice: usedVoice, bytes: buf.byteLength });
+          runAfter(meterChars(admin, tenantId, capped.length, {
+            provider: attempt.provider, voice: usedVoice, model: attempt.model,
+            voice_source: voiceSource, fell_back: fellBack, cache_hit: true,
+          }));
+          return new Response(buf, { headers: audioHeaders });
         }
-        let total = 0;
-        for (const c of chunks) total += c.length;
-        const bytes = new Uint8Array(total);
-        let off = 0;
-        for (const c of chunks) { bytes.set(c, off); off += c.length; }
-        const { error: upErr } = await admin.storage
-          .from(CACHE_BUCKET)
-          .upload(cachePath, bytes, { contentType: "audio/mpeg", upsert: true });
-        if (upErr) console.error("[paige-tts] cache upload failed", { message: upErr.message, tenantId });
-        else console.log("[paige-tts] cache STORED", { tenantId, voice: plan.voice, bytes: bytes.length });
-        await meterChars(admin, tenantId, capped.length, {
-          voice: plan.voice,
-          model: plan.model,
-          tier: plan.provider,
-          voice_source: voiceSource,
-          cache_hit: false,
-        });
-      })(),
-    );
+      } catch {
+        // Not cached — fall through to synth. Never fatal.
+      }
 
-    // Stream the mp3 to the client immediately (progressive — the <audio> plays as it arrives).
-    return new Response(clientStream, { headers: audioHeaders });
+      if (attempt.provider === "elevenlabs") {
+        // ElevenLabs returns BUFFERED bytes (short chat messages) — return + cache them.
+        try {
+          const res = await elevenlabsTts({ text: capped, voiceId: attempt.voiceId, modelId: attempt.model });
+          const bytes = res.artifact_bytes;
+          if (!bytes || bytes.length === 0) throw new Error("elevenlabs_empty_bytes");
+          runAfter((async () => {
+            const { error: upErr } = await admin.storage
+              .from(CACHE_BUCKET)
+              .upload(cachePath, bytes, { contentType: "audio/mpeg", upsert: true });
+            if (upErr) console.error("[paige-tts] EL cache upload failed", { message: upErr.message, tenantId });
+            else console.log("[paige-tts] cache STORED", { tenantId, provider: "elevenlabs", voice: usedVoice, bytes: bytes.length });
+            await meterChars(admin, tenantId, capped.length, {
+              provider: "elevenlabs", voice: usedVoice, model: attempt.model,
+              voice_source: voiceSource, fell_back: fellBack, cache_hit: false,
+            });
+          })());
+          return new Response(bytes, { headers: audioHeaders }); // buffered — no tee needed
+        } catch (e) {
+          // NeedsConfig (key raced absent) OR an API error — LOUD, never silent (§32); fall to next.
+          lastErr = (e as Error)?.message ?? "elevenlabs_error";
+          console.error("[paige-tts] ElevenLabs attempt failed, falling back:", lastErr);
+          continue;
+        }
+      }
+
+      // ── OpenAI attempt — keep the STREAMING tee path (progressive playback) ──
+      let openaiResp: Response;
+      try {
+        openaiResp = await synthesizeSpeechStream({ model: attempt.model, voice: attempt.voice }, capped);
+      } catch (e) {
+        lastErr = (e as Error)?.message ?? "openai_error";
+        console.error("[paige-tts] OpenAI attempt failed:", lastErr);
+        continue;
+      }
+      const srcBody = openaiResp.body;
+      if (!srcBody) {
+        lastErr = "openai_no_body";
+        console.error("[paige-tts] OpenAI returned no body");
+        continue;
+      }
+
+      const [clientStream, cacheStream] = srcBody.tee();
+
+      // Background: drain the cache branch, upload to the tenant-scoped path (upsert), then meter.
+      runAfter(
+        (async () => {
+          const chunks: Uint8Array[] = [];
+          const reader = cacheStream.getReader();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) chunks.push(value);
+          }
+          let total = 0;
+          for (const c of chunks) total += c.length;
+          const bytes = new Uint8Array(total);
+          let off = 0;
+          for (const c of chunks) { bytes.set(c, off); off += c.length; }
+          const { error: upErr } = await admin.storage
+            .from(CACHE_BUCKET)
+            .upload(cachePath, bytes, { contentType: "audio/mpeg", upsert: true });
+          if (upErr) console.error("[paige-tts] cache upload failed", { message: upErr.message, tenantId });
+          else console.log("[paige-tts] cache STORED", { tenantId, provider: "openai", voice: usedVoice, bytes: bytes.length });
+          await meterChars(admin, tenantId, capped.length, {
+            provider: "openai", voice: usedVoice, model: attempt.model,
+            voice_source: voiceSource, fell_back: fellBack, cache_hit: false,
+          });
+        })(),
+      );
+
+      // Stream the mp3 to the client immediately (progressive — the <audio> plays as it arrives).
+      return new Response(clientStream, { headers: audioHeaders });
+    }
+
+    // Every configured attempt errored — honest, never a fake audio body (§13/§32).
+    console.error("[paige-tts] all TTS attempts failed:", lastErr);
+    return json({ error: "tts_synth_failed" }, 502);
   } catch (e) {
     console.error("[paige-tts] unhandled error:", (e as Error)?.message);
     return json({ error: "tts_internal_error" }, 500);
