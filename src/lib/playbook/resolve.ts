@@ -68,7 +68,8 @@ function coercePlaybook(raw: unknown): Playbook | null {
       ? (raw.portal as Playbook["portal"])
       : generalDefault.portal,
     // Preserve the tenant's authored chat-playback voice (#131) so a full playbook_config
-    // round-trips it; the server (paige-tts) validates it against the OpenAI voice catalog.
+    // round-trips it; the server (paige-tts / set_tenant_paige_voice) validates it against the
+    // ElevenLabs + OpenAI voice catalogs.
     ...(typeof raw.paige_voice === "string" ? { paige_voice: raw.paige_voice } : {}),
   };
 }
