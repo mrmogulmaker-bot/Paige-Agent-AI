@@ -31,11 +31,26 @@ export function bytesToBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
+/** Mimes the multimodal gateway can actually INGEST as document bytes. gatewayCompat
+ *  (_shared/claude.ts) only inlines PDF + image content-parts; every other binary mime is
+ *  replaced with a `[unsupported attachment: …]` placeholder before it reaches the model —
+ *  so routing e.g. a .docx/.xlsx through it means the model NEVER sees the bytes, yet a
+ *  chatty reply would be miscounted as a "read" attachment (§13 honesty, Codex P1 #176).
+ *  Office formats (doc/docx/xls/xlsx) are accepted by the comms-attachments bucket but are
+ *  NOT model-ingestible, so they are skipped here rather than falsely reported as read. */
+function isModelIngestibleMime(mime: string): boolean {
+  return mime === "application/pdf" || mime.startsWith("image/");
+}
+
 /**
  * Extract a document's readable text — the SAME pattern paige-ai-chat uses: text-family
  * mimes decode directly; PDFs/images are inlined as a base64 `data:` URI content-part and
  * read through the multimodal gateway (a remote URL alone is stringified to text by the
  * Claude normalizer, so it MUST be inlined). Carries the DOCUMENT_SOURCE honesty guard.
+ *
+ * Returns "" for anything the model can't actually ingest (Office binaries, unknown mimes),
+ * so the caller counts it as SKIPPED, never as a read attachment (§13) — a nonempty model
+ * reply to a placeholder-substituted document is a hallucination, not a transcription.
  */
 export async function extractAttachmentText(
   file: ExtractFile,
@@ -51,6 +66,11 @@ export async function extractAttachmentText(
     } catch {
       return "";
     }
+  }
+  // Only PDF + images survive gatewayCompat as real document bytes; skip everything else so
+  // it is honestly counted as unread rather than "transcribed" from a placeholder (Codex P1).
+  if (!isModelIngestibleMime(mime)) {
+    return "";
   }
   const userParts = [
     {

@@ -66,6 +66,30 @@ function assert(cond: unknown, msg: string) {
   assert(!!textPart && /invoice\.pdf/.test(textPart.text), "pdf path includes a text instruction naming the file");
 }
 
+// ── 2b. Office binaries are SKIPPED, not falsely "read" (Codex P1 #176, §13). ─────────
+// The comms-attachments bucket accepts doc/docx/xls/xlsx, but gatewayCompat only inlines
+// PDF + images — everything else becomes a `[unsupported attachment: …]` placeholder, so
+// the model never sees the bytes. extractAttachmentText must return "" for these (counted
+// SKIPPED by the caller) rather than route them through the model where a chatty reply
+// would be miscounted as a transcription.
+{
+  const officeMimes = [
+    ["application/vnd.openxmlformats-officedocument.wordprocessingml.document", "brief.docx"],
+    ["application/msword", "brief.doc"],
+    ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "budget.xlsx"],
+    ["application/vnd.ms-excel", "budget.xls"],
+    ["application/octet-stream", "unknown.bin"],
+  ] as const;
+  for (const [mimeType, fileName] of officeMimes) {
+    const base64 = bytesToBase64(new TextEncoder().encode("PK\x03\x04 binary office bytes"));
+    let modelCalled = false;
+    const mock: ModelInvoker = async () => { modelCalled = true; return "totally made-up transcription"; };
+    const out = await extractAttachmentText({ base64, mimeType, fileName }, mock);
+    assert(out === "", `${mimeType} returns "" (skipped, not read)`);
+    assert(modelCalled === false, `${mimeType} does NOT reach the model (no placeholder hallucination)`);
+  }
+}
+
 // ── 3. bytesToBase64 round-trips large arrays without a call-stack blowup. ────────────
 {
   const big = new Uint8Array(200_000).map((_, i) => i % 256);
