@@ -123,7 +123,10 @@ async function audit(action: string, target_type: string | null, target_id: stri
 
 // Workflow dispatcher lives in _shared so the pg_cron sweeper
 // (dispatch-queued-workflow-runs) can re-use the same routing logic.
-import { dispatchWorkflowRun, MMA_TENANT_ID } from "../_shared/workflowDispatch.ts";
+import { dispatchWorkflowRun } from "../_shared/workflowDispatch.ts";
+// §200: the god/platform actor has no tenant of its own; resolve the operator's
+// designated system tenant from config-as-data (fail-closed null when unset).
+import { platformOperatorTenantId } from "../_shared/platform-operator-tenant.ts";
 // Tier Rail Spine (Phase D): one shared tier resolver, off the same declared rail
 // (public.get_actor_access) a human resolves through — so Paige's tier == a human's.
 import { getActorTier, isClientSeatByScopes } from "../_shared/actorTier.ts";
@@ -179,7 +182,10 @@ async function actorIsPlatformOwner(actor = currentActor()): Promise<boolean> {
 
 async function actorTenantId(): Promise<string | null> {
   const actor = currentActor();
-  if (actor.kind === "platform") return MMA_TENANT_ID;
+  // §200: was a hardcoded (and stale/phantom) MMA_TENANT_ID. Now the operator's
+  // designated system tenant, or null when none is designated (every consumer
+  // below fails closed on null — strictly safer than pinning to a phantom).
+  if (actor.kind === "platform") return await platformOperatorTenantId(admin);
   if (!actor.user_id) return null;
 
   const [{ data: profile }, { data: memberships }, isPlatformOwner] = await Promise.all([
@@ -4331,11 +4337,12 @@ async function resolveMarketplaceActor(tenantId: string): Promise<string | null>
   const a = currentActor();
   if (a.user_id) return a.user_id;
   // The platform (god) key has no user_id. Only back it with the tenant OWNER when the
-  // resolved tenant is the operator's OWN (actorTenantId() pins a platform actor to
-  // MMA_TENANT_ID today). This guard means a future change to that pin can never quietly
-  // open a cross-tenant god write — the overload would reject a borrowed non-owner actor,
-  // but we fail closed here first (§9/§17: no silent break-glass).
-  if (tenantId !== MMA_TENANT_ID) return null;
+  // resolved tenant is the operator's OWN designated system tenant (§200/§37 lockstep
+  // with actorTenantId()). This guard means the god key can never quietly back a
+  // cross-tenant write — the overload would reject a borrowed non-owner actor, but we
+  // fail closed here first (§9/§17: no silent break-glass). Undesignated => null => null.
+  const operatorTenantId = await platformOperatorTenantId(admin);
+  if (!operatorTenantId || tenantId !== operatorTenantId) return null;
   const { data } = await admin.from("tenants").select("owner_user_id").eq("id", tenantId).maybeSingle();
   return (data?.owner_user_id as string | null) ?? null;
 }
