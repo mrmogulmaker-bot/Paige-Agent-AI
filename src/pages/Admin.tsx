@@ -173,8 +173,8 @@ import {
   ConversationsSnippets,
   ConversationsTriggerLinks,
   ConversationsAnalytics,
-  ConversationsSettings,
 } from "@/pages/admin/conversations/ConversationsSubPages";
+import { ConversationsSettings } from "@/pages/admin/conversations/ConversationsSettings";
 // Setup container (IA slice 1c-xi): pathless-style path-nested layout wraps the 8
 // tenant-config sub-tab pages. Eager like ClientsTabsLayout — small chrome.
 import SetupTabsLayout from "@/components/setup/SetupTabsLayout";
