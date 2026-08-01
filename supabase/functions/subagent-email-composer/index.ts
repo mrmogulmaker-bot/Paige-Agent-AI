@@ -9,6 +9,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+// #176 — pure document-extraction primitives (shared so the headless §32 smoke exercises
+// the SAME code that ships). The model call is injected; no second model client (§18/§34).
+import {
+  ATTACHMENT_SOURCE_INSTRUCTION,
+  bytesToBase64,
+  extractAttachmentText,
+  type ModelInvoker,
+} from "../_shared/attachment-extract.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -27,13 +35,6 @@ const LOVABLE_API_KEY = "unused";
 const COMMS_ATTACH_BUCKET = "comms-attachments";
 const MAX_ATTACHMENTS = 3;                        // bound: a few files, never a flood
 const MAX_ATTACH_BYTES = 10 * 1024 * 1024;        // 10MB/file — matches the bucket ceiling
-// Honesty guard mirrored from paige-ai-chat's DOCUMENT_SOURCE_INSTRUCTION (§13): only
-// report what is literally readable from the document; never hallucinate beyond it.
-const ATTACHMENT_SOURCE_INSTRUCTION =
-  `You are reading the literal content of an attached document that has been provided to you. ` +
-  `Report ONLY information you can directly read from this document. Do not use prior knowledge to ` +
-  `fill in names, numbers, dates, or details. If something is not readable, omit it rather than guessing. ` +
-  `Every fact you transcribe must be directly extractable from the provided document.`;
 
 type Tone =
   | "professional"
@@ -66,55 +67,6 @@ interface Input {
   // #176 — OPTIONAL comms-attachments object paths the coach staged for Paige to READ
   // and reference in the draft. Each is `${tenantId}/${uuid}-${name}`; §9-guarded below.
   attachment_paths?: string[];
-}
-
-// ── #176 attachment extraction (§18/§34 — reuse the ONE model seam; no second client) ──
-export interface ExtractFile { base64: string; mimeType: string; fileName: string }
-/** Injected so the headless smoke can assert the WIRING/shape without a live gateway (§32). */
-export type ModelInvoker = (system: string, userParts: unknown[]) => Promise<string>;
-
-/** Chunked binary→base64 (avoids call-stack blowups on large byte arrays). */
-export function bytesToBase64(bytes: Uint8Array): string {
-  let bin = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(bin);
-}
-
-/**
- * Extract a document's readable text — the SAME pattern paige-ai-chat uses: text-family
- * mimes decode directly; PDFs/images are inlined as a base64 `data:` URI content-part and
- * read through the multimodal gateway (a remote URL alone is stringified to text by the
- * Claude normalizer, so it MUST be inlined). Carries the DOCUMENT_SOURCE honesty guard.
- * `invokeModel` is the injected model seam (production wraps gatewayCompat; smoke mocks it).
- */
-export async function extractAttachmentText(
-  file: ExtractFile,
-  invokeModel: ModelInvoker,
-): Promise<string> {
-  const mime = (file.mimeType || "").toLowerCase();
-  if (mime.startsWith("text/") || mime === "application/json") {
-    try {
-      const decoded = new TextDecoder().decode(
-        Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0)),
-      );
-      return decoded.slice(0, 60_000).trim();
-    } catch {
-      return "";
-    }
-  }
-  const userParts = [
-    {
-      type: "text",
-      text: `Transcribe the readable text/content of this document ("${file.fileName}"). ` +
-        `Report ONLY what is literally present — do not summarize away specifics, do not invent.`,
-    },
-    { type: "image_url", image_url: { url: `data:${file.mimeType};base64,${file.base64}` } },
-  ];
-  const text = await invokeModel(ATTACHMENT_SOURCE_INSTRUCTION, userParts);
-  return (text || "").trim();
 }
 
 function ok(d: unknown, status = 200) {
