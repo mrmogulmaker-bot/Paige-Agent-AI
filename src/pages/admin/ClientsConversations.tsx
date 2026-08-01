@@ -1069,7 +1069,21 @@ export default function ClientsConversations() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setDraftFlags(((data as any)?.compliance_flags ?? []) as string[]);
       setDraftGuideOpen(false);
-      toast.success("Paige drafted a reply — review before you send.");
+      // §13 honesty (critic): don't let a generic "drafted" success imply the attachment was
+      // used when it wasn't. Compare what the server actually READ to what was staged — if a
+      // staged doc couldn't be read, say so plainly instead of claiming "Reading attachment…".
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const readCount = Number((data as any)?.attachments_read ?? 0);
+      if (attachmentPaths.length > 0 && readCount < attachmentPaths.length) {
+        const missed = attachmentPaths.length - readCount;
+        toast.warning(
+          readCount === 0
+            ? "Paige drafted a reply, but couldn't read the attached file — review before you send."
+            : `Paige drafted a reply, but couldn't read ${missed} of the attached files — review before you send.`,
+        );
+      } else {
+        toast.success("Paige drafted a reply — review before you send.");
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Paige couldn't draft that — try again.");
     } finally {
@@ -1689,7 +1703,7 @@ export default function ClientsConversations() {
                           >
                             {drafting
                               ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                              : <Sparkles className="mr-1.5 h-3.5 w-3.5 text-[hsl(var(--gold-dark))]" />}
+                              : <Sparkles className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />}
                             {drafting
                               ? (draftReadingDoc ? "Reading attachment…" : "Paige is drafting…")
                               : "Draft with Paige"}
@@ -1725,7 +1739,7 @@ export default function ClientsConversations() {
                               </Select>
                               <Button variant="outline" size="sm" className="h-8 w-full"
                                 onClick={() => void draftWithPaige()} disabled={drafting}>
-                                <Sparkles className="mr-1.5 h-3.5 w-3.5 text-[hsl(var(--gold-dark))]" /> Draft it
+                                <Sparkles className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Draft it
                               </Button>
                             </PopoverContent>
                           </Popover>

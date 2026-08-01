@@ -215,6 +215,7 @@ Deno.serve(async (req) => {
 
   let attachmentContext = "";
   let attachmentsRead = 0;
+  let attachmentsSkipped = 0;   // §13: staged-but-not-read count, surfaced so the UI can be honest
   if (attachmentPaths.length > 0) {
     let callerTenantId: string | null = null;
     if (!isInternalCall && authHeader) {
@@ -234,10 +235,16 @@ Deno.serve(async (req) => {
     } else {
       const extracted: string[] = [];
       for (const path of attachmentPaths.slice(0, MAX_ATTACHMENTS)) {
-        // §9 PATH-PREFIX GUARD — the object's tenant prefix MUST match the caller's tenant.
-        const firstSeg = path.split("/")[0];
-        if (firstSeg !== callerTenantId) {
-          console.warn("[email-composer] rejected cross-tenant attachment (§9): path prefix ≠ caller tenant.");
+        // §9 PATH GUARD — the object key MUST be exactly `${callerTenant}/<single filename>`.
+        // Strict single-segment shape (not just first-segment equality) ALSO rejects `..`/`//`
+        // traversal and any nested path, so a caller can only ever reach objects under their OWN
+        // tenant prefix — defense-in-depth even though Supabase's literal-key storage would 404 a
+        // traversal attempt anyway (verifier §9 hardening).
+        const rest =
+          path.startsWith(callerTenantId + "/") ? path.slice(callerTenantId.length + 1) : null;
+        if (rest === null || rest.length === 0 || rest.includes("/") || path.includes("..")) {
+          console.warn("[email-composer] rejected attachment (§9): key is not `${tenant}/<file>`.");
+          attachmentsSkipped++;
           continue;
         }
         try {
@@ -245,11 +252,16 @@ Deno.serve(async (req) => {
             .from(COMMS_ATTACH_BUCKET).download(path);
           if (dlErr || !blob) {
             console.warn(`[email-composer] attachment download failed: ${dlErr?.message ?? "no blob"}`);
+            attachmentsSkipped++;
             continue;
           }
+          // Belt-and-suspenders: the comms-attachments bucket is server-enforced at file_size_limit
+          // 10MB + a restricted mime allowlist (private bucket), so an oversized/disallowed object
+          // can't be uploaded in the first place; this client check just double-guards.
           const bytes = new Uint8Array(await blob.arrayBuffer());
           if (bytes.length > MAX_ATTACH_BYTES) {
             console.warn(`[email-composer] attachment over ${MAX_ATTACH_BYTES}B — skipped.`);
+            attachmentsSkipped++;
             continue;
           }
           const fileName = path.split("/").pop() ?? "document";
@@ -260,9 +272,12 @@ Deno.serve(async (req) => {
           if (text) {
             extracted.push(`--- ${fileName} ---\n${text.slice(0, 20_000)}`);
             attachmentsRead++;
+          } else {
+            attachmentsSkipped++;   // downloaded but produced no readable text
           }
         } catch (e) {
           console.warn(`[email-composer] attachment processing error: ${(e as Error)?.message}`);
+          attachmentsSkipped++;
         }
       }
       if (extracted.length) attachmentContext = extracted.join("\n\n");
@@ -419,6 +434,7 @@ Return STRICT JSON with this shape (no markdown, no code fences):
     summary: `Composed ${tone} email (${length}) for ${recipientName || recipientEmail || "recipient"}${attachmentsRead > 0 ? ` after reading ${attachmentsRead} attachment${attachmentsRead === 1 ? "" : "s"}` : ""}${requiresApproval ? " — requires human approval" : ""}.`,
     // §13 honest: only ever the count of documents ACTUALLY downloaded + read this turn.
     attachments_read: attachmentsRead,
+    attachments_skipped: attachmentsSkipped,   // §13: staged docs that could NOT be read (guard/dl/empty)
     draft: {
       subject,
       body_html: bodyHtml,
