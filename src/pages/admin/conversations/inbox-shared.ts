@@ -211,9 +211,10 @@ export const bodyPreview = (m: MessageRow) =>
   (m.body_text || (m.body_html ? m.body_html.replace(/<[^>]+>/g, " ") : "") || "")
     .replace(/\s+/g, " ").trim();
 
-/** contact-first display name (§36): client record → far-side jsonb → fallback. */
+/** person-first display name (#175): first_name last_name wins; entity_name (business)
+ *  is the fallback — matches the canonical getClientDisplayInfo hierarchy (person → entity). */
 export function contactNameFromClient(c: ClientContact | ClientJoin | null): string {
-  const named = c?.entity_name?.trim() || [c?.first_name, c?.last_name].filter(Boolean).join(" ").trim();
+  const named = [c?.first_name, c?.last_name].filter(Boolean).join(" ").trim() || c?.entity_name?.trim();
   return named || "";
 }
 

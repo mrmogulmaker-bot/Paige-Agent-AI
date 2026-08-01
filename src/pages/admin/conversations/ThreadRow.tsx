@@ -71,6 +71,17 @@ export function ThreadRow({
     contactNameFromClient(thread.clients) ||
     (preview ? partyLabel(preview.direction === "inbound" ? preview.sender : preview.recipients?.[0]) : "") ||
     "Unknown contact";
+  // #175 — person name is primary; surface the org (and role) as a muted subtitle so the
+  // business context isn't lost. Mirrors ContactCardRail's identity block (§18 one pattern).
+  // Guard: when there's no person name, entity_name is already the PRIMARY label — don't echo
+  // it in the subtitle (a whole rail of entity-only contacts would stack the same name twice, §25).
+  // Trim to match contactNameFromClient's own trimming — a whitespace-only first/last name
+  // (import/API data) falls back to entity_name as the PRIMARY, so a raw truthiness check here
+  // would still echo that same entity in the subtitle (Codex P2). Derive from trimmed fields.
+  const hasPersonName = !!(thread.clients?.first_name?.trim() || thread.clients?.last_name?.trim());
+  const subtitle = [thread.clients?.title, hasPersonName ? thread.clients?.entity_name : null]
+    .filter(Boolean)
+    .join(" · ");
   const unread = thread.unread_count > 0;
   // R-N2: a draft is simply the latest message sitting as a draft.
   const hasDraft = preview?.status === "draft";
@@ -143,6 +154,13 @@ export function ThreadRow({
             </span>
           )}
         </div>
+
+        {subtitle && !compact && (
+          // Comfortable only — compact density (#121) exists to fit MORE threads; an always-on
+          // third line would quietly defeat it. The business/role context still lives on the
+          // contact card + open-thread header, so nothing is lost in compact (§25 density intent).
+          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</p>
+        )}
 
         <div className={cn("flex items-center gap-2", compact ? "mt-0" : "mt-0.5")}>
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
