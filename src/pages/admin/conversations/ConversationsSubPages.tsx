@@ -5,16 +5,16 @@
 // a real EmptyState (§11 — never a blank "coming soon" line), honest about what the section
 // will do, coaching-generic (§2 — no finance), in Paige's mogul-founder voice (§3).
 //
-// Two REUSE existing homes (§18 — link/embed, never rebuild):
+// One REUSES an existing home (§18 — link/embed, never rebuild):
 //   • Snippets  → embeds the live SnippetsTab (self-fetches tenant/scopes; no props needed),
-//                 the SAME saved-replies surface used in the composer and Communications.
-//   • Settings  → a pointer to Communications (/admin/communications), the messaging-settings
-//                 home — never a second copy of CommunicationsAdmin.
-import { Link } from "react-router-dom";
-import { ListChecks, Link2, BarChart3, Settings2, ArrowUpRight, MessageSquareText } from "lucide-react";
+//                 the SAME saved-replies surface used in the composer.
+//
+// Settings is NOT here — it is its own substantial 5-panel surface now, in ConversationsSettings.tsx
+// (§12): the tenant messaging-config home (numbers, business texting, consent, signatures,
+// notifications), moved out of /admin/communications so config has exactly one home (§18/§45).
+import { ListChecks, Link2, BarChart3, MessageSquareText } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { PageShell, PageHeader, SectionCard, EmptyState } from "@/components/ui/page";
-import { Button } from "@/components/ui/button";
 import { SnippetsTab } from "@/components/admin/comms/SnippetsTab";
 
 /** Shared frame for a net-new stub section — compact plain header + crafted EmptyState. */
@@ -85,36 +85,6 @@ export function ConversationsSnippets() {
         description="Saved replies you and your team drop into a message with one keystroke."
       />
       <SnippetsTab />
-    </PageShell>
-  );
-}
-
-// ── REUSE: Settings (pointer to Communications) ───────────────────────────────────────
-export function ConversationsSettings() {
-  return (
-    <PageShell width="default">
-      <PageHeader
-        variant="plain"
-        icon={Settings2}
-        title="Settings"
-        description="Messaging and channel settings live in Communications."
-      />
-      <SectionCard>
-        <EmptyState
-          icon={Settings2}
-          tone="brand"
-          title="Manage messaging in Communications"
-          description="Your channels, phone numbers, signatures, notifications, and consent all live on one settings home so nothing drifts out of sync. Head there to set them up."
-          action={
-            <Button asChild variant="outline">
-              <Link to="/admin/communications">
-                Open Communications
-                <ArrowUpRight className="ml-1.5 h-4 w-4" />
-              </Link>
-            </Button>
-          }
-        />
-      </SectionCard>
     </PageShell>
   );
 }

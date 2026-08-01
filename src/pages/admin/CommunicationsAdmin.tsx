@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Mail, MessageSquare, TrendingUp, AlertTriangle, ShieldCheck, PhoneCall } from "lucide-react";
+import { Mail, MessageSquare, TrendingUp, AlertTriangle, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import {
   PageShell,
   PageHeader,
@@ -12,13 +13,8 @@ import {
   EmptyState,
   StatePill,
 } from "@/components/ui/page";
+import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { SignaturesTab } from "@/components/admin/comms/SignaturesTab";
-import { SnippetsTab } from "@/components/admin/comms/SnippetsTab";
-import { NotificationsTab } from "@/components/admin/comms/NotificationsTab";
-import { NumbersTab } from "@/components/admin/comms/NumbersTab";
-import { A2PTab } from "@/components/admin/comms/A2PTab";
-import { ConsentTab } from "@/components/admin/comms/ConsentTab";
 
 interface LogRow {
   id: string;
@@ -34,7 +30,13 @@ interface LogRow {
 
 const isFailedStatus = (status: string) => status === "failed" || status === "bounced";
 
+// The messaging-CONFIG panels moved to Conversations > Settings (§45 tier decompose, §18 one home).
+// Old deep-links land here as ?tab=<key>; redirect them to their new home so nothing dead-ends (§37).
+const SETTINGS_HOME = "/admin/clients-hub/conversations/settings";
+const MOVED_CONFIG_TABS = new Set(["numbers", "a2p", "consent", "signatures", "notifications"]);
+
 const CommunicationsAdmin = () => {
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<LogRow[]>([]);
   const [stats, setStats] = useState({
@@ -48,9 +50,21 @@ const CommunicationsAdmin = () => {
     failuresThisMonth: 0,
   });
 
+  // Redirect stale config deep-links to the new Settings home (belt-and-suspenders — no producer
+  // emits these today, but §31 keeps the move complete). Snippets kept its own Conversations sub-tab.
+  const requestedTab = searchParams.get("tab");
+  const redirectTo = requestedTab
+    ? MOVED_CONFIG_TABS.has(requestedTab)
+      ? `${SETTINGS_HOME}?panel=${requestedTab}`
+      : requestedTab === "snippets"
+        ? "/admin/clients-hub/conversations/snippets"
+        : null
+    : null;
+
   useEffect(() => {
+    if (redirectTo) return;
     void loadData();
-  }, []);
+  }, [redirectTo]);
 
   const loadData = async () => {
     setLoading(true);
@@ -117,15 +131,25 @@ const CommunicationsAdmin = () => {
     }
   };
 
+  if (redirectTo) return <Navigate replace to={redirectTo} />;
+
   const failures = logs.filter((l) => isFailedStatus(l.status));
 
   return (
     <PageShell width="wide">
       <PageHeader
         variant="plain"
-        eyebrow="Platform"
-        title="Communications"
-        description="Email and SMS dispatch overview, plus this month's audit log."
+        icon={MessageSquare}
+        title="Message Activity"
+        description="Every email and text Paige sends, with its delivery status — plus this month's dispatch totals."
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link to={SETTINGS_HOME}>
+              <SlidersHorizontal className="mr-1.5 h-4 w-4" />
+              Manage messaging settings
+            </Link>
+          </Button>
+        }
       />
 
       <StatRow cols={4}>
@@ -164,12 +188,6 @@ const CommunicationsAdmin = () => {
         <TabsList>
           <TabsTrigger value="recent">Recent Activity</TabsTrigger>
           <TabsTrigger value="failures">Failures ({failures.length})</TabsTrigger>
-          <TabsTrigger value="numbers">Numbers</TabsTrigger>
-          <TabsTrigger value="a2p">A2P</TabsTrigger>
-          <TabsTrigger value="consent">Consent</TabsTrigger>
-          <TabsTrigger value="signatures">Signatures</TabsTrigger>
-          <TabsTrigger value="snippets">Snippets</TabsTrigger>
-          <TabsTrigger value="notifications">Notifications</TabsTrigger>
         </TabsList>
 
         <TabsContent value="recent">
@@ -245,30 +263,6 @@ const CommunicationsAdmin = () => {
               ))}
             </div>
           )}
-        </TabsContent>
-
-        <TabsContent value="numbers">
-          <NumbersTab />
-        </TabsContent>
-
-        <TabsContent value="a2p">
-          <A2PTab />
-        </TabsContent>
-
-        <TabsContent value="consent">
-          <ConsentTab />
-        </TabsContent>
-
-        <TabsContent value="signatures">
-          <SignaturesTab />
-        </TabsContent>
-
-        <TabsContent value="snippets">
-          <SnippetsTab />
-        </TabsContent>
-
-        <TabsContent value="notifications">
-          <NotificationsTab />
         </TabsContent>
       </Tabs>
     </PageShell>
