@@ -304,7 +304,9 @@ WHERE m.tenant_id = g.tenant_id
 
 -- B8. FAIL-LOUD assertion (§32/§13): after the re-point, NO message that belongs to a consolidated
 --     contact may be orphaned (its thread_key must name a surviving thread). If any is, abort the whole
---     migration rather than silently ship an invisible-message inbox. Scoped to the migrated tenants.
+--     migration rather than silently ship an invisible-message inbox. Checks ALL contact:% messages
+--     platform-wide (broader than the migrated set, intentionally) — the only rows with a 'contact:'
+--     key are this migration's output, and the AFTER-INSERT upsert makes a false abort near-impossible.
 DO $$
 DECLARE _orphans bigint;
 BEGIN
