@@ -49,8 +49,13 @@ export function sanitizePhoneFilter(phone: string | null | undefined): string {
  * contact's sms/email threads) — first-class to the same standard as every channel (§49). PURE
  * + smoked so a drift from the canonical format is caught headless, never on a live call.
  */
-export function voiceThreadKey(tenantId: string, phone: string): string {
-  return `voice:${tenantId}:${sanitizePhoneFilter(phone)}`;
+export function voiceThreadKey(tenantId: string, phone: string, contactId?: string | null): string {
+  // §49 one-thread-per-contact: key on the CONTACT so a call sits in the SAME thread as that
+  // person's email/sms/outbound messages. voice-twiml always resolves a contact before writing a
+  // row (it refuses orphan rows), so the phone fallback is a defensive tail only.
+  return contactId
+    ? `contact:${tenantId}:${contactId}`
+    : `voice:${tenantId}:${sanitizePhoneFilter(phone)}`;
 }
 
 /**

@@ -281,7 +281,7 @@ async function writeVoiceMessageRow(
       : `Inbound call from ${counterpartyPhone}`;
 
     const { error: insErr } = await admin.from("messages").insert({
-      thread_key: voiceThreadKey(tenantId, counterpartyPhone),
+      thread_key: voiceThreadKey(tenantId, counterpartyPhone, contactId),
       contact_id: contactId,
       channel_type: "voice",
       direction,
