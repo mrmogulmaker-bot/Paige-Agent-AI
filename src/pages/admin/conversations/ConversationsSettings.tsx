@@ -74,7 +74,7 @@ export function ConversationsSettings() {
         Looking for saved replies?{" "}
         <Link
           to="/admin/clients-hub/conversations/snippets"
-          className="inline-flex items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] rounded-sm"
+          className="inline-flex items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
         >
           They live in the Snippets tab
           <ArrowRight className="h-3.5 w-3.5" />

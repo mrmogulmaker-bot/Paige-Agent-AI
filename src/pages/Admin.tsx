@@ -385,8 +385,9 @@ const Admin = () => {
               sub-tab strip (GHL-parity: sections OF Conversations, not top-nav). The
               index child resolves BYTE-IDENTICAL to /admin/clients-hub/conversations so
               every existing link/caller still lands on the inbox (§37). Snippets embeds
-              the live SnippetsTab; Settings points to Communications (§18 reuse). The
-              other three are crafted "coming soon" EmptyState stubs (§11). */}
+              the live SnippetsTab; Settings is the tenant messaging-config home
+              (numbers, business texting, consent, signatures, notifications — §45/§18).
+              The other three are crafted "coming soon" EmptyState stubs (§11). */}
           <Route path="conversations" element={<ConversationsTabsLayout />}>
             <Route index element={
               <Suspense fallback={<SuspenseFallback />}><ClientsConversations /></Suspense>
