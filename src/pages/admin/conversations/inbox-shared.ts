@@ -440,7 +440,16 @@ export function readSendResult(data: unknown): SendResult {
  * (send-message's own fallback `${channel}:${to}` is NON-canonical and would fragment —
  * that is exactly why compose-new passes this explicit key.)
  */
-export function canonicalThreadKey(channel: ChannelType, tenantId: string, counterparty: string): string {
+export function canonicalThreadKey(
+  channel: ChannelType,
+  tenantId: string,
+  counterparty: string,
+  contactId?: string | null,
+): string {
+  // §49 one-thread-per-contact: when the contact is known, the canonical key is per-CONTACT so a
+  // send and any later inbound reply on ANY channel coalesce into the ONE thread. The channel+
+  // counterparty form is the fallback only when no contact id is available.
+  if (contactId) return `contact:${tenantId}:${contactId}`;
   const cp = channel === "email"
     ? counterparty.trim().toLowerCase()
     : counterparty.replace(/[^\d+]/g, "");
