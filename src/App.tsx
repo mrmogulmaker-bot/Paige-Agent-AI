@@ -50,6 +50,7 @@ import { useHostRouting } from "./lib/hostRouting";
 import { useReferralTracking } from "./hooks/useReferralTracking";
 import { GlobalAuthSessionManager } from "./lib/auth/GlobalAuthSessionManager";
 import { usePageView } from "./hooks/useAnalytics";
+import { PlatformUpdateBanner } from "./components/PlatformUpdateBanner";
 
 // Eagerly load only the public landing + auth pages (likely first-paint)
 import Index from "./pages/Index";
@@ -191,6 +192,10 @@ const App = () => (
         <ImpersonationProvider>
         <Toaster />
         <Sonner />
+        {/* Global platform auto-update banner (#177) — outside <Routes> so it
+            persists across navigation and is visible on every surface (admin,
+            public, tenant custom domains). Client-side → domain-agnostic. */}
+        <PlatformUpdateBanner />
         <BrowserRouter>
           <AppInner />
           <MetaPixel />
