@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * usePlatformUpdate — detects when a NEWER build of the app has been deployed
  * while the current tab is still running an OLDER one (#177).
  *
- * Two independent signals, either one flips `updateAvailable`:
+ * Two independent signals set the detected build id:
  *
  *  1. BUILD-ID POLL (primary). `__BUILD_ID__` is baked into this bundle at build
  *     time; the deployed build publishes the SAME id at /version.json. We fetch
@@ -15,6 +15,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *
  *  2. SW controllerchange (belt-and-suspenders). If the service worker *does*
  *     change and takes control, that also means a fresh asset set is live.
+ *
+ * Dismissal is per-build (§13/§36): dismissing hides the banner for the CURRENTLY
+ * detected build, but polling KEEPS running — so if a further build ships while the
+ * tab stays open, the promised notice re-appears for that newer id. `updateAvailable`
+ * is true whenever a detected id differs from both our own build and the last
+ * dismissed one.
  *
  * Network errors are swallowed silently — a failed fetch NEVER surfaces a false
  * "update" (§13: no fabricated signal). We only trust a clean 200 with a real,
@@ -43,13 +49,19 @@ async function fetchDeployedBuildId(signal?: AbortSignal): Promise<string | null
 export function usePlatformUpdate(): {
   updateAvailable: boolean;
   reload: () => void;
+  dismiss: () => void;
 } {
-  const [updateAvailable, setUpdateAvailable] = useState(false);
+  // The build id we've DETECTED as newer than ours (from the poll, or a synthetic
+  // "sw:<ts>" marker from a genuine worker swap). Null until something is detected.
+  const [detectedId, setDetectedId] = useState<string | null>(null);
+  // The detected id the user last dismissed. A NEWER detected id (!= this) re-shows.
+  const [dismissedId, setDismissedId] = useState<string | null>(null);
   // Own build id, baked in. Guard the typeof so a non-defined build (SSR/test)
   // degrades to empty rather than throwing.
   const ownBuildId = typeof __BUILD_ID__ !== "undefined" ? __BUILD_ID__ : "";
-  const updateAvailableRef = useRef(false);
-  updateAvailableRef.current = updateAvailable;
+
+  const updateAvailable =
+    detectedId !== null && detectedId !== ownBuildId && detectedId !== dismissedId;
 
   useEffect(() => {
     // Only run in production builds. In `npm run dev` the baked id is `dev-<ts>`
@@ -62,9 +74,8 @@ export function usePlatformUpdate(): {
     const controllers = new Set<AbortController>();
 
     const check = async () => {
-      // Nothing to compare against if we never got a baked-in id, or if we've
-      // already flagged an update (no point re-polling).
-      if (!ownBuildId || updateAvailableRef.current) return;
+      // Nothing to compare against if we never got a baked-in id.
+      if (!ownBuildId) return;
       // Skip while the tab is hidden — pause polling churn.
       if (typeof document !== "undefined" && document.hidden) return;
 
@@ -74,8 +85,11 @@ export function usePlatformUpdate(): {
       controllers.delete(controller);
 
       if (cancelled) return;
+      // KEEP polling even after a first detection: a still-open tab must be able to
+      // catch build C after the user dismissed build B (§13 — the functional update
+      // no-ops when the id is unchanged, so there's no render churn).
       if (deployedId && deployedId !== ownBuildId) {
-        setUpdateAvailable(true);
+        setDetectedId((prev) => (prev === deployedId ? prev : deployedId));
       }
     };
 
@@ -109,14 +123,15 @@ export function usePlatformUpdate(): {
     // GUARD (§13 no-false-signal): the push SW registers LAZILY (on notification
     // enable) and claims the page; that FIRST null→controller transition fires
     // controllerchange with no deploy behind it. Only trust the event when a
-    // controller ALREADY existed at wire time (a genuine worker swap).
+    // controller ALREADY existed at wire time (a genuine worker swap). Each swap
+    // stamps a fresh synthetic id so it re-shows even after a prior dismissal.
     let sw: ServiceWorkerContainer | undefined;
     const hadController =
       typeof navigator !== "undefined" &&
       "serviceWorker" in navigator &&
       !!navigator.serviceWorker.controller;
     const onControllerChange = () => {
-      if (!cancelled && hadController) setUpdateAvailable(true);
+      if (!cancelled && hadController) setDetectedId(`sw:${Date.now()}`);
     };
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
       sw = navigator.serviceWorker;
@@ -135,6 +150,15 @@ export function usePlatformUpdate(): {
       if (sw) sw.removeEventListener("controllerchange", onControllerChange);
     };
   }, [ownBuildId]);
+
+  // Hide the banner for the currently-detected build. Polling continues, so a
+  // subsequent, different build id re-surfaces the notice.
+  const dismiss = useCallback(() => {
+    setDetectedId((current) => {
+      setDismissedId(current);
+      return current;
+    });
+  }, []);
 
   const reload = useCallback(() => {
     // Reload-loop guard: if we just tried to reload for an update and are still
@@ -177,5 +201,5 @@ export function usePlatformUpdate(): {
     }
   }, []);
 
-  return { updateAvailable, reload };
+  return { updateAvailable, reload, dismiss };
 }

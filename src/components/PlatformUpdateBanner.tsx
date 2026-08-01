@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,18 +8,18 @@ import { usePlatformUpdate } from "@/hooks/usePlatformUpdate";
  * PlatformUpdateBanner — a subtle, NON-BLOCKING toast-style bar that appears
  * when a newer build of Paige has been deployed while this tab is running an
  * older one (#177). One-click "Reload" soft-updates without a re-login; the X
- * dismisses it for the session (it re-appears if a further version is detected).
+ * dismisses THIS build's notice — dismissal is tracked per-build in the hook, so
+ * if a FURTHER build ships while the tab stays open the notice re-appears.
  *
  * Mounted once at the App root so it is global on every surface — authenticated
  * admin, public marketing, and tenant custom domains (it's client-side, so
  * domain-agnostic by construction).
  */
 export function PlatformUpdateBanner() {
-  const { updateAvailable, reload } = usePlatformUpdate();
-  const [dismissed, setDismissed] = useState(false);
+  const { updateAvailable, reload, dismiss } = usePlatformUpdate();
   const reduce = useReducedMotion();
 
-  const show = updateAvailable && !dismissed;
+  const show = updateAvailable;
 
   return (
     <AnimatePresence>
@@ -64,7 +63,7 @@ export function PlatformUpdateBanner() {
           <button
             type="button"
             aria-label="Dismiss update notice"
-            onClick={() => setDismissed(true)}
+            onClick={dismiss}
             className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <X className="h-4 w-4" />
