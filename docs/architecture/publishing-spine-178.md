@@ -80,7 +80,20 @@ the Vercel project via the Vercel API and store `vercel_domain_id`. Wildcard/reg
 (the CNAME/A target the tenant must point at) is documented in the panel + this doc; the
 platform confirms attachment, the tenant owns their registrar record.
 
-## Slice 3 — Studio wiring (the owner-visible publish button)
+## Slice 3 — Studio wiring ✅ CORE SHIPPED (commit 1caf429)
+- `studio.ts`: `resolvePublishTarget(type, ref)` → the resolver RPC (tenant server-derived, §9).
+  `publishPage`/`publishFunnel` now also return `canonicalUrl`/`host`/`isCustomDomain`, falling
+  back to the RPC's relative `url` if the resolver is unreachable (§13). **§37-SAFE:** the publish
+  RPCs were NOT touched — no consumer of their `url` breaks; the host is resolved on top.
+- `StudioShell`: the "It's live" dialog shows the CANONICAL absolute URL — verified custom domain
+  if the tenant has one, else `<slug>.paigeagent.ai`. Auto-flips on later verification, zero republish.
+- `PublishDialog`: derives the live host from the canonical URL, says which domain it went live on,
+  nudges to connect a custom domain; `copyUrl` was already absolute-safe (the §37 lockstep point).
+- tsc 0.
+- **Remainder (fast-follow, into this PR or next):** funnel publish toast + `GrowthHub`/`FunnelFlow`
+  library links onto `resolvePublishTarget`; a Studio-visible `canonicalUrl` for forms (`saveForm`).
+
+## Slice 3 (original plan, for reference) — Studio wiring (the owner-visible publish button)
 Publish is FORKED per type today; make every path emit resolver URLs:
 - `growth_page_publish` (migration `20260713140004_...:~147`) + `growth_funnel_publish`
   (`20260714091000_...:~448`): replace the inline `'/p/'||slug||'/'||slug` /
