@@ -377,3 +377,40 @@ supabase/functions/manage-tenant-domain + _shared/tenant-domain-scope.ts` = **em
 **Owed (§13):** a live-JWT cross-tenant-attack walk (authenticate as a non-owner admin of tenant A,
 forge `body.tenant_id=B` → expect 403 + the warn line; call a by-id verb with a tenant-B row id → expect
 404) is owed to a browser/JWT-capable session — the auth-gated edge fn can't be driven headless.
+
+## §49 one thread per contact (#197, Interim Triage Item 2, PR #318) — 2026-08-01
+
+Conversation threads fragmented per-channel: `thread_key` was `{channel}:{tenant}:{counterparty}`, so the
+same person reached on email vs voice vs SMS got SEPARATE threads (live: MMA's Tashia Anderson had 2 —
+email + voice). Now keyed on the CONTACT: a contact-bearing row keys `contact:{tenant}:{contact_id}`
+(NULL-contact keeps the old `{channel}:{tenant}:{counterparty}` fallback). Same contact's messages across
+every channel compute the SAME key, so the EXISTING `tg_message_upsert_thread ON CONFLICT (tenant_id,
+thread_key)` collapses them to one thread — the unique constraint + trigger are UNCHANGED (the minimal,
+safe design; §18/§30 extend-not-rebuild).
+
+**Producers (all 6):** `create_and_attach_conversation` RPC · `canonicalThreadKey` + `ComposeThreadDialog`
+(passes `client.id`) · `handle-inbound-email` · `voice-twiml` (`voiceThreadKey` + call site) ·
+`send-message` (5 fallbacks via a new `perContactKey`) · `tg_comms_file_outbound_draft`.
+
+**Consolidation backfill** (migration `20260801120000`) merged existing fragmented threads per
+`(tenant_id, contact_id)`: aggregate surfacing state onto a survivor, delete the redundant (reconstructable)
+thread rows, RE-POINT every message that lived in any merged thread by THREAD MEMBERSHIP (`member_keys`) —
+NOT by `message.contact_id`. That membership re-point is the adversarial-verifier fix: one old key can hold
+mixed contact_id values (a NULL-contact inbound co-residing with a resolved-contact row), and a
+contact_id-predicated re-point would strand those rows on a key naming no surviving thread — a silent,
+FK-invisible orphan. A fail-loud `B8` assertion aborts the migration if any `contact:%` message is orphaned.
+
+**Crew (§1/§5):** migration/consolidation architect + adversarial §9/§13 safety verifier (caught the
+orphaning bug, FIX_REQUIRED → fixed) + compliance officer (GO_WITH_GUARDS) + independent peer (GO_WITH_GUARDS;
+independently re-ran tsc + smoke, traced all 7 attack vectors incl. constructing the one pathological
+unique-constraint collision and proving it can't arise from normal operation). **§32:** headless smoke
+`scripts/thread-key-smoke.mjs` 16/16 (derivation invariants + all 6 producers key per-contact) + an ATOMIC
+`BEGIN..RAISE-abort` dry-run of the full backfill on REAL prod data (msgs 7→7 no loss, Tashia 2→1, orphans=0,
+nothing persisted). Merged `e51cbd93`. **Post-merge persisted-apply PROVEN on prod:** `schema_migrations`
+20260801120000 applied · `db-live..main` + `edge-live..main` (3 producer fns) drift = 0 · platform-wide
+`orphans=0` AND `contacts_with_multi_threads=0` (compliance guard G1 — the deploy-order race did not
+materialize) · Tashia = 1 thread keyed `contact:d8a0a880…:53970758…`.
+
+**§13 owed (honest):** the live inbox render (one unified thread on the deployed surface) needs a
+capable/Cowork/owner session — not driven headless. **Out of scope (flagged):** SMS-inbound is not yet
+wired to the unified `messages`/`threads` substrate — a separate gap, not a keying bug.
