@@ -174,7 +174,9 @@ import {
   ConversationsTriggerLinks,
   ConversationsAnalytics,
 } from "@/pages/admin/conversations/ConversationsSubPages";
-import { ConversationsSettings } from "@/pages/admin/conversations/ConversationsSettings";
+// Settings is a substantial 5-panel surface (numbers/texting/consent/signatures/notifications);
+// lazy-load it so it doesn't weigh down the eager Admin chunk on every /admin/* entry (perf).
+const ConversationsSettings = lazy(() => import("@/pages/admin/conversations/ConversationsSettings"));
 // Setup container (IA slice 1c-xi): pathless-style path-nested layout wraps the 8
 // tenant-config sub-tab pages. Eager like ClientsTabsLayout — small chrome.
 import SetupTabsLayout from "@/components/setup/SetupTabsLayout";
@@ -396,7 +398,9 @@ const Admin = () => {
             <Route path="snippets" element={<ConversationsSnippets />} />
             <Route path="trigger-links" element={<ConversationsTriggerLinks />} />
             <Route path="analytics" element={<ConversationsAnalytics />} />
-            <Route path="settings" element={<ConversationsSettings />} />
+            <Route path="settings" element={
+              <Suspense fallback={<SuspenseFallback />}><ConversationsSettings /></Suspense>
+            } />
           </Route>
           {/* DELIVERY — CalendarAdmin (its own internal Calendar/List/Settings/Connections tabs). */}
           <Route path="delivery" element={
