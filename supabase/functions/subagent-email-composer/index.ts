@@ -15,7 +15,25 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const LOVABLE_API_KEY = "unused";
+
+// #176 — Conversations attachments → draft-with-Paige. A coach can stage document(s)
+// into the reply composer and have Paige READ them so the drafted reply can reference
+// their contents. Attachments live in the private "comms-attachments" bucket, namespaced
+// `${tenantId}/${uuid}-${name}` (useCommsAttachments, inbox-shared.ts). §9: the caller's
+// tenant is resolved SERVER-SIDE from the JWT and each path's first segment MUST equal it
+// or the object is refused (never trust a body-supplied tenant/path).
+const COMMS_ATTACH_BUCKET = "comms-attachments";
+const MAX_ATTACHMENTS = 3;                        // bound: a few files, never a flood
+const MAX_ATTACH_BYTES = 10 * 1024 * 1024;        // 10MB/file — matches the bucket ceiling
+// Honesty guard mirrored from paige-ai-chat's DOCUMENT_SOURCE_INSTRUCTION (§13): only
+// report what is literally readable from the document; never hallucinate beyond it.
+const ATTACHMENT_SOURCE_INSTRUCTION =
+  `You are reading the literal content of an attached document that has been provided to you. ` +
+  `Report ONLY information you can directly read from this document. Do not use prior knowledge to ` +
+  `fill in names, numbers, dates, or details. If something is not readable, omit it rather than guessing. ` +
+  `Every fact you transcribe must be directly extractable from the provided document.`;
 
 type Tone =
   | "professional"
@@ -45,6 +63,58 @@ interface Input {
   sender_name?: string;           // signature name (defaults to tenant)
   sender_title?: string;
   format?: "html" | "plain";      // default html
+  // #176 — OPTIONAL comms-attachments object paths the coach staged for Paige to READ
+  // and reference in the draft. Each is `${tenantId}/${uuid}-${name}`; §9-guarded below.
+  attachment_paths?: string[];
+}
+
+// ── #176 attachment extraction (§18/§34 — reuse the ONE model seam; no second client) ──
+export interface ExtractFile { base64: string; mimeType: string; fileName: string }
+/** Injected so the headless smoke can assert the WIRING/shape without a live gateway (§32). */
+export type ModelInvoker = (system: string, userParts: unknown[]) => Promise<string>;
+
+/** Chunked binary→base64 (avoids call-stack blowups on large byte arrays). */
+export function bytesToBase64(bytes: Uint8Array): string {
+  let bin = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
+/**
+ * Extract a document's readable text — the SAME pattern paige-ai-chat uses: text-family
+ * mimes decode directly; PDFs/images are inlined as a base64 `data:` URI content-part and
+ * read through the multimodal gateway (a remote URL alone is stringified to text by the
+ * Claude normalizer, so it MUST be inlined). Carries the DOCUMENT_SOURCE honesty guard.
+ * `invokeModel` is the injected model seam (production wraps gatewayCompat; smoke mocks it).
+ */
+export async function extractAttachmentText(
+  file: ExtractFile,
+  invokeModel: ModelInvoker,
+): Promise<string> {
+  const mime = (file.mimeType || "").toLowerCase();
+  if (mime.startsWith("text/") || mime === "application/json") {
+    try {
+      const decoded = new TextDecoder().decode(
+        Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0)),
+      );
+      return decoded.slice(0, 60_000).trim();
+    } catch {
+      return "";
+    }
+  }
+  const userParts = [
+    {
+      type: "text",
+      text: `Transcribe the readable text/content of this document ("${file.fileName}"). ` +
+        `Report ONLY what is literally present — do not summarize away specifics, do not invent.`,
+    },
+    { type: "image_url", image_url: { url: `data:${file.mimeType};base64,${file.base64}` } },
+  ];
+  const text = await invokeModel(ATTACHMENT_SOURCE_INSTRUCTION, userParts);
+  return (text || "").trim();
 }
 
 function ok(d: unknown, status = 200) {
@@ -159,6 +229,94 @@ Deno.serve(async (req) => {
 
   const senderTitle = input.sender_title ?? "";
 
+  // ── #176 — read staged attachment(s) so the draft can reference the document ──────────
+  // §9 TENANT ISOLATION (mandatory): the caller's tenant is resolved SERVER-SIDE from the
+  // JWT via current_user_tenant_id() — NEVER from the request body. Each comms-attachments
+  // path is namespaced `${tenantId}/…`; a path whose first segment ≠ the caller's tenant is
+  // another tenant's object and is REFUSED (skip + log), never downloaded. A failed path
+  // never throws the whole draft (§13). Internal/service-role callers (the orchestrator)
+  // resolve no user tenant and simply skip — they never pass attachment_paths today.
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const isInternalCall =
+    req.headers.get("X-Orchestrator-Call") === "1" ||
+    authHeader === `Bearer ${SERVICE_ROLE_KEY}`;
+  const attachmentPaths = Array.isArray(input.attachment_paths)
+    ? input.attachment_paths.filter((p): p is string => typeof p === "string" && p.length > 0)
+    : [];
+
+  const invokeModel: ModelInvoker = async (system, userParts) => {
+    const res = await gatewayCompat("anthropic", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-pro",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: userParts },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(`attachment_extraction_gateway_${res.status}`);
+    const j = await res.json();
+    return j?.choices?.[0]?.message?.content ?? "";
+  };
+
+  let attachmentContext = "";
+  let attachmentsRead = 0;
+  if (attachmentPaths.length > 0) {
+    let callerTenantId: string | null = null;
+    if (!isInternalCall && authHeader) {
+      try {
+        const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+          auth: { persistSession: false },
+          global: { headers: { Authorization: authHeader } },
+        });
+        const { data: t } = await userClient.rpc("current_user_tenant_id");
+        callerTenantId = (t as string | null) ?? null;
+      } catch (e) {
+        console.warn("[email-composer] tenant resolve failed:", (e as Error)?.message);
+      }
+    }
+    if (!callerTenantId) {
+      console.warn("[email-composer] attachment_paths present but caller tenant unresolved — skipping all (§9 fail-safe).");
+    } else {
+      const extracted: string[] = [];
+      for (const path of attachmentPaths.slice(0, MAX_ATTACHMENTS)) {
+        // §9 PATH-PREFIX GUARD — the object's tenant prefix MUST match the caller's tenant.
+        const firstSeg = path.split("/")[0];
+        if (firstSeg !== callerTenantId) {
+          console.warn("[email-composer] rejected cross-tenant attachment (§9): path prefix ≠ caller tenant.");
+          continue;
+        }
+        try {
+          const { data: blob, error: dlErr } = await supabase.storage
+            .from(COMMS_ATTACH_BUCKET).download(path);
+          if (dlErr || !blob) {
+            console.warn(`[email-composer] attachment download failed: ${dlErr?.message ?? "no blob"}`);
+            continue;
+          }
+          const bytes = new Uint8Array(await blob.arrayBuffer());
+          if (bytes.length > MAX_ATTACH_BYTES) {
+            console.warn(`[email-composer] attachment over ${MAX_ATTACH_BYTES}B — skipped.`);
+            continue;
+          }
+          const fileName = path.split("/").pop() ?? "document";
+          const mimeType = blob.type || "application/octet-stream";
+          const text = await extractAttachmentText(
+            { base64: bytesToBase64(bytes), mimeType, fileName }, invokeModel,
+          );
+          if (text) {
+            extracted.push(`--- ${fileName} ---\n${text.slice(0, 20_000)}`);
+            attachmentsRead++;
+          }
+        } catch (e) {
+          console.warn(`[email-composer] attachment processing error: ${(e as Error)?.message}`);
+        }
+      }
+      if (extracted.length) attachmentContext = extracted.join("\n\n");
+    }
+  }
+
   const wordBudget = length === "short" ? "60-100" : length === "long" ? "220-320" : "130-190";
 
   let subject = input.subject_hint ?? "";
@@ -187,7 +345,8 @@ Hard rules:
 - No legal or tax advice.
 - Never name another specific client, coach, admin, or customer of the platform. Use archetype phrasing only ("a client", "the contact", "their business"). Doctrine §116.
 - Sign off exactly as: "${senderName}${senderTitle ? `, ${senderTitle}` : ""}".
-- Do NOT invent facts about the recipient beyond what is provided.
+- Do NOT invent facts about the recipient beyond what is provided.${attachmentContext ? `
+- The client shared document(s); their READABLE CONTENT is provided under "ATTACHED DOCUMENT CONTENT". You MAY reference specifics from it in the reply, but ONLY facts literally present there — never invent details beyond what is written. ${ATTACHMENT_SOURCE_INSTRUCTION}` : ""}
 
 Return STRICT JSON with this shape (no markdown, no code fences):
 {"subject": "<one-line subject>", "body": "<plain-text body with \\n paragraph breaks, no HTML>"}`;
@@ -203,6 +362,9 @@ Return STRICT JSON with this shape (no markdown, no code fences):
       input.key_points?.length ? `Key points to include:\n- ${input.key_points.join("\n- ")}` : "",
       input.cta ? `Call to action: ${input.cta}` : "",
       input.subject_hint ? `Preferred subject: ${input.subject_hint}` : "",
+      attachmentContext
+        ? `\nATTACHED DOCUMENT CONTENT (reference only what is literally written here):\n${attachmentContext}`
+        : "",
     ].filter(Boolean).join("\n");
 
     const aiRes = await gatewayCompat("anthropic", {
@@ -302,7 +464,9 @@ Return STRICT JSON with this shape (no markdown, no code fences):
   return ok({
     ok: true,
     subagent: "email-composer",
-    summary: `Composed ${tone} email (${length}) for ${recipientName || recipientEmail || "recipient"}${requiresApproval ? " — requires human approval" : ""}.`,
+    summary: `Composed ${tone} email (${length}) for ${recipientName || recipientEmail || "recipient"}${attachmentsRead > 0 ? ` after reading ${attachmentsRead} attachment${attachmentsRead === 1 ? "" : "s"}` : ""}${requiresApproval ? " — requires human approval" : ""}.`,
+    // §13 honest: only ever the count of documents ACTUALLY downloaded + read this turn.
+    attachments_read: attachmentsRead,
     draft: {
       subject,
       body_html: bodyHtml,

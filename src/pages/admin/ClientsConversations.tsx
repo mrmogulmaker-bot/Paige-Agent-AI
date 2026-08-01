@@ -348,6 +348,9 @@ export default function ClientsConversations() {
   // EMAIL composer; SMS-native drafting is a fast-follow, §13 — don't route SMS through it and
   // pretend it's SMS-native). Draft-first, one-click, non-gold assist (§36/§11).
   const [drafting, setDrafting] = useState(false);
+  // #176 — truthful label: true only while a draft-with-Paige call is ALSO reading staged
+  // document(s). Drives the "Reading attachment…" button state; never claimed with no doc.
+  const [draftReadingDoc, setDraftReadingDoc] = useState(false);
   const [draftFlags, setDraftFlags] = useState<string[]>([]);
   const [draftGuideOpen, setDraftGuideOpen] = useState(false);
   const [draftGuide, setDraftGuide] = useState("");
@@ -1011,6 +1014,12 @@ export default function ClientsConversations() {
     }
     setDrafting(true);
     setDraftFlags([]);
+    // #176 — the document(s) the coach wants Paige to consider are the attachments STAGED
+    // into this composer (guaranteed comms-attachments object paths `${tenantId}/…`, so the
+    // server's §9 prefix guard can enforce them). Inbound provider-hosted attachments are
+    // remote URLs, not storage objects — out of scope for this path (honest caveat).
+    const attachmentPaths = attachments.map((a) => a.url).filter((u): u is string => !!u);
+    setDraftReadingDoc(attachmentPaths.length > 0);
     try {
       // §36 context: the client's most recent inbound message (capped so a long thread
       // doesn't blow the prompt budget — verifier #6).
@@ -1028,6 +1037,8 @@ export default function ClientsConversations() {
             recipient_name: selected.name || undefined,
             recipient_email: selected.toAddress || undefined,
             format: "html",
+            // Only send when present; the server §9-guards each path against the caller's tenant.
+            attachment_paths: attachmentPaths.length ? attachmentPaths : undefined,
           },
           context: { contact_id: selected.contactId ?? undefined },
         },
@@ -1063,8 +1074,9 @@ export default function ClientsConversations() {
       toast.error(e instanceof Error ? e.message : "Paige couldn't draft that — try again.");
     } finally {
       setDrafting(false);
+      setDraftReadingDoc(false);
     }
-  }, [selected, body, draftGuide, draftTone, subject]);
+  }, [selected, body, draftGuide, draftTone, subject, attachments]);
 
   // ── Send a fresh reply (or an edited draft) into the selected thread ──────────────
   const send = async () => {
@@ -1678,7 +1690,9 @@ export default function ClientsConversations() {
                             {drafting
                               ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                               : <Sparkles className="mr-1.5 h-3.5 w-3.5 text-[hsl(var(--gold-dark))]" />}
-                            {drafting ? "Paige is drafting…" : "Draft with Paige"}
+                            {drafting
+                              ? (draftReadingDoc ? "Reading attachment…" : "Paige is drafting…")
+                              : "Draft with Paige"}
                           </Button>
                           <Popover open={draftGuideOpen} onOpenChange={setDraftGuideOpen}>
                             <PopoverTrigger asChild>
