@@ -1562,3 +1562,38 @@ of those rails Paige holds and which are tenant-side.
   Paige rail, or would activating it put a tenant's client's money through Paige's bank?"*
   If the latter: Connect direct-charge pattern on tenant's account, or BYO-processor
   integration on tenant's account. **Never** merchant-of-record on Paige.
+
+## 51. Per-tier availability + gating check — the tier-parity railing.
+
+**Directive (owner: Antonio, ruled 2026-08-01, hardened 2026-08-01 after fourth sub-account-seam bug):** Every change — feature, endpoint, RPC, migration, edge function, UI surface, doctrine amendment — gets a **per-tier availability + gating check** before ship and after ship. Not once, not "when it feels risky" — EVERY time. This exists because the same seam has bit us four times in one month (#86 → #130 → #172 → #201) and each bug cost real time and money. The pattern is repeatable, so the fix is systemic, not per-bug. Owner's exact framing: *"every time we work on something, two or three accounts get affected positively, and then there seems to be one thing lingering… we're not organized, and I think we need to create a better system to organize ourselves."*
+
+**The canonical tier matrix (source of truth for every check):**
+- **God / Super Admin** — platform operator (us); owns everything, sees everything.
+- **Agency** — parent tenant that owns sub-accounts; scoped to its own book plus its sub-accounts.
+- **Standalone Tenant** — a coach with no agency parent; scoped to its own book.
+- **Sub-account** — child tenant under an Agency; scoped to its own book, isolated from parent aggregate.
+- **Client** — end-consumer under a Tenant; scoped to their own portal only.
+- **Anonymous** — unauthenticated public; scoped to public surfaces only.
+
+Every tier has a documented `tenant_id` resolution path, auth-token flow, RLS posture, and permitted RPCs (see `docs/doctrine/tier-matrix.md`). Every §37 producer inventory, every §32 verification walk, and every crew brief refers to THIS matrix — not a mental model that varies per session.
+
+**The six railing components (each ships-blocking on any surface that touches tenant-scoped data):**
+
+1. **Tier matrix as source of truth.** The canonical enumeration above. Extended only by owner ruling.
+2. **Per-tier producer inventory (§37 extension).** Today §37 walks "who calls this endpoint." Tier-aware §37 walks "who calls this endpoint FROM EACH TIER" — because the same request from a sub-account has a different tenant resolution than from the Agency parent. The producer inventory NAMES THE TIER for every producer, not just the endpoint. A producer whose tier isn't named is a producer that wasn't audited.
+3. **Per-tier automated smoke tests.** For every tenant-scoped endpoint, an automated test fires it from EACH tier and asserts the correct outcome. When any tier's row fails, ship is blocked. Piggybacks on the Playwright §32 infrastructure — each fixture carries a tier axis.
+4. **Per-tier compliance-officer checklist.** Every crew's compliance pass answers a fixed matrix: works for God? Agency? Standalone Tenant? Sub-account? Client? Anonymous? — with an explicit answer per row (works / fails / N/A-and-here's-why). Blank rows or "fails" rows block ship.
+5. **Per-tier post-deploy walk (§32 extension).** Post-deploy verification exercises the change on at least the **most-affected tier**, which is USUALLY NOT the tier the crew built on. Sub-account bugs like #201 exist because we build on the parent tenant and never smoke-test the child sub-account before merge. §32 post-deploy scan explicitly names the tier that was smoke-tested; if only one was tested and other tiers were affected, the scan is incomplete.
+6. **Task ledger tier-tag.** Every task carries `tiers_affected: [god, agency, standalone, sub_account, client, anonymous]` so tier coverage is auditable over time — and drift ("this wave always builds for standalone, never verifies on sub-account") is visible.
+
+**The test, every time (owner-framing):** *"If this change works for the tier I built on, does it also work for every other tier that could hit this code path? Have I named the tier for each producer, tested each tier's outcome, and post-deploy-walked at least one tier I didn't build on?"* If any answer is "I didn't check," it isn't done.
+
+**Cross-references:** §9 tenant isolation (the WHY), §37 producer inventory (the WHO), §32 dual-layer verification (the WHEN — pre-deploy simulation + post-deploy persistence), §200 platform-independence (no tier-specific hardcoded phantoms), §50 platform impact assessment (the tier check is question #1 on any change).
+
+**Anchoring case studies — the four bugs that forced this section:**
+- **#86 (2026-07-28)** — sub-account showed parent-agency contact aggregate. §9 tenant-scope leak on the sub-account tier.
+- **#130 (open)** — `paige_chat_thread_create` rejects Super Admin (God tier) caller. RPC's tier-caller check dropped a legitimate tier.
+- **#172/#574 (2026-07-30)** — Paige chat-driven `create_contact` failed with backend error on prod. Producer-inventory miss on the action-path family.
+- **#201 (2026-08-01)** — Antonio Daniel LLC sub-account cannot send Paige chat. Fourth bug in the same seam in a month. This is the bug that forced §51 into doctrine.
+
+Each shipped because a crew built on ONE tier, verified on ONE tier, and never checked the others. §51 exists so the fifth one doesn't happen.
