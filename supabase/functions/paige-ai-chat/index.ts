@@ -679,6 +679,10 @@ JSON:`;
 
     let documentReadCheck: any = null;
     let paigeChatUploadId: string | null = null;
+    // #322 — durable, tenant-scoped storage reference for a general (non-credit) PDF, so the bytes
+    // live in the same private bucket the credit path uses (§9 reuse, no new bucket) rather than only
+    // inside the inline POST. Best-effort: a storage hiccup never blocks the turn.
+    let paigeChatGeneralDocPath: string | null = null;
     let extractionProposal: any = null;
     let isCreditReportPdf = false;
     if (attachedDocument) {
@@ -699,7 +703,22 @@ JSON:`;
       // Credit-report path: keep existing storage + sync behaviour.
       if (isCreditReportPdf) {
         try {
-          const targetUserId = payloadClientId || user.id;
+          // §9 (verifier BLOCKER): a body-supplied clientId must be validated before it is used
+          // as the service-role storage folder AND as credit_report_uploads.user_id — otherwise a
+          // caller could deposit a PDF + fabricate a cross-tenant credit-report row under an
+          // arbitrary tenant's client. Validate through the JWT-scoped `supabaseClient` (RLS), and
+          // exclude NULL-tenant client rows (the clients RLS policy admits tenant_id IS NULL); a
+          // foreign/NULL-tenant clientId resolves to nothing and falls back to the caller's own id.
+          let targetUserId = user.id;
+          if (payloadClientId) {
+            const { data: authCreditClient } = await supabaseClient
+              .from("clients")
+              .select("id")
+              .eq("id", payloadClientId)
+              .not("tenant_id", "is", null)
+              .maybeSingle();
+            if (authCreditClient?.id) targetUserId = payloadClientId;
+          }
           const timestamp = Date.now();
           const safeName = (attachedDocument.fileName || "report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
           const storagePath = `${targetUserId}/${timestamp}_paige_${safeName}`;
@@ -740,16 +759,51 @@ JSON:`;
         } catch (e) {
           console.warn("[Paige] general extraction failed:", e);
         }
-        // NOTE (#587): durable storage of a general (non-credit) PDF is intentionally
-        // deferred. The intended reuse of the credit-report bucket is impossible today —
-        // the `credit-report-uploads` bucket does not exist on prod (a drift that also
-        // breaks the pre-existing credit path above; logged separately). The P0 chat fix
-        // does not depend on storage: the preflight + structured errors resolve the bug.
-        // Durable general-doc storage returns as its own slice that first creates the
-        // bucket and authorizes the storage path to the caller's tenant (§9), rather than
-        // reusing a body-supplied clientId as the folder.
+
+        // #322 — durably store a general PDF in the SAME private bucket the credit path uses
+        // (§9 reuse — no new bucket; the bucket + RLS are (re)created in migration
+        // 20260802140000), under a `general/` prefix so it never mixes with credit reports
+        // (§12 organized). Storage-only: no credit_report_uploads row (that would fabricate a
+        // phantom credit report). Best-effort — a storage error is logged and never blocks the
+        // turn (§13).
+        //
+        // §9 authorization of the storage folder: the folder is the TARGET user's id. When a
+        // clientId is supplied in the request body we do NOT trust it blindly (the verifier
+        // flagged a body-supplied clientId used as the service-role storage folder = IDOR).
+        // We validate it through the JWT-scoped `supabaseClient` (RLS-enforced) first — a
+        // foreign-tenant clientId returns nothing, so we fall back to the caller's own id and
+        // never write into another tenant's folder. This mirrors the FOCUSED-CLIENT §9 note
+        // used later in this handler (a foreign clientId simply resolves to nothing under RLS).
+        if (docKind === "pdf" && attachedDocument.base64) {
+          try {
+            let generalTargetUserId = user.id;
+            if (payloadClientId) {
+              const { data: authClient } = await supabaseClient
+                .from("clients")
+                .select("id")
+                .eq("id", payloadClientId)
+                .not("tenant_id", "is", null)
+                .maybeSingle();
+              if (authClient?.id) generalTargetUserId = payloadClientId;
+            }
+            const timestamp = Date.now();
+            const safeName = (attachedDocument.fileName || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
+            const generalPath = `${generalTargetUserId}/general/${timestamp}_paige_${safeName}`;
+            const binaryString = atob(attachedDocument.base64);
+            const genBytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) genBytes[i] = binaryString.charCodeAt(i);
+            const { error: genStoreErr } = await supabase.storage
+              .from("credit-report-uploads")
+              .upload(generalPath, genBytes.buffer, { contentType: "application/pdf" });
+            if (!genStoreErr) paigeChatGeneralDocPath = generalPath;
+            else console.warn("[Paige] general PDF store skipped:", genStoreErr.message);
+          } catch (genErr) {
+            console.warn("[Paige] Error storing general PDF:", (genErr as Error)?.message);
+          }
+        }
       }
     }
+    if (paigeChatGeneralDocPath) console.log(`[Paige] general document stored at ${paigeChatGeneralDocPath}`);
 
     // Fetch URL content if present
     const lastUserMessage = messages.filter((m: any) => m.role === "user").pop();
