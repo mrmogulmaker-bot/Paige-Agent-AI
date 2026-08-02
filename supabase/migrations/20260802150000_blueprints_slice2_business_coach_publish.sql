@@ -109,11 +109,14 @@ GRANT EXECUTE ON FUNCTION public.marketplace_item_detail(text) TO authenticated,
 -- then runs its full validation (kind allowlist, semver check, finance guard) + writes the
 -- §17 audit row. auth.uid() is NULL here → created_by NULL / audit actor_role='service_role'.
 --
--- FRESH-DB-RESET NOTE (§32, owed): the live prod marketplace_publish_version allowlist
+-- FRESH-DB-RESET NOTE (§32, satisfied): the live prod marketplace_publish_version allowlist
 -- already includes 'playbook_preset' + 'journey_stages', so the real deploy-migrations push
--- succeeds. A from-scratch repo replay uses the repo function definition, whose allowlist
--- predates that expansion — an allowlist-reconciliation migration ordered before this one is
--- owed to make a cold reset green (does not affect the live prod apply).
+-- succeeds. A from-scratch repo replay would otherwise run an OLDER repo definition whose
+-- allowlist predates that expansion — so 20260802145000_reconcile_marketplace_publish_allowlist
+-- (ordered before this migration) restores prod's current definition and makes a cold reset
+-- green. That reconcile body was diffed against prod's live pg_get_functiondef and is
+-- byte-identical (only the allowlist differs from the stale July definition); it is a no-op on
+-- the live prod apply.
 DO $do$
 DECLARE
   _item_id uuid;

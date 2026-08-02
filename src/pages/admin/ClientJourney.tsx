@@ -76,6 +76,12 @@ type Event = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TimelineRow = Record<string, any>;
 
+// Humanize a raw stage slug (e.g. "business_coaching_active_engagement" → "Business
+// Coaching Active Engagement") for the honest fallback when a client's slug isn't in
+// the tenant's current journey set.
+const prettyStageLabel = (slug: string) =>
+  slug.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
 const ICON: Record<string, React.ReactNode> = {
   stage: <Sparkles className="h-4 w-4" />,
   tier: <TrendingUp className="h-4 w-4" />,
@@ -256,10 +262,21 @@ export default function ClientJourney() {
     return out;
   }
 
-  const currentStage = useMemo(
-    () => stages.find(s => s.slug === client?.journey_stage_slug) ?? null,
-    [stages, client?.journey_stage_slug],
-  );
+  const currentStage = useMemo(() => {
+    const found = stages.find(s => s.slug === client?.journey_stage_slug);
+    if (found) return found;
+    // The tenant's journey (get_tenant_journey_stages) is a WHOLESALE replacement — once
+    // they install a Blueprint it returns only their authored stages. A client captured
+    // earlier can still sit on a slug that isn't in the current set (e.g. a global default).
+    // Show that real stage honestly instead of "Unassigned"; display_order -1 keeps it out
+    // of the pipeline's current/past highlighting (it isn't one of these stages).
+    const slug = client?.journey_stage_slug;
+    if (!slug) return null;
+    return {
+      slug, label: prettyStageLabel(slug), description: null,
+      display_order: -1, color_hex: null, is_tenant: false, stage_id_global: null,
+    } as Stage;
+  }, [stages, client?.journey_stage_slug]);
 
   const eventsByStage = useMemo(() => {
     // group events by the stage (slug) that was active when they happened
@@ -277,6 +294,30 @@ export default function ClientJourney() {
     }
     return groups;
   }, [events, transitions, client?.journey_stage_slug, stages]);
+
+  // Events bucketed under a slug that isn't in the current journey set (e.g. a transition
+  // to a global/legacy stage before a Blueprint install) would otherwise never render —
+  // the timeline iterates only over `stages`. Collect them into a catch-all group so no
+  // event silently disappears (§13).
+  const orphanEvents = useMemo(() => {
+    const known = new Set(stages.map(s => s.slug));
+    return Object.entries(eventsByStage)
+      .filter(([slug]) => !known.has(slug))
+      .flatMap(([, list]) => list)
+      .sort((a, b) => +new Date(b.ts) - +new Date(a.ts));
+  }, [eventsByStage, stages]);
+
+  // One ordered list of timeline groups: the journey stages (newest-first) plus the
+  // orphan catch-all last, each rendered through the same markup.
+  const timelineGroups = useMemo(() => {
+    const groups = [...stages]
+      .reverse()
+      .map(s => ({ key: s.slug, label: s.label, color: s.color_hex, list: eventsByStage[s.slug] ?? [] }));
+    if (orphanEvents.length) {
+      groups.push({ key: "__earlier__", label: "Earlier stages", color: null, list: orphanEvents });
+    }
+    return groups.filter(g => g.list.length > 0);
+  }, [stages, eventsByStage, orphanEvents]);
 
   async function setStage(stage: Stage) {
     if (!client) return;
@@ -387,19 +428,17 @@ export default function ClientJourney() {
                 No events yet. Stage data and rich events are loading from Paige Agent AI as the bridge comes online.
               </p>
             )}
-            {[...stages].reverse().map(stage => {
-              const list = eventsByStage[stage.slug] ?? [];
-              if (!list.length) return null;
+            {timelineGroups.map(group => {
               return (
-                <div key={stage.slug}>
+                <div key={group.key}>
                   <div
                     className="mb-3 inline-flex items-center gap-2 rounded-md px-2 py-1 text-xs font-semibold text-white"
-                    style={{ backgroundColor: stage.color_hex ?? "#64748b" }}
+                    style={{ backgroundColor: group.color ?? "#64748b" }}
                   >
-                    {stage.label}
+                    {group.label}
                   </div>
                   <ul className="space-y-2">
-                    {list.map((e, i) => (
+                    {group.list.map((e, i) => (
                       <li key={i} className="flex gap-3 rounded-md border bg-card p-3">
                         <div className="mt-0.5 text-muted-foreground">{e.icon}</div>
                         <div className="flex-1 min-w-0">

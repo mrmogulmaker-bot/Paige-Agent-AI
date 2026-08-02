@@ -4084,6 +4084,21 @@ mcp.tool("advance_contact_journey_stage", {
     source_event: z.string().optional(),
   }),
   handler: async ({ contact_id, stage_slug, source_event }) => {
+    // §9/§37/§51: set_journey_stage runs as service_role and its IDOR guard bypasses
+    // service_role callers ("Paige, already actor-authorized") — so THIS producer must
+    // prove the contact belongs to the actor's tenant, exactly like every sibling
+    // contact tool. Without this a tenant-A caller could move a tenant-B contact's stage.
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const { data: owned, error: ownErr } = await admin
+      .from("clients")
+      .select("id")
+      .eq("id", contact_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (ownErr) return err(ownErr.message);
+    if (!owned) return err("contact_not_found");
+
     const { data, error } = await admin.rpc("set_journey_stage", {
       _contact_id: contact_id,
       _stage_slug: stage_slug,
