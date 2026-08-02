@@ -5,6 +5,7 @@ import { Send, Loader2, Paperclip } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { parsePaigeChatError } from "@/lib/paigeChatError";
 import { useNavigate, useLocation } from "react-router-dom";
 import { getCurrentPageName, getPageOpeningInstruction } from "@/lib/pageContext";
 import type { User, Session } from "@supabase/supabase-js";
@@ -392,7 +393,13 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
           setIsLoading(false);
           return;
         }
-        throw new Error("Failed to get response");
+        // #587 — surface the structured { code, reason, recommendation } from the server (e.g. a
+        // size/page limit) rather than a generic "Failed to send message" toast.
+        const chatErr = await parsePaigeChatError(response);
+        toast({ title: chatErr.title, description: chatErr.description, variant: "destructive" });
+        setMessages(messages);
+        setIsLoading(false);
+        return;
       }
 
       const reader = response.body?.getReader();

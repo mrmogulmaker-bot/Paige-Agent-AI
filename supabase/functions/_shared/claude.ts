@@ -258,6 +258,58 @@ interface OpenAIStyleBody {
   response_format?: { type?: string } | undefined;
 }
 
+// ── supports_documents capability (#587) ────────────────────────────────────────────────────
+// Which Claude tier can natively read a PDF/document content block. Sonnet (reasoning) reads PDFs
+// via the Anthropic `document` block; Haiku (classification) is the cheap text tier we do NOT route
+// document turns to. This is the router's `supports_documents` capability, honored at the ONE
+// tier-resolution seam below so EVERY caller's document turn lands on a PDF-capable model — not just
+// paige-ai-chat (§18 one home). Non-document turns are unaffected.
+export function tierSupportsDocuments(tier: ClaudeTier): boolean {
+  return tier === "reasoning";
+}
+const DOCUMENT_CAPABLE_TIER: ClaudeTier = "reasoning";
+
+// True if any message carries a PDF/document block — an already-Anthropic `document` block OR an
+// OpenAI-style image_url/file whose data-URI media type is application/pdf (the shape paige-ai-chat
+// inlines, which toClaudeContent converts to a document block). Images are excluded on purpose:
+// the classification tier is vision-capable, so only PDFs force the document-capable upgrade.
+type LooseContentBlock = {
+  type?: string;
+  image_url?: { url?: string };
+  file?: { file_data?: string; url?: string; data?: string };
+  url?: string;
+  data?: string;
+};
+function messagesCarryDocument(messages: OaiMessage[]): boolean {
+  for (const m of messages ?? []) {
+    const c = m?.content;
+    if (!Array.isArray(c)) continue;
+    for (const b of c as LooseContentBlock[]) {
+      if (b?.type === "document") return true;
+      const dataUrl: string | undefined =
+        b?.type === "image_url" ? b?.image_url?.url :
+        b?.type === "file" ? (b?.file?.file_data ?? b?.file?.url ?? b?.data) :
+        typeof b?.url === "string" ? b.url : undefined;
+      if (typeof dataUrl === "string" && /^data:application\/pdf;base64,/.test(dataUrl)) return true;
+    }
+  }
+  return false;
+}
+
+// Resolve the Claude tier for a gateway request, honoring supports_documents: a turn carrying a
+// PDF/document block is upgraded to the document-capable tier so it never lands on a model that
+// can't read the file. This is the ONE place both the streaming (buildClaudeRequest) and the
+// non-streaming (chatCompletionCompat) paths resolve their tier, so the capability binds every
+// caller identically. A caller-supplied tierOverride still wins EXCEPT it is upgraded (never
+// downgraded) when a document is present.
+export function resolveRequestTier(body: OpenAIStyleBody, tierOverride?: ClaudeTier): ClaudeTier {
+  const base = tierOverride ?? tierForLegacyModel(body.model);
+  if (!tierSupportsDocuments(base) && messagesCarryDocument(body.messages as OaiMessage[])) {
+    return DOCUMENT_CAPABLE_TIER;
+  }
+  return base;
+}
+
 export async function chatCompletionCompat(body: OpenAIStyleBody, tierOverride?: ClaudeTier): Promise<any> {
   // Extract system + translate messages (incl. assistant tool_calls -> tool_use).
   const { system: sys0, msgs } = splitMessages(body.messages as OaiMessage[]);
@@ -280,7 +332,8 @@ export async function chatCompletionCompat(body: OpenAIStyleBody, tierOverride?:
     messages: msgs,
     system: system || undefined,
     model: undefined,
-    tier: tierOverride ?? tierForLegacyModel(body.model),
+    // #587 supports_documents: a PDF-bearing turn is upgraded to the document-capable tier here.
+    tier: resolveRequestTier(body, tierOverride),
     maxTokens: body.max_tokens ?? 2048,
     temperature: body.temperature,
     tools,
@@ -331,7 +384,8 @@ function buildClaudeRequest(body: OpenAIStyleBody): Record<string, unknown> {
     description: t.function.description ?? "",
     input_schema: t.function.parameters ?? { type: "object", properties: {} },
   }));
-  const model = tierModel(tierForLegacyModel(body.model));
+  // #587 supports_documents: a PDF-bearing turn is upgraded to the document-capable tier here.
+  const model = tierModel(resolveRequestTier(body));
   const req: Record<string, unknown> = {
     model,
     max_tokens: body.max_tokens ?? 2048,

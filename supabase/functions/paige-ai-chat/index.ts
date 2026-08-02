@@ -661,16 +661,28 @@ JSON:`;
       );
     }
 
-    // Validate document size
-    if (attachedDocument?.base64 && attachedDocument.base64.length > 15_000_000) {
-      return new Response(
-        JSON.stringify({ error: 'Document too large. Maximum size is 10MB.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // #587 — preflight the attachment (size + PDF page count) BEFORE any model call. On exceed,
+    // return a STRUCTURED { code, reason, recommendation } 4xx (never a bare 500 masked by a generic
+    // toast) so the client shows the user a specific, actionable message. Replaces the old raw
+    // "Document too large" 400.
+    if (attachedDocument?.base64) {
+      const preflight = preflightAttachedDocument(attachedDocument);
+      if (!preflight.ok) {
+        // `error` (= reason) kept alongside the structured fields for backward-compat with any
+        // consumer that still reads `.error` (§37 response-contract inventory).
+        return new Response(
+          JSON.stringify({ ...preflight.body, error: preflight.body.reason }),
+          { status: preflight.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
     }
 
     let documentReadCheck: any = null;
     let paigeChatUploadId: string | null = null;
+    // #587 — durable, tenant-scoped storage reference for a general (non-credit) PDF, so the bytes
+    // live in the same bucket the credit path uses (§9 reuse, no new bucket) rather than only inside
+    // the inline POST. Best-effort: a storage hiccup never blocks the turn.
+    let paigeChatGeneralDocPath: string | null = null;
     let extractionProposal: any = null;
     let isCreditReportPdf = false;
     if (attachedDocument) {
@@ -732,8 +744,32 @@ JSON:`;
         } catch (e) {
           console.warn("[Paige] general extraction failed:", e);
         }
+
+        // #587 — durably store a general PDF in the SAME tenant-scoped bucket the credit path uses
+        // (§9 reuse — no new bucket), under a `general/` prefix so it never mixes with credit reports
+        // (§12 organized). Storage-only: no credit_report_uploads row (that would fabricate a phantom
+        // credit report). Best-effort — a storage error is logged and never blocks the turn (§13).
+        if (docKind === "pdf" && attachedDocument.base64) {
+          try {
+            const targetUserId = payloadClientId || user.id;
+            const timestamp = Date.now();
+            const safeName = (attachedDocument.fileName || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
+            const generalPath = `${targetUserId}/general/${timestamp}_paige_${safeName}`;
+            const binaryString = atob(attachedDocument.base64);
+            const genBytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) genBytes[i] = binaryString.charCodeAt(i);
+            const { error: genStoreErr } = await supabase.storage
+              .from("credit-report-uploads")
+              .upload(generalPath, genBytes.buffer, { contentType: "application/pdf" });
+            if (!genStoreErr) paigeChatGeneralDocPath = generalPath;
+            else console.warn("[Paige] general PDF store skipped:", genStoreErr.message);
+          } catch (genErr) {
+            console.warn("[Paige] Error storing general PDF:", (genErr as Error)?.message);
+          }
+        }
       }
     }
+    if (paigeChatGeneralDocPath) console.log(`[Paige] general document stored at ${paigeChatGeneralDocPath}`);
 
     // Fetch URL content if present
     const lastUserMessage = messages.filter((m: any) => m.role === "user").pop();
@@ -5603,7 +5639,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       if (status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded.", errorId }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       if (status === 402) return new Response(JSON.stringify({ error: "AI service requires additional credits.", errorId }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       console.error(`[AI-CHAT-ERROR-${errorId}] AI gateway error:`, { status, timestamp: new Date().toISOString() });
-      return new Response(JSON.stringify({ error: "An error occurred", errorId }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      // #587 — a document turn whose model call still failed (e.g. Anthropic rejected the PDF for a
+      // reason preflight couldn't see) returns a STRUCTURED reason-class, never a bare "An error
+      // occurred" — so the client can tell a document problem apart from a generic outage. A 4xx from
+      // the model on a document attach is surfaced as such; everything else stays a 500.
+      const gwStructured = structuredChatError(status, { hadDocument: !!attachedDocument });
+      const gwStatus = (attachedDocument && (status === 400 || status === 413 || status === 415)) ? 422 : 500;
+      return new Response(JSON.stringify({ ...gwStructured, error: gwStructured.reason, errorId }), { status: gwStatus, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // For non-document requests: check if streaming response contains tool calls
@@ -8009,13 +8051,122 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
   } catch (error) {
     const errorId = crypto.randomUUID();
     console.error(`[AI-CHAT-ERROR-${errorId}] Function error:`, { message: error instanceof Error ? error.message : 'Unknown', timestamp: new Date().toISOString() });
-    return new Response(JSON.stringify({ error: "An error occurred", errorId }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // #587 — the outer catch returns a STRUCTURED reason-class, never a bare "An error occurred", so
+    // the client always has a real reason to show. `error` is kept (= reason) for any legacy consumer.
+    const outerStructured = structuredChatError(500, { message: error instanceof Error ? error.message : "" });
+    return new Response(JSON.stringify({ ...outerStructured, error: outerStructured.reason, errorId }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
 
 function extractKeywords(text: string): string {
   const keywords = text.toLowerCase().match(/\b(build|make|manage|multiply|credit|business|mfm|accel|fund|real|keys|acquire|framework|mindset|leadership)\b/g);
   return keywords ? keywords.join(",") : "";
+}
+
+// ── #587 attachment preflight (size + PDF page count) ────────────────────────────────────────
+// Limits keep every document turn inside Anthropic's PDF envelope (~32 MB / 100 pages) with margin,
+// so a preflighted PDF reaches the model on the PROVEN base64-inline path and never trips a
+// downstream 400/500 — the P0 that surfaced as a generic frontend toast. Both gates run BEFORE any
+// model call and, on exceed, return a structured { code, reason, recommendation } 4xx the client can
+// render as a specific, actionable message (a size limit reads differently from an outage).
+const PAIGE_MAX_PDF_BYTES = 15 * 1024 * 1024; // 15 MB decoded — the user-facing "15 MB limit"
+const PAIGE_MAX_PDF_PAGES = 100;              // Anthropic per-request PDF page ceiling
+
+interface PaigeStructuredError { code: string; reason: string; recommendation: string }
+type PreflightResult = { ok: true } | { ok: false; status: number; body: PaigeStructuredError };
+
+// Decoded byte length of a base64 string without allocating the bytes.
+function base64ByteLength(b64: string): number {
+  const len = b64.length;
+  if (len === 0) return 0;
+  const padding = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0;
+  return Math.floor((len * 3) / 4) - padding;
+}
+
+function humanMB(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+}
+
+// Best-effort PDF page count from raw bytes: count `/Type /Page` objects (the page-object marker),
+// ignoring `/Pages` (the tree node). Returns 0 when it can't be determined (e.g. page objects inside
+// compressed object streams) so we NEVER falsely reject on an unknowable count (§13) — the size gate
+// still applies and Anthropic's own limit is the backstop.
+function estimatePdfPageCount(bytes: Uint8Array): number {
+  try {
+    let text = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      text += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    const matches = text.match(/\/Type\s*\/Page(?![A-Za-z])/g);
+    return matches ? matches.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Preflight the attachment: a hard size gate for any attachment plus a best-effort page-count gate
+// for PDFs. Returns a structured error the caller returns as a 4xx (never a bare 500).
+function preflightAttachedDocument(
+  doc: { base64?: string; mimeType?: string; kind?: string; fileName?: string } | null | undefined,
+): PreflightResult {
+  if (!doc?.base64) return { ok: true };
+  const bytes = base64ByteLength(doc.base64);
+  const isPdf = doc.kind === "pdf" || doc.mimeType === "application/pdf";
+  if (bytes > PAIGE_MAX_PDF_BYTES) {
+    return {
+      ok: false,
+      status: 413,
+      body: {
+        code: "pdf_too_large",
+        reason: `Your file is ${humanMB(bytes)}, over the ${humanMB(PAIGE_MAX_PDF_BYTES)} limit.`,
+        recommendation: isPdf
+          ? "Split it into smaller PDFs or compress it, then upload again."
+          : "Compress the file or upload a smaller version.",
+      },
+    };
+  }
+  if (isPdf) {
+    let pdfBytes: Uint8Array | null = null;
+    try {
+      const bin = atob(doc.base64);
+      pdfBytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) pdfBytes[i] = bin.charCodeAt(i);
+    } catch { pdfBytes = null; }
+    const pages = pdfBytes ? estimatePdfPageCount(pdfBytes) : 0;
+    if (pages > PAIGE_MAX_PDF_PAGES) {
+      return {
+        ok: false,
+        status: 413,
+        body: {
+          code: "pdf_too_many_pages",
+          reason: `Your PDF is ${pages} pages, over the ${PAIGE_MAX_PDF_PAGES}-page limit.`,
+          recommendation: "Split it into two, or upload just the pages you need me to read.",
+        },
+      };
+    }
+  }
+  return { ok: true };
+}
+
+// #587 — map an internal failure to a structured, user-safe { code, reason, recommendation } so the
+// client can distinguish a real problem class (a document that couldn't be read, a rate limit, an
+// outage) from a generic error. Never leaks internal detail (§11/§13).
+function structuredChatError(
+  status: number,
+  opts: { hadDocument?: boolean; message?: string } = {},
+): PaigeStructuredError {
+  const msg = (opts.message ?? "").toLowerCase();
+  if (opts.hadDocument && (status === 400 || status === 413 || status === 415 || /document|page|too large|pdf/.test(msg))) {
+    return {
+      code: "document_unreadable",
+      reason: "I couldn't read that document — it may be too large, too long, or a format I can't open.",
+      recommendation: "Try a smaller PDF (under 15 MB and 100 pages), or paste the key details as text.",
+    };
+  }
+  if (status === 429) return { code: "rate_limited", reason: "Too many requests right now.", recommendation: "Wait a moment, then try again." };
+  if (status === 402) return { code: "insufficient_credits", reason: "The AI service needs additional credits.", recommendation: "Contact your administrator to top it up." };
+  return { code: "chat_unavailable", reason: "Something went wrong on our side while answering.", recommendation: "Try again in a moment — if it keeps happening, let support know." };
 }
 
 async function runDocumentReadCheck(base64: string, lovableApiKey: string) {

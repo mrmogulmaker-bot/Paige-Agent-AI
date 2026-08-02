@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { parsePaigeChatError } from "@/lib/paigeChatError";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { DictationMicButton } from "@/components/voice/DictationMicButton";
 import { appendDictation } from "@/lib/voice/useDictation";
@@ -182,7 +183,15 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
         return;
       }
 
-      if (!response.ok) throw new Error("Failed to get response");
+      if (!response.ok) {
+        // #587 — show the structured { code, reason, recommendation } (e.g. a size/page limit) rather
+        // than a generic outage toast. Roll back the just-added user message like the catch below.
+        const chatErr = await parsePaigeChatError(response);
+        toast({ title: chatErr.title, description: chatErr.description, variant: "destructive" });
+        setMessages((prev) => prev.slice(0, -1));
+        setIsLoading(false);
+        return;
+      }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
