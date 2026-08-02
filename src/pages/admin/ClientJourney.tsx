@@ -23,20 +23,27 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 
+// Shape returned by get_tenant_journey_stages(): the tenant-authored journey when
+// one is installed, else the platform default. Slug is the source of truth; there
+// is no plain integer `id` (a tenant-only stage has no global int — stage_id_global
+// is null for those). Position is display_order, not a row id.
 type Stage = {
-  id: number;
   slug: string;
   label: string;
   description: string | null;
   display_order: number;
   color_hex: string | null;
+  is_tenant: boolean;
+  stage_id_global: number | null;
 };
 
 type Transition = {
   id: string;
   contact_id: string;
   from_stage_id: number | null;
-  to_stage_id: number;
+  to_stage_id: number | null;
+  from_stage_slug: string | null;
+  to_stage_slug: string | null;
   transitioned_at: string;
   source_event: string | null;
   metadata: Record<string, unknown> | null;
@@ -49,6 +56,7 @@ type Client = {
   email: string | null;
   linked_user_id: string | null;
   journey_stage_id: number | null;
+  journey_stage_slug: string | null;
   journey_stage_entered_at: string | null;
   created_at: string;
 };
@@ -61,6 +69,18 @@ type Event = {
   detail?: string;
   meta?: Record<string, unknown>;
 };
+
+// Heterogeneous, loosely-typed rows from several ad-hoc timeline reads (messages,
+// bookings, snapshots, the remote bridge). Each field is guarded at its use site
+// below, so one permissive alias keeps the dynamic shape without scattering `any`.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type TimelineRow = Record<string, any>;
+
+// Humanize a raw stage slug (e.g. "business_coaching_active_engagement" → "Business
+// Coaching Active Engagement") for the honest fallback when a client's slug isn't in
+// the tenant's current journey set.
+const prettyStageLabel = (slug: string) =>
+  slug.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 const ICON: Record<string, React.ReactNode> = {
   stage: <Sparkles className="h-4 w-4" />,
@@ -91,42 +111,54 @@ export default function ClientJourney() {
     setLoading(true);
     try {
       const [stagesRes, contactRes] = await Promise.all([
-        supabase.from("paige_journey_stages").select("*").order("display_order"),
-        supabase.from("clients").select("id, first_name, last_name, email, linked_user_id, journey_stage_id, journey_stage_entered_at, created_at").eq("id", contactId).maybeSingle(),
+        // §18 one read seam — the tenant's authored journey (Blueprint) or the
+        // platform default; tenant is resolved server-side (§9), no body param.
+        // `as never`: RPC lands in generated types after the migration applies (types
+        // regen is task #234); it's real on prod once this slice's migration ships.
+        supabase.rpc("get_tenant_journey_stages" as never),
+        supabase.from("clients").select("id, first_name, last_name, email, linked_user_id, journey_stage_id, journey_stage_slug, journey_stage_entered_at, created_at").eq("id", contactId).maybeSingle(),
       ]);
       if (stagesRes.error) throw stagesRes.error;
       if (contactRes.error) throw contactRes.error;
       if (!contactRes.data) { toast.error("Contact not found"); navigate("/admin/contacts"); return; }
-      setStages((stagesRes.data || []) as Stage[]);
-      setClient(contactRes.data as Client);
+      const stageList = ((stagesRes.data || []) as Stage[])
+        .slice()
+        .sort((a, b) => a.display_order - b.display_order);
+      setStages(stageList);
+      setClient(contactRes.data as unknown as Client);
 
       const trRes = await supabase
         .from("paige_journey_stage_transitions")
         .select("*")
         .eq("contact_id", contactId)
         .order("transitioned_at", { ascending: false });
-      const tr = (trRes.data || []) as Transition[];
+      // `as unknown`: from_/to_stage_slug columns land in generated types after
+      // this slice's migration applies (types regen is task #234).
+      const tr = (trRes.data || []) as unknown as Transition[];
       setTransitions(tr);
 
-      const composed = await composeTimeline(contactRes.data as Client, tr);
+      const composed = await composeTimeline(contactRes.data as unknown as Client, tr, stageList);
       setEvents(composed);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      toast.error(e?.message ?? "Failed to load journey");
+      toast.error(e instanceof Error ? e.message : "Failed to load journey");
     } finally {
       setLoading(false);
     }
   }
 
-  async function composeTimeline(c: Client, tr: Transition[]): Promise<Event[]> {
+  async function composeTimeline(c: Client, tr: Transition[], stageList: Stage[]): Promise<Event[]> {
     const out: Event[] = [];
+    const labelForSlug = (slug: string | null) =>
+      (slug ? stageList.find(s => s.slug === slug)?.label : null) ?? slug ?? null;
 
     for (const t of tr) {
+      const toLabel = labelForSlug(t.to_stage_slug);
       out.push({
         ts: t.transitioned_at,
         kind: "stage",
         icon: ICON.stage,
-        title: `Moved to stage ${t.to_stage_id}`,
+        title: toLabel ? `Moved to ${toLabel}` : "Stage transition",
         detail: t.source_event ?? "manual",
         meta: t.metadata ?? undefined,
       });
@@ -137,28 +169,28 @@ export default function ClientJourney() {
         try { const r = await p; return (r.data ?? []) as T[]; } catch { return []; }
       };
 
-      const msgs = await safe<any>(
+      const msgs = await safe<TimelineRow>(
         supabase.from("paige_messages_audit").select("created_at, channel, subject, body, status, contact_id").eq("contact_id", c.id).order("created_at", { ascending: false }).limit(50)
       );
-      const conv = await safe<any>(
+      const conv = await safe<TimelineRow>(
         supabase.from("communication_log").select("created_at, channel, message_type, subject, preview").eq("user_id", c.linked_user_id).order("created_at", { ascending: false }).limit(50)
       );
-      const book = await safe<any>(
+      const book = await safe<TimelineRow>(
         supabase.from("paige_bookings").select("created_at, status, scheduled_at, event_type, title").eq("contact_id", c.id).order("created_at", { ascending: false }).limit(20)
       );
-      const sig = await safe<any>(
+      const sig = await safe<TimelineRow>(
         supabase.from("paige_signature_envelopes").select("created_at, status, envelope_type").eq("contact_id", c.id).order("created_at", { ascending: false }).limit(20)
       );
-      const bc = await safe<any>(
+      const bc = await safe<TimelineRow>(
         supabase.from("paige_business_credit_profiles").select("last_pulled_at, business_name, scores").eq("contact_id", c.id).order("last_pulled_at", { ascending: false }).limit(10)
       );
-      const oc = await safe<any>(
+      const oc = await safe<TimelineRow>(
         supabase.from("paige_owner_credit_snapshots").select("pulled_at, bureau, score").eq("contact_id", c.id).order("pulled_at", { ascending: false }).limit(10)
       );
-      const cf = await safe<any>(
+      const cf = await safe<TimelineRow>(
         supabase.from("paige_cash_flow_snapshots").select("period_end, runway_days, funding_readiness_score").eq("contact_id", c.id).order("period_end", { ascending: false }).limit(10)
       );
-      const notes = await safe<any>(
+      const notes = await safe<TimelineRow>(
         supabase.from("client_memory").select("created_at, memory_type, content").eq("client_user_id", c.linked_user_id).eq("is_active", true).order("created_at", { ascending: false }).limit(30)
       );
 
@@ -212,8 +244,8 @@ export default function ClientJourney() {
       const { data } = await supabase.functions.invoke("tenant-journey", {
         body: { verb: "get_journey", payload: { contact_id: c.id, email: c.email } },
       });
-      const remote = (data as any)?.data?.events ?? [];
-      for (const r of remote as any[]) {
+      const remote = (data as { data?: { events?: TimelineRow[] } } | null)?.data?.events ?? [];
+      for (const r of remote) {
         if (!r?.ts) continue;
         out.push({
           ts: r.ts,
@@ -230,28 +262,62 @@ export default function ClientJourney() {
     return out;
   }
 
-  const currentStage = useMemo(
-    () => stages.find(s => s.id === client?.journey_stage_id) ?? null,
-    [stages, client?.journey_stage_id],
-  );
+  const currentStage = useMemo(() => {
+    const found = stages.find(s => s.slug === client?.journey_stage_slug);
+    if (found) return found;
+    // The tenant's journey (get_tenant_journey_stages) is a WHOLESALE replacement — once
+    // they install a Blueprint it returns only their authored stages. A client captured
+    // earlier can still sit on a slug that isn't in the current set (e.g. a global default).
+    // Show that real stage honestly instead of "Unassigned"; display_order -1 keeps it out
+    // of the pipeline's current/past highlighting (it isn't one of these stages).
+    const slug = client?.journey_stage_slug;
+    if (!slug) return null;
+    return {
+      slug, label: prettyStageLabel(slug), description: null,
+      display_order: -1, color_hex: null, is_tenant: false, stage_id_global: null,
+    } as Stage;
+  }, [stages, client?.journey_stage_slug]);
 
   const eventsByStage = useMemo(() => {
-    // group events by the stage that was active when they happened
+    // group events by the stage (slug) that was active when they happened
     const sortedTr = [...transitions].sort((a, b) => +new Date(a.transitioned_at) - +new Date(b.transitioned_at));
-    const groups: Record<number, Event[]> = {};
+    const fallback = client?.journey_stage_slug ?? stages[0]?.slug ?? "";
+    const groups: Record<string, Event[]> = {};
     for (const e of events) {
       const t = +new Date(e.ts);
-      let stageId = client?.journey_stage_id ?? 1;
-      // Find the latest transition <= event time
-      let active = sortedTr[0]?.to_stage_id ?? 1;
+      // Find the latest transition <= event time; else the current/first stage.
+      let active = sortedTr[0]?.to_stage_slug ?? fallback;
       for (const tr of sortedTr) {
-        if (+new Date(tr.transitioned_at) <= t) active = tr.to_stage_id;
+        if (+new Date(tr.transitioned_at) <= t && tr.to_stage_slug) active = tr.to_stage_slug;
       }
-      stageId = active;
-      (groups[stageId] ||= []).push(e);
+      (groups[active] ||= []).push(e);
     }
     return groups;
-  }, [events, transitions, client?.journey_stage_id]);
+  }, [events, transitions, client?.journey_stage_slug, stages]);
+
+  // Events bucketed under a slug that isn't in the current journey set (e.g. a transition
+  // to a global/legacy stage before a Blueprint install) would otherwise never render —
+  // the timeline iterates only over `stages`. Collect them into a catch-all group so no
+  // event silently disappears (§13).
+  const orphanEvents = useMemo(() => {
+    const known = new Set(stages.map(s => s.slug));
+    return Object.entries(eventsByStage)
+      .filter(([slug]) => !known.has(slug))
+      .flatMap(([, list]) => list)
+      .sort((a, b) => +new Date(b.ts) - +new Date(a.ts));
+  }, [eventsByStage, stages]);
+
+  // One ordered list of timeline groups: the journey stages (newest-first) plus the
+  // orphan catch-all last, each rendered through the same markup.
+  const timelineGroups = useMemo(() => {
+    const groups = [...stages]
+      .reverse()
+      .map(s => ({ key: s.slug, label: s.label, color: s.color_hex, list: eventsByStage[s.slug] ?? [] }));
+    if (orphanEvents.length) {
+      groups.push({ key: "__earlier__", label: "Earlier stages", color: null, list: orphanEvents });
+    }
+    return groups.filter(g => g.list.length > 0);
+  }, [stages, eventsByStage, orphanEvents]);
 
   async function setStage(stage: Stage) {
     if (!client) return;
@@ -278,7 +344,9 @@ export default function ClientJourney() {
         <Button variant="ghost" size="sm" onClick={() => navigate(`/admin/contacts/${client.id}`)}>
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to contact
         </Button>
-        <Badge variant="outline" className="text-xs">Doctrine §94 · 6-stage MMA journey</Badge>
+        {stages.length > 0 && (
+          <Badge variant="outline" className="text-xs">{stages.length}-stage journey</Badge>
+        )}
       </div>
 
       <div>
@@ -317,12 +385,13 @@ export default function ClientJourney() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
-            {stages.map(s => {
-              const isCurrent = s.id === client.journey_stage_id;
-              const isPast = (client.journey_stage_id ?? 0) > s.id;
+            {stages.map((s, idx) => {
+              const isCurrent = s.slug === client.journey_stage_slug;
+              // Ranked by display_order (the journey's real ordering), not a row id.
+              const isPast = (currentStage?.display_order ?? -1) > s.display_order;
               return (
                 <button
-                  key={s.id}
+                  key={s.slug}
                   onClick={() => setConfirmStage(s)}
                   className={`group flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition ${
                     isCurrent ? "ring-2 ring-offset-2" : "hover:bg-muted/50"
@@ -333,10 +402,10 @@ export default function ClientJourney() {
                     className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-white"
                     style={{ backgroundColor: s.color_hex ?? "#64748b" }}
                   >
-                    {isPast ? <CheckCircle2 className="h-4 w-4" /> : s.id}
+                    {isPast ? <CheckCircle2 className="h-4 w-4" /> : idx + 1}
                   </span>
                   <span className="font-medium">{s.label}</span>
-                  {s.id < stages.length && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                  {idx < stages.length - 1 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                 </button>
               );
             })}
@@ -359,19 +428,17 @@ export default function ClientJourney() {
                 No events yet. Stage data and rich events are loading from Paige Agent AI as the bridge comes online.
               </p>
             )}
-            {[...stages].reverse().map(stage => {
-              const list = eventsByStage[stage.id] ?? [];
-              if (!list.length) return null;
+            {timelineGroups.map(group => {
               return (
-                <div key={stage.id}>
+                <div key={group.key}>
                   <div
                     className="mb-3 inline-flex items-center gap-2 rounded-md px-2 py-1 text-xs font-semibold text-white"
-                    style={{ backgroundColor: stage.color_hex ?? "#64748b" }}
+                    style={{ backgroundColor: group.color ?? "#64748b" }}
                   >
-                    {stage.label}
+                    {group.label}
                   </div>
                   <ul className="space-y-2">
-                    {list.map((e, i) => (
+                    {group.list.map((e, i) => (
                       <li key={i} className="flex gap-3 rounded-md border bg-card p-3">
                         <div className="mt-0.5 text-muted-foreground">{e.icon}</div>
                         <div className="flex-1 min-w-0">

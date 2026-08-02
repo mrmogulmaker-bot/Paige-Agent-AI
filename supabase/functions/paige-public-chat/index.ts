@@ -134,7 +134,11 @@ function buildPersona(pb: any, tenantName: string, fundingOn: boolean, brand: Br
   const name = clean(s(p.name)) || "Paige";
   const role = clean(s(p.role)) || "the assistant";
   const tone = clean(s(p.tone)) || "warm, direct, professional";
-  const domain = clean(s(p.domain)) || "this practice";
+  // §2 inclusive neutral (mirrors paige-ai-chat): the template renders "a ${domain}
+  // practice"; the old "this practice" fallback produced "a this practice practice" for
+  // any null-config tenant's public site. "professional services" reads cleanly and does
+  // not narrow the shared default to one vertical.
+  const domain = clean(s(p.domain)) || "professional services";
   const greeting = clean(s(p.greeting));
   const tenant = clean(tenantName) || "this practice";
   const probes = Array.isArray(pb?.probingQuestions) ? pb.probingQuestions : [];
