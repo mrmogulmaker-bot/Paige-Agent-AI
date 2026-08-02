@@ -96,6 +96,29 @@ type CatalogRow = {
   version: string | null;
 };
 
+// Pre-install "What's inside" preview, projected from the published manifest by
+// the marketplace_item_detail(slug) RPC (platform catalog content only, no tenant
+// data). has_version:false for roadmap cards → the preview renders nothing.
+type ItemDetail = {
+  slug: string;
+  name: string;
+  has_version: boolean;
+  version?: string | null;
+  persona?: { greeting: string | null; role: string | null; domain: string | null; tone: string | null } | null;
+  values?: string[] | null;
+  probing?: string[] | null;
+  journey_stages?: { label: string; display_order: number }[] | null;
+  skills?: string[] | null;
+  kb_docs?: string[] | null;
+};
+
+const SKILL_LABELS: Record<string, string> = {
+  draft_and_email_document: "Draft & email documents",
+  research_to_concept_brief: "Research → concept brief",
+};
+const prettySkill = (slug: string) =>
+  SKILL_LABELS[slug] ?? slug.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
 type TenantFeatures = {
   enabledSkills: string[];
   presetFundingOn: boolean;
@@ -580,6 +603,111 @@ function MarketplaceSkeleton() {
   );
 }
 
+/**
+ * Pre-install "What's inside" preview for a Blueprint/capability, fed by the
+ * marketplace_item_detail(slug) RPC. Its own component (own hook scope) because
+ * MarketplaceDetailDialog early-returns before any hooks (rules-of-hooks). §13:
+ * reflects the ACTUAL published manifest — no per-item hardcoding, renders nothing
+ * for roadmap cards (has_version:false) or manifests with no previewable content.
+ * §18: no new artifact-type tab/mode — it enriches the existing dialog in place.
+ */
+function BlueprintPreview({ slug }: { slug: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["marketplace_item_detail", slug],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("marketplace_item_detail" as never, { _slug: slug } as never);
+      if (error) throw error;
+      return (data as ItemDetail | null) ?? null;
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2 rounded-lg border border-border/70 bg-muted/40 p-3">
+        <div className="h-3 w-24 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+        <div className="h-3 w-full animate-pulse rounded bg-muted motion-reduce:animate-none" />
+        <div className="h-3 w-3/4 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+      </div>
+    );
+  }
+  if (!data || !data.has_version) return null;
+
+  const greeting = data.persona?.greeting ?? null;
+  const journey = data.journey_stages ?? [];
+  const probing = data.probing ?? [];
+  const skills = data.skills ?? [];
+  const kb = data.kb_docs ?? [];
+  if (!greeting && journey.length === 0 && skills.length === 0 && kb.length === 0) return null;
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border/70 bg-muted/40 p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What&apos;s inside</p>
+
+      {greeting && (
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">How Paige opens</p>
+          <p className="mt-1 leading-relaxed text-foreground/90">&ldquo;{greeting}&rdquo;</p>
+        </div>
+      )}
+
+      {journey.length > 0 && (
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Client journey &middot; {journey.length} stages
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {journey.map((st) => (
+              <span key={st.display_order} className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
+                {st.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {probing.length > 0 && (
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Paige probes for</p>
+          <ul className="mt-1 space-y-0.5">
+            {probing.slice(0, 3).map((q, i) => (
+              <li key={i} className="text-[13px] leading-snug text-muted-foreground">&mdash; {q}</li>
+            ))}
+            {probing.length > 3 && (
+              <li className="text-[12px] text-muted-foreground">+{probing.length - 3} more</li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {skills.length > 0 && (
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Skills switched on</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {skills.map((sk) => (
+              <span key={sk} className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
+                {prettySkill(sk)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {kb.length > 0 && (
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Knowledge added &middot; {kb.length} guides
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {kb.map((t) => (
+              <li key={t} className="text-[13px] leading-snug text-muted-foreground">&mdash; {t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The full detail view for one capability — opens when a card is clicked. */
 function MarketplaceDetailDialog({
   row, open, onOpenChange, isOn, available, lockedOn, saving, onToggle,
@@ -643,6 +771,7 @@ function MarketplaceDetailDialog({
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What this does</p>
               <p className="mt-1 leading-relaxed text-muted-foreground">{whatItAdds(row.item_type)}</p>
             </div>
+            <BlueprintPreview slug={row.slug} />
           </div>
         </DialogDescription>
 
