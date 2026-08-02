@@ -7,6 +7,7 @@ import { Send, Loader2, Clock, Paperclip } from "lucide-react";
 import paigeAvatar from "@/assets/paige-ai-avatar.png";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { parsePaigeChatError } from "@/lib/paigeChatError";
 import { DictationMicButton } from "@/components/voice/DictationMicButton";
 import { appendDictation } from "@/lib/voice/useDictation";
 import { ResponseFeedback } from "@/components/chat/ResponseFeedback";
@@ -329,7 +330,14 @@ const PaigeAIChatInner = ({
           setIsLoading(false);
           return;
         }
-        throw new Error("Failed to get response");
+        // #587 — read the structured { code, reason, recommendation } body and show the SPECIFIC
+        // message (e.g. a 15 MB size limit) instead of a generic "Failed to send message" toast.
+        const chatErr = await parsePaigeChatError(response);
+        toast({ title: chatErr.title, description: chatErr.description, variant: "destructive" });
+        setMessages(rollback);
+        setIsLoading(false);
+        if (enableHistory) setStreamingThreadId(null);
+        return;
       }
 
       const reader = response.body?.getReader();
