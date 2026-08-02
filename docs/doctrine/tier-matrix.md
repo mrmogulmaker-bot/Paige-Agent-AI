@@ -2,7 +2,7 @@
 
 > **Status and authority.** This document is a derived implementation reference for the
 > §51 "tier-parity railing." The directives in `CLAUDE.md` §9 (platform vs tenant seam),
-> §37 (producer inventory), §32 (dual-layer verification), and §200 (no hardcoded live
+> §37 (producer inventory), §32 (dual-layer verification), and platform-independence (no hardcoded live
 > ids) remain canonical. If this synthesis and `CLAUDE.md` differ, `CLAUDE.md` governs.
 > Every future §37 producer inventory, §32 verification walk, and crew brief points HERE
 > for the enumeration of who can call an endpoint and how their tenant resolves.
@@ -246,8 +246,8 @@ posture**, and **(d) permitted-RPC scoping**, each grounded in a named resolver 
 - `CLAUDE.md` §9 — platform vs tenant seam ("who is this for?").
 - `CLAUDE.md` §37 — producer inventory (this doc is the tier axis it crosses).
 - `CLAUDE.md` §32 — dual-layer verification (per-tier smoke walk).
-- `CLAUDE.md` §200 — no hardcoded live tenant/user ids (this doc names archetypes only).
-- `CLAUDE.md` §50 / §51 — tier-parity railing (the slice this doc grounds).
+- `CLAUDE.md` platform-independence — no hardcoded live tenant/user ids (this doc names archetypes only). *Owner-ruled but not yet a numbered § in `CLAUDE.md` — pending doctrine paste #591.*
+- `CLAUDE.md` §51 — tier-parity railing (the slice this doc grounds); its companion platform-impact-assessment directive is owner-ruled but not yet pasted (pending #591).
 - [`producer-inventory-template.md`](./producer-inventory-template.md) — the fillable §37 × tier grid.
 - [`compliance-checklist-template.md`](./compliance-checklist-template.md) — the six-row compliance gate.
 

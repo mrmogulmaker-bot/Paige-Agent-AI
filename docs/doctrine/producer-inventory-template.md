@@ -166,7 +166,7 @@ with Tier 3. When the change touches any child-tenant data, both directions must
 - `CLAUDE.md` §37 — producer inventory (the 8 caller classes + response-consumer rule).
 - `CLAUDE.md` §9 — tenant/operator seam.
 - `CLAUDE.md` §32 — dual-layer verification.
-- `CLAUDE.md` §200 — no hardcoded live ids (name tiers/archetypes, never live tenant/user ids).
-- `CLAUDE.md` §50 / §51 — tier-parity railing.
+- `CLAUDE.md` platform-independence — no hardcoded live ids (name tiers/archetypes, never live tenant/user ids). *Owner-ruled but not yet a numbered § in `CLAUDE.md` — pending doctrine paste #591.*
+- `CLAUDE.md` §51 — tier-parity railing; its companion platform-impact-assessment directive is owner-ruled but not yet pasted (pending #591).
 - [`tier-matrix.md`](./tier-matrix.md) — the canonical six tiers + live-grounded resolvers.
 - [`compliance-checklist-template.md`](./compliance-checklist-template.md) — the six-row gate.

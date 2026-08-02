@@ -2,7 +2,7 @@
 
 > **Status and authority.** The fixed six-row tier-matrix template the compliance/standards
 > officer (§5) fills for every change under the §51 tier-parity railing. `CLAUDE.md` §9, §37,
-> §32, §50/§51 remain canonical. Copy this file into the PR/handoff and fill it — a blank row
+> §32, and §51 remain canonical (§51's companion platform-impact directive is pending #591). Copy this file into the PR/handoff and fill it — a blank row
 > or a `fails` row **BLOCKS ship**. This is a gate, not a note.
 
 ## §51 — the six components (header checklist)
@@ -26,8 +26,9 @@ for the change under review. Confirm each before filling the six-row grid:
   a future session sees the tier surface at a glance (§12/§24). Tag: `______`
 
 **Cross-refs:** §9 (platform vs tenant seam) · §37 (producer inventory) · §32 (dual-layer +
-post-deploy verification) · §200 (no hardcoded live ids — name archetypes) · §50/§51
-(tier-parity railing).
+post-deploy verification) · platform-independence (no hardcoded live ids — name archetypes;
+owner-ruled, pending §-number via #591) · §51 (tier-parity railing; its companion
+platform-impact-assessment directive pending #591).
 
 ## Change under review
 
@@ -93,7 +94,7 @@ reports, does not rubber-stamp) and §32 (verification is proven, not assumed).
 - `CLAUDE.md` §9 — platform vs tenant seam.
 - `CLAUDE.md` §37 — producer inventory.
 - `CLAUDE.md` §32 — dual-layer + post-deploy verification.
-- `CLAUDE.md` §200 — no hardcoded live tenant/user ids (name archetypes).
-- `CLAUDE.md` §50 / §51 — tier-parity railing.
+- `CLAUDE.md` platform-independence — no hardcoded live tenant/user ids (name archetypes). *Owner-ruled but not yet a numbered § in `CLAUDE.md` — pending doctrine paste #591.*
+- `CLAUDE.md` §51 — tier-parity railing; its companion platform-impact-assessment directive is owner-ruled but not yet pasted (pending #591).
 - [`tier-matrix.md`](./tier-matrix.md) — the canonical six + live-grounded resolvers.
 - [`producer-inventory-template.md`](./producer-inventory-template.md) — the §37 × tier grid.
