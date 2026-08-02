@@ -4060,12 +4060,16 @@ mcp.tool("bulk_send_template_email", {
 
 mcp.tool("list_journey_stages", {
   description:
-    "List the canonical Paige journey stages (slug, label, display_order, color) used by the 6-stage client journey tracker. Reference these slugs when calling `advance_contact_journey_stage`.",
+    "List this tenant's client-journey stages (slug, label, display_order, color). Returns the tenant's own installed journey when they have one (e.g. from a Practice Blueprint), otherwise the platform-default stages. Reference these slugs when calling `advance_contact_journey_stage`.",
   inputSchema: z.object({}).optional() as any,
   handler: async () => {
-    const { data, error } = await admin.from("paige_journey_stages")
-      .select("slug, label, display_order, color_hex, description")
-      .order("display_order", { ascending: true });
+    // Blueprints REPOINT-READER: prefer the tenant's installed journey (tenant_journey_stages),
+    // COALESCE-falling-back to the global paige_journey_stages defaults when they have none.
+    // tenant_id comes from the already-authorized actor context (never request input), so there
+    // is no cross-tenant read here (§9). The RPC also returns stage_id_global (real int for global
+    // rows, null for tenant-only slugs) — this reference list ignores it, which is harmless.
+    const tenant_id = await actorTenantId();
+    const { data, error } = await admin.rpc("get_tenant_journey_stages", { _tenant: tenant_id });
     if (error) return err(error.message);
     return ok({ items: data ?? [], count: (data ?? []).length });
   },

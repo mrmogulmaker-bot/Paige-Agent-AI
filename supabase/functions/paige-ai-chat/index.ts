@@ -1629,7 +1629,12 @@ JSON:`;
     // === Tenant persona context (doctrine §7/§9) — resolve the caller's Playbook. ===
     // SECURITY DEFINER RPC keyed on auth.uid(); call on the USER-scoped client.
     // Never throw — default to the neutral persona so a client is never blocked.
-    const NEUTRAL_PERSONA = { name: "Paige", role: "your team's assistant", tone: "warm, direct, professional", domain: "your practice" };
+    // §2 inclusive neutral: when a tenant has no playbook_config, `domain` must read
+    // naturally in the persona template ("a ${domain} practice" / "Everything you say
+    // fits ${domain}") WITHOUT narrowing to one vertical. "professional services" covers
+    // the whole client-based audience (coaches, consultants, agencies, advisors) and
+    // avoids the "a your practice practice" double-word bug.
+    const NEUTRAL_PERSONA = { name: "Paige", role: "your team's assistant", tone: "warm, direct, professional", domain: "professional services" };
     function buildBrandSection(brand: Record<string, any> | null, tenant: string): string {
       const b = brand || {};
       const lines = [
