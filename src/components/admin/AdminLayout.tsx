@@ -27,6 +27,7 @@ import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { AccountSwitcher } from "@/components/admin/AccountSwitcher";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useProviderAttribution } from "@/hooks/useProviderAttribution";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 
@@ -250,6 +251,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const isClientsHub = location.pathname.startsWith("/admin/clients-hub");
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
   const { isPlatformOwner, isPlatformStaff, activeTenantId, activeTenant } = useTenantContext();
+  // ATTRIBUTION column, Sub-account tier row (#221). Non-null only for a sub-account
+  // operator; null (→ nothing rendered) for God / Agency / Standalone (§51).
+  const { providedBy } = useProviderAttribution();
   // Funding surfaces are an opt-in tenant offer (§2/§9) — hidden unless this
   // tenant has chosen the funding preset (which flips the funding_readiness
   // feature). Generic coaching/consulting/agency tenants never see them.
@@ -368,6 +372,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         {godMode && <div className="h-0.5 w-full bg-accent" aria-hidden />}
         {/* Row 1: brand + utilities */}
         <div className="flex items-center justify-between gap-3 px-3 md:px-6 h-14">
+          <div className="flex items-center gap-2 min-w-0">
           <Link to="/admin" className="flex items-center gap-2 min-w-0">
             <PaigeMark className="h-8 w-8 flex-shrink-0" />
             <span className="font-bold text-sm tracking-tight truncate">{PLATFORM.adminName}</span>
@@ -406,6 +411,17 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               </Badge>
             )}
           </Link>
+            {/* "Provided by <agency>" — sub-account attribution (#221 ATTRIBUTION
+                column). Neutral, never gold (§11); a hairline divider gives it
+                definition (§27). Only renders when the resolver returns a provider,
+                so God / Agency / Standalone show nothing (§51). */}
+            {providedBy && (
+              <span className="hidden lg:inline-flex items-center gap-1 pl-2 ml-0.5 border-l border-primary-foreground/15 text-[10px] leading-none truncate max-w-[200px]">
+                <span className="text-primary-foreground/45">Provided by</span>
+                <span className="font-medium text-primary-foreground/85 truncate">{providedBy}</span>
+              </span>
+            )}
+          </div>
 
           {/* Mobile: current section + dialer + menu trigger */}
           <div className="flex md:hidden items-center gap-2">
