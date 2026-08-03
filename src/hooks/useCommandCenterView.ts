@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { CommandCenterView } from "@/lib/roleViews/commandCenterRegistry";
 
 // Persist the Command Center My/Team/Business view per user, mirroring the proven
-// RoleLensContext localStorage shape (lazy-init → snap-to-valid → write-on-change).
+// proven localStorage shape (lazy-init → snap-to-valid → write-on-change).
 // Pure UI preference; RLS + the tenant-scoped RPCs still enforce real access.
 //
 // storageKey defaults to the Command Center key so every existing caller is

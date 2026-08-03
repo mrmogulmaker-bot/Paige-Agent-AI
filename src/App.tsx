@@ -42,7 +42,6 @@ import { MetaPixel } from "./components/seo/MetaPixel";
 import { TenantProvider } from "./hooks/useTenantContext";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { DashboardModeProvider } from "./contexts/DashboardModeContext";
-import { RoleLensProvider } from "./contexts/RoleLensContext";
 import { BusinessProvider } from "./contexts/BusinessContext";
 import { ImpersonationProvider } from "./contexts/ImpersonationContext";
 import { ClientOnlyRouteGuard } from "./components/auth/ClientOnlyRouteGuard";
@@ -188,7 +187,6 @@ const App = () => (
       <SubscriptionProvider>
         <BusinessProvider>
         <DashboardModeProvider>
-        <RoleLensProvider>
         <ImpersonationProvider>
         <Toaster />
         <Sonner />
@@ -323,7 +321,6 @@ const App = () => (
           <GatedChatbot />
         </BrowserRouter>
         </ImpersonationProvider>
-        </RoleLensProvider>
         </DashboardModeProvider>
         </BusinessProvider>
       </SubscriptionProvider>

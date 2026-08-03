@@ -30,7 +30,6 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 
-import { useRoleLens } from "@/contexts/RoleLensContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
 import { PaigeMark } from "@/components/brand/PaigeMark";
@@ -249,7 +248,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // flex item and let each child surface choose its one scroll owner; padding
   // belongs inside ClientsTabsLayout so a negative-margin compensation is never needed.
   const isClientsHub = location.pathname.startsWith("/admin/clients-hub");
-  const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
   const { isPlatformOwner, isPlatformStaff, activeTenantId, activeTenant } = useTenantContext();
   // Funding surfaces are an opt-in tenant offer (§2/§9) — hidden unless this
@@ -297,10 +295,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // Publish this staff member's live presence while they're in the admin
   // workspace (#148). The heartbeat self-resolves auth.uid() server-side.
   usePresenceHeartbeat(true);
-  // When a multi-hat user picks the Coach lens, treat the UI as coach-scoped
-  // even if their real role is admin. Real permissions still come from RLS.
-  const effectiveRole: "admin" | "coach" =
-    userRole === "admin" && canSwitch && lens === "coach" ? "coach" : userRole;
+  // #219 "Role IS the view": a user's view is a function of the roles they hold —
+  // there is no manual "View as" lens. effectiveRole is simply the caller-resolved
+  // role (a multi-hat admin+coach resolves to the admin superset and sees the union).
+  // Real permissions always come from RLS. (Per-role "customize view" is the gated
+  // §219-B Roles slice; richer multi-role identity display lands there too.)
+  const effectiveRole: "admin" | "coach" = userRole;
   // Both the tenant "... More" overflow (Slice 1c-v) AND the God console "Workspace
   // tools" overflow (Finding 4) are now DELETED — every operator destination re-homes
   // under one of the 7 hubs + its gate-aware sub-tab strip. No surface uses the More
@@ -371,12 +371,9 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           <Link to="/admin" className="flex items-center gap-2 min-w-0">
             <PaigeMark className="h-8 w-8 flex-shrink-0" />
             <span className="font-bold text-sm tracking-tight truncate">{PLATFORM.adminName}</span>
-            {/* Passive identity chip only. The multi-hat "View as" switcher used
-                to live here as a DropdownMenu nested INSIDE this <Link> — its
-                trigger click bubbled to the anchor and navigated. It's relocated
-                to the header profile dropdown per handoff §4 (Slice 1c-iii); the
-                chip that hosted it was a switcher affordance, not a lens-status
-                indicator, so nothing ambient is lost for the canSwitch case. */}
+            {/* Passive identity chip only — shows the caller's role. #219 "role IS
+                the view" removed the "View as" lens switcher entirely; this is a
+                plain status indicator, never an affordance. */}
             {godMode ? (
               <>
                 <Badge
@@ -400,14 +397,14 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               >
                 {activeTenant.name}
               </Badge>
-            ) : !canSwitch ? (
+            ) : (
               <Badge
                 variant="outline"
                 className="hidden sm:inline-flex ml-2 text-[10px] font-medium capitalize border-accent/40 text-accent bg-transparent"
               >
                 {userRole}
               </Badge>
-            ) : null}
+            )}
           </Link>
 
           {/* Mobile: current section + dialer + menu trigger */}
@@ -444,11 +441,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             <AdminBridgeBell />
             <ThemeToggle variant="on-primary" />
 
-            {/* Profile dropdown (Slice 1c-iii): identity + View-as (relocated) +
-                Workspace settings (admin-only) + Sign out. Replaces the bare
-                Sign-out icon. Personal settings + Help/Docs are intentionally
-                omitted — no destination exists yet (filed follow-ups); shipping
-                them would be dead links (§11/§13). */}
+            {/* Profile dropdown (Slice 1c-iii): identity + Workspace settings
+                (admin-only) + Sign out. Replaces the bare Sign-out icon. The
+                "View as" lens switcher was removed (#219 "role IS the view").
+                Personal settings + Help/Docs are intentionally omitted — no
+                destination exists yet (filed follow-ups); shipping them would be
+                dead links (§11/§13). */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -480,21 +478,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                     <span className="capitalize">{userRole}</span>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-
-                  {canSwitch && (
-                    <>
-                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                        View as
-                      </DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => setLens("admin")} className={lens === "admin" ? "bg-muted" : ""}>
-                        <UserCog className="w-4 h-4 mr-2" /> Admin
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setLens("coach")} className={lens === "coach" ? "bg-muted" : ""}>
-                        <Users className="w-4 h-4 mr-2" /> Coach
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
 
                   {effectiveRole === "admin" && (
                     <>
