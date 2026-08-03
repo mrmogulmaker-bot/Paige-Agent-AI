@@ -42,7 +42,9 @@ export interface PaigeTurn {
 // The generated Supabase types don't yet carry these owner-chat rows/RPCs; the
 // casts keep the call sites honest without loosening the whole client.
 const db = supabase as unknown as {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   from: (t: string) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: any; error: any }>;
 };
 
@@ -52,10 +54,15 @@ export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: s
   // Platform mode (#130 / §45): the operator's tenant-less "Your Paige" — enabled
   // without a tenant. Tenant mode still requires an active tenant for §9 isolation.
   const enabled = !!callerUserId && (platform || !!tenantId);
+  // Cache-slot suffix: platform threads (tenant_id NULL) and tenant threads never
+  // share a slot. EVERY read + mutation keys on this — not raw tenantId — or a
+  // platform-mode create/rename/archive/delete would invalidate the tenant slot
+  // (tenantId is NULL in platform mode) and never refresh the platform rail (#130).
+  const keySuffix = platform ? "platform" : tenantId;
 
   const threadsQuery = useQuery({
     // platform threads (tenant_id NULL) and tenant threads never share a cache slot.
-    queryKey: ["paige-threads", callerUserId, platform ? "platform" : tenantId],
+    queryKey: ["paige-threads", callerUserId, keySuffix],
     enabled,
     queryFn: async (): Promise<PaigeThread[]> => {
       // §9 tenant isolation: scope the owner sidebar to the ACTIVE tenant. Without
@@ -105,9 +112,9 @@ export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: s
     if (error) throw error;
     // The RPC returns the new thread id (uuid).
     const id = typeof data === "string" ? data : data?.id ?? data;
-    await qc.invalidateQueries({ queryKey: ["paige-threads", callerUserId, tenantId] });
+    await qc.invalidateQueries({ queryKey: ["paige-threads", callerUserId, keySuffix] });
     return id as string;
-  }, [callerUserId, tenantId, qc]);
+  }, [callerUserId, keySuffix, platform, qc]);
 
   const renameThread = useMutation({
     mutationFn: async ({ id, title }: { id: string; title: string }) => {
@@ -115,16 +122,16 @@ export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: s
       if (error) throw error;
     },
     onMutate: async ({ id, title }) => {
-      const key = ["paige-threads", callerUserId, tenantId];
+      const key = ["paige-threads", callerUserId, keySuffix];
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<PaigeThread[]>(key);
       qc.setQueryData<PaigeThread[]>(key, (old) => (old ?? []).map((t) => (t.id === id ? { ...t, title } : t)));
       return { prev };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["paige-threads", callerUserId, tenantId], ctx.prev);
+      if (ctx?.prev) qc.setQueryData(["paige-threads", callerUserId, keySuffix], ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["paige-threads", callerUserId, tenantId] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["paige-threads", callerUserId, keySuffix] }),
   });
 
   const archiveThread = useMutation({
@@ -133,16 +140,16 @@ export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: s
       if (error) throw error;
     },
     onMutate: async (id) => {
-      const key = ["paige-threads", callerUserId, tenantId];
+      const key = ["paige-threads", callerUserId, keySuffix];
       await qc.cancelQueries({ queryKey: key });
       const prev = qc.getQueryData<PaigeThread[]>(key);
       qc.setQueryData<PaigeThread[]>(key, (old) => (old ?? []).filter((t) => t.id !== id));
       return { prev };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["paige-threads", callerUserId, tenantId], ctx.prev);
+      if (ctx?.prev) qc.setQueryData(["paige-threads", callerUserId, keySuffix], ctx.prev);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["paige-threads", callerUserId, tenantId] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["paige-threads", callerUserId, keySuffix] }),
   });
 
   /** Hard delete — irreversible (turns CASCADE). Confirm-gated at the call site. */
@@ -151,13 +158,13 @@ export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: s
       const { error } = await db.from("paige_chat_threads").delete().eq("id", id);
       if (error) throw error;
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["paige-threads", callerUserId, tenantId] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["paige-threads", callerUserId, keySuffix] }),
   });
 
   /** Called after a turn persists so the rail reorders + picks up the auto-title. */
   const onTurnPersisted = useCallback(() => {
-    void qc.invalidateQueries({ queryKey: ["paige-threads", callerUserId, tenantId] });
-  }, [callerUserId, tenantId, qc]);
+    void qc.invalidateQueries({ queryKey: ["paige-threads", callerUserId, keySuffix] });
+  }, [callerUserId, keySuffix, qc]);
 
   return {
     threads: threadsQuery.data ?? [],
