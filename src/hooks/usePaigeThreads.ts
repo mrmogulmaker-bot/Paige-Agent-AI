@@ -46,13 +46,16 @@ const db = supabase as unknown as {
   rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: any; error: any }>;
 };
 
-export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: string | null }) {
-  const { callerUserId, tenantId } = opts;
+export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: string | null; platform?: boolean }) {
+  const { callerUserId, tenantId, platform = false } = opts;
   const qc = useQueryClient();
-  const enabled = !!callerUserId && !!tenantId;
+  // Platform mode (#130 / §45): the operator's tenant-less "Your Paige" — enabled
+  // without a tenant. Tenant mode still requires an active tenant for §9 isolation.
+  const enabled = !!callerUserId && (platform || !!tenantId);
 
   const threadsQuery = useQuery({
-    queryKey: ["paige-threads", callerUserId, tenantId],
+    // platform threads (tenant_id NULL) and tenant threads never share a cache slot.
+    queryKey: ["paige-threads", callerUserId, platform ? "platform" : tenantId],
     enabled,
     queryFn: async (): Promise<PaigeThread[]> => {
       // §9 tenant isolation: scope the owner sidebar to the ACTIVE tenant. Without
@@ -60,11 +63,15 @@ export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: s
       // carries tenantId) but return the same rows, seeping the owner's other-tenant
       // "Your Paige" threads into the child. `enabled` gates on tenantId, so this is
       // never undefined here — no tenant context ⇒ query disabled ⇒ no threads.
-      const { data, error } = await db
+      // Platform mode (#130): list the operator's NULL-tenant lens='platform' threads
+      // instead — RLS (is_platform_owner()) keeps these visible only to the operator.
+      let q = db
         .from("paige_chat_threads")
-        .select("id,title,last_message_at,message_count,is_archived,updated_at")
-        .eq("tenant_id", tenantId)
-        .eq("lens", "coach")
+        .select("id,title,last_message_at,message_count,is_archived,updated_at");
+      q = platform
+        ? q.is("tenant_id", null).eq("lens", "platform")
+        : q.eq("tenant_id", tenantId).eq("lens", "coach");
+      const { data, error } = await q
         .is("contact_id", null)
         .is("studio_session_id", null) // exclude Studio-session threads — they live in the Studio gallery (§18)
         .eq("is_archived", false)
@@ -91,7 +98,7 @@ export function usePaigeThreads(opts: { callerUserId: string | null; tenantId: s
     const seed = (firstText ?? "").trim().replace(/\s+/g, " ").split(" ").slice(0, 7).join(" ").slice(0, 60);
     const { data, error } = await db.rpc("paige_chat_thread_create", {
       p_contact_id: null,
-      p_lens: "coach",
+      p_lens: platform ? "platform" : "coach",
       p_title: seed || "New chat",
       p_consent_snapshot: null,
     });

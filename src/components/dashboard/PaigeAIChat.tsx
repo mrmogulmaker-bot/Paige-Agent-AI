@@ -87,6 +87,10 @@ export interface PaigeAIChatProps {
    *  every conversation, and rehydrate on reload. Off by default — legacy and
    *  client-focused mounts keep their exact single-session behavior. */
   enableHistory?: boolean;
+  /** Platform-operator mode (#130 / §45): the Super Admin's tenant-less Paige.
+   *  Threads are created/listed with lens='platform' + NULL tenant, so this works
+   *  with no active tenant. Off by default — every tenant mount is unchanged. */
+  platform?: boolean;
 }
 
 const PaigeAIChatInner = ({
@@ -100,6 +104,7 @@ const PaigeAIChatInner = ({
   onTrace,
   hideReasoningStrip = false,
   enableHistory = false,
+  platform = false,
 }: PaigeAIChatProps) => {
   // The tenant's authored persona names the assistant in the default header —
   // audience-broad, voice-compliant, never a hardcoded vertical (doctrine §2/§3).
@@ -151,7 +156,7 @@ const PaigeAIChatInner = ({
   // ── Multi-chat history (#94) — owner "Your Paige" only (enableHistory). ──
   const scopedUserId = useScopedUserId();
   const { activeTenantId } = useTenantContext();
-  const threadsApi = usePaigeThreads({ callerUserId: scopedUserId, tenantId: activeTenantId });
+  const threadsApi = usePaigeThreads({ callerUserId: scopedUserId, tenantId: activeTenantId, platform });
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [streamingThreadId, setStreamingThreadId] = useState<string | null>(null);
   const [mobileRailOpen, setMobileRailOpen] = useState(false);
