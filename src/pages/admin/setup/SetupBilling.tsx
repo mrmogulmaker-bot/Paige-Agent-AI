@@ -8,7 +8,7 @@
 // header (no hero), gold spent ONLY on the Subscribe act.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { CreditCard, Check, CheckCircle2, Users } from "lucide-react";
+import { CreditCard, Check, CheckCircle2, Users, Building2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { PageShell, PageHeader, SectionCard, EmptyState, StatePill } from "@/components/ui/page";
@@ -16,6 +16,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 type BillingPeriod = "monthly" | "annual";
 
@@ -62,6 +63,13 @@ function formatDate(value: string | null | undefined): string | null {
 export default function SetupBilling() {
   const [params] = useSearchParams();
   const checkoutState = params.get("subscribe"); // "success" | "cancelled" | null
+
+  // §9/§217: a sub-account under an agency does NOT independently subscribe to a
+  // platform plan — the parent agency's plan covers it (§17 unlimited-sub NRR, §38
+  // money boundary). Resolve tenant scope FIRST so the render decision is made before
+  // any plan fetch and we never flash the chooser then swap it out.
+  const { activeTenant, loading: tenantLoading } = useTenantContext();
+  const isSubAccount = activeTenant?.parent_tenant_id != null;
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -116,8 +124,15 @@ export default function SetupBilling() {
   }, []);
 
   useEffect(() => {
+    // Hold until tenant scope resolves (no chooser flash), and skip the platform-plan
+    // fetch entirely for a sub-account — it has no platform plan to choose (§217).
+    if (tenantLoading) return;
+    if (isSubAccount) {
+      setLoading(false);
+      return;
+    }
     void load();
-  }, [load]);
+  }, [tenantLoading, isSubAccount, load]);
 
   const currentPlan = useMemo(() => {
     if (!currentSub) return null;
@@ -171,6 +186,53 @@ export default function SetupBilling() {
     },
     [canManage, period, load],
   );
+
+  // While tenant scope resolves, show the skeleton under a plain header — never the
+  // chooser (which would flash for a sub-account before the swap).
+  if (tenantLoading) {
+    return (
+      <PageShell width="wide">
+        <PageHeader variant="plain" icon={CreditCard} eyebrow="Finance" title="Billing" />
+        <BillingSkeleton />
+      </PageShell>
+    );
+  }
+
+  // §217 Surface 1 STRIP: a sub-account's platform billing is the agency's, not its own.
+  // Honest EmptyState that cross-references the surfaces this admin CAN use (§36):
+  // their own client billing (Storefront, mounted under Setup › General) and — once it
+  // exists (#224) — a usage view. No jargon, no finance/credit vocab (§2), no dead link.
+  if (isSubAccount) {
+    return (
+      <PageShell width="wide">
+        <PageHeader
+          variant="plain"
+          icon={CreditCard}
+          eyebrow="Finance"
+          title="Billing"
+          description="Your plan is managed by your parent agency."
+        />
+        <SectionCard>
+          <EmptyState
+            icon={Building2}
+            tone="muted"
+            title="Billing for the platform is managed by your parent agency"
+            description="Your workspace runs on your agency's plan, so there's nothing to subscribe to here. You can still manage your own client billing, and a usage view is on the way."
+            action={
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <Button asChild variant="outline">
+                  <Link to="/admin/setup/general">Manage your client billing</Link>
+                </Button>
+                <span className="inline-flex items-center rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  Your usage — coming soon
+                </span>
+              </div>
+            }
+          />
+        </SectionCard>
+      </PageShell>
+    );
+  }
 
   return (
     <PageShell width="wide">
