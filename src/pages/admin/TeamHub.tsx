@@ -14,7 +14,9 @@
 // realtime filter strings. View filters are client-side and never leak higher-tier scope to
 // a lower role.
 import { useMemo } from "react";
-import { PageShell, PageHeader } from "@/components/ui/page";
+import { useSearchParams } from "react-router-dom";
+import { BarChart3, ArrowLeftRight, Wallet } from "lucide-react";
+import { PageShell, PageHeader, SectionNote, StatePill } from "@/components/ui/page";
 import { RoleGate } from "@/components/auth/RoleGate";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -33,7 +35,6 @@ import { AvailabilityRail } from "@/components/team/AvailabilityRail";
 import { HandoffQueuePanel } from "@/components/team/HandoffQueuePanel";
 import { MembersRolesPanel } from "@/components/team/MembersRolesPanel";
 import { AssignmentsPanel } from "@/components/team/AssignmentsPanel";
-import { CompTrackingPanel } from "@/components/team/CompTrackingPanel";
 
 function TeamFloor() {
   const { roles, userId } = useUserRoles();
@@ -74,23 +75,30 @@ function TeamFloor() {
   }, [handoffs.items, effectiveMine, userId, roles]);
 
   const ownerUnscoped = isPlatformOwner && !activeTenantId;
+  const hasHandoffs = handoffItems.length > 0;
+
+  // H2: /admin/coaches redirects to /admin/team?role=coach — open the roster coach-filtered.
+  const [params] = useSearchParams();
+  const roleParam = params.get("role");
 
   return (
     <PageShell width="wide">
       <PageHeader
         variant="plain"
         title="Team"
-        description="Your team's live operations floor — scoreboard, availability, and handoffs in one place."
+        description="Your team's live operations floor — staff, availability, and handoffs in one place."
         actions={canSwitch ? <TeamViewToggle views={availableViews} value={view} onChange={setView} /> : undefined}
       />
 
+      {/* TIER 1 — the real work leads: the staff console + live availability, then
+          a populated handoff queue (H5 — kept proactively visible, not buried), then
+          assignments. */}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <TeamScoreboard
-          rows={scoreboard.rows}
-          loading={scoreboard.loading}
-          memberById={roster.memberById}
-          rolesByUser={roster.rolesByUser}
-          restrictToUserId={restrictToUserId}
+        <MembersRolesPanel
+          members={roster.members}
+          loading={roster.loading}
+          refresh={roster.refresh}
+          initialRoleFilter={roleParam}
         />
         <AvailabilityRail
           tenantId={activeTenantId}
@@ -99,18 +107,50 @@ function TeamFloor() {
         />
       </div>
 
-      <HandoffQueuePanel
-        items={handoffItems}
-        memberById={roster.memberById}
-        refresh={handoffs.refresh}
-        ownerUnscoped={ownerUnscoped}
-      />
-
-      <MembersRolesPanel members={roster.members} loading={roster.loading} />
+      {hasHandoffs && (
+        <HandoffQueuePanel
+          items={handoffItems}
+          memberById={roster.memberById}
+          refresh={handoffs.refresh}
+          ownerUnscoped={ownerUnscoped}
+        />
+      )}
 
       <AssignmentsPanel memberById={roster.memberById} restrictToUserId={restrictToUserId} />
 
-      <CompTrackingPanel />
+      {/* TIER 2 — quiet sections: present as real cards when a producer has written,
+          collapse to a one-line note when empty (no viewport-eating plates). */}
+      {!scoreboard.loading && scoreboard.rows.length > 0 ? (
+        <TeamScoreboard
+          rows={scoreboard.rows}
+          loading={scoreboard.loading}
+          memberById={roster.memberById}
+          rolesByUser={roster.rolesByUser}
+          restrictToUserId={restrictToUserId}
+        />
+      ) : !scoreboard.loading ? (
+        <SectionNote icon={BarChart3}>
+          Team scoreboard — rep performance populates here once your reps start recording.
+        </SectionNote>
+      ) : null}
+
+      {!hasHandoffs && (ownerUnscoped ? (
+        <HandoffQueuePanel
+          items={handoffItems}
+          memberById={roster.memberById}
+          refresh={handoffs.refresh}
+          ownerUnscoped={ownerUnscoped}
+        />
+      ) : (
+        <SectionNote icon={ArrowLeftRight}>
+          Handoff queue — leads teed up to move between teammates land here to accept.
+        </SectionNote>
+      ))}
+
+      {/* FOOTER — reserved roadmap capability as one muted strip, never a full card. */}
+      <SectionNote icon={Wallet} action={<StatePill state="roadmap">Roadmap</StatePill>}>
+        Compensation — commission, splits, and payouts will run from here.
+      </SectionNote>
     </PageShell>
   );
 }

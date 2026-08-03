@@ -85,7 +85,7 @@ const KnowledgeBaseReviewQueue = lazy(() => import("@/components/dashboard/admin
 const LenderBureauManager = lazy(() => import("@/components/dashboard/admin/LenderBureauManager").then(m => ({ default: m.LenderBureauManager })));
 const FundingPortfolioView = lazy(() => import("@/components/dashboard/admin/FundingPortfolioView").then(m => ({ default: m.FundingPortfolioView })));
 const FundingPipelineView = lazy(() => import("@/components/dashboard/admin/FundingPipelineView").then(m => ({ default: m.FundingPipelineView })));
-// UserManagement removed in Ship #3 / Task #15 — canonical Team & Roles is /admin/members (MembersAdmin).
+// UserManagement removed in Ship #3 / Task #15 — canonical Team & Roles is /admin/team (TeamHub).
 const PlaybookAdmin = lazy(() => import("@/pages/admin/PlaybookAdmin"));
 const Marketplace = lazy(() => import("@/pages/admin/Marketplace"));
 const PortalStudio = lazy(() => import("@/pages/admin/PortalStudio"));
@@ -142,7 +142,6 @@ const SupportAdmin = lazy(() => import("@/pages/admin/SupportAdmin"));
 const ContactsAdmin = lazy(() => import("@/pages/admin/ContactsAdmin"));
 const ContactDetail = lazy(() => import("@/pages/admin/ContactDetail"));
 const ClientJourney = lazy(() => import("@/pages/admin/ClientJourney"));
-const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
 // PipelineAdmin is reused by the Clients container's Pipeline tab (ClientsPipelinePane
 // imports it directly); /admin/pipeline 301-redirects into that tab.
 const PipelineSettings = lazy(() => import("@/pages/admin/PipelineSettings"));
@@ -214,7 +213,6 @@ const SmartCreditIntegrationConfig = lazy(() => import("@/pages/admin/SmartCredi
 const OwnerCreditAdmin = lazy(() => import("@/pages/admin/OwnerCreditAdmin"));
 const PlaidIntegrationConfig = lazy(() => import("@/pages/admin/PlaidIntegrationConfig"));
 const BankingAdmin = lazy(() => import("@/pages/admin/BankingAdmin"));
-const MembersAdmin = lazy(() => import("@/pages/admin/MembersAdmin"));
 const FundingLensHub = lazy(() => import("@/pages/admin/FundingLensHub"));
 
 
@@ -458,9 +456,8 @@ const Admin = () => {
             TasksAdmin page is retired from the router; notifications and any
             saved deep-links resolve to Planning. */}
         <Route path="tasks" element={<Navigate to="/admin/planning" replace />} />
-        <Route path="coaches" element={
-          <Suspense fallback={<SuspenseFallback />}><CoachesAdmin /></Suspense>
-        } />
+        {/* #616: Coaches folded into the one Team home; coach roster opens filtered. */}
+        <Route path="coaches" element={<Navigate to="/admin/team?role=coach" replace />} />
         <Route path="growth" element={<Navigate to="/admin/campaigns?tab=pages" replace />} />
         <Route path="growth/*" element={<Navigate to="/admin/campaigns?tab=pages" replace />} />
         {/* sub-agents · skills · actions · playbook are absorbed into the Paige
@@ -777,9 +774,8 @@ const Admin = () => {
         <Route path="banking" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><BankingAdmin /></Suspense></AdminOnly>
         } />
-        <Route path="members" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><MembersAdmin /></Suspense></AdminOnly>
-        } />
+        {/* #616: Members & Roles consolidated into the one Team home (/admin/team). */}
+        <Route path="members" element={<Navigate to="/admin/team" replace />} />
         <Route path="funding-lens" element={
           <FundingRoute><Suspense fallback={<SuspenseFallback />}><FundingLensHub /></Suspense></FundingRoute>
         } />
