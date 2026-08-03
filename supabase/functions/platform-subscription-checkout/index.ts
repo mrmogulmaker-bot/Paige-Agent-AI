@@ -168,6 +168,34 @@ Deno.serve(async (req) => {
     tenantId = prof?.active_tenant_id ?? null;
   }
 
+  // ── §217 SUB-ACCOUNT REJECT (server-derived, never body-trusted) ───────────────
+  // A sub-account under an agency does NOT independently subscribe to a platform plan
+  // — the parent agency's plan covers it (§9 tenant seam, §17 unlimited-sub NRR, §38
+  // money boundary). If the RESOLVED tenant carries a parent, refuse BEFORE any Stripe
+  // call, on BOTH the grandfathered and body-override(owner) paths. `tenantId` is null
+  // here only for onboarding (no workspace yet) — nothing to reject, and the onboarding
+  // branch below already restricts owned-tenant grandfathering to top-level tenants.
+  // This fires BEFORE invite-token resolution ON PURPOSE: a super-admin trial invite is
+  // granted at the AGENCY level, never to a sub-account, so a sub-account is refused
+  // even with an invite. DISTINCT from the onboarding branch's `parent_tenant_id IS NULL`
+  // owned-tenant *filter* (~:281, which selects which owned top-level tenant to
+  // grandfather) — this is a separate REJECT on an already-resolved sub-account tenant.
+  if (tenantId) {
+    const { data: scopeRow, error: scopeErr } = await admin
+      .from("tenants")
+      .select("parent_tenant_id")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (scopeErr) return json(400, { error: scopeErr.message });
+    if (scopeRow?.parent_tenant_id) {
+      return json(403, {
+        error: "sub_account_billing_managed_by_agency",
+        detail:
+          "This workspace runs on its parent agency's plan. Platform billing is managed by the agency — you can manage your own client billing under Setup.",
+      });
+    }
+  }
+
   // ── INVITE TOKEN (super-admin 30-day trial invite) ─────────────────────────────
   // Optional signed invite. When present, plan + trial length are derived
   // AUTHORITATIVELY from the token (NEVER the body), so a super-admin invite grants
