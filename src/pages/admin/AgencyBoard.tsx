@@ -228,10 +228,11 @@ export default function AgencyBoard() {
   };
 
   // Invite the sub-account's owner. Mints a `subaccount_owner` invite ON THE CHILD
-  // (auth passes: the agency owner is the child's owner + a member → is_tenant_admin
-  // is true), bound to the owner's email, then emails the child/agency-branded /join
-  // link via send-portal-invite. On accept they become the child's ADMIN — the
-  // agency stays owner_user_id and keeps white-label control. No clients row.
+  // (auth passes via agency_can_manage_child: the agency owner governs the child through
+  // the parent chain, without holding a child roster row — #215), bound to the owner's
+  // email, then emails the child/agency-branded /join link via send-portal-invite. On
+  // accept they become the child's ADMIN. The agency keeps white-label control by walking
+  // the parent chain (can_manage_tenant_brand), not via child ownership. No clients row.
   const sendOwnerInvite = async () => {
     if (!inviteFor) return;
     const email = inviteEmail.trim().toLowerCase();
@@ -607,7 +608,7 @@ export default function AgencyBoard() {
                     <div className="truncate font-medium text-foreground">{s.name}</div>
                     <div className="text-xs text-muted-foreground">
                       /{s.slug}
-                      {s.account_type !== "standalone" && (
+                      {s.account_type !== "standalone" && s.account_type !== "sub_account" && (
                         <span className="capitalize"> · {s.account_type}</span>
                       )}
                     </div>
@@ -752,9 +753,9 @@ export default function AgencyBoard() {
           <DialogHeader>
             <DialogTitle>Invite the owner of {inviteFor?.name ?? "this sub-account"}</DialogTitle>
             <DialogDescription>
-              They'll get a branded link to set up their account and take the reins as this
-              workspace's admin. You stay the owner and keep full control — hand off the day-to-day,
-              not the keys.
+              They'll get a branded link to set up their account and run this workspace day-to-day
+              as its admin. You keep full control from your agency dashboard — hand off the
+              day-to-day, not the keys.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-1.5">
