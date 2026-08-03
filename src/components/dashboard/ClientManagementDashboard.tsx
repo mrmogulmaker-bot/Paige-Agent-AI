@@ -351,27 +351,32 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // #612: re-homed off a browser admin INSERT into public.clients (linked_user_id was
-      // forgeable — a tenant-admin could link a foreign uid) into a SECURITY DEFINER RPC that
-      // asserts the caller is a tenant admin and the target is an active member of the caller's
-      // tenant before linking. Preserves the unique-index error toasts below.
-      const { error } = await supabase.rpc("link_auth_user_to_internal_client" as any, {
-        _target_user_id: client.user_id,
-        _first_name: firstName,
-        _last_name: lastName,
-        _city: client.city ?? null,
-        _state: client.state ?? null,
-      });
+      // #612 (§9): create the internal client record UNLINKED — do NOT set linked_user_id to a
+      // foreign auth user from the browser. A tenant-admin force-linking an arbitrary uid was the
+      // forge that re-opened the #611 cross-tenant credit-report read; the clients
+      // linking-integrity trigger now blocks it. Linkage to this person's auth account happens
+      // only through the consent path (they accept a portal invite → accept_tenant_invite sets
+      // linked_user_id), consistent with how the app already models it ("Not Invited" until
+      // accepted). This mirrors AddInternalClientDialog, which also creates unlinked contacts.
+      const { error } = await supabase.from("clients" as any).insert({
+        first_name: firstName,
+        last_name: lastName,
+        email: null,
+        status: "active",
+        city: client.city,
+        state: client.state,
+        created_by: user.id,
+        tenant_id: activeTenantId,
+        created_by_channel_type: "manual", // #10 channel-of-origin (move auth user → internal client)
+      } as any);
 
       if (error) throw error;
-      toast.success(`${client.full_name} moved to Internal Clients`);
+      toast.success(`${client.full_name} added to Internal Clients — invite them to link their account`);
       fetchAllClients();
     } catch (err: any) {
       console.error("Error moving to internal:", err);
       const msg = (err?.message || "").toLowerCase();
-      if (msg.includes("clients_linked_user_id_unique")) {
-        toast.error("This user is already linked to an internal client record");
-      } else if (msg.includes("clients_created_by_email_unique")) {
+      if (msg.includes("clients_created_by_email_unique")) {
         toast.error("A client with this email already exists in your list");
       } else {
         toast.error(err.message || "Failed to move client");
