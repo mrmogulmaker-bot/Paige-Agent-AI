@@ -100,13 +100,17 @@ export function PaigePlatformDesk() {
         </div>
       </div>
 
-      {/* The SAME single PaigeAIChat (§20 — never a per-mode tab). Platform mode
-          is carried by clientContext prose; clientId stays null (§9). */}
+      {/* The SAME single PaigeAIChat (§20 — never a per-mode tab). `platform`
+          declares the tenant-less operator scope (#130): threads are created +
+          listed with lens='platform' + NULL tenant, so the Super Admin can chat
+          with no active tenant. Persona prose still rides clientContext; clientId
+          stays null (§9). */}
       <div className="min-h-0 w-full flex-1">
         <PaigeAIChat
           hideHeader
           fill
           enableHistory
+          platform
           greeting={PLATFORM_GREETING}
           clientId={null}
           clientContext={PLATFORM_SCOPE_PROSE}
