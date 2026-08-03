@@ -351,17 +351,17 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { error } = await supabase.from("clients" as any).insert({
-        first_name: firstName,
-        last_name: lastName,
-        email: null,
-        linked_user_id: client.user_id,
-        status: "active",
-        city: client.city,
-        state: client.state,
-        created_by: user.id,
-        created_by_channel_type: "manual", // #10 channel-of-origin (move auth user → internal client)
-      } as any);
+      // #612: re-homed off a browser admin INSERT into public.clients (linked_user_id was
+      // forgeable — a tenant-admin could link a foreign uid) into a SECURITY DEFINER RPC that
+      // asserts the caller is a tenant admin and the target is an active member of the caller's
+      // tenant before linking. Preserves the unique-index error toasts below.
+      const { error } = await supabase.rpc("link_auth_user_to_internal_client" as any, {
+        _target_user_id: client.user_id,
+        _first_name: firstName,
+        _last_name: lastName,
+        _city: client.city ?? null,
+        _state: client.state ?? null,
+      });
 
       if (error) throw error;
       toast.success(`${client.full_name} moved to Internal Clients`);
