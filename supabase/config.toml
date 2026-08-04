@@ -181,12 +181,11 @@ project_id = "xygzykjyynhzqytbqnzu"
     verify_jwt = false
   [functions.handle-stripe-webhook]
     verify_jwt = false
-  [functions.n8n-list-workflows]
-    verify_jwt = true
-  [functions.n8n-trigger-workflow]
-    verify_jwt = true
-  [functions.n8n-get-executions]
-    verify_jwt = true
+  # n8n-list-workflows / n8n-trigger-workflow / n8n-get-executions RETIRED
+  # (Wave 1 #240 Track A, §9/§18): legacy platform-global n8n path — read the
+  # dropped `base_url` column, non-tenant-scoped requireAdmin gate. Superseded by
+  # the per-tenant `paige-n8n` surface below. Source deleted; deployed copies must
+  # be undeployed post-merge (CI deploys but does not prune).
   [functions.paige-n8n]
     verify_jwt = true
   [functions.send-telegram]
