@@ -150,6 +150,10 @@ const StageAutomationRules = lazy(() => import("@/pages/admin/StageAutomationRul
 const ReadinessProposalsAdmin = lazy(() => import("@/pages/admin/ReadinessProposalsAdmin"));
 const PlanningAdmin = lazy(() => import("@/pages/admin/PlanningAdmin"));
 const SubAgentsAdmin = lazy(() => import("@/pages/admin/SubAgentsAdmin"));
+// #244 — the canonical "About Your Paige Team" directory (operator scope). Lives
+// INSIDE the Paige workspace group (its natural home — it's about Paige's own team),
+// NOT /admin/team (the human Team floor). ONE component; scope prop set by the route.
+const PaigeTeamDirectory = lazy(() => import("@/pages/PaigeTeamDirectory"));
 const ActionsQueue = lazy(() => import("@/pages/admin/ActionsQueue"));
 const SkillsHub = lazy(() => import("@/pages/admin/SkillsHub"));
 const CampaignsHub = lazy(() => import("@/pages/admin/CampaignsHub"));
@@ -609,6 +613,13 @@ const Admin = () => {
           } />
           <Route path="skills" element={
             <Suspense fallback={<SuspenseFallback />}><SkillsHub /></Suspense>
+          } />
+          {/* #244 — learn about your Paige team. Same gate as the Paige hub
+              (admin + platform-staff) so the sub-tab never dead-ends (§9). */}
+          <Route path="paige-team" element={
+            <RoleGate allow={["admin"]} allowPlatformStaff>
+              <Suspense fallback={<SuspenseFallback />}><PaigeTeamDirectory scope="operator" /></Suspense>
+            </RoleGate>
           } />
         </Route>
         <Route path="agreement" element={<Navigate to="/admin/setup/legal" replace />} />

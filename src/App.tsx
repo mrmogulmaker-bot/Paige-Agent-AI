@@ -129,6 +129,9 @@ const MyAgreements = lazyWithReload(() => import("./pages/MyAgreements"));
 const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
 const ActionItems = lazyWithReload(() => import("./pages/app/ActionItems"));
 const Planning = lazyWithReload(() => import("./pages/app/Planning"));
+// #244 — the canonical "About Your Paige Team" directory. ONE component, scope prop
+// per route (tenant here; operator in Admin.tsx; agency in AgencyLayout.tsx).
+const PaigeTeamDirectory = lazyWithReload(() => import("./pages/PaigeTeamDirectory"));
 const GoogleCalendarCallback = lazyWithReload(() => import("./pages/GoogleCalendarCallback"));
 const GmailCallback = lazyWithReload(() => import("./pages/GmailCallback"));
 
@@ -242,6 +245,10 @@ const App = () => (
               <Route path="approvals" element={<PageSuspense><ClientApprovals /></PageSuspense>} />
               <Route path="actions" element={<PageSuspense><ActionItems /></PageSuspense>} />
               <Route path="planning" element={<PageSuspense><Planning /></PageSuspense>} />
+              {/* #244 — learn about your Paige team (tenant scope). Read-only; inherits
+                  /app's RequireCompleteSignup, no extra gate. NOT /team — that would break
+                  the /app/* tenant convention (§18); this is the non-colliding home. */}
+              <Route path="paige-team" element={<PageSuspense><PaigeTeamDirectory scope="tenant" /></PageSuspense>} />
             </Route>
 
             {/* Backward compat redirect */}

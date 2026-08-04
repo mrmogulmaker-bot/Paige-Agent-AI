@@ -7,7 +7,7 @@
 // The predicates below MIRROR the route gates 1:1 (B5). If a child gate ever
 // changes (e.g. coaches gain Chat), change the matching `canSee` here in lockstep.
 import { Link, useLocation } from "react-router-dom";
-import { MessageSquare, Bot, ClipboardCheck, Sparkles, type LucideIcon } from "lucide-react";
+import { MessageSquare, Bot, ClipboardCheck, Sparkles, Users2, type LucideIcon } from "lucide-react";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,9 @@ const TABS: Tab[] = [
   { label: "Actions", href: "/admin/actions", icon: ClipboardCheck, canSee: (a) => a.isAdmin || a.isPlatformOwner || a.isPlatformStaff },
   // Skills — ungated route.
   { label: "Skills", href: "/admin/skills", icon: Sparkles, canSee: () => true },
+  // The Team (#244) — learn about Paige + her six VPs. RoleGate allow=["admin"]
+  // allowPlatformStaff, so mirror it 1:1 (same predicate as Chat/Actions).
+  { label: "The Team", href: "/admin/paige-team", icon: Users2, canSee: (a) => a.isAdmin || a.isPlatformOwner || a.isPlatformStaff },
 ];
 
 export function PaigeSubTabs() {
