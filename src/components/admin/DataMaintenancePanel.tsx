@@ -55,7 +55,7 @@ export function DataMaintenancePanel() {
 
   // Beta launch email preview state
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewName, setPreviewName] = useState("Antonio");
+  const [previewName, setPreviewName] = useState("Alex");
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewSubject, setPreviewSubject] = useState<string | null>(null);
 
@@ -644,7 +644,7 @@ export function DataMaintenancePanel() {
                 id="preview-name"
                 value={previewName}
                 onChange={(e) => setPreviewName(e.target.value)}
-                placeholder="Antonio"
+                placeholder="Alex"
                 maxLength={80}
               />
             </div>

@@ -51,7 +51,7 @@ export default function PlaidIntegrationConfig() {
           </div>
           <Button onClick={save}>Save</Button>
           <div className="text-xs text-muted-foreground space-y-1">
-            <p>Add these in Project Settings → Secrets when Antonio signs up: <code>PLAID_CLIENT_ID</code>, <code>PLAID_SECRET</code>.</p>
+            <p>Add these in Project Settings → Secrets to activate: <code>PLAID_CLIENT_ID</code>, <code>PLAID_SECRET</code>.</p>
             <p>Webhook URL: <code>/functions/v1/handle-paige-plaid-webhook</code>.</p>
             <p>All scaffolding (tables, functions, UI) returns <code>activated:false</code> until the toggle above is on and secrets are present.</p>
           </div>
