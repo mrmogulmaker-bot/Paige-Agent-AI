@@ -37,6 +37,7 @@ import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { PaigeDepartmentStatus } from "@/components/paige/PaigeDepartmentStatus";
 import {
   PageShell, PageHeader, SectionCard, StatTile, StatRow, DataTableShell,
   EmptyState, StatePill, DateRangePicker, rangeToDates, KpiPillRow, DonutCard,
@@ -607,6 +608,11 @@ export default function OperatorCommandCenter() {
           hint: "The MRR line draws itself as daily snapshots accrue — one real point per day, never a synthetic backfill.",
         }}
       />
+
+      {/* "See them work" (Task #245, §7 3-layer VP framework), operator/fleet scope.
+          Fleet-wide because the operator's has_role(admin) RLS returns every tenant's
+          open actions (§9/§51 God-tier outcome). Gold-free read (§11). */}
+      <PaigeDepartmentStatus scope="operator" />
 
       {/* Honest reserved slots — real SectionCards naming their populate trigger, never a
           fabricated count (§13). These sit below the fold on purpose. */}

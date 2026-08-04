@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsButton";
 import { CommandCenterViewToggle } from "@/components/dashboard/admin/CommandCenterViewToggle";
 import { DraftsAwaitingPanel } from "@/components/dashboard/DraftsAwaitingPanel";
+import { PaigeDepartmentStatus } from "@/components/paige/PaigeDepartmentStatus";
 import { OwnerWelcome, type OnboardingState } from "@/components/onboarding/OwnerWelcome";
 import { usePracticeDashboard, type PracticeMetrics } from "@/hooks/usePracticeDashboard";
 import { useCommsSummary } from "@/hooks/useCommsSummary";
@@ -342,6 +343,11 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
               ))}
             </StatRow>
           </SectionCard>
+
+          {/* "See them work" (Task #245, §7 3-layer VP framework). The ambient live
+              read of what each of Paige's ten departments is doing — proactive
+              surfacing (§36), tenant-scoped (§9), gold-free (§11). */}
+          <PaigeDepartmentStatus scope="tenant" />
 
           {showKpis && (
             <StatRow cols={Math.max(2, Math.min(kpis.length, 4)) as 2 | 3 | 4}>
