@@ -13,14 +13,14 @@ Fires: 2026-08-04
 
 - **§10 merge-base CI fix** (PR #360 → merged 9bf4e9c1) ✅
 - **Task #240** — Phase 2 Integrations cluster (n8n + Zapier + MCP; OAuth deferred per owner)
-- **Task #243** — `<PaigeAttribution>` byline primitive (foundational — unblocks #244/#245/#246/#247) — PR #361 (in flight)
+- **Task #243** — `<PaigeAttribution>` byline primitive (foundational — unblocks #244/#245/#246/#247) — PR #361 → merged 1860c825 ✅
 - **Task #93** — Doctrine paste slice (folds in §39/§40/§41/§242 + all pending amendments)
 
 ### WAVE 2 — Fires once #243 lands (~2-4 days after Wave 1)
-- **Task #244** — "About Your Paige Team" canonical page (tri-scope: /team, /admin/team, /agency/team)
-- **Task #245** — Command Center VP attribution + ambient 10-department status blocks
-- **Task #246** — Agent-to-agent addressability (Vibe Studio design-agent pattern extended platform-wide)
-- **Task #247** — Custom Specialists section (blocked by #244; owner-owed Marketplace-share decision — defaults tenant-private)
+- **Task #244** — "About Your Paige Team" canonical page (tri-scope: `/app/paige-team`, `/admin/paige-team`, `/agency/paige-team` — the literal `/team` paths belong to the human team floors, so the §18-clean home is `paige-team`) — PR #366 → merged 968b7d7e ✅
+- **Task #245** — Command Center VP attribution + ambient 10-department status blocks (real action-bus data, tenant-scoped RLS read) — PR #367 → merged 52d7ad5a ✅
+- **Task #246** — Agent-to-agent addressability (studied the Vibe Studio design-agent as reference; addressability already existed — shipped the one missing §9/§45 scope-guard on `advance_action`'s direct-address write) — PR #368 → merged 084eee80 ✅
+- **Task #247** — Custom Specialists section (extends #244; owner ruled 2026-08-04 SHIP default tenant-private — Marketplace-share/for-hire is Wave 10 #250/#251, out of scope) — PR #369 (in flight)
 
 ### WAVE 3 — Practice Blueprints v2 (per #196)
 - Task #164 · Task #181 · Task #185
