@@ -285,6 +285,6 @@ Deno.serve(async (req) => {
       has_business_record: Boolean(biz),
       has_duns: Boolean(biz?.dnb_duns_number),
     },
-    sources: ["BUILD-to-FUND Master Checklist", "PME KB Section 17"],
+    sources: ["BUILD-to-FUND Master Checklist", "Knowledge Base Section 17"],
   });
 });

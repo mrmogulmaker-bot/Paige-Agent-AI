@@ -9,6 +9,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -124,6 +125,22 @@ async function generateForUser(
   const negatives = (inquiriesRes.data || []) as any[];
   const profile = profileRes.data as any | null;
   const previousPredictions = (prevPredictionsRes.data || []) as any[];
+
+  // §45: any credit-builder CTA is the TENANT'S OWN tenant-authored affiliate offer,
+  // resolved present-only from the client's tenant — never a hardcoded operator affiliate
+  // code (e.g. a "3ANTONIO94" referral link). When the tenant has authored no
+  // credit-builder partner, the CTA is OMITTED entirely (no vendor named, no link).
+  const { data: clientRow } = await supabase
+    .from("clients")
+    .select("tenant_id")
+    .eq("linked_user_id", userId)
+    .maybeSingle();
+  const predictionTenantId =
+    (clientRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+  const operator = await resolveOperatorIdentity(supabase, predictionTenantId);
+  const creditBuilderPartner = ((operator.tradeline_partners ?? []) as Array<{
+    tradeline_type?: string; label?: string; url?: string;
+  }>).find((p) => p.tradeline_type === "credit_builder");
 
   // Hard inquiries: stored as negative items with item_type='inquiry' or in metadata; we look for date_reported within 12 months
   const hardInquiries = negatives.filter(
@@ -329,6 +346,11 @@ async function generateForUser(
     (p) => p.prediction_type === "credit_mix_opportunity" && !p.is_dismissed,
   );
   if (!hasInstallment && accounts.length > 0 && !alreadyHasMixPrediction) {
+    // Present-only CTA: name/link the tenant's OWN credit-builder partner when authored;
+    // otherwise keep only the generic educational guidance (no vendor named, no link).
+    const actionRequired = creditBuilderPartner
+      ? `${creditBuilderPartner.label ?? "A credit-builder account"} can add an installment tradeline to your file, often starting around $15/month.`
+      : "A small credit-builder account is designed specifically to add an installment tradeline to your file, often starting around $15/month.";
     predictions.push({
       user_id: userId,
       prediction_type: "credit_mix_opportunity",
@@ -336,11 +358,11 @@ async function generateForUser(
       description:
         "Your file currently shows only revolving accounts (credit cards). FICO scoring rewards a healthy mix of revolving and installment credit. Adding one small installment account — a credit-builder loan, a personal loan, or an auto loan — can improve your score 15 to 25 points within 6 months.",
       impact_score: 20,
-      action_required: "Credit Strong offers a credit-builder account designed specifically to add an installment tradeline to your file starting around $15/month.",
-      action_url: "https://creditstrong.referralrock.com/l/3ANTONIO94/",
+      action_required: actionRequired,
+      action_url: creditBuilderPartner?.url ?? null,
       bureau: "all",
       confidence: "high",
-      metadata: { vendor_suggestion: "credit_strong" },
+      metadata: { vendor_suggestion: "credit_builder" },
     });
   }
 

@@ -128,6 +128,6 @@ Deno.serve(async (req) => {
       goal_amount: goal,
     },
     requires_approval: true,
-    sources: ["PME KB Section 11 (FUND)", "No-Doc Funding Intelligence memory", "Consumer Report Impact Warning memory"],
+    sources: ["Knowledge Base Section 11 (FUND)", "No-Doc Funding Intelligence memory", "Consumer Report Impact Warning memory"],
   });
 });
