@@ -58,6 +58,7 @@ export default function CourseViewer() {
         supabase.from("lessons").select("*").eq("course_id", courseId).order("sort_order"),
       ]);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setCourse(courseData as any);
       const ls = (lessonsData as Lesson[]) || [];
       setLessons(ls);
@@ -71,6 +72,7 @@ export default function CourseViewer() {
           .eq("user_id", user.id)
           .eq("course_id", courseId);
         const done = new Set<string>();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (progressRows || []).forEach((r: any) => {
           if (r.lesson_id && r.status === "completed") done.add(r.lesson_id);
         });
@@ -84,6 +86,7 @@ export default function CourseViewer() {
           .maybeSingle();
         setHasCert(!!cert);
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       toast.error("Failed to load course", { description: e.message });
     } finally {
@@ -114,10 +117,12 @@ export default function CourseViewer() {
           status: done ? "completed" : "in_progress",
           progress_percentage: done ? 100 : 0,
           completed_at: done ? new Date().toISOString() : null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         }, { onConflict: "user_id,course_id,lesson_id" as any });
       if (error) throw error;
 
       const next = new Set(completed);
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       done ? next.add(lessonId) : next.delete(lessonId);
       setCompleted(next);
 
@@ -133,6 +138,7 @@ export default function CourseViewer() {
           status: courseStatus,
           progress_percentage: newPct,
           completed_at: courseStatus === "completed" ? new Date().toISOString() : null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         }, { onConflict: "user_id,course_id,lesson_id" as any });
 
       // Issue cert when course just completed
@@ -147,6 +153,7 @@ export default function CourseViewer() {
           toast.success("Course completed! 🎉");
         }
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (e: any) {
       toast.error("Couldn't update progress", { description: e.message });
     } finally {

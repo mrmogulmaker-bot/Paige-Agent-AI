@@ -54,6 +54,7 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
   const [draftContent, setDraftContent] = useState("");
   const [complianceFlags, setComplianceFlags] = useState<ComplianceFlag[]>([]);
   const [complianceStatus, setComplianceStatus] = useState<string>("pending");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [drafts, setDrafts] = useState<any[]>([]);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
 
@@ -66,8 +67,10 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
   const [progressNotes, setProgressNotes] = useState("");
 
   // Data from client
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [lenderResults, setLenderResults] = useState<any[]>([]);
   const [clientMilestones, setClientMilestones] = useState<string[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [clientContext, setClientContext] = useState<any>({});
 
   // Use centralized client display info
@@ -114,6 +117,7 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
       .select("amount")
       .eq("user_id", clientUserId);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fundingTotal = (funding || []).reduce((sum: number, f: any) => sum + Number(f.amount || 0), 0);
 
     setClientContext({
@@ -144,10 +148,14 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
       .order("created_at", { ascending: false })
       .limit(5);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const lenders: any[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (data || []).forEach((r: any) => {
       if (r.results?.lenders) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         r.results.lenders.forEach((l: any) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           if (l.name && !lenders.find((e: any) => e.name === l.name)) {
             lenders.push(l);
           }
@@ -167,6 +175,7 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
       .limit(50);
 
     const names = (data || [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .map((m: any) => m.data?.milestone_name)
       .filter(Boolean);
     setClientMilestones([...new Set(names)] as string[]);
@@ -183,6 +192,7 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: any = {
         outreach_type: selectedType,
         client_context: { ...clientContext, milestones_completed: clientMilestones },
@@ -219,6 +229,7 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
 
       const result = await response.json();
       setDraftContent(result.draft);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setComplianceFlags((result.compliance_flags || []).map((f: any) => ({ ...f, dismissed: false })));
       setComplianceStatus(result.compliance_status);
 
@@ -248,6 +259,7 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
 
       loadDrafts();
       toast({ title: "Draft Generated", description: "Review and edit before downloading." });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     }
@@ -314,9 +326,11 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
     loadDrafts();
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const reopenDraft = (draft: any) => {
     setSelectedType(draft.outreach_type);
     setDraftContent(draft.edited_content || draft.generated_content);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setComplianceFlags((draft.compliance_flags || []).map((f: any) => ({ ...f, dismissed: false })));
     setComplianceStatus(draft.compliance_status);
     setActiveDraftId(draft.id);
@@ -404,6 +418,7 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
                         <SelectValue placeholder="Select from research or type below" />
                       </SelectTrigger>
                       <SelectContent>
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                         {lenderResults.map((l: any, i: number) => (
                           <SelectItem key={i} value={l.name}>{l.name} {l.type ? `(${l.type})` : ""}</SelectItem>
                         ))}
@@ -430,6 +445,7 @@ export function OutreachCenter({ clientUserId }: OutreachCenterProps) {
                         <SelectValue placeholder="Select lender" />
                       </SelectTrigger>
                       <SelectContent>
+                        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                         {lenderResults.map((l: any, i: number) => (
                           <SelectItem key={i} value={l.name}>{l.name}</SelectItem>
                         ))}

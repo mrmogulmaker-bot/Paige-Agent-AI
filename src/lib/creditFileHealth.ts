@@ -28,6 +28,7 @@ export interface CreditAccount {
   original_amount: number | null;
   duplicate_of_id: string | null;
   is_disputed_ownership: boolean | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payment_history_json: any | null;
   bureau_source: string | null;
 }

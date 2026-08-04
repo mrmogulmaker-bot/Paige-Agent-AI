@@ -1117,6 +1117,9 @@ function CreditAgeGauge({ analysis, bureauLabel }: { analysis: FileAnalysis; bur
 
 /* ─── Priority Action List ─── */
 function PriorityActionList({ analysis, bureauLabel }: { analysis: FileAnalysis; bureauLabel?: string }) {
+  const portalBrand = useClientPortalBrand();
+  const { identity } = useOperatorIdentity(portalBrand?.tenant_id ?? null);
+  const guaranteeSubject = (identity?.product_name || portalBrand?.tenant_name || "").trim();
   const priorityOrder: Record<string, number> = { critical: 0, important: 1, enhancement: 2 };
   const gaps = analysis.categories.filter(c => c.status !== "complete").sort((a, b) => (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9));
 
