@@ -48,11 +48,28 @@ jobs:
         run: npm install --no-audit --no-fund
 
       # --- Changed-file gates (PR only — a push to main has no PR base). Cheap checks first. -----
+      # Compute the MERGE-BASE once and diff against it, not the raw base-branch tip. base.sha is
+      # the CURRENT main tip; a stale PR branch cut from an older main re-surfaces files sibling
+      # PRs have since deleted (they read as Added vs current-main) and the changed-file gates then
+      # lint code that no longer exists on main — a false failure (F10: AppSidebar/Dashboard). The
+      # merge-base is where the branch actually forked, so the diff is exactly what THIS PR changed;
+      # fetch-depth:0 makes it resolvable. All three gates below share this one base.
+      - name: Compute merge-base
+        id: mergebase
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          mb="$(git merge-base "$BASE" "$HEAD")"
+          echo "mb=$mb" >> "$GITHUB_OUTPUT"
+          echo "merge-base(base=$BASE, head=$HEAD) = $mb"
+
       - name: Compute changed files
         id: changed
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ steps.mergebase.outputs.mb }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           # AMR: include Renamed files (a rename+edit must still be linted). Same base/head the
@@ -66,13 +83,13 @@ jobs:
       - name: tsc baseline may only shrink
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
-          BASE: ${{ github.event.pull_request.base.sha }}
+          BASE: ${{ steps.mergebase.outputs.mb }}
         run: node scripts/ci/baseline-guard.mjs
 
       - name: Regression lint (§3 phrases · jargon · non-restrictive policy — added lines)
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         env:
-          BASE_REF: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ steps.mergebase.outputs.mb }}
           HEAD_REF: ${{ github.event.pull_request.head.sha }}
         run: npm run ci:regression
 
