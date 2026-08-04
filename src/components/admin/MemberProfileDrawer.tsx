@@ -7,10 +7,36 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Crown, ShieldCheck, ShieldOff, Mail, Calendar, Clock, Users, FileText, Pencil, Save, X, KeyRound, LogOut, Send, RefreshCcw } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Crown, ShieldCheck, ShieldOff, Mail, Calendar, Clock, Users, FileText, Pencil, Save, X, KeyRound, LogOut, Send, RefreshCcw, GraduationCap } from "lucide-react";
 import { toast } from "sonner";
 import { callAdminAccountAction } from "@/lib/functions/adminAccountActions";
 import { AvatarUploader, isAvatarBucketUrl, removeAvatarObject } from "@/components/ui/avatar-uploader";
+import { useTenantFeature } from "@/hooks/useTenantFeature";
+import { cn } from "@/lib/utils";
+
+// Coaching-generic specialties every tenant can assign (§2/§9).
+const BASE_SPECIALTY_OPTIONS = [{ value: "entity", label: "Entity Setup" }];
+// Credit/funding specialties — shown ONLY when the tenant opted into the funding
+// vertical; never a default for generic coaching/consulting tenants (§2).
+const FUNDING_SPECIALTY_OPTIONS = [
+  { value: "personal_credit", label: "Personal Credit" },
+  { value: "business_credit", label: "Business Credit" },
+  { value: "funding", label: "Funding Strategy" },
+  { value: "btf", label: "Build-to-Fund" },
+  { value: "underwriting", label: "Underwriting" },
+];
+
+/** Coach-management fields, resolved by the parent via get_tenant_coach_fields
+ *  (the own-record-or-tenant-admin definer read RPC — cross-user profile SELECT is
+ *  own-row only, so these cannot be read client-side for another member). */
+export interface CoachFields {
+  specialties: string[];
+  capacity: number | null;
+  accepting: boolean;
+  timezone: string | null;
+  bio?: string | null;
+}
 
 export interface MemberProfile {
   user_id: string;
@@ -30,6 +56,11 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   initialEdit?: boolean;
   onSaved?: () => void;
+  /** Coach-management fields for this member (parent-resolved via the gated RPC).
+   *  When the member has the coach role, a "Coaching" section renders and saves
+   *  through set_coach_fields (own-record-or-tenant-admin), NOT the broad upsert. */
+  coachFields?: CoachFields | null;
+  onCoachSaved?: () => void;
 }
 
 interface ProfileFields {
@@ -58,7 +89,7 @@ const EMPTY: ProfileFields = {
 
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString() : "—");
 
-export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = false, onSaved }: Props) {
+export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = false, onSaved, coachFields, onCoachSaved }: Props) {
   const [fields, setFields] = useState<ProfileFields>(EMPTY);
   const [original, setOriginal] = useState<ProfileFields>(EMPTY);
   const [extras, setExtras] = useState<{ assignedClientsCount?: number; invitesSentCount?: number; tenantNames?: string[] }>({});
@@ -69,6 +100,27 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [confirmSignout, setConfirmSignout] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // --- Coaching section (coach-only) — saved via the gated set_coach_fields RPC ---
+  const { enabled: fundingEnabled } = useTenantFeature("funding_readiness");
+  const specialtyOptions = fundingEnabled
+    ? [...BASE_SPECIALTY_OPTIONS, ...FUNDING_SPECIALTY_OPTIONS]
+    : BASE_SPECIALTY_OPTIONS;
+  const [coachEditing, setCoachEditing] = useState(false);
+  const [coachSaving, setCoachSaving] = useState(false);
+  const [cSpecs, setCSpecs] = useState<string[]>([]);
+  const [cCapacity, setCCapacity] = useState<string>("");
+  const [cAccepting, setCAccepting] = useState(true);
+  const [cTimezone, setCTimezone] = useState("");
+
+  // Seed the coaching editor whenever the parent resolves the gated fields.
+  useEffect(() => {
+    setCSpecs(coachFields?.specialties ?? []);
+    setCCapacity(coachFields?.capacity != null ? String(coachFields.capacity) : "");
+    setCAccepting(coachFields?.accepting ?? true);
+    setCTimezone(coachFields?.timezone ?? "");
+    setCoachEditing(false);
+  }, [coachFields, member?.user_id]);
 
   useEffect(() => { setEditing(initialEdit); }, [initialEdit, member?.user_id]);
   // A person may only upload to their OWN avatar folder (storage RLS), so the
@@ -92,29 +144,31 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
           supabase.from("tenant_members").select("tenants(name)").eq("user_id", member.user_id),
         ]);
         if (cancelled) return;
+        const p = (prof ?? {}) as Partial<Record<keyof ProfileFields, string | null>>;
         const next: ProfileFields = {
-          full_name: (prof as any)?.full_name ?? member.full_name ?? "",
-          first_name: (prof as any)?.first_name ?? "",
-          middle_initial: (prof as any)?.middle_initial ?? "",
-          last_name: (prof as any)?.last_name ?? "",
-          phone: (prof as any)?.phone ?? "",
-          work_email: (prof as any)?.work_email ?? "",
-          business_name: (prof as any)?.business_name ?? "",
-          website_url: (prof as any)?.website_url ?? "",
-          address: (prof as any)?.address ?? "",
-          city: (prof as any)?.city ?? "",
-          state: (prof as any)?.state ?? "",
-          postal_code: (prof as any)?.postal_code ?? "",
-          coach_bio: (prof as any)?.coach_bio ?? "",
-          staff_notes: (prof as any)?.staff_notes ?? "",
-          avatar_url: (prof as any)?.avatar_url ?? "",
+          full_name: p.full_name ?? member.full_name ?? "",
+          first_name: p.first_name ?? "",
+          middle_initial: p.middle_initial ?? "",
+          last_name: p.last_name ?? "",
+          phone: p.phone ?? "",
+          work_email: p.work_email ?? "",
+          business_name: p.business_name ?? "",
+          website_url: p.website_url ?? "",
+          address: p.address ?? "",
+          city: p.city ?? "",
+          state: p.state ?? "",
+          postal_code: p.postal_code ?? "",
+          coach_bio: p.coach_bio ?? "",
+          staff_notes: p.staff_notes ?? "",
+          avatar_url: p.avatar_url ?? "",
         };
         setFields(next);
         setOriginal(next);
+        const tenantRows = (tenantRes.data ?? []) as { tenants: { name: string | null } | null }[];
         setExtras({
           assignedClientsCount: clientsRes.count ?? 0,
           invitesSentCount: invitesRes.count ?? 0,
-          tenantNames: (tenantRes.data ?? []).map((r: any) => r.tenants?.name).filter(Boolean),
+          tenantNames: tenantRows.map((r) => r.tenants?.name).filter((n): n is string => !!n),
         });
       } finally {
         if (!cancelled) setLoading(false);
@@ -133,7 +187,7 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const payload: any = { user_id: member.user_id, ...fields, updated_at: new Date().toISOString() };
+      const payload = { user_id: member.user_id, ...fields, updated_at: new Date().toISOString() };
       const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
       if (error) throw error;
       // Now that the new photo is persisted, tidy the replaced file (never
@@ -145,8 +199,8 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
       setOriginal(fields);
       setEditing(false);
       onSaved?.();
-    } catch (e: any) {
-      toast.error("Failed to save profile", { description: e?.message });
+    } catch (e) {
+      toast.error("Failed to save profile", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setSaving(false);
     }
@@ -154,15 +208,47 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
 
   const handleCancel = () => { setFields(original); setEditing(false); };
 
+  const toggleSpecialty = (val: string) =>
+    setCSpecs((cur) => (cur.includes(val) ? cur.filter((s) => s !== val) : [...cur, val]));
+
+  const handleCoachSave = async () => {
+    if (!member) return;
+    setCoachSaving(true);
+    try {
+      const cap = cCapacity.trim() === "" ? null : Number(cCapacity);
+      if (cap != null && (!Number.isFinite(cap) || cap < 0)) {
+        toast.error("Capacity must be a non-negative number");
+        setCoachSaving(false);
+        return;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- new RPC not yet in generated types (#234)
+      const { error } = await supabase.rpc("set_coach_fields" as any, {
+        _user_id: member.user_id,
+        _specialties: cSpecs,
+        _capacity: cap,
+        _accepting: cAccepting,
+        _timezone: cTimezone || null,
+      });
+      if (error) throw error;
+      toast.success("Coaching profile saved");
+      setCoachEditing(false);
+      onCoachSaved?.();
+    } catch (e) {
+      toast.error("Failed to save coaching profile", { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setCoachSaving(false);
+    }
+  };
+
   const runAction = async (action: "password_reset" | "signout_all" | "resend_invite" | "wipe_onboarding", successMsg: string) => {
     if (!member) return;
     setActionPending(action);
     try {
-      const data = await callAdminAccountAction(action, member.user_id);
-      if ((data as any)?.error) throw new Error((data as any).error);
+      const data = await callAdminAccountAction(action, member.user_id) as { error?: string } | null;
+      if (data?.error) throw new Error(data.error);
       toast.success(successMsg);
-    } catch (e: any) {
-      toast.error("Action failed", { description: e?.message });
+    } catch (e) {
+      toast.error("Action failed", { description: e instanceof Error ? e.message : undefined });
     } finally {
       setActionPending(null);
       setConfirmWipe(false);
@@ -224,6 +310,101 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
               ))}
             </div>
           </div>
+
+          {member.roles.includes("coach") && (
+            <>
+              <Separator />
+              {/* Coaching — capacity/specialties/availability. Saved via the gated
+                  set_coach_fields RPC (own-record-or-tenant-admin), NOT the broad
+                  profile upsert, so a tenant admin can manage a coach's coaching
+                  attributes without widening cross-user profile writes (§9). */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs uppercase text-muted-foreground">
+                    <GraduationCap className="h-3.5 w-3.5" /> Coaching
+                  </div>
+                  {!coachEditing ? (
+                    <Button size="sm" variant="outline" onClick={() => setCoachEditing(true)}>
+                      <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit
+                    </Button>
+                  ) : (
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => setCoachEditing(false)} disabled={coachSaving}>
+                        <X className="w-4 h-4" />
+                      </Button>
+                      <Button size="sm" onClick={handleCoachSave} disabled={coachSaving}>
+                        <Save className="w-3.5 h-3.5 mr-1.5" /> {coachSaving ? "Saving…" : "Save"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs">Specialties</Label>
+                  {coachEditing ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {specialtyOptions.map((o) => {
+                        const on = cSpecs.includes(o.value);
+                        return (
+                          <button
+                            key={o.value}
+                            type="button"
+                            onClick={() => toggleSpecialty(o.value)}
+                            className={cn(
+                              "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                              on ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted",
+                            )}
+                          >
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : cSpecs.length ? (
+                    <div className="flex flex-wrap gap-1">
+                      {cSpecs.map((s) => (
+                        <Badge key={s} variant="outline" className="capitalize">
+                          {specialtyOptions.find((o) => o.value === s)?.label ?? s.replace(/_/g, " ")}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">—</div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Client capacity</Label>
+                    {coachEditing ? (
+                      <Input
+                        type="number"
+                        min={0}
+                        value={cCapacity}
+                        onChange={(e) => setCCapacity(e.target.value)}
+                        placeholder="No cap"
+                      />
+                    ) : (
+                      <div className="text-sm">{cCapacity || <span className="text-muted-foreground">No cap</span>}</div>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Timezone</Label>
+                    {coachEditing ? (
+                      <Input value={cTimezone} onChange={(e) => setCTimezone(e.target.value)} placeholder="America/New_York" />
+                    ) : (
+                      <div className="text-sm">{cTimezone || <span className="text-muted-foreground">—</span>}</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                  <Label className="text-sm">Accepting new clients</Label>
+                  <Switch checked={cAccepting} onCheckedChange={setCAccepting} disabled={!coachEditing} />
+                </div>
+              </div>
+            </>
+          )}
 
           <Separator />
 

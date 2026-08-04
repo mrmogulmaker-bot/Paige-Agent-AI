@@ -35,6 +35,7 @@ export { PageShell } from "./PageShell";
 export { PageHeader, type PageHeaderProps } from "./PageHeader";
 export { PageSkeleton } from "./PageSkeleton";
 export { SectionCard } from "./SectionCard";
+export { SectionNote } from "./SectionNote";
 export { StatTile, StatRow } from "./StatTile";
 export { StatPill, type StatPillProps, type StatPillTone } from "./StatPill";
 export {
