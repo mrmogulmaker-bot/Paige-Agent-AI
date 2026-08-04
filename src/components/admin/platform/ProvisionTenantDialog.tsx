@@ -7,7 +7,7 @@
  * name when left blank. Coaching-generic (§2); no finance/credit default.
  */
 import { useState } from "react";
-import { Loader2, Building2, Sparkles } from "lucide-react";
+import { Loader2, Building2, Plus } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
@@ -185,7 +185,7 @@ export function ProvisionTenantDialog({
           <Button variant="gold" onClick={submit} disabled={saving || !name.trim()}>
             {saving
               ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              : <Sparkles className="w-4 h-4 mr-2" />}
+              : <Plus className="w-4 h-4 mr-2" />}
             Provision workspace
           </Button>
         </DialogFooter>
