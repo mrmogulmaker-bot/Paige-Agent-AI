@@ -7,6 +7,7 @@
 - `docs/strategy/business-vault-partner-landscape-2026-07-26.md`
 - `docs/strategy/twin-capabilities-landscape-2026-07-26.md`
 - `docs/strategy/systems-check-and-analytics-landscape-2026-07-26.md`
+- `docs/doctrine/paige-c-suite-roster.md` (C-suite VP roster — names VP ownership per pillar)
 ---
 ## The frame — an operator's AI COO, not "AI CRM"
 Every competitor in the coach / consultant / agency / thought-leader space sells a slice of the operator's job. HubSpot is a filing cabinet with reports. HighLevel is a Zapier for coaches. Kajabi is a course platform. Dubsado is a client portal. Ramp is spend management. QuickBooks is a general ledger with a UI. None of them try to be the operator's whole AI, because "AI-powered CRM" is the ceiling they can see from where they built.
@@ -51,6 +52,7 @@ The trilogy stands on shipped primitives. That is why the estimated build effort
 ---
 ## Pillar 1 — Systems Check
 **One sentence:** Paige runs an end-to-end diagnostic of every operational system the tenant depends on — from onboarding minute one and continuously thereafter — and drafts the fixes for approval.
+**VP owner:** VERA (compliance-side checks: SPF/DKIM/DMARC, opt-in ledger, TCPA, A2P/TCR status) + MENTOR co-owner (ops-side checks: HTTP/DNS/SSL, pixel firing, integration runs, deploy health)
 ### The strategic significance
 Every existing tool in this adjacency solves one slice. Uptime monitors (Pingdom, Better Stack) check HTTP 200 for a URL. Marketing analytics (GA4, HubSpot) show performance after traffic arrives. Website audits (Ahrefs, Screaming Frog) run one-shot. Deliverability tools (GlockApps, Postmaster) watch one channel. Pixel monitors (ObservePoint, Trackingplan) are enterprise-priced. Nobody in the coach / consultant / agency space does the full "your form is broken, your Twilio number isn't receiving, your GA4 stopped firing three days ago, your Instagram DMs haven't been answered in a week, your Calendly is booked out but confirmations are bouncing" — with interpretation, not just up/down. This is confirmed greenfield.
 The reason Systems Check is the FIRST pillar to ship (before Vault, before Twins, before Analytics) is §36 — it's the perfect first-5-minutes-of-Paige moment. A new tenant signs up, Paige scans their systems in the background, and within 5 minutes the Command Center reads "I checked 27 things, 24 are healthy, 3 need your attention — want to walk through them?" That first impression IS the retention lever, and no competitor makes it.
@@ -126,6 +128,7 @@ Original working name was "Check Comms." I recommend **"Systems Check"** — the
 ---
 ## Pillar 2 — Business Vault
 **One sentence:** Paige tracks every renewal, filing, contract, subscription, and obligation a business owner is supposed to maintain and usually doesn't — from insurance policies to LLC filings to domain renewals to trademark maintenance to vendor contracts to estimated tax dates — and shows up 60 / 30 / 7 days out with a drafted action instead of the tenant discovering the lapse three days late.
+**VP owner:** MERIT (obligation tracking + entity-type filings) + VERA verification (document extraction accuracy + compliance)
 ### The strategic significance
 The current "AI COO" positioning is aspirational until Paige can point at the owner's own business obligations, not just the owner's client work. Every existing coach/consultant CRM (GoHighLevel, HubSpot, Dubsado, Paperbell, Kajabi) manages the tenant's CLIENT relationships. Zero manage the tenant's OWN business obligations. And the adjacent categories don't cover this shape either — Ramp/Brex are enterprise spend management, Vendr/Zylo are enterprise SaaS management, LegalZoom/Northwest Registered Agent are service providers for one narrow slice, QuickBooks is finance-only. Nobody assembles insurance + formation + RA + domain + SSL + trademark + tax + accounting + licenses + SaaS renewals into one obligation-tracker for the coach/consultant/agency audience.
 This isn't a nice-to-have addition — it's the surface that structurally completes the "AI COO" claim.
@@ -169,6 +172,10 @@ Every L3/L4 partnership needs a jurisdictional check. Insurance referral fees ar
 ---
 ## Pillar 3 — Twin Capabilities (three directions)
 **One sentence per direction:** Paige can drive external tools that don't have APIs (Direction A), create AI twins of specific team members that can draft in their voice (Direction B), and simulate business changes before the operator makes them (Direction C).
+**VP owners (distributed by direction):**
+- Direction A (Browser Agent) — MENTOR
+- Direction B (Team-member Twin) — MERIT (with ELVIS Act consent gate enforced by VERA for the voice/video-clone-of-individuals narrow slice)
+- Direction C (Business Twin) — ZION
 ### Direction A — Browser-agent capability
 **Strategic significance:** Paige today can call any API. Paige tomorrow needs to drive any TOOL — including the vendor SaaS portals, insurance carrier logins, LMS admin panels, and internal-app dashboards that never got API'd. Without this, there's a whole class of tenant workflow ("every Monday I log into ClickFunnels and export the numbers") that Paige can't touch.
 **Partner stack (research-verified):**
@@ -231,6 +238,7 @@ Recommended build order: **B (weeks 1-8) → A in parallel (weeks 4-12) → C (w
 ---
 ## Pillar 4 — Owner Analytics + Competitive Intelligence
 **One sentence:** Paige aggregates the tenant's own performance data across every connected system AND monitors competitor changes weekly — with interpretation, not dashboards.
+**VP owner:** ZION (first-party aggregation + strategic interpretation + weekly competitor briefs, with tactical positioning co-owned by NEXUS)
 ### The strategic significance
 Every existing tool in this space is a dashboard. Databox, Whatagraph, Klipfolio, DashThis, Cyfe — they all show numbers, none of them DO anything with them. SimilarWeb, Ahrefs, Semrush give raw competitive intelligence but require the tenant to interpret. Kompyte / Crayon / Klue offer AI-driven competitive intelligence but at $12K-$47K/year — enterprise-only.
 Paige's differentiator is not the data — it's the interpretation + the drafted action + the routing to the right §16 department. Data + interpretation + action = the felt "AI COO" moment; data alone is a dashboard.
@@ -288,6 +296,7 @@ Data that is genuinely unavailable:
 Accept and communicate honestly: "estimated" is the right word in every UI element that shows competitor volume/spend numbers.
 ---
 ## §40 — Integrity Governance (new doctrine section)
+**VP owner:** VERA enforces §40 boundaries before any VP acts on restricted topics; every sub-agent + Paige-forged specialist + VP-owned action inherits the tenant's boundary register through VERA.
 **Directive (owner: Antonio, 2026-07-26):** Paige respects the tenant's boundaries — around IP, privacy, and topics the tenant has decided are out of scope for AI involvement — by construction, not by policy. Every sub-agent, every Paige-forged specialist, every §8 action-bus draft, and every future Playbook creator's extension checks the tenant's integrity boundaries as a hard block before touching a restricted topic.
 **Concrete mechanisms:**
 1. **Per-tenant off-limits register.** Tenant tells Paige "don't touch [X]" — internal salary decisions, a legal matter under NDA, personal family info, a competitor's IP, a topic they've decided is beyond Paige's role. Paige "docks it" = persists the boundary in a `tenant_integrity_boundaries` table (§9 tenant-scoped, RLS'd, append-only audit). Boundaries survive session reset, tenant churn (soft-preserved on reactivate), and Paige model upgrades.
@@ -298,6 +307,7 @@ Accept and communicate honestly: "estimated" is the right word in every UI eleme
 6. **The competitive gap.** Nobody else in the coach/consultant/agency space builds this because they're not this deep in the operator's business. When Paige runs the whole operation, integrity isn't a nice-to-have — it's how the operator trusts handing over the keys. §40 is a moat by itself.
 ---
 ## Revenue-Stage Awareness (first-class tenant profile primitive)
+**VP owner:** ZION — calibrates every strategic recommendation to the tenant's revenue stage.
 **Directive (owner: Antonio, 2026-07-26):** Paige knows what revenue stage the tenant is at and calibrates every suggestion, every action, every departmental strategy accordingly. Strategy that makes sense at $3M is nonsense at $50K, and vice versa. Paige without stage awareness sounds like an MBA who hasn't met the business. Paige with it sounds like a coach who's been there.
 **The five stages, per Antonio's model:**
 | Stage | Range | Bottleneck focus |
@@ -324,6 +334,7 @@ Never counted: pipeline value, projected revenue, hoped-for close, tenant-typed 
 **Marketplace opportunity:** stage-specific Playbooks. "The Stage-2 → Stage-3 Bottleneck Playbook — by [name]." A whole vertical of Marketplace inventory calibrated to stage transitions, not just industries. Vertical PLUS stage = every Marketplace listing has two axes of specificity.
 ---
 ## Entity / Organization Type Awareness (first-class tenant profile primitive)
+**VP owner:** MERIT (legal-adherence side: what filings the entity type requires) + VERA (statutory-compliance side: what boundary the entity type creates for Paige suggestions).
 **Directive (owner: Antonio, 2026-07-26):** Paige captures the tenant's legal entity type + jurisdiction at signup and adapts her mindset to the tenant's structure. Not legal advice — statutory awareness so Paige doesn't suggest wrong things. Entity type determines: which obligations exist, which Playbooks apply, which voice/framing fits, which warnings to flag.
 **Entity types supported (US day-one, foreign later):**
 - Sole Proprietor
@@ -386,6 +397,11 @@ Zero new fundamental primitives required. Every pillar is a compounding on shipp
 - **Voice Layer (per §131, tasks #140, #168, #170) — PARTIALLY SHIPPED.** Inbound and outbound calls, Paige-as-live-co-pilot during calls, TTS/STT via Deepgram + ElevenLabs, per-tenant configurable voice. Every pillar can trigger a call: Vault renewal → outbound reminder call; Systems Check outage → operator escalation call; Twin-drafted conversation → phone touchpoint if the tenant approves. Every call becomes a Conversations thread row per §49 wiring. MVP + slices shipped; remainder in flight.
 - **Integrations (n8n + Zapier + MCP + OAuth) — FUTURE (Phase 2 first slice per owner sequencing lock).** The external-tool connectivity layer that lets Paige's departments (§16) drive third-party APIs, receive webhooks, and act as an MCP client/server. Prerequisite before Paige can be truly proactive across the tenant's stack.
 - **L8 Memory Fabric — FUTURE (parallel to or after Trilogy Phase A per owner sequencing).** The persistent semantic memory substrate the whole Trilogy runs on. §26 already ships tenant-scoped voyage-3 embeddings + prompt-forge; L8 formalizes and expands that substrate so every pillar (Systems Check baselines, Vault learned obligations, Twin writing-style profiles, Analytics interpretations) reads from and writes to one memory fabric with a consistent shape.
+**VP ownership of the substrate:**
+- Conversations (Unified Comms Substrate per §49) — PAIGE routes; every VP executes their department's messages through it
+- Voice Layer — PAIGE speaks; every VP has a distinct voice profile per §132 (future extension)
+- Integrations (n8n + Zapier + MCP + OAuth scaffolding) — MENTOR owns
+- L8 Memory Fabric — each VP has her own tenant-scoped semantic memory + prompt DNA per §26; PAIGE reads across for orchestration
 **Marketplace listings map to substrate too, not just pillars.** A Conversation template, a Voice persona, an n8n workflow, a memory-shaped Skill — these are §12-organized against the substrate layer that hosts them and the pillar they serve. A Voice persona is authored per-tenant (§9) and lands in the Voice substrate; the Vault pillar can trigger it. Substrate ≠ standalone; it is what every pillar rides on.
 **The test, every substrate build:** *"Does this serve one or more pillars, and is it structurally shared across them — or is it actually a pillar-scoped feature masquerading as substrate?"* If it's pillar-scoped, file it against that pillar and don't inflate the substrate layer.
 ---
