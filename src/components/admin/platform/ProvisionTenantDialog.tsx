@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import {
-  type TenantStatus, TENANT_STATUSES, STATUS_META, provisionTenant,
+  type TenantStatus, STATUS_META, provisionTenant,
 } from "@/lib/platform/tenantLifecycle";
 
 // The operator provisions into a starting state — trial (default) or active.
