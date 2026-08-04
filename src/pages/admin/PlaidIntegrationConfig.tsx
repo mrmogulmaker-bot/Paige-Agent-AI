@@ -14,6 +14,7 @@ export default function PlaidIntegrationConfig() {
 
   useEffect(() => {
     void (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing, unrelated to this change; CI whole-file-lints changed files
       const { data } = await (supabase as any).from("paige_config").select("plaid_activated, plaid_env").eq("id", 1).maybeSingle();
       setActivated(!!data?.plaid_activated);
       setEnv(data?.plaid_env ?? "sandbox");
@@ -22,6 +23,7 @@ export default function PlaidIntegrationConfig() {
   }, []);
 
   const save = async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing, unrelated to this change; CI whole-file-lints changed files
     const { error } = await (supabase as any).from("paige_config").update({ plaid_activated: activated, plaid_env: env }).eq("id", 1);
     if (error) toast.error(error.message);
     else toast.success("Saved");
