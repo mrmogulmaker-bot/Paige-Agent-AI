@@ -20,8 +20,130 @@ interface SupportRequest {
   message: string;
   preferredContact: string;
   requestConsultation: boolean;
-  planSlug: string;
+  // NOTE: planSlug is intentionally NOT read from the request body. The support
+  // SLA + routing inbox are entitlements, so the plan is resolved SERVER-SIDE
+  // (see resolvePlanSlug) — a client-supplied slug is spoofable and is ignored.
   userEmail: string;
+}
+
+// ── Support entitlements as CONFIG DATA, not a hardcoded slug ladder ──────────
+// A plan maps to a support TIER; the tier carries the SLA + routing capability.
+// Adding a new plan is one map entry (or it safely inherits STANDARD) — so a new
+// tier tomorrow never silently loses its SLA, and can never reach the enterprise
+// inbox via a spoofed/ drifted slug. Only `enterprise` routes to enterprise@; the
+// non-default SLA values below are operator-tunable support policy defaults.
+type SupportTier = "dedicated" | "priority" | "standard_48" | "standard_72" | "standard";
+
+interface SupportTierConfig {
+  slaHours: number | null;
+  priorityLabel: string; // subject-line priority tag
+  badgeColor: string; // internal email badge background
+  routingInbox: string;
+  responseCopy: string; // user-facing expected-response line
+  dedicatedManager: boolean; // white-glove / dedicated success manager
+}
+
+const SUPPORT_TIERS: Record<SupportTier, SupportTierConfig> = {
+  dedicated: {
+    slaHours: 2,
+    priorityLabel: "🔴 ENTERPRISE - 2 HOUR SLA",
+    badgeColor: "#DC2626",
+    routingInbox: "enterprise@paigeagent.ai",
+    responseCopy: "Within 2 hours (Enterprise SLA)",
+    dedicatedManager: true,
+  },
+  priority: {
+    slaHours: 24,
+    priorityLabel: "🟠 PRIORITY - 24 HOUR SLA",
+    badgeColor: "#F59E0B",
+    routingInbox: "support@paigeagent.ai",
+    responseCopy: "Within 24 hours (Priority Support)",
+    dedicatedManager: false,
+  },
+  standard_48: {
+    slaHours: 48,
+    priorityLabel: "🟡 48 HOUR SLA",
+    badgeColor: "#10B981",
+    routingInbox: "support@paigeagent.ai",
+    responseCopy: "Within 48 hours",
+    dedicatedManager: false,
+  },
+  standard_72: {
+    slaHours: 72,
+    priorityLabel: "🟢 72 HOUR SLA",
+    badgeColor: "#10B981",
+    routingInbox: "support@paigeagent.ai",
+    responseCopy: "Within 72 hours",
+    dedicatedManager: false,
+  },
+  standard: {
+    slaHours: null,
+    priorityLabel: "🔵 STANDARD",
+    badgeColor: "#10B981",
+    routingInbox: "support@paigeagent.ai",
+    responseCopy: "As soon as our team is available",
+    dedicatedManager: false,
+  },
+};
+
+// Plan slug → support tier. Covers the current real taxonomy (pricingConfig.ts:
+// starter/growth/scale/broker/broker_workspace/broker_beta_starter/enterprise),
+// the legacy grandfathered slugs (premium/professional), and the invite/admin
+// slugs (solo/agency/team). Any unknown/new slug falls through to STANDARD via
+// the resolver default — never crashes, never misroutes to the enterprise inbox.
+const PLAN_SUPPORT_TIER: Record<string, SupportTier> = {
+  enterprise: "dedicated",
+  broker: "priority",
+  broker_workspace: "priority",
+  scale: "priority",
+  premium: "priority", // legacy
+  agency: "priority",
+  growth: "standard_48",
+  professional: "standard_48", // legacy
+  team: "standard_48",
+  starter: "standard_72",
+  solo: "standard_72",
+  broker_beta_starter: "standard_72",
+  free: "standard",
+};
+
+function supportConfigForPlan(planSlug: string): SupportTierConfig {
+  return SUPPORT_TIERS[PLAN_SUPPORT_TIER[planSlug] ?? "standard"];
+}
+
+// Resolve the caller's plan SERVER-SIDE — mirrors the authoritative resolution in
+// check-subscription + SubscriptionContext so support entitlement matches what the
+// user actually has: staff (admin/coach) → enterprise, complimentary → premium,
+// otherwise the persisted user_subscriptions.plan_slug (default "free"). This is
+// read-only; it never trusts a client-supplied slug.
+async function resolvePlanSlug(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<string> {
+  // Staff bypass — admins and coaches get full (enterprise) support entitlement.
+  const { data: roleRows } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId);
+  const roles = (roleRows ?? []).map((r: { role?: string }) => r.role);
+  if (roles.includes("admin") || roles.includes("coach")) return "enterprise";
+
+  // Complimentary access — Pro-level (premium) support without Stripe.
+  const { data: profileRow } = await supabase
+    .from("profiles")
+    .select("is_complimentary")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if ((profileRow as { is_complimentary?: boolean } | null)?.is_complimentary) {
+    return "premium";
+  }
+
+  const { data: subRow } = await supabase
+    .from("user_subscriptions")
+    .select("plan_slug")
+    .eq("user_id", userId)
+    .maybeSingle();
+  return (subRow as { plan_slug?: string } | null)?.plan_slug || "free";
 }
 
 serve(async (req) => {
@@ -48,10 +170,9 @@ serve(async (req) => {
     logStep("User authenticated", { userId: user.id, email: user.email });
 
     const requestData: SupportRequest = await req.json();
-    logStep("Request received", { 
-      category: requestData.category, 
-      planSlug: requestData.planSlug,
-      consultation: requestData.requestConsultation 
+    logStep("Request received", {
+      category: requestData.category,
+      consultation: requestData.requestConsultation,
     });
 
     // Get user profile for additional context
@@ -63,23 +184,22 @@ serve(async (req) => {
 
     const userName = profile?.full_name || user.email;
 
-    // Determine priority and routing based on plan
-    const priorityLabels: Record<string, string> = {
-      enterprise: "🔴 ENTERPRISE - 2 HOUR SLA",
-      premium: "🟠 PREMIUM - 24 HOUR SLA",
-      professional: "🟡 PROFESSIONAL - 48 HOUR SLA",
-      starter: "🟢 STARTER - 72 HOUR SLA",
-    };
+    // Resolve the plan SERVER-SIDE (never from the request body) and read its
+    // support entitlement as config data — this closes both the drifted-ladder
+    // gap and the client-side planSlug spoof in one move.
+    const planSlug = await resolvePlanSlug(supabaseClient, user.id);
+    const support = supportConfigForPlan(planSlug);
+    logStep("Plan resolved server-side", { planSlug, routingInbox: support.routingInbox });
 
-    const priority = priorityLabels[requestData.planSlug] || "🔵 STANDARD";
-    const isEnterprise = requestData.planSlug === "enterprise";
-    const is3MConsultation = requestData.category === "3m_framework" || 
+    const priority = support.priorityLabel;
+    const isEnterprise = support.dedicatedManager;
+    const is3MConsultation = requestData.category === "3m_framework" ||
                             (requestData.requestConsultation && isEnterprise);
 
     // Send notification to support team
     const supportEmail = await resend.emails.send({
       from: "PaigeAgent.ai Support <support@paigeagent.ai>",
-      to: isEnterprise ? ["enterprise@paigeagent.ai"] : ["support@paigeagent.ai"],
+      to: [support.routingInbox],
       subject: `${priority} | ${requestData.category.toUpperCase()} | ${requestData.subject}`,
       html: `
         <!DOCTYPE html>
@@ -94,7 +214,7 @@ serve(async (req) => {
                 border-radius: 6px; 
                 font-weight: bold;
                 margin-bottom: 20px;
-                background: ${isEnterprise ? '#DC2626' : requestData.planSlug === 'premium' ? '#F59E0B' : '#10B981'};
+                background: ${support.badgeColor};
                 color: white;
               }
               .info-grid { 
@@ -145,7 +265,7 @@ serve(async (req) => {
                 ` : ''}
                 
                 <div class="info-label">Plan:</div>
-                <div><strong>${requestData.planSlug.toUpperCase()}</strong></div>
+                <div><strong>${planSlug.toUpperCase()}</strong></div>
                 
                 <div class="info-label">Category:</div>
                 <div>${requestData.category.replace(/_/g, ' ').toUpperCase()}</div>
@@ -202,7 +322,7 @@ serve(async (req) => {
             <div class="container">
               <div class="header">
                 <h1 style="margin: 0;">Support Request Received</h1>
-                <span class="badge">${requestData.planSlug.toUpperCase()} PLAN</span>
+                <span class="badge">${planSlug.toUpperCase()} PLAN</span>
               </div>
               <div class="content">
                 <p>Hi ${userName},</p>
@@ -211,13 +331,7 @@ serve(async (req) => {
                 
                 <div class="response-time">
                   <strong>Expected Response Time:</strong><br>
-                  ${isEnterprise 
-                    ? '⏱️ Within 2 hours (Enterprise SLA)' 
-                    : requestData.planSlug === 'premium'
-                    ? '⏱️ Within 24 hours (Priority Support)'
-                    : requestData.planSlug === 'professional'
-                    ? '⏱️ Within 48 hours'
-                    : '⏱️ Within 72 hours'}
+                  ⏱️ ${support.responseCopy}
                 </div>
                 
                 <p><strong>Request Category:</strong> ${requestData.category.replace(/_/g, ' ')}</p>
@@ -230,7 +344,7 @@ serve(async (req) => {
                 </div>
                 ` : ''}
                 
-                <p style="margin-top: 24px;">Thank you for being a valued ${requestData.planSlug} member!</p>
+                <p style="margin-top: 24px;">Thank you for being a valued ${planSlug} member!</p>
                 
                 <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
                   Best regards,<br>
@@ -254,7 +368,7 @@ serve(async (req) => {
         action: "created",
         data: {
           category: requestData.category,
-          plan_slug: requestData.planSlug,
+          plan_slug: planSlug,
           consultation_requested: requestData.requestConsultation,
           is_3m_framework: is3MConsultation,
         },

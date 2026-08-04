@@ -33,10 +33,12 @@ export function ContactSupport() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      // planSlug is intentionally NOT sent: the support SLA + routing inbox are
+      // entitlements resolved SERVER-SIDE from the subscription row (a client
+      // value would be spoofable). The local planSlug only drives this UI's copy.
       const { error } = await supabase.functions.invoke('send-support-request', {
         body: {
           ...formData,
-          planSlug,
           userEmail: user.email,
         },
       });
@@ -59,6 +61,7 @@ export function ContactSupport() {
         preferredContact: "email",
         requestConsultation: false,
       });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing; CI whole-file-lints changed files
     } catch (error: any) {
       console.error('Support request error:', error);
       toast.error("Failed to submit request", {
