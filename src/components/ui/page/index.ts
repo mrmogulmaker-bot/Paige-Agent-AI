@@ -65,3 +65,11 @@ export { Toolbar, FilterChip } from "./Toolbar";
 export { StatePill, type PillState } from "./StatePill";
 export { ColorField, LogoUploader, BRAND_IMG_TYPES, FONT_OPTIONS } from "./BrandControls";
 export * from "./PresenceDot";
+export {
+  PaigeAttribution,
+  VP_ROSTER,
+  type VP,
+  type PaigeContributor,
+  type AttributionScope,
+  type PaigeAttributionProps,
+} from "./PaigeAttribution";
