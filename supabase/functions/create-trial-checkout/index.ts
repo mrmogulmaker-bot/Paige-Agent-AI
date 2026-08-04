@@ -15,12 +15,51 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const DEFAULT_STARTER_PRICE_ID = "price_1TNQjuKPsmWO0z4OdXmm1eKe"; // $49 Starter
-
 const logStep = (step: string, details?: any) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : "";
   console.log(`[CREATE-TRIAL-CHECKOUT] ${step}${detailsStr}`);
 };
+
+// Starter price is resolved from DB config-as-data — never a compile constant — so it
+// can't drift silently when the operator rotates the Starter price. Mirrors
+// check-subscription, which loads the Stripe↔plan mapping from public tables instead of
+// hardcoding it. Resolution order (all config, no hardcode):
+//   1. platform_subscription_plans.stripe_price_id (slug='starter', active) — a directly
+//      pinned price id when the operator has set one.
+//   2. else the Starter product from stripe_product_mappings (plan_slug='starter', active)
+//      → that product's CURRENT Stripe default price. Rotation-proof: changing the
+//      product's default price in Stripe is enough; nothing to keep in sync here.
+// Returns null when neither resolves — the caller MUST refuse rather than charge a
+// wrong/stale price.
+async function resolveStarterPriceId(
+  admin: ReturnType<typeof createClient>,
+  stripe: Stripe,
+): Promise<string | null> {
+  // (1) Directly-pinned price on the platform plan row.
+  const { data: planRow } = await admin
+    .from("platform_subscription_plans")
+    .select("stripe_price_id")
+    .eq("slug", "starter")
+    .eq("is_active", true)
+    .maybeSingle();
+  const pinned = (planRow?.stripe_price_id as string | null) || null;
+  if (pinned) return pinned;
+
+  // (2) Resolve via the Starter product mapping → its current Stripe default price.
+  const { data: mapRow } = await admin
+    .from("stripe_product_mappings")
+    .select("stripe_product_id")
+    .eq("plan_slug", "starter")
+    .eq("is_active", true)
+    .maybeSingle();
+  const productId = (mapRow?.stripe_product_id as string | null) || null;
+  if (!productId) return null;
+
+  const product = await stripe.products.retrieve(productId);
+  const dp = product.default_price;
+  if (!dp) return null;
+  return typeof dp === "string" ? dp : dp.id;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -83,14 +122,26 @@ serve(async (req) => {
 
     // Beta Starter price ($27) is reserved for broker-referred clients.
     const useBetaStarter = isBrokerReferral && !!brokerCouponId;
-    const priceId = useBetaStarter
-      ? Deno.env.get("STRIPE_BROKER_BETA_STARTER_PRICE_ID") || DEFAULT_STARTER_PRICE_ID
-      : DEFAULT_STARTER_PRICE_ID;
     const planSlug = useBetaStarter ? "broker_beta_starter" : "starter";
 
     const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
       apiVersion: "2024-12-18",
     });
+
+    // Resolve the Starter price from DB config (never a compile constant). Refuse to
+    // open checkout rather than charge a wrong/stale price if it isn't configured.
+    const starterPriceId = await resolveStarterPriceId(adminClient, stripe);
+    if (!starterPriceId) {
+      throw new Error(
+        "Starter price is not configured in the DB (set platform_subscription_plans." +
+          "stripe_price_id for slug='starter', or an active stripe_product_mappings row " +
+          "with plan_slug='starter' pointing at a Stripe product that has a default price). " +
+          "Refusing to open checkout to avoid charging a wrong price.",
+      );
+    }
+    const priceId = useBetaStarter
+      ? Deno.env.get("STRIPE_BROKER_BETA_STARTER_PRICE_ID") || starterPriceId
+      : starterPriceId;
 
     const customers = await stripe.customers.list({ email: user.email, limit: 1 });
     const customerId: string | undefined = customers.data[0]?.id;
