@@ -24,11 +24,55 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+
+/**
+ * #233 — on a GENUINE new sign-in, reset the active tenant to the user's HOME.
+ *
+ * A "genuine new sign-in" is discriminated from the routine SIGNED_IN re-emits
+ * (tab refocus), TOKEN_REFRESHED events, and plain reloads by whether Supabase's
+ * `session.user.last_sign_in_at` has ADVANCED past the value we last handled. We
+ * persist that per-user timestamp in localStorage and compare it on every load.
+ *
+ * The read may THROW (private mode / disabled storage). We must fail TOWARD
+ * not-resetting (fold-fix #4): an unreadable prior-state can never be burned, so
+ * treating it as "fresh" would re-fire the reset on EVERY load and yank the user
+ * mid-session forever. `ok:false` therefore suppresses the reset entirely. An
+ * ABSENT key in a READABLE store is different — it CAN be written once — so it
+ * counts as fresh, resets a single time, then burns.
+ */
+const FRESH_SIGNIN_KEY = "paige.auth.lastSignInAt.";
+
+function readHandledSignIn(uid: string): { ok: boolean; value: string | null } {
+  try {
+    return { ok: true, value: localStorage.getItem(FRESH_SIGNIN_KEY + uid) };
+  } catch {
+    return { ok: false, value: null };
+  }
+}
+
+function burnHandledSignIn(uid: string, value: string): void {
+  try {
+    localStorage.setItem(FRESH_SIGNIN_KEY + uid, value);
+  } catch {
+    // Unwritable store — the reset already committed to the DB (the durable
+    // source of truth); we simply can't cache the freshness marker. Worst case
+    // the next load re-evaluates, finds home === current, and no-ops the write.
+  }
+}
+
+function clearHandledSignIn(uid: string): void {
+  try {
+    localStorage.removeItem(FRESH_SIGNIN_KEY + uid);
+  } catch {
+    // Nothing to clear if the store is unavailable.
+  }
+}
 
 export interface TenantSummary {
   id: string;
@@ -68,6 +112,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const [isPlatformStaff, setIsPlatformStaff] = useState(false);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
+  // The uid resolved by the last successful load — captured so the SIGNED_OUT
+  // handler (whose session is already null) can clear THIS user's freshness
+  // marker for the correct per-uid key (fold-fix #5).
+  const activeUidRef = useRef<string | null>(null);
 
   // The provider always mounts inside QueryClientProvider (App.tsx), so this is
   // unconditional and safe. Switching the active tenant changes the scope of
@@ -97,17 +145,21 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       if (!uid) {
         // No session is authoritative from local storage (getSession, unlike getUser,
         // doesn't fail transiently on the network) — a real signed-out state. Clear.
+        activeUidRef.current = null;
         setTenants([]);
         setActiveTenantId(null);
         setIsPlatformOwner(false);
         setIsPlatformStaff(false);
         return;
       }
+      activeUidRef.current = uid;
 
       const [owner, staff, profileRes, tenantsRes] = await Promise.all([
         supabase.rpc("is_platform_owner"),
         supabase.rpc("is_platform_admin"),
-        supabase.from("profiles").select("active_tenant_id").eq("user_id", uid).maybeSingle(),
+        // #233: fold `agency_login_default` into the SAME round-trip (never a
+        // serial read) so the fresh-login reset can honor the #191 opt-in below.
+        supabase.from("profiles").select("active_tenant_id, agency_login_default").eq("user_id", uid).maybeSingle(),
         // RLS already filters: platform staff see all, members see their own.
         supabase
           .from("tenants")
@@ -126,14 +178,77 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       setTenants((tenantsRes.data ?? []) as TenantSummary[]);
       // Platform staff must NOT be auto-scoped into a tenant just because RLS
       // lets them read all of them — they operate at the God tier by default.
-      setActiveTenantId(
+      const baseActiveTenantId =
         profileRes.data?.active_tenant_id ??
-          (staff.data ? null : (tenantsRes.data?.[0] as TenantSummary | undefined)?.id ?? null),
-      );
+        (staff.data ? null : (tenantsRes.data?.[0] as TenantSummary | undefined)?.id ?? null);
+      setActiveTenantId(baseActiveTenantId);
+
+      // --- #233: on a GENUINE new sign-in, reset the active tenant to the user's
+      // HOME so a fresh login lands on home instead of wherever the last session
+      // was parked (a stale sub-account, an entered agency child). Freshness is
+      // `session.user.last_sign_in_at` advancing past the value we last handled;
+      // routine SIGNED_IN re-emits / TOKEN_REFRESHED / reloads carry the SAME
+      // timestamp and are left alone. Consulted here inside load() so BOTH the
+      // event handler AND the INITIAL_SESSION / mount path get it (fold-fix #3:
+      // OAuth / magic-link full-reload emits INITIAL_SESSION, not SIGNED_IN).
+      const lastSignInAt = session?.user?.last_sign_in_at ?? null;
+      const handled = readHandledSignIn(uid);
+      const isFreshLogin =
+        handled.ok && lastSignInAt !== null && handled.value !== lastSignInAt;
+
+      // A profileRes read failure means we can't read the #191 opt-in, so we
+      // skip the reset (don't reset, don't burn → the next event retries) rather
+      // than risk overriding a `last_account` preference we couldn't see.
+      if (isFreshLogin && !profileRes.error) {
+        if (profileRes.data?.agency_login_default === "last_account") {
+          // Explicit user preference wins (§36/§46) — keep the last account, do
+          // NOT reset. Mark the login handled so a same-timestamp re-emit (and a
+          // mid-session settings change) can't retroactively fire the reset.
+          burnHandledSignIn(uid, lastSignInAt);
+        } else {
+          // Resolve HOME. Staff/God short-circuit BEFORE the RPC → home = null
+          // (they operate at the platform tier). Everyone else gets the single
+          // deterministic primary tenant (ranked is_owner→owner→admin→coach,
+          // tie-break tenant_created_at ASC, tenant_id ASC — no #588
+          // nondeterminism, and ONLY the caller's own entitled memberships, §9).
+          let home: string | null = null;
+          if (!staff.data) {
+            const primary = await supabase.rpc("get_user_primary_tenant", { _user_id: uid });
+            if (primary.error) {
+              // Couldn't resolve home — leave scope on the committed base and do
+              // NOT burn, so the next auth event retries (fold-fix #1: never lose
+              // the reset by burning the marker before it actually completes).
+              return;
+            }
+            home = primary.data?.[0]?.tenant_id ?? null;
+          }
+          if (home === baseActiveTenantId) {
+            // Already home — nothing to persist; mark the login handled.
+            burnHandledSignIn(uid, lastSignInAt);
+          } else {
+            // Persist so current_user_tenant_id() (RLS) and the client agree (§9).
+            const reset = await supabase
+              .from("profiles")
+              .update({ active_tenant_id: home })
+              .eq("user_id", uid);
+            if (reset.error) {
+              // Guard (fold-fix #2): the DB write FAILED — do NOT flip the client
+              // to home (that would split client=home / DB=child scope) and do
+              // NOT burn; retry on the next auth event with DB and client aligned.
+              return;
+            }
+            // Commit + invalidate ONLY after the write succeeds, then burn the
+            // marker LAST (fold-fix #1) so the reset is never lost on a bail.
+            setActiveTenantId(home);
+            queryClient.invalidateQueries();
+            burnHandledSignIn(uid, lastSignInAt);
+          }
+        }
+      }
     } finally {
       if (!background) setLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     load();
@@ -144,7 +259,25 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     // These events fire routinely (hourly token refresh, tab refocus), so the re-run
     // is a BACKGROUND revalidation — no loading flash, no partial-commit on failure.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "SIGNED_OUT") {
+      if (event === "SIGNED_OUT") {
+        // Clear THIS user's freshness marker so the NEXT sign-in (this user
+        // again, or a different user on the same browser) is correctly seen as
+        // genuine (fold-fix #5). The session is already null here, so we use the
+        // uid captured on the last successful load, not a read-back of the session.
+        const priorUid = activeUidRef.current;
+        if (priorUid) clearHandledSignIn(priorUid);
+        activeUidRef.current = null;
+        load(true);
+        return;
+      }
+      // INITIAL_SESSION is included so the OAuth / magic-link full-reload path
+      // (which does NOT emit SIGNED_IN) still runs load() → the #233 freshness
+      // check, instead of restoring the stale parked scope (fold-fix #3).
+      if (
+        event === "SIGNED_IN" ||
+        event === "TOKEN_REFRESHED" ||
+        event === "INITIAL_SESSION"
+      ) {
         load(true);
       }
     });
