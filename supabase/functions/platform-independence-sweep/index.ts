@@ -35,7 +35,11 @@ const SIGNATURES: { name: string; pattern: RegExp; severity: "high" | "medium" }
   { name: "owner_signer_name", pattern: /antonio\s+cook/i, severity: "high" },
   { name: "creditstrong_affiliate", pattern: /creditstrong/i, severity: "high" },
   { name: "referral_code_3antonio94", pattern: /3ANTONIO94/i, severity: "high" },
-  { name: "affiliate_code_00498", pattern: /\baffi(?:liate)?[=_-]?00498\b/i, severity: "high" },
+  // Catch aff / affiliate / ref prefixes for the owner's affiliate code 00498, with
+  // an optional id-token + common separators (aff=00498, ref=00498, ?aff_id=00498,
+  // affiliate-00498). Bare "00498" stays EXCLUDED (the prefix is required) to avoid
+  // matching unrelated 5-digit numbers.
+  { name: "affiliate_code_00498", pattern: /\b(?:aff(?:iliate)?|ref)(?:_?id)?[_=\-\/]?00498\b/i, severity: "high" },
   { name: "owner_booking_link", pattern: /booking-screening/i, severity: "high" },
   {
     name: "hardcoded_mma_uuid",

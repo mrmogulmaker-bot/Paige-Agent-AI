@@ -105,14 +105,20 @@ GRANT  EXECUTE ON FUNCTION public.resolve_tenant_brand(uuid) TO authenticated, s
 --     entity, not the agency's. Inheriting a parent's legal_business_name onto a
 --     sub-account's outreach would be a real mis-scope. This is deliberate.
 --
--- B2 (§9) — sensitive-field gate:
---   legal_entity_name / signer_name / signer_title are legal + real-person PII. On the
---   JWT path (auth.uid() IS NOT NULL) they are returned ONLY to a caller authorized for
---   _tenant_id (can_manage_tenant_brand OR current_user_tenant_id() = _tenant_id) — so
---   tenant A cannot read tenant B's signer by passing B's uuid (an IDOR one step above
---   the existing brand-chrome exposure). The service_role path (auth.uid() IS NULL —
+-- B2 (§9) — sensitive-field gate (v_can_see_legal), guards THREE cross-tenant blocks:
+--   (1) legal_entity_name / signer_name / signer_title — legal + real-person PII;
+--   (2) the sender ADDRESS fields (from_address/reply_to/domain/kind/source) — another
+--       tenant's sending identity, sourced from the service_role-ONLY resolve_tenant_sender
+--       whose REVOKE this SECURITY DEFINER would otherwise bypass;
+--   (3) tradeline_partners — the tenant's OWN marketing-CTA config.
+--   On the JWT path (auth.uid() IS NOT NULL) all three are returned ONLY to a caller
+--   authorized for _tenant_id (can_manage_tenant_brand OR current_user_tenant_id() =
+--   _tenant_id) — so tenant A cannot read tenant B's signer, sending addresses, or
+--   partner CTAs by passing B's uuid. The service_role path (auth.uid() IS NULL —
 --   Paige's edge functions, which have ALREADY resolved the tenant server-side) always
---   sees them. Brand chrome mirrors resolve_tenant_brand's open posture.
+--   sees them. PUBLIC (ungated) brand chrome — product_name / from_name / support_email /
+--   logo_url / booking_url and the sender's from_name/tenant_id/tenant_slug/tenant_name —
+--   mirrors resolve_tenant_brand's open posture.
 CREATE OR REPLACE FUNCTION public.resolve_operator_identity(_tenant_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
@@ -137,6 +143,15 @@ BEGIN
   END IF;
 
   v_sender := public.resolve_tenant_sender(_tenant_id);
+
+  -- B2 (§9) — the sensitive-field gate, computed ONCE up front (it now guards THREE
+  -- blocks: the sender ADDRESS fields, tradeline_partners, and the legal identity).
+  -- On the JWT path a caller sees the gated fields ONLY for a tenant it is authorized
+  -- for; the service_role path (auth.uid() IS NULL — Paige's edge functions, tenant
+  -- already resolved server-side) always sees them.
+  v_can_see_legal := (auth.uid() IS NULL)                       -- service_role (edge, tenant pre-resolved)
+    OR public.can_manage_tenant_brand(_tenant_id)               -- owner/admin of tenant or its agency chain
+    OR (public.current_user_tenant_id() = _tenant_id);          -- the caller's own active tenant
 
   -- --- PUBLIC brand chrome (present-only; floors to the tenant's OWN name) ------
   v_out := jsonb_build_object('tenant_id', _tenant_id);
@@ -163,27 +178,44 @@ BEGIN
     v_out := v_out || jsonb_build_object('booking_url', v_brand.booking_url);
   END IF;
 
-  -- The full sender object (from_name/from_address/reply_to/domain/kind/source).
-  v_out := v_out || jsonb_build_object('sender', v_sender);
+  -- The sender object — SPLIT by sensitivity (§9 IDOR fix). resolve_tenant_sender is
+  -- deliberately service_role-ONLY (REVOKE ALL FROM authenticated); this SECURITY
+  -- DEFINER bypasses that REVOKE, so the ADDRESS-bearing fields (from_address /
+  -- reply_to / domain / kind / source) are another tenant's sending identity and must
+  -- NOT leak to a JWT tenant-A caller who passes tenant-B's uuid. from_name is PUBLIC
+  -- (it floors to the tenant name, already exposed via resolve_tenant_brand), as are
+  -- tenant_id / tenant_slug / tenant_name (public brand chrome). Present-only: when
+  -- withheld the address keys are simply ABSENT (consumers tolerate omitted keys).
+  IF v_can_see_legal THEN
+    v_out := v_out || jsonb_build_object('sender', v_sender);
+  ELSE
+    v_out := v_out || jsonb_build_object(
+      'sender', v_sender - 'from_address' - 'reply_to' - 'domain' - 'kind' - 'source');
+  END IF;
 
-  -- --- tradeline_partners: tenant config-as-data, OWN row, present-only ---------
+  -- --- tradeline_partners: tenant config-as-data, OWN row, GATED, present-only ---
   -- S4 (§2): NEVER a platform default. There is NO seed in this migration; every
   -- tenant starts empty and only sees partners it authored itself. No cascade — an
   -- affiliate offer is the tenant's own, never inherited from an agency parent.
-  SELECT NULLIF(t.features -> 'tradeline_partners', 'null'::jsonb)
-    INTO v_partners
-    FROM public.tenants t WHERE t.id = _tenant_id;
-  IF v_partners IS NOT NULL
-     AND jsonb_typeof(v_partners) = 'array'
-     AND jsonb_array_length(v_partners) > 0 THEN
-    v_out := v_out || jsonb_build_object('tradeline_partners', v_partners);
+  -- §9 IDOR fix: these are the tenant's OWN cross-tenant config (marketing CTAs);
+  -- gated behind the SAME v_can_see_legal check as the sender addresses / legal
+  -- fields so a JWT tenant-A caller cannot read tenant-B's partner CTAs by passing
+  -- B's uuid. No consumer needs them cross-tenant — both callers
+  -- (useOperatorIdentity JWT hook + _shared/operator-identity service-role edge)
+  -- fetch only their OWN tenant, which the gate allows. Present-only when withheld.
+  IF v_can_see_legal THEN
+    SELECT NULLIF(t.features -> 'tradeline_partners', 'null'::jsonb)
+      INTO v_partners
+      FROM public.tenants t WHERE t.id = _tenant_id;
+    IF v_partners IS NOT NULL
+       AND jsonb_typeof(v_partners) = 'array'
+       AND jsonb_array_length(v_partners) > 0 THEN
+      v_out := v_out || jsonb_build_object('tradeline_partners', v_partners);
+    END IF;
   END IF;
 
-  -- --- LEGAL identity: OWN row only (B3), gated (B2), present-only -------------
-  v_can_see_legal := (auth.uid() IS NULL)                       -- service_role (edge, tenant pre-resolved)
-    OR public.can_manage_tenant_brand(_tenant_id)               -- owner/admin of tenant or its agency chain
-    OR (public.current_user_tenant_id() = _tenant_id);          -- the caller's own active tenant
-
+  -- --- LEGAL identity: OWN row only (B3), gated (B2 — v_can_see_legal computed
+  --     once above), present-only ---------------------------------------------
   IF v_can_see_legal THEN
     -- OWN row ONLY — no chain walk. A sub-account signs its own letters.
     SELECT * INTO v_legal FROM public.tenant_legal_profile WHERE tenant_id = _tenant_id;
