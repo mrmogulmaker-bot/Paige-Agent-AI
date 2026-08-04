@@ -26,6 +26,21 @@ const SIGNATURES: { name: string; pattern: RegExp; severity: "high" | "medium" }
   { name: "mogul_maker_literal", pattern: /mogul[_\- ]?maker/i, severity: "high" },
   { name: "btf_platform_primitive", pattern: /\bBTF\b/, severity: "high" },
   { name: "skool_platform_reference", pattern: /\bskool\b/i, severity: "medium" },
+  // §45 de-brand — operator-identity re-leak signatures. So a future tenant-facing
+  // surface that hardcodes the owner's firm, advisor, affiliate codes, or booking
+  // link (instead of calling resolve_operator_identity) is caught mechanically, not
+  // only by a human review. These make §213.e enforcement real, not merely offered.
+  { name: "pme_entity", pattern: /project\s+mogul\s+enterprise|\bPME\b/i, severity: "high" },
+  { name: "pme_mogulcredit", pattern: /mogulcredit/i, severity: "high" },
+  { name: "owner_signer_name", pattern: /antonio\s+cook/i, severity: "high" },
+  { name: "creditstrong_affiliate", pattern: /creditstrong/i, severity: "high" },
+  { name: "referral_code_3antonio94", pattern: /3ANTONIO94/i, severity: "high" },
+  // Catch aff / affiliate / ref prefixes for the owner's affiliate code 00498, with
+  // an optional id-token + common separators (aff=00498, ref=00498, ?aff_id=00498,
+  // affiliate-00498). Bare "00498" stays EXCLUDED (the prefix is required) to avoid
+  // matching unrelated 5-digit numbers.
+  { name: "affiliate_code_00498", pattern: /\b(?:aff(?:iliate)?|ref)(?:_?id)?[_=\-\/]?00498\b/i, severity: "high" },
+  { name: "owner_booking_link", pattern: /booking-screening/i, severity: "high" },
   {
     name: "hardcoded_mma_uuid",
     // Any explicit UUID literal in platform code is suspect; reviewer justifies.
