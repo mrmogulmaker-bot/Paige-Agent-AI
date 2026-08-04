@@ -1,7 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-import { PME_KNOWLEDGE_BASE } from "../_shared/pme-knowledge-base.ts";
+// N5 §2/§9 — the funding methodology corpus is no longer bundled into platform code;
+// it lives in the installable Marketplace funding preset (tenant KB). This extraction
+// pass parses the report structure and does not need the coaching methodology inline.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -275,10 +277,6 @@ ACCOUNT NUMBER RULES (NON-NEGOTIABLE):
 - NEVER guess or fabricate account numbers — accuracy is critical for deduplication
 
 Use the verified read-check below as hard evidence. If your extraction conflicts with the verified read-check, leave the conflicting field null instead of inventing a value.
-
-=== PME FUNDING KNOWLEDGE BASE ===
-${PME_KNOWLEDGE_BASE}
-=== END PME FUNDING KNOWLEDGE BASE ===
 `;
 
 class AIRequestError extends Error {
