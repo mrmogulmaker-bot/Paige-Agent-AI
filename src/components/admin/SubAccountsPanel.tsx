@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Network, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { canOwnSubaccounts } from "@/lib/agency/accountCapabilities";
 import { toast } from "sonner";
 
 export function SubAccountsPanel() {
@@ -37,8 +38,9 @@ export function SubAccountsPanel() {
 
   // Only the tenant owner may spin up sub-accounts (the RPC enforces this too).
   const isOwner = !!activeTenant && !!uid && activeTenant.owner_user_id === uid;
-  // Only agency/enterprise accounts get sub-accounts (RPC enforces this too).
-  const canSubaccounts = activeTenant?.account_type === "agency" || activeTenant?.account_type === "enterprise";
+  // Only parent-capable accounts get sub-accounts (RPC enforces this too). Generic
+  // predicate — the parent-capable tier set lives in one place (§213.e/§51).
+  const canSubaccounts = canOwnSubaccounts(activeTenant?.account_type);
 
   const upgradeToAgency = async () => {
     if (!activeTenantId) return;
