@@ -1017,7 +1017,12 @@ JSON:`;
     // Knowledge base search
     let relevantKnowledge = "";
     if (lastUserMessage) {
-      const sanitizedContent = lastUserMessage.content.replace(/[%_]/g, '\\$&').substring(0, 200);
+      // Escape the backslash FIRST (include it in the class) so a pre-existing
+      // backslash in the input is itself escaped, not left to combine with the
+      // wildcard escapes below (js/incomplete-sanitization). Single global pass
+      // over [\\%_] — order-independent, no double-escaping. Behavior is identical
+      // for backslash-free input; a literal "\" now correctly becomes "\\".
+      const sanitizedContent = lastUserMessage.content.replace(/[\\%_]/g, '\\$&').substring(0, 200);
       const { data: knowledge } = await supabase.from("knowledge_base").select("title, content, summary, framework, category").textSearch('content', sanitizedContent).limit(5);
       if (knowledge && knowledge.length > 0) {
         relevantKnowledge = "\n\nRelevant Knowledge Base:\n" + knowledge.map(k => `### ${k.title} (${k.framework} - ${k.category})\n${k.content}`).join("\n\n");
