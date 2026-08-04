@@ -41,12 +41,13 @@ describe("<PaigeAttribution> honesty (§13)", () => {
   });
 
   it("renders nothing when contributors is undefined/non-array (§32 — degrade, never crash)", () => {
-    // callers adopt this incrementally from loose runtime data that can be undefined
-    // during load; TS marks the prop required but runtime data does not honor that.
-    // @ts-expect-error — intentionally passing undefined at runtime
-    expect(renderToStaticMarkup(<PaigeAttribution contributors={undefined} />)).toBe("");
-    // @ts-expect-error — intentionally passing a non-array at runtime
-    expect(renderToStaticMarkup(<PaigeAttribution contributors={null} />)).toBe("");
+    // Callers adopt this incrementally from loose runtime data that TS types as required
+    // but is undefined during load or absent in the DB. Cast to exercise the runtime guard
+    // (the prop type can't express "callers may violate me at runtime").
+    const renderUnsafe = (c: unknown) =>
+      renderToStaticMarkup(<PaigeAttribution contributors={c as PaigeContributor[]} />);
+    expect(renderUnsafe(undefined)).toBe("");
+    expect(renderUnsafe(null)).toBe("");
   });
 
   it("uses the surface-neutral default lead-in, and honors a leadIn override", () => {
