@@ -41,16 +41,17 @@ Persistent memory across sessions — Paige remembers what happened last week, w
 | **Enterprise** | Auto (always on) | Same + deeper retention, longer memory window, cross-context reasoning across subsidiary units. Highest depth. |
 | **Super Admin (God)** | Auto (always on) | Platform-lens memory (patterns across tenants for support/product improvement) with **immutable audit per §17 God-account governance. Never silent break-glass.** |
 
-Tier-gating MUST use a generic predicate (a tier field on `tenants` + a capability flag), **never** a hardcoded `"agency"`/`"enterprise"` per-tier branch (§213/§213.e).
+Tier-gating MUST resolve tiers through the **canonical §51 resolvers** (`tier-matrix.md`), **not** a single `tenants` column — the six tiers do not all key off one field (God has no home tenant, Client resolves via `clients.linked_user_id`, Anonymous has no tenant, and Standalone + Sub-account share `account_type`). Use those resolvers + a capability flag, **never** a hardcoded `"agency"`/`"enterprise"` per-tier branch (§213/§213.e). Compaction is universal (every authenticated tenant tier); only cross-chat-memory *depth* is tier-resolved.
 
 ---
 
 ## Substrate reuse (§18 one home — critical)
 
-- **EXTEND `paige_prompt_memory`** (§26 — already tenant-scoped, voyage-3 @ 1024 dims, §17 embedder-tier gated). Do **NOT** stand up a second memory table or a rival vector space.
-- Cross-chat retrieval is a **new query path over existing storage**, not new storage.
-- Compaction summaries land as a **new row shape in the same tenant-scoped table** (or an adjacent one that shares the exact same §9 isolation + §17 tagging discipline — `embedding_model='voyage-3'`, `embedding_dim=1024`, explicit `tenant_id`).
-- **The adversarial MUST re-attack:** *"is there a second embedder anywhere in this diff? is there a way to route embeddings to a frontier/generation model? does anything skip the §9 tenantId scope?"*
+**Two DISTINCT existing substrates — do not conflate them (§18).** Compaction and cross-chat memory are different mechanics with different homes; routing both into one table creates a competing source of truth.
+
+- **Compaction → EXTEND `paige_chat_threads.summary` + `summary_through_seq`** — the rolling per-thread summary shipped in `20260711300000_paige_owner_chat_persistence.sql`, which `paige-ai-chat` already writes and refreshes. Compaction is a *per-thread rolling summary*, so it lives **with the thread**, NOT in `paige_prompt_memory`. Routing compaction into the vector-memory table would create a competing source of truth and collide with that table's required artifact-memory fields. **Reject on sight.**
+- **Cross-chat memory → EXTEND `paige_prompt_memory`** (§26 — already tenant-scoped, voyage-3 @ 1024 dims, §17 embedder-tier gated). Semantic retrieval **across** threads is a **new query path over existing vector storage**, not new storage. Do **NOT** stand up a second memory table or a rival vector space. Any compaction summary that is *also* embedded for cross-chat recall carries the same §9 isolation + §17 tagging discipline (`embedding_model='voyage-3'`, `embedding_dim=1024`, explicit `tenant_id`).
+- **The adversarial MUST re-attack:** *"is there a second embedder anywhere in this diff? is there a way to route embeddings to a frontier/generation model? does anything skip the §9 tenantId scope? did compaction leak into the vector table instead of the thread summary?"*
 
 ---
 
@@ -64,10 +65,10 @@ Tier-gating MUST use a generic predicate (a tier field on `tenants` + a capabili
 
 ## Adversarial questions to hunt (log into the design pass upfront)
 
-- **§213/§213.e** — Does the tier-gating logic use a generic predicate (tier field + capability flag), or hardcode `"agency"`/`"enterprise"` per-tier? Framework-level, not per-tenant. Does it cover ALL current AND future tiers, or tunnel on today's tier set?
+- **§213/§213.e** — Does the tier-gating logic use a generic predicate (canonical §51 resolvers + capability flag), or hardcode `"agency"`/`"enterprise"` per-tier? Framework-level, not per-tenant. Does it cover ALL current AND future tiers, or tunnel on today's tier set?
 - **§9** — Can a sub-account's memory ever leak into another sub-account's context via the agency roll-up? Can Super Admin platform-lens ever return raw tenant PII without audit + an operator-scope gate?
 - **§26/§17** — Does any new code path route an embedding through a frontier/generation model? The structural **voyage-only** invariant must hold.
-- **§18** — Does this create a second memory table / second retrieval path when the existing one could extend? **Reject on sight.**
+- **§18** — Does this create a second memory table / second retrieval path when the existing one could extend? Did compaction land in `paige_prompt_memory` instead of the existing thread summary? **Reject on sight.**
 - **§46 rhythm** — Does compaction fire silently, or does the tenant know Paige is compacting (a small ambient signal, not a modal wall)?
 - **§28 approval** — Does memory ever surface an approved-frozen artifact as an "editable suggestion"? Frozen must stay frozen.
 - **§13** — Does retrieval report honestly what it found (real matches with confidence), or hallucinate *"you told me last week…"* from a near-miss?
@@ -86,7 +87,7 @@ Tier-gating MUST use a generic predicate (a tier field on `tenants` + a capabili
 ## Sequencing
 
 - **Blocked by:** Waves 1–5 close-out + the full hotfix bundle (#227–#233) landing + prod-confirm.
-- **Position:** fires in the §196 pre-launch sequence between **Owner Trilogy** and **Paige Quality Wave** (the roadmap's existing L8 Memory Fabric slot). Full pre-launch order: Practice Blueprints → Owner Trilogy → **L8 Memory Fabric** → Paige Quality Wave → Playwright → BETA LAUNCH → SOC 2.
+- **Position:** fires in the §196 pre-launch sequence between **Owner Trilogy** and **Paige Quality Wave** (the roadmap's existing L8 Memory Fabric slot). Full pre-launch order: Owner Trilogy → **L8 Memory Fabric** → Paige Quality Wave → Playwright → BETA LAUNCH → SOC 2. **Practice Blueprints is NOT a pre-launch predecessor** — the owner-locked `paige-practice-blueprints-2026-07-29.md` schedules it **post-launch v2, AFTER L8 + SOC 2**. (An earlier draft of this line wrongly listed Blueprints first; corrected here to the canonical owner-locked order.)
 - **Blocked by (new work):** nothing — the substrate already exists (§26).
 - **Blocks:** any pre-launch feature that assumes cross-chat continuity (arguably everything customer-facing).
 
