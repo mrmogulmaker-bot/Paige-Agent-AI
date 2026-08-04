@@ -130,6 +130,6 @@ Deno.serve(async (req) => {
       duns: biz?.dnb_duns_number ?? null,
     },
     requires_approval: false,
-    sources: ["PME KB Section 13 (BUILD Business 2.0)", "PME KB Section 15"],
+    sources: ["Knowledge Base Section 13 (BUILD Business 2.0)", "Knowledge Base Section 15"],
   });
 });

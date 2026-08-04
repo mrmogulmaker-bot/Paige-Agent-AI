@@ -148,6 +148,6 @@ Goal of message: ${goal}`;
     draft_id: draftId,
     requires_approval: true,
     confidence: flags.length > 0 ? "low" : "medium",
-    sources: ["outreach_drafts", "PME brand voice"],
+    sources: ["outreach_drafts", "brand voice"],
   });
 });

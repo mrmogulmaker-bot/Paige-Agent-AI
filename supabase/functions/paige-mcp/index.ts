@@ -20,6 +20,7 @@ import { Hono } from "npm:hono@4";
 import { McpServer, StreamableHttpTransport } from "npm:mcp-lite@^0.10.0";
 import { z } from "npm:zod@^3.25.0";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -1386,18 +1387,19 @@ function mdToHtml(md: string): string {
 // Per-product_scope sender map. Each `from` must be on a domain verified in the Resend
 // account that holds RESEND_API_KEY. All scopes route through Paige's verified
 // paigeagent.ai subdomain post-Ship #2 (MMA sender identities retired).
-// btf/mma reply_to temporarily routes to coach@mogulmakeracademy.com until a
-// dedicated Paige support inbox is provisioned (follow-up ship).
+// §45: reply_to defaults to the platform-neutral support inbox; the actual per-send
+// reply_to is resolved present-only from the CALLER'S tenant operator identity in the
+// handler (support_email / sender.reply_to) — never a hardcoded operator address.
 const SCOPE_SENDERS: Record<string, { from: string; name: string; reply_to: string }> = {
   btf: {
     from: "alerts@paigeagent.ai",
     name: "Paige",
-    reply_to: "coach@mogulmakeracademy.com",
+    reply_to: "support@paigeagent.ai",
   },
   mma: {
     from: "alerts@paigeagent.ai",
     name: "Paige",
-    reply_to: "coach@mogulmakeracademy.com",
+    reply_to: "support@paigeagent.ai",
   },
   paige: {
     from: "hello@paigeagent.ai",
@@ -1451,7 +1453,16 @@ mcp.tool("send_btf_template_email", {
     const fromName = args.from_name ?? scopeCfg.name;
     const fromEmail = args.from_override ?? scopeCfg.from;
     const fromAddr = `${fromName} <${fromEmail}>`;
-    const replyTo = args.reply_to ?? scopeCfg.reply_to;
+    // §45: reply_to resolves present-only from the caller's tenant operator identity
+    // (the tenant's OWN support/reply address) — falling to the platform-neutral scope
+    // default, never a hardcoded operator inbox.
+    const tenantIdForReplyTo = await actorTenantId();
+    const operatorForReplyTo = await resolveOperatorIdentity(admin, tenantIdForReplyTo);
+    const tenantReplyTo =
+      operatorForReplyTo.support_email ??
+      (operatorForReplyTo.sender as { reply_to?: string } | undefined)?.reply_to ??
+      undefined;
+    const replyTo = args.reply_to ?? tenantReplyTo ?? scopeCfg.reply_to;
 
     // Single shared Resend account authenticates all sends from paigeagent.ai.
     // sender_account label retained as a constant for historical audit continuity.
