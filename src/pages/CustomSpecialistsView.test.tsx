@@ -44,9 +44,12 @@ describe("<CustomSpecialistsView> — states (§11/§13/§32)", () => {
     expect(out).toContain("Specialists Paige built for your practice");
   });
 
-  it("ERROR: hides the additive section honestly (§13) — no fabricated 'you have none'", () => {
+  it("ERROR: shows a quiet honest notice, never the fabricated 'you have none' invite (§13)", () => {
     const out = render({ specialists: [], loading: false, error: "boom" });
-    expect(out).toBe("");
+    // Honest: a read failure surfaces a quiet notice, not silence and not a lie.
+    expect(out).toContain("could not be loaded right now");
+    // Never claims the tenant has none when we simply couldn't read.
+    expect(out).not.toContain("No custom specialists yet");
   });
 
   it("MANY: renders a card for every forged specialist, name + description from the row", () => {

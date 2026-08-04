@@ -105,7 +105,8 @@ export function useTenantSpecialists() {
       .select("slug,name,domain,description,department,display_order")
       .not("tenant_id", "is", null) // exclude platform/VP defaults + dormant crew (all tenant_id NULL)
       .eq("enabled", true) // keepers only — a disabled forge is not "your team"
-      .order("display_order");
+      .order("display_order")
+      .limit(60); // defensive cap — a directory, not a feed; a runaway roster never floods the section
     if (error) setError(error.message);
     else setSpecialists((data ?? []) as TenantSpecialist[]);
     setLoading(false);

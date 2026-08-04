@@ -8,6 +8,13 @@ import {
   Target,
   Cog,
   Sparkles,
+  Wand2,
+  Bot,
+  Zap,
+  Gem,
+  Star,
+  Rocket,
+  Cpu,
 } from "lucide-react";
 import { PageShell, PageHeader, SectionCard, GlyphPlate, EmptyState, VP_ROSTER, type VP } from "@/components/ui/page";
 import { PaigeMark } from "@/components/brand/PaigeMark";
@@ -154,6 +161,26 @@ function specialistRemit(s: TenantSpecialist): string | undefined {
 }
 
 /**
+ * A fixed palette of neutral, agent-flavored glyphs (§11 indigo plate, never gold).
+ * Forged rows carry no icon field, so we give each keeper its OWN distinct mark —
+ * the individuation that makes the VP grid read as a team of individuals (§6/§25).
+ */
+const SPECIALIST_GLYPHS: LucideIcon[] = [Sparkles, Wand2, Bot, Zap, Gem, Star, Rocket, Cpu];
+
+/**
+ * Deterministic, stable per-specialist glyph keyed on the slug hash. It is
+ * arbitrary-but-stable — NOT a fabricated domain claim (§13): the same keeper
+ * always gets the same mark, but the mark asserts nothing about what it does
+ * (the name + remit carry the meaning). This is why the section no longer wears
+ * one identical Sparkles on every card (design-crew #247).
+ */
+function specialistIcon(slug: string): LucideIcon {
+  let h = 0;
+  for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) >>> 0;
+  return SPECIALIST_GLYPHS[h % SPECIALIST_GLYPHS.length];
+}
+
+/**
  * The invite line that points forging back to chat (§20 — spin-up is a chat act,
  * never a create-form here). Non-gold, informational (§11).
  */
@@ -167,8 +194,9 @@ const FORGE_INVITE = "Ask Paige in chat to build you a specialist for a job you 
  *
  * States (§11/§13): loading → neutral skeletons (never a bare "Loading…"); empty
  * → a crafted invite to ask Paige (never a fabricated/placeholder specialist);
- * error → the additive section is hidden (the VP roster above still stands) — we
- * never show an "you have none" invite when the truth is we couldn't read.
+ * error → a quiet, HONEST notice (never the "you have none" invite when the truth
+ * is we couldn't read) — the section stays visible so a tenant who HAS specialists
+ * gets a signal instead of the whole section silently vanishing (design-crew #247).
  */
 export function CustomSpecialistsView({
   specialists,
@@ -179,8 +207,6 @@ export function CustomSpecialistsView({
   loading: boolean;
   error: string | null;
 }) {
-  if (error) return null;
-
   return (
     <section aria-label="Your custom specialists" className="space-y-4">
       <div className="space-y-1">
@@ -192,7 +218,11 @@ export function CustomSpecialistsView({
         </p>
       </div>
 
-      {loading ? (
+      {error ? (
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          Your specialists could not be loaded right now — refresh to try again.
+        </p>
+      ) : loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-hidden>
           {[0, 1, 2].map((i) => (
             <SectionCard key={i} className="h-full">
@@ -221,7 +251,7 @@ export function CustomSpecialistsView({
             {specialists.map((s) => (
               <TeamMemberCard
                 key={s.slug}
-                icon={Sparkles}
+                icon={specialistIcon(s.slug)}
                 name={s.name}
                 remit={specialistRemit(s)}
                 description={s.description}
