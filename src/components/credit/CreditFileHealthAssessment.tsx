@@ -17,6 +17,9 @@ import {
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { differenceInMonths } from "date-fns";
+import { useClientPortalBrand } from "@/hooks/useClientPortalBrand";
+import { useOperatorIdentity } from "@/hooks/useOperatorIdentity";
+import { partnerCtas, bookingCtas, type OperatorPartners } from "@/lib/creditFileHealth";
 
 /* ─── Types ─── */
 export interface CreditAccount {
@@ -213,7 +216,7 @@ function getDisplayAmount(a: CreditAccount): { amount: number; estimated: boolea
 }
 
 /* ─── Suggestion content ─── */
-function getSuggestion(key: string, auCount: number): SuggestionContent | undefined {
+function getSuggestion(key: string, auCount: number, partners?: OperatorPartners): SuggestionContent | undefined {
   const map: Record<string, () => SuggestionContent> = {
     primary_cards: () => ({
       whyItMatters: "Primary credit cards with limits above $3,000 are the foundation of your revolving credit profile. Lenders look for 2 to 4 primary cards to confirm you can manage revolving debt responsibly.",
@@ -231,7 +234,7 @@ function getSuggestion(key: string, auCount: number): SuggestionContent | undefi
       whyItMatters: "Rent is your largest monthly payment and most credit files do not reflect it at all. Adding rent reporting creates a positive payment history tradeline that improves your credit age and demonstrates consistent payment behavior.",
       recommendation: "Sign up for rent reporting through CreditRentBoost. Your rent payments will be reported to the credit bureaus as a positive tradeline. This is one of the easiest ways to add a tradeline with zero new debt.",
       impact: "Rent reporting adds a positive installment-style tradeline to your file and can improve credit age if you have been renting for several years. Most clients see measurable score improvement within 60 to 90 days of adding rent reporting.",
-      ctas: [{ label: "Start Rent Reporting — CreditRentBoost", href: "https://affiliates.creditrentboost.com/?affi=00498" }],
+      ctas: partnerCtas(partners, "rent_reporting"),
     }),
     utility_reporting: () => ({
       whyItMatters: "Utility payments like electricity, water, gas, and streaming services are regular monthly obligations that most credit files do not capture. Adding them strengthens your payment history and can improve your score at no cost.",
@@ -243,14 +246,14 @@ function getSuggestion(key: string, auCount: number): SuggestionContent | undefi
       whyItMatters: "An auto loan is a key installment tradeline that demonstrates your ability to manage large recurring payments over time. Lenders view auto loan history as strong evidence of financial responsibility.",
       recommendation: "If you are planning a vehicle purchase in the next 12 months, now is the time to structure it strategically. If you are not planning a vehicle purchase a credit builder loan serves a similar purpose without requiring a large purchase.",
       impact: "An installment loan in good standing improves your credit mix, adds to your payment history, and creates comparable credit for future financing. On the personal side lenders typically approve up to 3x your highest comparable auto tradeline for your next vehicle.",
-      ctas: [{ label: "Build Credit with Credit Strong", href: "https://creditstrong.referralrock.com/l/3ANTONIO94/" }],
+      ctas: partnerCtas(partners, "credit_builder"),
     }),
     personal_loan: () => ({
       whyItMatters: "A personal loan completes your installment credit mix. Lenders want to see that you can manage both revolving credit (cards) and installment credit (loans) responsibly. A file with only credit cards is considered less balanced than one with both.",
       recommendation: "A credit builder loan is the lowest-risk way to establish a personal loan tradeline if you do not need to borrow for a specific purpose. These products are designed specifically to build credit history and report to all three bureaus.",
       impact: "Adding a personal loan tradeline improves your credit mix score factor, adds positive payment history, and creates installment comparable credit for future loan applications.",
       ctas: [
-        { label: "Credit Strong Credit Builder", href: "https://creditstrong.referralrock.com/l/3ANTONIO94/" },
+        ...partnerCtas(partners, "credit_builder"),
         { label: "Navy Federal Pledge Loan", href: "https://www.navyfederal.org" },
       ],
       disclaimer: "We never recommend taking on debt you do not need. A credit builder loan is structured so the funds are held in a savings account while you make payments — you build credit and savings at the same time with minimal financial risk.",
@@ -259,13 +262,13 @@ function getSuggestion(key: string, auCount: number): SuggestionContent | undefi
       whyItMatters: "A mortgage is the most valuable primary tradeline on a consumer credit report. It demonstrates asset ownership, long-term financial commitment, and the ability to manage the largest installment obligation most consumers carry. Even a mortgage as low as $50,000 to $75,000 has a significant positive impact on your fundability profile.",
       recommendation: "If homeownership is part of your financial plan, prioritizing a mortgage — even a modest one — is one of the highest-leverage moves you can make for your credit file.",
       impact: "A mortgage in good standing is the single most impactful tradeline you can add to a consumer credit file. It improves your credit mix, demonstrates asset ownership to lenders, and signals long-term financial stability to every capital source you approach.",
-      ctas: [{ label: "Book a Strategy Session", href: "https://www.mogulmakeracademy.com/booking-screening.html" }],
+      ctas: bookingCtas(partners),
     }),
     credit_age: () => ({
       whyItMatters: "Credit age accounts for approximately 15 percent of your FICO score. Lenders also use average credit age as an indicator of financial maturity. The target average is 5 years or more.",
       recommendation: "Protect your existing credit age by avoiding unnecessary new account applications. Every new account reduces your average age. Focus on keeping your oldest accounts open and in good standing.",
       impact: "Credit age improves naturally over time. Avoid closing old accounts even if you do not use them regularly — an old account with zero balance still contributes positively to your average age.",
-      ctas: [{ label: "Start Rent Reporting — CreditRentBoost", href: "https://affiliates.creditrentboost.com/?affi=00498" }],
+      ctas: partnerCtas(partners, "rent_reporting"),
     }),
   };
   const fn = map[key];
@@ -294,7 +297,7 @@ export interface FileAnalysis {
   auCount: number;
 }
 
-function analyzeFile(accounts: CreditAccount[]): FileAnalysis {
+function analyzeFile(accounts: CreditAccount[], partners?: OperatorPartners): FileAnalysis {
   const validAccounts = accounts.filter(a => !a.duplicate_of_id && !a.is_disputed_ownership);
 
   const primaryCards = validAccounts.filter(a => a.type === "credit_card" && !a.is_authorized_user && (a.is_open ?? true));
@@ -394,14 +397,14 @@ function analyzeFile(accounts: CreditAccount[]): FileAnalysis {
   const mortDetail = mortOpen.length > 0 ? "Active mortgage — strongest tradeline type." : mortClosed.length > 0 ? "Closed mortgage in good standing — most valuable comparable tradeline." : "Missing mortgage — highest-value tradeline.";
 
   const categories: FileCategory[] = [
-    { key: "primary_cards", label: "Primary Credit Cards", icon: <CreditCard className="w-5 h-5" />, target: "2–4 above $3,000", status: pcCount >= 2 ? "complete" : "missing", current: `${pcCount} of 2–4`, detail: pcCount >= 2 ? `You have ${pcCount} primary cards above $3,000.` : `You need ${2 - pcCount} more primary card(s) above $3,000.`, suggestion: pcCount < 2 ? getSuggestion("primary_cards", auCount) : undefined, priority: "critical" },
-    { key: "authorized_user", label: "Authorized User Accounts", icon: <UserCheck className="w-5 h-5" />, target: "Maximum 2", status: auCount <= 2 ? "complete" : "warning", current: `${auCount} of 2 max`, detail: auCount <= 2 ? `${auCount} AU account(s) — within limit.` : `${auCount} AU accounts — remove ${auCount - 2} to avoid credit padding flag.`, suggestion: auCount > 2 ? getSuggestion("authorized_user", auCount) : undefined, priority: "critical" },
-    { key: "rent_reporting", label: "Rent Reporting", icon: <Home className="w-5 h-5" />, target: "1 tradeline", status: hasRent ? "complete" : "missing", current: hasRent ? "Active" : "Not reporting", detail: hasRent ? "Rent payments are being reported." : "Add rent reporting for a free positive tradeline.", suggestion: !hasRent ? getSuggestion("rent_reporting", auCount) : undefined, priority: "enhancement" },
-    { key: "utility_reporting", label: "Utility / Streaming Reporting", icon: <Zap className="w-5 h-5" />, target: "1 account", status: hasUtility ? "complete" : "missing", current: hasUtility ? "Active" : "Not reporting", detail: hasUtility ? "Utility payments are being reported." : "Add utility reporting at no cost.", suggestion: !hasUtility ? getSuggestion("utility_reporting", auCount) : undefined, priority: "enhancement" },
-    { key: "auto_loan", label: "Auto Loan", icon: <Car className="w-5 h-5" />, target: "1 (open or closed)", status: hasAuto ? "complete" : "missing", current: autoStatus, detail: autoDetail, suggestion: !hasAuto ? getSuggestion("auto_loan", auCount) : undefined, priority: "important" },
-    { key: "personal_loan", label: "Personal Loan", icon: <Landmark className="w-5 h-5" />, target: "1 (open or closed)", status: hasPL ? "complete" : "missing", current: plStatus, detail: plDetail, suggestion: !hasPL ? getSuggestion("personal_loan", auCount) : undefined, priority: "important" },
-    { key: "mortgage", label: "Mortgage", icon: <Home className="w-5 h-5" />, target: "1 (open or closed)", status: hasMort ? "complete" : "missing", current: mortStatus, detail: mortDetail, suggestion: !hasMort ? getSuggestion("mortgage", auCount) : undefined, priority: "critical" },
-    { key: "credit_age", label: "Credit Age", icon: <Clock className="w-5 h-5" />, target: "5+ years average", status: creditAgeOk ? "complete" : "missing", current: `${avgAgeYears} years`, detail: creditAgeOk ? `Average ${avgAgeYears} years — strong.` : `Average ${avgAgeYears} years — below 5-year target.`, suggestion: !creditAgeOk ? getSuggestion("credit_age", auCount) : undefined, priority: "enhancement" },
+    { key: "primary_cards", label: "Primary Credit Cards", icon: <CreditCard className="w-5 h-5" />, target: "2–4 above $3,000", status: pcCount >= 2 ? "complete" : "missing", current: `${pcCount} of 2–4`, detail: pcCount >= 2 ? `You have ${pcCount} primary cards above $3,000.` : `You need ${2 - pcCount} more primary card(s) above $3,000.`, suggestion: pcCount < 2 ? getSuggestion("primary_cards", auCount, partners) : undefined, priority: "critical" },
+    { key: "authorized_user", label: "Authorized User Accounts", icon: <UserCheck className="w-5 h-5" />, target: "Maximum 2", status: auCount <= 2 ? "complete" : "warning", current: `${auCount} of 2 max`, detail: auCount <= 2 ? `${auCount} AU account(s) — within limit.` : `${auCount} AU accounts — remove ${auCount - 2} to avoid credit padding flag.`, suggestion: auCount > 2 ? getSuggestion("authorized_user", auCount, partners) : undefined, priority: "critical" },
+    { key: "rent_reporting", label: "Rent Reporting", icon: <Home className="w-5 h-5" />, target: "1 tradeline", status: hasRent ? "complete" : "missing", current: hasRent ? "Active" : "Not reporting", detail: hasRent ? "Rent payments are being reported." : "Add rent reporting for a free positive tradeline.", suggestion: !hasRent ? getSuggestion("rent_reporting", auCount, partners) : undefined, priority: "enhancement" },
+    { key: "utility_reporting", label: "Utility / Streaming Reporting", icon: <Zap className="w-5 h-5" />, target: "1 account", status: hasUtility ? "complete" : "missing", current: hasUtility ? "Active" : "Not reporting", detail: hasUtility ? "Utility payments are being reported." : "Add utility reporting at no cost.", suggestion: !hasUtility ? getSuggestion("utility_reporting", auCount, partners) : undefined, priority: "enhancement" },
+    { key: "auto_loan", label: "Auto Loan", icon: <Car className="w-5 h-5" />, target: "1 (open or closed)", status: hasAuto ? "complete" : "missing", current: autoStatus, detail: autoDetail, suggestion: !hasAuto ? getSuggestion("auto_loan", auCount, partners) : undefined, priority: "important" },
+    { key: "personal_loan", label: "Personal Loan", icon: <Landmark className="w-5 h-5" />, target: "1 (open or closed)", status: hasPL ? "complete" : "missing", current: plStatus, detail: plDetail, suggestion: !hasPL ? getSuggestion("personal_loan", auCount, partners) : undefined, priority: "important" },
+    { key: "mortgage", label: "Mortgage", icon: <Home className="w-5 h-5" />, target: "1 (open or closed)", status: hasMort ? "complete" : "missing", current: mortStatus, detail: mortDetail, suggestion: !hasMort ? getSuggestion("mortgage", auCount, partners) : undefined, priority: "critical" },
+    { key: "credit_age", label: "Credit Age", icon: <Clock className="w-5 h-5" />, target: "5+ years average", status: creditAgeOk ? "complete" : "missing", current: `${avgAgeYears} years`, detail: creditAgeOk ? `Average ${avgAgeYears} years — strong.` : `Average ${avgAgeYears} years — below 5-year target.`, suggestion: !creditAgeOk ? getSuggestion("credit_age", auCount, partners) : undefined, priority: "enhancement" },
   ];
 
   const completedCount = categories.filter(c => c.status === "complete").length;
@@ -540,6 +543,17 @@ export function buildBureauHealthContext(
 export function CreditFileHealthAssessment() {
   const isMobile = useIsMobile();
 
+  // §45 de-brand seam: resolve THIS client's tenant, then its tenant-authored
+  // partner offers / booking URL present-only. No config → no partner CTA (never
+  // the operator's affiliate code), and the disclaimer subject falls back neutral.
+  const portalBrand = useClientPortalBrand();
+  const { identity } = useOperatorIdentity(portalBrand?.tenant_id ?? null);
+  const partners: OperatorPartners = useMemo(
+    () => ({ tradeline_partners: identity?.tradeline_partners, booking_url: identity?.booking_url }),
+    [identity],
+  );
+  const guaranteeSubject = (identity?.product_name || portalBrand?.tenant_name || "").trim();
+
   // Fetch credit accounts (include new fields)
   const { data: accounts, isLoading: loadingAccounts } = useQuery({
     queryKey: ["credit-accounts-health"],
@@ -588,8 +602,8 @@ export function CreditFileHealthAssessment() {
 
   const analysis = useMemo(() => {
     if (!accounts || accounts.length === 0) return null;
-    return analyzeFile(accounts);
-  }, [accounts]);
+    return analyzeFile(accounts, partners);
+  }, [accounts, partners]);
 
   // Determine strongest bureau for default tab
   const defaultTab = useMemo<BureauKey | "all">(() => {
@@ -1145,7 +1159,7 @@ function PriorityActionList({ analysis, bureauLabel }: { analysis: FileAnalysis;
         ))}
       </div>
       <p className="text-[11px] text-muted-foreground/60 mt-6 leading-relaxed italic">
-        These suggestions are educational recommendations based on your current credit file. PME does not guarantee specific credit outcomes. Never take on debt solely to build your credit profile — only add tradelines that make sense for your financial situation.
+        These suggestions are educational recommendations based on your current credit file. {guaranteeSubject ? `${guaranteeSubject} does not` : "We do not"} guarantee specific credit outcomes. Never take on debt solely to build your credit profile — only add tradelines that make sense for your financial situation.
       </p>
     </Card>
   );

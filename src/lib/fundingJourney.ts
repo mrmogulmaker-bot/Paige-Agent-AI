@@ -110,7 +110,7 @@ export function nextStepsForDenial(reason: DenialReasonCategory | null): string 
     case "too_many_recent_inquiries":
       return "Lenders saw a cluster of recent pulls and read it as distress. Pause new applications for 90-120 days. During that window, build banker relationships and pre-qualify (soft pull only) before submitting any new full application.";
     case "derogatory_items":
-      return "Derogatory items are addressable. Our Mogul Credit AI team handles disputes. While they work, look at lenders more flexible on derogs: CDFIs, community lenders, and some online lenders have more lenient policies here.";
+      return "Derogatory items are addressable through legitimate dispute channels. While you work on them, look at lenders more flexible on derogs: CDFIs, community lenders, and some online lenders have more lenient policies here.";
     case "insufficient_cash_flow":
       return "DSCR came up short. Either grow monthly inflows (longer banking history, larger deposits) or lower the debt service by reducing the requested amount or extending the term. Revenue-based financing is usually a better fit when cash flow is tight.";
     case "personal_guarantee_declined":

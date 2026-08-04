@@ -235,7 +235,7 @@ export function AddBusinessFlow({ open, onOpenChange }: AddBusinessFlowProps) {
     const body = isStarter
       ? "Your Starter plan includes 1 business. To build the full capital multiplication strategy across multiple entities you need to upgrade. Pro gives you 3 businesses at $67/month — your founding Beta rate locked for life."
       : isPro
-      ? "You have used all 3 business slots on your Pro plan. Add individual slots at $10/month each, or upgrade to Elite for unlimited businesses and full PME consultant access."
+      ? "You have used all 3 business slots on your Pro plan. Add individual slots at $10/month each, or upgrade to Elite for unlimited businesses and full consultant access."
       : `Your current plan includes ${max} business${max === 1 ? "" : "es"}. Add a slot for $10/month to expand your portfolio.`;
 
     const primaryCta = isStarter

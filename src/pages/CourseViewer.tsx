@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { ArrowLeft, CheckCircle2, Circle, Clock, Loader2, Award, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
+import { useClientPortalBrand } from "@/hooks/useClientPortalBrand";
 
 interface Lesson {
   id: string;
@@ -38,6 +39,9 @@ export default function CourseViewer() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
+  // §45 de-brand: name the tenant that owns this course present-only, never the operator brand.
+  const portalBrand = useClientPortalBrand();
+  const courseTeamName = portalBrand?.tenant_name?.trim();
   const [loading, setLoading] = useState(true);
   const [marking, setMarking] = useState(false);
   const [hasCert, setHasCert] = useState(false);
@@ -252,7 +256,7 @@ export default function CourseViewer() {
                 <div className="rounded-lg border border-dashed border-border bg-muted/30 p-8 text-center text-muted-foreground">
                   <Lock className="w-6 h-6 mx-auto mb-3 opacity-50" />
                   <p className="text-sm">
-                    Lesson content is being finalized by the PME team.<br />
+                    {courseTeamName ? `Lesson content is being finalized by the ${courseTeamName} team.` : "Lesson content is being finalized."}<br />
                     You can still mark this module complete to track your progress.
                   </p>
                 </div>

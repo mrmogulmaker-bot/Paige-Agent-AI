@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { BankingSourceBadge } from "./bank-accounts/BankingSourceBadge";
 import { ThreeFundabilityScoresPanel } from "./ThreeFundabilityScoresPanel";
+import { useClientPortalBrand } from "@/hooks/useClientPortalBrand";
 
 function ScoreGauge({ score }: { score: number }) {
   const radius = 80;
@@ -105,6 +106,9 @@ export function PMEFundingReadiness() {
   const [showBreakdown, setShowBreakdown] = useState(true);
   const [aiAdvice, setAiAdvice] = useState<string | null>(null);
   const [loadingAdvice, setLoadingAdvice] = useState(false);
+  // §45 de-brand: label the score with the tenant's own brand present-only, never the operator brand.
+  const portalBrand = useClientPortalBrand();
+  const readinessBrand = portalBrand?.tenant_name?.trim();
 
   // Auto-save when result changes
   useEffect(() => {
@@ -120,13 +124,13 @@ export function PMEFundingReadiness() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
-      const prompt = `Based on this PME Funding Readiness Score breakdown, provide a prioritized action list of exactly 5 specific steps to improve the score. Be concise and actionable.\n\nOverall Score: ${result.overallScore}/1000\n\n${result.breakdown.map(b => `${b.label} (${b.weight * 100}% weight): ${b.rawScore}/100 — ${b.explanation}`).join("\n")}`;
+      const prompt = `Based on this Funding Readiness Score breakdown, provide a prioritized action list of exactly 5 specific steps to improve the score. Be concise and actionable.\n\nOverall Score: ${result.overallScore}/1000\n\n${result.breakdown.map(b => `${b.label} (${b.weight * 100}% weight): ${b.rawScore}/100 — ${b.explanation}`).join("\n")}`;
 
       const response = await supabase.functions.invoke("paige-ai-chat", {
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: {
           message: prompt,
-          sessionId: `pme-advice-${Date.now()}`,
+          sessionId: `funding-advice-${Date.now()}`,
           context: "funding_readiness_advice",
         },
       });
@@ -163,7 +167,7 @@ export function PMEFundingReadiness() {
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Gauge className="w-5 h-5 text-primary" />
-            PME Funding Readiness Score
+            {readinessBrand ? `${readinessBrand} Funding Readiness Score` : "Funding Readiness Score"}
           </CardTitle>
           <Button
             variant="ghost"
