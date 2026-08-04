@@ -105,7 +105,7 @@ export function BankingDataSetup({ businessMode = false, onNavigateToUpload }: B
       <div className="space-y-1">
         <h3 className="text-lg font-semibold text-primary">Banking Data Sources</h3>
         <p className="text-sm text-muted-foreground">
-          Choose how to provide your banking data. Higher-confidence sources improve your PME Funding Readiness Score.
+          Choose how to provide your banking data. Higher-confidence sources improve your Funding Readiness Score.
         </p>
       </div>
 

@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 
 export default function AiActivity() {
-  const project = "paige-agent-mma";
+  // §45 de-brand: platform-neutral trace project name — no operator tenant slug ("mma").
+  const project = "paige-agent-ai";
   return (
     <div className="container mx-auto px-4 py-6 space-y-6 max-w-3xl">
       <div>
@@ -25,7 +26,7 @@ export default function AiActivity() {
             </a>
           </Button>
           <p className="text-xs text-muted-foreground">
-            In-app trace browsing will appear here once Antonio approves the LangSmith API export (Phase 2.1).
+            In-app trace browsing will appear here in a future release.
           </p>
         </CardContent>
       </Card>

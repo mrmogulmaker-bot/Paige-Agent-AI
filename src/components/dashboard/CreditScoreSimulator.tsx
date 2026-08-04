@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { Sparkles, ChevronDown, ChevronUp, ArrowRight, ExternalLink, TrendingUp } from "lucide-react";
 import { writeClientMemory } from "@/lib/clientMemory";
+import { useClientPortalBrand } from "@/hooks/useClientPortalBrand";
+import { useOperatorIdentity } from "@/hooks/useOperatorIdentity";
+import { partnerCtas, bookingCtas, type OperatorPartners } from "@/lib/creditFileHealth";
 import {
   Bureau,
   BUREAU_LABELS,
@@ -49,21 +52,21 @@ interface NegativeItem {
 const DISCLAIMER =
   "Score projections are estimates based on general FICO scoring factors and your current credit profile. Actual results may vary. These are educational estimates only.";
 
-// Affiliate CTAs for missing tradeline types
-const TRADELINE_CTAS: Partial<Record<TradelineType, { label: string; url: string }>> = {
-  rent_reporting: {
-    label: "Set up CreditRentBoost",
-    url: "https://affiliates.creditrentboost.com/?affi=00498",
-  },
-  personal_loan: {
-    label: "Open a Credit Strong account",
-    url: "https://creditstrong.referralrock.com/l/3ANTONIO94/",
-  },
-  mortgage: {
-    label: "Book a Strategy Session",
-    url: "https://www.mogulmakeracademy.com/booking-screening.html",
-  },
-};
+// §45 de-brand seam: the CTA for a missing tradeline resolves PER-TENANT from the
+// operator-identity seam (tradeline_partners / booking_url), present-only — no
+// tenant config → no CTA, never the operator's own affiliate/booking code.
+function ctaForType(
+  type: TradelineType,
+  partners: OperatorPartners | undefined,
+): { label: string; url: string } | undefined {
+  const list =
+    type === "mortgage" ? bookingCtas(partners)
+      : type === "rent_reporting" ? partnerCtas(partners, "rent_reporting")
+      : type === "personal_loan" ? partnerCtas(partners, "credit_builder")
+      : [];
+  const first = list[0];
+  return first ? { label: first.label, url: first.href } : undefined;
+}
 
 // ── Bureau impact row ───────────────────────────────────────────────────────
 function ImpactRow({ impact }: { impact: ScoreImpact }) {
@@ -289,9 +292,11 @@ const TRADELINE_CARDS: Array<{ type: TradelineType; label: string; sub: string }
 function AddTradelineTab({
   profile,
   scores,
+  partners,
 }: {
   profile: TradelineProfile;
   scores: BureauScores;
+  partners: OperatorPartners | undefined;
 }) {
   const [type, setType] = useState<TradelineType>("primary_card");
   const result = projectTradeline({ type, profile, scores });
@@ -307,7 +312,7 @@ function AddTradelineTab({
     }
   };
 
-  const cta = TRADELINE_CTAS[type];
+  const cta = ctaForType(type, partners);
   const showCta = cta && (type === "mortgage" || isMissing(type));
 
   return (
@@ -525,6 +530,14 @@ export function CreditScoreSimulator({ userId, onNavigate }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState("paydown");
 
+  // §45 de-brand seam: this client's tenant-authored partner offers, present-only.
+  const portalBrand = useClientPortalBrand();
+  const { identity } = useOperatorIdentity(portalBrand?.tenant_id ?? null);
+  const partners: OperatorPartners = useMemo(
+    () => ({ tradeline_partners: identity?.tradeline_partners, booking_url: identity?.booking_url }),
+    [identity],
+  );
+
   // Profile / baseline scores
   const { data: profile } = useQuery({
     queryKey: ["simulator-profile", userId],
@@ -555,6 +568,7 @@ export function CreditScoreSimulator({ userId, onNavigate }: Props) {
         .eq("user_id", userId)
         .eq("type", "credit_card")
         .neq("is_open", false);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (data ?? []).map((a: any) => ({
         id: a.id,
         creditor: a.creditor,
@@ -589,6 +603,7 @@ export function CreditScoreSimulator({ userId, onNavigate }: Props) {
         .eq("user_id", userId)
         .neq("status", "removed");
       return (data ?? []).filter(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (n: any) => !n.is_disputed_ownership && !n.duplicate_of_id,
       ) as NegativeItem[];
     },
@@ -596,11 +611,13 @@ export function CreditScoreSimulator({ userId, onNavigate }: Props) {
 
   // Build tradeline profile
   const tradelineProfile: TradelineProfile = useMemo(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const types = (allAccounts as any[]).map((a) => (a.type || "").toLowerCase());
     const hasInstallmentLoan = types.some((t) => t.includes("install") || t.includes("personal") || t.includes("auto") || t.includes("student"));
     const hasMortgage = types.some((t) => t.includes("mortgage") || t.includes("real_estate"));
     const hasAutoLoan = types.some((t) => t.includes("auto"));
     let totalBal = 0, totalLim = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const a of allAccounts as any[]) {
       const t = (a.type || "").toLowerCase();
       if (t === "credit_card" || t.includes("revolv") || t.includes("card")) {
@@ -632,6 +649,7 @@ export function CreditScoreSimulator({ userId, onNavigate }: Props) {
       const summary = strongest
         ? `Last simulation run: ${tabName} — strongest bureau ${BUREAU_LABELS[strongest]} baseline ${scores[strongest]}.`
         : `Last simulation run: ${tabName}.`;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       writeClientMemory(userId, "simulator_run" as any, summary);
     }, 4000);
     return () => clearTimeout(timer);
@@ -690,7 +708,7 @@ export function CreditScoreSimulator({ userId, onNavigate }: Props) {
               <RemoveNegativeTab items={negatives} scores={scores} onNavigate={onNavigate} />
             </TabsContent>
             <TabsContent value="tradeline" className="mt-4">
-              <AddTradelineTab profile={tradelineProfile} scores={scores} />
+              <AddTradelineTab profile={tradelineProfile} scores={scores} partners={partners} />
             </TabsContent>
             <TabsContent value="combined" className="mt-4">
               <CombinedTab

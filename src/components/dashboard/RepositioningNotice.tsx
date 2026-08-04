@@ -36,25 +36,20 @@ export function RepositioningNotice() {
               Looking for credit repositioning services?
             </h2>
             <p className="text-sm text-muted-foreground">
-              For credit repositioning services please visit Mogul Credit AI.
+              Dispute filing and credit repositioning are outside Paige's scope. You
+              can use the CFPB's free self-help dispute tools to address items on your
+              report directly.
             </p>
             <Button variant="outline" className="mt-4 gap-2" asChild>
-              <a href="https://mogulcredit.ai" target="_blank" rel="noopener noreferrer">
-                Visit Mogul Credit AI
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            </Button>
-            <p className="text-xs text-muted-foreground mt-3">
-              You can also use the CFPB's free self-help dispute tools at{" "}
               <a
                 href="https://www.consumerfinance.gov/consumer-tools/credit-reports-and-scores/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="underline"
               >
-                consumerfinance.gov
-              </a>.
-            </p>
+                Open CFPB Self-Help Tools
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </Button>
           </div>
         </div>
       </Card>
