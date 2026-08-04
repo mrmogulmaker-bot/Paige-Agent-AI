@@ -632,7 +632,7 @@ export function CreditFileHealthAssessment() {
 
       {/* Bureau Tabs */}
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm pb-2 pt-1 -mx-1 px-1">
-        <div className={`flex gap-2 ${isMobile ? "overflow-x-auto scrollbar-none" : ""}`}>
+        <div className={`flex gap-2 ${isMobile ? "overflow-x-auto no-scrollbar" : ""}`}>
           {(["experian", "transunion", "equifax"] as BureauKey[]).map(b => {
             const s = safeScores[b];
             return (

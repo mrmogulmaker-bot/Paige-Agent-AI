@@ -241,7 +241,7 @@ export default function AgencyLayout() {
         </div>
 
         {/* Row 2: agency nav */}
-        <div className="flex items-center gap-1 px-3 md:px-6 h-11 overflow-x-auto scrollbar-none border-t border-sidebar-border/60">
+        <div className="flex items-center gap-1 px-3 md:px-6 min-h-11 overflow-x-auto overflow-y-hidden no-scrollbar border-t border-sidebar-border/60">
           {AGENCY_NAV.map((item) => {
             const active = isActive(item.href);
             return (
