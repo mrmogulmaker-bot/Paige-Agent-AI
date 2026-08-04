@@ -56,7 +56,9 @@ function TeamFloor() {
   const restrictToUserId = effectiveMine ? userId : null;
 
   // Shared roster (one admin-list-users call; self-degrades to empty for non-admins, §13).
-  const roster = useTeamRoster(true);
+  // #227: pass the active tenant so the roster carries per-tenant ownership/role and
+  // filters out ancestor agency owners (Part C/E).
+  const roster = useTeamRoster(true, activeTenantId);
   const scoreboard = useTeamScoreboard(activeTenantId);
   const handoffs = useHandoffQueue(activeTenantId);
 

@@ -53,7 +53,9 @@ export interface ManageRolesMember {
   email: string | null;
   full_name: string | null;
   roles: string[];
-  is_owner: boolean;
+  // #227 G1: the PER-TENANT owner (tenant_members.is_owner for the active tenant). The
+  // platform-owner signal is derived from roles.includes("super_admin") — no separate field.
+  tenant_is_owner: boolean;
 }
 
 interface Props {
@@ -75,6 +77,11 @@ export function ManageRolesDialog({
   const { confirm, dialog: confirmDialog } = useConfirm();
 
   const isSelf = !!member && member.user_id === currentUserId;
+  // #227 G1: split the ownership signal. The per-tenant owner keeps their admin lock;
+  // the platform owner (super_admin, who may not be a tenant member) stays shielded too.
+  const isTenantOwner = member?.tenant_is_owner ?? false;
+  const isPlatformOwner = member?.roles.includes("super_admin") ?? false;
+  const isProtectedOwner = isTenantOwner || isPlatformOwner;
 
   // Capture baseline from the member's roles whenever the dialog opens on a member.
   useEffect(() => {
@@ -85,8 +92,9 @@ export function ManageRolesDialog({
     setStaged(base);
   }, [member, open]);
 
-  // The admin switch is locked ON when it would strip the owner's or one's own admin.
-  const adminLocked = (member?.is_owner || isSelf) && baseline.admin;
+  // The admin switch is locked ON when it would strip an owner's (per-tenant or platform)
+  // or one's own admin.
+  const adminLocked = (isProtectedOwner || isSelf) && baseline.admin;
 
   const diff = useMemo(() => {
     const toAdd: EditableRole[] = [];
@@ -102,7 +110,7 @@ export function ManageRolesDialog({
 
   // Would this save drop the member's last staff role (and they're not the owner)?
   const removesLastStaffRole = useMemo(() => {
-    if (!member || member.is_owner) return false;
+    if (!member || member.tenant_is_owner || member.roles.includes("super_admin")) return false;
     const remaining = new Set(member.roles);
     diff.toRemove.forEach((r) => remaining.delete(r));
     diff.toAdd.forEach((r) => remaining.add(r));
@@ -134,6 +142,7 @@ export function ManageRolesDialog({
       // Adds first, so a partial failure leaves the member with MORE access, not less.
       for (const role of diff.toAdd) {
         const { error } = await supabase.rpc("grant_tenant_member_role", {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- role widened to the RPC enum
           _user_id: member.user_id, _role: role as any, _tenant_id: tenantId,
         });
         if (error) failures.push(`Couldn't add ${ROLE_LABEL[role]} — ${error.message}`);
@@ -143,6 +152,7 @@ export function ManageRolesDialog({
       // Then removes, each through the guarded revoke RPC (never a client-side delete).
       for (const role of diff.toRemove) {
         const { data, error } = await supabase.rpc("revoke_tenant_member_role", {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- role widened to the RPC enum
           _user_id: member.user_id, _role: role as any, _tenant_id: tenantId,
         });
         if (error) {
@@ -182,8 +192,8 @@ export function ManageRolesDialog({
       // Close only on a fully clean save; if anything failed or coach needs reassigning,
       // keep the dialog open so the actor sees the real state (unless we already closed above).
       if (!failures.length && !coachReassignNeeded) onOpenChange(false);
-    } catch (e: any) {
-      toast.error(e?.message || "Couldn't update roles");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't update roles");
     } finally {
       setSaving(false);
     }
@@ -205,13 +215,13 @@ export function ManageRolesDialog({
 
         {/* Identity strip — always know whose roles you're editing (self is the headline case). */}
         <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
-          {member.is_owner && <Crown className="w-4 h-4 text-yellow-500 shrink-0" />}
+          {isProtectedOwner && <Crown className="w-4 h-4 text-yellow-500 shrink-0" />}
           <div className="min-w-0">
             <div className="font-medium truncate">{member.full_name || member.email || "—"}</div>
             {member.full_name && <div className="text-xs text-muted-foreground truncate">{member.email}</div>}
           </div>
           <div className="ml-auto flex items-center gap-1.5">
-            {member.is_owner && <Badge className={roleColor.owner}>Owner</Badge>}
+            {isProtectedOwner && <Badge className={roleColor.owner}>Owner</Badge>}
             {isSelf && (
               <Badge variant="outline" className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30">
                 You
@@ -258,9 +268,11 @@ export function ManageRolesDialog({
                         </div>
                       </TooltipTrigger>
                       <TooltipContent>
-                        {member.is_owner
+                        {isPlatformOwner
                           ? "The platform owner always keeps admin."
-                          : "You can't remove your own admin access."}
+                          : isTenantOwner
+                            ? "A workspace owner always keeps admin."
+                            : "You can't remove your own admin access."}
                       </TooltipContent>
                     </Tooltip>
                   ) : (

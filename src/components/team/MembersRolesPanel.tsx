@@ -38,21 +38,27 @@ import {
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RoleGate } from "@/components/auth/RoleGate";
-import { MemberProfileDrawer, type MemberProfile, type CoachFields } from "@/components/admin/MemberProfileDrawer";
+import { MemberProfileDrawer, type CoachFields } from "@/components/admin/MemberProfileDrawer";
 import { InviteMemberDialog } from "@/components/admin/InviteMemberDialog";
 import { ReassignCoachDialog } from "@/components/admin/ReassignCoachDialog";
 import { ManageRolesDialog } from "@/components/admin/ManageRolesDialog";
 import { isAvatarBucketUrl } from "@/components/ui/avatar-uploader";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { GROUP_LABEL, GROUP_ORDER, groupForRoles, roleLabel, type TeamGroup } from "@/lib/team/teamGroups";
+import { GROUP_LABEL, GROUP_ORDER, groupForMember, roleLabel, type TeamGroup } from "@/lib/team/teamGroups";
 import type { RosterMember } from "@/hooks/useTeamRoster";
 
 // A "staff role" grants platform/workspace authority. Clients / no-role auth users
 // live in Contacts, not here.
 const STAFF_ROLES = ["admin", "coach", "sales_rep", "broker", "broker_team_member", "affiliate", "cs_rep", "finance", "viewer", "moderator", "owner", "super_admin"] as const;
 const STAFF_ROLE_SET = new Set<string>(STAFF_ROLES);
-const isStaffRow = (m: RosterMember) => m.is_owner || m.roles.some((r) => STAFF_ROLE_SET.has(r));
+// #227: roster visibility uses the per-tenant owner OR any global staff role (incl. the
+// platform super_admin, which lives in the global roles set).
+const isStaffRow = (m: RosterMember) => m.tenant_is_owner || m.roles.some((r) => STAFF_ROLE_SET.has(r));
+// #227 destructive-action shield: a per-tenant owner OR the platform super_admin is never
+// suspendable/revocable/deletable from a tenant surface (§9/§51). super_admin comes from the
+// GLOBAL roles so a platform owner appearing in a roster read stays shielded.
+const isShielded = (m: RosterMember) => m.tenant_is_owner || m.roles.includes("super_admin");
 
 const ROLE_FILTERS = ["all", "owner", "admin", "coach", "sales_rep", "broker", "cs_rep", "finance", "viewer"] as const;
 type RoleFilter = typeof ROLE_FILTERS[number];
@@ -272,7 +278,7 @@ export function MembersRolesPanel({
     const q = search.trim().toLowerCase();
     return source.filter((m) => {
       if (filter !== "all") {
-        if (filter === "owner" && !m.is_owner) return false;
+        if (filter === "owner" && !m.tenant_is_owner) return false;
         if (filter !== "owner" && !m.roles.includes(filter)) return false;
       }
       if (q && !`${m.email ?? ""} ${m.full_name ?? ""}`.toLowerCase().includes(q)) return false;
@@ -284,14 +290,14 @@ export function MembersRolesPanel({
     const source = includeNonStaff ? members : staffOnly;
     const c: Record<string, number> = { all: source.length };
     ROLE_FILTERS.forEach((r) => { if (r !== "all") c[r] = 0; });
-    source.forEach((m) => { if (m.is_owner) c.owner++; m.roles.forEach((r) => { if (c[r] !== undefined) c[r]++; }); });
+    source.forEach((m) => { if (m.tenant_is_owner) c.owner++; m.roles.forEach((r) => { if (c[r] !== undefined) c[r]++; }); });
     return c;
   }, [members, staffOnly, includeNonStaff]);
 
   const byGroup = useMemo(() => {
     const map = new Map<TeamGroup, RosterMember[]>();
     for (const m of filtered) {
-      const g = groupForRoles(m.roles);
+      const g = groupForMember(m);
       const list = map.get(g);
       if (list) list.push(m); else map.set(g, [m]);
     }
@@ -403,15 +409,21 @@ export function MembersRolesPanel({
                           <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-muted text-[11px] font-semibold text-muted-foreground">
                             {isAvatarBucketUrl(m.avatar_url) ? <img src={m.avatar_url!} alt="" className="h-full w-full object-cover" /> : initialsOf(m)}
                           </span>
-                          {m.is_owner && <Crown className="h-4 w-4 shrink-0 text-gold-dark" />}
+                          {m.tenant_is_owner && <Crown className="h-4 w-4 shrink-0 text-gold-dark" />}
                           <span className="min-w-0">
                             <span className="block truncate text-sm font-medium hover:underline">{m.full_name || m.email || "—"}</span>
                             {m.full_name && m.email && <span className="block truncate text-xs text-muted-foreground">{m.email}</span>}
                           </span>
                         </button>
 
+                        {/* #227 B2: primary badge is the PER-TENANT role (+ an explicit Owner
+                            badge when tenant_is_owner), not the global roles that read as an
+                            agency-wide Admin/Coach on a child. */}
                         <div className="flex flex-wrap items-center gap-1">
-                          {m.roles.map((r) => <Badge key={r} variant="outline">{roleLabel(r)}</Badge>)}
+                          {m.tenant_is_owner && <Badge variant="outline">Owner</Badge>}
+                          {m.tenant_role && !m.tenant_is_owner && (
+                            <Badge variant="outline" className="capitalize">{roleLabel(m.tenant_role)}</Badge>
+                          )}
                         </div>
 
                         <div className="ml-auto flex items-center gap-2">
@@ -432,17 +444,17 @@ export function MembersRolesPanel({
                               <DropdownMenuItem onClick={() => setManageRolesTarget(m)}><UserCog className="mr-2 h-4 w-4" /> Manage roles</DropdownMenuItem>
                               <DropdownMenuSeparator />
                               {m.suspended_at ? (
-                                <DropdownMenuItem onClick={() => handleReactivate(m)} disabled={m.is_owner}><ShieldCheck className="mr-2 h-4 w-4" /> Reactivate</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleReactivate(m)} disabled={isShielded(m)}><ShieldCheck className="mr-2 h-4 w-4" /> Reactivate</DropdownMenuItem>
                               ) : (
-                                <DropdownMenuItem onClick={() => setSuspendTarget(m)} disabled={m.is_owner}><ShieldOff className="mr-2 h-4 w-4" /> Suspend</DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => setSuspendTarget(m)} disabled={isShielded(m)}><ShieldOff className="mr-2 h-4 w-4" /> Suspend</DropdownMenuItem>
                               )}
-                              <DropdownMenuItem onClick={() => handleForceSignout(m)} disabled={m.is_owner}><LogOut className="mr-2 h-4 w-4" /> Force sign-out</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleForceSignout(m)} disabled={isShielded(m)}><LogOut className="mr-2 h-4 w-4" /> Force sign-out</DropdownMenuItem>
                               {isCoach && (
                                 <DropdownMenuItem onClick={() => { setReassignCoachId(m.user_id); setReassignLabel(m.full_name || m.email || "Coach"); }}><UserCog className="mr-2 h-4 w-4" /> Reassign clients</DropdownMenuItem>
                               )}
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => setRevokeTarget(m)} disabled={m.is_owner}><UserMinus className="mr-2 h-4 w-4" /> Revoke platform access</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => { setRemoveTarget(m); setRemoveConfirmText(""); }} disabled={m.is_owner} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete user (permanent)</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setRevokeTarget(m)} disabled={isShielded(m)}><UserMinus className="mr-2 h-4 w-4" /> Revoke platform access</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => { setRemoveTarget(m); setRemoveConfirmText(""); }} disabled={isShielded(m)} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete user (permanent)</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -456,9 +468,21 @@ export function MembersRolesPanel({
         )}
       </SectionCard>
 
-      {/* Drawer + dialogs — all inside the admin gate. */}
+      {/* Drawer + dialogs — all inside the admin gate. #227 G1: explicit field maps (no
+          blind `as` cast) so the per-tenant ownership signal reaches the dialogs typed,
+          and a future rename fails typecheck loudly instead of arriving `undefined`. */}
       <MemberProfileDrawer
-        member={profileTarget as MemberProfile | null}
+        member={profileTarget ? {
+          user_id: profileTarget.user_id,
+          email: profileTarget.email,
+          full_name: profileTarget.full_name,
+          created_at: profileTarget.created_at,
+          last_sign_in_at: profileTarget.last_sign_in_at,
+          suspended_at: profileTarget.suspended_at,
+          suspended_reason: profileTarget.suspended_reason,
+          roles: profileTarget.roles,
+          tenant_is_owner: profileTarget.tenant_is_owner,
+        } : null}
         open={!!profileTarget}
         onOpenChange={(o) => { if (!o) setProfileTarget(null); }}
         coachFields={profileTarget ? coachFields[profileTarget.user_id] ?? null : null}
@@ -473,7 +497,13 @@ export function MembersRolesPanel({
         onReassigned={refreshAll}
       />
       <ManageRolesDialog
-        member={manageRolesTarget}
+        member={manageRolesTarget ? {
+          user_id: manageRolesTarget.user_id,
+          email: manageRolesTarget.email,
+          full_name: manageRolesTarget.full_name,
+          roles: manageRolesTarget.roles,
+          tenant_is_owner: manageRolesTarget.tenant_is_owner,
+        } : null}
         currentUserId={currentUserId}
         tenantId={activeTenantId}
         open={!!manageRolesTarget}

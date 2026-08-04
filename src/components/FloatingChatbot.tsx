@@ -256,11 +256,23 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
 
   // §66 ruling — FAB hidden on admin routes. Coach-lens Paige lives inside
   // ContactPaigePanel on contact detail pages; no persistent floating widget
-  // on admin surface. Also hide on mobile /app, where AppShell renders the
-  // full-screen PaigeChat as the primary surface — a second FAB on top of it
-  // would stack duplicate chat entries (finding 895fa35c).
+  // on admin surface. The /agency operator shell is hidden for the same reason:
+  // it is operator context, not the tenant coach-lens Paige this FAB carries —
+  // a tenant/coach chat widget has no business on the agency operator surface
+  // (its own Agency-tier Paige is a separate, paired workstream, #232). Also
+  // hide on mobile /app, where AppShell renders the full-screen PaigeChat as the
+  // primary surface — a second FAB on top of it would stack duplicate chat
+  // entries (finding 895fa35c).
+  //
+  // NOTE — chatbot route-visibility is governed by TWO gates today: this
+  // predicate (prefix-match; owns "/admin" + "/agency") and App.tsx's
+  // CHATBOT_HIDDEN_ROUTES (exact-match; owns "/" + "/premium"). FOLLOW-UP (§18):
+  // consolidate the two lists into one home so route-visibility has a single
+  // source of truth — do NOT consolidate here; logging it as the next slice.
   const hideChatbot =
     location.pathname.startsWith("/admin") ||
+    location.pathname === "/agency" ||
+    location.pathname.startsWith("/agency/") ||
     (isMobile && location.pathname === "/app");
 
   // --- Draggable floating button + tuck-to-edge "pocket" mode ---
