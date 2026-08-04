@@ -36,6 +36,7 @@ export interface CreditAccount {
   original_amount: number | null;
   duplicate_of_id: string | null;
   is_disputed_ownership: boolean | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw bureau JSON blob, shape varies by source
   payment_history_json: any | null;
   bureau_source: string | null;
 }
@@ -578,6 +579,7 @@ export function CreditFileHealthAssessment() {
   const { data: lenders } = useQuery({
     queryKey: ["lender-prefs-health"],
     queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated Supabase types
       const { data, error } = await supabase.from("lender_bureau_preferences" as any).select("institution_name, primary_bureau, secondary_bureau").limit(100);
       if (error) return [] as LenderPref[];
       return ((data as unknown) || []) as LenderPref[];
