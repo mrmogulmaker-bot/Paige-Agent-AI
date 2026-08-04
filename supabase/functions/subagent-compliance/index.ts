@@ -145,6 +145,6 @@ Deno.serve(async (req) => {
     findings,
     contact: contactSummary,
     action_type: actionType,
-    sources: ["FCRA", "FDCPA", "CROA §1679", "GLBA", "PME KB Section 17/18"],
+    sources: ["FCRA", "FDCPA", "CROA §1679", "GLBA", "Knowledge Base Section 17/18"],
   });
 });
