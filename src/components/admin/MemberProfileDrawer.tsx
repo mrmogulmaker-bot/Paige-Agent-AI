@@ -47,7 +47,9 @@ export interface MemberProfile {
   suspended_at: string | null;
   suspended_reason: string | null;
   roles: string[];
-  is_owner: boolean;
+  // #227 G1: per-tenant owner (tenant_members.is_owner for the active tenant). Drives the
+  // Owner crown/badge here (cosmetic only — no role edit happens in this drawer).
+  tenant_is_owner: boolean;
 }
 
 interface Props {
@@ -268,7 +270,7 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                {member.is_owner && <Crown className="w-4 h-4 text-gold-dark" />}
+                {member.tenant_is_owner && <Crown className="w-4 h-4 text-gold-dark" />}
                 <span className="truncate">{fields.full_name || member.email || "Unnamed"}</span>
               </div>
               <SheetDescription className="text-xs truncate">{member.email}</SheetDescription>
@@ -304,7 +306,7 @@ export function MemberProfileDrawer({ member, open, onOpenChange, initialEdit = 
           <div>
             <div className="text-xs uppercase text-muted-foreground mb-2">Roles</div>
             <div className="flex flex-wrap gap-1">
-              {member.is_owner && <Badge>Owner</Badge>}
+              {member.tenant_is_owner && <Badge>Owner</Badge>}
               {member.roles.map(r => (
                 <Badge key={r} variant="outline" className="capitalize">{r.replace("_", " ")}</Badge>
               ))}
