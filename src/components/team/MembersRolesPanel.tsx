@@ -403,6 +403,7 @@ export function MembersRolesPanel({
                   {byGroup.get(g)!.map((m) => {
                     const cf = coachFields[m.user_id];
                     const isCoach = m.roles.includes("coach");
+                    const shielded = isShielded(m);
                     return (
                       <div key={m.user_id} className="flex flex-wrap items-center gap-2 px-3 py-2">
                         <button type="button" className="flex min-w-0 items-center gap-2.5 text-left" onClick={() => setProfileTarget(m)}>
@@ -440,21 +441,42 @@ export function MembersRolesPanel({
                             <DropdownMenuContent align="end" className="w-56">
                               <DropdownMenuLabel>Manage user</DropdownMenuLabel>
                               <DropdownMenuSeparator />
+                              {/* Tier 1 — safe on EVERY row, incl. shielded owners. */}
                               <DropdownMenuItem onClick={() => setProfileTarget(m)}><UserCog className="mr-2 h-4 w-4" /> View profile</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setManageRolesTarget(m)}><UserCog className="mr-2 h-4 w-4" /> Manage roles</DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              {m.suspended_at ? (
-                                <DropdownMenuItem onClick={() => handleReactivate(m)} disabled={isShielded(m)}><ShieldCheck className="mr-2 h-4 w-4" /> Reactivate</DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem onClick={() => setSuspendTarget(m)} disabled={isShielded(m)}><ShieldOff className="mr-2 h-4 w-4" /> Suspend</DropdownMenuItem>
+                              {/* Manage roles is omitted (not disabled) for shielded rows —
+                                  owner/super_admin role changes are refused server-side and
+                                  administered from the God surface (§9 operator scope). */}
+                              {!shielded && (
+                                <DropdownMenuItem onClick={() => setManageRolesTarget(m)}><UserCog className="mr-2 h-4 w-4" /> Manage roles</DropdownMenuItem>
                               )}
-                              <DropdownMenuItem onClick={() => handleForceSignout(m)} disabled={isShielded(m)}><LogOut className="mr-2 h-4 w-4" /> Force sign-out</DropdownMenuItem>
                               {isCoach && (
                                 <DropdownMenuItem onClick={() => { setReassignCoachId(m.user_id); setReassignLabel(m.full_name || m.email || "Coach"); }}><UserCog className="mr-2 h-4 w-4" /> Reassign clients</DropdownMenuItem>
                               )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => setRevokeTarget(m)} disabled={isShielded(m)}><UserMinus className="mr-2 h-4 w-4" /> Revoke platform access</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => { setRemoveTarget(m); setRemoveConfirmText(""); }} disabled={isShielded(m)} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete user (permanent)</DropdownMenuItem>
+                              {shielded ? (
+                                /* Omit-and-explain: no disabled-with-no-reason rows (§11/§36
+                                   no fake affordances) — one honest, non-interactive line. */
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
+                                    <ShieldCheck className="h-4 w-4 shrink-0" />
+                                    Protected owner — platform actions disabled
+                                  </div>
+                                </>
+                              ) : (
+                                /* Tier 2 — destructive platform actions, non-shielded only. */
+                                <>
+                                  <DropdownMenuSeparator />
+                                  {m.suspended_at ? (
+                                    <DropdownMenuItem onClick={() => handleReactivate(m)}><ShieldCheck className="mr-2 h-4 w-4" /> Reactivate</DropdownMenuItem>
+                                  ) : (
+                                    <DropdownMenuItem onClick={() => setSuspendTarget(m)}><ShieldOff className="mr-2 h-4 w-4" /> Suspend</DropdownMenuItem>
+                                  )}
+                                  <DropdownMenuItem onClick={() => handleForceSignout(m)}><LogOut className="mr-2 h-4 w-4" /> Force sign-out</DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => setRevokeTarget(m)}><UserMinus className="mr-2 h-4 w-4" /> Revoke platform access</DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => { setRemoveTarget(m); setRemoveConfirmText(""); }} className="text-destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete user (permanent)</DropdownMenuItem>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
