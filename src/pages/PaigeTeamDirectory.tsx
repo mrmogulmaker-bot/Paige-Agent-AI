@@ -54,12 +54,19 @@ import { useTenantSpecialists, type TenantSpecialist } from "@/hooks/usePaigeOrc
  * §36 — instantly legible: a non-technical user reads "these are the members of my
  * Paige team and what each one does" in about five seconds.
  *
- * CUSTOM SPECIALISTS (#247, §14 keepers). On the TENANT surface only, a second
- * section below the VP grid surfaces the tenant's OWN Paige-forged specialists —
- * the "keepers" Paige builds for a job THIS practice does often. The seven VPs are
- * everyone's (VP_ROSTER, `tenant_id IS NULL`); the custom specialists are this
- * tenant's alone (`tenant_id = current_user_tenant_id()`), read tenant-scoped by
- * RLS (§9/§51 — see {@link useTenantSpecialists}). Still a READ/LEARN surface:
+ * CUSTOM SPECIALISTS (#247, §14 keepers). On the tenant AND agency surfaces, a
+ * second section below the VP grid surfaces the caller's OWN Paige-forged
+ * specialists — the "keepers" Paige builds for a job THIS account does often. It
+ * is absent operator-side: the operator is the platform, not a tenant, so it has
+ * no per-tenant forged roster of its own (and never a cross-tenant aggregate —
+ * §51). The seven VPs are everyone's (VP_ROSTER, `tenant_id IS NULL`); the custom
+ * specialists are this caller's alone (`tenant_id = current_user_tenant_id()`),
+ * read tenant-scoped by RLS (§9/§51 — see {@link useTenantSpecialists}). On the
+ * agency surface that resolver returns the AGENCY PARENT's own single tenant, so
+ * an agency sees the keepers IT forged — never a merged roster of its sub-accounts
+ * (the RLS floor makes an aggregate structurally impossible; no SECURITY DEFINER
+ * bypass is added — §45). A sub-account likewise sees only its own. Still a
+ * READ/LEARN surface:
  * forging a new specialist is a §20 chat act, so this section offers at most an
  * "ask Paige in chat" invite — never a create-form, picker, or manage control
  * (those live operator-side in SubAgentsAdmin at /admin/sub-agents, a different
@@ -322,10 +329,12 @@ export function PaigeTeamDirectory({ scope }: { scope: PaigeTeamScope }) {
         </div>
       </section>
 
-      {/* The tenant's OWN forged keepers (#247) — tenant surface only. On the
-          operator/agency surface there is no per-tenant forged roster to show
-          (no cross-tenant aggregate — §51), so the section is absent there. */}
-      {scope === "tenant" && <CustomSpecialistsSection />}
+      {/* The caller's OWN forged keepers (#247) — shown on the tenant AND agency
+          surfaces, each reading its OWN tenant's rows via the same RLS-scoped hook
+          (agency = the agency parent's own keepers, a sub-account = its own; never
+          a cross-tenant aggregate — §9/§51). Absent operator-side: the operator is
+          the platform, not a tenant, and has no per-tenant forged roster. */}
+      {scope !== "operator" && <CustomSpecialistsSection />}
     </PageShell>
   );
 }

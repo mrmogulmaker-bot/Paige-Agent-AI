@@ -61,6 +61,28 @@ describe("<PaigeTeamDirectory> — tri-scope framing (§9/§35)", () => {
   });
 });
 
+describe("<PaigeTeamDirectory> — custom-specialists gate (#18, §9/§51)", () => {
+  // The tenant's/agency's OWN forged keepers section renders on the tenant AND
+  // agency surfaces (each reading its own tenant via the RLS-scoped hook — an
+  // agency sees the keepers IT forged, never a sub-account aggregate), and is
+  // ABSENT operator-side (the operator is the platform, not a tenant). In static
+  // markup no effect fires, so the section renders its loading state — its header
+  // is the stable render marker.
+  const SECTION_MARKER = "Specialists Paige built for your practice";
+
+  it("renders the custom-specialists section for the AGENCY surface (#18 self-view)", () => {
+    expect(html("agency")).toContain(SECTION_MARKER);
+  });
+
+  it("still renders it for the TENANT surface (unchanged)", () => {
+    expect(html("tenant")).toContain(SECTION_MARKER);
+  });
+
+  it("does NOT render it for the OPERATOR surface (no per-tenant roster — §51)", () => {
+    expect(html("operator")).not.toContain(SECTION_MARKER);
+  });
+});
+
 describe("<PaigeTeamDirectory> — §-clean", () => {
   it("spends no gold on an ACT — a learn page has no act moment (§11)", () => {
     const out = html("operator");
