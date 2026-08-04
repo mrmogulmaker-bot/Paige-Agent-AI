@@ -25,9 +25,11 @@ const TABS: Tab[] = [
   { label: "Actions", href: "/admin/actions", icon: ClipboardCheck, canSee: (a) => a.isAdmin || a.isPlatformOwner || a.isPlatformStaff },
   // Skills — ungated route.
   { label: "Skills", href: "/admin/skills", icon: Sparkles, canSee: () => true },
-  // The Team (#244) — learn about Paige + her six VPs. RoleGate allow=["admin"]
-  // allowPlatformStaff, so mirror it 1:1 (same predicate as Chat/Actions).
-  { label: "The Team", href: "/admin/paige-team", icon: Users2, canSee: (a) => a.isAdmin || a.isPlatformOwner || a.isPlatformStaff },
+  // Paige Team (#244) — learn about Paige + her six VPs. RoleGate allow=["admin"]
+  // allowPlatformStaff, so mirror it 1:1 (same predicate as Chat/Actions). Label
+  // matches the agency nav's "Paige Team" so one capability reads the same across
+  // scopes (§12), and disambiguates from the human /admin/team floor.
+  { label: "Paige Team", href: "/admin/paige-team", icon: Users2, canSee: (a) => a.isAdmin || a.isPlatformOwner || a.isPlatformStaff },
 ];
 
 export function PaigeSubTabs() {

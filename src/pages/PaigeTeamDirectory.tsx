@@ -86,7 +86,7 @@ const SCOPE_SUBHEAD: Record<PaigeTeamScope, string> = {
 function VpCard({ id }: { id: VP }) {
   const { name, remit } = VP_ROSTER[id];
   return (
-    <SectionCard interactive className="h-full">
+    <SectionCard className="h-full">
       <div className="flex items-start gap-3">
         <GlyphPlate icon={VP_ICON[id]} size="md" ring="indigo" />
         <div className="min-w-0">
@@ -112,7 +112,6 @@ export function PaigeTeamDirectory({ scope }: { scope: PaigeTeamScope }) {
       <PageHeader
         variant="plain"
         icon={Users2}
-        eyebrow="Your Paige team"
         title="Your Paige Team"
         description={SCOPE_SUBHEAD[scope]}
       />
