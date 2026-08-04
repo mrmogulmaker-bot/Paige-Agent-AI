@@ -166,7 +166,15 @@ BEGIN
   RETURN jsonb_build_object(
     'configured', _row.auth_token_ct IS NOT NULL,
     'label', _row.label,
-    'server_url', CASE WHEN _row.server_url_ct IS NOT NULL THEN public.platform_decrypt(_row.server_url_ct) ELSE NULL END,
+    -- SECURITY (§9 intra-tenant): a remote-MCP server_url embeds the secret in its path
+    -- (Zapier: https://mcp.zapier.com/api/mcp/s/<SECRET>/mcp), unlike n8n's non-secret
+    -- base_url. So the member-facing safe getter returns ONLY scheme+host as a display
+    -- hint (like auth_token_last4 for the token) — never the full secret path. The full
+    -- decrypted URL lives exclusively in the service-role get_tenant_mcp_secret below.
+    'server_url_host', CASE
+      WHEN _row.server_url_ct IS NOT NULL
+        THEN regexp_replace(public.platform_decrypt(_row.server_url_ct), '^(https?://[^/]+).*$', '\1')
+      ELSE NULL END,
     'auth_token_last4', _row.auth_token_last4,
     'transport', _row.transport,
     'enabled', _row.enabled,
