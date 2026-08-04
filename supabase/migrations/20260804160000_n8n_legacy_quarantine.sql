@@ -44,3 +44,17 @@ REVOKE ALL ON public.paige_n8n_connections FROM PUBLIC;
 -- RLS (policy `admins manage n8n connections` = is_platform_owner()) is unchanged
 -- and remains the JWT-level gate; this REVOKE removes the redundant table grant that
 -- should never have existed on a ciphertext-bearing legacy table.
+
+-- ── §45/§51 completeness (compliance-officer catch) ────────────────────────────
+-- A table-level REVOKE does NOT constrain a SECURITY DEFINER function: it runs as
+-- its `postgres` owner and keeps full table access regardless of the caller's role.
+-- `platform_set_n8n_base_url(uuid, text)` is exactly such a DEFINER writer into the
+-- legacy global table, and prod shows EXECUTE has drifted back to `authenticated`
+-- (migration 20260702022450 had locked it to service_role-only; it was re-widened
+-- downstream). Its internal guard is `has_role(admin) OR is_platform_owner()`, and
+-- the `admin` app_role has 8 non-operator holders — so a tenant-tier admin could
+-- write a PLATFORM-GLOBAL n8n connection object: the §51 cross-tier seam. Restore
+-- the intended service-role-only posture so the quarantine's "only the per-tenant
+-- model is reachable" is actually true. No code caller exists (§37: grep of src/**
+-- + supabase/functions/** finds only generated types + a historical doc dump).
+REVOKE EXECUTE ON FUNCTION public.platform_set_n8n_base_url(uuid, text) FROM authenticated, PUBLIC;
