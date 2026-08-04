@@ -30,8 +30,9 @@ import { PaigeMark } from "@/components/brand/PaigeMark";
  *
  * TRI-SCOPE (#243). The SAME six VPs serve tenant / operator / portfolio surfaces;
  * `scope` only frames the surface context, it never swaps the roster. The lead-in
- * label stays "your Paige team" across scopes (§36 — instantly legible to a
- * non-technical user in ~5 seconds: "Drafted by your Paige team: Merit + Vera").
+ * defaults to the surface-neutral "By your Paige team" and callers override it to
+ * match the action (§36 — instantly legible in ~5 seconds: "By your Paige team:
+ * Merit + Vera", or leadIn="Drafted by your Paige team" on a drafted email).
  *
  * §2/§9-clean: roster remits are coaching-generic — no finance/credit/vertical
  * wording, no operator-only content — like every other primitive in this layer.
@@ -75,18 +76,24 @@ export interface PaigeAttributionProps {
   size?: "sm" | "md";
   /** Render the shared PaigeMark glyph. Default true. */
   showMark?: boolean;
+  /**
+   * Override the lead-in phrase so the verb matches the surface's action — e.g.
+   * "Drafted by your Paige team" on a drafted email, "Reviewed by your Paige team"
+   * on a checked artifact. Defaults to the surface-neutral "By your Paige team",
+   * because this primitive also credits LIVE surfaces (a Command Center card, a chat
+   * answer), where "Drafted by" would misstate what happened (§13-adjacent accuracy).
+   */
+  leadIn?: string;
   className?: string;
 }
 
-// The lead-in label stays "your Paige team" across scopes — the SAME six VPs serve
-// tenant / operator / portfolio surfaces (#243). Scope is retained on the API (and
-// surfaced to assistive tech below) so callers frame the surface honestly without
-// the roster ever swapping.
-const SCOPE_LEADIN: Record<AttributionScope, string> = {
-  tenant: "Drafted by your Paige team",
-  operator: "Drafted by your Paige team",
-  portfolio: "Drafted by your Paige team",
-};
+// Surface-neutral default lead-in. The SAME six VPs serve tenant / operator /
+// portfolio surfaces (#243), and this primitive credits DRAFTS *and* live surfaces
+// (a Command Center card, a chat answer), so the default verb must not assume
+// "drafted" — a draft surface passes leadIn="Drafted by your Paige team". Scope is
+// retained on the API (surfaced to assistive tech below) without ever swapping the
+// roster.
+const DEFAULT_LEADIN = "By your Paige team";
 
 const MARK_SIZE = {
   sm: "h-4 w-4",
@@ -100,6 +107,13 @@ const TEXT_SIZE = {
 
 /** De-dupe by `vp` (first mention wins), drop any `vp` not in the roster (§13 — can't credit a non-existent VP). */
 function resolveContributors(contributors: PaigeContributor[]): PaigeContributor[] {
+  // §32 runtime safety: callers adopt this incrementally and wire `contributors`
+  // from loose runtime/API data that can be undefined during load or absent in the
+  // DB. TypeScript types the prop required, but that guarantees nothing at runtime —
+  // `undefined`/non-array is morally empty → render nothing rather than crash the
+  // subtree ("contributors is not iterable"). The §13 "no contributors, no credit"
+  // contract extends to "absent".
+  if (!Array.isArray(contributors)) return [];
   const seen = new Set<VP>();
   const out: PaigeContributor[] = [];
   for (const c of contributors) {
@@ -121,6 +135,7 @@ export function PaigeAttribution({
   variant = "inline",
   size = "sm",
   showMark = true,
+  leadIn,
   className,
 }: PaigeAttributionProps) {
   const resolved = resolveContributors(contributors);
@@ -128,7 +143,7 @@ export function PaigeAttribution({
   // §13 — no contributors means no credit; never fabricate one.
   if (resolved.length === 0) return null;
 
-  const leadIn = SCOPE_LEADIN[scope];
+  const lead = leadIn ?? DEFAULT_LEADIN;
 
   // A contributor's optional role renders as a tiny qualifier ("Vera reviewed") for
   // surfaces that distinguish draft vs. review; otherwise just the name.
@@ -159,7 +174,7 @@ export function PaigeAttribution({
       <div className="min-w-0">
         <p className="leading-snug">
           <span className="sr-only">{scope} surface — </span>
-          {leadIn}:{" "}
+          {lead}:{" "}
           <span className="font-medium text-foreground">{names}</span>
         </p>
         {variant === "block" && (

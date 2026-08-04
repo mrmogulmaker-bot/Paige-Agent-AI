@@ -36,7 +36,23 @@ describe("<PaigeAttribution> honesty (§13)", () => {
   it("credits every contributor passed — a list, not a single name", () => {
     const out = html([{ vp: "MERIT" }, { vp: "VERA" }]);
     expect(out).toContain("Merit + Vera");
-    expect(out).toContain("Drafted by your Paige team");
+    // surface-neutral default lead-in (this primitive credits live surfaces too, not only drafts)
+    expect(out).toContain("By your Paige team");
+  });
+
+  it("renders nothing when contributors is undefined/non-array (§32 — degrade, never crash)", () => {
+    // callers adopt this incrementally from loose runtime data that can be undefined
+    // during load; TS marks the prop required but runtime data does not honor that.
+    // @ts-expect-error — intentionally passing undefined at runtime
+    expect(renderToStaticMarkup(<PaigeAttribution contributors={undefined} />)).toBe("");
+    // @ts-expect-error — intentionally passing a non-array at runtime
+    expect(renderToStaticMarkup(<PaigeAttribution contributors={null} />)).toBe("");
+  });
+
+  it("uses the surface-neutral default lead-in, and honors a leadIn override", () => {
+    expect(html([{ vp: "ZION" }])).toContain("By your Paige team");
+    expect(html([{ vp: "ZION" }], { leadIn: "Drafted by your Paige team" }))
+      .toContain("Drafted by your Paige team");
   });
 
   it("shows exactly one name when one contributor is passed (never collapses/expands)", () => {
