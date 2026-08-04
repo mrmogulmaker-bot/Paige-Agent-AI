@@ -73,7 +73,6 @@ const GrowthFunnelRenderer = lazyWithReload(() => import("./pages/public/GrowthF
 import NotFound from "./pages/NotFound";
 
 // Everything else is lazy-loaded for a smaller initial bundle
-const Dashboard = lazyWithReload(() => import("./pages/Dashboard"));
 const AppShell = lazyWithReload(() => import("./pages/AppShell"));
 const CreditIntelligence = lazyWithReload(() => import("./pages/CreditIntelligence"));
 const FundingMatches = lazyWithReload(() => import("./pages/FundingMatches"));
