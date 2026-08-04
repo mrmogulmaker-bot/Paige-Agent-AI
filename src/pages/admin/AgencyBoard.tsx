@@ -22,6 +22,7 @@
  * opt-in — it is never forced, defaulted, or auto-on.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   Building2, Users, Workflow as WorkflowIcon, Plus, RefreshCw,
   ArrowRightLeft, Store, Loader2, PackageCheck, Layers,
@@ -45,8 +46,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  PageShell, PageHeader, SectionCard, StatTile, StatRow,
-  DataTableShell, EmptyState, StatePill, GlyphPlate, type Column,
+  PageShell, PageHeader, SectionCard, SectionNote, StatTile, StatRow,
+  DataTableShell, EmptyState, StatePill, GlyphPlate, FilterChip, type Column,
 } from "@/components/ui/page";
 import {
   MARKETPLACE_SKILLS, SKILL_CATEGORIES, type MarketplaceSkill,
@@ -97,6 +98,7 @@ export default function AgencyBoard() {
   // ONE parentage-gated rollup across the whole book — replaces the old
   // per-child N+1. Polls every 45s and on window focus (live/dynamic doctrine).
   const { portfolio, loading: portfolioLoading, refetch: refetchPortfolio } = useAgencyPortfolio();
+  const reduce = useReducedMotion();
 
   const [subs, setSubs] = useState<SubAccount[]>([]);
   // Which child we're entering (drives the row's Open/Reach-out spinner).
@@ -110,6 +112,13 @@ export default function AgencyBoard() {
   const [playbookSlug, setPlaybookSlug] = useState<string>(INHERIT_PLAYBOOK);
   const [inheritBrand, setInheritBrand] = useState(true);
   const [creating, setCreating] = useState(false);
+  // The create form lives in a Dialog behind the header's gold act (§27 space
+  // reclaim) — no always-mounted inline form eating the fold.
+  const [createOpen, setCreateOpen] = useState(false);
+
+  // Leaderboard health filter — the chips that replace the old dead-end health
+  // display card (display → control, §43/§47).
+  const [healthFilter, setHealthFilter] = useState<"all" | PortfolioHealthKey>("all");
 
   // "Invite owner" flow — hand a sub-account to its principal as the child's ADMIN.
   // Moved here (with the sub-accounts surface) from the tenant Settings panel: it's
@@ -193,6 +202,7 @@ export default function AgencyBoard() {
       if (error) throw error;
       toast.success(`${name.trim()} is live under your agency.`);
       setName(""); setPlaybookSlug(INHERIT_PLAYBOOK); setInheritBrand(true);
+      setCreateOpen(false);
       await loadRoster();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't create the sub-account");
@@ -378,8 +388,37 @@ export default function AgencyBoard() {
     return tiles;
   }, [portfolio, portfolioLoading]);
 
-  const health = portfolio?.health;
   const leaderboard = portfolio?.leaderboard;
+
+  // Health split derived straight from the leaderboard rows, so the filter chips,
+  // the proportion meter, and the rows they filter can never disagree (§13).
+  const healthCounts = useMemo(() => {
+    const c: Record<PortfolioHealthKey, number> = { healthy: 0, watch: 0, at_risk: 0 };
+    (leaderboard ?? []).forEach((r) => { c[r.health] = (c[r.health] ?? 0) + 1; });
+    return c;
+  }, [leaderboard]);
+
+  const bookTotal = leaderboard?.length ?? 0;
+
+  const filteredLeaderboard = useMemo(
+    () =>
+      healthFilter === "all"
+        ? (leaderboard ?? [])
+        : (leaderboard ?? []).filter((r) => r.health === healthFilter),
+    [leaderboard, healthFilter],
+  );
+
+  // A brand-new agency with zero children, fully loaded: one honest first-run
+  // hero, not a wall of zero-tiles.
+  const showEmpty = !loading && !portfolioLoading && subs.length === 0;
+
+  // The health filter chips, in book order (All + the three buckets).
+  const healthChips: Array<{ key: "all" | PortfolioHealthKey; label: string; count: number }> = [
+    { key: "all", label: "All", count: bookTotal },
+    { key: "healthy", label: "Healthy", count: healthCounts.healthy },
+    { key: "watch", label: "Watch", count: healthCounts.watch },
+    { key: "at_risk", label: "At risk", count: healthCounts.at_risk },
+  ];
 
   const availableCount = MARKETPLACE_SKILLS.filter((s) => s.status === "available").length;
 
@@ -409,168 +448,166 @@ export default function AgencyBoard() {
           "and resell platform capabilities down onto them — one continuous system, your brand on top."
         }
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={refreshAll}
-            disabled={loading || portfolioLoading}
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading || portfolioLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refreshAll}
+              disabled={loading || portfolioLoading}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading || portfolioLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+            <Button variant="gold" size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              New sub-account
+            </Button>
+          </>
         }
       />
 
-      {kpis.length > 0 && (
-        <StatRow cols={4}>{kpis.map((k) => <div key={k.key}>{k.node}</div>)}</StatRow>
-      )}
+      {showEmpty ? (
+        <>
+          {/* One flat truth-line where 5 zero-tiles + a zero-health card used to sit. */}
+          <SectionNote icon={Activity}>
+            Your portfolio metrics — revenue, net growth, at-risk, and clients — light up here the
+            moment you add your first sub-account.
+          </SectionNote>
 
-      {/* Portfolio health — how the book splits across healthy / watch / at-risk. */}
-      {health && (
-        <SectionCard
-          icon={Activity}
-          title="Portfolio health"
-          description="Where your book stands right now, at a glance — so you know who needs you before they churn."
-        >
-          <div className="grid gap-3 sm:grid-cols-3">
-            {([
-              { key: "healthy" as const, value: health.healthy },
-              { key: "watch" as const, value: health.watch },
-              { key: "at_risk" as const, value: health.at_risk },
-            ]).map(({ key, value }) => {
-              const meta = HEALTH_PILL[key];
-              return (
-                <div
-                  key={key}
-                  className="flex items-center justify-between gap-3 rounded-[var(--radius)] border border-border bg-card p-4"
-                >
-                  <div className="font-display text-2xl font-semibold tabular-nums text-foreground">
-                    {num(value)}
-                  </div>
-                  <StatePill state={meta.state}>{meta.label}</StatePill>
-                </div>
-              );
-            })}
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Leaderboard / at-risk board — per-child clients + MRR + health, straight
-          from the single rollup. Gold is spent ONLY on the Reach-out act moment. */}
-      {leaderboard !== undefined && (
-        <SectionCard
-          icon={Trophy}
-          title="Sub-account leaderboard"
-          description="Your book ranked by traction — reach out to the ones losing steam before they slip."
-        >
-          <DataTableShell
-            columns={leaderboardColumns}
-            loading={portfolioLoading}
-            isEmpty={!portfolioLoading && leaderboard.length === 0}
-            empty={
-              <EmptyState
-                icon={Trophy}
-                tone="brand"
-                title="No sub-accounts to rank yet"
-                description="Spin up your first child workspace below and it'll show up here with live clients, revenue, and health."
-              />
-            }
-          >
-            {leaderboard.map((row) => {
-              const meta = HEALTH_PILL[row.health] ?? HEALTH_PILL.watch;
-              const busy = switchingId === row.tenant_id;
-              return (
-                <TableRow key={row.tenant_id}>
-                  <TableCell>
-                    <div className="truncate font-medium text-foreground">{row.name}</div>
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{num(row.client_count)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{usd(row.mrr_cents)}</TableCell>
-                  <TableCell>
-                    <StatePill state={meta.state}>{meta.label}</StatePill>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="gold"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => openChild(row.tenant_id, row.name)}
-                      aria-label={`Open ${row.name} to check in`}
-                    >
-                      {busy ? (
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <ArrowUpRight className="mr-1.5 h-3.5 w-3.5" />
-                      )}
-                      Open
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </DataTableShell>
-        </SectionCard>
-      )}
-
-      {/* Create a sub-account */}
-      <SectionCard
-        icon={Plus}
-        title="Add a sub-account"
-        description="A child workspace under your agency — its own clients, brand, and pipeline. You own it and can open it any time."
-      >
-        <div className="space-y-4">
-          <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
-            <div className="space-y-1.5">
-              <Label htmlFor="sub-name">Name</Label>
-              <Input
-                id="sub-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Northwind Advisory"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="sub-playbook">Playbook</Label>
-              <Select value={playbookSlug} onValueChange={setPlaybookSlug}>
-                <SelectTrigger id="sub-playbook">
-                  <SelectValue placeholder="Choose a starting Playbook" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={INHERIT_PLAYBOOK}>Inherit from our agency</SelectItem>
-                  {PLAYBOOK_LIBRARY.map((p) => (
-                    <SelectItem key={p.slug} value={p.slug}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button variant="gold" onClick={create} disabled={creating || name.trim().length < 2}>
-              {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-              Create
-            </Button>
-          </div>
-
-          <div className="flex items-start justify-between gap-3 rounded-[var(--radius)] border border-border bg-card p-4">
-            <div className="min-w-0">
-              <Label htmlFor="sub-inherit" className="cursor-pointer">Use our agency brand &amp; voice</Label>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                The new account opens wearing your logo, colors, and sender identity — one continuous
-                system. Turn this off to start it from a clean slate.
-              </p>
-            </div>
-            <Switch
-              id="sub-inherit"
-              checked={inheritBrand}
-              onCheckedChange={setInheritBrand}
-              aria-label="Inherit this agency's brand and voice on the new sub-account"
+          {/* The one genuine first-run hero. */}
+          <SectionCard>
+            <EmptyState
+              icon={Building2}
+              tone="brand"
+              title="No sub-accounts yet"
+              description="Spin up your first child workspace — it inherits your brand and Playbook, and you can open it any time."
+              action={
+                <Button variant="gold" onClick={() => setCreateOpen(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create your first sub-account
+                </Button>
+              }
             />
-          </div>
-        </div>
-      </SectionCard>
+          </SectionCard>
 
-      {/* Roster */}
-      <div className="space-y-3">
+          <SectionNote icon={Sparkles}>
+            Coming to your agency: fleet automation · rebilling · staff seats · sub-account comms ·
+            blueprints · portfolio analytics.
+          </SectionNote>
+        </>
+      ) : (
+        <>
+          {/* KPI scoreboard — 3+2 on desktop (never a lonely 4+1 wrap). Zeros are
+              allowed here as real context now that the book exists (§13). */}
+          {kpis.length > 0 && (
+            <StatRow cols={3}>{kpis.map((k) => <div key={k.key}>{k.node}</div>)}</StatRow>
+          )}
+
+          {/* Portfolio — the book ranked, with the health split as a FILTER (chips +
+              a data-true proportion meter) instead of a dead-end display card. Gold
+              is spent nowhere in this table; Open is a quiet outline act. */}
+          {leaderboard !== undefined && (
+            <SectionCard
+              icon={Trophy}
+              title="Portfolio"
+              description="Your book ranked by traction — filter by health, and open the ones losing steam before they slip."
+            >
+              {bookTotal > 0 && (
+                <div className="mb-4 space-y-3">
+                  <div
+                    className="flex h-2 w-full overflow-hidden rounded-full bg-muted"
+                    role="img"
+                    aria-label={`${num(healthCounts.healthy)} healthy, ${num(healthCounts.watch)} watch, ${num(healthCounts.at_risk)} at risk`}
+                  >
+                    {healthCounts.healthy > 0 && (
+                      <div
+                        className="bg-[hsl(var(--success))]"
+                        style={{ width: `${(healthCounts.healthy / bookTotal) * 100}%` }}
+                      />
+                    )}
+                    {healthCounts.watch > 0 && (
+                      <div
+                        className="bg-[hsl(var(--warning))]"
+                        style={{ width: `${(healthCounts.watch / bookTotal) * 100}%` }}
+                      />
+                    )}
+                    {healthCounts.at_risk > 0 && (
+                      <div
+                        className="bg-[hsl(var(--destructive))]"
+                        style={{ width: `${(healthCounts.at_risk / bookTotal) * 100}%` }}
+                      />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {healthChips.map((chip) => (
+                      <FilterChip
+                        key={chip.key}
+                        active={healthFilter === chip.key}
+                        onClick={() => setHealthFilter(chip.key)}
+                      >
+                        {chip.label}
+                        <span className="tabular-nums opacity-70">{num(chip.count)}</span>
+                      </FilterChip>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <DataTableShell
+                columns={leaderboardColumns}
+                loading={portfolioLoading}
+                isEmpty={!portfolioLoading && filteredLeaderboard.length === 0}
+                empty={
+                  <EmptyState
+                    icon={Trophy}
+                    tone="brand"
+                    title={healthFilter === "all" ? "No sub-accounts to rank yet" : "None in this bucket"}
+                    description={
+                      healthFilter === "all"
+                        ? "Spin up your first child workspace and it'll show up here with live clients, revenue, and health."
+                        : "No sub-accounts match this health filter right now — switch back to All to see the whole book."
+                    }
+                  />
+                }
+              >
+                {filteredLeaderboard.map((row) => {
+                  const meta = HEALTH_PILL[row.health] ?? HEALTH_PILL.watch;
+                  const busy = switchingId === row.tenant_id;
+                  return (
+                    <TableRow key={row.tenant_id} className="motion-safe:transition-colors hover:bg-muted/40">
+                      <TableCell>
+                        <div className="truncate font-medium text-foreground">{row.name}</div>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{num(row.client_count)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{usd(row.mrr_cents)}</TableCell>
+                      <TableCell>
+                        <StatePill state={meta.state}>{meta.label}</StatePill>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => openChild(row.tenant_id, row.name)}
+                          aria-label={`Open ${row.name} to check in`}
+                        >
+                          {busy ? (
+                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <ArrowUpRight className="mr-1.5 h-3.5 w-3.5" />
+                          )}
+                          Open
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </DataTableShell>
+            </SectionCard>
+          )}
+
+          {/* Roster */}
+          <div className="space-y-3">
         <div className="flex items-center gap-3">
           <GlyphPlate icon={Layers} size="sm" />
           <div className="min-w-0">
@@ -590,7 +627,7 @@ export default function AgencyBoard() {
               icon={Building2}
               tone="brand"
               title="No sub-accounts yet"
-              description="Add your first child workspace above — then resell platform capabilities onto it in a click."
+              description="Use New sub-account to add your first child workspace — then resell platform capabilities onto it in a click."
             />
           }
         >
@@ -601,7 +638,7 @@ export default function AgencyBoard() {
                 key={s.id}
                 onClick={() => selectChild(s.id)}
                 aria-selected={isSelected}
-                className={`cursor-pointer ${isSelected ? "bg-muted/60" : ""}`}
+                className={`cursor-pointer motion-safe:transition-colors ${isSelected ? "bg-muted/60" : "hover:bg-muted/40"}`}
               >
                 <TableCell>
                   <div className="min-w-0">
@@ -741,11 +778,103 @@ export default function AgencyBoard() {
         </SectionCard>
       )}
 
-      {/* Footnote: what's resellable, real count */}
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <PackageCheck className="h-3.5 w-3.5" />
-        {availableCount} of {MARKETPLACE_SKILLS.length} catalog capabilities are live and resellable today; the rest are on the roadmap.
-      </div>
+          {/* Footnote: what's resellable, real count */}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <PackageCheck className="h-3.5 w-3.5" />
+            {availableCount} of {MARKETPLACE_SKILLS.length} catalog capabilities are live and resellable today; the rest are on the roadmap.
+          </div>
+
+          {/* Roadmap preview — the #232 slot, one honest muted line, agency-scoped. */}
+          <SectionNote icon={Sparkles}>
+            Coming to your agency: fleet automation · rebilling · staff seats · sub-account comms ·
+            blueprints · portfolio analytics.
+          </SectionNote>
+        </>
+      )}
+
+      {/* Create a sub-account — the inline form, folded behind the header's gold act. */}
+      <Dialog
+        open={createOpen}
+        onOpenChange={(o) => {
+          if (creating) return;
+          setCreateOpen(o);
+          if (!o) { setName(""); setPlaybookSlug(INHERIT_PLAYBOOK); setInheritBrand(true); }
+        }}
+      >
+        <DialogContent>
+          <motion.div
+            initial={reduce ? false : { opacity: 0, scale: 0.98, y: 6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={reduce ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 32 }}
+          >
+            <DialogHeader>
+              <DialogTitle>New sub-account</DialogTitle>
+              <DialogDescription>
+                A child workspace under your agency — its own clients, brand, and pipeline. You own
+                it and can open it any time.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="sub-name">Name</Label>
+                <Input
+                  id="sub-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Northwind Advisory"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === "Enter" && name.trim().length >= 2) void create(); }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="sub-playbook">Playbook</Label>
+                <Select value={playbookSlug} onValueChange={setPlaybookSlug}>
+                  <SelectTrigger id="sub-playbook">
+                    <SelectValue placeholder="Choose a starting Playbook" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={INHERIT_PLAYBOOK}>Inherit from our agency</SelectItem>
+                    {PLAYBOOK_LIBRARY.map((p) => (
+                      <SelectItem key={p.slug} value={p.slug}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-start justify-between gap-3 rounded-[var(--radius)] bg-muted/30 p-3">
+                <div className="min-w-0">
+                  <Label htmlFor="sub-inherit" className="cursor-pointer">Use our agency brand &amp; voice</Label>
+                  <p className="mt-0.5 text-sm text-muted-foreground">
+                    The new account opens wearing your logo, colors, and sender identity — one continuous
+                    system. Turn this off to start it from a clean slate.
+                  </p>
+                </div>
+                <Switch
+                  id="sub-inherit"
+                  checked={inheritBrand}
+                  onCheckedChange={setInheritBrand}
+                  aria-label="Inherit this agency's brand and voice on the new sub-account"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => setCreateOpen(false)}
+                disabled={creating}
+              >
+                Cancel
+              </Button>
+              <Button variant="gold" onClick={create} disabled={creating || name.trim().length < 2}>
+                {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                Create
+              </Button>
+            </DialogFooter>
+          </motion.div>
+        </DialogContent>
+      </Dialog>
 
       {/* Invite the owner of a sub-account — hand off the day-to-day, keep the keys. */}
       <Dialog open={!!inviteFor} onOpenChange={(o) => { if (!o && !inviteBusy) { setInviteFor(null); setInviteEmail(""); } }}>
