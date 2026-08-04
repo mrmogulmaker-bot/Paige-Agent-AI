@@ -7,9 +7,10 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import {
-  Building2, ShieldAlert, AlertTriangle, Clock, ArrowUpDown,
+  Building2, ShieldAlert, AlertTriangle, Clock, ArrowUpDown, Plus,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -23,6 +24,7 @@ import {
   type TenantStatus, type HealthLevel, STATUS_META, tenantHealth, trialDaysLeft,
 } from "@/lib/platform/tenantLifecycle";
 import { TenantDetailSheet, type FleetTenant } from "@/components/admin/platform/TenantDetailSheet";
+import { ProvisionTenantDialog } from "@/components/admin/platform/ProvisionTenantDialog";
 import PlatformOverview from "./PlatformOverview";
 
 // Status tone → state-pill state. Attention tones (warn/critical) collapse to the
@@ -52,6 +54,7 @@ export default function PlatformTenants() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [provisionOpen, setProvisionOpen] = useState(false);
   const [query, setQuery] = useState("");
 
   const load = async () => {
@@ -201,6 +204,16 @@ export default function PlatformTenants() {
         eyebrow="Platform · Fleet"
         title="Fleet Console"
         description={`Every workspace running on ${PLATFORM.name}. Click a tenant to manage its plan, limits, and lifecycle.`}
+        actions={
+          isPlatformOwner ? (
+            // Provisioning CREATES a workspace — a real act, so a single gold
+            // primary is the legitimate spend here (§11). Owner-only, matching
+            // the invite/lifecycle gate.
+            <Button variant="gold" onClick={() => setProvisionOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" /> Provision tenant
+            </Button>
+          ) : undefined
+        }
       />
 
       <PlatformOverview onReachOut={reachOutTenant} />
@@ -316,6 +329,20 @@ export default function PlatformTenants() {
         onOpenChange={setSheetOpen}
         onChanged={load}
       />
+
+      {isPlatformOwner && (
+        <ProvisionTenantDialog
+          open={provisionOpen}
+          onOpenChange={setProvisionOpen}
+          onProvisioned={(t) => { load(); openTenant({
+            id: t.id, slug: t.slug, name: t.name,
+            // Minimal shell so the drill-in opens immediately; load() refetches
+            // the live row (status/limits/health) right behind it.
+            status: "trial", plan_offer: null, seat_limit: 0, customer_limit: 0,
+            trial_ends_at: null, member_count: 0, customer_count: 0,
+          }); }}
+        />
+      )}
     </PageShell>
   );
 }
