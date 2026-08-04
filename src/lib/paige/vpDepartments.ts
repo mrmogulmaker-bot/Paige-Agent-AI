@@ -14,11 +14,12 @@
  * it is purely the *edges* between the two existing vocabularies. A VP is the
  * C-Suite officer; the departments are the desks that officer runs.
  *
- * SEAM RESOLUTION (§16). The 6 VPs OWN the 10 canonical departments (+ the legacy
- * `owner_ops` general desk, folded under PAIGE while it is routed away). Each
- * department maps to exactly ONE VP so a department's work has an unambiguous owner:
+ * SEAM RESOLUTION (§16). The 6 VPs OWN the 10 canonical departments (+ the active
+ * `owner_ops` general desk — it still routes real kinds like `client.at_risk` /
+ * `owner.*`, so it is folded under PAIGE rather than dropped). Each department maps
+ * to exactly ONE VP so a department's work has an unambiguous owner:
  *
- *   PAIGE  (Orchestrator)            → executive_office, people_talent, owner_ops(legacy)
+ *   PAIGE  (Orchestrator)            → executive_office, people_talent, owner_ops
  *   NEXUS  (Marketing & growth)      → marketing
  *   MERIT  (Sales & revenue)         → sales, finance
  *   CURA   (Client success)          → client_experience
@@ -34,7 +35,7 @@
 import type { VP } from "@/components/ui/page";
 
 /** The canonical department slugs from `paige_departments` (§16 seed migrations):
- *  10 canonical desks + the legacy `owner_ops` general desk (being routed away). */
+ *  10 canonical desks + the still-active `owner_ops` general desk. */
 export type DeptSlug =
   | "executive_office"
   | "marketing"

@@ -72,14 +72,12 @@ function deptIcon(slug: string): LucideIcon {
   return (DEPT_ICON as Record<string, LucideIcon>)[slug] ?? Users2;
 }
 
-/** The live status word for a desk, by precedence: awaiting > in motion > queued > idle. */
+/** The live status WORD for a desk, by precedence: awaiting > in motion > queued > idle.
+ *  State only — the magnitude lives in the one top-right total (see DeskTile), so the
+ *  pill never repeats or contradicts that number (design-crew #245: no double count). */
 function DeskPill({ d, reduced }: { d: DeptStatusRow; reduced: boolean }) {
   if (d.awaitingCount > 0) {
-    return (
-      <StatePill state="warning">
-        {d.awaitingCount} awaiting you
-      </StatePill>
-    );
+    return <StatePill state="warning">Awaiting you</StatePill>;
   }
   if (d.workingCount > 0) {
     return (
@@ -89,7 +87,7 @@ function DeskPill({ d, reduced }: { d: DeptStatusRow; reduced: boolean }) {
     );
   }
   if (d.openCount > 0) {
-    return <StatePill state="off">{d.openCount} queued</StatePill>;
+    return <StatePill state="off">Queued</StatePill>;
   }
   return <StatePill state="off">Standing by</StatePill>;
 }
@@ -113,7 +111,12 @@ function DeskTile({ d, scope, reduced }: { d: DeptStatusRow; scope: AttributionS
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-[var(--radius)] border bg-card p-4 shadow-card transition-shadow duration-200 hover:shadow-lg",
+        // Raised a tier above the host SectionCard (bg-card): bg-muted/40 gives a
+        // distinct elevation in BOTH themes (lighter than card in dark, a subtle
+        // inset in light) so each desk bulges instead of reading card-on-card
+        // (design-crew #245, §22/§27). No hover-lift — the tile is not clickable,
+        // so a hover:shadow-lg would be a false affordance (§11/§25).
+        "flex flex-col gap-3 rounded-[var(--radius)] border bg-muted/40 p-4 shadow-card",
         active ? "border-border" : "border-border/60",
       )}
     >
@@ -153,10 +156,13 @@ export function PaigeDepartmentStatus({ scope = "tenant" }: { scope?: Attributio
 
   const activeCount = departments.filter((d) => d.openCount > 0).length;
   const title = "What your Paige team is doing";
+  // DB-driven count — never hardcode a numeral in the copy (the desks come from
+  // paige_departments, which today enables 11 including the active owner_ops desk).
+  // §13 honesty on the surface whose whole job is at-a-glance legibility (§36).
   const description =
     scope === "operator"
-      ? "Your ten departments across the fleet, and who's running each — live."
-      : "Your ten departments and who's running each — live.";
+      ? "Your departments across the fleet, and who's running each — live."
+      : "Your departments and who's running each — live.";
 
   return (
     <SectionCard
@@ -172,8 +178,8 @@ export function PaigeDepartmentStatus({ scope = "tenant" }: { scope?: Attributio
       }
     >
       {loading ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-          {Array.from({ length: 10 }).map((_, i) => (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, i) => (
             <Skeleton key={i} className="h-[7.5rem] rounded-[var(--radius)]" />
           ))}
         </div>
@@ -184,7 +190,7 @@ export function PaigeDepartmentStatus({ scope = "tenant" }: { scope?: Attributio
           description="Work shows up here the moment Paige files it to one of your departments — onboarding a client, drafting a follow-up, or teeing up a decision for you."
         />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {departments.map((d) => (
             <DeskTile key={d.slug} d={d} scope={scope} reduced={reduced} />
           ))}

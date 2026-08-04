@@ -3,15 +3,16 @@
  * the Command Center department-status tiles (Task #245, the "see them work" layer).
  *
  * §9 TENANT ISOLATION: both reads are RLS-tenant-scoped and pass NO client-supplied
- * tenant_id. `paige_actions` SELECT is gated server-side (tenant_id =
- * current_user_tenant_id() AND admin|coach|super_admin — OR has_role(admin) → all
- * rows for a platform operator); `paige_departments` is `enabled`-gated to
+ * tenant_id. `paige_actions` SELECT is gated server-side by the live slice2c policy
+ * (tenant_id = current_user_tenant_id() AND admin|coach|super_admin — OR
+ * is_platform_owner() → all rows for a platform operator); `paige_departments` is
+ * `enabled`-gated to
  * authenticated. This EXTENDS the proven §9-clean pattern in usePaigeContribution —
  * it is NOT a new RPC/view (a SECURITY DEFINER aggregate would *bypass* the RLS that
  * already scopes this table correctly — the exact §45 IDOR class we avoid).
  *
  * §51 PER-TIER OUTCOME:
- *   • God/Super-Admin (no tenant)  → has_role(admin) → FLEET-WIDE dept status.
+ *   • God/Super-Admin (no tenant)  → is_platform_owner() → FLEET-WIDE dept status.
  *   • Agency / Standalone / Sub-account → own book only (current_user_tenant_id());
  *     a sub-account never sees its parent's aggregate (RLS isolates by tenant_id).
  *   • Client → fails the admin|coach|super_admin predicate → 0 rows (never mounts CC).
