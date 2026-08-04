@@ -1599,3 +1599,58 @@ Every tier has a documented `tenant_id` resolution path, auth-token flow, RLS po
 Three confirmed tier-seam bugs plus a fourth that had been hiding under an unrelated user-reported symptom. Each shipped because a crew built on one tier, verified on one tier, and never checked the others. §51 exists so the fifth doesn't happen — and the first live pass of the six-component railing (retro-check on the Blueprints Slice 1 substrate) already proved the doctrine catches what it's designed to catch: every tier row filled correctly, sub-account writes ITS OWN journey stages never the parent's, Client + Anonymous denied at every layer.
 
 **Note:** #201/#587 is tracked as its own §200-class platform-wide bug (PDF attachment payload-size path — a different failure class than the tier-seam bugs above). Its fix is on a parallel track (#587).
+
+## 39. The peer-gate — every §32-verified change also gets an INDEPENDENT adversarial read of the REAL diff.
+
+**Directive (owner: Antonio, 2026-08-04, ref #214):** A §32 `BEGIN..ROLLBACK` proof tests
+**what its assertions test** — and nothing else. A proof can be **fully GREEN and still miss an
+entire class of defect**, because it only ever exercises the checks its author thought to write.
+The proof passing is necessary, never sufficient. So **every §32-verified change ALSO requires an
+INDEPENDENT adversarial read of the REAL pushed diff** — not the build report, not the author's own
+proof, not a re-run of the same assertions — a distinct peer whose only job is to hunt the defect
+the proof's assertions structurally could not cover. This is the **peer-gate**, and it is a
+MANDATORY real gate, not a reminder: no §32-verified change is called done until a second, distinct
+set of eyes has adversarially read the actual pushed diff and reported.
+
+- **It SHARPENS §5/§11's adversarial verifier onto §32 changes — it invents no new role and replaces
+  nothing.** §32 is the author proving their own change runs and persists. §5's compliance/standards
+  officer judges *quality and standards* — "is this done correctly, to the best-in-class bar,
+  SOP-clean?" The peer-gate is the **§5/§11 adversarial-verifier seat given a specific §32 mandate**:
+  a pure defect-hunter pointed at **what the §32 proof didn't think to test**. A green compliance
+  pass does not waive it; a green §32 proof does not waive it — they answer different questions.
+- **The peer reads the DIFF, adversarially, from scratch — and is not the author of the proof.** Not
+  the PR description, not the author's proof output, not "the build is green." The real pushed change,
+  read by someone who assumes it is broken and goes looking for how. The peer must be an independent
+  pass — never the same agent/run that wrote the §32 assertions grading its own homework. Re-running
+  the author's own assertions is not the peer-gate; that only re-confirms what was already confirmed.
+  The peer's mandate is the blind spot: *"what would make this GREEN proof a lie?"*
+- **This is the §14 crew's adversarial-verifier seat, not paperwork.** Convened with the crew
+  (§1/§14), distinct from the design engineer and the compliance officer. On bootstrap/headless runs
+  where the crew is invoked manually, say so (§13).
+- **The trigger is objective and self-catching.** *If a §32 proof went GREEN and you are about to call
+  the change done on the strength of that proof alone — with no independent adversarial read of the
+  actual pushed diff — you are ALREADY in violation. Stop and run the peer before the change ships.*
+- **Anchoring case studies — all real, this session (§13):**
+  1. **§45 operator-identity seam foundation.** The §32 `BEGIN..ROLLBACK` proof was GREEN — but the
+     adversarial read of the diff caught a `SECURITY DEFINER` resolver that let **any caller read
+     another tenant's sender address and tradeline partners** (a §9 IDOR), because `SECURITY DEFINER`
+     bypasses the very `REVOKE` the proof assumed was protecting it. Fixed by gating those fields
+     behind a can-see-legal predicate; the re-proof then drove the IDOR path **explicitly** — an
+     assertion that had never existed until the peer found the hole.
+  2. **#227 sub-account owner correction.** The §32 assertions returned a **false-green** on a
+     multi-level (grandchild) tenant leak; the adversarial-against-diff pass caught the missed level
+     the proof's own tenancy assertions never reached.
+  3. **F10 support-SLA.** The adversarial verifier caught that the edge function built its client with
+     the **anon key and NO forwarded JWT**, so every RLS-gated read returned **0 rows** and every
+     caller silently resolved to the "free" tier — a **runtime** behavior a proof of the resolver
+     logic alone would never surface.
+- **HONESTY — the peer-gate is NOT infallible; it is one LAYER (§13).** In #350 the adversarial
+  verifier returned **"SHIP"** and still **MISSED a real `TS2304` (`guaranteeSubject`)** that the CI
+  `tsc`-ratchet then caught. That is the doctrine, stated plainly: **peer-gate + §32 proof + CI are
+  LAYERED defenses, and none alone is sufficient.** A green peer-gate never waives CI; a green CI
+  never waives the peer-gate; a green §32 proof never waives either. Anyone claiming one pass covers
+  for a skipped other is committing the exact false-green this section exists to kill.
+- **The test, every time:** *"Did a second, independent set of eyes — not the author of the proof —
+  read the ACTUAL pushed diff adversarially, hunting the defect my §32 proof's own assertions could
+  never test, and did I still let CI have the last word — or am I calling it done on the strength of
+  my own green proof alone?"* If only the author's proof ran, the change is not verified.
