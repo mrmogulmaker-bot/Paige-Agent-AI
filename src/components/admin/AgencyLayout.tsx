@@ -29,7 +29,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
-  Building2, ChevronDown, Loader2, LogOut, Network, UserCog, Users, LayoutDashboard, LogIn,
+  Building2, ChevronDown, Loader2, LogOut, Network, UserCog, Users, Users2, LayoutDashboard, LogIn,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +48,10 @@ import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import AgencyBoard from "@/pages/admin/AgencyBoard";
 import { AgencyTeamPanel } from "@/components/admin/agency/AgencyTeamPanel";
+// #244 — the canonical "About Your Paige Team" directory (agency scope). ONE
+// component; scope prop set by the route. Distinct from /agency/team (the human
+// agency roster) — this teaches Paige's own VP team (§18 non-colliding home).
+import PaigeTeamDirectory from "@/pages/PaigeTeamDirectory";
 import { toast } from "sonner";
 
 type LoginPref = "agency" | "last_account";
@@ -61,6 +65,9 @@ interface AgencyNav {
 const AGENCY_NAV: AgencyNav[] = [
   { label: "Dashboard", href: "/agency", icon: LayoutDashboard },
   { label: "Team", href: "/agency/team", icon: UserCog },
+  // #244 — Paige's own VP team (learn layer). Named distinctly from "Team" (the
+  // human roster) so the two never blur together.
+  { label: "Paige Team", href: "/agency/paige-team", icon: Users2 },
 ];
 
 /**
@@ -279,6 +286,9 @@ export default function AgencyLayout() {
         <Routes>
           <Route index element={<AgencyBoard />} />
           <Route path="team" element={<AgencyTeamPanel agencyName={agencyName} />} />
+          {/* #244 — learn about your Paige team (agency scope). Inherits the shell's
+              server-proven eligibility gate; read-only, no extra guard. */}
+          <Route path="paige-team" element={<PaigeTeamDirectory scope="agency" />} />
           <Route path="*" element={<Navigate to="/agency" replace />} />
         </Routes>
       </main>
