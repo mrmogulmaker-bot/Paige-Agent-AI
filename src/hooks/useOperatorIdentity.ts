@@ -56,19 +56,20 @@ export function useOperatorIdentity(tenantId: string | null | undefined): Operat
       return;
     }
     setState({ identity: null, loading: true });
-    supabase
-      .rpc("resolve_operator_identity", { _tenant_id: id })
-      .then(({ data, error }) => {
+    void (async () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- new RPC not yet in generated types (§45 de-brand seam)
+        const { data, error } = await supabase.rpc("resolve_operator_identity" as any, { _tenant_id: id });
         if (cancelled) return;
         if (error || !data || typeof data !== "object") {
           setState({ identity: {}, loading: false });
           return;
         }
         setState({ identity: data as OperatorIdentity, loading: false });
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setState({ identity: {}, loading: false });
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
