@@ -154,13 +154,21 @@ serve(async (req) => {
   try {
     logStep("Function started");
 
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? ""
-    );
-
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No authorization header");
+
+    // Forward the caller's JWT so the RLS-gated reads below (user_roles,
+    // profiles, user_subscriptions — all `auth.uid() = user_id`) resolve as the
+    // authenticated user. Without this the client runs as the anon role with
+    // auth.uid() = NULL, every read returns 0 rows, and resolvePlanSlug collapses
+    // to "free" for EVERY caller — silently stripping paid/enterprise SLA + the
+    // enterprise@ routing inbox. `auth.getUser(token)` below still verifies the
+    // token explicitly, so identity is unchanged; the header only scopes RLS.
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: authHeader } } }
+    );
 
     const token = authHeader.replace("Bearer ", "");
     const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
