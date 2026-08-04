@@ -9,14 +9,18 @@
 -- as un-onboarded shells: account_type='sub_account', owner_user_id=NULL, 0 members)
 -- but explicitly DEFERRED (P1b) the historical data-correction and the accept-time
 -- forward-fix. This migration is that deferred work, framework-level:
---   • Part B  — promote each child's SOLE real (non-parent-owner) member to the
---               authoritative owner (is_owner + role='owner' in lockstep). >1 → skip
---               + ambiguity flag (§32 no-guess). 0 → nothing (HOLE3 handled in A).
---   • Part D  — repoint each child's display-only owner_user_id off the injected
---               parent owner onto the child's REAL owner (deterministic; NEVER onto
---               the about-to-be-cleared parent owner — G2).
+--   • Part B  — promote each child's authoritative principal to owner (is_owner +
+--               role='owner' in lockstep): the SOLE real (non-parent-owner) member, OR
+--               — when >1 candidate — the SOLE owner/admin authority over non-authority
+--               staff (§227 GAP-5 role tiebreak). 2+ authorities (or n>1 with none) →
+--               skip + ambiguity flag (§32 no-guess). 0 → nothing (HOLE3 handled in A).
 --   • Part A  — HOLE3 pre-scan orphan flag, THEN delete the injected parent-owner
---               member from every child roster (#215 admin-access != membership).
+--               member from every child roster (#215 admin-access != membership). Runs
+--               BEFORE Part D so the delete keys on the PRE-repoint (historically-
+--               injected) ancestor identity — closing the multi-level §9 leak (GAP-3).
+--   • Part D  — repoint each child's display-only owner_user_id off the injected parent
+--               owner onto the child's REAL owner (deterministic; NEVER onto the cleared
+--               parent owner — G2). Runs AFTER A so no false-green nest can survive.
 --   • Part C  — tenant_roster_excluded_user_ids(): a SECURITY DEFINER resolver that
 --               hides an ANCESTOR agency/enterprise owner from a child's staff roster
 --               at display time (agency_enter_subaccount re-injects them on Open; P4
@@ -28,11 +32,21 @@
 --               other path lands a plain admin seat (is_owner=false) — closing the
 --               admin self-mint→accept escalation vector.
 --
--- GUARD EXEMPTION. Every ownership DML below runs inside this postgres-owned migration
--- (Parts B/D/A) or inside a postgres-owned SECURITY DEFINER function (Part F). In both
--- cases current_user='postgres', which trg_tenant_members_owner_guard exempts
--- (20260803190000 block [3], exempt set: postgres/service_role/supabase_admin/
--- supabase_auth_admin). Part A is a DELETE — the guard fires only BEFORE INSERT/UPDATE.
+-- GUARD EXEMPTION. Two DISTINCT guards apply and they exempt on DIFFERENT signals.
+-- (1) trg_tenant_members_owner_guard (tenant_members) keys on current_user: the migration
+--     DML (Parts B/A) and Part F's definer bodies all execute as current_user='postgres',
+--     which it exempts (20260803190000 block [3], exempt set: postgres/service_role/
+--     supabase_admin/supabase_auth_admin). Part A is a DELETE — that guard fires only
+--     BEFORE INSERT/UPDATE, so the delete is never gated.
+-- (2) trg_guard_tenant_owner_cols (tenants.owner_user_id / billing / hierarchy —
+--     guard_tenant_owner_only_columns, 20260708174151) keys on auth.uid(), NOT
+--     current_user. Parts D and the migration owner_user_id writes carry auth.uid()=NULL
+--     (no JWT during db push) → exempt. BUT accept_tenant_invite (Part F.2) runs under the
+--     REAL invitee JWT, so auth.uid()=invitee there, and its born-correct owner_user_id
+--     write on the shell child would be REJECTED ("Only the platform owner may change
+--     tenant ownership…") — aborting the whole accept and rolling back the owner member
+--     insert. Part F.0 re-emits that guard with a TIGHTLY-SCOPED, tenant_members-consistent
+--     shell-establishment carve-out so the born-correct owner can be set; see F.0.
 --
 -- GENERIC / FRAMEWORK-LEVEL (§213.e). Every predicate below is generic — a child is
 -- `parent_tenant_id IS NOT NULL AND parent.account_type IN ('agency','enterprise')`.
@@ -40,14 +54,22 @@
 -- a change-guard so a second run mutates nothing and writes zero new audit rows.
 --
 -- Project xygzykjyynhzqytbqnzu. Discipline §1/§9/§13/§18/§32/§37/§51. Refs #227/#215/#212.
--- Run order (single migration, top→bottom): B → D → A → Part C → Part F.
+-- Run order (single migration, top→bottom): B → A → D → Part C → Part F.
 -- ============================================================================
 
 -- ============================================================================
 -- PART B — BACKFILL: promote the sole real principal to authoritative owner.
 -- ============================================================================
 
--- B.1 — promote (exactly-one candidate) + append-only audit per ACTUAL promotion.
+-- B.1 — promote the child's authoritative principal + append-only audit per ACTUAL
+-- promotion. Two promotable shapes (still §32 no-guess — we never pick between two
+-- real authorities):
+--   (i)  exactly ONE real candidate (n = 1) — the sole principal; OR
+--   (ii) MORE than one candidate but exactly ONE of them carries an AUTHORITY role
+--        (owner/admin) while the rest are non-authority staff (coach/member) — the
+--        common "owner + a coach/staffer" shape. That sole authority is the owner
+--        (§227 GAP-5 role tiebreak). 2+ authority candidates, or n>1 with ZERO
+--        authority candidate, remain genuinely ambiguous → B.2 queues them.
 WITH child AS (
   SELECT c.id AS child_id, parent.owner_user_id AS parent_owner
     FROM public.tenants c
@@ -56,7 +78,7 @@ WITH child AS (
      AND parent.account_type IN ('agency','enterprise')
 ),
 candidates AS (               -- active members that are NOT the injected parent owner
-  SELECT ch.child_id, tm.user_id
+  SELECT ch.child_id, tm.user_id, tm.role
     FROM child ch
     JOIN public.tenant_members tm
       ON tm.tenant_id = ch.child_id
@@ -64,11 +86,26 @@ candidates AS (               -- active members that are NOT the injected parent
      AND tm.user_id IS DISTINCT FROM ch.parent_owner
 ),
 counted AS (
-  SELECT child_id, count(*) AS n, min(user_id) AS only_user  -- min() is safe ONLY when n = 1
+  SELECT child_id,
+         count(*) AS n,
+         count(*) FILTER (WHERE role IN ('owner'::public.tenant_role,
+                                         'admin'::public.tenant_role)) AS authority_n,
+         -- uuid has NO min() aggregate on PG 17 ("function min(uuid) does not exist");
+         -- take the first value by btree order instead (safe ONLY when n = 1). Mirrors
+         -- the ORDER BY … LIMIT 1 idiom in 20260712260000_booking_rail_emit.sql:109.
+         (array_agg(user_id ORDER BY user_id))[1] AS only_user,
+         -- the sole AUTHORITY candidate (well-defined ONLY when authority_n = 1).
+         (array_agg(user_id ORDER BY user_id)
+            FILTER (WHERE role IN ('owner'::public.tenant_role,
+                                   'admin'::public.tenant_role)))[1] AS sole_authority_user
     FROM candidates GROUP BY child_id
 ),
-promote AS (                  -- exactly ONE real candidate → promote it
-  SELECT child_id, only_user AS user_id FROM counted WHERE n = 1
+promote AS (
+  SELECT child_id, only_user AS user_id
+    FROM counted WHERE n = 1                                   -- (i) sole real principal
+  UNION ALL
+  SELECT child_id, sole_authority_user AS user_id
+    FROM counted WHERE n > 1 AND authority_n = 1               -- (ii) owner+staff tiebreak
 ),
 did_promote AS (
   UPDATE public.tenant_members tm
@@ -88,7 +125,10 @@ SELECT NULL, 'super_admin', 'tenant:backfill_owner', 'tenant_member', dp.user_id
        dp.tenant_id
   FROM did_promote dp;
 
--- B.2 — ambiguity flag (>1 real candidate → DO NOT guess; skipped, flagged).
+-- B.2 — genuine-ambiguity flag: >1 real candidate with NO single authority to break the
+-- tie — i.e. 2+ owner/admin candidates, OR n>1 with ZERO authority candidate. DO NOT
+-- guess; skipped + flagged. (n>1 with EXACTLY ONE authority candidate is NOT ambiguous —
+-- B.1 (ii) already promoted it.)
 WITH child AS (
   SELECT c.id AS child_id, parent.owner_user_id AS parent_owner
     FROM public.tenants c
@@ -97,7 +137,7 @@ WITH child AS (
      AND parent.account_type IN ('agency','enterprise')
 ),
 candidates AS (
-  SELECT ch.child_id, tm.user_id
+  SELECT ch.child_id, tm.user_id, tm.role
     FROM child ch
     JOIN public.tenant_members tm
       ON tm.tenant_id = ch.child_id
@@ -105,67 +145,37 @@ candidates AS (
      AND tm.user_id IS DISTINCT FROM ch.parent_owner
 ),
 counted AS (
-  SELECT child_id, count(*) AS n FROM candidates GROUP BY child_id
+  SELECT child_id,
+         count(*) AS n,
+         count(*) FILTER (WHERE role IN ('owner'::public.tenant_role,
+                                         'admin'::public.tenant_role)) AS authority_n
+    FROM candidates GROUP BY child_id
 ),
 ambiguous AS (
-  SELECT child_id, n FROM counted WHERE n > 1
+  SELECT child_id, n, authority_n FROM counted WHERE n > 1 AND authority_n <> 1
 )
 INSERT INTO public.paige_audit_log
   (actor_user_id, actor_role, action, target_type, target_id, payload, tenant_id)
 SELECT NULL, 'super_admin', 'tenant:backfill_owner_ambiguous', 'tenant', a.child_id,
-       jsonb_build_object('candidate_count', a.n, 'issue', '#227', 'part', 'B',
-                          'resolution', 'skipped_no_guess'),
+       jsonb_build_object('candidate_count', a.n, 'authority_candidate_count', a.authority_n,
+                          'issue', '#227', 'part', 'B', 'resolution', 'skipped_no_guess'),
        a.child_id
   FROM ambiguous a;
 
 -- ============================================================================
--- PART D — FIX tenants.owner_user_id (display-only) → the child's REAL owner.
--- Runs AFTER B (needs the promoted is_owner member) and BEFORE A (repoint onto a
--- live member before the parent-owner row is deleted — closes the S2 window).
--- G2: real_owner EXCLUDES the parent owner (IS DISTINCT FROM) and is deterministic
--- (ROW_NUMBER ORDER BY is_owner DESC, joined_at, user_id) so it never re-points a
--- child's owner_user_id back onto the about-to-be-cleared parent owner, and never
--- picks nondeterministically under co-ownership (#588 class).
--- ============================================================================
-WITH child AS (
-  SELECT c.id AS child_id, c.owner_user_id AS cur_owner, parent.owner_user_id AS parent_owner
-    FROM public.tenants c
-    JOIN public.tenants parent ON parent.id = c.parent_tenant_id
-   WHERE c.parent_tenant_id IS NOT NULL
-     AND parent.account_type IN ('agency','enterprise')
-     AND (c.owner_user_id IS NULL OR c.owner_user_id = parent.owner_user_id)  -- leaked/unset only; never clobber a legit non-parent owner
-),
-real_owner AS (
-  SELECT ch.child_id, tm.user_id,
-         ROW_NUMBER() OVER (
-           PARTITION BY ch.child_id
-           ORDER BY tm.is_owner DESC, tm.joined_at ASC, tm.user_id ASC   -- deterministic total order
-         ) AS rn
-    FROM child ch
-    JOIN public.tenant_members tm
-      ON tm.tenant_id = ch.child_id
-     AND tm.status   = 'active'
-     AND tm.is_owner = true
-     AND tm.user_id IS DISTINCT FROM ch.parent_owner   -- G2: never the about-to-be-cleared parent owner
-),
-did_fix AS (
-  UPDATE public.tenants t
-     SET owner_user_id = ro.user_id, updated_at = now()
-    FROM real_owner ro
-   WHERE t.id = ro.child_id
-     AND ro.rn = 1
-     AND t.owner_user_id IS DISTINCT FROM ro.user_id   -- only when actually wrong (idempotent)
-  RETURNING t.id AS child_id, ro.user_id
-)
-INSERT INTO public.paige_audit_log
-  (actor_user_id, actor_role, action, target_type, target_id, payload, tenant_id)
-SELECT NULL, 'super_admin', 'tenant:fix_owner_user_id', 'tenant', df.child_id,
-       jsonb_build_object('new_owner_user_id', df.user_id, 'issue', '#227', 'part', 'D'),
-       df.child_id
-  FROM did_fix df;
-
--- ============================================================================
 -- PART A — remove the injected parent-owner member from every child roster.
+-- MUST run BEFORE Part D (§227 GAP-3): A.2 deletes the injected member keyed on the
+-- parent's CURRENT owner_user_id. At this point NO parent has been repointed yet, so
+-- that value is still the HISTORICALLY-INJECTED ancestor identity — which is exactly
+-- the member that was baked into the child. If Part D ran first, an intermediate
+-- (enterprise→sub-agency→sub) would already be repointed onto its OWN real owner, and
+-- A.2 for the grandchild would then key on that new owner and MISS the originally-
+-- injected ancestor — leaving the grandchild with two is_owner rows while a parent-
+-- owner-keyed verify falsely reports 0 remaining. Deleting first, pre-repoint, closes
+-- that multi-level §9 leak at arbitrary nesting depth. (Single-migration transaction →
+-- deleting the member before Part D repoints owner_user_id has no externally-visible
+-- transient; the guard fires only BEFORE INSERT/UPDATE, and there is no DELETE-side
+-- last-owner trigger on tenant_members — that check lives in revoke_co_owner().)
 -- ============================================================================
 
 -- A.1 — HOLE3 pre-scan: a child whose ONLY member was the parent owner will hit 0
@@ -189,6 +199,11 @@ SELECT NULL, 'super_admin', 'tenant:orphaned_after_parent_owner_removal', 'tenan
                       AND tm.user_id IS DISTINCT FROM parent.owner_user_id);
 
 -- A.2 — delete the auto-injected parent-agency owner from every child sub-account.
+-- Keyed on parent.owner_user_id READ PRE-REPOINT (Part D has not run yet) = the
+-- historically-injected ancestor identity. The MVCC snapshot of this single DELETE
+-- statement reads every parent's owner_user_id as of statement start, so deleting the
+-- injected member from an intermediate does not disturb the grandchild's key within
+-- the same statement (owner_user_id lives in tenants, not tenant_members).
 WITH deleted AS (
   DELETE FROM public.tenant_members tm
    USING public.tenants c
@@ -196,7 +211,7 @@ WITH deleted AS (
    WHERE tm.tenant_id = c.id
      AND c.parent_tenant_id IS NOT NULL
      AND parent.account_type IN ('agency','enterprise')
-     AND tm.user_id = parent.owner_user_id           -- the injected agency owner
+     AND tm.user_id = parent.owner_user_id           -- the injected agency owner (pre-repoint)
   RETURNING tm.tenant_id, tm.user_id
 )
 INSERT INTO public.paige_audit_log
@@ -205,6 +220,56 @@ SELECT NULL, 'super_admin', 'tenant:deleted_injected_owner', 'tenant_member', d.
        jsonb_build_object('tenant_id', d.tenant_id, 'issue', '#227', 'part', 'A'),
        d.tenant_id
   FROM deleted d;
+
+-- ============================================================================
+-- PART D — FIX tenants.owner_user_id (display-only) → the child's REAL owner.
+-- Runs AFTER B (needs the promoted is_owner member) and AFTER A (§227 GAP-3): once the
+-- injected parent-owner member is already gone, the child's sole remaining is_owner is
+-- the real principal (B), and no false-green multi-level leak can survive the repoint.
+-- G2: real_owner EXCLUDES the parent owner (IS DISTINCT FROM) and is deterministic
+-- (ROW_NUMBER ORDER BY is_owner DESC, joined_at, user_id) so it never re-points a
+-- child's owner_user_id back onto the cleared parent owner, and never picks
+-- nondeterministically under co-ownership (#588 class). For an intermediate that is
+-- both a child and a parent, this statement's snapshot reads each parent's PRE-repoint
+-- owner_user_id, so the grandchild's leaked-pointer test and G2 exclusion stay keyed on
+-- the injected ancestor even as the intermediate is repointed in the same statement.
+-- ============================================================================
+WITH child AS (
+  SELECT c.id AS child_id, c.owner_user_id AS cur_owner, parent.owner_user_id AS parent_owner
+    FROM public.tenants c
+    JOIN public.tenants parent ON parent.id = c.parent_tenant_id
+   WHERE c.parent_tenant_id IS NOT NULL
+     AND parent.account_type IN ('agency','enterprise')
+     AND (c.owner_user_id IS NULL OR c.owner_user_id = parent.owner_user_id)  -- leaked/unset only; never clobber a legit non-parent owner
+),
+real_owner AS (
+  SELECT ch.child_id, tm.user_id,
+         ROW_NUMBER() OVER (
+           PARTITION BY ch.child_id
+           ORDER BY tm.is_owner DESC, tm.joined_at ASC, tm.user_id ASC   -- deterministic total order
+         ) AS rn
+    FROM child ch
+    JOIN public.tenant_members tm
+      ON tm.tenant_id = ch.child_id
+     AND tm.status   = 'active'
+     AND tm.is_owner = true
+     AND tm.user_id IS DISTINCT FROM ch.parent_owner   -- G2: never the cleared parent owner
+),
+did_fix AS (
+  UPDATE public.tenants t
+     SET owner_user_id = ro.user_id, updated_at = now()
+    FROM real_owner ro
+   WHERE t.id = ro.child_id
+     AND ro.rn = 1
+     AND t.owner_user_id IS DISTINCT FROM ro.user_id   -- only when actually wrong (idempotent)
+  RETURNING t.id AS child_id, ro.user_id
+)
+INSERT INTO public.paige_audit_log
+  (actor_user_id, actor_role, action, target_type, target_id, payload, tenant_id)
+SELECT NULL, 'super_admin', 'tenant:fix_owner_user_id', 'tenant', df.child_id,
+       jsonb_build_object('new_owner_user_id', df.user_id, 'issue', '#227', 'part', 'D'),
+       df.child_id
+  FROM did_fix df;
 
 -- ============================================================================
 -- PART C — display-time roster exclusion resolver.
@@ -258,6 +323,70 @@ GRANT EXECUTE ON FUNCTION public.tenant_roster_excluded_user_ids(uuid) TO authen
 -- invite still lands is_owner=false). Both are postgres-owned SECURITY DEFINER →
 -- guard-exempt (the born-correct is_owner=true write is legal without a new exception).
 -- ============================================================================
+
+-- F.0 — guard_tenant_owner_only_columns: add a TIGHTLY-SCOPED carve-out so the accept-time
+-- born-correct owner (F.2) can be established WITHOUT weakening the guard for any other
+-- caller. The guard keys on auth.uid() (not current_user), so accept_tenant_invite — which
+-- runs under the real invitee's JWT — previously hit "Only the platform owner may change
+-- tenant ownership…" on the shell child's owner_user_id write, aborting the entire accept
+-- (DEFECT #2). Rather than defer to a forgeable session GUC, the carve-out defers to the
+-- AUTHORITATIVE tenant_members owner: a non-platform caller may write owner_user_id ONLY
+-- when ALL of the following hold —
+--   • it is establishing ownership on a SHELL (OLD.owner_user_id IS NULL → never a
+--     reassignment of an existing owner);
+--   • the NEW owner is ALREADY an active is_owner member of that tenant (set inside the
+--     SAME accept transaction just before this UPDATE) — tenant_members-consistent, and
+--     unforgeable since it is a real membership check, not a flag; AND
+--   • NO other guarded column changes in the same UPDATE (billing / hierarchy / stripe
+--     ids all IS NOT DISTINCT FROM OLD) — the carve-out is owner_user_id-establishment ONLY.
+-- owner_user_id is DISPLAY-ONLY (read by NO authz predicate, 20260803190000), and this can
+-- only ever point it at the tenant's already-authoritative owner on a previously-ownerless
+-- shell — so it cannot escalate, reassign, or demote. The Layer-1 mint-gate (F.1) and
+-- Layer-2 shell-gate (F.2) still fully decide WHO becomes that is_owner member; F.0 only
+-- lets the display pointer follow a decision that already passed both gates.
+CREATE OR REPLACE FUNCTION public.guard_tenant_owner_only_columns()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF auth.uid() IS NULL OR public.is_platform_owner() THEN
+    RETURN NEW;
+  END IF;
+
+  -- #227 DEFECT-2 carve-out: tenant_members-consistent owner ESTABLISHMENT on a shell.
+  -- Only owner_user_id may change (NULL → an existing active is_owner member); every
+  -- other guarded column must be unchanged.
+  IF OLD.owner_user_id IS NULL
+     AND NEW.owner_user_id IS NOT NULL
+     AND NEW.platform_fee_bps       IS NOT DISTINCT FROM OLD.platform_fee_bps
+     AND NEW.parent_tenant_id       IS NOT DISTINCT FROM OLD.parent_tenant_id
+     AND NEW.stripe_customer_id     IS NOT DISTINCT FROM OLD.stripe_customer_id
+     AND NEW.stripe_subscription_id IS NOT DISTINCT FROM OLD.stripe_subscription_id
+     AND EXISTS (
+       SELECT 1 FROM public.tenant_members tm
+        WHERE tm.tenant_id = NEW.id
+          AND tm.user_id   = NEW.owner_user_id
+          AND tm.is_owner  = true
+          AND tm.status    = 'active'
+     ) THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.owner_user_id       IS DISTINCT FROM OLD.owner_user_id
+     OR NEW.platform_fee_bps IS DISTINCT FROM OLD.platform_fee_bps
+     OR NEW.parent_tenant_id IS DISTINCT FROM OLD.parent_tenant_id
+     OR NEW.stripe_customer_id     IS DISTINCT FROM OLD.stripe_customer_id
+     OR NEW.stripe_subscription_id IS DISTINCT FROM OLD.stripe_subscription_id THEN
+    RAISE EXCEPTION 'Only the platform owner may change tenant ownership, billing, or hierarchy';
+  END IF;
+  RETURN NEW;
+END; $function$;
+
+COMMENT ON FUNCTION public.guard_tenant_owner_only_columns() IS
+  '#227 F.0 (§9): non-platform callers still cannot change tenant billing/hierarchy or '
+  'reassign ownership. ONE carve-out: owner_user_id may be ESTABLISHED (NULL → an already-'
+  'active is_owner member of the same tenant) with no other guarded column changing — the '
+  'tenant_members-consistent born-correct owner set inside accept_tenant_invite. '
+  'owner_user_id is display-only; the carve-out cannot escalate, reassign, or demote.';
 
 -- F.1 — create_tenant_invite_token: Layer-1 mint gate. A 'subaccount_owner' invite
 -- ESTABLISHES ownership on accept, so only the agency principal that manages this child
