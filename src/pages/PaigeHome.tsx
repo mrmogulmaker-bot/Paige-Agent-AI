@@ -88,11 +88,11 @@ const PROOF = [
   { q: "Onboarding, check-ins, recaps — Paige runs all of it. It's like a full ops team.", a: "Author & thought leader · Dallas" },
 ];
 
-// DB-true Solo / Agency / Enterprise (1-A ruling): Solo $149/mo, Agency $397/mo,
+// DB-true Solo / Academy / Enterprise: Solo $149/mo, Academy $397/mo,
 // Enterprise custom. Each entry carries its `slug` so the card CTA wires straight to
 // platform-subscription-checkout; `custom` gates the Enterprise "Talk to us" contact
 // path (no $0 subscribe). §13 — every number matches platform_subscription_plans
-// (14900 / 39700 / 0-sentinel); no phantom $58/$349. Solo & Agency carry a REAL
+// (14900 / 39700 / 0-sentinel); no phantom $58/$349. Solo & Academy carry a REAL
 // 14-day trial (checkout subscription_data.trial_period_days), so "Start free trial"
 // is honest.
 const PLANS = [
@@ -113,8 +113,8 @@ const PLANS = [
     custom: false,
   },
   {
-    slug: "agency",
-    name: "Agency",
+    slug: "academy",
+    name: "Academy",
     price: "$397",
     cadence: "/mo",
     tagline: "For the team running many client accounts at once.",
@@ -721,7 +721,7 @@ export default function PaigeHome() {
           Ready to <span className="bg-gradient-to-r from-[#F0C86A] to-[#D4A752] bg-clip-text text-transparent">hire me?</span>
         </motion.h2>
         <motion.p variants={rise} className="mx-auto mb-14 max-w-md text-center text-white/60">
-          Solo &amp; Agency start with a 14-day free trial · your own clients, offers, and pricing · Paige runs the operation from day one.
+          Solo &amp; Academy start with a 14-day free trial · your own clients, offers, and pricing · Paige runs the operation from day one.
         </motion.p>
         <div className="grid gap-6 md:grid-cols-3">
           {PLANS.map((p) => (
@@ -766,7 +766,7 @@ export default function PaigeHome() {
         <motion.div variants={rise} className="relative overflow-hidden rounded-3xl border border-[#D4A752]/30 bg-gradient-to-br from-[#D4A752]/[0.14] to-[#6f4bd8]/[0.06] px-8 py-16 text-center">
           <div aria-hidden className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-[#F0C86A]/60 to-transparent" />
           <h2 className="mx-auto max-w-2xl text-4xl font-black md:text-5xl" style={{ fontFamily: HEAD }}>Give yourself back your time.</h2>
-          <p className="mx-auto mt-4 max-w-lg text-white/70">Pick your plan and Paige gets to work on day one — Solo and Agency start with a 14-day free trial, your card only charged when it ends.</p>
+          <p className="mx-auto mt-4 max-w-lg text-white/70">Pick your plan and Paige gets to work on day one — Solo and Academy start with a 14-day free trial, your card only charged when it ends.</p>
           <a href="#pricing" className="mt-8 inline-flex items-center gap-2 rounded-full bg-gradient-to-br from-[#F0C86A] to-[#D4A752] px-8 py-3 font-bold text-[#241645] transition-transform hover:scale-105">
             Choose your plan <ArrowRight className="h-4 w-4" />
           </a>

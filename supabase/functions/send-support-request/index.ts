@@ -89,7 +89,8 @@ const SUPPORT_TIERS: Record<SupportTier, SupportTierConfig> = {
 // Plan slug → support tier. Covers the current real taxonomy (pricingConfig.ts:
 // starter/growth/scale/broker/broker_workspace/broker_beta_starter/enterprise),
 // the legacy grandfathered slugs (premium/professional), and the invite/admin
-// slugs (solo/agency/team). Any unknown/new slug falls through to STANDARD via
+// slugs (solo/academy/team; 'agency' kept for back-compat with pre-reconcile
+// tokens). Any unknown/new slug falls through to STANDARD via
 // the resolver default — never crashes, never misroutes to the enterprise inbox.
 const PLAN_SUPPORT_TIER: Record<string, SupportTier> = {
   enterprise: "dedicated",
@@ -97,7 +98,8 @@ const PLAN_SUPPORT_TIER: Record<string, SupportTier> = {
   broker_workspace: "priority",
   scale: "priority",
   premium: "priority", // legacy
-  agency: "priority",
+  academy: "priority",
+  agency: "priority", // back-compat: pre-reconcile middle-tier slug
   growth: "standard_48",
   professional: "standard_48", // legacy
   team: "standard_48",
