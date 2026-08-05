@@ -13,5 +13,4 @@
 1	src/lib/playbook/resolve.ts: error TS2352: Conversion of type 'Record<string, unknown>' to type 'PortalConfig' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
 1	src/pages/Auth.tsx: error TS2339: Property 'catch' does not exist on type 'PromiseLike<void>'.
 1	src/pages/admin/CalendarAdmin.tsx: error TS2352: Conversion of type '{ id: string; title: string; color: string; accent: string; tenant_id: string; type: string; intake_questions: Json; }[]' to type 'CalMeta[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
-1	src/pages/admin/N8nIntegrationConfig.tsx: error TS2322: Type '"prose"' is not assignable to type 'Width'.
 1	src/pages/onboard/Step1Welcome.tsx: error TS2322: Type 'Record<string, unknown>' is not assignable to type 'Json'.

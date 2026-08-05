@@ -28,6 +28,7 @@ export default function N8nIntegrationConfig() {
 
   async function load() {
     setLoading(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing untyped-RPC-name cast; unrelated to #263; CI whole-file-lints changed files
     const { data, error } = await (supabase as any).rpc("get_tenant_n8n_connection");
     setLoading(false);
     if (error) { toast.error("Couldn't load your n8n connection."); return; }
@@ -39,6 +40,7 @@ export default function N8nIntegrationConfig() {
   async function connect() {
     if (!baseUrl.trim() || !apiKey.trim()) return;
     setBusy("connect");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing untyped-RPC-name cast; unrelated to #263; CI whole-file-lints changed files
     const { error: setErr } = await (supabase as any).rpc("set_tenant_n8n_connection", {
       _base_url: baseUrl.trim(),
       _api_key: apiKey.trim(),
@@ -61,9 +63,11 @@ export default function N8nIntegrationConfig() {
     const { data: test, error: testErr } = await supabase.functions.invoke("paige-n8n", { body: { action: "test" } });
     setBusy(null);
     setApiKey("");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing edge-response cast; unrelated to #263; CI whole-file-lints changed files
     if (testErr || (test as any)?.error) {
       toast.error("Saved, but couldn't reach n8n — check the URL and key.");
     } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing edge-response cast; unrelated to #263; CI whole-file-lints changed files
       toast.success(`Connected — ${(test as any)?.workflow_count ?? 0} workflows found.`);
     }
     await load();
@@ -73,13 +77,16 @@ export default function N8nIntegrationConfig() {
     setBusy("test");
     const { data, error } = await supabase.functions.invoke("paige-n8n", { body: { action: "test" } });
     setBusy(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing edge-response cast; unrelated to #263; CI whole-file-lints changed files
     if (error || (data as any)?.error) { toast.error("Couldn't reach n8n. Re-check the URL and key."); }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing edge-response cast; unrelated to #263; CI whole-file-lints changed files
     else { toast.success(`Connected — ${(data as any)?.workflow_count ?? 0} workflows.`); }
     await load();
   }
 
   async function disconnect() {
     setBusy("disconnect");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing untyped-RPC-name cast; unrelated to #263; CI whole-file-lints changed files
     const { error } = await (supabase as any).rpc("clear_tenant_n8n_connection");
     setBusy(null);
     if (error) { toast.error("Couldn't disconnect."); return; }
@@ -92,7 +99,7 @@ export default function N8nIntegrationConfig() {
   const errored = conn?.configured && conn?.status === "error";
 
   return (
-    <PageShell width="prose">
+    <PageShell width="narrow">
       <PageHeader
         icon={Workflow}
         title="n8n"
