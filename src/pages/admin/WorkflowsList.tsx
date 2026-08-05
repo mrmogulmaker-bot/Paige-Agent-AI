@@ -5,8 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Play, Workflow, AlertTriangle, RefreshCw, Search } from "lucide-react";
-import { toast } from "sonner";
+import { Play, Workflow, AlertTriangle, Search } from "lucide-react";
 
 const CATEGORY_LABEL: Record<string, string> = {
   customer_support: "Customer Support",
@@ -52,7 +51,6 @@ interface WorkflowRow {
 export default function WorkflowsList({ embedded = false }: { embedded?: boolean } = {}) {
   const [rows, setRows] = useState<WorkflowRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
 
   const load = async () => {
@@ -69,15 +67,6 @@ export default function WorkflowsList({ embedded = false }: { embedded?: boolean
   };
 
   useEffect(() => { load(); }, []);
-
-  const sync = async () => {
-    setSyncing(true);
-    const { data, error } = await supabase.functions.invoke("n8n-list-workflows", { body: {} });
-    setSyncing(false);
-    if (error) { toast.error(error.message); return; }
-    toast.success(`Synced — linked ${data?.curated_linked ?? 0}, added ${data?.auto_upserted ?? 0}`);
-    load();
-  };
 
   const filtered = useMemo(() => {
     if (!search.trim()) return rows;
@@ -117,10 +106,6 @@ export default function WorkflowsList({ embedded = false }: { embedded?: boolean
           </div>
         )}
         <div className="flex items-center gap-2 ml-auto">
-          <Button variant="outline" size="sm" onClick={sync} disabled={syncing}>
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Syncing…" : "Sync workflows"}
-          </Button>
           <Button asChild variant="outline" size="sm">
             <Link to="/admin/workflows/runs">Recent runs</Link>
           </Button>
@@ -133,7 +118,7 @@ export default function WorkflowsList({ embedded = false }: { embedded?: boolean
             <AlertTriangle className="w-4 h-4 text-amber-600" />
             <span>
               <strong>{needsLinkCount}</strong> curated workflow{needsLinkCount === 1 ? "" : "s"} not yet linked to a live workflow.
-              Click <strong>Sync workflows</strong> to resolve by matching workflow names.
+              Connect your n8n account in <strong>Settings → Integrations → n8n</strong> to link them by matching workflow names.
             </span>
           </CardContent>
         </Card>

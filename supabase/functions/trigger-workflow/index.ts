@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
   if (registry.provider === "n8n" && (!registry.n8n_webhook_url || registry.needs_n8n_link)) {
     return jsonRes({
       error: "needs_n8n_link",
-      message: "Workflow is curated but not yet linked to a live n8n workflow. Run n8n-list-workflows to sync.",
+      message: "Workflow is curated but not yet linked to a live n8n workflow. Connect n8n in Settings → Integrations → n8n to link it.",
     }, 409);
   }
   if (registry.provider === "langgraph" && !registry.langgraph_graph_id) {
