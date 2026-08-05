@@ -51,6 +51,51 @@ export function buildBrandSection(brand: Record<string, any> | null, tenant: str
   return `\n\nBRAND — everything you design or build for ${tenant} (a landing page, an email, a form, an image, a document) MUST wear THIS brand, never a generic look and never the platform's. Use the primary color for headers and primary actions, the accent color ONLY for the act/approve moment, place the logo where a logo belongs, and call the product by its own name — never "Paige Agent AI." If a brand asset you need is missing, ask the owner for it rather than inventing an off-brand placeholder. ${kitPointer}\n${lines}`;
 }
 
+// ---------------------------------------------------------------------------
+// #184 KILL — the persona SCOPE/lane guard is DATA-DRIVEN, not vertical-hardcoded.
+// The installed Blueprint's `refusal_boundaries` (a flat string[] the tenant/preset
+// authored, carried in playbook_config) IS the lane guard. A funding Blueprint's
+// boundaries DECLARE credit/capital in scope; a coaching Blueprint's keep it out —
+// the words come from the tenant's DATA, never from a vertical named in this edge
+// code. Only the neutral platform-default guardrail (the fallback for a tenant that
+// has opted into NO finance capability) names credit terms — and it names them ONLY
+// to FORBID them (§2 platform-default finance prohibition), never to enable a vertical.
+//
+// `financeInScope` is the GENERIC installed-capability signal resolved upstream
+// (get_paige_persona_context → funding_enabled, now derived from the is_finance
+// marketplace catalog gate / features.finance_in_scope — NO 'funding' literal). It
+// only steers the boundary-less fallback; when the Blueprint carries boundaries the
+// data leads regardless. §18: ONE home for the lane guard — paige-public-chat's
+// buildPersona imports THIS, it does not fork a second copy.
+// ---------------------------------------------------------------------------
+export function buildLaneGuardSection(
+  pb: any,
+  tenant: string,
+  financeInScope: boolean,
+): string {
+  const boundaries = Array.isArray(pb?.refusal_boundaries)
+    ? pb.refusal_boundaries.map((b: any) => String(b ?? "").trim()).filter(Boolean)
+    : [];
+  if (boundaries.length > 0) {
+    // The practice's OWN declared boundaries lead — in scope AND out of scope come
+    // from THIS installed Blueprint's data, never from a vertical named here.
+    return `SCOPE & BOUNDARIES — ${tenant} has set exactly how far your help goes. Hold to these, in ${tenant}'s own words:\n${boundaries
+      .map((b: string) => `- ${b}`)
+      .join("\n")}\nStay inside what ${tenant} actually offers; never invent a service, program, or offer they don't provide.`;
+  }
+  if (financeInScope) {
+    // Finance-in-scope tenant with no authored boundaries yet — a GENERIC, vertical-free
+    // note that simply doesn't clamp them with the finance-forbidding default. The
+    // specifics of what's in scope come from the persona domain above.
+    return `SCOPE — Work within the services ${tenant} actually offers (see the domain above) — those are in scope. Never invent a service, program, offer, or result ${tenant} does not provide.`;
+  }
+  // Platform-default NEUTRAL guardrail (§2). Credit terms are named here ONLY to
+  // forbid them — the one allowed place — for a tenant that opted into no finance
+  // capability. Ends in "does not provide." so the denylist test excises it cleanly.
+  return `${HARD_GUARDRAIL_MARKER}
+Do not raise credit, credit scores, funding, loans, lenders, MCAs, cash advances, financing, or capital-raising unless ${tenant}'s stated domain explicitly includes it, or the client brings it up first. Those are not this practice's business unless stated. If a client asks about something outside your stated domain, help where you genuinely can, or hand them to ${tenant}'s team — never invent services, programs, or offers ${tenant} does not provide.`;
+}
+
 export function buildPaigePersonaBlock(
   pb: any,
   tenantName: string,
@@ -85,10 +130,7 @@ Tone: ${tone}. Hold this voice in every reply — direct, confident, human.
 
 You are native to ${tenant}. You work alongside their team and run two directions at once: you help the client make progress, and you surface what the team needs to know. Everything you say fits ${domain} — never a generic, off-the-shelf script.
 ${greeting ? `\nWhen a client first arrives, your signature opening is: "${greeting}" — open with it or a close, natural variation, then follow the conversation.\n` : ""}
-${probeSection}${journeySection}${fundingOn
-  ? `SCOPE — ${tenant} offers funding & capital-raising coaching alongside ${domain}, so credit, business credit, funding, lenders, and capital strategy ARE in scope here — bring them up when they genuinely help the client. Never invent services, programs, or offers ${tenant} does not actually provide.`
-  : `HARD GUARDRAIL — STAY IN LANE:
-Do not raise credit, credit scores, funding, loans, lenders, MCAs, cash advances, financing, or capital-raising unless ${tenant}'s domain (${domain}) explicitly includes it, or the client brings it up first. Those are not this practice's business unless stated. If a client asks about something outside ${domain}, help where you genuinely can, or hand them to ${tenant}'s team — never invent services, programs, or offers ${tenant} does not provide.`}`.trim()
+${probeSection}${journeySection}${buildLaneGuardSection(pb, tenant, fundingOn)}`.trim()
     + buildBrandSection(brand, tenant);
 }
 
@@ -96,6 +138,27 @@ Do not raise credit, credit scores, funding, loans, lenders, MCAs, cash advances
 // deny-list test can (a) assert it is PRESENT and (b) EXCISE it before scanning —
 // it is the ONE place credit/funding words are allowed, because it forbids them.
 export const HARD_GUARDRAIL_MARKER = "HARD GUARDRAIL — STAY IN LANE:";
+
+// ---------------------------------------------------------------------------
+// #184 KILL — the GENERIC finance-in-scope signal for the no-DB-join edge surfaces
+// (paige-public-chat, growth-page-draft service-role path) that read tenant
+// features directly instead of calling get_paige_persona_context(). The SQL
+// resolver derives funding_enabled from the is_finance marketplace catalog gate
+// (an active install of an is_finance item) OR this same features flag; these
+// no-join surfaces can't run the install-join, so they read the flag. INVARIANT:
+// every is_finance Blueprint's install manifest sets feature_flag
+// finance_in_scope=true (and legacy funding tenants are backfilled), so the flag
+// is authoritative here. NO vertical literal — this replaces the old inline
+// `features.playbook === "funding" || …` ORs (§18 one home for the signal).
+// ---------------------------------------------------------------------------
+export function deriveFinanceInScopeFromFeatures(
+  features: Record<string, unknown> | null | undefined,
+): boolean {
+  const f = features && typeof features === "object" && !Array.isArray(features)
+    ? (features as Record<string, unknown>)
+    : {};
+  return f.finance_in_scope === true || f.finance_in_scope === "true";
+}
 
 // ---------------------------------------------------------------------------
 // LEAK 1b (§37) — request-supplied `clientContext` guard. The frontend
