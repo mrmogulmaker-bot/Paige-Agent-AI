@@ -1,9 +1,13 @@
 // ---------------------------------------------------------------------------
 // Tenant lifecycle — the Agency/God-view control-plane operations.
 // ---------------------------------------------------------------------------
-// Pure helpers (status metadata, trial math, at-risk scoring) + the RLS-gated
-// mutations the Fleet Console drives. Writes go straight to `tenants`, which the
-// "Platform owner manages tenants" RLS policy already permits for is_platform_owner().
+// Pure helpers (status metadata, trial math, at-risk scoring) + the operator
+// mutations the Fleet Console drives. Lifecycle transitions and provisioning go
+// through the §10 canonical RPC seam (`operator_set_tenant_status` /
+// `operator_provision_tenant`) — SECURITY DEFINER, server-gated to
+// is_platform_owner() and audited — so the UI and any Paige agent call ONE home
+// instead of forking write logic. Plan/limit/trial edits remain RLS-gated writes
+// (already permitted by "Platform owner manages tenants"; not the §10 gap).
 // Blueprint: God View → Agency View → Sub-Account, Phase 1 (no Stripe).
 
 import { supabase } from "@/integrations/supabase/client";
@@ -152,9 +156,52 @@ export async function updateTenant(tenantId: string, patch: TenantLifecyclePatch
   await logTenantAction("tenant.update", tenantId, { ...patch });
 }
 
+/**
+ * Transition a tenant's lifecycle status through the §10 canonical, server-gated
+ * RPC (is_platform_owner() enforced + audited inside the RPC). Throws on error.
+ */
 export async function setTenantStatus(tenantId: string, status: TenantStatus): Promise<void> {
-  await writeTenant(tenantId, { status });
-  await logTenantAction("tenant.status_change", tenantId, { status });
+  // `as any`: RPC newly added in this migration, not yet in generated types —
+  // matches the repo convention for fresh RPCs (e.g. agency_switch_context).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await supabase.rpc("operator_set_tenant_status" as any, {
+    _tenant_id: tenantId,
+    _status: status,
+  });
+  if (error) throw new Error(error.message);
+}
+
+/** Fields an operator supplies when provisioning a new workspace. */
+export interface ProvisionTenantInput {
+  name: string;
+  slug?: string;
+  plan_offer?: string | null;
+  seat_limit?: number;
+  customer_limit?: number;
+  status?: TenantStatus;
+}
+
+/**
+ * Provision a brand-new tenant workspace through the §10 canonical RPC
+ * (operator-only; is_platform_owner() enforced + audited server-side). Returns
+ * the new tenant id + slug. Throws on error so the caller can toast.
+ */
+export async function provisionTenant(input: ProvisionTenantInput): Promise<{ id: string; slug: string; name: string }> {
+  // `as any`: RPC newly added in this migration, not yet in generated types.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await supabase.rpc("operator_provision_tenant" as any, {
+    _name: input.name,
+    _slug: input.slug?.trim() || undefined,
+    _plan_offer: input.plan_offer?.trim() || undefined,
+    _seat_limit: input.seat_limit,
+    _customer_limit: input.customer_limit,
+    _status: input.status ?? "trial",
+  });
+  if (error) throw new Error(error.message);
+  // The RPC returns the full tenants row.
+  const row = (Array.isArray(data) ? data[0] : data) as { id: string; slug: string; name: string } | null;
+  if (!row) throw new Error("Provisioning returned no tenant");
+  return { id: row.id, slug: row.slug, name: row.name };
 }
 
 export async function extendTrial(tenantId: string, currentEnd: string | null, days: number): Promise<string> {
