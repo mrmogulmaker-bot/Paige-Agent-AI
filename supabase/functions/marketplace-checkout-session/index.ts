@@ -240,8 +240,13 @@ Deno.serve(async (req) => {
   const stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-11-20.acacia" });
 
   const origin = resolveOrigin(req);
-  const successPath = safePath(body.success_path, "/marketplace?purchase=success");
-  const cancelPath = safePath(body.cancel_path, "/marketplace?purchase=cancelled");
+  // The marketplace lives at /admin/marketplace (nested under the /admin shell) —
+  // there is NO top-level /marketplace route, so the old "/marketplace…" defaults
+  // returned the browser to a 404/root after Stripe (#275). The client always sends
+  // an explicit success_path/cancel_path; these defaults are defense-in-depth so a
+  // caller that omits them still lands on the real, live marketplace surface.
+  const successPath = safePath(body.success_path, "/admin/marketplace?purchase=success");
+  const cancelPath = safePath(body.cancel_path, "/admin/marketplace?purchase=cancelled");
   const successUrl =
     origin +
     successPath +
