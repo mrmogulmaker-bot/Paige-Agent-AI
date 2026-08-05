@@ -122,11 +122,11 @@ const TeamHub = lazy(() => import("@/pages/admin/TeamHub"));
 const SetupGeneral = lazy(() => import("@/pages/admin/setup/SetupGeneral"));
 const SetupBrand = lazy(() => import("@/pages/admin/setup/SetupBrand"));
 const SetupAutomations = lazy(() => import("@/pages/admin/setup/SetupAutomations"));
-const SetupIntegrations = lazy(() => import("@/pages/admin/setup/SetupIntegrations"));
+// Setup › Integrations mounts the REAL IntegrationsHub inline (§18/§31 — one home);
+// the standalone /admin/integrations index redirects here. See the routes below.
 const SetupLegal = lazy(() => import("@/pages/admin/setup/SetupLegal"));
 const SetupBilling = lazy(() => import("@/pages/admin/setup/SetupBilling"));
 const SetupPlaybook = lazy(() => import("@/pages/admin/setup/SetupPlaybook"));
-const SetupTeam = lazy(() => import("@/pages/admin/setup/SetupTeam"));
 const PlatformSettings = lazy(() => import("@/pages/admin/PlatformSettings"));
 const PlatformInvites = lazy(() => import("@/pages/admin/PlatformInvites"));
 const KnowledgeBaseAdmin = lazy(() => import("@/pages/admin/KnowledgeBaseAdmin"));
@@ -439,8 +439,10 @@ const Admin = () => {
           <Route path="automations" element={
             <Suspense fallback={<SuspenseFallback />}><SetupAutomations /></Suspense>
           } />
+          {/* Integrations is the REAL hub, mounted inline as the ONE home (§18/§31).
+              The standalone /admin/integrations index redirects here (below). */}
           <Route path="integrations" element={
-            <AdminOnly><Suspense fallback={<SuspenseFallback />}><SetupIntegrations /></Suspense></AdminOnly>
+            <AdminOnly><Suspense fallback={<SuspenseFallback />}><IntegrationsHub /></Suspense></AdminOnly>
           } />
           <Route path="legal" element={
             <AdminOnly><Suspense fallback={<SuspenseFallback />}><SetupLegal /></Suspense></AdminOnly>
@@ -451,9 +453,8 @@ const Admin = () => {
           <Route path="playbook" element={
             <AdminOnly><Suspense fallback={<SuspenseFallback />}><SetupPlaybook /></Suspense></AdminOnly>
           } />
-          <Route path="team" element={
-            <Suspense fallback={<SuspenseFallback />}><SetupTeam /></Suspense>
-          } />
+          {/* Team is NOT a Setup sub-tab — it has its own main-nav hub (/admin/team).
+              Removed to kill nav duplication (§18). */}
         </Route>
         {/* Legacy /admin/tasks now lands on the real Planning hub — the task
             manager the owner asked to be "wired to the admin user". The old
@@ -709,9 +710,11 @@ const Admin = () => {
           <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
         } />
         {/* actions absorbed into the Paige workspace group (1c-vi) above. */}
-        <Route path="integrations" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><IntegrationsHub /></Suspense></AdminOnly>
-        } />
+        {/* Integrations now lives in Setup as the ONE home (§18): the hub is mounted
+            at /admin/setup/integrations. Redirect the old index so saved deep-links,
+            the connector back-links, and the AdminLayout Setup alias all resolve there.
+            The /admin/integrations/:sub deep config pages stay mounted below. */}
+        <Route path="integrations" element={<Navigate to="/admin/setup/integrations" replace />} />
         <Route path="integrations/n8n" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><N8nIntegrationConfig /></Suspense></AdminOnly>
         } />

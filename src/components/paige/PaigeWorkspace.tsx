@@ -5,14 +5,10 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { Loader2, X, UserCircle2, SlidersHorizontal, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { ReasoningDeck, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
-import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
-import { resolveActivePlaybook } from "@/lib/playbook/resolve";
-import { PLAYBOOK_LIBRARY } from "@/lib/playbook/presets";
-import type { Playbook } from "@/lib/playbook/types";
-import { toast } from "sonner";
+import { usePlaybookEditor } from "./usePlaybookEditor";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
@@ -46,31 +42,16 @@ function FocusBanner({ client, onClear }: { client: FocusedClient; onClear: () =
   );
 }
 
-const slugify = (s: string) =>
-  s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "field";
-
-// Guarantee unique, non-empty keys/ids at save time (lifted verbatim).
-const uniqueKeyed = <T extends Record<string, unknown>>(items: T[], field: "key" | "id", base: string): T[] => {
-  const seen = new Set<string>();
-  return items.map((it, i) => {
-    const k = slugify(String(it[field] ?? "") || String((it as { label?: string }).label ?? "") || `${base}_${i + 1}`);
-    let uniq = k, n = 1;
-    while (seen.has(uniq)) uniq = `${k}_${++n}`;
-    seen.add(uniq);
-    return { ...it, [field]: uniq };
-  });
-};
-
 function WorkspaceBody({ tenantName }: { tenantName: string }) {
   const { activeTenantId } = useTenantContext();
   const { counts, subscribeKnowledgeAdded } = usePaigeWorkspace();
   const isMobile = useIsMobile();
 
-  const [pb, setPb] = useState<Playbook | null>(null);
-  const [lastSavedPb, setLastSavedPb] = useState<Playbook | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
+  // The Playbook edit lifecycle now lives in one shared home (§18) — the same hook
+  // the Setup › Playbook inline editor uses — so the console and Setup drive identical
+  // load/dirty/save logic against the same set_tenant_playbook RPC.
+  const { pb, loading, saving, justSaved, dirty, patch, applyPreset, save, discard } =
+    usePlaybookEditor(activeTenantId);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [section, setSection] = useState<ConsoleSection>("persona");
   // Paige's live step trace, lifted out of the chat so the persistent ReasoningDeck renders it.
@@ -107,18 +88,6 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
   const [chipPulse, setChipPulse] = useState(false);
 
   useEffect(() => {
-    let on = true;
-    setLoading(true);
-    resolveActivePlaybook().then((p) => {
-      if (!on) return;
-      setPb(structuredClone(p));
-      setLastSavedPb(structuredClone(p));
-      setLoading(false);
-    });
-    return () => { on = false; };
-  }, [activeTenantId]);
-
-  useEffect(() => {
     return subscribeKnowledgeAdded((title) => {
       setBanner(`Paige just indexed ${title} — she'll draw on it from here.`);
       setChipPulse(true);
@@ -126,59 +95,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
     });
   }, [subscribeKnowledgeAdded]);
 
-  const patch = (fn: (d: Playbook) => void) =>
-    setPb((prev) => { if (!prev) return prev; const next = structuredClone(prev); fn(next); return next; });
-
-  const applyPreset = (slug: string) => {
-    const preset = PLAYBOOK_LIBRARY.find((p) => p.slug === slug);
-    if (preset) {
-      setPb(structuredClone(preset));
-      toast.info(`Loaded the "${preset.name}" starter — make it yours, then save.`);
-    }
-  };
-
-  const dirty = !!pb && !!lastSavedPb && JSON.stringify(pb) !== JSON.stringify(lastSavedPb);
-
   const openConsole = (s: ConsoleSection) => { setSection(s); setConsoleOpen(true); };
-
-  const discard = () => { if (lastSavedPb) setPb(structuredClone(lastSavedPb)); };
-
-  const save = async (): Promise<boolean> => {
-    if (!pb) return false;
-    if (!activeTenantId) {
-      toast.error("Switch into a workspace first — there's no Paige to save this to.");
-      return false;
-    }
-    if (!pb.persona.name.trim() || !pb.persona.greeting.trim()) {
-      toast.error("Paige needs at least a name and a greeting before she can go to work.");
-      return false;
-    }
-    const config = {
-      ...pb,
-      probingQuestions: uniqueKeyed(pb.probingQuestions, "id", "q"),
-      journey: uniqueKeyed(pb.journey, "key", "stage"),
-      intake: uniqueKeyed(pb.intake, "key", "field"),
-      portal: { ...pb.portal, modules: uniqueKeyed(pb.portal.modules, "key", "module") },
-    };
-    setSaving(true);
-    try {
-      const { error } = await supabase.rpc("set_tenant_playbook", {
-        _tenant_id: activeTenantId,
-        _config: config as unknown as Record<string, never>,
-      });
-      if (error) throw error;
-      setLastSavedPb(structuredClone(pb));
-      setJustSaved(true);
-      setTimeout(() => setJustSaved(false), 2500);
-      toast.success("Saved — Paige is now native to your practice.");
-      return true;
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Couldn't save the playbook");
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const first = firstNameOf(focusedClient);
 

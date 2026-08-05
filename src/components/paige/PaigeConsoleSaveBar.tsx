@@ -9,12 +9,19 @@ interface Props {
   saving: boolean;
   justSaved: boolean;
   onSave: () => void;
+  /**
+   * Where the bar lives. "header" (default) = the console's dark primary header
+   * (muted primary-foreground text). "surface" = an inline light/neutral surface
+   * (muted-foreground text) for the Setup › Playbook editor. Same gold Save act
+   * either way (§11) — only the surrounding label color changes.
+   */
+  tone?: "header" | "surface";
 }
 
-export function PaigeConsoleSaveBar({ dirty, saving, justSaved, onSave }: Props) {
+export function PaigeConsoleSaveBar({ dirty, saving, justSaved, onSave, tone = "header" }: Props) {
   return (
     <div className="flex items-center justify-between gap-3 pt-1">
-      <span className="text-xs text-primary-foreground/70">
+      <span className={tone === "surface" ? "text-xs text-muted-foreground" : "text-xs text-primary-foreground/70"}>
         {dirty
           ? "Unsaved changes"
           : justSaved

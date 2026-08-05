@@ -143,7 +143,7 @@ export default function MetaPixelConfig() {
 
       <div className="flex gap-2">
         <Button onClick={save} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
-        <Button asChild variant="outline"><Link to="/admin/integrations">Back to Integrations</Link></Button>
+        <Button asChild variant="outline"><Link to="/admin/setup/integrations">Back to Integrations</Link></Button>
       </div>
     </div>
   );

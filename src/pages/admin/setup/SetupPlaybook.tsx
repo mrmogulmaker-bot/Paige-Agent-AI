@@ -1,13 +1,17 @@
-// Setup › Playbook & Paige (1c-xi) — the Product home. LINK-OUT to the Playbook
-// editor, where a tenant tunes Paige's persona, probing questions, and client
-// journey for their own practice (§7 tenant-authored). §11 lean plain header, no
-// hero; §16 department eyebrow.
-import { Link } from "react-router-dom";
-import { Bot, ArrowRight } from "lucide-react";
-import { PageShell, PageHeader, SectionCard, EmptyState } from "@/components/ui/page";
-import { Button } from "@/components/ui/button";
+// Setup › Playbook & Paige (1c-xi) — the Product home. The REAL Playbook editor,
+// mounted INLINE (§18/§31): a tenant tunes Paige's persona, probing questions,
+// intake, client journey, portal, and knowledge for their own practice (§7
+// tenant-authored) right here — no dead-end "Open Playbook" redirect card (§36).
+// The same editor body the "Customize Paige" console renders, reused verbatim via
+// PlaybookEditorInline. §11 lean plain header, no hero; §16 department eyebrow.
+import { Bot, Loader2 } from "lucide-react";
+import { PageShell, PageHeader } from "@/components/ui/page";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { PlaybookEditorInline } from "@/components/paige/PlaybookEditorInline";
 
 export default function SetupPlaybook() {
+  const { activeTenantId, activeTenant, loading } = useTenantContext();
+
   return (
     <PageShell width="wide">
       <PageHeader
@@ -18,22 +22,24 @@ export default function SetupPlaybook() {
         description="How Paige works for your practice — her persona, her questions, and the journey she runs each client through."
       />
 
-      <SectionCard>
-        <EmptyState
-          icon={Bot}
-          tone="brand"
-          title="Make Paige native to your practice"
-          description="Tune Paige's persona, questions, and journey for your practice in the Playbook editor."
-          action={
-            <Button asChild>
-              <Link to="/admin/playbook">
-                Open Playbook
-                <ArrowRight className="h-4 w-4 ml-1.5" />
-              </Link>
-            </Button>
-          }
+      {/* Mounted BARE — no SectionCard wrapper — because the editor's own 7 section
+          components each render their own Card (their elevation), mirroring the
+          Integrations embed sibling in this same sweep. Wrapping in a SectionCard
+          would be card-on-card (§25) and off-grid the sticky save-bar bleed (§6/§11). */}
+      {loading ? (
+        <div className="flex items-center justify-center gap-3 p-12 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" /> Loading your Paige…
+        </div>
+      ) : !activeTenantId ? (
+        <div className="p-8 text-center text-sm text-muted-foreground">
+          No workspace is active yet.
+        </div>
+      ) : (
+        <PlaybookEditorInline
+          activeTenantId={activeTenantId}
+          tenantName={activeTenant?.name ?? "your practice"}
         />
-      </SectionCard>
+      )}
     </PageShell>
   );
 }
