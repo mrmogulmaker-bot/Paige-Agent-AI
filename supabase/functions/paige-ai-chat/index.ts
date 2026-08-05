@@ -3270,6 +3270,8 @@ SPINNING UP A NEW SPECIALIST — only when the roster genuinely lacks the capabi
 
 AUTOMATIONS (n8n) — if the workspace has connected an n8n account, you have the FULL n8n lifecycle across all their tools: list, get, executions, run, execution_get, validate, create, update, activate, deactivate, archive, delete. n8n_list_workflows shows what exists; n8n_get_executions shows a workflow's run history. n8n_run_workflow FIRES a workflow that has a webhook trigger. Firing is not sending — the tool tells you both, separately, and you never blur them (see AUTOMATION HONESTY below): pass the workflow_id (or its webhook_path) and a payload the workflow expects. So when the operator says "send my workflow list to Telegram" and they have a Telegram-send workflow in n8n, you CAN fire it — but you report what came back, not what you hoped. You can VERIFY a run with n8n_execution_get, DRY-CHECK a design with n8n_validate_workflow before building, turn automations on/off (n8n_activate_workflow / n8n_deactivate_workflow), author or edit them (n8n_create_workflow / n8n_update_workflow — created OFF until activated), and lifecycle-manage with n8n_archive_workflow (reversible, your default) or n8n_delete_workflow (permanent, only on an explicit "delete"). All mutating actions follow the propose→confirm rule unless the workspace set them to autopilot — then you act without the pause, but honesty is NOT autopilot-exempt: even acting on your own you report the true outcome, never a hoped-for one. Validate before you build so a malformed graph gives you specifics to self-repair, not a dead end. The workflow must be active for its webhook to respond; if it's off, offer to turn it on first. If no n8n is connected, the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it ran.
 
+ZAPIER — if the workspace has connected a Zapier (MCP) account, you can reach across 9,000+ apps (Slack, Gmail, Google Sheets, HubSpot, Trello, and thousands more) through their Zapier actions. zapier_list_actions shows what THIS workspace has enabled; zapier_run_action RUNS one — resolve the exact tool_name from the list first, then pass the inputs that action expects. Running is doing: you report what Zapier actually returned, never a hoped-for outcome (the same honesty as firing an automation). zapier_run_action follows the propose→confirm rule unless the workspace set it to autopilot. If no Zapier is connected the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it exists or ran. n8n and Zapier are complementary: n8n is their own workflow engine; Zapier is the fast bridge to apps they haven't wired in n8n. Pick whichever the operator already has the automation/app in.
+
 AUTOMATION HONESTY — say what you can SEE, not what you hope. When you fire an automation you get back two separate truths, and you never let them blur into one: fired = n8n accepted the webhook and the workflow started; delivered = the workflow actually reported the send going out (true, false, or null). null means unknown — you have not seen it happen, and unknown is NEVER a yes. The rule you run on:
 1. "I fired it" — allowed when fired:true. The webhook was accepted and the flow kicked off. That is all a fire claims; do not upgrade it.
 2. "Sent / delivered / it went out" — allowed ONLY when delivered:true (or an n8n_execution_get shows the channel true with no errors). Nothing less earns that word.
@@ -4779,6 +4781,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "zapier_list_actions",
+              description: "Admin only. List the actions this workspace has enabled on its connected Zapier (MCP) account — each is a real thing Paige can run across 9,000+ apps (send a Slack message, add a Google Sheets row, create a Trello card, etc.). Use this FIRST to see what's available before running one with zapier_run_action. Returns an honest 'not_connected' if the workspace hasn't connected a Zapier account — tell the operator they can connect one in Settings → Integrations, don't pretend it exists.",
+              parameters: { type: "object", properties: {}, required: [] }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "zapier_run_action",
+              description: "Admin only. RUN one of the workspace's connected Zapier actions — this is how Paige actually does things in the operator's other apps (Slack, Gmail, Sheets, HubSpot, and 9,000+ more) via their Zapier account. Resolve the exact tool_name from zapier_list_actions first, then pass the arguments that action expects. Running is doing — you report what Zapier returned, never a hoped-for outcome. Governed by the autonomy policy: unless the workspace set this to auto, PROPOSE first and call again with confirm:true once the operator approves. If no Zapier is connected the tool says so — tell the operator to connect one in Settings → Integrations, don't pretend it ran.",
+              parameters: {
+                type: "object",
+                properties: {
+                  tool_name: { type: "string", description: "The exact Zapier action name to run (from zapier_list_actions)." },
+                  arguments: { type: "object", description: "The inputs the action expects (whatever zapier_list_actions describes for it, e.g. { channel: '#general', text: 'hi' })." }
+                },
+                required: ["tool_name"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "get_client_rail",
               description: "Read a client's recent Paige activity timeline — the messages, actions, automations, and updates that happened across every Paige surface (their portal, automations, calendar, other staff). Use this to ground an answer about what's been going on with a client before you reply. Read-only; it never changes anything. If you're already looking at a client's file you can omit contact_id and it uses that client automatically.",
               parameters: {
@@ -4845,6 +4870,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "action_file", "action_advance",
       "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
       "n8n_run_workflow", "n8n_archive_workflow", "n8n_delete_workflow",
+      "zapier_run_action",
       "forge_subagent", "save_to_knowledge_base",
       "plan_set_reminder", "plan_create", "plan_add_milestone",
       "plan_assign_task", "plan_update_item", "plan_remove_item",
@@ -4890,6 +4916,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       n8n_run_workflow: "firing an automation",
       n8n_archive_workflow: "archiving an automation",
       n8n_delete_workflow: "permanently deleting an automation",
+      zapier_run_action: "running a Zapier action",
       forge_subagent: "spinning up a new specialist agent",
       save_to_knowledge_base: "saving this to your knowledge base",
       plan_set_reminder: "setting a reminder",
@@ -4972,6 +4999,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `Archive the n8n automation ${a?.workflow_id || ""} — turns it off and tags it [archived]. Reversible.`;
         case "n8n_delete_workflow":
           return `PERMANENTLY delete the n8n automation ${a?.workflow_id || ""}. This can't be undone.`;
+        case "zapier_run_action":
+          return `Run the Zapier action "${a?.tool_name || ""}"${a?.arguments ? " with the prepared inputs" : ""} — this runs it live in the connected app.`;
         case "forge_subagent":
           return `${a?.runtime === "hard" ? "Propose a new (code-backed) specialist" : "Spin up a new specialist"} — "${a?.name || a?.slug || "agent"}" (${a?.domain || "general"}): ${String(a?.description || "").slice(0, 80)}.${a?.runtime === "hard" ? " Goes to an admin for sign-off." : " Joins the team right away."}`;
         case "save_to_knowledge_base":
@@ -5761,6 +5790,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "n8n_create_workflow" ||
           tc.function.name === "n8n_update_workflow" ||
           tc.function.name === "n8n_run_workflow" ||
+          tc.function.name === "zapier_list_actions" ||
+          tc.function.name === "zapier_run_action" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
@@ -6748,6 +6779,25 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               result = (n8nData as any)?.error
                 ? { success: false, ...(n8nData as any) }
                 : { success: true, ...(n8nData as any) };
+            } else if (
+              tc.function.name === "zapier_list_actions" || tc.function.name === "zapier_run_action"
+            ) {
+              // Route Zapier tools through the call-zapier-action edge function with the
+              // caller's JWT (it resolves the tenant and pulls the tenant's OWN encrypted
+              // Zapier/MCP creds server-side — the model NEVER supplies a tenant_id). §9.
+              // zapier_run_action already cleared the autonomy gate above; `confirm` is not
+              // a call-zapier-action param. `zapier_list_actions` runs a tools/list; a
+              // missing/disabled connection returns an honest not_connected (§13), never a
+              // fabricated success.
+              const zapBody: Record<string, unknown> =
+                tc.function.name === "zapier_list_actions"
+                  ? { action: "list" }
+                  : { tool_name: args.tool_name, arguments: args.arguments ?? {} };
+              const { data: zapData, error: zapErr } = await supabaseClient.functions.invoke("call-zapier-action", { body: zapBody });
+              if (zapErr) throw zapErr;
+              result = (zapData as any)?.ok === false || (zapData as any)?.error
+                ? { success: false, ...(zapData as any) }
+                : { success: true, ...(zapData as any) };
             }
 
             // STUDIO SESSION LINKAGE (#292) — when this chat IS a project's design session, attach
