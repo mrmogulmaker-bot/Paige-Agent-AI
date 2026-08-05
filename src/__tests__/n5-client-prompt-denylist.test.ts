@@ -18,6 +18,11 @@ import {
   resolveDisputeReferralLabel,
   sanitizeClientContextForTier,
 } from "../../supabase/functions/_shared/client-context.ts";
+// §18 one home / §2 / §3 — the platform-default VOICE block ships in the SAME assembled
+// prompt as the persona + neutral core, so it must clear the SAME finance + program
+// denylists. It lives in its own shared module (extracted from paige-ai-chat/index.ts)
+// so this test scans the exact string the edge function sends (§32: green build ≠ proof).
+import { PAIGE_VOICE_BLOCK } from "../../supabase/functions/_shared/paige-voice.ts";
 
 // --- Chainable Supabase mock. Every builder method returns `this`; `this` is
 // thenable (resolves to {data: list, count}); `.maybeSingle()` resolves to
@@ -72,7 +77,9 @@ describe("N5 §2 — bare tenant assembled prompt is credit-free", () => {
     const sb = mockSupabase({}); // no user data at all
     const userContext = await buildUserContext(sb, "user-bare", /*fundingEnabled*/ false);
     const persona = buildPaigePersonaBlock(null, "Acme Co", false, null);
-    const full = persona + "\n\n" + NEUTRAL_CTX(userContext, "");
+    // Assemble in the SAME order the edge function sends: persona → VOICE → neutral core,
+    // so the platform-default voice block is covered by the same §2 denylist scan.
+    const full = persona + "\n\n" + PAIGE_VOICE_BLOCK + "\n\n" + NEUTRAL_CTX(userContext, "");
 
     expect(persona).toContain(HARD_GUARDRAIL_MARKER); // guardrail present
     const scanned = stripGuardrail(full);
@@ -80,6 +87,19 @@ describe("N5 §2 — bare tenant assembled prompt is credit-free", () => {
     expect(CREDIT_PROGRAM_DENYLIST.test(scanned)).toBe(false);
     // userContext itself carries no credit — only ungated QuickBooks awareness.
     expect(CREDIT_DENYLIST.test(userContext)).toBe(false);
+  });
+});
+
+describe("§18/§2/§3 — the platform-default VOICE block is finance- and program-clean", () => {
+  it("PAIGE_VOICE_BLOCK carries ZERO credit/funding vocab and no program labels", () => {
+    // The voice block ships to EVERY tenant by default (§9), so it must be as
+    // coaching-generic + finance-free as the neutral core. It is NOT wrapped by the
+    // persona HARD-GUARDRAIL, so no strip is needed — it must pass the denylists raw.
+    expect(CREDIT_DENYLIST.test(PAIGE_VOICE_BLOCK)).toBe(false);
+    expect(CREDIT_PROGRAM_DENYLIST.test(PAIGE_VOICE_BLOCK)).toBe(false);
+    // The recency reassert (should-fix #2) is present at the very end, restating that a
+    // tenant-authored voice overrides this default.
+    expect(PAIGE_VOICE_BLOCK).toContain("TENANT VOICE WINS");
   });
 });
 
@@ -100,7 +120,8 @@ describe("N5 §2 — non-funding coaching tenant assembled prompt is credit-free
     };
     const userContext = await buildUserContext(sb, "user-fit", false);
     const persona = buildPaigePersonaBlock(fitnessPlaybook, "Peak Fitness", false, null);
-    const full = persona + "\n\n" + NEUTRAL_CTX(userContext, "");
+    // Same real assembly order (persona → VOICE → neutral core) so the voice block is scanned.
+    const full = persona + "\n\n" + PAIGE_VOICE_BLOCK + "\n\n" + NEUTRAL_CTX(userContext, "");
 
     expect(persona).toContain("fitness coaching"); // tenant domain leads
     expect(persona).toContain(HARD_GUARDRAIL_MARKER);

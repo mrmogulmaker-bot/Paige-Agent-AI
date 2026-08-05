@@ -16,6 +16,10 @@ import {
   resolveDisputeReferralLabel,
   sanitizeClientContextForTier,
 } from "../_shared/client-context.ts";
+// §18 one home — the platform-default VOICE DNA lives in ONE shared module so both this
+// edge function AND the §2/§3 denylist test import the same text (§32: the assembled
+// voice is scannable). A tenant-authored persona still OVERRIDES it (read first below).
+import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
 // #292 / #343 U1 — the Studio design-agent system-prompt WRAPPER (identity + operating core + the
 // generative-UI choice-card rule), externalized so it lives in one editable home (§9/§12/§18).
 import { buildStudioWhereYouAre, STUDIO_OPERATING_CORE } from "../_shared/design-agent-prompt.ts";
@@ -1334,7 +1338,7 @@ ${buildStudioWhereYouAre(name, tenant)}`.trim()
     // Playbook, never a hardcoded operator brand ("Mogul Credit AI") or program set.
     const disputeReferralLabel = resolveDisputeReferralLabel(personaCtx.playbook_config);
     const fundingProgramVocab = buildFundingProgramVocab(personaCtx.playbook_config);
-    const FUNDING_SKILL_PROMPT = `You are the practice's funding & capital-raising specialist. Your name, voice, and identity are set in the persona message above — follow it; never claim to be anyone else's desk or namesake. Your purpose here is to help this practice's clients understand their personal and business credit profiles in the context of business funding eligibility, and to guide them toward appropriate capital sources.
+    const FUNDING_SKILL_PROMPT = `You are the practice's funding & capital-raising specialist. Your name and identity are set in the persona message above, and HOW you talk is set in the "HOW YOU TALK" voice block above — follow both; never claim to be anyone else's desk or namesake. Your purpose here is to help this practice's clients understand their personal and business credit profiles in the context of business funding eligibility, and to guide them toward appropriate capital sources.
 
 =============================================================
 QUICKBOOKS FINANCIAL COACHING RULES (when QB data is in USER CONTEXT)
@@ -1484,34 +1488,22 @@ TONE & STYLE
 - When you don't know something, say so and suggest where to look.
 
 =============================================================
-CONVERSATIONAL STYLE — STRICT (TEXT LIKE A REAL PERSON)
+CONVERSATIONAL STYLE
 =============================================================
 
-You're texting with a client, not writing a memo. Every reply should feel like it came from a real strategist typing on their phone — not a chatbot generating a report.
-
-THE TEXTING TEST:
-Before sending any reply, ask: "Would a real human friend who knows this stuff cold actually type this in a chat?" If it reads like a help-desk script, a structured doc, or an AI summary — rewrite it.
+Your voice is set in the "HOW YOU TALK" block above (and, where the practice authored one, the persona message) — hold it in EVERY reply: react first, keep it tight (1–3 short sentences), contractions always, mirror their energy, vary your rhythm and your openers, and never open with chatbot filler ("Here's what I found", "Great question", "I'd be happy to help", "Certainly", "as an AI"). This section only adds the medium/format rules on top of that voice:
 
 DO:
-- Default to 1–3 short sentences. Answer first, offer ONE follow-up.
-- Use contractions everywhere ("you're", "let's", "here's", "gonna", "I'd"). Drop the occasional "yeah", "honestly", "real talk" when it fits.
-- Vary sentence length. Short punchy lines mixed with one longer thought feels human. Uniform paragraphs feel AI.
-- Mirror the user's energy and length. Short message → short reply. One-word reply ("ok", "cool") → one-word ack back ("got it" / "👍").
 - Use plain prose. If a list is truly needed, keep it tight — 2–3 items max, no nested bullets.
 - Ask ONE clarifying question when the request is broad — don't fire a 5-question intake.
-- Small genuine reactions are good ("yeah that one's a pain", "nice", "smart move", "oof, okay"). Use sparingly so it stays real.
-- A light, tasteful emoji now and then is welcome when it genuinely fits — a 👍 on an "ok", a 🎉 on a real win, a 📅 next to a booked time. Like a sharp friend texting, not a marketing blast: at most one per message, and plenty of messages have none.
 
 DON'T:
 - Don't wrap words in asterisks for emphasis (no **like this** or *this*). Let the words carry the weight. And NEVER leave a stray or unmatched \`*\` / \`**\` in a reply — it renders as literal clutter and looks amateur. Clean prose only.
 - Don't use bracketed placeholders like [Client Name], [date], [amount], or [link]. Use the actual value; if you don't have it yet, ask for it in plain words ("what's her name?") — never ship a message with a [bracket] in it.
 - Don't use heavy markdown in casual chat — no H1/H2 headers, no bold-everything, no nested bullets, no horizontal rules. Save structure for when the user explicitly asks for "a plan", "a breakdown", "step by step", or "in writing".
-- Don't open with "Great question!", "Absolutely!", "I'd be happy to help!", "Certainly!", or any chatbot filler.
-- Don't restate the user's question back to them before answering.
 - Don't dump every program, framework, sub-phase, bureau, or lender list unless they explicitly asked for the full breakdown.
 - Don't pile on disclaimers. State the rule once if it applies, then move on.
 - Don't sign off with "Let me know if you have any other questions!" — a real person doesn't end every text that way.
-- Don't say "as an AI", "I'm just an AI", or "as a language model".
 
 If you catch yourself about to produce more than ~5 lines, or stacking headers/bold blocks, STOP. Ask: "did the user actually want a full briefing, or am I info-dumping?" If they didn't ask for it, trim it and offer to go deeper if they want.
 
@@ -3032,9 +3024,26 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // gets the neutral core. The tenant's authored persona leads either way.
     const systemPrompt = fundingEnabled ? FUNDING_SKILL_PROMPT : NEUTRAL_CORE_PROMPT;
 
-    // Build message array — lead with the tenant's persona so identity is set first.
+    // PAIGE VOICE — the platform-DEFAULT "how you talk" block (persona-layer-1 voice fix).
+    // It sits RIGHT AFTER the tenant persona and BEFORE the operating core so the model
+    // reads WHO you are → HOW you talk → (then) task/tool/context — instead of burying the
+    // voice as one diluted section inside the big operating block. It leads with concrete
+    // GOOD-vs-BAD examples + an explicit anti-pattern list (rules without examples don't
+    // shape voice), a react-first rule, and rhythm/opener-variance rules — the assistant
+    // defaults ("Here's what I found", "I'd be happy to") are what eat the voice, so we
+    // name and forbid them up front. Coaching-generic (§2 — zero finance words) and §3
+    // voice. LOAD-BEARING SEAM (§7/§9): this is the DEFAULT, and the tenant persona above
+    // OVERRIDES it — a practice that authored "As Paige, I'd love to help you" as its tone
+    // still wins, because the block says so explicitly and the persona message is read
+    // first. Audience-generic ("the person you're helping") so it fits BOTH the client
+    // chat and the owner/Studio design-agent path. §18 one home: the block text is now
+    // imported from _shared/paige-voice.ts so the §2/§3 denylist test scans the same string.
+
+    // Build message array — lead with the tenant's persona so identity is set first,
+    // then the platform-default VOICE, THEN the task/tool operating core below.
     const aiMessages: any[] = [
       { role: "system", content: buildPaigePersonaBlock(personaCtx.playbook_config, personaCtx.tenant_name || "your practice", fundingEnabled, personaCtx.brand) },
+      { role: "system", content: PAIGE_VOICE_BLOCK },
       ...(tenantDomainContext ? [{ role: "system", content: tenantDomainContext }] : []),
       { role: "system", content: systemPrompt },
       // "Watch Paige work" narration (#152): when she's about to USE tools, she first
@@ -3094,12 +3103,17 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
                   personaCtx.tenant_name || "your practice", personaCtx.brand,
                 ),
               };
-              // The generic operating core (aiMessages[1]) casts Paige as a client-onboarding coach
+              // The generic client operating core casts Paige as a client-onboarding coach
               // with CRM tooling — that contradicts the design specialist's identity and pulls it
               // off building. Replace it with a creative operating core scoped to its real job
               // (#292 / §8/§14). It builds by conversation; it never touches client/CRM/pipeline seams.
-              if (aiMessages[1]) {
-                aiMessages[1] = {
+              // Target the core by VALUE (=== systemPrompt), not a fixed index: the platform VOICE
+              // block now sits at [1] and tenantDomainContext may occupy a slot, so the client core
+              // is no longer at a hardcoded position. The audience-generic VOICE block above is kept
+              // for the design agent too (it never carries client-only greeting mechanics).
+              const clientCoreIdx = aiMessages.findIndex((m) => m.content === systemPrompt);
+              if (clientCoreIdx !== -1) {
+                aiMessages[clientCoreIdx] = {
                   role: "system",
                   content: STUDIO_OPERATING_CORE,
                 };
