@@ -13,7 +13,8 @@
  * a Playbook preset (e.g. the Funding coach type), so we reconcile all three paths
  * — the AI gate reads enabled_skills, and the card must never misrepresent it.
  */
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -24,6 +25,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useConfirm } from "@/hooks/useConfirm";
 import { PageShell, PageHeader, Toolbar, FilterChip, EmptyState, GlyphPlate } from "@/components/ui/page";
 import { SkillCard } from "@/components/marketplace/SkillCard";
 import { Card, CardContent } from "@/components/ui/card";
@@ -196,6 +198,12 @@ export default function Marketplace() {
   const [status, setStatus] = useState<"all" | "available" | "on" | "soon">("all");
   const reduce = useReducedMotion();
   const shelfRef = useRef<HTMLDivElement | null>(null);
+  // Promise-based destructive confirm (§11 — no hand-rolled dialog; the shared
+  // primitive keeps gold off the confirm button and uses --destructive for teardown).
+  const { confirm, dialog } = useConfirm();
+  // Read Stripe's return param so the paid-install path gets an HONEST receipt (§13):
+  // the free path already toasts, but the paid return previously surfaced nothing.
+  const [searchParams, setSearchParams] = useSearchParams();
   // Declared with the other hooks (before any early return) so the hook order is
   // stable — it freezes the opened row so the detail dialog keeps its content
   // through the close animation (assigned below, §11/a11y).
@@ -294,6 +302,27 @@ export default function Marketplace() {
       qc.invalidateQueries({ queryKey: ["marketplace_features", activeTenantId] }),
     ]);
 
+  // Stripe-return loop-closer (#275): after a paid checkout the browser lands back
+  // here at /admin/marketplace?purchase=success (the install is completed server-side
+  // by stripe-webhook). Give the honest receipt, refetch so the item flips to Live,
+  // then strip the param so a refresh/back-nav doesn't re-toast (§13 — say what
+  // actually happened; the webhook, not this toast, is what installed it).
+  useEffect(() => {
+    const purchase = searchParams.get("purchase");
+    if (purchase !== "success" && purchase !== "cancelled") return;
+    if (purchase === "success") {
+      toast.success("Payment cleared — your new capability is being switched on.");
+      if (activeTenantId) void refresh();
+    } else {
+      toast.info("Checkout cancelled — nothing was charged.");
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("purchase");
+    next.delete("session_id");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, activeTenantId]);
+
   const install = async (r: CatalogRow) => {
     // B-ii price gate (§17): a paid add-on NEVER installs through the free direct
     // path — that would write a phantom, unpaid ledger revenue row. Instead we mint
@@ -303,8 +332,18 @@ export default function Marketplace() {
     // only ever written for money that actually cleared (§13). Free items unchanged.
     const isPaid = (r.pricing_model && r.pricing_model !== "free") || (r.price_cents ?? 0) > 0;
     if (isPaid) {
+      // The success/cancel destinations are the marketplace's OWN route to declare
+      // (§10 — the UI owns where IT returns). This surface lives at /admin/marketplace
+      // (there is no top-level /marketplace route), so Stripe must return here — not
+      // to a 404/root as it did on the server's old "/marketplace…" default (#275).
+      // The completed install lands the item as "Live" on this same surface; the
+      // ?purchase=success param below is read to confirm the charge cleared.
       const { data, error } = await supabase.functions.invoke("marketplace-checkout-session", {
-        body: { item_slug: r.slug },
+        body: {
+          item_slug: r.slug,
+          success_path: "/admin/marketplace?purchase=success",
+          cancel_path: "/admin/marketplace?purchase=cancelled",
+        },
       });
       if (error) throw new Error(await edgeErrorMessage(error, "Couldn't start checkout — please try again."));
       const res = (data ?? {}) as Record<string, unknown>;
@@ -376,6 +415,23 @@ export default function Marketplace() {
 
   const toggle = async (r: CatalogRow, on: boolean) => {
     if (!activeTenantId || saving) return;
+    // Switching OFF runs the real teardown RPC — for a knowledge pack that DELETES
+    // the docs it seeded (and can tear down bundle children), so a stray tap must not
+    // silently destroy seeded knowledge (#276). Gate the destructive OFF path behind
+    // a confirm that spells out the consequence; a plain skill toggle-off is reversible
+    // (just flips the gate) and needs no prompt, so keep that UX friction-free.
+    if (!on) {
+      const destructive = r.item_type === "kb_pack" || r.requires_embedding === true;
+      const ok = await confirm({
+        title: `Switch off ${r.name}?`,
+        description: destructive
+          ? "This removes the knowledge Paige seeded from this pack. You can switch it back on anytime, but she'll re-embed it fresh."
+          : "Paige stops carrying this into client conversations. You can switch it back on anytime.",
+        actionLabel: "Switch off",
+        destructive,
+      });
+      if (!ok) return;
+    }
     setSaving(r.slug);
     try {
       if (on) await install(r);
@@ -637,6 +693,10 @@ export default function Marketplace() {
           onToggle={toggle}
         />
       )}
+
+      {/* Destructive-confirm dialog for switching a capability OFF (#276) — rendered
+          once; opened on-demand by toggle()'s OFF branch via the useConfirm promise. */}
+      {dialog}
     </PageShell>
   );
 }
