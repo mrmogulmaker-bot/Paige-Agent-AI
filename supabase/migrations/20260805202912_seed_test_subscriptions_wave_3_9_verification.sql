@@ -70,9 +70,15 @@ JOIN public.tenants t
 JOIN public.platform_subscription_plans p
     ON p.slug = seed.plan_slug
 WHERE NOT EXISTS (
+    -- Guard on ANY LIVE subscription for the tenant, not just this (tenant_id, plan_id)
+    -- pair: the platform treats live subscriptions as ONE-PER-TENANT
+    -- (platform-subscription-checkout reads with .maybeSingle(); current_tenant_tier()
+    -- takes the newest active row). A per-plan guard would let a fresh/non-prod env that
+    -- already has one of these tenants on a DIFFERENT plan get a SECOND active row —
+    -- breaking checkout (multiple rows) or overriding the real tier. (Codex #383 P2.)
     SELECT 1
     FROM public.platform_subscriptions existing
     WHERE existing.tenant_id = t.id
-      AND existing.plan_id   = p.id
+      AND existing.status IN ('active', 'trialing')
 )
 ON CONFLICT DO NOTHING;
