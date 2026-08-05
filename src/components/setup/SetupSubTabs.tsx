@@ -1,6 +1,7 @@
 // Setup sub-tab strip (IA slice 1c-xi) — the tenant-config consolidation home:
-// General · Brand · Automations · Integrations · Legal · Billing · Playbook & Paige
-// · Team. MIRRORS ClientsSubTabs 1:1 (the proven 1c-viii-c pattern): a gate-AWARE
+// General · Brand · Automations · Integrations · Legal · Billing · Playbook & Paige.
+// (Team is NOT here — it has its own main-nav hub; a Setup › Team tab would be pure
+// nav duplication, §18.) MIRRORS ClientsSubTabs 1:1 (the proven 1c-viii-c pattern): a gate-AWARE
 // strip wrapped by a pathless layout, so a tab is shown iff its route would
 // actually render for the current viewer — no tab ever dead-ends on a "Restricted
 // area" card. Indigo underline on the active tab, NEVER gold (§11 — nav-active is
@@ -13,7 +14,7 @@
 //   • admin+platformStaff (RoleGate allow=["admin"] allowPlatformStaff) — General
 //   • admin-or-owner (AdminOnly = RoleGate allow=["admin"]) — Integrations · Legal ·
 //     Billing · Playbook  (AdminOnly does NOT admit scoped platform staff)
-//   • coach-visible (all staff) — Brand · Automations · Team
+//   • coach-visible (all staff) — Brand · Automations
 import { Link, useLocation } from "react-router-dom";
 import {
   SlidersHorizontal,
@@ -23,7 +24,6 @@ import {
   Scale,
   CreditCard,
   BookOpen,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -66,7 +66,9 @@ const SETUP_TABS: SetupTab[] = [
   // tab for it (defense-in-depth; the route/page also guards). Standalone + agency keep it.
   { key: "billing", label: "Billing", href: "/admin/setup/billing", dept: "Finance", icon: CreditCard, canSee: (a) => adminOnly(a) && !a.isSubAccount },
   { key: "playbook", label: "Playbook & Paige", href: "/admin/setup/playbook", dept: "Product", icon: BookOpen, canSee: adminOnly },
-  { key: "team", label: "Team", href: "/admin/setup/team", dept: "People", icon: Users, canSee: coachVisible },
+  // Team is NOT a Setup sub-tab — it has its own main-nav hub (/admin/team → TeamHub).
+  // A Setup › Team tab would be pure nav duplication (§18), so it lives only in the
+  // main nav; the People department is reached there, not here.
 ];
 
 const GENERAL_HREF = "/admin/setup/general";

@@ -527,7 +527,7 @@ export default function CalendarAdmin() {
             className="border-primary/30"
           >
             <Button asChild variant="outline" size="sm">
-              <Link to="/admin/integrations">
+              <Link to="/admin/setup/integrations">
                 Go to Integrations <ChevronRight className="h-4 w-4 ml-1.5" />
               </Link>
             </Button>

@@ -198,7 +198,7 @@ export default function EmailIntegrationConfig() {
         icon={Mail}
         title="Email"
         description="Your included Paige addresses live here. Paige shows when each one is ready; your own domain or mailbox remains optional."
-        backHref="/admin/integrations"
+        backHref="/admin/setup/integrations"
       />
 
       <TenantDomainIdentityCard />
