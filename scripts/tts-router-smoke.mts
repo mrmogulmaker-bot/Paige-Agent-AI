@@ -160,5 +160,56 @@ ok("both keyed, OpenAI echo → [echo, EL primary]",
     { provider: "elevenlabs", model: EL_MODEL, voiceId: EL_PRIMARY },
   ]));
 
+// ── OPERATOR / PLATFORM-OWNER branch (§9/§51 — the P1 no-tenant fix) ──────────────────────────
+// The platform owner (Super Admin) has NO tenant, so current_user_tenant_id() is null for them.
+// paige-tts used to hard-400 (`workspace_unresolved`) → the operator's chat TTS broke. The fix: on
+// a null tenant, gate on is_platform_owner and resolve a PLATFORM context (base voice, `_platform/`
+// cache prefix, NO tenant meter) instead of 400ing; a genuine non-owner with no tenant STILL 400s.
+//
+// The gate logic lives in paige-tts/index.ts (§18 one home). It imports Deno's http server +
+// supabase-js, so it can't be imported into Node here — this section (a) exercises the REAL pure
+// functions the operator path relies on (resolveVoiceId, ttsCacheKey), and (b) traces the exact
+// tenant-resolution DECISION TABLE via a small helper that MIRRORS index.ts's ternaries (honest §13:
+// this mirrors, it does not import, index.ts — a drift there is owed to the peer read of the diff).
+console.log("operator/platform-owner branch (§9/§51 no-tenant fix)");
+
+// (a) VOICE: the operator has no playbook/plan, so resolveVoiceId({requested, null, null}) MUST land
+//     on the base default — no tenant read required. A body voice_id still wins for the operator too.
+ok("operator (no playbook/plan) voice → base default (EL primary)",
+  eq(resolveVoiceId({ requested: null, playbookVoice: null, planSlug: null }).voice, DEFAULT_TTS_VOICE) &&
+  resolveVoiceId({ requested: null, playbookVoice: null, planSlug: null }).source === "default");
+ok("operator body voice_id still wins over base default",
+  eq(resolveVoiceId({ requested: EL_MALE, playbookVoice: null, planSlug: null }).voice, { provider: "elevenlabs", id: EL_MALE }));
+
+// (b) DECISION TABLE — mirrors paige-tts/index.ts: tenantId(trim) + isPlatformOwner → outcome.
+//     outcome ∈ { "400", "tenant", "operator" }; storagePrefix + meterTenantId derived exactly as index.ts.
+const decide = (resolvedTenant: string | null, isOwner: boolean) => {
+  const tenantId = String(resolvedTenant ?? "").trim();
+  if (!tenantId) {
+    if (isOwner !== true) return { outcome: "400" as const };
+    return { outcome: "operator" as const, storagePrefix: "_platform", meterTenantId: null as string | null };
+  }
+  return { outcome: "tenant" as const, storagePrefix: tenantId, meterTenantId: tenantId as string | null };
+};
+const TEN = "11111111-1111-1111-1111-111111111111";
+// (a) operator: no tenant + is_platform_owner → operator path, `_platform` prefix, meter skipped.
+ok("no-tenant + owner → operator path (_platform prefix, meter null)",
+  eq(decide(null, true), { outcome: "operator", storagePrefix: "_platform", meterTenantId: null }));
+ok("no-tenant + owner (empty-string tenant) → operator path too",
+  eq(decide("", true), { outcome: "operator", storagePrefix: "_platform", meterTenantId: null }));
+// (b) normal tenant → UNCHANGED (tenant prefix + tenant meter). No regression to the working path.
+ok("real tenant + non-owner → tenant path UNCHANGED (tenant prefix + tenant meter)",
+  eq(decide(TEN, false), { outcome: "tenant", storagePrefix: TEN, meterTenantId: TEN }));
+ok("real tenant + owner → still the tenant path (owner with own tenant is a normal tenant here)",
+  eq(decide(TEN, true), { outcome: "tenant", storagePrefix: TEN, meterTenantId: TEN }));
+// (c) non-owner with no tenant → the honest 400 stays (§9 not loosened for real tenants).
+ok("no-tenant + NON-owner → honest 400 (workspace_unresolved) preserved",
+  decide(null, false).outcome === "400");
+
+// (c) CACHE PATH SHAPE — the operator's mp3 lands under `_platform/<sha256>.mp3`, never a tenant folder.
+const opKey = await ttsCacheKey("operator hello", "elevenlabs", EL_PRIMARY, EL_MODEL);
+const opPath = `${decide(null, true).storagePrefix}/${opKey}.mp3`;
+ok("operator cache path is _platform/<64hex>.mp3 (never a tenant folder)", /^_platform\/[0-9a-f]{64}\.mp3$/.test(opPath));
+
 if (failures) { console.error(`\n${failures} check(s) FAILED`); process.exit(1); }
 console.log("\nAll tts-router pure checks passed.");
