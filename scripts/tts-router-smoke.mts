@@ -181,7 +181,7 @@ ok("operator (no playbook/plan) voice → base default (EL primary)",
 ok("operator body voice_id still wins over base default",
   eq(resolveVoiceId({ requested: EL_MALE, playbookVoice: null, planSlug: null }).voice, { provider: "elevenlabs", id: EL_MALE }));
 
-// (b) DECISION TABLE — mirrors paige-tts/index.ts: tenantId(trim) + isPlatformOwner → outcome.
+// (b) DECISION TABLE — mirrors paige-tts/index.ts: tenantId(trim) + isPlatformStaff → outcome.
 //     outcome ∈ { "400", "tenant", "operator" }; storagePrefix + meterTenantId derived exactly as index.ts.
 const decide = (resolvedTenant: string | null, isOwner: boolean) => {
   const tenantId = String(resolvedTenant ?? "").trim();
@@ -192,7 +192,7 @@ const decide = (resolvedTenant: string | null, isOwner: boolean) => {
   return { outcome: "tenant" as const, storagePrefix: tenantId, meterTenantId: tenantId as string | null };
 };
 const TEN = "11111111-1111-1111-1111-111111111111";
-// (a) operator: no tenant + is_platform_owner → operator path, `_platform` prefix, meter skipped.
+// (a) operator: no tenant + is_platform_admin (platform staff) → operator path, `_platform` prefix, meter skipped.
 ok("no-tenant + owner → operator path (_platform prefix, meter null)",
   eq(decide(null, true), { outcome: "operator", storagePrefix: "_platform", meterTenantId: null }));
 ok("no-tenant + owner (empty-string tenant) → operator path too",

@@ -111,24 +111,27 @@ serve(async (req: Request) => {
     }
     const tenantId = String(resolvedTenant ?? "").trim();
 
-    // ── §9/§51 OPERATOR TIER: the platform owner (Super Admin) legitimately has NO tenant of
-    // their own, so current_user_tenant_id() is null for them — exactly like the operator's chat
-    // (paige-ai-chat tolerates a null persona tenant rather than 400ing). Mirror that here: when
-    // there is no tenant, resolve the platform-owner path INSTEAD of hard-400ing, but ONLY for the
-    // real platform owner (is_platform_owner, JWT-derived, same authed RPC the other operator
-    // functions use — voice-access-token/comms-*). A GENUINE non-owner with no tenant is an anomaly
-    // and STILL gets the honest 400 — we do NOT loosen §9 for real tenants. Operator playback uses a
-    // PLATFORM-scoped cache prefix (never a tenant's folder) + base voice + no tenant meter (below).
+    // ── §9/§51 OPERATOR TIER: platform STAFF (super_admin AND scoped platform_admin) legitimately
+    // have NO tenant of their own, so current_user_tenant_id() is null for them — exactly like the
+    // operator's chat (paige-ai-chat tolerates a null persona tenant rather than 400ing). Mirror
+    // that here: when there is no tenant, resolve the platform path INSTEAD of hard-400ing, but ONLY
+    // for real platform staff. Gate on is_platform_admin() (owner ⊂ admin) — the SAME authority the
+    // UI uses to admit them: PaigeWorkspace mounts PaigePlatformDesk (the chat + this audio button)
+    // for `isPlatformStaff` (= is_platform_admin), so a scoped platform_admin can REACH playback and
+    // must not be 400'd here (a super_admin-only gate would strand them — the Codex #386 catch).
+    // A GENUINE non-staff caller with no tenant is an anomaly and STILL gets the honest 400 — §9 is
+    // TIGHTENED, not loosened, for real tenants. Operator playback uses a PLATFORM-scoped cache
+    // prefix (never a tenant's folder) + base voice + no tenant meter (below).
     let isOperator = false;
     if (!tenantId) {
-      const { data: isOwner, error: ownErr } = await authed.rpc("is_platform_owner");
-      if (ownErr) {
-        console.error("[paige-tts] is_platform_owner check failed:", ownErr.message);
+      const { data: isStaff, error: staffErr } = await authed.rpc("is_platform_admin");
+      if (staffErr) {
+        console.error("[paige-tts] is_platform_admin check failed:", staffErr.message);
         return json({ error: "workspace_unresolved" }, 500);
       }
-      if (isOwner !== true) return json({ error: "workspace_unresolved" }, 400);
+      if (isStaff !== true) return json({ error: "workspace_unresolved" }, 400);
       isOperator = true;
-      console.log("[paige-tts] operator/platform-owner playback (no tenant) — resolving platform context (§9/§51)");
+      console.log("[paige-tts] operator/platform-staff playback (no tenant) — resolving platform context (§9/§51)");
     }
 
     // Storage prefix (§9): a tenant's audio lives under `<tenantId>/`; the operator's under the
