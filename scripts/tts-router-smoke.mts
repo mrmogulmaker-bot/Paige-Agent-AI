@@ -163,7 +163,7 @@ ok("both keyed, OpenAI echo → [echo, EL primary]",
 // ── OPERATOR / PLATFORM-OWNER branch (§9/§51 — the P1 no-tenant fix) ──────────────────────────
 // The platform owner (Super Admin) has NO tenant, so current_user_tenant_id() is null for them.
 // paige-tts used to hard-400 (`workspace_unresolved`) → the operator's chat TTS broke. The fix: on
-// a null tenant, gate on is_platform_owner and resolve a PLATFORM context (base voice, `_platform/`
+// a null tenant, gate on is_platform_admin (platform staff) and resolve a PLATFORM context (base voice, `_platform/`
 // cache prefix, NO tenant meter) instead of 400ing; a genuine non-owner with no tenant STILL 400s.
 //
 // The gate logic lives in paige-tts/index.ts (§18 one home). It imports Deno's http server +
