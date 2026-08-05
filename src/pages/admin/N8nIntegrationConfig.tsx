@@ -96,7 +96,7 @@ export default function N8nIntegrationConfig() {
       <PageHeader
         icon={Workflow}
         title="n8n"
-        description="Connect your n8n account so Paige can run — and build — automations across all your tools on your behalf. Your key is encrypted and never leaves the server."
+        description="Connect n8n and Paige runs — and builds — your automations across every tool you use, on your behalf. Your key is encrypted and never leaves the server."
       />
 
       {loading ? (
@@ -145,11 +145,23 @@ export default function N8nIntegrationConfig() {
           </div>
         </SectionCard>
       ) : (
-        <SectionCard icon={Plug} title="Connect your n8n" description="Paste your instance URL and an n8n API key (n8n → Settings → API). Admin only.">
+        <SectionCard icon={Plug} title="Connect your n8n" description="Once you connect, Paige runs and builds your automations for you. Paste your instance URL and an n8n API key (n8n → Settings → API). Admin only.">
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="n8n-url">Instance URL</Label>
-              <Input id="n8n-url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://your-instance.app.n8n.cloud" />
+              {/* name/type deliberately non-email so browsers never autofill a saved account email into this field */}
+              <Input
+                id="n8n-url"
+                name="n8n-instance-url"
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="https://your-instance.app.n8n.cloud"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="n8n-key">API key</Label>
@@ -157,7 +169,7 @@ export default function N8nIntegrationConfig() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="n8n-label">Label <span className="text-muted-foreground">(optional)</span></Label>
-              <Input id="n8n-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Production" />
+              <Input id="n8n-label" name="n8n-connection-label" autoComplete="off" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Production" />
             </div>
             <Button variant="gold" onClick={connect} disabled={busy !== null || !baseUrl.trim() || !apiKey.trim()}>
               {busy === "connect" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plug className="mr-1.5 h-4 w-4" />}
