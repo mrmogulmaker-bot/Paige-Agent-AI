@@ -51,8 +51,11 @@ function EditorBody({ tenantName }: { tenantName: string }) {
   return (
     <div className="flex flex-col">
       {/* Sticky Save bar — the one gold act (§11) travels with the editor across
-          all 7 sections, exactly like the console header bar. */}
-      <div className="sticky top-0 z-10 -mx-4 mb-4 border-b border-border bg-background/85 px-4 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/70 sm:-mx-6 sm:px-6">
+          all 7 sections, exactly like the console header bar. Mounted BARE in the
+          PageShell (no wrapping SectionCard), so the bar spans the content column
+          full-width with no negative-margin bleed — the divider aligns with the
+          section Cards' left edge instead of guessing a card gutter (§6/§25). */}
+      <div className="sticky top-0 z-10 mb-4 border-b border-border bg-background/85 py-2.5 backdrop-blur supports-[backdrop-filter]:bg-background/70">
         <PaigeConsoleSaveBar
           tone="surface"
           dirty={editor.dirty}
