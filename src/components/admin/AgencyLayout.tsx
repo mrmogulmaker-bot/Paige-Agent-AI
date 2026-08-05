@@ -29,7 +29,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
-  Building2, ChevronDown, Loader2, LogOut, Network, UserCog, Users, Users2, LayoutDashboard, LogIn,
+  Building2, ChevronDown, Loader2, LogOut, Network, UserCog, Users, Users2, LayoutDashboard, LogIn, Store,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +52,11 @@ import { AgencyTeamPanel } from "@/components/admin/agency/AgencyTeamPanel";
 // component; scope prop set by the route. Distinct from /agency/team (the human
 // agency roster) — this teaches Paige's own VP team (§18 non-colliding home).
 import PaigeTeamDirectory from "@/pages/PaigeTeamDirectory";
+// #277 — the agency-side Marketplace CURATION surface. Distinct from the tenant's
+// own install view (/admin/marketplace): here the agency owner decides what their
+// sub-accounts may install. Reuses the tenant Marketplace primitives in curation
+// mode (§18 — one card, not a fork).
+import AgencyMarketplace from "@/pages/agency/AgencyMarketplace";
 import { toast } from "sonner";
 
 type LoginPref = "agency" | "last_account";
@@ -68,6 +73,8 @@ const AGENCY_NAV: AgencyNav[] = [
   // #244 — Paige's own VP team (learn layer). Named distinctly from "Team" (the
   // human roster) so the two never blur together.
   { label: "Paige Team", href: "/agency/paige-team", icon: Users2 },
+  // #277 — curate which Marketplace capabilities the agency's sub-accounts can use.
+  { label: "Marketplace", href: "/agency/marketplace", icon: Store },
 ];
 
 /**
@@ -289,6 +296,9 @@ export default function AgencyLayout() {
           {/* #244 — learn about your Paige team (agency scope). Inherits the shell's
               server-proven eligibility gate; read-only, no extra guard. */}
           <Route path="paige-team" element={<PaigeTeamDirectory scope="agency" />} />
+          {/* #277 — agency Marketplace curation. Inherits the shell's server-proven
+              agency eligibility gate; the RPC + RLS re-check authority server-side. */}
+          <Route path="marketplace" element={<AgencyMarketplace />} />
           <Route path="*" element={<Navigate to="/agency" replace />} />
         </Routes>
       </main>
