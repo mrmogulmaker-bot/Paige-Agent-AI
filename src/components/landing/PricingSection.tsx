@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 /**
  * Two-section public pricing per Doctrine §197 (Billing Layer Taxonomy):
- *   §1 FOR BUSINESSES     → LAYER 1 (Tenant → Paige) — Practice / Academy / Enterprise
+ *   §1 FOR BUSINESSES     → LAYER 1 (Tenant → Paige) — Solo / Academy / Enterprise
  *   §2 FOR YOUR CLIENTS   → LAYER 2 (End Customer → Tenant) sovereignty archetypes
  *
  * LAYER 4 (Consumer → Paige) is invite-only via tokenized email/SMS delivery;
@@ -48,9 +48,9 @@ const businessTiers: BusinessTier[] = [
     popular: false,
   },
   {
-    slug: "agency",
-    name: "Agency",
-    layer: "For practices and agencies with a team",
+    slug: "academy",
+    name: "Academy",
+    layer: "For academies and teams running a full book",
     price: "$397",
     period: "/mo",
     seats: "10 seats included",
@@ -73,7 +73,7 @@ const businessTiers: BusinessTier[] = [
     period: "",
     seats: "Unlimited seats",
     features: [
-      "Everything in Agency, plus:",
+      "Everything in Academy, plus:",
       "Multi-tenant orchestration",
       "Dedicated infrastructure",
       "SOC 2 / custom DPA",

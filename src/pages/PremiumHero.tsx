@@ -293,10 +293,13 @@ const STEPS = [
   { n: "03", title: "Scale", body: "Run your entire roster from one engine — from solo to scaled." },
 ];
 
+// Prices/names mirror the DB-true platform taxonomy (platform_subscription_plans:
+// Solo $149 / Academy $397 / Enterprise custom). No phantom $58/$349, no "Practice"/
+// "Studio" tier nouns (§2/§3 — those aren't real plans).
 const PLANS = [
-  { name: "Solo", price: "$58", tagline: "Just you, fully covered.", features: ["Paige runs your CRM & pipeline", "Auto-drafted follow-ups & recaps", "Client welcome sequences", "Cohort check-ins & at-risk flags"], highlight: false },
-  { name: "Practice", price: "$149", tagline: "Where most practices land.", features: ["Everything in Solo", "Custom playbooks per seat", "Advanced analytics & signals", "Priority support"], highlight: true },
-  { name: "Studio", price: "$349", tagline: "For the operator running the whole show.", features: ["Everything in Practice", "Full team roster & routing", "White-label workspace", "Dedicated success partner"], highlight: false },
+  { name: "Solo", price: "$149", tagline: "Just you, fully covered.", features: ["Paige runs your CRM & pipeline", "Auto-drafted follow-ups & recaps", "Client welcome sequences", "At-risk flags before clients slip"], highlight: false },
+  { name: "Academy", price: "$397", tagline: "For the team running a full book.", features: ["Everything in Solo", "White-label workspace & branding", "Custom playbooks per seat", "Advanced analytics & signals", "Priority support"], highlight: true },
+  { name: "Enterprise", price: "Custom", tagline: "For the operator running many businesses.", features: ["Everything in Academy", "Multi-brand orchestration", "Dedicated infrastructure", "White-glove migration & support"], highlight: false },
 ];
 
 const QUOTES = [
