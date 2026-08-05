@@ -39,6 +39,64 @@ const ICONS: Record<string, LucideIcon> = {
   TrendingUp, Palette, Mic, Workflow, BookOpen, Dumbbell, Briefcase, Building2, LineChart, Sparkles,
 };
 
+// §210/§32: surface the REAL edge-function error instead of the opaque framework
+// string "Edge Function returned a non-2xx status code". On a non-2xx,
+// supabase.functions.invoke() sets data=null and puts the honest JSON body on
+// `error.context` (the raw Response) — never on `error.message`. We read that body,
+// pull out `.error` (a plain string like "Not authorized for this tenant", or a Zod
+// `flatten()` object on a 400), and render it legibly. Always logs the raw detail to
+// the console so the NEXT failure is diagnosable, while the toast stays user-legible
+// (capped, no stack, framework-generic filtered out — §11/§13/§36).
+async function edgeErrorMessage(error: unknown, fallback: string): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const anyErr = error as any;
+  // Always log the raw framework error for developer diagnosis (§32).
+  console.error("[marketplace-install] edge invoke failed:", anyErr?.message ?? error, anyErr);
+
+  const clean = (s: string): string => {
+    const t = s.trim();
+    // The framework's opaque string is exactly what we're replacing — never surface it.
+    if (!t || /returned a non-2xx status code/i.test(t)) return fallback;
+    return t.length > 300 ? `${t.slice(0, 297)}…` : t;
+  };
+
+  // Summarize a Zod flatten() object ({ fieldErrors, formErrors }) or any object body
+  // into one legible line, rather than dumping "[object Object]" or raw JSON at a tenant.
+  const summarize = (v: unknown): string => {
+    if (typeof v === "string") return clean(v);
+    if (v && typeof v === "object") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const o = v as any;
+      const parts: string[] = [];
+      if (o.formErrors && Array.isArray(o.formErrors)) parts.push(...o.formErrors.map(String));
+      if (o.fieldErrors && typeof o.fieldErrors === "object") {
+        for (const [k, msgs] of Object.entries(o.fieldErrors)) {
+          if (Array.isArray(msgs) && msgs.length) parts.push(`${k}: ${msgs.join(", ")}`);
+        }
+      }
+      if (parts.length) return clean(parts.join("; "));
+    }
+    return fallback;
+  };
+
+  const ctx = anyErr?.context;
+  if (ctx && typeof ctx.json === "function") {
+    try {
+      const body = await ctx.json();
+      if (body?.error != null) return summarize(body.error);
+    } catch {
+      // Non-JSON body (HTML error page, already-consumed) — fall through.
+    }
+  } else if (ctx && typeof ctx === "object" && (ctx as { error?: unknown }).error != null) {
+    // Some client versions expose an already-parsed object on .context.
+    return summarize((ctx as { error?: unknown }).error);
+  }
+
+  // No honest body available — surface the framework message only if it isn't the
+  // opaque generic; otherwise the caller's fallback.
+  return typeof anyErr?.message === "string" ? clean(anyErr.message) : fallback;
+}
+
 // Module-scope grouping helper so the full catalog (chip source) and the filtered
 // catalog (rendered sections) build their maps the same way.
 function groupByCategory(list: CatalogRow[]): Map<string, CatalogRow[]> {
@@ -248,7 +306,7 @@ export default function Marketplace() {
       const { data, error } = await supabase.functions.invoke("marketplace-checkout-session", {
         body: { item_slug: r.slug },
       });
-      if (error) throw new Error(error.message ?? "Couldn't start checkout");
+      if (error) throw new Error(await edgeErrorMessage(error, "Couldn't start checkout — please try again."));
       const res = (data ?? {}) as Record<string, unknown>;
       if (res.error) throw new Error(String(res.error));
       const url = typeof res.url === "string" ? res.url : "";
@@ -259,10 +317,13 @@ export default function Marketplace() {
 
     // The edge function is the universal install path — it embeds a knowledge
     // pack's docs (which SQL can't) and finalizes through the gated RPC.
+    // No `installed_by_agent`: this is the human clicking Install in the UI, so there
+    // is no agent author (Paige-chat/MCP/Stripe callers send their own string). The
+    // edge guard accepts it absent OR null (#269) — we send it absent, the clean shape.
     const { data, error } = await supabase.functions.invoke("marketplace-install", {
-      body: { item_slug: r.slug, installed_by_agent: null },
+      body: { item_slug: r.slug },
     });
-    if (error) throw new Error(error.message ?? "Install failed");
+    if (error) throw new Error(await edgeErrorMessage(error, "Couldn't add this to your Paige — please try again."));
     const res = (data ?? {}) as Record<string, unknown>;
     if (res.error) throw new Error(String(res.error));
 

@@ -36,12 +36,18 @@ const corsHeaders = {
 
 const BodySchema = z.object({
   item_slug: z.string().min(1).max(120).regex(/^[a-z0-9_]+$/),
-  tenant_id: z.string().uuid().optional(), // platform-owner override; ignored otherwise
-  installed_by_agent: z.string().max(40).optional(), // 'paige' when driven from chat
+  // `.nullish()` (= nullable + optional) not `.optional()`: the Marketplace UI button
+  // sends these as `null` to mean "no value" (installed_by_agent: null for "no agent"),
+  // and Zod's `.optional()` accepts `undefined` but REJECTS `null` — which 400'd every
+  // user-facing Blueprint install across all tiers (#269). Every reader below coerces
+  // with `?? null`, so accepting null here is contract-safe (§37) and defensive against
+  // any future null-sender resurrecting this.
+  tenant_id: z.string().uuid().nullish(), // platform-owner override; ignored otherwise
+  installed_by_agent: z.string().max(40).nullish(), // 'paige' when driven from chat, null from the UI
   // Service-role (paige-mcp) path only: the trusted actor paige-mcp resolved from its
   // ActorCtx. Ignored on the user-JWT path (auth.uid() is the actor there). Re-verified
   // as a tenant admin of tenant_id before anything installs — never trusted (§9/§13).
-  actor_user_id: z.string().uuid().optional(),
+  actor_user_id: z.string().uuid().nullish(),
 });
 
 // Decode a JWT's `role` claim without verifying the signature — enough to branch
