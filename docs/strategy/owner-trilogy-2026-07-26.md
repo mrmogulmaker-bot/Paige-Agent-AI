@@ -391,6 +391,101 @@ Every pillar in this trilogy rests on primitives that already ship. This is why 
 | Entity Type Awareness | §2 no-assumed-expertise · §7 tenant-authored · §16 Legal/Compliance dept · signup wizard (B-Platform-v2, ships) |
 Zero new fundamental primitives required. Every pillar is a compounding on shipped infrastructure.
 ---
+
+## Capabilities the Pillars enable — the JARVIS-tier operator AI COO experience (owner-approved 2026-08-04)
+
+The four pillars are the ARCHITECTURE. This section is the EXPERIENCE tenants have because those pillars ship. Every capability is either substrate-covered today (§8 action bus + §14 team + §16 dept model + §26 memory + §36 intuitiveness moat + §242 VP addressability) or activates when the pillar it depends on lands.
+
+Enumerated here so no capability gets lost between pillars, and so the tenant-facing surface stays legible during build sequencing.
+
+### Core operational capabilities
+
+These are the baseline capabilities every tenant expects from an AI COO. Substrate-covered today, made concrete as pillars ship:
+
+1. **Follow-ups** — proactive draft-first follow-ups on every open thread, action item, unresolved obligation. Fires from §8 action bus; attributed via §242 byline to appropriate VP (CURA/MERIT/VERA/NEXUS/MENTOR/ZION).
+2. **Proactive messaging** — client emails, team messages, external comms drafted before the tenant asks. Draft-first at `autonomy_lane='confirm'`; opt-in autopilot per §16 tiers.
+3. **Brief creation** — daily/weekly/monthly synthesis briefs, streamed into Command Center. Audience-tuned: personal, team, board, investor.
+4. **Client emails** — CURA-owned client-facing comms with full Client Portal relationship context loaded.
+5. **Customer invites + onboarding** — invitation flows, onboarding sequences, welcome kits.
+6. **Research** — market, competitor, prospect research + document deep-reads. Extends Pillar 4 Owner Analytics + Pillar 3 Direction A browser agents.
+7. **Product suggestions + creation** — Paige proposes new offerings based on client demand + market signals + tenant capabilities.
+8. **R&D** — Paige runs actual experiments, prototypes offers, A/B tests concepts, reports results. Execution + learning loops, not just proposals.
+
+### Extended JARVIS-tier capability surface
+
+Eight categories, ~27 sub-capabilities. Each fires in its wave-appropriate slot.
+
+#### A. Sensory + Always-On Presence
+- **Always-on ambient voice** — Paige reachable from anywhere via voice trigger, not just when app is open. Extends Voice Layer.
+- **Multi-modal awareness** — Paige SEES: watches Studio sessions and coaches in real-time, reviews uploaded videos/podcasts, reads screenshots, transcribes call recordings to extract action items.
+- **Emotional intelligence / mood detection** — Paige notices tenant stress (tone, cadence) and adjusts delivery.
+- **Time/context awareness** — no 3am sends, weekend suppression, timezone/schedule respect.
+
+#### B. Human Team Orchestration (extends §14/§16 from AI VPs to human staff)
+- **Assign to HUMAN team members** — Paige delegates to Sarah on Marketing, tracks progress, escalates. Tenant's staff become first-class citizens in Paige's org chart.
+- **External human coordination** — outside accountant, attorney, vendors, clients' assistants.
+- **Talent gap detection + hiring** — capacity monitoring, drafts postings, screens applicants, schedules interviews.
+
+#### C. Real-Time Legal Watchdog (extends Business Vault + product-legal)
+- **Reactive legal flagging** — before harm happens ("that marketing claim triggers FTC substantiation").
+- **Contract drafting** — client agreements, NDAs, employment, vendor. Practice-typed + jurisdiction-aware.
+- **Tax planning + insurance advisory** — proactive strategic advice, not just deadline tracking.
+
+#### D. Financial Forecasting + Scenario Modeling (extends Vault + Analytics + MERIT)
+- **Cash-flow forecasting** — 30/60/90-day projection, runway warnings.
+- **Scenario modeling** — hire impact, offer changes, expansion moves.
+- **Pricing optimization** — demand elasticity, competitive positioning, LTV impact.
+
+#### E. Autonomous Marketing Execution (extends NEXUS)
+- **Autonomous campaign execution** — Paige RUNS campaigns end-to-end. Sends, A/B tests, optimizes, iterates.
+- **SEO monitoring + content-gap filling** — watches rankings, drafts posts to fill gaps.
+- **Social media management** — draft/schedule/monitor/respond in tenant voice.
+- **Reputation management** — reviews (Google/Yelp/industry), respond, escalate crises.
+- **PR / press monitoring** — mentions, drafted responses to inquiries, competitor tracking.
+
+#### F. Content Creation Depth (extends Studio)
+- **Educational content generation** — courses, workbooks, guides for tenants to SELL. Feeds R&D.
+- **Video/audio production** — scripts, thumbnails, show notes.
+- **Long-form thought leadership** — articles, LinkedIn, newsletters at cadence.
+
+#### G. Meeting Orchestration (extends Calendar + Voice Layer)
+- **Meeting prep briefs** — before every meeting: who, history, likely topics, drafted talking points.
+- **Real-time meeting participation** — join call, transcribe, extract actions, draft follow-ups.
+- **Meeting agenda authoring** — recurring meetings (standups, check-ins, board).
+
+#### H. Strategic Reporting (extends Owner Analytics + Command Center)
+- **Board / investor updates** — audience-tuned, auto-generated at cadence.
+- **Team performance reviews** — per team member, based on tracked work + outputs + feedback.
+- **Weekly leadership brief** — Monday-morning executive synthesis.
+
+### Autonomy tier defaults across capabilities
+
+Per §16, every capability defaults to `autonomy_lane='confirm'` (draft-first) unless the tenant explicitly opts a specific capability into `auto`.
+
+**Must-stay-draft-first regardless of tenant preference:**
+- Anything spending real money (§38 money boundary)
+- Anything touching a real client's inbox/phone/DM
+- Anything with legal exposure (Category C flags)
+- Anything with financial exposure beyond the tenant's own account
+
+**Approved-for-autopilot after tenant opt-in:**
+- Analytical / research work (competitive scraping, doc extraction, market research)
+- Internal drafts + prep (briefs, agendas, review outlines, board packs — for tenant's own eyes)
+- Time-sensitive nudges to tenant themselves ("time to review", "meeting in 15 minutes")
+
+### Doctrine cross-references
+
+- **§7** Paige-as-portal — capabilities are HOW she portals
+- **§8** action bus — every capability files onto this
+- **§14** Paige orchestrates a team — extends to human staff (Category B)
+- **§16** 10-dept model + autonomy tiers — capabilities route to appropriate VP with correct default
+- **§26** semantic memory — every capability improves per-tenant over time
+- **§36** intuitiveness moat — proactive surfacing default (draft-first, not empty prompt)
+- **§38** money boundary — never autopilot on tenant client money
+- **§46** proactive-not-passive rhythm — extends to Paige's own behavior
+- **§242** VP addressability — every capability output carries appropriate VP byline
+
+---
 ## Cross-cutting substrate — Conversations + Voice + Integrations + Memory
 **Not new pillars — substrate.** Four capabilities cut across every pillar in the Trilogy. They are first-class infrastructure every pillar flows through, and they are how the four pillars feel like one product to the tenant. They are named separately here because they are load-bearing, not because they are competing with the pillars for a fifth slot on the spine.
 - **Conversations (Unified Comms Substrate per §49) — SHIPPED.** Every pillar's outputs land in Conversations: Systems Check alerts arrive as a Conversation thread; Vault renewal reminders arrive as a Conversation thread; Twin drafts arrive for approval as a Conversation thread; Owner Analytics briefs arrive as a Conversation thread. Conversations is how Paige talks to the operator and how clients talk back. Already shipped per tasks #70, #78, #89, #112, #121-146.
