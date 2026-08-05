@@ -7,11 +7,13 @@
 import { describe, expect, it } from "vitest";
 import {
   buildFundingProgramVocab,
+  buildLaneGuardSection,
   buildNeutralCorePrompt,
   buildPaigePersonaBlock,
   buildUserContext,
   CREDIT_DENYLIST,
   CREDIT_PROGRAM_DENYLIST,
+  deriveFinanceInScopeFromFeatures,
   HARD_GUARDRAIL_MARKER,
   resolveDisputeReferralLabel,
   sanitizeClientContextForTier,
@@ -146,6 +148,103 @@ describe("N5 §37 — sanitizeClientContextForTier drops credit for non-funding"
   });
   it("passes credit through untouched for a funding tenant", () => {
     expect(sanitizeClientContextForTier(creditCtx, true)).toBe(creditCtx);
+  });
+});
+
+// ===========================================================================
+// #184 KILL — the persona SCOPE/lane guard is DATA-DRIVEN. These are the
+// load-bearing both-directions assertions: the SAME edge code (buildPaigePersonaBlock
+// / buildLaneGuardSection), fed two different installed-Blueprint DATA sets, keeps a
+// coaching/consulting tenant credit-CLEAN AND puts credit IN-scope for a funding
+// tenant — with ZERO vertical named in the edge code. The distinction lives entirely
+// in playbook_config.refusal_boundaries (the installed Blueprint's data).
+// ===========================================================================
+
+// The credit-clean refusal_boundaries a horizontal (consulting) Blueprint ships —
+// mirrors the consulting v1.0.0 manifest (20260805120000).
+const CONSULTING_BOUNDARIES = [
+  "Don't give licensed legal, tax, or accounting advice — route those to a qualified professional.",
+  "Stay inside this engagement's agreed scope; if the client asks for work beyond it, flag a change order to the team rather than absorbing it silently.",
+  "Never commit the consultant to a deliverable, deadline, or price without explicit approval.",
+  "Never fabricate a result, a delivered output, or a meeting that didn't happen.",
+  "Keep every client's and every engagement's information strictly separate.",
+];
+
+// The refusal_boundaries the funding Blueprint ships — DECLARE credit/capital in-scope
+// (mirrors the funding v1.1.0 manifest).
+const FUNDING_BOUNDARIES = [
+  "Credit, business credit, funding, lenders, and capital strategy ARE in scope for this practice — raise them when they genuinely help the client get funding-ready.",
+  "You are not a licensed attorney, accountant, or investment advisor — for regulated legal, tax, or securities advice, route the client to a qualified professional.",
+  "Never guarantee lender approval, a specific credit-score increase, or a funding amount — outcomes depend on the lender and the client's own profile.",
+  "Dispute and credit-repair execution is handled by a separate specialist — refer that work out, don't perform it here.",
+];
+
+describe("#184 §2 — the SCOPE guard is data-driven, proven BOTH directions from Blueprint data", () => {
+  it("CONSULTING (horizontal) Blueprint → credit-CLEAN persona, no vertical named", () => {
+    const consultingPlaybook = {
+      persona: { name: "Paige", role: "engagement assistant", domain: "business consulting", tone: "sharp" },
+      probingQuestions: [{ ask: "What outcome must this engagement deliver?", captures: "objective" }],
+      journey: [{ label: "Discovery", description: "Scope and stakeholders" }],
+      refusal_boundaries: CONSULTING_BOUNDARIES,
+    };
+    // financeInScope=false — a consulting tenant never opts into finance.
+    const persona = buildPaigePersonaBlock(consultingPlaybook, "Northstar Consulting", false, null);
+
+    // The tenant's OWN boundaries lead — the data-driven SCOPE section is present…
+    expect(persona).toContain("SCOPE & BOUNDARIES");
+    expect(persona).toContain("business consulting"); // tenant domain leads
+    // …and the assembled prompt is entirely credit/funding-free (both directions of the denylist).
+    expect(CREDIT_DENYLIST.test(persona)).toBe(false);
+    expect(CREDIT_PROGRAM_DENYLIST.test(persona)).toBe(false);
+  });
+
+  it("FUNDING (vertical) Blueprint → credit IS in-scope, straight from the boundary DATA", () => {
+    const fundingPlaybook = {
+      persona: { name: "Paige", role: "funding strategist", domain: "funding and capital-raising coaching", tone: "sharp" },
+      probingQuestions: [{ ask: "What are you raising capital for?", captures: "funding_objective" }],
+      journey: [{ label: "Assessment", description: "Readiness reviewed" }],
+      refusal_boundaries: FUNDING_BOUNDARIES,
+    };
+    // financeInScope=true — this tenant opted into the is_finance Blueprint.
+    const persona = buildPaigePersonaBlock(fundingPlaybook, "Apex Funding", true, null);
+
+    expect(persona).toContain("SCOPE & BOUNDARIES");
+    // Credit/funding vocabulary IS present — because the Blueprint DATA declares it in-scope,
+    // NOT because any vertical is hardcoded in the edge code.
+    expect(CREDIT_DENYLIST.test(persona)).toBe(true);
+    expect(persona).toContain("in scope for this practice");
+    // And the neutral platform-default guardrail is NOT emitted when the tenant carries boundaries.
+    expect(persona).not.toContain(HARD_GUARDRAIL_MARKER);
+  });
+
+  it("buildLaneGuardSection: three branches — boundaries win, then finance fallback, then neutral default", () => {
+    // (a) boundaries present → data leads regardless of the finance flag.
+    expect(buildLaneGuardSection({ refusal_boundaries: CONSULTING_BOUNDARIES }, "Acme", false))
+      .toContain("SCOPE & BOUNDARIES");
+    // (b) no boundaries + finance-in-scope → generic vertical-free note, no credit words, no neutral guardrail.
+    const financeFallback = buildLaneGuardSection({}, "Acme", true);
+    expect(CREDIT_DENYLIST.test(financeFallback)).toBe(false);
+    expect(financeFallback).not.toContain(HARD_GUARDRAIL_MARKER);
+    // (c) no boundaries + not finance → the neutral platform-default guardrail (§2), credit named only to forbid.
+    const neutral = buildLaneGuardSection(null, "Acme", false);
+    expect(neutral).toContain(HARD_GUARDRAIL_MARKER);
+    expect(neutral.trimEnd().endsWith("does not provide.")).toBe(true); // excisable by the denylist test
+  });
+});
+
+describe("#184 — deriveFinanceInScopeFromFeatures is the GENERIC no-join signal (no vertical literal)", () => {
+  it("reads the generic finance_in_scope flag, true for both boolean and string 'true'", () => {
+    expect(deriveFinanceInScopeFromFeatures({ finance_in_scope: true })).toBe(true);
+    expect(deriveFinanceInScopeFromFeatures({ finance_in_scope: "true" })).toBe(true);
+  });
+  it("false for a coaching/consulting tenant — and the legacy 'funding' signals no longer flip it", () => {
+    expect(deriveFinanceInScopeFromFeatures({})).toBe(false);
+    expect(deriveFinanceInScopeFromFeatures(null)).toBe(false);
+    // The generic no-join signal deliberately does NOT key on the vertical literal — a
+    // tenant flagged only by the legacy features must be BACKFILLED to finance_in_scope
+    // (the migration does this); the raw legacy keys alone do not light up this signal.
+    expect(deriveFinanceInScopeFromFeatures({ playbook: "funding" })).toBe(false);
+    expect(deriveFinanceInScopeFromFeatures({ enabled_skills: ["funding"] })).toBe(false);
   });
 });
 
