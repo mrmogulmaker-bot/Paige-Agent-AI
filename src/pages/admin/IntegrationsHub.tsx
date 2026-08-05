@@ -43,6 +43,7 @@ type ConfigShape = {
 
 type Counts = {
   n8n: number;
+  n8nMcpConfigured: boolean;
   mcp: number;
   telegramConfigured: boolean;
   recentSubscriptionEvents: number;
@@ -106,7 +107,7 @@ export default function IntegrationsHub() {
   const reduce = useReducedMotion();
   const [config, setConfig] = useState<ConfigShape | null>(null);
   const [counts, setCounts] = useState<Counts>({
-    n8n: 0, mcp: 0, telegramConfigured: false, recentSubscriptionEvents: 0,
+    n8n: 0, n8nMcpConfigured: false, mcp: 0, telegramConfigured: false, recentSubscriptionEvents: 0,
     envelopes: 0, bookings: 0, socialPosts: 0, enrichments: 0, emailConnected: false,
   });
 
@@ -132,10 +133,14 @@ export default function IntegrationsHub() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const sb = supabase as any;
       const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-      const [cfg, n8n, mcp, tg, sub, env, bkg, soc, enr, email] = await Promise.all([
+      const [cfg, n8n, n8nMcp, mcp, tg, sub, env, bkg, soc, enr, email] = await Promise.all([
         sb.from("paige_config").select("ghl_pit_ref, ghl_location_id, langsmith_project, posthog_project_url, sentry_org_slug, meta_default_page_id, cal_default_event_type_id, apollo_auto_enrich, docusign_templates").eq("id", 1).maybeSingle(),
         sb.rpc("get_tenant_n8n_connection"),
-        sb.from("paige_mcp_connections").select("id", { count: "exact", head: true }).eq("enabled", true),
+        // MCP connections live in the TENANT-SCOPED tenant_mcp_connections (the runtime
+        // source of truth), discriminated by vendor — NOT the legacy platform-global
+        // paige_mcp_connections (0 rows; #267). One row per (tenant, vendor).
+        sb.rpc("get_tenant_mcp_connection", { _vendor: "n8n" }),
+        sb.rpc("get_tenant_mcp_connection", { _vendor: "zapier" }),
         sb.from("paige_telegram_config").select("default_admin_chat_id").eq("id", 1).maybeSingle(),
         sb.from("paige_subscription_events").select("id", { count: "exact", head: true }).gte("created_at", since),
         sb.from("paige_signature_envelopes").select("id", { count: "exact", head: true }),
@@ -147,7 +152,8 @@ export default function IntegrationsHub() {
       setConfig(cfg.data as ConfigShape | null);
       setCounts({
         n8n: (n8n as { data?: { configured?: boolean } | null } | null)?.data?.configured ? 1 : 0,
-        mcp: mcp.count ?? 0,
+        n8nMcpConfigured: Boolean((n8nMcp as { data?: { configured?: boolean } | null } | null)?.data?.configured),
+        mcp: (mcp as { data?: { configured?: boolean } | null } | null)?.data?.configured ? 1 : 0,
         telegramConfigured: Boolean(tg.data?.default_admin_chat_id),
         recentSubscriptionEvents: sub.count ?? 0,
         envelopes: env.count ?? 0,
@@ -177,10 +183,12 @@ export default function IntegrationsHub() {
 
   const statusFor = (key: string): { state: PillState; label: string } => {
     switch (key) {
-      case "n8n": return counts.n8n > 0 ? { state: "success", label: "Connected" } : { state: "off", label: "Not configured" };
+      // Connected if EITHER the visible n8n MCP endpoint (#267) OR the under-the-hood REST
+      // connection is configured — the tile must reflect the runtime, not one path (§13).
+      case "n8n": return counts.n8n > 0 || counts.n8nMcpConfigured ? { state: "success", label: "Connected" } : { state: "off", label: "Not configured" };
       case "stripe": return counts.recentSubscriptionEvents > 0 ? { state: "success", label: `${counts.recentSubscriptionEvents} events (7d)` } : { state: "off", label: "Awaiting events" };
       case "ghl": return config?.ghl_location_id ? { state: "success", label: "Connected" } : { state: "off", label: "Not configured" };
-      case "zapier": return counts.mcp > 0 ? { state: "success", label: `${counts.mcp} active` } : { state: "off", label: "Not configured" };
+      case "zapier": return counts.mcp > 0 ? { state: "success", label: "Connected" } : { state: "off", label: "Not configured" };
       case "telegram": return counts.telegramConfigured ? { state: "success", label: "Active" } : { state: "off", label: "Not configured" };
       case "email": return counts.emailConnected ? { state: "success", label: "Connected" } : { state: "off", label: "Not connected" };
       case "firecrawl": return { state: "success", label: "Active" };
@@ -207,9 +215,12 @@ export default function IntegrationsHub() {
   // (§15) and never a fabricated "connected" (§13).
   const detailRows = (key: string): { label: string; value: string }[] => {
     switch (key) {
-      case "n8n": return [{ label: "Connection", value: counts.n8n > 0 ? "Connected" : "Not connected" }];
+      case "n8n": return [
+        { label: "MCP endpoint", value: counts.n8nMcpConfigured ? "Connected" : "Not connected" },
+        { label: "API connection", value: counts.n8n > 0 ? "Connected" : "Not connected" },
+      ];
       case "stripe": return [{ label: "Events (last 7 days)", value: String(counts.recentSubscriptionEvents) }];
-      case "zapier": return [{ label: "Active MCP actions", value: String(counts.mcp) }];
+      case "zapier": return [{ label: "MCP connection", value: counts.mcp > 0 ? "Connected" : "Not connected" }];
       case "telegram": return [{ label: "Admin channel", value: counts.telegramConfigured ? "Configured" : "Not set" }];
       case "email": return [{ label: "Inbox", value: counts.emailConnected ? "Connected" : "Not connected" }];
       case "langsmith": return config?.langsmith_project ? [{ label: "Project", value: config.langsmith_project }] : [];

@@ -3270,7 +3270,7 @@ SPINNING UP A NEW SPECIALIST — only when the roster genuinely lacks the capabi
 
 AUTOMATIONS (n8n) — if the workspace has connected an n8n account, you have the FULL n8n lifecycle across all their tools: list, get, executions, run, execution_get, validate, create, update, activate, deactivate, archive, delete. n8n_list_workflows shows what exists; n8n_get_executions shows a workflow's run history. n8n_run_workflow FIRES a workflow that has a webhook trigger. Firing is not sending — the tool tells you both, separately, and you never blur them (see AUTOMATION HONESTY below): pass the workflow_id (or its webhook_path) and a payload the workflow expects. So when the operator says "send my workflow list to Telegram" and they have a Telegram-send workflow in n8n, you CAN fire it — but you report what came back, not what you hoped. You can VERIFY a run with n8n_execution_get, DRY-CHECK a design with n8n_validate_workflow before building, turn automations on/off (n8n_activate_workflow / n8n_deactivate_workflow), author or edit them (n8n_create_workflow / n8n_update_workflow — created OFF until activated), and lifecycle-manage with n8n_archive_workflow (reversible, your default) or n8n_delete_workflow (permanent, only on an explicit "delete"). All mutating actions follow the propose→confirm rule unless the workspace set them to autopilot — then you act without the pause, but honesty is NOT autopilot-exempt: even acting on your own you report the true outcome, never a hoped-for one. Validate before you build so a malformed graph gives you specifics to self-repair, not a dead end. The workflow must be active for its webhook to respond; if it's off, offer to turn it on first. If no n8n is connected, the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it ran.
 
-ZAPIER — if the workspace has connected a Zapier (MCP) account, you can reach across 9,000+ apps (Slack, Gmail, Google Sheets, HubSpot, Trello, and thousands more) through their Zapier actions. zapier_list_actions shows what THIS workspace has enabled; zapier_run_action RUNS one — resolve the exact tool_name from the list first, then pass the inputs that action expects. Running is doing: you report what Zapier actually returned, never a hoped-for outcome (the same honesty as firing an automation). zapier_run_action follows the propose→confirm rule unless the workspace set it to autopilot. If no Zapier is connected the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it exists or ran. n8n and Zapier are complementary: n8n is their own workflow engine; Zapier is the fast bridge to apps they haven't wired in n8n. Pick whichever the operator already has the automation/app in.
+ZAPIER — if the workspace has connected a Zapier (MCP) account, you can reach across 9,000+ apps (Slack, Gmail, Google Sheets, HubSpot, Trello, and thousands more) through their Zapier actions. zapier_list_actions shows what THIS workspace has enabled; zapier_run_action RUNS one — resolve the exact tool_name from the list first, then pass the inputs that action expects. Running is doing: you report what Zapier actually returned, never a hoped-for outcome (the same honesty as firing an automation). zapier_run_action follows the propose→confirm rule unless the workspace set it to autopilot. If no Zapier is connected the tool says so — tell the operator they can connect one in Settings → Integrations, don't pretend it exists or ran. n8n and Zapier are complementary: n8n is their own workflow engine; Zapier is the fast bridge to apps they haven't wired in n8n. Pick whichever the operator already has the automation/app in. SEPARATELY, if the workspace has published an n8n MCP endpoint (an MCP Server Trigger) you also have n8n_mcp_list_tools / n8n_mcp_call_tool — an OUTBOUND MCP path that calls the tools they exposed on that endpoint. This is DISTINCT from the n8n_* workflow-management tools (which build and run workflows over the n8n REST API): the MCP tools call what the operator chose to publish, the REST tools manage the workflows themselves. list first, then call; same propose→confirm honesty; if there's no n8n MCP endpoint the tool says so — point them to Settings → Integrations → n8n.
 
 AUTOMATION HONESTY — say what you can SEE, not what you hope. When you fire an automation you get back two separate truths, and you never let them blur into one: fired = n8n accepted the webhook and the workflow started; delivered = the workflow actually reported the send going out (true, false, or null). null means unknown — you have not seen it happen, and unknown is NEVER a yes. The rule you run on:
 1. "I fired it" — allowed when fired:true. The webhook was accepted and the flow kicked off. That is all a fire claims; do not upgrade it.
@@ -4804,6 +4804,29 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           {
             type: "function",
             function: {
+              name: "n8n_mcp_list_tools",
+              description: "Admin only. List the tools this workspace has PUBLISHED on its connected n8n MCP endpoint (an n8n MCP Server Trigger) — each is a real thing Paige can run inside the operator's own n8n. This is the OUTBOUND MCP path, SEPARATE from the n8n_* workflow-management tools (which build/run workflows via the n8n REST API). Use this FIRST to see what the n8n MCP endpoint exposes before running one with n8n_mcp_call_tool. Returns an honest 'not_connected' if the workspace hasn't added an n8n MCP endpoint — tell the operator they can add one in Settings → Integrations → n8n, don't pretend it exists.",
+              parameters: { type: "object", properties: {}, required: [] }
+            }
+          },
+          {
+            type: "function",
+            function: {
+              name: "n8n_mcp_call_tool",
+              description: "Admin only. RUN one of the tools the workspace has published on its n8n MCP endpoint — this is how Paige calls into the operator's own n8n MCP Server Trigger tools. Resolve the exact tool_name from n8n_mcp_list_tools first, then pass the arguments that tool expects. Running is doing — you report what the n8n MCP server returned, never a hoped-for outcome. Governed by the autonomy policy: unless the workspace set this to auto, PROPOSE first and call again with confirm:true once the operator approves. If no n8n MCP endpoint is connected the tool says so — tell the operator to add one in Settings → Integrations → n8n, don't pretend it ran.",
+              parameters: {
+                type: "object",
+                properties: {
+                  tool_name: { type: "string", description: "The exact n8n MCP tool name to run (from n8n_mcp_list_tools)." },
+                  arguments: { type: "object", description: "The inputs the tool expects (whatever n8n_mcp_list_tools describes for it)." }
+                },
+                required: ["tool_name"]
+              }
+            }
+          },
+          {
+            type: "function",
+            function: {
               name: "get_client_rail",
               description: "Read a client's recent Paige activity timeline — the messages, actions, automations, and updates that happened across every Paige surface (their portal, automations, calendar, other staff). Use this to ground an answer about what's been going on with a client before you reply. Read-only; it never changes anything. If you're already looking at a client's file you can omit contact_id and it uses that client automatically.",
               parameters: {
@@ -4870,7 +4893,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       "action_file", "action_advance",
       "n8n_activate_workflow", "n8n_deactivate_workflow", "n8n_create_workflow", "n8n_update_workflow",
       "n8n_run_workflow", "n8n_archive_workflow", "n8n_delete_workflow",
-      "zapier_run_action",
+      "zapier_run_action", "n8n_mcp_call_tool",
       "forge_subagent", "save_to_knowledge_base",
       "plan_set_reminder", "plan_create", "plan_add_milestone",
       "plan_assign_task", "plan_update_item", "plan_remove_item",
@@ -4917,6 +4940,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
       n8n_archive_workflow: "archiving an automation",
       n8n_delete_workflow: "permanently deleting an automation",
       zapier_run_action: "running a Zapier action",
+      n8n_mcp_call_tool: "running an n8n MCP tool",
       forge_subagent: "spinning up a new specialist agent",
       save_to_knowledge_base: "saving this to your knowledge base",
       plan_set_reminder: "setting a reminder",
@@ -5001,6 +5025,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return `PERMANENTLY delete the n8n automation ${a?.workflow_id || ""}. This can't be undone.`;
         case "zapier_run_action":
           return `Run the Zapier action "${a?.tool_name || ""}"${a?.arguments ? " with the prepared inputs" : ""} — this runs it live in the connected app.`;
+        case "n8n_mcp_call_tool":
+          return `Run the n8n MCP tool "${a?.tool_name || ""}"${a?.arguments ? " with the prepared inputs" : ""} — this runs it live on the workspace's n8n MCP endpoint.`;
         case "forge_subagent":
           return `${a?.runtime === "hard" ? "Propose a new (code-backed) specialist" : "Spin up a new specialist"} — "${a?.name || a?.slug || "agent"}" (${a?.domain || "general"}): ${String(a?.description || "").slice(0, 80)}.${a?.runtime === "hard" ? " Goes to an admin for sign-off." : " Joins the team right away."}`;
         case "save_to_knowledge_base":
@@ -5792,6 +5818,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           tc.function.name === "n8n_run_workflow" ||
           tc.function.name === "zapier_list_actions" ||
           tc.function.name === "zapier_run_action" ||
+          tc.function.name === "n8n_mcp_list_tools" ||
+          tc.function.name === "n8n_mcp_call_tool" ||
           tc.function.name === "crm_log_activity" ||
           tc.function.name === "crm_search_contacts" ||
           tc.function.name === "crm_get_contact_summary" ||
@@ -6798,6 +6826,24 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               result = (zapData as any)?.ok === false || (zapData as any)?.error
                 ? { success: false, ...(zapData as any) }
                 : { success: true, ...(zapData as any) };
+            } else if (
+              tc.function.name === "n8n_mcp_list_tools" || tc.function.name === "n8n_mcp_call_tool"
+            ) {
+              // Route the n8n OUTBOUND-MCP tools through the call-n8n-mcp edge function
+              // with the caller's JWT (it resolves the tenant and pulls the tenant's OWN
+              // encrypted n8n MCP creds server-side, vendor='n8n' — the model NEVER supplies
+              // a tenant_id). §9. This is DISTINCT from the n8n_* REST management tools above.
+              // n8n_mcp_call_tool already cleared the autonomy gate; a missing/disabled
+              // connection returns an honest not_connected (§13), never a fabricated success.
+              const mcpBody: Record<string, unknown> =
+                tc.function.name === "n8n_mcp_list_tools"
+                  ? { action: "list" }
+                  : { tool_name: args.tool_name, arguments: args.arguments ?? {} };
+              const { data: mcpData, error: mcpErr } = await supabaseClient.functions.invoke("call-n8n-mcp", { body: mcpBody });
+              if (mcpErr) throw mcpErr;
+              result = (mcpData as any)?.ok === false || (mcpData as any)?.error
+                ? { success: false, ...(mcpData as any) }
+                : { success: true, ...(mcpData as any) };
             }
 
             // STUDIO SESSION LINKAGE (#292) — when this chat IS a project's design session, attach
