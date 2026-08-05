@@ -4,8 +4,11 @@
 // CALLER'S OWN tenant credentials — the per-tenant replacement for the shared
 // ZAPIER_MCP_TOKEN env var + platform-global paige_mcp_connections row.
 //
-// Body: { tool_name: string, arguments?: object }
+// Body (two shapes):
+//   { tool_name: string, arguments?: object }  → run one action (MCP tools/call)
+//   { action: "list" }                         → discover enabled actions (MCP tools/list)
 //   (legacy `connection_id` is accepted-but-ignored — see §37 note below.)
+//   The `action` field is ADDITIVE (§37): existing {tool_name} callers are unaffected.
 //
 // Security (§9 tenant isolation):
 //  • The caller's JWT authenticates them; admin-gated (has_role admin).
@@ -103,7 +106,11 @@ Deno.serve(async (req) => {
   if (!isAdmin) return jsonResponse({ error: "forbidden" }, 403);
 
   const body = await req.json().catch(() => ({}));
-  if (!body?.tool_name) return jsonResponse({ error: "missing_tool_name" }, 400);
+  // Two request shapes (§37 — additive, existing `{tool_name, arguments}` callers unchanged):
+  //  • { action: "list" }                 → MCP tools/list (discover the tenant's enabled actions)
+  //  • { tool_name, arguments? }           → MCP tools/call (run one action) — the original contract
+  const isList = body?.action === "list";
+  if (!isList && !body?.tool_name) return jsonResponse({ error: "missing_tool_name" }, 400);
 
   // current_user_tenant_id runs in the caller's JWT context → their own tenant.
   // NEVER trust a client-supplied tenant_id for the secret read (§9).
@@ -132,7 +139,12 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: "unsafe_server_url", detail: e instanceof Error ? e.message : "blocked" }, 400);
   }
 
-  // 4. Minimal MCP JSON-RPC over HTTP — Zapier's MCP server supports a single-shot tools/call.
+  // 4. Minimal MCP JSON-RPC over HTTP — Zapier's MCP server supports tools/list + a
+  //    single-shot tools/call. The method + params are chosen server-side from the
+  //    validated request shape; the tenant only controls the (SSRF-guarded) server URL.
+  const rpc = isList
+    ? { method: "tools/list", params: {} }
+    : { method: "tools/call", params: { name: body.tool_name, arguments: body.arguments ?? {} } };
   let callRes: Response;
   try {
     callRes = await fetch(serverUrl, {
@@ -146,8 +158,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         jsonrpc: "2.0",
         id: crypto.randomUUID(),
-        method: "tools/call",
-        params: { name: body.tool_name, arguments: body.arguments ?? {} },
+        ...rpc,
       }),
     });
   } catch (e) {
@@ -155,7 +166,25 @@ Deno.serve(async (req) => {
   }
   const text = await callRes.text();
   if (!callRes.ok) return jsonResponse({ error: `mcp_${callRes.status}`, detail: text.slice(0, 500) }, 502);
-  return jsonResponse({ ok: true, result: tryJson(text) });
+  const parsed = tryJson(text);
+  if (isList) {
+    // Shape the MCP tools/list envelope into a lean actions[] the model can read
+    // (name + description only — never leak raw schemas into the tool result).
+    return jsonResponse({ ok: true, actions: extractActions(parsed) });
+  }
+  return jsonResponse({ ok: true, result: parsed });
 });
 
 function tryJson(s: string): unknown { try { return JSON.parse(s); } catch { return s; } }
+
+// Pull [{name, description}] out of an MCP tools/list JSON-RPC response, tolerating
+// both the JSON-RPC envelope ({result:{tools:[…]}}) and a bare {tools:[…]} shape.
+// Returns [] on any unexpected shape — an honest empty list, never a throw.
+function extractActions(parsed: unknown): Array<{ name: string; description: string }> {
+  const p = parsed as any;
+  const tools = p?.result?.tools ?? p?.tools;
+  if (!Array.isArray(tools)) return [];
+  return tools
+    .filter((t: any) => t && typeof t.name === "string")
+    .map((t: any) => ({ name: t.name as string, description: typeof t.description === "string" ? t.description : "" }));
+}
