@@ -8041,6 +8041,7 @@ export type Database = {
       }
       marketplace_items: {
         Row: {
+          available_to_tiers: Json
           billing_period: string | null
           category: string
           created_at: string
@@ -8051,6 +8052,7 @@ export type Database = {
           icon: string | null
           id: string
           install_count: number
+          installable_by_role: Json
           is_finance: boolean
           item_type: Database["public"]["Enums"]["marketplace_item_type"]
           metadata: Json
@@ -8058,11 +8060,14 @@ export type Database = {
           origin: Database["public"]["Enums"]["marketplace_origin"]
           price_cents: number
           pricing_model: string
+          publish_status: string
+          publisher_tenant_id: string | null
           rating_avg: number | null
           rating_count: number
           scope: Database["public"]["Enums"]["marketplace_scope"]
           serves: string
           slug: string
+          source_type: string
           status: Database["public"]["Enums"]["marketplace_item_status"]
           tagline: string | null
           take_rate_bps: number
@@ -8072,6 +8077,7 @@ export type Database = {
           visible_to_tenant_id: string | null
         }
         Insert: {
+          available_to_tiers?: Json
           billing_period?: string | null
           category: string
           created_at?: string
@@ -8082,6 +8088,7 @@ export type Database = {
           icon?: string | null
           id?: string
           install_count?: number
+          installable_by_role?: Json
           is_finance?: boolean
           item_type: Database["public"]["Enums"]["marketplace_item_type"]
           metadata?: Json
@@ -8089,11 +8096,14 @@ export type Database = {
           origin: Database["public"]["Enums"]["marketplace_origin"]
           price_cents?: number
           pricing_model?: string
+          publish_status?: string
+          publisher_tenant_id?: string | null
           rating_avg?: number | null
           rating_count?: number
           scope?: Database["public"]["Enums"]["marketplace_scope"]
           serves?: string
           slug: string
+          source_type?: string
           status?: Database["public"]["Enums"]["marketplace_item_status"]
           tagline?: string | null
           take_rate_bps?: number
@@ -8103,6 +8113,7 @@ export type Database = {
           visible_to_tenant_id?: string | null
         }
         Update: {
+          available_to_tiers?: Json
           billing_period?: string | null
           category?: string
           created_at?: string
@@ -8113,6 +8124,7 @@ export type Database = {
           icon?: string | null
           id?: string
           install_count?: number
+          installable_by_role?: Json
           is_finance?: boolean
           item_type?: Database["public"]["Enums"]["marketplace_item_type"]
           metadata?: Json
@@ -8120,11 +8132,14 @@ export type Database = {
           origin?: Database["public"]["Enums"]["marketplace_origin"]
           price_cents?: number
           pricing_model?: string
+          publish_status?: string
+          publisher_tenant_id?: string | null
           rating_avg?: number | null
           rating_count?: number
           scope?: Database["public"]["Enums"]["marketplace_scope"]
           serves?: string
           slug?: string
+          source_type?: string
           status?: Database["public"]["Enums"]["marketplace_item_status"]
           tagline?: string | null
           take_rate_bps?: number
@@ -8134,6 +8149,13 @@ export type Database = {
           visible_to_tenant_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "marketplace_items_publisher_tenant_id_fkey"
+            columns: ["publisher_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "marketplace_items_vendor_id_fkey"
             columns: ["vendor_id"]
@@ -18890,6 +18912,14 @@ export type Database = {
           user_id: string
         }[]
       }
+      _mp_caller_role_keys: {
+        Args: { _actor?: string; _tenant_id?: string }
+        Returns: string[]
+      }
+      _mp_tier_cascade_keys: {
+        Args: { _tier: string }
+        Returns: string[]
+      }
       can_access_contact: {
         Args: { _contact_id: string; _user_id: string }
         Returns: boolean
@@ -19290,6 +19320,7 @@ export type Database = {
         }
       }
       cron_token_header: { Args: never; Returns: string }
+      current_tenant_tier: { Args: { _tenant_id?: string }; Returns: string }
       current_user_roles: { Args: never; Returns: string[] }
       current_user_tenant_id: { Args: never; Returns: string }
       custom_field_definition_archive: {
