@@ -1294,3 +1294,85 @@ the router, pgvector via Supabase, and standard Node/Deno libs are allowed).
   regulated commodity (payments, telecom, email delivery, compute)? → external,
   behind the router so no single provider owns Paige."* If a build would put
   moat-critical data inside a third party, it fails §34 and does not ship.
+
+## 37. Producer inventory — every contract-changing endpoint audits ALL its callers.
+
+**Directive (owner: Antonio, 2026-07-25):** Every §9 input-hardening PR — and more
+broadly, every change that tightens or alters the request contract of a callable
+endpoint (edge function, RPC, MCP tool, webhook receiver) — MUST include an explicit
+producer inventory as part of §32 verification. Static review can only verify
+*"implemented as described."* It cannot verify *"still works for the legitimate
+callers."* The adversarial verifier must enumerate every producer of the endpoint
+and confirm each one still passes the new guard.
+
+**The producer inventory covers eight caller classes.** For each hardened endpoint,
+walk every one:
+
+- **Frontend callers** — React components, admin surfaces, tenant-facing UI, hooks,
+  service-layer wrappers. Grep the codebase for the endpoint name AND any
+  URL/RPC-name that resolves to it.
+- **Sibling edge functions** — other functions that invoke this one server-to-server,
+  including via `supabase.functions.invoke()` or direct HTTP.
+- **Database triggers** — `AFTER INSERT/UPDATE/DELETE` triggers that call the
+  endpoint via `pg_net` or via a queue-drainer.
+- **`pg_cron` and `pg_net` migrations** — scheduled jobs. Grep every migration for
+  the function name AND the request body shape.
+- **GitHub Actions** — CI workflows that hit the endpoint (deploy previews,
+  smoke tests, scheduled probes).
+- **External webhook and OAuth providers** — third-party services that POST to
+  the endpoint (Stripe, Plaid, iSoftpull, DocuSign, Meta, etc.). Cross-check
+  the provider's actual payload shape against the new guard.
+- **n8n, Zapier, and MCP callers** — Paige-driven tool invocations, workflow
+  automations, other agent frameworks. Grep the MCP tool definitions AND the
+  workflow registry.
+- **Tests and operational scripts** — anything under `scripts/`, `tests/`,
+  `.github/scripts/`, or ad-hoc runbooks that exercises the endpoint.
+
+**Response contracts require the matching consumer inventory.** Before changing any
+endpoint response — including renaming or removing a field, changing an error code,
+altering a wrapper structure, shifting HTTP status semantics, modifying streaming or
+chunking behavior, or renaming envelope keys — audit consumers across the same eight
+classes above. The inventory does not stop at the first caller: responses are often
+chained and re-emitted (for example, webhook → queue → worker), so follow the response
+through every downstream transformer that reads, maps, branches on, stores, or
+forwards specific fields.
+
+- **Verify the exact field-access path.** For every legitimate consumer found, prove
+  that the new response still lets its exact status check, envelope access, field
+  lookup, stream reader, and downstream transformation succeed.
+- **Resolve every break before shipping.** If a missing or changed value can become
+  `undefined` and silently steer downstream logic incorrectly, the contract change
+  is incomplete. Change the consumer, widen the response with explicit rationale and
+  compatibility bounds, or remove the consumer with a §14 replacement plan.
+- **Treat half-changed responses as worse than unchanged responses.** A hard 4xx is
+  visible in logs; a response that appears successful while silently breaking a
+  consumer hides the failure inside downstream logic. Request-producer and
+  response-consumer inventories are therefore both mandatory pre-checks for the §32
+  behavioral verifier.
+- **Anchoring case study — anticipatory amendment (2026-07-26).** No clean, verified
+  response-contract breakage case is being claimed for this amendment. Add the first
+  real case here when a response change and its downstream consumer failure are
+  verified end-to-end; do not retrofit or infer one without evidence (§13).
+
+**The rule, every time:** *"For every legitimate producer I found, does the new
+guard let their exact request shape through?"* If the answer is no for any producer,
+the guard is incomplete — either the producer must change, or the guard must widen
+(with rationale), or the producer must be removed (with a §14 replacement plan).
+No half-hardened endpoints — half-hardened is worse than un-hardened, because it
+looks fixed while orphaned callers hit 4xx or silently stop firing.
+
+**Anchoring case study — Hotfix 1 (2026-07-25):** the readiness-scan §9 hardening
+correctly removed the manual/tenant-scoped scan mode (an IDOR vector), but three
+producers still called the removed contract: (1) the production `pg_cron` migration
+which posted `{trigger_source: "cron"}`, (2) an admin "Run manual scan" button in
+`ReadinessProposalsAdmin.tsx`, (3) a `paige-mcp` tool `trigger_readiness_scan_for_contact`.
+Static verification of the security fix confirmed it was implemented as described —
+but the adversarial verifier's producer inventory caught all three orphaned callers
+before merge. Without the inventory, the security fix would have shipped and
+silently killed the monthly readiness scan while leaving two visibly-broken
+operator/Paige triggers behind. This is the pattern §37 exists to prevent.
+
+**Related doctrine:** §9 (tenant isolation), §13 (world-class engineering — honest
+reporting), §14 (Paige orchestrates a team — the adversarial verifier owns the
+producer inventory), §32 (dual-layer verification — fidelity + behavioral, where
+the producer inventory is the behavioral verifier's mandatory pre-check).

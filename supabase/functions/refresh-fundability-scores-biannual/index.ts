@@ -11,7 +11,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-cron-token",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -27,11 +27,38 @@ function crossedMilestone(prev: number | null, next: number | null): number | nu
   return null;
 }
 
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function isAuthorizedInternalCaller(
+  req: Request,
+  supabase: ReturnType<typeof createClient>,
+): Promise<boolean> {
+  const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (bearer.length > 0 && bearer === SERVICE_ROLE_KEY) return true;
+
+  const cronToken = req.headers.get("x-cron-token") ?? "";
+  if (!cronToken) return false;
+  const { data: cronOk, error: cronError } = await supabase.rpc("verify_cron_token", {
+    _token: cronToken,
+  });
+  return !cronError && cronOk === true;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const startedAt = new Date();
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  if (!(await isAuthorizedInternalCaller(req, supabase))) {
+    return json({ error: "unauthorized" }, 401);
+  }
 
   let processed = 0;
   let updated = 0;
@@ -112,7 +139,9 @@ Deno.serve(async (req) => {
                 user_id: u.user_id,
                 template: "score-milestone",
                 purpose: "transactional",
-                idempotency_key: `score-milestone-${u.user_id}-${startedAt.toISOString().slice(0, 10)}`,
+                // Stable across retries for the same resulting milestone set;
+                // send-transactional-email uses this key to suppress duplicates.
+                idempotency_key: `score-milestone-${u.user_id}-${milestoneEvents.map((m) => `${m.score}-${m.threshold}-${m.next}`).join("_")}`,
                 data: {
                   firstName: (u.full_name ?? "").split(" ")[0] || "there",
                   milestones: milestoneEvents,

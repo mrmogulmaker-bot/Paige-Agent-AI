@@ -1,27 +1,22 @@
 // Ship #2 — Scheduled Credit + Funding Readiness Proposals scanner.
 //
-// Two modes:
-//   1. Cron dispatch — no `tenant_id`. Iterates tenants where
+// Cron-only dispatch. Iterates tenants where
 //      tenant_features.credit_services_enabled = true AND the cadence
-//      window has elapsed since last scan. Fans out one HTTP call per
-//      tenant back to this same function (§189 gated).
-//   2. Per-tenant scan — `tenant_id` provided. Loads the cohort, creates
+//      window has elapsed since last scan. For each database-derived tenant,
+//      loads the cohort, creates
 //      a paige_readiness_scan_runs row, iterates contacts with a 20/min
 //      throttle (§304), computes readiness delta from existing
 //      readiness/credit tables, inserts a paige_readiness_proposals row
 //      per contact, and dispatches each proposal to the n8n webhook
 //      using the §191 envelope with event_kind = 'readiness_scan'.
 //
-// Manual triggers may pass `contact_ids` to run against arbitrary
-// BTF-tagged contacts (including BTF Lead for sales re-qualification).
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { resolveCreditDataProvider } from "./credit-data-provider.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-cron-token",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -33,11 +28,28 @@ const THROTTLE_RATE_PER_MIN = 20;
 const THROTTLE_DELAY_MS = Math.ceil(60_000 / THROTTLE_RATE_PER_MIN);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-interface ScanPayload {
-  tenant_id?: string;
-  contact_ids?: string[];
-  trigger_source?: "cron" | "manual" | "backfill";
-  dry_run?: boolean;
+interface InternalScanRequest {
+  tenantId: string;
+  triggerSource: "cron";
+}
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+async function isAuthorizedInternalCaller(req: Request): Promise<boolean> {
+  const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
+  if (bearer.length > 0 && bearer === SERVICE_ROLE_KEY) return true;
+
+  const cronToken = req.headers.get("x-cron-token") ?? "";
+  if (!cronToken) return false;
+  const { data: cronOk, error: cronError } = await admin.rpc("verify_cron_token", {
+    _token: cronToken,
+  });
+  return !cronError && cronOk === true;
 }
 
 async function getInternalSecret(key: string): Promise<string | null> {
@@ -49,18 +61,14 @@ async function getInternalSecret(key: string): Promise<string | null> {
   return (data as { value?: string } | null)?.value ?? null;
 }
 
-async function loadCohort(tenantId: string, contactIds?: string[]) {
+async function loadCohort(tenantId: string) {
   // Scheduled cohort: BTF Active AND lifecycle in (STACK, FUND).
-  // Manual cohort (contact_ids provided): any BTF-tagged contact incl. BTF Lead.
-  let q = admin
+  const q = admin
     .from("clients")
     .select("id, first_name, last_name, email, tags, lifecycle_stage, linked_user_id, assigned_coach_user_id")
-    .eq("tenant_id", tenantId);
-  if (contactIds && contactIds.length) {
-    q = q.in("id", contactIds).overlaps("tags", ["BTF Active", "BTF Lead", "BTF Interested"]);
-  } else {
-    q = q.contains("tags", ["BTF Active"]).in("lifecycle_stage", ["STACK", "FUND"]);
-  }
+    .eq("tenant_id", tenantId)
+    .contains("tags", ["BTF Active"])
+    .in("lifecycle_stage", ["STACK", "FUND"]);
   const { data, error } = await q.limit(1000);
   if (error) throw new Error(`cohort_load_failed:${error.message}`);
   return data ?? [];
@@ -155,9 +163,8 @@ async function dispatchEnvelope(args: {
   }
 }
 
-async function runTenantScan(payload: ScanPayload) {
-  const tenantId = payload.tenant_id!;
-  const triggerSource = payload.trigger_source ?? "manual";
+async function runTenantScan(request: InternalScanRequest) {
+  const tenantId = request.tenantId;
 
   // §189 gate
   const { data: features } = await admin
@@ -170,7 +177,7 @@ async function runTenantScan(payload: ScanPayload) {
   }
   const provider = resolveCreditDataProvider(features?.credit_data_provider);
 
-  const cohort = await loadCohort(tenantId, payload.contact_ids);
+  const cohort = await loadCohort(tenantId);
 
   // Open scan run
   const { data: run, error: runErr } = await admin
@@ -178,7 +185,7 @@ async function runTenantScan(payload: ScanPayload) {
     .insert({
       tenant_id: tenantId,
       cadence: features.readiness_scan_cadence ?? "monthly",
-      trigger_source: triggerSource,
+      trigger_source: request.triggerSource,
     })
     .select()
     .single();
@@ -244,8 +251,6 @@ async function runTenantScan(payload: ScanPayload) {
         : null;
       const delta = computeDelta(current, previous);
       const actions = recommendActions(delta);
-
-      if (payload.dry_run) continue;
 
       const { data: proposal, error: propErr } = await admin
         .from("paige_readiness_proposals")
@@ -344,7 +349,7 @@ async function runCronDispatch() {
   const results: any[] = [];
   for (const tenantId of dueTenants) {
     try {
-      results.push(await runTenantScan({ tenant_id: tenantId, trigger_source: "cron" }));
+      results.push(await runTenantScan({ tenantId, triggerSource: "cron" }));
     } catch (e) {
       results.push({ tenant_id: tenantId, error: e instanceof Error ? e.message : String(e) });
     }
@@ -354,17 +359,22 @@ async function runCronDispatch() {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+
+  if (!(await isAuthorizedInternalCaller(req))) {
+    return json({ error: "unauthorized" }, 401);
+  }
+
   try {
-    const payload = (req.method === "POST" ? await req.json().catch(() => ({})) : {}) as ScanPayload;
-    const result = payload.tenant_id ? await runTenantScan(payload) : await runCronDispatch();
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
+    const payload = await req.json().catch(() => ({})) as Record<string, unknown>;
+    if ("tenant_id" in payload || "tenantId" in payload) {
+      return json({ error: "caller_supplied_tenant_forbidden" }, 400);
+    }
+    if ("contact_ids" in payload || "trigger_source" in payload || "dry_run" in payload) {
+      return json({ error: "manual_scan_parameters_forbidden" }, 400);
+    }
+    return json(await runCronDispatch());
   } catch (e) {
-    return new Response(
-      JSON.stringify({ ok: false, error: e instanceof Error ? e.message : "scan_failed" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return json({ ok: false, error: e instanceof Error ? e.message : "scan_failed" }, 500);
   }
 });
