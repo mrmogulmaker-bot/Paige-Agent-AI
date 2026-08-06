@@ -108,19 +108,22 @@ Once designated, the operator dogfoods Conversations / uploads / Studio in **the
 system workspace** instead of resolving to a phantom (or MMA's business account). Wiring
 that workspace's live email connector is a separate, outward-facing step.
 
-## Fleet Communications launcher contract
+## Fleet Communications transition contract
 
 The God console exposes **Fleet → Communications** at
-`/admin/platform/fleet-communications`. The page is owner-only and calls the zero-argument
+`/admin/platform/fleet-communications`. This transient route is owner-only and calls the zero-argument
 `resolve_platform_operator_workspace()` RPC. The RPC reads the designation server-side,
 validates that it names a usable tenant (`trial` or `active`), and returns zero rows for an
 unauthorized caller or an unset/malformed/suspended designation. The browser never supplies a
 tenant id to the resolver.
 
-Launching enters the returned Paige Operations tenant through the existing shared tenant-context
-switch, then opens the canonical `/admin/clients-hub/conversations` surface. This is an explicit
-workspace transition—not a second inbox and not a mutation of God into a tenant member. The
-operator returns to the God console by choosing **Platform** in the existing account switcher.
+The route renders no Fleet-owned capability page, cards, or substitute navigation. It enters the
+returned Paige Operations tenant through the existing shared tenant-context switch and immediately
+replaces itself with the canonical `/admin/clients-hub/conversations` surface. **People · Pipeline ·
+Conversations · Delivery · Client Portal** remain the one Clients taxonomy and the only navigation
+for those capabilities (§18). This is an explicit workspace transition—not a second inbox and not a
+mutation of God into a tenant member. The operator returns to the God console by choosing
+**Platform** in the existing account switcher.
 
 The context switch persists to `profiles.active_tenant_id` before the UI changes. If persistence
 fails, the browser remains in platform mode and navigation is stopped so the client and RLS

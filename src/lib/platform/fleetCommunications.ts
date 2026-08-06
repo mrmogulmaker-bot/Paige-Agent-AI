@@ -1,5 +1,8 @@
 export type OperatorWorkspace = { id: string; name: string; slug: string; status: string };
 
+/** Canonical Clients taxonomy home; Fleet is only the workspace transition seam. */
+export const FLEET_COMMUNICATIONS_DESTINATION = "/admin/clients-hub/conversations";
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function parseOperatorWorkspace(value: unknown): OperatorWorkspace | null {
