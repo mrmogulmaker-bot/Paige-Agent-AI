@@ -107,3 +107,33 @@ designation within ~10s (unset-null TTL) or on next `paige-mcp` redeploy.
 Once designated, the operator dogfoods Conversations / uploads / Studio in **their own
 system workspace** instead of resolving to a phantom (or MMA's business account). Wiring
 that workspace's live email connector is a separate, outward-facing step.
+
+## Fleet Communications launcher contract
+
+The God console exposes **Fleet → Communications** at
+`/admin/platform/fleet-communications`. The page is owner-only and calls the zero-argument
+`resolve_platform_operator_workspace()` RPC. The RPC reads the designation server-side,
+validates that it names a usable tenant (`trial` or `active`), and returns zero rows for an
+unauthorized caller or an unset/malformed/suspended designation. The browser never supplies a
+tenant id to the resolver.
+
+Launching enters the returned Paige Operations tenant through the existing shared tenant-context
+switch, then opens the canonical `/admin/clients-hub/conversations` surface. This is an explicit
+workspace transition—not a second inbox and not a mutation of God into a tenant member. The
+operator returns to the God console by choosing **Platform** in the existing account switcher.
+
+The context switch persists to `profiles.active_tenant_id` before the UI changes. If persistence
+fails, the browser remains in platform mode and navigation is stopped so the client and RLS
+scope cannot diverge.
+
+### Deliberately not activated by the launcher slice
+
+- No Twilio number is imported or moved.
+- No provider webhook is changed.
+- No master-account credential is stored in a tenant subaccount row.
+- No platform-number table is dropped.
+
+The master number can be activated only after inbound routing is tenant-scoped by the exact `To`
+number, Twilio signature verification fails closed, replay/idempotency behavior is proven, and the
+outbound adapter derives master-versus-subaccount credentials from the stored number record.
+

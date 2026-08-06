@@ -45,58 +45,30 @@ Three follow-ups:
 
 ---
 
-## DECISION 2 — Super Admin IS a tenant (with elevated permissions), not a separate concept
+## RETIRED DECISION 2 — “Super Admin is a tenant”
 
-Architectural correction — **simpler** than the original reserved-number scope.
+**Superseded by the §200 platform-operator workspace architecture.** The God / Super Admin
+identity remains tenantless and holds no membership in the operator workspace. Paige Agent AI's
+own contacts, Conversations, pipelines, connectors, and imported master number belong to a
+separately owned, coaching-generic tenant designated by
+`admin_app_settings.platform_operator_tenant_id` (display name: **Paige Operations**).
 
-- **`+1 470 200 3444` lives in `tenant_phone_numbers` under the Super Admin's tenant record**,
-  imported/grandfathered from the master Twilio account — **NOT** in `platform_phone_numbers`.
-- Super Admin uses the **SAME** number-marketplace UI and the **SAME** A2P-wrapper UI as any
-  other tenant (buy more numbers, register more A2P brands, etc.).
-- **Tenant isolation via §9 RLS inherently handles the "reserved" concern** — no other tenant
-  can see Super Admin's numbers, so no special-casing is needed.
-- **`platform_phone_numbers` is now REDUNDANT.** Grep (2026-07-27) confirms **no live code
-  queries it** — it appears only in the foundation migration (its own CREATE + seed), in
-  `send-message` **comments** + the `RESERVED_PLATFORM_NUMBER` constant/filter, and in a
-  `provision-tenant-twilio` **comment**. → **Drop it — OWNER CONFIRMED (2026-07-27, "yes we can
-  drop platform_phone_numbers as long as it works like we planned").** The drop is **gated on the
-  Super-Admin-as-tenant model being verified working end-to-end** in the same surface slice (his
-  number lives in `tenant_phone_numbers`, §9 RLS isolates it, the SMS adapter actually resolves +
-  sends from it) BEFORE the table is dropped. Since the foundation migration is still unmerged on
-  PR #241, the surface slice may either amend the foundation to not-create it, or add a drop
-  follow-up migration — pick the smaller diff at build time. Re-grep before dropping.
+The operator is authorized to enter that fixed workspace through **Fleet Communications**. That
+delegation is not tenant ownership, membership, or a browser-selected arbitrary tenant. The
+server resolves the designation with no tenant-id input and fails closed when it is unset,
+malformed, suspended, or inaccessible. The canonical Conversations and number/A2P components are
+still reused (§18); only the identity model below is retired.
 
-### Required code delta in the C-2 surface slice (because the reserved number becomes a real tenant number)
+The historical notes in this section are retained as decision provenance and MUST NOT be used as
+implementation instructions. In particular: do not attach the number to the God identity, do not
+provision a God-owned Twilio subaccount, and do not remove reserved-number defenses until the
+Paige Operations ownership and master-account credential path are verified end to end.
 
-The C-2a SMS adapter currently **defensively excludes** `RESERVED_PLATFORM_NUMBER` from the
-tenant's from-number candidates (`send-message/index.ts`, `RESERVED_PLATFORM_NUMBER` const +
-the `r.phone_number !== RESERVED_PLATFORM_NUMBER` filter). Under Decision 2 that number is a
-**legitimate Super-Admin tenant number**, so the exclusion would wrongly block Super Admin from
-sending from his own number. **The surface slice must REMOVE the `RESERVED_PLATFORM_NUMBER`
-constant + filter** (the §9 RLS + the number living under his tenant is the only isolation
-needed). This is the one keystone-adjacent edit, done as part of the surface slice, not now.
+### Historical provenance
 
-### Implementation (folds into C-2 surface backfill + marketplace slices)
+The retired model proposed treating Super Admin as an ordinary tenant, attaching `+1 470 200
+3444` to that identity, provisioning a tenant subaccount, removing the reserved-number filter,
+and eventually dropping `platform_phone_numbers`. None of those actions remain authorized by
+this document. They require a fresh producer/consumer inventory and verification against the
+Paige Operations model before any later implementation decision.
 
-1. **Super Admin gets a Twilio subaccount** provisioned via `provision-tenant-twilio` as part of
-   the tenant backfill (he's presumably one of the 8; if not, add him to the target set).
-2. **`+1 470 200 3444`**: either MOVE it from master to Super Admin's subaccount (Twilio API), OR
-   import it as a `tenant_phone_numbers` row with a **`source='imported'`** flag (vs
-   `source='marketplace'` for numbers bought through Paige). **Smallest diff wins — owner
-   recommends the source-flag approach** so the number stays on master where its A2P is already
-   registered. (Adds a `source` column to `tenant_phone_numbers` if not present.)
-3. **Super Admin surface** shows his numbers + A2P registrations using the **SAME components** as
-   the tenant surface (§18 one home per capability). "Pulled to the front" of Super Admin = route
-   the tenant-facing number-list + A2P-list components into a Super-Admin view of **his own
-   tenant's** data.
-
----
-
-## What changes NOW vs. later
-- **NOW (this note):** decisions recorded; grep-verified `platform_phone_numbers` is drop-safe.
-  **No keystone code change** (owner: no re-fire).
-- **C-2 surface slice (when it fires):** compliance layer (List-Unsubscribe one-click + branded
-  landing + 2-day honor), drop `platform_phone_numbers`, remove the `RESERVED_PLATFORM_NUMBER`
-  filter, provision Super Admin's subaccount + import his number with `source='imported'`, and
-  route the tenant number/A2P components into his own-tenant Super-Admin view.
-- **Later slices:** form-builder dual consent checkboxes (1b); per-tenant email-consent toggle (1c).

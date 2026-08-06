@@ -172,7 +172,7 @@ const GOD_HUBS: Hub[] = [
     aliases: ["/admin/sub-agents", "/admin/actions", "/admin/skills"] },
   // 2 — Fleet. Absorbs the standalone Team hub + Deploy Health.
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2,
-    aliases: ["/admin/platform/team", "/admin/platform/deploy-health"] },
+    aliases: ["/admin/platform/fleet-communications", "/admin/platform/team", "/admin/platform/deploy-health"] },
   // 3 — Intelligence. Live Activity index + the model/money/forge/defaults/usage tools.
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain,
     aliases: [
@@ -210,7 +210,7 @@ const GOD_STAFF_HUBS: Hub[] = [
   { label: "Paige", href: "/admin/playbook", icon: Bot,
     aliases: ["/admin/sub-agents", "/admin/actions", "/admin/skills"] },
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2,
-    aliases: ["/admin/platform/team", "/admin/platform/deploy-health"] },
+    aliases: ["/admin/platform/fleet-communications", "/admin/platform/team", "/admin/platform/deploy-health"] },
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain,
     aliases: [
       "/admin/platform/money", "/admin/platform/model-router",

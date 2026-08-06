@@ -30,6 +30,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { tenantSwitchPersisted } from "@/lib/platform/fleetCommunications";
 
 /**
  * #233 — on a GENUINE new sign-in, reset the active tenant to the user's HOME.
@@ -96,7 +97,7 @@ interface TenantContextState {
   tenants: TenantSummary[];
   activeTenantId: string | null;
   activeTenant: TenantSummary | null;
-  switchTenant: (tenantId: string | null) => Promise<void>;
+  switchTenant: (tenantId: string | null) => Promise<boolean>;
   refresh: () => Promise<void>;
 }
 
@@ -287,15 +288,21 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   const switchTenant = useCallback(async (tenantId: string | null) => {
     const { data: auth } = await supabase.auth.getUser();
     const uid = auth.user?.id;
-    if (!uid) return;
-    // Optimistically flip the shared state FIRST so the whole tree (nav mode,
-    // switcher label, data scope) re-renders immediately, then persist. Because
-    // this is the one shared provider, every consumer sees the new value at once —
-    // this is what makes the operator/tenant MODE switch actually commit.
+    if (!uid) return false;
+    // Persist FIRST so a rejected profile write can never leave browser scope and
+    // DB-backed current_user_tenant_id() scope pointing at different tenants (§9).
+    const { data: persisted, error } = await supabase
+      .from("profiles")
+      .update({ active_tenant_id: tenantId })
+      .eq("user_id", uid)
+      .select("user_id")
+      .maybeSingle();
+    if (!tenantSwitchPersisted(uid, persisted, error)) return false;
+    // The one shared provider now commits the verified switch to every consumer.
     setActiveTenantId(tenantId);
-    await supabase.from("profiles").update({ active_tenant_id: tenantId }).eq("user_id", uid);
     // Scope changed for everything — a broad invalidate is correct here (§9).
     queryClient.invalidateQueries();
+    return true;
   }, [queryClient]);
 
   const activeTenant = tenants.find((t) => t.id === activeTenantId) ?? null;
@@ -328,3 +335,4 @@ export function useTenantContext(): TenantContextState {
   }
   return ctx;
 }
+

@@ -96,6 +96,7 @@ const OperatorCommandCenter = lazy(() => import("@/pages/admin/OperatorCommandCe
 const PlatformTeam = lazy(() => import("@/pages/admin/PlatformTeam"));
 const PlatformSendingIdentities = lazy(() => import("@/pages/admin/PlatformSendingIdentities"));
 const PlatformSends = lazy(() => import("@/pages/admin/PlatformSends"));
+const PlatformFleetCommunications = lazy(() => import("@/pages/admin/PlatformFleetCommunications"));
 const PlatformIntelligence = lazy(() => import("@/pages/admin/PlatformIntelligence"));
 // Super Admin restructure (operator console SPINE): 9 NEW operator nav items each
 // land on a real, honest §13 in-development placeholder route (§18 one home each).
@@ -802,6 +803,9 @@ const Admin = () => {
         } />
         <Route path="platform/team" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformTeam /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/fleet-communications" element={
+          <PlatformOwnerOnly><Suspense fallback={<SuspenseFallback />}><PlatformFleetCommunications /></Suspense></PlatformOwnerOnly>
         } />
         <Route path="platform/sending" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformSendingIdentities /></Suspense></PlatformStaffOnly>
