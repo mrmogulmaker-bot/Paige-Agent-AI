@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Building2, Loader2, MessageSquare, Settings2 } from "lucide-react";
+import { Building2, GitBranch, Loader2, MessageSquare, Settings2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState, PageHeader, PageShell, SectionCard, StatePill } from "@/components/ui/page";
@@ -44,7 +44,7 @@ export default function PlatformFleetCommunications() {
   return (
     <PageShell>
       <PageHeader variant="plain" title="Fleet Communications"
-        description="Run Paige Agent AI's own conversations from the dedicated Paige Operations workspace." />
+        description="Run Paige Agent AI's own conversations and sales pipeline from the dedicated Paige Operations workspace." />
       <SectionCard>
         {loading ? (
           <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -65,14 +65,20 @@ export default function PlatformFleetCommunications() {
               </div>
             </div>
             <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-              Opening Fleet Communications moves you into Paige Operations so Conversations, Contacts,
-              consent controls, and message history remain in one tenant-isolated system. Choose Platform
-              in the account switcher to return to God Level.
+              Opening a workspace tool moves you into Paige Operations so Conversations, Contacts,
+              Pipelines, consent controls, and message history remain in one tenant-isolated system.
+              Choose Platform in the account switcher to return to God Level.
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="gold" onClick={() => void enterWorkspace("/admin/clients-hub/conversations")} disabled={launching}>
                 {launching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MessageSquare className="mr-2 h-4 w-4" />}
                 Open Conversations
+              </Button>
+              <Button variant="outline" onClick={() => void enterWorkspace("/admin/clients-hub")} disabled={launching}>
+                <Users className="mr-2 h-4 w-4" /> Open Contacts
+              </Button>
+              <Button variant="outline" onClick={() => void enterWorkspace("/admin/clients-hub/pipeline")} disabled={launching}>
+                <GitBranch className="mr-2 h-4 w-4" /> Open Pipelines
               </Button>
               <Button variant="outline" onClick={() => void enterWorkspace("/admin/clients-hub/conversations/settings")} disabled={launching}>
                 <Settings2 className="mr-2 h-4 w-4" /> Communication settings
