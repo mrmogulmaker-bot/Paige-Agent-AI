@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseOperatorWorkspace, tenantSwitchPersisted } from "./fleetCommunications";
+import {
+  FLEET_COMMUNICATIONS_DESTINATION,
+  parseOperatorWorkspace,
+  tenantSwitchPersisted,
+} from "./fleetCommunications";
 
 const UID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const WORKSPACE = {
@@ -10,6 +14,10 @@ const WORKSPACE = {
 };
 
 describe("Fleet Communications boundaries", () => {
+  it("enters the existing Clients Conversations home instead of inventing a Fleet surface", () => {
+    expect(FLEET_COMMUNICATIONS_DESTINATION).toBe("/admin/clients-hub/conversations");
+  });
+
   it("accepts exactly one usable, well-formed designated workspace", () => {
     expect(parseOperatorWorkspace([WORKSPACE])).toEqual(WORKSPACE);
     expect(parseOperatorWorkspace([{ ...WORKSPACE, status: "trial" }])?.status).toBe("trial");

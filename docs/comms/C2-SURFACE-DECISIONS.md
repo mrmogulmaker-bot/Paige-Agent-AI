@@ -53,7 +53,8 @@ own contacts, Conversations, pipelines, connectors, and imported master number b
 separately owned, coaching-generic tenant designated by
 `admin_app_settings.platform_operator_tenant_id` (display name: **Paige Operations**).
 
-The operator is authorized to enter that fixed workspace through **Fleet Communications**. That
+The operator is authorized to enter that fixed workspace through the **Fleet Communications
+transition**, which opens the existing Clients → Conversations home. That
 delegation is not tenant ownership, membership, or a browser-selected arbitrary tenant. The
 server resolves the designation with no tenant-id input and fails closed when it is unset,
 malformed, suspended, or inaccessible. The canonical Conversations and number/A2P components are
