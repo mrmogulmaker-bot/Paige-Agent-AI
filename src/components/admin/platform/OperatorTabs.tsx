@@ -17,7 +17,7 @@
 import { Link, useLocation } from "react-router-dom";
 import {
   Building2, UserCog, Rocket, Radio, DollarSign, Plug, Wrench, LayoutTemplate,
-  TrendingUp, ShieldCheck, BookOpen, FileSignature, LifeBuoy, Settings, Ticket, Send, Bug,
+  TrendingUp, ShieldCheck, BookOpen, FileSignature, LifeBuoy, Settings, Ticket, Send, Bug, MessageSquare,
   type LucideIcon,
 } from "lucide-react";
 import { useUserRoles } from "@/hooks/useUserRoles";
@@ -40,6 +40,7 @@ const owner = (a: Access) => a.isPlatformOwner;
 
 const FLEET_TABS: OperatorTab[] = [
   { label: "Tenants",       href: "/admin/platform/tenants",       icon: Building2, canSee: staff },
+  { label: "Communications", href: "/admin/platform/fleet-communications", icon: MessageSquare, canSee: owner },
   { label: "Team",          href: "/admin/platform/team",          icon: UserCog,   canSee: staff },
   { label: "Deploy Health", href: "/admin/platform/deploy-health", icon: Rocket,    canSee: owner, comingSoon: true },
 ];
@@ -151,3 +152,4 @@ export function OperatorHubStrip() {
     </>
   );
 }
+
