@@ -63,6 +63,13 @@ export function SubAccountsPanel() {
 
   if (!activeTenantId || !isOwner) return null;
 
+  // A SUB-ACCOUNT (has a parent) can never become an agency nor own sub-accounts of
+  // its own — the §51 sub-account-never-agency invariant, now enforced by the
+  // tenants_subaccount_not_agency CHECK. Without this guard a parented owner would see
+  // the "Become an Agency" CTA and its set_tenant_account_type('agency') call would
+  // surface a raw check_violation toast. Never offer the upgrade to a sub-account.
+  if (activeTenant?.parent_tenant_id) return null;
+
   // Standalone owner → offer the upgrade instead of a management UI.
   if (!canSubaccounts) {
     return (
