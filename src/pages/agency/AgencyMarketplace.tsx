@@ -86,51 +86,50 @@ export default function AgencyMarketplace() {
   const rowsQ = useQuery({
     queryKey: ["agency_curation_rows", agencyId],
     enabled: !!agencyId,
+    // A 42501 (caller isn't this agency's owner/admin) is a terminal auth state, not a
+    // transient failure — don't retry it into a spinner.
+    retry: false,
     queryFn: async (): Promise<CurationRow[]> => {
-      // agency_item_allowlist is Slice-1 net-new: the generated Supabase types are
-      // regenerated from prod only AFTER this migration deploys, so the read is cast
-      // through `as any` here (the same escape hatch the tenant Marketplace uses for
-      // its not-yet-typed RPCs). It re-types to AllowRow immediately below.
-      type AllowRow = { marketplace_item_id: string; enabled_for_subaccounts: boolean; reviewed_at: string | null };
-      const [itemsRes, allowRes] = await Promise.all([
-        supabase
-          .from("marketplace_items")
-          .select("id, slug, name, tagline, description, category, icon, item_type")
-          .order("category", { ascending: true })
-          .order("name", { ascending: true }),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase as any)
-          .from("agency_item_allowlist")
-          .select("marketplace_item_id, enabled_for_subaccounts, reviewed_at")
-          .eq("agency_tenant_id", agencyId as string),
-      ]);
-      if (itemsRes.error) throw itemsRes.error;
-      if (allowRes.error) throw allowRes.error;
-      const allow = new Map<string, { enabled: boolean; reviewed: boolean }>();
-      for (const a of (allowRes.data ?? []) as AllowRow[]) {
-        allow.set(a.marketplace_item_id, {
-          enabled: a.enabled_for_subaccounts === true,
-          reviewed: a.reviewed_at != null,
-        });
-      }
-      return (itemsRes.data ?? []).map((i): CurationRow => {
-        const decision = allow.get(i.id as string);
-        return {
-          id: i.id as string,
-          slug: i.slug as string,
-          name: (i.name as string) ?? (i.slug as string),
-          tagline: (i.tagline as string | null) ?? null,
-          description: (i.description as string | null) ?? null,
-          category: (i.category as string) ?? "other",
-          icon: (i.icon as string | null) ?? null,
-          item_type: (i.item_type as string) ?? "skill",
-          shared: decision?.enabled ?? false,
-          // no allowlist row (never seeded) OR row with reviewed_at NULL ⇒ undecided
-          pending: decision ? !decision.reviewed : true,
-        };
-      });
+      // ONE agency-scoped read (§10/§51): agency_curation_catalog resolves tier + scope
+      // against the AGENCY id SERVER-SIDE, never the caller's active tenant — so an agency
+      // owner working inside a sub-account still curates the AGENCY's catalog, and can't
+      // accidentally allowlist a child-scoped item for the parent. It returns the real
+      // marketplace_items.id (the toggle RPC needs it) + this agency's decision in one shot.
+      // Cast through `as never` because the RPC is Slice-1 net-new (types regenerate from
+      // prod only after this migration deploys) — the same escape hatch the tenant
+      // Marketplace uses for its not-yet-typed RPCs.
+      type CatalogRow = {
+        item_id: string; slug: string; name: string | null; tagline: string | null;
+        description: string | null; category: string | null; icon: string | null;
+        item_type: string | null; enabled_for_subaccounts: boolean; reviewed: boolean;
+      };
+      const { data, error } = await supabase.rpc(
+        "agency_curation_catalog" as never,
+        { _agency_tenant_id: agencyId } as never,
+      );
+      if (error) throw error;
+      return ((data ?? []) as CatalogRow[]).map((r): CurationRow => ({
+        id: r.item_id,
+        slug: r.slug,
+        name: r.name ?? r.slug,
+        tagline: r.tagline ?? null,
+        description: r.description ?? null,
+        category: r.category ?? "other",
+        icon: r.icon ?? null,
+        item_type: r.item_type ?? "skill",
+        shared: r.enabled_for_subaccounts === true,
+        pending: !r.reviewed,
+      }));
     },
   });
+
+  // A 42501 from the catalog RPC = the caller is a member of the agency (the shell let them
+  // in) but NOT an owner/admin, so they can't curate (§9). Render an explicit read-only state
+  // rather than a broken all-pending shelf whose every toggle would 42501.
+  const forbidden =
+    rowsQ.isError &&
+    (((rowsQ.error as { code?: string } | null)?.code === "42501") ||
+      /owner or admin/i.test(rowsQ.error instanceof Error ? rowsQ.error.message : ""));
 
   const rows = useMemo(() => rowsQ.data ?? [], [rowsQ.data]);
   const loading = agencyQ.isLoading || rowsQ.isLoading;
@@ -257,7 +256,13 @@ export default function AgencyMarketplace() {
         )}
       </div>
 
-      {rowsQ.isError ? (
+      {forbidden ? (
+        <EmptyState
+          icon={Store}
+          title="Curation is owner-only"
+          description="Only your agency's owner or admin can decide which capabilities your sub-accounts can use. Ask them to share the ones your team needs."
+        />
+      ) : rowsQ.isError ? (
         <Card><CardContent className="p-6 text-sm text-muted-foreground">
           Couldn&apos;t load the Marketplace. Refresh to try again.
         </CardContent></Card>

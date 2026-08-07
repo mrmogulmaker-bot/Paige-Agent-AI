@@ -93,6 +93,31 @@ ALTER TABLE public.agency_item_allowlist ENABLE ROW LEVEL SECURITY;
 -- functions enforces its OWN §9 authority check in-body. Direct authenticated
 -- table access (the belt) is fully governed by the policies below.
 
+-- ── A.0 TARGET-IS-AGENCY invariant (§37/§51 — one home for the guard) ─────────
+-- agency_team_role(_agency, actor) returns 'agency_owner' for the tenant OWNER of
+-- ANY tenant — it does NOT check account_type. So without this guard a STANDALONE
+-- owner passes the owner/admin write check for their OWN tenant id and could insert
+-- an (inert but invalid) self-row into this table, contradicting the §51 matrix
+-- ("Standalone -> no write"). This predicate constrains every write path (the two
+-- WITH CHECKs below AND both curation functions) so a curation row can exist ONLY for
+-- a real agency/enterprise parent — the ONE home for that invariant (§18). Caught by
+-- the §39 peer-gate; the original §32.b proof never targeted a standalone's own id.
+CREATE OR REPLACE FUNCTION public._agency_allowlist_target_is_agency(_tenant_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.tenants t
+     WHERE t.id = _tenant_id
+       AND t.account_type IN ('agency','enterprise')
+  );
+$$;
+REVOKE ALL ON FUNCTION public._agency_allowlist_target_is_agency(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public._agency_allowlist_target_is_agency(uuid) TO authenticated, service_role;
+
 -- ── A.1 READ RLS — agency operator (own agency) + sub-account (parent) + God ──
 DROP POLICY IF EXISTS agency_item_allowlist_select ON public.agency_item_allowlist;
 CREATE POLICY agency_item_allowlist_select ON public.agency_item_allowlist
@@ -116,8 +141,12 @@ DROP POLICY IF EXISTS agency_item_allowlist_insert ON public.agency_item_allowli
 CREATE POLICY agency_item_allowlist_insert ON public.agency_item_allowlist
   FOR INSERT TO authenticated
   WITH CHECK (
-    public.is_platform_owner()
-    OR public.agency_team_role(agency_tenant_id, auth.uid()) IN ('agency_owner','agency_admin')
+    -- §51: a curation row may exist ONLY for a real agency/enterprise parent.
+    public._agency_allowlist_target_is_agency(agency_tenant_id)
+    AND (
+      public.is_platform_owner()
+      OR public.agency_team_role(agency_tenant_id, auth.uid()) IN ('agency_owner','agency_admin')
+    )
   );
 
 DROP POLICY IF EXISTS agency_item_allowlist_update ON public.agency_item_allowlist;
@@ -128,8 +157,12 @@ CREATE POLICY agency_item_allowlist_update ON public.agency_item_allowlist
     OR public.agency_team_role(agency_tenant_id, auth.uid()) IN ('agency_owner','agency_admin')
   )
   WITH CHECK (
-    public.is_platform_owner()
-    OR public.agency_team_role(agency_tenant_id, auth.uid()) IN ('agency_owner','agency_admin')
+    -- §51: the row must remain scoped to a real agency/enterprise parent.
+    public._agency_allowlist_target_is_agency(agency_tenant_id)
+    AND (
+      public.is_platform_owner()
+      OR public.agency_team_role(agency_tenant_id, auth.uid()) IN ('agency_owner','agency_admin')
+    )
   );
 
 DROP POLICY IF EXISTS agency_item_allowlist_delete ON public.agency_item_allowlist;
@@ -226,6 +259,15 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
+  -- §51 (peer-gate): agency_team_role returns 'agency_owner' for a STANDALONE owner over
+  -- its OWN id too, so the authority gate alone would let a standalone write a self-row.
+  -- Constrain the target to a real agency/enterprise parent. (RLS enforces the same on the
+  -- direct-table path.)
+  IF NOT public._agency_allowlist_target_is_agency(_agency_tenant_id) THEN
+    RAISE EXCEPTION 'Curation is only available for agency accounts'
+      USING ERRCODE = '42501';
+  END IF;
+
   INSERT INTO public.agency_item_allowlist AS a
     (agency_tenant_id, marketplace_item_id, enabled_for_subaccounts, reviewed_at, reviewed_by)
   VALUES
@@ -241,5 +283,93 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.set_agency_item_allowlist(uuid, uuid, boolean) FROM public;
 GRANT EXECUTE ON FUNCTION public.set_agency_item_allowlist(uuid, uuid, boolean) TO authenticated, service_role;
+
+-- ── D. Agency curation CATALOG — the agency-scoped READ seam (§10/§51) ───────────
+-- §39 PEER-GATE FINDING (P1, tier-seam): the /agency/marketplace surface must NOT read
+-- the catalog via a direct `marketplace_items` table select. That read is RLS-gated by
+-- mp_items_read, which resolves tier + scope from current_user_tenant_id() — the caller's
+-- ACTIVE tenant. An agency owner who has switched INTO a sub-account has active tenant =
+-- the CHILD, so the shelf would render at the child's tier/scope and the owner could
+-- allowlist a child-private item for the whole agency (a §51 tier/scope seam).
+--
+-- This RPC binds tier + scope to the AGENCY id EXPLICITLY (independent of active context),
+-- and returns the real marketplace_items.id + the agency's curation decision in ONE read.
+-- It is a faithful, agency-scoped MIRROR of mp_items_read's item predicate (same
+-- status/publish/tier-cascade/role/scope clauses) — not a new visibility rule (§18). It
+-- ALSO closes the peer-gate P2 (non-owner/admin managers): the authority gate 42501s them,
+-- so the UI renders an explicit read-only state instead of an all-pending shelf whose every
+-- toggle 42501s.
+CREATE OR REPLACE FUNCTION public.agency_curation_catalog(_agency_tenant_id uuid)
+RETURNS TABLE(
+  item_id                 uuid,
+  slug                    text,
+  name                    text,
+  tagline                 text,
+  description             text,
+  category                text,
+  icon                    text,
+  item_type               text,
+  enabled_for_subaccounts boolean,
+  reviewed                boolean
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  IF _agency_tenant_id IS NULL THEN
+    RAISE EXCEPTION 'agency is required' USING ERRCODE = '22023';
+  END IF;
+
+  -- §9 authority: God, or an owner/admin of THIS agency (auth.uid() only — never a prop).
+  -- NULL-safe COALESCE, same failure mode the write RPC guards.
+  IF NOT (
+    public.is_platform_owner()
+    OR COALESCE(
+         public.agency_team_role(_agency_tenant_id, auth.uid()) IN ('agency_owner','agency_admin'),
+         false)
+  ) THEN
+    RAISE EXCEPTION 'Only an agency owner or admin can view this agency''s curation catalog'
+      USING ERRCODE = '42501';
+  END IF;
+
+  -- §51: curation exists only for a real agency/enterprise parent.
+  IF NOT public._agency_allowlist_target_is_agency(_agency_tenant_id) THEN
+    RAISE EXCEPTION 'Curation is only available for agency accounts'
+      USING ERRCODE = '42501';
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    i.id,
+    i.slug,
+    i.name,
+    i.tagline,
+    i.description,
+    i.category,
+    i.icon,
+    i.item_type::text,
+    COALESCE(a.enabled_for_subaccounts, false) AS enabled_for_subaccounts,
+    (a.reviewed_at IS NOT NULL)                AS reviewed
+  FROM public.marketplace_items i
+  LEFT JOIN public.agency_item_allowlist a
+         ON a.marketplace_item_id = i.id
+        AND a.agency_tenant_id    = _agency_tenant_id
+  WHERE i.status = 'listed'
+    AND i.publish_status = 'approved'
+    -- tier/role/scope resolved against the AGENCY id, NOT current_user_tenant_id().
+    AND i.available_to_tiers  ?| public._mp_tier_cascade_keys(public.current_tenant_tier(_agency_tenant_id))
+    AND i.installable_by_role ?| public._mp_caller_role_keys(_agency_tenant_id, auth.uid())
+    AND (
+         i.scope = 'public'
+         OR (i.scope = 'tenant' AND i.visible_to_tenant_id = _agency_tenant_id)
+         OR (i.scope = 'agency' AND public.agency_team_role(i.visible_to_agency_id, auth.uid()) IS NOT NULL)
+       )
+  ORDER BY i.category, i.name;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.agency_curation_catalog(uuid) FROM public;
+GRANT EXECUTE ON FUNCTION public.agency_curation_catalog(uuid) TO authenticated, service_role;
 
 COMMIT;
