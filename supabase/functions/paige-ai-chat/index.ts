@@ -182,7 +182,33 @@ const messageSchema = z.object({
       content: z.string().min(1).max(50000),
       documentFileName: z.string().optional(),
     })
-  ).min(1).max(50),
+  ).min(1).transform((arr) => {
+    // WINDOW a long thread instead of HARD-REJECTING it. The chat clients send the FULL
+    // running history as `messages` (PaigeChat.tsx et al. do not window). The old `.max(50)`
+    // tripped a z.ZodError -> HTTP 400 "Invalid input format" on EVERY turn once a thread
+    // crossed 50 — a platform-wide §51 defect (the schema runs BEFORE any tenant/tier
+    // resolution, so it is tier-agnostic). A conversation is meant to grow; the 50 was a
+    // context/cost window, never a product limit. Keep the MOST-RECENT 50 turns, preserving a
+    // caller-supplied leading system message and ALWAYS the last element (the current turn —
+    // it carries any uploaded document at index length-1, ~line 3432). The windowed tail is
+    // then trimmed of any leading ASSISTANT turn(s): the Anthropic gateway (claude.ts
+    // splitMessages) requires the first non-system message to be role 'user' and would
+    // otherwise 400 "first message must use the user role" — an even-length window of a
+    // strictly-alternating thread that ends on a user turn ALWAYS starts on 'assistant', so
+    // this trim is what actually fixes the outage (§39 peer-gate catch). No hard upper ceiling:
+    // the transform windows unconditionally, so it can never re-introduce the 400 at some
+    // higher count; DoS is bounded by verify_jwt + the per-user rate limit + the body read,
+    // never by this cap. Pure loosening — any payload that passed before (<=50) is returned
+    // untouched, so no producer breaks (§37). Mirrors the clientContext clamp below (§10 seam-
+    // level defense that fixes ALL callers at once, not one client).
+    const WINDOW = 50;
+    if (arr.length <= WINDOW) return arr;
+    const head = arr[0].role === 'system' ? [arr[0]] : [];
+    const tail = arr.slice(arr.length - (WINDOW - head.length));
+    let start = 0;
+    while (start < tail.length - 1 && tail[start].role === 'assistant') start++;
+    return [...head, ...tail.slice(start)];
+  }),
   document: z.object({
     base64: z.string().optional(),
     fileName: z.string(),
