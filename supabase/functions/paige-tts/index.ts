@@ -64,13 +64,20 @@ function runAfter(p: Promise<void>): void {
 }
 
 /** §17 meter — chars to platform_usage_events (service-role, tenant-scoped). Never throws into the
- *  request path; a metering failure is logged, not surfaced. */
+ *  request path; a metering failure is logged, not surfaced. A NULL tenantId is the operator/
+ *  platform-owner path (§9 — the Super Admin is not a billable tenant, and platform_usage_events
+ *  .tenant_id is NOT NULL REFERENCES tenants): we SKIP the meter and log it honestly (§13), never
+ *  misattribute operator playback to a real tenant nor FK-violate on a fabricated sentinel. */
 async function meterChars(
   admin: ReturnType<typeof createClient>,
-  tenantId: string,
+  tenantId: string | null,
   chars: number,
   meta: Record<string, unknown>,
 ): Promise<void> {
+  if (!tenantId) {
+    console.log("[paige-tts] operator/platform playback — tenant meter skipped (not a billable tenant, §9/§13)", { chars, ...meta });
+    return;
+  }
   try {
     const { error } = await admin.from("platform_usage_events").insert({
       tenant_id: tenantId,
@@ -103,7 +110,35 @@ serve(async (req: Request) => {
       return json({ error: "workspace_unresolved" }, 500);
     }
     const tenantId = String(resolvedTenant ?? "").trim();
-    if (!tenantId) return json({ error: "workspace_unresolved" }, 400);
+
+    // ── §9/§51 OPERATOR TIER: platform STAFF (super_admin AND scoped platform_admin) legitimately
+    // have NO tenant of their own, so current_user_tenant_id() is null for them — exactly like the
+    // operator's chat (paige-ai-chat tolerates a null persona tenant rather than 400ing). Mirror
+    // that here: when there is no tenant, resolve the platform path INSTEAD of hard-400ing, but ONLY
+    // for real platform staff. Gate on is_platform_admin() (owner ⊂ admin) — the SAME authority the
+    // UI uses to admit them: PaigeWorkspace mounts PaigePlatformDesk (the chat + this audio button)
+    // for `isPlatformStaff` (= is_platform_admin), so a scoped platform_admin can REACH playback and
+    // must not be 400'd here (a super_admin-only gate would strand them — the Codex #386 catch).
+    // A GENUINE non-staff caller with no tenant is an anomaly and STILL gets the honest 400 — §9 is
+    // TIGHTENED, not loosened, for real tenants. Operator playback uses a PLATFORM-scoped cache
+    // prefix (never a tenant's folder) + base voice + no tenant meter (below).
+    let isOperator = false;
+    if (!tenantId) {
+      const { data: isStaff, error: staffErr } = await authed.rpc("is_platform_admin");
+      if (staffErr) {
+        console.error("[paige-tts] is_platform_admin check failed:", staffErr.message);
+        return json({ error: "workspace_unresolved" }, 500);
+      }
+      if (isStaff !== true) return json({ error: "workspace_unresolved" }, 400);
+      isOperator = true;
+      console.log("[paige-tts] operator/platform-staff playback (no tenant) — resolving platform context (§9/§51)");
+    }
+
+    // Storage prefix (§9): a tenant's audio lives under `<tenantId>/`; the operator's under the
+    // platform-owned `_platform/` prefix — never cross into a real tenant's folder. Meter target:
+    // the real tenant, or null for the operator (skip — not a billable tenant, see meterChars).
+    const storagePrefix = isOperator ? "_platform" : tenantId;
+    const meterTenantId: string | null = isOperator ? null : tenantId;
 
     // ── Body ──
     const body = await req.json().catch(() => ({}));
@@ -117,28 +152,33 @@ serve(async (req: Request) => {
     // ── Resolve the voice (§7 tenant-authored config-as-data) ──
     // playbook_config.paige_voice (authored) + the platform plan slug (tier default). Both are
     // best-effort reads: a missing/unreadable value degrades to the tier/base default, never a 400.
+    // The OPERATOR path skips both reads (it has no tenant to read) — playbookVoice/planSlug stay
+    // null, so resolveVoiceId naturally returns the base default (DEFAULT_TTS_VOICE), which is what
+    // Paige's platform voice should be. A caller body.voice_id still wins for the operator too.
     let playbookVoice: string | null = null;
     let planSlug: string | null = null;
-    try {
-      const { data: t } = await admin.from("tenants").select("features").eq("id", tenantId).maybeSingle();
-      const features = ((t as { features?: unknown } | null)?.features ?? {}) as Record<string, unknown>;
-      const pc = (features.playbook_config ?? {}) as Record<string, unknown>;
-      if (typeof pc.paige_voice === "string") playbookVoice = pc.paige_voice;
-    } catch (e) {
-      console.warn("[paige-tts] tenant voice read failed (using tier/default):", (e as Error)?.message);
-    }
-    try {
-      // Join to the plan for its slug (tier default, §7). Active sub only; best-effort.
-      const { data: sub } = await admin
-        .from("platform_subscriptions")
-        .select("status, plan:platform_subscription_plans(slug)")
-        .eq("tenant_id", tenantId)
-        .eq("status", "active")
-        .maybeSingle();
-      const s = sub as { status?: string | null; plan?: { slug?: string | null } | null } | null;
-      if (s?.plan?.slug) planSlug = s.plan.slug;
-    } catch (e) {
-      console.warn("[paige-tts] plan read failed (using base default):", (e as Error)?.message);
+    if (!isOperator) {
+      try {
+        const { data: t } = await admin.from("tenants").select("features").eq("id", tenantId).maybeSingle();
+        const features = ((t as { features?: unknown } | null)?.features ?? {}) as Record<string, unknown>;
+        const pc = (features.playbook_config ?? {}) as Record<string, unknown>;
+        if (typeof pc.paige_voice === "string") playbookVoice = pc.paige_voice;
+      } catch (e) {
+        console.warn("[paige-tts] tenant voice read failed (using tier/default):", (e as Error)?.message);
+      }
+      try {
+        // Join to the plan for its slug (tier default, §7). Active sub only; best-effort.
+        const { data: sub } = await admin
+          .from("platform_subscriptions")
+          .select("status, plan:platform_subscription_plans(slug)")
+          .eq("tenant_id", tenantId)
+          .eq("status", "active")
+          .maybeSingle();
+        const s = sub as { status?: string | null; plan?: { slug?: string | null } | null } | null;
+        if (s?.plan?.slug) planSlug = s.plan.slug;
+      } catch (e) {
+        console.warn("[paige-tts] plan read failed (using base default):", (e as Error)?.message);
+      }
     }
 
     const { voice: resolvedVoice, source: voiceSource } = resolveVoiceId({ requested: requestedVoice, playbookVoice, planSlug });
@@ -161,15 +201,15 @@ serve(async (req: Request) => {
       const usedVoice = attempt.provider === "elevenlabs" ? attempt.voiceId : attempt.voice;
       const fellBack = i > 0;
       const cacheKey = await ttsCacheKey(capped, attempt.provider, usedVoice, attempt.model);
-      const cachePath = `${tenantId}/${cacheKey}.mp3`; // §9 tenant-scoped; provider is in the key
+      const cachePath = `${storagePrefix}/${cacheKey}.mp3`; // §9 tenant-scoped (or _platform for the operator); provider is in the key
 
       // ── §14 CACHE LOOKUP (per-attempt key) — a HIT returns immediately ──
       try {
         const { data: cached } = await admin.storage.from(CACHE_BUCKET).download(cachePath);
         if (cached) {
           const buf = await cached.arrayBuffer();
-          console.log("[paige-tts] cache HIT", { tenantId, provider: attempt.provider, voice: usedVoice, bytes: buf.byteLength });
-          runAfter(meterChars(admin, tenantId, capped.length, {
+          console.log("[paige-tts] cache HIT", { scope: storagePrefix, provider: attempt.provider, voice: usedVoice, bytes: buf.byteLength });
+          runAfter(meterChars(admin, meterTenantId, capped.length, {
             provider: attempt.provider, voice: usedVoice, model: attempt.model,
             voice_source: voiceSource, fell_back: fellBack, cache_hit: true,
           }));
@@ -189,9 +229,9 @@ serve(async (req: Request) => {
             const { error: upErr } = await admin.storage
               .from(CACHE_BUCKET)
               .upload(cachePath, bytes, { contentType: "audio/mpeg", upsert: true });
-            if (upErr) console.error("[paige-tts] EL cache upload failed", { message: upErr.message, tenantId });
-            else console.log("[paige-tts] cache STORED", { tenantId, provider: "elevenlabs", voice: usedVoice, bytes: bytes.length });
-            await meterChars(admin, tenantId, capped.length, {
+            if (upErr) console.error("[paige-tts] EL cache upload failed", { message: upErr.message, scope: storagePrefix });
+            else console.log("[paige-tts] cache STORED", { scope: storagePrefix, provider: "elevenlabs", voice: usedVoice, bytes: bytes.length });
+            await meterChars(admin, meterTenantId, capped.length, {
               provider: "elevenlabs", voice: usedVoice, model: attempt.model,
               voice_source: voiceSource, fell_back: fellBack, cache_hit: false,
             });
@@ -241,9 +281,9 @@ serve(async (req: Request) => {
           const { error: upErr } = await admin.storage
             .from(CACHE_BUCKET)
             .upload(cachePath, bytes, { contentType: "audio/mpeg", upsert: true });
-          if (upErr) console.error("[paige-tts] cache upload failed", { message: upErr.message, tenantId });
-          else console.log("[paige-tts] cache STORED", { tenantId, provider: "openai", voice: usedVoice, bytes: bytes.length });
-          await meterChars(admin, tenantId, capped.length, {
+          if (upErr) console.error("[paige-tts] cache upload failed", { message: upErr.message, scope: storagePrefix });
+          else console.log("[paige-tts] cache STORED", { scope: storagePrefix, provider: "openai", voice: usedVoice, bytes: bytes.length });
+          await meterChars(admin, meterTenantId, capped.length, {
             provider: "openai", voice: usedVoice, model: attempt.model,
             voice_source: voiceSource, fell_back: fellBack, cache_hit: false,
           });
