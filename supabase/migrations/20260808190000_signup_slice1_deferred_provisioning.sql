@@ -16,17 +16,19 @@
 --     ever DROPs it. That is the authoritative migration-declared contract this file
 --     is built to — a fresh `supabase db reset` binds the trigger and the function
 --     fires per signup.
---   * HONEST PROD-DRIFT CAVEAT (§13/§32, VERIFIED live): on the CURRENT prod DB the
---     trigger is ABSENT (auth.users carries only RI constraint triggers; pg_trigger
---     shows handle_new_user bound to NOTHING) — it was wiped out-of-band (a known
---     Supabase auth-schema drift), so on live prod handle_new_user currently NEVER
---     runs. Corroborating live counts: 0 clients with source='signup' (3 total, all
---     'manual'); user_roles rows with role='user' = 0 (no user holds the base role);
---     profiles(7) < auth.users(14). => On prod today this migration's trigger-body
---     edit is a functional NO-OP and the completion role-restore is forward-correct
---     (it starts granting the base 'user' role again, matching the declared contract).
---     This drift is a BLOCKER flagged to the integrator: recreate the trigger, or
---     retire handle_new_user — resolve before treating Slice 1 as behavior-complete.
+--   * PROD-DRIFT — this migration FIXES it (§13/§32, VERIFIED live): on the CURRENT
+--     prod DB the trigger was ABSENT (auth.users carried only RI constraint triggers;
+--     pg_trigger showed handle_new_user bound to NOTHING) — wiped out-of-band (known
+--     Supabase auth-schema drift), so handle_new_user had NOT run for weeks. Live
+--     evidence: 0 clients with source='signup' (3 total, all 'manual'); 0 user_roles
+--     rows with role='user'; profiles(7) < auth.users(14) — 7 orphan users with no
+--     shell (admin@paigeagent.ai, tashiaanderson@me.com, both Google/OAuth signups,
+--     etc.). Step 5 RECREATES the trigger (bound to the new bare body) and step 6
+--     BACKFILLS the 7 missing shells — turning this from a doctrine-cosmetic change
+--     into a real prod-bug fix. Session-critical resolvers already null-handle a
+--     missing shell (current_user_tenant_id COALESCEs to the tenant_members fallback;
+--     get_paige_persona_context reads clients then that resolver, RETURNs empty on
+--     NULL) so the orphans degraded (no persisted profile state) rather than crashed.
 --   * is_signup_complete() predicate is UNCHANGED here (enforcement flip is Slice 4);
 --     it does NOT read the 'user' role, so deferral never affects the gate.
 --   * All role readers degrade gracefully on a MISSING user_roles row:
@@ -484,5 +486,38 @@ DELETE FROM public.clients c
      SELECT 1 FROM public.profiles p
       WHERE p.user_id = c.linked_user_id AND p.terms_accepted_at IS NOT NULL
    );
+
+-- -----------------------------------------------------------------------------
+-- 5. RECREATE the on_auth_user_created trigger (RESOLVES the prod drift documented
+--    in the header). Migrations declared this trigger (20250908112334 /
+--    20251009234919) and never dropped it, yet it is ABSENT on prod — wiped
+--    out-of-band, so handle_new_user has not run for weeks (0 role='user' rows;
+--    7 auth users with no profiles shell — admin@paigeagent.ai, both Google/OAuth
+--    signups, tashiaanderson@me.com, etc.). We bind the trigger to the NEW bare
+--    body (single profiles-shell insert; NO role, NO self-link client — no side
+--    effects, no swallowed exception, no missing column), so from db-push forward
+--    every new signup deterministically gets exactly one profiles shell.
+--    Signature matches the original verbatim (AFTER INSERT ... FOR EACH ROW).
+-- -----------------------------------------------------------------------------
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- -----------------------------------------------------------------------------
+-- 6. BACKFILL the missing profiles shells (Grandfather B). Column shape matches
+--    handle_new_user's insert EXACTLY (user_id, full_name, referral_code + casts).
+--    Idempotent via NOT EXISTS + ON CONFLICT — creates ONLY the missing shells
+--    (verified 7 on current prod). This gives the signup gate a row to stamp; it
+--    deliberately does NOT set terms_accepted_at — all 14 users keep NULL and
+--    force-accept on next login (§13: no fabricated consent).
+-- -----------------------------------------------------------------------------
+INSERT INTO public.profiles (user_id, full_name, referral_code)
+SELECT u.id,
+       nullif(u.raw_user_meta_data->>'full_name', ''),
+       nullif(upper(trim(u.raw_user_meta_data->>'referral_code')), '')
+FROM auth.users u
+WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.user_id = u.id)
+ON CONFLICT (user_id) DO NOTHING;
 
 COMMIT;
