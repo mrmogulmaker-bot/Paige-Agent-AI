@@ -49,7 +49,13 @@ const result = await liveDrive({
   },
 });
 
-console.log(JSON.stringify(result, null, 2));
+// Log only explicit, non-page-derived scalar fields (never the whole result object, never any
+// value read back from the credential-filled page) — keeps the clear-text data-flow provably clean.
+console.log(
+  `live-drive: ok=${result.ok} status=${result.status ?? "n/a"} bytes=${result.bytes} ` +
+    `screenshot=${result.screenshotPath} proxied=${result.proxied} ` +
+    `executablePathResolved=${result.executableResolved}`
+);
 
 if (!result.ok) {
   console.error(`✗ live-drive FAILED: ${result.error}`);
@@ -60,5 +66,7 @@ if (!result.ok) {
   );
   process.exit(1);
 }
-console.log(`✓ auth-gated live-drive OK — "${result.title}" · screenshot ${result.screenshotPath}`);
+console.log(
+  `✓ auth-gated live-drive OK — status ${result.status ?? "n/a"} · screenshot ${result.screenshotPath}`
+);
 process.exit(0);

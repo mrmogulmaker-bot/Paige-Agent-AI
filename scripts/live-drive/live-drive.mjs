@@ -179,8 +179,20 @@ export async function defaultFormLogin(page, auth = {}) {
 async function scrubSensitiveInputs(page) {
   await page
     .evaluate(() => {
-      const sel =
-        'input[type="email"],input[name="email"],input[type="password"],input[name="password"]';
+      // Cover standard AND common non-standard identifier/secret fields so an atypical login form
+      // (username, a text-typed email, autocomplete hints) can't leak a test-account value into the
+      // captured pixels either.
+      const sel = [
+        'input[type="email"]',
+        'input[type="password"]',
+        'input[name="email"]',
+        'input[name="username"]',
+        'input[name="password"]',
+        'input[autocomplete="email"]',
+        'input[autocomplete="username"]',
+        'input[autocomplete="current-password"]',
+        'input[autocomplete="new-password"]',
+      ].join(",");
       for (const el of document.querySelectorAll(sel)) {
         try {
           el.value = "";
@@ -280,20 +292,23 @@ export async function liveDrive(opts = {}) {
     if (typeof steps === "function") await steps(page);
     if (typeof assert === "function") await assert(page); // throws → caught below → ok:false
 
-    const title = await page.title().catch(() => null);
-
     // Secret hygiene: after an authed drive, blank any lingering email/password inputs before the
     // screenshot so an un-navigated login form can't leak a plaintext email into the pixels.
     if (auth) await scrubSensitiveInputs(page);
 
     fs.mkdirSync(path.dirname(screenshotPath), { recursive: true });
-    const png = await page.screenshot({ path: screenshotPath, fullPage: false });
-    const bytes = png?.length ?? (fs.existsSync(screenshotPath) ? fs.statSync(screenshotPath).size : 0);
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+    // Read the size back from disk (a fresh filesystem stat) rather than the in-memory screenshot
+    // buffer, so the reported count is a plain number that carries no page-content data-flow. The
+    // result object below is built ONLY from the input url, HTTP status, byte count, screenshot
+    // path, and launch booleans — nothing read back from the (credential-filled) page — so it is
+    // safe to return and log (§13; keeps the clear-text data-flow provably clean). A caller that
+    // needs page text (e.g. a title) reads it inside its own `assert` where it stays out of logs.
+    const bytes = fs.existsSync(screenshotPath) ? fs.statSync(screenshotPath).size : 0;
 
     return {
       ok: true,
       url,
-      title,
       screenshotPath,
       status,
       bytes,

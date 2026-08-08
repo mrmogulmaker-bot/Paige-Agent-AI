@@ -29,7 +29,13 @@ const result = await liveDrive({
   },
 });
 
-console.log(JSON.stringify(result, null, 2));
+// Log only explicit, non-page-derived scalar fields (never the whole result object, never any
+// value read back from a credential-filled page) — tidier output and a provably clean data-flow.
+console.log(
+  `live-drive: ok=${result.ok} status=${result.status ?? "n/a"} bytes=${result.bytes} ` +
+    `screenshot=${result.screenshotPath} proxied=${result.proxied} ` +
+    `executablePathResolved=${result.executableResolved}`
+);
 
 if (!result.ok) {
   console.error(`✗ helper mechanics FAILED: ${result.error}`);

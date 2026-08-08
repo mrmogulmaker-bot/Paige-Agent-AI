@@ -13,11 +13,14 @@ building blocks (`resolvePlaywright`, `resolveExecutablePath`, `buildLaunchOptio
 `defaultFormLogin`). It returns:
 
 ```js
-{ ok, url, title, screenshotPath, status, bytes, error?, proxied, executableResolved }
+{ ok, url, screenshotPath, status, bytes, error?, proxied, executableResolved }
 ```
 
 `ok:false` carries the **real** error (nav failure, launch failure, failed assertion) — it never
-fabricates a success (§13).
+fabricates a success (§13). The result is built only from the input URL, HTTP status, byte count,
+screenshot path, and launch booleans — deliberately **nothing read back from the (credential-filled)
+page** — so it is always safe to log. A caller that needs page text (e.g. a `<title>`) reads it
+inside its own `assert` callback, where it stays out of any log.
 
 ## When to use it
 
