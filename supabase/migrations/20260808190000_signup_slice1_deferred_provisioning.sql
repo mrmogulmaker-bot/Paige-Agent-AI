@@ -16,19 +16,23 @@
 --     ever DROPs it. That is the authoritative migration-declared contract this file
 --     is built to — a fresh `supabase db reset` binds the trigger and the function
 --     fires per signup.
---   * PROD-DRIFT — this migration FIXES it (§13/§32, VERIFIED live): on the CURRENT
---     prod DB the trigger was ABSENT (auth.users carried only RI constraint triggers;
---     pg_trigger showed handle_new_user bound to NOTHING) — wiped out-of-band (known
---     Supabase auth-schema drift), so handle_new_user had NOT run for weeks. Live
---     evidence: 0 clients with source='signup' (3 total, all 'manual'); 0 user_roles
---     rows with role='user'; profiles(7) < auth.users(14) — 7 orphan users with no
---     shell (admin@paigeagent.ai, tashiaanderson@me.com, both Google/OAuth signups,
---     etc.). Step 5 RECREATES the trigger (bound to the new bare body) and step 6
---     BACKFILLS the 7 missing shells — turning this from a doctrine-cosmetic change
---     into a real prod-bug fix. Session-critical resolvers already null-handle a
---     missing shell (current_user_tenant_id COALESCEs to the tenant_members fallback;
---     get_paige_persona_context reads clients then that resolver, RETURNs empty on
---     NULL) so the orphans degraded (no persisted profile state) rather than crashed.
+--   * PROD-DRIFT — this migration restores the SIGNUP-PROVISIONING slice of it
+--     (§13/§32, VERIFIED live; NOT a wholesale "drift resolved"): a schema reset
+--     wiped ALL user-defined triggers on auth.users (pg_trigger shows only internal
+--     RI triggers). At least FOUR were lost: on_auth_user_created (this one),
+--     trg_handle_new_user_referral, create_comm_prefs_on_signup, and
+--     trg_notify_new_user_onboarding. Their FUNCTIONS still exist; only the bindings
+--     were dropped, so handle_new_user had NOT run for weeks. Live evidence: 0 clients
+--     with source='signup' (3 total, all 'manual'); 0 user_roles rows with role='user';
+--     profiles(7) < auth.users(14) — 7 orphan users with no shell (admin@paigeagent.ai,
+--     tashiaanderson@me.com, antonio@mogulmakeracademy.com, etc.). Step 5 restores ONLY
+--     on_auth_user_created (the consent-critical signup-provisioning trigger) and step 6
+--     backfills the 7 missing shells. The OTHER three wiped triggers (comm-prefs /
+--     onboarding-notify / referral) remain BROKEN for new signups and are restored
+--     separately in tracked follow-up #62. Session-critical resolvers already
+--     null-handle a missing shell (current_user_tenant_id COALESCEs to the
+--     tenant_members fallback; get_paige_persona_context reads clients then that
+--     resolver, RETURNs empty on NULL) so the orphans degraded, not crashed.
 --   * is_signup_complete() predicate is UNCHANGED here (enforcement flip is Slice 4);
 --     it does NOT read the 'user' role, so deferral never affects the gate.
 --   * All role readers degrade gracefully on a MISSING user_roles row:
@@ -230,8 +234,16 @@ GRANT EXECUTE ON FUNCTION public.record_signup_acceptance(uuid) TO authenticated
 --    completion paths behavior-minimal — no new legal rows, no email change on
 --    the money path. record_signup_acceptance stays the standalone future seam.
 --
+--    §37 scope (audited, intentionally EXCLUDED from the base-role restore): the
+--    invite-accept paths — sub-account owner, client, and agency-team-member — are
+--    NOT touched here. Each self-grants its own role (e.g. 'client', per-tenant
+--    membership) on accept, and nothing reads the base 'user' role (has_role checks
+--    are role-specific; the routing/gates never require 'user'). The two owner
+--    self-provision paths below are the only completion paths that owned the base
+--    role via the trigger, so they are the only ones that restore it.
+--
 --    Both functions are re-emitted VERBATIM from the live prod definition with
---    ONLY the two documented deltas, preserving SECURITY DEFINER + search_path.
+--    ONLY the documented deltas, preserving SECURITY DEFINER + search_path.
 -- -----------------------------------------------------------------------------
 
 -- 3a. provision_tenant (self-serve owner onboarding).
@@ -258,6 +270,16 @@ BEGIN
   IF _type NOT IN ('standalone', 'agency', 'enterprise') THEN
     _type := 'standalone';
   END IF;
+
+  -- Slice 1 (signup deferral, L1 symmetry): (re)grant the base 'user' role UP FRONT
+  -- — the grant the handle_new_user trigger owns under the migration-declared
+  -- contract (moved out of the trigger). Placed before the idempotent found-branch
+  -- early-return so BOTH an already-provisioned owner AND a first-time completer end
+  -- up with the base role (mirrors provision_tenant_as). Idempotent; on prod (trigger
+  -- currently absent) this also forward-corrects the missing base role.
+  INSERT INTO public.user_roles (user_id, role)
+  VALUES (_uid, 'user')
+  ON CONFLICT (user_id, role) DO NOTHING;
 
   SELECT t.* INTO _tenant
     FROM public.tenants t
@@ -316,15 +338,7 @@ BEGIN
   -- Slice A: mint the owner membership WITH the authoritative is_owner=true.
   INSERT INTO public.tenant_members (tenant_id, user_id, role, status, is_owner, joined_at)
   VALUES (_tenant.id, _uid, 'owner', 'active', true, now());
-
-  -- Slice 1 (signup deferral): (re)grant the base 'user' role at completion —
-  -- the grant the handle_new_user trigger owns under the migration-declared
-  -- contract (moved out of the trigger). Idempotent. (Prod-drift note in header:
-  -- the trigger is currently absent on prod, so this also forward-corrects the
-  -- missing base role for completing owners.)
-  INSERT INTO public.user_roles (user_id, role)
-  VALUES (_uid, 'user')
-  ON CONFLICT (user_id, role) DO NOTHING;
+  -- (Base 'user' role already restored up front — L1 symmetry.)
 
   UPDATE public.profiles SET
     active_tenant_id    = _tenant.id,
@@ -488,16 +502,21 @@ DELETE FROM public.clients c
    );
 
 -- -----------------------------------------------------------------------------
--- 5. RECREATE the on_auth_user_created trigger (RESOLVES the prod drift documented
---    in the header). Migrations declared this trigger (20250908112334 /
+-- 5. RESTORE the on_auth_user_created trigger (the signup-provisioning slice of the
+--    drift — NOT the whole drift; see header: three sibling triggers stay broken
+--    until follow-up #62). Migrations declared this trigger (20250908112334 /
 --    20251009234919) and never dropped it, yet it is ABSENT on prod — wiped
 --    out-of-band, so handle_new_user has not run for weeks (0 role='user' rows;
---    7 auth users with no profiles shell — admin@paigeagent.ai, both Google/OAuth
---    signups, tashiaanderson@me.com, etc.). We bind the trigger to the NEW bare
---    body (single profiles-shell insert; NO role, NO self-link client — no side
---    effects, no swallowed exception, no missing column), so from db-push forward
---    every new signup deterministically gets exactly one profiles shell.
+--    7 auth users with no profiles shell — admin@paigeagent.ai,
+--    tashiaanderson@me.com, etc.). We bind the trigger to the NEW bare body (single
+--    profiles-shell insert; NO role, NO self-link client — no side effects, no
+--    swallowed exception, no missing column), so from db-push forward every new
+--    signup deterministically gets exactly one profiles shell.
 --    Signature matches the original verbatim (AFTER INSERT ... FOR EACH ROW).
+--    NOT the durable fix: this binding was already wiped once by a schema reset and
+--    could be wiped again. The durability hardening is the app-side ensure_profile()
+--    self-heal (tracked follow-up #61) that recreates a shell on-demand if it's ever
+--    missing — so a future auth-schema wipe degrades gracefully instead of recurring.
 -- -----------------------------------------------------------------------------
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
@@ -509,8 +528,11 @@ CREATE TRIGGER on_auth_user_created
 --    handle_new_user's insert EXACTLY (user_id, full_name, referral_code + casts).
 --    Idempotent via NOT EXISTS + ON CONFLICT — creates ONLY the missing shells
 --    (verified 7 on current prod). This gives the signup gate a row to stamp; it
---    deliberately does NOT set terms_accepted_at — all 14 users keep NULL and
---    force-accept on next login (§13: no fabricated consent).
+--    deliberately does NOT set terms_accepted_at. VERIFIED live: 2 of the 7 existing
+--    profiles already carry a real terms_accepted_at (genuine completers); the
+--    backfill's ON CONFLICT DO NOTHING + the COALESCE stamps elsewhere NEVER clobber
+--    them. Net: the 12 users with NULL terms_accepted_at force-accept on next login;
+--    the 2 real completers keep their existing stamp (§13: no fabricated consent).
 -- -----------------------------------------------------------------------------
 INSERT INTO public.profiles (user_id, full_name, referral_code)
 SELECT u.id,
