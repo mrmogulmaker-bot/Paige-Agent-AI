@@ -1218,6 +1218,24 @@ surface, especially 3D/WebGL, media pipelines, and anything behind a graceful-de
   the pre-launch shipping stance (§4) is unchanged. HONEST NOTE: the headless remote/CI/cron sessions (this
   build's default) have NO browser tool, so for them the owed-to-a-capable-session path is the truthful one
   — state it, don't imply a drive that didn't happen.
+- **The live-drive helper is the STANDARD tool for auth-gated §32 verification — use it, don't
+  re-derive it (owner tooling, ref §24).** When a session HAS browser-driving capability, the
+  auth-gated post-deploy scan drives the DEPLOYED surface with `scripts/live-drive/live-drive.mjs`
+  (`liveDrive({ url, auth, steps, assert, screenshotPath })`) rather than hand-rolling a Chromium
+  launch each time — §18 one home for launch/resolve, §24 automate the repeat. The helper is
+  portable by construction: it resolves `playwright` (root devDep) with a path fallback, resolves
+  the Chromium binary from `PW_EXECUTABLE_PATH` → the `/opt/pw-browsers` scan → Playwright's own
+  bundled browser, and wires the agent proxy as `proxy:{ server: HTTPS_PROXY }` ONLY when
+  `HTTPS_PROXY` is set (or hosts fail `ERR_CONNECTION_RESET`). Credentials are ENV-ONLY
+  (`LIVE_DRIVE_EMAIL`/`LIVE_DRIVE_PASSWORD`) — never hardcoded, logged, or screenshotted; use a
+  scoped test-tenant account, never owner PII. It reports HONESTLY (§13): on a nav/launch/assert
+  failure it returns `{ ok:false, error }`, never a hoped-for success — and because "target
+  reachable" is env-dependent (live prod was NOT reachable headless from the CI sandbox even via the
+  proxy, which forwards only tool/MCP hosts), a headless session that genuinely cannot reach the
+  surface still OWES the browser-driven live check to the next capable session (Cowork/Chrome), and
+  says so, rather than claiming a drive that did not happen. Screenshots write to the gitignored
+  `scripts/live-drive/artifacts/`. The helper is dev/CI tooling and lives in `scripts/`,
+  deliberately NOT inside the deployed `services/visual-renderer/` Fly artifact.
 - **The test, every time:** *"Have I proven this actually RUNS — not just compiles — and if it fails
   live, will the failure be LOUD and the surface still show SOMETHING, or will it silently blank and send
   us back into the guess-for-hours cycle?"* If I've only proven it compiles, I have not verified it.
