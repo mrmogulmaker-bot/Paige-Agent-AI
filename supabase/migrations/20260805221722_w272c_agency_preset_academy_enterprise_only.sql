@@ -1,27 +1,27 @@
 -- ============================================================================
--- Wave 3.9 #272-C fast-follow — Agency preset visible to ACADEMY + ENTERPRISE only
+-- Wave 3.9 #272-C fast-follow — Agency preset visible to AGENCY + ENTERPRISE only
 -- (§221 tier-appropriateness-by-content-semantics; §9/§272-C sub-account-own-tier;
 --  §2 finance-default; §18/§55 no-derailment; §32 idempotent)
 --
 -- WHAT: narrows exactly ONE marketplace_items row — slug='agency' (name "Agency",
 --   category "verticals", is_finance=false) — from available_to_tiers
---   ["Solo","Academy","Enterprise"] to ["Academy","Enterprise"], dropping "Solo".
+--   ["Solo","Agency","Enterprise"] to ["Agency","Enterprise"], dropping "Solo".
 --
 -- WHY (§221): the Agency Playbook preset is FOR agencies. Tier-appropriateness is
 --   judged by CONTENT SEMANTICS, not by revenue tier alone — a Solo practitioner
 --   (single-operator, no sub-accounts) should NOT see the Agency preset because it
---   is not appropriate to their practice. Academy (the sub-account/agency tier,
+--   is not appropriate to their practice. Agency (the sub-account tier,
 --   §17 growth atom) and Enterprise (sub-account architecture) are the tiers for
 --   which an agency preset is content-appropriate.
 --
 -- CASCADE MATH (§272-C, the Slice-0 cascading-visibility mechanism, unchanged):
 --   visibility = row.available_to_tiers ?| {tiers at-or-below the tenant's tier},
---   ordered Solo(1) < Academy(2) < Enterprise(3). With the new value ["Academy",
+--   ordered Solo(1) < Agency(2) < Enterprise(3). With the new value ["Agency",
 --   "Enterprise"] on this row:
---     Academy    tenant -> cascade keys {Academy,Solo}          ∩ {Academy,Enterprise} = {Academy}    -> SEES it
---     Enterprise tenant -> cascade keys {Enterprise,Academy,Solo} ∩ {Academy,Enterprise} = {Academy,Enterprise} -> SEES it
---     Solo       tenant -> cascade keys {Solo}                  ∩ {Academy,Enterprise} = {}            -> does NOT see it
---   And per §272-C/§9: a Solo SUB-ACCOUNT under an Academy agency resolves its OWN
+--     Agency     tenant -> cascade keys {Agency,Solo}          ∩ {Agency,Enterprise} = {Agency}    -> SEES it
+--     Enterprise tenant -> cascade keys {Enterprise,Agency,Solo} ∩ {Agency,Enterprise} = {Agency,Enterprise} -> SEES it
+--     Solo       tenant -> cascade keys {Solo}                  ∩ {Agency,Enterprise} = {}            -> does NOT see it
+--   And per §272-C/§9: a Solo SUB-ACCOUNT under an Agency agency resolves its OWN
 --   Solo tier (a sub-account's own platform_subscriptions row governs; fails closed
 --   to Solo), so its cascade keys are {Solo} and it ALSO does NOT see the Agency
 --   preset — the sub-account-own-tier guarantee holds.
@@ -30,12 +30,12 @@
 --   does NOT make funding a default, does NOT touch is_finance, and touches NO
 --   funding/funding_preset/client_retention_playbook or any other row (§55).
 --
--- CHECK: ["Academy","Enterprise"] ⊂ '["Solo","Academy","Enterprise"]' — respects
+-- CHECK: ["Agency","Enterprise"] ⊂ '["Solo","Agency","Enterprise"]' — respects
 --   mp_items_tiers_ck (available_to_tiers <@ canonical set). Confirmed.
 --
 -- IDEMPOTENT (§32): re-running sets the same value; targeted by slug (1 row).
 -- ============================================================================
 
 UPDATE public.marketplace_items
-   SET available_to_tiers = '["Academy","Enterprise"]'::jsonb
+   SET available_to_tiers = '["Agency","Enterprise"]'::jsonb
  WHERE slug = 'agency';

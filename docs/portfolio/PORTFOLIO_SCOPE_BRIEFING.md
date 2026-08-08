@@ -30,7 +30,7 @@
 
 Paige is a **CRM platform**, not a customer of any tenant. Tenants and consumers are billed by Paige across four layers (§197):
 
-- **Layer 1 — Tenants → Paige.** Platform license. Practice $149 / Academy $397 / Enterprise custom.
+- **Layer 1 — Tenants → Paige.** Platform license. Solo $149 / Agency $397 / Enterprise custom.
 - **Layer 2 — End customers → Tenants.** Tenant-sovereign pricing (BTF $4,997, LaunchPad $199/mo, etc.).
 - **Layer 3 — Metered pass-through.** Wholesale credit pulls, SMS, voice. Tenant is billed regardless of markup.
 - **Layer 4 — Consumers → Paige.** Individual business owners. Founder $27 / Growth $67 / Scale $297.

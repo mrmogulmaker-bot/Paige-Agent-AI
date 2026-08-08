@@ -29,13 +29,13 @@ import { TableCell, TableRow } from "@/components/ui/table";
  * §11 gold ONLY on the Generate act; the copy/revoke are neutral; StatePill carries status.
  * §13 nothing rendered that the RPC didn't return.
  *
- * Slug note: mirrors the DB-true plan slugs after the tier reconcile (solo / academy). Enterprise
+ * Slug note: mirrors the DB-true plan slugs after the tier reconcile (solo / agency). Enterprise
  * is contact-sales (custom price) and is intentionally NOT invite-generatable here.
  */
 
 const PLAN_OPTIONS = [
   { slug: "solo", name: "Solo", price: "$149/mo" },
-  { slug: "academy", name: "Academy", price: "$397/mo" },
+  { slug: "agency", name: "Agency", price: "$397/mo" },
 ] as const;
 
 const TRIAL_DAYS = 30;

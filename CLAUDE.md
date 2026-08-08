@@ -54,8 +54,13 @@ coaches, **consultants, agencies, thought leaders, advisors**, and any professio
 who manages clients: client management, follow-ups, workflows, onboarding,
 scheduling, retainers, outcomes. **Do not hardwire "coaching"** so narrowly that
 consultants, agencies, and thought leaders feel excluded — the audience is broad;
-prefer inclusive words like *practice · business · clients · work · team* over
-"coaching" in shared/platform copy. **Never** mention credit, credit repair, funding,
+prefer inclusive words like *business · company · clients · work · team* over
+"coaching" in shared/platform copy. **Do NOT use "practice" as the inclusive word** —
+per the owner ruling (2026-08-08): "Practice" is prohibited in shipped/marketplace copy
+until HIPAA + SOC-2 + related certs land, so on the "practice" vs. "business/company"
+choice the ban wins — recommend *business* / *company*. (This is the §3.b "Practice"-ban
+ruling; its formal numbered paste into §3 is a tracked pending doctrine amendment, #40/#93 —
+until then this note in §2 carries it.) **Never** mention credit, credit repair, funding,
 lending, loans, financing, readiness or funding scores, lender products, or anything
 that reads as consumer finance/credit **in the platform defaults** — the marketing
 site, the shared/platform copy, the coaching-generic default sets, the Super Admin /

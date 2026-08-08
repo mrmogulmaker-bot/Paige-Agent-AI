@@ -48,12 +48,12 @@ The platform is its own ecosystem by design. Platform defaults stay generic to e
 The billing taxonomy already in the schema *is* the revenue map. Each layer is an engine; each engine has a different buyer, a different growth loop, and a different margin profile.
 
 ### Engine 1 — L1: Platform Subscriptions (tenant → Paige) · target ~$400M ARR
-The core: Solo, Academy, and Enterprise plans on `platform_subscription_plans` / `platform_subscriptions`.
+The core: Solo, Agency, and Enterprise plans on `platform_subscription_plans` / `platform_subscriptions`.
 
 | Plan | The Buyer | The Growth Atom |
 |---|---|---|
 | **Solo** ($97–$297/mo) | Solo coach/consultant/advisor who needs Paige + client portals, no sub-accounts | Volume + self-serve |
-| **Academy** ($497–$997/mo base + per-sub-account) | Agencies/consultancies running a **book of business** — unlimited sub-accounts, each a full tenant | **The compounding unit.** One agency logo = 10, 50, 500 sub-accounts over time. Expansion revenue is structural, not sold. |
+| **Agency** ($497–$997/mo base + per-sub-account) | Agencies/consultancies running a **book of business** — unlimited sub-accounts, each a full tenant | **The compounding unit.** One agency logo = 10, 50, 500 sub-accounts over time. Expansion revenue is structural, not sold. |
 | **Enterprise / White-Label** ($50K–$500K/yr) | Franchises, associations, multi-brand operators on `/workspace/*` under their own skin | Big logos, multi-year contracts, the moat against churn |
 
 **Why the agency account is the whole ballgame:** it converts *sales effort into NRR*. You close the agency once; every client they onboard is a sub-account you never had to acquire. 5,000 agency accounts averaging 20 sub-accounts at blended $60/sub-account/mo ≈ **$72M ARR from expansion alone** — before the agency's own base fee.
@@ -115,7 +115,7 @@ Creator-built vertical editions let operators run booking-and-dispatch businesse
 ### Stage 1 → $10M ARR: "Trust + Money"
 - **Autonomy Policy Engine (#4)** ships — the trust dial (auto/confirm/off per action kind, guardrail caps, voice-settable). Adoption unlock: coaches won't tolerate confirming everything, won't accept silent action.
 - **Billing Brain (#5)** ships — retainer rescue becomes the revenue proof and opens Engine 3.
-- Academy tier launches with sub-account billing. First 100 agencies.
+- Agency tier launches with sub-account billing. First 100 agencies.
 - Gmail (#8), Zoom Session-to-Action (#7), durable client memory (#9) light up — the connections proving the spine.
 - SOC 2 Type I. First pricing on usage events.
 
