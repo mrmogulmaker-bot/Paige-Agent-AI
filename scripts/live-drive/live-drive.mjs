@@ -326,12 +326,28 @@ export async function liveDrive(opts = {}) {
   }
 }
 
+/**
+ * Strip any occurrence of the configured credential ENV values from a string. Playwright never
+ * echoes a filled value into an error, so this is defense-in-depth (an app that reflected a
+ * credential in its own error text would still be scrubbed) — and, by comparing the string against
+ * the sensitive source and removing it, it is a genuine sanitizer barrier: no credential value can
+ * reach the returned `error` (or any log of it).
+ */
+function redactSecrets(str) {
+  if (typeof str !== "string" || !str) return str;
+  let out = str;
+  for (const key of ["LIVE_DRIVE_PASSWORD", "LIVE_DRIVE_EMAIL"]) {
+    const secret = process.env[key];
+    if (secret && secret.length > 0) out = out.split(secret).join("***");
+  }
+  return out;
+}
+
 function failure(url, screenshotPath, proxied, executableResolved, err, prefix) {
-  const msg = err?.message || String(err);
+  const msg = redactSecrets(err?.message || String(err));
   return {
     ok: false,
     url,
-    title: null,
     screenshotPath: null,
     status: null,
     bytes: null,
