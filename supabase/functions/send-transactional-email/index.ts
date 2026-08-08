@@ -2,6 +2,7 @@ import * as React from 'npm:react@18.3.1'
 import { renderAsync } from 'npm:@react-email/components@0.0.22'
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { TEMPLATES } from '../_shared/transactional-email-templates/registry.ts'
+import { resolveTenantEmailContext } from '../_shared/email/branding.ts'
 
 // Configuration baked in at scaffold time — do NOT change these manually.
 // To update, re-run the email domain setup flow.
@@ -268,11 +269,65 @@ Deno.serve(async (req) => {
   // Gmail's JWT-less POST reaches it), which performs the suppression on POST.
   const unsubscribeOneClickUrl = `${supabaseUrl}/functions/v1/handle-email-unsubscribe?token=${unsubscribeToken}`
 
+  // Resolve the recipient's tenant so every email reflects THEIR brand, not the
+  // shared Paige default (§6/§9). Caller-provided tenantId always wins; otherwise
+  // resolve from the recipient's profile / active membership. Runs BEFORE the render
+  // so the tenant brand can thread into the template props below.
+  if (!tenantId) {
+    try {
+      let uid = recipientUserId
+      if (!uid) {
+        const { data: u } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', effectiveRecipient)
+          .maybeSingle()
+        uid = (u as any)?.id ?? null
+      }
+      if (uid) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('active_tenant_id')
+          .eq('id', uid)
+          .maybeSingle()
+        tenantId = (prof as any)?.active_tenant_id ?? null
+        if (!tenantId) {
+          const { data: mem } = await supabase
+            .from('tenant_members')
+            .select('tenant_id')
+            .eq('user_id', uid)
+            .eq('status', 'active')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle()
+          tenantId = (mem as any)?.tenant_id ?? null
+        }
+      }
+    } catch (e) {
+      console.warn('tenant auto-resolve failed', e)
+    }
+  }
+
+  // Resolve the tenant's email brand tokens (logo + name). Present-only: logoUrl is
+  // null when unset (no Paige floor); brandName is the tenant's OWN name, else the
+  // platform default. Opt-in templates (coaching-reminder, role-invitation) render
+  // these; platform templates ignore them and keep their own Paige identity (§37).
+  let brandProps: { brandLogoUrl: string | null; brandName: string } | null = null
+  try {
+    const { branding } = await resolveTenantEmailContext(supabase, tenantId)
+    brandProps = { brandLogoUrl: branding.logoUrl, brandName: branding.brandName }
+  } catch (e) {
+    console.warn('tenant email brand resolve failed', e)
+  }
+
   // Inject the visible opt-out link into the render props for bulk mail only, so
   // the shared EmailFooter renders it. Transactional templates never receive it.
+  // brandProps spread FIRST so any explicit brand a caller passes in templateData
+  // still wins (§37 backward-compat: unknown props are ignored by templates that
+  // don't destructure them).
   const renderData = isBulk
-    ? { ...templateData, unsubscribeUrl: unsubscribePageUrl }
-    : templateData
+    ? { ...brandProps, ...templateData, unsubscribeUrl: unsubscribePageUrl }
+    : { ...brandProps, ...templateData }
 
   // 4. Render React Email template to HTML and plain text
   const html = await renderAsync(
@@ -310,44 +365,8 @@ Deno.serve(async (req) => {
     return domain === SENDER_DOMAIN || domain === SENDER_ROOT || domain.endsWith('.' + SENDER_ROOT)
   }
 
-  // Auto-resolve tenantId if not provided by caller.
-  // Every enqueued email should reflect the recipient's tenant brand, not the
-  // shared Paige default. Resolve via recipient user's profile / membership.
-  if (!tenantId) {
-    try {
-      let uid = recipientUserId
-      if (!uid) {
-        const { data: u } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('email', effectiveRecipient)
-          .maybeSingle()
-        uid = (u as any)?.id ?? null
-      }
-      if (uid) {
-        const { data: prof } = await supabase
-          .from('profiles')
-          .select('active_tenant_id')
-          .eq('id', uid)
-          .maybeSingle()
-        tenantId = (prof as any)?.active_tenant_id ?? null
-        if (!tenantId) {
-          const { data: mem } = await supabase
-            .from('tenant_members')
-            .select('tenant_id')
-            .eq('user_id', uid)
-            .eq('status', 'active')
-            .order('created_at', { ascending: true })
-            .limit(1)
-            .maybeSingle()
-          tenantId = (mem as any)?.tenant_id ?? null
-        }
-      }
-    } catch (e) {
-      console.warn('tenant auto-resolve failed', e)
-    }
-  }
-
+  // tenantId is already resolved above (before the render, so its brand could thread
+  // into the template). The sender-identity resolution below reuses it.
   let resolvedFrom = `${SITE_NAME} <notifications@${FROM_DOMAIN}>`
   let resolvedReplyTo: string | null = null
   if (tenantId) {
