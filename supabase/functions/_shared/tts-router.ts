@@ -107,9 +107,8 @@ export const DEFAULT_TTS_VOICE: ResolvedVoice = { provider: "elevenlabs", id: PR
 // generic slugs, NO tenant/MMA pin — the default fires for EVERY tenant. A tenant's own paige_voice
 // always wins over these (§7). #167 (Wave C) layers the tenant-facing picker + tier gating on top.
 const TIER_DEFAULT_VOICE: Record<string, ResolvedVoice> = {
-  academy: DEFAULT_TTS_VOICE,
-  enterprise: DEFAULT_TTS_VOICE,
   agency: DEFAULT_TTS_VOICE,
+  enterprise: DEFAULT_TTS_VOICE,
   practice: DEFAULT_TTS_VOICE,
   starter: DEFAULT_TTS_VOICE,
   free: DEFAULT_TTS_VOICE,

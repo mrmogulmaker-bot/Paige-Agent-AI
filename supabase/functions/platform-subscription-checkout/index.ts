@@ -3,7 +3,7 @@
 //
 // This is the "sign up + pay to run your practice on Paige" money leg. It mints a
 // `mode: "subscription"` Stripe Checkout Session for a self-serve platform plan
-// (practice / academy) and returns its hosted URL. The webhook's
+// (practice / agency) and returns its hosted URL. The webhook's
 // checkout.session.completed arm — discriminated on the Stripe-signed
 // `platform_plan_slug` metadata — is what actually WRITES `platform_subscriptions`
 // (service role; the table's RLS lets only the platform owner write, so the webhook

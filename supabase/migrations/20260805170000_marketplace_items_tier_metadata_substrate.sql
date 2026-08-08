@@ -9,19 +9,19 @@
 --   tier/role is resolved SERVER-SIDE and intersected against the row), never by a
 --   human pre-classifying their request (§36/§18).
 --
--- CANONICAL TIERS (owner-ruled, LIVE on prod): Solo / Academy / Enterprise — the
---   ONLY three. platform_subscription_plans slugs are solo/academy/enterprise
---   (verified prod). Solo = single practitioner. Academy = sub-account tier
+-- CANONICAL TIERS (owner-ruled, LIVE on prod): Solo / Agency / Enterprise — the
+--   ONLY three. platform_subscription_plans slugs are solo/agency/enterprise
+--   (verified prod). Solo = single practitioner. Agency = sub-account tier
 --   (unlimited sub-accounts, §17 growth atom). Enterprise = custom-quote,
 --   sub-account architecture. (NOT the earlier Free/Solo/Team/Agency/Enterprise.)
 --
 -- CASCADING VISIBILITY (owner Option B): a tenant sees an item if the item's
 --   available_to_tiers overlaps the set of tiers AT-OR-BELOW the tenant's tier,
---   ordered Solo(1) < Academy(2) < Enterprise(3). Higher tiers inherit the
+--   ordered Solo(1) < Agency(2) < Enterprise(3). Higher tiers inherit the
 --   lower-tier catalog:
 --     Solo       tenant -> available_to_tiers ?| {Solo}
---     Academy    tenant -> available_to_tiers ?| {Academy,Solo}
---     Enterprise tenant -> available_to_tiers ?| {Enterprise,Academy,Solo}
+--     Agency     tenant -> available_to_tiers ?| {Agency,Solo}
+--     Enterprise tenant -> available_to_tiers ?| {Enterprise,Agency,Solo}
 --   Implemented with jsonb ?| over the at-or-below-tier key set.
 --
 -- §18 FOUR-QUESTION GATE (grounded, not believed):
@@ -84,7 +84,7 @@ BEGIN;
 
 -- ── 1. The five metadata columns ────────────────────────────────────────────
 ALTER TABLE public.marketplace_items
-  ADD COLUMN IF NOT EXISTS available_to_tiers   jsonb NOT NULL DEFAULT '["Solo","Academy","Enterprise"]'::jsonb,
+  ADD COLUMN IF NOT EXISTS available_to_tiers   jsonb NOT NULL DEFAULT '["Solo","Agency","Enterprise"]'::jsonb,
   ADD COLUMN IF NOT EXISTS installable_by_role  jsonb NOT NULL DEFAULT '["tenant_admin"]'::jsonb,
   ADD COLUMN IF NOT EXISTS source_type          text  NOT NULL DEFAULT 'platform',
   ADD COLUMN IF NOT EXISTS publisher_tenant_id  uuid  NULL REFERENCES public.tenants(id) ON DELETE SET NULL,
@@ -102,7 +102,7 @@ DO $$ BEGIN
     ALTER TABLE public.marketplace_items
       ADD CONSTRAINT mp_items_tiers_ck
         CHECK (jsonb_typeof(available_to_tiers) = 'array'
-           AND available_to_tiers <@ '["Solo","Academy","Enterprise"]'::jsonb);
+           AND available_to_tiers <@ '["Solo","Agency","Enterprise"]'::jsonb);
   END IF;
   -- install-role vocabulary: an ARRAY whose VALUES are a subset of the role keys
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='mp_items_roles_ck') THEN
@@ -142,13 +142,13 @@ CREATE INDEX IF NOT EXISTS mp_items_roles_gin ON public.marketplace_items USING 
 -- predicate AND the arg-taking browse RPC (parity). Returns capitalized to match the
 -- available_to_tiers value vocabulary.
 CREATE OR REPLACE FUNCTION public.current_tenant_tier(_tenant_id uuid DEFAULT public.current_user_tenant_id())
-RETURNS text                              -- 'Solo' | 'Academy' | 'Enterprise'
+RETURNS text                              -- 'Solo' | 'Agency' | 'Enterprise'
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public'
 AS $$
   SELECT COALESCE(
     (SELECT CASE lower(pl.slug)
         WHEN 'enterprise' THEN 'Enterprise'
-        WHEN 'academy'    THEN 'Academy'
+        WHEN 'agency'     THEN 'Agency'
         WHEN 'solo'       THEN 'Solo'
         ELSE 'Solo' END                     -- unknown/future slug -> most-restrictive
      FROM public.platform_subscriptions ps
@@ -170,8 +170,8 @@ RETURNS text[]
 LANGUAGE sql IMMUTABLE
 AS $$
   SELECT CASE _tier
-    WHEN 'Enterprise' THEN ARRAY['Enterprise','Academy','Solo']
-    WHEN 'Academy'    THEN ARRAY['Academy','Solo']
+    WHEN 'Enterprise' THEN ARRAY['Enterprise','Agency','Solo']
+    WHEN 'Agency'     THEN ARRAY['Agency','Solo']
     ELSE                   ARRAY['Solo']            -- 'Solo' and any unexpected -> Solo only
   END;
 $$;
@@ -381,13 +381,13 @@ GRANT EXECUTE ON FUNCTION public.marketplace_catalog_for_tenant(uuid, uuid) TO s
 -- needed — we set the intended values explicitly and the DEFAULTs already match, so
 -- a re-run is a no-op on values.
 UPDATE public.marketplace_items
-   SET available_to_tiers  = '["Solo","Academy","Enterprise"]'::jsonb,   -- coaching-generic -> all tiers (cascade: everyone)
+   SET available_to_tiers  = '["Solo","Agency","Enterprise"]'::jsonb,   -- coaching-generic -> all tiers (cascade: everyone)
        installable_by_role = '["tenant_admin"]'::jsonb,                  -- only the tenant admin installs (safe default)
        source_type         = 'platform',
        publisher_tenant_id  = NULL,
        publish_status      = 'approved';                                 -- everything shipped is live
 -- #272 (OWNER-OWED): per-item vertical tier/role refinement (e.g. gating the funding
--- preset to Academy+Enterprise, or widening a pack to staff/client) is the owner's
+-- preset to Agency+Enterprise, or widening a pack to staff/client) is the owner's
 -- later call. The §2 finance guard + is_finance flag on 'funding'/'funding_preset'
 -- are UNTOUCHED — tier metadata is not a default and does not make funding a default.
 

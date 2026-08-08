@@ -43,9 +43,9 @@ describe("marketplace tier/role/publish substrate migration (#277, 3-tier cascad
   });
 
   it("constrains the tier/role arrays to the canonical vocab via jsonb <@ containment", () => {
-    // ONLY the three canonical tiers — Solo/Academy/Enterprise (no Free/Team/Agency)
+    // ONLY the three canonical tiers — Solo/Agency/Enterprise (no Free/Team/Academy)
     expect(FLAT).toContain(
-      `available_to_tiers <@ '["Solo","Academy","Enterprise"]'::jsonb`,
+      `available_to_tiers <@ '["Solo","Agency","Enterprise"]'::jsonb`,
     );
     expect(FLAT).toContain(
       `installable_by_role <@ '["tenant_admin","agency_owner","staff","client"]'::jsonb`,
@@ -89,16 +89,16 @@ describe("marketplace tier/role/publish substrate migration (#277, 3-tier cascad
     // unknown slug -> Solo (the ELSE arm) and no row -> Solo (the COALESCE default)
     expect(FLAT).toMatch(/ELSE 'Solo'/);
     expect(FLAT).toMatch(/LIMIT 1\),\s*'Solo'/);
-    // the stale Free/Team/Agency vocabulary must NOT reappear as tier values
+    // the stale Free/Team/Academy vocabulary must NOT reappear as tier values
     expect(FLAT).not.toContain(`available_to_tiers <@ '["Free"`);
     expect(FLAT).not.toMatch(/WHEN 'team' THEN 'Team'/i);
   });
 
   it("cascades higher tiers over the lower-tier catalog (Option B, at-or-below key set)", () => {
     expect(FLAT).toContain(
-      `WHEN 'Enterprise' THEN ARRAY['Enterprise','Academy','Solo']`,
+      `WHEN 'Enterprise' THEN ARRAY['Enterprise','Agency','Solo']`,
     );
-    expect(FLAT).toContain(`WHEN 'Academy' THEN ARRAY['Academy','Solo']`);
+    expect(FLAT).toContain(`WHEN 'Agency' THEN ARRAY['Agency','Solo']`);
     expect(FLAT).toContain(`ELSE ARRAY['Solo']`);
   });
 
@@ -168,7 +168,7 @@ describe("marketplace tier/role/publish substrate migration (#277, 3-tier cascad
 
   it("backfills EVERY existing row uniformly to all-tiers / tenant-admin / platform / approved", () => {
     expect(FLAT).toContain(
-      `available_to_tiers = '["Solo","Academy","Enterprise"]'::jsonb`,
+      `available_to_tiers = '["Solo","Agency","Enterprise"]'::jsonb`,
     );
     expect(FLAT).toContain(`installable_by_role = '["tenant_admin"]'::jsonb`);
     expect(FLAT).toMatch(/source_type\s*=\s*'platform'/);

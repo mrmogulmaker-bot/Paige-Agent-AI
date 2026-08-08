@@ -55,7 +55,7 @@ const PLAN_COPY: Record<
       "Core automations & workflows",
     ],
   },
-  academy: {
+  agency: {
     tagline: "For the team running many client accounts at once.",
     popular: true,
     features: [
@@ -70,7 +70,7 @@ const PLAN_COPY: Record<
   enterprise: {
     tagline: "For multi-brand portfolios with bespoke infrastructure needs.",
     features: [
-      "Everything in Academy, plus:",
+      "Everything in Agency, plus:",
       "Dedicated infrastructure",
       "SOC 2 / custom DPA",
       "White-glove migration",
@@ -94,8 +94,8 @@ const FALLBACK_PLANS: DbPlan[] = [
     is_active: true,
   },
   {
-    slug: "academy",
-    name: "Academy",
+    slug: "agency",
+    name: "Agency",
     description: "For coaching academies and teams running Paige as their operating system.",
     monthly_price_cents: 39700,
     annual_price_cents: 397000,
@@ -211,7 +211,7 @@ export default function Pricing() {
     <>
       <PageHead
         title="Pricing — Paige Agent AI"
-        description="Run your business on Paige. Transparent platform pricing for coaches, consultants, agencies, advisors, and thought leaders — Solo, Academy, and Enterprise."
+        description="Run your business on Paige. Transparent platform pricing for coaches, consultants, agencies, advisors, and thought leaders — Solo, Agency, and Enterprise."
         path="/pricing"
       />
       <div className="min-h-screen bg-background">

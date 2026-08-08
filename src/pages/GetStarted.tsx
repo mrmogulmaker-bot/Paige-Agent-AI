@@ -35,7 +35,7 @@ type InviteInfo = {
 // Any future self-serve slug falls back to a capitalized slug, never a raw token.
 const PLAN_NAME_BY_SLUG: Record<string, string> = {
   solo: "Solo",
-  academy: "Academy",
+  agency: "Agency",
 };
 
 export default function GetStarted() {

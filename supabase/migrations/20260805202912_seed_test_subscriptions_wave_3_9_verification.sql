@@ -37,7 +37,7 @@
 --   metadata.cleanup_when.
 --
 --   The three tenants + tiers (grounded against live prod this session):
---     29a7c77f-386a-4060-bf3e-e93de48f742e  Project Mogul Enterprise Inc (agency)     -> academy
+--     29a7c77f-386a-4060-bf3e-e93de48f742e  Project Mogul Enterprise Inc (agency)     -> agency
 --     7eaf8859-91b5-429a-92f1-b78c17eed38f  First Sterling Capital (standalone)       -> solo
 --     d8a0a880-1bed-43af-9b5d-e23c4db93106  Mogul Maker Academy (sub-account of PME)   -> solo
 --
@@ -61,7 +61,7 @@ SELECT
     '{"test_seed":true,"seeded_by":"cowork_wave_3_9_verification","seeded_at":"2026-08-05","seeded_reason":"Wave 3.9 tier-visibility verification per Antonio Option A ruling","cleanup_when":"Wave 8 Stripe wire-up"}'::jsonb AS metadata
 FROM (
     VALUES
-        ('29a7c77f-386a-4060-bf3e-e93de48f742e'::uuid, 'academy'),
+        ('29a7c77f-386a-4060-bf3e-e93de48f742e'::uuid, 'agency'),
         ('7eaf8859-91b5-429a-92f1-b78c17eed38f'::uuid, 'solo'),
         ('d8a0a880-1bed-43af-9b5d-e23c4db93106'::uuid, 'solo')
 ) AS seed(tenant_id, plan_slug)
