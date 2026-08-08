@@ -8,7 +8,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { parsePaigeChatError } from "@/lib/paigeChatError";
-import paigeAvatar from "@/assets/paige-ai-avatar.png";
+import { PaigeMark } from "@/components/brand/PaigeMark";
+import { usePlaybook } from "@/lib/playbook";
+import { useClientPortalBrandState } from "@/hooks/useClientPortalBrand";
+import { readableTextOn } from "@/lib/brand/contrast";
 import { DictationMicButton } from "@/components/voice/DictationMicButton";
 import { appendDictation } from "@/lib/voice/useDictation";
 import { useChatDocumentUpload } from "@/hooks/useChatDocumentUpload";
@@ -38,6 +41,11 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { contextBlock, hasCreditData } = useClientChatContext(clientId, clientId ? null : currentUserId);
+  // The client-portal widget wears the TENANT's brand, not a hardcoded Paige face
+  // (§6/§9). Same resolver the /app chrome + PaigeChat use (get_client_portal_brand,
+  // keyed on the signed-in user — no clientId needed; returns null for staff/coach).
+  const playbook = usePlaybook();
+  const { brand: portalBrand, loading: portalBrandLoading } = useClientPortalBrandState();
   const [messages, setMessages] = useState<Message[]>([
     { role: "assistant", content: "Hey, how can I help?" },
   ]);
@@ -340,6 +348,34 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
     ? { left: fabPos.x, top: fabPos.y, right: "auto", bottom: "auto" }
     : {};
 
+  // Assistant avatar resolved to the tenant brand (§6): tenant logo → tenant/persona
+  // monogram on a brand-tinted plate → PaigeMark ONLY when there is no tenant brand at
+  // all (staff / neutral default). Skeleton while the brand resolves so the Paige mark
+  // never flashes and swaps to the tenant's (§6/§11 — no jarring hand-off). Neutral
+  // border (not gold): gold is reserved for the act moment (Send), §11.
+  const brandName = portalBrand?.tenant_name?.trim() || null;
+  const brandLogo = portalBrand?.logo_url?.trim() || null;
+  const brandColor = portalBrand?.primary_color?.trim() || null;
+  const personaName = playbook.persona.name?.trim() || null;
+  const avatarLabel = brandName || personaName || "Assistant";
+  const monogram = (brandName || personaName || "?").charAt(0).toUpperCase();
+  const renderBrandAvatar = (sizeClass: string) =>
+    portalBrandLoading ? (
+      <span className={`${sizeClass} rounded-full border-2 border-border bg-muted animate-pulse flex-shrink-0`} aria-hidden="true" />
+    ) : brandLogo ? (
+      <img src={brandLogo} alt={avatarLabel} className={`${sizeClass} rounded-full border-2 border-border object-cover flex-shrink-0`} />
+    ) : portalBrand ? (
+      <span
+        className={`inline-flex ${sizeClass} items-center justify-center rounded-full border-2 border-border text-sm font-semibold flex-shrink-0 ${brandColor ? "" : "bg-sidebar-accent text-primary-foreground"}`}
+        style={brandColor ? { backgroundColor: brandColor, color: readableTextOn(brandColor) } : undefined}
+        aria-label={avatarLabel}
+      >
+        {monogram}
+      </span>
+    ) : (
+      <PaigeMark className={`${sizeClass} rounded-full flex-shrink-0`} />
+    );
+
   const chatContent = (
     <>
       {!isOpen && !hideChatbot && !pocketed && (
@@ -399,10 +435,10 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
 
           <div className="flex items-center justify-between p-3 sm:p-4 border-b border-border flex-shrink-0">
             <div className="flex items-center gap-2">
-              <img src={paigeAvatar} alt="PaigeAgent.ai" className="w-8 h-8 rounded-full" />
+              {renderBrandAvatar("w-8 h-8")}
               <div>
-                <h3 className="font-semibold text-sm">PaigeAgent.ai</h3>
-                <p className="text-[10px] sm:text-xs text-muted-foreground">Your AI Business Partner</p>
+                <h3 className="font-semibold text-sm capitalize">{avatarLabel}</h3>
+                <p className="text-[10px] sm:text-xs text-muted-foreground capitalize">{playbook.persona.role}</p>
               </div>
             </div>
             <div className="flex items-center gap-1">
@@ -416,9 +452,7 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
             <div className="space-y-3 sm:space-y-4">
               {messages.map((message, index) => (
                 <div key={index} className={`flex gap-2 sm:gap-3 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                  {message.role === "assistant" && (
-                    <img src={paigeAvatar} alt="PaigeAgent.ai" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex-shrink-0" />
-                  )}
+                  {message.role === "assistant" && renderBrandAvatar("w-7 h-7 sm:w-8 sm:h-8")}
                   <div className={`rounded-lg px-3 py-2 sm:px-4 sm:py-2 max-w-[85%] sm:max-w-[80%] ${message.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}>
                     {message.documentFileName && <DocumentMessageBubble fileName={message.documentFileName} />}
                     {message.content && (

@@ -5,8 +5,12 @@ import {
 import type { TemplateEntry } from './registry.ts'
 import { EmailFooter } from './email-footer.tsx'
 
+// Last-resort platform wordmark, shown ONLY when the resolved tenant/agency brand
+// has no logo AND no name (§6/§9). A tenant that HAS set brand overrides both; a
+// tenant that hasn't is still stamped with its own name by the resolver
+// (_shared/email/branding.ts mergeBrand), so this literal is the floor — never a
+// hardcoded Paige logo asset in a coach's client-facing email.
 const SITE_NAME = "Paige Agent AI"
-const LOGO_URL = 'https://bfmyebsjyuoecmjskqhs.supabase.co/storage/v1/object/public/email-assets/paige-logo-transparent.png'
 
 interface CoachingReminderProps {
   name?: string
@@ -17,6 +21,10 @@ interface CoachingReminderProps {
   rescheduleUrl?: string
   agenda?: string
   unsubscribeUrl?: string
+  /** Coach's tenant/agency brand (§6/§9). Absent → the coach's own name as a
+   *  text wordmark; platform default only when nothing at all resolved. */
+  brandName?: string | null
+  brandLogoUrl?: string | null
 }
 
 const CoachingReminderEmail = ({
@@ -28,13 +36,25 @@ const CoachingReminderEmail = ({
   rescheduleUrl = 'https://app.paigeagent.ai',
   agenda = 'Review your progress, work through your current goals, and set the next steps.',
   unsubscribeUrl,
-}: CoachingReminderProps) => (
+  brandName,
+  brandLogoUrl,
+}: CoachingReminderProps) => {
+  // Brand resolution (§6/§9): the coach's (tenant/agency) brand wins. The header
+  // renders the tenant logo when present, else a text wordmark of the tenant's
+  // OWN name — never a hardcoded Paige logo. Falls back to the platform default
+  // only when no tenant brand/name resolved at all.
+  const displayName = (brandName || '').trim() || SITE_NAME
+  return (
   <Html lang="en" dir="ltr">
     <Head />
     <Preview>Reminder — your session is {sessionDate}</Preview>
     <Body style={main}>
       <Container style={container}>
-        <Img src={LOGO_URL} alt={SITE_NAME} width="160" height="auto" style={logo} />
+        {brandLogoUrl ? (
+          <Img src={brandLogoUrl} alt={displayName} height="44" style={logo} />
+        ) : (
+          <Heading as="h1" style={logoText}>{displayName}</Heading>
+        )}
         <Text style={subheading}>Session Reminder</Text>
         <Hr style={hr} />
         <Heading as="h2" style={h2}>{name ? `${name}, your session is ${sessionDate}` : `Your session is ${sessionDate}`}</Heading>
@@ -59,12 +79,13 @@ const CoachingReminderEmail = ({
           Need to reschedule? <a href={rescheduleUrl} style={link}>Pick a new time</a>
         </Text>
         <Hr style={hr} />
-        <Text style={footer}>© {new Date().getFullYear()} {SITE_NAME}. You received this because session reminders are enabled in your notification preferences.</Text>
+        <Text style={footer}>© {new Date().getFullYear()} {displayName}. You received this because session reminders are enabled in your notification preferences.</Text>
         <EmailFooter unsubscribeUrl={unsubscribeUrl} />
       </Container>
     </Body>
   </Html>
-)
+  )
+}
 
 export const template = {
   component: CoachingReminderEmail,
@@ -75,13 +96,15 @@ export const template = {
     sessionDate: 'Tomorrow',
     sessionTime: '10:00 AM EST',
     coachName: 'Alex Rivera',
+    brandName: 'Rivera Coaching',
     agenda: 'Review last month\'s wins, work through your current goals, and lock in your next three action items.',
   },
 } satisfies TemplateEntry
 
 const main = { backgroundColor: '#ffffff', fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }
 const container = { padding: '40px 25px', maxWidth: '600px', margin: '0 auto' }
-const logo = { display: 'block' as const, margin: '0 auto 8px' }
+const logo = { display: 'block' as const, margin: '0 auto 8px', maxHeight: '44px', width: 'auto' as const }
+const logoText = { fontSize: '24px', fontWeight: 'bold' as const, color: '#0a1628', textAlign: 'center' as const, margin: '0 auto 8px', letterSpacing: '0.3px' }
 const subheading = { fontSize: '14px', color: '#6b7280', textAlign: 'center' as const, margin: '0' }
 const hr = { borderColor: '#e5e7eb', margin: '24px 0' }
 const innerHr = { borderColor: '#e5e7eb', margin: '12px 0' }
