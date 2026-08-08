@@ -228,8 +228,14 @@ export default function AgencyMarketplace() {
       (r.tagline ?? "").toLowerCase().includes(q) ||
       (r.description ?? "").toLowerCase().includes(q);
     const matchCat = cat === "all" || r.category === cat;
+    // "Pending" has no meaning in per-child scope (a child always inherits a default,
+    // so every child row is pending=false). If the user left the Pending filter active
+    // and then selected a child, don't collapse the shelf to empty — treat it as "all".
     const matchStatus =
-      status === "all" ? true : status === "shared" ? r.shared : r.pending;
+      status === "all" ? true
+        : status === "shared" ? r.shared
+          : inChild ? true
+            : r.pending;
     return matchKeyword && matchCat && matchStatus;
   });
 
@@ -321,9 +327,10 @@ export default function AgencyMarketplace() {
             justArmed={false}
             curationMode
             curationPending={false}
+            curationScopeLabel={selectedChildName}
             onToggle={(v) => curateChild(r, v)}
           />
-          <span className="px-1 text-[11px] font-medium text-muted-foreground tabular-nums">
+          <span className="px-1 text-xs font-medium text-muted-foreground">
             {overridden ? (
               <span className="inline-flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--primary))]" aria-hidden />
@@ -410,6 +417,13 @@ export default function AgencyMarketplace() {
         <Card><CardContent className="p-6 text-sm text-muted-foreground">
           Couldn&apos;t load the Marketplace. Refresh to try again.
         </CardContent></Card>
+      ) : inChild && childRowsQ.isError ? (
+        // A per-child fetch failure is its OWN state (retry:false, so it won't spin).
+        // Without this it would fall through to the "nothing matches" filter-miss
+        // empty state and mislabel an error as a filter result (§13 legible).
+        <Card><CardContent className="p-6 text-sm text-muted-foreground">
+          Couldn&apos;t load this sub-account&apos;s view. Refresh to try again.
+        </CardContent></Card>
       ) : activeLoading ? (
         <MarketplaceGridSkeleton />
       ) : rows.length === 0 ? (
@@ -473,11 +487,15 @@ export default function AgencyMarketplace() {
               ))}
               <span className="mx-1 hidden h-4 w-px bg-border sm:block" aria-hidden />
               <FilterChip active={status === "shared"} onClick={() => setStatus((s) => (s === "shared" ? "all" : "shared"))}>
-                Shared
+                {inChild ? "On" : "Shared"}
               </FilterChip>
-              <FilterChip active={status === "pending"} onClick={() => setStatus((s) => (s === "pending" ? "all" : "pending"))}>
-                Pending
-              </FilterChip>
+              {/* Pending is an agency-DEFAULT concept only — a child's effective view
+                  always inherits a default, so the chip would filter to an empty shelf. */}
+              {!inChild && (
+                <FilterChip active={status === "pending"} onClick={() => setStatus((s) => (s === "pending" ? "all" : "pending"))}>
+                  Pending
+                </FilterChip>
+              )}
             </div>
           </Toolbar>
 
