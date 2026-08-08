@@ -34,6 +34,7 @@ import { SkillCard } from "@/components/marketplace/SkillCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { MarketplaceSkill } from "@/lib/marketplace/skills";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -55,6 +56,10 @@ type CurationRow = {
   shared: boolean;
   /** true when the agency has NOT yet reviewed this item (reviewed_at IS NULL / no row). */
   pending: boolean;
+  /** PER-CHILD scope only: the agency-wide default flag this child inherits. */
+  defaultShared?: boolean;
+  /** PER-CHILD scope only: true when this child carries its OWN override row. */
+  isOverride?: boolean;
 };
 
 const prettyCategory = (key: string) =>
@@ -66,6 +71,10 @@ export default function AgencyMarketplace() {
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<string>("all");
   const [status, setStatus] = useState<"all" | "shared" | "pending">("all");
+  // Curation scope (§18: a filter over WHO the decision applies to — NOT a new
+  // management surface, §55). "agency" = the agency-wide default every sub-account
+  // inherits; a tenant id = that one child's effective/override view.
+  const [scope, setScope] = useState<string>("agency");
 
   // The agency's own tenant id — server-resolved (§13), never trusted from a prop.
   const agencyQ = useQuery({
@@ -79,6 +88,27 @@ export default function AgencyMarketplace() {
     },
   });
   const agencyId = agencyQ.data ?? null;
+
+  // The agency's OWN children — the canonical §9/§51-gated list (auth.uid()-keyed,
+  // returns only sub-accounts under agencies this caller manages). Reused as-is; no
+  // new sub-account-management surface (§55/§18). Cast `as never` because the RPC
+  // isn't in the regenerated types on this branch — same convention as above.
+  const subaccountsQ = useQuery({
+    queryKey: ["agency_marketplace_subaccounts", agencyId],
+    enabled: !!agencyId,
+    retry: false,
+    queryFn: async (): Promise<Array<{ id: string; name: string }>> => {
+      type Kid = { id: string; name: string | null; slug: string | null };
+      const { data, error } = await supabase.rpc("agency_list_my_subaccounts" as never);
+      if (error) throw error;
+      return ((data ?? []) as Kid[]).map((k) => ({ id: k.id, name: k.name ?? k.slug ?? "Sub-account" }));
+    },
+  });
+  const subaccounts = useMemo(() => subaccountsQ.data ?? [], [subaccountsQ.data]);
+  // A child selection is honored only while it's still in the caller's book (§9).
+  const selectedChild =
+    scope !== "agency" && subaccounts.some((s) => s.id === scope) ? scope : null;
+  const selectedChildName = subaccounts.find((s) => s.id === selectedChild)?.name ?? "";
 
   // The approved catalog visible at the agency's tier (RLS-gated) + this agency's
   // per-item curation decision. Two reads, merged on the client so we keep the
@@ -134,18 +164,64 @@ export default function AgencyMarketplace() {
   const rows = useMemo(() => rowsQ.data ?? [], [rowsQ.data]);
   const loading = agencyQ.isLoading || rowsQ.isLoading;
 
-  const sharedCount = rows.filter((r) => r.shared).length;
+  // PER-CHILD view (§18: the SAME catalog, one child's effective decision). Loads the
+  // agency default + this child's override in one shot; the effective flag =
+  // COALESCE(override, default, false) is resolved SERVER-SIDE. Enabled only when a
+  // child is selected, so the agency-wide default view is byte-unchanged.
+  const childRowsQ = useQuery({
+    queryKey: ["agency_curation_child_rows", agencyId, selectedChild],
+    enabled: !!agencyId && !!selectedChild,
+    retry: false,
+    queryFn: async (): Promise<CurationRow[]> => {
+      type ChildCatalogRow = {
+        item_id: string; slug: string; name: string | null; tagline: string | null;
+        description: string | null; category: string | null; icon: string | null;
+        item_type: string | null;
+        effective_enabled: boolean; default_enabled: boolean; is_override: boolean;
+      };
+      const { data, error } = await supabase.rpc(
+        "agency_curation_catalog_for_subaccount" as never,
+        { _agency_tenant_id: agencyId, _sub_account_tenant_id: selectedChild } as never,
+      );
+      if (error) throw error;
+      return ((data ?? []) as ChildCatalogRow[]).map((r): CurationRow => ({
+        id: r.item_id,
+        slug: r.slug,
+        name: r.name ?? r.slug,
+        tagline: r.tagline ?? null,
+        description: r.description ?? null,
+        category: r.category ?? "other",
+        icon: r.icon ?? null,
+        item_type: r.item_type ?? "skill",
+        shared: r.effective_enabled === true,
+        pending: false,
+        defaultShared: r.default_enabled === true,
+        isOverride: r.is_override === true,
+      }));
+    },
+  });
+
+  const childRows = useMemo(() => childRowsQ.data ?? [], [childRowsQ.data]);
+  const inChild = !!selectedChild;
+  // ONE grid/toolbar path drives both scopes (§18): the agency default set, or the
+  // selected child's effective set.
+  const activeRows = inChild ? childRows : rows;
+  const activeLoading = inChild ? loading || childRowsQ.isLoading : loading;
+
+  const sharedCount = activeRows.filter((r) => r.shared).length;
   const pendingCount = rows.filter((r) => r.pending).length;
-  const pendingRows = rows.filter((r) => r.pending);
+  // The "Pending your review" queue is an agency-DEFAULT concept only — a child's
+  // effective view is never "unreviewed" (it always inherits a default).
+  const pendingRows = inChild ? [] : rows.filter((r) => r.pending);
 
   const categories = useMemo(() => {
     const seen = new Set<string>();
-    for (const r of rows) seen.add(r.category);
+    for (const r of activeRows) seen.add(r.category);
     return [...seen].sort();
-  }, [rows]);
+  }, [activeRows]);
 
   const q = query.trim().toLowerCase();
-  const filtered = rows.filter((r) => {
+  const filtered = activeRows.filter((r) => {
     const matchKeyword =
       !q ||
       r.name.toLowerCase().includes(q) ||
@@ -183,6 +259,38 @@ export default function AgencyMarketplace() {
     }
   };
 
+  // PER-CHILD write (§10 callable seam — this switch is one caller, Paige is another).
+  // The 4th arg scopes the allowlist row to THIS child; the RPC re-checks
+  // _agency_owns_child before it upserts the override.
+  const curateChild = async (r: CurationRow, on: boolean) => {
+    if (!agencyId || !selectedChild || saving) return;
+    setSaving(r.id);
+    try {
+      const { error } = await supabase.rpc(
+        "set_agency_item_allowlist" as never,
+        {
+          _agency_tenant_id: agencyId,
+          _marketplace_item_id: r.id,
+          _enabled: on,
+          _sub_account_tenant_id: selectedChild,
+        } as never,
+      );
+      if (error) throw error;
+      toast.success(
+        on
+          ? `${r.name} is on for ${selectedChildName}.`
+          : `${r.name} is off for ${selectedChildName}.`,
+      );
+      await qc.invalidateQueries({
+        queryKey: ["agency_curation_child_rows", agencyId, selectedChild],
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't update that — please try again.");
+    } finally {
+      setSaving(null);
+    }
+  };
+
   const toSkill = (r: CurationRow): MarketplaceSkill => ({
     slug: r.slug,
     name: r.name,
@@ -193,22 +301,58 @@ export default function AgencyMarketplace() {
     icon: r.icon ?? "Sparkles",
   });
 
-  const renderCard = (r: CurationRow) => (
-    <SkillCard
-      key={r.id}
-      skill={toSkill(r)}
-      Icon={ICONS[r.icon ?? ""] ?? Sparkles}
-      isOn={r.shared}
-      available
-      lockedOn={false}
-      saving={saving === r.id}
-      loading={loading}
-      justArmed={false}
-      curationMode
-      curationPending={r.pending}
-      onToggle={(v) => curate(r, v)}
-    />
-  );
+  const renderCard = (r: CurationRow) => {
+    if (inChild) {
+      // PER-CHILD: the SAME SkillCard in curationMode (§18, no fork) — its switch
+      // now writes THIS child's override. A caption beside the card states whether
+      // the effective state is inherited from the agency default or set as a
+      // child-specific override (§13 — the state is legible, never implicit).
+      const overridden = r.isOverride === true;
+      return (
+        <div key={r.id} className="flex flex-col gap-1.5">
+          <SkillCard
+            skill={toSkill(r)}
+            Icon={ICONS[r.icon ?? ""] ?? Sparkles}
+            isOn={r.shared}
+            available
+            lockedOn={false}
+            saving={saving === r.id}
+            loading={activeLoading}
+            justArmed={false}
+            curationMode
+            curationPending={false}
+            onToggle={(v) => curateChild(r, v)}
+          />
+          <span className="px-1 text-[11px] font-medium text-muted-foreground tabular-nums">
+            {overridden ? (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--primary))]" aria-hidden />
+                Overridden for this sub-account
+              </span>
+            ) : (
+              <>Inherits agency default ({r.defaultShared ? "On" : "Off"})</>
+            )}
+          </span>
+        </div>
+      );
+    }
+    return (
+      <SkillCard
+        key={r.id}
+        skill={toSkill(r)}
+        Icon={ICONS[r.icon ?? ""] ?? Sparkles}
+        isOn={r.shared}
+        available
+        lockedOn={false}
+        saving={saving === r.id}
+        loading={loading}
+        justArmed={false}
+        curationMode
+        curationPending={r.pending}
+        onToggle={(v) => curate(r, v)}
+      />
+    );
+  };
 
   if (!agencyQ.isLoading && !agencyId) {
     return (
@@ -235,18 +379,18 @@ export default function AgencyMarketplace() {
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums">
         <span className="inline-flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" aria-hidden />
-          Sub-account availability
+          {inChild ? `Availability for ${selectedChildName}` : "Sub-account availability"}
         </span>
-        {!loading && rows.length > 0 && (
+        {!activeLoading && activeRows.length > 0 && (
           <>
             <span aria-hidden className="text-border">·</span>
-            <span>{rows.length} available</span>
+            <span>{activeRows.length} available</span>
             <span aria-hidden className="text-border">·</span>
             <span className="inline-flex items-center gap-1.5">
               <span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--gold))]" aria-hidden />
-              {sharedCount} shared
+              {sharedCount} {inChild ? "on" : "shared"}
             </span>
-            {pendingCount > 0 && (
+            {!inChild && pendingCount > 0 && (
               <>
                 <span aria-hidden className="text-border">·</span>
                 <span>{pendingCount} pending review</span>
@@ -266,7 +410,7 @@ export default function AgencyMarketplace() {
         <Card><CardContent className="p-6 text-sm text-muted-foreground">
           Couldn&apos;t load the Marketplace. Refresh to try again.
         </CardContent></Card>
-      ) : loading ? (
+      ) : activeLoading ? (
         <MarketplaceGridSkeleton />
       ) : rows.length === 0 ? (
         <EmptyState
@@ -292,6 +436,24 @@ export default function AgencyMarketplace() {
           )}
 
           <Toolbar className="gap-y-3">
+            {subaccounts.length > 0 && (
+              <Select value={scope} onValueChange={setScope}>
+                <SelectTrigger className="w-full max-w-[16rem]" aria-label="Choose whose availability to curate">
+                  <span className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-muted-foreground" aria-hidden />
+                    <SelectValue />
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="agency">All sub-accounts (agency default)</SelectItem>
+                  {subaccounts.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <div className="relative w-full max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
               <Input
