@@ -7,8 +7,8 @@
 //
 // PROVIDERS (#579 — ElevenLabs is now Paige's PRIMARY voice; OpenAI is the honest fallback)
 //   "elevenlabs-premium" → Tier 1, WIRED default. ElevenLabs eleven_multilingual_v2. Paige's voice
-//                        (owner-locked female 6aDn1KB0hjpdcocrUkmq) is the platform default on every
-//                        tenant (§200) until a tenant authors their own (§7).
+//                        (owner-locked female Ivanna 0S5oIfi8zOZixuSj8K6n, owner-ruled 2026-08-09)
+//                        is the platform default on every tenant (§200) until a tenant authors their own (§7).
 //   "openai-standard"    → Tier 2, WIRED fallback. OpenAI gpt-4o-mini-tts. The voice heard when
 //                        ElevenLabs errors or is unconfigured — nova (#166), also warm + feminine so
 //                        the degrade never shifts gender/persona (§6 no jarring hand-off).
@@ -45,7 +45,7 @@ const TTS_ROUTE_TABLE: Partial<Record<TtsTier, TtsRouteCell>> = {
     provider: "elevenlabs",
     model: "eleven_multilingual_v2",
     justification:
-      "ElevenLabs eleven_multilingual_v2 — Paige's PRIMARY platform voice (owner-locked female 6aDn1KB0hjpdcocrUkmq). WIRED default tier; OpenAI is the honest fallback (§13/#579).",
+      "ElevenLabs eleven_multilingual_v2 — Paige's PRIMARY platform voice (owner-locked female Ivanna 0S5oIfi8zOZixuSj8K6n, owner-ruled 2026-08-09). WIRED default tier; OpenAI is the honest fallback (§13/#579).",
     host: "https://api.elevenlabs.io/v1/text-to-speech",
   },
   "openai-standard": {
@@ -83,14 +83,17 @@ export type OpenAiTtsVoice = (typeof OPENAI_TTS_VOICES)[number];
  *  is NOT accepted — it degrades to the default, never blindly POSTed to ElevenLabs. Labels stay
  *  backend-only (§11 — never surface a vendor voice id/name in UI). */
 export const ELEVENLABS_TTS_VOICES = {
-  "6aDn1KB0hjpdcocrUkmq": { label: "Warm", role: "primary" },  // owner-locked female — platform default
+  "0S5oIfi8zOZixuSj8K6n": { label: "Ivanna", role: "primary" }, // owner-locked female — platform default (Ivanna, owner-ruled 2026-08-09)
+  "6aDn1KB0hjpdcocrUkmq": { label: "Warm", role: "warm_alt" },  // prior default (warm female) — selectable alt
   "g6xIsTj2HwM6VR4iXFCw": { label: "Clear", role: "backup" },  // backup female (in-provider degrade for the primary)
   "vBKc2FfBKJfcZNyEt1n6": { label: "Deep", role: "male" },     // male option
 } as const;
 export type ElevenLabsVoiceId = keyof typeof ELEVENLABS_TTS_VOICES;
 
-/** The owner-locked primary female — Paige's default voice on every tenant (§200/§3). */
-export const PRIMARY_ELEVENLABS_VOICE: ElevenLabsVoiceId = "6aDn1KB0hjpdcocrUkmq";
+/** The owner-locked primary female — Paige's default voice on every tenant (§200/§3): Ivanna
+ *  (0S5oIfi8zOZixuSj8K6n), owner-ruled 2026-08-09 (was 6aDn1KB0hjpdcocrUkmq, now a selectable alt).
+ *  §200 owner-locked — future changes need an explicit owner ruling; the Ivanna ruling is on record. */
+export const PRIMARY_ELEVENLABS_VOICE: ElevenLabsVoiceId = "0S5oIfi8zOZixuSj8K6n";
 /** The backup female — SAME provider as the primary, so a voice-level ElevenLabs hiccup degrades
  *  in-voice (gender/persona never shifts) before we ever fall to OpenAI (§6). */
 export const BACKUP_ELEVENLABS_VOICE: ElevenLabsVoiceId = "g6xIsTj2HwM6VR4iXFCw";

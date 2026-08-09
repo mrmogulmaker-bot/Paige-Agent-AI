@@ -1701,14 +1701,14 @@ state so the next session sees it without re-tracing.
    - Frontend: `MessageAudioButton.tsx` → `src/lib/voice/messageTts.ts` (the ONE per-message playback
      controller) → POST `paige-tts` edge fn.
    - Backend: `supabase/functions/paige-tts/index.ts` → `_shared/tts-router.ts`.
-   - **Voice: HARDCODED `DEFAULT_TTS_VOICE = { provider: "elevenlabs", id: "6aDn1KB0hjpdcocrUkmq" }`**
-     ("Warm", §200 owner-locked female), model **`eleven_multilingual_v2`**, OpenAI `nova` as the
-     honest fallback. A tenant can override via `tenants.features.playbook_config.paige_voice`, and a
-     request `body.voice_id` wins — but both are validated against the 3-id allowlist in
-     `ELEVENLABS_TTS_VOICES` (`6aDn1KB0hjpdcocrUkmq` / `g6xIsTj2HwM6VR4iXFCw` / `vBKc2FfBKJfcZNyEt1n6`).
+   - **Voice: `DEFAULT_TTS_VOICE = { provider: "elevenlabs", id: "0S5oIfi8zOZixuSj8K6n" }`** (Ivanna,
+     §200 owner-locked female — **owner-ruled 2026-08-09**, flipped from `6aDn1KB0hjpdcocrUkmq` which is
+     now a selectable "Warm" alt), model **`eleven_multilingual_v2`**, OpenAI `nova` as the honest
+     fallback. A tenant can override via `tenants.features.playbook_config.paige_voice`, and a request
+     `body.voice_id` wins — but both are validated against the allowlist in `ELEVENLABS_TTS_VOICES`
+     (`0S5oIfi8zOZixuSj8K6n` Ivanna / `6aDn1KB0hjpdcocrUkmq` Warm / `g6xIsTj2HwM6VR4iXFCw` / `vBKc2FfBKJfcZNyEt1n6`).
      **This path does NOT read `ELEVENLABS_VOICE_ID` and has no knowledge of the ConvAI agent.**
-   - **This is the "old voice" the owner hears in-app.** To change it, edit `DEFAULT_TTS_VOICE` in
-     `_shared/tts-router.ts` (or add the target id to the allowlist) — see the owner-decision flag below.
+   - **This is the in-app voice the owner hears.** The owner's live-drive (§32.c) confirming Ivanna renders is what closes task #24.
 
 2. **Studio narration / voiceover deliverables — Direct-TTS via the model router.**
    - Backend: `_shared/model-router.ts` `voiceCell` → `_shared/elevenlabs.ts` `elevenlabsTts`.
@@ -1749,13 +1749,12 @@ state so the next session sees it without re-tracing.
 
 ### Owner-decision flags (a code/config change we do NOT make unilaterally, §28/§200)
 
-- **To make the IN-APP chat voice = Ivanna (`0S5oIfi8zOZixuSj8K6n`):** `DEFAULT_TTS_VOICE` in
-  `_shared/tts-router.ts` is §200 **owner-locked** to `6aDn1KB0hjpdcocrUkmq`. Flipping the platform
-  default voice is a brand/identity decision that needs an **explicit owner ruling naming that change**
-  — it is not implied by "the ConvAI agent's voice is Ivanna." When ruled, change `DEFAULT_TTS_VOICE`
-  (and add `0S5oIfi8zOZixuSj8K6n` to `ELEVENLABS_TTS_VOICES`); note Ivanna's ConvAI model is
-  `eleven_turbo_v2_5`, but the Direct-TTS chat lane uses `eleven_multilingual_v2` (a different model
-  axis — confirm the desired model with the owner).
+- **IN-APP chat voice = Ivanna (`0S5oIfi8zOZixuSj8K6n`) — RULED & SHIPPED 2026-08-09.** `DEFAULT_TTS_VOICE`
+  in `_shared/tts-router.ts` is Ivanna as of this PR (owner ruling on record; §200 owner-locked, so a
+  FUTURE change still needs an explicit owner ruling — but the Ivanna ruling has ALREADY been made and
+  must NOT be re-surfaced as an open question, §BRAIN.2). The Direct-TTS chat lane keeps
+  `eleven_multilingual_v2` (Ivanna's ConvAI phone model `eleven_turbo_v2_5` is a different lane; the
+  chat model was not part of the ruling).
 - **To make Studio VO = Ivanna:** set the `ELEVENLABS_VOICE_ID` edge secret to `0S5oIfi8zOZixuSj8K6n`
   (owner pastes the VALUE in Supabase; code references only the NAME, §34). This does not touch chat.
 
