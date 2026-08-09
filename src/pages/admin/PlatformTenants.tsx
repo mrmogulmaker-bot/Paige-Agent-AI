@@ -26,6 +26,7 @@ import {
 } from "@/lib/platform/tenantLifecycle";
 import { TenantDetailSheet, type FleetTenant } from "@/components/admin/platform/TenantDetailSheet";
 import { ProvisionTenantDialog } from "@/components/admin/platform/ProvisionTenantDialog";
+import RevenueIntegrityAudit from "@/components/admin/platform/RevenueIntegrityAudit";
 import PlatformOverview from "./PlatformOverview";
 
 // Status tone → state-pill state. Attention tones (warn/critical) collapse to the
@@ -286,6 +287,12 @@ export default function PlatformTenants() {
           </StatRow>
         </div>
       )}
+
+      {/* Revenue integrity (#31) — the investor-grade three-gate proof + CSV export.
+          Owner-only: operator_revenue_integrity_audit RAISES 42501 for a non-owner, and
+          the DB trigger guarantees no tenant can rest at revenue_class='paid' without a
+          signed agreement AND a live Stripe subscription. */}
+      {isPlatformOwner && <RevenueIntegrityAudit />}
 
       <Toolbar>
         <h2 className="font-display text-base font-semibold text-foreground">All tenants</h2>
