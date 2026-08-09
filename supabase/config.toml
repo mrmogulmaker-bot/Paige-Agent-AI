@@ -136,6 +136,11 @@ project_id = "xygzykjyynhzqytbqnzu"
     verify_jwt = false
   [functions.handle-inbound-sms]
     verify_jwt = false
+  # paige-operator-sms-inbound — Twilio inbound webhook for the OPERATOR number (+1 470
+  # 200-3444). Twilio cannot send a Supabase JWT, so verify_jwt=false; trust is the
+  # validated X-Twilio-Signature (operator account Auth Token). See paige-operator-sms-inbound.
+  [functions.paige-operator-sms-inbound]
+    verify_jwt = false
   [functions.handle-smartcredit-alert-webhook]
     verify_jwt = false
   [functions.handle-paige-plaid-webhook]

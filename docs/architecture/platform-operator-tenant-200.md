@@ -110,6 +110,17 @@ that workspace's live email connector is a separate, outward-facing step.
 
 ## Fleet Communications transition contract
 
+> **SUPERSEDED (wave-s3, 2026-08-09).** The scope-switch design below — where Fleet →
+> Communications resolved a Paige Operations tenant via `resolve_platform_operator_workspace()`
+> and dropped the operator into the tenant `/admin/clients-hub/conversations` inbox — was a §9
+> operator-vs-tenant seam violation (operator SMS mixed into a tenant's data). It is replaced by a
+> dedicated operator-private store (`operator_conversations` / `operator_messages`, RLS-gated to
+> `is_platform_owner()`) rendered by `PlatformFleetCommunications.tsx`, with its own operator A2P
+> Twilio seam (`paige-operator-sms-send` / `paige-operator-sms-inbound`). The
+> `resolve_platform_operator_workspace()` RPC has no remaining callers and is **dropped** in
+> migration `20260812000000_operator_communications_store.sql`. The historical contract below is
+> retained for the record only. See `supabase/functions/CLAUDE.md` for the current design.
+
 The God console exposes **Fleet → Communications** at
 `/admin/platform/fleet-communications`. This transient route is owner-only and calls the zero-argument
 `resolve_platform_operator_workspace()` RPC. The RPC reads the designation server-side,
