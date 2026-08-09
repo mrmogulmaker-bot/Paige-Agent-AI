@@ -108,9 +108,12 @@ BEGIN
   VALUES (NEW.user_id, 'free', 'trial', now() + interval '14 days')
   ON CONFLICT (user_id) DO NOTHING;
 
-  -- Create usage tracking
+  -- Create usage tracking. ON CONFLICT: constraint-safe under the pre-existing
+  -- user_usage_user_id_key (#64 §37) — a repeat cascade is a no-op, never a throw
+  -- that would abort the triggering profiles insert. Matches ensure_provisioning_entitlements.
   INSERT INTO public.user_usage (user_id, disputes_used, ai_chats_used)
-  VALUES (NEW.user_id, 0, 0);
+  VALUES (NEW.user_id, 0, 0)
+  ON CONFLICT (user_id) DO NOTHING;
 
   RETURN NEW;
 END;
