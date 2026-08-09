@@ -38,6 +38,10 @@ export { SectionCard } from "./SectionCard";
 export { SectionNote } from "./SectionNote";
 export { StatTile, StatRow } from "./StatTile";
 export { StatPill, type StatPillProps, type StatPillTone } from "./StatPill";
+export { Sparkline, type SparklineProps, type SparklineTone } from "./Sparkline";
+export { DrillContainer, type DrillContainerProps } from "./DrillContainer";
+export { MetricEntityCard, type MetricEntityCardProps } from "./MetricEntityCard";
+export { ExploreChart, type ExploreChartProps } from "./ExploreChart";
 export {
   TrendLineCard,
   DonutCard,

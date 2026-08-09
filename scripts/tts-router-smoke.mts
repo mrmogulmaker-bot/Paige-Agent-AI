@@ -46,7 +46,8 @@ const {
   ELEVENLABS_TTS_VOICES,
 } = await import("../supabase/functions/_shared/tts-router.ts");
 
-const EL_PRIMARY = "6aDn1KB0hjpdcocrUkmq";
+const EL_PRIMARY = "0S5oIfi8zOZixuSj8K6n";   // Ivanna — owner-ruled default 2026-08-09
+const EL_WARM = "6aDn1KB0hjpdcocrUkmq";       // prior default, now a selectable "Warm" alt
 const EL_BACKUP = "g6xIsTj2HwM6VR4iXFCw";
 const EL_MALE = "vBKc2FfBKJfcZNyEt1n6";
 const EL_MODEL = "eleven_multilingual_v2";
@@ -71,13 +72,13 @@ console.log("catalog constants");
 ok("primary EL voice is the owner-locked id", PRIMARY_ELEVENLABS_VOICE === EL_PRIMARY);
 ok("backup EL voice is the second id", BACKUP_ELEVENLABS_VOICE === EL_BACKUP);
 ok("OpenAI fallback voice is nova (#166)", OPENAI_FALLBACK_VOICE === "nova");
-ok("EL catalog has exactly the 3 owner ids", eq(Object.keys(ELEVENLABS_TTS_VOICES).sort(), [EL_MALE, EL_PRIMARY, EL_BACKUP].sort()));
+ok("EL catalog has exactly the 4 owner ids", eq(Object.keys(ELEVENLABS_TTS_VOICES).sort(), [EL_MALE, EL_PRIMARY, EL_WARM, EL_BACKUP].sort()));
 ok("base default is the EL primary", eq(DEFAULT_TTS_VOICE, { provider: "elevenlabs", id: EL_PRIMARY }));
 
 console.log("voice validation + provider classifier");
 ok("nova is a valid OpenAI voice", isOpenAiVoice("nova") && isValidVoice("nova"));
-ok("all 3 EL ids are valid EL voices", isElevenLabsVoice(EL_PRIMARY) && isElevenLabsVoice(EL_BACKUP) && isElevenLabsVoice(EL_MALE));
-ok("EL ids valid via isValidVoice", isValidVoice(EL_PRIMARY) && isValidVoice(EL_BACKUP) && isValidVoice(EL_MALE));
+ok("all 4 EL ids are valid EL voices", isElevenLabsVoice(EL_PRIMARY) && isElevenLabsVoice(EL_WARM) && isElevenLabsVoice(EL_BACKUP) && isElevenLabsVoice(EL_MALE));
+ok("EL ids valid via isValidVoice", isValidVoice(EL_PRIMARY) && isValidVoice(EL_WARM) && isValidVoice(EL_BACKUP) && isValidVoice(EL_MALE));
 ok("nova is NOT an EL voice", !isElevenLabsVoice("nova"));
 ok("garbage is invalid in both catalogs", !isValidVoice("robo-9000"));
 ok("classify EL primary → elevenlabs", eq(classifyVoice(EL_PRIMARY), { provider: "elevenlabs", id: EL_PRIMARY }));

@@ -1719,3 +1719,92 @@ re-derive what the brain already records.
   instead of from memory, and update it in the same commit as my change — or did I let it go stale and
   set the next session up to re-diagnose what I already knew?"* If the brain wasn't read or wasn't
   updated, the work isn't done.
+
+## Voice Configuration (§46 — so no future session re-diagnoses the "I updated the agent but still hear the old voice" leak)
+
+**Anchoring case (§13/§30/§32.c, 2026-08-09):** a prior session updated the ElevenLabs **ConvAI
+agent** config via MCP and reported "voice fixed," but the owner STILL heard the old voice in the
+app. Root cause: **the in-app voice is NOT the ConvAI agent.** The ConvAI voice-chat was ripped out
+(#170 / §49 Wave A — `@elevenlabs/react` + `@elevenlabs/client` removed, 5 Convai edge fns deleted);
+the app's voice is **Direct-TTS** via `paige-tts` → `_shared/tts-router.ts`, which is hardcoded to a
+DIFFERENT voice and does **not** read `ELEVENLABS_VOICE_ID` or the ConvAI agent at all. Updating the
+ConvAI agent therefore could never change the in-app chat voice. This section documents the full
+state so the next session sees it without re-tracing.
+
+### The THREE independent voice systems (do not conflate them — that conflation IS the leak)
+
+1. **In-app chat voice playback (what the owner hears in the app) — Direct-TTS.**
+   - Frontend: `MessageAudioButton.tsx` → `src/lib/voice/messageTts.ts` (the ONE per-message playback
+     controller) → POST `paige-tts` edge fn.
+   - Backend: `supabase/functions/paige-tts/index.ts` → `_shared/tts-router.ts`.
+   - **Voice: `DEFAULT_TTS_VOICE = { provider: "elevenlabs", id: "0S5oIfi8zOZixuSj8K6n" }`** (Ivanna,
+     §200 owner-locked female — **owner-ruled 2026-08-09**, flipped from `6aDn1KB0hjpdcocrUkmq` which is
+     now a selectable "Warm" alt), model **`eleven_multilingual_v2`**, OpenAI `nova` as the honest
+     fallback. A tenant can override via `tenants.features.playbook_config.paige_voice`, and a request
+     `body.voice_id` wins — but both are validated against the allowlist in `ELEVENLABS_TTS_VOICES`
+     (`0S5oIfi8zOZixuSj8K6n` Ivanna / `6aDn1KB0hjpdcocrUkmq` Warm / `g6xIsTj2HwM6VR4iXFCw` / `vBKc2FfBKJfcZNyEt1n6`).
+     **This path does NOT read `ELEVENLABS_VOICE_ID` and has no knowledge of the ConvAI agent.**
+   - **This is the in-app voice the owner hears.** The owner's live-drive (§32.c) confirming Ivanna renders is what closes task #24.
+
+2. **Studio narration / voiceover deliverables — Direct-TTS via the model router.**
+   - Backend: `_shared/model-router.ts` `voiceCell` → `_shared/elevenlabs.ts` `elevenlabsTts`.
+   - **This is the ONLY path that honors the `ELEVENLABS_VOICE_ID` edge secret.** `elevenlabs.ts`:
+     `DEFAULT_VOICE = Deno.env.get("ELEVENLABS_VOICE_ID") ?? "21m00Tcm4TlvDq8ikWAM"` (Rachel — a generic
+     stock fallback), `DEFAULT_MODEL = ELEVENLABS_MODEL ?? "eleven_multilingual_v2"`. It is used only
+     when a caller invokes `elevenlabsTts` **without** a `voiceId` (the Studio VO lane). If
+     `ELEVENLABS_VOICE_ID` is unset, Studio VO renders as **Rachel**, not Paige's voice.
+   - **`ELEVENLABS_VOICE_ID` does NOT affect the in-app chat voice (system 1).** Setting it changes
+     Studio VO only.
+
+3. **ConvAI agent (`agent_1601k7zn6bs7e72bt6485bp99v4a`) — phone / ConversationRelay only, UNWIRED in this repo.**
+   - Intended config (verified LIVE 2026-08-09): `tts.voice_id = 0S5oIfi8zOZixuSj8K6n` (Ivanna),
+     `tts.model_id = eleven_turbo_v2_5`. **Both are already correct on the live agent — it did NOT
+     revert.** Client-side overrides are DISABLED on the agent
+     (`overrides.conversation_config_override.tts.voice_id = false`, `.model_id = false`).
+   - **Model MUST be `eleven_turbo_v2_5` — NOT `eleven_v3_conversational`** (that returns 401
+     `model_access_denied` on the owner's plan).
+   - This agent is referenced ONLY in the Twilio Voice ConversationRelay spec
+     (`docs/product/paige-multichannel-comms-and-deliverable-workflow-spec.md`) — the inbound/outbound
+     PHONE path. **No `agent_id` / `signed_url` / `useConversation` wiring exists in `src/` or
+     `supabase/`** (confirmed: `docs/architecture/CANONICAL-SYSTEM-ARCHITECTURE-2026-08-08.md` — "ElevenLabs
+     is TTS-only via direct REST … no `agent_id`/`signed_url` wiring exists"). So changing this agent
+     changes the phone voice only, never the in-app app voice.
+
+### Frontend voice code paths (§37 inventory)
+
+- `src/components/chat/MessageAudioButton.tsx` — the per-message play button; calls `paige-tts`. **No
+  voice/model/agent override** beyond an optional `body.voice_id` (allowlist-validated server-side).
+- `src/lib/voice/messageTts.ts` — the single shared `HTMLAudioElement` controller; **framework-agnostic,
+  no voice id, no network**. Passes a `fetchAudio` from the call site.
+- `src/lib/voice/useDictation.ts` / `src/components/voice/DictationMicButton.tsx` — **STT (mic→text)
+  only**, via `paige-dictate` (Deepgram). No TTS, no voice id.
+- `src/lib/voice/VoiceDeviceProvider.tsx`, `useLiveTranscript.ts` — device/transcript plumbing, no voice id.
+- **There is NO `useConversation` (`@elevenlabs/react`) caller anywhere** — the dep was removed (#170).
+  Suspects "frontend hardcoded ConvAI override" and "wrong agent id called" are therefore structurally
+  impossible in this codebase today.
+
+### Owner-decision flags (a code/config change we do NOT make unilaterally, §28/§200)
+
+- **IN-APP chat voice = Ivanna (`0S5oIfi8zOZixuSj8K6n`) — RULED & SHIPPED 2026-08-09.** `DEFAULT_TTS_VOICE`
+  in `_shared/tts-router.ts` is Ivanna as of this PR (owner ruling on record; §200 owner-locked, so a
+  FUTURE change still needs an explicit owner ruling — but the Ivanna ruling has ALREADY been made and
+  must NOT be re-surfaced as an open question, §BRAIN.2). The Direct-TTS chat lane keeps
+  `eleven_multilingual_v2` (Ivanna's ConvAI phone model `eleven_turbo_v2_5` is a different lane; the
+  chat model was not part of the ruling).
+- **To make Studio VO = Ivanna:** set the `ELEVENLABS_VOICE_ID` edge secret to `0S5oIfi8zOZixuSj8K6n`
+  (owner pastes the VALUE in Supabase; code references only the NAME, §34). This does not touch chat.
+
+### §32.c verification rule (MANDATORY — cite this case)
+
+**After ANY ElevenLabs config change, the owner must LIVE-DRIVE it in-app (chat playback) and/or by
+phone (ConvAI) and confirm the correct voice is heard. Claiming "voice fixed" without that live drive
+is a §13 violation** — the anchoring case for this rule is exactly the 2026-08-09 over-claim above
+(agent config updated + reported fixed, owner still heard the old voice because the app doesn't use the
+agent). A green MCP `get_agent` read proves the AGENT is configured; it proves NOTHING about what the
+owner hears in the app (system 1) — those are different systems.
+
+**Browser hard-refresh note:** the ElevenLabs ConvAI SDK/widget caches agent config client-side, so
+after a ConvAI agent change a **hard refresh / fresh session** is required before the change is audible
+on that path. (Moot for the in-app Direct-TTS path, which fetches fresh mp3 per message, but the
+`tts-cache` Storage bucket keys on `provider:model:voice:text` — a voice change is a new key, so cached
+audio for the OLD voice is never re-served for the new one.)
