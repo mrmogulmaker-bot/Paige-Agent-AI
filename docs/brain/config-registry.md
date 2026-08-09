@@ -89,6 +89,20 @@ relying on either. (Secret **values** intentionally not recorded.)
 
 ---
 
+## Signup / onboarding / provisioning (✅ code + migration-verified 2026-08-09)
+
+- **Signup verification = EMAIL only.** `src/pages/PublicSignup.tsx` uses email verification
+  (`CommunicationsConsent … showSms={false}`, "click it to verify your account"). **SMS/phone
+  verification is NOT built in signup** — the `input-otp` shadcn primitive exists and OTP is used for
+  Auth/MFA, but nothing wires phone verification into the signup flow. *(Recorded honestly so a session
+  doesn't assume SMS-in-signup exists — see `decision-log.md` → "Known-unbuilt / spec-only status.")*
+- **`signup_intake` table** — migration `20260810000000_signup_flow_reorder_intake.sql` (PR #404,
+  onboarding-before-checkout reorder). Consumers: `stripe-webhook`, `WorkspaceProvisioner.tsx`.
+- **Acceptance/completion gate** — migration `20260714013653_signup_completion_gate.sql`; client guard
+  `src/components/auth/RequireCompleteSignup.tsx` (wraps `/app/*`). Deferred provisioning + restored
+  signup trigger landed in #402; concurrency-safe entitlements + `user_subscriptions` unique in #403
+  (repairs the latent stripe-webhook subscription-record bug).
+
 ## Twilio (SMS / voice — last-mile telecom commodity, §34)
 
 **Platform-wide Twilio secret NAMES** (✅ grep `Deno.env.get`): `TWILIO_ACCOUNT_SID`,
@@ -99,29 +113,56 @@ relying on either. (Secret **values** intentionally not recorded.)
 **Sending pattern** (✅ `_shared/bookingNotify.ts`): `TWILIO_FROM` falls back to `TWILIO_PHONE_NUMBER`;
 messages sent E.164-normalized.
 
+**⚠ Auth model — prod uses the API-Key TRIO, NOT the account Auth Token** (✅ `_shared/twilio.ts`
+`masterCreds()` + comment `:242-244`): master requests authenticate Basic-auth with **username =
+`TWILIO_API_KEY_SID` (SK…), password = `TWILIO_API_KEY_SECRET`**, URL path addressing
+`TWILIO_ACCOUNT_SID`. **`TWILIO_AUTH_TOKEN` is a LEGACY fallback the code says prod does NOT carry** —
+do not assume it is set just because SMS/voice work (they run on the API-Key trio). It matters for one
+thing: **inbound webhook `X-Twilio-Signature` validation** needs the account Auth Token, so the operator
+inbound fn may still owe `TWILIO_OPERATOR_AUTH_TOKEN` (or `TWILIO_AUTH_TOKEN`) — see operator note below.
+
 **Live tenant phone numbers on prod** (✅ MCP `SELECT phone_number, source, status FROM
 tenant_phone_numbers`): `+14705177009` (source `marketplace`, active) and `+14705706068` (source
 `marketplace`, active). **Both marketplace-provisioned.**
 
-**Operator (God/Super-Admin) SMS surface — REUSES the existing master Twilio account (owner
-correction 2026-08-09):**
-- The operator SMS surface does **NOT** require the owner to paste new `TWILIO_OPERATOR_*` secrets. It
-  **reuses the platform's EXISTING master Twilio account credentials** that are already provisioned —
-  `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_AUTH_TOKEN`,
-  `TWILIO_PHONE_NUMBER` (phone/voice calls work today off these). PR **#408** is being **fixed to reuse
-  master creds** rather than introduce a parallel operator account. *(Supersedes this brain's earlier
-  note that framed it as new `TWILIO_OPERATOR_*` secrets — that framing was wrong; see
+### Twilio ISV / Reseller Architecture (✅ `_shared/twilio.ts`, `provision-tenant-twilio`, code-verified 2026-08-09)
+
+**Paige is a Twilio ISV/RESELLER, NOT a BYO-Twilio host.** There is ONE platform **master** Twilio
+account; each tenant gets its **own Twilio SUBaccount minted under that master**. Tenants never bring
+their own Twilio and never see the word "Twilio" — they search an area code and click Buy. *(A prior
+session wrongly proposed a "tenant BYO-Twilio" pattern — that is contradicted by every file below; do
+not re-propose it.)* Module header `_shared/twilio.ts:24-35` states the model explicitly.
+
+| Plane | Home (code + table) |
+|---|---|
+| **Subaccount provisioning** | `supabase/functions/provision-tenant-twilio/` (super-admin-only, `is_platform_owner()`) — mints a subaccount, mints a subaccount-scoped API Key, vaults the secret, mints the TwiML voice app; `adopt` mode reconciles orphans. Wrappers in `_shared/twilio.ts`: `createSubaccount()`, `createSubaccountApiKey()`, `ensureTwimlApp()`. Table **`tenant_twilio_subaccounts`** (1-per-tenant: `twilio_subaccount_sid`, `api_key_sid` SK…, `auth_token_vault_ref`, `twiml_app_sid`, `status`). |
+| **Number search + purchase** | `comms-search-numbers` + `comms-purchase-number` (JWT-gated; tenant server-derived) → buys into the tenant's OWN subaccount → records **`tenant_phone_numbers`** (`source='marketplace'`). UI `src/components/admin/comms/NumbersTab.tsx`. Resale price in **`platform_number_pricing`** (§38: Twilio wholesale + flat $0.05 Paige-held fee). ⚠ **charge leg NOT wired** — `comms-purchase-number` returns `charge_wired:false` (honest, §13). |
+| **A2P 10DLC registration** | UI EXISTS: `src/components/admin/comms/A2PTab.tsx` — coach fills a brand form, **Paige drafts the campaign copy** (`comms-a2p-draft`), coach approves, `comms-a2p-submit` persists. Table **`tenant_a2p_registrations`**. ⚠ **carrier/TrustHub submit NOT wired** — `createBrand()`/`createCampaign()` in `_shared/twilio.ts` are honest `needs_config` stubs (never a fabricated SID); `comms-a2p-submit` returns `a2p_submit_wired:false`, status stays `pending`. **This is the Wave 4c.2 prereq gap — the gap is the live carrier submit, NOT the UI.** |
+| **Credential resolution** | `masterCreds()` / `masterBasicAuthHeader()` (master, API-Key trio) and `resolveTwilioCreds(admin, tenantId)` (per-tenant subaccount — reads `tenant_twilio_subaccounts`, decrypts the subaccount API-Key secret via the `read_channel_secret` SECURITY-DEFINER Vault RPC; service-role only). All in `_shared/twilio.ts`. |
+
+**Operator (God/Super-Admin) SMS surface — REUSES the existing master Twilio account (PR #408 MERGED
+2026-08-09, `2ee92903`):**
+- The operator SMS surface does **NOT** require new `TWILIO_OPERATOR_*` account secrets. It **reuses the
+  platform's EXISTING master Twilio account** (resolved via `masterCreds()`, §18 one home; shared seam
+  `_shared/operator-twilio.ts`). Surface `/admin/platform/fleet-communications`
+  (`PlatformFleetCommunications.tsx`); store `operator_conversations`/`operator_messages` (owner-only
+  RLS, no `tenant_id`). **§32.a confirmed on prod:** migration `20260812000000` persisted, both tables
+  exist. *(Supersedes the earlier framing of new `TWILIO_OPERATOR_*` secrets — that was wrong; see
   `lessons-learned.md` → "Assumed unprovisioned.")*
-- Operator A2P config — Twilio account **"Paige Agent AI LLC"**, operator number **+1 (470) 200-3444**,
-  Messaging Service **"Low Volume Mixed A2P Messaging Service"** (A2P best practice: outbound via its
-  `MG…` SID, never a raw `From:`). The A2P **Messaging Service SID (`MG…`)** is the **only** potentially-
-  new value — **⚠ verify whether it's already set** as a secret before asking anyone to paste it (the
-  master account already exists, so it may already be provisioned). Voice webhook currently on the
-  Twilio demo URL (re-point scheduled slice 4c.2).
-- **⚠ Live-data note:** +1 470 200 3444 is referenced in `main` source comments (`send-message`,
-  `provision-tenant-twilio`) as the Super Admin's imported number (`tenant_phone_numbers`
-  `source='imported'`), but that row is **not present in prod today** (only the two `marketplace`
-  numbers above exist). Confirm the row/provisioning state on #408 merge.
+- **Two possibly-owed secrets (both fail-closed/degrade safely until pasted):**
+  1. **A2P Messaging Service SID** — `TWILIO_OPERATOR_MESSAGING_SERVICE_SID` (or `TWILIO_MESSAGING_SERVICE_SID`),
+     `MG…` for "Low Volume Mixed A2P Messaging Service". Operator send goes via the MG SID, never a raw
+     `From:` — without it the send degrades to `needs_config` (`operator_messaging_service_not_configured`).
+  2. **Inbound signing token** — `TWILIO_OPERATOR_AUTH_TOKEN` (or `TWILIO_AUTH_TOKEN`), the account Auth
+     Token Twilio signs inbound webhooks with. Per `masterCreds()`, prod authenticates OUTBOUND with the
+     API-Key trio and does NOT rely on a raw Auth Token, so its presence can't be assumed — the inbound
+     fn **FAILS CLOSED** (401, nothing written) if no token resolves. ⚠ Confirm which of the two applies
+     during activation.
+- Operator A2P config — account **"Paige Agent AI LLC"**, operator number **+1 (470) 200-3444**. Voice
+  webhook currently on the Twilio demo URL (re-point scheduled slice 4c.2).
+- **⚠ Live-data note:** +1 470 200 3444 is referenced in `main` source comments as the Super Admin's
+  imported number, but that `tenant_phone_numbers source='imported'` row is **not present in prod today**
+  (only the two `marketplace` numbers above exist). Confirm provisioning state during operator SMS activation.
 
 ---
 
@@ -144,9 +185,19 @@ from the ElevenLabs API.
   `ELEVENLABS_VOICE_ID` edge secret.** OpenAI TTS is the honest degrade fallback (comment cites §13/#579).
 - Model comes from `_shared/model-router.ts` `voiceCell` → `elevenlabsTts` (`eleven_multilingual_v2`).
 
-**ElevenLabs secret NAMES** (✅ grep): `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`,
-`ELEVENLABS_BASE_URL`. (No `ELEVENLABS_API_KEY` name surfaced in the grep — ⚠ confirm how the
-ElevenLabs client authenticates; the key may be injected under a different name or via the router.)
+**ElevenLabs secret NAMES** (✅ grep): `ELEVENLABS_API_KEY` (the auth key — accessed via the
+case-insensitive `envKey("ELEVENLABS_API_KEY")` helper, so a raw `Deno.env.get` grep misses it; real
+refs `elevenlabs.ts:23`, `tts-router.ts:186`, `model-router.ts:449/454`), `ELEVENLABS_VOICE_ID`,
+`ELEVENLABS_MODEL`, `ELEVENLABS_BASE_URL`.
+
+**Three independent voice systems** (✅ code-verified; the trap: they are NOT the same knob — a prior
+session "fixed" the wrong one). Full detail in CLAUDE.md → "Voice Configuration"; the quick table:
+
+| System | Entry | Voice / model | Reads `ELEVENLABS_VOICE_ID`? | Wired in app? |
+|---|---|---|---|---|
+| **1. In-app chat Direct-TTS** (what the owner hears) | `paige-tts` → `_shared/tts-router.ts` | `PRIMARY_ELEVENLABS_VOICE`/`DEFAULT_TTS_VOICE` = **`0S5oIfi8zOZixuSj8K6n` (Ivanna)**, `eleven_multilingual_v2`; OpenAI `nova` fallback | **NO** (hardcodes the constant) | ✅ YES |
+| **2. Studio voiceover** | `_shared/elevenlabs.ts` via model-router `voiceCell` | `ELEVENLABS_VOICE_ID` ?? `21m00Tcm4TlvDq8ikWAM` (Rachel) | **YES** (only path that does) | ✅ Studio-VO lane only |
+| **3. ConvAI agent** (phone) | agent `agent_1601k7…` | Ivanna + `eleven_turbo_v2_5` (per docs) | N/A | **❌ UNWIRED** (ConvAI removed #170; agent id appears only in docs, never in `src/`/`supabase/`) |
 
 **ConvAI voice-leak lesson (PR #409, MERGED 2026-08-09, commit `1e726426`):** the TTS path does
 **not** read the ElevenLabs ConvAI agent — updating a ConvAI agent's voice has **no effect** on

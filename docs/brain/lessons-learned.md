@@ -12,9 +12,10 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   ConvAI agent's voice and heard no change.
 - **Root cause:** Paige's TTS path does **not** read the ElevenLabs **ConvAI agent** at all. The
   ConvAI stack was removed in #170 / §49 Wave A. The actual voice is set by
-  `PRIMARY_ELEVENLABS_VOICE = "6aDn1KB0hjpdcocrUkmq"` **hardcoded** in
-  `supabase/functions/_shared/tts-router.ts`, with `ELEVENLABS_VOICE_ID` honored **only** by the
-  separate legacy `_shared/elevenlabs.ts` path. Updating the agent touches neither.
+  `PRIMARY_ELEVENLABS_VOICE` **hardcoded** in `supabase/functions/_shared/tts-router.ts` — **now
+  `"0S5oIfi8zOZixuSj8K6n"` (Ivanna)** as of #409 (was `"6aDn1KB0hjpdcocrUkmq"` "Warm" pre-#409) — with
+  `ELEVENLABS_VOICE_ID` honored **only** by the separate legacy `_shared/elevenlabs.ts` path. Updating
+  the agent touches neither.
 - **Rule:** To change Paige's voice, edit `PRIMARY_ELEVENLABS_VOICE` in `tts-router.ts` (and/or set
   `ELEVENLABS_VOICE_ID` for the legacy path) — never the ConvAI agent. Verify by driving the actual
   TTS endpoint, not by trusting the ElevenLabs dashboard. (Being persisted as a "Voice Configuration"

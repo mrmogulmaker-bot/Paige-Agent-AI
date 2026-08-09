@@ -15,8 +15,9 @@ index what you have not checked.
 **How to use it.**
 - **Starting any substantive work?** Read this README, then jump to the domain doc(s) via the
   index below. If you're touching infra/integrations, read `config-registry.md`.
-- **Asked "is X built / do we have Y?"** Answer from `config-registry.md` + the index here + the
-  cited source, not from memory.
+- **Asked "is X built / do we have Y?"** Answer from `codebase-map.md` (shipped routes/components/edge
+  functions) + `config-registry.md` (integration wiring) + the index here + the cited source, not from
+  memory. **A recorded "not built" counts** — see `decision-log.md` → "Known-unbuilt / spec-only status."
 - **Need the meaning of a §-number, tier word, or VP name?** → `glossary.md`.
 - **Need "what happened / what did we decide recently?"** → `decision-log.md`.
 - **Hit a weird recurring bug?** → `lessons-learned.md` (symptom → root cause → rule).
@@ -29,7 +30,8 @@ worse than none — it lies with authority.
 | File | What it holds | When to read |
 |---|---|---|
 | `README.md` (this) | Master index of every doc + orientation | First, every session |
-| `config-registry.md` | Infra/integration state — Twilio, ElevenLabs, Stripe, Supabase, CI, MCP, third-party (NAMES/IDs only, no secret values) | Touching any integration or deploy |
+| `codebase-map.md` | Shipped surface area — routes (3 routers), component folders, edge-fn theme groups, feature gates, integration entry points | "Do we have surface/feature X **built**?" |
+| `config-registry.md` | Infra/integration state — Twilio (incl. ISV/subaccount), ElevenLabs (3 voice systems), Stripe, Supabase, CI, MCP, signup, third-party (NAMES/IDs only, no secret values) | Touching any integration or deploy |
 | `decision-log.md` | Chronological one-liners: PRs #375+, dated rulings, wave decisions | "What changed / what did we decide?" |
 | `lessons-learned.md` | Recurring traps: symptom → root cause → rule | Before a class of work that's bitten us before |
 | `glossary.md` | §-anchors, tier vocab, VP roster, wave/slice names, project jargon | Any unfamiliar term |
@@ -53,13 +55,20 @@ All figures below were checked live this session; how each was verified is in `c
   `premerge-migration-proof`, `security-audit` (verified: `.github/workflows/`).
 - **Paige default voice:** `DEFAULT_TTS_VOICE = 0S5oIfi8zOZixuSj8K6n` (**"Ivanna"**) — owner-ruled
   2026-08-09, PR #409 (`1e726426`). ON RECORD, do not re-ask (§BRAIN.2). See `config-registry.md` → Voice.
+- **Operator Communications:** live on prod — PR #408 (`2ee92903`), §32.a confirmed
+  (`operator_conversations`/`operator_messages`). Inert until A2P MG SID + inbound token pasted.
+- **Wave 4a:** CLOSED — 4a.1 Agent right-rail (#405) · 4a.2 L8 Memory Fabric (#406) · 4a.3 chat
+  compaction/persistence/tasking (#407) · 4a.4 Analytics primitive (#411, `c40f76d3`).
+- **Root law now includes** `§BRAIN` (Second Brain discipline) + a "Voice Configuration" reference
+  section, both in `CLAUDE.md` as of #409/this PR.
 
 ---
 
 ## Doctrine index — the "how we build & how Paige runs" law
 
-Root law is `CLAUDE.md` (§1–§39 + §51; see `glossary.md` for the full anchor map). The docs below
-are the long-form doctrine that `CLAUDE.md` sections point to.
+Root law is `CLAUDE.md` (§1–§39 + §51 + `§BRAIN` + a "Voice Configuration" reference section; see
+`glossary.md` for the full anchor map). The docs below are the long-form doctrine that `CLAUDE.md`
+sections point to.
 
 | Path | One-line | When to read |
 |---|---|---|
@@ -79,6 +88,7 @@ are the long-form doctrine that `CLAUDE.md` sections point to.
 | `docs/paige-master-implementation-order.md` | Master implementation order | Cross-wave sequencing |
 | `docs/paige-roadmap-action-bus.md` | Action-bus era feature roadmap (§8) | Action-bus / cross-team coordination work |
 | `docs/paige-n8n-orchestrator-brain-doctrine.md` | Paige→n8n orchestrator authoring doctrine | Authoring n8n workflows via Paige |
+| `docs/n8n/*.json` | Authored n8n workflow JSON (e.g. `paige_stage_change_dispatcher_v2.json`) — the actual workflow artifacts | "Do we have n8n workflows built?" |
 
 ## Security doctrine index (DOCTRINE_190–213 + related)
 
@@ -210,5 +220,7 @@ are the long-form doctrine that `CLAUDE.md` sections point to.
 
 ---
 
-*Index generated 2026-08-09 from a full `find docs -name '*.md'` (116 files) + live MCP/Stripe/git
-recon. If you add or move a doc, add its row here in the same commit (§BRAIN.3).*
+*Index generated 2026-08-09 from a full uncapped `find docs -name '*.md'` — **121 files, all indexed,
+zero gaps** (completeness-audited this pass) — plus a codebase feature inventory (`codebase-map.md`) and
+live MCP/Stripe/git recon. If you add or move a doc/route/edge-fn, add its row here (or in
+`codebase-map.md`) in the same commit (§BRAIN.3).*

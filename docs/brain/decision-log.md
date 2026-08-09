@@ -9,12 +9,19 @@ Sources this pass: GitHub MCP `list_pull_requests` (repo `mrmogulmaker-bot/paige
 ## Recent PRs (#375 → #409)
 
 **Open / in-flight (as of 2026-08-09):**
-- **#408** (open) — `fix(§9,wave-s3)`: operator-scope Super Admin Communications + operator Twilio
-  A2P SMS. **Being fixed to REUSE the master Twilio account creds** (not new `TWILIO_OPERATOR_*`
-  secrets) per owner correction 2026-08-09. *(branch `claude/s3-operator-communications` — do not touch.)*
+- **#410** (open, DRAFT — owner review) — `docs(brain)`: the Second Brain (`docs/brain/`) + §BRAIN
+  doctrine + completeness audit (this PR). Owner-review-gated, NOT auto-merge (doctrine + widespread
+  reference impact). *(branch `claude/second-brain`.)*
 - **#387** (open) — Harden edge function contracts + producer-inventory doctrine, audits, arch docs.
 
 **Merged (newest first):**
+- **#411** (merged 2026-08-09, `c40f76d3`) — `feat(wave4-4a.4)`: Interactive Analytics UI primitive
+  (`Sparkline`/`DrillContainer`/`MetricEntityCard`/`ExploreChart` in `@/components/ui/page`). **Closes
+  Wave 4a.** §32.c live-drive owed (FLIP + recharts geometry + AA both themes).
+- **#408** (merged 2026-08-09, `2ee92903`) — `fix(§9,wave-s3)`: operator-scope Super Admin
+  Communications + operator Twilio A2P SMS; REUSES master Twilio creds (not new `TWILIO_OPERATOR_*`).
+  **§32.a confirmed** — migration `20260812000000` persisted, `operator_conversations`/`operator_messages`
+  live on prod. OWED: A2P Messaging Service SID + inbound signing token secrets; operator SMS live-drive.
 - **#409** (merged 2026-08-09, `1e726426`) — `fix(voice,§13/§46)`: close ElevenLabs voice leak +
   persist Voice Configuration to CLAUDE.md. **Owner ruled `DEFAULT_TTS_VOICE = 0S5oIfi8zOZixuSj8K6n
   (Ivanna)`** — settled, on record, do not re-ask (§BRAIN.2).
@@ -91,6 +98,28 @@ Each is an owner ruling now living in `CLAUDE.md` (see `glossary.md` for the sec
   bar, §19/§21/§22 studio unification, RED-LINE index.
 - **2026-07-16** — §11 banner rule, §18 redundancy gate (mandatory four questions), §19/§20 studio.
 - **2026-08-04** — §39 peer-gate authored (#214).
+
+## Known-unbuilt / spec-only status (§13 honesty — "not built" is a valuable brain answer)
+
+A recorded "not built" prevents the exact false-confidence the brain exists to kill. Verified 2026-08-09:
+
+- **SMS/phone verification in signup — NOT built.** Signup uses **email verification only**
+  (`PublicSignup.tsx`, `showSms={false}`). `input-otp` primitive exists (used for Auth/MFA) but is
+  unwired for signup. (config-registry → "Signup / onboarding / provisioning".)
+- **Promo account type — spec LOCKED, NOT implemented.** `docs/product/promo-account-type-spec.md`
+  exists; there is **no** `account_type='promo'` value or migration in the schema. Do not read the
+  LOCKED spec as "built."
+- **Twilio A2P carrier submit — NOT wired.** `createBrand()`/`createCampaign()` are honest
+  `needs_config` stubs; the A2P **UI + draft + persistence ARE built** (`A2PTab.tsx`, `comms-a2p-*`).
+  The gap is the live TrustHub/carrier submit (Wave 4c.2 prereq). (config-registry → Twilio ISV.)
+- **Twilio number-purchase charge leg — NOT wired.** `comms-purchase-number` returns
+  `charge_wired:false`; search/buy-into-subaccount works, the billing leg does not yet.
+- **Client portal — PARTIALLY built.** Beyond the specs (Owner-Trilogy + Customer-Portal taxonomy),
+  real surfaces exist: `PortalGateway.tsx`, `PortalStudio.tsx`, `PortalSection.tsx`, portal-config hooks
+  (`useClientPortalConfig`/`useClientPortalBrand`/`usePortalConfig`), `ContactPortalPanel.tsx`. Not
+  spec-only.
+- **Enterprise Stripe plan — no active price** (see config-registry → Stripe): DB plan `enterprise`
+  is `is_active` but has no live Stripe price (sales-led/manual invoicing until wired).
 
 ## Wave / build-order notes
 
