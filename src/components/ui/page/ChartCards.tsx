@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import { useReducedMotion } from "framer-motion";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   Brush,
@@ -96,6 +98,12 @@ export interface TrendLineCardProps {
   /** Slot for CSV/PNG export controls, filters, a range picker — rendered in the card header. */
   actions?: ReactNode;
   height?: number;
+  /**
+   * "line" (default) or "area" — a token-gradient-filled area under each series (the Stripe/
+   * Vercel trend look). Area fills stay on the ONE --chart scale, never gold. Back-compat:
+   * omit for the existing line render.
+   */
+  variant?: "line" | "area";
   /** Show a recharts Brush for scrubbing a long series. Auto-suppressed under ~8 points. */
   brush?: boolean;
   /** Format an x-axis tick (e.g. a short date). */
@@ -115,12 +123,14 @@ export function TrendLineCard({
   empty,
   actions,
   height = DEFAULT_HEIGHT,
+  variant = "line",
   brush,
   xTickFormatter,
   yTickFormatter,
   className,
 }: TrendLineCardProps) {
   const reduce = useReducedMotion();
+  const gradBase = useId().replace(/:/g, "");
 
   const config = useMemo<ChartConfig>(() => {
     return series.reduce<ChartConfig>((acc, s, i) => {
@@ -131,6 +141,7 @@ export function TrendLineCard({
 
   const hasData = Array.isArray(data) && data.length >= 2 && series.length > 0;
   const showBrush = brush && data.length > 8;
+  const isArea = variant === "area";
 
   return (
     <SectionCard title={title} description={description} actions={actions} className={className}>
@@ -143,43 +154,92 @@ export function TrendLineCard({
         />
       ) : (
         <ChartContainer config={config} className="!aspect-auto w-full" style={{ height }}>
-          <LineChart data={data} margin={{ top: 8, right: 12, bottom: showBrush ? 4 : 8, left: 4 }}>
-            <CartesianGrid vertical={false} strokeDasharray="3 3" />
-            <XAxis
-              dataKey={xKey}
-              tickLine={false}
-              axisLine={false}
-              tickMargin={8}
-              minTickGap={24}
-              tickFormatter={xTickFormatter}
-            />
-            <YAxis tickLine={false} axisLine={false} tickMargin={8} width={44} tickFormatter={yTickFormatter} />
-            <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-            {series.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
-            {series.map((s) => (
-              <Line
-                key={s.key}
-                type="monotone"
-                dataKey={s.key}
-                stroke={`var(--color-${s.key})`}
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 4 }}
-                isAnimationActive={!reduce}
-                connectNulls
-              />
-            ))}
-            {showBrush && (
-              <Brush
+          {isArea ? (
+            <AreaChart data={data} margin={{ top: 8, right: 12, bottom: showBrush ? 4 : 8, left: 4 }}>
+              <defs>
+                {series.map((s) => (
+                  <linearGradient key={s.key} id={`${gradBase}-${s.key}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={`var(--color-${s.key})`} stopOpacity={0.28} />
+                    <stop offset="100%" stopColor={`var(--color-${s.key})`} stopOpacity={0} />
+                  </linearGradient>
+                ))}
+              </defs>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis
                 dataKey={xKey}
-                height={22}
-                travellerWidth={8}
-                stroke="hsl(var(--chart-1))"
-                fill="hsl(var(--muted))"
-                tickFormatter={xTickFormatter as ((value: string | number, index: number) => string) | undefined}
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={24}
+                tickFormatter={xTickFormatter}
               />
-            )}
-          </LineChart>
+              <YAxis tickLine={false} axisLine={false} tickMargin={8} width={44} tickFormatter={yTickFormatter} />
+              <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+              {series.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
+              {series.map((s) => (
+                <Area
+                  key={s.key}
+                  type="monotone"
+                  dataKey={s.key}
+                  stroke={`var(--color-${s.key})`}
+                  strokeWidth={2}
+                  fill={`url(#${gradBase}-${s.key})`}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                  isAnimationActive={!reduce}
+                  connectNulls
+                />
+              ))}
+              {showBrush && (
+                <Brush
+                  dataKey={xKey}
+                  height={22}
+                  travellerWidth={8}
+                  stroke="hsl(var(--chart-1))"
+                  fill="hsl(var(--muted))"
+                  tickFormatter={xTickFormatter as ((value: string | number, index: number) => string) | undefined}
+                />
+              )}
+            </AreaChart>
+          ) : (
+            <LineChart data={data} margin={{ top: 8, right: 12, bottom: showBrush ? 4 : 8, left: 4 }}>
+              <CartesianGrid vertical={false} strokeDasharray="3 3" />
+              <XAxis
+                dataKey={xKey}
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                minTickGap={24}
+                tickFormatter={xTickFormatter}
+              />
+              <YAxis tickLine={false} axisLine={false} tickMargin={8} width={44} tickFormatter={yTickFormatter} />
+              <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
+              {series.length > 1 && <ChartLegend content={<ChartLegendContent />} />}
+              {series.map((s) => (
+                <Line
+                  key={s.key}
+                  type="monotone"
+                  dataKey={s.key}
+                  stroke={`var(--color-${s.key})`}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                  isAnimationActive={!reduce}
+                  connectNulls
+                />
+              ))}
+              {showBrush && (
+                <Brush
+                  dataKey={xKey}
+                  height={22}
+                  travellerWidth={8}
+                  stroke="hsl(var(--chart-1))"
+                  fill="hsl(var(--muted))"
+                  tickFormatter={xTickFormatter as ((value: string | number, index: number) => string) | undefined}
+                />
+              )}
+            </LineChart>
+          )}
         </ChartContainer>
       )}
     </SectionCard>
