@@ -14,7 +14,7 @@
 - **§7** — a portal that forgets between chats is a filing cabinet, not intelligence. Memory IS the moat.
 - **§8** — the two-department action bus requires shared memory; without it the Client team + Owner Ops team can't coordinate.
 - **§15** — Paige can't probe intelligently or propose the smarter move without remembering what she's already seen.
-- **§26** — the storage substrate already exists (`paige_prompt_memory`, voyage-3 @ 1024 dims, tenant-scoped, §9-clean by construction). This workstream **EXTENDS** it (§18 one home), never rivals it.
+- **§26** — the **voyage-3 @ 1024 embedding space** already exists and is the ONE canonical space; this workstream reuses it and never stands up a rival embedder. Storage is **audience-scoped, not single-table** (owner-ratified 2026-08-09): three homes share the one space — Generation-DNA (`paige_prompt_memory`, tenant-scoped, no user axis), Client-Experience (`client_memory`, consumer-keyed), and **Owner-Ops (`paige_owner_memory`, `(tenant_id, user_id)`-keyed)** — the L8 home added by this workstream because neither existing table has the operator user axis. One space, not one table.
 - **§34** — L6 Learning is one of the 7 internal Paige departments. This is L6 made user-facing.
 - **§35** — a Paige OS that forgets between chats isn't an OS. Memory scales to household/portfolio/device contexts in future waves.
 - **§17 + §38** — memory-as-tier is a real Engine-2 metered revenue path on Paige's own rails (§38-clean: tenant→Paige billing, never tenant client money).
@@ -28,7 +28,7 @@
 Auto-summarize when a chat approaches token limits so long conversations don't die mid-workflow. **Every tier** gets this — Solo through Super Admin. Without it, tenants hit invisible token walls and lose context mid-task. Same mechanic Claude uses (the "Compacting our conversation" moment).
 
 ### 2. Cross-chat memory (tier-gated, monetizable)
-Persistent memory across sessions — Paige remembers what happened last week, what worked, what the tenant told her, what the agency's playbook is. This is the **L6 Learning department made user-facing**. Semantic retrieval from `paige_prompt_memory` (extend, don't fork) feeds into the current chat's context so Paige never restarts cold.
+Persistent memory across sessions — Paige remembers what happened last week, what worked, what the tenant told her, what the agency's playbook is. This is the **L6 Learning department made user-facing**. Semantic retrieval from the Owner-Ops home `paige_owner_memory` (same voyage-3 space — reuse the space, don't fork the embedder) feeds into the current chat's context so Paige never restarts cold.
 
 ---
 
@@ -47,10 +47,10 @@ Tier-gating MUST resolve tiers through the **canonical §51 resolvers** (`tier-m
 
 ## Substrate reuse (§18 one home — critical)
 
-**Two DISTINCT existing substrates — do not conflate them (§18).** Compaction and cross-chat memory are different mechanics with different homes; routing both into one table creates a competing source of truth.
+**DISTINCT substrates — do not conflate them (§18).** Compaction and cross-chat memory are different mechanics with different homes; routing both into one table creates a competing source of truth. The §18 invariant is **one voyage-3 SPACE, not one table** — memory homes are audience-scoped (owner-ratified 2026-08-09).
 
 - **Compaction → EXTEND `paige_chat_threads.summary` + `summary_through_seq`** — the rolling per-thread summary shipped in `20260711300000_paige_owner_chat_persistence.sql`, which `paige-ai-chat` already writes and refreshes. Compaction is a *per-thread rolling summary*, so it lives **with the thread**, NOT in `paige_prompt_memory`. Routing compaction into the vector-memory table would create a competing source of truth and collide with that table's required artifact-memory fields. **Reject on sight.**
-- **Cross-chat memory → EXTEND `paige_prompt_memory`** (§26 — already tenant-scoped, voyage-3 @ 1024 dims, §17 embedder-tier gated). Semantic retrieval **across** threads is a **new query path over existing vector storage**, not new storage. Do **NOT** stand up a second memory table or a rival vector space. Any compaction summary that is *also* embedded for cross-chat recall carries the same §9 isolation + §17 tagging discipline (`embedding_model='voyage-3'`, `embedding_dim=1024`, explicit `tenant_id`).
+- **Cross-chat OPERATOR memory → the Owner-Ops home `paige_owner_memory`** (owner-ratified 2026-08-09, migration `20260810120000`). The original prescription here — "EXTEND `paige_prompt_memory`, no second table" — was written on a false assumption: that cross-chat memory means *retrieving past generations*. It does not. `paige_prompt_memory` is generation-DNA (prompt→artifact, tenant-scoped, **no `user_id` axis**), so it structurally cannot hold *"Paige remembers what the operator told her"* — forcing it there is the §18 "two capabilities, one confused home" anti-pattern. The correct home is `paige_owner_memory` — the `(tenant_id, user_id)`-keyed Owner-Ops sibling of `client_memory`, in the **same voyage-3 space**. The invariant that still binds absolutely: reuse the **one voyage-3 space** (`embedding_model='voyage-3'`, `embedding_dim=1024`, CHECK-enforced), **no second embedder, no frontier/generation embedding path (§17/§26)**, explicit `tenant_id` on every row, strict own-user/own-tenant RLS (§9). Do NOT stand up a rival vector *space*; a new audience-scoped *table* in the one space is correct.
 - **The adversarial MUST re-attack:** *"is there a second embedder anywhere in this diff? is there a way to route embeddings to a frontier/generation model? does anything skip the §9 tenantId scope? did compaction leak into the vector table instead of the thread summary?"*
 
 ---
@@ -68,7 +68,7 @@ Tier-gating MUST resolve tiers through the **canonical §51 resolvers** (`tier-m
 - **§213/§213.e** — Does the tier-gating logic use a generic predicate (canonical §51 resolvers + capability flag), or hardcode `"agency"`/`"enterprise"` per-tier? Framework-level, not per-tenant. Does it cover ALL current AND future tiers, or tunnel on today's tier set?
 - **§9** — Can a sub-account's memory ever leak into another sub-account's context via the agency roll-up? Can Super Admin platform-lens ever return raw tenant PII without audit + an operator-scope gate?
 - **§26/§17** — Does any new code path route an embedding through a frontier/generation model? The structural **voyage-only** invariant must hold.
-- **§18** — Does this create a second memory table / second retrieval path when the existing one could extend? Did compaction land in `paige_prompt_memory` instead of the existing thread summary? **Reject on sight.**
+- **§18** — Does this create a second embedding **space** or a rival embedder when the one voyage-3 space could be reused? (A new *audience-scoped table* in the one space is fine — Owner-Ops memory lives in `paige_owner_memory`, ratified.) Did compaction land in a vector table instead of the existing thread summary? **Reject a rival space on sight.**
 - **§46 rhythm** — Does compaction fire silently, or does the tenant know Paige is compacting (a small ambient signal, not a modal wall)?
 - **§28 approval** — Does memory ever surface an approved-frozen artifact as an "editable suggestion"? Frozen must stay frozen.
 - **§13** — Does retrieval report honestly what it found (real matches with confidence), or hallucinate *"you told me last week…"* from a near-miss?
