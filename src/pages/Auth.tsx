@@ -171,10 +171,17 @@ const Auth = () => {
           planIntent = {
             plan: urlPlan,
             billing: normalizeBilling(searchParams.get("billing")),
-            invite: searchParams.get("invite") || undefined,
           };
         }
       }
+    }
+    // The invite token is carried in the URL, NOT the sessionStorage stash (CodeQL
+    // clear-text-storage — see stashPlanIntent). Backfill it from the URL onto whatever
+    // source resolved plan+billing (ref/stash/URL) so the OAuth-return path still reaches
+    // invite acceptance. Only when absent, so the in-memory ref's invite is preserved.
+    if (planIntent && !planIntent.invite) {
+      const urlInvite = searchParams.get("invite") || undefined;
+      if (urlInvite) planIntent = { ...planIntent, invite: urlInvite };
     }
     if (planIntent) {
       signupPlanIntentRef.current = null;

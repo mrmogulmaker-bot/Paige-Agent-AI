@@ -22,7 +22,12 @@ export function normalizeBilling(v: string | null | undefined): string {
 
 export function stashPlanIntent(intent: PlanIntent): void {
   try {
-    sessionStorage.setItem(STASH_KEY, JSON.stringify(intent));
+    // SECURITY (CodeQL clear-text-storage): persist ONLY the public pricing intent
+    // (plan + billing). The `invite` token is NEVER written to sessionStorage — it is
+    // already carried in the URL query across the OAuth round-trip (authRedirectWithPlan
+    // / onboardingPathWithPlan) and read from there where consumed, so nothing is lost.
+    const { plan, billing } = intent;
+    sessionStorage.setItem(STASH_KEY, JSON.stringify({ plan, billing }));
   } catch {
     /* private-mode / storage disabled — the URL carrier still covers the hop */
   }
@@ -34,10 +39,11 @@ export function readPlanIntent(): PlanIntent | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PlanIntent>;
     if (!parsed || typeof parsed.plan !== "string" || !parsed.plan) return null;
+    // No `invite` here by design (it's never stashed — see stashPlanIntent). Callers
+    // backfill it from the URL when needed.
     return {
       plan: parsed.plan,
       billing: normalizeBilling(parsed.billing),
-      invite: typeof parsed.invite === "string" && parsed.invite ? parsed.invite : undefined,
     };
   } catch {
     return null;
