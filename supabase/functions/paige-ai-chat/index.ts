@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
-import { estimateTurnsTokens, shouldCompact } from "../_shared/token-estimate.ts";
+import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 // N5 §2 de-hardcode — the client-side prompt assembly (persona block, neutral core,
@@ -3208,24 +3208,58 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // verbatim tail never overlap. The token trigger (chars/4 ESTIMATE, §13) makes a thread of long
     // turns compact BEFORE its live context overflows, instead of waiting for the count cadence.
     const maybeRefreshSummary = async (threadId: string) => {
-      const KEEP = 12, EVERY = 8, TAIL_TOKEN_BUDGET = 6000;
+      // KEEP        — verbatim turns the CADENCE fold retains (unchanged sane batch).
+      // KEEP_FLOOR  — the fewest verbatim turns a TOKEN fold will ever leave, for conversational
+      //               continuity, even if those turns exceed budget (a lone huge recent turn can't
+      //               shove the whole tail into the summary).
+      // MIN_COMPACTION_INTERVAL — belt-and-suspenders (§14): once compacted, don't compact again
+      //               until at least this many NEW turns have been appended, so a pathological heavy
+      //               tail the floor must keep can't re-trip the paid summarizer every turn. It is a
+      //               GLOBAL floor on fire frequency — it can legitimately skip a redundant fold that
+      //               would land within N turns of a prior one (including a cadence hit right after a
+      //               token fold); it does NOT alter the cadence TRIGGER itself, and being < EVERY it
+      //               never blocks two successive cadence fires on a long light thread.
+      const KEEP = 12, EVERY = 8, TAIL_TOKEN_BUDGET = 6000, KEEP_FLOOR = 5, MIN_COMPACTION_INTERVAL = 4;
       try {
         const { data: th } = await supabaseClient.from("paige_chat_threads")
-          .select("message_count, summary, summary_through_seq").eq("id", threadId).maybeSingle();
+          .select("message_count, summary, summary_through_seq, last_compacted_at").eq("id", threadId).maybeSingle();
         if (!th || th.message_count <= KEEP) return;
         // The un-summarized verbatim tail (seq past the watermark) is exactly what loads into the
         // model context, so weigh only that — fetch it via the (thread_id, seq) index and estimate.
+        // created_at rides along ONLY for the min-interval guard below.
         const { data: rows } = await supabaseClient.from("paige_chat_turns")
-          .select("role,content,seq").eq("thread_id", threadId).in("role", ["user", "assistant"])
+          .select("role,content,seq,created_at").eq("thread_id", threadId).in("role", ["user", "assistant"])
           .gt("seq", th.summary_through_seq ?? 0).order("seq", { ascending: true });
         if (!rows?.length) return;
+        // MIN-INTERVAL watermark guard (§14): count tail turns appended AFTER the last fold; if fewer
+        // than MIN_COMPACTION_INTERVAL, skip — no repeated paid summarizer calls on back-to-back turns.
+        // A NULL watermark (never compacted) skips the guard so the first fold always proceeds.
+        if (th.last_compacted_at) {
+          const lastAt = th.last_compacted_at as string;
+          const turnsSince = (rows as Array<{ created_at?: string | null }>)
+            .filter((r) => typeof r.created_at === "string" && r.created_at > lastAt).length;
+          if (turnsSince < MIN_COMPACTION_INTERVAL) return;
+        }
         const tailTokens = estimateTurnsTokens(rows as Array<{ role?: string; content?: string }>);
+        const triggeredByToken = tailTokens >= TAIL_TOKEN_BUDGET;
         if (!shouldCompact({ messageCount: th.message_count, tailTokens, keep: KEEP, every: EVERY, tailTokenBudget: TAIL_TOKEN_BUDGET })) return;
-        // Keep the last KEEP verbatim turns of the tail; fold everything before them. (rows is the
-        // tail only, so seq is already > watermark for every row — no overlap with prior summary.)
-        const cutoffSeq = rows[Math.max(0, rows.length - KEEP)].seq;
-        const toFold = (rows as Array<{ seq: number }>).filter((r) => r.seq <= cutoffSeq);
-        if (!toFold.length) return;
+        // Decide how many NEWEST turns stay verbatim, then fold the contiguous OLDER prefix. On a
+        // TOKEN-triggered fold we keep only enough turns to drop the tail back under budget×0.5
+        // (hysteresis, so it doesn't immediately re-trip), floored at KEEP_FLOOR; on a CADENCE fold
+        // we keep KEEP (the prior behavior). This is NOT identical to the old fixed keep-KEEP fold:
+        // for a heavy tail (M ≥ KEEP) it folds MORE turns to reclaim tokens, and right after a
+        // compaction (M < KEEP) it may keep the whole short tail. In every case the no-loss/no-dup
+        // invariant holds — `toFold` is a contiguous prefix of the tail (all seq > watermark), and we
+        // advance summary_through_seq to the LAST folded seq, so each turn is EITHER in the summary
+        // XOR in the verbatim tail, never dropped, never double-counted.
+        const keepCount = keepCountForFold({
+          turnTokens: (rows as Array<{ content?: string }>).map((r) => estimateTokens(r.content)),
+          keep: KEEP, floor: KEEP_FLOOR, tailTokenBudget: TAIL_TOKEN_BUDGET, triggeredByToken,
+        });
+        const foldCount = rows.length - keepCount;
+        if (foldCount <= 0) return;
+        const toFold = (rows as Array<{ seq: number }>).slice(0, foldCount);
+        const cutoffSeq = toFold[toFold.length - 1].seq;
         const transcript = toFold.map((t: any) => `${t.role === "user" ? "Owner" : "Paige"}: ${t.content}`).join("\n").slice(0, 12000);
         const prompt = `Maintain a rolling memory of a long working chat between a business owner and their assistant Paige. Update the summary so nothing important is lost as older turns scroll off. PRESERVE explicitly: the owner's name & preferences, decisions made, tasks/actions Paige took or QUEUED, any PENDING approvals still open, names of clients/contacts, dates, numbers, and open loops. 4-8 tight sentences, flowing prose, no bullets.\n\nPRIOR SUMMARY:\n${th.summary ?? "(none)"}\n\nOLDER TURNS TO FOLD IN:\n${transcript}\n\nUPDATED SUMMARY:`;
         const resp = await gatewayCompat("anthropic", {
