@@ -1701,6 +1701,42 @@ set of eyes has adversarially read the actual pushed diff and reported.
   never test, and did I still let CI have the last word — or am I calling it done on the strength of
   my own green proof alone?"* If only the author's proof ran, the change is not verified.
 
+## §BRAIN — Second Brain read/update discipline
+
+> **PROPOSED — pending owner ruling on exact wording (Cowork #26).** This section is drafted and
+> merged as a DRAFT PR for the owner to rule on; treat its intent as binding once ruled, but the
+> exact wording below is not yet final. Everything else in `docs/brain/` ships as reference regardless.
+
+**Directive (owner-owed, drafted 2026-08-09):** The platform now carries a durable **Second Brain**
+at `docs/brain/` — a verified index of doctrine + config + decisions + lessons — so a session stops
+re-diagnosing systems that are already documented. A brain only works if it is **read before work**
+and **updated with work**; a stale or unread brain is worse than none (§13/§46 — it lies with
+authority). This is the same principle as §24 (automate the repeat) applied to *knowledge*: never
+re-derive what the brain already records.
+
+- **§BRAIN.1 — Mandatory session-start ritual.** Before substantive work on any task, **read
+  `docs/brain/README.md`** (the master index + verified platform snapshot). If the task touches
+  infra/integrations (Supabase, Stripe, Twilio, ElevenLabs, CI, MCP, any third-party seam), also read
+  `docs/brain/config-registry.md`. If it touches a specific domain, open that domain's doc via the
+  README index. Skipping this and then re-diagnosing something the brain already answers is a §13/§46
+  violation — the guessing this brain exists to end.
+- **§BRAIN.2 — Feature-existence check.** Answer *"do we have X? / is Y built? / where does Z live? /
+  what did we decide about W?"* from the brain (README index → cited source → `decision-log.md`),
+  **not** from session memory. Asserting a feature/config exists (or doesn't) without checking the
+  brain or the cited source is a §13 honesty violation — state what you verified and how, or say it's
+  unverified.
+- **§BRAIN.3 — Update discipline (same commit).** Every PR that ships a feature, changes config/infra,
+  or lands an owner ruling **updates the relevant brain file in the SAME commit**: new/changed doc →
+  add or edit its row in `README.md`; config/integration change → `config-registry.md` (NAMES/IDs
+  only, never a secret value; verify or mark `⚠ unverified`); merged PR or dated ruling →
+  `decision-log.md`; a new class of costly mistake → `lessons-learned.md`; a new term/§-anchor →
+  `glossary.md`. Shipping the change but not the brain update is a §13/§46 drift — the brain silently
+  goes stale and the next session is misled.
+- **The test, every time:** *"Did I read the brain before I started, answer 'do we have this?' from it
+  instead of from memory, and update it in the same commit as my change — or did I let it go stale and
+  set the next session up to re-diagnose what I already knew?"* If the brain wasn't read or wasn't
+  updated, the work isn't done.
+
 ## Voice Configuration (§46 — so no future session re-diagnoses the "I updated the agent but still hear the old voice" leak)
 
 **Anchoring case (§13/§30/§32.c, 2026-08-09):** a prior session updated the ElevenLabs **ConvAI
