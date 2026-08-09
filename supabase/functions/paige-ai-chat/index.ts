@@ -375,6 +375,13 @@ async function embedText(text: string): Promise<number[] | null> {
   }
 }
 
+// L8 Memory Fabric (§7/§8/§26/§34) — the durable cross-session Owner-Ops read helper
+// (loadOwnerMemoryBlock) is DEFERRED to the writer slice (4a.3/4b). Slice 4a.2 ships ONLY the
+// proven substrate: the `paige_owner_memory` table + `match_paige_owner_memory` RPC (migration
+// 20260810120000). The read wiring lived here but was removed because it fired a paid Voyage
+// embed on every operator turn against an empty table — paid latency for nothing until there is
+// captured memory to retrieve. See the deferred marker in the request handler for the re-wire point.
+
 // D1 — render a gate-survived entity_profile (from paige-deep-research) into a
 // compact, fully-cited intel block for the model to present. Every fact keeps its
 // [n] markers; `not_public` people render name + title + "contact not public" and
@@ -1037,6 +1044,16 @@ JSON:`;
       console.warn("[paige-ai-chat] persona context resolution failed (defaulting to neutral):", e);
     }
     const fundingEnabled = personaCtx.funding_enabled;
+
+    // === L8 MEMORY FABRIC — Owner-Ops cross-session memory (§7/§8/§26/§34) ===
+    // DEFERRED (slice 4a.3/4b): the read/write wiring is intentionally NOT wired here yet.
+    // Slice 4a.2 ships ONLY the proven substrate — the `paige_owner_memory` table +
+    // `match_paige_owner_memory` RPC (migration 20260810120000). The read path (loadOwnerMemoryBlock)
+    // was pulled because it called embedText() — a paid Voyage round-trip — on EVERY operator turn
+    // while the table stays empty until the writer slice lands, i.e. pure paid latency on the
+    // time-to-first-token hot path returning nothing (§13 honesty, §32 no-cost-for-nothing).
+    // The writer slice (4a.3/4b) re-adds the (tenant_id + user_id)-scoped read here, folding the
+    // block into `memoryBlock`, once there is captured memory to retrieve.
 
     // §2 — buildUserContext queries credit tables + emits credit strings ONLY when
     // fundingEnabled; a non-funding/bare tenant's client gets profile/subscription/
