@@ -165,8 +165,9 @@ export default function Pricing() {
         const { data: sessionRes } = await supabase.auth.getSession();
         const signedIn = Boolean(sessionRes.session?.user);
 
-        // Not signed in → carry the plan intent into signup; Auth.tsx auto-launches
-        // checkout for this plan the moment the session is established.
+        // Not signed in → carry the plan intent into signup. After the account is
+        // created, Auth.tsx routes to /onboarding?plan=… (business context + terms),
+        // and checkout is the LAST step from there (task #66 reorder).
         if (!signedIn) {
           navigate(`/auth?mode=signup&plan=${slug}&billing=${period}`);
           return;

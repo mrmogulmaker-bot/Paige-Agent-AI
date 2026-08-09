@@ -17,6 +17,10 @@ import { signUpTenant } from "@/lib/auth/signUpTenant";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { resolveLandingRoute, clearClientViewOverride } from "@/lib/auth/resolveLandingRoute";
 import { isSafeRedirectPath } from "@/lib/auth/safeRedirect";
+import {
+  type PlanIntent, stashPlanIntent, readPlanIntent, clearPlanIntent,
+  normalizeBilling, onboardingPathWithPlan, authRedirectWithPlan,
+} from "@/lib/auth/signupPlanIntent";
 import { useRequiredSignupDocs, recordAcceptances } from "@/lib/legal/useLegalDocuments";
 import { readableTextOn, isColorDark } from "@/lib/brand/contrast";
 
@@ -53,14 +57,15 @@ const Auth = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Plan intent (pay-before-workspace, B-Platform). When a prospect picks a plan on
-  // /pricing while signed out, they arrive here as /auth?mode=signup&plan=<slug>&billing=<period>.
-  // On a SUCCESSFUL SIGNUP (never login) we skip the normal role redirect and launch
-  // Stripe Checkout for that plan straight away. The ref is set only on the signup
-  // path and cleared on failure, so a later login can't accidentally trigger it; the
-  // launched guard prevents a double-invoke from the two redirect entry points.
-  const signupPlanIntentRef = useRef<{ plan: string; billing: string; invite?: string } | null>(null);
-  const checkoutLaunchedRef = useRef(false);
+  // Plan intent (task #66 reorder). When a prospect picks a plan on /pricing while
+  // signed out, they arrive here as /auth?mode=signup&plan=<slug>&billing=<period>.
+  // On a SUCCESSFUL SIGNUP (never login) we route them to /onboarding CARRYING the
+  // plan — NOT straight to Stripe. Checkout is now the LAST step, launched from the
+  // /onboarding business-context + terms step (WorkspaceProvisioner), so a paid
+  // customer's tier + terms + workspace name are captured in OUR db before the Stripe
+  // hop (the compliance fix). The ref is set only on the email signup path and cleared
+  // on failure; the OAuth path re-hydrates the intent from the stash/URL on return.
+  const signupPlanIntentRef = useRef<PlanIntent | null>(null);
 
   // Client-invite mode: when a tenant's CUSTOMER arrives here from /join/<token>
   // to sign in/up, the page must wear the TENANT's brand (§6/§9) — never Paige's
@@ -135,70 +140,46 @@ const Auth = () => {
           // Trial length is derived server-side from the token; Auth doesn't hold N,
           // so we say "a free trial" without fabricating a number (§13 honesty).
           ? "Your invite includes a free trial — create your account to claim it"
-          // Plan-intent (paid) signup goes straight to checkout, then a 14-day trial —
-          // the card is captured now but only charged when the trial ends (§13 honesty).
+          // Plan-intent (paid) signup: create the account, set up the workspace, then
+          // checkout starts the 14-day free trial (card captured, charged when it ends).
           : hasPlanIntent
-            ? "Create your account — checkout is the last step to start your 14-day free trial"
+            ? "Create your account — next, set up your workspace, then start your 14-day free trial"
             : "Start free · Paige works on day one");
 
   useEffect(() => {
     setIsLogin(searchParams.get("mode") !== "signup");
   }, [searchParams]);
 
-  // Launch Stripe Checkout for a pending plan intent (post-signup). On any failure we
-  // fall back to /pricing with a toast — the account exists, they just pick again.
-  const launchPlanCheckout = async (plan: string, billing: string, inviteToken?: string) => {
-    if (checkoutLaunchedRef.current) return;
-    checkoutLaunchedRef.current = true;
-    try {
-      const { data, error } = await supabase.functions.invoke("platform-subscription-checkout", {
-        body: {
-          plan_slug: plan,
-          billing_period: billing,
-          success_path: "/welcome?checkout=success",
-          // Only include when present so the un-invited paid path is byte-for-byte unchanged.
-          ...(inviteToken ? { invite_token: inviteToken } : {}),
-        },
-      });
-      if (error) {
-        // supabase-js puts the edge fn's JSON body on error.context (a Response).
-        let code: string | undefined;
-        try {
-          const b = await (error as { context?: Response }).context?.json?.();
-          code = (b as Record<string, unknown> | undefined)?.error as string | undefined;
-        } catch {
-          /* not JSON — treat as generic below */
-        }
-        if (code === "already_subscribed" || code === "already_provisioned") {
-          navigate("/admin", { replace: true });
-          return;
-        }
-        throw new Error(code || error.message || "checkout_failed");
-      }
-      const url = (data as { url?: string } | null)?.url;
-      if (!url) throw new Error("no_checkout_url");
-      window.location.href = url;
-    } catch {
-      toast({
-        title: "Couldn't open checkout",
-        description: "Your account is ready — pick your plan to finish subscribing.",
-        variant: "destructive",
-      });
-      navigate("/pricing", { replace: true });
-    }
-  };
-
   const redirectByRole = async (userId: string) => {
     // Always clear any "preview as client" override on a fresh login so role
     // redirects aren't suppressed by a stale flag from a previous session.
     clearClientViewOverride();
 
-    // Pay-before-workspace: a fresh signup that carried a plan intent goes straight
-    // to Stripe Checkout, not the normal role/onboarding redirect (B-Platform).
-    const planIntent = signupPlanIntentRef.current;
+    // Plan-intent (task #66 reorder): a fresh signup that carried a plan goes to
+    // /onboarding CARRYING the plan — the business-context + terms step, from which
+    // checkout is launched LAST. Resolve the intent from the email-path ref first,
+    // then (OAuth return) the sessionStorage stash, then the URL. A client-invite
+    // signup never carries a platform plan (§9). The /onboarding gate forwards a user
+    // who already owns a workspace straight to /admin, so this is safe even if a stale
+    // param survives a re-login.
+    let planIntent = signupPlanIntentRef.current;
+    if (!planIntent && !isClientInvite) {
+      planIntent = readPlanIntent();
+      if (!planIntent) {
+        const urlPlan = searchParams.get("plan");
+        if (urlPlan) {
+          planIntent = {
+            plan: urlPlan,
+            billing: normalizeBilling(searchParams.get("billing")),
+            invite: searchParams.get("invite") || undefined,
+          };
+        }
+      }
+    }
     if (planIntent) {
       signupPlanIntentRef.current = null;
-      await launchPlanCheckout(planIntent.plan, planIntent.billing, planIntent.invite);
+      clearPlanIntent();
+      navigate(onboardingPathWithPlan(planIntent), { replace: true });
       return;
     }
 
@@ -404,7 +385,7 @@ const Auth = () => {
         toast({
           title: "Account created!",
           description: signupPlanIntentRef.current
-            ? "Taking you to secure checkout to finish setting up your plan…"
+            ? "Next, let's set up your workspace…"
             : "Welcome! Redirecting to your dashboard...",
         });
       }
@@ -419,6 +400,24 @@ const Auth = () => {
     }
   };
 
+  // Plan-intent OAuth (task #66): before the provider hop, stash the chosen plan AND
+  // re-point the return URL at /auth carrying the plan params, so the intent survives
+  // the round-trip and redirectByRole routes back into /onboarding?plan=… (never
+  // straight to checkout). A client-invite OAuth never carries a platform plan (§9),
+  // and its invite-target return (oauthRedirectTo → /join/:token) is left untouched.
+  const oauthRedirectWithPlan = (): string => {
+    if (isClientInvite) return oauthRedirectTo;
+    const planSlug = searchParams.get("plan");
+    if (!planSlug) return oauthRedirectTo;
+    const intent: PlanIntent = {
+      plan: planSlug,
+      billing: normalizeBilling(searchParams.get("billing")),
+      invite: searchParams.get("invite") || undefined,
+    };
+    stashPlanIntent(intent);
+    return authRedirectWithPlan(window.location.origin, intent);
+  };
+
   const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
@@ -426,7 +425,7 @@ const Auth = () => {
       // from an earlier visitor on this browser (§9).
       if (!isClientInvite) { try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ } }
       void trackEvent("signup_cta_click", "acquisition", { method: "google" });
-      const result = await signInWithOAuth("google", oauthRedirectTo);
+      const result = await signInWithOAuth("google", oauthRedirectWithPlan());
       if (result.error) {
         toast({ title: "Google sign-in failed", description: String(result.error), variant: "destructive" });
       }
@@ -442,7 +441,7 @@ const Auth = () => {
     setIsLoading(true);
     try {
       if (!isClientInvite) { try { localStorage.removeItem("paige_pending_invite"); } catch { /* ignore */ } }
-      const result = await signInWithOAuth("apple", oauthRedirectTo);
+      const result = await signInWithOAuth("apple", oauthRedirectWithPlan());
       if (result.error) {
         toast({ title: "Apple sign-in failed", description: String(result.error), variant: "destructive" });
       }

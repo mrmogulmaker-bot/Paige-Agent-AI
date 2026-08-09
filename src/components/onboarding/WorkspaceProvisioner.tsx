@@ -1,19 +1,25 @@
 /**
- * WorkspaceProvisioner — the one place a signed-in user turns into a tenant OWNER.
+ * WorkspaceProvisioner — the one place a signed-in user turns their business context
+ * into a workspace. Task #66 reorder: the account TYPE is NO LONGER picked here (§18 —
+ * no upfront type picker). It is FIXED from the plan the prospect already chose on
+ * /pricing and shown as read-only context. There are two paths, branched on whether a
+ * plan is present:
  *
- * Shared by the front-door signup (/signup, after the account step) and the
- * onboarding gate (/onboarding, for anyone already signed in but tenant-less).
- * The signer picks an account TYPE — the GoHighLevel differentiator: a
- * Standalone workspace (their own practice) OR an Agency/Enterprise that can
- * spin up sub-accounts — then names the business. `provision_tenant` makes them
- * the owner; we hard-navigate into /admin so the role + tenant context reload
- * fresh (a client-side navigate could read a login-time role cache).
+ *  • PAID (a plan is present, the dominant new-customer path): collect the business
+ *    context + an explicit unchecked terms clickwrap, then — the compliance fix —
+ *    STAGE it in signup_intake AND write the subscriber-agreement legal_acceptances
+ *    row NOW (in OUR db, before the Stripe hop), then launch platform-subscription-
+ *    checkout as the LAST step. The tenant is NOT provisioned here; the stripe-webhook
+ *    provisions it on payment from the staged row (real name / industry / account_type).
  *
- * account_type is a pure capability flag and is upgradeable anytime, so the
- * copy says so — no one is boxed in at the door.
+ *  • FREE / no-plan (the legacy front door, e.g. resolveLandingRoute sending a
+ *    tenant-less user here): provision a standalone workspace directly via
+ *    provision_tenant, exactly as before — no checkout. (See the §-note below: without
+ *    the tier picker, the free path is standalone-only; agency/enterprise come through
+ *    /pricing. Flagged for owner review.)
  */
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,16 +30,13 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { useLegalDoc } from "@/lib/legal/useLegalDocuments";
-import { User, Network, Building2, Check, Loader2, FileText } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useLegalDoc, recordAcceptances } from "@/lib/legal/useLegalDocuments";
+import { normalizeBilling } from "@/lib/auth/signupPlanIntent";
+import { User, Network, Building2, Loader2, FileText, ShieldCheck } from "lucide-react";
 
 const TEAM_SIZES = ["Just me", "2–5", "6–20", "21+"] as const;
 
 // Curated, inclusive industry list (§2: broad audience, never coaching-only).
-// "Other" reveals a write-in so no one is boxed out. The chosen value is stored
-// on the tenant (brand.industry) so it's segmentable and Paige can tailor per
-// vertical — while the free-text "who do you help" line captures the nuance.
 const INDUSTRIES = [
   "Coaching",
   "Consulting",
@@ -46,9 +49,8 @@ const INDUSTRIES = [
   "Other",
 ] as const;
 
-// Seed each new tenant's Paige with the closest starter Playbook preset
-// (src/lib/playbook/presets.ts) from the industry they pick — so Paige is native
-// to their practice on day one. They can fully re-author it later in the editor.
+// Seed each new tenant's Paige with the closest starter Playbook preset from the
+// industry they pick — so Paige is native to their practice on day one.
 const INDUSTRY_TO_PLAYBOOK: Record<string, string> = {
   "Coaching": "coaching-default",
   "Fitness & wellness": "fitness",
@@ -57,63 +59,57 @@ const INDUSTRY_TO_PLAYBOOK: Record<string, string> = {
   "Real estate": "consultant",
   "Agency / Marketing": "agency",
   "Creative / Design": "agency",
-  // Creators / thought leaders and anything unlisted get the vertical-NEUTRAL
-  // baseline, not a coaching-voiced one (§2).
   "Course creator / Thought leader": "general",
   "Other": "general",
 };
 
 type AccountType = "standalone" | "agency" | "enterprise";
 
-// Each lane signs its OWN platform subscriber agreement before the account is
-// created (§9 platform terms; interim, counsel-review pending). The hard stop is
-// enforced server-side in provision_tenant, which validates the current
-// agreement and records the acceptance in legal_acceptances atomically with the
-// tenant — this checkbox is the human-facing half of that gate.
+// The owner-ruled plan→account_type map (task #66). The tier is derived from the plan
+// chosen on /pricing, never picked here.
+const PLAN_TO_ACCOUNT_TYPE: Record<string, AccountType> = {
+  solo: "standalone",
+  agency: "agency",
+  enterprise: "enterprise",
+};
+
+// Each lane's subscriber agreement (§9 platform terms). Derived from the account type
+// (which is derived from the plan) — no longer from a picker.
 const LANE_TO_AGREEMENT: Record<AccountType, string> = {
   standalone: "saas-standalone",
   agency: "saas-agency",
   enterprise: "saas-enterprise",
 };
 
-const ACCOUNT_TYPES: {
-  value: AccountType;
-  title: string;
-  tagline: string;
-  detail: string;
-  Icon: typeof User;
-}[] = [
-  {
-    value: "standalone",
-    title: "Standalone",
-    tagline: "Your own practice.",
-    detail: "One workspace, full control — run your own clients. No sub-accounts.",
-    Icon: User,
-  },
-  {
-    value: "agency",
-    title: "Agency",
-    tagline: "Run many businesses.",
-    detail: "Create sub-accounts under your roof, each with its own clients, brand, and pipeline.",
-    Icon: Network,
-  },
-  {
-    value: "enterprise",
-    title: "Enterprise",
-    tagline: "Agency, at scale.",
-    detail: "Everything in Agency plus room to grow — higher limits and white-label headroom.",
-    Icon: Building2,
-  },
-];
+const ACCOUNT_TYPE_META: Record<AccountType, { title: string; blurb: string; Icon: typeof User }> = {
+  standalone: { title: "Solo", blurb: "Your own practice — one workspace, full control.", Icon: User },
+  agency: { title: "Agency", blurb: "Run many businesses — sub-accounts under your roof.", Icon: Network },
+  enterprise: { title: "Enterprise", blurb: "Agency at scale — higher limits and white-label headroom.", Icon: Building2 },
+};
 
 interface Props {
-  /** Called after a successful provision. Defaults to a hard nav into /admin. */
+  /** Called after a successful FREE provision. Defaults to a hard nav into /admin. */
   onProvisioned?: () => void;
+  /** The plan chosen on /pricing (e.g. "solo" | "agency"). Present ⇒ the PAID path. */
+  planSlug?: string | null;
+  /** "monthly" | "annual" — carried from /pricing for the checkout. */
+  billingPeriod?: string | null;
+  /** Optional super-admin trial invite token, threaded through to checkout (§9). */
+  inviteToken?: string | null;
 }
 
-export function WorkspaceProvisioner({ onProvisioned }: Props) {
+export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, inviteToken }: Props) {
   const { toast } = useToast();
-  const [accountType, setAccountType] = useState<AccountType>("standalone");
+  const navigate = useNavigate();
+
+  // A plan present + recognized ⇒ PAID path. An unrecognized plan slug is ignored
+  // (defensive) and falls back to the free standalone path rather than 404 at checkout.
+  const paidAccountType: AccountType | null =
+    planSlug && planSlug in PLAN_TO_ACCOUNT_TYPE ? PLAN_TO_ACCOUNT_TYPE[planSlug] : null;
+  const isPaid = paidAccountType !== null;
+  const accountType: AccountType = paidAccountType ?? "standalone";
+  const billing = normalizeBilling(billingPeriod);
+
   const [businessName, setBusinessName] = useState("");
   const [industry, setIndustry] = useState("");
   const [industryOther, setIndustryOther] = useState("");
@@ -122,13 +118,111 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
   const [creating, setCreating] = useState(false);
   const [agreed, setAgreed] = useState(false);
 
-  // The agreement for the currently-selected lane. Re-consent whenever the lane
-  // changes — standalone, agency, and enterprise are three different contracts.
+  // The agreement for this account type (derived, not picked).
   const agreementSlug = LANE_TO_AGREEMENT[accountType];
   const { doc: agreement, loading: agreementLoading } = useLegalDoc(agreementSlug);
+  const meta = ACCOUNT_TYPE_META[accountType];
+  const TierIcon = meta.Icon;
+
+  // Reset the explicit terms consent if the derived account type ever changes.
   useEffect(() => { setAgreed(false); }, [accountType]);
 
-  const createWorkspace = async () => {
+  const resolvedIndustry = () =>
+    industry === "Other" ? (industryOther.trim() || null) : (industry || null);
+
+  // ── PAID path: stage the intake + log terms NOW (pre-checkout), then checkout ──────
+  const stageAndCheckout = async (userId: string) => {
+    // (1) STAGE the business context + plan + derived account_type + agreement in
+    //     signup_intake — the seam the webhook reads to provision correctly on payment.
+    //     `as any` mirrors the repo pattern for tables not yet in generated types.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: stageErr } = await (supabase.from("signup_intake" as any) as any).upsert(
+      {
+        user_id: userId,
+        plan_slug: planSlug,
+        billing_period: billing,
+        account_type: accountType,
+        business_name: businessName.trim(),
+        industry: resolvedIndustry(),
+        team_size: teamSize || null,
+        who_you_help: about.trim() || null,
+        agreement_slug: agreementSlug,
+        agreement_version: agreement?.version ?? null,
+        terms_accepted_at: new Date().toISOString(),
+        consumed_at: null,
+      },
+      { onConflict: "user_id" },
+    );
+    if (stageErr) throw new Error(stageErr.message);
+
+    // (2) COMPLIANCE FIX — log the subscriber-agreement acceptance in OUR db NOW,
+    //     before the Stripe hop. The webhook re-writes it idempotently (ON CONFLICT
+    //     DO NOTHING) as a backstop, so this accept-time write is the source of truth.
+    if (agreement) {
+      const { error: legalErr } = await recordAcceptances(userId, [
+        {
+          slug: agreementSlug,
+          version: agreement.version,
+          context: { source: "onboarding_paid", lane: accountType, plan: planSlug },
+        },
+      ]);
+      // A logging hiccup must not block checkout — the webhook backstop still records
+      // it — but surface it (§13) rather than swallow silently.
+      if (legalErr) console.warn("[onboarding] terms acceptance log failed:", legalErr.message);
+    }
+
+    // (3) LAST step — launch Stripe Checkout. On failure, fall back to /pricing.
+    const { data, error } = await supabase.functions.invoke("platform-subscription-checkout", {
+      body: {
+        plan_slug: planSlug,
+        billing_period: billing,
+        success_path: "/welcome?checkout=success",
+        ...(inviteToken ? { invite_token: inviteToken } : {}),
+      },
+    });
+    if (error) {
+      let code: string | undefined;
+      try {
+        const b = await (error as { context?: Response }).context?.json?.();
+        code = (b as Record<string, unknown> | undefined)?.error as string | undefined;
+      } catch {
+        /* not JSON */
+      }
+      if (code === "already_subscribed" || code === "already_provisioned") {
+        window.location.assign("/admin");
+        return;
+      }
+      throw new Error(code || error.message || "checkout_failed");
+    }
+    const url = (data as { url?: string } | null)?.url;
+    if (!url) throw new Error("no_checkout_url");
+    window.location.href = url;
+  };
+
+  // ── FREE path: provision a standalone workspace directly (no checkout) ─────────────
+  const provisionFree = async () => {
+    const { data: provisioned, error } = await supabase.rpc("provision_tenant", {
+      _name: businessName.trim(),
+      _industry: resolvedIndustry(),
+      _team_size: teamSize || null,
+      _description: about.trim() || null,
+      _account_type: accountType,
+      _agreement_slug: agreementSlug,
+      _agreement_version: agreement!.version,
+    });
+    if (error) throw error;
+
+    const tenantId = (provisioned as { id?: string } | null)?.id;
+    const slug = INDUSTRY_TO_PLAYBOOK[industry] ?? "general";
+    if (tenantId) {
+      await supabase.rpc("set_tenant_playbook", { _tenant_id: tenantId, _slug: slug, _only_if_unset: true });
+    }
+    toast({ title: "Workspace ready", description: "Welcome to Paige — this is yours to run." });
+    if (onProvisioned) onProvisioned();
+    else window.location.assign("/admin");
+  };
+
+  const submit = async () => {
     if (businessName.trim().length < 2) {
       toast({ title: "Name your business", description: "This becomes your workspace.", variant: "destructive" });
       return;
@@ -136,7 +230,7 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
     if (!agreement || !agreed) {
       toast({
         title: "Review the agreement",
-        description: "Please read and accept the subscriber agreement for your account type to continue.",
+        description: "Please read and accept the subscriber agreement to continue.",
         variant: "destructive",
       });
       return;
@@ -144,42 +238,28 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
     setCreating(true);
     try {
       const { data: sess } = await supabase.auth.getSession();
-      if (!sess.session) {
+      const userId = sess.session?.user?.id;
+      if (!userId) {
         toast({ title: "Session expired", description: "Sign back in to finish.", variant: "destructive" });
         return;
       }
-      // Structured category, with the free-text write-in when they pick "Other".
-      const resolvedIndustry =
-        industry === "Other" ? (industryOther.trim() || null) : (industry || null);
-      const { data: provisioned, error } = await supabase.rpc("provision_tenant", {
-        _name: businessName.trim(),
-        _industry: resolvedIndustry,
-        _team_size: teamSize || null,
-        _description: about.trim() || null,
-        _account_type: accountType,
-        // Server-side hard stop: provision_tenant refuses to create the account
-        // unless a current lane agreement is passed, and records the acceptance.
-        _agreement_slug: agreementSlug,
-        _agreement_version: agreement.version,
-      });
-      if (error) throw error;
-
-      // Seed Paige's Playbook from the chosen industry (non-blocking — the admin
-      // editor can re-author it, and resolveActivePlaybook falls back to a neutral
-      // default if this doesn't land).
-      const tenantId = (provisioned as { id?: string } | null)?.id;
-      const slug = INDUSTRY_TO_PLAYBOOK[industry] ?? "general";
-      if (tenantId) {
-        // _only_if_unset: never clobber an already-authored playbook if
-        // provision_tenant returned a pre-existing tenant (idempotent).
-        await supabase.rpc("set_tenant_playbook", { _tenant_id: tenantId, _slug: slug, _only_if_unset: true });
+      if (isPaid) {
+        await stageAndCheckout(userId);
+        // On success the browser is navigating to Stripe; leave `creating` on.
+      } else {
+        await provisionFree();
       }
-
-      toast({ title: "Workspace ready", description: "Welcome to Paige — this is yours to run." });
-      if (onProvisioned) onProvisioned();
-      else window.location.assign("/admin");
     } catch (e) {
-      toast({ title: "Couldn't create your workspace", description: (e as Error).message, variant: "destructive" });
+      if (isPaid) {
+        toast({
+          title: "Couldn't open checkout",
+          description: "Your business is saved — pick your plan to finish subscribing.",
+          variant: "destructive",
+        });
+        navigate("/pricing", { replace: true });
+      } else {
+        toast({ title: "Couldn't create your workspace", description: (e as Error).message, variant: "destructive" });
+      }
     } finally {
       setCreating(false);
     }
@@ -187,39 +267,23 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <Label className="text-sm font-medium">How do you want to run it?</Label>
-          <p className="text-xs text-muted-foreground">You can change this anytime as you grow — nothing here locks you in.</p>
+      {/* Fixed tier context (replaces the removed picker, §18). Read-only — the tier
+          was chosen on /pricing; here it's shown, not selected. */}
+      <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-4">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10">
+          <TierIcon className="h-5 w-5 text-primary" />
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {ACCOUNT_TYPES.map(({ value, title, tagline, detail, Icon }) => {
-            const selected = accountType === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setAccountType(value)}
-                aria-pressed={selected}
-                className={cn(
-                  "relative text-left rounded-xl border p-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  selected
-                    ? "border-primary bg-primary/5 ring-1 ring-primary"
-                    : "border-border hover:border-primary/50 hover:bg-muted/40",
-                )}
-              >
-                {selected && (
-                  <span className="absolute top-3 right-3 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                    <Check className="h-3 w-3" />
-                  </span>
-                )}
-                <Icon className={cn("h-5 w-5 mb-2", selected ? "text-primary" : "text-muted-foreground")} />
-                <div className="font-semibold text-sm">{title}</div>
-                <div className="text-xs font-medium text-foreground/80">{tagline}</div>
-                <p className="mt-1 text-xs text-muted-foreground leading-snug">{detail}</p>
-              </button>
-            );
-          })}
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">
+            Setting up your {meta.title} workspace
+          </p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{meta.blurb}</p>
+          {isPaid && (
+            <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-foreground/80">
+              <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+              14-day free trial · card on file · cancel anytime
+            </p>
+          )}
         </div>
       </div>
 
@@ -289,19 +353,25 @@ export function WorkspaceProvisioner({ onProvisioned }: Props) {
                   {agreementLoading ? "loading agreement…" : "subscriber agreement"}
                 </span>
               )}
-              {" "}for a {ACCOUNT_TYPES.find((a) => a.value === accountType)?.title} account.
+              {" "}for a {meta.title} account.
             </Label>
           </div>
           <p className="text-xs text-muted-foreground pl-7">
-            Interim terms while our full legal review is completed. Your account isn't created until you accept.
+            {isPaid
+              ? "Interim terms while our full legal review is completed. You won't be charged today — your 14-day free trial starts at checkout."
+              : "Interim terms while our full legal review is completed. Your workspace isn't created until you accept."}
           </p>
         </div>
         <Button
-          onClick={createWorkspace}
+          onClick={submit}
           disabled={creating || businessName.trim().length < 2 || !agreed || !agreement}
           className="w-full h-11"
         >
-          {creating ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating your workspace…</> : "Create my workspace"}
+          {creating ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {isPaid ? "Taking you to checkout…" : "Creating your workspace…"}</>
+          ) : (
+            isPaid ? "Continue to checkout" : "Create my workspace"
+          )}
         </Button>
       </div>
     </div>

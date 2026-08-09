@@ -421,12 +421,13 @@ export default function PaigeHome() {
 
   const [subscribingSlug, setSubscribingSlug] = useState<string | null>(null);
 
-  // Real Tier-1 subscribe — mirrors Pricing.tsx handleSubscribe so the plan choice +
-  // checkout START from the homepage (no scroll-to-pricing indirection). Signed-out
-  // (the landing case): carry plan intent to signup; Auth.tsx auto-launches checkout
-  // when the session lands. goAuth crosses to the app origin where the auth session
-  // actually lives (host split), so on the marketing origin the session is null and
-  // this path is taken — correct.
+  // Real Tier-1 subscribe — mirrors Pricing.tsx handleSubscribe so the plan choice
+  // STARTS from the homepage (no scroll-to-pricing indirection). Signed-out (the
+  // landing case): carry plan intent to signup; after the account is created Auth.tsx
+  // routes to /onboarding?plan=… (business context + terms) and checkout is the LAST
+  // step from there (task #66 reorder). goAuth crosses to the app origin where the auth
+  // session actually lives (host split), so on the marketing origin the session is null
+  // and this path is taken — correct.
   const handleSubscribe = async (slug: string) => {
     setSubscribingSlug(slug);
     try {

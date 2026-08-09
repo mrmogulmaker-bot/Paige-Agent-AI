@@ -814,14 +814,49 @@ serve(async (req) => {
                     hasSub: !!stripeSubId,
                   });
                 } else {
+                  // ── task #66: read the STAGED signup_intake row ─────────────────
+                  // The /onboarding step staged the buyer's business context + chosen
+                  // plan + derived account_type + accepted agreement here BEFORE the
+                  // Stripe hop. Provision the tenant from it so a paid customer gets the
+                  // REAL name / industry / account_type + a logged agreement — never the
+                  // old hardcoded null/standalone. Service role ⇒ RLS-exempt read.
+                  const { data: intakeRow } = await supabaseAdmin
+                    .from("signup_intake")
+                    .select(
+                      "business_name, industry, team_size, who_you_help, account_type, agreement_slug, agreement_version, consumed_at",
+                    )
+                    .eq("user_id", actorUserId)
+                    .maybeSingle();
+
+                  // Defensive account_type (§13/§32): prefer the staged value; else
+                  // derive from the Stripe-SIGNED plan slug so the tier is correct even
+                  // if staging somehow didn't land. enterprise never reaches here (the
+                  // producer 400s non-self-serve), so the map covers every live case.
+                  const planSlugMeta = session.metadata.platform_plan_slug ?? "";
+                  const derivedType =
+                    planSlugMeta === "agency"
+                      ? "agency"
+                      : planSlugMeta === "enterprise"
+                        ? "enterprise"
+                        : "standalone";
+                  const acctType = intakeRow?.account_type ?? derivedType;
+
                   // §32 idempotent per owner: on a webhook replay provision_tenant_as
                   // returns the SAME top-level tenant (tenants_one_toplevel_per_owner),
-                  // so the subscription upsert below simply no-ops.
+                  // so the subscription upsert below simply no-ops. The extended RPC
+                  // writes the subscriber-agreement legal_acceptances row idempotently
+                  // (ON CONFLICT DO NOTHING) — a backstop for the accept-time frontend
+                  // write, so terms are recorded even if that write failed.
                   const { data: provData, error: provErr } =
                     await supabaseAdmin.rpc("provision_tenant_as", {
                       _owner: actorUserId,
-                      _name: null,
-                      _account_type: "standalone",
+                      _name: intakeRow?.business_name ?? null,
+                      _account_type: acctType,
+                      _industry: intakeRow?.industry ?? null,
+                      _team_size: intakeRow?.team_size ?? null,
+                      _description: intakeRow?.who_you_help ?? null,
+                      _agreement_slug: intakeRow?.agreement_slug ?? null,
+                      _agreement_version: intakeRow?.agreement_version ?? null,
                     });
                   // rpc returns the single tenants row; handle array/object defensively.
                   const tenantRow = Array.isArray(provData)
@@ -871,6 +906,24 @@ serve(async (req) => {
                         status: platformStatus,
                         rows: upserted?.length ?? 0,
                       });
+
+                      // task #66: mark the staged intake CONSUMED (audit trail, §13 —
+                      // retained, not deleted). Idempotent: the status='...' predicate
+                      // makes an already-consumed row a 0-row update on webhook replay.
+                      if (intakeRow && !intakeRow.consumed_at) {
+                        const { error: consumeErr } = await supabaseAdmin
+                          .from("signup_intake")
+                          .update({ consumed_at: now })
+                          .eq("user_id", actorUserId)
+                          .is("consumed_at", null);
+                        if (consumeErr) {
+                          logStep("Platform subscription: intake consume failed", {
+                            sessionId: session.id,
+                            actorUserId,
+                            error: consumeErr.message,
+                          });
+                        }
+                      }
 
                       // Mark a super-admin invite consumed. The provisioned owner IS
                       // actorUserId (provision_tenant_as(_owner: actorUserId)).
