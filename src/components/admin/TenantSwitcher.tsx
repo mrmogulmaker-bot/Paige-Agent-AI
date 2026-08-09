@@ -224,7 +224,11 @@ export function TenantSwitcher() {
                   <Input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    onKeyDown={(e) => e.stopPropagation()}
+                    // Stop Radix typeahead from stealing keystrokes — but let Escape
+                    // through so it still dismisses the menu (§39 nit).
+                    onKeyDown={(e) => {
+                      if (e.key !== "Escape") e.stopPropagation();
+                    }}
                     placeholder="Search tenants…"
                     className="h-8 pl-7 text-xs"
                   />
@@ -237,8 +241,10 @@ export function TenantSwitcher() {
               if (rows.length === 0) return null;
               const dim = bucket === "internal_test" || bucket === "system";
               return (
-                <div key={bucket}>
-                  <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <div key={bucket} className="mt-1 border-t border-border/40 first:mt-0 first:border-t-0">
+                  {/* Group eyebrow — stronger token (foreground/65) + top air so a cluster
+                      header out-reads the muted row meta below it (§25 hierarchy). */}
+                  <DropdownMenuLabel className="pt-2 text-[10px] font-semibold uppercase tracking-wider text-foreground/65">
                     {groupLabel} · {rows.length}
                   </DropdownMenuLabel>
                   {rows.map((t) => renderRow(t, dim))}
@@ -289,8 +295,22 @@ export function TenantSwitcher() {
             {tenants.length > 0 &&
               GROUPS.every(({ bucket }) => (byBucket.get(bucket) ?? []).length === 0) &&
               archived.length === 0 && (
-                <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-                  No tenants match this filter.
+                <div className="px-3 py-4 text-center">
+                  <p className="text-xs text-muted-foreground">No tenants match.</p>
+                  {(filter !== "all" || q) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilter("all");
+                        persistFilter("all");
+                        setQuery("");
+                      }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className="mt-1.5 text-xs font-medium text-primary hover:underline"
+                    >
+                      Show all tenants
+                    </button>
+                  )}
                 </div>
               )}
           </>

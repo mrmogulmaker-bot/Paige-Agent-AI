@@ -90,10 +90,13 @@ export interface TenantSummary {
   /**
    * Operator-internal REVENUE classification (#29): 'paid' | 'promotional' |
    * 'internal_test'. Orthogonal to `account_type` (topology) and `status`
-   * (lifecycle). Populated ONLY for platform staff (the operator-only
-   * `tenant_revenue_classification` table is RLS-gated to is_platform_owner — a
-   * tenant member's read returns nothing, so this stays `null` for them, §9).
-   * `null` also covers the pre-#29-migration window (table absent → graceful null).
+   * (lifecycle). The `tenant_revenue_classification` table is RLS-gated to
+   * `is_platform_owner()`, so this is populated for the platform OWNER only — a
+   * plain tenant member reads nothing (stays `null`, §9). NOTE: a scoped Platform
+   * Admin (`is_platform_admin` but not owner) also renders the operator switcher
+   * yet reads 0 class rows, so every tenant collapses into the promotional group
+   * for them (never a leak — just an ungrouped fallback). `null` likewise covers
+   * the pre-#29-migration window (table absent → graceful null).
    */
   revenue_class: string | null;
 }
@@ -197,8 +200,12 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       // Merge the operator-only revenue_class onto each tenant (null when unknown).
       const classById = new Map<string, string>();
       if (!classRes.error && Array.isArray(classRes.data)) {
-        for (const row of classRes.data as Array<{ tenant_id: string; revenue_class: string }>) {
-          if (row?.tenant_id) classById.set(row.tenant_id, row.revenue_class);
+        // `tenant_revenue_classification` is not yet in the generated Supabase types
+        // (new #29 table), so the row type resolves to a SelectQueryError union — cast
+        // through `unknown` to the real shape (TS2352). Safe: the columns are selected
+        // literally above and every access below is guarded.
+        for (const row of classRes.data as unknown as Array<{ tenant_id: string; revenue_class: string }>) {
+          if (row?.tenant_id && row.revenue_class) classById.set(row.tenant_id, row.revenue_class);
         }
       }
       setTenants(
