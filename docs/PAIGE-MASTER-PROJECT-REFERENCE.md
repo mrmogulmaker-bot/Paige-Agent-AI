@@ -229,11 +229,16 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
-### In-flight (as of 2026-08-09)
+### Recently SHIPPED (2026-08-09)
 
-- 🔥 **PR #412 — Tenant revenue classification + ARR reconciliation** (task #29). Topology fix + hard-delete-cascade of Paige Operations + Claude Studio Dev + Platform Defaults relocation + Part-5 dropdown + reconciliation + MCP splits. All owner decisions ruled 2026-08-09. §39 peer-gate: 4 findings all resolved (Finding 1 backed by persisted prod COUNT). Awaiting owner §32.c live-drive → merge.
-- 🔥 **PR #410 — Second Brain** (task #26). Awaiting owner review on §BRAIN wording → merge.
+- ✅ **PR #412 — Tenant revenue classification + ARR reconciliation** (task #29) — MERGED. Topology fix + hard-delete-cascade of Paige Operations + Claude Studio Dev + Platform Defaults relocation + Part-5 dropdown + reconciliation + MCP splits. §39 peer-gate 4 findings all resolved. **§32.a persisted-apply PROVEN on prod** (all 4 migrations in `schema_migrations`; 2 retired tenants deleted → 11→9 tenants; 4 PME sub-accounts; 0 paid-class → Fleet Console reconciled to $0).
+- ✅ **PR #413 — Master project reference + CLAUDE.md §0** — MERGED (this doc + the session-start rule + Cowork research discipline + verified Comms facts).
+- ✅ **PR #410 — Second Brain** (task #26) — MERGED. `docs/brain/` is now live; §BRAIN reloads every session. (Owed follow-up: the §BRAIN.3 "Tenant Classification" config-registry section.)
+
+### In-flight
+
 - 🔥 **Wave 2.5 tail** per canonical-build-order.
+- 🔥 **Task #31 — investor-grade revenue integrity chain** (the write-side of #412's read-side; three-gate signup enforcement + audit-trail export). Queued; fires with a §1 crew on owner go.
 
 ### MVP-blocking gaps (all-open)
 
@@ -266,10 +271,10 @@ Per `docs/strategy/client-experience-workstream-2026-07-21.md` — CX-1 (polish,
 | #23 | Signup flow SMS integration | pending | #22 live-drive + phone capture |
 | #24 | Voice fix end-to-end | ✅ closed (Ivanna live) | — |
 | #25 | paige_conversations unsafe RLS | pending | — |
-| #26 | Second Brain (PR #410) | in-flight | Owner §BRAIN approval |
+| #26 | Second Brain (PR #410) | ✅ MERGED (brain live) | — |
 | #27 | Twilio number-search tools in Communications | pending | — |
 | #28 | Tenant-as-operator-client auto-provision + consent capture | pending | #29 |
-| #29 | Promotional-account classification + ARR reconciliation (PR #412) | in-flight | Owner §32.c live-drive |
+| #29 | Promotional-account classification + ARR reconciliation (PR #412) | ✅ MERGED (§32.a-proven) | — |
 | #30 | Super Admin full CRUD on tenants + §10 seams | pending | #29 |
 | CX-1 | Client Portal config polish | pending | — |
 | CX-2 | Composable portal architecture | pending | CX-1 |
