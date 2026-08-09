@@ -13,7 +13,7 @@
 // (§11); realtime on both tables; motion-safe; token-only. Route gate: PlatformOwnerOnly.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
-import { MessageSquare, Send, Loader2, Plus, Inbox, ArrowLeft } from "lucide-react";
+import { MessageSquare, Plus, Inbox, ArrowLeft } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,8 +21,11 @@ import { cn } from "@/lib/utils";
 import { PageShell, PageHeader, SectionCard, EmptyState, StatePill } from "@/components/ui/page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+// §18 shared conversation primitives — the SAME message bubble + composer chrome the tenant
+// Client Hub inbox uses, so operator Fleet Comms reads as one continuous system (§6), not a fork.
+import { MessageBubble } from "./conversations/MessageBubble";
+import { MessageComposer } from "./conversations/MessageComposer";
 
 interface OperatorConversation {
   id: string;
@@ -287,33 +290,19 @@ export default function PlatformFleetCommunications() {
                   {messages.length === 0 ? (
                     <p className="pt-8 text-center text-sm text-muted-foreground">No messages in this thread yet.</p>
                   ) : (
-                    messages.map((m) => {
-                      const outbound = m.direction === "outbound";
-                      return (
-                        <div key={m.id} className={cn("flex", outbound ? "justify-end" : "justify-start")}>
-                          <div
-                            className={cn(
-                              "max-w-[80%] rounded-xl border p-3 shadow-card",
-                              // Inbound bubbles get a distinct muted fill so received messages
-                              // lift off the pane (outbound keeps the indigo tint). Gold untouched.
-                              outbound ? "rounded-br-md border-primary/25 bg-primary/[0.06]" : "rounded-bl-md border-border bg-muted",
-                            )}
-                          >
-                            <div className="mb-1 flex items-center gap-2">
-                              <span className="text-[11px] text-muted-foreground">
-                                {outbound ? "You" : threadTitle(selected)}
-                                <span className="opacity-60">{" · "}{formatDistanceToNow(new Date(m.sent_at ?? m.created_at), { addSuffix: true })}</span>
-                              </span>
-                              <span className="ml-auto">{messageStatePill(m)}</span>
-                            </div>
-                            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">{m.body || "—"}</p>
-                            {m.status === "failed" && m.error && (
-                              <p className="mt-1.5 text-[11px] text-destructive">{m.error}</p>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })
+                    // Shared MessageBubble (§18) — the operator SMS thread renders through the
+                    // SAME bubble the tenant inbox uses; only the row→props mapping is operator-local.
+                    messages.map((m) => (
+                      <MessageBubble
+                        key={m.id}
+                        direction={m.direction}
+                        body={m.body}
+                        timestamp={m.sent_at ?? m.created_at}
+                        senderLabel={m.direction === "outbound" ? "You" : threadTitle(selected)}
+                        status={messageStatePill(m)}
+                        error={m.status === "failed" ? m.error : null}
+                      />
+                    ))
                   )}
                   <div ref={bottomRef} />
                 </div>
@@ -328,27 +317,16 @@ export default function PlatformFleetCommunications() {
               </div>
             )}
 
-            {/* Composer — shared by reply + new message. Gold ONLY on Send (§11). */}
+            {/* Shared MessageComposer (§18) — the SAME composer chrome the tenant inbox uses,
+                gold spent only on Send. The A2P note is operator-specific and passed in. */}
             {(composing || selected) && (
-              <div className="border-t border-border p-3">
-                <div className="flex items-end gap-2">
-                  <Textarea
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder="Write a message…"
-                    rows={2}
-                    className="min-h-[2.75rem] resize-none"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void send(); }
-                    }}
-                  />
-                  <Button variant="gold" onClick={() => void send()} disabled={sending} className="h-11 shrink-0">
-                    {sending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
-                    Send
-                  </Button>
-                </div>
-                <p className="mt-1.5 text-[11px] text-muted-foreground">A2P compliant — “Reply STOP to unsubscribe.” is appended automatically.</p>
-              </div>
+              <MessageComposer
+                value={body}
+                onChange={setBody}
+                onSend={() => void send()}
+                sending={sending}
+                note="A2P compliant — “Reply STOP to unsubscribe.” is appended automatically."
+              />
             )}
           </div>
         </div>
