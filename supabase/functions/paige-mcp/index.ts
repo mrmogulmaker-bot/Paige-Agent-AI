@@ -3815,26 +3815,37 @@ mcp.tool("update_tenant_features", {
 
 mcp.tool("get_platform_metrics", {
   description:
-    "Master-admin only. Returns rolled-up platform health: tenant counts by status, total users, total contacts, BTF active clients, workflow runs in the last 7d, and pending approvals.",
+    "Master-admin only. Returns rolled-up platform health: tenant counts by status AND by revenue_class (paid/promotional/internal_test — the operator-internal #29 axis), total users, total contacts, BTF active clients, workflow runs in the last 7d, and pending approvals.",
   inputSchema: z.object({}).optional() as any,
   handler: async () => {
     const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const [tenants, contacts, profiles, btf, runs7d, pending] = await Promise.all([
+    const [tenants, contacts, profiles, btf, runs7d, pending, revClasses] = await Promise.all([
       admin.from("tenants").select("status", { count: "exact" }),
       admin.from("clients").select("id", { count: "exact", head: true }),
       admin.from("profiles").select("user_id", { count: "exact", head: true }),
       admin.from("clients").select("id", { count: "exact", head: true }).eq("tier", "btf"),
       admin.from("paige_workflow_runs").select("id", { count: "exact", head: true }).gte("created_at", since7d),
       admin.from("paige_pending_approvals").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      admin.from("tenant_revenue_classification").select("revenue_class"),
     ]);
     const tenantStatus: Record<string, number> = {};
     for (const row of tenants.data ?? []) {
       const s = String((row as any).status);
       tenantStatus[s] = (tenantStatus[s] ?? 0) + 1;
     }
+    // #29 revenue honesty: paying vs comped vs internal-test. A tenant with no
+    // classification row reads promotional (the #29 baseline), so the split always sums.
+    const revClass: Record<string, number> = { paid: 0, promotional: 0, internal_test: 0 };
+    for (const row of revClasses.data ?? []) {
+      const c = String((row as any).revenue_class);
+      if (c in revClass) revClass[c] += 1;
+    }
+    const classified = (revClasses.data ?? []).length;
+    revClass.promotional += Math.max((tenants.count ?? 0) - classified, 0);
     return ok({
       tenants_total: tenants.count ?? 0,
       tenants_by_status: tenantStatus,
+      tenants_by_revenue_class: revClass,
       users_total: profiles.count ?? 0,
       contacts_total: contacts.count ?? 0,
       btf_clients: btf.count ?? 0,

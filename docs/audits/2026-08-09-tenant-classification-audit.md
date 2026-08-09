@@ -169,14 +169,44 @@ Per the owner's rule (deps present → his per-tenant method choice), the FK sca
 **All rows are default provisioning artifacts — zero real business data** (no clients/deals/messages/
 contacts/tasks reference either). FK ON DELETE: **9 tables CASCADE**, **2 (pipelines, pipeline_stages)
 SET NULL**. **Recommendation:** hard-delete is clean — the 9 cascade, and the migration explicitly
-deletes the 2 pipeline rows first to avoid NULL-tenant orphans; no business data lost. **Owner picks:**
-hard-delete-cascade (recommended) vs soft-delete (`status='canceled'`, stays under Part-5 archived).
-Auth users left intact (Antonio did not order their deletion for these two).
+deletes the 2 pipeline rows first to avoid NULL-tenant orphans; no business data lost.
 
-### 2c — Paige Platform Defaults relocation — planned (frontend, next build)
-Filter the SYSTEM tenant (`paige-platform-defaults`) out of the switcher entirely; surface its config
-under a Super-Admin settings sub-tab (§18: extend the existing `/admin/platform/settings`, not a new
-fourth home). Not in this commit — folds with the Part-5 nesting + reconciliation build.
+**OWNER RULED (Antonio, 2026-08-09): hard-delete-cascade for BOTH.** FIRED as migration
+`20260814200000_delete_retired_tenants.sql` (§32.b-proven: tenants_after=9, targets_remaining=0,
+orphan_members=0). Auth users left intact (not ordered). The 3 pre-existing NULL-tenant pipelines +
+15 NULL stages are prior orphans, NOT created by this delete (§13).
+
+**Twilio orphan (surface, not decide):** deleting **Claude Studio Dev** orphans its Twilio subaccount
+(the `Paige – Claude Studio Dev` subaccount under Paige Agent AI LLC's master account) on the Twilio
+side. Paige's `tenant_twilio_subaccounts` row cascades with the tenant, but the subaccount at **Twilio's
+console** does not — **Antonio closes it at Twilio manually** (follow-on, not a code action for #412; the
+specific subaccount SID is in the owner handoff, deliberately NOT stored in-repo per §11/§34). The other
+4 subaccounts (Antonio Daniel LLC · First Sterling Capital · Mogul Maker Academy · Project Mogul
+Enterprise Inc) stay mapped to their tenants.
+
+### 2c — Paige Platform Defaults relocation — SHIPPED
+Filter the SYSTEM tenant (`paige-platform-defaults`) out of the switcher entirely (done in
+`TenantSwitcher.tsx` — `isSystemTenant` guard), and surface it under a Super-Admin settings sub-tab —
+a new **"Platform Defaults"** tab inside the EXISTING `/admin/platform/settings` in-page Tabs
+(`PlatformSettings.tsx` `PlatformDefaultsPanel`), §18-clean (extended the existing surface, no fourth
+sibling route). The panel is a deliberate manage-in-scope entry (§10, not a dead end), not a fork of
+the tenant editors.
+
+### 2e — Metric reconciliation + operator-surface visibility — SHIPPED
+- **RPC reconciliation** (`20260814300000`, §32.b-proven snapshot_mrr=0/paid=0): `operator_dashboard_metrics`
+  + `operator_snapshot_mrr_daily_internal` now count MRR/payers/dunning ONLY over `revenue_class='paid'`
+  tenants on non-test-seed subs. 8 downstream surfaces + the investor PDF/CSV export inherit automatically
+  (investor export reads the RPC via `useOperatorPlatformMetrics`; no client-side MRR recompute — verified).
+- **PlatformTenants split** (`PlatformTenants.tsx`): a second StatRow — Paying / Promotional / Internal-test
+  — from a `tenant_revenue_classification` join; the "$0 paying" reality is now visible at a glance.
+- **MCP seams** (`paige-mcp`): `list_tenants` gains a `revenue_class` filter + per-row annotation;
+  `get_platform_metrics` gains a `tenants_by_revenue_class` split (§10 Paige-callable).
+- **Comms filter chips — DEFERRED, honestly (§13/§15):** the operator Communications store
+  (`operator_conversations`/`operator_messages`) has **NO `tenant_id`/counterparty→tenant linkage** — it is
+  operator-global by design (§9, per `supabase/functions/CLAUDE.md`). An All/Paying/Promo/Test chip row
+  would filter nothing real — a dead control. NOT shipped; logged as a #30 follow-up (add a
+  counterparty→tenant map first, then the chips filter on real data). Shipping a placeholder filter would
+  violate §13/§15.
 
 ---
 
@@ -190,6 +220,16 @@ fourth home). Not in this commit — folds with the Part-5 nesting + reconciliat
   parent-guard) + a `delete_tenant` MCP tool so Paige can drive delete/invite/create from chat, plus
   the operator affordances on `TenantDetailSheet`/`PlatformTenants`. This Part-2b delete uses a
   migration precisely because that seam doesn't exist yet.
+- **Twilio subaccount cleanup UX (operator-facing hole for #30):** when the operator deletes a tenant
+  that has a Twilio subaccount, the Paige-side `tenant_twilio_subaccounts` row cascades but the Twilio
+  subaccount itself is orphaned at Twilio's console (see 2b — Claude Studio Dev's subaccount; SID in
+  owner handoff, not in-repo per §11/§34). Antonio should NOT have to hunt through Twilio's console to
+  close it. #30's `delete_tenant` seam should either (a) call Twilio's API to suspend/close the
+  subaccount as part of the delete, or (b) surface a clear operator prompt/checklist ("this tenant has a
+  Twilio subaccount — close it here"). Note: the master Twilio creds already exist in edge secrets
+  (reuse via `masterCreds()`, §18) — no new secret needed to add the API call.
+- **Comms revenue-class filter (from 2e defer):** to make the operator Communications chips filter on
+  real data, `operator_conversations` needs a counterparty→tenant map first. Adjacent #30 scope.
 
 ---
 
