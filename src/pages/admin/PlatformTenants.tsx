@@ -270,17 +270,22 @@ export default function PlatformTenants() {
       {/* Revenue-class split (#29) — the operator-honest read: paying customers vs
           comped/promotional vs internal-test. A titled sub-section (not a bare second
           tile row) so the different axis reads as intentional, not an off-grid pile
-          (§25 design-critic fix). Operator-only; never tenant-visible. */}
-      <div className="space-y-2.5">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Revenue mix
-        </p>
-        <StatRow cols={3}>
-          <StatTile label="Paying" value={revClass.paid} icon={CircleDollarSign} loading={loading} />
-          <StatTile label="Promotional" value={revClass.promotional} icon={Gift} loading={loading} />
-          <StatTile label="Internal / test" value={revClass.internal} icon={FlaskConical} loading={loading} />
-        </StatRow>
-      </div>
+          (§25 design-critic fix). OWNER-ONLY: tenant_revenue_classification is RLS-gated to
+          is_platform_owner(), so a scoped staff-admin reads 0 rows and would see a FALSE
+          "Paying: 0". Gate to the owner (who can read it) rather than show wrong numbers
+          (§13/§39 Finding 4). Never tenant-visible. */}
+      {isPlatformOwner && (
+        <div className="space-y-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Revenue mix
+          </p>
+          <StatRow cols={3}>
+            <StatTile label="Paying" value={revClass.paid} icon={CircleDollarSign} loading={loading} />
+            <StatTile label="Promotional" value={revClass.promotional} icon={Gift} loading={loading} />
+            <StatTile label="Internal / test" value={revClass.internal} icon={FlaskConical} loading={loading} />
+          </StatRow>
+        </div>
+      )}
 
       <Toolbar>
         <h2 className="font-display text-base font-semibold text-foreground">All tenants</h2>

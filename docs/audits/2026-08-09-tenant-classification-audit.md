@@ -233,6 +233,38 @@ the tenant editors.
 
 ---
 
+## §39 peer-gate (independent adversarial read of the pushed diff) — 4 findings, all resolved
+
+An independent adversarial pass (not the §32.b proof author) read the real diff and found 4 defects the
+proofs' assertions structurally couldn't cover. All resolved in this PR:
+
+1. **Delete migration under-enumerated the SET-NULL FK universe (BLOCKING, irreversible).** The migration
+   claimed "only 2 SET-NULL exceptions" (pipelines/pipeline_stages); the schema actually has **21**
+   `ON DELETE SET NULL` FKs to `tenants`. **PERSISTED prod COUNT** (2026-08-09, all 21 tables, both
+   targets) found rows in only THREE: pipeline_stages (10) + pipelines (2) — already pre-deleted — and
+   **profiles.active_tenant_id (2)**, the 2 sole test-users' active pointers. The other 18 (audit_log,
+   workflow_runs, approvals, clients, deals, tasks, …) were **0**. Fix: corrected the false comment to the
+   real 21-table universe + the persisted proof, and added an EXPLICIT `UPDATE profiles SET
+   active_tenant_id = NULL` (benign self-heal; the users belong to no other tenant) so the behavior is
+   visible, not implicit. No harmful orphans.
+2. **Dashboard RPC `by_revenue_class` dropped unclassified tenants** (diverged from the MCP path). Fix:
+   `coalesce(trc.revenue_class,'promotional')` so the split always sums to total and matches
+   `get_platform_metrics`.
+3. **4 reclassified tenants would vanish from the "Fleet by tier" donut** (consumers didn't read the new
+   `sub_account` key). Fix: added a `sub_account` segment (`--chart-5`, AA both themes) to the donut, the
+   hint, and the TIER_KEYS/LABEL/COLOR maps in `OperatorCommandCenter.tsx` + `PlatformOverview.tsx` +
+   `useOperatorPlatformMetrics.ts` — Σsegments = total again.
+4. **Scoped Platform Admin (staff≠owner) saw a false "Paying: 0"** (the class table is RLS owner-only, so
+   a non-owner reads 0 rows). Fix: gated the "Revenue mix" tiles to `isPlatformOwner` — only the role that
+   can read the true data sees them (§13, no false numbers). Switcher grouping degrades to all-promotional
+   for scoped staff (acceptable — a grouping, not a stated count); full RPC-sourcing is a noted fast-follow.
+
+Classes the peer verified CLEAN: §9 IDOR on the new table (RLS owner-only + FORCE; RPC gates in-body;
+trigger search_path set), MCP list_tenants filter/annotation, get_platform_metrics split math, delete
+ordering + §51 invariant, §37 producer/consumer (no consumer breaks on the added keys).
+
+---
+
 *Regenerate these figures whenever the tenant set changes; this report is the anchoring reality for
 the #29 metric reconciliation and is referenced by `docs/brain/config-registry.md` → "Tenant Account
 Types."*

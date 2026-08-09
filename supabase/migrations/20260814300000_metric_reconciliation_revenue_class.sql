@@ -67,9 +67,12 @@ begin
     'sub_account', count(*) filter (where t.status in ('trial', 'active', 'past_due') and t.account_type = 'sub_account'),
     'agency', count(*) filter (where t.status in ('trial', 'active', 'past_due') and t.account_type = 'agency'),
     'enterprise', count(*) filter (where t.status in ('trial', 'active', 'past_due') and t.account_type = 'enterprise'),
+    -- Unclassified (LEFT JOIN miss / trc IS NULL) buckets as promotional — the #29 baseline —
+    -- so paid+promotional+internal_test ALWAYS sums to total, and this matches the MCP
+    -- get_platform_metrics fallback (no divergence between the two operator surfaces, §13/§39).
     'by_revenue_class', jsonb_build_object(
       'paid', count(*) filter (where t.status in ('trial', 'active', 'past_due') and trc.revenue_class = 'paid'),
-      'promotional', count(*) filter (where t.status in ('trial', 'active', 'past_due') and trc.revenue_class = 'promotional'),
+      'promotional', count(*) filter (where t.status in ('trial', 'active', 'past_due') and coalesce(trc.revenue_class, 'promotional') = 'promotional'),
       'internal_test', count(*) filter (where t.status in ('trial', 'active', 'past_due') and trc.revenue_class = 'internal_test')
     )
   ) into v_tenants
