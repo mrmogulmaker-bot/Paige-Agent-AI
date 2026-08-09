@@ -375,77 +375,12 @@ async function embedText(text: string): Promise<number[] | null> {
   }
 }
 
-// L8 Memory Fabric (§7/§8/§26/§34) — durable cross-session Owner-Ops memory. Loads what Paige has
-// remembered about THIS operator (tenant_id + user_id scoped) across prior chats: recent facts +
-// semantically-relevant hits for the current question. Returns a formatted block or "" (never throws
-// — a memory-load failure must never break the user-facing turn, §32 no silent-swallow: it logs).
-// `supabase` is the service-role client; the (tenant, user) are server-resolved, so this is §9-clean.
-async function loadOwnerMemoryBlock(
-  supabase: ReturnType<typeof createClient>,
-  tenantId: string,
-  userId: string,
-  queryText: string,
-): Promise<string> {
-  try {
-    const recentPromise = supabase
-      .from("paige_owner_memory")
-      .select("memory_type, content, created_at")
-      .eq("tenant_id", tenantId)
-      .eq("user_id", userId)
-      .eq("is_active", true)
-      .order("created_at", { ascending: false })
-      .limit(15);
-
-    const q = (queryText || "").slice(0, 4000);
-    const semanticPromise = q
-      ? embedText(q).then(async (queryEmbedding) => {
-          if (!queryEmbedding) return [] as any[];
-          const { data, error } = await supabase.rpc("match_paige_owner_memory", {
-            _query_embedding: queryEmbedding,
-            _tenant_id: tenantId,
-            _user_id: userId,
-            _match_threshold: 0.7,
-            _match_count: 6,
-          });
-          if (error) { console.error("match_paige_owner_memory error:", error); return [] as any[]; }
-          return data || [];
-        }).catch((e) => { console.error("owner-memory semantic search failed:", e); return [] as any[]; })
-      : Promise.resolve([] as any[]);
-
-    const [{ data: recent }, semantic] = await Promise.all([recentPromise, semanticPromise]);
-
-    const lines: string[] = [];
-    const seen = new Set<string>();
-    let tokenEstimate = 0;
-    for (const mem of (recent || []) as any[]) {
-      const entry = `• [${String(mem.memory_type).replace(/_/g, " ").toUpperCase()}] (${new Date(mem.created_at).toLocaleDateString()}): ${mem.content}`;
-      const t = Math.ceil(entry.length / 4);
-      if (tokenEstimate + t > 1000) break;
-      tokenEstimate += t;
-      lines.push(entry);
-      seen.add(entry.toLowerCase());
-    }
-    const semanticEntries: string[] = [];
-    for (const hit of (semantic || []) as any[]) {
-      const sim = typeof hit.similarity === "number" ? ` ~${(hit.similarity * 100).toFixed(0)}% match` : "";
-      const entry = `• [${String(hit.memory_type).replace(/_/g, " ").toUpperCase()}${sim}]: ${(hit.content || "").slice(0, 400)}`;
-      if (seen.has(entry.toLowerCase())) continue;
-      const t = Math.ceil(entry.length / 4);
-      if (tokenEstimate + t > 1500) break;
-      tokenEstimate += t;
-      semanticEntries.push(entry);
-    }
-
-    if (lines.length === 0 && semanticEntries.length === 0) return "";
-    const semanticBlock = semanticEntries.length > 0
-      ? `\n\n--- Semantically-relevant past context for this question ---\n${semanticEntries.join("\n")}`
-      : "";
-    return `\n\n=== PAIGE MEMORY — What I remember about you and your business from previous chats ===\n${lines.join("\n")}${semanticBlock}\n=== END MEMORY ===\n\nUse this to stay continuous — reference what you already know naturally; never re-ask something you were already told.\n`;
-  } catch (err) {
-    console.error("Error loading owner memory:", err);
-    return "";
-  }
-}
+// L8 Memory Fabric (§7/§8/§26/§34) — the durable cross-session Owner-Ops read helper
+// (loadOwnerMemoryBlock) is DEFERRED to the writer slice (4a.3/4b). Slice 4a.2 ships ONLY the
+// proven substrate: the `paige_owner_memory` table + `match_paige_owner_memory` RPC (migration
+// 20260810120000). The read wiring lived here but was removed because it fired a paid Voyage
+// embed on every operator turn against an empty table — paid latency for nothing until there is
+// captured memory to retrieve. See the deferred marker in the request handler for the re-wire point.
 
 // D1 — render a gate-survived entity_profile (from paige-deep-research) into a
 // compact, fully-cited intel block for the model to present. Every fact keeps its
@@ -1111,18 +1046,14 @@ JSON:`;
     const fundingEnabled = personaCtx.funding_enabled;
 
     // === L8 MEMORY FABRIC — Owner-Ops cross-session memory (§7/§8/§26/§34) ===
-    // Load durable memory for the operator/staff user within their tenant and fold it into the
-    // memory block. Only fires for a tenant-scoped operator chat (personaCtx.tenant_id present) — a
-    // membership-less consumer/client turn has no tenant and keeps the client_memory path above.
-    if (personaCtx.tenant_id && !payloadClientId) {
-      const ownerMemoryBlock = await loadOwnerMemoryBlock(
-        supabase,
-        personaCtx.tenant_id,
-        user.id,
-        lastUserMessage?.content || "",
-      );
-      if (ownerMemoryBlock) memoryBlock += ownerMemoryBlock;
-    }
+    // DEFERRED (slice 4a.3/4b): the read/write wiring is intentionally NOT wired here yet.
+    // Slice 4a.2 ships ONLY the proven substrate — the `paige_owner_memory` table +
+    // `match_paige_owner_memory` RPC (migration 20260810120000). The read path (loadOwnerMemoryBlock)
+    // was pulled because it called embedText() — a paid Voyage round-trip — on EVERY operator turn
+    // while the table stays empty until the writer slice lands, i.e. pure paid latency on the
+    // time-to-first-token hot path returning nothing (§13 honesty, §32 no-cost-for-nothing).
+    // The writer slice (4a.3/4b) re-adds the (tenant_id + user_id)-scoped read here, folding the
+    // block into `memoryBlock`, once there is captured memory to retrieve.
 
     // §2 — buildUserContext queries credit tables + emits credit strings ONLY when
     // fundingEnabled; a non-funding/bare tenant's client gets profile/subscription/
