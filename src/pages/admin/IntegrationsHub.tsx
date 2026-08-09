@@ -421,7 +421,7 @@ export default function IntegrationsHub() {
               {/* Opens the hub-scoped integration palette. The ⌘K hint was removed: ⌘K
                   now belongs to the universal Paige launcher (§18), so promising it here
                   would be false. The button is the palette's affordance. */}
-              <Button variant="outline" size="sm" onClick={() => setPaletteOpen(true)} className="gap-1.5">
+              <Button variant="outline" size="sm" onClick={() => setPaletteOpen(true)} className="gap-1.5" aria-label="Jump to integration">
                 <CommandIcon className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Jump to integration</span>
               </Button>

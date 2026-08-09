@@ -381,8 +381,15 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         Vibe Studio (§21 — Studio owns its full canvas; no separate Paige rail).
         NOTE (N1/§39): the `3.25rem` here MUST match AGENT_RAIL_COLLAPSED_REM (=3.25)
         exported from `@/components/ui/paige` — Tailwind can't read the JS const in an
-        arbitrary value, so keep the two in sync by hand if either changes. */}
-    <div className={`h-dvh flex flex-col bg-background overflow-hidden${!isStudio ? " md:pr-[3.25rem]" : ""}`}>
+        arbitrary value, so keep the two in sync by hand if either changes.
+        FIX (§11/§27): the gutter must NOT live on the column, or it insets EVERY child
+        including the full-bleed dark `<header>`, leaving a light `bg-background` notch in
+        the top-right corner above the fixed rail. So the header goes edge-to-edge, and
+        the gutter is applied per-child to the content regions that actually sit in the
+        rail's vertical band: the OperatorHubStrip strip and `<main>` (see below). The
+        mobile drawer is `md:hidden`+`fixed` (immune to `md:pr`) and the rail is md-only,
+        so neither the drawer nor the rail itself needs it. */}
+    <div className="h-dvh flex flex-col bg-background overflow-hidden">
       {/* Banner intentionally omitted on /admin — it's redundant when already on
           the admin dashboard. AppShell still renders it inside the client view. */}
       {/* Top bar — Pipedrive-style horizontal CRM nav. Hidden on Vibe Studio (immersive room). */}
@@ -647,7 +654,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           on hubs without a strip (Paige has its own via PaigeTabsLayout; Marketplace /
           Analytics are bare). Desktop-only, matching the row-2 hub bar (mobile uses the drawer). */}
       {!isStudio && (
-        <div className="hidden md:block shrink-0">
+        <div className="hidden md:block shrink-0 md:pr-[3.25rem]">
           <OperatorHubStrip />
         </div>
       )}
@@ -780,11 +787,15 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           // Immersive Studio and the nested Clients Hub each own their internal
           // height/scroll contract. Every other route keeps the padded document
           // scroller. min-h-0 is required so every flex child may actually shrink.
+          // Non-Studio branches carry the collapsed-rail gutter (md:pr) so content clears
+          // the fixed rail; Studio has no rail, so no gutter. `md:pr-[3.25rem]` overrides
+          // the right side of `md:p-6` (Tailwind emits pr after the p shorthand) so the
+          // default scroller's content edge sits flush to the collapsed rail.
           isStudio
             ? "min-h-0 flex-1 overflow-hidden"
             : isClientsHub
-              ? "min-h-0 flex-1 overflow-hidden"
-              : `min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] p-3 sm:p-4 md:p-6`
+              ? "min-h-0 flex-1 overflow-hidden md:pr-[3.25rem]"
+              : `min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] p-3 sm:p-4 md:p-6 md:pr-[3.25rem]`
         }
       >
         {children}
