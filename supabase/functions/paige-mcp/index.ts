@@ -3656,14 +3656,27 @@ mcp.tool("exit_subaccount", {
 
 mcp.tool("list_tenants", {
   description:
-    "Master-admin only. List every tenant on the platform with status, seat/customer caps, owner, and Stripe linkage. Filter by `status` (trial/active/past_due/suspended/canceled) or `query` (matches name/slug).",
+    "Master-admin only. List every tenant on the platform with status, seat/customer caps, owner, Stripe linkage, and revenue_class (paid/promotional/internal_test — the operator-internal #29 axis). Filter by `status` (trial/active/past_due/suspended/canceled), `revenue_class`, or `query` (matches name/slug).",
   inputSchema: z.object({
     status: z.string().optional(),
     query: z.string().optional(),
+    revenue_class: z.enum(["paid", "promotional", "internal_test"]).optional(),
     limit: z.number().int().optional(),
   }),
-  handler: async ({ status, query, limit }) => {
+  handler: async ({ status, query, revenue_class, limit }) => {
     const max = Math.min(Math.max(limit ?? 50, 1), 200);
+    // A revenue_class filter resolves to tenant_ids FIRST, so `.in(...)` bounds the
+    // page correctly (filtering after `.limit` would silently under-return, §13).
+    let onlyIds: string[] | null = null;
+    if (revenue_class) {
+      const { data: cls, error: clsErr } = await admin
+        .from("tenant_revenue_classification")
+        .select("tenant_id")
+        .eq("revenue_class", revenue_class);
+      if (clsErr) return err(clsErr.message);
+      onlyIds = (cls ?? []).map((r: any) => r.tenant_id);
+      if (onlyIds.length === 0) return ok({ items: [], count: 0 });
+    }
     let q = admin
       .from("tenants")
       .select("id, name, slug, status, owner_user_id, seat_limit, customer_limit, storefront_enabled, plan_offer, stripe_customer_id, stripe_subscription_id, trial_ends_at, created_at, updated_at")
@@ -3671,9 +3684,27 @@ mcp.tool("list_tenants", {
       .limit(max);
     if (status) q = q.eq("status", status as any);
     if (query) q = q.or(`name.ilike.%${query}%,slug.ilike.%${query}%`);
+    if (onlyIds) q = q.in("id", onlyIds);
     const { data, error } = await q;
     if (error) return err(error.message);
-    return ok({ items: data ?? [], count: (data ?? []).length });
+    // Annotate each returned tenant with its revenue_class (operator-internal, §9).
+    const items = data ?? [];
+    // Annotate by tenant_id — that IS the PK of tenant_revenue_classification.
+    let classById = new Map<string, string>();
+    if (items.length > 0) {
+      const { data: annots } = await admin
+        .from("tenant_revenue_classification")
+        .select("tenant_id, revenue_class")
+        .in("tenant_id", items.map((t: any) => t.id));
+      classById = new Map(
+        (annots ?? []).map((r: any) => [r.tenant_id, r.revenue_class]),
+      );
+    }
+    const annotated = items.map((t: any) => ({
+      ...t,
+      revenue_class: classById.get(t.id) ?? "promotional",
+    }));
+    return ok({ items: annotated, count: annotated.length });
   },
 });
 
