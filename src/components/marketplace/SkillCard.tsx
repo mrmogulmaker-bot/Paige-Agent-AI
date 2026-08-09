@@ -35,6 +35,13 @@ interface Props {
   curationMode?: boolean;
   /** Whether this item is currently pending the agency's review (no decision yet). */
   curationPending?: boolean;
+  /**
+   * PER-CHILD curation scope (#277 Slice 3): names the single sub-account this toggle
+   * governs. When set, the curation copy is scope-accurate ("On"/"Off", "for {name}")
+   * instead of the plural agency-wide vocabulary ("Shared", "your sub-accounts").
+   * Absent ⇒ agency-wide default scope — copy byte-identical to before (§18, one card).
+   */
+  curationScopeLabel?: string;
 }
 
 /**
@@ -55,7 +62,7 @@ function formatUsd(cents: number): string {
 
 export function SkillCard({
   skill, Icon, isOn, available, lockedOn, saving, loading, justArmed, onToggle, onOpen, isPaid, priceCents,
-  curationMode, curationPending,
+  curationMode, curationPending, curationScopeLabel,
 }: Props) {
   const reduce = useReducedMotion();
 
@@ -63,6 +70,9 @@ export function SkillCard({
     // Agency curation pill: Shared (gold, the act) / Pending / Hidden — never the
     // tenant install vocabulary (Live/Off), which would misread here (§13).
     if (curationMode) {
+      // Per-child scope (curationScopeLabel set) reads On/Off for the single named
+      // sub-account; agency-wide scope keeps the plural Shared/Pending/Hidden vocab.
+      const perChild = Boolean(curationScopeLabel);
       if (isOn) {
         return (
           <motion.span
@@ -70,7 +80,7 @@ export function SkillCard({
             animate={{ scale: 1 }}
             className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--gold))] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--accent-foreground))]"
           >
-            <Users2 className="h-3 w-3" /> Shared
+            {perChild ? "On" : (<><Users2 className="h-3 w-3" /> Shared</>)}
           </motion.span>
         );
       }
@@ -83,7 +93,7 @@ export function SkillCard({
       }
       return (
         <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Hidden
+          {perChild ? "Off" : "Hidden"}
         </span>
       );
     }
@@ -120,11 +130,15 @@ export function SkillCard({
   };
 
   const footerMicrocopy = curationMode
-    ? isOn
-      ? "Available to your sub-accounts."
-      : curationPending
-        ? "Pending your review — switch on to share it down."
-        : "Hidden from sub-accounts — switch on to share it."
+    ? curationScopeLabel
+      ? isOn
+        ? `On for ${curationScopeLabel}.`
+        : `Off for ${curationScopeLabel} — switch on to turn it on.`
+      : isOn
+        ? "Available to your sub-accounts."
+        : curationPending
+          ? "Pending your review — switch on to share it down."
+          : "Hidden from sub-accounts — switch on to share it."
     : lockedOn
       ? "Included with your Funding playbook — manage it in Your Paige."
       : !available
@@ -198,7 +212,11 @@ export function SkillCard({
             checked={isOn}
             disabled={saving || loading}
             onCheckedChange={onToggle}
-            aria-label={`${isOn ? "Stop sharing" : "Share"} ${skill.name} with your sub-accounts`}
+            aria-label={
+              curationScopeLabel
+                ? `Turn ${skill.name} ${isOn ? "off" : "on"} for ${curationScopeLabel}`
+                : `${isOn ? "Stop sharing" : "Share"} ${skill.name} with your sub-accounts`
+            }
             className="shrink-0 data-[state=checked]:bg-[hsl(var(--gold))] focus-visible:ring-[hsl(var(--ring))]"
           />
         ) : available && !lockedOn ? (
