@@ -5,8 +5,14 @@
 -- =============================================================================
 -- WHAT THIS SLICE DOES (additive; ZERO user-facing behavior change for COMPLETING
 -- signups). The single intended behavior change: an ABANDONED (never-completing)
--- signup no longer even ATTEMPTS an un-consented CRM `clients` contact — because
--- the trigger no longer writes one at all.
+-- signup no longer even ATTEMPTS un-consented provisioning — neither a CRM `clients`
+-- contact (trigger no longer writes one) NOR the billing entitlement cascade
+-- (trial/usage/business-limit) that TWO AFTER-INSERT triggers on public.profiles fire
+-- on every shell insert. Step 0 guards that cascade behind a txn-local GUC that only
+-- the signup-shell + backfill paths set; entitlements move to an EXPLICIT idempotent
+-- ensure_provisioning_entitlements() called at consent (provision_tenant/_as,
+-- record_signup_acceptance). All OTHER profiles-insert paths are untouched (§9
+-- bounded blast radius).
 --
 -- Live prod ground-truth verified BEFORE writing (ref xygzykjyynhzqytbqnzu):
 --   * handle_new_user() is DEFINED with 3 inserts: profiles shell (KEEP), user_roles
@@ -45,6 +51,121 @@
 BEGIN;
 
 -- -----------------------------------------------------------------------------
+-- 0. GUARD the profiles-insert provisioning cascade (§9 defect fix). Every insert
+--    into public.profiles fires two AFTER-INSERT triggers that provision billing
+--    entitlements: on_profile_created -> create_free_trial() (user_subscriptions
+--    'free'/'trial' + user_usage) and trg_create_default_business_limit ->
+--    create_default_business_limit() (user_business_limits). For a bare-shell
+--    signup / backfill that is UN-CONSENTED provisioning. We add a txn-local GUC
+--    (paige.defer_provisioning='1', verified UNUSED anywhere on prod/repo) that only
+--    the signup-shell + backfill paths set; the two cascade fns short-circuit on it.
+--    Re-emitted VERBATIM from live prod + ONLY the guard line at the very top.
+--    ALL OTHER profiles-insert paths (grant_tenant_member_role invite/role grant,
+--    provision_tenant IF-NOT-FOUND insert, etc.) do NOT set the GUC, so their cascade
+--    fires EXACTLY as today — blast radius is bounded to signup + backfill.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.create_free_trial()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  -- (§9) Defer un-consented provisioning: a bare-shell signup / backfill sets this
+  -- GUC so no trial/usage is spawned before consent. Entitlements are created
+  -- explicitly at consent by public.ensure_provisioning_entitlements().
+  IF coalesce(current_setting('paige.defer_provisioning', true), '') = '1' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Create free trial subscription (14 days)
+  INSERT INTO public.user_subscriptions (user_id, plan_slug, status, trial_ends_at)
+  VALUES (NEW.user_id, 'free', 'trial', now() + interval '14 days');
+
+  -- Create usage tracking
+  INSERT INTO public.user_usage (user_id, disputes_used, ai_chats_used)
+  VALUES (NEW.user_id, 0, 0);
+
+  RETURN NEW;
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.create_default_business_limit()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  _plan text;
+BEGIN
+  -- (§9) Same defer guard — see create_free_trial().
+  IF coalesce(current_setting('paige.defer_provisioning', true), '') = '1' THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT plan_slug INTO _plan
+  FROM public.user_subscriptions
+  WHERE user_id = NEW.user_id
+  LIMIT 1;
+
+  INSERT INTO public.user_business_limits (user_id, max_businesses)
+  VALUES (NEW.user_id, public.default_max_businesses_for_plan(_plan))
+  ON CONFLICT (user_id) DO NOTHING;
+
+  RETURN NEW;
+END;
+$function$;
+
+-- ensure_provisioning_entitlements(): the ONE explicit home (§18) for the billing
+-- entitlements that the cascade used to create implicitly. IDEMPOTENT and safe to
+-- call whether or not the cascade already ran. Mirrors the cascade values exactly.
+-- NOTE (verified): public.user_subscriptions has NO unique on user_id (PK is on id),
+-- so its insert is guarded with WHERE NOT EXISTS, not ON CONFLICT. user_usage and
+-- user_business_limits both carry UNIQUE(user_id) -> ON CONFLICT (user_id).
+CREATE OR REPLACE FUNCTION public.ensure_provisioning_entitlements(_uid uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  _plan text;
+BEGIN
+  IF _uid IS NULL THEN RETURN; END IF;
+
+  INSERT INTO public.user_subscriptions (user_id, plan_slug, status, trial_ends_at)
+  SELECT _uid, 'free', 'trial', now() + interval '14 days'
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.user_subscriptions WHERE user_id = _uid
+  );
+
+  INSERT INTO public.user_usage (user_id, disputes_used, ai_chats_used)
+  VALUES (_uid, 0, 0)
+  ON CONFLICT (user_id) DO NOTHING;
+
+  SELECT plan_slug INTO _plan
+  FROM public.user_subscriptions
+  WHERE user_id = _uid
+  LIMIT 1;
+
+  INSERT INTO public.user_business_limits (user_id, max_businesses)
+  VALUES (_uid, public.default_max_businesses_for_plan(_plan))
+  ON CONFLICT (user_id) DO NOTHING;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.ensure_provisioning_entitlements(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.ensure_provisioning_entitlements(uuid) TO authenticated, service_role;
+
+-- Codex A: legal_acceptances idempotency. VERIFIED 0 duplicate
+-- (user_id, document_slug, document_version) tuples on live prod, so the UNIQUE
+-- index is safe to add now; record_signup_acceptance's insert (below) uses
+-- ON CONFLICT DO NOTHING against it (replacing the racy NOT EXISTS check).
+CREATE UNIQUE INDEX IF NOT EXISTS legal_acceptances_user_doc_version_uidx
+  ON public.legal_acceptances (user_id, document_slug, document_version);
+
+-- -----------------------------------------------------------------------------
 -- 1. handle_new_user(): a brand-new auth.users row now yields ONLY a profiles
 --    shell. REMOVE the user_roles('user') insert AND the entire self-linked
 --    clients insert block. KEEP the paige.link_ok GUC and the exact profiles
@@ -67,6 +188,15 @@ begin
   -- KEPT verbatim: harmless now, and preserved for the profiles-shell insert path
   -- and any downstream linking trigger that inspects it.
   perform set_config('paige.link_ok', '1', true);
+
+  -- (§9) DEFER the profiles-insert provisioning cascade for a bare-shell signup.
+  -- Two AFTER-INSERT triggers on public.profiles (on_profile_created->create_free_trial,
+  -- trg_create_default_business_limit->create_default_business_limit) would otherwise
+  -- spawn a 14-day trial + usage + business-limit for a user who has NOT consented /
+  -- completed. This txn-local GUC makes both guarded cascade fns short-circuit, so the
+  -- shell stays truly bare; entitlements are provisioned EXPLICITLY at consent via
+  -- public.ensure_provisioning_entitlements() (step 3 / record_signup_acceptance).
+  perform set_config('paige.defer_provisioning', '1', true);
 
   v_ref_code  := nullif(upper(trim(new.raw_user_meta_data->>'referral_code')), '');
   v_full_name := coalesce(new.raw_user_meta_data->>'full_name', '');
@@ -160,15 +290,12 @@ begin
   -- profiles shell is guaranteed by handle_new_user; if somehow absent, no-op.
 
   -- (b) Idempotent general-terms acceptance row (append-only legal trail).
+  --     Codex A: race-safe via the UNIQUE(user_id,document_slug,document_version)
+  --     index (step 0) + ON CONFLICT DO NOTHING, replacing a check-then-insert.
   insert into public.legal_acceptances (user_id, document_slug, document_version, context)
-  select v_uid, 'terms', v_terms_ver,
-         jsonb_build_object('via', 'record_signup_acceptance')
-  where not exists (
-    select 1 from public.legal_acceptances la
-     where la.user_id = v_uid
-       and la.document_slug = 'terms'
-       and la.document_version = v_terms_ver
-  );
+  values (v_uid, 'terms', v_terms_ver,
+          jsonb_build_object('via', 'record_signup_acceptance'))
+  on conflict (user_id, document_slug, document_version) do nothing;
 
   -- (c) Deferred base role (moved out of the trigger). IF NOT EXISTS via ON CONFLICT.
   insert into public.user_roles (user_id, role)
@@ -178,9 +305,20 @@ begin
   -- (d) NO self-linked clients contact — owner ruling: do not resurrect the
   --     un-consented insert here or anywhere.
 
+  -- (d2) EXPLICIT provisioning entitlements at consent (§9). The deferred shell
+  --      skipped the trial/usage/limit cascade, so create them here idempotently
+  --      the moment a user genuinely accepts. Safe whether or not the cascade ran.
+  perform public.ensure_provisioning_entitlements(v_uid);
+
   -- (e) Post-acceptance WELCOME email via send-transactional-email (§18 reuse).
   --     Established vault + net.http_post deferred-send; degrades to a logged
   --     no-op when the secrets are not seeded (§13). Never blocks acceptance.
+  --     Codex C (§13, dormant in Slice 1 — no live caller yet): send-transactional-email
+  --     does NOT currently enforce idempotencyKey server-side, so the stable
+  --     'welcome-signup-<uid>' key below does not itself dedupe a resend. When Slices
+  --     2-4 wire a LIVE caller, they MUST gate this welcome on a FRESHLY-created
+  --     acceptance (e.g. only when the (b) insert actually inserted a row) so a repeat
+  --     finalize call cannot re-send. No functional change now.
   begin
     select decrypted_secret into v_edge_url
       from vault.decrypted_secrets where name = 'project_url' limit 1;
@@ -280,6 +418,12 @@ BEGIN
   INSERT INTO public.user_roles (user_id, role)
   VALUES (_uid, 'user')
   ON CONFLICT (user_id, role) DO NOTHING;
+
+  -- (§9) EXPLICIT provisioning entitlements. In the deferred-signup world the shell
+  -- was created bare (cascade guarded), and provision_tenant UPDATEs that existing
+  -- shell rather than INSERTing — so the trial/usage/limit cascade does NOT fire at
+  -- provision time. Create them explicitly & idempotently, up front like the role.
+  PERFORM public.ensure_provisioning_entitlements(_uid);
 
   SELECT t.* INTO _tenant
     FROM public.tenants t
@@ -409,6 +553,10 @@ begin
   values (_owner, 'user')
   on conflict (user_id, role) do nothing;
 
+  -- (§9) EXPLICIT provisioning entitlements for the paid/webhook completion path too
+  -- (same rationale as provision_tenant: deferred shell means no cascade at provision).
+  perform public.ensure_provisioning_entitlements(_owner);
+
   select t.* into _tenant
     from public.tenants t
    where t.owner_user_id = _owner and t.parent_tenant_id is null
@@ -533,13 +681,25 @@ CREATE TRIGGER on_auth_user_created
 --    backfill's ON CONFLICT DO NOTHING + the COALESCE stamps elsewhere NEVER clobber
 --    them. Net: the 12 users with NULL terms_accepted_at force-accept on next login;
 --    the 2 real completers keep their existing stamp (§13: no fabricated consent).
+--    (§9) The backfill sets paige.defer_provisioning='1' around the INSERT so these
+--    grandfathered shells DO NOT spawn an un-consented trial/usage/limit either; the
+--    GUC is reset immediately after so nothing later in this txn is affected.
 -- -----------------------------------------------------------------------------
-INSERT INTO public.profiles (user_id, full_name, referral_code)
-SELECT u.id,
-       nullif(u.raw_user_meta_data->>'full_name', ''),
-       nullif(upper(trim(u.raw_user_meta_data->>'referral_code')), '')
-FROM auth.users u
-WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.user_id = u.id)
-ON CONFLICT (user_id) DO NOTHING;
+DO $backfill$
+BEGIN
+  PERFORM set_config('paige.defer_provisioning', '1', true);
+
+  INSERT INTO public.profiles (user_id, full_name, referral_code)
+  SELECT u.id,
+         nullif(u.raw_user_meta_data->>'full_name', ''),
+         nullif(upper(trim(u.raw_user_meta_data->>'referral_code')), '')
+  FROM auth.users u
+  WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.user_id = u.id)
+  ON CONFLICT (user_id) DO NOTHING;
+
+  -- Reset so no later statement in this migration txn inherits the defer.
+  PERFORM set_config('paige.defer_provisioning', '', true);
+END
+$backfill$;
 
 COMMIT;
