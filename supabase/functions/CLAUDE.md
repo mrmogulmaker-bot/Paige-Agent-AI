@@ -68,17 +68,25 @@ otherwise re-derive it.
 **Supabase secret NAMES (code references only the NAMES, §34):**
 - **REUSED master creds — ALREADY set, no new paste** (resolved via `masterCreds()`, §18 one home):
   - `TWILIO_ACCOUNT_SID` — `AC…` master account (URL path + legacy Basic-auth username).
-  - `TWILIO_API_KEY_SID` / `TWILIO_API_KEY_SECRET` — preferred API-Key auth (username = `SK…`, password = secret).
-  - `TWILIO_AUTH_TOKEN` — the secret Twilio signs inbound webhooks with (X-Twilio-Signature
-    validation) AND the legacy Basic-auth fallback. Since the operator number lives on the
-    master account, this ALREADY validates operator inbound — no new paste.
-- **The ONE possibly-owed secret — the A2P Messaging Service SID:**
-  - `TWILIO_OPERATOR_MESSAGING_SERVICE_SID` (preferred) or generic `TWILIO_MESSAGING_SERVICE_SID`
-    — `MG…` for the "Low Volume Mixed A2P Messaging Service". The master config sends via raw
-    `From`, so it does NOT already cover A2P Messaging-Service sending; **this MG SID is the
-    single secret the owner still needs to paste** if one isn't already set. Until it is set,
-    the operator send degrades to `needs_config` (`operator_messaging_service_not_configured`) —
-    never a raw-From A2P violation (§13).
+  - `TWILIO_API_KEY_SID` / `TWILIO_API_KEY_SECRET` — preferred API-Key auth (username = `SK…`,
+    password = secret). This is the trio the master OUTBOUND path uses today.
+- **Up to TWO possibly-owed secrets the owner may still need to paste:**
+  1. **A2P Messaging Service SID** — `TWILIO_OPERATOR_MESSAGING_SERVICE_SID` (preferred) or generic
+     `TWILIO_MESSAGING_SERVICE_SID` — `MG…` for the "Low Volume Mixed A2P Messaging Service". The
+     master OUTBOUND config sends via raw `From`, so it does NOT already cover A2P Messaging-Service
+     sending. Until it is set, the operator send degrades to `needs_config`
+     (`operator_messaging_service_not_configured`) — never a raw-From A2P violation (§13).
+  2. **Inbound signing token** — `TWILIO_OPERATOR_AUTH_TOKEN` (preferred) or `TWILIO_AUTH_TOKEN`
+     — the account Auth Token Twilio signs inbound webhooks with (`X-Twilio-Signature`
+     validation). HONEST CAVEAT (§13/§39): the master path validated here authenticates OUTBOUND
+     with the **API-Key trio**, and `_shared/twilio.ts` (owner-confirmed 2026-07-27) notes prod
+     intentionally does NOT rely on a raw `TWILIO_AUTH_TOKEN` for its sends — so we must NOT assume
+     an account Auth Token is already present in edge secrets just because outbound works. If
+     `TWILIO_AUTH_TOKEN` is in fact set on prod, inbound validation already works with no new paste;
+     if it is not, the owner pastes `TWILIO_OPERATOR_AUTH_TOKEN` (the account Auth Token from the
+     master account's console). Either way the inbound function **FAILS CLOSED** (401, nothing
+     written) when no token resolves — it never trusts an unsigned payload — so a missing token is a
+     safe degrade, not a security hole. Confirm which of the two applies during the activation runbook.
 - **Optional operator OVERRIDES (only used if explicitly set — for a future dedicated operator
   account):** `TWILIO_OPERATOR_ACCOUNT_SID` / `_API_KEY_SID` / `_API_KEY_SECRET` / `_AUTH_TOKEN`.
   When a full override trio is set it wins; otherwise the master creds are used.
