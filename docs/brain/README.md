@@ -51,6 +51,8 @@ All figures below were checked live this session; how each was verified is in `c
   price yet — see `config-registry.md`).
 - **CI pipelines:** 6 — `ci`, `deploy-migrations`, `deploy-edge-functions`, `migration-lint`,
   `premerge-migration-proof`, `security-audit` (verified: `.github/workflows/`).
+- **Paige default voice:** `DEFAULT_TTS_VOICE = 0S5oIfi8zOZixuSj8K6n` (**"Ivanna"**) — owner-ruled
+  2026-08-09, PR #409 (`1e726426`). ON RECORD, do not re-ask (§BRAIN.2). See `config-registry.md` → Voice.
 
 ---
 

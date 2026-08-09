@@ -9,13 +9,15 @@ Sources this pass: GitHub MCP `list_pull_requests` (repo `mrmogulmaker-bot/paige
 ## Recent PRs (#375 → #409)
 
 **Open / in-flight (as of 2026-08-09):**
-- **#409** (open) — `fix(voice,§13/§46)`: close ElevenLabs voice leak + persist Voice Configuration
-  to CLAUDE.md. *(branch `claude/voice-fix-ivanna` — do not touch.)*
 - **#408** (open) — `fix(§9,wave-s3)`: operator-scope Super Admin Communications + operator Twilio
-  A2P SMS. *(branch `claude/s3-operator-communications` — do not touch.)*
+  A2P SMS. **Being fixed to REUSE the master Twilio account creds** (not new `TWILIO_OPERATOR_*`
+  secrets) per owner correction 2026-08-09. *(branch `claude/s3-operator-communications` — do not touch.)*
 - **#387** (open) — Harden edge function contracts + producer-inventory doctrine, audits, arch docs.
 
 **Merged (newest first):**
+- **#409** (merged 2026-08-09, `1e726426`) — `fix(voice,§13/§46)`: close ElevenLabs voice leak +
+  persist Voice Configuration to CLAUDE.md. **Owner ruled `DEFAULT_TTS_VOICE = 0S5oIfi8zOZixuSj8K6n
+  (Ivanna)`** — settled, on record, do not re-ask (§BRAIN.2).
 - **#407** (2026-08-09) — Wave4-4a.3: Paige chat compaction + persistence + durable tasking.
 - **#406** (2026-08-09) — Wave4-4a.2: L8 Memory Fabric substrate (`paige_owner_memory`).
 - **#405** (2026-08-09) — Wave4-4a.1: Agent UI Placement right-rail + ⌘K launcher.

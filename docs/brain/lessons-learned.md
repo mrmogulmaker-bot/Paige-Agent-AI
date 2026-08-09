@@ -99,7 +99,35 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   drift waiting to happen. This is the entire reason the Second Brain exists — **not writing it down
   is the bug.**
 
-## 8. Sub-account treated as an agency — the four-times seam bug (§51)
+## 8. Re-ruled a settled decision — the §BRAIN.2 miss (Ivanna voice, 2026-08-09)
+
+- **Symptom:** Cowork/CC re-surfaced the **Ivanna voice choice** (`0S5oIfi8zOZixuSj8K6n` as
+  `DEFAULT_TTS_VOICE`) as an **open question** — when the owner had already ruled it across multiple
+  prior sessions (and it was merged in PR #409). The owner should not have to make the same decision
+  twice.
+- **Root cause:** The "decision" was pulled from session memory / a blank slate instead of the brain.
+  A settled owner ruling that isn't checked against the decision-log gets re-litigated on every reset.
+- **Rule (§BRAIN.2):** A decision the owner has **already made** is **relayed, not re-asked.** Before
+  surfacing any "which should we do?" question, check `decision-log.md` + `config-registry.md` — if the
+  owner already ruled, state the ruling as settled and move on. Re-asking a settled decision is itself
+  the violation.
+
+## 9. "Assumed unprovisioned" — treating a live integration as fresh (Twilio, 2026-08-09)
+
+- **Symptom:** A plan defaulted to treating a third-party integration as **fresh/unprovisioned** — e.g.
+  framing the operator SMS surface as needing new `TWILIO_OPERATOR_*` secrets the owner must paste, when
+  the platform's **master Twilio account already exists and phone calls already work today**. (Twin of
+  the voice #24 miss: the app was already using a *different* voice system, yet a session assumed it had
+  to stand one up.)
+- **Root cause:** Reaching for "set it up from scratch" without first checking whether the platform's
+  actual behavior proves the credential already exists. If calls/SMS already work, the Twilio creds are
+  already set.
+- **Rule (§30 diagnose-first):** Before asking the owner for a credential paste, **check the platform's
+  actual behavior** — *is X already working? then the credential exists; find it, don't ask for it.* Only
+  a genuinely new value (e.g. the A2P Messaging Service `MG…` SID) is worth a `⚠ verify-whether-already-set`
+  — and even that gets verified before an ask, never assumed missing.
+
+## 10. Sub-account treated as an agency — the four-times seam bug (§51)
 
 - **Symptom:** A sub-account owner lands on the `/agency` operator dashboard, or sees the parent's
   aggregate data; the same tenant-tier seam bit four times in a month (#86→#130→#172→#588).

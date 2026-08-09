@@ -103,19 +103,25 @@ messages sent E.164-normalized.
 tenant_phone_numbers`): `+14705177009` (source `marketplace`, active) and `+14705706068` (source
 `marketplace`, active). **Both marketplace-provisioned.**
 
-**Operator (God/Super-Admin) A2P line — ⚠ IN-FLIGHT, not yet live:**
-- The number **+1 (470) 200-3444** is referenced in `main` source *comments* (`send-message/index.ts`,
-  `provision-tenant-twilio/index.ts`) as "the Super Admin's imported operator number," described as a
-  `tenant_phone_numbers` row with `source='imported'`. **⚠ That row is NOT present in prod today** —
-  the only `tenant_phone_numbers` rows are the two `marketplace` numbers above. Treat +1 470 200 3444
-  as *intended/documented but not yet a live provisioned row.*
-- Operator A2P config — Twilio account **"Paige Agent AI LLC"**, Messaging Service **"Low Volume Mixed
-  A2P Messaging Service"** (outbound via its `MG…` SID, never a raw `From:`), voice webhook currently
-  on the Twilio demo URL (re-point scheduled slice 4c.2), plus secret names
-  `TWILIO_OPERATOR_ACCOUNT_SID` (`AC…`) and `TWILIO_OPERATOR_MESSAGING_SERVICE_SID` (`MG…`) — is
-  specified in the **in-flight, unmerged** branch `claude/s3-operator-communications` (PR **#408**),
-  in `supabase/functions/CLAUDE.md` "Twilio Operator Configuration." **⚠ Not in `main`; confirm on
-  #408 merge.** (Source: PR #408 branch, read read-only this session.)
+**Operator (God/Super-Admin) SMS surface — REUSES the existing master Twilio account (owner
+correction 2026-08-09):**
+- The operator SMS surface does **NOT** require the owner to paste new `TWILIO_OPERATOR_*` secrets. It
+  **reuses the platform's EXISTING master Twilio account credentials** that are already provisioned —
+  `TWILIO_ACCOUNT_SID`, `TWILIO_API_KEY_SID`, `TWILIO_API_KEY_SECRET`, `TWILIO_AUTH_TOKEN`,
+  `TWILIO_PHONE_NUMBER` (phone/voice calls work today off these). PR **#408** is being **fixed to reuse
+  master creds** rather than introduce a parallel operator account. *(Supersedes this brain's earlier
+  note that framed it as new `TWILIO_OPERATOR_*` secrets — that framing was wrong; see
+  `lessons-learned.md` → "Assumed unprovisioned.")*
+- Operator A2P config — Twilio account **"Paige Agent AI LLC"**, operator number **+1 (470) 200-3444**,
+  Messaging Service **"Low Volume Mixed A2P Messaging Service"** (A2P best practice: outbound via its
+  `MG…` SID, never a raw `From:`). The A2P **Messaging Service SID (`MG…`)** is the **only** potentially-
+  new value — **⚠ verify whether it's already set** as a secret before asking anyone to paste it (the
+  master account already exists, so it may already be provisioned). Voice webhook currently on the
+  Twilio demo URL (re-point scheduled slice 4c.2).
+- **⚠ Live-data note:** +1 470 200 3444 is referenced in `main` source comments (`send-message`,
+  `provision-tenant-twilio`) as the Super Admin's imported number (`tenant_phone_numbers`
+  `source='imported'`), but that row is **not present in prod today** (only the two `marketplace`
+  numbers above exist). Confirm the row/provisioning state on #408 merge.
 
 ---
 
@@ -124,26 +130,30 @@ tenant_phone_numbers`): `+14705177009` (source `marketplace`, active) and `+1470
 **⚠ ElevenLabs MCP is disconnected this session** — facts below are verified from **repo source**, not
 from the ElevenLabs API.
 
-**Platform voice (✅ verified in `main` source):**
-- `_shared/tts-router.ts`: `PRIMARY_ELEVENLABS_VOICE = "6aDn1KB0hjpdcocrUkmq"` — the owner-locked
-  female "Warm" voice, the platform default on every tier (`DEFAULT_TTS_VOICE = {provider:"elevenlabs",
-  id: PRIMARY_ELEVENLABS_VOICE}`). Alternates: `g6xIsTj2HwM6VR4iXFCw` ("Clear", backup female),
-  `vBKc2FfBKJfcZNyEt1n6` ("Deep", male). (Voice IDs are non-secret identifiers.)
+**Platform default voice — ON RECORD, do NOT re-ask (§200 owner-locked, §BRAIN.2):**
+- **`DEFAULT_TTS_VOICE` is now `0S5oIfi8zOZixuSj8K6n` ("Ivanna")** — owner-ruled 2026-08-09, merged in
+  **PR #409 (commit `1e726426`)**. This is a **settled decision on record**; it must NOT be re-surfaced
+  as an open question (see `lessons-learned.md` → "Re-ruled a settled decision"). §200 owner-locked.
+  *(Sourced from the PR #409 ruling relayed by the coordinator 2026-08-09; ⚠ confirm the exact
+  `tts-router.ts` constant on the next repo pull into this brain, per §BRAIN.3.)*
+- `6aDn1KB0hjpdcocrUkmq` ("Warm") is now a **selectable alternate**, no longer the default. Other
+  alternates: `g6xIsTj2HwM6VR4iXFCw` ("Clear", backup female), `vBKc2FfBKJfcZNyEt1n6` ("Deep", male).
+  (Voice IDs are non-secret identifiers.)
 - `_shared/elevenlabs.ts`: `DEFAULT_VOICE = Deno.env.get("ELEVENLABS_VOICE_ID") ?? "21m00Tcm4TlvDq8ikWAM"`
-  (Rachel — generic fallback). **This is the only path that honors the `ELEVENLABS_VOICE_ID` edge
-  secret.** OpenAI TTS is the honest degrade fallback (comment cites §13/#579).
+  (Rachel — generic fallback for the legacy path only). **This is the only path that honors the
+  `ELEVENLABS_VOICE_ID` edge secret.** OpenAI TTS is the honest degrade fallback (comment cites §13/#579).
 - Model comes from `_shared/model-router.ts` `voiceCell` → `elevenlabsTts` (`eleven_multilingual_v2`).
 
 **ElevenLabs secret NAMES** (✅ grep): `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL`,
 `ELEVENLABS_BASE_URL`. (No `ELEVENLABS_API_KEY` name surfaced in the grep — ⚠ confirm how the
 ElevenLabs client authenticates; the key may be injected under a different name or via the router.)
 
-**⚠ ConvAI voice-leak lesson (in-flight PR #409 / branch `claude/voice-fix-ivanna`):** the TTS path
-does **not** read the ElevenLabs ConvAI agent — updating a ConvAI agent's voice has **no effect** on
+**ConvAI voice-leak lesson (PR #409, MERGED 2026-08-09, commit `1e726426`):** the TTS path does
+**not** read the ElevenLabs ConvAI agent — updating a ConvAI agent's voice has **no effect** on
 Paige's spoken voice (the ConvAI stack was removed in #170 / §49 Wave A). The authoritative voice knob
-is `PRIMARY_ELEVENLABS_VOICE` in `tts-router.ts` (hardcoded) and `ELEVENLABS_VOICE_ID` (only for the
-`elevenlabs.ts` legacy path). This diagnosis is being persisted as a "Voice Configuration" CLAUDE.md
-section on PR #409 — **⚠ not yet in `main`.** See `lessons-learned.md` → "voice live-drive trap."
+is `DEFAULT_TTS_VOICE`/`PRIMARY_ELEVENLABS_VOICE` in `tts-router.ts` (hardcoded — now `0S5oIfi8zOZixuSj8K6n`
+Ivanna) and `ELEVENLABS_VOICE_ID` (only for the `elevenlabs.ts` legacy path). #409 also persisted a
+"Voice Configuration" section to CLAUDE.md. See `lessons-learned.md` → "voice live-drive trap."
 
 **Voice feature-flag / cost secret NAMES** (✅ grep): `VOICE_COPILOT_ENABLED`,
 `VOICE_COPILOT_COST_CAP_USD`.
