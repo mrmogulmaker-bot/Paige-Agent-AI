@@ -108,37 +108,42 @@ begin
        and la.document_slug = any(public.subscriber_agreement_slugs())
   ) into _has_agreement;
 
-  -- GATE 2 — a REAL Stripe subscription (not a comped internal row). Requires a non-null
-  -- stripe_subscription_id AND a paying status. Checks the canonical L1 billing table first,
-  -- then the tenants mirror (#29 uses tenants.stripe_subscription_id as the "live sub" signal),
-  -- so a real sub recorded in EITHER place satisfies the gate — but a NULL sub ref never does.
+  -- GATE 2 — a REAL, ACTIVE Stripe subscription (not a comped internal row). Requires a non-null
+  -- stripe_subscription_id AND status='active' — the SAME "real revenue" definition #29's
+  -- get_tenant_revenue_breakdown().paying_count uses (status active + non-null sub id), so the
+  -- trigger, the audit RPC, and the #29 breakdown never disagree about the same tenant (§18/§39).
+  -- 'past_due' is deliberately NOT a mint gate — a paid tenant that later lapses stays paid (the
+  -- transition-only rule above) and surfaces as integrity_ok=false in the audit, honestly (§13).
+  -- Checks the canonical L1 billing table first, then the tenants mirror (#29's live-sub signal),
+  -- so a real active sub in EITHER place satisfies the gate — but a NULL sub ref never does.
   select
     exists (
       select 1 from public.platform_subscriptions ps
        where ps.tenant_id = new.tenant_id
          and ps.stripe_subscription_id is not null
-         and ps.status in ('active','past_due')
+         and ps.status = 'active'
     )
     or exists (
       select 1 from public.tenants t
        where t.id = new.tenant_id
          and t.stripe_subscription_id is not null
-         and t.status in ('active','past_due')
+         and t.status = 'active'
     )
   into _has_subscription;
 
   if not _has_agreement or not _has_subscription then
+    -- ONE combined %-arg (concat_ws skips the NULL clauses) — never a multi-arg format with a
+    -- literal %%, which raises "too many parameters specified for RAISE" and would abort the whole
+    -- migration on CREATE (compile-checked) and brick provisioning on first fire (§32 blocker).
     raise exception
-      'revenue_integrity_chain: tenant % cannot be classified paid — missing %%',
+      'revenue_integrity_chain: tenant % cannot be classified paid — missing %',
       new.tenant_id,
-      case when not _has_agreement then 'signed subscriber agreement' else '' end,
-      case
-        when not _has_agreement and not _has_subscription then ' and a confirmed live Stripe subscription'
-        when not _has_subscription then 'a confirmed live Stripe subscription'
-        else ''
-      end
+      concat_ws(' and ',
+        case when not _has_agreement then 'a signed subscriber agreement' end,
+        case when not _has_subscription then 'a confirmed live Stripe subscription' end
+      )
       using errcode = 'check_violation',
-            hint = 'Record the agreement (legal_acceptances) and a live Stripe subscription (platform_subscriptions active/past_due with a stripe_subscription_id) before setting revenue_class=paid, or reclassify to promotional.';
+            hint = 'Record the subscriber agreement (legal_acceptances) and a live Stripe subscription (platform_subscriptions active with a stripe_subscription_id) before setting revenue_class=paid, or reclassify to promotional.';
   end if;
 
   return new;
@@ -146,7 +151,7 @@ end;
 $$;
 
 comment on function public.enforce_revenue_integrity_chain() is
-  'Task #31 revenue integrity chain — fail-closed gate: a tenant_revenue_classification row may only be/stay revenue_class=paid when the tenant owner has a signed subscriber agreement (legal_acceptances) AND a live Stripe subscription (platform_subscriptions/tenants active|past_due with a non-null stripe_subscription_id). Enforced on the class FLIP (INSERT/UPDATE) — provision_tenant is already atomic so GATE 3 holds by construction.';
+  'Task #31 revenue integrity chain — fail-closed gate: a tenant_revenue_classification row may only be MINTED revenue_class=paid when the tenant owner has a signed subscriber agreement (legal_acceptances, saas-* slug) AND a live Stripe subscription (platform_subscriptions/tenants status=active with a non-null stripe_subscription_id — the same definition as #29 get_tenant_revenue_breakdown). Enforced on the class FLIP/transition (INSERT or promotional→paid UPDATE); already-paid rows are not re-gated, and a later lapse surfaces via the audit integrity_ok flag (no auto-demote — see the reconcile follow-up). provision_tenant is already atomic so GATE 3 holds by construction.';
 
 drop trigger if exists trg_enforce_revenue_integrity_chain on public.tenant_revenue_classification;
 create trigger trg_enforce_revenue_integrity_chain
@@ -204,16 +209,16 @@ begin
      order by la.user_id, la.accepted_at desc nulls last
   ),
   latest_sub as (
-    -- the tenant's subscription — ranked to prefer a QUALIFYING (active/past_due + real
-    -- stripe id) row exactly as the trigger's GATE 2 does, so the audit and the enforced
-    -- state can never disagree (§39 finding #2: a newer canceled row must not mask an older
-    -- active one). Falls back to the most-recent row when none qualifies.
+    -- the tenant's subscription — ranked to prefer a QUALIFYING (active + real stripe id) row
+    -- exactly as the trigger's GATE 2 does, so the audit and the enforced state can never
+    -- disagree (§39 finding #2: a newer canceled row must not mask an older active one).
+    -- Falls back to the most-recent row when none qualifies (so a lapsed sub shows honestly).
     select distinct on (ps.tenant_id)
            ps.tenant_id, ps.stripe_customer_id, ps.stripe_subscription_id, ps.status,
            ps.current_period_start, ps.current_period_end
       from public.platform_subscriptions ps
      order by ps.tenant_id,
-              (ps.stripe_subscription_id is not null and ps.status in ('active','past_due')) desc,
+              (ps.stripe_subscription_id is not null and ps.status = 'active') desc,
               ps.current_period_end desc nulls last,
               ps.created_at desc
   )
@@ -231,7 +236,7 @@ begin
     la.accepted_at,
     la.ip_address,
     (coalesce(ls.stripe_subscription_id, t.stripe_subscription_id) is not null
-       and coalesce(ls.status, t.status::text) in ('active','past_due'))  as subscription_on_file,
+       and coalesce(ls.status, t.status::text) = 'active')                as subscription_on_file,
     coalesce(ls.stripe_customer_id, t.stripe_customer_id),
     coalesce(ls.stripe_subscription_id, t.stripe_subscription_id),
     coalesce(ls.status, t.status::text),
@@ -240,7 +245,7 @@ begin
     (
       la.user_id is not null
       and coalesce(ls.stripe_subscription_id, t.stripe_subscription_id) is not null
-      and coalesce(ls.status, t.status::text) in ('active','past_due')
+      and coalesce(ls.status, t.status::text) = 'active'
     )                                                                     as integrity_ok
   from public.tenant_revenue_classification trc
   join public.tenants t on t.id = trc.tenant_id
