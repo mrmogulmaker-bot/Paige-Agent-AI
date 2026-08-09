@@ -133,6 +133,66 @@ promotional↔internal_test classification only changes the *breakdown display*,
 
 ---
 
+---
+
+## Part 2 execution log (owner rulings, 2026-08-09) — §30 verified
+
+### 2a — Topology corrections (migration `20260814100000`, §32.b-proven, §51-safe)
+The `account_type` topology data was **wrong** for 4 tenants. Corrected to Antonio's real org chart:
+
+| Tenant | before | after |
+|---|---|---|
+| Project Mogul Enterprise Inc | agency (parent=∅) | **agency** (unchanged) |
+| Mogul Maker Academy | standalone, no parent | **sub_account**, parent = PME |
+| [TEST] Acme Consulting | standalone, parent=PME | **sub_account**, parent = PME |
+| [TEST] Northstar Advisors | standalone, parent=PME | **sub_account**, parent = PME |
+| Antonio Daniel LLC | standalone, parent=PME | **sub_account**, parent = PME |
+| First Sterling Capital · Mogul Credit Company | standalone | standalone (unchanged) |
+
+§32.b proof (both migrations applied + rolled back): `pme_type=agency`, `pme_subaccounts=4`,
+**§51_violations=0** (the `tenants_subaccount_not_agency` CHECK held — the UPDATEs succeeded),
+`retired_class=internal_test`, **`paid=0` → Real ARR = $0 confirmed post-classification**.
+
+### 2d — Revenue-class (final)
+7 `promotional` (PME, MMA, Antonio Daniel LLC, Acme, Northstar, First Sterling, Mogul Credit) +
+1 `internal_test` (Retired Paige Operations, suspended). **Zero `paid`.** comp_reasons stamped.
+
+### 2b — DELETE decision — SURFACED to owner (both targets have dependent rows)
+Per the owner's rule (deps present → his per-tenant method choice), the FK scan across all 119
+`tenant_id` tables:
+
+| target | dependent rows |
+|---|---|
+| **Paige Operations** (active, `94af805c`) | calendars 1 · channel_connectors 1 · paige_actions 4 · pipeline_stages 5 · pipelines 1 · platform_usage_events 1 · tenant_email_identities 1 · tenant_features 1 · tenant_members 1 · tenant_provisioning 1 |
+| **Claude Studio Dev** (`49f07ba6`) | same set + tenant_twilio_subaccounts 1 |
+
+**All rows are default provisioning artifacts — zero real business data** (no clients/deals/messages/
+contacts/tasks reference either). FK ON DELETE: **9 tables CASCADE**, **2 (pipelines, pipeline_stages)
+SET NULL**. **Recommendation:** hard-delete is clean — the 9 cascade, and the migration explicitly
+deletes the 2 pipeline rows first to avoid NULL-tenant orphans; no business data lost. **Owner picks:**
+hard-delete-cascade (recommended) vs soft-delete (`status='canceled'`, stays under Part-5 archived).
+Auth users left intact (Antonio did not order their deletion for these two).
+
+### 2c — Paige Platform Defaults relocation — planned (frontend, next build)
+Filter the SYSTEM tenant (`paige-platform-defaults`) out of the switcher entirely; surface its config
+under a Super-Admin settings sub-tab (§18: extend the existing `/admin/platform/settings`, not a new
+fourth home). Not in this commit — folds with the Part-5 nesting + reconciliation build.
+
+---
+
+## Task #30 pre-notes (tenant CRUD seams — head-start for the follow-on)
+- **Exists:** `provision_tenant` / `provision_tenant_and_subaccount` / `provision_tenant_as` RPCs ·
+  `create_tenant` + `create_tenant_mcp` MCP tools · `suspend_tenant` MCP tool · invite seams
+  (`create_tenant_invite_token` RPC; `send-platform-invite` / `accept-invite` / `send-portal-invite` /
+  `agency-invite-member` edge fns). Operator UI: `TenantDetailSheet.tsx`, `PlatformTenants.tsx`.
+- **MISSING (the #30 gap):** there is **NO `delete_tenant` RPC or MCP tool** — tenant deletion has no
+  callable §10 seam today (raw SQL only). #30 must add a `delete_tenant` RPC (FK-cascade-aware, §51
+  parent-guard) + a `delete_tenant` MCP tool so Paige can drive delete/invite/create from chat, plus
+  the operator affordances on `TenantDetailSheet`/`PlatformTenants`. This Part-2b delete uses a
+  migration precisely because that seam doesn't exist yet.
+
+---
+
 *Regenerate these figures whenever the tenant set changes; this report is the anchoring reality for
 the #29 metric reconciliation and is referenced by `docs/brain/config-registry.md` → "Tenant Account
 Types."*
