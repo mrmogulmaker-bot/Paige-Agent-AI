@@ -268,13 +268,19 @@ export default function PlatformTenants() {
       </StatRow>
 
       {/* Revenue-class split (#29) — the operator-honest read: paying customers vs
-          comped/promotional vs internal-test. Keeps the inflated "every workspace =
-          revenue" impression from ever forming. Operator-only; never tenant-visible. */}
-      <StatRow cols={3}>
-        <StatTile label="Paying" value={revClass.paid} icon={CircleDollarSign} loading={loading} />
-        <StatTile label="Promotional" value={revClass.promotional} icon={Gift} loading={loading} />
-        <StatTile label="Internal / test" value={revClass.internal} icon={FlaskConical} loading={loading} />
-      </StatRow>
+          comped/promotional vs internal-test. A titled sub-section (not a bare second
+          tile row) so the different axis reads as intentional, not an off-grid pile
+          (§25 design-critic fix). Operator-only; never tenant-visible. */}
+      <div className="space-y-2.5">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Revenue mix
+        </p>
+        <StatRow cols={3}>
+          <StatTile label="Paying" value={revClass.paid} icon={CircleDollarSign} loading={loading} />
+          <StatTile label="Promotional" value={revClass.promotional} icon={Gift} loading={loading} />
+          <StatTile label="Internal / test" value={revClass.internal} icon={FlaskConical} loading={loading} />
+        </StatRow>
+      </div>
 
       <Toolbar>
         <h2 className="font-display text-base font-semibold text-foreground">All tenants</h2>

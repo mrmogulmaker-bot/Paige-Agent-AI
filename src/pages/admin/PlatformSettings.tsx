@@ -131,7 +131,7 @@ function PlatformDefaultsPanel() {
   return (
     <SectionCard
       title="Platform Defaults"
-      description="The coaching-generic default sets that ship to every new workspace."
+      description="The generic starter templates every new workspace inherits."
       icon={LayoutTemplate}
     >
       {defaultsTenant ? (
@@ -139,9 +139,9 @@ function PlatformDefaultsPanel() {
           <p className="text-sm text-muted-foreground">
             These are the platform-wide starting templates — persona, journeys, email
             sets, and Playbook scaffolding — that every new workspace inherits. They stay
-            coaching-generic (no vertical's copy, no finance defaults) so each business can
+            generic (no industry-specific wording, no finance content) so each business can
             author its own on top. Open the defaults workspace to review or update them; the
-            changes apply to what future workspaces receive, never to an existing tenant's
+            changes apply to what future workspaces receive, never to an existing business's
             own authored content.
           </p>
           <Button variant="outline" onClick={() => switchTenant(defaultsTenant.id)}>

@@ -157,12 +157,15 @@ export function TenantSwitcher() {
       onClick={() => switchTenant(t.id)}
       className="flex items-center justify-between"
     >
-      <div className={`flex items-center gap-2 min-w-0 ${indent ? "pl-5" : ""} ${dim ? "opacity-60" : ""}`}>
+      {/* Internal-test rows de-emphasize the NAME to a muted token (not a blanket
+          opacity-60 over the row) so the already-muted 10px meta never gets an
+          opacity multiply that fails AA (§11/§23 design-critic fix). */}
+      <div className={`flex items-center gap-2 min-w-0 ${indent ? "pl-5" : ""}`}>
         {indent
           ? <CornerDownRight className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0" />
           : <Building2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />}
         <div className="min-w-0">
-          <div className="truncate text-sm">{t.name}</div>
+          <div className={`truncate text-sm ${dim ? "text-muted-foreground" : ""}`}>{t.name}</div>
           <div className="truncate text-[10px] uppercase tracking-wide text-muted-foreground">
             {`${t.account_type} · ${t.status}`}
           </div>
