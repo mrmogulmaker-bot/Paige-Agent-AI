@@ -36,6 +36,7 @@ import { performSignOut } from "@/lib/auth/signOut";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { AgentPresenceProvider, AgentPresence } from "@/components/ui/paige";
 
 // 7-hub top bar. Each hub has a primary route and optional sub-routes
 // surfaced via a dropdown so power users can jump deep with one click.
@@ -349,6 +350,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         ?? "Admin");
 
   return (
+    <AgentPresenceProvider>
     <VoiceDeviceProvider>
     {/* #140 A2 — the ONE dialer surface (a viewport Sheet), rendered once so every
         trigger + click-to-call opens the SAME pad on ANY breakpoint (§18). */}
@@ -359,7 +361,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     {/* #140 B2 — the ONE live-call co-pilot transcript panel. Rendered once so it
         appears on ANY surface the moment a call goes live (§18/§47/§48). */}
     <LiveTranscriptPanel />
-    <div className="h-dvh flex flex-col bg-background overflow-hidden">
+    {/* Wave 4 Slice 4a.1 — reserve the collapsed presence-rail gutter (md+) so the
+        docked rail never covers the working surface when idle (spec §3.5). The
+        expanded panel slides over content on demand. Suppressed on the immersive
+        Vibe Studio (§21 — Studio owns its full canvas; no separate Paige rail). */}
+    <div className={`h-dvh flex flex-col bg-background overflow-hidden${!isStudio ? " md:pr-[3.25rem]" : ""}`}>
       {/* Banner intentionally omitted on /admin — it's redundant when already on
           the admin dashboard. AppShell still renders it inside the client view. */}
       {/* Top bar — Pipedrive-style horizontal CRM nav. Hidden on Vibe Studio (immersive room). */}
@@ -766,7 +772,14 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
       >
         {children}
       </main>
+      {/* Wave 4 Slice 4a.1 — the persistent Paige presence: docked right-rail +
+          universal ⌘K launcher, account-type-aware (spec §5/§5a). Auth-gated by
+          living only in this operator/tenant console shell; hidden on the immersive
+          Vibe Studio (§21). Mobile uses a different surface (later slice), so the
+          rail self-hides under md. */}
+      {!isStudio && <AgentPresence />}
     </div>
     </VoiceDeviceProvider>
+    </AgentPresenceProvider>
   );
 }
