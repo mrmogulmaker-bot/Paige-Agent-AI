@@ -12,6 +12,12 @@
 // layout, interaction, or the reduced-motion effect resolving — it CANNOT see FLIP motion, the
 // Explore reveal, hover-lift, or AA contrast in a real browser. The live taste-drive across the
 // 5-surface composition + FLIP + both themes is OWED to a browser-capable session (§32.c).
+// COVERAGE CAVEAT (§13/§32.c): under renderToStaticMarkup recharts' ResponsiveContainer measures a
+// 0×0 box and short-circuits, drawing NO <svg>/<path>, so the empty/single/large CHART-branch
+// assertions here are React-tree ASSEMBLY smoke (the component tree builds without throwing), NOT
+// render/geometry smoke — only the `<2`-point flat-baseline branch (a plain <div>, no recharts) is
+// truly render-verified headless; recharts geometry, NaN-path guarding, and 400-point perf are all
+// owed to the §32.c browser drive.
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TableRow, TableCell } from "@/components/ui/table";

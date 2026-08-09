@@ -48,6 +48,10 @@ import { StatPill, type StatPillProps } from "./StatPill";
  *   a crafted `empty` naming what makes it populate — no fake series, no zero-fill.
  * - §11 motion-safe: recharts `isAnimationActive={!reduced}` via useReducedMotion.
  * - Token-only, AA in both themes (the --chart tokens carry a light + dark value).
+ * - §11/§13 accessibility (CVD): multi-series charts are distinguished by a text LEGEND
+ *   (color swatch + label) and each series is NAMED in the tooltip — series are never
+ *   identified by color alone. Honest scope: end-of-line DIRECT LABELS are NOT implemented;
+ *   the secondary encoding here is the legend + tooltip name, not per-line labels.
  */
 
 /** A single series/slice/bar. `colorVar` is a --chart-N token name; omit to auto-assign. */

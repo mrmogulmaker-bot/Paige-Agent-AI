@@ -20,6 +20,10 @@ import { cn } from "@/lib/utils";
  *   the open state also lifts to shadow-lg so the depth change reads.
  * - §11 GOLD DISCIPLINE: nothing here is gold — the container is the neutral card ground.
  *   A selection/focus emphasis, if the caller adds one, is indigo (--ring), never gold.
+ * - §25 NO CARD-ON-CARD: this container draws its own border/bg/shadow by default. If the
+ *   `summary`/`detail` you pass ALSO carries card chrome (e.g. a MetricEntityCard, which has
+ *   its own border + shadow), pass `bare` so the outer chrome drops — a card-in-a-card is a
+ *   named CHEESY-TELL. Use `bare` whenever the child already reads as a card.
  */
 export interface DrillContainerProps {
   open: boolean;
@@ -29,7 +33,10 @@ export interface DrillContainerProps {
   layoutId?: string;
   /** Override the spring (stiffness/damping). Ignored under reduced motion. */
   spring?: Transition;
-  /** Drop the default card chrome (border/bg/shadow) when the caller supplies its own. */
+  /**
+   * Drop the default card chrome (border/bg/shadow) when the caller supplies its own — e.g. when
+   * `summary`/`detail` is itself a card (MetricEntityCard) to avoid a card-on-card CHEESY-TELL (§25).
+   */
   bare?: boolean;
   className?: string;
 }

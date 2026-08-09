@@ -45,7 +45,11 @@ export interface MetricEntityCardProps {
   onClick?: () => void;
   /** Selected/expanded emphasis — indigo ring (never gold). */
   selected?: boolean;
-  /** Reflected on the drill trigger for assistive tech when this card owns an expanding panel. */
+  /**
+   * Reflected on the drill trigger for assistive tech when this card owns an expanding panel.
+   * When the card is interactive (has `onClick`) and this is omitted, it defaults to `false` so
+   * screen readers announce a collapsed/expandable control; a non-interactive card sets no aria.
+   */
   expanded?: boolean;
   loading?: boolean;
   className?: string;
@@ -165,7 +169,7 @@ export function MetricEntityCard({
     <motion.button
       type="button"
       onClick={onClick}
-      aria-expanded={expanded}
+      aria-expanded={expanded ?? false}
       whileHover={reduce ? undefined : { y: -2 }}
       whileTap={reduce ? undefined : { y: 0 }}
       transition={{ type: "spring", stiffness: 400, damping: 30 }}
