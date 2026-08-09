@@ -45,6 +45,13 @@ jobs:
           # A bun-based CI for prod-build fidelity is a tracked Lane F follow-up.
 
       - name: Install
+        # PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: CI never launches a browser (the live-drive helper +
+        # scripts/live-drive run only in a capable session, not in ci.yml), so the `playwright`
+        # devDep must NOT pull ~150MB of Chromium on every install. A dev machine deliberately does
+        # NOT set this, so a local `npm install` still fetches Playwright's own bundled browser for
+        # running live-drive. (scoped to CI, not global — see scripts/live-drive/README.md.)
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         run: npm install --no-audit --no-fund
 
       # --- Changed-file gates (PR only — a push to main has no PR base). Cheap checks first. -----

@@ -28,3 +28,7 @@ dist-ssr
 # (and every teammate) gets them.
 .claude/*
 !.claude/commands/
+
+# Live-drive helper screenshot artifacts — rendered PNGs are never committed (may contain
+# authed-surface pixels); credentials are ENV-only and never written to disk. (scripts/live-drive)
+scripts/live-drive/artifacts/
