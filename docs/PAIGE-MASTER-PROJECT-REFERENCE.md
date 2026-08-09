@@ -192,6 +192,12 @@ The rich two-way client inbox is fully shipped and mounted (this REPLACES an ear
 - ✅ **§38 money boundary doctrine** (PR #230)
 - ✅ **Chat compaction substrate** (BRD §174-176) — in `paige-ai-chat/index.ts`.
 
+### Merged 2026-08-09 (this batch)
+
+- ✅ **#412 — Tenant revenue classification + $0-ARR honesty** (PR #412, merged 2026-08-09). `tenant_revenue_classification` (paid/promotional/internal_test, operator-only) + topology corrections + hard-delete-cascade of 2 retired tenants (Paige Operations + Claude Studio Dev) + Platform Defaults relocation + Part-5 tenant-switcher nesting + `operator_dashboard_metrics` reconciliation to real revenue + `paige-mcp` revenue-class splits. **§32.a persisted-apply GREEN on prod** — `schema_migrations` advanced, 11→9 tenants, 4 PME sub-accounts, 0 paid-class → Fleet Console reconciled to the honest **$0 ARR**.
+- ✅ **#413 — Master project reference + §0 session-start rule** (PR #413, merged 2026-08-09). THIS doc, established as the single source of truth; `CLAUDE.md §0` (read the master doc at session start / major builds / "do we have X?" checks).
+- ✅ **#410 — Second Brain** (`docs/brain/`, PR #410, merged 2026-08-09) + §BRAIN discipline (proposed). README index + `config-registry.md` + `decision-log.md` + `lessons-learned.md` + `glossary.md` + `codebase-map.md` — a verified, read-before-work knowledge base so sessions stop re-diagnosing documented systems.
+
 ### Backend seams
 
 - ✅ 231+ edge functions across auth/comms/paige-core/marketplace/growth/tenant-admin/integration/credit-funding/cron
@@ -231,9 +237,11 @@ Grouped:
 
 ### In-flight (as of 2026-08-09)
 
-- 🔥 **PR #412 — Tenant revenue classification + ARR reconciliation** (task #29). Topology fix + hard-delete-cascade of Paige Operations + Claude Studio Dev + Platform Defaults relocation + Part-5 dropdown + reconciliation + MCP splits. All owner decisions ruled 2026-08-09. §39 peer-gate: 4 findings all resolved (Finding 1 backed by persisted prod COUNT). Awaiting owner §32.c live-drive → merge.
-- 🔥 **PR #410 — Second Brain** (task #26). Awaiting owner review on §BRAIN wording → merge.
+- 🔥 **PR #415 — Revenue integrity chain** (task #31, Wave 8 launch gate). Fail-closed trigger (`enforce_revenue_integrity_chain`) + operator audit RPC (`operator_revenue_integrity_audit`) + Fleet Console audit UI. §30-diagnosed (handoff schema wrong on every gate → real tables), §37 producer inventory clean, §39 peer-gate + §5 compliance BOTH passed (2 §39 defects + 1 §5 blocker fixed), §32.b proven against the verbatim file. **Draft PR, owner §32.c-gated.** See Section 10.
+- 🔥 **Second Brain now LIVE on main** (`docs/brain/`, PR #410 merged 2026-08-09). §BRAIN.1/.2/.3 discipline binds: read `docs/brain/README.md` at session start; answer "do we have X?" from the brain; update the relevant brain file in the same commit as a change.
 - 🔥 **Wave 2.5 tail** per canonical-build-order.
+
+*(PR #412 revenue classification + $0-ARR and PR #413 master doc + §0 both merged 2026-08-09 — moved to Section 4 SHIPPED.)*
 
 ### MVP-blocking gaps (all-open)
 
@@ -243,7 +251,7 @@ Grouped:
 - ❌ **SMS-in-signup** — phone capture not in signup migrations (task #23).
 - ❌ **`delete_tenant` RPC + MCP tool** — task #30 scope (§10 Paige-callable).
 - ❌ **Stripe Connect direct-charge posture verify + BYO tenant processor lane** — Money Spine B-Connect deferred but needed for full §38 posture.
-- ❌ **`signup_intake` table** — referenced but doesn't exist; align vocabulary to `signup_completion_gate`.
+- ✅ **`signup_intake` table EXISTS** (was a false gap — CC live-prod check, task #31 §30 diagnose; §10 correction reverses Cowork miss #3). Per-user pre-provisioning intake (`user_id, account_type, agreement_slug, agreement_version, terms_accepted_at, plan_slug, billing_period, consumed_at`); tenant-level agreement acceptance lands in `legal_acceptances` + `profiles.terms_accepted_at` via `provision_tenant`. Not a gap.
 
 ### Post-MVP CX workstream
 
