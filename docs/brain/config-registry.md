@@ -25,10 +25,10 @@ Last full verification pass: **2026-08-09**.
 |---|---|---|
 | Project ref / `project_id` | `xygzykjyynhzqytbqnzu` | ✅ `supabase/config.toml` line 1 + Supabase MCP `get_project` |
 | Prod URL | `https://xygzykjyynhzqytbqnzu.supabase.co` | ✅ derived from ref; appears in live Stripe webhook `url` |
-| Migrations applied on prod | **762** | ✅ MCP `SELECT count(*) FROM supabase_migrations.schema_migrations` |
-| Latest applied migration | `20260811120000` | ✅ MCP `SELECT max(version)` — matches repo's latest `.sql` (zero drift) |
-| Repo migration files | 762 `.sql` | ✅ `find supabase/migrations -name '*.sql' \| wc -l` |
-| Edge functions | **242** dirs under `supabase/functions/` | ✅ `ls -d supabase/functions/*/` |
+| Migrations applied on prod | **764** | ✅ MCP `SELECT count(*) FROM supabase_migrations.schema_migrations` (2026-08-09) |
+| Latest applied migration | `20260813000000` | ✅ MCP `SELECT max(version)` — matches repo's latest `.sql` (zero drift); incl. #408/#409 |
+| Repo migration files | 764 `.sql` | ✅ `ls supabase/migrations/*.sql \| wc -l` |
+| Edge functions | **243** dirs excl. `_shared/` | ✅ `ls -d supabase/functions/*/ \| grep -v _shared` |
 | Tenants | 11 (10 `standalone`, 1 `agency`) | ✅ MCP `SELECT account_type, count(*) FROM tenants GROUP BY 1` |
 
 **Config/settings tables present on prod** (✅ MCP `information_schema.tables ~ 'config|setting|platform_'`):
@@ -93,9 +93,11 @@ relying on either. (Secret **values** intentionally not recorded.)
 
 - **Signup verification = EMAIL only.** `src/pages/PublicSignup.tsx` uses email verification
   (`CommunicationsConsent … showSms={false}`, "click it to verify your account"). **SMS/phone
-  verification is NOT built in signup** — the `input-otp` shadcn primitive exists and OTP is used for
-  Auth/MFA, but nothing wires phone verification into the signup flow. *(Recorded honestly so a session
-  doesn't assume SMS-in-signup exists — see `decision-log.md` → "Known-unbuilt / spec-only status.")*
+  verification is NOT wired into the signup flow** — the `input-otp` primitive exists and OTP is used
+  for Auth/MFA, but signup doesn't use it. **SMS phone-verify itself DOES exist** for notification
+  opt-in: `send-sms-verification` + `verify-sms-code` edge fns + `sms_verifications` table, wired in
+  `NotificationsSettings.tsx`. *(So "do we have SMS verify?" = yes for notifications, no for signup —
+  see `decision-log.md` → "Known-unbuilt / spec-only status.")*
 - **`signup_intake` table** — migration `20260810000000_signup_flow_reorder_intake.sql` (PR #404,
   onboarding-before-checkout reorder). Consumers: `stripe-webhook`, `WorkspaceProvisioner.tsx`.
 - **Acceptance/completion gate** — migration `20260714013653_signup_completion_gate.sql`; client guard

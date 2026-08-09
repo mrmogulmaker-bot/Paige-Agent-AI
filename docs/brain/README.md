@@ -43,9 +43,11 @@ worse than none — it lies with authority.
 All figures below were checked live this session; how each was verified is in `config-registry.md`.
 
 - **Supabase project ref:** `xygzykjyynhzqytbqnzu` (verified: `config.toml`, Supabase MCP).
-- **Migrations:** **762** applied on prod = 762 `.sql` files in repo → **zero drift**; latest
-  `20260811120000` (verified: `supabase_migrations.schema_migrations` via MCP + repo `find`).
-- **Edge functions:** **242** function directories under `supabase/functions/` (verified: `ls`).
+- **Migrations:** **764** applied on prod = 764 `.sql` files in repo → **zero drift**; latest
+  `20260813000000` (verified 2026-08-09: `supabase_migrations.schema_migrations` via MCP `count`/`max`
+  = 764/`20260813000000` + repo `ls`; incl. #408 `20260812000000` + #409 `20260813000000`, §32.a-confirmed).
+- **Edge functions:** **243** function directories under `supabase/functions/` excl. `_shared/`
+  (verified: `ls -d */`). Count churns as functions ship — see `codebase-map.md` for the theme groups.
 - **Tenants on prod:** **11** — 10 `account_type='standalone'`, 1 `'agency'` (verified: MCP query).
 - **Stripe account:** `acct_1TvndiLUcYKxolNa` "Paige Agent AI" (verified: Stripe MCP).
 - **Active platform plans:** DB `platform_subscription_plans` = solo · agency · enterprise (all

@@ -128,6 +128,16 @@ Grouped by theme with the load-bearing names (not all 241 enumerated — group +
 | **Webhooks (generic in/out)** | ~14 | `handle-inbound-webhook`, `fire-outbound-webhooks`, `webhook-inbound`, per-vendor `handle-*-webhook` |
 | **DocuSign / signatures** | 2 | `docusign-send-envelope`, `handle-docusign-webhook` |
 | **Automation connectors** | ~3 | `paige-n8n`, `call-zapier-action`, `send-telegram` |
+| **Privacy / GDPR / consent** | 4 | `export-clients-csv` (data export), `request-data-deletion` + `process-data-deletion` (GLBA/CCPA right-to-erasure), `log-consent` (consent audit trail) — admin route `/admin/.../data-registry` |
+| **Content drafting (standalone copy, §19)** | 1 | `content-draft` — the ONE home for standalone marketing copy (posts, ads, email campaigns, captions, blog outlines, SMS broadcasts); Paige drafts in chat, never a Studio artifact type |
+| **Web search / deep research** | ~4 | `paige-web-search`, `paige-deep-research`, `web-search`, `paige-problem-reverse-engineer` |
+| **Browser automation (Twin-A)** | 1 | `browser-use` (Browserbase headless Chrome; secrets `BROWSERBASE_*`) |
+| **Web push** | ~1 | `send-push-notification` (VAPID; `VAPID_*` secrets + client push-subscription path) |
+| **Operator/God user-management** | ~5 | `admin-list-users`, `admin-delete-user`, `admin-force-signout`, `admin-account-actions`, `admin-drop-bucket` |
+| **Invoicing / payment confirmation** | ~2 | `generate-invoice`, `send-payment-confirmation-email` (+ `platform_invoices` table, §38) |
+| **LMS backend** | ~3 | `issue-certificate`, `track-lesson-progress`, `enroll-user-in-course` (front end = `/learn` + `LearningVault`) |
+| **Scheduler / cron / reminders** | ~6 | `schedule-automated-tasks`, `coaching-reminder-cron`, `plan-reminder-cron`, `weekly-summary-cron`, `task-reminder-notifications`, `dispatch-stage-automation` |
+| **SMS phone-verify (notifications)** | 2 | `send-sms-verification`, `verify-sms-code` (+ `sms_verifications` table) — wired in `NotificationsSettings.tsx`; NOT wired into signup (see decision-log Known-unbuilt) |
 
 *(The count churns as functions ship; index the **theme groups + load-bearing names** here, not a bare
 number. `/edge-drift` shows what's ahead of prod.)*
@@ -177,6 +187,8 @@ the derived `funding_enabled` signal + marketplace-install checks.)*
 | **QuickBooks** | `_shared/quickbooks-utils.ts`; `quickbooks-oauth-*`, `quickbooks-sync-financials`, `quickbooks-webhook` | ✅ (funding lane) |
 | **DocuSign** | `_shared/docusignJwt.ts`; `docusign-send-envelope`, `handle-docusign-webhook` | ✅ |
 | **Apollo / iSoftPull / SmartCredit / SMTP** | `apollo-*`; `isoftpull-*`; `smartcredit-*`; `_shared/smtp.ts` | ✅ (funding/enrichment lane) |
+| **Browserbase** | `browser-use` (headless Chrome, Twin-A browser agent; `BROWSERBASE_*` secrets) | ✅ |
+| **Firecrawl** | web crawl for research (`FIRECRAWL_API_KEY`) | ✅ |
 | **LLM / media providers** | `_shared/`: `claude.ts`, `openai.ts`, `groq.ts`, `gemini-image.ts`, `replicate.ts`, `voyage.ts`, `ideogram.ts`, `meshy.ts` (via model-router §14) | ✅ |
 
 ---

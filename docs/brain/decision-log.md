@@ -103,9 +103,11 @@ Each is an owner ruling now living in `CLAUDE.md` (see `glossary.md` for the sec
 
 A recorded "not built" prevents the exact false-confidence the brain exists to kill. Verified 2026-08-09:
 
-- **SMS/phone verification in signup — NOT built.** Signup uses **email verification only**
-  (`PublicSignup.tsx`, `showSms={false}`). `input-otp` primitive exists (used for Auth/MFA) but is
-  unwired for signup. (config-registry → "Signup / onboarding / provisioning".)
+- **SMS/phone verification in SIGNUP — NOT built** (scoped claim). Signup uses **email verification
+  only** (`PublicSignup.tsx`, `showSms={false}`); `input-otp` primitive exists but is unwired for
+  signup. **BUT SMS phone-verify DOES exist elsewhere** — `send-sms-verification` + `verify-sms-code`
+  edge fns + `sms_verifications` table, wired into `NotificationsSettings.tsx` for notification opt-in.
+  So "do we have SMS verify?" = yes for notifications, no for signup. (config-registry → "Signup".)
 - **Promo account type — spec LOCKED, NOT implemented.** `docs/product/promo-account-type-spec.md`
   exists; there is **no** `account_type='promo'` value or migration in the schema. Do not read the
   LOCKED spec as "built."
