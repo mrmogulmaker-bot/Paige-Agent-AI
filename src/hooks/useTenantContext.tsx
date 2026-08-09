@@ -87,6 +87,15 @@ export interface TenantSummary {
   /** Capability flag: 'standalone' | 'agency' | 'enterprise'. Gates sub-accounts. */
   account_type: string;
   parent_tenant_id: string | null;
+  /**
+   * Operator-internal REVENUE classification (#29): 'paid' | 'promotional' |
+   * 'internal_test'. Orthogonal to `account_type` (topology) and `status`
+   * (lifecycle). Populated ONLY for platform staff (the operator-only
+   * `tenant_revenue_classification` table is RLS-gated to is_platform_owner — a
+   * tenant member's read returns nothing, so this stays `null` for them, §9).
+   * `null` also covers the pre-#29-migration window (table absent → graceful null).
+   */
+  revenue_class: string | null;
 }
 
 interface TenantContextState {
@@ -155,7 +164,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       }
       activeUidRef.current = uid;
 
-      const [owner, staff, profileRes, tenantsRes] = await Promise.all([
+      const [owner, staff, profileRes, tenantsRes, classRes] = await Promise.all([
         supabase.rpc("is_platform_owner"),
         supabase.rpc("is_platform_admin"),
         // #233: fold `agency_login_default` into the SAME round-trip (never a
@@ -166,17 +175,38 @@ export function TenantProvider({ children }: { children: ReactNode }) {
           .from("tenants")
           .select("id, slug, name, status, plan_offer, seat_limit, customer_limit, owner_user_id, account_type, parent_tenant_id")
           .order("created_at", { ascending: true }),
+        // #29: operator-internal revenue classification, for the operator switcher's
+        // grouping. RLS (is_platform_owner) returns rows ONLY to platform staff — a
+        // tenant member gets an empty set (never their own class, §9). A missing
+        // table (pre-migration window) or any error degrades to "no classes" — the
+        // switcher then falls back to an ungrouped list, never a crash (§13/§32).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        supabase.from("tenant_revenue_classification" as any).select("tenant_id, revenue_class"),
       ]);
 
       // On a BACKGROUND revalidation, never degrade a good state on a transient
       // failure — bail and keep the last successfully-resolved context; the next auth
       // event (or a user action) retries. The initial load still commits what resolves
       // (empty on error is the honest first-paint, corrected by the next event).
+      // NOTE: classRes is intentionally NOT in this guard — the classification is an
+      // enhancement; its absence (pre-migration / non-staff) must never block the shell.
       if (background && (owner.error || staff.error || tenantsRes.error)) return;
 
       setIsPlatformOwner(Boolean(owner.data));
       setIsPlatformStaff(Boolean(staff.data));
-      setTenants((tenantsRes.data ?? []) as TenantSummary[]);
+      // Merge the operator-only revenue_class onto each tenant (null when unknown).
+      const classById = new Map<string, string>();
+      if (!classRes.error && Array.isArray(classRes.data)) {
+        for (const row of classRes.data as Array<{ tenant_id: string; revenue_class: string }>) {
+          if (row?.tenant_id) classById.set(row.tenant_id, row.revenue_class);
+        }
+      }
+      setTenants(
+        ((tenantsRes.data ?? []) as Omit<TenantSummary, "revenue_class">[]).map((t) => ({
+          ...t,
+          revenue_class: classById.get(t.id) ?? null,
+        })) as TenantSummary[],
+      );
       // Platform staff must NOT be auto-scoped into a tenant just because RLS
       // lets them read all of them — they operate at the God tier by default.
       const baseActiveTenantId =
