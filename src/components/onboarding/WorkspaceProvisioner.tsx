@@ -82,7 +82,7 @@ const LANE_TO_AGREEMENT: Record<AccountType, string> = {
 };
 
 const ACCOUNT_TYPE_META: Record<AccountType, { title: string; blurb: string; Icon: typeof User }> = {
-  standalone: { title: "Solo", blurb: "Your own practice — one workspace, full control.", Icon: User },
+  standalone: { title: "Solo", blurb: "Your own business — one workspace, full control.", Icon: User },
   agency: { title: "Agency", blurb: "Run many businesses — sub-accounts under your roof.", Icon: Network },
   enterprise: { title: "Enterprise", blurb: "Agency at scale — higher limits and white-label headroom.", Icon: Building2 },
 };
@@ -108,6 +108,10 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
     planSlug && planSlug in PLAN_TO_ACCOUNT_TYPE ? PLAN_TO_ACCOUNT_TYPE[planSlug] : null;
   const isPaid = paidAccountType !== null;
   const accountType: AccountType = paidAccountType ?? "standalone";
+  // Enterprise is NOT self-serve — platform-subscription-checkout 400s it
+  // (plan_not_self_serve). Route it to the existing contact-sales affordance instead of
+  // a failing checkout that would also leave an orphaned intake row (Fix N3, §18 reuse).
+  const isEnterprise = accountType === "enterprise";
   const billing = normalizeBilling(billingPeriod);
 
   const [businessName, setBusinessName] = useState("");
@@ -149,7 +153,10 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
         agreement_slug: agreementSlug,
         agreement_version: agreement?.version ?? null,
         terms_accepted_at: new Date().toISOString(),
-        consumed_at: null,
+        // NOTE (§13): do NOT set consumed_at here. On a RE-stage (the user returns to
+        // /onboarding after a prior attempt) an explicit null would RESET a previously
+        // consumed audit marker. The column defaults null on the INSERT path only;
+        // omitting it from the upsert payload preserves any existing consumed_at.
       },
       { onConflict: "user_id" },
     );
@@ -223,6 +230,12 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
   };
 
   const submit = async () => {
+    // Enterprise: not self-serve — open the same contact-sales mailto used on
+    // /pricing and the homepage (§18), no form/terms gating for a sales inquiry.
+    if (isEnterprise) {
+      window.location.href = "mailto:sales@paigeagent.ai?subject=Enterprise%20Inquiry";
+      return;
+    }
     if (businessName.trim().length < 2) {
       toast({ title: "Name your business", description: "This becomes your workspace.", variant: "destructive" });
       return;
@@ -278,10 +291,16 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
             Setting up your {meta.title} workspace
           </p>
           <p className="mt-0.5 text-xs text-muted-foreground">{meta.blurb}</p>
-          {isPaid && (
+          {isPaid && !isEnterprise && (
             <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-foreground/80">
               <ShieldCheck className="h-3.5 w-3.5 text-primary" />
               14-day free trial · card on file · cancel anytime
+            </p>
+          )}
+          {isEnterprise && (
+            <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-foreground/80">
+              <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+              Enterprise is set up with our team — no self-serve checkout.
             </p>
           )}
         </div>
@@ -364,13 +383,13 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
         </div>
         <Button
           onClick={submit}
-          disabled={creating || businessName.trim().length < 2 || !agreed || !agreement}
+          disabled={creating || (!isEnterprise && (businessName.trim().length < 2 || !agreed || !agreement))}
           className="w-full h-11"
         >
           {creating ? (
             <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> {isPaid ? "Taking you to checkout…" : "Creating your workspace…"}</>
           ) : (
-            isPaid ? "Continue to checkout" : "Create my workspace"
+            isEnterprise ? "Contact Sales" : isPaid ? "Continue to checkout" : "Create my workspace"
           )}
         </Button>
       </div>

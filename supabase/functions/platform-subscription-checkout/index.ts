@@ -51,8 +51,9 @@
 // Price (task #66): the plan rows DO carry a registered `stripe_price_id`, verified
 // live to be the MONTHLY price object (there is no registered annual price). So the
 // MONTHLY leg uses `price: stripe_price_id` (links the real Stripe Product), and the
-// ANNUAL leg keeps INLINE `price_data` (12× monthly) — using the monthly price object
-// for annual would charge the wrong amount. See the PRICE block below for the guard.
+// ANNUAL leg keeps INLINE `price_data` (annual_price_cents, discounted; 12× monthly
+// only as the fallback when annual_price_cents is unset) — using the monthly price
+// object for annual would charge the wrong amount. See the PRICE block below.
 //
 // Stripe metadata is the SIGNED bridge the webhook trusts (§9): it carries
 // `platform_plan_slug` (the discriminant), platform_plan_id, tenant_id,
@@ -343,13 +344,17 @@ Deno.serve(async (req) => {
   //   • MONTHLY  → use the REGISTERED price (`price: stripe_price_id`) — this links the
   //     checkout to the real Stripe Product for catalog/reporting instead of minting an
   //     ad-hoc inline product every time (the bug this fixes).
-  //   • ANNUAL   → keep the INLINE price_data (12× monthly, matching the pricing page).
-  //     Using the monthly price object for an annual selection would charge the monthly
-  //     amount — a real billing bug — so inline is the correct, documented fallback for
-  //     annual until a registered annual Price exists.
-  // The registered id is used only when it matches the requested period AND its amount
-  // matches the plan row (guarded below), so a future price drift can never silently
-  // charge a stale amount.
+  //   • ANNUAL   → keep the INLINE price_data (annual_price_cents, discounted; falls
+  //     back to 12× monthly only when annual_price_cents is unset). Using the monthly
+  //     price object for an annual selection would charge the monthly amount — a real
+  //     billing bug — so inline is the correct, documented fallback for annual until a
+  //     registered annual Price exists.
+  // The registered Price id is used ONLY for the monthly period AND only when the plan
+  // row's monthly_price_cents equals the computed `amount`. NOTE (§13): this compares
+  // the DB row to itself — it does NOT fetch the Stripe Price's unit_amount, so it does
+  // NOT detect Stripe-side drift (a registered Price whose amount diverged from the DB).
+  // It only guards against using the monthly Price object for a non-monthly/mismatched
+  // amount; a true Stripe-vs-DB reconciliation would require a Stripe price retrieve.
   const interval = billingPeriod === "annual" ? "year" : "month";
   const registeredPriceId =
     typeof plan.stripe_price_id === "string" && plan.stripe_price_id.length > 0

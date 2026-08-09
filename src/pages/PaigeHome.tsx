@@ -15,6 +15,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
 import { paigeAnim } from "@/lib/paigeAnim";
 import { appUrl } from "@/lib/hostRouting";
+import { onboardingPathWithPlan } from "@/lib/auth/signupPlanIntent";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -434,6 +435,20 @@ export default function PaigeHome() {
       const { data: sessionRes } = await supabase.auth.getSession();
       if (!sessionRes.session?.user) {
         goAuth(`/auth?mode=signup&plan=${slug}&billing=monthly`);
+        return;
+      }
+      // S1 compliance hardening (mirrors Pricing.tsx): a signed-in but TENANT-LESS user
+      // has never seen the /onboarding clickwrap, so route them there to accept the
+      // subscriber agreement before checkout — never straight to Stripe. Direct checkout
+      // is reserved for the grandfathered has-tenant path. (On the marketing origin the
+      // session is usually null anyway; this covers a signed-in app-origin visit.)
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("active_tenant_id")
+        .eq("user_id", sessionRes.session.user.id)
+        .maybeSingle();
+      if (!prof?.active_tenant_id) {
+        goAuth(onboardingPathWithPlan({ plan: slug, billing: "monthly" }));
         return;
       }
       const { data, error } = await supabase.functions.invoke(

@@ -105,6 +105,19 @@ CREATE TRIGGER trg_signup_intake_touch
   FOR EACH ROW EXECUTE FUNCTION public.tg_signup_intake_touch();
 
 -- -----------------------------------------------------------------------------
+-- 1b. legal_acceptances unique index — the ON CONFLICT target provision_tenant_as
+--     relies on. It EXISTS on prod but was never captured in a migration, so a fresh
+--     rebuild (or a branch project) would lack it and the RPC's idempotent
+--     `ON CONFLICT (user_id, document_slug, document_version) DO NOTHING` would fail.
+--     Re-emitted byte-faithfully from prod (`SELECT indexdef FROM pg_indexes WHERE
+--     indexname='legal_acceptances_user_doc_version_uidx'`, verified this session — no
+--     partial/WHERE clause). IF NOT EXISTS ⇒ idempotent no-op on prod, correct on a
+--     fresh build (§32: a migration must reproduce prod, not assume it).
+-- -----------------------------------------------------------------------------
+CREATE UNIQUE INDEX IF NOT EXISTS legal_acceptances_user_doc_version_uidx
+  ON public.legal_acceptances USING btree (user_id, document_slug, document_version);
+
+-- -----------------------------------------------------------------------------
 -- 2. provision_tenant_as(...) — EXTENDED with the staged business context +
 --    agreement. Re-emitted VERBATIM from the merged Slice 1 body
 --    (20260808190000 L528-629) with ONLY these deltas:
