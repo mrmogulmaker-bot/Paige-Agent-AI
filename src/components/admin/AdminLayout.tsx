@@ -36,6 +36,16 @@ import { performSignOut } from "@/lib/auth/signOut";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { AgentPresenceProvider, AgentPresence } from "@/components/ui/paige";
+
+/**
+ * Height (rem) of THIS shell's fixed top bar on md+ (where the presence rail shows):
+ * Row 1 `h-14` (3.5rem) + Row 2 nav `h-11` (2.75rem) = 6.25rem. The presence rail
+ * docks below it (§39 S1). Kept in sync with the header markup below by name; the
+ * godMode gold top edge (`h-0.5`) sits ABOVE this and, being under the z-40 header
+ * over the z-30 rail, needs no offset compensation.
+ */
+const ADMIN_TOPBAR_REM = 6.25;
 
 // 7-hub top bar. Each hub has a primary route and optional sub-routes
 // surfaced via a dropdown so power users can jump deep with one click.
@@ -349,6 +359,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         ?? "Admin");
 
   return (
+    // launcherEnabled={!isStudio}: ⌘K only acts where the launcher renders — on Studio
+    // it's a no-op passthrough (§21). hasChatBody={false}: the shared Paige chat body
+    // isn't wired into the rail this slice, so the onboarding docked-open stays gated
+    // OFF (rail defaults collapsed, never opens onto an empty placeholder — §36/§13);
+    // flip to true when the chat body lands.
+    <AgentPresenceProvider launcherEnabled={!isStudio} hasChatBody={false}>
     <VoiceDeviceProvider>
     {/* #140 A2 — the ONE dialer surface (a viewport Sheet), rendered once so every
         trigger + click-to-call opens the SAME pad on ANY breakpoint (§18). */}
@@ -359,6 +375,20 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     {/* #140 B2 — the ONE live-call co-pilot transcript panel. Rendered once so it
         appears on ANY surface the moment a call goes live (§18/§47/§48). */}
     <LiveTranscriptPanel />
+    {/* Wave 4 Slice 4a.1 — reserve the collapsed presence-rail gutter (md+) so the
+        docked rail never covers the working surface when idle (spec §3.5). The
+        expanded panel slides over content on demand. Suppressed on the immersive
+        Vibe Studio (§21 — Studio owns its full canvas; no separate Paige rail).
+        NOTE (N1/§39): the `3.25rem` here MUST match AGENT_RAIL_COLLAPSED_REM (=3.25)
+        exported from `@/components/ui/paige` — Tailwind can't read the JS const in an
+        arbitrary value, so keep the two in sync by hand if either changes.
+        FIX (§11/§27): the gutter must NOT live on the column, or it insets EVERY child
+        including the full-bleed dark `<header>`, leaving a light `bg-background` notch in
+        the top-right corner above the fixed rail. So the header goes edge-to-edge, and
+        the gutter is applied per-child to the content regions that actually sit in the
+        rail's vertical band: the OperatorHubStrip strip and `<main>` (see below). The
+        mobile drawer is `md:hidden`+`fixed` (immune to `md:pr`) and the rail is md-only,
+        so neither the drawer nor the rail itself needs it. */}
     <div className="h-dvh flex flex-col bg-background overflow-hidden">
       {/* Banner intentionally omitted on /admin — it's redundant when already on
           the admin dashboard. AppShell still renders it inside the client view. */}
@@ -624,7 +654,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           on hubs without a strip (Paige has its own via PaigeTabsLayout; Marketplace /
           Analytics are bare). Desktop-only, matching the row-2 hub bar (mobile uses the drawer). */}
       {!isStudio && (
-        <div className="hidden md:block shrink-0">
+        <div className="hidden md:block shrink-0 md:pr-[3.25rem]">
           <OperatorHubStrip />
         </div>
       )}
@@ -757,16 +787,27 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           // Immersive Studio and the nested Clients Hub each own their internal
           // height/scroll contract. Every other route keeps the padded document
           // scroller. min-h-0 is required so every flex child may actually shrink.
+          // Non-Studio branches carry the collapsed-rail gutter (md:pr) so content clears
+          // the fixed rail; Studio has no rail, so no gutter. `md:pr-[3.25rem]` overrides
+          // the right side of `md:p-6` (Tailwind emits pr after the p shorthand) so the
+          // default scroller's content edge sits flush to the collapsed rail.
           isStudio
             ? "min-h-0 flex-1 overflow-hidden"
             : isClientsHub
-              ? "min-h-0 flex-1 overflow-hidden"
-              : `min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] p-3 sm:p-4 md:p-6`
+              ? "min-h-0 flex-1 overflow-hidden md:pr-[3.25rem]"
+              : `min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] p-3 sm:p-4 md:p-6 md:pr-[3.25rem]`
         }
       >
         {children}
       </main>
+      {/* Wave 4 Slice 4a.1 — the persistent Paige presence: docked right-rail +
+          universal ⌘K launcher, account-type-aware (spec §5/§5a). Auth-gated by
+          living only in this operator/tenant console shell; hidden on the immersive
+          Vibe Studio (§21). Mobile uses a different surface (later slice), so the
+          rail self-hides under md. */}
+      {!isStudio && <AgentPresence topOffsetRem={ADMIN_TOPBAR_REM} />}
     </div>
     </VoiceDeviceProvider>
+    </AgentPresenceProvider>
   );
 }
