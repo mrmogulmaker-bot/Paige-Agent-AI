@@ -11,10 +11,14 @@
 // Phases: 'auth' (create account / sign in) → 'sent' (confirm your email, when
 // email confirmation is required). A confirmed session routes to /onboarding.
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { signInWithOAuth } from "@/integrations/auth/oauth";
 import { signUpTenant } from "@/lib/auth/signUpTenant";
+import {
+  type PlanIntent, stashPlanIntent, readPlanIntent, clearPlanIntent,
+  normalizeBilling, onboardingPathWithPlan,
+} from "@/lib/auth/signupPlanIntent";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +33,20 @@ import { MailCheck } from "lucide-react";
 export default function PublicSignup() {
   const { toast } = useToast();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  // Plan intent (task #66): /signup may be reached with ?plan=<slug>&billing=<period>
+  // (e.g. a pricing CTA that points here). Preserve it through to /onboarding so the
+  // paid business-context + terms + checkout step runs, exactly like /auth.
+  const urlPlanIntent = (): PlanIntent | null => {
+    const plan = searchParams.get("plan");
+    if (!plan) return null;
+    return {
+      plan,
+      billing: normalizeBilling(searchParams.get("billing")),
+      invite: searchParams.get("invite") || undefined,
+    };
+  };
 
   const [phase, setPhase] = useState<"auth" | "sent">("auth");
   const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
@@ -39,8 +57,13 @@ export default function PublicSignup() {
   const [resendBusy, setResendBusy] = useState(false);
   const [commsConsent, setCommsConsent] = useState<CommsConsentState>(EMPTY_COMMS_CONSENT);
 
-  // Once authenticated, hand off to the onboarding gate (provision or forward).
-  const goOnboarding = () => navigate("/onboarding", { replace: true });
+  // Once authenticated, hand off to the onboarding gate (provision or forward),
+  // CARRYING any chosen plan (from the URL now, or the stash after an OAuth hop).
+  const goOnboarding = () => {
+    const intent = urlPlanIntent() ?? readPlanIntent();
+    clearPlanIntent();
+    navigate(onboardingPathWithPlan(intent), { replace: true });
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -60,6 +83,10 @@ export default function PublicSignup() {
   const handleSso = async (provider: "google" | "apple") => {
     setAuthBusy(true);
     try {
+      // Stash any chosen plan so it survives the OAuth round-trip; the return lands
+      // back on /signup, whose auth listener re-hydrates it into /onboarding.
+      const intent = urlPlanIntent();
+      if (intent) stashPlanIntent(intent);
       const result = await signInWithOAuth(provider, window.location.origin + "/signup");
       if (result.error) {
         toast({ title: "Sign-in failed", description: String(result.error.message || result.error), variant: "destructive" });

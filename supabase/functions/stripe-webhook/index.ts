@@ -814,14 +814,98 @@ serve(async (req) => {
                     hasSub: !!stripeSubId,
                   });
                 } else {
+                  // ── task #66: read the STAGED signup_intake row ─────────────────
+                  // The /onboarding step staged the buyer's business context + chosen
+                  // plan + derived account_type + accepted agreement here BEFORE the
+                  // Stripe hop. Provision the tenant from it so a paid customer gets the
+                  // REAL name / industry / account_type + a logged agreement — never the
+                  // old hardcoded null/standalone. Service role ⇒ RLS-exempt read.
+                  // ── SECURITY (§9/§13): TIER is derived from the Stripe-SIGNED plan
+                  //    slug ONLY — NEVER from signup_intake. signup_intake is a
+                  //    client-writable row (RLS lets a user upsert their OWN row with
+                  //    ANY account_type), so trusting intakeRow.account_type would let a
+                  //    buyer pay the solo price with {plan_slug:solo, account_type:agency}
+                  //    staged and get provisioned as agency. session.metadata.platform_
+                  //    plan_slug is set by platform-subscription-checkout from the price
+                  //    actually PAID — the only trustworthy tier. enterprise never reaches
+                  //    here (checkout 400s non-self-serve); the map covers every live case.
+                  const planSlugMeta = session.metadata.platform_plan_slug ?? "";
+                  const derivedType =
+                    planSlugMeta === "agency"
+                      ? "agency"
+                      : planSlugMeta === "enterprise"
+                        ? "enterprise"
+                        : "standalone";
+                  const acctType = derivedType; // NEVER intakeRow.account_type.
+
+                  // ── AGREEMENT (§9 compliance): derived from the TRUSTED tier and
+                  //    ALWAYS written — never taken from the client-staged intakeRow.
+                  //    Map tier → its saas-* subscriber-agreement slug (mirrors
+                  //    WorkspaceProvisioner LANE_TO_AGREEMENT — no shared module is
+                  //    reachable from an edge fn, §18), then resolve the CURRENT version
+                  //    from legal_documents (the source of truth). provision_tenant_as
+                  //    re-validates is_current before it logs the row. This guarantees a
+                  //    subscriber-agreement acceptance is recorded for EVERY paid
+                  //    provision — including a direct-checkout path with no intake row.
+                  const LANE_TO_AGREEMENT: Record<string, string> = {
+                    standalone: "saas-standalone",
+                    agency: "saas-agency",
+                    enterprise: "saas-enterprise",
+                  };
+                  const agreementSlug = LANE_TO_AGREEMENT[acctType] ?? "saas-standalone";
+                  const { data: legalDoc } = await supabaseAdmin
+                    .from("legal_documents")
+                    .select("version")
+                    .eq("slug", agreementSlug)
+                    .eq("is_current", true)
+                    .maybeSingle();
+                  const agreementVersion =
+                    (legalDoc as { version?: number } | null)?.version ?? null;
+                  if (agreementVersion === null) {
+                    // Honest degrade (§13): no current agreement doc ⇒ we cannot log the
+                    // acceptance, but provisioning must not be blocked. Log loudly.
+                    logStep("Platform subscription: no current agreement for tier", {
+                      sessionId: session.id,
+                      acctType,
+                      agreementSlug,
+                    });
+                  }
+
+                  // Read the staged intake row for BUSINESS CONTEXT ONLY (name / industry
+                  // / team_size / who_you_help) — and ONLY when it belongs to THIS
+                  // purchase: its staged plan_slug must match the signed plan slug AND it
+                  // must be unconsumed. A stale row from a cancelled prior checkout, or a
+                  // row staged for a different plan, is ignored entirely (fall back to
+                  // the no-intake nulls). Service role ⇒ RLS-exempt read.
+                  const { data: intakeRow } = await supabaseAdmin
+                    .from("signup_intake")
+                    .select(
+                      "plan_slug, business_name, industry, team_size, who_you_help, consumed_at",
+                    )
+                    .eq("user_id", actorUserId)
+                    .maybeSingle();
+                  const intakeMatches =
+                    !!intakeRow &&
+                    intakeRow.plan_slug === planSlugMeta &&
+                    intakeRow.consumed_at == null;
+                  const ctx = intakeMatches ? intakeRow : null;
+
                   // §32 idempotent per owner: on a webhook replay provision_tenant_as
                   // returns the SAME top-level tenant (tenants_one_toplevel_per_owner),
-                  // so the subscription upsert below simply no-ops.
+                  // so the subscription upsert below simply no-ops. The extended RPC
+                  // writes the subscriber-agreement legal_acceptances row idempotently
+                  // (ON CONFLICT DO NOTHING) — a backstop for the accept-time frontend
+                  // write, so terms are recorded even if that write failed.
                   const { data: provData, error: provErr } =
                     await supabaseAdmin.rpc("provision_tenant_as", {
                       _owner: actorUserId,
-                      _name: null,
-                      _account_type: "standalone",
+                      _name: ctx?.business_name ?? null,
+                      _account_type: acctType,
+                      _industry: ctx?.industry ?? null,
+                      _team_size: ctx?.team_size ?? null,
+                      _description: ctx?.who_you_help ?? null,
+                      _agreement_slug: agreementSlug,
+                      _agreement_version: agreementVersion,
                     });
                   // rpc returns the single tenants row; handle array/object defensively.
                   const tenantRow = Array.isArray(provData)
@@ -871,6 +955,27 @@ serve(async (req) => {
                         status: platformStatus,
                         rows: upserted?.length ?? 0,
                       });
+
+                      // task #66: mark the staged intake CONSUMED (audit trail, §13 —
+                      // retained, not deleted). Only the row that MATCHED this purchase
+                      // (same signed plan slug, unconsumed) is consumed — a stale/
+                      // mismatched row is left untouched. Idempotent: the
+                      // .is('consumed_at', null) predicate makes an already-consumed row
+                      // a 0-row update on webhook replay.
+                      if (intakeMatches) {
+                        const { error: consumeErr } = await supabaseAdmin
+                          .from("signup_intake")
+                          .update({ consumed_at: now })
+                          .eq("user_id", actorUserId)
+                          .is("consumed_at", null);
+                        if (consumeErr) {
+                          logStep("Platform subscription: intake consume failed", {
+                            sessionId: session.id,
+                            actorUserId,
+                            error: consumeErr.message,
+                          });
+                        }
+                      }
 
                       // Mark a super-admin invite consumed. The provisioned owner IS
                       // actorUserId (provision_tenant_as(_owner: actorUserId)).

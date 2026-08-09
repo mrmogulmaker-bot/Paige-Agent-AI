@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Footer } from "@/components/landing/Footer";
 import { PageHead } from "@/components/seo/PageHead";
 import { supabase } from "@/integrations/supabase/client";
+import { onboardingPathWithPlan } from "@/lib/auth/signupPlanIntent";
 
 /**
  * /pricing — Tier-1 platform subscription (Tenant → Paige). This is the public
@@ -165,14 +166,34 @@ export default function Pricing() {
         const { data: sessionRes } = await supabase.auth.getSession();
         const signedIn = Boolean(sessionRes.session?.user);
 
-        // Not signed in → carry the plan intent into signup; Auth.tsx auto-launches
-        // checkout for this plan the moment the session is established.
+        // Not signed in → carry the plan intent into signup. After the account is
+        // created, Auth.tsx routes to /onboarding?plan=… (business context + terms),
+        // and checkout is the LAST step from there (task #66 reorder).
         if (!signedIn) {
           navigate(`/auth?mode=signup&plan=${slug}&billing=${period}`);
           return;
         }
 
-        // Signed in → straight to Stripe Checkout for their active tenant.
+        // S1 compliance hardening: a signed-in but TENANT-LESS user has never seen the
+        // /onboarding clickwrap (subscriber-agreement acceptance). Route them through
+        // /onboarding?plan=… so they accept terms BEFORE checkout — never straight to
+        // Stripe. Direct checkout is reserved for the grandfathered HAS-tenant path
+        // (they subscribe an existing workspace; terms are handled there). The webhook
+        // (provision_tenant_as) still logs the agreement as a backstop either way, but
+        // presenting the clickwrap is the correct primary path. active_tenant_id is the
+        // frontend proxy for "has a workspace"; the edge fn is the authoritative backstop
+        // (it treats an owned-but-unbackfilled tenant as grandfathered, no double-provision).
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("active_tenant_id")
+          .eq("user_id", sessionRes.session!.user.id)
+          .maybeSingle();
+        if (!prof?.active_tenant_id) {
+          navigate(onboardingPathWithPlan({ plan: slug, billing: period }));
+          return;
+        }
+
+        // Signed in WITH a tenant (grandfathered) → straight to Stripe Checkout.
         const { data, error } = await supabase.functions.invoke("platform-subscription-checkout", {
           body: { plan_slug: slug, billing_period: period, success_path: "/welcome?checkout=success" },
         });
