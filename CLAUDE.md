@@ -2,6 +2,23 @@
 
 Standing rules for how work gets done in this repo. These persist across sessions.
 
+## 0. SESSION START — READ THE MASTER PROJECT REFERENCE FIRST (single source of truth).
+
+**Directive (owner: Antonio, 2026-08-09) — NON-NEGOTIABLE, FIRST RULE.** Before responding to ANY substantive request, every agent — Cowork, Claude Code, Codex — reads **`docs/PAIGE-MASTER-PROJECT-REFERENCE.md`**. That doc is the ONE source of truth for this project: business requirements, system requirements, Owner Trilogy taxonomy (4 platform pillars + 7 Customer Portal pillars × 5 stakeholders), MVP definition (Wave 4), what's SHIPPED (integrations, capabilities, backend seams, data model landmarks — with evidence), what's GAPPED, sequential roadmap, and the §13 corrections log.
+
+**The three moments this rule ALWAYS fires (the owner's explicit triggers):**
+1. **At the START of every session** — open the master doc (Sections 4, 5, 7, 10) before touching anything substantive.
+2. **Before/at every MAJOR BUILD** — a new branch/feature routes back to the master doc; the plan is checked against Section 5 (gaps) + Section 7 (roadmap) so the build fits, and the merge updates Section 4/5/10 in the SAME PR.
+3. **Whenever you ask "do we HAVE this tool / feature / integration?"** — the answer is grounded against **Section 4 (SHIPPED)** FIRST, never from memory. Any capability claim ("we have X" / "we don't have X") that isn't checked against Section 4 is a §13 violation. If a grep disagrees with Section 4, CC's live-code check wins and the discrepancy is logged as a §13 correction in Section 10.
+
+**Single, single, single. That means ONE.** Do NOT create sibling reference docs. Do NOT fragment the source of truth across scattered files. If information is missing or wrong, UPDATE `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` IN PLACE and commit. That doc is the durability primitive.
+
+**When Cowork produces a paste for CC or Codex**, the paste ends with: *"Reference `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` first. Update Section 4 on merge. Log any §13 corrections in Section 10."* CC and Codex confirm read at start of every session. This kills the "did they know X was already built?" failure mode that's cost us hours.
+
+**When a new branch is created for feature work**, it ROUTES BACK to the master doc — every merge updates Section 4 (SHIPPED) or Section 5 (Gaps) or Section 10 (§13 corrections) in the SAME PR. No orphan branches, no unmerged intel.
+
+Owner's exact framing (2026-08-09): *"I want a single source of truth. Single, single, single. That means one. That means that you don't create a whole bunch of extra branches unless they route back to that one."*
+
 ## 1. Always hire a team. Never a single point of failure.
 
 **Directive (owner: Antonio):** Do not do any substantive job alone. For every real
