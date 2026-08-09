@@ -18,11 +18,21 @@ import type { AgentAccountType, AgentPersona } from "./persona";
  * mounts, and a footer. The VP persona is a prop, never hardcoded (see persona.ts).
  *
  * PLACEMENT: fixed to the right edge so it never restructures the host's flow
- * layout — the host reserves an equal-width gutter via {@link AGENT_RAIL_COLLAPSED_REM}
- * / {@link AGENT_RAIL_EXPANDED_REM} so content is pushed, not covered (spec §3.5
- * "non-intrusive when idle"). Desktop-only chrome (`hidden md:flex`): the platform
- * right-rail is the DESKTOP pattern (spec §5); mobile/portal use a different surface
- * (floating avatar, later slice), and ⌘K stays universal.
+ * layout. The host reserves the COLLAPSED gutter ({@link AGENT_RAIL_COLLAPSED_REM})
+ * so the idle presence tab pushes content, not covers it (spec §3.5 "non-intrusive
+ * when idle"). On EXPAND the 22rem panel OVERLAYS the work surface — the host does
+ * NOT reserve the expanded width (a defensible slice-1 call: the rail is on-demand
+ * and the overlay + soft shadow read as a layer above the work). The push-resize on
+ * expand (reserve the expanded gutter / reflow) is owed-work #6. Desktop-only chrome
+ * (`hidden md:flex`): the platform right-rail is the DESKTOP pattern (spec §5);
+ * mobile/portal use a different surface (floating avatar, later slice), and ⌘K stays
+ * universal.
+ *
+ * TOP OFFSET (`topRem`): the rail docks BELOW the host's top bar, not under it. The
+ * host passes its header height so the expanded panel's persona header sits fully
+ * below the top bar with no overlap and no z-fight (the rail stays z-30, under the
+ * host header's z-40 — never bumped over it, which would cover the top bar's own
+ * controls). Default 0 = full-height dock for a host with no top bar.
  *
  * §11/§22/§23/§25: token-only (zero hex), layered depth (raised `--card` over the
  * work surface + a hairline `--border` seam + soft shadow), AA in both themes, gold
@@ -31,9 +41,17 @@ import type { AgentAccountType, AgentPersona } from "./persona";
  * spring, fully guarded by `useReducedMotion` (reduced → instant width, no fade).
  */
 
-/** Rail width when collapsed to the presence tab (rem). Host reserves this gutter. */
+/**
+ * Rail width when collapsed to the presence tab (rem). The host reserves THIS gutter
+ * (see AdminLayout's `md:pr-[3.25rem]` — keep the two in sync; Tailwind can't read
+ * this JS const inside an arbitrary value, so they're cross-linked by comment, N1/§39).
+ */
 export const AGENT_RAIL_COLLAPSED_REM = 3.25;
-/** Rail width when expanded to the chat panel (rem). Host reserves this gutter on xl+. */
+/**
+ * Rail width when EXPANDED to the chat panel (rem). The host does NOT reserve this —
+ * the expanded panel OVERLAYS the work surface (slice-1 call; push-resize is owed-work
+ * #6). Not a reserved gutter — see the file header's PLACEMENT note.
+ */
 export const AGENT_RAIL_EXPANDED_REM = 22;
 
 export interface AgentRailProps {
@@ -54,6 +72,11 @@ export interface AgentRailProps {
   children?: ReactNode;
   /** Optional footer slot (defaults to the ⌘K hint). */
   footer?: ReactNode;
+  /**
+   * Host top-bar height in rem. The rail docks below it (top offset + reduced height)
+   * so its header never paints behind the host header (§39 S1). Default 0 = full-height.
+   */
+  topRem?: number;
   className?: string;
 }
 
@@ -63,6 +86,7 @@ export function AgentRail({
   scopeSwitcher,
   children,
   footer,
+  topRem = 0,
   className,
 }: AgentRailProps) {
   const reduce = useReducedMotion();
@@ -76,15 +100,18 @@ export function AgentRail({
 
   return (
     <motion.aside
-      // Fixed dock on the right edge. `hidden md:flex`: desktop-only presence rail.
+      // Fixed dock on the right edge, BELOW the host top bar (topRem). `hidden md:flex`:
+      // desktop-only presence rail. z-30 stays UNDER the host header's z-40 (no z-fight,
+      // never covers the top bar's controls) — the top offset is what clears it, not z.
       className={cn(
-        "fixed right-0 top-0 z-30 hidden h-dvh flex-col overflow-hidden md:flex",
+        "fixed right-0 z-30 hidden flex-col overflow-hidden md:flex",
         "border-l border-border bg-card text-card-foreground shadow-[-8px_0_24px_-16px_hsl(var(--foreground)/0.25)]",
         className,
       )}
       initial={false}
       animate={{ width: `${widthRem}rem` }}
       transition={spring}
+      style={{ top: `${topRem}rem`, height: `calc(100dvh - ${topRem}rem)` }}
       aria-label={`${persona.label} presence rail`}
     >
       {railExpanded ? (
@@ -130,9 +157,16 @@ function CollapsedTab({
       aria-expanded={false}
     >
       <span className="relative grid place-items-center">
+        {/* ONE living signal on this always-visible 52px strip (§25): the breathing
+            PaigeMark is the presence cue. The dot renders as a STATIC success ring
+            (pulse={false}) so we don't stack a second perpetual pulse next to it. */}
         <PaigeMark className="h-8 w-8" animated={!reduce} />
-        {/* Live "on call" status — semantic success, never gold (§11). */}
-        <PresenceDot status="online" size="sm" className="absolute -bottom-0.5 -right-0.5" />
+        <PresenceDot
+          status="online"
+          size="sm"
+          pulse={false}
+          className="absolute -bottom-0.5 -right-0.5"
+        />
       </span>
       {/* Vertical wordmark — the persona name reads down the tab. */}
       <span
@@ -188,7 +222,7 @@ function ExpandedPanel({
               // chip (spec §5a "never confused with the tenant experience"). Accent
               // marks the elevated operator mode, consistent with AdminLayout; not a
               // gold fill (§11).
-              <span className="inline-flex items-center rounded-full border border-accent/40 bg-transparent px-1.5 py-px text-[9px] font-medium uppercase tracking-wide text-accent">
+              <span className="inline-flex items-center rounded-full border border-accent/40 bg-transparent px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-accent">
                 Operator
               </span>
             )}

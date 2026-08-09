@@ -13,6 +13,12 @@
  *     … shell (reserve the AGENT_RAIL_COLLAPSED_REM gutter on md+) …
  *     <AgentPresence />
  *   </AgentPresenceProvider>
+ *
+ * NAMING SEAM (§12 findability): this directory `components/ui/paige/` holds the
+ * shared UI-PRIMITIVE chrome for where Paige LIVES on a surface (the placement rail +
+ * ⌘K launcher). It is distinct from the pre-existing `components/paige/` (e.g.
+ * `PaigeSidebar`), which is FEATURE surface — Paige's actual conversation/feature UI.
+ * ui-primitive (placement) here; feature-rail there. Keep new placement chrome here.
  */
 export { AgentPresenceProvider, useAgentPresence } from "./AgentPresenceContext";
 export {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Send, PanelRightOpen } from "lucide-react";
+import { Send, PanelRightOpen, Clock } from "lucide-react";
 import {
   CommandDialog,
   CommandInput,
@@ -21,9 +21,11 @@ import type { AgentPersona } from "./persona";
  * right-rail (desktop) per spec §9.2.
  *
  * CHROME, not the chat (spec §11 non-goal): the actual "ask" send is the chat seam,
- * passed in via `onAsk`. With no `onAsk` the launcher HONESTLY hands off to the full
- * session (expand the rail) rather than faking a send (§13) — so it is never a dead
- * end even before the chat is wired.
+ * passed in via `onAsk`. Until that seam is wired (`onAsk` absent) the launcher does
+ * NOT accept a text submission that would silently vanish (§13) — it shows an honest
+ * "connecting soon" state instead of a fake "send" affordance, and still offers the
+ * presence-rail handoff. Once `onAsk` lands, the real send item appears. So it is
+ * never a dead end AND never a silent discard, even before the chat is wired.
  *
  * §11/§22/§25: built on the shared `command`/`dialog` primitives (no hand-rolled
  * modal), token-only, AA both themes. Motion is the primitives' own Radix animation,
@@ -44,6 +46,10 @@ export function CommandLauncher({ persona, onAsk }: CommandLauncherProps) {
   const { launcherOpen, setLauncherOpen, expandRail } = useAgentPresence();
   const [query, setQuery] = useState("");
 
+  // Is the real chat "ask" seam wired? Only then may we accept a text submission —
+  // otherwise a typed message would silently vanish into an empty rail (§13).
+  const wired = Boolean(onAsk);
+
   const close = () => {
     setLauncherOpen(false);
     setQuery("");
@@ -51,11 +57,11 @@ export function CommandLauncher({ persona, onAsk }: CommandLauncherProps) {
 
   const handleAsk = () => {
     const text = query.trim();
-    if (text && onAsk) {
-      onAsk(text);
-    }
-    // Whether or not the send is wired, continue in the full session (spec §9.2):
-    // expand the rail so the conversation is visible. Honest — never a faked reply.
+    // Only reachable when wired (the send item is rendered only then). Guard anyway.
+    if (!text || !onAsk) return;
+    onAsk(text);
+    // Continue in the full session (spec §9.2): expand the rail so the conversation is
+    // visible. Honest — the message actually went to the seam, never a faked reply.
     expandRail();
     close();
   };
@@ -80,31 +86,50 @@ export function CommandLauncher({ persona, onAsk }: CommandLauncherProps) {
       className="motion-reduce:!animate-none motion-reduce:!transition-none"
     >
       <CommandInput
-        placeholder={`Ask ${persona.label} anything…`}
+        placeholder={
+          wired
+            ? `Ask ${persona.label} anything…`
+            : `${persona.label} connects here soon…`
+        }
         value={query}
         onValueChange={setQuery}
       />
       <CommandList>
         {trimmed ? (
-          <CommandGroup heading={persona.label}>
-            <CommandItem
-              value="ask"
-              onSelect={handleAsk}
-              className="gap-2"
-            >
-              <Send className="h-4 w-4 text-muted-foreground" aria-hidden />
-              <span className="truncate">
-                Ask {persona.label}: <span className="text-muted-foreground">{trimmed}</span>
-              </span>
-            </CommandItem>
-          </CommandGroup>
+          wired ? (
+            <CommandGroup heading={persona.label}>
+              <CommandItem value="ask" onSelect={handleAsk} className="gap-2">
+                <Send className="h-4 w-4 text-muted-foreground" aria-hidden />
+                <span className="truncate">
+                  Ask {persona.label}: <span className="text-muted-foreground">{trimmed}</span>
+                </span>
+              </CommandItem>
+            </CommandGroup>
+          ) : (
+            // NOT wired yet — an honest, non-actionable notice so the typed text is never
+            // silently swallowed by a fake "send" (§13). `disabled` = Enter does nothing,
+            // but the user is told why.
+            <CommandGroup heading={persona.label}>
+              <CommandItem value="ask-soon" disabled className="gap-2">
+                <Clock className="h-4 w-4 text-muted-foreground" aria-hidden />
+                <span className="truncate text-muted-foreground">
+                  {persona.label}'s live conversation connects here soon — your message
+                  isn't sent yet.
+                </span>
+              </CommandItem>
+            </CommandGroup>
+          )
         ) : (
-          <CommandEmpty>Type to ask {persona.label} — or open the full conversation.</CommandEmpty>
+          <CommandEmpty>
+            {wired
+              ? `Type to ask ${persona.label} — or open the full conversation.`
+              : `${persona.label}'s live conversation connects here soon.`}
+          </CommandEmpty>
         )}
         <CommandGroup heading="Go to">
           <CommandItem value="open-conversation" onSelect={openFullConversation} className="gap-2">
             <PanelRightOpen className="h-4 w-4 text-muted-foreground" aria-hidden />
-            <span>Open the full conversation</span>
+            <span>{wired ? "Open the full conversation" : "Open Paige's presence rail"}</span>
           </CommandItem>
         </CommandGroup>
       </CommandList>

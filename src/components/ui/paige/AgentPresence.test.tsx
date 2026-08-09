@@ -17,6 +17,8 @@
 // The Studio-hidden + marketing-excluded legs are STRUCTURAL (the chrome is only
 // mounted in AdminLayout, and there only when !isStudio) and are verified by reading
 // the mount site, not driven here (see the PR body's §32.b table + §32.c owed drive).
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AgentPresenceProvider } from "./AgentPresenceContext";
@@ -64,9 +66,14 @@ beforeAll(() => {
 
 const ACCOUNT_TYPES: AgentAccountType[] = ["solo", "sub_account", "agency", "super_admin"];
 
+// Render the rail in its EXPANDED panel state so identity/operator-chip/body
+// assertions can read the expanded content. `hasChatBody` engages the onboarding
+// docked-open (SESSION_COUNT starts at 0 in a static render — no useEffect runs to
+// increment it — so priorCount 0 < 3 → expanded). See the separate default-collapsed
+// test below for the no-chat-body (collapsed) default.
 const railHtml = (t: AgentAccountType) =>
   renderToStaticMarkup(
-    <AgentPresenceProvider>
+    <AgentPresenceProvider hasChatBody>
       <AgentRail persona={resolveAgentPersona(t)} accountType={t} />
     </AgentPresenceProvider>,
   );
@@ -185,13 +192,62 @@ describe("<AgentPresence> account-type derivation across tiers (§51-aware)", ()
 
     for (const c of cases) {
       tc.ctx = c.ctx;
+      // hasChatBody → expanded panel so the operator chip is in the markup to assert.
       const out = renderToStaticMarkup(
-        <AgentPresenceProvider>
+        <AgentPresenceProvider hasChatBody>
           <AgentPresence />
         </AgentPresenceProvider>,
       );
       expect(out, c.name).toContain(c.expectLabel);
       expect(out.includes(">Operator<"), c.name).toBe(c.expectOperator);
     }
+  });
+});
+
+describe("default-collapsed until a chat body is wired (§39 Compliance#1/Critic#2)", () => {
+  it("renders the COLLAPSED presence tab (not the docked-open panel) with no chat body", () => {
+    // Provider default hasChatBody=false → onboarding docked-open is gated OFF → the
+    // rail must render the collapsed tab, never the expanded empty placeholder.
+    const out = renderToStaticMarkup(
+      <AgentPresenceProvider>
+        <AgentRail persona={resolveAgentPersona("solo")} accountType="solo" />
+      </AgentPresenceProvider>,
+    );
+    // Collapsed tab exposes aria-expanded="false" and the "Open …" affordance…
+    expect(out).toContain('aria-expanded="false"');
+    expect(out).toContain("Open Paige");
+    // …and does NOT paint the expanded body placeholder (that only shows when open).
+    expect(out).not.toContain("Your Paige team is on call");
+  });
+
+  it("DOES dock open once a chat body is present (onboarding window, §36)", () => {
+    const out = renderToStaticMarkup(
+      <AgentPresenceProvider hasChatBody>
+        <AgentRail persona={resolveAgentPersona("solo")} accountType="solo" />
+      </AgentPresenceProvider>,
+    );
+    expect(out).toContain("Your Paige team is on call");
+  });
+});
+
+describe("⌘K is a single global owner — IntegrationsHub no longer registers one (§39 B1/§37)", () => {
+  it("IntegrationsHub source registers NO global keydown listener (⌘K handed to the launcher)", () => {
+    const src = readFileSync(
+      resolve(process.cwd(), "src/pages/admin/IntegrationsHub.tsx"),
+      "utf8",
+    );
+    // The hub's rival global ⌘K listener was removed (§18 one home). Assert there is no
+    // window keydown registration left in the file — the palette is button-driven now.
+    expect(src).not.toMatch(/addEventListener\(\s*["']keydown["']/);
+    expect(src).not.toContain("setPaletteOpen((o) => !o)");
+  });
+
+  it("the universal launcher context owns exactly one ⌘K keydown handler", () => {
+    const src = readFileSync(
+      resolve(process.cwd(), "src/components/ui/paige/AgentPresenceContext.tsx"),
+      "utf8",
+    );
+    const matches = src.match(/addEventListener\(\s*["']keydown["']/g) ?? [];
+    expect(matches.length).toBe(1);
   });
 });

@@ -31,6 +31,12 @@ export interface AgentPresenceProps {
   persona?: AgentPersona;
   /** The chat "ask" seam handed to the launcher (spec §11 non-goal — wired later). */
   onAsk?: (text: string) => void;
+  /**
+   * Host top-bar height in rem, forwarded to the rail so it docks BELOW the host
+   * header (no overlap / no z-fight, §39 S1). Default 0 = full-height for a host with
+   * no top bar.
+   */
+  topOffsetRem?: number;
 }
 
 function deriveAccountType(args: {
@@ -52,7 +58,7 @@ function deriveAccountType(args: {
   return "solo";
 }
 
-export function AgentPresence({ persona, onAsk }: AgentPresenceProps) {
+export function AgentPresence({ persona, onAsk, topOffsetRem }: AgentPresenceProps) {
   const { isPlatformStaff, activeTenantId, activeTenant } = useTenantContext();
 
   const accountType = deriveAccountType({ isPlatformStaff, activeTenantId, activeTenant });
@@ -63,6 +69,7 @@ export function AgentPresence({ persona, onAsk }: AgentPresenceProps) {
       <AgentRail
         persona={resolvedPersona}
         accountType={accountType}
+        topRem={topOffsetRem}
         // Agency scope-switcher slot (spec §5a / owed-work #7) wires in a later slice.
         // Left undefined here so only agency-parent operators ever see the slot, and
         // the rail stays identical for solo/sub-account (spec §5a).

@@ -38,6 +38,15 @@ import { PLATFORM } from "@/lib/platform/identity";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AgentPresenceProvider, AgentPresence } from "@/components/ui/paige";
 
+/**
+ * Height (rem) of THIS shell's fixed top bar on md+ (where the presence rail shows):
+ * Row 1 `h-14` (3.5rem) + Row 2 nav `h-11` (2.75rem) = 6.25rem. The presence rail
+ * docks below it (§39 S1). Kept in sync with the header markup below by name; the
+ * godMode gold top edge (`h-0.5`) sits ABOVE this and, being under the z-40 header
+ * over the z-30 rail, needs no offset compensation.
+ */
+const ADMIN_TOPBAR_REM = 6.25;
+
 // 7-hub top bar. Each hub has a primary route and optional sub-routes
 // surfaced via a dropdown so power users can jump deep with one click.
 // Every sub-route still has its own page — this is grouping, not consolidation.
@@ -350,7 +359,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         ?? "Admin");
 
   return (
-    <AgentPresenceProvider>
+    // launcherEnabled={!isStudio}: ⌘K only acts where the launcher renders — on Studio
+    // it's a no-op passthrough (§21). hasChatBody={false}: the shared Paige chat body
+    // isn't wired into the rail this slice, so the onboarding docked-open stays gated
+    // OFF (rail defaults collapsed, never opens onto an empty placeholder — §36/§13);
+    // flip to true when the chat body lands.
+    <AgentPresenceProvider launcherEnabled={!isStudio} hasChatBody={false}>
     <VoiceDeviceProvider>
     {/* #140 A2 — the ONE dialer surface (a viewport Sheet), rendered once so every
         trigger + click-to-call opens the SAME pad on ANY breakpoint (§18). */}
@@ -364,7 +378,10 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     {/* Wave 4 Slice 4a.1 — reserve the collapsed presence-rail gutter (md+) so the
         docked rail never covers the working surface when idle (spec §3.5). The
         expanded panel slides over content on demand. Suppressed on the immersive
-        Vibe Studio (§21 — Studio owns its full canvas; no separate Paige rail). */}
+        Vibe Studio (§21 — Studio owns its full canvas; no separate Paige rail).
+        NOTE (N1/§39): the `3.25rem` here MUST match AGENT_RAIL_COLLAPSED_REM (=3.25)
+        exported from `@/components/ui/paige` — Tailwind can't read the JS const in an
+        arbitrary value, so keep the two in sync by hand if either changes. */}
     <div className={`h-dvh flex flex-col bg-background overflow-hidden${!isStudio ? " md:pr-[3.25rem]" : ""}`}>
       {/* Banner intentionally omitted on /admin — it's redundant when already on
           the admin dashboard. AppShell still renders it inside the client view. */}
@@ -777,7 +794,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           living only in this operator/tenant console shell; hidden on the immersive
           Vibe Studio (§21). Mobile uses a different surface (later slice), so the
           rail self-hides under md. */}
-      {!isStudio && <AgentPresence />}
+      {!isStudio && <AgentPresence topOffsetRem={ADMIN_TOPBAR_REM} />}
     </div>
     </VoiceDeviceProvider>
     </AgentPresenceProvider>

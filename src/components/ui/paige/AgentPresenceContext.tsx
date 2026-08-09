@@ -23,6 +23,19 @@ import {
  * owed-work #6) — a later slice swaps the storage impl behind THIS same context
  * with no consumer change. Storage reads/writes fail-soft (private mode / disabled
  * storage never throws into render).
+ *
+ * ONBOARDING-OPEN IS GATED ON A REAL CHAT BODY (`hasChatBody`, §36/§13): docking the
+ * rail OPEN onto an empty placeholder is a dead-end — there is nothing to converse
+ * with yet. So the first-N-sessions auto-open (and the session counter that drives
+ * it) only engage once the host passes `hasChatBody` (the shared Paige chat wires in
+ * a later slice). Until then the rail defaults COLLAPSED and the presence tab is the
+ * first-run invitation; the user's own explicit expand is still remembered/honored.
+ *
+ * ⌘K IS GATED ON `launcherEnabled` (§21): the launcher only renders on non-Studio
+ * surfaces, so the global ⌘K keybinding is registered only where it can actually open
+ * something. On Studio (`launcherEnabled={false}`) ⌘K is a no-op passthrough — never
+ * preventDefault-swallowed into state that renders nothing (and a future Studio ⌘K is
+ * left unblocked).
  */
 
 const COLLAPSED_KEY = "paige.agentRail.collapsed";
@@ -62,33 +75,57 @@ interface AgentPresenceState {
 const AgentPresenceContext = createContext<AgentPresenceState | null>(null);
 
 /**
- * Resolve the initial expanded state from persisted prefs (spec §8.1). Reads the
- * remembered collapsed flag; if the user is still inside their first N sessions the
- * rail opens regardless (onboarding + intuitiveness, §36). Runs once at mount.
+ * Resolve the initial expanded state from persisted prefs (spec §8.1). The onboarding
+ * auto-open (first N sessions) only applies when `hasChatBody` is true — opening onto
+ * an empty placeholder is a dead-end (§36/§13), so until the chat body is wired the
+ * rail defaults COLLAPSED and only the user's own explicit prior expand is honored.
+ * Runs once at mount.
  */
-function resolveInitialExpanded(): boolean {
-  const priorCount = Number(safeGet(SESSION_COUNT_KEY) ?? "0") || 0;
-  // Count THIS session once (guarded by the ref in the provider so StrictMode's
-  // double-invoke can't double-count).
-  const withinOnboarding = priorCount < OPEN_FOR_FIRST_N_SESSIONS;
-  if (withinOnboarding) return true;
-  // Past onboarding → honor the remembered choice; default collapsed (non-intrusive, §11).
-  return safeGet(COLLAPSED_KEY) === "false";
+function resolveInitialExpanded(hasChatBody: boolean): boolean {
+  // The user's explicit prior choice (only ever set "false" by expand/toggle).
+  const remembered = safeGet(COLLAPSED_KEY) === "false";
+  if (hasChatBody) {
+    const priorCount = Number(safeGet(SESSION_COUNT_KEY) ?? "0") || 0;
+    // Inside the onboarding window → dock OPEN regardless (intuitiveness, §36).
+    if (priorCount < OPEN_FOR_FIRST_N_SESSIONS) return true;
+  }
+  // Past onboarding (or no chat body yet) → honor the remembered choice; default
+  // collapsed (non-intrusive first-run invitation, §11).
+  return remembered;
 }
 
-export function AgentPresenceProvider({ children }: { children: ReactNode }) {
-  const [railExpanded, setRailExpanded] = useState<boolean>(resolveInitialExpanded);
+export function AgentPresenceProvider({
+  children,
+  /** False on surfaces where the launcher never renders (Studio, §21) → ⌘K passes through. */
+  launcherEnabled = true,
+  /**
+   * True once a real Paige chat body mounts in the rail. Gates the onboarding
+   * docked-open (and its session counter) so the rail never opens onto an empty
+   * placeholder (§36/§13). Wires in a later slice; default false = collapsed today.
+   */
+  hasChatBody = false,
+}: {
+  children: ReactNode;
+  launcherEnabled?: boolean;
+  hasChatBody?: boolean;
+}) {
+  const [railExpanded, setRailExpanded] = useState<boolean>(() =>
+    resolveInitialExpanded(hasChatBody),
+  );
   const [launcherOpen, setLauncherOpen] = useState(false);
   const countedRef = useRef(false);
 
-  // Count this session exactly once (spec §8.1 onboarding window). StrictMode
-  // mounts twice in dev — the ref makes the increment idempotent per real session.
+  // Count this session exactly once (spec §8.1 onboarding window) — but ONLY once a
+  // chat body exists, so the first-N-sessions window isn't burned on empty-placeholder
+  // sessions before the conversation lands (§36). StrictMode mounts twice in dev — the
+  // ref makes the increment idempotent per real session.
   useEffect(() => {
+    if (!hasChatBody) return;
     if (countedRef.current) return;
     countedRef.current = true;
     const priorCount = Number(safeGet(SESSION_COUNT_KEY) ?? "0") || 0;
     safeSet(SESSION_COUNT_KEY, String(priorCount + 1));
-  }, []);
+  }, [hasChatBody]);
 
   const expandRail = useCallback(() => {
     setRailExpanded(true);
@@ -111,11 +148,15 @@ export function AgentPresenceProvider({ children }: { children: ReactNode }) {
   const openLauncher = useCallback(() => setLauncherOpen(true), []);
   const closeLauncher = useCallback(() => setLauncherOpen(false), []);
 
-  // Universal ⌘K / Ctrl+K launcher (spec §5, §36). Ignored when the user is typing
-  // into a field UNLESS they hold the modifier — the modifier is the whole point of a
-  // global shortcut, so ⌘K fires even from inside an input. Escape is owned by the
-  // launcher's own dialog, not here.
+  // Universal ⌘K / Ctrl+K launcher (spec §5, §36) — the ONE global owner of ⌘K on the
+  // platform (§18; IntegrationsHub's rival listener was removed so only this fires).
+  // Ignored when the user is typing into a field UNLESS they hold the modifier — the
+  // modifier is the whole point of a global shortcut, so ⌘K fires even from inside an
+  // input. Escape is owned by the launcher's own dialog, not here. Registered ONLY when
+  // `launcherEnabled` — on Studio the handler isn't attached, so ⌘K passes through
+  // untouched instead of preventDefault-swallowing into state that renders nothing (§21).
   useEffect(() => {
+    if (!launcherEnabled) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
@@ -124,7 +165,7 @@ export function AgentPresenceProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [launcherEnabled]);
 
   const value = useMemo<AgentPresenceState>(
     () => ({
