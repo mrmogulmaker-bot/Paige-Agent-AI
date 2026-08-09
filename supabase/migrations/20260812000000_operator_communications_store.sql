@@ -101,4 +101,33 @@ create policy operator_messages_owner_only on public.operator_messages
 grant select, insert, update, delete on public.operator_conversations to authenticated;
 grant select, insert, update, delete on public.operator_messages      to authenticated;
 
+-- ── Realtime publication (§32 runtime-dead fix) ──────────────────────────────────────
+-- PlatformFleetCommunications.tsx relies SOLELY on postgres_changes for inbound (no
+-- polling), so inbound SMS never live-surface unless these tables are in the
+-- supabase_realtime publication. REPLICA IDENTITY FULL so UPDATE payloads carry the row
+-- (unread_count / last_preview / status). Idempotent: skip the ADD if already published
+-- (re-run safe). SECURITY: realtime still enforces the is_platform_owner() RLS policy
+-- per-subscriber, so publishing does NOT leak — no tenant can subscribe to operator rows.
+do $$
+declare t text;
+begin
+  foreach t in array array['operator_conversations','operator_messages']
+  loop
+    execute format('alter table public.%I replica identity full', t);
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;
+
+-- ── Orphan cleanup (§18/§37): drop the now-callerless Fleet workspace resolver ───────
+-- The wave-s3 §9 seam fix removed the operator scope-switch flow, so
+-- resolve_platform_operator_workspace() (migration 20260806013000) has ZERO remaining
+-- runtime callers in src/ (only its own tests referenced it). Drop it so no dead
+-- SECURITY DEFINER surface lingers. IF EXISTS keeps this re-run/environment safe.
+drop function if exists public.resolve_platform_operator_workspace();
+
 commit;

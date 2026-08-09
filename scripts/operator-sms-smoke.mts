@@ -22,7 +22,7 @@ function check(name: string, cond: boolean, detail = "") {
 }
 
 const { computeTwilioSignature } = await import("../supabase/functions/_shared/twilio.ts");
-const { operatorTwilioCreds, sendOperatorSms, validateOperatorTwilioSignature } = await import(
+const { operatorTwilioCreds, sendOperatorSms, validateOperatorTwilioSignature, decideOperatorInboundGate } = await import(
   "../supabase/functions/_shared/operator-twilio.ts"
 );
 
@@ -45,6 +45,39 @@ console.log("Operator SMS seam smoke\n");
   // No token configured → cannot validate → reject (honest degrade, never a fake accept).
   delete env.TWILIO_OPERATOR_AUTH_TOKEN;
   check("no operator auth token → validation REJECTS", await validateOperatorTwilioSignature(good, url, rawBody) === false);
+}
+
+// ── 1b) HANDLER gate — deployed fail-closed behavior (§9/§32). This is the decision the
+//        inbound handler actually drives, so these assertions reflect the DEPLOYED handler,
+//        not just the raw validator. accept=true → HTTP 200 (persist); accept=false → 401. ─
+{
+  const url = "https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/paige-operator-sms-inbound";
+  const rawBody = "Body=hello+there&From=%2B14705551234&To=%2B14702003444";
+
+  // Token set + valid signature → 200 (the ONLY signed accept path).
+  for (const k of Object.keys(env)) delete env[k];
+  const token = "operator-auth-token-abc";
+  env.TWILIO_OPERATOR_AUTH_TOKEN = token;
+  const good = await computeTwilioSignature(token, url, rawBody);
+  const g1 = await decideOperatorInboundGate(good, url, rawBody);
+  check("handler: token set + valid signature → ACCEPT (200)", g1.accept === true && g1.status === 0);
+
+  // Token set + unsigned/bad signature → 401 (handler rejects, writes nothing).
+  const g2 = await decideOperatorInboundGate(null, url, rawBody);
+  check("handler: token set + unsigned → REJECT 401", g2.accept === false && g2.status === 401);
+  const g3 = await decideOperatorInboundGate("bogus", url, rawBody);
+  check("handler: token set + bad signature → REJECT 401", g3.accept === false && g3.status === 401);
+
+  // Token UNSET, no dev flag → FAIL CLOSED 401 (the core S2 fix — no longer accepts unsigned).
+  delete env.TWILIO_OPERATOR_AUTH_TOKEN;
+  const g4 = await decideOperatorInboundGate(good, url, rawBody);
+  check("handler: no token, no flag → FAIL CLOSED 401 (never a silent accept)", g4.accept === false && g4.status === 401);
+
+  // Token UNSET + explicit dev-only escape hatch → accepts (documented opt-in only).
+  env.ALLOW_UNSIGNED_OPERATOR_SMS = "true";
+  const g5 = await decideOperatorInboundGate(null, url, rawBody);
+  check("handler: no token + ALLOW_UNSIGNED_OPERATOR_SMS=true → ACCEPT (dev escape hatch)", g5.accept === true);
+  delete env.ALLOW_UNSIGNED_OPERATOR_SMS;
 }
 
 // ── 2) operatorTwilioCreds resolution (API-Key preferred, auth-token fallback, needs_config) ─

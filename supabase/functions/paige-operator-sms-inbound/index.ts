@@ -7,8 +7,8 @@
 // (Twilio cannot send a Supabase JWT); trust is established by validating the Twilio
 // request signature (X-Twilio-Signature) BEFORE the payload is read as truth (§13 spoof
 // guard) using the operator account Auth Token via the ONE shared validator (§18).
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { validateOperatorTwilioSignature, operatorInboundAuthToken } from "../_shared/operator-twilio.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { decideOperatorInboundGate } from "../_shared/operator-twilio.ts";
 import { normalizePhone } from "../_shared/pre-send-pipeline.ts";
 
 const corsHeaders = {
@@ -32,17 +32,24 @@ Deno.serve(async (req) => {
 
   const rawBody = await req.text();
 
-  // ── Signature validation FIRST (§13 spoof/SSRF guard). Twilio signs with the operator
-  // account Auth Token. If the token is unset we degrade like the platform's other inbound
-  // handlers (accept-unsigned + LOUD warning) so the surface still works before the owner
-  // pastes it — but a mismatch when the token IS set is a hard 401. ─────────────────────
-  const token = operatorInboundAuthToken();
-  if (token) {
-    const sig = req.headers.get("x-twilio-signature");
-    const valid = await validateOperatorTwilioSignature(sig, req.url, rawBody);
-    if (!valid) return new Response("invalid_signature", { status: 401 });
-  } else {
-    console.warn("[paige-operator-sms-inbound] TWILIO_OPERATOR_AUTH_TOKEN not set — accepting unsigned (set it to enforce signature validation)");
+  // ── Signature gate FIRST — FAIL CLOSED (§9 spoof/DoS guard). Twilio signs every inbound
+  // webhook with the operator account Auth Token. This handler is net-new with NO legitimate
+  // unsigned caller, so anything the gate does not explicitly trust is rejected 401 and
+  // NOTHING is written. decideOperatorInboundGate is the ONE decision the handler and the
+  // headless smoke both drive (§18 one home, §32): it accepts only a valid signature (token
+  // set) or the explicit dev-only ALLOW_UNSIGNED_OPERATOR_SMS=true escape hatch (token unset);
+  // a token-unset request WITHOUT that flag, or a bad/missing signature, rejects. ──────────
+  const gate = await decideOperatorInboundGate(
+    req.headers.get("x-twilio-signature"),
+    req.url,
+    rawBody,
+  );
+  if (!gate.accept) {
+    console.error(`[paige-operator-sms-inbound] REJECTED unsigned/untrusted inbound (${gate.reason}) — fail closed, nothing written. Set TWILIO_OPERATOR_AUTH_TOKEN to enforce signatures.`);
+    return new Response(gate.reason, { status: gate.status });
+  }
+  if (gate.reason === "unsigned_dev_escape_hatch") {
+    console.warn("[paige-operator-sms-inbound] ALLOW_UNSIGNED_OPERATOR_SMS=true and no auth token — accepting UNSIGNED inbound (dev-only escape hatch; do NOT use in prod).");
   }
 
   const params = new URLSearchParams(rawBody);

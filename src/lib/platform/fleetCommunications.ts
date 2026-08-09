@@ -1,23 +1,10 @@
-export type OperatorWorkspace = { id: string; name: string; slug: string; status: string };
-
-/** Canonical Clients taxonomy home; Fleet is only the workspace transition seam. */
-export const FLEET_COMMUNICATIONS_DESTINATION = "/admin/clients-hub/conversations";
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export function parseOperatorWorkspace(value: unknown): OperatorWorkspace | null {
-  if (!Array.isArray(value) || value.length !== 1) return null;
-  const row = value[0];
-  if (!row || typeof row !== "object") return null;
-  const item = row as Record<string, unknown>;
-  if (
-    typeof item.id !== "string" || !UUID_RE.test(item.id) ||
-    typeof item.name !== "string" || !item.name.trim() ||
-    typeof item.slug !== "string" || !item.slug.trim() ||
-    (item.status !== "trial" && item.status !== "active")
-  ) return null;
-  return { id: item.id, name: item.name, slug: item.slug, status: item.status };
-}
+// Tenant-switch persistence guard, shared by useTenantContext.
+//
+// NOTE (wave-s3 §18/§37 cleanup): the operator "Fleet → Communications" surface no longer
+// scope-switches the operator into a tenant, so the old workspace-resolver helpers
+// (FLEET_COMMUNICATIONS_DESTINATION, parseOperatorWorkspace) and the backing RPC
+// resolve_platform_operator_workspace were removed as dead code. Only the generic
+// tenant-switch persistence check below remains — it is still used by useTenantContext.
 
 export function tenantSwitchPersisted(
   expectedUserId: string,
@@ -26,4 +13,3 @@ export function tenantSwitchPersisted(
 ): boolean {
   return !error && row?.user_id === expectedUserId;
 }
-

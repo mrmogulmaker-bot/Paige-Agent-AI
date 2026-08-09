@@ -112,3 +112,43 @@ export async function validateOperatorTwilioSignature(
   if (!token) return false;
   return await validateTwilioSignature(token, signature, url, rawBody);
 }
+
+/** The trust decision for an inbound operator SMS webhook request. */
+export interface OperatorInboundGate {
+  /** true → persist the message; false → reject and write nothing. */
+  accept: boolean;
+  /** HTTP status to return when rejected (401); 0 when accepted. */
+  status: number;
+  /** Human-readable reason (logged; also the 401 response body). */
+  reason: string;
+}
+
+/**
+ * Decide whether an inbound operator SMS webhook request is trusted enough to persist —
+ * FAIL CLOSED (§9 spoof/DoS guard). This is the ONE gate the handler AND the smoke both
+ * drive, so the smoke reflects the deployed HANDLER's behavior, not just the raw validator
+ * (§18 one home, §32). Accept paths are EXACTLY two:
+ *   (a) the operator Auth Token is set AND the X-Twilio-Signature validates, or
+ *   (b) no token is set AND the explicit dev-only ALLOW_UNSIGNED_OPERATOR_SMS=true flag is on.
+ * Every other case — token set but signature invalid/missing, or token unset without the flag
+ * — rejects 401 and NOTHING is written. There is NO path where the handler accepts while the
+ * validator would reject.
+ */
+export async function decideOperatorInboundGate(
+  signature: string | null | undefined,
+  url: string,
+  rawBody: string,
+): Promise<OperatorInboundGate> {
+  const token = operatorInboundAuthToken();
+  const allowUnsigned = (Deno.env.get("ALLOW_UNSIGNED_OPERATOR_SMS") ?? "").toLowerCase() === "true";
+  if (token) {
+    const valid = await validateTwilioSignature(token, signature, url, rawBody);
+    return valid
+      ? { accept: true, status: 0, reason: "valid_signature" }
+      : { accept: false, status: 401, reason: "invalid_signature" };
+  }
+  if (allowUnsigned) {
+    return { accept: true, status: 0, reason: "unsigned_dev_escape_hatch" };
+  }
+  return { accept: false, status: 401, reason: "signature_validation_unavailable" };
+}

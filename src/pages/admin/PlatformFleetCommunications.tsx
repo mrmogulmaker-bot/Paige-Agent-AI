@@ -191,7 +191,9 @@ export default function PlatformFleetCommunications() {
       <SectionCard>
         <div className="grid min-h-[28rem] grid-cols-1 gap-0 md:grid-cols-[20rem_1fr]">
           {/* ── Conversation list ─────────────────────────────────────────── */}
-          <div className={cn("border-border md:border-r", (selectedId || composing) && "hidden md:block")}>
+          {/* Recess the list rail to a base tone so it reads as a distinct, lower
+              elevation tier from the thread/composer pane (§23/§27 definition). */}
+          <div className={cn("border-border bg-muted/30 md:border-r", (selectedId || composing) && "hidden md:block")}>
             {loading ? (
               <div className="space-y-2 p-3">
                 {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
@@ -292,7 +294,9 @@ export default function PlatformFleetCommunications() {
                           <div
                             className={cn(
                               "max-w-[80%] rounded-xl border p-3 shadow-card",
-                              outbound ? "rounded-br-md border-primary/25 bg-primary/[0.06]" : "rounded-bl-md border-border bg-card",
+                              // Inbound bubbles get a distinct muted fill so received messages
+                              // lift off the pane (outbound keeps the indigo tint). Gold untouched.
+                              outbound ? "rounded-br-md border-primary/25 bg-primary/[0.06]" : "rounded-bl-md border-border bg-muted",
                             )}
                           >
                             <div className="mb-1 flex items-center gap-2">
