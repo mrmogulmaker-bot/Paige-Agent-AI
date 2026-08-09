@@ -41,6 +41,21 @@
 begin;
 
 -- ────────────────────────────────────────────────────────────────────────────────────────
+-- SINGLE SOURCE for the subscriber-agreement slugs (§18 one home) — the tier subscriber
+-- agreements (audience=tenant_owner), NOT the ambient required-at-signup docs (privacy /
+-- terms / esign / ai-disclaimer) that EVERY user accepts. Both the enforcement trigger and
+-- the audit RPC reference THIS, so GATE 1 can never silently drift into "any acceptance"
+-- (the §39 peer-gate finding: a slug-agnostic gate green-lights on a privacy-policy click).
+-- ────────────────────────────────────────────────────────────────────────────────────────
+create or replace function public.subscriber_agreement_slugs()
+returns text[] language sql immutable set search_path = public as $$
+  select array['saas-standalone','saas-agency','saas-enterprise']::text[];
+$$;
+
+comment on function public.subscriber_agreement_slugs() is
+  'Task #31 — the tier subscriber-agreement slugs (legal_documents audience=tenant_owner) that satisfy revenue-integrity GATE 1. One home for the trigger + audit RPC so they never disagree.';
+
+-- ────────────────────────────────────────────────────────────────────────────────────────
 -- THE ENFORCEMENT — a fail-closed trigger on the revenue-class discriminator.
 -- Extends the #29 table (§12/§18 — one home for revenue classification). SECURITY DEFINER so
 -- the gate reads the source-of-truth tables (tenants/legal_acceptances/platform_subscriptions)
@@ -65,6 +80,15 @@ begin
     return new;
   end if;
 
+  -- Enforce at the MINT/transition to paid (the false-revenue risk) — NOT on every edit to an
+  -- already-paid row. Re-gating an unrelated UPDATE (e.g. editing comp_reason/notes) on a paid
+  -- tenant whose Stripe sub momentarily lapsed would edit-lock the row (§39 finding #3 footgun).
+  -- A later lapse surfaces via the audit's integrity_ok flag + the reconcile follow-up, honestly
+  -- (§13) — the trigger's job is that a paid row can never be MINTED without the gates.
+  if tg_op = 'UPDATE' and old.revenue_class = 'paid' then
+    return new;
+  end if;
+
   select t.owner_user_id into _owner
     from public.tenants t
    where t.id = new.tenant_id;
@@ -75,11 +99,13 @@ begin
       using errcode = 'check_violation';
   end if;
 
-  -- GATE 1 — signed subscriber agreement on file (the tenant owner accepted the current
-  -- platform legal_documents agreement; provision_tenant already RAISES without it).
+  -- GATE 1 — signed SUBSCRIBER agreement on file. Must be a tier subscriber agreement
+  -- (saas-standalone/agency/enterprise) — NOT any ambient privacy/terms/esign acceptance
+  -- (which every user clicks at signup). §39 peer-gate: a slug-agnostic gate is a no-op.
   select exists (
     select 1 from public.legal_acceptances la
      where la.user_id = _owner
+       and la.document_slug = any(public.subscriber_agreement_slugs())
   ) into _has_agreement;
 
   -- GATE 2 — a REAL Stripe subscription (not a comped internal row). Requires a non-null
@@ -168,19 +194,28 @@ begin
 
   return query
   with latest_agreement as (
-    -- the tenant owner's most-recent subscriber-agreement acceptance
+    -- the tenant owner's most-recent SUBSCRIBER-agreement acceptance (same slug filter as the
+    -- trigger's GATE 1 — via subscriber_agreement_slugs() — so the audit reflects the real
+    -- subscriber agreement, never an ambient privacy/terms click (§39 finding #1).
     select distinct on (la.user_id)
            la.user_id, la.document_slug, la.document_version, la.accepted_at, la.ip_address
       from public.legal_acceptances la
+     where la.document_slug = any(public.subscriber_agreement_slugs())
      order by la.user_id, la.accepted_at desc nulls last
   ),
   latest_sub as (
-    -- the tenant's most-recent live-ish platform subscription
+    -- the tenant's subscription — ranked to prefer a QUALIFYING (active/past_due + real
+    -- stripe id) row exactly as the trigger's GATE 2 does, so the audit and the enforced
+    -- state can never disagree (§39 finding #2: a newer canceled row must not mask an older
+    -- active one). Falls back to the most-recent row when none qualifies.
     select distinct on (ps.tenant_id)
            ps.tenant_id, ps.stripe_customer_id, ps.stripe_subscription_id, ps.status,
            ps.current_period_start, ps.current_period_end
       from public.platform_subscriptions ps
-     order by ps.tenant_id, ps.created_at desc
+     order by ps.tenant_id,
+              (ps.stripe_subscription_id is not null and ps.status in ('active','past_due')) desc,
+              ps.current_period_end desc nulls last,
+              ps.created_at desc
   )
   select
     t.id,
