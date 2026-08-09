@@ -1,11 +1,8 @@
-import type { ReactNode } from "react";
 import { ArrowDownRight, ArrowRight, ArrowUpRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { motion, useReducedMotion } from "framer-motion";
-import { Line, LineChart, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChartContainer, type ChartConfig } from "@/components/ui/chart";
+import { Sparkline } from "./Sparkline";
 
 /**
  * StatPill — the DENSE sibling of StatTile (§11/§18).
@@ -40,10 +37,6 @@ export interface StatPillProps {
   className?: string;
 }
 
-const SPARK_CONFIG: ChartConfig = {
-  v: { label: "Trend", color: "hsl(var(--chart-1))" },
-};
-
 export function StatPill({
   label,
   value,
@@ -55,8 +48,6 @@ export function StatPill({
   loading,
   className,
 }: StatPillProps) {
-  const reduce = useReducedMotion();
-
   const valueTone = {
     default: "text-foreground",
     positive: "text-[hsl(var(--success))]",
@@ -71,8 +62,7 @@ export function StatPill({
       }[delta.direction]
     : null;
 
-  const sparkData =
-    sparkline && sparkline.length > 1 ? sparkline.map((v, i) => ({ i, v })) : null;
+  const hasSpark = Array.isArray(sparkline) && sparkline.length > 1;
 
   return (
     <div
@@ -114,27 +104,8 @@ export function StatPill({
           </div>
         )}
 
-        {sparkData && !loading && (
-          <motion.div
-            className="w-20 shrink-0"
-            initial={reduce ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: reduce ? 0 : 0.4 }}
-          >
-            <ChartContainer config={SPARK_CONFIG} className="!aspect-auto h-[34px] w-full">
-              <LineChart data={sparkData} margin={{ top: 2, right: 2, bottom: 2, left: 2 }}>
-                <YAxis hide domain={["dataMin", "dataMax"]} />
-                <Line
-                  type="monotone"
-                  dataKey="v"
-                  stroke="var(--color-v)"
-                  strokeWidth={2}
-                  dot={false}
-                  isAnimationActive={!reduce}
-                />
-              </LineChart>
-            </ChartContainer>
-          </motion.div>
+        {hasSpark && !loading && (
+          <Sparkline data={sparkline!} height={34} className="w-20 shrink-0" ariaLabel={`${label} trend`} />
         )}
       </div>
     </div>
