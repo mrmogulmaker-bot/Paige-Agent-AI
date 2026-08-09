@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
+// Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
+import { estimateTurnsTokens, shouldCompact } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 // N5 §2 de-hardcode — the client-side prompt assembly (persona block, neutral core,
@@ -375,12 +377,19 @@ async function embedText(text: string): Promise<number[] | null> {
   }
 }
 
-// L8 Memory Fabric (§7/§8/§26/§34) — the durable cross-session Owner-Ops read helper
-// (loadOwnerMemoryBlock) is DEFERRED to the writer slice (4a.3/4b). Slice 4a.2 ships ONLY the
-// proven substrate: the `paige_owner_memory` table + `match_paige_owner_memory` RPC (migration
-// 20260810120000). The read wiring lived here but was removed because it fired a paid Voyage
-// embed on every operator turn against an empty table — paid latency for nothing until there is
-// captured memory to retrieve. See the deferred marker in the request handler for the re-wire point.
+// L8 Memory Fabric (§7/§8/§26/§34) — the durable cross-session Owner-Ops SEMANTIC read helper
+// (loadOwnerMemoryBlock) remains DEFERRED to slice 4b (cross-chat memory). Slice 4a.2 shipped the
+// substrate (`paige_owner_memory` + `match_paige_owner_memory`, migration 20260810120000); slice
+// 4a.3 shipped PERSISTENCE (already live), token-aware COMPACTION, and DURABLE TASKING (tasks.
+// source_thread_id) — none of which need the embed path. Cross-chat semantic recall stays 4b
+// because it is the doctrine's TIER-GATED, monetizable feature (L8 workstream doc §"cross-chat
+// memory"): its depth is tier-resolved via the canonical §51 resolvers + a capability flag +
+// the agency roll-up (opt-in per #218), and its WRITE side (what counts as a durable fact, dedup/
+// supersede, an embed-cost budget, §13 "never hallucinate 'you told me last week'") deserves its
+// own crew pass + §32 proof of the paid Voyage path. Re-wire recipe when 4b lands: gate the read
+// behind an existence/count short-circuit on paige_owner_memory (NO paid embed against an empty
+// table — the 4a.2 SF1 lesson), embed the query with voyageEmbedOne ONLY (voyage-3@1024, §26/§17
+// voyage-only), call match_paige_owner_memory, fold hits into `memoryBlock`. See the handler marker.
 
 // D1 — render a gate-survived entity_profile (from paige-deep-research) into a
 // compact, fully-cited intel block for the model to present. Every fact keeps its
@@ -1045,15 +1054,20 @@ JSON:`;
     }
     const fundingEnabled = personaCtx.funding_enabled;
 
-    // === L8 MEMORY FABRIC — Owner-Ops cross-session memory (§7/§8/§26/§34) ===
-    // DEFERRED (slice 4a.3/4b): the read/write wiring is intentionally NOT wired here yet.
-    // Slice 4a.2 ships ONLY the proven substrate — the `paige_owner_memory` table +
-    // `match_paige_owner_memory` RPC (migration 20260810120000). The read path (loadOwnerMemoryBlock)
-    // was pulled because it called embedText() — a paid Voyage round-trip — on EVERY operator turn
-    // while the table stays empty until the writer slice lands, i.e. pure paid latency on the
-    // time-to-first-token hot path returning nothing (§13 honesty, §32 no-cost-for-nothing).
-    // The writer slice (4a.3/4b) re-adds the (tenant_id + user_id)-scoped read here, folding the
-    // block into `memoryBlock`, once there is captured memory to retrieve.
+    // === L8 MEMORY FABRIC — Owner-Ops cross-session SEMANTIC memory (§7/§8/§26/§34) ===
+    // STILL DEFERRED to slice 4b (cross-chat memory) — NOT wired here. Slice 4a.3 delivered the
+    // per-thread continuity this slice owns without any embed path: PERSISTENCE (turns + rolling
+    // summary, (tenant_id,user_id)-scoped, already live), token-aware COMPACTION (maybeRefreshSummary
+    // below), and DURABLE TASKING (tasks.source_thread_id links a chat-created task to its source
+    // conversation). Cross-chat SEMANTIC recall from paige_owner_memory stays 4b because it is the
+    // doctrine's tier-gated, monetizable feature (depth via canonical §51 resolvers + capability flag
+    // + agency roll-up per #218) and its write side needs its own crew pass + §32 proof of the paid
+    // Voyage path (§13 — never store/retrieve a hoped-for "you told me last week").
+    // 4b re-wire recipe: existence/count short-circuit on paige_owner_memory FIRST (no paid embed on
+    // an empty table, the 4a.2 SF1 lesson) → embed the query via voyageEmbedOne ONLY (voyage-3@1024,
+    // §26/§17 voyage-only) → match_paige_owner_memory (server-resolved tenant+user, §9) → fold into
+    // `memoryBlock`. Write path: on a genuine durable fact / session summary, insert an embedded row
+    // with EXPLICIT tenant_id + user_id (§9), tagged embedding_model='voyage-3', embedding_dim=1024.
 
     // §2 — buildUserContext queries credit tables + emits credit strings ONLY when
     // fundingEnabled; a non-funding/bare tenant's client gets profile/subscription/
@@ -3188,21 +3202,29 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       } catch (e) { console.warn("[paige] recall fetch failed:", (e as Error)?.message); }
     }
 
-    // Rolling-summary compaction: every EVERY turns past KEEP, fold everything older
-    // than the last KEEP verbatim turns into the thread summary and advance the
-    // watermark so the summarized range and the verbatim tail never overlap.
+    // Rolling-summary compaction (4a.3): fold older turns into the thread summary when the thread
+    // "approaches token limits" OR on a bounded turn cadence — whichever fires first — keeping the
+    // last KEEP verbatim turns and advancing summary_through_seq so the summarized range and the
+    // verbatim tail never overlap. The token trigger (chars/4 ESTIMATE, §13) makes a thread of long
+    // turns compact BEFORE its live context overflows, instead of waiting for the count cadence.
     const maybeRefreshSummary = async (threadId: string) => {
-      const KEEP = 12, EVERY = 8;
+      const KEEP = 12, EVERY = 8, TAIL_TOKEN_BUDGET = 6000;
       try {
         const { data: th } = await supabaseClient.from("paige_chat_threads")
           .select("message_count, summary, summary_through_seq").eq("id", threadId).maybeSingle();
-        if (!th || th.message_count <= KEEP || th.message_count % EVERY !== 0) return;
+        if (!th || th.message_count <= KEEP) return;
+        // The un-summarized verbatim tail (seq past the watermark) is exactly what loads into the
+        // model context, so weigh only that — fetch it via the (thread_id, seq) index and estimate.
         const { data: rows } = await supabaseClient.from("paige_chat_turns")
           .select("role,content,seq").eq("thread_id", threadId).in("role", ["user", "assistant"])
-          .order("seq", { ascending: true });
+          .gt("seq", th.summary_through_seq ?? 0).order("seq", { ascending: true });
         if (!rows?.length) return;
+        const tailTokens = estimateTurnsTokens(rows as Array<{ role?: string; content?: string }>);
+        if (!shouldCompact({ messageCount: th.message_count, tailTokens, keep: KEEP, every: EVERY, tailTokenBudget: TAIL_TOKEN_BUDGET })) return;
+        // Keep the last KEEP verbatim turns of the tail; fold everything before them. (rows is the
+        // tail only, so seq is already > watermark for every row — no overlap with prior summary.)
         const cutoffSeq = rows[Math.max(0, rows.length - KEEP)].seq;
-        const toFold = rows.filter((r: any) => r.seq <= cutoffSeq && r.seq > (th.summary_through_seq ?? 0));
+        const toFold = (rows as Array<{ seq: number }>).filter((r) => r.seq <= cutoffSeq);
         if (!toFold.length) return;
         const transcript = toFold.map((t: any) => `${t.role === "user" ? "Owner" : "Paige"}: ${t.content}`).join("\n").slice(0, 12000);
         const prompt = `Maintain a rolling memory of a long working chat between a business owner and their assistant Paige. Update the summary so nothing important is lost as older turns scroll off. PRESERVE explicitly: the owner's name & preferences, decisions made, tasks/actions Paige took or QUEUED, any PENDING approvals still open, names of clients/contacts, dates, numbers, and open loops. 4-8 tight sentences, flowing prose, no bullets.\n\nPRIOR SUMMARY:\n${th.summary ?? "(none)"}\n\nOLDER TURNS TO FOLD IN:\n${transcript}\n\nUPDATED SUMMARY:`;
@@ -3215,7 +3237,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
         const summary = (await resp.json())?.choices?.[0]?.message?.content?.trim();
         if (summary) {
           await supabaseClient.from("paige_chat_threads")
-            .update({ summary, summary_through_seq: cutoffSeq }).eq("id", threadId);
+            .update({ summary, summary_through_seq: cutoffSeq, last_compacted_at: new Date().toISOString() }).eq("id", threadId);
         }
       } catch (e) { console.warn("[paige] summary refresh failed:", (e as Error)?.message); }
     };
@@ -5950,6 +5972,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   due_date: args.due_date || null,
                   track: args.track || null,
                   status: "pending",
+                  // 4a.3 §8/§12 — durable link back to the conversation this task was created from,
+                  // so the owner can jump task ↔ source chat. NULL for non-thread callers (client
+                  // portal / doc-only). The uuid alone grants no read; the thread stays RLS-gated (§9).
+                  source_thread_id: payloadThreadId ?? null,
                 })
                 .select()
                 .single();
@@ -6749,7 +6775,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               result = { success: true, count: data?.length || 0, deals: data || [] };
             } else if (tc.function.name === "crm_list_tasks") {
               const limit = Math.min(Math.max(Number(args.limit) || 25, 1), 100);
-              let q = admin.from("tasks").select("id, title, status, due_date, track, user_id, biz_id, deal_id").eq("tenant_id", crmTenantId);
+              let q = admin.from("tasks").select("id, title, status, due_date, track, user_id, biz_id, deal_id, source_thread_id").eq("tenant_id", crmTenantId);
               if (args.status && args.status !== "all") q = q.eq("status", args.status);
               else q = q.neq("status", "completed");
               if (args.assignee_email) {
