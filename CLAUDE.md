@@ -1825,3 +1825,15 @@ after a ConvAI agent change a **hard refresh / fresh session** is required befor
 on that path. (Moot for the in-app Direct-TTS path, which fetches fresh mp3 per message, but the
 `tts-cache` Storage bucket keys on `provider:model:voice:text` — a voice change is a new key, so cached
 audio for the OLD voice is never re-served for the new one.)
+
+## 50. Trademark hygiene — no active pop-culture marks in code, docs, or any public artifact (owner-locked 2026-08-09).
+
+**Directive (owner: Antonio, 2026-08-09):** do NOT use active, well-known third-party pop-culture marks — even as internal codenames or "analogs for clarity" — anywhere that a Marvel/Disney/Apple/Amazon/Microsoft/IBM/Salesforce IP-monitoring bot could find. This includes but is not limited to: **JARVIS** (Marvel/Disney) · Skynet · HAL 9000 · TARS · Cortana (Microsoft) · Siri (Apple) · Alexa (Amazon) · Bixby (Samsung) · Watson (IBM) · Einstein (Salesforce) · Copilot (Microsoft/GitHub) · Ultron · FRIDAY (Marvel) · Data (Star Trek/CBS) · Samantha (Her) · Ava (Ex Machina) · Aria (character marks generally).
+
+- **The public-repo test:** if the mark would be findable in this repo, in a public GitHub commit message, in a public PR title, in a code comment, in a component name, in a table name, in a migration name, in an error message, in doc filenames, in doc body content, or in any deliverable a tenant/investor could see — it does NOT go there. Even as an "internal codename." Even as an "analog for clarity."
+- **Historical analog references must abstract.** When earlier docs need to gesture at "the JARVIS-tier experience," rewrite to "the operator-AI-COO archetype" or "the fictional operator-AI archetype" — describe the pattern, do not name the mark.
+- **The strategy-doc rule that failed:** the Owner Trilogy strategy doc itself said *"referenced as an analog for internal clarity — never as the framing of any code, table, feature, or tenant-visible surface."* That rule held for code (zero hits) but leaked into 4 doc files (BRD, agent-ui spec, analytics UI spec, strategy doc itself). This section closes that hole: the rule now applies to docs, not just code.
+- **Enforcement:** every §5 compliance officer + §39 adversarial verifier includes a `grep -ri "jarvis\|skynet\|hal 9000\|cortana\|alexa\|siri\|watson\|einstein\|copilot\|ultron\|friday\|tars\|samantha\|ava"` (case-insensitive) on the PR diff. Any hit fails the pass until removed or reframed. The list expands as new marks come up; add to the doctrine, not to the exception list.
+- **The test, every time:** *"If Marvel/Disney/Microsoft/Apple/Amazon IP counsel opened this repo tomorrow, would they find a mark that lets them argue product-name association?"* If yes, purge it before it merges.
+
+Real cost of this discipline: ~10 seconds per PR (the grep). Real cost of skipping it: legal fees + a rename after launch.

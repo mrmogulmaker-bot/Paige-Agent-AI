@@ -11,23 +11,9 @@
 ---
 ## The frame — an operator's AI COO, not "AI CRM"
 Every competitor in the coach / consultant / agency / thought-leader space sells a slice of the operator's job. HubSpot is a filing cabinet with reports. HighLevel is a Zapier for coaches. Kajabi is a course platform. Dubsado is a client portal. Ramp is spend management. QuickBooks is a general ledger with a UI. None of them try to be the operator's whole AI, because "AI-powered CRM" is the ceiling they can see from where they built.
-Paige's positioning is not that. Paige's positioning is **an operator's AI COO** — an AI that runs the whole company at the operator's direction, on a tenant-authored doctrine, across every department, with an autonomy dial the operator controls. The pattern-echo most operators already have a mental model for is Iron Man's JARVIS (referenced as an analog for internal clarity — never as the framing of any code, table, feature, or tenant-visible surface). The point is not the reference; the point is the honest description of what Paige's existing doctrine (§8 action bus, §14 Paige-runs-a-team, §16 10-department org, §26 semantic memory, §35 OS north star) actually adds up to when the pillars we're about to build land.
-The mapping below is a **pattern-echo reference**, not the frame — the strategic substance lives in the pillars, not the analog. Kept because it reads at a glance for anyone who's seen the archetype in fiction.
-| The archetype pattern | Paige does / will do | Where in Paige |
-|---|---|---|
-| Knew Stark's whole life-context | Semantic memory, tenant-authored Playbook | §7, §26 |
-| Ran Stark Industries operations | 10-department orchestration + action bus | §16, §8 |
-| Ran diagnostics on the suits | **Systems Check** (Pillar 1) | new — this doc |
-| Warned of incoming threats | **Competitive Intelligence** (Pillar 4) | new — this doc |
-| Modeled decisions before Stark made them | **Business twin** scenario modeling (Pillar 3, Direction C) | new — this doc |
-| Coordinated the whole armor factory | **Browser Agent** capability (Pillar 3, Direction A) | new — this doc |
-| Had personality, voice, presence | **Team-member twin** (Pillar 3, Direction B) | new — this doc |
-| Tracked every renewal, filing, obligation | **Business Vault** (Pillar 2) | new — this doc |
-| Suggested + executed on Stark's approval | Autonomy tiers (green / yellow / red) | §16 (already shipped) |
-| Respected Stark's boundaries + private matters | **Integrity Governance** | new — §40 in this doc |
-| Adjusted to the mission profile | **Revenue-stage awareness + entity-type awareness** | new — this doc |
-| Ran Stark Industries as ONE AI, not seven tools | The OS itself | §35 (already doctrine) |
-The mapping is not flattery. It's a checklist. Each row is either shipped, or is one of the pillars in this document. When the pillars land, Paige is measurably operator-AI-COO-shaped in a way no coach-CRM competitor is trying to be. That is the moat. It is also the reason this trilogy has to ship as one strategic wave rather than as unrelated feature additions — the whole point of an operator's AI COO is not a feature list, it's a felt experience of one AI running the whole thing.
+Paige's positioning is not that. Paige's positioning is **an operator's AI COO** — an AI that runs the whole company at the operator's direction, on a tenant-authored doctrine, across every department, with an autonomy dial the operator controls. The pattern most operators already have a mental model for is the fictional operator-AI-COO archetype — an intelligence that runs diagnostics, orchestrates specialists, and gets the operator through the day. The point is the honest description of what Paige's existing doctrine (§8 action bus, §14 Paige-runs-a-team, §16 10-department org, §26 semantic memory, §35 OS north star) actually adds up to when the pillars we're about to build land.
+
+Each pillar in this document is either shipped or is one of the pillars we're about to build. When they land, Paige is measurably operator-AI-COO-shaped in a way no coach-CRM competitor is trying to be. That is the moat. It is also the reason this trilogy has to ship as one strategic wave rather than as unrelated feature additions — the whole point of an operator's AI COO is not a feature list, it's a felt experience of one AI running the whole thing.
 ---
 ## The Trilogy is the platform spine (owner-locked 2026-08-04)
 The four pillars in this document — Systems Check · Business Vault · Twin Capabilities · Owner Analytics + Competitive Intelligence — are not four features living next to a longer feature list. They are **the spine of the platform.** Every new capability, section, workstream, or feature answers *"which pillar does this serve?"* before it fires. Nothing lives standalone. Standalone features that don't plug into one of the four pillars are the exception, not the default — and the exception must be justified.
@@ -392,7 +378,7 @@ Every pillar in this trilogy rests on primitives that already ship. This is why 
 Zero new fundamental primitives required. Every pillar is a compounding on shipped infrastructure.
 ---
 
-## Capabilities the Pillars enable — the JARVIS-tier operator AI COO experience (owner-approved 2026-08-04)
+## Capabilities the Pillars enable — the operator-AI-COO-tier experience (owner-approved 2026-08-04)
 
 The four pillars are the ARCHITECTURE. This section is the EXPERIENCE tenants have because those pillars ship. Every capability is either substrate-covered today (§8 action bus + §14 team + §16 dept model + §26 memory + §36 intuitiveness moat + §242 VP addressability) or activates when the pillar it depends on lands.
 
@@ -411,7 +397,7 @@ These are the baseline capabilities every tenant expects from an AI COO. Substra
 7. **Product suggestions + creation** — Paige proposes new offerings based on client demand + market signals + tenant capabilities.
 8. **R&D** — Paige runs actual experiments, prototypes offers, A/B tests concepts, reports results. Execution + learning loops, not just proposals.
 
-### Extended JARVIS-tier capability surface
+### Extended operator-AI-COO capability surface
 
 Eight categories, ~27 sub-capabilities. Each fires in its wave-appropriate slot.
 
