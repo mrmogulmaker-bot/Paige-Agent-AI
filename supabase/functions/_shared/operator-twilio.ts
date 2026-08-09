@@ -1,26 +1,39 @@
 // _shared/operator-twilio.ts — the operator (God/Super-Admin) Twilio credential seam.
 //
-// The OPERATOR is Paige Agent AI LLC's own Twilio account ("Paige Agent AI LLC"),
-// distinct from the platform MASTER creds (TWILIO_*) used to provision tenant
-// subaccounts and from any tenant's own subaccount. Operator SMS is sent through the
-// operator account's A2P **Messaging Service** (an `MG…` SID — Twilio's A2P
-// best-practice sender) so 10DLC campaign registration, sticky sender, and opt-out
-// handling are enforced by Twilio — never a bare `From:` number.
+// The OPERATOR SMS surface is the PLATFORM's OWN outbound identity, so it sends from the
+// platform MASTER Twilio account — the SAME account that already powers phone calls and
+// the tenant number registry today. It therefore REUSES the existing master creds
+// (`masterCreds()` in twilio.ts, §18 one home) — NO new account/auth secret needs to be
+// pasted. `TWILIO_OPERATOR_*` remain OPTIONAL overrides: if a full operator trio is set it
+// wins; otherwise the master creds are used.
 //
-// SECRET NAMES (owner pastes the VALUES into Supabase; code only references NAMES, §34):
-//   TWILIO_OPERATOR_ACCOUNT_SID            AC… — the operator account (URL path).
-//   TWILIO_OPERATOR_MESSAGING_SERVICE_SID  MG… — the A2P Messaging Service to send through.
-//   TWILIO_OPERATOR_API_KEY_SID            SK… — Basic-auth USERNAME (preferred, best-practice).
-//   TWILIO_OPERATOR_API_KEY_SECRET               Basic-auth PASSWORD for the API Key path.
-//   TWILIO_OPERATOR_AUTH_TOKEN             (fallback) account Auth Token — Basic-auth password
-//                                          when no API Key is set, AND the secret Twilio signs
-//                                          inbound webhooks with (X-Twilio-Signature validation).
+// The ONE thing the master config does NOT already cover is an A2P **Messaging Service**
+// (an `MG…` SID — Twilio's A2P best-practice sender for 10DLC). The existing platform SMS
+// path sends from a raw `From`/`TWILIO_PHONE_NUMBER` (tenant sends resolve their MG SID
+// per-tenant from `tenant_a2p_registrations`, not from an env), so there is no master MG
+// env to reuse. The operator MG SID is resolved from `TWILIO_OPERATOR_MESSAGING_SERVICE_SID`
+// or a generic `TWILIO_MESSAGING_SERVICE_SID` if one exists — and if genuinely absent it is
+// the SINGLE owner-owed secret (the operator send degrades to needs_config until it's set,
+// never a raw-From A2P violation, §13).
 //
-// This EXTENDS the ONE Twilio client (twilio.ts) — it reuses `sendSms` and
-// `validateTwilioSignature`; it does NOT fork a second HTTP client or a second
-// signature implementation (§18 one home).
+// SECRET NAMES (code references NAMES only, §34):
+//   Master (ALREADY set — reused, no new paste):
+//     TWILIO_ACCOUNT_SID       AC… — master account (URL path).
+//     TWILIO_API_KEY_SID       SK… — Basic-auth USERNAME (preferred).
+//     TWILIO_API_KEY_SECRET          Basic-auth PASSWORD (preferred).
+//     TWILIO_AUTH_TOKEN              account Auth Token — the secret Twilio signs inbound
+//                                    webhooks with (X-Twilio-Signature validation) + legacy
+//                                    Basic-auth fallback.
+//   Operator OVERRIDES (optional — used only if explicitly set):
+//     TWILIO_OPERATOR_ACCOUNT_SID / _API_KEY_SID / _API_KEY_SECRET / _AUTH_TOKEN
+//   A2P Messaging Service (the single possibly-owed secret):
+//     TWILIO_OPERATOR_MESSAGING_SERVICE_SID  MG… (preferred), or generic TWILIO_MESSAGING_SERVICE_SID.
+//
+// This EXTENDS the ONE Twilio client (twilio.ts) — it reuses `sendSms`,
+// `validateTwilioSignature`, and `masterCreds`; it does NOT fork a second HTTP client, a
+// second signature implementation, or a second cred resolver (§18 one home).
 
-import { sendSms, validateTwilioSignature, type TwilioResult } from "./twilio.ts";
+import { sendSms, validateTwilioSignature, masterCreds, type TwilioResult } from "./twilio.ts";
 
 /** Resolved operator Twilio credentials from env. Read at CALL time (rotation-safe). */
 export interface OperatorTwilioCreds {
@@ -35,36 +48,71 @@ export interface OperatorTwilioCreds {
 }
 
 /**
+ * Resolve the operator A2P Messaging Service SID: operator override → generic master
+ * messaging-service env → "" when neither is set (the single owner-owed secret).
+ */
+export function operatorMessagingServiceSid(): string {
+  return (
+    Deno.env.get("TWILIO_OPERATOR_MESSAGING_SERVICE_SID") ??
+    Deno.env.get("TWILIO_MESSAGING_SERVICE_SID") ??
+    ""
+  );
+}
+
+/**
  * Resolve operator Twilio creds from env, or null when not configured (honest degrade,
- * §13 — callers surface `needs_config`, never send with an empty credential). Prefers the
- * API-Key trio; falls back to the account Auth Token per the owner's brief.
+ * §13 — callers surface `needs_config`, never send with an empty credential).
+ *
+ * REUSE-FIRST (§30, owner correction 2026-08-09): account+auth come from the platform
+ * MASTER creds by default (already set — powers phone calls / number registry today), so
+ * ZERO new account/auth pastes are needed. `TWILIO_OPERATOR_*` override ONLY when a full
+ * operator trio (or account+auth-token) is explicitly set. The one piece the master config
+ * doesn't cover is the A2P Messaging Service SID — without it we return null (needs_config),
+ * never a raw-From A2P violation.
  */
 export function operatorTwilioCreds(): OperatorTwilioCreds | null {
-  const accountSid = Deno.env.get("TWILIO_OPERATOR_ACCOUNT_SID") ?? "";
-  const messagingServiceSid = Deno.env.get("TWILIO_OPERATOR_MESSAGING_SERVICE_SID") ?? "";
-  if (!accountSid || !messagingServiceSid) return null;
+  // A2P Messaging Service SID is REQUIRED (A2P best-practice: never a bare From).
+  const messagingServiceSid = operatorMessagingServiceSid();
+  if (!messagingServiceSid) return null;
 
-  const apiKeySid = Deno.env.get("TWILIO_OPERATOR_API_KEY_SID") ?? "";
-  const apiKeySecret = Deno.env.get("TWILIO_OPERATOR_API_KEY_SECRET") ?? "";
-  if (apiKeySid && apiKeySecret) {
-    return { accountSid, messagingServiceSid, authToken: apiKeySecret, apiKeySid };
+  // Explicit operator OVERRIDE — API-Key trio wins, then account+auth-token.
+  const opAccountSid = Deno.env.get("TWILIO_OPERATOR_ACCOUNT_SID") ?? "";
+  const opApiKeySid = Deno.env.get("TWILIO_OPERATOR_API_KEY_SID") ?? "";
+  const opApiKeySecret = Deno.env.get("TWILIO_OPERATOR_API_KEY_SECRET") ?? "";
+  if (opAccountSid && opApiKeySid && opApiKeySecret) {
+    return { accountSid: opAccountSid, messagingServiceSid, authToken: opApiKeySecret, apiKeySid: opApiKeySid };
   }
-  const authTokenFallback = Deno.env.get("TWILIO_OPERATOR_AUTH_TOKEN") ?? "";
-  if (authTokenFallback) {
-    return { accountSid, messagingServiceSid, authToken: authTokenFallback };
+  const opAuthToken = Deno.env.get("TWILIO_OPERATOR_AUTH_TOKEN") ?? "";
+  if (opAccountSid && opAuthToken) {
+    return { accountSid: opAccountSid, messagingServiceSid, authToken: opAuthToken };
   }
-  return null;
+
+  // DEFAULT: reuse the platform MASTER account/auth (no new paste). masterCreds() prefers
+  // the API-Key trio (TWILIO_API_KEY_SID/SECRET) and falls back to TWILIO_AUTH_TOKEN.
+  const master = masterCreds();
+  if (!master) return null;
+  return {
+    accountSid: master.accountSid,
+    messagingServiceSid,
+    authToken: master.authToken,
+    apiKeySid: master.apiKeySid,
+  };
 }
 
 /**
  * The Twilio account Auth Token used to VALIDATE an inbound webhook's X-Twilio-Signature.
- * Twilio signs webhooks with the account's Auth Token (NOT an API Key secret), so the
- * inbound handler must read TWILIO_OPERATOR_AUTH_TOKEN specifically. Returns "" when unset —
- * the caller then degrades honestly (rejects, or accepts-unsigned with a loud warning),
- * matching the existing handle-inbound-sms / voice-twiml posture.
+ * Twilio signs webhooks with the ACCOUNT Auth Token — and because the operator number lives
+ * on the MASTER account, the master `TWILIO_AUTH_TOKEN` (already set; the same one
+ * handle-inbound-sms uses) validates operator inbound with NO new paste. A
+ * `TWILIO_OPERATOR_AUTH_TOKEN` override wins if explicitly set. Returns "" only when BOTH
+ * are unset — the caller then fails closed.
  */
 export function operatorInboundAuthToken(): string {
-  return Deno.env.get("TWILIO_OPERATOR_AUTH_TOKEN") ?? "";
+  return (
+    Deno.env.get("TWILIO_OPERATOR_AUTH_TOKEN") ??
+    Deno.env.get("TWILIO_AUTH_TOKEN") ??
+    ""
+  );
 }
 
 /**
@@ -79,7 +127,13 @@ export async function sendOperatorSms(
 ): Promise<TwilioResult> {
   const creds = operatorTwilioCreds();
   if (!creds) {
-    return { ok: false, status: 0, error: "operator_twilio_not_configured", data: null, needs_config: true };
+    // Precise §13 reason: with master creds already set, the only realistic gap is the A2P
+    // Messaging Service SID (the single owner-owed secret). Name it so the owner knows the
+    // ONE thing to paste — not a blanket 5-secret request.
+    const error = !operatorMessagingServiceSid()
+      ? "operator_messaging_service_not_configured" // owner-owed: A2P Messaging Service SID (MG…)
+      : "operator_twilio_not_configured";
+    return { ok: false, status: 0, error, data: null, needs_config: true };
   }
   return await sendSms(
     creds.accountSid, // URL path addresses the operator account

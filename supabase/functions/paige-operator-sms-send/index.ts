@@ -7,7 +7,7 @@
 // operator_conversations row (upsert by counterparty phone). verify_jwt defaults to true
 // for this function (it is NOT listed as verify_jwt=false in config.toml).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { operatorTwilioCreds, sendOperatorSms } from "../_shared/operator-twilio.ts";
+import { operatorTwilioCreds, operatorMessagingServiceSid, sendOperatorSms } from "../_shared/operator-twilio.ts";
 import { normalizePhone } from "../_shared/pre-send-pipeline.ts";
 
 const corsHeaders = {
@@ -61,12 +61,16 @@ Deno.serve(async (req) => {
   const toNorm = normalizePhone(toRaw);
   const fullBody = bodyRaw.includes("STOP") ? bodyRaw : (bodyRaw + STOP_SUFFIX).slice(0, MAX_BODY);
 
-  // Short-circuit needs_config BEFORE any DB write (§13): when the operator Twilio creds
-  // are unset there is nothing to send, so we must not create a conversation thread or a
-  // `failed` message row — otherwise the operator inbox fills with phantom pre-config
-  // artifacts. Return needs_config with no persistence.
+  // Short-circuit needs_config BEFORE any DB write (§13): when the operator Twilio config
+  // is incomplete there is nothing to send, so we must not create a conversation thread or
+  // a `failed` message row — otherwise the operator inbox fills with phantom pre-config
+  // artifacts. Account/auth reuse the master creds (already set); the only realistic gap is
+  // the A2P Messaging Service SID, so name it precisely so the owner knows the ONE secret.
   if (!operatorTwilioCreds()) {
-    return json({ outcome: "needs_config", reason: "operator_twilio_not_configured" }, 200);
+    const reason = !operatorMessagingServiceSid()
+      ? "operator_messaging_service_not_configured"
+      : "operator_twilio_not_configured";
+    return json({ outcome: "needs_config", reason }, 200);
   }
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY);

@@ -161,7 +161,7 @@ export default function PlatformFleetCommunications() {
         if (res?.conversation_id) setSelectedId(res.conversation_id);
         void loadConversations();
       } else if (outcome === "needs_config") {
-        toast.error("Operator SMS isn't configured yet — add the Twilio operator credentials.");
+        toast.error("Operator SMS isn't ready to send yet — one Twilio setup step remains.");
       } else {
         toast.error(res?.reason ?? "Couldn't send that message.");
       }

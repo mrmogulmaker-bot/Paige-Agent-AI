@@ -50,37 +50,53 @@ any tenant's inbox. This is documented here (the nested edge-functions doctrine 
 auto-loads for all SMS/comms/edge work) because that is exactly where a future session would
 otherwise re-derive it.
 
-**Account / number / service (owner-confirmed):**
-- Twilio account: **"Paige Agent AI LLC"** (the operator account — distinct from the platform
-  MASTER creds used to provision tenant *subaccounts*, and from any tenant's own subaccount).
-- A2P phone: **+1 (470) 200-3444**.
+**Account / number / service (owner-confirmed 2026-08-09 — REUSES the MASTER account):**
+- Operator SMS is the PLATFORM's OWN outbound identity, so it sends from the **platform MASTER
+  Twilio account** — the SAME account that already powers phone calls and the tenant number
+  registry today. It is **NOT** a separate "operator" Twilio account, and it must **REUSE the
+  existing master creds** (already in Supabase edge secrets) — no new account/auth secret is
+  pasted (§30 re-diagnosis: the master creds already exist and work).
+- A2P phone: **+1 (470) 200-3444** (an imported number on the master account).
 - Messaging Service: **"Low Volume Mixed A2P Messaging Service"** — outbound SMS is sent
-  through its `MG…` SID (A2P best-practice), **NEVER a raw `From:` number**.
-- Voice webhook: currently on the **Twilio demo URL**; it is re-pointed in slice **4c.2**
-  (voice inbound). Leave the voice demo webhook alone — this slice is SMS-only.
+  through its `MG…` SID (A2P best-practice), **NEVER a raw `From:` number**. The existing
+  platform SMS path sends from a raw `From`/`TWILIO_PHONE_NUMBER` (tenant sends resolve their
+  MG SID per-tenant from `tenant_a2p_registrations`, NOT from an env), so there is **no master
+  MG env to reuse** — the operator MG SID is the ONE genuinely-new secret (see below).
+- Voice webhook: currently on the **Twilio demo URL**; re-pointed in slice **4c.2**. Leave it
+  alone — this slice is SMS-only.
 
-**Supabase secret NAMES (owner pastes the VALUES; code references only the NAMES, §34):**
-- `TWILIO_OPERATOR_ACCOUNT_SID` — `AC…` operator account (URL path + legacy Basic-auth username).
-- `TWILIO_OPERATOR_MESSAGING_SERVICE_SID` — `MG…` the Messaging Service outbound sends through.
-- `TWILIO_OPERATOR_API_KEY_SID` / `TWILIO_OPERATOR_API_KEY_SECRET` — preferred API-Key auth
-  (Basic-auth username = `SK…`, password = secret).
-- `TWILIO_OPERATOR_AUTH_TOKEN` — fallback Basic-auth password AND the secret Twilio signs
-  inbound webhooks with (X-Twilio-Signature validation). **Set this** so the inbound handler
-  can enforce signature validation instead of accepting-unsigned.
-These are **operator-scoped and independent** of the platform `TWILIO_*` master creds — the
-operator seam never falls back to master creds (§9 clean seam).
+**Supabase secret NAMES (code references only the NAMES, §34):**
+- **REUSED master creds — ALREADY set, no new paste** (resolved via `masterCreds()`, §18 one home):
+  - `TWILIO_ACCOUNT_SID` — `AC…` master account (URL path + legacy Basic-auth username).
+  - `TWILIO_API_KEY_SID` / `TWILIO_API_KEY_SECRET` — preferred API-Key auth (username = `SK…`, password = secret).
+  - `TWILIO_AUTH_TOKEN` — the secret Twilio signs inbound webhooks with (X-Twilio-Signature
+    validation) AND the legacy Basic-auth fallback. Since the operator number lives on the
+    master account, this ALREADY validates operator inbound — no new paste.
+- **The ONE possibly-owed secret — the A2P Messaging Service SID:**
+  - `TWILIO_OPERATOR_MESSAGING_SERVICE_SID` (preferred) or generic `TWILIO_MESSAGING_SERVICE_SID`
+    — `MG…` for the "Low Volume Mixed A2P Messaging Service". The master config sends via raw
+    `From`, so it does NOT already cover A2P Messaging-Service sending; **this MG SID is the
+    single secret the owner still needs to paste** if one isn't already set. Until it is set,
+    the operator send degrades to `needs_config` (`operator_messaging_service_not_configured`) —
+    never a raw-From A2P violation (§13).
+- **Optional operator OVERRIDES (only used if explicitly set — for a future dedicated operator
+  account):** `TWILIO_OPERATOR_ACCOUNT_SID` / `_API_KEY_SID` / `_API_KEY_SECRET` / `_AUTH_TOKEN`.
+  When a full override trio is set it wins; otherwise the master creds are used.
 
 **Edge functions:**
 - **Sender:** `paige-operator-sms-send` — owner-gated (`is_platform_owner()` derived from the
-  JWT, never the body), sends via `sendOperatorSms` (Messaging Service SID), persists the
-  outbound message to `operator_messages` / `operator_conversations`. `verify_jwt` = default
-  true.
+  JWT, never the body), sends via `sendOperatorSms` (master creds + Messaging Service SID),
+  persists the outbound message to `operator_messages` / `operator_conversations`. `verify_jwt`
+  = default true. Short-circuits `needs_config` BEFORE any DB write so no pre-config inbox
+  artifacts appear.
 - **Inbound:** `paige-operator-sms-inbound` — `verify_jwt = false` (Twilio sends no JWT);
-  validates `X-Twilio-Signature` with the operator Auth Token BEFORE trusting the payload,
-  then threads the inbound message. Set its Twilio webhook to:
-  `https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/paige-operator-sms-inbound`
-- Shared seam: `_shared/operator-twilio.ts` (reuses `_shared/twilio.ts` `sendSms` +
-  `validateTwilioSignature` — §18 one home; no forked HTTP or signature code).
+  validates `X-Twilio-Signature` with the master `TWILIO_AUTH_TOKEN` (or the operator override)
+  BEFORE trusting the payload — **FAILS CLOSED** (401, nothing written) when no token is
+  resolvable, unless the dev-only `ALLOW_UNSIGNED_OPERATOR_SMS=true` flag is set. Set its Twilio
+  webhook to: `https://xygzykjyynhzqytbqnzu.supabase.co/functions/v1/paige-operator-sms-inbound`
+- Shared seam: `_shared/operator-twilio.ts` (reuses `_shared/twilio.ts` `sendSms`,
+  `validateTwilioSignature`, AND `masterCreds` — §18 one home; no forked HTTP, signature, or
+  cred-resolution code).
 - Headless smoke: `scripts/operator-sms-smoke.mts`
   (`node --experimental-strip-types scripts/operator-sms-smoke.mts`).
 

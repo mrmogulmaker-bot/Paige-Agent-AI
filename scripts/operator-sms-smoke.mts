@@ -80,38 +80,58 @@ console.log("Operator SMS seam smoke\n");
   delete env.ALLOW_UNSIGNED_OPERATOR_SMS;
 }
 
-// ── 2) operatorTwilioCreds resolution (API-Key preferred, auth-token fallback, needs_config) ─
+// ── 2) operatorTwilioCreds resolution — MASTER-CRED REUSE (§30 owner correction 2026-08-09) ─
 {
   for (const k of Object.keys(env)) delete env[k];
   check("unconfigured → null (needs_config degrade)", operatorTwilioCreds() === null);
 
-  env.TWILIO_OPERATOR_ACCOUNT_SID = "AC11111111111111111111111111111111";
+  // MG SID present but NO account/auth of any kind → still null (needs the master creds).
   env.TWILIO_OPERATOR_MESSAGING_SERVICE_SID = "MG22222222222222222222222222222222";
-  env.TWILIO_OPERATOR_API_KEY_SID = "SK33333333333333333333333333333333";
-  env.TWILIO_OPERATOR_API_KEY_SECRET = "operator-api-key-secret";
-  const c = operatorTwilioCreds();
-  check("API-Key path: username = API Key SID", c?.apiKeySid === env.TWILIO_OPERATOR_API_KEY_SID);
-  check("API-Key path: password = API Key Secret", c?.authToken === env.TWILIO_OPERATOR_API_KEY_SECRET);
-  check("API-Key path: messagingServiceSid resolved (MG…)", c?.messagingServiceSid === env.TWILIO_OPERATOR_MESSAGING_SERVICE_SID);
+  check("MG SID but no account/auth → null", operatorTwilioCreds() === null);
 
-  delete env.TWILIO_OPERATOR_API_KEY_SID;
-  delete env.TWILIO_OPERATOR_API_KEY_SECRET;
-  env.TWILIO_OPERATOR_AUTH_TOKEN = "legacy-operator-auth-token";
-  const f = operatorTwilioCreds();
-  check("fallback path: no apiKeySid", f?.apiKeySid === undefined);
-  check("fallback path: password = auth token", f?.authToken === "legacy-operator-auth-token");
+  // REUSE PATH: MASTER creds (already set in prod) + operator MG SID, NO operator account
+  // creds → resolves using the MASTER account SID + master API Key (zero new pastes).
+  env.TWILIO_ACCOUNT_SID = "ACmaster1111111111111111111111111";
+  env.TWILIO_API_KEY_SID = "SKmaster2222222222222222222222222";
+  env.TWILIO_API_KEY_SECRET = "master-api-key-secret";
+  const m = operatorTwilioCreds();
+  check("REUSE: account SID = MASTER account SID (no operator paste)", m?.accountSid === env.TWILIO_ACCOUNT_SID);
+  check("REUSE: username = MASTER API Key SID", m?.apiKeySid === env.TWILIO_API_KEY_SID);
+  check("REUSE: password = MASTER API Key Secret", m?.authToken === env.TWILIO_API_KEY_SECRET);
+  check("REUSE: messagingServiceSid = operator MG SID", m?.messagingServiceSid === env.TWILIO_OPERATOR_MESSAGING_SERVICE_SID);
 
+  // Generic TWILIO_MESSAGING_SERVICE_SID is reused when the operator override isn't set.
   delete env.TWILIO_OPERATOR_MESSAGING_SERVICE_SID;
-  check("missing Messaging Service SID → null (never a raw From)", operatorTwilioCreds() === null);
+  env.TWILIO_MESSAGING_SERVICE_SID = "MGgeneric333333333333333333333333";
+  check("generic MESSAGING_SERVICE_SID reused when operator MG unset", operatorTwilioCreds()?.messagingServiceSid === env.TWILIO_MESSAGING_SERVICE_SID);
+
+  // OVERRIDE PATH: explicit operator account trio WINS over the master creds.
+  env.TWILIO_OPERATOR_MESSAGING_SERVICE_SID = "MGop44444444444444444444444444444";
+  env.TWILIO_OPERATOR_ACCOUNT_SID = "ACop5555555555555555555555555555";
+  env.TWILIO_OPERATOR_API_KEY_SID = "SKop6666666666666666666666666666";
+  env.TWILIO_OPERATOR_API_KEY_SECRET = "operator-override-secret";
+  const o = operatorTwilioCreds();
+  check("OVERRIDE: operator account SID wins over master", o?.accountSid === env.TWILIO_OPERATOR_ACCOUNT_SID);
+  check("OVERRIDE: operator API Key SID wins", o?.apiKeySid === env.TWILIO_OPERATOR_API_KEY_SID);
+  check("OVERRIDE: operator MG SID wins over generic", o?.messagingServiceSid === env.TWILIO_OPERATOR_MESSAGING_SERVICE_SID);
+
+  // The ONE genuinely-owed secret: with master creds set but NO messaging service anywhere,
+  // resolution is null (needs_config) — never a raw-From A2P violation.
+  for (const k of Object.keys(env)) delete env[k];
+  env.TWILIO_ACCOUNT_SID = "ACmaster1111111111111111111111111";
+  env.TWILIO_API_KEY_SID = "SKmaster2222222222222222222222222";
+  env.TWILIO_API_KEY_SECRET = "master-api-key-secret";
+  check("master creds set, NO messaging service → null (MG SID is the single owed secret)", operatorTwilioCreds() === null);
 }
 
-// ── 3) sendOperatorSms sends via the Messaging Service SID, NEVER a raw From ──────────
+// ── 3) sendOperatorSms sends via the Messaging Service SID with MASTER creds ──────────
 {
   for (const k of Object.keys(env)) delete env[k];
-  env.TWILIO_OPERATOR_ACCOUNT_SID = "AC44444444444444444444444444444444";
+  // Master creds already set (as in prod) + only the operator MG SID → sends, no new paste.
+  env.TWILIO_ACCOUNT_SID = "ACmaster4444444444444444444444444";
+  env.TWILIO_API_KEY_SID = "SKmaster6666666666666666666666666";
+  env.TWILIO_API_KEY_SECRET = "master-secret-xyz";
   env.TWILIO_OPERATOR_MESSAGING_SERVICE_SID = "MG55555555555555555555555555555555";
-  env.TWILIO_OPERATOR_API_KEY_SID = "SK66666666666666666666666666666666";
-  env.TWILIO_OPERATOR_API_KEY_SECRET = "secret-xyz";
 
   let capturedBody = "";
   let capturedAuth = "";
@@ -132,14 +152,18 @@ console.log("Operator SMS seam smoke\n");
   check("provider sid returned (not fabricated)", (res.data as { sid?: string } | null)?.sid === "SM99999999999999999999999999999999");
   check("body carries MessagingServiceSid (MG…)", params.get("MessagingServiceSid") === env.TWILIO_OPERATOR_MESSAGING_SERVICE_SID);
   check("body has NO raw From (A2P best-practice)", params.get("From") === null || params.get("From") === "");
-  check("URL addresses the operator account SID", capturedUrl.includes(env.TWILIO_OPERATOR_ACCOUNT_SID!));
-  const expectedAuth = "Basic " + Buffer.from(`${env.TWILIO_OPERATOR_API_KEY_SID}:${env.TWILIO_OPERATOR_API_KEY_SECRET}`).toString("base64");
-  check("Basic-auth username = operator API Key SID", capturedAuth === expectedAuth, `got ${capturedAuth.slice(0, 12)}…`);
+  check("URL addresses the MASTER account SID (reuse)", capturedUrl.includes(env.TWILIO_ACCOUNT_SID!));
+  const expectedAuth = "Basic " + Buffer.from(`${env.TWILIO_API_KEY_SID}:${env.TWILIO_API_KEY_SECRET}`).toString("base64");
+  check("Basic-auth username = MASTER API Key SID (reuse)", capturedAuth === expectedAuth, `got ${capturedAuth.slice(0, 12)}…`);
 
-  // Unconfigured → needs_config, never a fabricated send.
+  // No messaging service anywhere → needs_config with the precise owed-secret reason.
   for (const k of Object.keys(env)) delete env[k];
+  env.TWILIO_ACCOUNT_SID = "ACmaster4444444444444444444444444";
+  env.TWILIO_API_KEY_SID = "SKmaster6666666666666666666666666";
+  env.TWILIO_API_KEY_SECRET = "master-secret-xyz";
   const degraded = await sendOperatorSms("+14705551234", "x");
-  check("unconfigured send → needs_config (no fake send)", degraded.needs_config === true && degraded.ok === false);
+  check("no MG SID → needs_config (no fake send)", degraded.needs_config === true && degraded.ok === false);
+  check("needs_config names the messaging-service gap", degraded.error === "operator_messaging_service_not_configured");
 }
 
 console.log(`\n${fail === 0 ? "PASS" : "FAIL"} — ${pass} passed, ${fail} failed`);
