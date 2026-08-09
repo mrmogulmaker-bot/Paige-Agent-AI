@@ -151,6 +151,23 @@ The rich two-way client inbox is fully shipped and mounted (this REPLACES an ear
 - **Operator (God) SMS:** `paige-operator-sms-send` edge fn (from PR #408) — see the Fleet Comms 500 gap in Section 5.
 - Doctrine: §7 intelligent portal · §36 draft-first/one-click · §49 unified inline-single-conversation.
 
+### Agent Presence primitive family — SHIPPED (CC-verified on main SHA `580b13f4`, byte sizes byte-matched 2026-08-09)
+
+The ⌘K launcher + right-side Paige presence rail chrome is a reusable primitive family, live on the Fleet Console (owner screenshot 2026-08-09). This entry closes a Cowork completeness gap — the Agent UI Placement spec defined this surface but Section 4 hadn't marked it shipped. (Verified by CC against `origin/main`: all 7 files exist and every byte size matches; folded as its own docs PR since the miss #21 PR (#417) had already merged.)
+
+- **Primitive family** — `src/components/ui/paige/` (CC `git cat-file -s` sizes):
+  - `AgentPresence.tsx` (3,631 B) — the presence primitive
+  - `AgentPresenceContext.tsx` (7,715 B) — React context; resolves persona by `account_type` (super_admin → Paige Operator · agency → Paige Agency · tenant → Paige)
+  - `AgentRail.tsx` (12,530 B) — the right-side presence rail (persona pill + empty state "Your Paige team is on call" + account-type-aware description + "Ask from anywhere ⌘K" trigger)
+  - `CommandLauncher.tsx` (5,612 B) — the ⌘K modal (persona-aware placeholder)
+  - `persona.ts` (3,535 B) — persona resolution logic
+  - `index.ts` (1,630 B) — barrel export
+  - `AgentPresence.test.tsx` (10,522 B) — test coverage
+- **Doctrine hooks:** §7 intelligent portal · §14 Paige-runs-a-team ("your Paige team is on call") · §20 dispatch-in-chat (⌘K opens a Paige chat surface anywhere) · §36 intuitiveness moat (5-minute discoverability via ⌘K) · §11 primitive-layer discipline · §9 tenant/operator seam (persona swaps clean per `account_type`).
+- **Intelligence layer NOT live (§13 baked into the copy):** the placeholder literally reads *"{persona}'s live conversation connects here soon — your message isn't sent yet."* The chrome is shipped; the send/receive/reasoning wiring is Wave 4 MVP-hub work — the correct shipped-chrome / not-yet-intelligence pattern (§32).
+- **Spec:** `docs/product/agent-ui-placement-spec.md` (§5a persona surface + ⌘K launcher + right-rail placement).
+- **Evidence:** owner screenshot 2026-08-09 of `paigeagent.ai/admin/platform/tenants` (rail + ⌘K modal); CC file/size verification against `origin/main`.
+
 ### Third-party integrations WIRED + CONFIGURED
 
 - ✅ **Twilio — ISV/reseller architecture LIVE at Twilio's side; number-search UI is the only remaining gap.**
