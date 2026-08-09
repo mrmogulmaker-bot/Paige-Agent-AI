@@ -1,7 +1,5 @@
 # Paige Agent AI — Canonical Build Order
-
 **Status:** Owner-locked 2026-08-04, updated 2026-08-08. Supersedes ad-hoc sequencing chatter. Both Cowork and Claude Code reference this doc as the single source of truth for "what wave are we on / what fires next / what blocks what." This repo copy at `docs/doctrine/canonical-build-order.md` is the source of truth; Cowork's local disk copy is the backup mirror.
-
 **Update discipline:** whenever a wave completes or sequencing changes, ship a doc commit that updates the change log and marks completed waves ✅. Never let it drift. It is a **living** doc (no date suffix) — always current, never a snapshot.
 
 ---
@@ -10,7 +8,6 @@
 
 ### WAVE 1 — SHIPPED ✅
 Fired 2026-08-04.
-
 - **§10 merge-base CI fix** (PR #360 → merged 9bf4e9c1) ✅
 - **Task #243** — `<PaigeAttribution>` byline primitive (PR #361 → merged 1860c825) ✅
 - **Task #240** — Phase 2 Integrations cluster (n8n + Zapier + MCP; OAuth deferred per owner) — status: check current state
@@ -23,9 +20,7 @@ Fired 2026-08-04.
 - **Task #247** — Custom Specialists section (PR #369) — 🔄 verify current status; slotted into Wave 2.5 tail
 
 ### WAVE 2.5 — Launch-blocker cluster + verification infrastructure (INSERTED 2026-08-08, currently firing)
-
 Purpose: pre-launch cleanup + systemic §32 tooling. Fires between the shipped Wave 2 and the Wave 3 Practice Blueprints work.
-
 - **Academy → Agency tier reversal** (PR #395 → merged) ✅ — owner-locked tier taxonomy Solo/Agency/Enterprise; Academy retired as tier name
 - **Bug A — btf-onboarding bucket** (launch-blocker; PR #396 → merged) ✅ — signed-agreement PDF uploads persist again; §32.b-proven, §39 peer-gate caught + fixed a replay-only defect
 - **Bug B — 3 logo leakers** (launch-blocker; PR #397 → merged) ✅ — broker invite / portal chatbot / coach→client email now resolve tenant brand; also threads tenant brand through shared email renderer
@@ -39,12 +34,12 @@ Purpose: pre-launch cleanup + systemic §32 tooling. Fires between the shipped W
 - **§3.b "Practice" doctrine paste** — task #40, formal amendment locking "Practice" as prohibited pre-HIPAA/SOC-2
 - **Wave 2 #247 Custom Specialists tail** — merge when clear
 
-### WAVE 3 — Practice Blueprints v2 (per #196)
+### WAVE 3 — Practice Blueprints v2 (per #196) — ⏸️ DEFERRED past Wave 4 (owner ruling 2026-08-08)
+**Owner ruling 2026-08-08:** Practice build pushed later — it's marketplace-adjacent, not MVP-blocking. Wave 4 (MVP hub) now fires directly after Wave 2.5. Practice Blueprints slot in after Wave 6 (Paige Quality Wave), before Wave 8 (BETA launch prep). Marketplace + vertical templating polish belongs post-core-MVP.
 - Task #164 · Task #181 · Task #185
 
-### WAVE 4 — MVP hub (Owner Trilogy + BRD-promoted items + Cowork-locked specs)
-
-Owner ruled 2026-08-08 (BRD) — several items previously scheduled for later waves are now MUST-HAVE MVP. Wave 4 becomes the MVP integration hub.
+### WAVE 4 — MVP hub (Owner Trilogy + BRD-promoted items + Cowork-locked specs) — FIRES DIRECTLY AFTER WAVE 2.5
+Owner ruled 2026-08-08 (BRD) — several items previously scheduled for later waves are now MUST-HAVE MVP. Wave 4 becomes the MVP integration hub AND the immediate next wave after Wave 2.5 clears (Practice Blueprints deferred per above).
 
 **Original Wave 4 (Owner Trilogy pillar builds, per #196):**
 - Task #80 (Systems Check)
@@ -66,6 +61,7 @@ Owner ruled 2026-08-08 (BRD) — several items previously scheduled for later wa
 **Cowork-locked specs ready for build (2026-08-08):**
 - **Agent UI Placement** — per `docs/product/agent-ui-placement-spec.md`; right-rail + ⌘K launcher + Customer Portal floating avatar + Super Admin Paige Operator persona + agency scope switcher + impersonation banner/audit (11 downstream items)
 - **Customer Portal MVP** — per `docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`; 7 pillars × 5 stakeholders matrix, §38 money boundary load-bearing on pillar 4 (7 downstream items)
+- **Paige Multi-Channel Comms + Deliverable Workflow** (NEW 2026-08-08) — per `docs/product/paige-multichannel-comms-and-deliverable-workflow-spec.md`; unified conversation operator across email/SMS/portal/social/voice (inbound + outbound + take-over) + Paige-authored client deliverables (proposals, offers, contracts) with 3-way delivery choice (SMS/Email/Portal/Voice-reminder) + acceptance loop-back. Tier-scoped per §2.3 — Super Admin FIRST (dogfood) → Solo + sub-account MVP → agency-parent NEVER (architectural; agencies run through own sub-account). Extends existing Twilio/ElevenLabs/send-transactional-email seams (§18). Compliance: A2P 10DLC + STIR/SHAKEN + recording disclosure + consent enforcement (12 downstream items).
 - **Interactive Analytics UI build** — per the spec above; 5 surface variations (Super Admin best / Agency roll-up + drill / Solo / sub-account / client Journey)
 - **Promotional account type build** — per the spec above; migration + Super Admin unified Invites surface + expiry cron + notifications + anti-abuse guard
 
@@ -75,7 +71,6 @@ Owner ruled 2026-08-08 (BRD) — several items previously scheduled for later wa
 See Wave S section below.
 
 ### WAVE 5 — RESERVED (L8 Memory Fabric moved to Wave 4 MVP per BRD 2026-08-08)
-
 Kept as reserved slot for future post-MVP work. Backlinks preserved.
 
 ### WAVE 6 — Paige Quality Wave (per #196, unchanged)
@@ -102,7 +97,6 @@ Task #179 dev-dep + helper is Wave 2.5 PR #398. Remaining Wave 7 work: retroacti
 ---
 
 ## Wave S — Super Admin uplift (RUNS ALONGSIDE WAVES 1-9)
-
 Owner-approved 2026-08-04. Parent task: **Task #45 Paige on Paige**. Runs in parallel because tri-scope primitives (§242) already serve operator-scope, and Task #83 (Super Admin Restructure) already shipped the foundation.
 
 ### Wave S1 — SHIPPED ✅
@@ -126,7 +120,6 @@ Owner-approved 2026-08-04. Parent task: **Task #45 Paige on Paige**. Runs in par
 ---
 
 ## Wave S critical constraints
-
 1. **Shared tri-scope primitives — NO forks.** Every Wave S build grep-checks per §18 before starting: if tenant-scope equivalent exists, EXTEND it, don't fork. If not, the Wave S task may need to BUILD the shared primitive first.
 2. **Same discipline as Wave 1-9.** Right-sized §1 crew, §32 dual-leg + §39 peer-gate on §9-adjacent code, §11/§25 design pass, §37 producer inventory, §9 tenant/operator isolation checks, §213 "every account of a type runs identical code."
 3. **1-3 concurrent crews max.** Per §14 right-sizing. Not "permanent Super Admin team" — per-task crews, same shape as Wave 1-9.
@@ -134,7 +127,6 @@ Owner-approved 2026-08-04. Parent task: **Task #45 Paige on Paige**. Runs in par
 ---
 
 ## Ambient interleaved (fires alongside every wave)
-
 - §46 Cowork operating rhythm — pipeline flows paste-by-paste, no morning drop-offs
 - §32 post-deploy scans — every ship, no exceptions (now systemically enabled by Wave 2.5 PR #398 Playwright helper)
 - §32.b SET ROLE authenticated repros — every RLS/§9-adjacent code path
@@ -155,13 +147,13 @@ Owner-approved 2026-08-04. Parent task: **Task #45 Paige on Paige**. Runs in par
 | **W1** | 2026-08-04 | §10 CI fix + #243 + #240 + #93 doctrine paste | ✅ SHIPPED |
 | **S1** | 2026-08-04 | #163 + #226 + #248 | ✅ (163) / 🔄 (226, 248) |
 | **W2** | 2026-08-06 | #244 + #245 + #246 → #247 | ✅ (244/245/246) / 🔄 (247 in W2.5 tail) |
-| **W2.5** | 2026-08-08 (now) | Launch-blocker cluster + Playwright + queue | 🔥 firing |
+| **W2.5** | 2026-08-08 (now) | Launch-blocker cluster + Playwright + queue + signup-acceptance hotfix (§9) | 🔥 firing |
 | **S2** | With W2 | Super Admin variants of #244/#245 | 🔄 queued |
-| **W3** | After W2.5 | Practice Blueprints v2 (#164, #181, #185) | ⏸️ queued |
-| **W4** | After W3 | MVP hub — Trilogy pillars + BRD-promoted MVP items + 4 Cowork specs | ⏸️ queued (largest wave) |
+| **W4** | **After W2.5 (NEW immediate next per owner ruling 2026-08-08)** | MVP hub — Trilogy pillars + BRD-promoted MVP items + 5 Cowork specs (incl. Multi-Channel Comms) | ⏸️ queued (largest wave) |
 | **S3** | With W4 | Operator-scope Trilogy pillars + Paige Operator persona + Invites surface | ⏸️ queued |
 | **W5** | — | RESERVED (L8 Memory moved to W4 MVP) | — |
 | **W6** | After W4 | Paige Quality Wave (#189, #190, #220, #180) | ⏸️ queued |
+| **W3** | **After W6 (DEFERRED per owner ruling 2026-08-08)** | Practice Blueprints v2 (#164, #181, #185) — marketplace-adjacent, post-MVP | ⏸️ deferred |
 | **W7** | After W6 | Playwright post-deploy verification (retroactive live-drives + CI wiring) | 🔄 largely landed via W2.5 |
 | **W8** | After W7 | BETA LAUNCH prep (#135, #74, #194, #195, #129, #192) | ⏸️ queued |
 | **W9** | After BETA | SOC 2 (#136) | ⏸️ queued |
@@ -169,7 +161,7 @@ Owner-approved 2026-08-04. Parent task: **Task #45 Paige on Paige**. Runs in par
 ---
 
 ## Change log
-
 - **2026-08-04** — Initial filing. Owner-approved Wave S parallel execution. #248 filed for Wave S1 fleet/provisioning surface. #45 updated as Wave S orchestration parent. §10 CI fix merged (9bf4e9c1).
 - **2026-08-04** — Filed to `docs/doctrine/canonical-build-order.md` (living doc, no date suffix, doctrine home per Task #214). Wave 1 in progress: §10 ✅ merged; #243 `<PaigeAttribution>` built + design-crew-verified → PR #361; Wave S1 #163 tile already removed (d3da54a9), §213.e residual sweep → PR #362. #240 Integrations + #93 doctrine paste + S1 #226/#248 queued next.
 - **2026-08-08** — MAJOR UPDATE reflecting the BRD ruling, four Cowork-locked specs, and this session's launch-blocker cluster. Wave 1 fully shipped (#243/#361 merged 1860c825). Wave 2 shipped except #247 tail (#244/#366, #245/#367, #246/#368 all merged). NEW Wave 2.5 inserted for launch-blocker cluster + Playwright infrastructure: Bug A (#396 merged), Bug B (#397 merged), Academy→Agency reversal (#395 merged), BRD+Architecture (#394 merged), voice work shipped, doctrine §47+§48 added, Playwright PR #398 near merge, per-sub-account curation + sub-account MCP §9 gap + §3.b paste queued behind it. Wave 4 restructured as MVP hub per BRD 2026-08-08: original Trilogy pillar builds joined by BRD-promoted items (L8 Memory moved from W5, Interactive Analytics moved from S2, Playwright web-browsing moved from W7, Promotional account type NEW, Paige Chat compaction/persistence/tasking NEW) and four Cowork-locked specs (Agent UI Placement, Customer Portal MVP per Owner Trilogy Matrix, Interactive Analytics UI, Promotional account type). Wave 5 reserved (L8 moved). Wave 7 largely completed by W2.5 #398. Cowork owe-list zero.
+- **2026-08-08 (later same day)** — Item 3 per-sub-account curation shipped (PR #400 → merged dcbe618c, migration persisted on prod, zero drift). Voice hotfix: ElevenLabs ConvAI agent (`agent_1601k7zn6bs7e72bt6485bp99v4a`) TTS model swapped from `eleven_v3_conversational` (401 model_access_denied on account) → `eleven_turbo_v2_5`; Ivanna voice (`0S5oIfi8zOZixuSj8K6n`) unchanged and working. Signup hotfix (task #60) opened: paigeagentai@gmail.com force-signed-out; three-path acceptance flow designed (email link · OAuth in-app consent · magic-link future) all funneling into single `profiles.terms_accepted_at` gate; grandfather policy Option B locked (force-acceptance-on-next-login, no exemptions, no backfill); Slice 1 (§9 deferred-provisioning + `handle_new_user` gutted of self-link insert + defensive 0-match cleanup) firing. FIFTH Cowork spec locked (`paige-multichannel-comms-and-deliverable-workflow-spec.md`) — unified omnichannel conversation operator + Paige-authored client deliverables with SMS/Email/Portal/Voice delivery choice, tier-scoped Super Admin FIRST (dogfood) → Solo + sub-account MVP → agency-parent NEVER-by-design. **Same-day amendment (2026-08-08)** added §4.2.a full email verb matrix (15+ verbs — read/label/archive/snooze/draft/send/forward/spam/unsubscribe/delete/filter/signature/bulk, each with autonomy tier + authorization capture pattern for 🔴-tier promotions), §4.5 reminders-vs-follow-ups distinction (reminders = tenant-facing ambient signal; follow-ups = client-facing nudges), §5 matrix rows for email verbs + reminders + follow-ups, §6 Gmail/Outlook OAuth infra + rule engine + reminders engine, §9 items 13-16 owed downstream work. **Wave 3 (Practice Blueprints) DEFERRED past Wave 4** — marketplace-adjacent, not MVP-blocking; slots in after Wave 6. Wave 4 is now the immediate next wave after Wave 2.5 clears.
