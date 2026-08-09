@@ -15,11 +15,13 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { PageShell, PageHeader, SectionCard } from "@/components/ui/page";
-import { Settings as SettingsIcon, Radio, Activity, Plug2 } from "lucide-react";
+import { PageShell, PageHeader, SectionCard, EmptyState } from "@/components/ui/page";
+import { Settings as SettingsIcon, Radio, Activity, Plug2, LayoutTemplate, ArrowRight } from "lucide-react";
 import { SystemMetrics } from "@/components/dashboard/admin/SystemMetrics";
 import { McpSessionsPanel } from "@/components/dashboard/admin/McpSessionsPanel";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { PLATFORM } from "@/lib/platform/identity";
 import { toast } from "sonner";
 
 type FlagKey =
@@ -82,6 +84,9 @@ export function PlatformSettings() {
           <TabsTrigger value="mcp" className="gap-2">
             <Plug2 className="w-4 h-4" /> MCP Sessions
           </TabsTrigger>
+          <TabsTrigger value="defaults" className="gap-2">
+            <LayoutTemplate className="w-4 h-4" /> Platform Defaults
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="platform" className="space-y-4">
@@ -99,8 +104,59 @@ export function PlatformSettings() {
         <TabsContent value="mcp" className="space-y-4">
           <McpSessionsPanel />
         </TabsContent>
+
+        <TabsContent value="defaults" className="space-y-4">
+          <PlatformDefaultsPanel />
+        </TabsContent>
       </Tabs>
     </PageShell>
+  );
+}
+
+/**
+ * Platform Defaults — the operator home for the coaching-generic default sets
+ * seeded to every tenant (the `paige-platform-defaults` system tenant). Part 2c
+ * moved this OUT of the tenant switcher (where it read as a switch-into target and
+ * cluttered the operator's real customer list) and gave it a deliberate Settings
+ * home. Editing the default sets themselves happens inside that workspace's normal
+ * tenant surfaces, so this panel is the controlled entry point (§10 — the capability
+ * stays Paige/operator-drivable, never a dead end), not a fork of those editors (§18).
+ * §9: this content is operator-global and coaching-generic — never a tenant's, never
+ * seeded with a vertical's copy.
+ */
+function PlatformDefaultsPanel() {
+  const { tenants, switchTenant } = useTenantContext();
+  const defaultsTenant = tenants.find((t) => t.slug === PLATFORM.defaultsTenantSlug) ?? null;
+
+  return (
+    <SectionCard
+      title="Platform Defaults"
+      description="The generic starter templates every new workspace inherits."
+      icon={LayoutTemplate}
+    >
+      {defaultsTenant ? (
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            These are the platform-wide starting templates — persona, journeys, email
+            sets, and Playbook scaffolding — that every new workspace inherits. They stay
+            generic (no industry-specific wording, no finance content) so each business can
+            author its own on top. Open the defaults workspace to review or update them; the
+            changes apply to what future workspaces receive, never to an existing business's
+            own authored content.
+          </p>
+          <Button variant="outline" onClick={() => switchTenant(defaultsTenant.id)}>
+            Open Platform Defaults workspace
+            <ArrowRight className="w-4 h-4 ml-2" />
+          </Button>
+        </div>
+      ) : (
+        <EmptyState
+          icon={LayoutTemplate}
+          title="Platform Defaults workspace not found"
+          description="The platform-defaults system workspace isn't visible on this account. It resolves for the platform owner; if you're a scoped admin, ask the owner to review the default sets."
+        />
+      )}
+    </SectionCard>
   );
 }
 

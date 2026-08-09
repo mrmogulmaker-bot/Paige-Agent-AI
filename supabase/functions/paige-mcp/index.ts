@@ -3656,14 +3656,27 @@ mcp.tool("exit_subaccount", {
 
 mcp.tool("list_tenants", {
   description:
-    "Master-admin only. List every tenant on the platform with status, seat/customer caps, owner, and Stripe linkage. Filter by `status` (trial/active/past_due/suspended/canceled) or `query` (matches name/slug).",
+    "Master-admin only. List every tenant on the platform with status, seat/customer caps, owner, Stripe linkage, and revenue_class (paid/promotional/internal_test — the operator-internal #29 axis). Filter by `status` (trial/active/past_due/suspended/canceled), `revenue_class`, or `query` (matches name/slug).",
   inputSchema: z.object({
     status: z.string().optional(),
     query: z.string().optional(),
+    revenue_class: z.enum(["paid", "promotional", "internal_test"]).optional(),
     limit: z.number().int().optional(),
   }),
-  handler: async ({ status, query, limit }) => {
+  handler: async ({ status, query, revenue_class, limit }) => {
     const max = Math.min(Math.max(limit ?? 50, 1), 200);
+    // A revenue_class filter resolves to tenant_ids FIRST, so `.in(...)` bounds the
+    // page correctly (filtering after `.limit` would silently under-return, §13).
+    let onlyIds: string[] | null = null;
+    if (revenue_class) {
+      const { data: cls, error: clsErr } = await admin
+        .from("tenant_revenue_classification")
+        .select("tenant_id")
+        .eq("revenue_class", revenue_class);
+      if (clsErr) return err(clsErr.message);
+      onlyIds = (cls ?? []).map((r: any) => r.tenant_id);
+      if (onlyIds.length === 0) return ok({ items: [], count: 0 });
+    }
     let q = admin
       .from("tenants")
       .select("id, name, slug, status, owner_user_id, seat_limit, customer_limit, storefront_enabled, plan_offer, stripe_customer_id, stripe_subscription_id, trial_ends_at, created_at, updated_at")
@@ -3671,9 +3684,27 @@ mcp.tool("list_tenants", {
       .limit(max);
     if (status) q = q.eq("status", status as any);
     if (query) q = q.or(`name.ilike.%${query}%,slug.ilike.%${query}%`);
+    if (onlyIds) q = q.in("id", onlyIds);
     const { data, error } = await q;
     if (error) return err(error.message);
-    return ok({ items: data ?? [], count: (data ?? []).length });
+    // Annotate each returned tenant with its revenue_class (operator-internal, §9).
+    const items = data ?? [];
+    // Annotate by tenant_id — that IS the PK of tenant_revenue_classification.
+    let classById = new Map<string, string>();
+    if (items.length > 0) {
+      const { data: annots } = await admin
+        .from("tenant_revenue_classification")
+        .select("tenant_id, revenue_class")
+        .in("tenant_id", items.map((t: any) => t.id));
+      classById = new Map(
+        (annots ?? []).map((r: any) => [r.tenant_id, r.revenue_class]),
+      );
+    }
+    const annotated = items.map((t: any) => ({
+      ...t,
+      revenue_class: classById.get(t.id) ?? "promotional",
+    }));
+    return ok({ items: annotated, count: annotated.length });
   },
 });
 
@@ -3784,26 +3815,37 @@ mcp.tool("update_tenant_features", {
 
 mcp.tool("get_platform_metrics", {
   description:
-    "Master-admin only. Returns rolled-up platform health: tenant counts by status, total users, total contacts, BTF active clients, workflow runs in the last 7d, and pending approvals.",
+    "Master-admin only. Returns rolled-up platform health: tenant counts by status AND by revenue_class (paid/promotional/internal_test — the operator-internal #29 axis), total users, total contacts, BTF active clients, workflow runs in the last 7d, and pending approvals.",
   inputSchema: z.object({}).optional() as any,
   handler: async () => {
     const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const [tenants, contacts, profiles, btf, runs7d, pending] = await Promise.all([
+    const [tenants, contacts, profiles, btf, runs7d, pending, revClasses] = await Promise.all([
       admin.from("tenants").select("status", { count: "exact" }),
       admin.from("clients").select("id", { count: "exact", head: true }),
       admin.from("profiles").select("user_id", { count: "exact", head: true }),
       admin.from("clients").select("id", { count: "exact", head: true }).eq("tier", "btf"),
       admin.from("paige_workflow_runs").select("id", { count: "exact", head: true }).gte("created_at", since7d),
       admin.from("paige_pending_approvals").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      admin.from("tenant_revenue_classification").select("revenue_class"),
     ]);
     const tenantStatus: Record<string, number> = {};
     for (const row of tenants.data ?? []) {
       const s = String((row as any).status);
       tenantStatus[s] = (tenantStatus[s] ?? 0) + 1;
     }
+    // #29 revenue honesty: paying vs comped vs internal-test. A tenant with no
+    // classification row reads promotional (the #29 baseline), so the split always sums.
+    const revClass: Record<string, number> = { paid: 0, promotional: 0, internal_test: 0 };
+    for (const row of revClasses.data ?? []) {
+      const c = String((row as any).revenue_class);
+      if (c in revClass) revClass[c] += 1;
+    }
+    const classified = (revClasses.data ?? []).length;
+    revClass.promotional += Math.max((tenants.count ?? 0) - classified, 0);
     return ok({
       tenants_total: tenants.count ?? 0,
       tenants_by_status: tenantStatus,
+      tenants_by_revenue_class: revClass,
       users_total: profiles.count ?? 0,
       contacts_total: contacts.count ?? 0,
       btf_clients: btf.count ?? 0,

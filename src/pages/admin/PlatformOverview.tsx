@@ -36,6 +36,7 @@ type TierSplit = {
   total?: number | null;
   individual?: number | null;
   standalone?: number | null;
+  sub_account?: number | null;
   agency?: number | null;
   enterprise?: number | null;
 };
@@ -79,6 +80,7 @@ function tierSplitHint(t?: TierSplit | null): string | null {
   const parts: string[] = [];
   if (has(t.individual)) parts.push(`${t.individual} solo`);
   if (has(t.standalone)) parts.push(`${t.standalone} standalone`);
+  if (has(t.sub_account)) parts.push(`${t.sub_account} sub-account`);
   if (has(t.agency)) parts.push(`${t.agency} agency`);
   if (has(t.enterprise)) parts.push(`${t.enterprise} enterprise`);
   return parts.length ? parts.join(" · ") : null;

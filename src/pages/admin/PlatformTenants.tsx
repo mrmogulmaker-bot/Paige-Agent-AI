@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Building2, ShieldAlert, AlertTriangle, Clock, ArrowUpDown, Plus,
+  CircleDollarSign, Gift, FlaskConical,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -56,18 +57,37 @@ export default function PlatformTenants() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [provisionOpen, setProvisionOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // revenue_class per tenant (operator-internal #29 axis). RLS on
+  // tenant_revenue_classification is is_platform_owner()-only, so a scoped staff
+  // (non-owner) read returns 0 rows → every tile falls back to promotional, never
+  // a leak of the operator-internal classification (§9).
+  const [classMap, setClassMap] = useState<Map<string, string>>(new Map());
 
   const load = async () => {
     setLoading(true);
-    // RLS lets the platform owner read all tenants + members + clients.
-    const [{ data: tenants }, { data: members }, { data: clients }] = await Promise.all([
-      supabase
-        .from("tenants")
-        .select("id, slug, name, status, plan_offer, seat_limit, customer_limit, trial_ends_at")
-        .order("created_at", { ascending: true }),
-      supabase.from("tenant_members").select("tenant_id").eq("status", "active"),
-      supabase.from("clients").select("tenant_id"),
-    ]);
+    // RLS lets the platform owner read all tenants + members + clients + revenue class.
+    const [{ data: tenants }, { data: members }, { data: clients }, { data: revClasses }] =
+      await Promise.all([
+        supabase
+          .from("tenants")
+          .select("id, slug, name, status, plan_offer, seat_limit, customer_limit, trial_ends_at")
+          .order("created_at", { ascending: true }),
+        supabase.from("tenant_members").select("tenant_id").eq("status", "active"),
+        supabase.from("clients").select("tenant_id"),
+        // tenant_revenue_classification isn't in the generated Supabase types yet;
+        // cast the table name (same idiom as useTenantContext). RLS is owner-only, so
+        // a scoped-staff read returns 0 rows → tiles fall back to promotional (§9/§13).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        supabase.from("tenant_revenue_classification" as any).select("tenant_id, revenue_class"),
+      ]);
+
+    setClassMap(
+      new Map(
+        ((revClasses ?? []) as unknown as Array<{ tenant_id: string; revenue_class: string }>).map(
+          (r) => [r.tenant_id, r.revenue_class],
+        ),
+      ),
+    );
 
     const memberCounts = new Map<string, number>();
     (members ?? []).forEach((m) => memberCounts.set(m.tenant_id, (memberCounts.get(m.tenant_id) ?? 0) + 1));
@@ -117,6 +137,22 @@ export default function PlatformTenants() {
       { tenants: 0, active: 0, trials: 0, atRisk: 0 },
     );
   }, [withHealth]);
+
+  // Revenue-class split (#29): the operator-honest breakdown of the fleet. An
+  // unclassified tenant reads as promotional (the #29 baseline), matching the
+  // switcher's default so the two surfaces never disagree.
+  const revClass = useMemo(() => {
+    return rows.reduce(
+      (acc, t) => {
+        const c = classMap.get(t.id) ?? "promotional";
+        if (c === "paid") acc.paid += 1;
+        else if (c === "internal_test") acc.internal += 1;
+        else acc.promotional += 1;
+        return acc;
+      },
+      { paid: 0, promotional: 0, internal: 0 },
+    );
+  }, [rows, classMap]);
 
   const sorted = useMemo(() => {
     const arr = [...withHealth];
@@ -230,6 +266,26 @@ export default function PlatformTenants() {
           loading={loading}
         />
       </StatRow>
+
+      {/* Revenue-class split (#29) — the operator-honest read: paying customers vs
+          comped/promotional vs internal-test. A titled sub-section (not a bare second
+          tile row) so the different axis reads as intentional, not an off-grid pile
+          (§25 design-critic fix). OWNER-ONLY: tenant_revenue_classification is RLS-gated to
+          is_platform_owner(), so a scoped staff-admin reads 0 rows and would see a FALSE
+          "Paying: 0". Gate to the owner (who can read it) rather than show wrong numbers
+          (§13/§39 Finding 4). Never tenant-visible. */}
+      {isPlatformOwner && (
+        <div className="space-y-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Revenue mix
+          </p>
+          <StatRow cols={3}>
+            <StatTile label="Paying" value={revClass.paid} icon={CircleDollarSign} loading={loading} />
+            <StatTile label="Promotional" value={revClass.promotional} icon={Gift} loading={loading} />
+            <StatTile label="Internal / test" value={revClass.internal} icon={FlaskConical} loading={loading} />
+          </StatRow>
+        </div>
+      )}
 
       <Toolbar>
         <h2 className="font-display text-base font-semibold text-foreground">All tenants</h2>

@@ -51,6 +51,7 @@ type TierSplit = {
   total?: number | null;
   individual?: number | null;
   standalone?: number | null;
+  sub_account?: number | null;
   agency?: number | null;
   enterprise?: number | null;
 };
@@ -266,6 +267,7 @@ export default function OperatorCommandCenter() {
     [
       { label: "Solo", value: tenants?.individual, colorVar: "--chart-1" },
       { label: "Standalone", value: tenants?.standalone, colorVar: "--chart-2" },
+      { label: "Sub-account", value: tenants?.sub_account, colorVar: "--chart-5" },
       { label: "Agency", value: tenants?.agency, colorVar: "--chart-3" },
       { label: "Enterprise", value: tenants?.enterprise, colorVar: "--chart-4" },
     ] as Array<{ label: string; value?: number | null; colorVar: string }>
@@ -646,21 +648,24 @@ function tierSplitHint(t?: TierSplit | null): string | null {
   const parts: string[] = [];
   if (has(t.individual)) parts.push(`${t.individual} solo`);
   if (has(t.standalone)) parts.push(`${t.standalone} standalone`);
+  if (has(t.sub_account)) parts.push(`${t.sub_account} sub-account`);
   if (has(t.agency)) parts.push(`${t.agency} agency`);
   if (has(t.enterprise)) parts.push(`${t.enterprise} enterprise`);
   return parts.length ? parts.join(" · ") : null;
 }
 
-const TIER_KEYS = ["individual", "standalone", "agency", "enterprise"] as const;
+const TIER_KEYS = ["individual", "standalone", "sub_account", "agency", "enterprise"] as const;
 const TIER_LABEL: Record<(typeof TIER_KEYS)[number], string> = {
   individual: "Solo",
   standalone: "Standalone",
+  sub_account: "Sub-account",
   agency: "Agency",
   enterprise: "Enterprise",
 };
 const TIER_COLOR: Record<(typeof TIER_KEYS)[number], string> = {
   individual: "--chart-1",
   standalone: "--chart-2",
+  sub_account: "--chart-5",
   agency: "--chart-3",
   enterprise: "--chart-4",
 };
