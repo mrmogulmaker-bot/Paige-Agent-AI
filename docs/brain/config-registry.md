@@ -105,6 +105,26 @@ relying on either. (Secret **values** intentionally not recorded.)
   signup trigger landed in #402; concurrency-safe entitlements + `user_subscriptions` unique in #403
   (repairs the latent stripe-webhook subscription-record bug).
 
+## Tenant classification & revenue integrity (§29/#412 merged · §31/#415 in-flight)
+
+**Three ORTHOGONAL axes on a tenant — never conflate them** (✅ code + migration + MCP-verified 2026-08-09):
+
+| Axis | Where | Values | Who sets it |
+|---|---|---|---|
+| **Topology** | `tenants.account_type` | `standalone` · `sub_account` · `agency` · `enterprise` | provisioning; §51-locked |
+| **Lifecycle** | `tenants.status` (enum) | `trial` · `active` · `past_due` · `canceled` · `suspended` | billing/lifecycle |
+| **Revenue-class** | `tenant_revenue_classification.revenue_class` (dedicated operator-only table, #412) | `promotional` · `paid` · `internal_test` | operator; default `promotional` |
+
+- **Why revenue-class is a SEPARATE table, not a `tenants` column** (§9/§18/§51): a column on `tenants` would (a) be read by every tenant member via `Members read own tenant` RLS (operator-internal leak) and (b) collide with the §51-locked `account_type`. So it lives in `tenant_revenue_classification`, RLS `is_platform_owner()`-only + FORCE. Read seams: `get_tenant_revenue_breakdown()` (operator RPC), `operator_dashboard_metrics` (reconciled to `revenue_class='paid'` only, #412).
+- **§51 ABSOLUTE INVARIANT (DB-locked, migration `20260807230000`):** a child (`parent_tenant_id` not null) can NEVER be `agency`/`enterprise` — enforced 3 layers deep (`tenants` CHECK `tenants_subaccount_not_agency` · `agency_team_members` trigger · `agency_current_id()` both branches). Do not weaken without an owner ruling.
+- **Current prod distribution** (✅ MCP, 2026-08-09, post-#412): **9 tenants** — `promotional 8`, `internal_test 1`, **`paid 0`**. (Was 11 before #412 deleted 2 retired tenants — supersedes the "Tenants 11" row in the Supabase section above.) **Real ARR = $0** — every tenant is comped/internal; the 3 live `platform_subscriptions.status='active'` rows are comped (NULL `stripe_subscription_id`).
+- **"Real revenue" / paid definition (one canonical form across surfaces):** `revenue_class='paid'` AND a live Stripe subscription (`status='active'` + non-null `stripe_subscription_id`). Used by `get_tenant_revenue_breakdown().paying_count` (#412) and the #31 gate below.
+
+**⚠ Revenue integrity chain — IN-FLIGHT (PR #415, task #31, owner §32.c-gated — NOT yet on main):**
+- Migration `20260815120000_revenue_integrity_chain.sql` adds a fail-closed trigger `enforce_revenue_integrity_chain()` on `tenant_revenue_classification`: a row may only be MINTED `revenue_class='paid'` when the tenant owner has a **subscriber** agreement in `legal_acceptances` (slug in `subscriber_agreement_slugs()` = `saas-standalone`/`saas-agency`/`saas-enterprise`) AND a live active Stripe sub. Enforced at the transition; already-paid rows aren't re-gated (no auto-demote — reconcile follow-up, task #85).
+- Audit seam: `operator_revenue_integrity_audit(_tenant_id)` — `is_platform_owner`-gated RPC (RAISES 42501); Fleet Console "Revenue Integrity" section + CSV export consume it (§10/§18 one home).
+- Verified §32.b against the verbatim file (COMPILE PASS + reject/accept/edit), §37 producer-inventory clean, §39 + §5 both passed. Marked in-flight per §BRAIN — move to a "merged" fact when PR #415 lands on main.
+
 ## Twilio (SMS / voice — last-mile telecom commodity, §34)
 
 **Platform-wide Twilio secret NAMES** (✅ grep `Deno.env.get`): `TWILIO_ACCOUNT_SID`,
