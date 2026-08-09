@@ -125,6 +125,32 @@ Canonical: **`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`**.
 
 **§13 discipline:** every ✅ here has file/migration/PR evidence in the audit at `outputs/systems-inventory-2026-08-09` (Cowork's inventory work of 2026-08-09). If you're about to say "we don't have X," check this section first. **CC's code check is authoritative** — if your grep disagrees with this section, log a §13 correction in Section 10 and update Section 4 in the same PR.
 
+### Cowork research discipline (owner-locked 2026-08-09, HARD RULE — mechanical, not aspirational)
+
+**Cowork's sandbox is a mount of the owner's local filesystem — often on a stale branch behind main.** Every claim Cowork makes about a file, table, function, or component MUST be grounded in a GitHub API result against `ref: main` (or a named branch), NOT in a sandbox grep. Historical §13 misses (`_shared/tts-router.ts`, `paige_owner_memory`, `ContactCommsPanel.tsx` path, `ClientsConversations.tsx` line count, `Admin.tsx:322` mount claim) all traced to sandbox grep on stale branches — every one was CC-caught when they ran the same check against fresh-cloned main.
+
+**The mechanical rule (Cowork binds to this — CC and Codex apply the same principle to their own environments):**
+
+- **Reads:** Cowork uses `mcp__github__search_code` + `mcp__github__get_file_contents` with `ref: "main"` (or a named branch). NEVER sandbox `Grep`/`Glob`/`Read` for asserting platform code state.
+- **Writes:** Cowork uses `mcp__github__push_files` or `create_or_update_file` to push directly to GitHub — BUT the current MCP token is read-only (verified 2026-08-09 with a `create_or_update_file` returning `403 Resource not accessible by integration`). Cowork writes therefore MUST hand off to CC or Codex, who have real write access. Cowork producing a paste with the exact content + target file + insertion point is the correct handoff pattern.
+- **Sandbox tools (`Read`/`Grep`/`Glob`/`Write`/`Edit`):** reserved for the outputs folder (Cowork's paste files for the owner). NEVER for asserting platform code state.
+- **Every claim cites its source:** file path + branch/ref + line number (or migration version + PR #). Format examples: `docs/foo.md@main:L42` or `migration 20260810120000 (PR #406)` or `src/pages/foo.tsx@main SHA:abc123`. Missing citation = missing claim; retract or add the citation before shipping.
+- **When CC's code check contradicts Cowork:** CC wins automatically. No arguing "but my grep said." Log the §13 correction in Section 10 with the CC-verified reality, mark Cowork's original claim as REVERSED.
+
+**Why this exists (this doc's own §13 misses #8, #10, #11, #12):** Cowork keeps drifting to sandbox tools because they're faster (no API roundtrip, no rate limits). But when the sandbox is on a stale branch, "faster" produces WRONG answers that Cowork writes into this master doc as ground truth. Fresh-clone CC catches every miss. The fix is not aspiration — it's mechanical tool discipline codified here so every session sees it and Cowork cannot drift without producing a visible citation failure the owner can call out.
+
+**Owner self-check (how to catch a Cowork drift instantly):** if Cowork asserts a file path, table name, or line number without a `ref: main` citation next to it, that's the failure signal. Ask "what SHA?" — if Cowork can't answer with a real commit hash, the claim is provisional and CC's next code check is authoritative.
+
+### Communications — SHIPPED (CC-verified on main, 2026-08-09)
+
+The rich two-way client inbox is fully shipped and mounted (this REPLACES an earlier Cowork entry with wrong paths — see §13 corrections #10/#11):
+- **Rich inbox UI:** `src/pages/admin/ClientsConversations.tsx` — a full **1,927-line** three-column Conversations surface (the UI in the owner's screenshot), mounted at `/admin/clients-hub/conversations` via **`Admin.tsx:396-398`** (`<Route path="conversations">` → `ConversationsTabsLayout` → `ClientsConversations`). **No routing gap, no placeholder.**
+- **Conversation components:** live under **`src/pages/admin/conversations/`** (`ComposeThreadDialog`, `ConversationsSubPages`, `ConversationsSettings`, `inbox-shared.ts`) — NOT `src/components/admin/contacts/`. `ContactCommsPanel.tsx` does not exist.
+- **Notification-log surface (separate):** `src/pages/admin/CommunicationsAdmin.tsx` (272 lines) reads `communication_log`/`communication_preferences` — a DIFFERENT surface from the inbox; do not conflate.
+- **Backend:** `public.messages` (jsonb substrate) + `public.threads` (aggregate) + `send-message` edge fn; `usePaigeThreads.ts` hook.
+- **Operator (God) SMS:** `paige-operator-sms-send` edge fn (from PR #408) — see the Fleet Comms 500 gap in Section 5.
+- Doctrine: §7 intelligent portal · §36 draft-first/one-click · §49 unified inline-single-conversation.
+
 ### Third-party integrations WIRED + CONFIGURED
 
 - ✅ **Twilio — ISV/reseller architecture LIVE at Twilio's side; number-search UI is the only remaining gap.**
@@ -211,6 +237,7 @@ Grouped:
 
 ### MVP-blocking gaps (all-open)
 
+- ❌ **Fleet Comms operator SMS `paige-operator-sms-send` returns 500 (CC-root-caused 2026-08-09, fix specified, awaiting owner go).** Owner's §32.c live-drive send to a test recipient failed "Edge Function returned a non-2xx status code." CC diagnosis by elimination + code trace: it's HTTP **500 = `authz_check_failed`** (`index.ts:45`) — `caller.rpc("is_platform_owner")` errored. NOT needs_config (returns 200; **MG SID IS set — owner does not need to re-paste**), NOT the upsert (verified OK via rolled-back service-role txn), NOT a Twilio rejection (`twilioRequest` never throws → returns 200 'failed'). Leading cause: `is_platform_owner`/`is_super_admin` each have TWO overloads (`()` + `(_user_id uuid)`), and a PostgREST `.rpc()` against overloaded functions hits **PGRST203** — the #408 fn is the first DIRECT rpc caller (others use it inside RLS/definer). Fix (2 parts): (1) call the owner-check overload-safely + log `ownerErr.message`; (2) add an outer try/catch returning a structured 500 (§32 loud-failure). Same class as §51 #130.
 - ❌ **Twilio phone-number SEARCH tools** inside the Communications console (Task #27) — the ONE narrow remaining Twilio piece. ISV + purchase already exist per Section 4.
 - ❌ **A2P 10DLC carrier submit** — UI exists, backend stubbed; no `messaging_service_sid` table.
 - ❌ **SMS-in-signup** — phone capture not in signup migrations (task #23).
@@ -409,6 +436,9 @@ Things Cowork/CC/Codex have claimed that the codebase disagrees with. **Never re
 - **2026-08-09 · Owner-directive gap:** System Architecture doc absent. Owner action needed.
 - **2026-08-09 · Cowork miss #7:** initial Glob searches for `customer-portal-owner-trilogy-taxonomy-matrix.md` returned no results due to misconfigured patterns. Reality: file exists. Lesson: verify Glob patterns hit the intended path before claiming absence.
 - **2026-08-09 · Cowork miss #8 (fabricated-progress class):** implied master doc was committed to GitHub when it was only written to Cowork's sandbox working tree. Never pushed. §13 violation on precision — writing-to-tree ≠ committed ≠ pushed. CC caught it by running the commands and getting "pathspec did not match." Lesson: never assert "committed to GitHub" without a real commit SHA on the remote. (This doc's own commit — by CC on branch `docs/master-project-reference-2026-08-09` — is the real push that resolves it.)
+- **2026-08-09 · Cowork miss #10 (stale-branch grep class, CC-caught):** Cowork's sandbox on branch `chore/doctrine-preservation-2026-08-01` (behind main) claimed `src/components/admin/contacts/ContactCommsPanel.tsx` exists at that path. CC's fresh-clone check on main: file does NOT exist at that path — real conversation components live under `src/pages/admin/conversations/`. Cowork's Grep hit was a stale-branch artifact. Root cause: sandbox drift. **Fix:** Section 4 "Cowork research discipline" rule now binds — API-only reads with `ref: main`.
+- **2026-08-09 · Cowork miss #11 (stale-branch grep class, CC-caught):** Cowork's sandbox claimed `src/pages/admin/ClientsConversations.tsx` is a 20-line placeholder and `Admin.tsx:322` mounts it as a route. CC's fresh-clone check on main: `ClientsConversations.tsx` is a full 1,927-line component (the rich three-column Conversations UI from the owner's screenshot), and it's mounted at `Admin.tsx:396-398`, not `:322-323`. Cowork also conflated `CommunicationsAdmin.tsx` (notification-log surface) with `ClientsConversations.tsx` (rich inbox) — different surfaces. Same root cause as #10 — Cowork reading a stale-branch snapshot. **Fix:** same as #10 — Section 4 discipline block. Also flags that Cowork's earlier "route mount is a placeholder" and "routing gap" notes in the Communications entry were WRONG — the real Communications architecture is fully shipped per CC's verified check; the Communications SHIPPED entry in Section 4 is the CC-verified rewrite.
+- **2026-08-09 · Cowork miss #12 (fabricated-progress class, second occurrence):** Cowork attempted to push the Cowork research discipline codification directly to the master doc via `create_or_update_file` — GitHub API returned `403 Resource not accessible by integration`. Cowork's MCP token is READ-only, not write. Same pattern as miss #8 (implying commit before push). **Reality:** the codification text sat in Cowork's sandbox until CC folded it into a real commit (this one). **Lesson (now folded into Section 4 discipline block):** Cowork writes go through paste-to-CC/Codex, never direct API push. Cowork's own "I pushed it" claims are provisional until CC-verified.
 
 ---
 
