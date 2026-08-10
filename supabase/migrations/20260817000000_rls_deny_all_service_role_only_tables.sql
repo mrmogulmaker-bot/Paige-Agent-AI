@@ -20,8 +20,7 @@
 
 -- booking_notifications_sent ------------------------------------------------------------------
 CREATE POLICY "service_role_only_deny_jwt" ON public.booking_notifications_sent
-  AS RESTRICTIVE FOR ALL TO authenticated, anon
-  USING (false) WITH CHECK (false);
+  AS RESTRICTIVE FOR ALL TO authenticated, anon USING (false) WITH CHECK (false);
 COMMENT ON POLICY "service_role_only_deny_jwt" ON public.booking_notifications_sent IS
   'Service-role-only send-dedup ledger (booking-manage / process-booking-notifications). JWT '
   'callers are denied; all writes go through the service-role admin client. RESTRICTIVE deny-all: '
@@ -30,8 +29,7 @@ COMMENT ON POLICY "service_role_only_deny_jwt" ON public.booking_notifications_s
 
 -- user_presence -------------------------------------------------------------------------------
 CREATE POLICY "service_role_only_deny_jwt" ON public.user_presence
-  AS RESTRICTIVE FOR ALL TO authenticated, anon
-  USING (false) WITH CHECK (false);
+  AS RESTRICTIVE FOR ALL TO authenticated, anon USING (false) WITH CHECK (false);
 COMMENT ON POLICY "service_role_only_deny_jwt" ON public.user_presence IS
   'Presence telemetry — written by the presence_heartbeat SECURITY DEFINER RPC and read by the '
   'who-is-online SECURITY DEFINER RPC only. "Deny-all to the browser" by design (Task #148). '
