@@ -76,6 +76,38 @@ update public.paige_systems_check_registry
  where check_id = 'payment_method_options'
    and (runner_key <> 'payment_methods_declared' or data_source <> 'native_seam');
 
+-- (b.2) §38 completeness (§39 F1): the L1 seed's remediation_prompt for BOTH payment checks was
+--       Stripe-specific ("connected Stripe account…", "Stripe Connect"). The core forges that copy
+--       verbatim into the drafted fix, so a declared-PayPal/Square/manual tenant would receive a
+--       Stripe-native instruction the check no longer performs — re-introducing, in the DRAFTED OUTPUT,
+--       the exact assumption §38 corrects. Rewrite both to PROCESSOR-AGNOSTIC language. Idempotent
+--       (guarded so a re-run is a no-op once the copy is already agnostic). §2-clean, §3 voice.
+update public.paige_systems_check_registry
+   set remediation_prompt =
+         'Ask {{tenant.business_name}} which payment processor they use to accept client payments '
+      || '(Stripe, PayPal, Square, a bank merchant account, QuickBooks Payments, or manual) and record it, '
+      || 'so Paige knows how they get paid. If they have not set one up yet, walk through the options and '
+      || 'help them choose one that fits how they work — Paige never assumes a specific processor.',
+       updated_at = now()
+ where check_id = 'payment_processor_connected'
+   and remediation_prompt <> 'Ask {{tenant.business_name}} which payment processor they use to accept client payments '
+      || '(Stripe, PayPal, Square, a bank merchant account, QuickBooks Payments, or manual) and record it, '
+      || 'so Paige knows how they get paid. If they have not set one up yet, walk through the options and '
+      || 'help them choose one that fits how they work — Paige never assumes a specific processor.';
+
+update public.paige_systems_check_registry
+   set remediation_prompt =
+         'Ask {{tenant.business_name}} which payment methods they accept from clients '
+      || '(cards, ACH, Zelle, wire, check, cash, bank transfer, and the like) and record them, so Paige '
+      || 'reflects the real ways their clients can pay. Suggest adding any common method they are missing. '
+      || 'Read from what the tenant declares — never from a specific processor''s API (§38).',
+       updated_at = now()
+ where check_id = 'payment_method_options'
+   and remediation_prompt <> 'Ask {{tenant.business_name}} which payment methods they accept from clients '
+      || '(cards, ACH, Zelle, wire, check, cash, bank transfer, and the like) and record them, so Paige '
+      || 'reflects the real ways their clients can pay. Suggest adding any common method they are missing. '
+      || 'Read from what the tenant declares — never from a specific processor''s API (§38).';
+
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- (c) The 'systems.remediate' platform-default action-kind (paige_action_kinds, SPINE #1).
 --     A failed check files onto the bus AS this kind; the runner core overrides p_to_department per

@@ -306,8 +306,15 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
     // 2) On a fail, draft the fix FIRST (so the finding row carries it). Honest: a needs_config/failed
     //    forge stores a truthful marker, never a fabricated draft — and the action is still filed so the
     //    work is tracked and Paige can draft later (§13).
+    // Delta cost control (§39 F2): forging the fix is the expensive LLM call, so gate it on the SAME
+    // condition as filing — only a NEW / newly-degraded fail drafts (and files). A chronically-failing
+    // tenant does NOT re-forge a fresh draft on every scheduled tick; its original fail already carries
+    // the draft + the queued action. In 'all' mode every fail still drafts.
+    const shouldFile = result.status === "fail" &&
+      (actionFiling !== "delta" || prevStatus[row.check_id] !== "fail"); // delta: only NEW/newly-degraded
+
     let draftedFix: Record<string, unknown> | null = null;
-    if (result.status === "fail") {
+    if (shouldFile) {
       const brief = resolveRemediationBrief(row.remediation_prompt, tenantName);
       try {
         const forged = await forge({
@@ -357,10 +364,9 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
     }
     const findingId = (findingRow as { id: string }).id;
 
-    // 4) File a remediation action for a qualifying fail, then link it back onto the finding.
+    // 4) File a remediation action for a qualifying fail (shouldFile computed above with the forge gate),
+    //    then link it back onto the finding.
     let resolutionActionId: string | null = null;
-    const shouldFile = result.status === "fail" &&
-      (actionFiling !== "delta" || prevStatus[row.check_id] !== "fail"); // delta: only NEW/newly-degraded
     if (shouldFile) {
       try {
         const { data: filed, error: fileErr } = await admin.rpc("file_action", {
