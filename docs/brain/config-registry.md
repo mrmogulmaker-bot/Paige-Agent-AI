@@ -268,9 +268,14 @@ Grouped by domain; these are the env-var **names**, evidence the integration exi
 Values intentionally omitted.
 
 - **LLM / model router (§14/§34):** `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `GROQ_BASE_URL`,
-  `FEATHERLESS_BASE_URL`/`FEATHERLESS_CHEAP_MODEL`, `GEMINI_BASE_URL`/`GEMINI_IMAGE_MODEL`,
-  `VOYAGE_API_KEY` (voyage-3 embeddings, §26). LangGraph bridge: `LANGGRAPH_API_KEY`/`_BASE_URL`,
-  `LANGGRAPH_BRIDGE_API_KEY`/`_URL`, plus `PAIGE_OS_*` bridge keys/URLs.
+  `FEATHERLESS_API_KEY`, `FEATHERLESS_BASE_URL`, `FEATHERLESS_DEFAULT_MODEL` (primary open-flexible
+  slug override; back-compat alias `FEATHERLESS_CHEAP_MODEL`), `FEATHERLESS_MODEL_<KIND>` (per-job-kind
+  overrides), `GEMINI_BASE_URL`/`GEMINI_IMAGE_MODEL`, `VOYAGE_API_KEY` (voyage-3 embeddings, §26).
+  LangGraph bridge: `LANGGRAPH_API_KEY`/`_BASE_URL`, `LANGGRAPH_BRIDGE_API_KEY`/`_URL`, plus
+  `PAIGE_OS_*` bridge keys/URLs.
+  - Featherless plan: **"Feather Per-Request" DEVELOPER** ($50/mo credit, per-request billing, NO
+    model-size cap) subscribed 2026-08-10 → open-flexible default is `meta-llama/Llama-3.3-70B-Instruct`
+    (allow-listed). Cheap-tier §34 economics restored; Claude remains the frontier/rescue tier.
 - **Image / 3D generation (Studio):** `REPLICATE_BASE_URL`, `IDEOGRAM_BASE_URL`, `MESHY_BASE_URL`,
   `STUDIO_REPLICATE_IMAGE_MODEL`, `STUDIO_REPLICATE_3D_MODEL`, `LOVABLE_API_KEY`/`LOVABLE_SEND_URL`.
 - **Visual critique (§33):** `VISUAL_RENDERER_URL`, `VISUAL_RENDERER_SECRET`,

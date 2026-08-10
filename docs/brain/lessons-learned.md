@@ -140,7 +140,26 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   tenant-scoped change runs the **six-tier matrix** (God/Agency/Standalone/Sub-account/Client/
   Anonymous) pre- and post-deploy, and post-deploy-walks a tier you did **not** build on.
 
-## 11. Availability-by-accident — a tier-universal feature hidden by an empty-book gate (§56, task #99)
+## 11. "Migration-only PR can't fail `verify`, so it's flaky" — a misdiagnosed real failure (§13, PR #437)
+
+- **Symptom:** A migration-only PR's `verify` check went `failure` with an **empty** output
+  summary. Assuming a migration touches no frontend, the failure was called a "phantom flake" and
+  re-triggered with an empty commit — twice — instead of read. The empty check-run `output` (a
+  GitHub App quirk) reinforced the wrong "nothing really failed" read.
+- **Root cause:** `verify` is ONE job that bundles the **migration** regression-lint (`npm run
+  ci:regression`, which scans `supabase/migrations/**`) alongside the frontend steps. A migration
+  PR absolutely can fail it. Here the real cause was line-oriented: `scripts/ci/regression-lint.mjs`
+  flags any ADDED line with `USING (false)`/`WITH CHECK (false)` that lacks `restrictive` **on that
+  same line** — the policy WAS `AS RESTRICTIVE` but spread across 3 lines, so the modifier sat on
+  the line above the deny clause and the lint couldn't see it. Fix: collapse so `AS RESTRICTIVE` and
+  the `USING/WITH CHECK (false)` share one line (semantically identical, lint-visible).
+- **Rule:** **Never label a CI failure "flaky" without reading the failing STEP's logs.** The
+  check-run `output` is often empty; the truth is in `get_job_logs` — grep the full log for
+  `##[error]` and the step group above it. A red check is real until its own logs prove otherwise;
+  an empty summary is not proof. And a multi-line `CREATE POLICY … AS RESTRICTIVE … USING (false)`
+  trips the line-oriented regression-lint — keep `AS RESTRICTIVE` on the deny-clause line.
+
+## 12. Availability-by-accident — a tier-universal feature hidden by an empty-book gate (§56, task #99)
 
 - **Symptom:** The tenant Systems Check showed on Mogul Maker Academy but not on several fresh
   sub-accounts. Owner reported it as a tier bug ("Paige thinks it's a solo account still").
@@ -157,7 +176,7 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   (`PracticeOverview`, solo + sub-account) and added it to `AgencyBoard` (agency), matching the
   operator tile on `OperatorCommandCenter` (God).
 
-## 12. `activeTenantId` on an OPERATOR surface can be a CHILD — tenant-scoped tiles leak (§9/§51, Codex P1 on PR #434)
+## 13. `activeTenantId` on an OPERATOR surface can be a CHILD — tenant-scoped tiles leak (§9/§51, Codex P1 on PR #434)
 
 - **Symptom:** the own-business Systems Check tile added to `AgencyBoard` (`/agency`) could show a
   *sub-account's* check as the agency's own, and let the agency approve the child's remediation from
