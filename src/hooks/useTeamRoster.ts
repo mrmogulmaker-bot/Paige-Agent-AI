@@ -69,6 +69,12 @@ export function useTeamRoster(
       if (usersRes.error) throw usersRes.error;
       const users: AnyRow[] = usersRes.data?.users || [];
       const userIds = users.map((u) => u.id);
+      // §9/§51: admin-list-users EDGE-scopes a tenant admin to their own tenant's members
+      // (scoped=true). For a PLATFORM OPERATOR (super_admin) it returns EVERY user (scoped=false) —
+      // rendering those on the tenant Team floor would commingle every tenant's staff as one team.
+      // When the response is operator-unscoped, keep ONLY the ACTIVE tenant's members below (empty
+      // when no tenant is active). A tenant admin's response is already scoped → unchanged.
+      const operatorUnscopedResponse = usersRes.data?.scoped === false;
 
       if (userIds.length === 0) {
         if (mountedRef.current && seq === seqRef.current) {
@@ -116,6 +122,9 @@ export function useTeamRoster(
 
       const built: RosterMember[] = users
         .filter((u) => !excludedSet.has(u.id)) // Part C: drop ancestor agency owners
+        // §9/§51 tier-guard: an operator-unscoped response carries EVERY tenant's users — scope it
+        // to the ACTIVE tenant's members (tmByUser); with no active tenant, this yields none.
+        .filter((u) => !operatorUnscopedResponse || tmByUser.has(u.id))
         .map((u) => {
           const prof = profByUser.get(u.id) || {};
           const roles = byUser[u.id] || [];
