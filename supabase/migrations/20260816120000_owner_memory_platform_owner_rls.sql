@@ -30,10 +30,15 @@
 --     match_paige_owner_memory RPC. Unaffected: we DROP/CREATE only the own_* policies idempotently
 --     and ALTER one column; the RPC and service policy are untouched.
 --   • RPC match_paige_owner_memory — filters `m.tenant_id = _tenant_id AND m.user_id = _user_id`.
---     For a JWT operator caller current_user_tenant_id() is NULL, so it cannot be turned into a
---     cross-tenant read; a service_role caller passes the (tenant,user) it resolved. A NULL-tenant
---     operator row is only returned when _tenant_id is passed NULL — which the operator's own server
---     side resolves. No behavior change from making tenant_id nullable (it already filtered by equality).
+--     HONEST NOTE (§13, corrected after §39 adversarial read): because that filter uses `=`,
+--     the operator's NULL-tenant rows are NOT retrievable through this RPC under ANY argument
+--     (`NULL = NULL` is NULL, never true). That is SAFE for this PR — the §52 owner-context READ
+--     path does NOT use this RPC; it does a DIRECT service-role SELECT by user_id (see
+--     _shared/owner-context.ts). Making tenant_id nullable changes NOTHING about this RPC's
+--     behavior for existing tenant rows (it already filtered by equality). LATENT FOLLOW-UP: if a
+--     future slice (4b semantic recall) ever routes the God account's owner-memory through this
+--     RPC, it must switch the tenant filter to `m.tenant_id IS NOT DISTINCT FROM _tenant_id` or it
+--     will silently return zero rows for the operator (the "correct-but-invisible" trap). Logged.
 --   • Edge fn paige-ai-chat — the ONLY runtime consumer. Its cross-chat WRITE path is still DEFERRED
 --     (comment-only, slice 4b); the NEW §52 owner-context READ path (this PR's _shared/owner-context.ts)
 --     reads via the SERVICE-ROLE client (RLS-free) filtered by user_id — nullable tenant_id + new
@@ -65,12 +70,16 @@ CREATE POLICY paige_owner_memory_own_read ON public.paige_owner_memory
     OR (public.is_platform_owner() AND user_id = auth.uid())
   );
 
+-- The owner WRITE branches additionally pin `tenant_id IS NULL` (§39 finding #5): an operator
+-- (God) memory row is tenant-less by invariant, so the owner can only ever WRITE a NULL-tenant
+-- row — never stamp one with an arbitrary tenant's id. (Reads stay permissive on the owner's own
+-- rows; the constraint is on what can be written.)
 DROP POLICY IF EXISTS paige_owner_memory_own_insert ON public.paige_owner_memory;
 CREATE POLICY paige_owner_memory_own_insert ON public.paige_owner_memory
   FOR INSERT TO authenticated
   WITH CHECK (
     (tenant_id = public.current_user_tenant_id() AND user_id = auth.uid())
-    OR (public.is_platform_owner() AND user_id = auth.uid())
+    OR (public.is_platform_owner() AND user_id = auth.uid() AND tenant_id IS NULL)
   );
 
 DROP POLICY IF EXISTS paige_owner_memory_own_update ON public.paige_owner_memory;
@@ -82,7 +91,7 @@ CREATE POLICY paige_owner_memory_own_update ON public.paige_owner_memory
   )
   WITH CHECK (
     (tenant_id = public.current_user_tenant_id() AND user_id = auth.uid())
-    OR (public.is_platform_owner() AND user_id = auth.uid())
+    OR (public.is_platform_owner() AND user_id = auth.uid() AND tenant_id IS NULL)
   );
 
 -- (The service-role policy paige_owner_memory_service and match_paige_owner_memory RPC are unchanged.)

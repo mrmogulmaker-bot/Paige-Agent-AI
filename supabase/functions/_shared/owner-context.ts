@@ -88,9 +88,31 @@ function fmtInt(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+// ── §52 by-name greeting — read the operator's name from RUNTIME auth metadata. ──
+// The name lives in auth.users user_metadata (full_name), NEVER in this repo (§45 — no owner PII in a
+// committed artifact). We read it live via the service-role admin API and greet by FIRST name only;
+// on any failure we fall back to a name-less "operator" greeting (§13 — never fabricate a name). The
+// name only ever lands in the ephemeral prompt, never in stored/committed content.
+async function fetchOperatorFirstName(admin: AdminClient, userId: string): Promise<string | null> {
+  try {
+    const { data, error } = await admin.auth.admin.getUserById(userId);
+    if (error) throw error;
+    const full = String(data?.user?.user_metadata?.full_name ?? "").trim();
+    if (!full) return null;
+    const first = full.split(/\s+/)[0]?.trim();
+    return first || null;
+  } catch (e) {
+    console.warn("[owner-context] operator name read failed:", (e as Error)?.message);
+    return null;
+  }
+}
+
 // ── (2) LIVE PLATFORM STATE — real queries, honest fallbacks. ─────────────────
 async function buildPlatformStateBlock(admin: AdminClient): Promise<string> {
-  const lines: string[] = ["LIVE PLATFORM STATE (queried just now — real numbers, not estimates):"];
+  // Header is neutral (§39 finding #4): each line carries its OWN honesty — a real number when the
+  // read succeeds, an explicit "not available" when it degrades. The header never asserts "real
+  // numbers" over a line that failed.
+  const lines: string[] = ["LIVE PLATFORM STATE (queried live at session open):"];
 
   // Tenant counts by revenue classification (operator-only table; service-role
   // bypasses RLS). Honest fallback if the read errors or returns nothing.
@@ -158,8 +180,16 @@ async function buildPlatformStateBlock(admin: AdminClient): Promise<string> {
 /**
  * Build the §52 super-admin owner runtime-context system block.
  *
+ * CALLER CONTRACT (§39 finding #3 — the composer does NOT self-gate): this function
+ * service-role-reads paige_owner_memory filtered ONLY by `userId`, with no internal
+ * owner check. The CALLER MUST have already verified that `userId` is a platform
+ * operator (the paige-ai-chat caller dual-gates on is_platform_operator() from the
+ * verified JWT before calling). Do NOT call this with an unverified/body-supplied id —
+ * a non-operator userId would return that user's own memory rows via the RLS-free client.
+ *
  * @param admin  SERVICE-ROLE supabase client (RLS-free reads of operator tables).
- * @param userId the VERIFIED caller user id (auth.uid() upstream — never a body).
+ * @param userId the VERIFIED caller user id (auth.uid() upstream — never a body),
+ *               already confirmed to be a platform operator by the caller.
  * @returns the assembled block string, or `null` when there are no owner-memory
  *          rows for this user (so the caller can NO-OP safely — Phase 1 never
  *          fabricates an operator identity).
@@ -202,8 +232,12 @@ export async function loadOwnerContextBlock(
     }
   }
 
+  // Greet by first name when the runtime auth metadata has one (§45-clean: name from data, not repo).
+  const firstName = await fetchOperatorFirstName(admin, userId);
+  const whom = firstName ? `${firstName} — the PLATFORM OPERATOR` : "the PLATFORM OPERATOR";
+
   const header = `=== OPERATOR BRIEFING (§52 — you already know this; do NOT ask the operator who he is) ===
-You are Paige speaking with the PLATFORM OPERATOR (the God / Super-Admin account — the founder who runs Paige Agent AI itself, not a tenant). You open this session already briefed on who he is, how he works, what's in play, and the live state of the platform. Use this the way a chief of staff who has been here for years would — never recite it back as a file, never re-introduce yourself, and NEVER ask him to tell you who he is or what the company does.`;
+You are Paige speaking with ${whom} (the God / Super-Admin account — the founder who runs Paige Agent AI itself, not a tenant). You open this session already briefed on who he is, how he works, what's in play, and the live state of the platform. Greet him by name, naturally, the way a chief of staff who has been here for years would — never recite this briefing back as a file, never re-introduce yourself, and NEVER ask him to tell you who he is or what the company does.`;
 
   const platformState = await buildPlatformStateBlock(admin);
 
