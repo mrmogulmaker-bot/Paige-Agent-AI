@@ -3156,6 +3156,14 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // guessed manifest index (the manifest is newest-LAST and doesn't re-order on edits).
     let studioSessionId: string | null = null;
     const studioLinked: Array<{ kind: string; id: string; title: string; url: string | null }> = [];
+    // #29 — REGULAR-CHAT deliverables. Outside a Studio session there is no canvas to link to, but a
+    // chat surface (PaigeChat/PaigeAIChat/FloatingChatbot/BrokerPaigeSession) still earns the
+    // Cowork-style "Created a file" handoff card. This collects the artifacts the agent PERSISTED
+    // this turn (document/image) so the stream can name each one for the client to render — the SAME
+    // `paige_artifact` frame the Studio canvas already consumes (§18 one home), just emitted on the
+    // non-Studio path. Mutually exclusive with `studioLinked`: populated ONLY when studioSessionId is
+    // null, so a turn never emits both. `artifactType` distinguishes the card's render/hydrate lane.
+    const chatArtifacts: Array<{ kind: string; id: string; title: string; url: string | null; artifactType: "document" | "image" }> = [];
 
     // #12 — pre-flight compaction frames are COLLECTED here (before inference) and FLUSHED as the very
     // first bytes of the response stream, so the client's compacting card renders before Paige's
@@ -7110,6 +7118,23 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
 
+            // REGULAR-CHAT ARTIFACT EMIT (#29) — the non-Studio twin of the Studio linkage above.
+            // When this is NOT a project design session there is no canvas link, but the agent still
+            // just handed the user a real deliverable — surface it as a handoff card. Only on a genuine
+            // success carrying a real content_id (§13 — never a needs_config/errored call, never a
+            // fabricated artifact). `content_save` (pure copy) is deliberately excluded: copy is a chat
+            // deliverable, not a file card (§19/§21). Gated on `!studioSessionId` so this and the Studio
+            // block above are mutually exclusive — an artifact is never double-emitted.
+            if (!studioSessionId && result && (result as any).success) {
+              const r = result as any;
+              if (tc.function.name === "document_generate" && r.content_id) {
+                chatArtifacts.push({ kind: "document", id: r.content_id, title: String(r.title ?? "Document"), url: null, artifactType: "document" });
+              } else if (tc.function.name === "generate_image" && r.content_id) {
+                // generate_image's result carries no title — fall back to "Image" so the card never shows a blank name.
+                chatArtifacts.push({ kind: "content", id: r.content_id, title: String(r.title ?? "Image"), url: r.url ?? null, artifactType: "image" });
+              }
+            }
+
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
           } catch (err) {
             toolResults.push({
@@ -7619,6 +7644,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // #292 — tell the Studio canvas the exact artifact this turn produced (server-authoritative;
           // the client opens THIS, never a guessed manifest index). Last visual wins if several built.
           if (studioLinked.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_artifact: studioLinked[studioLinked.length - 1] })}\n\n`));
+          // #29 — REGULAR-CHAT handoff cards. Outside a Studio session, emit ONE paige_artifact frame
+          // per deliverable the agent persisted this turn so the chat renders a Cowork-style "Created a
+          // file" card. Same frame the Studio canvas consumes (backward-compatible: kind/id/title/url +
+          // the new artifactType). A turn can produce several (a document AND an image), so each gets its
+          // own frame — unlike the Studio path's single last-wins canvas frame above. chatArtifacts is
+          // only populated when studioSessionId is null, so this and the studioLinked emit never both fire.
+          for (const a of chatArtifacts) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_artifact: a })}\n\n`));
           // #11 — mark the transition into the ANSWER: the loop's reasoning (paige_step "thought"
           // frames) is done and the reply text begins now. The client also derives "writing" from
           // the first delta.content, so this is a lightweight explicit confirmation, not a dependency.
