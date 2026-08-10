@@ -7,6 +7,33 @@
 > Every future §37 producer inventory, §32 verification walk, and crew brief points HERE
 > for the enumeration of who can call an endpoint and how their tenant resolves.
 
+## §56 PRE-BUILD GATE — check this matrix FIRST, before the first line of code
+
+**Owner-ruled 2026-08-10 (CLAUDE.md §56).** This matrix is not only a *post-build* §51
+verification reference — it is the **pre-build** design gate. Before building or placing ANY
+feature/tile/route/RPC/edge fn/migration/surface/copy, answer, out loud, TWO questions against
+the six tiers below:
+
+1. **Which account type(s) is this FOR?** Name them. A solo tenant, a sub-account, and an
+   agency-as-a-tenant are NOT interchangeable — each resolves `tenant_id`, lands on a different
+   home surface, and hits different gates. "Correct for the account I built on" is the trap.
+2. **Does the feature BELONG on each of those tiers — should it appear, or NOT?** Decide
+   deliberately, per tier. When the owner says "every tier" (e.g. the Systems Check), it must
+   render on **every** account type **regardless of incidental state** (empty book, no data,
+   default landing surface) — never hidden by an `emptyBook`/branch/route accident.
+
+If you have NOT named the target tier(s) and confirmed per-tier belonging, you are already in
+violation — stop and check this matrix. Log the decision/correction to the master doc §4/§10 and
+`docs/brain/` in the SAME PR (§0/§BRAIN).
+
+**Anchoring case (task #99, 2026-08-10):** the tenant Systems Check tile was gated inside the
+non-empty branch of `PracticeOverview.tsx`'s `{emptyBook ? … : …}`, so every fresh solo/sub-account
+(0 clients) rendered only the "blank canvas" and never saw the setup check; the agency's own default
+landing (`/agency` → `AgencyBoard`) carried no tile at all. Not a tier-classification bug — an
+**availability-by-accident**. Fix: render it ABOVE the empty/non-empty split on `PracticeOverview`
+(solo + sub-account) AND add it to `AgencyBoard` (agency), matching the operator tile on
+`OperatorCommandCenter` (God) → uniform across God · agency · solo · sub-account.
+
 ## Purpose
 
 Every callable seam in the platform is reached by callers wearing one of **six identity

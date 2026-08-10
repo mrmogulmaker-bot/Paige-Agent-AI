@@ -49,6 +49,7 @@ import {
   PageShell, PageHeader, SectionCard, SectionNote, StatTile, StatRow,
   DataTableShell, EmptyState, StatePill, GlyphPlate, FilterChip, type Column,
 } from "@/components/ui/page";
+import { SystemsCheckTile } from "@/components/systems-check/SystemsCheckTile";
 import {
   MARKETPLACE_SKILLS, SKILL_CATEGORIES, type MarketplaceSkill,
 } from "@/lib/marketplace/skills";
@@ -465,6 +466,13 @@ export default function AgencyBoard() {
           </>
         }
       />
+
+      {/* Systems Check — the AGENCY's OWN business ("is my agency set up to run?"), scoped to
+          the agency's own tenant (activeTenantId here is the agency parent). Renders ABOVE the
+          empty/non-empty split so a brand-new agency (its DEFAULT landing is /agency, not /admin)
+          still gets its own setup check — §51 tier-parity across EVERY tenant surface, §56 the
+          check belongs on every account type. Tenant-scoped (§9); the tile owns its gold budget (§11). */}
+      <SystemsCheckTile scope="tenant" />
 
       {showEmpty ? (
         <>

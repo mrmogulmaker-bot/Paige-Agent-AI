@@ -256,6 +256,14 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
         />
       )}
 
+      {/* Systems Check (Wave S3 L3) — renders for EVERY tenant tier (God-tenant-context,
+          solo, sub-account, agency-as-tenant) regardless of book state, ABOVE the
+          empty/non-empty split: a fresh account with no clients needs the "is your
+          business set up to run?" check the MOST (§51 tier-parity, §36 proactive
+          surfacing). Paige surfaces the single highest-severity gap with her drafted fix
+          + one-click approve (§9 tenant-scoped; §11 gold budget owned by the tile). */}
+      <SystemsCheckTile scope="tenant" />
+
       {emptyBook ? (
         <SectionCard>
           <EmptyState
@@ -277,11 +285,6 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
           {contentConfig.showApprovalsAct && (
             <DraftsAwaitingPanel items={approvals} refresh={refreshApprovals} />
           )}
-
-          {/* Systems Check (Wave S3 L3) — is your business fully set up to run? Paige
-              surfaces the single highest-severity gap with her drafted fix + one-click
-              approve (§36 draft-first, §11 gold on the act, §9 tenant-scoped). */}
-          <SystemsCheckTile scope="tenant" />
 
           {/* Comms inbox at-a-glance — proactive surfacing (§36): what's waiting on
               the coach, one click into the filtered inbox. All tiles NEUTRAL — gold

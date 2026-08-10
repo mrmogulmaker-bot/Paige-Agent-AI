@@ -140,6 +140,23 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   tenant-scoped change runs the **six-tier matrix** (God/Agency/Standalone/Sub-account/Client/
   Anonymous) pre- and post-deploy, and post-deploy-walks a tier you did **not** build on.
 
+## 11. Availability-by-accident — a tier-universal feature hidden by an empty-book gate (§56, task #99)
+
+- **Symptom:** The tenant Systems Check showed on Mogul Maker Academy but not on several fresh
+  sub-accounts. Owner reported it as a tier bug ("Paige thinks it's a solo account still").
+- **Root cause:** NOT tier classification. `<SystemsCheckTile scope="tenant" />` was mounted INSIDE
+  the non-empty branch of `PracticeOverview.tsx`'s `{emptyBook ? … : …}` conditional (`emptyBook` =
+  0 clients + 0 attention + 0 approvals), so every freshly-provisioned tenant — solo OR sub-account —
+  rendered only the "blank canvas" and never the check. Academy has clients so it showed. A
+  capability meant for *every* tenant was hidden by an incidental empty-state gate; the agency's own
+  default landing (`/agency`→`AgencyBoard`) never carried the tile at all.
+- **Rule (§56 — new doctrine):** Before building/placing anything, check `docs/doctrine/tier-matrix.md`:
+  (1) name which account type(s) it's for; (2) decide per-tier whether it belongs. A feature meant
+  for "every tier" must render on every tier **regardless of empty-book/branch/route accident** — an
+  empty account needs a setup check *most*. Fix mounted the tile ABOVE the empty/non-empty split
+  (`PracticeOverview`, solo + sub-account) and added it to `AgencyBoard` (agency), matching the
+  operator tile on `OperatorCommandCenter` (God).
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same

@@ -8,7 +8,8 @@ Sources this pass: GitHub MCP `list_pull_requests` (repo `mrmogulmaker-bot/paige
 
 ## Recent PRs (#375 → #409)
 
-**Open / in-flight (as of 2026-08-09):**
+**Open / in-flight (as of 2026-08-10):**
+- **Systems Check tier-availability + §56** (task #99, branch `claude/systems-check-tier-availability`, 2026-08-10) — owner reported the tenant Systems Check missing on fresh sub-accounts. Root cause (§30): the `SystemsCheckTile scope='tenant'` was gated inside the non-empty branch of `PracticeOverview.tsx`'s `{emptyBook ? …}`, so any 0-client tenant (solo OR sub-account) never saw it. Fix hoists it above the empty/non-empty split AND adds it to `AgencyBoard` (`/agency`), matching the operator tile on `OperatorCommandCenter` → uniform across God · Agency · solo · sub-account. New doctrine **§56** (pre-build tier-matrix gate): before ANY build, name which account type(s) it's for + decide per-tier belonging. Crew: engineer + §39 (SHIP) + §5 (ITERATE→AgencyBoard gap closed). ESLint 0 / tsc 18-18. Owner §32.c live-drive owed.
 - **#410** (open, DRAFT — owner review) — `docs(brain)`: the Second Brain (`docs/brain/`) + §BRAIN
   doctrine + completeness audit (this PR). Owner-review-gated, NOT auto-merge (doctrine + widespread
   reference impact). *(branch `claude/second-brain`.)*
