@@ -1,10 +1,12 @@
 // systems-check-runners/company_info_populated.ts — Check #5 (runner_key: company_info_populated).
 //
-// SEAM (reuse ONLY this): tenants(name, website, business_phone) + tenants.brand jsonb (industry/about)
+// SEAM (reuse ONLY this): tenants(name) + tenants.brand jsonb (website/business_phone/industry/about —
+//   the §10 config-as-data home; there are no tenants.website / tenants.business_phone columns)
 //   + signup_intake(business_name, industry) as a supplementary source. This is NOT the verify_business
 //   flow — it only reads whether the core company profile is populated.
-// CORE SET (pass): name AND website AND business_phone AND an industry (from brand.industry OR the
-//   owner's signup_intake.industry). `about` is captured as bonus evidence but is not required for pass.
+// CORE SET (pass): name AND website AND business_phone AND an industry (website/phone from brand.*, the
+//   industry from brand.industry OR the owner's signup_intake.industry). `about` is captured as bonus
+//   evidence but is not required for pass.
 //
 // NOTE (§9/§51): signup_intake keys on user_id (the tenant OWNER), not tenant_id, so it is resolved via
 //   tenants.owner_user_id — still strictly this tenant's own owner, never another tenant's.
@@ -20,14 +22,12 @@ export const run: CheckRunner = async (ctx, _row) => {
   try {
     const tenantRes = await admin
       .from("tenants")
-      .select("name, website, business_phone, brand, owner_user_id")
+      .select("name, brand, owner_user_id")
       .eq("id", tenantId)
       .maybeSingle();
     throwOnDbError(tenantRes.error, "tenants.core");
     const t = (tenantRes.data ?? {}) as {
       name?: string;
-      website?: string;
-      business_phone?: string;
       brand?: Record<string, unknown>;
       owner_user_id?: string;
     };
@@ -49,8 +49,9 @@ export const run: CheckRunner = async (ctx, _row) => {
     }
 
     const hasName = hasText(t.name) || hasText(intakeBusinessName);
-    const hasWebsite = hasText(t.website);
-    const hasBusinessPhone = hasText(t.business_phone);
+    // website + business phone live in the tenant-authored brand jsonb (no top-level columns).
+    const hasWebsite = hasText(brand.website);
+    const hasBusinessPhone = hasText(brand.business_phone);
     const hasIndustry = hasText(brand.industry) || hasText(intakeIndustry);
     const hasAbout = hasText(brand.about);
 
