@@ -15,6 +15,9 @@ Sources this pass: GitHub MCP `list_pull_requests` (repo `mrmogulmaker-bot/paige
 - **#387** (open) — Harden edge function contracts + producer-inventory doctrine, audits, arch docs.
 
 **Merged (newest first):**
+- **#424** (merged 2026-08-10) — `feat(§52/§53)`: Paige operator runtime-context substrate (Phase 1) + operator role tiers. §52 = Super-Admin Paige opens every session already briefed (fix for the 2026-08-09 §36 miss where she asked the founder who he was); `paige_owner_memory` tenant_id→nullable + owner RLS branches + 7 seed rows + `_shared/owner-context.ts` composer + `paige-ai-chat` injection. §53 = `is_platform_operator()` helper + `user_roles` grant-lockdown trigger (super_admin/platform_admin grantable only by an existing super_admin/service; closed a real §9 escalation via `grant_tenant_member_role`). `is_platform_owner()` frozen super_admin-only. **§32.a GREEN on prod.** CLAUDE.md §52+§53. Owner §32.c live-drive owed. Fast-follows: #89 /admin/team tier-leak, #90 taxonomy doc.
+- **#423** (merged 2026-08-10) — `feat(#80)`: Systems Check MVP Layer 1 — 4 tables + 10-check registry seed (Owner Trilogy Pillar 1). §32.b + §51 proven; **§32.a GREEN on prod**. Runner/orchestrator/surface = later layers.
+- **#415/#421** (merged 2026-08-09/10) — `feat(#31)`: Revenue Integrity Chain (fail-closed trigger + operator audit RPC + always-export CSV). §32.a + live-prod block-test GREEN. Wave 8 launch-gate cleared; prod paid=0 ($0 ARR honest).
 - **#411** (merged 2026-08-09, `c40f76d3`) — `feat(wave4-4a.4)`: Interactive Analytics UI primitive
   (`Sparkline`/`DrillContainer`/`MetricEntityCard`/`ExploreChart` in `@/components/ui/page`). **Closes
   Wave 4a.** §32.c live-drive owed (FLIP + recharts geometry + AA both themes).
