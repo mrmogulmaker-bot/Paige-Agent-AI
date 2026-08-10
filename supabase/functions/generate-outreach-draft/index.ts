@@ -36,9 +36,6 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const LOVABLE_API_KEY = "unused";
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-
     const { outreach_type, lender_name, funding_product, client_context, followup_details, milestones, notes, compliance_review } = await req.json();
 
     if (!outreach_type || !client_context) {
@@ -134,7 +131,6 @@ ${signOff}`;
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -169,7 +165,6 @@ ${signOff}`;
       const complianceResponse = await gatewayCompat("anthropic", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
