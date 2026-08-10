@@ -384,3 +384,17 @@ project_id = "xygzykjyynhzqytbqnzu"
   # requires for a verify_jwt=false fn rides the ?apikey= query param (public key, standard).
   [functions.paige-dictate]
     verify_jwt = false
+
+  # Systems Check runner (task #80, L2) — three flavor edge fns over the ONE core
+  # (_shared/systems-check-runner.ts). Tenant is resolved from the VERIFIED JWT, never the body
+  # (§9/§588), so onboarding + change keep the default verify_jwt=true (declared here for clarity).
+  # The operator may target a specific tenant via an owner-gated body.tenant_id (resolveTenantFromJwt).
+  [functions.systems-check-run-onboarding]
+    verify_jwt = true
+  [functions.systems-check-run-change]
+    verify_jwt = true
+  # Scheduled flavor is CRON-invoked (the cron poster presents no Supabase JWT), so verify_jwt=false;
+  # it fails closed in-function to an internal-caller gate — a service-role bearer OR a valid
+  # x-cron-token (verify_cron_token) — exactly like comms-scheduled-drain / paige-action-worker.
+  [functions.systems-check-run-scheduled]
+    verify_jwt = false

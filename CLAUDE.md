@@ -1598,6 +1598,18 @@ of those rails Paige holds and which are tenant-side.
   tables DELETE), §35 (OS north star — the same rule extends to future household /
   portfolio / device contexts: Paige powers operators everywhere, doesn't hold their money
   anywhere).
+- **Processor/vendor-agnostic is the rule for every tenant-side CHECK and surface, not just the money leg
+  (owner-locked 2026-08-09, ref Systems Check L2 / master-doc §10 miss #28).** A Systems Check runner, a
+  Playbook check, or any surface that inspects a tenant's setup must NEVER assume WHICH tool the tenant
+  uses for anything Paige does not own — payments (Stripe · PayPal · Square · bank merchant · QuickBooks ·
+  manual), comms (SMS/email are already tenant-BYO via subaccount routing), calendar, storage. It reads a
+  tenant-**DECLARED** field (e.g. `tenants.payment_processor_declared` / `payment_methods_declared`), not a
+  specific processor's API. Per-processor deep-verify (reading a connected Stripe account's live methods,
+  a PayPal API, etc.) is a POST-MVP Playbook slice (§35 Marketplace Check Spec DSL), never the MVP default.
+  **Assumption-baking is a §38 violation regardless of build-cost** — "Stripe-native read because it's the
+  cheapest path" is the exact drift this bullet exists to kill. The §5 compliance officer checks every
+  tenant-side check/runner for a baked-in processor/vendor assumption, in the read path AND in the drafted
+  remediation copy.
 - **The test, every time:** *"Is this money going INTO Paige's own bank as revenue for a
   Paige rail, or would activating it put a tenant's client's money through Paige's bank?"*
   If the latter: Connect direct-charge pattern on tenant's account, or BYO-processor
