@@ -18,7 +18,6 @@ import {
   Search, SearchX, PanelRight, Clock, X, ChevronDown, Bell, Plus, PlugZap,
   ArrowUpDown, Rows3, AlignJustify, Archive, Tag, CheckCheck, MessageCircleReply, Check, Trash2,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { PageShell, SectionCard, EmptyState, StatePill } from "@/components/ui/page";
@@ -61,6 +60,10 @@ import { ThreadRow } from "./conversations/ThreadRow";
 import { ThreadFilters, useLabelCatalog } from "./conversations/ThreadFilters";
 import { ContactCardRail } from "./conversations/ContactCardRail";
 import { readableMessageBody, shouldFoldEmail } from "./conversations/messageReading";
+// Shared conversation atoms (§18 one home) — the SAME bubble + composer chrome the operator
+// Fleet Communications inbox renders through, so the two surfaces read as one system (§6).
+import { MessageBubble as SharedMessageBubble } from "./conversations/MessageBubble";
+import { MessageComposer } from "./conversations/MessageComposer";
 import { SnoozeMenu } from "./conversations/SnoozeMenu";
 import { LabelPopover } from "./conversations/LabelPopover";
 import { QuickAddDialog } from "@/components/planning/QuickAddDialog";
@@ -146,14 +149,13 @@ function MessageBubble({
   onCancelScheduled: (id: string) => void;
   approving: boolean;
 }) {
-  const outbound = m.direction === "outbound";
   const isDraft = m.status === "draft";
   const body = readableMessageBody(m);
-  const foldable = shouldFoldEmail(m.channel_type, body);
-  const [expanded, setExpanded] = useState(false);
-  const bodyRegionId = `message-body-${m.id}`;
 
-  // A Paige draft is a distinct, approval-forcing card — never a plain sent bubble (§36).
+  // A Paige draft is a distinct, approval-forcing card — never a plain sent bubble (§36). This
+  // gold "Approve & send" card IS an act (gold is earned), so it stays a TENANT-SIDE wrapper and
+  // is deliberately NOT pushed into the shared, gold-free MessageBubble atom (§11 gold only on
+  // the act; the atom's contract keeps it gold-free).
   if (isDraft) {
     return (
       <div className="flex justify-end">
@@ -186,55 +188,24 @@ function MessageBubble({
     );
   }
 
+  // Every non-draft message renders through the SHARED atom (§18 one home) so the tenant inbox
+  // and the operator Fleet inbox never drift into divergent bubbles (§6). The tenant's richer
+  // affordances — email subject, attachment chips, foldable long email bodies, the scheduled-cancel
+  // control — inject through the atom's OPTIONAL presentational props; the only tenant-local part is
+  // the raw MessageRow → props mapping below.
   return (
-    <div className={cn("flex", outbound ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "max-w-[85%] rounded-xl border p-3 shadow-card",
-          // Directional corner tail toward the sender (classic chat polish, pure radius).
-          outbound ? "rounded-br-md border-primary/25 bg-primary/[0.06]" : "rounded-bl-md border-border bg-card",
-        )}
-      >
-        {/* No per-bubble channel glyph: the whole thread is one channel and direction is
-            already encoded by alignment + bubble color — repeating it is noise (§25 density). */}
-        <div className="mb-1 flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">
-            {outbound ? "You" : partyLabel(m.sender) || "Client"}
-            <span className="opacity-60">
-              {" · "}
-              {formatDistanceToNow(new Date(m.sent_at ?? m.created_at), { addSuffix: true })}
-            </span>
-          </span>
-          <span className="ml-auto">{messageStatusPill(m)}</span>
-        </div>
-        {m.subject && <p className="mb-0.5 text-sm font-medium text-foreground">{m.subject}</p>}
-        <div className="relative">
-          <p
-            id={bodyRegionId}
-            className={cn(
-              "break-words whitespace-pre-wrap text-sm leading-relaxed text-foreground/90",
-              foldable && !expanded && "max-h-40 overflow-hidden pb-4",
-            )}
-          >
-            {body || "—"}
-          </p>
-          {foldable && !expanded && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-card to-transparent" />
-          )}
-        </div>
-        {foldable && (
-          <button
-            type="button"
-            aria-expanded={expanded}
-            aria-controls={bodyRegionId}
-            onClick={() => setExpanded((value) => !value)}
-            className="mt-2 min-h-11 w-full rounded-md border border-border/70 bg-muted/40 px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-          >
-            {expanded ? "Show less" : "Show full email"}
-          </button>
-        )}
-        {!!m.attachments?.length && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
+    <SharedMessageBubble
+      direction={m.direction}
+      body={body}
+      timestamp={m.sent_at ?? m.created_at}
+      senderLabel={m.direction === "outbound" ? "You" : partyLabel(m.sender) || "Client"}
+      status={messageStatusPill(m)}
+      error={m.status === "failed" ? m.error : null}
+      subject={m.subject ?? undefined}
+      foldable={shouldFoldEmail(m.channel_type, body)}
+      attachments={
+        m.attachments?.length ? (
+          <div className="flex flex-wrap gap-1.5">
             {m.attachments.map((a, i) => (
               <span
                 key={i}
@@ -244,24 +215,21 @@ function MessageBubble({
               </span>
             ))}
           </div>
-        )}
-        {/* R-B1/R3: a queued scheduled outbound is findable + cancellable in the thread. */}
-        {m.status === "queued" && m.scheduled_for && (
+        ) : undefined
+      }
+      footer={
+        // R-B1/R3: a queued scheduled outbound is findable + cancellable in the thread.
+        m.status === "queued" && m.scheduled_for ? (
           <button
             type="button"
             onClick={() => onCancelScheduled(m.id)}
-            className="mt-1.5 text-[11px] text-muted-foreground underline hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            className="text-[11px] text-muted-foreground underline hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           >
             Scheduled for {new Date(m.scheduled_for).toLocaleString()} · Cancel
           </button>
-        )}
-        {m.status === "failed" && m.error && (
-          <p className="mt-1.5 flex items-center gap-1 text-[11px] text-destructive">
-            <AlertTriangle className="h-3 w-3" /> {m.error}
-          </p>
-        )}
-      </div>
-    </div>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -1563,294 +1531,289 @@ export default function ClientsConversations() {
                 <div ref={bottomRef} />
               </div>
 
-              {/* Composer */}
-              <div className="mt-auto border-t border-border/60 bg-muted/30 px-3 py-2">
+              {/* Composer — converged onto the SHARED MessageComposer atom (§18/§6). The tenant's
+                  dense affordance cluster injects through the atom's header/toolbar/note slots; gold
+                  is spent once, on the atom's Send act (the only other earned gold is the draft
+                  card's "Approve & send", kept tenant-side above). */}
+              <div className="mt-auto">
                 {noChannel ? (
-                  <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="flex items-start gap-2 text-xs text-muted-foreground">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
-                      <span>Connect a channel and Paige sends from here — inbound messages start landing in this inbox once a channel is live.</span>
-                    </p>
-                    {/* Secondary connect CTA → outline, so it never becomes a SECOND gold
-                        "Connect a channel" co-visible with the rail-top gold one (§11 gold
-                        budget; mirrors the empty-state precedent where secondary=outline). */}
-                    <Button variant="outline" size="sm" asChild className="shrink-0 self-start sm:self-auto">
-                      <Link to="/admin/integrations/email">
-                        <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
-                      </Link>
-                    </Button>
+                  <div className="border-t border-border/60 bg-muted/30 px-3 py-2">
+                    <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
+                        <span>Connect a channel and Paige sends from here — inbound messages start landing in this inbox once a channel is live.</span>
+                      </p>
+                      {/* Secondary connect CTA → outline, so it never becomes a SECOND gold
+                          "Connect a channel" co-visible with the rail-top gold one (§11 gold
+                          budget; mirrors the empty-state precedent where secondary=outline). */}
+                      <Button variant="outline" size="sm" asChild className="shrink-0 self-start sm:self-auto">
+                        <Link to="/admin/integrations/email">
+                          <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
+                        </Link>
+                      </Button>
+                    </div>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    {editingDraftId && (
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        <Pencil className="h-3 w-3" /> Editing Paige's draft — Send replaces and delivers it.
-                        <button type="button" className="ml-1 underline hover:text-foreground"
-                          onClick={resetComposer}>Cancel</button>
-                      </div>
+                  <MessageComposer
+                    value={body}
+                    // Dictation + #trigger snippet expansion still run: handleBodyChange is the ONE
+                    // body mutator (snippets expand inside it) — unchanged.
+                    onChange={handleBodyChange}
+                    onSend={() => void send()}
+                    sending={sending}
+                    // The atom couples the textarea + Send under one `disabled`. Only the async-busy
+                    // states lock the whole composer here; the remaining send preconditions
+                    // (connector / address / body / subject / suppression) are enforced by send()'s
+                    // own early-return guards with precise toasts (§36) — so an empty body never
+                    // locks the textarea and no send fires mid-upload. (§13: intentional, safe delta.)
+                    disabled={drafting || uploading}
+                    placeholder={`Reply to ${selected.name}…  (drop a file to attach)`}
+                    rows={2}
+                    sendLabel={scheduledFor ? "Schedule" : editingDraftId ? "Send edited" : "Send"}
+                    // Drop-to-attach forwarded onto the atom's textarea; the ring highlights on
+                    // drag-over and clears on drag-leave or drop.
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault(); setDragOver(false);
+                      if (e.dataTransfer.files?.length) void uploadFiles(e.dataTransfer.files);
+                    }}
+                    textareaClassName={cn(
+                      "min-h-[4.5rem] focus:min-h-[6rem]",
+                      dragOver && "ring-2 ring-[hsl(var(--ring))]",
                     )}
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Select
-                        value={composeConnectorId}
-                        onValueChange={(id) => {
-                          const connector = activeConnectors.find((c) => c.id === id);
-                          setComposeConnectorId(id);
-                          setComposeChannel(connector?.channel_type ?? "");
-                        }}
-                      >
-                        <SelectTrigger className="h-9 min-w-[220px]">
-                          <SelectValue placeholder="Sending address" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {activeConnectors.map((c) => {
-                            const Icon = CHANNEL_ICON[c.channel_type];
-                            return (
-                              <SelectItem key={c.id} value={c.id}>
-                                <span className="flex items-center gap-2">
-                                  <Icon className="h-3.5 w-3.5" />
-                                  <span>
-                                    {c.display_name?.trim() || CHANNEL_LABEL[c.channel_type]}
-                                    {c.from_address ? <span className="ml-1.5 text-xs text-muted-foreground">· {c.from_address}</span> : null}
-                                  </span>
-                                </span>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                      {composeChannel === "email" && (
-                        <Input value={subject} onChange={(e) => setSubject(e.target.value)}
-                          placeholder="Subject" className="h-9 flex-1 min-w-[180px]" />
-                      )}
-                    </div>
-
-                    {/* Attachment chip row */}
-                    {attachments.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {attachments.map((a) => (
-                          <AttachmentChip key={a.url} a={a} onRemove={() => void removeAttachment(a)} />
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Drop zone wrapping the textarea */}
-                    <div
-                      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                      onDragLeave={() => setDragOver(false)}
-                      onDrop={(e) => {
-                        e.preventDefault(); setDragOver(false);
-                        if (e.dataTransfer.files?.length) void uploadFiles(e.dataTransfer.files);
-                      }}
-                      className={cn(
-                        "rounded-lg transition-shadow",
-                        dragOver && "ring-2 ring-[hsl(var(--ring))]",
-                      )}
-                    >
-                      <Textarea
-                        value={body}
-                        onChange={(e) => handleBodyChange(e.target.value)}
-                        placeholder={`Reply to ${selected.name}…  (drop a file to attach)`}
-                        rows={2}
-                        className="min-h-[4.5rem] resize-none focus:min-h-[6rem]"
-                      />
-                    </div>
-
-                    {/* Toolbar: attach · dictate · Draft with Paige · template · signature · schedule.
-                        Affordances read left→right as [attach][mic][draft] (matches ComposeThreadDialog,
-                        §6), with Send the terminal gold act in its own row below (§11). */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        ref={fileInputRef} type="file" multiple hidden
-                        onChange={(e) => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ""; }}
-                      />
-
-                      {/* Attach — leads the cluster; neutral/indigo utility (gold is Send, §11). */}
-                      <Button variant="outline" size="sm" className="h-8"
-                        onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                        {uploading
-                          ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                          : <Paperclip className="mr-1.5 h-3.5 w-3.5" />}
-                        Attach
-                      </Button>
-
-                      {/* Hold-to-dictate — neutral/indigo utility, matches "Draft with Paige"
-                          (NOT gold — gold stays on Send/Approve, §11). Dictated text feeds
-                          THROUGH handleBodyChange so snippet expansion still runs. */}
-                      <DictationMicButton
-                        onText={(seg) => handleBodyChange(appendDictation(bodyRef.current, seg))}
-                        onError={(msg) => toast.error(msg)}
-                        disabled={sending || drafting || uploading}
-                        variant="outline"
-                        size="sm"
-                        label="Dictate"
-                        activeLabel="Listening…"
-                        className="h-8 border-[hsl(var(--primary)/0.4)]"
-                      />
-
-                      {/* Draft with Paige — the headline assist. Email-only for Phase-1 (§13).
-                          Out-ranks the utility cluster with an indigo-tinted border (NOT gold —
-                          gold stays on Send/Approve, §11); one-click primary + optional guide popover. */}
-                      {composeChannel === "email" && (
-                        <div className="inline-flex items-center">
-                          <Button
-                            variant="outline" size="sm"
-                            className="h-8 min-w-[8.5rem] justify-center rounded-r-none border-r-0 border-[hsl(var(--primary)/0.4)]"
-                            onClick={() => void draftWithPaige()}
-                            disabled={drafting || sending || uploading || !selected.toAddress}
-                            aria-busy={drafting}
-                            title={!selected.toAddress ? "Add a recipient to draft a reply" : undefined}
-                          >
-                            {drafting
-                              ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                              : <Sparkles className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />}
-                            {drafting
-                              ? (draftReadingDoc ? "Reading attachment…" : "Paige is drafting…")
-                              : "Draft with Paige"}
-                          </Button>
-                          <Popover open={draftGuideOpen} onOpenChange={setDraftGuideOpen}>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline" size="sm"
-                                className="h-8 rounded-l-none border-[hsl(var(--primary)/0.4)] px-2"
-                                aria-label="Guide Paige's draft" disabled={drafting}
-                              >
-                                <ChevronDown className="h-3.5 w-3.5" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent align="start" className="w-72 space-y-2 p-3">
-                              <label htmlFor="draft-guide" className="block text-[11px] font-medium text-muted-foreground">
-                                Optional — tell Paige the angle &amp; tone
-                              </label>
-                              <Textarea
-                                id="draft-guide" rows={2} value={draftGuide}
-                                onChange={(e) => setDraftGuide(e.target.value)}
-                                placeholder="e.g. Confirm the Thursday call and ask for their intake form"
-                                className="resize-none text-sm"
-                              />
-                              <Select value={draftTone} onValueChange={(v) => setDraftTone(v as typeof draftTone)}>
-                                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="professional">Professional</SelectItem>
-                                  <SelectItem value="friendly">Friendly</SelectItem>
-                                  <SelectItem value="warm">Warm</SelectItem>
-                                  <SelectItem value="direct">Direct</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Button variant="outline" size="sm" className="h-8 w-full"
-                                onClick={() => void draftWithPaige()} disabled={drafting}>
-                                <Sparkles className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Draft it
-                              </Button>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                      )}
-
-                      {/* Saved email templates (ported §31) — email-only, non-gold utility (§11). */}
-                      {composeChannel === "email" && templates.length > 0 && (
-                        <Select onValueChange={applyTemplate}>
-                          <SelectTrigger className="h-8 w-[190px]">
-                            <SelectValue placeholder="Insert template…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {templates.map((t) => (
-                              <SelectItem key={t.template_key} value={t.template_key}>
-                                <span className="mr-1.5 text-xs text-muted-foreground">[{t.category}]</span>{t.subject}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-
-                      {hasSignature && (
-                        <Button
-                          variant="outline" size="sm" className="h-8"
-                          aria-pressed={appendSignature}
-                          data-state={appendSignature ? "on" : "off"}
-                          onClick={() => setAppendSignature((s) => !s)}
-                        >
-                          <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                          Signature {appendSignature ? "on" : "off"}
-                        </Button>
-                      )}
-
-                      <Popover open={scheduleOpen} onOpenChange={setScheduleOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" size="sm" className="h-8">
-                            <Clock className="mr-1.5 h-3.5 w-3.5" />
-                            {scheduledFor ? "Scheduled" : "Schedule"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="start" className="w-64 space-y-1 p-2">
-                          <button type="button"
-                            className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
-                            onClick={() => { setScheduledFor(new Date(Date.now() + 3600_000).toISOString()); setScheduleOpen(false); }}>
-                            In 1 hour
-                          </button>
-                          <button type="button"
-                            className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
-                            onClick={() => {
-                              const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
-                              setScheduledFor(d.toISOString()); setScheduleOpen(false);
-                            }}>
-                            Tomorrow, 9:00 AM
-                          </button>
-                          <div className="px-2 pt-1">
-                            <label className="text-[11px] text-muted-foreground">Custom</label>
-                            <Input
-                              type="datetime-local"
-                              className="mt-1 h-9"
-                              min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
-                              onChange={(e) => {
-                                if (!e.target.value) return;
-                                const d = new Date(e.target.value);
-                                if (d.getTime() > Date.now()) { setScheduledFor(d.toISOString()); setScheduleOpen(false); }
-                              }}
-                            />
+                    note={selected.toAddress ? `To ${selected.toAddress}` : "No address on this thread"}
+                    header={
+                      <div className="space-y-2">
+                        {editingDraftId && (
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <Pencil className="h-3 w-3" /> Editing Paige's draft — Send replaces and delivers it.
+                            <button type="button" className="ml-1 underline hover:text-foreground"
+                              onClick={resetComposer}>Cancel</button>
                           </div>
-                        </PopoverContent>
-                      </Popover>
+                        )}
 
-                      {scheduledFor && (
-                        <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[11px] text-foreground">
-                          <Clock className="h-3 w-3 text-muted-foreground" />
-                          {new Date(scheduledFor).toLocaleString()}
-                          <button type="button" onClick={() => setScheduledFor(null)}
-                            className="rounded p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-                            aria-label="Clear schedule">
-                            <X className="h-3 w-3" />
-                          </button>
-                        </span>
-                      )}
-                    </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Select
+                            value={composeConnectorId}
+                            onValueChange={(id) => {
+                              const connector = activeConnectors.find((c) => c.id === id);
+                              setComposeConnectorId(id);
+                              setComposeChannel(connector?.channel_type ?? "");
+                            }}
+                          >
+                            <SelectTrigger className="h-9 min-w-[220px]">
+                              <SelectValue placeholder="Sending address" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activeConnectors.map((c) => {
+                                const Icon = CHANNEL_ICON[c.channel_type];
+                                return (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    <span className="flex items-center gap-2">
+                                      <Icon className="h-3.5 w-3.5" />
+                                      <span>
+                                        {c.display_name?.trim() || CHANNEL_LABEL[c.channel_type]}
+                                        {c.from_address ? <span className="ml-1.5 text-xs text-muted-foreground">· {c.from_address}</span> : null}
+                                      </span>
+                                    </span>
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                          {composeChannel === "email" && (
+                            <Input value={subject} onChange={(e) => setSubject(e.target.value)}
+                              placeholder="Subject" className="h-9 flex-1 min-w-[180px]" />
+                          )}
+                        </div>
 
-                    {/* Compliance flags from Paige's draft — tokened, not raw amber (§11). */}
-                    {draftFlags.length > 0 && (
-                      <div className="flex items-start gap-1.5 rounded-md border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] px-2.5 py-1.5 text-[11px] text-[hsl(var(--warning))]">
-                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                        <span><span className="font-medium">Check before sending:</span> {draftFlags.join(" · ")}</span>
+                        {/* Attachment chip row */}
+                        {attachments.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {attachments.map((a) => (
+                              <AttachmentChip key={a.url} a={a} onRemove={() => void removeAttachment(a)} />
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Compliance flags from Paige's draft — tokened, not raw amber (§11).
+                            Sits above the textarea/Send so it reads as "check before sending". */}
+                        {draftFlags.length > 0 && (
+                          <div className="flex items-start gap-1.5 rounded-md border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] px-2.5 py-1.5 text-[11px] text-[hsl(var(--warning))]">
+                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                            <span><span className="font-medium">Check before sending:</span> {draftFlags.join(" · ")}</span>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    }
+                    toolbar={
+                      <>
+                        <input
+                          ref={fileInputRef} type="file" multiple hidden
+                          onChange={(e) => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ""; }}
+                        />
 
-                    {/* Send row */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground">
-                        {selected.toAddress ? `To ${selected.toAddress}` : "No address on this thread"}
-                      </span>
-                      <Button
-                        variant="gold" size="sm" onClick={send}
-                        disabled={sending || drafting || uploading || !composeConnectorId || !body.trim() || !selected.toAddress}
-                        className="h-9"
-                      >
-                        {sending
-                          ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                          : scheduledFor
-                            ? <Clock className="mr-1.5 h-4 w-4" />
-                            : <Send className="mr-1.5 h-4 w-4" />}
-                        {scheduledFor ? "Schedule" : editingDraftId ? "Send edited" : "Send"}
-                      </Button>
-                    </div>
-                  </div>
+                        {/* Attach — leads the cluster; neutral/indigo utility (gold is Send, §11). */}
+                        <Button variant="outline" size="sm" className="h-8"
+                          onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                          {uploading
+                            ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            : <Paperclip className="mr-1.5 h-3.5 w-3.5" />}
+                          Attach
+                        </Button>
+
+                        {/* Hold-to-dictate — neutral/indigo utility, matches "Draft with Paige"
+                            (NOT gold — gold stays on Send/Approve, §11). Dictated text feeds
+                            THROUGH handleBodyChange so snippet expansion still runs. */}
+                        <DictationMicButton
+                          onText={(seg) => handleBodyChange(appendDictation(bodyRef.current, seg))}
+                          onError={(msg) => toast.error(msg)}
+                          disabled={sending || drafting || uploading}
+                          variant="outline"
+                          size="sm"
+                          label="Dictate"
+                          activeLabel="Listening…"
+                          className="h-8 border-[hsl(var(--primary)/0.4)]"
+                        />
+
+                        {/* Draft with Paige — the headline assist. Email-only for Phase-1 (§13).
+                            Out-ranks the utility cluster with an indigo-tinted border (NOT gold —
+                            gold stays on Send/Approve, §11); one-click primary + optional guide popover. */}
+                        {composeChannel === "email" && (
+                          <div className="inline-flex items-center">
+                            <Button
+                              variant="outline" size="sm"
+                              className="h-8 min-w-[8.5rem] justify-center rounded-r-none border-r-0 border-[hsl(var(--primary)/0.4)]"
+                              onClick={() => void draftWithPaige()}
+                              disabled={drafting || sending || uploading || !selected.toAddress}
+                              aria-busy={drafting}
+                              title={!selected.toAddress ? "Add a recipient to draft a reply" : undefined}
+                            >
+                              {drafting
+                                ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                                : <Sparkles className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />}
+                              {drafting
+                                ? (draftReadingDoc ? "Reading attachment…" : "Paige is drafting…")
+                                : "Draft with Paige"}
+                            </Button>
+                            <Popover open={draftGuideOpen} onOpenChange={setDraftGuideOpen}>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline" size="sm"
+                                  className="h-8 rounded-l-none border-[hsl(var(--primary)/0.4)] px-2"
+                                  aria-label="Guide Paige's draft" disabled={drafting}
+                                >
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent align="start" className="w-72 space-y-2 p-3">
+                                <label htmlFor="draft-guide" className="block text-[11px] font-medium text-muted-foreground">
+                                  Optional — tell Paige the angle &amp; tone
+                                </label>
+                                <Textarea
+                                  id="draft-guide" rows={2} value={draftGuide}
+                                  onChange={(e) => setDraftGuide(e.target.value)}
+                                  placeholder="e.g. Confirm the Thursday call and ask for their intake form"
+                                  className="resize-none text-sm"
+                                />
+                                <Select value={draftTone} onValueChange={(v) => setDraftTone(v as typeof draftTone)}>
+                                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="professional">Professional</SelectItem>
+                                    <SelectItem value="friendly">Friendly</SelectItem>
+                                    <SelectItem value="warm">Warm</SelectItem>
+                                    <SelectItem value="direct">Direct</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Button variant="outline" size="sm" className="h-8 w-full"
+                                  onClick={() => void draftWithPaige()} disabled={drafting}>
+                                  <Sparkles className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Draft it
+                                </Button>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        )}
+
+                        {/* Saved email templates (ported §31) — email-only, non-gold utility (§11). */}
+                        {composeChannel === "email" && templates.length > 0 && (
+                          <Select onValueChange={applyTemplate}>
+                            <SelectTrigger className="h-8 w-[190px]">
+                              <SelectValue placeholder="Insert template…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {templates.map((t) => (
+                                <SelectItem key={t.template_key} value={t.template_key}>
+                                  <span className="mr-1.5 text-xs text-muted-foreground">[{t.category}]</span>{t.subject}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+
+                        {hasSignature && (
+                          <Button
+                            variant="outline" size="sm" className="h-8"
+                            aria-pressed={appendSignature}
+                            data-state={appendSignature ? "on" : "off"}
+                            onClick={() => setAppendSignature((s) => !s)}
+                          >
+                            <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                            Signature {appendSignature ? "on" : "off"}
+                          </Button>
+                        )}
+
+                        <Popover open={scheduleOpen} onOpenChange={setScheduleOpen}>
+                          <PopoverTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-8">
+                              <Clock className="mr-1.5 h-3.5 w-3.5" />
+                              {scheduledFor ? "Scheduled" : "Schedule"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent align="start" className="w-64 space-y-1 p-2">
+                            <button type="button"
+                              className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+                              onClick={() => { setScheduledFor(new Date(Date.now() + 3600_000).toISOString()); setScheduleOpen(false); }}>
+                              In 1 hour
+                            </button>
+                            <button type="button"
+                              className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+                              onClick={() => {
+                                const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
+                                setScheduledFor(d.toISOString()); setScheduleOpen(false);
+                              }}>
+                              Tomorrow, 9:00 AM
+                            </button>
+                            <div className="px-2 pt-1">
+                              <label className="text-[11px] text-muted-foreground">Custom</label>
+                              <Input
+                                type="datetime-local"
+                                className="mt-1 h-9"
+                                min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
+                                onChange={(e) => {
+                                  if (!e.target.value) return;
+                                  const d = new Date(e.target.value);
+                                  if (d.getTime() > Date.now()) { setScheduledFor(d.toISOString()); setScheduleOpen(false); }
+                                }}
+                              />
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+
+                        {scheduledFor && (
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[11px] text-foreground">
+                            <Clock className="h-3 w-3 text-muted-foreground" />
+                            {new Date(scheduledFor).toLocaleString()}
+                            <button type="button" onClick={() => setScheduledFor(null)}
+                              className="rounded p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                              aria-label="Clear schedule">
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        )}
+                      </>
+                    }
+                  />
                 )}
               </div>
             </>

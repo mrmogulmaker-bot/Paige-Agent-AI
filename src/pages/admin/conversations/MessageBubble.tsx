@@ -8,8 +8,15 @@
 // shape onto these props via its data-source adapter — so the same bubble serves SMS, email,
 // WhatsApp, IG DM, and voice notes as inline messages in one thread (§49), tenant or operator.
 //
+// The tenant inbox is a richer surface (email subject lines, attachment chips, foldable long
+// email bodies, a scheduled-cancel footer), so those affordances are exposed here as OPTIONAL
+// presentational props — the operator call site passes none of them and renders identically.
+// The gold Paige-draft CARD is deliberately NOT a variant here: a draft is an ACT (gold is
+// earned), so it stays a tenant-side wrapper — this bubble remains gold-free.
+//
 // §11: token-only, AA both themes, motion-safe, gold NEVER spent here (a bubble is not an act).
 import type { ReactNode } from "react";
+import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 
@@ -26,12 +33,36 @@ export interface MessageBubbleProps {
   error?: string | null;
   /** Optional leading glyph (e.g. a channel icon) so SMS/email/DM read distinctly in one thread (§49). */
   channelIcon?: ReactNode;
+  /** Optional subject line rendered above the body (email). */
+  subject?: string;
+  /** Optional slot under the body for attachment chips (the tenant's <Paperclip> list). */
+  attachments?: ReactNode;
+  /**
+   * When true, a long body (email) is clamped with a gradient scrim and a
+   * "Show full email"/"Show less" toggle. The expand state is owned INSIDE the atom
+   * (self-contained) — the container just declares the body is foldable.
+   */
+  foldable?: boolean;
+  /** Initial expanded state when foldable; defaults to collapsed. */
+  defaultExpanded?: boolean;
+  /** Optional slot under the body/error for extra controls (e.g. "Scheduled for … · Cancel"). */
+  footer?: ReactNode;
 }
 
 export function MessageBubble({
   direction, body, timestamp, senderLabel, status, error, channelIcon,
+  subject, attachments, foldable = false, defaultExpanded = false, footer,
 }: MessageBubbleProps) {
   const outbound = direction === "outbound";
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const collapsed = foldable && !expanded;
+  // Stable id so the fold toggle's aria-controls points at the body region it expands/collapses
+  // (a11y — restores the association the tenant's hand-rolled bubble had before convergence).
+  const bodyId = useId();
+  // The scrim fades to the bubble's OWN background token so the clamp reads cleanly in
+  // both directions and both themes (§11 token-only): inbound = muted, outbound = the indigo tint.
+  const scrimFrom = outbound ? "from-primary/[0.06]" : "from-muted";
+
   return (
     <div className={cn("flex", outbound ? "justify-end" : "justify-start")}>
       <div
@@ -57,9 +88,34 @@ export function MessageBubble({
           </span>
           {status && <span className="ml-auto">{status}</span>}
         </div>
-        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">
-          {body || "—"}
-        </p>
+        {subject && <p className="mb-0.5 text-sm font-medium text-foreground">{subject}</p>}
+        <div className="relative">
+          <p
+            id={foldable ? bodyId : undefined}
+            className={cn(
+              "whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90",
+              collapsed && "max-h-40 overflow-hidden pb-4",
+            )}
+          >
+            {body || "—"}
+          </p>
+          {collapsed && (
+            <div className={cn("pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t to-transparent", scrimFrom)} />
+          )}
+        </div>
+        {foldable && (
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={bodyId}
+            onClick={() => setExpanded((value) => !value)}
+            className="mt-2 min-h-11 w-full rounded-md border border-border/70 bg-muted/40 px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+          >
+            {expanded ? "Show less" : "Show full email"}
+          </button>
+        )}
+        {attachments && <div className="mt-2">{attachments}</div>}
+        {footer && <div className="mt-1.5">{footer}</div>}
         {error && <p className="mt-1.5 text-[11px] text-destructive">{error}</p>}
       </div>
     </div>
