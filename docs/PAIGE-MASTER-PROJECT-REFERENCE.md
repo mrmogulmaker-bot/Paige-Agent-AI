@@ -384,6 +384,7 @@ B-i ✅ → B-iv ✅ (posture verify pending) → B-ii (in flight) → B-Platfor
 
 ### Product specs (LOCKED 2026-08-08 — `docs/product/`)
 
+- BRD-MVP — `BRD-MVP-2026-08-08.md` (Business Requirements Doc — scope + requirements source of truth; peer to the Canonical System Architecture)
 - Owner Trilogy Customer Portal Taxonomy Matrix — `customer-portal-owner-trilogy-taxonomy-matrix.md`
 - Agent UI Placement — `agent-ui-placement-spec.md`
 - Promotional Account Type — `promo-account-type-spec.md`
@@ -404,6 +405,7 @@ B-i ✅ → B-iv ✅ (posture verify pending) → B-ii (in flight) → B-Platfor
 ### Doctrine (`docs/doctrine/`)
 
 - Canonical build order — `canonical-build-order.md` (LIVING roadmap)
+- Tier matrix — `tier-matrix.md` (§51 — the canonical six-tier matrix every tier/producer check refers to)
 - $100M Org Blueprint — `100M-org-blueprint.md` (§16)
 - $1B Growth Map — `1B-growth-map.md` (§17)
 - OS Architecture — `paige-os-architecture.md` (§35)
@@ -429,7 +431,13 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 - Ecosystem Full-Stack Boundaries — `ECOSYSTEM_FULL_STACK_BOUNDARIES.md`
 - Marketplace Data Model — `MARKETPLACE-DATA-MODEL.md`
 - Sprint C1 Tenant Readiness — `SPRINT_C1_TENANT_READINESS.md`
+- Platform-Operator-Tenant model — `platform-operator-tenant-200.md` (§200 platform-independence)
 - Canonical System Architecture — `CANONICAL-SYSTEM-ARCHITECTURE-2026-08-08.md`
+
+### Design references (`docs/design-references/`)
+
+- Cheesy-tells catalog — `CHEESY-TELLS.md` (§25 — the enumerated anti-pattern list every design pass runs against)
+- Design-critic brief — `DESIGN-CRITIC-PROMPT.md` (§25 — the design critic's role + SHIP/ITERATE/BLOCK output shape)
 
 ### Audits + assessments
 
