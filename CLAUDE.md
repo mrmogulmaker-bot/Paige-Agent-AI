@@ -1871,3 +1871,58 @@ Real cost of this discipline: ~10 seconds per PR (the grep). Real cost of skippi
 - **Enforced structurally, not by convention (§51-invariant pattern).** A `user_roles` BEFORE INSERT/UPDATE trigger blocks any `super_admin`/`platform_admin` grant unless the writer is an existing super_admin (via verified JWT) or a trusted service/migration context — so the lock holds on every write path (RPCs, the tenant→app_role sync trigger, a direct insert), not just the one an audit happened to check. This closed a real §9 escalation: `grant_tenant_member_role()` was tenant-admin-callable and blocked only super_admin, so a tenant admin could have minted `platform_admin` and crossed the tenant→platform seam. Every OTHER role grant (admin, coach, client, broker_team_member, sales_rep, …) is untouched.
 - **Every operator surface is tier-scoped, not identity-scoped.** A platform-tier list (team, fleet, operators) filters by `role IN ('super_admin','platform_admin')` — NEVER by email domain (future operators won't carry a `@paigeagent.ai` address). Showing tenant-tier admins/coaches/clients on a platform surface is a §9/§53 leak (the same class as the grant gap above).
 - **The test, every time:** *"Is this operator capability/surface gated on the right tier — super_admin for God-tier/integrity actions, `is_platform_operator()` for delegated operator work — and scoped by ROLE, never by identity or email?"* If a tenant-tier actor can reach it, or a platform surface shows tenant-tier people, it isn't §53-clean.
+
+## 56. Check the tier matrix FIRST — the PRE-BUILD platform-impact gate (which account type, and does the feature belong there?).
+
+**Directive (owner: Antonio, 2026-08-10) — this LANDS §51's forward-referenced "platform impact
+assessment" as a real numbered section (question #1 on any change).** §51 is the *verification*
+railing — it proves a shipped change works across all six tiers *after* it's built. §56 is the
+*design* gate that runs **before the first line of code**: for ANY development — a feature, tile,
+route, RPC, edge function, migration, surface, or copy block — you STOP and check
+`docs/doctrine/tier-matrix.md` to answer, out loud, **two** questions:
+
+1. **Which version of the platform / which ACCOUNT TYPE am I working on?** God/Super-Admin ·
+   Agency · Standalone (solo) Tenant · Sub-account · Client · Anonymous. Name the tier(s) this
+   change is FOR — never assume "a tenant is a tenant." A solo tenant, a sub-account, and an
+   agency-as-a-tenant resolve their `tenant_id`, land on different home surfaces, and hit
+   different gates. "Correct for the account I built on" is exactly the trap.
+2. **Is this feature RELEVANT to that account type — should it appear there, or NOT?** Some
+   capabilities belong on **every** tier (the Systems Check: God, solo, sub-account, agency —
+   all must have it, "repeatable throughout the entire process," owner's words). Others belong
+   on exactly one (operator fleet controls → God only; a sub-account roster → never the parent
+   aggregate). Decide **deliberately**, per tier, and make the availability match the decision —
+   do not let a feature silently appear on one account type and vanish on another by accident of
+   which branch/emptyState/route it was bolted into.
+
+- **This is a real gate, not a reminder (the §18/§1 pattern).** Because "this has happened one
+  too many times," §56 fires mechanically: *if you are about to build/place anything and have NOT
+  named the target account type(s) and confirmed the feature belongs on each, you are already in
+  violation — stop and check the matrix first.* The crew's compliance pass (§5/§51) confirms the
+  per-tier availability decision was made on purpose, not by default.
+- **Availability is deliberate, uniform where the owner says "every tier."** When a capability is
+  meant for every account type, it must render for every account type **regardless of incidental
+  state** — empty book, no data yet, default landing surface. The anchoring bug (below) is the
+  exact failure: a capability meant for all tenants was gated behind an `emptyBook`/branch/route
+  accident and silently disappeared on the very accounts (fresh sub-accounts) that needed it most.
+- **Propagation is part of the gate (§0/§BRAIN).** A tier/availability decision or correction is
+  logged to the master doc (`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4/§10) and the second brain
+  (`docs/brain/`) in the SAME PR — the matrix, the master doc, and the brain never drift from what
+  actually shipped.
+- **Anchoring case (2026-08-10, task #99):** the tenant **Systems Check** tile was gated INSIDE the
+  non-empty branch of `PracticeOverview.tsx`'s `{emptyBook ? … : …}` conditional, so any tenant
+  with 0 clients/attention/approvals — every freshly-provisioned solo OR sub-account — rendered
+  only the "blank canvas" empty state and NEVER saw the setup check (while Mogul Maker Academy,
+  which has clients, did). The owner reported it as "sub-accounts don't show the Systems Check."
+  Root cause was NOT a tier-classification bug but an **availability-by-accident**: the check meant
+  for every tenant was hidden by an empty-book gate, and the agency's own default landing
+  (`/agency` → `AgencyBoard`) never carried the tile at all. Fix: render the tenant Systems Check
+  ABOVE the empty/non-empty split on `PracticeOverview` (solo + sub-account) AND add it to
+  `AgencyBoard` (agency-as-a-tenant) — matching the operator tile already on `OperatorCommandCenter`
+  (God). Now uniform across God · agency · solo · sub-account, exactly the owner's "every tier"
+  requirement. Had §56 fired before the tile was first placed, the "which tiers, does it belong on
+  each, does it survive an empty book?" questions would have caught it pre-build.
+- **The test, every time:** *"Before I build or place this, did I open the tier matrix, name which
+  account type(s) it's for, and decide — on purpose — whether it belongs on each one and renders
+  there regardless of empty/default state? Or did I build for the account in front of me and let
+  the other tiers fall where they may?"* If the matrix wasn't checked and the per-tier availability
+  wasn't a deliberate decision, it isn't §56-clean.

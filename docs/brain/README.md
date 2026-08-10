@@ -68,16 +68,19 @@ All figures below were checked live this session; how each was verified is in `c
 
 ## Doctrine index — the "how we build & how Paige runs" law
 
-Root law is `CLAUDE.md` (§1–§39 + §51 + `§BRAIN` + a "Voice Configuration" reference section; see
-`glossary.md` for the full anchor map). The docs below are the long-form doctrine that `CLAUDE.md`
-sections point to.
+Root law is `CLAUDE.md` (§1–§39 + §50–§53 + §56 + `§BRAIN` + a "Voice Configuration" reference
+section; see `glossary.md` for the full anchor map). The docs below are the long-form doctrine that
+`CLAUDE.md` sections point to. **§56 (2026-08-10) — the pre-build tier-matrix gate:** before ANY
+build, open `docs/doctrine/tier-matrix.md`, name which account type(s) the change is for, and decide
+per-tier whether the feature belongs (a "every tier" capability must render regardless of
+empty-book/branch/route accident). See `lessons-learned.md` #11 for the anchoring bug.
 
 | Path | One-line | When to read |
 |---|---|---|
 | `docs/doctrine/100M-org-blueprint.md` | Paige's canonical 10-department operating model (§16) | Building anything into the org/departments model |
 | `docs/doctrine/1B-growth-map.md` | $1B ARR revenue + governance north star (§17) | Placing a revenue feature on the engine/stage map |
 | `docs/doctrine/canonical-build-order.md` | The authoritative wave/slice build sequence | Deciding what to build next / where a slice sits |
-| `docs/doctrine/tier-matrix.md` | The canonical six tiers + resolution/RLS per tier (§51) | Any tenant-scoped change; every §37/§51 check |
+| `docs/doctrine/tier-matrix.md` | The canonical six tiers + resolution/RLS per tier (§51) + the §56 pre-build gate | **BEFORE any build (§56)**; any tenant-scoped change; every §37/§51 check |
 | `docs/doctrine/compliance-checklist-template.md` | Tier-matrix compliance checklist to run per crew | Compliance pass on a tenant-scoped surface |
 | `docs/doctrine/producer-inventory-template.md` | §37 × tier producer-inventory worksheet | Hardening/altering any endpoint contract |
 | `docs/doctrine/money-spine-architecture.md` | Full money architecture — Paige-held vs facilitated rails (§38) | Any payment/billing surface |

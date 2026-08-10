@@ -49,6 +49,7 @@ import {
   PageShell, PageHeader, SectionCard, SectionNote, StatTile, StatRow,
   DataTableShell, EmptyState, StatePill, GlyphPlate, FilterChip, type Column,
 } from "@/components/ui/page";
+import { SystemsCheckTile } from "@/components/systems-check/SystemsCheckTile";
 import {
   MARKETPLACE_SKILLS, SKILL_CATEGORIES, type MarketplaceSkill,
 } from "@/lib/marketplace/skills";
@@ -94,6 +95,16 @@ const HEALTH_PILL: Record<PortfolioHealthKey, { state: "success" | "warning" | "
 
 export default function AgencyBoard() {
   const { activeTenant, activeTenantId } = useTenantContext();
+  // §9/§51 guard for the own-business Systems Check tile below. On /agency the operator may still be
+  // scoped INTO a child (e.g. Back after agency_enter_subaccount), so `activeTenantId` can be the
+  // CHILD id — rendering a tenant-scoped tile then would surface the CHILD's check (and let it be
+  // approved) from the agency dashboard (§9 leak, Codex P1). Only mount when the active tenant is the
+  // agency's OWN top-level tenant per the §51 invariant (parent-less + a manager account_type); when
+  // scoped into a child the child's own check correctly lives on the child's /admin PracticeOverview.
+  const isOwnAgencyContext =
+    !!activeTenant &&
+    activeTenant.parent_tenant_id === null &&
+    (activeTenant.account_type === "agency" || activeTenant.account_type === "enterprise");
 
   // ONE parentage-gated rollup across the whole book — replaces the old
   // per-child N+1. Polls every 45s and on window focus (live/dynamic doctrine).
@@ -465,6 +476,14 @@ export default function AgencyBoard() {
           </>
         }
       />
+
+      {/* Systems Check — the AGENCY's OWN business ("is my agency set up to run?"). Renders ABOVE the
+          empty/non-empty split so a brand-new agency (its DEFAULT landing is /agency, not /admin) still
+          gets its own setup check — §51 tier-parity across EVERY tenant surface, §56 the check belongs
+          on every account type. Gated on `isOwnAgencyContext` so it NEVER surfaces a child's check when
+          the operator is transiently scoped into a sub-account (§9/§51, Codex P1). Tenant-scoped; the
+          tile owns its gold budget (§11). */}
+      {isOwnAgencyContext && <SystemsCheckTile scope="tenant" />}
 
       {showEmpty ? (
         <>
