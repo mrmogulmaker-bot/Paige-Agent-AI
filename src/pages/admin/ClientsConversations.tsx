@@ -54,6 +54,8 @@ import { ConversationsThreeColumnShell } from "./conversations/shell/Conversatio
 import { ConversationsThreadList } from "./conversations/shell/ConversationsThreadList";
 import { ConversationsRichComposer } from "./conversations/shell/ConversationsRichComposer";
 import { ConversationsContactPanel } from "./conversations/shell/ConversationsContactPanel";
+import { ConversationsCallButton } from "./conversations/shell/ConversationsCallButton";
+import { useVoiceDevice } from "@/lib/voice/VoiceDeviceProvider";
 import type {
   ConversationsCapabilities, ConversationsListModel, ConversationsComposerModel,
   ConversationsContactPanelModel, ShellThread, DraftTone,
@@ -182,16 +184,29 @@ function MessageBubble({
   // affordances — email subject, attachment chips, foldable long email bodies, the scheduled-cancel
   // control — inject through the atom's OPTIONAL presentational props; the only tenant-local part is
   // the raw MessageRow → props mapping below.
+  // §49 — a voice-call row renders INLINE as the shared call bubble (direction/duration/recording/
+  // transcript, each only when present, §13). Gold-free; the header Call button owns the act (§11).
+  const isCall = m.channel_type === "voice";
   return (
     <SharedMessageBubble
       direction={m.direction}
       body={body}
       timestamp={m.sent_at ?? m.created_at}
       senderLabel={m.direction === "outbound" ? "You" : partyLabel(m.sender) || "Client"}
-      status={messageStatusPill(m)}
+      status={isCall ? null : messageStatusPill(m)}
       error={m.status === "failed" ? m.error : null}
-      subject={m.subject ?? undefined}
-      foldable={shouldFoldEmail(m.channel_type, body)}
+      subject={isCall ? undefined : (m.subject ?? undefined)}
+      foldable={!isCall && shouldFoldEmail(m.channel_type, body)}
+      call={
+        isCall
+          ? {
+              direction: m.direction,
+              durationSec: m.call_duration_seconds,
+              recordingUrl: m.recording_url,
+              transcript: m.transcript,
+            }
+          : null
+      }
       attachments={
         m.attachments?.length ? (
           <div className="flex flex-wrap gap-1.5">
@@ -225,6 +240,9 @@ function MessageBubble({
 // ══════════════════════════════════════════════════════════════════════════════════
 export default function ClientsConversations() {
   const reduce = useReducedMotion();
+  // The ONE shared Voice Device (§18) — the tenant places calls on their OWN provisioned number
+  // via the tenant voice token path; the same Device the top-nav dialer uses.
+  const voice = useVoiceDevice();
   const [rows, setRows] = useState<MessageRow[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1220,6 +1238,13 @@ export default function ClientsConversations() {
     ),
   } : null;
 
+  // ── call capability for the open thread (Phase 4) — the tenant dials the contact's phone on the
+  //    SAME shared Device (§18) via the tenant voice token path. §13: no fake dial — the button
+  //    disables with an honest tooltip when there's no phone on file or voice reports needs_config. ──
+  const tenantVoiceReady = !!voice && voice.status !== "needs_config";
+  const callDestination = selected?.dbThread.clients?.phone ?? null;
+  const placeTenantCall = (destination: string) => { voice?.callFrom(destination); };
+
   // MIDDLE pane — container-owned (it carries the tenant's draft-card MessageBubble wrapper + the
   // thread-header quick actions + the composer). Passed to the shell as the `activeThread` slot.
   const activeThread = (
@@ -1253,6 +1278,17 @@ export default function ClientsConversations() {
                 label / snooze / archive / remind are reachable without hovering a row. All
                 icon-only ghost buttons; gold stays on Send/Approve (§11). */}
             <div className="flex items-center gap-1">
+              {/* CALL act — gold (§11, a distinct primary act like Send/Approve). Shared
+                  ConversationsCallButton, adapter-driven; disabled with an honest tooltip when the
+                  contact has no phone on file or voice isn't provisioned (§13 — no blind dial). */}
+              <ConversationsCallButton
+                hasVoiceCalling={tenantVoiceReady}
+                destination={callDestination}
+                onPlaceCall={placeTenantCall}
+                unavailableReason={voice?.reason ?? "Calling isn’t set up for this practice yet."}
+                iconOnly
+                className="mr-0.5"
+              />
               <LabelPopover
                 thread={selected.dbThread} catalog={labelCatalog}
                 onSetThreadLabels={setThreadLabels} onRenameCatalogLabel={renameCatalogLabel}

@@ -82,10 +82,12 @@ export interface ShellMessage {
   subject?: string | null;
   attachments?: Attachment[] | null;
   error?: string | null;
-  // Phase 3/4 call fields (schema-present now; the shell does not render them yet — §13
-  // do not surface a call affordance until the phone slice wires it).
+  // Phase 4 call fields — surfaced INLINE in the thread when channelType === 'voice' (§49),
+  // rendered by the shared MessageBubble's call variant. Each is shown ONLY when present (§13):
+  // a call with no recording/transcript/duration renders that part absent, never fabricated.
   callDurationSec?: number | null;
   callRecordingUrl?: string | null;
+  callTranscript?: string | null;
   callDirection?: Direction | null;
 }
 
@@ -289,6 +291,27 @@ export interface ConversationsContactPanelModel {
   minimal?: ContactPanelMinimal;
 }
 
+// ── CALL model (drives ConversationsCallButton in the open-thread header) ──────────────
+/**
+ * The click-to-call capability for the OPEN thread, assembled per-scope so the shared
+ * ConversationsCallButton stays scope-agnostic (§9/§51 — the button never knows tenant vs
+ * operator). The tenant maps this over the contact's phone + the tenant voice token path; the
+ * operator over `counterparty_phone` + the Phase-3 operator voice token path. Both `placeCall`
+ * implementations drive the ONE shared VoiceDeviceProvider Device (§18) — the button only
+ * decides how to present the act (gold when available, indigo indicator while live, disabled +
+ * honest tooltip when not, §11/§13).
+ */
+export interface ConversationsCallModel {
+  /** Voice caller-id is provisioned for this scope. False → disabled control + honest tooltip. */
+  hasVoiceCalling: boolean;
+  /** The dialable number for the open thread; null → disabled with a "no number" tooltip (§13). */
+  destination: string | null;
+  /** Place the call (scope drives the shared Device via voice.callFrom). */
+  placeCall: (destination: string) => void;
+  /** Honest tooltip when hasVoiceCalling is false (e.g. operator caller-id not yet configured). */
+  unavailableReason?: string | null;
+}
+
 // ── the master adapter ─────────────────────────────────────────────────────────────────
 /** The one object a container assembles from its own state + seams and hands to the shell. */
 export interface ConversationsAdapter<TThread = unknown> {
@@ -298,4 +321,6 @@ export interface ConversationsAdapter<TThread = unknown> {
    *  can render the composer only when a thread is selected. */
   composerFor?: (threadKey: string) => ConversationsComposerModel;
   contactPanel?: ConversationsContactPanelModel;
+  /** The open thread's call capability (Phase 4). Absent → the header renders no call button. */
+  call?: ConversationsCallModel;
 }

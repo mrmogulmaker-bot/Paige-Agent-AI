@@ -45,6 +45,8 @@ import { ConversationsThreeColumnShell } from "./conversations/shell/Conversatio
 import { ConversationsThreadList } from "./conversations/shell/ConversationsThreadList";
 import { ConversationsRichComposer } from "./conversations/shell/ConversationsRichComposer";
 import { ConversationsContactPanel } from "./conversations/shell/ConversationsContactPanel";
+import { ConversationsCallButton } from "./conversations/shell/ConversationsCallButton";
+import { useVoiceDevice } from "@/lib/voice/VoiceDeviceProvider";
 import type {
   ShellThread, ShellMessage, ThreadRowContext, SendingIdentity, MutOpts,
   ConversationsCapabilities, ConversationsListModel, ConversationsComposerModel,
@@ -81,13 +83,18 @@ interface OperatorMessage {
   sent_at: string | null;
   error: string | null;
   channel_type: ChannelType | null; // Phase-1 (default 'sms')
+  // Phase-4 call fields (schema-present on operator_messages; null for SMS + un-recorded calls, §13)
+  call_duration_seconds: number | null;
+  recording_url: string | null;
+  transcript: string | null;
 }
 
 const CONV_COLS =
   "id, channel, counterparty_phone, counterparty_name, last_message_at, last_direction, " +
   "last_preview, unread_count, status, labels, snoozed_until, archived_at";
 const MSG_COLS =
-  "id, conversation_id, direction, body, status, created_at, sent_at, error, channel_type";
+  "id, conversation_id, direction, body, status, created_at, sent_at, error, channel_type, " +
+  "call_duration_seconds, recording_url, transcript";
 
 // The operator's SINGLE sending identity — the master A2P messaging service (per operator-twilio).
 // A single option → the composer renders no picker (showIdentity:false); the model stays honest.
@@ -254,6 +261,9 @@ function OperatorThreadRow({ thread, ctx }: { thread: ShellThread<OperatorConver
 
 export default function PlatformFleetCommunications() {
   const reduce = useReducedMotion();
+  // The ONE shared Voice Device (§18). The operator mints an operator-identity token on the same
+  // master account (Phase 3); placing a call drives THIS Device — no second Device, no fork.
+  const voice = useVoiceDevice();
   const [conversations, setConversations] = useState<OperatorConversation[]>([]);
   const [messages, setMessages] = useState<OperatorMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -611,6 +621,14 @@ export default function PlatformFleetCommunications() {
     showIdentity: false,
   };
 
+  // ── call capability for the open thread (Phase 4) — the operator dials the counterparty on the
+  //    SAME shared Device via the Phase-3 operator voice token path. §13: we NEVER fake a dial —
+  //    hasVoiceCalling flips false the moment the token path reports needs_config, and the button
+  //    independently guards the needs_config state, so an unprovisioned operator number shows the
+  //    honest disabled tooltip rather than a dead ring. ──
+  const operatorVoiceReady = !!voice && voice.status !== "needs_config";
+  const placeOperatorCall = (destination: string) => { voice?.callFrom(destination); };
+
   // ── middle pane (the shell's activeThread slot — container-owned) ────────────────────────
   const now = Date.now();
   const selectedSnoozed = selected ? isSnoozed(selected, now) : false;
@@ -660,8 +678,16 @@ export default function PlatformFleetCommunications() {
               </p>
             </div>
 
-            {/* quick actions — snooze / archive (icon-only ghost; gold stays on Send, §11) */}
+            {/* quick actions — the CALL act (gold, §11 — a distinct primary act like Send) then
+                snooze / archive (icon-only ghost). Shared ConversationsCallButton, adapter-driven. */}
             <div className="flex items-center gap-1">
+              <ConversationsCallButton
+                hasVoiceCalling={operatorVoiceReady}
+                destination={selected.counterparty_phone}
+                onPlaceCall={placeOperatorCall}
+                unavailableReason={voice?.reason ?? "Operator calling isn’t set up yet."}
+                className="mr-1"
+              />
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -730,8 +756,20 @@ export default function PlatformFleetCommunications() {
                   body={m.body}
                   timestamp={m.sent_at ?? m.created_at}
                   senderLabel={m.direction === "outbound" ? "You" : threadTitle(selected)}
-                  status={messageStatePill(m)}
+                  status={m.channel_type === "voice" ? null : messageStatePill(m)}
                   error={m.status === "failed" ? m.error : null}
+                  // §49 — a voice row renders inline as the shared call bubble (direction/duration/
+                  // recording/transcript, each only when present, §13). Gold-free.
+                  call={
+                    m.channel_type === "voice"
+                      ? {
+                          direction: m.direction,
+                          durationSec: m.call_duration_seconds,
+                          recordingUrl: m.recording_url,
+                          transcript: m.transcript,
+                        }
+                      : null
+                  }
                 />
               ))
             )}
@@ -763,6 +801,10 @@ export default function PlatformFleetCommunications() {
     timestamp: m.sent_at ?? m.created_at,
     channelType: (m.channel_type as ChannelType) ?? "sms",
     error: m.error,
+    callDurationSec: m.call_duration_seconds,
+    callRecordingUrl: m.recording_url,
+    callTranscript: m.transcript,
+    callDirection: m.channel_type === "voice" ? m.direction : null,
   }));
   const contactPanelNode = selected ? (
     <ConversationsContactPanel
