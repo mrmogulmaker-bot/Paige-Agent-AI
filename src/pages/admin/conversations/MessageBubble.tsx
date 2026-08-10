@@ -59,7 +59,7 @@ export function MessageBubble({
   // Stable id so the fold toggle's aria-controls points at the body region it expands/collapses
   // (a11y — restores the association the tenant's hand-rolled bubble had before convergence).
   const bodyId = useId();
-  // The scrim fades to the bubble's OWN background token so the clamp reads seamlessly in
+  // The scrim fades to the bubble's OWN background token so the clamp reads cleanly in
   // both directions and both themes (§11 token-only): inbound = muted, outbound = the indigo tint.
   const scrimFrom = outbound ? "from-primary/[0.06]" : "from-muted";
 
