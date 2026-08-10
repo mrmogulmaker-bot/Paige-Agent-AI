@@ -88,10 +88,17 @@ type DocState = "idle" | "loading" | "ready" | "failed";
 
 /** The REAL document thumbnail — a CSS-scaled DocumentPreview (§22: the artifact itself, shrunk, not a
  *  glyph). pointer-events-none so the whole tile stays one click target; overflow-hidden (on the tile)
- *  crops to the page. */
+ *  crops to the page.
+ *
+ *  print:hidden is LOAD-BEARING (§39/§13): DocumentPreview renders a [data-paige-doc-sheet], and the
+ *  global print rule (index.css `html.paige-doc-printing [data-paige-doc-sheet]`) unhides + stacks EVERY
+ *  such sheet at the origin. Without this, printing an OPEN document card (or any Studio doc while a card
+ *  is mounted) would drag every thumbnail's scaled sheet into the exported PDF — corrupting the #292/#119
+ *  export. `display:none` removes the whole thumbnail subtree from print, so only the Open dialog's sheet
+ *  (the intended target) prints. */
 function DocThumbnail({ document }: { document: StudioDocument }) {
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden bg-card" aria-hidden>
+    <div className="pointer-events-none absolute inset-0 overflow-hidden bg-card print:hidden" aria-hidden>
       <div
         className="origin-top-left"
         style={{ width: THUMB_CONTENT_W, height: THUMB_CONTENT_H, transform: `scale(${THUMB_SCALE})` }}
