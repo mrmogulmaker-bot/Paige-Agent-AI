@@ -161,10 +161,15 @@ const BrokerPaigeSession = () => {
           .limit(1)
           .maybeSingle();
         if (mounted && pi) {
+          const scores = pi as unknown as {
+            equifax_score: number | null;
+            experian_score: number | null;
+            transunion_score: number | null;
+          };
           setSnapshot({
-            equifax: (pi as any).equifax_score ?? null,
-            experian: (pi as any).experian_score ?? null,
-            transunion: (pi as any).transunion_score ?? null,
+            equifax: scores.equifax_score ?? null,
+            experian: scores.experian_score ?? null,
+            transunion: scores.transunion_score ?? null,
           });
         }
       }
@@ -281,11 +286,11 @@ const BrokerPaigeSession = () => {
           }
         }
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       toast({
         title: "Paige couldn't respond",
-        description: e?.message || "Please try again.",
+        description: e instanceof Error ? e.message : "Please try again.",
         variant: "destructive",
       });
       setMessages((prev) => prev.slice(0, -1));
@@ -335,8 +340,8 @@ const BrokerPaigeSession = () => {
       if (!resp.ok) throw new Error(body?.error || "Summary failed");
       setSummary(body.summary || "");
       setSummaryOpen(true);
-    } catch (e: any) {
-      toast({ title: "Summary failed", description: e?.message || "Try again.", variant: "destructive" });
+    } catch (e: unknown) {
+      toast({ title: "Summary failed", description: e instanceof Error ? e.message : "Try again.", variant: "destructive" });
     } finally {
       setGeneratingSummary(false);
     }
@@ -391,8 +396,8 @@ const BrokerPaigeSession = () => {
 
       toast({ title: "Summary shared", description: `Sent to ${rel.client_first_name}.` });
       setSummaryOpen(false);
-    } catch (e: any) {
-      toast({ title: "Share failed", description: e?.message || "Try again.", variant: "destructive" });
+    } catch (e: unknown) {
+      toast({ title: "Share failed", description: e instanceof Error ? e.message : "Try again.", variant: "destructive" });
     } finally {
       setSharing(false);
     }
