@@ -3957,7 +3957,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "crm_create_contact",
-              description: "Admin/coach only. Add a new contact (client) to the CRM. BEFORE calling this, confirm the details with the operator in one short line — e.g. \"Adding Jacqueline Turner, +1-310-661-1679 — want me to add her?\" — and only call the tool once they say yes. Missing fields like email are fine; add what you have and note they can fill the rest later. Returns the new contact id; a matching email for this operator returns the existing id instead of duplicating.",
+              description: "Admin/coach only. Add a new contact (client) to the CRM. BEFORE calling this, confirm the details with the operator in one short line — e.g. \"Adding Jacqueline Turner, +1-310-661-1679 — want me to add her?\" — and only call the tool once they say yes. Missing fields like email are fine; add what you have and note they can fill the rest later. Returns the new contact id. DEDUP: if a contact with a very similar name (or the same email) already exists for this workspace, the tool does NOT create — it returns { needs_dedup_confirmation: true, matches: [...] }. When that happens, do NOT silently make a second record: show the operator the match(es) and ask whether it's the same person. If they want to update the existing one, call crm_update_contact with that contact_id. Only if they confirm it's a genuinely different, separate person do you call crm_create_contact again with confirm_new: true to force the new record.",
               parameters: {
                 type: "object",
                 properties: {
@@ -3971,7 +3971,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   primary_offer: { type: "string", description: "The offer/program this contact is being worked for." },
                   notes: { type: "string", description: "Freeform notes to seed the contact with." },
                   tags: { type: "array", items: { type: "string" } },
-                  assigned_coach_user_id: { type: "string", description: "Optional auth user UUID of the coach to assign." }
+                  assigned_coach_user_id: { type: "string", description: "Optional auth user UUID of the coach to assign." },
+                  confirm_new: { type: "boolean", description: "Only set true AFTER the operator confirms this is a genuinely NEW, separate person despite a close match. Bypasses the duplicate check and forces creation. Never set true on the first call — let the dedup check run so an accidental duplicate is caught first." }
                 },
                 required: []
               }
@@ -6111,27 +6112,82 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (error) throw error;
               result = { success: true, task_id: row?.id };
             } else if (tc.function.name === "crm_create_contact") {
-              // Caller-authed client so auth.uid() resolves inside the RPC (sets
-              // created_by, role gate, tenant). tenant_id passed explicitly too.
-              const { data: newId, error } = await supabaseClient.rpc("create_contact", {
-                p_first_name: args.first_name ?? null,
-                p_last_name: args.last_name ?? null,
-                p_email: args.email ?? null,
-                p_phone: args.phone ?? null,
-                p_entity_name: args.entity_name ?? null,
-                p_title: args.title ?? null,
-                p_lifecycle_stage: args.lifecycle_stage ?? "new_lead", // #172: 'lead' violates clients_lifecycle_stage_chk (23514)
-                p_source: "paige",
-                p_channel: "api", // #10 channel-of-origin (Paige-in-chat programmatic)
-                p_tags: Array.isArray(args.tags) ? args.tags : [],
-                p_primary_offer: args.primary_offer ?? null,
-                p_notes: args.notes ?? null,
-                p_assigned_coach_user_id: args.assigned_coach_user_id ?? null,
-                p_tenant_id: personaCtx?.tenant_id ?? null,
-                p_created_by: user.id, // auth.uid() is null in this call path; pass the verified operator
-              });
-              if (error) throw error;
-              result = { success: true, contact_id: newId };
+              // §15/§18 DEDUP GUARD (#27): fuzzy-match existing contacts in THIS tenant
+              // before a blind insert. Root cause of the two "Tashia Anderson" paige
+              // dupes was create_contact doing no dedup at all. Skipped only when the
+              // operator has explicitly confirmed a genuinely new contact (confirm_new).
+              // Tenant scope is the SERVER-RESOLVED tenant (§9/§51) — never a body value.
+              const dedupTenantId = personaCtx?.tenant_id ?? crmTenantId ?? null;
+              let dupeMatches: any[] = [];
+              if (args.confirm_new !== true && dedupTenantId && (args.first_name || args.email)) {
+                // admin (service-role) client — the ONLY grantee of the RPC (§9/§39).
+                const { data: dupes, error: dErr } = await admin.rpc("find_duplicate_contacts", {
+                  p_tenant_id: dedupTenantId,
+                  p_first_name: args.first_name ?? "",
+                  p_last_name: args.last_name ?? null,
+                  p_email: args.email ?? null,
+                  p_limit: 3,
+                });
+                // §33/§5 FAIL OPEN: a broken/absent dedup lookup (e.g. the edge deploys
+                // before the migration installs find_duplicate_contacts) must NEVER block
+                // a legitimate create. Log loudly and proceed — a dup is recoverable; a
+                // blocked create is a hard user-facing regression in a core tool.
+                if (dErr) {
+                  console.error("crm_create_contact: dedup lookup failed, proceeding to create (fail-open):", dErr?.message ?? dErr);
+                  dupeMatches = [];
+                } else {
+                  dupeMatches = Array.isArray(dupes) ? dupes : [];
+                }
+              } else if (args.confirm_new !== true && !dedupTenantId && (args.first_name || args.email)) {
+                // §39 visibility: no server-resolved tenant → no tenant book to dedup
+                // against (a tenant-less operator not scoped into any tenant). We proceed
+                // (create_contact resolves tenant itself), but log so this path is never
+                // a SILENT dedup bypass.
+                console.warn("crm_create_contact: no resolved tenant for dedup lookup — proceeding without fuzzy check (operator/tenant-less path).");
+              }
+              if (dupeMatches.length > 0) {
+                // Do NOT insert. Hand the matches back so the LLM asks the §15
+                // "is this the same person?" question. To create anyway → confirm_new;
+                // to update instead → crm_update_contact with the matching contact_id.
+                result = {
+                  success: false,
+                  needs_dedup_confirmation: true,
+                  matches: dupeMatches.map((d: any) => ({
+                    contact_id: d.id,
+                    name: [d.first_name, d.last_name].filter(Boolean).join(" ").trim() || d.entity_name || "(no name)",
+                    email: d.email,
+                    phone: d.phone,
+                    lifecycle_stage: d.lifecycle_stage,
+                    source: d.source,
+                    created_at: d.created_at,
+                    match: d.email_exact ? "email_exact" : `name~${Number(d.name_similarity ?? 0).toFixed(2)}`,
+                  })),
+                  message: "One or more existing contacts closely match this person. Ask the operator whether this is the same person before creating a new one. To update the existing contact, call crm_update_contact with the matching contact_id. To create a genuinely new, separate contact anyway, call crm_create_contact again with confirm_new: true.",
+                };
+              } else {
+                // No match, or the operator confirmed a new contact → existing create.
+                // Caller-authed client so auth.uid() resolves inside the RPC (sets
+                // created_by, role gate, tenant). tenant_id passed explicitly too.
+                const { data: newId, error } = await supabaseClient.rpc("create_contact", {
+                  p_first_name: args.first_name ?? null,
+                  p_last_name: args.last_name ?? null,
+                  p_email: args.email ?? null,
+                  p_phone: args.phone ?? null,
+                  p_entity_name: args.entity_name ?? null,
+                  p_title: args.title ?? null,
+                  p_lifecycle_stage: args.lifecycle_stage ?? "new_lead", // #172: 'lead' violates clients_lifecycle_stage_chk (23514)
+                  p_source: "paige",
+                  p_channel: "api", // #10 channel-of-origin (Paige-in-chat programmatic)
+                  p_tags: Array.isArray(args.tags) ? args.tags : [],
+                  p_primary_offer: args.primary_offer ?? null,
+                  p_notes: args.notes ?? null,
+                  p_assigned_coach_user_id: args.assigned_coach_user_id ?? null,
+                  p_tenant_id: personaCtx?.tenant_id ?? null,
+                  p_created_by: user.id, // auth.uid() is null in this call path; pass the verified operator
+                });
+                if (error) throw error;
+                result = { success: true, contact_id: newId };
+              }
             } else if (tc.function.name === "crm_update_contact") {
               if (!args.contact_id) throw new Error("contact_id is required");
               const { error } = await supabaseClient.rpc("update_contact", {
