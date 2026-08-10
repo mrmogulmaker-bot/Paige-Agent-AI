@@ -61,7 +61,7 @@ serve(async (req) => {
           configured: false,
           query: q,
           results: [] as SearchResult[],
-          note: "Web search is not yet configured. Connect Firecrawl in Lovable Cloud to enable live web search.",
+          note: "Web search is not yet configured. Set the Firecrawl API key to enable live web search.",
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );

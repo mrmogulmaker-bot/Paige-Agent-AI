@@ -19,7 +19,6 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
-    const lovableApiKey = "unused"!;
 
     // Auth check - must be admin
     const authHeader = req.headers.get("Authorization");
@@ -141,7 +140,7 @@ serve(async (req) => {
           const base64 = arrayBufferToBase64(buffer);
 
           // Run extraction via AI
-          const extractionResult = await callAiExtraction(lovableApiKey, base64);
+          const extractionResult = await callAiExtraction(base64);
           if (!extractionResult) {
             summary.failed_reports.push({ report_id: report.id, error: "AI extraction returned no data" });
             await supabase.from("credit_report_uploads")
@@ -334,7 +333,7 @@ serve(async (req) => {
   }
 });
 
-async function callAiExtraction(lovableApiKey: string, base64: string) {
+async function callAiExtraction(base64: string) {
   const prompt = `You are extracting a consumer credit report into structured JSON. Extract ALL accounts with these fields for each:
 - creditor (exact name)
 - account_number (exactly as printed, masked or full)
@@ -359,7 +358,6 @@ Return valid JSON only.`;
   const response = await gatewayCompat("anthropic", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${lovableApiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({

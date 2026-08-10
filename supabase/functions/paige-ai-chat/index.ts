@@ -475,7 +475,6 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableApiKey = "unused"!;
 
     const supabaseClient = createClient(supabaseUrl, supabaseKey, {
       global: { headers: { Authorization: authHeader } }
@@ -614,17 +613,17 @@ JSON:`;
       const [summaryResponse, milestoneResponse, preferenceResponse] = await Promise.all([
         gatewayCompat("anthropic", {
           method: "POST",
-          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: summaryPrompt }] }),
         }),
         gatewayCompat("anthropic", {
           method: "POST",
-          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: milestonePrompt }] }),
         }),
         gatewayCompat("anthropic", {
           method: "POST",
-          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: preferencePrompt }] }),
         }),
       ]);
@@ -753,7 +752,7 @@ JSON:`;
       // Only run the credit-report read-check on PDFs — images/docx can't be credit reports here.
       if (docKind === "pdf" && attachedDocument.base64) {
         try {
-          documentReadCheck = await runDocumentReadCheck(attachedDocument.base64, lovableApiKey);
+          documentReadCheck = await runDocumentReadCheck(attachedDocument.base64);
           isCreditReportPdf = !!(documentReadCheck?.can_read_document
             && documentReadCheck?.document_kind === "credit_report"
             && (documentReadCheck?.first_five_account_names || []).length >= 1);
@@ -816,7 +815,6 @@ JSON:`;
         try {
           extractionProposal = await runGeneralDocumentExtraction(
             attachedDocument,
-            lovableApiKey,
           );
         } catch (e) {
           console.warn("[Paige] general extraction failed:", e);
@@ -3256,7 +3254,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
         emit?.({ state: "progress", pct: 35 }); // cheap-model summarizer call dispatched
         const resp = await gatewayCompat("anthropic", {
           method: "POST",
-          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: prompt }] }),
         });
         if (!resp.ok) { emit?.({ state: "skipped" }); return "skipped"; }
@@ -5313,16 +5311,38 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // byte-for-byte what it is today (buildClaudeRequest only acts on paige_thinking === true).
     const STUDIO_THINKING_ENABLED = false; // HOTFIX: extended-thinking request 400'd the live Studio stream ("chat hit a snag"); disabled pending a real root-cause of the thinking+model interaction (§344). Sonnet lift stays; thinking param is dropped so the call reverts to a plain working stream.
     const paigeThinkingOn = !!studioSessionId && STUDIO_THINKING_ENABLED;
+
+    // #34 — Route SUBSTANTIVE turns to the reasoning tier (the "pro" legacy label ⇒ claude-sonnet-5
+    // via tierForLegacyModel) so the mutating tool the cheap Haiku tier was DROPPING actually fires.
+    // The anchoring bug: on "approved — run it" the Haiku tier failed to reliably emit the
+    // document_generate tool_use, so the turn re-asked instead of acting (the 4×-reask loop). The
+    // signal is the LAST user message ONLY (already extracted at line 871) — a pure string test, no
+    // extra LLM/DB call, no new provider, no streaming change (both tiers flow through the same
+    // gatewayCompat → streamAnthropicAsOpenAI). Trivial lookups ("what is X's email") match nothing
+    // here and stay on Haiku (§17 economics preserved).
+    const substantiveTurnIntent = (raw: string): boolean => {
+      const t = (raw || "").toLowerCase().trim();
+      if (!t || t.length > 2000) return false; // a huge paste isn't a terse command
+      // (a) APPROVAL of a queued proposal — the exact #34 failure case.
+      if (/\b(approv(e|ed)|confirm(ed)?|go ahead|do it|run it|send it|ship it|proceed|make it (so|happen)|yes[,.!\s]*(run|do|send|go|proceed|build|create|make|it)|let'?s (do|run|go|build|ship|make)|(sounds |looks )?good[,.!\s]*(run|do|send|go|build|make)|that works[,.!\s]*(run|do|go|build))\b/.test(t)) return true;
+      // (b) explicit CREATE/RUN action request (maps to the substantive tool set: document_generate,
+      //     contact/deal/pipeline moves, growth page/funnel, image, enroll…).
+      if (/\b(creat(e|ing)|build( me| a| an| the)|generat(e|ing)|draft( me| a| an| the)|make me|write me (a|an|the)|set up|schedule|book (a|an|the|this)|enroll|move .* (to|into) .* stage|publish|launch|add (a|an|the|this) (contact|deal|task|meeting|event|pipeline|stage))\b/.test(t)) return true;
+      return false;
+    };
+    const substantiveTurn =
+      !!lastUserMessage && substantiveTurnIntent(String(lastUserMessage.content ?? ""));
+
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         // U2/§14 — the Studio design agent runs on the REASONING tier (pro ⇒ claude-sonnet-5) so its
         // extended thinking is a real reasoning model, never Haiku; the doc-attach path already did.
-        model: (studioSessionId || attachedDocument) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
+        // #34 — substantiveTurn adds the reasoning tier for approval/creation intents (see above).
+        model: (studioSessionId || attachedDocument || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
         messages: aiMessages,
         tools: toolDefs,
         tool_choice: "auto",
@@ -7622,8 +7642,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             if (overCap || overTime || lastRound) { forcedTermination = true; break; }
             currentResponse = await gatewayCompat("anthropic", {
               method: "POST",
-              headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ model: studioSessionId ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
             });
             if (!currentResponse.ok) { forcedTermination = true; break; }
           }
@@ -7634,8 +7654,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           if (!finalChunks && forcedTermination) {
             finalStreamResponse = await gatewayCompat("anthropic", {
               method: "POST",
-              headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ model: studioSessionId ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, stream: true }),
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, stream: true }),
             });
           }
           // Approvals + confirm cards, then her actual reply.
@@ -7770,7 +7790,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 authHeader,
                 supabaseUrl,
                 supabaseServiceKey,
-                lovableApiKey,
                 supabase,
                 payloadClientId || null,
                 paigeChatUploadId
@@ -7992,11 +8011,10 @@ function structuredChatError(
   return { code: "chat_unavailable", reason: "Something went wrong on our side while answering.", recommendation: "Try again in a moment — if it keeps happening, let support know." };
 }
 
-async function runDocumentReadCheck(base64: string, lovableApiKey: string) {
+async function runDocumentReadCheck(base64: string) {
   const response = await gatewayCompat("anthropic", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${lovableApiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -8044,7 +8062,6 @@ async function runStructuredExtractionAndSync(
   authHeader: string,
   supabaseUrl: string,
   serviceRoleKey: string,
-  lovableApiKey: string,
   supabase: any,
   clientId: string | null = null,
   uploadRecordId: string | null = null
@@ -8056,7 +8073,6 @@ async function runStructuredExtractionAndSync(
     const extractionResponse = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
