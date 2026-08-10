@@ -47,7 +47,7 @@ const fmtDate = (iso: string | null): string =>
 // Last 8 chars of a Stripe id for the table (full id lives in the CSV export).
 const tailId = (id: string | null): string => (id ? `…${id.slice(-8)}` : "—");
 
-function toCsv(rows: IntegrityRow[]): string {
+function toCsv(rows: IntegrityRow[], generatedAt: string): string {
   const cols: (keyof IntegrityRow)[] = [
     "tenant_id", "tenant_name", "revenue_class", "integrity_ok",
     "agreement_on_file", "agreement_slug", "agreement_version", "agreement_accepted_at",
@@ -59,6 +59,16 @@ function toCsv(rows: IntegrityRow[]): string {
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const header = cols.join(",");
+  if (rows.length === 0) {
+    // §13: zero IS proof. An empty roster still exports as a valid investor/auditor
+    // artifact — the header plus a dated attestation that no tenant is classified paid,
+    // and that the enforcement lives in the database, not the app.
+    const note =
+      `# 0 paying tenants as of ${generatedAt}. ` +
+      `Enforced at the database by trigger enforce_revenue_integrity_chain (migration 20260815120000): ` +
+      `no tenant can rest at revenue_class='paid' without both a signed subscriber agreement and a live Stripe subscription.`;
+    return `${header}\n${esc(note)}`;
+  }
   const body = rows.map((r) => cols.map((c) => esc(r[c])).join(",")).join("\n");
   return `${header}\n${body}`;
 }
@@ -90,12 +100,13 @@ export default function RevenueIntegrityAudit() {
   }, []);
 
   const exportCsv = () => {
-    const csv = toCsv(rows);
+    const generatedAt = new Date().toISOString().slice(0, 10);
+    const csv = toCsv(rows, generatedAt);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `revenue-integrity-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `revenue-integrity-${generatedAt}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -116,12 +127,12 @@ export default function RevenueIntegrityAudit() {
       icon={ShieldCheck}
       description="Every paying tenant's three-gate proof — signed agreement + live Stripe subscription — enforced at the database. Export for investor or due-diligence review."
       actions={
-        rows.length > 0 ? (
-          // Export is a neutral data action, not an act/approve — secondary, never gold (§11).
-          <Button variant="outline" size="sm" onClick={exportCsv}>
-            <Download className="h-3.5 w-3.5" /> Export CSV
-          </Button>
-        ) : undefined
+        // Always exportable — a zero-paid roster is itself a valid investor/auditor
+        // artifact (§13: zero IS proof). Export is a neutral data action, not an
+        // act/approve — secondary, never gold (§11).
+        <Button variant="outline" size="sm" onClick={exportCsv}>
+          <Download className="h-3.5 w-3.5" /> Export CSV
+        </Button>
       }
     >
       {error ? (
