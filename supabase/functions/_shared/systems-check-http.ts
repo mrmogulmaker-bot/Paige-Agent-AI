@@ -91,6 +91,28 @@ export async function resolveTenantFromJwt(
 }
 
 /**
+ * §53 operator-tier gate for the OPERATOR flavor. A JWT caller is authorized ONLY when the VERIFIED JWT
+ * resolves is_platform_operator() (super_admin OR platform_admin) — NEVER a request body (§588), NEVER an
+ * email/identity check (§53 tier-scoped, not identity-scoped). Fail-closed: a missing/invalid JWT, an
+ * authz-check error, or a non-operator all return false. This is the operator counterpart to
+ * resolveTenantFromJwt (which resolves a TENANT); the operator scan is tenant-less, so it needs only the
+ * operator boolean.
+ */
+export async function isOperatorJwt(req: Request): Promise<boolean> {
+  const { url, anon } = env();
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) return false;
+
+  const caller = createClient(url, anon, { global: { headers: { Authorization: authHeader } } });
+  const { data: userData, error: userErr } = await caller.auth.getUser();
+  if (userErr || !userData?.user) return false;
+
+  const { data: opFlag, error: opErr } = await caller.rpc("is_platform_operator");
+  if (opErr) return false;
+  return opFlag === true;
+}
+
+/**
  * Internal-caller gate for the cron-invoked 'scheduled' flavor (verify_jwt=false): a service-role
  * bearer OR a valid x-cron-token. Mirrors comms-scheduled-drain / paige-action-worker. Fail-closed.
  */

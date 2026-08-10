@@ -47,6 +47,10 @@ const RUNNER_AGENT = "paige-systems-check";
 
 export type CheckStatus = "pass" | "fail" | "skip" | "error";
 export type ScanFlavor = "onboarding" | "scheduled" | "change_triggered";
+/** WHO the scan is for (§9/§51/§53). 'tenant' = the L1/L2 default 10 tenant checks (tenant_id set);
+ *  'operator' = platform-operator infra checks that run TENANT-LESS (tenant_id NULL on every write). The
+ *  catalog is scope-filtered so the two never mix, and operator writes never carry a tenant_id. */
+export type ScanScope = "tenant" | "operator";
 
 /** One row of the operator-authored catalog (paige_systems_check_registry), as the core reads it. */
 export interface RegistryRow {
@@ -60,6 +64,9 @@ export interface RegistryRow {
   nl_prompt: string | null;
   remediation_prompt: string;     // Paige's fix-draft brief (contains a {{tenant.business_name}} token)
   priority: number;
+  /** Optional DSL/fetch target template (e.g. an operator domain to probe). NULL for the native-seam
+   *  tenant checks; read by fetch_url runners (§10 config-as-data). */
+  target?: string | null;
 }
 
 /** What a single runner module observed. The runner NEVER writes DB rows itself (§37) — it returns this
@@ -79,14 +86,20 @@ export interface CheckResult {
 /** Everything a runner module needs to do its tenant-scoped read. The core builds this once per scan and
  *  hands it to every runner. Runners read via `ctx.admin` filtered by `ctx.tenantId` (§9/§51). */
 export interface CheckRunContext {
-  /** Service-role client (bypasses RLS) — runners MUST self-scope every tenant read to ctx.tenantId. */
+  /** Service-role client (bypasses RLS) — TENANT runners MUST self-scope every tenant read to ctx.tenantId;
+   *  OPERATOR runners read PLATFORM tables (no tenant filter) and ignore tenantId. */
   admin: SupabaseClient;
-  /** Server-resolved tenant (never body-trusted, §588). */
-  tenantId: string;
-  /** Resolved tenant display name (tenants.name), used to fill the remediation brief's business-name token. */
+  /** Server-resolved tenant (never body-trusted, §588). NULL for an operator-scope scan. TENANT runners
+   *  always receive a non-null value (the core guards tenant scope on a null tenantId before dispatch). */
+  tenantId: string | null;
+  /** Display name for the remediation brief's business-name token — the tenant's name, or a platform
+   *  label for an operator-scope scan. */
   tenantName: string;
   /** Which scan flavor is running (some runners may vary depth by flavor). */
   scanFlavor: ScanFlavor;
+  /** 'tenant' (default) or 'operator' — runners may branch, but the catalog is already scope-filtered so
+   *  a tenant runner never receives an operator row and vice-versa. */
+  scope: ScanScope;
 }
 
 /** A per-check runner module: reuse the seam, tenant-scoped, fail-loud. One module per runner_key lands in
@@ -111,9 +124,14 @@ export interface RunSystemsCheckOptions {
   /** Service-role client (the flavor edge fn builds it — §9 dual-client: JWT for authz/tenant-resolve,
    *  THIS for the writes). */
   admin: SupabaseClient;
-  /** Server-resolved tenant (§9/§588). */
-  tenantId: string;
+  /** Server-resolved tenant (§9/§588). MUST be null for an operator-scope scan and non-null for a tenant
+   *  scan — the core enforces this before scanning (a mismatch throws, fail-loud §32). */
+  tenantId: string | null;
   scanFlavor: ScanFlavor;
+  /** 'tenant' (default) or 'operator'. Operator scans are tenant-less and never write a tenant_id, never
+   *  file onto the tenant action bus, and read PLATFORM tables. Default 'tenant' keeps every existing
+   *  caller byte-identical (§37). */
+  scope?: ScanScope;
   /** Audit context stored on the run row (source, user_id, change_ref, …). */
   triggeredBy?: Record<string, unknown>;
   /** Restrict the catalog to these runner_keys (the 'change' flavor's applicable subset). Omit = the full
@@ -180,26 +198,43 @@ function priorityForSeverity(severity: RegistryRow["severity"]): "low" | "normal
  */
 export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<RunSystemsCheckSummary> {
   const { admin, tenantId, scanFlavor } = opts;
-  if (!tenantId) throw new Error("SYSTEMS_CHECK_NO_TENANT: tenantId is required (server-resolved, §9/§588)");
+  const scope: ScanScope = opts.scope ?? "tenant";
+  // §9/§51/§53 scope invariant (fail-loud §32): a tenant scan MUST carry a tenant; an operator scan MUST
+  // NOT — so an operator run can never accidentally write a tenant_id, and a tenant run can never scan
+  // tenant-less. Enforced here, before anything is read or written.
+  if (scope === "tenant" && !tenantId) {
+    throw new Error("SYSTEMS_CHECK_NO_TENANT: tenantId is required for a tenant scan (server-resolved, §9/§588)");
+  }
+  if (scope === "operator" && tenantId) {
+    throw new Error("SYSTEMS_CHECK_OPERATOR_HAS_TENANT: an operator scan must be tenant-less (§53) — tenantId must be null");
+  }
+
   const dispatch = opts.dispatch ?? SYSTEMS_CHECK_DISPATCH;
   const actionFiling = opts.actionFiling ?? "all";
 
-  // Resolve the tenant display name for the remediation brief's business-name token (§15 — no placeholder).
-  let tenantName = "your business";
-  try {
-    const { data: tRow } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
-    if (tRow && typeof (tRow as { name?: string }).name === "string") {
-      tenantName = (tRow as { name?: string }).name || tenantName;
+  // Resolve the display name for the remediation brief's business-name token (§15 — no placeholder). For a
+  // tenant scan this is the tenant's name; for an operator scan there is no tenant, so use a platform label
+  // (operator remediation briefs carry no {{tenant.business_name}} token — this is only a safe default).
+  let tenantName = scope === "operator" ? "the Paige Agent AI platform" : "your business";
+  if (scope === "tenant" && tenantId) {
+    try {
+      const { data: tRow } = await admin.from("tenants").select("name").eq("id", tenantId).maybeSingle();
+      if (tRow && typeof (tRow as { name?: string }).name === "string") {
+        tenantName = (tRow as { name?: string }).name || tenantName;
+      }
+    } catch (e) {
+      console.error("[systems-check] tenant name lookup failed:", (e as Error)?.message);
     }
-  } catch (e) {
-    console.error("[systems-check] tenant name lookup failed:", (e as Error)?.message);
   }
 
   // Read the applicable catalog rows (operator-authored, enabled). §18: dispatch on runner_key.
+  // §L3: scope-filter so a TENANT scan gets ONLY scope='tenant' rows (the 10) and an OPERATOR scan gets
+  // ONLY scope='operator' rows — the catalogs never mix (the exact leak this filter closes).
   let q = admin
     .from("paige_systems_check_registry")
-    .select("check_id, check_name, domain, severity, department, data_source, runner_key, nl_prompt, remediation_prompt, priority")
+    .select("check_id, check_name, domain, severity, department, data_source, runner_key, nl_prompt, remediation_prompt, priority, target")
     .eq("enabled_by_default", true)
+    .eq("scope", scope)
     .order("priority", { ascending: true });
   if (opts.runnerKeys && opts.runnerKeys.length > 0) {
     q = q.in("runner_key", opts.runnerKeys);
@@ -214,13 +249,15 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
   const prevStatus: Record<string, CheckStatus> = {};
   if (actionFiling === "delta") {
     try {
-      const { data: prevRun } = await admin
+      // Operator runs are tenant-less (tenant_id IS NULL); tenant runs key on the tenant. Use the right
+      // predicate for each — `.eq("tenant_id", null)` would NOT match null rows (§13 correctness).
+      let prevQ = admin
         .from("paige_systems_check_run")
         .select("id")
-        .eq("tenant_id", tenantId)
         .order("started_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
+      prevQ = scope === "operator" ? prevQ.is("tenant_id", null) : prevQ.eq("tenant_id", tenantId as string);
+      const { data: prevRun } = await prevQ.maybeSingle();
       const prevRunId = (prevRun as { id?: string } | null)?.id;
       if (prevRunId) {
         const { data: prevFindings } = await admin
@@ -241,10 +278,10 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
   const { data: runRow, error: runErr } = await admin
     .from("paige_systems_check_run")
     .insert({
-      tenant_id: tenantId,                 // EXPLICIT (§9)
+      tenant_id: tenantId,                 // EXPLICIT (§9); NULL for an operator scan (§53 tenant-less)
       scan_flavor: scanFlavor,
       check_count: rows.length,
-      triggered_by: opts.triggeredBy ?? null,
+      triggered_by: { ...(opts.triggeredBy ?? {}), scope },  // scope carried in audit (run table has no scope col)
     })
     .select("id")
     .single();
@@ -253,7 +290,7 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
   }
   const runId = (runRow as { id: string }).id;
 
-  const ctx: CheckRunContext = { admin, tenantId, tenantName, scanFlavor };
+  const ctx: CheckRunContext = { admin, tenantId, tenantName, scanFlavor, scope };
   const summary: RunSystemsCheckSummary = {
     run_id: runId,
     check_count: rows.length,
@@ -310,32 +347,46 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
     // condition as filing — only a NEW / newly-degraded fail drafts (and files). A chronically-failing
     // tenant does NOT re-forge a fresh draft on every scheduled tick; its original fail already carries
     // the draft + the queued action. In 'all' mode every fail still drafts.
-    const shouldFile = result.status === "fail" &&
+    const shouldDraft = result.status === "fail" &&
       (actionFiling !== "delta" || prevStatus[row.check_id] !== "fail"); // delta: only NEW/newly-degraded
+    // The tenant action bus (paige_actions) is tenant-scoped BY CONSTRUCTION (tenant_id NOT NULL, RLS
+    // tenant-member gated, and file_action RAISEs ACTION_NO_TENANT on a null tenant). An operator-scope
+    // finding is platform-global (tenant_id NULL) and therefore NEVER files onto the tenant action bus —
+    // it surfaces on the operator queue directly (the operator tile acts on the finding). So action
+    // filing is gated to the tenant scope; operator remediation lives on the finding's drafted_fix.
+    const shouldFileAction = shouldDraft && scope === "tenant";
 
     let draftedFix: Record<string, unknown> | null = null;
-    if (shouldFile) {
+    if (shouldDraft) {
       const brief = resolveRemediationBrief(row.remediation_prompt, tenantName);
-      try {
-        const forged = await forge({
-          tenantId,
-          modality: "text",
-          tier: REMEDIATION_TIER,
-          userIntent: brief,
-          callerFunction: RUNNER_AGENT,
-          remember: false,                 // a remediation draft is not a reusable design memory (§26)
-          metadata: { systems_check_id: row.check_id, run_id: runId },
-        });
-        const content = typeof forged.result.content === "string" ? forged.result.content.trim() : "";
-        if (!forged.result.needs_config && content) {
-          draftedFix = { brief, content, model: forged.result.model ?? null };
-        } else {
-          // Honest degrade — the fix is NEEDED but not draftable right now; record why, don't fake it.
-          draftedFix = { brief, needs_config: true, reason: forged.result.needs_config ? "model_needs_config" : "empty_draft" };
+      if (scope === "operator") {
+        // OPERATOR scope: prompt-forge is §9 tenant-scoped (it throws on a null tenantId and reads tenant
+        // brand tokens), so it CANNOT run tenant-less. Rather than fabricate an LLM draft, we store the
+        // operator remediation BRIEF itself as the finding's guidance — a concrete, deterministic operator
+        // instruction (§13 honest: no hallucinated infra steps, no fake model attribution).
+        draftedFix = { brief, source: "operator_registry_brief", operator_scope: true };
+      } else {
+        try {
+          const forged = await forge({
+            tenantId: tenantId as string,    // tenant scope guarantees non-null (guarded above)
+            modality: "text",
+            tier: REMEDIATION_TIER,
+            userIntent: brief,
+            callerFunction: RUNNER_AGENT,
+            remember: false,                 // a remediation draft is not a reusable design memory (§26)
+            metadata: { systems_check_id: row.check_id, run_id: runId },
+          });
+          const content = typeof forged.result.content === "string" ? forged.result.content.trim() : "";
+          if (!forged.result.needs_config && content) {
+            draftedFix = { brief, content, model: forged.result.model ?? null };
+          } else {
+            // Honest degrade — the fix is NEEDED but not draftable right now; record why, don't fake it.
+            draftedFix = { brief, needs_config: true, reason: forged.result.needs_config ? "model_needs_config" : "empty_draft" };
+          }
+        } catch (e) {
+          console.error(`[systems-check] forge failed for ${row.check_id}:`, (e as Error)?.message);
+          draftedFix = { brief, error: (e as Error)?.message ?? "forge_failed" };
         }
-      } catch (e) {
-        console.error(`[systems-check] forge failed for ${row.check_id}:`, (e as Error)?.message);
-        draftedFix = { brief, error: (e as Error)?.message ?? "forge_failed" };
       }
     }
 
@@ -364,10 +415,10 @@ export async function runSystemsCheck(opts: RunSystemsCheckOptions): Promise<Run
     }
     const findingId = (findingRow as { id: string }).id;
 
-    // 4) File a remediation action for a qualifying fail (shouldFile computed above with the forge gate),
-    //    then link it back onto the finding.
+    // 4) File a remediation action for a qualifying TENANT fail (shouldFileAction — operator scope never
+    //    files onto the tenant action bus, see the gate above), then link it back onto the finding.
     let resolutionActionId: string | null = null;
-    if (shouldFile) {
+    if (shouldFileAction) {
       try {
         const { data: filed, error: fileErr } = await admin.rpc("file_action", {
           p_action_kind: REMEDIATE_ACTION_KIND,

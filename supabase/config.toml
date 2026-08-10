@@ -398,3 +398,9 @@ project_id = "xygzykjyynhzqytbqnzu"
   # x-cron-token (verify_cron_token) — exactly like comms-scheduled-drain / paige-action-worker.
   [functions.systems-check-run-scheduled]
     verify_jwt = false
+  # Operator flavor (Wave S3, L3) — runs the scope='operator' catalog TENANT-LESS (§53). verify_jwt=false
+  # so the hourly cron (no Supabase JWT) can reach it; it fails closed in-function to EITHER an
+  # internal-caller gate (service-role bearer OR x-cron-token) OR an operator JWT (is_platform_operator()
+  # — super_admin OR platform_admin, §53). Never a tenant JWT, never a body identity (§588).
+  [functions.systems-check-run-operator]
+    verify_jwt = false

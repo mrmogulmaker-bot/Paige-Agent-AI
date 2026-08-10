@@ -169,8 +169,9 @@ const adminNavItems = hubs.flatMap((h) => [
 // (Fleet · Team · Intelligence) plus the two non-owner-restricted new surfaces
 // (Marketplace · Analytics). Owner-only new console surfaces route through
 // GOD_MORE below.
-// The operator (God) console nav — restructured into 7 hub-and-sub-tab destinations
-// mirroring the TENANT hub pattern (Clients → People/Pipeline/…). The old 16-item
+// The operator (God) console nav — 8 hub-and-sub-tab destinations (Command Center added
+// Wave S3 for the Systems Check tile) mirroring the TENANT hub pattern (Clients →
+// People/Pipeline/…). The old 16-item
 // "Workspace tools" overflow ("More" dropdown) is DELETED; every destination now lands
 // under exactly ONE hub, its sub-tabs surfaced by a gate-aware *SubTabs strip (the proven
 // ClientsSubTabs primitive, §18 reuse) below the hub bar — never a junk-drawer dropdown.
@@ -180,34 +181,38 @@ const GOD_HUBS: Hub[] = [
   //     Skills). Aliases carry the three absorbed leaves so Paige highlights on them.
   { label: "Paige", href: "/admin/playbook", icon: Bot,
     aliases: ["/admin/sub-agents", "/admin/actions", "/admin/skills"] },
-  // 2 — Fleet. Absorbs the standalone Team hub + Deploy Health.
+  // 2 — Command Center. The operator's /admin index (OperatorCommandCenter, godMode) — fleet
+  //     state, the attention queue, and the platform Systems Check tile. `isActive("/admin")`
+  //     is exact-match (see hubIsActive), so this highlights ONLY on /admin, never on a sub-hub.
+  { label: "Command Center", href: "/admin", icon: BarChart3 },
+  // 3 — Fleet. Absorbs the standalone Team hub + Deploy Health.
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2,
     aliases: ["/admin/platform/fleet-communications", "/admin/platform/team", "/admin/platform/deploy-health"] },
-  // 3 — Intelligence. Live Activity index + the model/money/forge/defaults/usage tools.
+  // 4 — Intelligence. Live Activity index + the model/money/forge/defaults/usage tools.
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain,
     aliases: [
       "/admin/platform/money", "/admin/platform/model-router",
       "/admin/platform/prompt-forge", "/admin/platform/content-defaults",
       "/admin/observability/usage",
     ] },
-  // 4 — Compliance. Compliance + Doctrine (owner) + Legal/Security/Error (staff).
+  // 5 — Compliance. Compliance + Doctrine (owner) + Legal/Security/Error (staff).
   { label: "Compliance", href: "/admin/platform/compliance", icon: ShieldCheck,
     aliases: [
       "/admin/platform/doctrine", "/admin/legal",
       "/admin/security", "/admin/observability/errors",
     ] },
-  // 5 — Marketplace (fleet-wide moderation/revenue). In development → "Soon"; no strip yet.
+  // 6 — Marketplace (fleet-wide moderation/revenue). In development → "Soon"; no strip yet.
   { label: "Marketplace", href: "/admin/platform/marketplace", icon: Store, comingSoon: true },
-  // 6 — Analytics (fleet funnel/conversion). In development → "Soon"; no strip yet.
+  // 7 — Analytics (fleet funnel/conversion). In development → "Soon"; no strip yet.
   { label: "Analytics", href: "/admin/platform/analytics", icon: TrendingUp, comingSoon: true },
-  // 7 — Settings. Platform config + invites + support + send pipes/identities.
+  // 8 — Settings. Platform config + invites + support + send pipes/identities.
   { label: "Settings", href: "/admin/platform/settings", icon: Settings,
     aliases: [
       "/admin/platform/invites", "/admin/support",
       "/admin/platform/sends", "/admin/platform/sending",
     ] },
 ];
-// Scoped Platform Admins run the fleet at a minimal tier. They see the SAME 7 hubs —
+// Scoped Platform Admins run the fleet at a minimal tier. They see the SAME 8 hubs —
 // the gate-aware *SubTabs strips filter owner-only sub-tabs out per-tab (canSee), and a
 // strip with ≤1 visible tab hides itself, so staff automatically get the lean subset with
 // no separate array to drift. The ONLY divergence is the Compliance hub's default href:
@@ -219,6 +224,8 @@ const GOD_HUBS: Hub[] = [
 const GOD_STAFF_HUBS: Hub[] = [
   { label: "Paige", href: "/admin/playbook", icon: Bot,
     aliases: ["/admin/sub-agents", "/admin/actions", "/admin/skills"] },
+  // Command Center — same operator /admin index as GOD_HUBS (Systems Check tile lands here).
+  { label: "Command Center", href: "/admin", icon: BarChart3 },
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2,
     aliases: ["/admin/platform/fleet-communications", "/admin/platform/team", "/admin/platform/deploy-health"] },
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain,
