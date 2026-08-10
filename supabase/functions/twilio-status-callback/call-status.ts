@@ -52,3 +52,15 @@ export function parseCallDuration(raw: string | null | undefined): number | null
   const n = Number.parseInt(String(raw).trim(), 10);
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
+
+/**
+ * Fleet Comms S3 P3 — a trimmed non-empty string, or null. Used to read RecordingUrl / TranscriptionText
+ * from a Twilio callback WITHOUT fabricating them (§13): a plain CallStatus=completed hit carries neither
+ * (recording is only produced when the <Dial> enables it — NOT yet, human-answered bridge only), so this
+ * returns null and the webhook stores null. When recording IS enabled later, Twilio's recording/transcription
+ * callback POSTs these fields to the same URL and they are stored verbatim — no code change needed.
+ */
+export function nonEmptyOrNull(raw: string | null | undefined): string | null {
+  const s = String(raw ?? "").trim();
+  return s.length > 0 ? s : null;
+}

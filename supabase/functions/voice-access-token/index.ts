@@ -12,6 +12,12 @@
 //      the identity — it can only (optionally) SHORTEN the TTL within the server cap.
 //      Mirrors comms-search-numbers' §9 pattern exactly (getUser → role gate →
 //      current_user_tenant_id → service-role for Vault).
+//  §53 PHASE 3 — a tenant-LESS platform OPERATOR (is_platform_operator(): super_admin OR
+//      platform_admin) mints a token on the MASTER account with a `operator.<userId>`
+//      identity (server-derived, §588). The operator branch is gated on NO tenant so the
+//      tenant path stays byte-identical; an operator token NEVER touches a tenant subaccount
+//      or tenant data (§9). The operator's voice runs on the same master account as operator
+//      SMS + the +1 470 number.
 //  §13 Honest: needs_config (not a fake token) when the subaccount / TwiML app is not
 //      provisioned, or master/subaccount creds are missing. The token TTL is SHORT
 //      (default 600s, hard-capped 3600s) and the identity is non-forgeable.
@@ -20,7 +26,7 @@
 //  §34 Twilio is the last-mile commodity behind our seam. No voice-intelligence vendor
 //      (Deepgram = Slice B1; Vapi = Marketplace #154) is touched here.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { mintVoiceAccessToken, type SupabaseAdminLike } from "../_shared/twilio.ts";
+import { mintVoiceAccessToken, mintOperatorVoiceAccessToken, type SupabaseAdminLike } from "../_shared/twilio.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -56,6 +62,52 @@ Deno.serve(async (req) => {
 
   const admin = createClient(supabaseUrl, serviceKey);
 
+  // The ONLY tunable is an optional TTL (clamped server-side). Parsed up front because BOTH the
+  // operator and tenant mints need it. A body value can only shorten the token's life, never widen
+  // its scope (§9/§588).
+  let body: TokenBody = {};
+  try { body = (await req.json()) as TokenBody; } catch { body = {}; }
+  const ttlSeconds = typeof body.ttl_seconds === "number" ? body.ttl_seconds : undefined;
+
+  // §9/§588: BOTH the tenant and the operator status are derived from the verified JWT, never the
+  // body. current_user_tenant_id() resolves the caller's OWN tenant; is_platform_operator() is the
+  // §53 super_admin-OR-platform_admin tier check (SECURITY DEFINER over auth.uid(); NOT overloaded,
+  // so this .rpc is unambiguous — unlike the is_platform_owner() PGRST203 case).
+  const { data: tenantId } = await userClient.rpc("current_user_tenant_id");
+  const { data: isOperator } = await userClient.rpc("is_platform_operator");
+
+  // ── OPERATOR path (§9/§53) — Phase 3. A tenant-LESS platform operator (super_admin OR
+  //    platform_admin) mints a Voice token on the MASTER account with an operator identity
+  //    (`operator.<userId>`), so they can place/receive calls billed to the platform master account
+  //    (the same account as operator SMS + the +1 470 number). Gated on NO tenant, so EVERY tenant
+  //    caller falls through to the byte-identical tenant path below (§37). The operator's voice never
+  //    touches a tenant subaccount or tenant data (§9). ──
+  if ((!tenantId || typeof tenantId !== "string") && isOperator === true) {
+    // §588: the operator identity is derived SERVER-SIDE from the verified JWT (user.id), NEVER the
+    // body. Format `operator.<userId>` matches OPERATOR_IDENTITY_PREFIX in voice-twiml/twiml.ts (the
+    // webhook routes on it) — kept inline here exactly as the tenant identity is built inline below.
+    const identity = `operator.${user.id}`;
+    const minted = await mintOperatorVoiceAccessToken({ identity, ttlSeconds });
+    if (!minted.ok || !minted.data) {
+      // Honest degrade (§13): unconfigured master creds / master TwiML app → needs_config (200), a
+      // real failure → 502. Never a fabricated token.
+      return json({
+        needs_config: minted.needs_config === true,
+        error: minted.error ?? "voice_token_unavailable",
+        message: minted.needs_config
+          ? "Operator calling isn't fully set up yet. Once the platform voice number is configured you'll be able to call from the browser."
+          : "Voice token is temporarily unavailable.",
+      }, minted.needs_config ? 200 : 502);
+    }
+    return json({
+      token: minted.data.token,
+      identity: minted.data.identity,
+      expiresAt: minted.data.expiresAt,
+      ttlSeconds: minted.data.ttlSeconds,
+    });
+  }
+
+  // ── TENANT path — UNCHANGED behavior (§37 byte-identical for every tenant caller). ──
   // Platform owner OR a tenant admin/coach may mint (same authority that owns the number).
   const { data: isOwner } = await userClient.rpc("is_platform_owner");
   const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
@@ -65,14 +117,9 @@ Deno.serve(async (req) => {
   }
 
   // §9: the tenant is the caller's OWN tenant (JWT-scoped), never a body value.
-  const { data: tenantId } = await userClient.rpc("current_user_tenant_id");
   if (!tenantId || typeof tenantId !== "string") {
     return json({ needs_config: true, error: "tenant_not_resolved" });
   }
-
-  let body: TokenBody = {};
-  try { body = (await req.json()) as TokenBody; } catch { body = {}; }
-  const ttlSeconds = typeof body.ttl_seconds === "number" ? body.ttl_seconds : undefined;
 
   // §9/§13: identity is derived SERVER-SIDE from the verified JWT (tenant + user), NEVER
   // the body. Stable per (tenant, user) so a token can only ever act as this principal;
