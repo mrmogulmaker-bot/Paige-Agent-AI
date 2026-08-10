@@ -157,6 +157,24 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   (`PracticeOverview`, solo + sub-account) and added it to `AgencyBoard` (agency), matching the
   operator tile on `OperatorCommandCenter` (God).
 
+## 12. `activeTenantId` on an OPERATOR surface can be a CHILD — tenant-scoped tiles leak (§9/§51, Codex P1 on PR #434)
+
+- **Symptom:** the own-business Systems Check tile added to `AgencyBoard` (`/agency`) could show a
+  *sub-account's* check as the agency's own, and let the agency approve the child's remediation from
+  the agency dashboard.
+- **Root cause:** on `/agency` the operator may still be scoped INTO a child (e.g. Back after
+  `agency_enter_subaccount`); `AgencyLayout` preserves eligibility, so `useTenantContext().activeTenantId`
+  is the CHILD id. A `scope="tenant"` tile trusts that ambient id → cross-tenant surface + action. The
+  §39 adversarial verifier and the §5 compliance officer both MISSED it (they reasoned "activeTenantId
+  here is the agency parent" from the happy path); Codex's independent read caught it — a live example
+  of §39's "peer-gate is one layer, not infallible."
+- **Rule:** On any OPERATOR/agency surface, never trust ambient `activeTenantId` for a tenant-scoped
+  tile/action — it can be a child. Guard on the §51 invariant (own top-level tenant:
+  `parent_tenant_id === null` AND `account_type ∈ {agency,enterprise}`) or resolve the intended tenant
+  explicitly. Add "does this surface ever hold a DIFFERENT tenant in context than the one this
+  tile/action is FOR?" to the §51 per-tier check. Third independent reviewer (Codex/CI) is worth
+  keeping — it catches what the crew's own passes rationalize away.
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same
