@@ -31,13 +31,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot, DollarSign, Building2, Receipt, AlertTriangle, Sparkles, Percent,
   Zap, Activity, Users, Gauge, ArrowUpRight, ShieldAlert, TrendingUp,
-  HeartPulse, Filter, LineChart as LineChartIcon, Layers, Inbox, RefreshCw,
+  HeartPulse, Filter, LineChart as LineChartIcon, Layers, RefreshCw,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { PaigeDepartmentStatus } from "@/components/paige/PaigeDepartmentStatus";
+import { SystemsCheckTile } from "@/components/systems-check/SystemsCheckTile";
 import {
   PageShell, PageHeader, SectionCard, StatTile, StatRow, DataTableShell,
   EmptyState, StatePill, DateRangePicker, rangeToDates, KpiPillRow, DonutCard,
@@ -616,24 +617,20 @@ export default function OperatorCommandCenter() {
           open actions (§9/§51 God-tier outcome). Gold-free read (§11). */}
       <PaigeDepartmentStatus scope="operator" />
 
-      {/* Honest reserved slots — real SectionCards naming their populate trigger, never a
-          fabricated count (§13). These sit below the fold on purpose. */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard icon={Layers} title="Cohort retention">
-          <EmptyState
-            icon={HeartPulse}
-            title="Retention cohorts are coming"
-            description="Once enough monthly cohorts have a full retention window, their curves render here — no source exists to chart yet, so nothing is shown rather than a placeholder."
-          />
-        </SectionCard>
-        <SectionCard icon={Inbox} title="Drafts awaiting you">
-          <EmptyState
-            icon={Sparkles}
-            title="Your platform draft queue is coming"
-            description="A fleet-scoped approvals queue — Paige's drafted platform moves waiting on your one-click approval — lands with the operator C-Suite roster. Until then, tenant drafts stay in each tenant's own Command Center."
-          />
-        </SectionCard>
-      </div>
+      {/* Systems Check (Wave S3 L3) — the reserved fleet-scoped attention queue, now live:
+          Paige's platform-infra checks (security, RLS, DB, delivery) surfaced ONE at a time
+          with her drafted fix + one-click approve (§36 draft-first, §11 gold on the act). */}
+      <SystemsCheckTile scope="operator" />
+
+      {/* Honest reserved slot — a real SectionCard naming its populate trigger, never a
+          fabricated count (§13). Sits below the fold on purpose. */}
+      <SectionCard icon={Layers} title="Cohort retention">
+        <EmptyState
+          icon={HeartPulse}
+          title="Retention cohorts are coming"
+          description="Once enough monthly cohorts have a full retention window, their curves render here — no source exists to chart yet, so nothing is shown rather than a placeholder."
+        />
+      </SectionCard>
       </>
       )}
     </PageShell>

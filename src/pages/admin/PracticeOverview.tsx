@@ -35,6 +35,7 @@ import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsB
 import { CommandCenterViewToggle } from "@/components/dashboard/admin/CommandCenterViewToggle";
 import { DraftsAwaitingPanel } from "@/components/dashboard/DraftsAwaitingPanel";
 import { PaigeDepartmentStatus } from "@/components/paige/PaigeDepartmentStatus";
+import { SystemsCheckTile } from "@/components/systems-check/SystemsCheckTile";
 import { OwnerWelcome, type OnboardingState } from "@/components/onboarding/OwnerWelcome";
 import { usePracticeDashboard, type PracticeMetrics } from "@/hooks/usePracticeDashboard";
 import { useCommsSummary } from "@/hooks/useCommsSummary";
@@ -276,6 +277,11 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
           {contentConfig.showApprovalsAct && (
             <DraftsAwaitingPanel items={approvals} refresh={refreshApprovals} />
           )}
+
+          {/* Systems Check (Wave S3 L3) — is your business fully set up to run? Paige
+              surfaces the single highest-severity gap with her drafted fix + one-click
+              approve (§36 draft-first, §11 gold on the act, §9 tenant-scoped). */}
+          <SystemsCheckTile scope="tenant" />
 
           {/* Comms inbox at-a-glance — proactive surfacing (§36): what's waiting on
               the coach, one click into the filtered inbox. All tiles NEUTRAL — gold
