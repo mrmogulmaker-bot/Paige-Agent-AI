@@ -31,6 +31,7 @@ import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { MessageAudioButton } from "@/components/chat/MessageAudioButton";
 import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
+import { PaigeArtifactCard, type PaigeArtifact } from "@/components/paige/chat/PaigeArtifactCard";
 import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
@@ -52,6 +53,10 @@ type Message = {
   /** True on turns rehydrated from history: their confirm cards render settled,
    *  not as a live Approve button (§15 — never re-fire a past action). */
   confirmResolved?: boolean;
+  /** #29 — deliverables Paige produced this turn (document/image), streamed as
+   *  `paige_artifact` frames and rendered as inline handoff cards. Live-turn only;
+   *  the card re-hydrates from marketing_content by id, so it isn't persisted. */
+  artifacts?: PaigeArtifact[];
 };
 
 // crypto.randomUUID is undefined in some insecure-context / older webviews — guard
@@ -364,6 +369,9 @@ const PaigeAIChatInner = ({
       // Accumulate EVERY pending confirmation this turn — a blanket "Approve" runs
       // all of them, so the operator must see all of them (design-crew B1).
       const confirmThisTurn: Array<{ tool: string; summary: string }> = [];
+      // #29 — deliverables (document/image) Paige persisted this turn, streamed as
+      // paige_artifact frames BEFORE the reply text, rendered as inline handoff cards.
+      const artifactsThisTurn: PaigeArtifact[] = [];
       let textBuffer = "";
       let streamDone = false;
 
@@ -405,20 +413,32 @@ const PaigeAIChatInner = ({
             // Structured event: Paige queued an action to the approvals desk.
             if (Array.isArray(parsed.approval_queued)) {
               queuedThisTurn = parsed.approval_queued as QueuedApproval[];
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn, confirm: confirmThisTurn.length ? confirmThisTurn : undefined }]);
+              // #29 §39 — carry artifacts here too so the invariant "the card survives every rebuild"
+              // never depends on the backend's frame ORDER (today approval_queued precedes paige_artifact,
+              // but a reorder or a second approval_queued after an artifact must not wipe the card).
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn, confirm: confirmThisTurn.length ? confirmThisTurn : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
               continue;
             }
             // Structured event: Paige is asking to confirm a mutating action → render an approve/deny card.
             if (parsed.paige_confirm?.summary) {
               confirmThisTurn.push({ tool: String(parsed.paige_confirm.tool || "action"), summary: String(parsed.paige_confirm.summary) });
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn] }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn], artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
+              continue;
+            }
+            // #29 — Paige handed the user a deliverable (document/image) → attach an inline handoff card.
+            // Arrives BEFORE the reply text, so build the assistant bubble now; the content rebuild below
+            // preserves artifactsThisTurn so the card survives the streaming text.
+            if (parsed.paige_artifact?.id && (parsed.paige_artifact.artifactType === "document" || parsed.paige_artifact.artifactType === "image")) {
+              const a = parsed.paige_artifact as PaigeArtifact;
+              artifactsThisTurn.push({ id: String(a.id), title: String(a.title ?? ""), url: a.url ?? undefined, artifactType: a.artifactType });
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, artifacts: [...artifactsThisTurn] }]);
               continue;
             }
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
               if (!assistantMessage) setWritingPhase(true); // #11 — first token → "Writing…"
               assistantMessage += content;
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
             }
           } catch {
             textBuffer = line + "\n" + textBuffer;
@@ -625,6 +645,25 @@ const PaigeAIChatInner = ({
                             <p className="text-xs text-muted-foreground">
                               Earlier, Paige asked you to confirm: {message.confirm.map((c) => c.summary).join("; ")}
                             </p>
+                          </div>
+                        )}
+                        {/* #29 — inline handoff cards for the deliverables Paige produced this turn. Open
+                            renders the real artifact; Send prefills the composer so Paige drives the send
+                            through her own tools (§10/§16 — never a dead-end send button). Gold is spent
+                            only on that Send inside the card. Needs a resolved tenant for the RLS hydrate. */}
+                        {!!message.artifacts?.length && activeTenantId && (
+                          <div className="mt-2 flex flex-col gap-2">
+                            {message.artifacts.map((a) => (
+                              <PaigeArtifactCard
+                                key={a.id}
+                                artifact={a}
+                                tenantId={activeTenantId}
+                                onSend={() => {
+                                  setInput(`Send "${a.title}" to `);
+                                  requestAnimationFrame(() => inputRef.current?.focus());
+                                }}
+                              />
+                            ))}
                           </div>
                         )}
                       </>
