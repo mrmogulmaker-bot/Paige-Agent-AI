@@ -30,6 +30,8 @@ import { useChatDocumentUpload, type AttachedDocument, type AttachedDocKind } fr
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { MessageAudioButton } from "@/components/chat/MessageAudioButton";
+import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
+import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
@@ -132,6 +134,14 @@ const PaigeAIChatInner = ({
   const [slashActive, setSlashActive] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [steps, setSteps] = useState<PaigeStep[]>([]);
+  // #11 — true once the first answer token arrives this turn (label flips Thinking→Writing).
+  const [writingPhase, setWritingPhase] = useState(false);
+  // #12 — the live conversation-compacting signal (this surface persists → it can fold). Reset per turn.
+  const [compacting, setCompacting] = useState<CompactingSignal | null>(null);
+  // The streamed reasoning thoughts (paige_step kind:"thought") exposed under "Thought process".
+  const thinkingThoughts = steps
+    .filter((s) => s.kind === "thought")
+    .map((s) => ({ id: s.id, label: s.label }));
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
@@ -256,6 +266,8 @@ const PaigeAIChatInner = ({
     const newMessages = base;
     setIsLoading(true);
     setSteps([]); // fresh "watch her work" trace per turn
+    setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
+    setCompacting(null); // #12 — clear any prior turn's compacting card
     const assistantId = safeUuid();
     const assistantTs = Date.now();
 
@@ -385,6 +397,11 @@ const PaigeAIChatInner = ({
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
               continue;
             }
+            // #11 — the server confirmed the transition into the reply. A lightweight signal; the
+            // client also derives "writing" from the first content delta below, so this is belt-and-braces.
+            if (parsed.paige_phase === "writing") { setWritingPhase(true); continue; }
+            // #12 — conversation-compacting lifecycle (approaching/start/progress/done/skipped).
+            if (parsed.paige_compacting) { setCompacting(parsed.paige_compacting as CompactingSignal); continue; }
             // Structured event: Paige queued an action to the approvals desk.
             if (Array.isArray(parsed.approval_queued)) {
               queuedThisTurn = parsed.approval_queued as QueuedApproval[];
@@ -399,6 +416,7 @@ const PaigeAIChatInner = ({
             }
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
+              if (!assistantMessage) setWritingPhase(true); // #11 — first token → "Writing…"
               assistantMessage += content;
               setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined }]);
             }
@@ -653,6 +671,21 @@ const PaigeAIChatInner = ({
                 </div>
               </div>
             ))}
+
+            {/* #11/#12 — live thinking timer + conversation-compacting card. Aligned under the
+                assistant bubbles (avatar gutter). The card renders only when the server streams a
+                compacting frame; this surface persists threads, so it can genuinely fold (§13). */}
+            {(isLoading || compacting) && (
+              <div className="flex flex-col gap-2 pl-[52px]">
+                <PaigeThinkingIndicator
+                  active={isLoading}
+                  writing={writingPhase}
+                  thoughts={thinkingThoughts}
+                  personaName={persona.name}
+                />
+                <PaigeCompactingCard signal={compacting} personaName={persona.name} />
+              </div>
+            )}
           </div>
 
           {!hideReasoningStrip && (isLoading || steps.length > 0) && (

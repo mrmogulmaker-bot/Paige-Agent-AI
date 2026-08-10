@@ -17,8 +17,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { supabase } from "@/integrations/supabase/client";
 import { PromptComposer } from "./PromptComposer";
-import { ReasoningPanel } from "./chat/ReasoningPanel";
 import { AgentChoiceCard } from "./chat/AgentChoiceCard";
+import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
+import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
 import type { StudioBuildStep } from "./StudioBuildingScreen";
 import { uploadGrowthAsset } from "./studio";
 import type { GrowthAsset } from "@/lib/growth";
@@ -114,6 +115,8 @@ export function StudioChat({
   const [thinkStartedAt, setThinkStartedAt] = useState<number | null>(null); // U2 — performance.now() when reasoning began (drives the live duration)
   const [thinkMs, setThinkMs] = useState<number | null>(null); // U2 — frozen reasoning duration once the answer text begins
   const [loading, setLoading] = useState(true);
+  const [writingPhase, setWritingPhase] = useState(false); // #11 — first answer token arrived this turn
+  const [compacting, setCompacting] = useState<CompactingSignal | null>(null); // #12 — persisted session → can fold
   const [choices, setChoices] = useState<Choices | null>(null); // pending clickable options
   const [multiPicks, setMultiPicks] = useState<Set<string>>(new Set());
   const [attachments, setAttachments] = useState<GrowthAsset[]>([]); // reference images dropped in-chat
@@ -213,6 +216,8 @@ export function StudioChat({
     setMessages([...next, { role: "assistant", content: "" }]);
     setSending(true);
     setSteps([]); // fresh turn → drop the prior turn's real trace so the cutscene never shows stale beats (§13)
+    setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
+    setCompacting(null); // #12 — clear any prior turn's compacting card
     setThinking(""); // U2 — fresh turn drops the prior turn's thinking so the collapsible block never shows stale reasoning (§13)
     setThinkStartedAt(null); setThinkMs(null); // U2 — reset this turn's reasoning duration tracking (§13)
     let gotChoices = false;
@@ -293,6 +298,10 @@ export function StudioChat({
             }
             // The server named exactly what to render on the canvas this turn.
             if (parsed.paige_artifact) { gotArtifact = parsed.paige_artifact as StudioChatArtifact; continue; }
+            // #11 — the server confirmed the reply is starting (belt-and-braces with the first delta).
+            if (parsed.paige_phase === "writing") { setWritingPhase(true); continue; }
+            // #12 — conversation-compacting lifecycle for this persisted session.
+            if (parsed.paige_compacting) { setCompacting(parsed.paige_compacting as CompactingSignal); continue; }
             // U2 — extended thinking on its DISTINCT channel (`delta.paige_thinking`), GATED OFF by
             // default server-side. It is NEVER answer text: accumulate it separately so the reasoning
             // renders in its own dimmed, collapsible block above the reply and never leaks into the
@@ -305,6 +314,7 @@ export function StudioChat({
             }
             const delta = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (delta) {
+              if (!assistant) setWritingPhase(true); // #11 — first token → "Writing…"
               // First answer text after reasoning → freeze the thinking duration (thinking always
               // precedes text in Anthropic's stream), so the panel settles to "Thought for Ns" (§13).
               if (thinkStart != null && thinkFrozen == null) { thinkFrozen = performance.now() - thinkStart; setThinkMs(thinkFrozen); }
@@ -448,16 +458,19 @@ export function StudioChat({
         ) : (
           messages.map((m, i) => (
             <div key={i} className={cn("flex flex-col", m.role === "user" ? "items-end" : "items-start")}>
-              {/* U2 — extended thinking (GATED OFF by default; only renders when the server streamed
-                  `paige_thinking` this turn). A dimmed, COLLAPSIBLE "Paige is thinking…" block ABOVE the
-                  answer — never mixed into the reply bubble. Motion-safe + token-only (§11). */}
-              {m.role === "assistant" && isLastAssistant(i) && (thinking.trim() || (sending && thinkStartedAt != null)) && (
-                <ReasoningPanel
-                  text={thinking}
-                  active={sending && thinkStartedAt != null && thinkMs == null}
-                  startedAt={thinkStartedAt}
-                  durationMs={thinkMs}
-                />
+              {/* #11 — the shared "Thinking… Ns / Writing… Ns" indicator ABOVE the reply (§18 — this
+                  replaced the local ReasoningPanel). Its expandable "Thought process" renders the
+                  streamed paige_step thoughts (the verbatim paige_thinking channel is server-disabled).
+                  Renders only while the last assistant turn is streaming; hides on done. */}
+              {m.role === "assistant" && isLastAssistant(i) && sending && (
+                <div className="mb-1.5">
+                  <PaigeThinkingIndicator
+                    active={sending}
+                    writing={writingPhase}
+                    thoughts={steps.filter((s) => s.kind === "thought").map((s) => ({ id: s.id, label: s.label }))}
+                    personaName="Design agent"
+                  />
+                </div>
               )}
               <div
                 className={cn(
@@ -563,6 +576,11 @@ export function StudioChat({
               )}
             </div>
           ))
+        )}
+        {/* #12 — conversation-compacting card (this session persists → it can genuinely fold). Renders
+            only when the server streams a compacting frame; nothing fake otherwise (§13). */}
+        {compacting && (
+          <PaigeCompactingCard signal={compacting} personaName="Design agent" />
         )}
       </div>
 

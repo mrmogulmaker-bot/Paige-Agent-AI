@@ -1,8 +1,9 @@
 // systems-check-runners/website_connected.ts — Check #2 (runner_key: website_connected).
 //
-// SEAM (reuse ONLY this): growth_pages (a published row: status='published') OR tenants.website
-//   non-empty. A tenant "has a website" if they either published a page in the platform's own growth
-//   authoring seam OR declared an external site URL on their profile.
+// SEAM (reuse ONLY this): growth_pages (a published row: status='published') OR a non-empty
+//   tenants.brand->>'website' (the §10 config-as-data home; there is no tenants.website column).
+//   A tenant "has a website" if they either published a page in the platform's own growth
+//   authoring seam OR declared an external site URL on their brand profile.
 //
 // §51 tenant-scoped; §32 fail-loud; §13 honest evidence. Remediation forge + routing is the core's job.
 
@@ -21,13 +22,15 @@ export const run: CheckRunner = async (ctx, _row) => {
         .eq("tenant_id", tenantId)
         .eq("status", "published")
         .limit(1),
-      admin.from("tenants").select("website").eq("id", tenantId).maybeSingle(),
+      admin.from("tenants").select("brand").eq("id", tenantId).maybeSingle(),
     ]);
     throwOnDbError(pageRes.error, "growth_pages");
-    throwOnDbError(tenantRes.error, "tenants.website");
+    throwOnDbError(tenantRes.error, "tenants.brand");
 
     const hasPublishedPage = (pageRes.data?.length ?? 0) > 0;
-    const website = (tenantRes.data as { website?: string } | null)?.website ?? null;
+    // external site URL lives in the tenant-authored brand jsonb (no tenants.website column).
+    const brand = ((tenantRes.data as { brand?: Record<string, unknown> } | null)?.brand ?? {}) as Record<string, unknown>;
+    const website = brand.website ?? null;
     const hasDeclaredSite = hasText(website);
     const pass = hasPublishedPage || hasDeclaredSite;
 

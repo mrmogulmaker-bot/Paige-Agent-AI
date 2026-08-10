@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
-import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold } from "../_shared/token-estimate.ts";
+import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 // N5 §2 de-hardcode — the client-side prompt assembly (persona block, neutral core,
@@ -3156,6 +3156,124 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // guessed manifest index (the manifest is newest-LAST and doesn't re-order on edits).
     let studioSessionId: string | null = null;
     const studioLinked: Array<{ kind: string; id: string; title: string; url: string | null }> = [];
+
+    // #12 — pre-flight compaction frames are COLLECTED here (before inference) and FLUSHED as the very
+    // first bytes of the response stream, so the client's compacting card renders before Paige's
+    // answer. Each entry is a fully-formed SSE record. Empty on every turn that doesn't fold — a pure
+    // no-op for short threads and for surfaces that don't persist (client portal / floating widget),
+    // exactly matching the "persisted threads only" scope (§13 — never fake a compaction card).
+    const compactionLeadFrames: string[] = [];
+
+    // Rolling-summary compaction (4a.3), extracted to ONE shared fold (§18) so BOTH the pre-flight
+    // (inline, before inference — streams its lifecycle to the client) and the post-turn fallback
+    // (waitUntil, silent — unchanged behavior) call the SAME summarizer. It folds older turns into the
+    // thread summary when the thread "approaches token limits" OR on a bounded turn cadence — whichever
+    // fires first — keeping the last KEEP verbatim turns and advancing summary_through_seq so the
+    // summarized range and the verbatim tail never overlap. The token trigger (chars/4 ESTIMATE, §13)
+    // makes a thread of long turns compact BEFORE its live context overflows, not only on count cadence.
+    //
+    // `emit` (pre-flight only) is an OPTIONAL progress sink; when absent (the post-turn fallback) the
+    // fold is byte-for-byte the prior silent behavior. Returns a status the pre-flight uses to decide
+    // what it streamed. NEVER dead-ends (§13): any fold error emits {state:"skipped"} and the caller
+    // continues the turn UNCOMPACTED.
+    const foldThreadSummary = async (
+      threadId: string,
+      opts?: { emit?: (payload: Record<string, unknown>) => void },
+    ): Promise<"compacted" | "approaching" | "not_needed" | "skipped"> => {
+      const emit = opts?.emit;
+      // KEEP        — verbatim turns the CADENCE fold retains (unchanged sane batch).
+      // KEEP_FLOOR  — the fewest verbatim turns a TOKEN fold will ever leave, for conversational
+      //               continuity, even if those turns exceed budget (a lone huge recent turn can't
+      //               shove the whole tail into the summary).
+      // MIN_COMPACTION_INTERVAL — belt-and-suspenders (§14): once compacted, don't compact again
+      //               until at least this many NEW turns have been appended, so a pathological heavy
+      //               tail the floor must keep can't re-trip the paid summarizer every turn. It is a
+      //               GLOBAL floor on fire frequency — it can legitimately skip a redundant fold that
+      //               would land within N turns of a prior one (including a cadence hit right after a
+      //               token fold); it does NOT alter the cadence TRIGGER itself, and being < EVERY it
+      //               never blocks two successive cadence fires on a long light thread.
+      // APPROACH_RATIO — the ~80% pre-signal threshold (honest ESTIMATE, not an exact model %).
+      const KEEP = 12, EVERY = 8, TAIL_TOKEN_BUDGET = 6000, KEEP_FLOOR = 5, MIN_COMPACTION_INTERVAL = 4;
+      const APPROACH_RATIO = 0.8;
+      try {
+        const { data: th } = await supabaseClient.from("paige_chat_threads")
+          .select("message_count, summary, summary_through_seq, last_compacted_at").eq("id", threadId).maybeSingle();
+        if (!th || th.message_count <= KEEP) return "not_needed";
+        // The un-summarized verbatim tail (seq past the watermark) is exactly what loads into the
+        // model context, so weigh only that — fetch it via the (thread_id, seq) index and estimate.
+        // created_at rides along ONLY for the min-interval guard below.
+        const { data: rows } = await supabaseClient.from("paige_chat_turns")
+          .select("role,content,seq,created_at").eq("thread_id", threadId).in("role", ["user", "assistant"])
+          .gt("seq", th.summary_through_seq ?? 0).order("seq", { ascending: true });
+        if (!rows?.length) return "not_needed";
+        // MIN-INTERVAL watermark guard (§14): count tail turns appended AFTER the last fold; if fewer
+        // than MIN_COMPACTION_INTERVAL, skip — no repeated paid summarizer calls on back-to-back turns.
+        // A NULL watermark (never compacted) skips the guard so the first fold always proceeds.
+        if (th.last_compacted_at) {
+          const lastAt = th.last_compacted_at as string;
+          const turnsSince = (rows as Array<{ created_at?: string | null }>)
+            .filter((r) => typeof r.created_at === "string" && r.created_at > lastAt).length;
+          if (turnsSince < MIN_COMPACTION_INTERVAL) return "not_needed";
+        }
+        const tailTokens = estimateTurnsTokens(rows as Array<{ role?: string; content?: string }>);
+        const triggeredByToken = tailTokens >= TAIL_TOKEN_BUDGET;
+        if (!shouldCompact({ messageCount: th.message_count, tailTokens, keep: KEEP, every: EVERY, tailTokenBudget: TAIL_TOKEN_BUDGET })) {
+          // #12 ~80% PRE-SIGNAL — approaching the token budget but not folding yet (honest ESTIMATE).
+          // Cheap: it's just an extra frame off numbers already computed. Capped below 100 (100 = folding).
+          if (emit && tailTokens >= TAIL_TOKEN_BUDGET * APPROACH_RATIO) {
+            emit({ state: "approaching", pct: Math.min(99, compactionPressurePct(tailTokens, TAIL_TOKEN_BUDGET)) });
+            return "approaching";
+          }
+          return "not_needed";
+        }
+        // FOLD — stream the lifecycle: start → progress(summarize dispatched / returned / written) → done.
+        emit?.({ state: "start" });
+        emit?.({ state: "progress", pct: 10 });
+        // Decide how many NEWEST turns stay verbatim, then fold the contiguous OLDER prefix. On a
+        // TOKEN-triggered fold we keep only enough turns to drop the tail back under budget×0.5
+        // (hysteresis, so it doesn't immediately re-trip), floored at KEEP_FLOOR; on a CADENCE fold
+        // we keep KEEP (the prior behavior). In every case the no-loss/no-dup invariant holds — `toFold`
+        // is a contiguous prefix of the tail (all seq > watermark), and we advance summary_through_seq
+        // to the LAST folded seq, so each turn is EITHER in the summary XOR in the verbatim tail.
+        const keepCount = keepCountForFold({
+          turnTokens: (rows as Array<{ content?: string }>).map((r) => estimateTokens(r.content)),
+          keep: KEEP, floor: KEEP_FLOOR, tailTokenBudget: TAIL_TOKEN_BUDGET, triggeredByToken,
+        });
+        const foldCount = rows.length - keepCount;
+        if (foldCount <= 0) { emit?.({ state: "done" }); return "not_needed"; }
+        const toFold = (rows as Array<{ seq: number }>).slice(0, foldCount);
+        const cutoffSeq = toFold[toFold.length - 1].seq;
+        const transcript = toFold.map((t: any) => `${t.role === "user" ? "Owner" : "Paige"}: ${t.content}`).join("\n").slice(0, 12000);
+        const prompt = `Maintain a rolling memory of a long working chat between a business owner and their assistant Paige. Update the summary so nothing important is lost as older turns scroll off. PRESERVE explicitly: the owner's name & preferences, decisions made, tasks/actions Paige took or QUEUED, any PENDING approvals still open, names of clients/contacts, dates, numbers, and open loops. 4-8 tight sentences, flowing prose, no bullets.\n\nPRIOR SUMMARY:\n${th.summary ?? "(none)"}\n\nOLDER TURNS TO FOLD IN:\n${transcript}\n\nUPDATED SUMMARY:`;
+        emit?.({ state: "progress", pct: 35 }); // cheap-model summarizer call dispatched
+        const resp = await gatewayCompat("anthropic", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: prompt }] }),
+        });
+        if (!resp.ok) { emit?.({ state: "skipped" }); return "skipped"; }
+        emit?.({ state: "progress", pct: 80 }); // summarizer returned
+        const summary = (await resp.json())?.choices?.[0]?.message?.content?.trim();
+        if (summary) {
+          await supabaseClient.from("paige_chat_threads")
+            .update({ summary, summary_through_seq: cutoffSeq, last_compacted_at: new Date().toISOString() }).eq("id", threadId);
+          emit?.({ state: "progress", pct: 100 });
+          emit?.({ state: "done" });
+          return "compacted";
+        }
+        // Summarizer returned empty — nothing written; degrade honestly, keep the turn going (§13).
+        emit?.({ state: "skipped" });
+        return "skipped";
+      } catch (e) {
+        console.warn("[paige] summary fold failed:", (e as Error)?.message);
+        emit?.({ state: "skipped" });
+        return "skipped";
+      }
+    };
+    // Post-turn fallback wrapper (unchanged behavior): silent fold in waitUntil for threads that
+    // didn't trip the pre-flight (e.g. Paige's long reply is what pushed the tail over).
+    const maybeRefreshSummary = (threadId: string) => foldThreadSummary(threadId);
+
     if (payloadThreadId) {
       const latestUserText = [...messages].reverse().find((m: any) => m.role === "user")?.content;
       if (typeof latestUserText === "string" && latestUserText.trim()) {
@@ -3167,6 +3285,21 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
           });
         } catch (e) { console.error("[paige] persist user turn failed:", (e as Error)?.message); }
       }
+
+      // #12 — PRE-FLIGHT COMPACTION (the sequencing change). The user turn is now appended, so the
+      // tail includes it. If the un-summarized tail is at/over the fold threshold, compact INLINE
+      // NOW — BEFORE the summary is read (below) and injected into the model context — so this very
+      // turn's inference runs on the compacted context, and the client SEES it happen: the fold's
+      // lifecycle is collected into `compactionLeadFrames` and flushed as the first bytes of the
+      // response stream. If nothing needs folding it's a fast two-select no-op. If the tail is only
+      // APPROACHING (~80%) it emits a single pre-warn frame. Errors degrade to {state:"skipped"} and
+      // the turn continues UNCOMPACTED (§13 never dead-end). The post-turn maybeRefreshSummary still
+      // runs as the fallback for threads that trip the budget only after Paige's reply is appended.
+      // §9: reads/writes ONLY the caller's own thread — the exact scoping maybeRefreshSummary uses.
+      await foldThreadSummary(payloadThreadId, {
+        emit: (payload) => compactionLeadFrames.push(`data: ${JSON.stringify({ paige_compacting: payload })}\n\n`),
+      });
+
       try {
         const { data: th } = await supabaseClient
           .from("paige_chat_threads").select("summary, studio_session_id").eq("id", payloadThreadId).maybeSingle();
@@ -3234,79 +3367,9 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       } catch (e) { console.warn("[paige] recall fetch failed:", (e as Error)?.message); }
     }
 
-    // Rolling-summary compaction (4a.3): fold older turns into the thread summary when the thread
-    // "approaches token limits" OR on a bounded turn cadence — whichever fires first — keeping the
-    // last KEEP verbatim turns and advancing summary_through_seq so the summarized range and the
-    // verbatim tail never overlap. The token trigger (chars/4 ESTIMATE, §13) makes a thread of long
-    // turns compact BEFORE its live context overflows, instead of waiting for the count cadence.
-    const maybeRefreshSummary = async (threadId: string) => {
-      // KEEP        — verbatim turns the CADENCE fold retains (unchanged sane batch).
-      // KEEP_FLOOR  — the fewest verbatim turns a TOKEN fold will ever leave, for conversational
-      //               continuity, even if those turns exceed budget (a lone huge recent turn can't
-      //               shove the whole tail into the summary).
-      // MIN_COMPACTION_INTERVAL — belt-and-suspenders (§14): once compacted, don't compact again
-      //               until at least this many NEW turns have been appended, so a pathological heavy
-      //               tail the floor must keep can't re-trip the paid summarizer every turn. It is a
-      //               GLOBAL floor on fire frequency — it can legitimately skip a redundant fold that
-      //               would land within N turns of a prior one (including a cadence hit right after a
-      //               token fold); it does NOT alter the cadence TRIGGER itself, and being < EVERY it
-      //               never blocks two successive cadence fires on a long light thread.
-      const KEEP = 12, EVERY = 8, TAIL_TOKEN_BUDGET = 6000, KEEP_FLOOR = 5, MIN_COMPACTION_INTERVAL = 4;
-      try {
-        const { data: th } = await supabaseClient.from("paige_chat_threads")
-          .select("message_count, summary, summary_through_seq, last_compacted_at").eq("id", threadId).maybeSingle();
-        if (!th || th.message_count <= KEEP) return;
-        // The un-summarized verbatim tail (seq past the watermark) is exactly what loads into the
-        // model context, so weigh only that — fetch it via the (thread_id, seq) index and estimate.
-        // created_at rides along ONLY for the min-interval guard below.
-        const { data: rows } = await supabaseClient.from("paige_chat_turns")
-          .select("role,content,seq,created_at").eq("thread_id", threadId).in("role", ["user", "assistant"])
-          .gt("seq", th.summary_through_seq ?? 0).order("seq", { ascending: true });
-        if (!rows?.length) return;
-        // MIN-INTERVAL watermark guard (§14): count tail turns appended AFTER the last fold; if fewer
-        // than MIN_COMPACTION_INTERVAL, skip — no repeated paid summarizer calls on back-to-back turns.
-        // A NULL watermark (never compacted) skips the guard so the first fold always proceeds.
-        if (th.last_compacted_at) {
-          const lastAt = th.last_compacted_at as string;
-          const turnsSince = (rows as Array<{ created_at?: string | null }>)
-            .filter((r) => typeof r.created_at === "string" && r.created_at > lastAt).length;
-          if (turnsSince < MIN_COMPACTION_INTERVAL) return;
-        }
-        const tailTokens = estimateTurnsTokens(rows as Array<{ role?: string; content?: string }>);
-        const triggeredByToken = tailTokens >= TAIL_TOKEN_BUDGET;
-        if (!shouldCompact({ messageCount: th.message_count, tailTokens, keep: KEEP, every: EVERY, tailTokenBudget: TAIL_TOKEN_BUDGET })) return;
-        // Decide how many NEWEST turns stay verbatim, then fold the contiguous OLDER prefix. On a
-        // TOKEN-triggered fold we keep only enough turns to drop the tail back under budget×0.5
-        // (hysteresis, so it doesn't immediately re-trip), floored at KEEP_FLOOR; on a CADENCE fold
-        // we keep KEEP (the prior behavior). This is NOT identical to the old fixed keep-KEEP fold:
-        // for a heavy tail (M ≥ KEEP) it folds MORE turns to reclaim tokens, and right after a
-        // compaction (M < KEEP) it may keep the whole short tail. In every case the no-loss/no-dup
-        // invariant holds — `toFold` is a contiguous prefix of the tail (all seq > watermark), and we
-        // advance summary_through_seq to the LAST folded seq, so each turn is EITHER in the summary
-        // XOR in the verbatim tail, never dropped, never double-counted.
-        const keepCount = keepCountForFold({
-          turnTokens: (rows as Array<{ content?: string }>).map((r) => estimateTokens(r.content)),
-          keep: KEEP, floor: KEEP_FLOOR, tailTokenBudget: TAIL_TOKEN_BUDGET, triggeredByToken,
-        });
-        const foldCount = rows.length - keepCount;
-        if (foldCount <= 0) return;
-        const toFold = (rows as Array<{ seq: number }>).slice(0, foldCount);
-        const cutoffSeq = toFold[toFold.length - 1].seq;
-        const transcript = toFold.map((t: any) => `${t.role === "user" ? "Owner" : "Paige"}: ${t.content}`).join("\n").slice(0, 12000);
-        const prompt = `Maintain a rolling memory of a long working chat between a business owner and their assistant Paige. Update the summary so nothing important is lost as older turns scroll off. PRESERVE explicitly: the owner's name & preferences, decisions made, tasks/actions Paige took or QUEUED, any PENDING approvals still open, names of clients/contacts, dates, numbers, and open loops. 4-8 tight sentences, flowing prose, no bullets.\n\nPRIOR SUMMARY:\n${th.summary ?? "(none)"}\n\nOLDER TURNS TO FOLD IN:\n${transcript}\n\nUPDATED SUMMARY:`;
-        const resp = await gatewayCompat("anthropic", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: prompt }] }),
-        });
-        if (!resp.ok) return;
-        const summary = (await resp.json())?.choices?.[0]?.message?.content?.trim();
-        if (summary) {
-          await supabaseClient.from("paige_chat_threads")
-            .update({ summary, summary_through_seq: cutoffSeq, last_compacted_at: new Date().toISOString() }).eq("id", threadId);
-        }
-      } catch (e) { console.warn("[paige] summary refresh failed:", (e as Error)?.message); }
-    };
+    // (Rolling-summary compaction (4a.3) is defined ABOVE as `foldThreadSummary` + the
+    // `maybeRefreshSummary` post-turn wrapper, so the PRE-FLIGHT fold can reuse the SAME summarizer
+    // before inference — §18 one home, no forked second summarizer.)
 
     // Persist Paige's reply after the stream (via EdgeRuntime.waitUntil so a closed
     // tab still saves it), then auto-title a new thread and refresh the summary.
@@ -7372,6 +7435,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_step: s })}\n\n`));
       const finalStream = new ReadableStream({
         async start(controller) {
+         // #12 — flush any PRE-FLIGHT compaction frames FIRST, so the compacting card renders
+         // before Paige's reasoning/answer streams. Empty (no-op) on every turn that didn't fold.
+         for (const f of compactionLeadFrames) controller.enqueue(enc.encode(f));
          // The whole live loop + final answer runs here. Because the gateway calls
          // now execute inside the stream, a mid-flight throw must degrade to a clean
          // fallback + [DONE] rather than a broken stream (§13). The outer handler's
@@ -7497,6 +7563,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // #292 — tell the Studio canvas the exact artifact this turn produced (server-authoritative;
           // the client opens THIS, never a guessed manifest index). Last visual wins if several built.
           if (studioLinked.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_artifact: studioLinked[studioLinked.length - 1] })}\n\n`));
+          // #11 — mark the transition into the ANSWER: the loop's reasoning (paige_step "thought"
+          // frames) is done and the reply text begins now. The client also derives "writing" from
+          // the first delta.content, so this is a lightweight explicit confirmation, not a dependency.
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
           if (finalChunks) {
             for (const c of finalChunks) controller.enqueue(c);
           } else if (finalStreamResponse?.ok && finalStreamResponse.body) {
@@ -7579,8 +7649,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // Leftover-line buffer across pulls: a `data:` record split over two reads
     // must still contribute its delta to the persisted text (#94 integrity).
     let directSseBuf = "";
+    // #11 — emit paige_phase:"writing" once, on the first forwarded bytes (this direct/document
+    // path has no reasoning loop, so first bytes ≈ writing start). The client also derives it from
+    // the first delta, so this is a lightweight confirmation, not a dependency.
+    let sentWritingPhase = false;
 
     const stream = new ReadableStream({
+      // #12 — flush any PRE-FLIGHT compaction frames FIRST so the compacting card renders before the
+      // reply. Empty (no-op) on every turn that didn't fold. A persisted Studio thread reaching this
+      // path (a doc-attached turn) still shows its compaction card.
+      start(controller) {
+        for (const f of compactionLeadFrames) controller.enqueue(new TextEncoder().encode(f));
+      },
       async pull(controller) {
         const { done, value } = await reader.read();
         if (done) {
@@ -7680,6 +7760,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return;
         }
 
+        if (!sentWritingPhase) {
+          sentWritingPhase = true;
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
+        }
         controller.enqueue(value);
         directSseBuf += decoder.decode(value, { stream: true });
         let nl: number;
