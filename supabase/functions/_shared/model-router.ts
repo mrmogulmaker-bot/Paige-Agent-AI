@@ -868,16 +868,58 @@ export async function callModel(
         needs_config: true,
       };
     }
-    // Real provider error → trace it (scrubbed message) before rethrowing to the caller.
+    // Real provider error → trace it (scrubbed message). Keep this trace ALWAYS — we WANT the
+    // failed cheap-tier provider outage (e.g. featherless/groq) on record even when the fallback
+    // below rescues the call.
+    const failedProvider = cell.provider;
     traceLLMCall({
       ...traceBase,
-      provider: cell.provider,
+      provider: failedProvider,
       model: opts.model_override ?? null,
       status: "error",
       error_class: (e as Error)?.name ?? "error",
       error_message: (e as Error)?.message ?? String(e),
     });
-    throw e;
+    // §34 resilience — the router can never harden into an outage (worst case is we paid Claude
+    // prices, never the feature broke). For NON-frontier TEXT, a real provider error degrades to
+    // the healthy Claude frontier cell (mirrors routeText's featherless→Claude fallback). TEXT-only
+    // by design: a failed binary gen keeps its honest needs_config/error behavior — silently
+    // escalating an image to a pricier tier is a different decision we are NOT making here. §17 is
+    // safe: sensitive text (customer_send/approval) is already forced to frontier upstream, so it
+    // never reaches this branch — the fallback only ever fires for non-sensitive cheap-tier text.
+    const frontierCell = ROUTE_TABLE.text?.frontier;
+    if (modality === "text" && tier !== "frontier" && frontierCell && frontierCell !== cell) {
+      try {
+        // A SINGLE DIRECT call to the frontier cell — NOT a recursive callModel, so no gate
+        // re-entry and no infinite loop. Pass `undefined` as the override so we never forward a
+        // featherless/groq model id to Claude. On success, execution flows OUT of this try/catch
+        // into the §3 voice gate + §2 finance re-scan + persist + audit + success trace below —
+        // the fallback output MUST still pass those gates (we do not bypass them).
+        result = await frontierCell.invoke(task, undefined);
+        traceLLMCall({
+          ...traceBase,
+          provider: "anthropic",
+          model: null,
+          status: "success",
+          metadata: { ...traceBase.metadata, fallback_from: `${failedProvider}/${tier}` },
+        });
+      } catch (fallbackErr) {
+        // The rescue itself failed — trace the fallback attempt as an error, then re-throw the
+        // ORIGINAL provider error (not the fallback's) so the caller sees the true first cause.
+        traceLLMCall({
+          ...traceBase,
+          provider: "anthropic",
+          model: null,
+          status: "error",
+          error_class: (fallbackErr as Error)?.name ?? "error",
+          error_message: (fallbackErr as Error)?.message ?? String(fallbackErr),
+          metadata: { ...traceBase.metadata, fallback_from: `${failedProvider}/${tier}` },
+        });
+        throw e;
+      }
+    } else {
+      throw e;
+    }
   }
 
   // 5) POST-generation doctrine on SHIPPED text — copy that reaches a customer (is_customer_send) OR
