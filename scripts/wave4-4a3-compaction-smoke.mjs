@@ -38,7 +38,7 @@ src = src
   .replace(/:\s*boolean\b/g, "");
 
 const mod = await import(`data:text/javascript,${encodeURIComponent(src)}`);
-const { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold } = mod;
+const { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } = mod;
 
 let failures = 0;
 const check = (name, cond) => {
@@ -64,6 +64,14 @@ check(
 );
 const heavyTail = Array.from({ length: 6 }, () => ({ role: "user", content: "y".repeat(4000) }));
 check("estimateTurnsTokens sums heavy tail (~6024)", estimateTurnsTokens(heavyTail) === 6 * (1000 + 4));
+
+// 2b. compactionPressurePct (#12 ~80% pre-signal) — honest clamp, degrades on bad budget.
+check("pressurePct(0,6000) === 0", compactionPressurePct(0, 6000) === 0);
+check("pressurePct(3000,6000) === 50", compactionPressurePct(3000, 6000) === 50);
+check("pressurePct(4800,6000) === 80 (the ~80% pre-signal boundary)", compactionPressurePct(4800, 6000) === 80);
+check("pressurePct clamps to 100 when over budget", compactionPressurePct(9000, 6000) === 100);
+check("pressurePct(x,0) === 0 (never divide by zero)", compactionPressurePct(1000, 0) === 0);
+check("pressurePct(negative) === 0 (never negative)", compactionPressurePct(-50, 6000) === 0);
 
 // 3. shouldCompact — short threads never compact.
 check(

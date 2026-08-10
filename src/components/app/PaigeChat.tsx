@@ -33,6 +33,7 @@ import { usePlaybook } from "@/lib/playbook";
 import { useClientPortalBrandState } from "@/hooks/useClientPortalBrand";
 import { readableTextOn } from "@/lib/brand/contrast";
 import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
+import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
 
 type Message = {
   role: "user" | "assistant";
@@ -101,6 +102,8 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
   const [isLoading, setIsLoading] = useState(false);
   // Paige's live reasoning trace (#95/#125) — the "watch her work" steps she streams.
   const [steps, setSteps] = useState<PaigeStep[]>([]);
+  // #11 — true once the first answer token arrives this turn (label flips Thinking→Writing).
+  const [writingPhase, setWritingPhase] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
@@ -411,6 +414,7 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
 
       setMessages([...newMessages, { role: "assistant", content: "" }]);
       setSteps([]); // clear last turn's reasoning as this one starts
+      setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
 
       while (reader && !streamDone) {
         const { done, value } = await reader.read();
@@ -437,12 +441,15 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
               continue;
             }
+            // #11 — the server confirmed the reply is starting (belt-and-braces with the first delta).
+            if (parsed.paige_phase === "writing") { setWritingPhase(true); continue; }
             if (parsed.sync_status) {
               syncStatus = parsed.sync_status;
               continue;
             }
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
+              if (!assistantMessage) setWritingPhase(true); // #11 — first token → "Writing…"
               assistantMessage += content;
               setMessages([...newMessages, { role: "assistant", content: assistantMessage }]);
             }
@@ -614,16 +621,18 @@ function PaigeChatInner({ user, session, clientId }: PaigeChatProps) {
             </div>
           </div>
         ))}
-        {isLoading && messages[messages.length - 1]?.role === "user" && (
+        {/* #11 — the shared "Thinking… / Writing… Ns" indicator (replaces the bespoke typing dots,
+            §18/§25). Shows for a real turn only (not the auto-opener), aligned under the avatar.
+            NON-persisting portal → no compacting card (§13 — it never folds). */}
+        {isLoading && messages.some((m) => m.role === "user") && (
           <div className="flex gap-2 sm:gap-3">
             <img src={paigeAvatar} alt="Paige" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-accent flex-shrink-0" />
-            <div className="bg-muted/40 border border-border rounded-lg px-3.5 py-2.5">
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
-                <div className="w-2 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
-                <div className="w-2 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
-              </div>
-            </div>
+            <PaigeThinkingIndicator
+              active={isLoading}
+              writing={writingPhase}
+              thoughts={steps.filter((s) => s.kind === "thought").map((s) => ({ id: s.id, label: s.label }))}
+              personaName={playbook?.persona?.name}
+            />
           </div>
         )}
       </div>

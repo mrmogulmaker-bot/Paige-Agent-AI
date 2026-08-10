@@ -27,6 +27,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getUserClock } from "@/lib/userClock";
+import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
 
 type Message = {
   role: "user" | "assistant";
@@ -51,6 +52,8 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  // #11 — first answer token arrived this turn (label flips Thinking→Writing).
+  const [writingPhase, setWritingPhase] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const sessionIdRef = useRef<string>(crypto.randomUUID());
@@ -156,6 +159,7 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
     const currentDoc = attachedDoc;
     setAttachedDoc(null);
     setIsLoading(true);
+    setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -221,12 +225,14 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
             if (data === "[DONE]") continue;
             try {
               const parsed = JSON.parse(data);
+              if (parsed.paige_phase === "writing") { setWritingPhase(true); continue; } // #11
               if (parsed.sync_status) {
                 syncStatus = parsed.sync_status;
                 continue;
               }
               const content = parsed.choices?.[0]?.delta?.content;
               if (content) {
+                if (!assistantMessage) setWritingPhase(true); // #11 — first token → "Writing…"
                 assistantMessage += content;
                 setMessages((prev) => {
                   const newMessages = [...prev];
@@ -473,6 +479,13 @@ const FloatingChatbotInner = ({ clientId }: { clientId?: string }) => {
                   </div>
                 </div>
               ))}
+              {/* #11 — the shared thinking indicator. Non-persisting widget → no compacting card (§13). */}
+              {isLoading && (
+                <div className="flex gap-2 sm:gap-3 justify-start">
+                  {renderBrandAvatar("w-7 h-7 sm:w-8 sm:h-8")}
+                  <PaigeThinkingIndicator active={isLoading} writing={writingPhase} personaName={avatarLabel} />
+                </div>
+              )}
             </div>
           </ScrollArea>
 
