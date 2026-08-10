@@ -1,9 +1,15 @@
 // #29/#104 — the shared "Paige made you a deliverable" handoff card. When Paige finishes a create tool
-// in ANY chat surface (PaigeChat, PaigeAIChat, FloatingChatbot, BrokerPaigeSession — the non-Studio
-// surfaces), the edge function now streams an artifact frame ({ kind, id, title, url }); this card is
-// how that frame renders under her message — a compact, premium card (the Cowork "Created a file" bar)
-// carrying a REAL thumbnail, the title + type, an Open that actually renders the artifact, and a
-// host-delegated Send.
+// in a non-Studio chat surface, the edge function streams an artifact frame ({ kind, id, title, url,
+// artifactType }); this card is how that frame renders under her message — a compact, premium card (the
+// Cowork "Created a file" bar) carrying a REAL thumbnail, the title + type, an Open that actually renders
+// the artifact, and a host-delegated Send.
+//
+// WIRED TODAY (§13 honest — do not assume more): only PaigeAIChat (the dashboard admin/coach chat) renders
+// this card. The backend emits the frame surface-agnostically (gated only on !studioSessionId), so the
+// other non-Studio surfaces — FloatingChatbot, BrokerPaigeSession — RECEIVE the frame but do NOT render
+// it yet; wiring the same card into them is a tracked §18 fast-follow (~15 lines of SSE handling each).
+// The client portal (PaigeChat) needs no wiring: document/image tools are admin/coach-gated, so it never
+// emits a frame. StudioChat is unaffected — it consumes its own studioSessionId frame onto the canvas.
 //
 // ONE home (§18): this is the single artifact-handoff card for every regular chat surface. It REUSES
 // the Studio renderer — loadDocument() hydrates a document and DocumentPreview draws it (both the full
