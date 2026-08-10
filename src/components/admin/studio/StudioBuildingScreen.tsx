@@ -614,25 +614,9 @@ function SplitStage({
   );
 }
 
-/**
- * A real elapsed-time clock for callers without a streamed phase timer (copy/image). Returns ms
- * since `active` last flipped true; resets to 0 whenever it goes false. Ticks every 250ms so the
- * whole-seconds line updates promptly without a busy loop. HONEST (§13): it measures wall-clock
- * time actually spent, never a fabricated percentage.
- */
-export function useElapsedMs(active: boolean): number {
-  const [ms, setMs] = useState(0);
-  useEffect(() => {
-    if (!active) {
-      setMs(0);
-      return;
-    }
-    const start = Date.now();
-    setMs(0);
-    const id = window.setInterval(() => setMs(Date.now() - start), 250);
-    return () => window.clearInterval(id);
-  }, [active]);
-  return ms;
-}
+// The elapsed-time clock now lives in the shared chat home (§18) so the thinking indicator and every
+// chat surface reuse ONE implementation. Re-exported here so existing Studio callers (ImageMode,
+// StudioShell) keep importing it from this module unchanged.
+export { useElapsedMs } from "@/components/paige/chat/useElapsedMs";
 
 export default StudioBuildingScreen;

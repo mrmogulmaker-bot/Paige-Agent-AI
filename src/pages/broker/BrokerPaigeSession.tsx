@@ -50,6 +50,8 @@ import {
   DrawerTrigger,
 } from "@/components/ui/drawer";
 import { trackEvent } from "@/hooks/useAnalytics";
+import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
+import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
 
 interface RelationshipRow {
   id: string;
@@ -104,6 +106,11 @@ const BrokerPaigeSession = () => {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  // #11 — first answer token arrived this turn (label flips Thinking→Writing).
+  const [writingPhase, setWritingPhase] = useState(false);
+  // #12 — compacting signal. broker-paige-chat does not emit these frames today, so the card stays a
+  // NO-OP here (never faked, §13); parsed defensively so it lights up if that function ever folds.
+  const [compacting, setCompacting] = useState<CompactingSignal | null>(null);
   const [snapshot, setSnapshot] = useState<CreditSnapshot | null>(null);
   const [savingNotes, setSavingNotes] = useState(false);
   const [notes, setNotes] = useState("");
@@ -193,6 +200,8 @@ const BrokerPaigeSession = () => {
     if (!text || streaming || !rel || !profile) return;
     setInput("");
     setStreaming(true);
+    setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
+    setCompacting(null); // #12 — clear any prior turn's card
 
     const history = messages
       .filter((m) => !(m.role === "assistant" && messages.indexOf(m) === 0)) // drop opening seed
@@ -254,7 +263,11 @@ const BrokerPaigeSession = () => {
                 });
               }
             }
+            // #11/#12 — parsed defensively; broker-paige-chat does not emit these today (§13 honest).
+            if (parsed.paige_phase === "writing") { setWritingPhase(true); continue; }
+            if (parsed.paige_compacting) { setCompacting(parsed.paige_compacting as CompactingSignal); continue; }
             if (parsed.delta) {
+              if (!assistant) setWritingPhase(true); // #11 — first token → "Writing…"
               assistant += parsed.delta;
               setMessages((prev) => {
                 const copy = [...prev];
@@ -535,9 +548,13 @@ const BrokerPaigeSession = () => {
                 </div>
               </div>
             ))}
-            {streaming && messages[messages.length - 1]?.role === "assistant" && !messages[messages.length - 1]?.content && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" /> Paige is thinking…
+            {/* #11 — the shared "Thinking… / Writing… Ns" indicator (replaces the bespoke line, §18).
+                No thoughts/compacting frames stream from broker-paige-chat today, so the timer runs on
+                client elapsed and the compacting card stays a no-op (§13). */}
+            {streaming && (
+              <div className="flex flex-col gap-2">
+                <PaigeThinkingIndicator active={streaming} writing={writingPhase} personaName="Paige" />
+                <PaigeCompactingCard signal={compacting} personaName="Paige" />
               </div>
             )}
           </div>
