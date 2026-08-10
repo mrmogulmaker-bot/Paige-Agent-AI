@@ -22,6 +22,10 @@ import {
 // edge function AND the §2/§3 denylist test import the same text (§32: the assembled
 // voice is scannable). A tenant-authored persona still OVERRIDES it (read first below).
 import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
+// §52 Phase 1 — the SUPER-ADMIN owner runtime-context composer (§18 one home). Reads the operator's
+// paige_owner_memory identity rows + live platform state and renders the operator briefing injected
+// below. NO-OP (returns null) for anyone but a seeded platform operator (the tenant-less God account).
+import { loadOwnerContextBlock } from "../_shared/owner-context.ts";
 // #292 / #343 U1 — the Studio design-agent system-prompt WRAPPER (identity + operating core + the
 // generative-UI choice-card rule), externalized so it lives in one editable home (§9/§12/§18).
 import { buildStudioWhereYouAre, STUDIO_OPERATING_CORE } from "../_shared/design-agent-prompt.ts";
@@ -3109,6 +3113,34 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       // and is NEVER part of her reply to the user.
       { role: "system", content: "REASONING NARRATION (backstage — shown live in the operator's \"watch Paige work\" panel, never sent as your reply): Whenever you are about to call one or more tools this turn, FIRST write ONE short sentence (max ~16 words) in your own voice saying what you're about to do and why — e.g. \"Let me pull up your team so I can route her to the right coach.\" or \"Checking who's online before I hand this off.\" This is the ONLY time you narrate: on the turn where you actually answer the user (no tool calls), write only your real reply with no narration. Keep it jargon-free — never mention internal tool or table names." },
     ];
+
+    // ── §52 PLATFORM-OPERATOR RUNTIME CONTEXT (Phase 1) ──────────────────────
+    // The God/Super-Admin (and, per the 2026-08-09 role ruling, platform_admin) Paige must open
+    // EVERY operator session ALREADY knowing who the operator is + live platform state — never
+    // asking the founder who he is (the §36 miss this fixes). Detection is SERVER-SIDE and
+    // dual-gated (§51/§588): (a) a TENANT-LESS persona (an operator has no tenant → tenant_id is
+    // null/undefined; personaCtx defaults to null), AND (b) is_platform_operator() — super_admin OR
+    // platform_admin — derived from the VERIFIED JWT's auth.uid() via the user-scoped client, NEVER
+    // the request body. NO-OP for every tenant persona (Phase 1 scope). The block is spliced at index
+    // 2 (after persona[0] + VOICE[1], before the operating core): identity → voice → operator briefing
+    // → task/tools. The SERVICE-ROLE client (`supabase`) does the RLS-free operator reads; the
+    // identity content is owner-memory rows (§10 config-as-data — never hardcoded here). The studio
+    // swap below targets the core by VALUE (never fires for an operator, no studio thread), so the
+    // splice can't desync it. A platform_admin with no seeded rows gets a NO-OP (loadOwnerContextBlock
+    // returns null) — honest, never a fabricated identity (§13); seed their rows to enable their brief.
+    if (personaCtx.tenant_id == null) {
+      try {
+        const { data: isOperator } = await supabaseClient.rpc("is_platform_operator");
+        if (isOperator === true) {
+          const ownerBlock = await loadOwnerContextBlock(supabase, user.id);
+          if (ownerBlock) {
+            aiMessages.splice(2, 0, { role: "system", content: ownerBlock });
+          }
+        }
+      } catch (e) {
+        console.warn("[paige-ai-chat] §52 operator-context injection skipped:", (e as Error)?.message);
+      }
+    }
 
     // ── OWNER MULTI-CHAT PERSISTENCE + RECALL (#94) ──────────────────────────
     // When a thread is active (Your Paige), persist the user turn NOW (survives a
