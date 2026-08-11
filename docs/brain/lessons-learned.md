@@ -34,6 +34,26 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   AND to what Cowork directs CC to build; e.g. the #129 Portfolio-feature surface is explicitly deferred
   with a research directive rather than guessed now.)
 
+## 0c. A tool error is NOT proof the record is absent — the false-negative→false-knowledge trap (#127, 2026-08-11)
+
+- **Symptom (owner live-drive):** Paige told the operator "there's no contact named Tashia Anderson on
+  file" — but the contact existed. Two independent defects wore the same face: (1) the CRM search
+  tokenizer matched the WHOLE phrase `"Tashia Anderson"` against EACH single column, so a real row with
+  `first_name="Tashia"` + `last_name="Anderson"` (SEPARATE columns) matched 0 rows; (2) an unrelated
+  nested tool (content-draft/generate-image) 500'd, and its error was narrated as if the *lookup* had
+  failed. Paige collapsed both — an empty result AND an errored call — into the same confident claim:
+  "no record."
+- **Root cause:** an empty/errored search result was treated as positive evidence of absence. A query
+  that returns 0 rows means "this query matched nothing," never "this thing does not exist"; a tool that
+  throws means "I could not check," never "the answer is no." Collapsing *found-nothing* and *could-not-
+  check* into *does-not-exist* manufactures false knowledge and misleads the operator.
+- **Rule:** three outcomes are NEVER collapsed — **found** (real rows), **found-nothing** (a clean query
+  that matched zero — say "no match on that search," suggest a narrower/looser retry), and **could-not-
+  check** (an error — say the lookup failed, do NOT assert absence). The §18 one-home fix: tokenize the
+  search (`_shared/contact-search.ts` — each token ORs across columns, tokens AND-combine via chained
+  PostgREST `.or()`), plus a LOOKUP HONESTY prompt block forbidding the collapse. Full-name and
+  multi-word queries never live in one column — assume tokenization for any human-name search.
+
 ---
 
 ## 1. The voice live-drive trap (ElevenLabs, #24 / #170 / PR #409)

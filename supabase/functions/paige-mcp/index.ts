@@ -21,6 +21,7 @@ import { McpServer, StreamableHttpTransport } from "npm:mcp-lite@^0.10.0";
 import { z } from "npm:zod@^3.25.0";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
+import { applyContactSearchFilter, contactSearchTokens, CONTACT_SEARCH_COLUMNS } from "../_shared/contact-search.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -267,18 +268,19 @@ mcp.tool("search_contacts", {
   }),
   handler: async (args) => {
     const limit = Math.min(Math.max(args.limit ?? 20, 1), 50);
-    const safe = String(args.query).replace(/[,()]/g, " ").trim();
     const tenantId = await actorTenantId();
     if (!tenantId) return err("tenant_not_resolved");
-    let q = admin
-      .from("clients")
-      .select("id, first_name, last_name, email, phone, entity_name, lifecycle_stage, tier, status, assigned_coach_user_id, tenant_id, updated_at")
-      .or(`first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,email.ilike.%${safe}%,phone.ilike.%${safe}%,entity_name.ilike.%${safe}%`)
-      .eq("tenant_id", tenantId)
-      .order("updated_at", { ascending: false })
-      .limit(limit);
+    // §18 shared tokenized search (hotfix #127) — full-name queries ("Tashia Anderson")
+    // match first_name + last_name across columns, not the whole phrase per single column.
+    let q = applyContactSearchFilter(
+      admin
+        .from("clients")
+        .select("id, first_name, last_name, email, phone, entity_name, lifecycle_stage, tier, status, assigned_coach_user_id, tenant_id, updated_at")
+        .eq("tenant_id", tenantId),
+      String(args.query),
+    );
     if (args.lifecycle_stage) q = q.eq("lifecycle_stage", args.lifecycle_stage);
-    const { data, error } = await q;
+    const { data, error } = await q.order("updated_at", { ascending: false }).limit(limit);
     if (error) return err(error.message);
     return ok({ items: data ?? [], count: (data ?? []).length });
   },
@@ -2619,16 +2621,22 @@ mcp.tool("search_clients_fuzzy", {
     const max = Math.min(Math.max(limit ?? 8, 1), 25);
     const tid = await actorTenantId();
     const isGod = await actorIsPlatformOwner();
-    const safe = String(query).replace(/[,()%]/g, " ").trim();
-    if (!safe) return err("empty_query");
-    let q = admin
-      .from("clients")
-      .select("id, first_name, last_name, email, phone, entity_name, city, state, lifecycle_stage, tenant_id, updated_at")
-      .or(
-        `first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,email.ilike.%${safe}%,phone.ilike.%${safe}%,entity_name.ilike.%${safe}%,city.ilike.%${safe}%`,
-      )
-      .order("updated_at", { ascending: false })
-      .limit(max);
+    // Guard on the POST-strip token set (not just .trim()) so an all-punctuation
+    // query ("()", "%%", ",,") still errors as empty_query rather than falling
+    // through to a tokenless (tenant-scoped) recent-contacts list — preserving the
+    // pre-hotfix guard exactly (§39 peer-gate finding #2).
+    if (contactSearchTokens(String(query)).length === 0) return err("empty_query");
+    // §18 shared search (hotfix #127). "any" mode: a SINGLE OR over every token × column
+    // so a natural-language query ("Marcus from Atlanta") surfaces candidates (stopwords
+    // just match nothing) AND a full name ("Tashia Anderson") is no longer missed because
+    // first/last live in separate columns. Includes `city` for the "from <place>" pattern.
+    let q = applyContactSearchFilter(
+      admin
+        .from("clients")
+        .select("id, first_name, last_name, email, phone, entity_name, city, state, lifecycle_stage, tenant_id, updated_at"),
+      String(query),
+      { mode: "any", columns: [...CONTACT_SEARCH_COLUMNS, "city"] },
+    );
     // Only the platform owner searches across every tenant; everyone else
     // (including agencies) is hard-scoped to their own tenant here (§9).
     // Fail CLOSED: a non-god with no resolvable tenant gets nothing, never an
@@ -2637,7 +2645,7 @@ mcp.tool("search_clients_fuzzy", {
       if (!tid) return err("tenant_not_resolved");
       q = q.eq("tenant_id", tid);
     }
-    const { data, error } = await q;
+    const { data, error } = await q.order("updated_at", { ascending: false }).limit(max);
     if (error) return err(error.message);
     const items = data ?? [];
     return ok({
@@ -2646,7 +2654,7 @@ mcp.tool("search_clients_fuzzy", {
       disambiguation_required: items.length > 1,
       hint:
         items.length === 0
-          ? "No match. Ask the teammate for an email, phone, or company name."
+          ? "This search returned no candidates — that is NOT proof the client doesn't exist. Do not tell the operator 'no record on file' off this. Retry with a single name token, an email, phone, or company name; only if a genuinely broad search is still empty, ask whether to add them or if they're under a different name."
           : items.length === 1
             ? "Single match. Safe to proceed with the returned id."
             : "Multiple matches. Read the list back to the teammate and ask which client they mean before calling any ingest_* tool.",

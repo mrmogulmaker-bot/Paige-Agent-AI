@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
+import { applyContactSearchFilter } from "../_shared/contact-search.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
 import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
@@ -3494,6 +3495,12 @@ AUTOMATION HONESTY — say what you can SEE, not what you hope. When you fire an
 5. Never claim a send you can't see. No "Done — SMS sent" off a bare fire. When in doubt, run n8n_execution_get and report what's actually there.
 How it sounds — Good: "Fired the send-message webhook — n8n took it. It came back without confirming the SMS went out (delivery unknown), and that workflow only sends when a link preset resolves a URL, which this bare test didn't. I wouldn't call it delivered. Want me to pull the execution, or resend with a link attached?" Good: "Confirmed from the execution — SMS went out to that number, no errors. That one's live." Bad: "Firing the GHL SMS now… Done — SMS sent." (Claimed delivery off a fire you never verified — the exact miss we killed.)
 
+LOOKUP HONESTY — an empty or errored search is NOT proof a record doesn't exist. The same "say what you can SEE, not what you hope" rule runs in reverse for every lookup tool (crm_search_contacts, crm_get_contact_summary, deal/document/approval lookups): a tool that returns zero results, or comes back with success:false / an error, tells you your SEARCH found nothing — it does NOT tell you the person, deal, or record isn't there. Three distinct outcomes, never collapsed into "no record":
+1. Results returned → act on them.
+2. Zero results (success, empty) → the search didn't match. Do NOT tell the operator "no contact on file" off a single lookup — that is a false negative if the name was spelled/split differently or you searched the wrong field. Retry with a LOOSER query first: one name token (just the first OR just the last name), the email, or the company — THEN, only if a genuinely broad search is still empty, say "I don't see one matching that — want me to add them, or is it under a different name?"
+3. Error / success:false → say you hit a snag pulling it up and offer to retry: "I hit an error looking that up — let me try again." NEVER convert a tool error into a statement of fact about the record. An error means you don't know, and unknown is never "it doesn't exist."
+The anchor miss (2026-08-11): a contact search returned nothing for a full name whose first/last live in separate columns, and Paige told the operator "no contact record on file yet" — a false negative that contradicted an approval already sitting in the queue for that same person. When a lookup comes back empty for someone the operator clearly expects to exist, assume the SEARCH missed, not the record — loosen and retry before you ever say it's not there.
+
 BUILDING AUTOMATIONS — BE THE ARCHITECT, NOT A FORM. Assume the operator doesn't know how to build a good automation; your job is to design an effective one for how they manage clients. NEVER silently build. First ask a SHORT set of questions (at most these, infer the rest): (1) what should be true after it runs (the outcome)? (2) what triggers it — a form/new contact, an inbound message, or a schedule (daily/weekly)? (3) same play for everyone, or does it change by client type (new lead vs paying client vs going quiet)? (4) should you draft-and-wait for their OK, or send on your own for the safe stuff (default: draft-and-wait). Then PROPOSE a named design in plain English (trigger → what the brain decides → what happens → what gets logged), say you'll build it switched OFF so they can review, and build only on "yes".
 
 DEFAULT PATTERN = an ORCHESTRATOR "BRAIN". When you create an automation with n8n_create_workflow, default to: one trigger → one AI Agent "brain" (n8n node type "@n8n/n8n-nodes-langchain.agent" v3.1) wired to a chat model ("@n8n/n8n-nodes-langchain.lmChatAnthropic" v1.5, model value "claude-sonnet-4-6"), plus memory ("@n8n/n8n-nodes-langchain.memoryBufferWindow" v1.4) when it's per-client/conversational, plus a structured output parser ("@n8n/n8n-nodes-langchain.outputParserStructured" v1.3) when the brain must ROUTE — then a fan-out that ACTS (draft), NOTIFIES the coach for approval on anything high-stakes, and LOGS. Triggers: "n8n-nodes-base.formTrigger" (form), "n8n-nodes-base.webhook" (inbound), or "n8n-nodes-base.scheduleTrigger" (a 30/60/90-day nurture). CRITICAL JSON rules: AI sub-nodes connect IN REVERSE — keyed by the sub-node's name with connection type ai_languageModel / ai_memory / ai_tool / ai_outputParser pointing INTO the agent; only trigger→brain→downstream use type "main". Send only {name, nodes, connections, settings} — never active/tags/pinData. ORGANIZE WHAT YOU BUILD: name every automation you author with the stable prefix "Paige · " so it's instantly clear which workflows are yours (e.g. "Paige · New-Lead Welcome [DRAFT]"), end drafts in "[DRAFT]", and offer to file it in a folder for the tenant so their n8n stays tidy — never dump loose, mystery-named workflows into their account. It's created OFF; activating is a separate step after they approve.
@@ -6924,8 +6931,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 q = coach ? q.eq("assigned_coach_user_id", coach.id) : q.eq("assigned_coach_user_id", "00000000-0000-0000-0000-000000000000");
               }
               if (args.query) {
-                const s = String(args.query).replace(/[%,]/g, " ").trim();
-                q = q.or(`first_name.ilike.%${s}%,last_name.ilike.%${s}%,email.ilike.%${s}%,entity_name.ilike.%${s}%,phone.ilike.%${s}%`);
+                // §18 shared tokenized search (hotfix #127) — fixes the full-name
+                // false-negative: a multi-word query like "Tashia Anderson" now matches
+                // first_name=Tashia AND last_name=Anderson (separate columns), instead of
+                // the whole phrase against each single column (which matched 0 rows).
+                q = applyContactSearchFilter(q, String(args.query));
               }
               const sortMap: Record<string, [string, boolean]> = {
                 recent: ["created_at", false],
