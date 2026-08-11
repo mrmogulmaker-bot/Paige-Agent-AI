@@ -30,7 +30,7 @@ const Privacy = () => {
             <h2 className="text-2xl font-semibold text-foreground">1. Who we are and what this covers</h2>
             <p>
               PaigeAgent AI is a client-management platform operated by{" "}
-              <strong>PaigeAgent AI LLC</strong>, a Wyoming limited liability company. Paige helps
+              <strong>Paige Agent AI Inc.</strong>, a Delaware corporation. Paige helps
               coaches, consultants, agencies, thought leaders, and advisors run their practice —
               onboarding clients, managing relationships, following up, scheduling, and keeping the
               work moving. This Privacy Policy explains how we collect, use, protect, and{" "}

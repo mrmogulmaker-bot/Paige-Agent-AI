@@ -8,7 +8,7 @@ const Terms = () => {
     <div className="min-h-screen bg-background">
       <PageHead
         title="Terms of Service — PaigeAgent.ai"
-        description="Platform terms and acceptable use for PaigeAgent.ai — the client-management platform operated by PaigeAgent AI LLC (Wyoming)."
+        description="Platform terms and acceptable use for PaigeAgent.ai — the client-management platform operated by Paige Agent AI Inc. (Delaware)."
         path="/terms"
       />
       <SiteBackground />
@@ -24,7 +24,7 @@ const Terms = () => {
           <section>
             <h2 className="text-2xl font-semibold text-foreground">1. Acceptance of Terms</h2>
             <p>
-              By accessing or using the PaigeAgent.ai platform ("Service"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree, do not use the Service. PaigeAgent.ai is operated by PaigeAgent AI LLC ("Company," "we," "us," or "our").
+              By accessing or using the PaigeAgent.ai platform ("Service"), you agree to be bound by these Terms of Service ("Terms"). If you do not agree, do not use the Service. PaigeAgent.ai is operated by Paige Agent AI Inc. ("Company," "we," "us," or "our").
             </p>
           </section>
 
@@ -82,7 +82,7 @@ const Terms = () => {
           <section>
             <h2 className="text-2xl font-semibold text-foreground">8. Intellectual Property</h2>
             <p>
-              All content, features, and functionality of the Service — including the Paige AI assistant and associated platform materials — are owned by PaigeAgent AI LLC and are protected by copyright, trademark, and other intellectual property laws. Content and records you create and store in the platform remain yours.
+              All content, features, and functionality of the Service — including the Paige AI assistant and associated platform materials — are owned by Paige Agent AI Inc. and are protected by copyright, trademark, and other intellectual property laws. Content and records you create and store in the platform remain yours.
             </p>
           </section>
 
@@ -96,14 +96,14 @@ const Terms = () => {
           <section>
             <h2 className="text-2xl font-semibold text-foreground">10. Limitation of Liability</h2>
             <p>
-              TO THE MAXIMUM EXTENT PERMITTED BY LAW, PAIGEAGENT AI LLC SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING FROM YOUR USE OF THE SERVICE, INCLUDING BUT NOT LIMITED TO LOSS OF DATA, REVENUE, OR BUSINESS OPPORTUNITIES.
+              TO THE MAXIMUM EXTENT PERMITTED BY LAW, PAIGE AGENT AI INC. SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING FROM YOUR USE OF THE SERVICE, INCLUDING BUT NOT LIMITED TO LOSS OF DATA, REVENUE, OR BUSINESS OPPORTUNITIES.
             </p>
           </section>
 
           <section>
             <h2 className="text-2xl font-semibold text-foreground">11. Governing Law &amp; Dispute Resolution</h2>
             <p>
-              These Terms shall be governed by the laws of the United States and the state in which PaigeAgent AI LLC is incorporated. Any disputes arising under these Terms shall be resolved through binding arbitration in accordance with the rules of the American Arbitration Association.
+              These Terms shall be governed by the laws of the United States and the state in which Paige Agent AI Inc. is incorporated. Any disputes arising under these Terms shall be resolved through binding arbitration in accordance with the rules of the American Arbitration Association.
             </p>
           </section>
 
@@ -120,7 +120,7 @@ const Terms = () => {
               If you have questions about these Terms, please contact us at:
             </p>
             <p className="font-medium">
-              PaigeAgent AI LLC<br />
+              Paige Agent AI Inc.<br />
               Email: support@paigeagent.ai
             </p>
           </section>

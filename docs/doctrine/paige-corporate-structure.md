@@ -30,12 +30,15 @@ This doc is the single source of truth for the legal-entity identity every other
   parent-subsidiary structure is **incorrect** per the owner's 2026-08-11 ruling and has been flagged
   in that doc pending its fuller revision.
 - **Relationship to CoreConnect / other owner companies (clarification, not a corporate link):**
-  Antonio owns other companies (per `docs/portfolio/PORTFOLIO_SCOPE_BRIEFING.md`, e.g. CoreConnect
-  Technologies LLC, which runs Disputera). Those are related to Paige Agent AI Inc. **only by common
+  Antonio owns other companies. Any such company is related to Paige Agent AI Inc. **only by common
   ownership** — Antonio is a shareholder of each — **NOT** by any corporate parent/subsidiary
-  relationship. Paige Agent AI Inc. is not under CoreConnect and CoreConnect is not under it. Whether a
-  common-ownership "portfolio mode" concept survives in Paige's C-suite architecture is a separate
-  owner decision, tracked as a follow-up.
+  relationship. Paige Agent AI Inc. is not under any of them, and none is under it. The prior doctrine
+  that modeled Paige as a subsidiary in a "CoreConnect portfolio," and the C-suite "Portfolio /
+  parent-entity" mode built on it, are **DELETED** (owner-ruled 2026-08-11 — superseded, not
+  preserved). **"Portfolio" now has ONE meaning in Paige doctrine: a future *marketplace feature* for
+  tenants (task #129), unrelated to corporate structure.** (Any reference to a genuinely separate
+  business the owner runs — e.g. one that appears in a brand-licensing line — is that business's own
+  concern, flagged to the owner, not Paige-doctrine corporate structure.)
 
 ## 3. QSBS posture (§1202)
 

@@ -112,7 +112,7 @@ const tenantExamples = [
 
 export function PricingSection() {
   const navigate = useNavigate();
-  const [platformName, setPlatformName] = useState("PaigeAgent AI LLC");
+  const [platformName, setPlatformName] = useState("Paige Agent AI Inc.");
 
   useEffect(() => {
     (async () => {

@@ -33,9 +33,9 @@ export function Footer() {
               A personal AI advisor for business owners.
             </p>
             <p className="text-xs opacity-70 leading-relaxed mt-3">
-              Operated by <strong>PaigeAgent AI LLC</strong>
+              Operated by <strong>Paige Agent AI Inc.</strong>
               <br />
-              Wyoming, USA
+              Delaware, USA
             </p>
           </div>
 
@@ -80,12 +80,12 @@ export function Footer() {
             single workspace so teams can run their practice more efficiently.
           </p>
           <p className="text-[11px] text-primary-foreground/50 leading-relaxed max-w-4xl">
-            PaigeAgent AI LLC is a Wyoming limited liability company operating under license from
+            Paige Agent AI Inc. is a Delaware corporation operating under license from
             Aedis Brands LLC, a wholly-owned subsidiary of Givalli Heritage Holdings Inc.
             (Delaware).
           </p>
           <p className="text-sm text-center opacity-60">
-            © {year} PaigeAgent AI LLC. All rights reserved.
+            © {year} Paige Agent AI Inc. All rights reserved.
           </p>
         </div>
       </div>

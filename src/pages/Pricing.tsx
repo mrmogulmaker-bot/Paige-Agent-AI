@@ -279,7 +279,7 @@ export default function Pricing() {
             <p className="text-center text-xs text-muted-foreground max-w-3xl mx-auto leading-relaxed mt-12">
               Every plan is a Paige platform subscription. You bill your own clients through your own
               payment processor — Paige never touches your client revenue. Service provided by{" "}
-              <strong>PaigeAgent AI LLC</strong>.
+              <strong>Paige Agent AI Inc.</strong>
             </p>
           </div>
         </section>

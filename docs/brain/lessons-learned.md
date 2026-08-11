@@ -6,6 +6,36 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 0a. Ruling-conversion discipline — don't re-open a ruling as options (D7, 2026-08-11)
+
+- **Symptom:** the owner ruled D7 (Option A, direct C-Corp conversion, standalone, no holdco). CC's §37
+  producer inventory then surfaced adjacent stale doctrine the ruling hadn't named (the Portfolio-mode
+  C-suite architecture; CoreConnect/Disputera refs). Cowork re-presented this to the owner as "Reading 1
+  vs Reading 2" options. Owner, frustrated: *"There's no need to keep going back and forth… delete it and
+  update it. That's it."*
+- **Root cause:** treating a *scope-completeness* question ("the ruling didn't literally name this
+  adjacent thing") as a *decision* question ("which way do you want it?"). Adjacent doctrine that
+  **contradicts** an owner ruling is dead by implication — it doesn't need a fresh ruling to delete.
+- **Rule:** when the owner has ruled, convert the ruling into COMPLETE execution guidance across the full
+  scope §37 surfaces — do NOT re-open it as options. §28 protects CURRENT approved designs, not
+  superseded doctrine; superseded doctrine gets deleted/updated, not preserved-and-flagged. (Genuinely
+  NEW, separate facts a ruling couldn't have known about — e.g. an unrelated brand-licensing entity on
+  the public footer — are still flagged, once, tersely; that is not the same as re-litigating the ruling.)
+
+## 0b. Deep-research-not-memory — defer to real research, don't fake structure (2026-08-11)
+
+- **Symptom:** asked to design a domain surface (e.g. "what an investment/portfolio surface looks like")
+  with no concrete knowledge, the reflex is to synthesize plausible-sounding structure from memory.
+- **Root cause:** guessing reads as authoritative but isn't grounded; it ships wrong shapes that cost a
+  rebuild. Owner: *"do some homework, do some deep, deep diving and research."*
+- **Rule:** when you lack concrete domain knowledge, DEEP-RESEARCH it against best-in-class references
+  when the work fires — GOAT-anchored, the same discipline the skills wave uses — or defer the work until
+  that research can happen. Never fabricate plausible structure from memory. (Applies to Cowork planning
+  AND to what Cowork directs CC to build; e.g. the #129 Portfolio-feature surface is explicitly deferred
+  with a research directive rather than guessed now.)
+
+---
+
 ## 1. The voice live-drive trap (ElevenLabs, #24 / #170 / PR #409)
 
 - **Symptom:** "I updated the ElevenLabs agent but I still hear the old voice." Sessions changed a
