@@ -6,6 +6,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 import { gatewayCompat } from "../_shared/claude.ts";
+import { forge } from "../_shared/prompt-forge.ts";
+import { interpretSkill } from "../_shared/skill-interpreter.ts";
+import { shouldUseInterpreter, type SkillRow, type CallerTier } from "../_shared/skill-interpreter-core.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -21,6 +24,13 @@ interface RunRequest {
   invoker_kind?: "admin" | "coach" | "paige" | "system" | "mcp";
   invoker_user_id?: string;
   confirm_token?: string;
+  // ── S1b interpreter fields (all OPTIONAL → backward-compatible with every existing caller, §37) ──
+  /** Server-resolved tenant for the interpreter's forge (never a body-trusted auth claim, §9). */
+  tenant_id?: string;
+  /** Caller's §51/§60 tier, when the caller resolved it — enables the interpreter's server-side tier belt. */
+  caller_tier?: CallerTier;
+  /** Route a KNOWN (bespoke) slug through the interpreter too — ONLY for Slice 3's diff proof. Default false. */
+  force_interpreter?: boolean;
 }
 
 Deno.serve(async (req) => {
@@ -75,10 +85,67 @@ Deno.serve(async (req) => {
     const start = Date.now();
     const stepsLog: Array<Record<string, unknown>> = [];
     let outputs: Record<string, unknown> = {};
-    let runStatus: "succeeded" | "failed" = "succeeded";
+    let runStatus: "succeeded" | "failed" | "cancelled" | "awaiting_confirm" = "succeeded";
     let runError: string | null = null;
 
     try {
+      // Dispatch. Non-bespoke slugs (and force_interpreter) flow through the generic S1b interpreter;
+      // the 4 shipped slugs stay on their bespoke handlers below — byte-identical (§58 by construction),
+      // since force_interpreter defaults false and only NON-bespoke slugs otherwise take this path.
+      if (shouldUseInterpreter(skill.slug, body.force_interpreter)) {
+        // Resolve the tenant server-side (§9/§59). The contact's tenant is SERVER-DERIVED and therefore
+        // authoritative; a body-supplied tenant_id is only trusted for a genuinely no-contact skill. If
+        // both are present and DISAGREE, that's an IDOR attempt (a stranger tenant passed alongside a
+        // contact) — reject, never forge under the caller-supplied tenant.
+        let contactTenantId: string | null = null;
+        if (body.contact_id) {
+          const { data: c } = await admin.from("clients").select("tenant_id").eq("id", body.contact_id).maybeSingle();
+          contactTenantId = (c?.tenant_id as string) ?? null;
+        }
+        if (contactTenantId && body.tenant_id && body.tenant_id !== contactTenantId) {
+          throw new Error("tenant_mismatch: body tenant_id does not match the contact's tenant");
+        }
+        const interpTenantId = contactTenantId ?? body.tenant_id ?? null;
+        const interp = await interpretSkill(
+          { forge, admin },
+          {
+            skill: skill as unknown as SkillRow,
+            inputs: body.inputs ?? {},
+            contactId: body.contact_id ?? null,
+            tenantId: interpTenantId,
+            callerTier: body.caller_tier ?? null,
+            actorUserId: body.invoker_user_id ?? null,
+            actorRole: body.invoker_kind === "admin" ? "admin" : (body.invoker_kind ?? null),
+            runId: run.id,
+          },
+        );
+        stepsLog.push(...interp.steps_log);
+        // Surface the interpreter's richer outcome honestly (§13) and map it onto the run-table's
+        // CHECK-constrained status vocabulary (queued|running|succeeded|failed|cancelled|awaiting_confirm).
+        // Only a genuine completion (succeeded/awaiting_approval/brief) counts as success below — a
+        // policy stop (denied), an honest degrade (needs_config), or a paused input request (needs_input)
+        // must NOT inflate success_count.
+        outputs = { ...interp.outputs, interpreter_status: interp.status };
+        switch (interp.status) {
+          case "failed":
+            runStatus = "failed";
+            break;
+          case "succeeded":
+          case "awaiting_approval":
+          case "brief":
+            runStatus = "succeeded"; // a real completion
+            break;
+          case "needs_input":
+            runStatus = "awaiting_confirm"; // paused for the user's format choice (Slice 4)
+            break;
+          case "denied":
+          case "needs_config":
+          default:
+            runStatus = "cancelled"; // stopped before a deliverable — honest, does not count as success
+            break;
+        }
+        runError = interp.error ?? null;
+      } else {
       // Dispatch by slug. Each branch invokes specialized tools.
       switch (skill.slug) {
         case "verify_business_sos": {
@@ -220,7 +287,10 @@ Deno.serve(async (req) => {
           break;
         }
         default:
+          // Unreachable in practice: a non-bespoke slug is handled by the interpreter above. Kept as a
+          // defensive guard in case BESPOKE_SKILL_SLUGS and the switch ever drift.
           throw new Error(`Skill '${skill.slug}' is registered but has no runtime handler. Use skill-forge to scaffold one.`);
+      }
       }
     } catch (err) {
       runStatus = "failed";

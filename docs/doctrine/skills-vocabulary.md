@@ -33,6 +33,38 @@
 - Each `paige_skills` row also records its intended distribution in `tier_availability` jsonb
   (`{god,solo,sub_account,agency,enterprise}` = `yes|resell|yes+resell|no`) — a per-skill doc of the same rule.
 
+## How a Skill (concept 1) actually RUNS — the S1b interpreter
+
+`skill-runner` (the edge fn that executes a `paige_skills` recipe) dispatches two ways:
+- **Bespoke handlers** — the 4 shipped skills (`verify_business_sos`, `research_to_concept_brief`,
+  `build_game_plan`, `draft_and_email_document`) keep their hand-written `switch(slug)` branches.
+- **The generic steps-interpreter** (`_shared/skill-interpreter.ts`, pure logic in
+  `_shared/skill-interpreter-core.ts`) — runs **every other slug** (everything Paige forges from here on).
+  It is **additive** (§58): the 4 bespoke slugs are byte-identical, untouched, unless a caller passes
+  `force_interpreter` (Slice-3 diff tooling only — **never exposed in the `paige-mcp` `run_skill` schema**).
+
+The interpreter reads the skill ROW and drives a doctrine-clean run:
+- **Modality/tier (§17):** always the `text` modality; `external_send`-risk skills draft at the `frontier`
+  tier, everything else at `open-flexible`.
+- **Generation (§26):** routes through the EXISTING `forge()` seam — `methodology_anchor` leads the brief,
+  the descriptive `steps` become the plan, `cheesy-tells`/brand-tokens bind. `is_platform_default` is set
+  from `scoping==='platform'` so the §2 finance re-scan engages for platform skills. `remember:false` (a
+  skill draft is not a landed design artifact).
+- **Autonomy (§16):** `resolveExecutionMode(autonomy_lane, risk_level)` → `execute` (🟢 auto) / `approval`
+  (🟡 confirm — files a `paige_pending_approvals` draft) / `brief` (🔴 off). A **structural risk floor**
+  means `external_send`/`mutating` risk can **never** resolve to `execute` even if mis-laned — the
+  interpreter has **no external-send call site at all**, so a send only ever happens later from the
+  approved-send seam.
+- **Tier (§60/§61):** `tierAllowsSkill(tier_availability, caller_tier)` self-run belt — `yes`/`yes+resell`
+  allow, `resell` (marketplace-only) and `no` deny. The UI (`hasFeature('skills')`) is the primary gate;
+  this is defense-in-depth (a null `caller_tier` allows through).
+- **Tenant (§9/§59):** the contact's tenant (server-derived) is authoritative; a body `tenant_id` is only
+  honored for a no-contact skill; a mismatch is rejected as an IDOR attempt.
+
+**§58 automation:** `scripts/skills-s58-harness.mjs` (+ `tests/fixtures/skills-s58-baseline/`) captures a
+per-skill baseline (`--capture`) and diffs bespoke-vs-interpreter (`--diff`) — the automated parity proof
+that must be byte-identical before the interpreter may replace a bespoke handler (Fork-2: additive first).
+
 ## Do NOT
 - Do **not** rename `paige_skills`, `paige_subagents`, `marketplace_items`, `skill-runner`, `skill-forge`,
   `subagent-forge` — MEDIUM vocab means docs + comments only (§58 anti-regression, owner-ruled 2026-08-11).
