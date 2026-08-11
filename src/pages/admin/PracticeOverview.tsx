@@ -264,6 +264,17 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
           + one-click approve (§9 tenant-scoped; §11 gold budget owned by the tile). */}
       <SystemsCheckTile scope="tenant" />
 
+      {/* "See them work" (Task #245, §7 3-layer VP framework) — the ambient live read of
+          what each of Paige's ten departments is doing. Hoisted ABOVE the empty/non-empty
+          split (like SystemsCheckTile) so it renders for EVERY tenant of this tier
+          regardless of book state (§60 same-tier feature parity — a fresh sub-account with
+          an empty book still gets the department orchestration surface every other
+          same-tier tenant sees; it must not "poke out" of one account and vanish on
+          another). Was previously nested in the non-empty branch, so it only appeared once
+          a tenant had clients/attention/approvals — a same-tier parity gap, not a tier
+          feature difference. Proactive surfacing (§36), tenant-scoped (§9), gold-free (§11). */}
+      <PaigeDepartmentStatus scope="tenant" />
+
       {emptyBook ? (
         <SectionCard>
           <EmptyState
@@ -352,11 +363,6 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
               ))}
             </StatRow>
           </SectionCard>
-
-          {/* "See them work" (Task #245, §7 3-layer VP framework). The ambient live
-              read of what each of Paige's ten departments is doing — proactive
-              surfacing (§36), tenant-scoped (§9), gold-free (§11). */}
-          <PaigeDepartmentStatus scope="tenant" />
 
           {showKpis && (
             <StatRow cols={Math.max(2, Math.min(kpis.length, 4)) as 2 | 3 | 4}>
