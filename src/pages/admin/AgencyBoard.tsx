@@ -35,7 +35,7 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import {
   useAgencyPortfolio, type PortfolioHealthKey, type LeaderboardRow,
 } from "@/hooks/useAgencyPortfolio";
-import { getTierBookNoun, getTierBookNounSingular, type TierClassification } from "@/lib/agency/tierLabels";
+import { getTierBookNounLower, getTierBookNounSingular, type TierClassification } from "@/lib/agency/tierLabels";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -110,8 +110,7 @@ export default function AgencyBoard() {
     parent_tenant_id: activeTenant?.parent_tenant_id ?? null,
     isPlatformStaff: false,
   };
-  const bookNoun = getTierBookNoun(tierClassification);
-  const bookNounLower = bookNoun.toLowerCase();
+  const bookNounLower = getTierBookNounLower(tierClassification);
   const bookNounSingular = getTierBookNounSingular(tierClassification);
   // §9/§51 guard for the own-business Systems Check tile below. On /agency the operator may still be
   // scoped INTO a child (e.g. Back after agency_enter_subaccount), so `activeTenantId` can be the
@@ -492,7 +491,9 @@ export default function AgencyBoard() {
     { key: "clients", header: "Clients", numeric: true },
     { key: "mrr", header: "MRR", numeric: true },
     { key: "health", header: "Health" },
-    { key: "status", header: "Status" },
+    // §25/§58: Status demoted from its own pill-column into the name sub-line (below) —
+    // de-densifies the trailing cluster (no two adjacent pills) while keeping every
+    // status visible (active muted, non-active flagged in --warning). Capability preserved.
     { key: "manage", header: "" },
     { key: "actions", header: "", className: "text-right" },
   ];
@@ -628,6 +629,9 @@ export default function AgencyBoard() {
               loading={loading}
               isEmpty={!loading && orderedSubs.length === 0}
               empty={
+                // §57 TODO: this empty-state + "New sub-account" copy is hardcoded to the
+                // agency word. Correct for the only shipping parent tier today (agency); when
+                // an `enterprise` "Portfolio" tenant lands, derive this copy from bookNounSingular/Lower too.
                 <EmptyState
                   icon={Building2}
                   tone="brand"
@@ -661,6 +665,14 @@ export default function AgencyBoard() {
                           {s.account_type !== "standalone" && s.account_type !== "sub_account" && (
                             <span className="capitalize"> · {s.account_type}</span>
                           )}
+                          {/* §25/§58: status folded here (was its own pill-column). Active is the
+                              quiet default; a non-active status is flagged in --warning so it stands
+                              out without a second pill next to Health. Capability preserved. */}
+                          <span
+                            className={`capitalize ${s.status !== "active" ? "text-[hsl(var(--warning))]" : ""}`}
+                          >
+                            {" · "}{s.status}
+                          </span>
                         </div>
                       </div>
                     </TableCell>
@@ -676,11 +688,6 @@ export default function AgencyBoard() {
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <StatePill state={s.status === "active" ? "success" : "pending"}>
-                        {s.status}
-                      </StatePill>
                     </TableCell>
                     <TableCell className="text-right">
                       {isSelected ? (
