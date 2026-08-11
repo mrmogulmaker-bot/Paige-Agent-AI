@@ -40,6 +40,13 @@ describe("contactSearchTokens", () => {
     expect(contactSearchTokens("   ")).toEqual([]);
     expect(contactSearchTokens("")).toEqual([]);
   });
+  it("returns no tokens for an all-punctuation query (the fuzzy empty_query guard, §39 finding #2)", () => {
+    // search_clients_fuzzy guards on contactSearchTokens(query).length===0, so these
+    // must tokenize to [] (→ empty_query error) rather than a tokenless full-list fall-through.
+    expect(contactSearchTokens("()")).toEqual([]);
+    expect(contactSearchTokens("%%")).toEqual([]);
+    expect(contactSearchTokens(",,")).toEqual([]);
+  });
 });
 
 describe("contactSearchOrGroup", () => {

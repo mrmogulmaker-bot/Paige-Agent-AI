@@ -21,7 +21,7 @@ import { McpServer, StreamableHttpTransport } from "npm:mcp-lite@^0.10.0";
 import { z } from "npm:zod@^3.25.0";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
-import { applyContactSearchFilter, CONTACT_SEARCH_COLUMNS } from "../_shared/contact-search.ts";
+import { applyContactSearchFilter, contactSearchTokens, CONTACT_SEARCH_COLUMNS } from "../_shared/contact-search.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -2621,7 +2621,11 @@ mcp.tool("search_clients_fuzzy", {
     const max = Math.min(Math.max(limit ?? 8, 1), 25);
     const tid = await actorTenantId();
     const isGod = await actorIsPlatformOwner();
-    if (!String(query).trim()) return err("empty_query");
+    // Guard on the POST-strip token set (not just .trim()) so an all-punctuation
+    // query ("()", "%%", ",,") still errors as empty_query rather than falling
+    // through to a tokenless (tenant-scoped) recent-contacts list — preserving the
+    // pre-hotfix guard exactly (§39 peer-gate finding #2).
+    if (contactSearchTokens(String(query)).length === 0) return err("empty_query");
     // §18 shared search (hotfix #127). "any" mode: a SINGLE OR over every token × column
     // so a natural-language query ("Marcus from Atlanta") surfaces candidates (stopwords
     // just match nothing) AND a full name ("Tashia Anderson") is no longer missed because
