@@ -59,13 +59,15 @@ describe("resolveTierKey", () => {
 });
 
 describe("§60 customer_portal_invite lock — the owner-ruled cell", () => {
-  it("solo + sub_account GET it", () => {
+  it("solo + sub_account + enterprise GET it (enterprise = the HYBRID tier, owner 2026-08-11)", () => {
     expect(hasFeature(SOLO, "customer_portal_invite")).toBe(true);
     expect(hasFeature(SUB, "customer_portal_invite")).toBe(true);
+    // Enterprise HYBRID (closes flag 1 from PR #458): a creation-capable tenant with a
+    // direct client book must be able to invite the very clients its campaigns are for.
+    expect(hasFeature(ENTERPRISE, "customer_portal_invite")).toBe(true);
   });
-  it("agency + enterprise + god do NOT (the lock)", () => {
+  it("a pure agency + god do NOT (the lock holds for agency)", () => {
     expect(hasFeature(AGENCY, "customer_portal_invite")).toBe(false);
-    expect(hasFeature(ENTERPRISE, "customer_portal_invite")).toBe(false);
     expect(hasFeature(GOD, "customer_portal_invite")).toBe(false);
   });
 });
