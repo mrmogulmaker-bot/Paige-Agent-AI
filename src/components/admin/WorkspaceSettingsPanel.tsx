@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, Copy, Link2, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useTierFeatures } from "@/hooks/useTierFeatures";
 import { SubAccountsPanel } from "@/components/admin/SubAccountsPanel";
 import { toast } from "sonner";
 
@@ -49,6 +50,12 @@ const EMPTY_BRAND: BrandState = {
 
 export function WorkspaceSettingsPanel() {
   const { activeTenant, isPlatformOwner, refresh } = useTenantContext();
+  // §60 tier lock (owner 2026-08-11): "Consumer signup" invites mint the SAME
+  // consumer portal token as the 4 contact-surface senders — solo + sub_account
+  // ONLY. On Agency/Enterprise/God the consumer option is hidden and the mint is
+  // hard-guarded; the "Team member" invite (staff/coach) stays on every tier.
+  const { has: hasTierFeature } = useTierFeatures();
+  const canInvitePortal = hasTierFeature("customer_portal_invite");
   const tenantId = activeTenant?.id ?? null;
 
   const [brand, setBrand] = useState<BrandState>(EMPTY_BRAND);
@@ -97,6 +104,12 @@ export function WorkspaceSettingsPanel() {
     loadInvites();
   }, [loadInvites]);
 
+  // §60: if this tier can't send consumer/portal invites, never leave the kind on
+  // "consumer" (its option is hidden) — snap it to the always-available "team".
+  useEffect(() => {
+    if (!canInvitePortal) setInviteKind("team");
+  }, [canInvitePortal]);
+
   const saveBrand = async () => {
     if (!tenantId) return;
     setSavingBrand(true);
@@ -125,6 +138,12 @@ export function WorkspaceSettingsPanel() {
 
   const mintInvite = async () => {
     if (!tenantId) return;
+    // §60 hard-guard: never mint a consumer/portal invite on a tier that can't (the
+    // UI hides the option, but guard the action too — UI is not the auth boundary).
+    if (inviteKind === "consumer" && !canInvitePortal) {
+      toast.error("Consumer/client invites aren't available on this account type.");
+      return;
+    }
     setMinting(true);
     try {
       const { data, error } = await supabase.rpc("create_tenant_invite_token", {
@@ -261,8 +280,12 @@ export function WorkspaceSettingsPanel() {
             <Link2 className="w-4 h-4" /> Invite links
           </CardTitle>
           <CardDescription>
-            Generate a link anyone can use to join this workspace. Choose <strong>Consumer</strong>{" "}
-            for client signups, or <strong>Team</strong> for staff and coaches.
+            Generate a link anyone can use to join this workspace.{" "}
+            {canInvitePortal ? (
+              <>Choose <strong>Consumer</strong> for client signups, or <strong>Team</strong> for staff and coaches.</>
+            ) : (
+              <>Invite <strong>Team</strong> members — staff and coaches.</>
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -272,7 +295,7 @@ export function WorkspaceSettingsPanel() {
               <Select value={inviteKind} onValueChange={(v) => setInviteKind(v as "consumer" | "team")}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="consumer">Consumer signup</SelectItem>
+                  {canInvitePortal && <SelectItem value="consumer">Consumer signup</SelectItem>}
                   <SelectItem value="team">Team member</SelectItem>
                 </SelectContent>
               </Select>

@@ -22,6 +22,7 @@ import { AddInternalClientDialog } from "./AddInternalClientDialog";
 import { QuickUploadReportModal } from "./QuickUploadReportModal";
 import { useDashboardMode } from "@/contexts/DashboardModeContext";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useTierFeatures } from "@/hooks/useTierFeatures";
 import { toast } from "sonner";
 
 interface InternalClient {
@@ -65,6 +66,12 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
   const navigate = useNavigate();
   const { setMode } = useDashboardMode();
   const { activeTenantId } = useTenantContext();
+  // §60 tier lock (owner-ruled 2026-08-11): the consumer/client ("Client" role)
+  // portal invite is solo + sub_account ONLY. Staff-role invites (coach/admin/…)
+  // are untouched — an Agency legitimately invites staff, just not a direct
+  // consumer client book.
+  const { has: hasTierFeature } = useTierFeatures();
+  const canInvitePortal = hasTierFeature("customer_portal_invite");
   const [internalClients, setInternalClients] = useState<InternalClient[]>([]);
   const [authClients, setAuthClients] = useState<AuthClient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,7 +94,9 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
   // Invite dialog state
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<string>("user");
+  // §60: default to the consumer "Client" role only where it's available; on
+  // Agency/Enterprise/God the "Client" option is hidden, so default to "coach".
+  const [inviteRole, setInviteRole] = useState<string>(canInvitePortal ? "user" : "coach");
   const [inviteSending, setInviteSending] = useState(false);
 
   // Business-limit override dialog state
@@ -426,6 +435,11 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
         // (/join) via a consumer token — never the staff /accept-invite dashboard
         // path. Mirrors ContactPortalPanel so, on accept, they get a clients row +
         // client role with NO tenant_members membership (no operator dashboard).
+        // §60: consumer-portal invite is solo + sub_account only — hard-guard it.
+        if (!canInvitePortal) {
+          toast.error("Client portal invites aren't available on this account type.");
+          return;
+        }
         if (!activeTenantId) {
           toast.error("No active workspace to invite into.");
           return;
@@ -470,7 +484,10 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
       }
       setInviteOpen(false);
       setInviteEmail("");
-      setInviteRole("user");
+      // §60: mirror the initial default — never reset to "user" (Client) on a tier
+      // where that option is hidden, which would leave the Select bound to an
+      // invisible value (blank trigger) on the next open.
+      setInviteRole(canInvitePortal ? "user" : "coach");
     } catch (err: any) {
       console.error("Error sending invite:", err);
       toast.error(err.message || "Failed to send invitation");
@@ -1098,7 +1115,8 @@ export function ClientManagementDashboard({ onViewClient, onViewInternalClient }
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="user">Client</SelectItem>
+                  {/* §60: consumer "Client" invite — solo + sub_account only. */}
+                  {canInvitePortal && <SelectItem value="user">Client</SelectItem>}
                   <SelectItem value="coach">Coach</SelectItem>
                   <SelectItem value="moderator">Moderator</SelectItem>
                   <SelectItem value="admin">Administrator</SelectItem>
