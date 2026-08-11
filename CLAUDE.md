@@ -1926,3 +1926,134 @@ route, RPC, edge function, migration, surface, or copy block — you STOP and ch
   there regardless of empty/default state? Or did I build for the account in front of me and let
   the other tiers fall where they may?"* If the matrix wasn't checked and the per-tier availability
   wasn't a deliberate decision, it isn't §56-clean.
+
+## 57. Super Admin is the source of truth — every surface DERIVES from the God-level account, never independently.
+
+> **PROPOSED — pending owner ruling on exact wording.** Drafted from the owner's 2026-08-10 ruling
+> and merged as a DRAFT for the owner to rule on; treat its intent as binding once ruled, but the
+> exact wording below is not yet final (same status as §BRAIN).
+
+**Directive (owner: Antonio, owner-locked 2026-08-10).** Owner's verbatim framing: *"If the super
+admin doesn't say it's so, then it's just not true... they're acting like they're all independent of
+one another when everything should derive from the god-level account."* Every tenant-facing and
+agency-facing surface **DERIVES from what the God-level (Super Admin) account says is real.** No
+surface may show data the God-level record contradicts. Cross-surface parity is enforced **top-down**
+from the operator's source-of-truth record — never derived independently, per-surface, from whatever
+local query each screen happened to run.
+
+- **One record of truth, many read-only projections.** The operator's God-level classification/state
+  (revenue class, tenant topology, entitlements, account type) is the authority; tenant/agency/
+  sub-account surfaces render a projection of it, they do not each compute their own version. Two
+  surfaces showing different "truths" for the same tenant is a §57 defect (and usually a §51 tier
+  bug underneath), not a display quirk.
+- **Anchor cases (the divergences that forced this):** (a) **Fleet Console stale MRR** — `$397` / `$149`
+  MRR surfacing on tenants that have **no paid subscription** (the God-level revenue record says $0/
+  promotional; the Fleet surface showed a phantom paid figure). (b) **Antonio Daniel LLC misclassified**
+  — surfaced as a `SUB_ACCOUNT` when the God-level topology says otherwise (§51 invariant). (c) **Super
+  Admin Analytics empty while a sub-account's Analytics is live** — the operator (source of truth) shows
+  less than a tenant projection, which is backwards (§35 dogfooding).
+- **Enforcement (§58 cross-surface parity audit).** A cross-surface parity audit (owner task #58) walks
+  each tenant-facing figure back to its God-level source and flags any surface that computes/shows a
+  value the operator record contradicts. Ships with the revenue-integrity work (§17/#31) where the
+  figure is revenue.
+- **The test, every time:** *"Does this surface DERIVE its truth from the God-level record, or did it
+  compute its own answer that could contradict what the Super Admin says is real?"* If it's an
+  independent computation that can diverge from the operator record, it isn't §57-clean.
+
+**Cross-references:** §9 (platform vs tenant seam), §51/§56 (tier matrix — a §57 divergence is usually
+a tier bug), §17/#31 (revenue integrity chain — the money-side enforcement), §35 (operator dogfooding).
+
+## 58. Anti-regression — a shipped, owner-approved capability is NEVER silently removed. §-number to confirm at ratification.
+
+> **PROPOSED — pending owner ruling on exact wording.** Drafted from the owner's 2026-08-10 flag
+> (twin of §28 "approved is frozen"); merged as a DRAFT for the owner to rule on. The §-number
+> (§58) is provisional — confirm at ratification. Same status as §BRAIN.
+
+**Directive (owner: Antonio, owner-flagged 2026-08-10) — the twin of §28.** §28 says an approved
+design is FROZEN (don't touch it). §58 is the other half: a **capability** that has once shipped and
+been owner-approved is **NEVER silently removed, hidden, or gated off in a later PR.** A refactor,
+a facelift, a "cleanup," or an unrelated change does not get to quietly drop a feature the owner
+already signed off on — that regression must be caught and surfaced, not discovered by the owner live.
+
+- **If a change removes or hides a previously-shipped capability, call it out EXPLICITLY.** Name the
+  exact capability being removed/hidden in the PR description, and require an **owner sign-off before
+  merge** — even (especially) when the PR is nominally about something else. Silent removal is the
+  failure this section exists to kill.
+- **§39 verifier checklist item (binds every PR, not just the ones about that capability).** The
+  adversarial verifier / peer-gate adds a standing question to its read of the real diff: *"Did this
+  PR silently remove, hide, or gate off any previously-shipped, owner-approved capability?"* A "yes"
+  with no explicit call-out + owner sign-off blocks the merge.
+- **The test, every time:** *"Did anything the owner already approved get removed, hidden, or gated
+  off by this change — and if so, did I flag it explicitly and get sign-off, or did I let it vanish
+  quietly for the owner to find live?"* If a shipped capability regressed without an explicit flag,
+  it isn't §58-clean.
+
+**Cross-references:** §28 (approved design is frozen — the design twin), §39 (peer-gate / adversarial
+verifier owns the checklist item), §13 (honest reporting), §32.c (owner live-drive is where silent
+regressions surface today — this moves the catch upstream).
+
+## 59. SECURITY DEFINER functions enforce caller scope IN-BODY — the grant is never the guard. §-number to confirm at ratification.
+
+> **PROPOSED — pending owner sign-off.** Drafted from #117 (PR #448) as the companion to #116's
+> view-class rule; merged as a DRAFT (same status as §BRAIN). The §-number (§59) is provisional —
+> confirm at ratification.
+
+**Directive (drafted from #117, companion to #116's view class):** A `SECURITY DEFINER`
+function runs as its OWNER (postgres) and therefore BYPASSES row-level security on every
+table it touches — exactly like a `security_invoker=off` view (#116), but a different
+Postgres object type. That is SAFE **only if the function body itself enforces the caller's
+scope.** The leak class (the #588 / #55 / §45-IDOR pattern) is a DEFINER data-returner or
+writer, EXECUTE-granted to `anon` or broad `authenticated`, that returns/mutates tenant/PII/
+secret data keyed on a PARAMETER without verifying the caller owns that row / is in that
+tenant / holds the required role. The EXECUTE grant is NEVER the access control — the in-body
+check is.
+
+- **The A/B/C classification (run on every DEFINER function that returns or mutates data):**
+  - **A = SAFE, keep DEFINER.** The body enforces caller scope: (i) requires `auth.uid()` and
+    touches ONLY the caller's own rows (`= auth.uid()`); (ii) tenant-scoped via
+    `current_user_tenant_id()` with no client-supplied tenant param that overrides it (or the
+    param is validated `== caller tenant` / `is_platform_owner`); (iii) a role/ownership gate
+    that RAISES before returning data (`is_platform_admin`/`is_tenant_admin`/`_assert_*`/
+    `is_platform_owner`); (iv) a token/slug public read of only safe fields.
+  - **B = convert to INVOKER.** DEFINER is unnecessary — the function only touches tables the
+    caller already has RLS access to, so it is bypassing RLS for no reason. Making it
+    `security_invoker` lets RLS enforce scope with no behavior change for legit callers.
+  - **C = fix in place.** DEFINER IS needed (reads `auth.users`, an operator/cross-cutting
+    table, or a restricted-RLS table) BUT the caller guard is missing/broken. Add the exact
+    missing predicate (self / tenant / role) and REVOKE `anon` where over-broad.
+
+- **The global-role trap (§53).** `user_roles` is a GLOBAL table with no `tenant_id`, so
+  `has_role(caller,'admin')` / `has_any_role(...)` is TENANT-AGNOSTIC. A function that branches
+  authority on the tenant-level `'admin'`/`'coach'`/`'sales_rep'` app_role — or honors a
+  caller-supplied `p_tenant_id` next to such a branch — lets a tenant-A admin act on tenant B.
+  Cross-tenant authority is `is_platform_owner()`/`is_platform_operator()` (super_admin/
+  platform_admin), NEVER the tenant-level app_role. Every DEFINER function that means "operator
+  can act across tenants" must gate on the operator helper, not the global role.
+
+- **Never trust a caller-SUPPLIED identity param for the auth check.** A function that role-
+  checks a `_calling_user_id`/`_actor` parameter instead of `auth.uid()` is a total auth bypass
+  (the caller passes any known privileged UUID). The auth subject is ALWAYS `auth.uid()`; a
+  service-role/trusted path is the ONLY place a passed actor is honored, and only because
+  `auth.uid()` is NULL there. (This is the #117 HIGH — `delete_credit_report_upload`.)
+
+- **The CI drift-guard (§24 automation).** `scripts/ci/definer-fn-lint.mjs` (wired as
+  `lint:definer-fns` in `package.json` + `.github/workflows/ci.yml`, next to `lint:views`)
+  fails any migration that grants a new `public` `SECURITY DEFINER` function to `anon`/`PUBLIC`
+  without an inline `-- definer-anon-exempt: <reason>` escape — forcing a conscious exemption
+  for the genuinely-public token/slug reads. A periodic advisor re-lists every DEFINER
+  data-returner with anon/broad-authenticated EXECUTE so drift is caught.
+
+- **§37 producer inventory on every REVOKE / guard-add.** Before REVOKEing `anon`/
+  `authenticated` or tightening a guard, walk the 8 caller classes: confirm no legit caller
+  (esp. a service-role edge fn with `auth.uid()=NULL`, or an agency-parent acting on a
+  sub-account via CONTEXT-SWITCH not a foreign tenant param) breaks. A half-hardened function
+  that 4xxs a legit caller is worse than the leak.
+
+- **The test, every time:** *"This DEFINER function bypasses RLS — does its BODY re-enforce who
+  the caller is (self / tenant / operator role that RAISES), or is it trusting the EXECUTE grant,
+  a caller-supplied id param, or a tenant-agnostic global role?"* If the grant is the only guard,
+  it isn't §9-safe.
+
+**Cross-references:** §9 (tenant isolation), §53 (operator tiers — the global-role trap),
+§37 (producer inventory), §51 (per-tier check), §32 (SET ROLE proofs), §39 (peer-gate),
+#116 (the view class — same mechanism, different object type).

@@ -54,7 +54,10 @@ All figures below were checked live this session; how each was verified is in `c
   `is_active`); **live Stripe active prices = Solo + Agency only** (Enterprise has no active Stripe
   price yet — see `config-registry.md`).
 - **CI pipelines:** 6 — `ci`, `deploy-migrations`, `deploy-edge-functions`, `migration-lint`,
-  `premerge-migration-proof`, `security-audit` (verified: `.github/workflows/`).
+  `premerge-migration-proof`, `security-audit` (verified: `.github/workflows/`). Plus two RLS
+  drift-guard npm scripts wired into `ci.yml`: **`lint:views`** (VIEW `security_invoker` drift, #116/PR #447)
+  + **`lint:definer-fns`** (`SECURITY DEFINER` fn granted to anon w/o exempt escape, #117/PR #448) —
+  the anon/cross-tenant-reach class is now guarded at both Postgres object types. See `config-registry.md` → CI.
 - **Paige default voice:** `DEFAULT_TTS_VOICE = 0S5oIfi8zOZixuSj8K6n` (**"Ivanna"**) — owner-ruled
   2026-08-09, PR #409 (`1e726426`). ON RECORD, do not re-ask (§BRAIN.2). See `config-registry.md` → Voice.
 - **Operator Communications:** live on prod — PR #408 (`2ee92903`), §32.a confirmed

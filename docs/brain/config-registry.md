@@ -244,6 +244,13 @@ Ivanna) and `ELEVENLABS_VOICE_ID` (only for the `elevenlabs.ts` legacy path). #4
 | `premerge-migration-proof.yml` | pull_request | Pre-merge `BEGIN..ROLLBACK` migration proof (§32.a) |
 | `security-audit.yml` ("Security Audit") | pull_request + push | Security audit gate |
 
+**RLS anon/cross-tenant-reach drift guards (npm scripts wired into `ci.yml`):**
+
+| Script | Guards | Added |
+|---|---|---|
+| `lint:views` | Fails any migration that lets a VIEW drift to `security_invoker=off` (the #116 11-view anon/cross-tenant leak class). | PR #447 / §9 P0 #116 |
+| `lint:definer-fns` (`scripts/ci/definer-fn-lint.mjs`) | Fails any migration granting a new public `SECURITY DEFINER` function to `anon`/`PUBLIC` without an inline `-- definer-anon-exempt: <reason>` escape (the #117 owner-bypass fn class). Sibling of `lint:views`. | PR #448 / §9 P0 #117 |
+
 Repo: **`mrmogulmaker-bot/paige-agent-ai`** (✅ this is the accessible repo for GitHub MCP; a
 `mrmogulmaker/paige-agent-ai` path is **not** configured for the session). Default branch `main`.
 `GITHUB_TOKEN`, `GITHUB_REPO` also appear as edge secret names (Paige→GitHub seam).
