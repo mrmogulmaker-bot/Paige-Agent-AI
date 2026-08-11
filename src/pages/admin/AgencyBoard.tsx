@@ -27,12 +27,15 @@ import {
   Building2, Users, Workflow as WorkflowIcon, Plus, RefreshCw,
   ArrowRightLeft, Store, Loader2, PackageCheck, Layers,
   TrendingUp, Palette, Mic, Sparkles, UserPlus,
-  DollarSign, AlertTriangle, Activity, Trophy, ArrowUpRight,
+  DollarSign, AlertTriangle, Activity,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { useAgencyPortfolio, type PortfolioHealthKey } from "@/hooks/useAgencyPortfolio";
+import {
+  useAgencyPortfolio, type PortfolioHealthKey, type LeaderboardRow,
+} from "@/hooks/useAgencyPortfolio";
+import { getTierBookNoun, getTierBookNounSingular, type TierClassification } from "@/lib/agency/tierLabels";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -95,6 +98,21 @@ const HEALTH_PILL: Record<PortfolioHealthKey, { state: "success" | "warning" | "
 
 export default function AgencyBoard() {
   const { activeTenant, activeTenantId } = useTenantContext();
+
+  // §57 tier-noun derivation — the merged section heading + the revenue tile read
+  // their tier label from the ONE source of truth (§18), never a hardcode. This
+  // surface is the AGENCY's own book, so the noun follows the ACTIVE tenant's
+  // account_type (agency → "Sub-accounts", enterprise → "Portfolio" RESERVED) — we
+  // pass isPlatformStaff:false deliberately: even when a platform operator is scoped
+  // into an agency here, "its book" is Sub-accounts/Portfolio, not the platform Fleet.
+  const tierClassification: TierClassification = {
+    account_type: activeTenant?.account_type ?? null,
+    parent_tenant_id: activeTenant?.parent_tenant_id ?? null,
+    isPlatformStaff: false,
+  };
+  const bookNoun = getTierBookNoun(tierClassification);
+  const bookNounLower = bookNoun.toLowerCase();
+  const bookNounSingular = getTierBookNounSingular(tierClassification);
   // §9/§51 guard for the own-business Systems Check tile below. On /agency the operator may still be
   // scoped INTO a child (e.g. Back after agency_enter_subaccount), so `activeTenantId` can be the
   // CHILD id — rendering a tenant-scoped tile then would surface the CHILD's check (and let it be
@@ -339,7 +357,7 @@ export default function AgencyBoard() {
         key: "portfolio_mrr_cents",
         node: (
           <StatTile
-            label="Portfolio revenue"
+            label={`${bookNounSingular} revenue`}
             value={usd(p?.portfolio_mrr_cents ?? 0)}
             icon={DollarSign}
             hint="monthly recurring"
@@ -397,9 +415,28 @@ export default function AgencyBoard() {
       });
     }
     return tiles;
-  }, [portfolio, portfolioLoading]);
+  }, [portfolio, portfolioLoading, bookNounSingular]);
 
   const leaderboard = portfolio?.leaderboard;
+
+  // --- The §18 merge: ONE surface = the authoritative roster (agency_list_my_subaccounts)
+  // with the leaderboard metrics (agency_portfolio_metrics) OVERLAID by tenant id.
+  // The ROSTER is authoritative membership; the leaderboard is the metric overlay.
+  // A roster row with no leaderboard row renders its metric cells ABSENT ("—"),
+  // never a fabricated 0 (§13). ---
+  const leaderboardByTenant = useMemo(() => {
+    const m = new Map<string, LeaderboardRow>();
+    (leaderboard ?? []).forEach((r) => m.set(r.tenant_id, r));
+    return m;
+  }, [leaderboard]);
+
+  // Server traction rank (leaderboard is already server-ranked by traction) →
+  // preserve that ordering on the merged roster; rows with no metric sort last.
+  const tractionRank = useMemo(() => {
+    const m = new Map<string, number>();
+    (leaderboard ?? []).forEach((r, i) => m.set(r.tenant_id, i));
+    return m;
+  }, [leaderboard]);
 
   // Health split derived straight from the leaderboard rows, so the filter chips,
   // the proportion meter, and the rows they filter can never disagree (§13).
@@ -409,23 +446,38 @@ export default function AgencyBoard() {
     return c;
   }, [leaderboard]);
 
-  const bookTotal = leaderboard?.length ?? 0;
+  // How many rated accounts exist (denominator for the proportion meter). Every
+  // leaderboard row carries a health, so this equals the rated-row count.
+  const ratedTotal = healthCounts.healthy + healthCounts.watch + healthCounts.at_risk;
 
-  const filteredLeaderboard = useMemo(
-    () =>
+  // Filter the JOINED set by health. "all" shows the whole authoritative roster;
+  // a specific bucket keeps only rows whose overlaid metric matches (rows with no
+  // metric have no health, so they fall out of a bucket filter — honest, §13).
+  // Then order by server traction rank (metric-less rows last).
+  const orderedSubs = useMemo(() => {
+    const base =
       healthFilter === "all"
-        ? (leaderboard ?? [])
-        : (leaderboard ?? []).filter((r) => r.health === healthFilter),
-    [leaderboard, healthFilter],
-  );
+        ? subs
+        : subs.filter((s) => leaderboardByTenant.get(s.id)?.health === healthFilter);
+    return [...base].sort((a, b) => {
+      const ra = tractionRank.get(a.id);
+      const rb = tractionRank.get(b.id);
+      if (ra === undefined && rb === undefined) return 0;
+      if (ra === undefined) return 1;
+      if (rb === undefined) return -1;
+      return ra - rb;
+    });
+  }, [subs, healthFilter, leaderboardByTenant, tractionRank]);
 
   // A brand-new agency with zero children, fully loaded: one honest first-run
   // hero, not a wall of zero-tiles.
   const showEmpty = !loading && !portfolioLoading && subs.length === 0;
 
-  // The health filter chips, in book order (All + the three buckets).
+  // The health filter chips, in book order. "All" counts the AUTHORITATIVE roster
+  // (subs), the buckets count the rated (leaderboard) rows — a row without a metric
+  // is in All but in no bucket (§13 honest; no fabricated health).
   const healthChips: Array<{ key: "all" | PortfolioHealthKey; label: string; count: number }> = [
-    { key: "all", label: "All", count: bookTotal },
+    { key: "all", label: "All", count: subs.length },
     { key: "healthy", label: "Healthy", count: healthCounts.healthy },
     { key: "watch", label: "Watch", count: healthCounts.watch },
     { key: "at_risk", label: "At risk", count: healthCounts.at_risk },
@@ -433,19 +485,16 @@ export default function AgencyBoard() {
 
   const availableCount = MARKETPLACE_SKILLS.filter((s) => s.status === "available").length;
 
+  // Merged roster columns — the leaderboard's Clients / MRR / Health folded in
+  // alongside the roster's Status + row actions (§58: nothing lost).
   const columns: Column[] = [
-    { key: "name", header: "Sub-account" },
-    { key: "status", header: "Status" },
-    { key: "manage", header: "" },
-    { key: "actions", header: "", className: "text-right" },
-  ];
-
-  const leaderboardColumns: Column[] = [
-    { key: "name", header: "Sub-account" },
+    { key: "name", header: bookNounSingular },
     { key: "clients", header: "Clients", numeric: true },
     { key: "mrr", header: "MRR", numeric: true },
     { key: "health", header: "Health" },
-    { key: "act", header: "", className: "text-right" },
+    { key: "status", header: "Status" },
+    { key: "manage", header: "" },
+    { key: "actions", header: "", className: "text-right" },
   ];
 
   return (
@@ -489,7 +538,7 @@ export default function AgencyBoard() {
         <>
           {/* One flat truth-line where 5 zero-tiles + a zero-health card used to sit. */}
           <SectionNote icon={Activity}>
-            Your portfolio metrics — revenue, net growth, at-risk, and clients — light up here the
+            Your book's metrics — revenue, net growth, at-risk, and clients — light up here the
             moment you add your first sub-account.
           </SectionNote>
 
@@ -511,7 +560,7 @@ export default function AgencyBoard() {
 
           <SectionNote icon={Sparkles}>
             Coming to your agency: fleet automation · rebilling · staff seats · sub-account comms ·
-            blueprints · portfolio analytics.
+            blueprints · book analytics.
           </SectionNote>
         </>
       ) : (
@@ -522,201 +571,160 @@ export default function AgencyBoard() {
             <StatRow cols={3}>{kpis.map((k) => <div key={k.key}>{k.node}</div>)}</StatRow>
           )}
 
-          {/* Portfolio — the book ranked, with the health split as a FILTER (chips +
-              a data-true proportion meter) instead of a dead-end display card. Gold
-              is spent nowhere in this table; Open is a quiet outline act. */}
-          {leaderboard !== undefined && (
-            <SectionCard
-              icon={Trophy}
-              title="Portfolio"
-              description="Your book ranked by traction — filter by health, and open the ones losing steam before they slip."
-            >
-              {bookTotal > 0 && (
-                <div className="mb-4 space-y-3">
-                  <div
-                    className="flex h-2 w-full overflow-hidden rounded-full bg-muted"
-                    role="img"
-                    aria-label={`${num(healthCounts.healthy)} healthy, ${num(healthCounts.watch)} watch, ${num(healthCounts.at_risk)} at risk`}
-                  >
-                    {healthCounts.healthy > 0 && (
-                      <div
-                        className="bg-[hsl(var(--success))]"
-                        style={{ width: `${(healthCounts.healthy / bookTotal) * 100}%` }}
-                      />
-                    )}
-                    {healthCounts.watch > 0 && (
-                      <div
-                        className="bg-[hsl(var(--warning))]"
-                        style={{ width: `${(healthCounts.watch / bookTotal) * 100}%` }}
-                      />
-                    )}
-                    {healthCounts.at_risk > 0 && (
-                      <div
-                        className="bg-[hsl(var(--destructive))]"
-                        style={{ width: `${(healthCounts.at_risk / bookTotal) * 100}%` }}
-                      />
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {healthChips.map((chip) => (
-                      <FilterChip
-                        key={chip.key}
-                        active={healthFilter === chip.key}
-                        onClick={() => setHealthFilter(chip.key)}
-                      >
-                        {chip.label}
-                        <span className="tabular-nums opacity-70">{num(chip.count)}</span>
-                      </FilterChip>
-                    ))}
-                  </div>
+          {/* The book — ONE surface (§18): the authoritative roster with the
+              leaderboard's traction ranking, MRR, and health FOLDED IN, plus the
+              health split as a FILTER (chips + a data-true proportion meter). The
+              standalone "Portfolio" card is gone; every one of its capabilities
+              lives here now (§58 — nothing lost). Gold is spent nowhere in this
+              table; Manage/Open are quiet outline/ghost acts. */}
+          <SectionCard
+            icon={Layers}
+            title={`Your ${bookNounLower}`}
+            description="Your book ranked by traction — filter by health, manage what each resells, hand one to its owner, or open it to work inside."
+          >
+            {ratedTotal > 0 && (
+              <div className="mb-4 space-y-3">
+                <div
+                  className="flex h-2 w-full overflow-hidden rounded-full bg-muted"
+                  role="img"
+                  aria-label={`${num(healthCounts.healthy)} healthy, ${num(healthCounts.watch)} watch, ${num(healthCounts.at_risk)} at risk`}
+                >
+                  {healthCounts.healthy > 0 && (
+                    <div
+                      className="bg-[hsl(var(--success))]"
+                      style={{ width: `${(healthCounts.healthy / ratedTotal) * 100}%` }}
+                    />
+                  )}
+                  {healthCounts.watch > 0 && (
+                    <div
+                      className="bg-[hsl(var(--warning))]"
+                      style={{ width: `${(healthCounts.watch / ratedTotal) * 100}%` }}
+                    />
+                  )}
+                  {healthCounts.at_risk > 0 && (
+                    <div
+                      className="bg-[hsl(var(--destructive))]"
+                      style={{ width: `${(healthCounts.at_risk / ratedTotal) * 100}%` }}
+                    />
+                  )}
                 </div>
-              )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {healthChips.map((chip) => (
+                    <FilterChip
+                      key={chip.key}
+                      active={healthFilter === chip.key}
+                      onClick={() => setHealthFilter(chip.key)}
+                    >
+                      {chip.label}
+                      <span className="tabular-nums opacity-70">{num(chip.count)}</span>
+                    </FilterChip>
+                  ))}
+                </div>
+              </div>
+            )}
 
-              <DataTableShell
-                columns={leaderboardColumns}
-                loading={portfolioLoading}
-                isEmpty={!portfolioLoading && filteredLeaderboard.length === 0}
-                empty={
-                  <EmptyState
-                    icon={Trophy}
-                    tone="brand"
-                    title={healthFilter === "all" ? "No sub-accounts to rank yet" : "None in this bucket"}
-                    description={
-                      healthFilter === "all"
-                        ? "Spin up your first child workspace and it'll show up here with live clients, revenue, and health."
-                        : "No sub-accounts match this health filter right now — switch back to All to see the whole book."
-                    }
-                  />
-                }
-              >
-                {filteredLeaderboard.map((row) => {
-                  const meta = HEALTH_PILL[row.health] ?? HEALTH_PILL.watch;
-                  const busy = switchingId === row.tenant_id;
-                  return (
-                    <TableRow key={row.tenant_id} className="motion-safe:transition-colors hover:bg-muted/40">
-                      <TableCell>
-                        <div className="truncate font-medium text-foreground">{row.name}</div>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{num(row.client_count)}</TableCell>
-                      <TableCell className="text-right tabular-nums">{usd(row.mrr_cents)}</TableCell>
-                      <TableCell>
-                        <StatePill state={meta.state}>{meta.label}</StatePill>
-                      </TableCell>
-                      <TableCell className="text-right">
+            <DataTableShell
+              columns={columns}
+              loading={loading}
+              isEmpty={!loading && orderedSubs.length === 0}
+              empty={
+                <EmptyState
+                  icon={Building2}
+                  tone="brand"
+                  title={healthFilter === "all" ? "No sub-accounts yet" : "None in this bucket"}
+                  description={
+                    healthFilter === "all"
+                      ? "Use New sub-account to add your first child workspace — then resell platform capabilities onto it in a click."
+                      : "No sub-accounts match this health filter right now — switch back to All to see the whole book."
+                  }
+                />
+              }
+            >
+              {orderedSubs.map((s) => {
+                const isSelected = s.id === selectedId;
+                // Leaderboard metrics are OVERLAID by tenant id; a row without a
+                // metric renders its metric cells ABSENT ("—"), never a fake 0 (§13).
+                const metric = leaderboardByTenant.get(s.id);
+                const healthMeta = metric ? (HEALTH_PILL[metric.health] ?? HEALTH_PILL.watch) : null;
+                return (
+                  <TableRow
+                    key={s.id}
+                    onClick={() => selectChild(s.id)}
+                    aria-selected={isSelected}
+                    className={`cursor-pointer motion-safe:transition-colors ${isSelected ? "bg-muted/60" : "hover:bg-muted/40"}`}
+                  >
+                    <TableCell>
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-foreground">{s.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          /{s.slug}
+                          {s.account_type !== "standalone" && s.account_type !== "sub_account" && (
+                            <span className="capitalize"> · {s.account_type}</span>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {metric ? num(metric.client_count) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {metric ? usd(metric.mrr_cents) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell>
+                      {healthMeta ? (
+                        <StatePill state={healthMeta.state}>{healthMeta.label}</StatePill>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <StatePill state={s.status === "active" ? "success" : "pending"}>
+                        {s.status}
+                      </StatePill>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {isSelected ? (
+                        <StatePill state="success">Managing</StatePill>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); selectChild(s.id); }}
+                        >
+                          <Store className="mr-1.5 h-3.5 w-3.5" /> Manage
+                        </Button>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); setInviteFor(s); setInviteEmail(""); }}
+                        >
+                          <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Invite owner
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={busy}
-                          onClick={() => openChild(row.tenant_id, row.name)}
-                          aria-label={`Open ${row.name} to check in`}
+                          disabled={switchingId === s.id}
+                          onClick={(e) => { e.stopPropagation(); openChild(s.id, s.name); }}
+                          aria-label={`Open ${s.name} to work inside`}
                         >
-                          {busy ? (
+                          {switchingId === s.id ? (
                             <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                           ) : (
-                            <ArrowUpRight className="mr-1.5 h-3.5 w-3.5" />
+                            <ArrowRightLeft className="mr-1.5 h-3.5 w-3.5" />
                           )}
                           Open
                         </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </DataTableShell>
-            </SectionCard>
-          )}
-
-          {/* Roster */}
-          <div className="space-y-3">
-        <div className="flex items-center gap-3">
-          <GlyphPlate icon={Layers} size="sm" />
-          <div className="min-w-0">
-            <h2 className="font-display text-lg font-semibold leading-tight text-foreground">Your sub-accounts</h2>
-            <p className="text-sm text-muted-foreground">
-              Select an account to manage what it resells, hand it to its owner, or open it to work inside.
-            </p>
-          </div>
-        </div>
-
-        <DataTableShell
-          columns={columns}
-          loading={loading}
-          isEmpty={!loading && subs.length === 0}
-          empty={
-            <EmptyState
-              icon={Building2}
-              tone="brand"
-              title="No sub-accounts yet"
-              description="Use New sub-account to add your first child workspace — then resell platform capabilities onto it in a click."
-            />
-          }
-        >
-          {subs.map((s) => {
-            const isSelected = s.id === selectedId;
-            return (
-              <TableRow
-                key={s.id}
-                onClick={() => selectChild(s.id)}
-                aria-selected={isSelected}
-                className={`cursor-pointer motion-safe:transition-colors ${isSelected ? "bg-muted/60" : "hover:bg-muted/40"}`}
-              >
-                <TableCell>
-                  <div className="min-w-0">
-                    <div className="truncate font-medium text-foreground">{s.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      /{s.slug}
-                      {s.account_type !== "standalone" && s.account_type !== "sub_account" && (
-                        <span className="capitalize"> · {s.account_type}</span>
-                      )}
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <StatePill state={s.status === "active" ? "success" : "pending"}>
-                    {s.status}
-                  </StatePill>
-                </TableCell>
-                <TableCell className="text-right">
-                  {isSelected ? (
-                    <StatePill state="success">Managing</StatePill>
-                  ) : (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => { e.stopPropagation(); selectChild(s.id); }}
-                    >
-                      <Store className="mr-1.5 h-3.5 w-3.5" /> Manage
-                    </Button>
-                  )}
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => { e.stopPropagation(); setInviteFor(s); setInviteEmail(""); }}
-                    >
-                      <UserPlus className="mr-1.5 h-3.5 w-3.5" /> Invite owner
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={switchingId === s.id}
-                      onClick={(e) => { e.stopPropagation(); openChild(s.id, s.name); }}
-                    >
-                      {switchingId === s.id ? (
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <ArrowRightLeft className="mr-1.5 h-3.5 w-3.5" />
-                      )}
-                      Open
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </DataTableShell>
-      </div>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </DataTableShell>
+          </SectionCard>
 
       {/* Resell panel — the God-owned catalog, provisioned onto the selected child */}
       {selected && (
@@ -806,7 +814,7 @@ export default function AgencyBoard() {
           {/* Roadmap preview — the #232 slot, one honest muted line, agency-scoped. */}
           <SectionNote icon={Sparkles}>
             Coming to your agency: fleet automation · rebilling · staff seats · sub-account comms ·
-            blueprints · portfolio analytics.
+            blueprints · book analytics.
           </SectionNote>
         </>
       )}
