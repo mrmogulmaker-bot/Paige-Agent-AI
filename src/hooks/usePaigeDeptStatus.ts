@@ -22,9 +22,24 @@
  * `configured` is false and the surface renders a crafted EmptyState — never a
  * fabricated count. Terminal actions (done/dismissed/failed/expired) are excluded so
  * a tile reads only LIVE, open work.
+ *
+ * §36 FRESHNESS (live refresh): this hook lives inside the PERSISTENT AdminLayout
+ * shell (mounted once; inner routes swap without remounting it) AND feeds the
+ * hide-when-idle presence rail via `useIsPaigeActive`. A one-shot fetch would freeze
+ * the rail's mount state at page-load — Paige starting work post-login would never
+ * surface the rail without a hard reload. So the snapshot is kept live: `paige_actions`
+ * is NOT in the `supabase_realtime` publication (verified 2026-08-11; adding it is an
+ * out-of-scope infra migration), so instead of a realtime subscription we POLL — a
+ * cheap tenant-RLS-scoped refetch every 15s plus an immediate refetch on window focus
+ * (so returning to the tab is instantly fresh). Background (`document.hidden`) ticks
+ * are skipped to avoid needless queries; the focus refetch catches up. Both the rail
+ * AND PaigeDepartmentStatus (which share this hook) become live — correct and desired.
  */
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+
+/** Live-refresh cadence for the dept snapshot (§36). Poll, not realtime — see header. */
+const POLL_INTERVAL_MS = 15_000;
 
 /** Open (non-terminal) action statuses — the work that is still in motion at a desk. */
 const OPEN_STATUSES = [
@@ -129,10 +144,13 @@ export function usePaigeDeptStatus(): PaigeDeptStatus {
   const [state, setState] = useState<PaigeDeptStatus>(EMPTY);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setState((s) => ({ ...s, loading: true }));
+    let active = true;
 
+    // One snapshot read. Called on mount, every poll tick, and on window focus. It
+    // does NOT flip `loading` back to true on a refresh — only the initial EMPTY state
+    // carries `loading: true` — so background refetches never flicker the skeletons;
+    // they swap the data in place.
+    const fetchStatus = async () => {
       // Both reads RLS-tenant-scoped — NO tenant param (§9). `as any` casts mirror
       // usePaigeContribution: these are recent-migration tables absent from the
       // generated types, re-typed on the way out.
@@ -150,7 +168,7 @@ export function usePaigeDeptStatus(): PaigeDeptStatus {
       ]);
       /* eslint-enable @typescript-eslint/no-explicit-any */
 
-      if (cancelled) return;
+      if (!active) return;
 
       const depts = (deptRes.data as unknown as DeptRow[] | null) ?? [];
       const actions = (actionsRes.data as unknown as OpenActionRow[] | null) ?? [];
@@ -163,9 +181,24 @@ export function usePaigeDeptStatus(): PaigeDeptStatus {
         configured,
         departments: configured ? buildDeptStatus(depts, actions) : [],
       });
-    })();
+    };
+
+    // Initial load.
+    void fetchStatus();
+
+    // §36 live refresh — poll (paige_actions is not in supabase_realtime; see header).
+    // Skip ticks while the tab is hidden to stay cheap; the focus listener catches up.
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      void fetchStatus();
+    }, POLL_INTERVAL_MS);
+    const onFocus = () => void fetchStatus();
+    window.addEventListener("focus", onFocus);
+
     return () => {
-      cancelled = true;
+      active = false;
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
     };
   }, []);
 

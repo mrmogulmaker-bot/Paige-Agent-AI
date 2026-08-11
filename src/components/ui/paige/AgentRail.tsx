@@ -96,6 +96,16 @@ export function AgentRail({
     ? { duration: 0 }
     : ({ type: "spring", stiffness: 380, damping: 34, mass: 0.9 } as const);
 
+  // Enter/exit for the hide-when-idle mount (driven by the host's <AnimatePresence>,
+  // AgentPresence). Subtle fade + small slide-from-right. The transform lives HERE on
+  // the fixed aside — never on a wrapping ancestor, which would establish a containing
+  // block and break `position: fixed`. Reduced motion → no enter (snap in) and an
+  // instant, fade-only exit (§22 per-primitive reduced-motion, matching the existing
+  // width spring's guard). Width stays out of `initial` so it never animates from 0 on
+  // mount (identical to the prior `initial={false}` behavior).
+  const presenceInitial = reduce ? false : { opacity: 0, x: 16 };
+  const presenceExit = reduce ? { opacity: 0 } : { opacity: 0, x: 16 };
+
   const widthRem = railExpanded ? AGENT_RAIL_EXPANDED_REM : AGENT_RAIL_COLLAPSED_REM;
 
   return (
@@ -108,8 +118,9 @@ export function AgentRail({
         "border-l border-border bg-card text-card-foreground shadow-[-8px_0_24px_-16px_hsl(var(--foreground)/0.25)]",
         className,
       )}
-      initial={false}
-      animate={{ width: `${widthRem}rem` }}
+      initial={presenceInitial}
+      animate={{ width: `${widthRem}rem`, opacity: 1, x: 0 }}
+      exit={presenceExit}
       transition={spring}
       style={{ top: `${topRem}rem`, height: `calc(100dvh - ${topRem}rem)` }}
       aria-label={`${persona.label} presence rail`}

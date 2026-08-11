@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useReducedMotion } from "framer-motion";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,7 @@ import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AgentPresenceProvider, AgentPresence } from "@/components/ui/paige";
+import { useIsPaigeActive } from "@/hooks/useIsPaigeActive";
 
 /**
  * Height (rem) of THIS shell's fixed top bar on md+ (where the presence rail shows):
@@ -358,6 +360,23 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // Publish this staff member's live presence while they're in the admin
   // workspace (#148). The heartbeat self-resolves auth.uid() server-side.
   usePresenceHeartbeat(true);
+  // Hide-when-idle presence rail (owner ruling b): the docked rail mounts ONLY when
+  // Paige has active, open work. ONE signal drives BOTH the mount (passed to
+  // AgentPresence below) AND the coupled right-gutter reservation (the `md:pr-*`
+  // below), so the two can never disagree (§18 one home; the gutter is 0 when the
+  // rail is gone, else it would leave dead right-padding). Tier-safe by inheritance —
+  // `useIsPaigeActive` → `usePaigeDeptStatus` is RLS-tenant-scoped (§51).
+  const isPaigeActive = useIsPaigeActive();
+  const reduceMotion = useReducedMotion();
+  // The collapsed-rail gutter (kept in sync with AGENT_RAIL_COLLAPSED_REM by name,
+  // N1/§39): reserved only while the rail is mounted, dropped to 0 when idle. The
+  // padding CHANGE is choreographed with the rail's spring (§6/§25) via a CSS padding
+  // transition, so on exit the content doesn't snap ~52px to full-width in one frame
+  // while the ghost rail is still sliding out. Under reduced motion the swap is instant
+  // (no transition class), consistent with the rail's reduced-motion path (§22).
+  const railGutter = `${isPaigeActive ? "md:pr-[3.25rem]" : "md:pr-0"}${
+    reduceMotion ? "" : " transition-[padding] duration-300 ease-out"
+  }`;
   // #219 "Role IS the view": a user's view is a function of the roles they hold —
   // there is no manual "View as" lens. effectiveRole is simply the caller-resolved
   // role (a multi-hat admin+coach resolves to the admin superset and sees the union).
@@ -703,7 +722,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           on hubs without a strip (Paige has its own via PaigeTabsLayout; Marketplace /
           Analytics are bare). Desktop-only, matching the row-2 hub bar (mobile uses the drawer). */}
       {!isStudio && (
-        <div className="hidden md:block shrink-0 md:pr-[3.25rem]">
+        <div className={`hidden md:block shrink-0 ${railGutter}`}>
           <OperatorHubStrip />
         </div>
       )}
@@ -836,15 +855,17 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           // Immersive Studio and the nested Clients Hub each own their internal
           // height/scroll contract. Every other route keeps the padded document
           // scroller. min-h-0 is required so every flex child may actually shrink.
-          // Non-Studio branches carry the collapsed-rail gutter (md:pr) so content clears
-          // the fixed rail; Studio has no rail, so no gutter. `md:pr-[3.25rem]` overrides
-          // the right side of `md:p-6` (Tailwind emits pr after the p shorthand) so the
-          // default scroller's content edge sits flush to the collapsed rail.
+          // Non-Studio branches carry the collapsed-rail gutter (railGutter) so content
+          // clears the fixed rail ONLY while it's mounted; when Paige is idle the rail
+          // unmounts and railGutter is `md:pr-0` so no dead right-padding remains. It
+          // overrides the right side of `md:p-6` (Tailwind emits pr after the p
+          // shorthand). Studio has no rail, so no gutter. Same `isPaigeActive` drives
+          // the rail mount below — mount and padding can never disagree.
           isStudio
             ? "min-h-0 flex-1 overflow-hidden"
             : isClientsHub
-              ? "min-h-0 flex-1 overflow-hidden md:pr-[3.25rem]"
-              : `min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] p-3 sm:p-4 md:p-6 md:pr-[3.25rem]`
+              ? `min-h-0 flex-1 overflow-hidden ${railGutter}`
+              : `min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] p-3 sm:p-4 md:p-6 ${railGutter}`
         }
       >
         {children}
@@ -854,7 +875,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           living only in this operator/tenant console shell; hidden on the immersive
           Vibe Studio (§21). Mobile uses a different surface (later slice), so the
           rail self-hides under md. */}
-      {!isStudio && <AgentPresence topOffsetRem={ADMIN_TOPBAR_REM} />}
+      {!isStudio && <AgentPresence topOffsetRem={ADMIN_TOPBAR_REM} isPaigeActive={isPaigeActive} />}
     </div>
     </VoiceDeviceProvider>
     </AgentPresenceProvider>
