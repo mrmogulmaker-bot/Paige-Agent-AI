@@ -1,0 +1,37 @@
+-- P0 §9 tenant-isolation hotfix (#55) — Command Center cross-tenant approvals leak.
+--
+-- SYMPTOM: a multi-tenant admin operator (an agency admin managing several tenants,
+-- NOT the platform super_admin) saw EVERY managed tenant's pending approvals on the
+-- Command Center "Drafts awaiting you" panel, regardless of the active tenant — e.g.
+-- Mogul Maker Academy's Tashia BUILD-to-FUND draft surfaced while a different tenant
+-- was active. Data is correctly tenant-owned (MMA d8a0a880 owns the draft; Sample
+-- Account bfb03385 has 0 pending); the RLS was being BYPASSED.
+--
+-- ROOT CAUSE (§30 diagnosed, verified live on prod xygzykjyynhzqytbqnzu):
+--   * The base table public.paige_pending_approvals already has a CORRECT RESTRICTIVE
+--     policy `tenant_isolation` =
+--       is_platform_owner() OR tenant_id IS NULL OR tenant_id = current_user_tenant_id()
+--     (migration 20260629180214). RESTRICTIVE + AND-combined, so on a DIRECT base-table
+--     read a scoped admin is correctly limited to their active tenant.
+--   * BUT the Command Center reads through the view public.paige_approval_queue_v, which
+--     is owned by `postgres` (the table owner) and whose `security_invoker` option had
+--     been RESET to false on prod (pg_class.reloptions = NULL) — drift away from migration
+--     20260629233312, which set it TRUE, clobbered by a later out-of-band
+--     CREATE OR REPLACE VIEW (the prod viewdef matches the repo, only the option was lost).
+--   * A view with security_invoker=false reads its base tables AS THE VIEW OWNER. The
+--     owner here is the table owner (postgres) and the table is NOT `FORCE ROW LEVEL
+--     SECURITY`, so the owner BYPASSES RLS entirely. Every read THROUGH the view therefore
+--     ignored the RESTRICTIVE tenant_isolation policy → the cross-tenant leak.
+--
+-- FIX: re-assert security_invoker=true so the view enforces the base-table RLS as the
+-- CALLER. Read paths after the fix (all governed by the already-correct base policies):
+--   (a) scoped admin operator, active tenant T  → tenant_isolation limits to tenant_id = T
+--       (leak CLOSED — this is the reported case).
+--   (b) super_admin / is_platform_owner()       → is_platform_owner() disjunct → sees all
+--       (God tier, intended).
+--   (c) client portal                           → does NOT read this view (admin surfaces
+--       only; the client base-table read path via "Clients can read approvals on their own
+--       record" is untouched), so this change cannot regress it.
+-- This restores exactly what 20260629233312 intended. Idempotent + re-assertable.
+
+ALTER VIEW public.paige_approval_queue_v SET (security_invoker = true);
