@@ -1,3 +1,4 @@
+-- definer-anon-exempt: validate_referral_code is a pre-auth signup surface — validates a referral code by value and returns only its validity/owner metadata; no cross-tenant RLS data (§9 #117 audit).
 -- Fix Critical Security Issues (Corrected Version)
 
 -- ============================================================================

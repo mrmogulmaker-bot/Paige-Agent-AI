@@ -1,3 +1,4 @@
+-- definer-anon-exempt: get_public_booking_page is a pre-auth public booking surface — slug-keyed, returns only booking pages explicitly enabled=true; no cross-tenant RLS data (§9 #117 audit).
 
 CREATE TABLE IF NOT EXISTS public.staff_calendar_settings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

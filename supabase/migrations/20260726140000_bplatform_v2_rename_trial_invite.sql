@@ -1,3 +1,4 @@
+-- definer-anon-exempt: get_platform_invite is a pre-auth invite-preview surface — token-keyed, leaks nothing on an invalid/consumed/expired token; returns only plan + trial length (§9 #117 audit).
 -- B-Platform v2 — plan rename + 14-day trial substrate + super-admin 30-day invite.
 --
 -- Three coordinated changes shipped in one guarded transaction:

@@ -1,3 +1,4 @@
+-- definer-anon-exempt: peek_tenant_invite is a pre-auth invite-acceptance surface — token-keyed public brand + token detail only (§9 #117 audit).
 -- Expose the token's bound email from peek_tenant_invite so the /join page can
 -- prefill the customer-registration form (the customer just sets a password).
 -- The token is a secret bearer link the customer received AT that email, so

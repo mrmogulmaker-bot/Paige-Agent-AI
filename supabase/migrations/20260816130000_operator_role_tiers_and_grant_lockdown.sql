@@ -1,3 +1,4 @@
+-- definer-anon-exempt: is_platform_operator is a role-check helper — returns false for anon (is_super_admin OR is_platform_admin of auth.uid()); exposes no data (§9 #117 audit).
 -- §53 Operator role tiers + super_admin/platform_admin grant lockdown (owner-ruled 2026-08-09).
 --
 -- (CLAUDE.md §9/§51 platform-vs-tenant seam · §13/§32 provable · §37 producer inventory ·

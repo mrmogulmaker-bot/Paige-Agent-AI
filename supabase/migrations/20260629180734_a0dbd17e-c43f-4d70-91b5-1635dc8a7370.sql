@@ -1,3 +1,4 @@
+-- definer-anon-exempt: peek_tenant_invite is a pre-auth invite-acceptance surface — token-keyed, returns only the invite's public brand + token detail; no cross-tenant RLS data (§9 #117 audit).
 
 -- =========================================================================
 -- Step 5: Workspace self-service settings + invite-token RPCs

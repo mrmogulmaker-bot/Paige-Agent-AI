@@ -1,3 +1,4 @@
+-- definer-anon-exempt: peek_tenant_portal_brand is a pre-auth portal-theming surface — slug-keyed public brand only (§9 #117 audit).
 -- Tenant-branded portal gateway (post-signout landing + "log back in").
 -- A signed-out customer has no session, so the gateway resolves the tenant's
 -- PUBLIC brand by slug (logo + name + primary color only — nothing sensitive).
