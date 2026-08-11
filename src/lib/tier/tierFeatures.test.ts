@@ -100,13 +100,27 @@ describe("§60 other load-bearing cells", () => {
     }
   });
 
-  it("god does NOT carry tenant working surfaces (people_crm/pipeline/conversations/growth)", () => {
-    for (const f of ["people_crm", "pipeline", "conversations", "growth"] as Feature[]) {
+  it("god does NOT carry the tenant CRM cluster (people_crm/pipeline/conversations)", () => {
+    for (const f of ["people_crm", "pipeline", "conversations"] as Feature[]) {
       expect(hasFeature(GOD, f)).toBe(false);
     }
   });
 
-  it("enterprise is a superset of agency (never falls below it)", () => {
+  it("§60 growth (creation surfaces) — solo/sub/enterprise/god GET it, agency does NOT", () => {
+    for (const c of [SOLO, SUB, ENTERPRISE, GOD]) {
+      expect(hasFeature(c, "growth")).toBe(true);
+    }
+    expect(hasFeature(AGENCY, "growth")).toBe(false);
+  });
+
+  it("§60 studio (Vibe Studio) — solo/sub/enterprise/god GET it, agency does NOT", () => {
+    for (const c of [SOLO, SUB, ENTERPRISE, GOD]) {
+      expect(hasFeature(c, "studio")).toBe(true);
+    }
+    expect(hasFeature(AGENCY, "studio")).toBe(false);
+  });
+
+  it("enterprise is a superset of agency (never falls below it — even after the growth/studio split)", () => {
     const agencySet = getTierFeatureSet(AGENCY);
     const enterpriseSet = getTierFeatureSet(ENTERPRISE);
     for (const f of agencySet) expect(enterpriseSet.has(f)).toBe(true);

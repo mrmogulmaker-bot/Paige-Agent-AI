@@ -22,13 +22,12 @@
  *     answer here (enforced by `lint:tier-features`), so the SAME capability can
  *     never silently appear on one tier and vanish on another. For most features
  *     that is backed by server RLS/RPC authority (§9), so the UI mirror is the
- *     convenience layer. HONEST CAVEAT (§13): `customer_portal_invite` is the
- *     exception today — the server RPC `create_tenant_invite_token` does NOT yet
- *     gate `_kind='consumer'` on `account_type`, so this lock is currently UI-only
- *     (not a §9 IDOR — an agency would only mint under its OWN tenant_id). The
- *     server-side tier gate is a tracked follow-up (see the §60 doctrine + the
- *     owner-decision on whether an Agency keeps any direct client book). Until it
- *     lands, do not claim the portal-invite lock is server-enforced.
+ *     convenience layer. `customer_portal_invite` IS now server-enforced too — the
+ *     RPC `create_tenant_invite_token` rejects a `_kind='consumer'` mint for an
+ *     agency/enterprise target tenant (migration 20260823000000, §60 server half).
+ *     Likewise `growth`/`studio` gate the /admin/campaigns + /admin/studio routes
+ *     via `RequireFeature` (not nav-only, §13). The UI helper and the server gate
+ *     mirror one owner ruling (2026-08-11).
  *
  * PURE by construction — no data fetch, no `any`. Callers pass the already-
  * resolved `TierClassification` (from `useTenantContext`). Keep the tier
@@ -58,11 +57,15 @@ export type Feature =
   | "analytics"
   | "setup"
   | "paige_hub"
-  // Tenant working surfaces (solo · sub_account · agency · enterprise; NOT God).
+  // Tenant working CRM cluster (solo · sub_account · agency · enterprise; NOT God).
   | "people_crm"
   | "pipeline"
   | "conversations"
+  // Creation surfaces — Vibe Studio + Campaigns (the Growth hub). solo · sub_account ·
+  // enterprise · god; NOT agency (owner ruling 2026-08-11 — an agency manages
+  // sub-accounts, it doesn't run its own campaigns/creative book).
   | "growth"
+  | "studio"
   // Consumer/client portal invite — THE §60 enforced lock: solo + sub_account ONLY.
   | "customer_portal_invite"
   // Parent-tier only.
@@ -121,21 +124,33 @@ const UNIVERSAL: readonly Feature[] = [
 ];
 
 /**
- * Tenant working surfaces — the CRM/pipeline/conversations/growth cluster every
- * TENANT tier has today (NOT God, which is the platform operator, not a book of
- * clients).
+ * Tenant working CRM cluster — People/Pipeline/Conversations every TENANT tier has
+ * today (NOT God, which is the platform operator, not a book of clients).
  *
- * OWNER-DECISION (§60 flag): confirm Agency keeps People/Pipeline/Conversations/
- * Growth. Included here CONSERVATIVELY to match current behavior; agency
- * inclusion is PENDING an owner ruling. If the owner rules Agency should NOT
+ * OWNER-DECISION (deferred, task #124): confirm whether Agency keeps
+ * People/Pipeline/Conversations. Included here to match current behavior; the
+ * fuller Agency-baseline ruling is task #124. If the owner rules Agency should NOT
  * carry these, drop them from AGENCY (and ENTERPRISE, which inherits it).
+ *
+ * NOTE (§60, 2026-08-11): `growth` is NO LONGER part of this cluster — the creation
+ * surfaces (Growth hub = Campaigns + Vibe Studio) split into CREATION_SURFACES
+ * below because the owner ruled they are NOT available to agencies.
  */
 const TENANT_WORKING: readonly Feature[] = [
   "people_crm",
   "pipeline",
   "conversations",
-  "growth",
 ];
+
+/**
+ * Creation surfaces — the Growth hub (Campaigns) + Vibe Studio. OWNER RULING
+ * (2026-08-11): available to solo · sub_account · enterprise · god — NOT agency.
+ * An agency manages sub-accounts, so it does not carry its own campaign/creative
+ * book; enterprise KEEPS creation (it is built creation-capable like solo/sub, a
+ * deliberate flagged choice distinct from agency — the fuller Enterprise baseline
+ * is task #124); god carries them for §35 operator dogfooding.
+ */
+const CREATION_SURFACES: readonly Feature[] = ["growth", "studio"];
 
 // --- Per-tier baselines ------------------------------------------------------
 //
@@ -146,37 +161,47 @@ const TENANT_WORKING: readonly Feature[] = [
 const SOLO_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...UNIVERSAL,
   ...TENANT_WORKING,
+  ...CREATION_SURFACES, // solo runs its own campaigns/Studio
   "customer_portal_invite", // solo owns its own client book → can invite clients
 ]);
 
 const SUB_ACCOUNT_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...UNIVERSAL,
   ...TENANT_WORKING,
+  ...CREATION_SURFACES, // a sub-account runs its own campaigns/Studio
   "customer_portal_invite", // a sub-account runs its OWN client book → can invite
 ]);
 
 const AGENCY_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...UNIVERSAL,
-  ...TENANT_WORKING, // OWNER-DECISION (§60 flag): pending confirmation (see TENANT_WORKING)
+  ...TENANT_WORKING, // OWNER-DECISION (task #124): agency CRM cluster pending confirmation
   "subaccount_management",
+  // NOTE: NO CREATION_SURFACES — an agency EXCLUDES growth + studio (owner ruling
+  // 2026-08-11): it manages sub-accounts, it does not run its own campaigns/creative.
   // NOTE: NO `customer_portal_invite` — an agency manages sub-accounts, not a
   // direct consumer client book (owner ruling 2026-08-11). THE §60 lock. Enforced
-  // at the UI/build-time layer across all 5 minters + this CI-guarded helper; the
-  // server RPC tier-gate is a tracked follow-up (see the file header caveat, §13).
+  // BOTH server-side (create_tenant_invite_token's consumer guard, migration
+  // 20260823000000) AND at the UI/build-time layer across all 5 minters + this
+  // CI-guarded helper.
 ]);
 
 // Enterprise = Agency superset (inherits everything Agency has; add extras here).
 const ENTERPRISE_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...AGENCY_FEATURES,
-  // (no enterprise-only extras yet; kept as a distinct superset so it can grow
-  //  without ever dropping below Agency)
+  // Enterprise KEEPS creation (growth) and GAINS studio — a deliberate flagged
+  // choice (owner 2026-08-11): enterprise is creation-capable like solo/sub, unlike
+  // a plain agency. Added explicitly so enterprise never regresses below where it
+  // was before the growth/studio split. Fuller Enterprise baseline is task #124.
+  ...CREATION_SURFACES,
 ]);
 
 const GOD_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...UNIVERSAL,
+  ...CREATION_SURFACES, // §35 dogfooding — operators use the creation tools too
   "fleet_console",
-  // NOTE: NO tenant working surfaces and NO customer_portal_invite — God is the
-  // platform operator, not a tenant with a client book.
+  // NOTE: NO tenant CRM cluster (people/pipeline/conversations) and NO
+  // customer_portal_invite — God is the platform operator, not a tenant with a
+  // client book. Creation surfaces ARE carried for operator dogfooding (§35).
 ]);
 
 /**

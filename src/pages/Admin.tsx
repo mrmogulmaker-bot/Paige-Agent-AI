@@ -33,6 +33,7 @@ import { RoleGate } from "@/components/auth/RoleGate";
 import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { FundingRoute, FundingGate } from "@/components/admin/FundingRoute";
+import { RequireFeature } from "@/components/tier/RequireFeature";
 
 /** Wraps a route element so it's only visible to admins (or platform owner). */
 const AdminOnly = ({ children }: { children: React.ReactNode }) => (
@@ -667,15 +668,23 @@ const Admin = () => {
         {/* Workflows list absorbed into Setup › Automations (1c-xi). The runs +
             per-workflow detail routes below stay mounted (deep-linked from the tab). */}
         <Route path="workflows" element={<Navigate to="/admin/setup/automations" replace />} />
+        {/* §60 route gate: Growth/Campaigns is a creation surface — solo/sub/enterprise/god
+            only, NOT agency (RequireFeature redirects an ineligible tier to /admin, §13). */}
         <Route path="campaigns" element={
-          <Suspense fallback={<SuspenseFallback />}><CampaignsHub /></Suspense>
+          <RequireFeature feature="growth">
+            <Suspense fallback={<SuspenseFallback />}><CampaignsHub /></Suspense>
+          </RequireFeature>
         } />
         {/* Vibe Studio — its own immersive room. StudioLayout renders the persistent left rail
             once and swaps the body via <Outlet/> (§18: one home each, one in-surface nav).
             HOME = the gradient-hero dashboard + gallery (index /admin/studio).
             NEW  = a thin creator that mints a session then redirects into the builder.
             BUILDER = the StudioShell, opened FOR a session (/admin/studio/:sessionId). */}
-        <Route path="studio" element={<StudioLayout />}>
+        {/* §60 route gate: the whole Vibe Studio branch (index/new/library/:sessionId) is
+            a creation surface — solo/sub/enterprise/god only, NOT agency (§13, not nav-only). */}
+        <Route path="studio" element={
+          <RequireFeature feature="studio"><StudioLayout /></RequireFeature>
+        }>
           <Route index element={
             <Suspense fallback={<SuspenseFallback />}><StudioHome /></Suspense>
           } />

@@ -267,8 +267,17 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
 - **§13/§60 — don't let a UI gate's comments claim SERVER enforcement.** A build-time/UI tier lock (helper
   + lint) is real, but it is not the server auth boundary (§9). If the server RPC doesn't yet tier-gate,
   the in-code comments must say the lock is UI-only, not "structural / server-enforced." (Anchor: #122
-  `customer_portal_invite` — `create_tenant_invite_token` does not gate `_kind='consumer'` on
-  `account_type`; corrected in the helper header before ship.)
+  `customer_portal_invite` — `create_tenant_invite_token` did not gate `_kind='consumer'` on
+  `account_type`; corrected in the helper header before ship. **UPDATE #125: the server gate then landed —
+  migration `20260823000000`, §32.a-proven — so `customer_portal_invite` IS now server-enforced. The
+  lesson stands for the NEXT UI-only lock: state honestly whether the server backs it.**)
+- **§13/§0 — ground "customer risk" against CURRENT state before deferring (correction #8, 2026-08-11).**
+  Before invoking "we might break a legitimate <tier> customer" to defer a change, VERIFY that customer
+  class exists in current state — query the `tenants` table / master §4 SHIPPED / this brain. Hypothetical-
+  customer risk is not real risk when the class has zero members. Pre-MVP, **Enterprise has zero customers**,
+  so every "we might break Enterprise" deferral was hypothetical drift (it deferred the #125 server gate for
+  no real reason; owner reversed it). Real classes today: Solo + Sub-account + Agency + Super-Admin operator.
+  Rule: verify customer existence FIRST; defer only on real-customer risk.
 
 ---
 

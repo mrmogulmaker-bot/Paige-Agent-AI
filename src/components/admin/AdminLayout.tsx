@@ -27,6 +27,7 @@ import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { AccountSwitcher } from "@/components/admin/AccountSwitcher";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useTierFeatures } from "@/hooks/useTierFeatures";
 import { useProviderAttribution } from "@/hooks/useProviderAttribution";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
@@ -185,6 +186,20 @@ const GOD_HUBS: Hub[] = [
   //     state, the attention queue, and the platform Systems Check tile. `isActive("/admin")`
   //     is exact-match (see hubIsActive), so this highlights ONLY on /admin, never on a sub-hub.
   { label: "Command Center", href: "/admin", icon: BarChart3 },
+  // 2.5 — Growth (creation surfaces). §35 operator dogfooding — the God tier carries
+  //       the creation tools so operators build with the same Campaigns + Vibe Studio
+  //       tenants get. Tier-gated in `activeHubs` via hasFeature('growth'/'studio');
+  //       an agency-typed tenant (in tenant mode) never sees it.
+  {
+    label: "Growth",
+    href: "/admin/campaigns",
+    icon: Sprout,
+    children: [
+      { label: "Campaigns", href: "/admin/campaigns", icon: Rocket },
+      { label: "Vibe Studio", href: "/admin/studio", icon: Wand2 },
+    ],
+    aliases: ["/admin/growth"],
+  },
   // 3 — Fleet. Absorbs the standalone Team hub + Deploy Health.
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2,
     aliases: ["/admin/platform/fleet-communications", "/admin/platform/team", "/admin/platform/deploy-health"] },
@@ -226,6 +241,17 @@ const GOD_STAFF_HUBS: Hub[] = [
     aliases: ["/admin/sub-agents", "/admin/actions", "/admin/skills"] },
   // Command Center — same operator /admin index as GOD_HUBS (Systems Check tile lands here).
   { label: "Command Center", href: "/admin", icon: BarChart3 },
+  // Growth (creation surfaces) — §35 dogfooding, tier-gated in `activeHubs` (see GOD_HUBS).
+  {
+    label: "Growth",
+    href: "/admin/campaigns",
+    icon: Sprout,
+    children: [
+      { label: "Campaigns", href: "/admin/campaigns", icon: Rocket },
+      { label: "Vibe Studio", href: "/admin/studio", icon: Wand2 },
+    ],
+    aliases: ["/admin/growth"],
+  },
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2,
     aliases: ["/admin/platform/fleet-communications", "/admin/platform/team", "/admin/platform/deploy-health"] },
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain,
@@ -268,6 +294,10 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const isClientsHub = location.pathname.startsWith("/admin/clients-hub");
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
   const { isPlatformOwner, isPlatformStaff, activeTenantId, activeTenant } = useTenantContext();
+  // §60 tier-lock: creation surfaces (Growth hub / Vibe Studio) are gated per tier
+  // through the ONE helper. `has` resolves against the CURRENT classification — god in
+  // operator mode, the active tenant's tier otherwise — so one gate serves both navs.
+  const { has: hasTierFeature } = useTierFeatures();
   // ATTRIBUTION column, Sub-account tier row (#221). Non-null only for a sub-account
   // operator; null (→ nothing rendered) for God / Agency / Standalone (§51).
   const { providedBy } = useProviderAttribution();
@@ -295,6 +325,18 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   const activePlaybook: Hub["playbook"] = "business";
   const activeHubs = (godMode ? (isPlatformOwner ? GOD_HUBS : GOD_STAFF_HUBS) : hubs)
     .filter((h) => !h.playbook || h.playbook === activePlaybook)
+    // §60 tier-lock: the Growth hub (creation surfaces) shows only where the tier's
+    // baseline includes `growth`; the Vibe Studio child is independently gated on
+    // `studio`. Agency-typed tenants get neither; solo/sub/enterprise/god get both.
+    // Keyed on the hub/child href (NOT an account_type compare) so lint:tier-features
+    // stays clean. The single-child collapse below then turns a Studio-less Growth hub
+    // into a plain Campaigns link automatically.
+    .filter((h) => h.href !== "/admin/campaigns" || hasTierFeature("growth"))
+    .map((h) =>
+      h.href === "/admin/campaigns" && !hasTierFeature("studio")
+        ? { ...h, children: h.children?.filter((c) => c.href !== "/admin/studio") }
+        : h,
+    )
     .map((h) =>
       fundingEnabled ? h : { ...h, children: h.children?.filter((c) => !FUNDING_NAV_HREFS.has(c.href)) },
     )

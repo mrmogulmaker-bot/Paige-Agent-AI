@@ -27,9 +27,18 @@ which tiers a feature is for (question 2), that decision is ENCODED in
 `src/lib/tier/tierFeatures.ts` (the `TIER_FEATURE_BASELINE` map), and every render gate reads it
 via `useTierFeatures().has(feature)` / `hasFeature(classification, feature)` — never an inline
 `account_type ===` compare (the `lint:tier-features` CI guard rejects those). Enterprise is the only
-tier that customizes on top of its (Agency) baseline. Owner-locked cell: `customer_portal_invite` =
-Solo + Sub-account ONLY. And per §37: when a capability is tier-locked, gate EVERY producer of its
-underlying seam, not just the obvious surfaces (a lock that misses one minter is not a lock).
+tier that customizes on top of its (Agency) baseline. Owner-locked cells (2026-08-11):
+- **`customer_portal_invite` = Solo + Sub-account ONLY** — agency/enterprise/god excluded. Enforced
+  end-to-end (#122 UI helper + lint; **#125 server gate** — `create_tenant_invite_token` raises 42501 on
+  a `_kind='consumer'` mint for an agency/enterprise target, §32.a-proven).
+- **`growth` + `studio` (Vibe Studio + Campaigns) = Solo · Sub-account · Enterprise · God — NOT Agency**
+  (#125; agency manages sub-accounts, not its own campaign book; god dogfoods per §35). Route-gated via
+  `RequireFeature` (`/admin/campaigns`, `/admin/studio`), not nav-only.
+- **`subaccount_management` = Agency + Enterprise; `fleet_console` = God** only.
+
+And per §37: when a capability is tier-locked, gate EVERY producer of its underlying seam (UI + the
+server RPC), not just the obvious surfaces — a lock that misses one minter, or that stops at the UI, is
+not a lock (§9/§13).
 
 If you have NOT named the target tier(s) and confirmed per-tier belonging, you are already in
 violation — stop and check this matrix. Log the decision/correction to the master doc §4/§10 and
