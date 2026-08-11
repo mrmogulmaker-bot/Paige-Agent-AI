@@ -14,6 +14,7 @@
     "test": "vitest run",
     "ci:tsc": "node scripts/ci/tsc-ratchet.mjs",
     "ci:regression": "node scripts/ci/regression-lint.mjs",
+    "lint:views": "node scripts/ci/view-security-invoker-lint.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

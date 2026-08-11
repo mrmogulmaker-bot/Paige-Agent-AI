@@ -100,6 +100,10 @@ jobs:
           HEAD_REF: ${{ github.event.pull_request.head.sha }}
         run: npm run ci:regression
 
+      - name: View security_invoker guard (§9/§30 — public views must not bypass RLS)
+        if: ${{ !cancelled() }}
+        run: npm run lint:views
+
       - name: ESLint (changed src)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt ./node_modules/.bin/eslint
