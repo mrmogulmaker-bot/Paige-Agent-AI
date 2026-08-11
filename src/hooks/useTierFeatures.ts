@@ -26,8 +26,12 @@ import {
   type TierKey,
 } from "@/lib/tier/tierFeatures";
 
-export function useTierFeatures(): { has: (f: Feature) => boolean; tierKey: TierKey } {
-  const { activeTenant, isPlatformStaff } = useTenantContext();
+export function useTierFeatures(): {
+  has: (f: Feature) => boolean;
+  tierKey: TierKey;
+  loading: boolean;
+} {
+  const { activeTenant, isPlatformStaff, loading } = useTenantContext();
 
   return useMemo(() => {
     const classification: TierClassification = {
@@ -40,6 +44,10 @@ export function useTierFeatures(): { has: (f: Feature) => boolean; tierKey: Tier
       // baseline-only today; an opt-in `∪` would layer in here (see file header).
       has: (f: Feature) => baseline.has(f),
       tierKey: resolveTierKey(classification),
+      // Surfaced so route guards (RequireFeature) can hold before the tenant
+      // resolves — while loading, `activeTenant` is null and the classification
+      // defaults to the permissive `solo` tier, so a gate must NOT decide yet.
+      loading,
     };
-  }, [activeTenant?.account_type, activeTenant?.parent_tenant_id, isPlatformStaff]);
+  }, [activeTenant?.account_type, activeTenant?.parent_tenant_id, isPlatformStaff, loading]);
 }

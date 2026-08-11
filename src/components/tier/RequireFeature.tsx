@@ -25,7 +25,12 @@ export function RequireFeature({
   feature: Feature;
   children: ReactNode;
 }) {
-  const { has } = useTierFeatures();
+  const { has, loading } = useTierFeatures();
+  // Hold while the tenant context resolves — before it does, `activeTenant` is
+  // null and the classification defaults to the permissive `solo` tier, so
+  // deciding now would flash the forbidden surface to an agency user deep-linking
+  // the route (fail-open). Mirrors FundingRoute's loading guard (§18).
+  if (loading) return null;
   // Not available on this account type → redirect to the tenant/operator home.
   if (!has(feature)) return <Navigate to="/admin" replace />;
   return <>{children}</>;
