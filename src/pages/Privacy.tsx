@@ -164,9 +164,9 @@ const Privacy = () => {
           <section>
             <h2 className="text-2xl font-semibold text-foreground">7. SMS notifications</h2>
             <p>
-              Users may opt in to receive SMS notifications from Paige Agent AI LLC by providing
+              Users may opt in to receive SMS notifications from Paige Agent AI Inc. by providing
               their phone number and consent during signup. Msg &amp; data rates may apply. Reply STOP
-              to unsubscribe. Reply HELP for support. This service is provided by Paige Agent AI LLC
+              to unsubscribe. Reply HELP for support. This service is provided by Paige Agent AI Inc.
               in accordance with US TCPA and CTIA guidelines.
             </p>
           </section>

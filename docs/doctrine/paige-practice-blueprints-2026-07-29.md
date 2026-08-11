@@ -101,7 +101,7 @@ not inside React-only handlers. The Blueprint test passes for each.
 - **#138 / L8 Memory Fabric** — Paige-*learned* Blueprints (a practice's own compounding
   config captured as an installable bundle) depend on the memory fabric.
 - **#100 / Live newswire** — Blueprints as ambient shared signals across a vertical.
-- **#45 / Paige-on-Paige** — Paige Agent AI LLC gets its own Blueprint via §45 dogfood.
+- **#45 / Paige-on-Paige** — Paige Agent AI Inc. gets its own Blueprint via §45 dogfood.
 - **#21 / §16 10-department model** — a Blueprint tunes per-department autonomy tiers
   (🟢/🟡/🔴) for its vertical.
 - **#274 / Vibe Studio dimensional bar** — Blueprints installable via the Studio.

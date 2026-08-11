@@ -1,5 +1,7 @@
 // paige-operator-sms-inbound — Twilio inbound SMS webhook for the OPERATOR number
-// (+1 (470) 200-3444 on the "Paige Agent AI LLC" Twilio account's A2P Messaging Service).
+// (+1 (470) 200-3444, on the A2P Messaging Service of the Twilio account still named
+// "Paige Agent AI LLC" — vendor account name pending rename to Paige Agent AI Inc. per the
+// 2026-08-11 C-Corp conversion, owner-owed).
 //
 // This is the OPERATOR counterpart to handle-inbound-sms (which serves TENANT numbers).
 // It persists inbound SMS to the operator-private store (operator_conversations /

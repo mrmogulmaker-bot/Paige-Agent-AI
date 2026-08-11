@@ -13,14 +13,14 @@
 //   - supabase/functions/_shared/platform-identity.ts   (edge / generated documents)
 //
 // OWNER-DECISION (§9/§38): legal_entity_name is the legal entity that issues platform
-// invoices/receipts. "Paige Agent AI LLC" matches src/pages/Terms.tsx (the platform's
+// invoices/receipts. "Paige Agent AI Inc." matches src/pages/Terms.tsx (the platform's
 // own legal terms); confirm before the F2 invoice slice ships the issuer line.
 
 export const PLATFORM_IDENTITY = {
   /** Platform product + company name (invoice logo, platform email from-name). */
   name: "Paige Agent AI",
   /** Legal entity that issues platform invoices/receipts (§38 L1 rail, Paige is MoR). */
-  legal_entity_name: "Paige Agent AI LLC",
+  legal_entity_name: "Paige Agent AI Inc.",
   /** Platform support address for platform-owned communications. */
   support_email: "support@paigeagent.ai",
 } as const;

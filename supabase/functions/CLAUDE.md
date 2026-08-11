@@ -44,7 +44,7 @@ stop — that's the tax this pipeline ended. Merge and let CI ship it.
 
 ## Twilio Operator Configuration (§46 — so no future session re-diagnoses)
 
-The **operator** (God/Super-Admin) Communications surface is Paige Agent AI LLC's OWN SMS
+The **operator** (God/Super-Admin) Communications surface is Paige Agent AI Inc.'s OWN SMS
 line — the platform operator texting/receiving on the platform's own number. It is **NOT**
 any tenant's inbox. This is documented here (the nested edge-functions doctrine that
 auto-loads for all SMS/comms/edge work) because that is exactly where a future session would

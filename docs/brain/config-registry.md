@@ -180,7 +180,7 @@ not re-propose it.)* Module header `_shared/twilio.ts:24-35` states the model ex
      API-Key trio and does NOT rely on a raw Auth Token, so its presence can't be assumed — the inbound
      fn **FAILS CLOSED** (401, nothing written) if no token resolves. ⚠ Confirm which of the two applies
      during activation.
-- Operator A2P config — account **"Paige Agent AI LLC"**, operator number **+1 (470) 200-3444**. Voice
+- Operator A2P config — account **"Paige Agent AI LLC"** (⚠ vendor/Twilio account name — pending rename to Paige Agent AI Inc., owner-owed), operator number **+1 (470) 200-3444**. Voice
   webhook currently on the Twilio demo URL (re-point scheduled slice 4c.2).
 - **⚠ Live-data note:** +1 470 200 3444 is referenced in `main` source comments as the Super Admin's
   imported number, but that `tenant_phone_numbers source='imported'` row is **not present in prod today**
