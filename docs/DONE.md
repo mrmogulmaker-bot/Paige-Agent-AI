@@ -414,3 +414,25 @@ materialize) · Tashia = 1 thread keyed `contact:d8a0a880…:53970758…`.
 **§13 owed (honest):** the live inbox render (one unified thread on the deployed surface) needs a
 capable/Cowork/owner session — not driven headless. **Out of scope (flagged):** SMS-inbound is not yet
 wired to the unified `messages`/`threads` substrate — a separate gap, not a keying bug.
+
+---
+
+## Skills Wave S1 (2026-08-11)
+
+- **S1 foundation** (PR #466, merged) — S1a schema on `paige_skills` (`methodology_anchor`,
+  `tier_availability`, `scoping`, `autonomy_lane`) + 4-skill backfill · §60/§61 `skills` self-use
+  Feature in `tierFeatures.ts` (God/Solo/Sub/Enterprise; Agency excluded = resell-via-Marketplace) ·
+  S1c vocab docs (`skills-vocabulary.md`). §32.a persisted-apply confirmed on prod
+  (cols=4·anchors=4·scoping_platform=4·lane_auto=2·lane_confirm=2·migration_persisted=true). §58
+  byte-identical (switch(slug) runner ignored the new columns).
+- **S1b interpreter + S1d format-picker** (PR #467) — INFRASTRUCTURE for the S2 GOAT professional-skills
+  content wave (NOT "the intelligence" — owner clarification). Additive generic steps-interpreter
+  (`_shared/skill-interpreter-core.ts` pure + `_shared/skill-interpreter.ts` Deno) wired into
+  `skill-runner`'s default case; forges via the existing `forge()` seam (§26); §16 autonomy clamp with a
+  structural risk-floor (external_send/mutating never auto-execute; no external-send call site);
+  §60/§61 tier belt (resell denies self-run); §9/§59 server-resolved tenant. S1d asks doc format first.
+  `scripts/skills-s58-harness.mjs` = capture+diff automation. §1 crew caught 5 MUST-FIX pre-merge.
+  Headless-verified (tsc 0 · vitest 241/241 · tier-lint clean). §32.c live-drive + Slice 1/3 MCP
+  baseline/diff = fired from Cowork (paige-mcp live there; CC headless lacks the connection).
+- **NEXT (not this session):** S2 GOAT-anchored professional-skills content seed (the wave that makes
+  Paige intelligent) → web-browser install (#126) → memory layering.
