@@ -193,14 +193,44 @@ describe("<AgentPresence> account-type derivation across tiers (§51-aware)", ()
     for (const c of cases) {
       tc.ctx = c.ctx;
       // hasChatBody → expanded panel so the operator chip is in the markup to assert.
+      // isPaigeActive → force the rail MOUNTED: hide-when-idle (owner ruling b) gates the
+      // rail off when Paige is idle, so the persona-derivation assertions must render it
+      // with active work present (the idle/hidden path is covered by the block below).
       const out = renderToStaticMarkup(
         <AgentPresenceProvider hasChatBody>
-          <AgentPresence />
+          <AgentPresence isPaigeActive />
         </AgentPresenceProvider>,
       );
       expect(out, c.name).toContain(c.expectLabel);
       expect(out.includes(">Operator<"), c.name).toBe(c.expectOperator);
     }
+  });
+});
+
+describe("hide-when-idle: the rail mounts ONLY when Paige has active work (owner ruling b)", () => {
+  it("renders NO rail (empty presence) when isPaigeActive is false — the ⌘K launcher stays", () => {
+    // God tier so, if the rail DID mount, "Paige Operator" would appear — asserting its
+    // ABSENCE proves the idle gate hides the whole rail (not just its content).
+    tc.ctx = { isPlatformStaff: true, activeTenantId: null, activeTenant: null };
+    const out = renderToStaticMarkup(
+      <AgentPresenceProvider hasChatBody>
+        <AgentPresence />
+      </AgentPresenceProvider>,
+    );
+    expect(out).not.toContain("Paige Operator");
+    expect(out).not.toContain("Your team, on call");
+    // (⌘K launcher survival across idle is asserted structurally by the source-read test
+    // below — it is never gated on presence, §58.)
+  });
+
+  it("renders the rail when isPaigeActive is true", () => {
+    tc.ctx = { isPlatformStaff: true, activeTenantId: null, activeTenant: null };
+    const out = renderToStaticMarkup(
+      <AgentPresenceProvider hasChatBody>
+        <AgentPresence isPaigeActive />
+      </AgentPresenceProvider>,
+    );
+    expect(out).toContain("Paige Operator");
   });
 });
 
