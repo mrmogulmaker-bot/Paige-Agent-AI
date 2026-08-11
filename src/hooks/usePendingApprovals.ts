@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useId } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useTenantContext } from "@/hooks/useTenantContext";
 
 export interface ApprovalQueueRow {
   id: string;
@@ -38,6 +39,19 @@ export type PendingApproval = ApprovalQueueRow & {
 export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?: string }) {
   const [items, setItems] = useState<ApprovalQueueRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // §9 defense-in-depth: scope every read to the tenant the operator is CURRENTLY
+  // viewing. The base-table RLS (RESTRICTIVE tenant_isolation) + the queue view's
+  // security_invoker are the authoritative gate; this explicit filter is belt-and-
+  // suspenders so a multi-tenant admin never sees another tenant's queue even if the
+  // view drifts again (the #55 leak was exactly a view that had lost security_invoker
+  // and bypassed RLS as its postgres owner). At the God tier (activeTenantId === null)
+  // NO tenant filter is applied — a platform owner's is_platform_owner() RLS branch
+  // legitimately spans all tenants, mirroring useCommsSummary's model. Threading it
+  // through the dep arrays ALSO makes a tenant SWITCH invalidate + refetch this hook:
+  // it is a manual useState/useEffect hook, so queryClient.invalidateQueries() (fired
+  // by TenantProvider.switchTenant) does NOT reach it — without activeTenantId in the
+  // deps the previous tenant's list would linger until the next realtime event.
+  const { activeTenantId } = useTenantContext();
   // Unique per hook instance so two consumers with the same scope/contactId
   // (e.g. AdminLayout + the Your Paige command center, both scope:"all") never
   // share a realtime channel topic. Supabase dedupes channels by topic and hands
@@ -54,6 +68,8 @@ export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?:
       .order("sla_due_at", { ascending: true, nullsFirst: false })
       .limit(300);
 
+    // Only scope when a workspace is active. null === God tier → no filter (see above).
+    if (activeTenantId) q = q.eq("tenant_id", activeTenantId);
     if (opts?.contactId) q = q.eq("contact_id", opts.contactId);
     if (opts?.scope === "mine") {
       const { data: { user } } = await supabase.auth.getUser();
@@ -63,12 +79,12 @@ export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?:
     const { data } = await q;
     setItems((data as ApprovalQueueRow[] | null) ?? []);
     setLoading(false);
-  }, [opts?.scope, opts?.contactId]);
+  }, [opts?.scope, opts?.contactId, activeTenantId]);
 
   useEffect(() => {
     refresh();
     const channel = supabase
-      .channel(`paige_approvals_${opts?.scope ?? "all"}_${opts?.contactId ?? "any"}_${instanceId}`)
+      .channel(`paige_approvals_${opts?.scope ?? "all"}_${opts?.contactId ?? "any"}_${activeTenantId ?? "god"}_${instanceId}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "paige_pending_approvals" },
@@ -76,7 +92,7 @@ export function usePendingApprovals(opts?: { scope?: "all" | "mine"; contactId?:
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [refresh, opts?.scope, opts?.contactId, instanceId]);
+  }, [refresh, opts?.scope, opts?.contactId, activeTenantId, instanceId]);
 
   return { items, loading, refresh };
 }
