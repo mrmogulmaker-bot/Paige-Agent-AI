@@ -137,6 +137,24 @@ describe("buildForgeIntent — methodology-anchored brief", () => {
   it("is always non-empty (forge requires a userIntent) even with bare inputs", () => {
     expect(buildForgeIntent(skill({ name: "Bare" }), {}).length).toBeGreaterThan(0);
   });
+
+  it("§37/IP-clean: the mechanic-descriptive shipped anchors flow through coherently and carry NO GOAT name/title", () => {
+    // The 4 shipped anchors after migration 20260827000000 (IP-clean rewrite). buildForgeIntent must
+    // produce a coherent, name-free brief — the §37 smoke the owner asked for (anchor → forge coherence).
+    const shippedAnchors = [
+      "Structured goal-coaching sequence — clarify the goal, assess the current reality, surface the options, then commit to a concrete next action.",
+      "Persuasion-principle framing — reciprocity, commitment and consistency, social proof, authority, liking, and scarcity applied to client communication.",
+      "Answer-first, top-down brief structure — lead with the conclusion, then group mutually-exclusive, collectively-exhaustive (MECE) supporting points in logical order.",
+      "KYB standard — Secretary-of-State public-records verification",
+    ];
+    const banned = /whitmore|cialdini|minto|grow coaching|pyramid principle|influence: the psychology/i;
+    for (const anchor of shippedAnchors) {
+      const intent = buildForgeIntent(skill({ name: "Skill", methodology_anchor: anchor }), { prompt: "do the work" });
+      expect(intent).toContain(anchor); // the mechanic wording reaches the forge brief
+      expect(intent).toContain("Ground your work in this methodology");
+      expect(banned.test(intent)).toBe(false); // no GOAT name / branded title leaks into the prompt
+    }
+  });
 });
 
 describe("pickModality / pickTier — §17 routing", () => {

@@ -35,6 +35,7 @@ worse than none — it lies with authority.
 | `decision-log.md` | Chronological one-liners: PRs #375+, dated rulings, wave decisions | "What changed / what did we decide?" |
 | `lessons-learned.md` | Recurring traps: symptom → root cause → rule | Before a class of work that's bitten us before |
 | `glossary.md` | §-anchors, tier vocab, VP roster, wave/slice names, project jargon | Any unfamiliar term |
+| `goat-anchor-registry.md` | The intellectual DNA of Paige's professional intelligence — WHOSE proven framework anchors WHICH domain (v1, 13 anchors). Branded names OK in docs; **code = mechanic-descriptive only** | Seeding a skill / authoring a methodology anchor / investor IP disclosure |
 
 ---
 
