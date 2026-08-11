@@ -90,6 +90,7 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/doctrine/1B-growth-map.md` | $1B ARR revenue + governance north star (§17) | Placing a revenue feature on the engine/stage map |
 | `docs/doctrine/canonical-build-order.md` | The authoritative wave/slice build sequence | Deciding what to build next / where a slice sits |
 | `docs/doctrine/tier-matrix.md` | The canonical six tiers + resolution/RLS per tier (§51) + the §56 pre-build gate | **BEFORE any build (§56)**; any tenant-scoped change; every §37/§51 check |
+| `docs/doctrine/skills-vocabulary.md` | The 4 "skill"-adjacent concepts (paige_skills recipe · marketplace add-on · paige_subagents specialist · methodology anchor) + their tier availability | Any work touching skills/skill-runner/skill-forge/subagents/marketplace — disambiguate "skill" first |
 | `docs/doctrine/compliance-checklist-template.md` | Tier-matrix compliance checklist to run per crew | Compliance pass on a tenant-scoped surface |
 | `docs/doctrine/producer-inventory-template.md` | §37 × tier producer-inventory worksheet | Hardening/altering any endpoint contract |
 | `docs/doctrine/money-spine-architecture.md` | Full money architecture — Paige-held vs facilitated rails (§38) | Any payment/billing surface |

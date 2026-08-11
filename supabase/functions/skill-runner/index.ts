@@ -1,4 +1,8 @@
 // deno-lint-ignore-file no-explicit-any
+// EXECUTES a `paige_skills` recipe (concept 1 in docs/doctrine/skills-vocabulary.md) — NOT
+// a `paige_subagents` specialist (that's `delegate_to_subagent`) and NOT a `marketplace_items`
+// add-on (that's the Marketplace). Dispatch is currently a switch(skill.slug); the S1b
+// steps-interpreter generalizes it. See docs/doctrine/skills-vocabulary.md before editing.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 import { gatewayCompat } from "../_shared/claude.ts";

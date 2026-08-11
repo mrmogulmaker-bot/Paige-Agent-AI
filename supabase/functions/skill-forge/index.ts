@@ -1,5 +1,8 @@
 // deno-lint-ignore-file no-explicit-any
 // Paige's self-skill-creation pipeline. Drafts a skill proposal, optionally auto-publishes.
+// AUTHORS `paige_skills` rows (concept 1 in docs/doctrine/skills-vocabulary.md — executable
+// recipes) — NOT `paige_subagents` (that's subagent-forge, concept 3) and NOT
+// `marketplace_items` (concept 2). If you're adding a team MEMBER, use subagent-forge instead.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 import { gatewayCompat } from "../_shared/claude.ts";

@@ -1,4 +1,7 @@
 // Sub-Agent Factory — Section 18.5
+// AUTHORS `paige_subagents` rows (concept 3 in docs/doctrine/skills-vocabulary.md — Paige's
+// team MEMBERS / specialists, §14/§34 L5) — NOT `paige_skills` recipes (that's skill-forge,
+// concept 1) and NOT `marketplace_items` (concept 2). Delegated to via delegate_to_subagent.
 // Lets Paige (and admins) propose new sub-agents. Soft proposals auto-ship.
 // Hard proposals (need new edge function) route to the Approvals Hub.
 

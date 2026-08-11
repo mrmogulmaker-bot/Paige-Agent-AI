@@ -9,8 +9,11 @@
  * overlays/tools to attach. Funding is the first fully-built skill; each
  * profession we support gets its own skill brain over time.
  *
- * NOTE: this is distinct from "Paige Skills" (/admin/skills), which is the
- * sub-agent/skills *engine* (the forge). This is the tenant-facing add-on store.
+ * NOTE: this is a MARKETPLACE add-on / capability pack (concept 2 in
+ * docs/doctrine/skills-vocabulary.md) — DISTINCT from a `paige_skills` executable
+ * recipe (concept 1, /admin/skills, run by skill-runner) AND from a `paige_subagents`
+ * specialist (concept 3). This is the tenant-facing add-on store; an agency RESELLS
+ * these packs to its sub-accounts (§61). See docs/doctrine/skills-vocabulary.md.
  */
 
 export type SkillStatus = "available" | "coming_soon";

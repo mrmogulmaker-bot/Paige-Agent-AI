@@ -122,6 +122,13 @@ describe("§60 other load-bearing cells", () => {
     expect(hasFeature(AGENCY, "studio")).toBe(false);
   });
 
+  it("§61 skills (self-use gate) — solo/sub/enterprise/god GET it, agency does NOT (agency resells via Marketplace, doesn't self-use)", () => {
+    for (const c of [SOLO, SUB, ENTERPRISE, GOD]) {
+      expect(hasFeature(c, "skills")).toBe(true);
+    }
+    expect(hasFeature(AGENCY, "skills")).toBe(false);
+  });
+
   it("enterprise is a superset of agency (never falls below it — even after the growth/studio split)", () => {
     const agencySet = getTierFeatureSet(AGENCY);
     const enterpriseSet = getTierFeatureSet(ENTERPRISE);
