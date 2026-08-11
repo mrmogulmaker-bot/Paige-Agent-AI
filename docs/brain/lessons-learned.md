@@ -34,6 +34,24 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   AND to what Cowork directs CC to build; e.g. the #129 Portfolio-feature surface is explicitly deferred
   with a research directive rather than guessed now.)
 
+## 0d. Standing-pattern codification — a rule the owner repeats across sessions IS doctrine, codify on the 2nd occurrence (§61, 2026-08-11)
+
+- **Symptom:** Cowork/CC asked the owner which tiers get the §60 `skills` feature-key — when the answer
+  followed a pattern the owner had already stated multiple times across sessions in different framings
+  (God has everything · Solo + Sub-account default · Agency resells · Enterprise hybrid). Owner, verbatim:
+  *"This is yet another time that you guys have asked me something around the idea of where things should
+  be placed when we should actually already have this understanding for the entire platform."*
+- **Root cause:** treating each occurrence of a recurring decision as a fresh per-instance question,
+  instead of recognizing the consistent implicit pattern underneath and locking it as doctrine. A rule the
+  owner has stated across multiple sessions IS doctrine even before it is formally captured — asking again
+  is the miss.
+- **Rule:** when the owner has ruled the same pattern across sessions, **codify it into doctrine on the
+  SECOND occurrence, not the fifth.** Recurring per-feature questions whose answer follows a consistent
+  pattern are the signal that the pattern must be doctrine-locked (name it, number it PROPOSED, add it to
+  CLAUDE.md + the brain + the master doc). The anchor case is §61 Standing Tier Distribution Default (God
+  YES · Solo YES · Sub-account YES · Agency RESELL · Enterprise YES+RESELL). Same class as lesson 0a
+  (ruling-conversion discipline — convert a ruling into complete guidance, don't re-open it as questions).
+
 ## 0c. A tool error is NOT proof the record is absent — the false-negative→false-knowledge trap (#127, 2026-08-11)
 
 - **Symptom (owner live-drive):** Paige told the operator "there's no contact named Tashia Anderson on

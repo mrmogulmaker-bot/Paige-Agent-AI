@@ -52,44 +52,30 @@ for us to lock this in as a complete doctrine."* So the per-feature "which tier 
 has a **standing default** — decide it from the rule below, do NOT re-ask the owner each time. Deviating
 from the default is what requires a specific, named reason (and, for a narrowing, an owner note).
 
-**The rule keys on ONE question: is this a RESELLABLE capability, or an OPERATIONAL "doing" surface?**
+**The standing default distribution — every new `getTierFeatureSet()` feature follows this unless the
+owner explicitly rules an exception:**
 
-1. **God / Super Admin governs and derives EVERYTHING (§57) and dogfoods everything it can operate
-   (§35).** In `tierFeatures.ts`, `GOD_FEATURES` carries UNIVERSAL + every resellable capability (rule 2)
-   + the creation surfaces + `fleet_console`. The ONE thing God's baseline does NOT carry is a
-   **tenant-book "doing" feature God has no book for** — `customer_portal_invite` + the CRM cluster are
-   deliberately excluded from `GOD_FEATURES` (God reaches tenant data by act-as, Tier 1 above, not by
-   carrying the flag). So "God has everything" = §57 governance + §35 dogfood, never a client-book flag in
-   God's set. God is still never the tier you omit for a **resellable** capability.
-2. **A RESELLABLE capability** — a skill, capability pack, tool, knowledge asset, marketplace add-on,
-   or anything a tenant *installs/authors and an agency can resell to its sub-accounts* — defaults to
-   **Solo + Agency + Sub-account + Enterprise + God.** Agencies ARE included precisely because they
-   hold **resell power** over their sub-accounts (owner: *"the agencies have the power to resell those
-   things"*); sub-accounts receive it (agency-curated); Enterprise gets it as the hybrid superset; God
-   dogfoods it. → In `tierFeatures.ts` this is every per-tier set (solo · sub_account · agency ·
-   enterprise · god).
-3. **An OPERATIONAL "doing" surface** tied to a tenant's OWN direct client book or campaign/creative
-   book — inviting your own clients, running your own campaigns, building your own funnels — defaults to
-   **Solo + Sub-account + Enterprise, NOT Agency.** An agency **manages** sub-accounts; it does not
-   operate its own direct client/campaign book, so these surfaces exclude it. God carries the ones it can
-   dogfood without a client book (`growth`/`studio` ARE in `GOD_FEATURES`) but NOT the client-book ones
-   (`customer_portal_invite` is not). This is the existing owner-locked pattern (`customer_portal_invite`,
-   `growth`, `studio`), not a new exception.
-4. **Operator-only tooling** (fleet, provisioning, platform billing, default registries) is **God only**
-   (`fleet_console`). This is the one direction the default narrows below all tenants.
+| Tier | Default | Meaning |
+|---|---|---|
+| **Super Admin (God)** | **YES** | Has everything (source of truth §57; dogfooding §35). Honest note (§13): God's own baseline still omits a tenant-book flag it has no book for (`customer_portal_invite`, CRM cluster) — it reaches tenant data by act-as (Tier 1), not by carrying the flag. |
+| **Solo** | **YES** | Operator running their own business. |
+| **Sub-account** | **YES** | Same as Solo (§60). |
+| **Agency** | **RESELL** | Does NOT use the feature at its own operator surface; has the ability to RESELL the capability to its sub-accounts via the Marketplace. The Agency `getTierFeatureSet()` does NOT carry the operator flag — resell is the separate Marketplace mechanism. |
+| **Enterprise** | **YES + RESELL** | HYBRID — inherits Solo ∪ Agency; gets both operator-use AND reseller ability. |
 
-**The decision procedure (run it silently, don't ask):** *"Is this a resellable capability (→ all tenant
-tiers + God) or an operational doing-surface (→ all tenant tiers except Agency, + God), or operator
-tooling (→ God only)?"* Pick the matching default, encode it in `tierFeatures.ts`, gate every producer
-(§37/§60). Only a genuinely novel case with no fit escalates to the owner.
+**Exception rule.** Any deviation from this default requires an explicit owner ruling AND is documented in
+the feature's declaration comment in `tierFeatures.ts`. When a new feature matches the default, ship it
+WITHOUT asking the owner (note "§61 default: no exception"); only escalate when the feature's nature
+suggests it might BE an exception (e.g. an admin-only surface that doesn't fit "operator running a
+business"). Asking a tier question the default already answers is the §61 miss (Cowork miss #12).
 
-**Owner-locked cells this rule GENERALIZES (not contradicts) — cross-check any change against them:**
-- `customer_portal_invite` = Solo + Sub-account only (doing-surface — inviting your own clients; #122/#125).
-- `growth` + `studio` = Solo · Sub-account · Enterprise · God, NOT Agency (doing-surface — your own
-  campaign/creative book; #125).
-- `subaccount_management` = Agency + Enterprise; `fleet_console` = God only (operator tooling).
-- **`skills` (Skills Wave, owner-ruled 2026-08-11)** = RESELLABLE capability → **Solo · Agency ·
-  Sub-account · Enterprise · God** (all tier keys). The anchoring application of rule #2 above.
+**Owner-locked exception cells — cross-check any change against them:**
+- `customer_portal_invite` = Solo + Sub-account + Enterprise only (Agency + Super Admin excluded).
+- `growth` + `studio` = Solo + Sub-account + Super Admin only (Agency EXCLUDED entirely — no resell;
+  Enterprise inherits it via the hybrid Solo-union).
+- `subaccount_management` = Agency + Enterprise; `fleet_console` = God only.
+- **`skills` (Skills Wave, owner-ruled 2026-08-11)** follows the DEFAULT → God YES · Solo YES · Sub-account
+  YES · Agency RESELL (skill-library resell via Marketplace) · Enterprise YES + RESELL. **Not** an exception.
 
 If you have NOT named the target tier(s) and confirmed per-tier belonging, you are already in
 violation — stop and check this matrix. Log the decision/correction to the master doc §4/§10 and
