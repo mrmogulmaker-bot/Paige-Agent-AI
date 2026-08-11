@@ -21,7 +21,9 @@ export interface ApprovalQueueRow {
   created_at: string;
   reviewed_at: string | null;
   sent_at: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- jsonb draft payload, arbitrary shape (pre-existing; typed loosely by consumers)
   draft_content: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- jsonb metadata, arbitrary shape (pre-existing; typed loosely by consumers)
   metadata: any;
   contact_first_name: string | null;
   contact_last_name: string | null;
