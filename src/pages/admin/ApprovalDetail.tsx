@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- pre-existing legacy `any` debt in this
+   approval-detail page (untyped approval / contact / draft_content rows from stale generated
+   types). The Send-recipient resolution fix (#131) does not add to it; this file-level disable
+   matches the repo's established pattern for legacy `any`-heavy surfaces touched under the CI
+   ESLint gate, rather than retyping the whole component in a focused hotfix. */
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -108,16 +113,39 @@ export default function ApprovalDetail() {
     (approval.draft_content?.channel as any) || (conversation?.channel as any) || "email";
 
   const sendDraft = async () => {
-    if (!contact?.email && channel === "email") return toast.error("Contact has no email on file");
-    if (!contact?.phone && channel === "sms") return toast.error("Contact has no phone on file");
+    // Resolve the recipient the SAME way the backend execute-approval path does
+    // (§18 — supabase/functions/execute-approval/index.ts): the snapshot address
+    // captured at draft time first, then the live contact record. The frontend
+    // used to read ONLY `contact?.email`, which is populated (load(), above) just
+    // when `approval.contact_id` is non-null — so an approval filed UNLINKED
+    // (contact_id NULL, the downstream effect of a contact-search false-miss —
+    // hotfix #127/#131) always tripped "no email on file" even though Paige had
+    // the address in the draft. Mirror the backend's snapshot→live precedence.
+    const dc = approval.draft_content ?? {};
+    let to = String(dc.to ?? dc.recipient ?? "").trim();
+    if (!to) to = channel === "email" ? String(contact?.email ?? "") : String(contact?.phone ?? "");
+    // Last resort: re-resolve from the live clients row by the linked id (covers a
+    // stale `contact` state or a linked-but-not-yet-loaded record).
+    if (!to && approval.contact_id) {
+      const { data: c } = await supabase
+        .from("clients").select("email, phone").eq("id", approval.contact_id).maybeSingle();
+      to = channel === "email" ? String(c?.email ?? "") : String(c?.phone ?? "");
+    }
+    if (!to) {
+      return toast.error(
+        channel === "email" ? "Contact has no email on file" : "Contact has no phone on file",
+      );
+    }
     setBusy(true);
-    const to = channel === "email" ? contact.email : contact.phone;
     const { data, error } = await supabase.functions.invoke("send-message", {
       body: {
         channel, to,
         subject: channel === "email" ? subject : undefined,
         body,
-        contact_id: contact.id,
+        // May be null for an unlinked approval — send-message tolerates it and
+        // pins the send to the caller's own tenant (§9 gate), so a raw-`to` send
+        // still goes out under the caller's verified sender identity.
+        contact_id: contact?.id ?? approval.contact_id ?? null,
         conversation_id: approval.conversation_id,
         approval_id: approval.id,
       },
