@@ -224,5 +224,31 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## Standing bars — owner-locked doctrine (2026-08-11)
+
+Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked morning 2026-08-11). Binding on every future PR.
+
+- **§57 — Super Admin = source of truth (source-of-truth architecture).** Every tenant/agency surface
+  DERIVES from what the God-level (Super Admin) record says is real — one record of truth, many
+  read-only projections. Two surfaces showing different "truths" for the same tenant is a §57 defect
+  (usually a §51 tier bug underneath), not a display quirk. Anchor cases: Fleet Console stale MRR on
+  $0-paid tenants; a tenant misclassified `SUB_ACCOUNT` vs God-level topology; operator Analytics
+  emptier than a tenant projection. *Test: does this surface derive from the God-level record, or compute
+  its own answer that can diverge?*
+- **§58 — Anti-regression (anti-regression discipline).** Twin of §28. A shipped, owner-approved
+  capability is NEVER silently removed/hidden/gated-off in a later PR. If a change removes/hides one,
+  call it out explicitly + get owner sign-off before merge — even on a PR nominally about something
+  else. **§39 verifier checklist now carries a standing item: *"Did this PR silently remove any
+  previously-shipped capability?"*** — a "yes" with no explicit flag + sign-off blocks the merge.
+- **§59 — SECURITY DEFINER caller-scope-in-body (Postgres security posture).** A DEFINER function
+  bypasses RLS; safe ONLY if the body re-enforces caller scope (self / `current_user_tenant_id()` /
+  operator role that RAISES) — the EXECUTE grant is never the guard. The global-role trap (§53):
+  `has_role('admin')` is tenant-agnostic; cross-tenant authority is `is_platform_owner`/
+  `is_platform_operator`. Never role-check a caller-SUPPLIED identity param. Enforcement is LIVE:
+  `lint:definer-fns` CI guard + `pg_proc` drift advisor (shipped #117/PR #448). See Lesson #14 for the
+  full A/B/C classification.
+
+---
+
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same
 commit as the fix — a lesson only helps if the next session can find it.*

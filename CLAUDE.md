@@ -1929,9 +1929,8 @@ route, RPC, edge function, migration, surface, or copy block — you STOP and ch
 
 ## 57. Super Admin is the source of truth — every surface DERIVES from the God-level account, never independently.
 
-> **PROPOSED — pending owner ruling on exact wording.** Drafted from the owner's 2026-08-10 ruling
-> and merged as a DRAFT for the owner to rule on; treat its intent as binding once ruled, but the
-> exact wording below is not yet final (same status as §BRAIN).
+> **OWNER-LOCKED 2026-08-11.** Ratified explicitly by the owner (drafted PROPOSED overnight in the
+> #449 close-out; owner ruling morning 2026-08-11). Binding on every future PR.
 
 **Directive (owner: Antonio, owner-locked 2026-08-10).** Owner's verbatim framing: *"If the super
 admin doesn't say it's so, then it's just not true... they're acting like they're all independent of
@@ -1963,11 +1962,12 @@ local query each screen happened to run.
 **Cross-references:** §9 (platform vs tenant seam), §51/§56 (tier matrix — a §57 divergence is usually
 a tier bug), §17/#31 (revenue integrity chain — the money-side enforcement), §35 (operator dogfooding).
 
-## 58. Anti-regression — a shipped, owner-approved capability is NEVER silently removed. §-number to confirm at ratification.
+## 58. Anti-regression — a shipped, owner-approved capability is NEVER silently removed.
 
-> **PROPOSED — pending owner ruling on exact wording.** Drafted from the owner's 2026-08-10 flag
-> (twin of §28 "approved is frozen"); merged as a DRAFT for the owner to rule on. The §-number
-> (§58) is provisional — confirm at ratification. Same status as §BRAIN.
+> **OWNER-LOCKED 2026-08-11.** Ratified explicitly by the owner (drafted PROPOSED overnight in the
+> #449 close-out; owner ruling morning 2026-08-11). Binding on every future PR. **The §39 verifier
+> checklist inherits its new item — *"Did this PR silently remove any previously-shipped capability?"*
+> — starting immediately on the next PR after this ratification.**
 
 **Directive (owner: Antonio, owner-flagged 2026-08-10) — the twin of §28.** §28 says an approved
 design is FROZEN (don't touch it). §58 is the other half: a **capability** that has once shipped and
@@ -1992,11 +1992,12 @@ already signed off on — that regression must be caught and surfaced, not disco
 verifier owns the checklist item), §13 (honest reporting), §32.c (owner live-drive is where silent
 regressions surface today — this moves the catch upstream).
 
-## 59. SECURITY DEFINER functions enforce caller scope IN-BODY — the grant is never the guard. §-number to confirm at ratification.
+## 59. SECURITY DEFINER functions enforce caller scope IN-BODY — the grant is never the guard.
 
-> **PROPOSED — pending owner sign-off.** Drafted from #117 (PR #448) as the companion to #116's
-> view-class rule; merged as a DRAFT (same status as §BRAIN). The §-number (§59) is provisional —
-> confirm at ratification.
+> **OWNER-LOCKED 2026-08-11.** Ratified explicitly by the owner (drafted PROPOSED overnight in the
+> #449 close-out; owner ruling morning 2026-08-11). Binding on every future PR. **Enforcement is
+> already LIVE:** the `lint:definer-fns` CI guard + the `pg_proc` drift advisor (both shipped in #117 /
+> PR #448) mechanically catch a new anon-granted DEFINER data-returner.
 
 **Directive (drafted from #117, companion to #116's view class):** A `SECURITY DEFINER`
 function runs as its OWNER (postgres) and therefore BYPASSES row-level security on every
