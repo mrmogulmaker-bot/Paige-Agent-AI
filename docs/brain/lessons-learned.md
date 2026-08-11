@@ -194,6 +194,34 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   tile/action is FOR?" to the §51 per-tier check. Third independent reviewer (Codex/CI) is worth
   keeping — it catches what the crew's own passes rationalize away.
 
+## 14. SECURITY DEFINER = owner-run = RLS bypass; the grant is never the guard (§9, #117 / PR #448 — twin of the #116 view-drift lesson)
+
+- **Symptom:** an authenticated `SECURITY DEFINER` function returns or mutates another tenant's rows —
+  20 such leaks found across the codebase, incl. 1 HIGH total auth bypass.
+- **Root cause:** a DEFINER function runs as its OWNER (postgres) and therefore BYPASSES RLS on every
+  table it touches. That is safe **only if the function BODY enforces the caller's scope.** The leak
+  class: a DEFINER data-returner/writer granted `anon`/broad-`authenticated`, keyed on a caller-supplied
+  param, with no self/tenant/role guard. Three sub-patterns:
+  - **(1) Global-role bypass** — `user_roles` has no `tenant_id`, so `has_role('admin')` /
+    `has_any_role(...)` is TENANT-AGNOSTIC; a tenant-A admin can act on tenant B. Use
+    `is_platform_owner()` / `is_platform_operator()` for cross-tenant authority (§53) and
+    `is_tenant_admin(current_user_tenant_id())` for tenant scope — never the tenant-level app_role.
+  - **(2) Param-IDOR** — never trust a caller-supplied `user_id`/`tenant_id`; gate on `auth.uid()` /
+    `current_user_tenant_id()` (or validate the param `== caller` / `is_platform_owner`).
+  - **(3) NEVER role-check a caller-SUPPLIED identity param** — `delete_credit_report_upload` role-checked
+    a passed `_calling_user_id`, so any caller could pass a known privileged UUID = total auth bypass. The
+    auth subject is ALWAYS `auth.uid()`; a passed actor is honored only on a service-role/trusted path
+    (where `auth.uid()` is NULL).
+- **Rule:** For every DEFINER fn that returns/mutates data, run the A/B/C classification — A=SAFE (body
+  enforces scope, keep DEFINER); B=convert to `security_invoker` (DEFINER unnecessary — only touches
+  tables the caller already has RLS on); C=fix in place (DEFINER needed but the guard is missing/broken —
+  add the exact self/tenant/role predicate + REVOKE `anon` where over-broad). Ask: *"does the BODY
+  re-enforce who the caller is (self / tenant / operator role that RAISES), or is it trusting the EXECUTE
+  grant, a caller-supplied id param, or a tenant-agnostic global role?"* If the grant is the only guard,
+  it isn't §9-safe. **Anti-recurrence:** `lint:definer-fns` CI guard (`scripts/ci/definer-fn-lint.mjs`)
+  fails any migration granting a new public DEFINER fn to `anon`/`PUBLIC` without an inline
+  `-- definer-anon-exempt: <reason>` escape. Twin of the #116 view-drift lesson (`lint:views`).
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same
