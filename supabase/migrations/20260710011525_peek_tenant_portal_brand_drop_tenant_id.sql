@@ -1,3 +1,4 @@
+-- definer-anon-exempt: peek_tenant_portal_brand is a pre-auth portal-theming surface — slug-keyed public brand only (§9 #117 audit).
 -- =============================================================================
 -- RECONSTRUCTED from prod ledger — version 20260710011525 (peek_tenant_portal_brand_drop_tenant_id)
 -- =============================================================================

@@ -1,3 +1,4 @@
+-- definer-anon-exempt: resolve_tenant_web_host is a pre-auth custom-domain resolver — hostname-keyed, returns only public brand for active/trial tenants; no cross-tenant RLS data (§9 #117 audit).
 -- Tenant wildcard hosts: <tenant-slug>.paigeagent.ai
 -- The hostname is public routing context only. This resolver returns the
 -- minimum public identity needed to validate the host and never grants tenant

@@ -1,3 +1,4 @@
+-- definer-anon-exempt: get_paige_persona_context self-scopes to auth.uid() and returns nothing for anon; granted PUBLIC as a persona helper, persona scope == RLS scope (#588/#117 audit).
 -- =============================================================================
 -- Bug #588 / #589 — get_paige_persona_context() returns the WRONG /
 -- nondeterministic tenant for multi-tenant users. §9 SECURITY-adjacent fix on a

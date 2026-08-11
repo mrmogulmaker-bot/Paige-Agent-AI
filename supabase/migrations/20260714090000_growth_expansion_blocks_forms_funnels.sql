@@ -1,3 +1,4 @@
+-- definer-anon-exempt: growth_funnel_session_upsert is a pre-auth funnel-visitor tracker — tenant pinned to the funnel row (never a client-supplied id), anon may only progress a LIVE funnel (§9 #117 audit).
 -- Growth expansion — blocks (6→17), form-schema validator, funnel sessions (WS-A, §3).
 -- Vibe Coding Studio Phase 1. This migration is the LOCKSTEP DB half of the block-union
 -- expansion: it moves the server-side validators in growth_page_upsert / growth_form_upsert

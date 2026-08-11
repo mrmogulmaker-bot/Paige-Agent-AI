@@ -1,3 +1,4 @@
+-- definer-anon-exempt: peek_tenant_invite is a pre-auth invite-acceptance surface — token-keyed public brand + token detail only (§9 #117 audit).
 -- =============================================================================
 -- RECONSTRUCTED from prod ledger — version 20260710001534 (peek_tenant_invite_email)
 -- =============================================================================

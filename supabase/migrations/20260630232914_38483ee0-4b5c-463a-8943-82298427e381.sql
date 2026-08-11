@@ -1,3 +1,4 @@
+-- definer-anon-exempt: record_communications_consent is a pre-auth consent WRITE — inserts a consent row keyed to the supplied email/auth.uid(); reads nothing tenant-scoped (§9 #117 audit).
 
 -- 1. Communications Consent legal document (v1)
 INSERT INTO public.legal_documents (slug, version, title, summary, body_md, audience, required_at_signup, is_current, effective_date)

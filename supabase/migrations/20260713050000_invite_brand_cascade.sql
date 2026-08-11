@@ -1,3 +1,4 @@
+-- definer-anon-exempt: peek_tenant_invite is a pre-auth invite-acceptance surface — token-keyed public brand + token detail only (§9 #117 audit).
 -- Invite brand cascade fix (§6/§9 · roadmap #189 Lane C — BLOCKING).
 --
 -- peek_tenant_invite is the first-touch RPC that /join calls to render the invite
