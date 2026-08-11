@@ -445,7 +445,7 @@ export function RegionalLenderSearch({
                       <div className="flex items-center gap-1.5 mt-1.5">
                         <HelpCircle className="w-3 h-3 text-muted-foreground/50" />
                         <span className="text-xs text-muted-foreground/70 italic">
-                          Bureau preference not yet documented — verify with your PME advisor or confirm after application.
+                          Bureau preference not yet documented — verify with your advisor or confirm after application.
                         </span>
                       </div>
                     )}

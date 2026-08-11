@@ -25,6 +25,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 import { routedChatCompletion } from "../_shared/model-router.ts";
 import { overRateLimit, trustedClientIp } from "../_shared/rateLimit.ts";
+// #184 — the lane guard + finance-in-scope signal are DATA-DRIVEN and live in ONE
+// home (§18). This public surface imports them; it does not fork a second copy.
+import { buildLaneGuardSection, deriveFinanceInScopeFromFeatures } from "../_shared/client-context.ts";
 
 const corsHeaders = {
   // Public, credential-less endpoint (no cookies, no auth required) — "*" is safe and lets a
@@ -134,7 +137,11 @@ function buildPersona(pb: any, tenantName: string, fundingOn: boolean, brand: Br
   const name = clean(s(p.name)) || "Paige";
   const role = clean(s(p.role)) || "the assistant";
   const tone = clean(s(p.tone)) || "warm, direct, professional";
-  const domain = clean(s(p.domain)) || "this practice";
+  // §2 inclusive neutral (mirrors paige-ai-chat): the template renders "a ${domain}
+  // practice"; the old "this practice" fallback produced "a this practice practice" for
+  // any null-config tenant's public site. "professional services" reads cleanly and does
+  // not narrow the shared default to one vertical.
+  const domain = clean(s(p.domain)) || "professional services";
   const greeting = clean(s(p.greeting));
   const tenant = clean(tenantName) || "this practice";
   const probes = Array.isArray(pb?.probingQuestions) ? pb.probingQuestions : [];
@@ -144,9 +151,11 @@ function buildPersona(pb: any, tenantName: string, fundingOn: boolean, brand: Br
     .map((q: any) => `- "${clean(s(q.ask))}"`)
     .join("\n");
 
-  const scope = fundingOn
-    ? `SCOPE — ${tenant} offers funding & capital-raising coaching alongside ${domain}, so those topics ARE in scope; bring them up only when they genuinely help the visitor. Never invent programs, offers, prices, or results ${tenant} does not actually publish.`
-    : `STAY IN LANE — Do not raise credit, credit scores, funding, loans, lenders, financing, or capital-raising unless the visitor brings it up first; those are not this practice's business. Help where you genuinely can, or hand the visitor to ${tenant}'s team. Never invent services, offers, prices, or results ${tenant} does not publish.`;
+  // #184 — DATA-DRIVEN lane guard (§18 one home): the practice's OWN installed
+  // Blueprint `refusal_boundaries` lead; a coaching Blueprint keeps finance out, a
+  // funding Blueprint declares it in-scope — all from tenant data, no vertical named
+  // here. `fundingOn` (finance-in-scope) only steers the boundary-less fallback.
+  const scope = buildLaneGuardSection(pb, tenant, fundingOn);
 
   const brandLines = [
     brand.product_name && `This site is "${brand.product_name}".`,
@@ -230,18 +239,16 @@ serve(async (req) => {
     if (pErr) { console.error("[paige-public-chat] page gate:", pErr.message); return json(500, { ok: false, error: "server_error" }); }
     if (!pubPages || pubPages.length === 0) return json(403, { ok: false, error: "chat_not_enabled" });
 
-    // 5) Persona + funding opt-in flag (mirrors get_paige_persona_context exactly, §2 — funding
-    //    scope is a per-tenant OPT-IN, never a default).
+    // 5) Persona + finance-in-scope flag. #184 — GENERIC signal, no vertical literal:
+    //    the SQL resolver derives funding_enabled from the is_finance marketplace catalog
+    //    gate OR features.finance_in_scope; this no-join public path reads the flag (set by
+    //    any is_finance Blueprint's install + backfilled for legacy funding tenants). §2 —
+    //    finance scope stays a per-tenant OPT-IN, never a default.
     const featuresRaw = tenantRow.features;
     const features = (featuresRaw && typeof featuresRaw === "object" && !Array.isArray(featuresRaw))
       ? (featuresRaw as Record<string, any>) : {};
     const playbookConfig = features.playbook_config ?? null;
-    const enabledSkills = Array.isArray(features.enabled_skills) ? features.enabled_skills : [];
-    const fundingEnabled =
-      features.paige_funding_skill === "true" || features.paige_funding_skill === true ||
-      features.playbook === "funding" ||
-      (playbookConfig && s(playbookConfig.slug) === "funding") ||
-      enabledSkills.includes("funding");
+    const fundingEnabled = deriveFinanceInScopeFromFeatures(features);
 
     // Brand cascade (service_role may call this SECURITY DEFINER resolver). Feeds product name +
     // tagline into the persona; a brand miss is never a request failure.

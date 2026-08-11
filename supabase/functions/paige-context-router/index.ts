@@ -12,7 +12,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const LOVABLE_API_KEY = "unused";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
@@ -168,16 +167,6 @@ Deno.serve(async (req) => {
     threadId = newId as string;
   }
 
-  if (!LOVABLE_API_KEY) {
-    return json({
-      ok: true,
-      answer: "AI is not configured on this environment.",
-      surfaces_used: ctx.surfaces_used ?? [],
-      load_id: ctx.load_id,
-      thread_id: threadId,
-    });
-  }
-
   const identityLine = body.self
     ? `You are speaking with ${callerRole} ${callerDisplayName}. They are asking about their own workspace.`
     : `You are speaking with ${callerRole} ${callerDisplayName}. They are asking about contact ${body.contact_id} (${contactDisplayName}).`;
@@ -293,7 +282,7 @@ Deno.serve(async (req) => {
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     const aiRes = await gatewayCompat("anthropic", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: MODEL,
         messages,

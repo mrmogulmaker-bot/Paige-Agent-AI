@@ -10,7 +10,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = "unused";
 
 function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60);
@@ -27,21 +26,18 @@ Deno.serve(async (req) => {
     if (!intent) {
       return new Response(JSON.stringify({ error: "intent required" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY missing" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-    }
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY);
 
     // Ask the model to draft a skill spec as JSON.
     const ai = await gatewayCompat("anthropic", {
       method: "POST",
-      headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "google/gemini-2.5-flash",
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: "You design reusable Paige skills. Output JSON with fields: name (short title), slug (snake_case), description, category, trigger_phrases (string[]), input_schema (json schema obj), steps (array of {id,tool,desc}), allowed_tools (string[]), risk_level (read_only|draft|mutating|external_send). Only choose risk_level=external_send if the skill sends external messages/emails; mutating if it writes to user records; draft if it produces a draft for review; read_only otherwise. Do not invent tools — pick from: lovable_ai, firecrawl, business_verifier, rag, client_memory, resend, pdf_render, communication_log, approvals, browser_use." },
+          { role: "system", content: "You design reusable Paige skills. Output JSON with fields: name (short title), slug (snake_case), description, category, trigger_phrases (string[]), input_schema (json schema obj), steps (array of {id,tool,desc}), allowed_tools (string[]), risk_level (read_only|draft|mutating|external_send). Only choose risk_level=external_send if the skill sends external messages/emails; mutating if it writes to user records; draft if it produces a draft for review; read_only otherwise. Do not invent tools — pick from: paige_ai, firecrawl, business_verifier, rag, client_memory, resend, pdf_render, communication_log, approvals, browser_use." },
           { role: "user", content: `Intent: ${intent}\nRationale: ${rationale ?? "n/a"}\nObserved pattern: ${JSON.stringify(source_pattern)}` },
         ],
       }),

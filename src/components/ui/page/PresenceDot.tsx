@@ -35,14 +35,21 @@ const DOT_SIZE = {
 export function PresenceDot({
   status,
   size = "md",
+  pulse = true,
   className,
 }: {
   status: PresenceStatus;
   size?: "sm" | "md";
+  /**
+   * Whether the online status animates its breathing ring. Default true. Pass false to
+   * render a STATIC online dot where a second perpetual motion nearby would over-animate
+   * a small surface (§25) — e.g. beside an already-breathing mark on a thin collapsed rail.
+   */
+  pulse?: boolean;
   className?: string;
 }) {
   const reduce = useReducedMotion();
-  const pulsing = status === "online" && !reduce;
+  const pulsing = status === "online" && !reduce && pulse;
 
   return (
     <span className={cn("relative inline-flex shrink-0", DOT_SIZE[size], className)}>

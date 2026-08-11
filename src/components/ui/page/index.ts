@@ -35,8 +35,13 @@ export { PageShell } from "./PageShell";
 export { PageHeader, type PageHeaderProps } from "./PageHeader";
 export { PageSkeleton } from "./PageSkeleton";
 export { SectionCard } from "./SectionCard";
+export { SectionNote } from "./SectionNote";
 export { StatTile, StatRow } from "./StatTile";
 export { StatPill, type StatPillProps, type StatPillTone } from "./StatPill";
+export { Sparkline, type SparklineProps, type SparklineTone } from "./Sparkline";
+export { DrillContainer, type DrillContainerProps } from "./DrillContainer";
+export { MetricEntityCard, type MetricEntityCardProps } from "./MetricEntityCard";
+export { ExploreChart, type ExploreChartProps } from "./ExploreChart";
 export {
   TrendLineCard,
   DonutCard,
@@ -64,3 +69,11 @@ export { Toolbar, FilterChip } from "./Toolbar";
 export { StatePill, type PillState } from "./StatePill";
 export { ColorField, LogoUploader, BRAND_IMG_TYPES, FONT_OPTIONS } from "./BrandControls";
 export * from "./PresenceDot";
+export {
+  PaigeAttribution,
+  VP_ROSTER,
+  type VP,
+  type PaigeContributor,
+  type AttributionScope,
+  type PaigeAttributionProps,
+} from "./PaigeAttribution";

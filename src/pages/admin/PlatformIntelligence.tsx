@@ -26,6 +26,7 @@ import {
   RefreshCw, Route as RouteIcon, Layers, Sparkles,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { canOwnSubaccounts } from "@/lib/agency/accountCapabilities";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import {
@@ -406,7 +407,7 @@ export default function PlatformIntelligence() {
                       {r.parent_name}
                     </span>
                   </div>
-                ) : r.account_type === "agency" || r.account_type === "enterprise" ? (
+                ) : canOwnSubaccounts(r.account_type) ? (
                   <div className="leading-tight">
                     <span className="text-foreground">{r.tenant_label ?? "Platform"}</span>
                     <span className="mt-0.5 block text-xs font-normal uppercase tracking-wide text-muted-foreground">

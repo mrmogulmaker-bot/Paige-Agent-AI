@@ -322,8 +322,12 @@ Deno.serve(async (req) => {
   }
 
   // -- 5. Insert the inbound public.messages row (tenant_id omitted -> trigger). ---
-  // Final thread_key = tenant + channel + counterparty (schema aggregation key, §9).
-  const threadKey = `email:${tenantId}:${fromEmail}`;
+  // §49 one-thread-per-contact: key on the CONTACT so this inbound coalesces into the same thread
+  // as that person's voice/sms/outbound messages. Only when no contact resolved (§13 honest tail)
+  // do we fall back to the old per-address email key.
+  const threadKey = contactId
+    ? `contact:${tenantId}:${contactId}`
+    : `email:${tenantId}:${fromEmail}`;
   const { data: inserted, error: insertErr } = await admin
     .from("messages")
     .insert({

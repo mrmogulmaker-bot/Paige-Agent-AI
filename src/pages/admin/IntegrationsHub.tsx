@@ -159,18 +159,11 @@ export default function IntegrationsHub() {
     })();
   }, []);
 
-  // Cmd/Ctrl+K opens the hub-scoped integration palette. The modifier requirement
-  // means it never fires from plain typing in the search Input (§ spec guard).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
-        e.preventDefault();
-        setPaletteOpen((o) => !o);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // ⌘K is now owned platform-wide by the universal Paige launcher (§18 one home;
+  // Wave 4 Slice 4a.1). This hub's palette used to register its OWN global ⌘K listener,
+  // which collided with the launcher under AdminLayout (both fired → two dialogs). That
+  // listener is removed; the palette is reached by its visible "Jump" button below,
+  // which stays fully functional — no feature regressed (§39 B1 / §37).
 
   const hasSentryDsn = Boolean(import.meta.env.VITE_SENTRY_DSN);
   const hasPosthogKey = Boolean(import.meta.env.VITE_POSTHOG_KEY);
@@ -425,10 +418,12 @@ export default function IntegrationsHub() {
                   <LayoutGrid className="h-4 w-4" />
                 </ToggleGroupItem>
               </ToggleGroup>
-              <Button variant="outline" size="sm" onClick={() => setPaletteOpen(true)} className="gap-1.5">
+              {/* Opens the hub-scoped integration palette. The ⌘K hint was removed: ⌘K
+                  now belongs to the universal Paige launcher (§18), so promising it here
+                  would be false. The button is the palette's affordance. */}
+              <Button variant="outline" size="sm" onClick={() => setPaletteOpen(true)} className="gap-1.5" aria-label="Jump to integration">
                 <CommandIcon className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Jump</span>
-                <kbd className="ml-0.5 rounded border border-border bg-muted px-1 text-[10px] font-medium">⌘K</kbd>
+                <span className="hidden sm:inline">Jump to integration</span>
               </Button>
             </div>
           </Toolbar>

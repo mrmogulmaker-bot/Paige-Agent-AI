@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { UserSquare2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { SectionCard, DataTableShell, EmptyState, type Column } from "@/components/ui/page";
+import { SectionCard, DataTableShell, SectionNote, type Column } from "@/components/ui/page";
 import { TableCell, TableRow } from "@/components/ui/table";
 import type { RosterMember } from "@/hooks/useTeamRoster";
 
@@ -75,11 +75,9 @@ export function AssignmentsPanel({
       }
     >
       {isEmpty ? (
-        <EmptyState
-          icon={UserSquare2}
-          title="No client assignments yet"
-          description="As clients get assigned to a teammate, ownership shows up here."
-        />
+        <SectionNote icon={UserSquare2}>
+          No client assignments yet — ownership shows here as clients get assigned to a teammate.
+        </SectionNote>
       ) : (
         <DataTableShell columns={COLUMNS} loading={loading} className="border-0 shadow-none">
           {summary.rows.map((r) => (

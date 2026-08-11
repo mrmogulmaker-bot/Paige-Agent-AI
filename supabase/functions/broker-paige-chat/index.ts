@@ -1,5 +1,5 @@
 // broker-paige-chat — private peer-advisor Paige session for brokers.
-// Streams (SSE) replies via Lovable AI Gateway, persists messages to
+// Streams (SSE) replies via the direct-Anthropic gateway shim, persists messages to
 // broker_session_messages, and (on demand) generates a summary that the
 // broker can share with the client.
 //
@@ -17,7 +17,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-const LOVABLE_API_KEY = "unused" ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
@@ -247,7 +246,6 @@ ${transcript}`;
     const resp = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -496,7 +494,6 @@ serve(async (req: Request) => {
     const aiResp = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ model: CHAT_MODEL, messages, stream: true }),

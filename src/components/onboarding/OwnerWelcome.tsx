@@ -3,10 +3,14 @@
  * /admin, before they've done anything (§9/§10/§11). Replaces "provision → dropped on
  * a cold dashboard with zero orientation" with a warm, guided first move.
  *
- * §9 — branches by tenant.account_type: a Standalone owner is pointed at their own
- * book ("Add your first client"); an Agency/Enterprise owner is pointed at their book
- * of businesses ("Create your first sub-account" + "Invite your agency team"). The two
- * audiences are never conflated.
+ * §9/§51 — branches by tenant.account_type through an EXPLICIT journey descriptor map
+ * (JOURNEY_BY_ACCOUNT_TYPE), never a binary standalone-else-agency fall-through: an
+ * own-book owner (standalone, sub-account) is pointed at their own book ("Add your first
+ * client"); an agency-book owner (agency, enterprise) is pointed at their book of
+ * businesses ("Create your first sub-account" + "Invite your agency team"). Any account
+ * type not in the map resolves to the own-book journey (DEFAULT_JOURNEY) — a new tier
+ * lands on the safe own-clients first move, never silently inheriting the agency journey.
+ * The two audiences are never conflated.
  *
  * §10 — completion lives in a TABLE, not React state or localStorage: every step
  * check and the dismiss both persist through get/set_owner_onboarding_state, the same
@@ -46,8 +50,10 @@ interface Step {
   primary?: boolean;
 }
 
-// §9 — two distinct audiences, two distinct first moves. Agency + Enterprise share
-// the agency-operator journey (both run a book of sub-accounts).
+// §9 — two distinct audiences, two distinct first moves. The own-book journey serves
+// standalone owners AND sub-accounts (both run their own book of clients); the
+// agency-book journey serves agency + enterprise (both run a book of sub-accounts).
+// The account_type→journey mapping lives in JOURNEY_BY_ACCOUNT_TYPE below.
 const STANDALONE_STEPS: Step[] = [
   {
     key: "activate_email",
@@ -128,9 +134,46 @@ const AGENCY_STEPS: Step[] = [
   },
 ];
 
+/**
+ * The two authored first-run journeys. `own_book` = the owner runs their own book of
+ * clients (standalone, sub-account); `agency_book` = the owner runs a book of
+ * sub-accounts (agency, enterprise). Keyed off an explicit descriptor so a new
+ * account_type maps to the RIGHT journey rather than falling through to agency (§213.e).
+ */
+type OnboardingJourney = "own_book" | "agency_book";
+
+const JOURNEY_STEPS: Record<OnboardingJourney, Step[]> = {
+  own_book: STANDALONE_STEPS,
+  agency_book: AGENCY_STEPS,
+};
+
+// §9/§51 — every known account_type resolves to an EXPLICIT journey. Standalone and
+// sub-account owners each run their OWN book; agency + enterprise run a book of
+// sub-accounts. This is the source of truth, extended by adding a row — never by
+// widening a binary ternary.
+const JOURNEY_BY_ACCOUNT_TYPE: Record<string, OnboardingJourney> = {
+  standalone: "own_book",
+  sub_account: "own_book",
+  agency: "agency_book",
+  enterprise: "agency_book",
+};
+
+// The explicit default for any account_type NOT in the map (a future/unknown tier):
+// the own-book journey — the safe, own-clients first move — never a silent agency
+// fall-through that would wrongly tell them to spin up sub-accounts.
+const DEFAULT_JOURNEY: OnboardingJourney = "own_book";
+
+function resolveJourneySteps(accountType: string): Step[] {
+  return JOURNEY_STEPS[JOURNEY_BY_ACCOUNT_TYPE[accountType] ?? DEFAULT_JOURNEY];
+}
+
 interface Props {
   tenantId: string;
-  /** 'standalone' | 'agency' | 'enterprise'. Agency + Enterprise share the journey. */
+  /**
+   * The tenant's account_type ('standalone' | 'agency' | 'enterprise' | 'sub_account').
+   * Mapped to a journey via JOURNEY_BY_ACCOUNT_TYPE; own-book (standalone, sub-account)
+   * and agency-book (agency, enterprise) are the two authored journeys.
+   */
   accountType: string;
   ownerName?: string | null;
   initialState: OnboardingState;
@@ -139,7 +182,7 @@ interface Props {
 }
 
 export function OwnerWelcome({ tenantId, accountType, ownerName, initialState, onClose }: Props) {
-  const steps = accountType === "standalone" ? STANDALONE_STEPS : AGENCY_STEPS;
+  const steps = resolveJourneySteps(accountType);
 
   const [done, setDone] = useState<Record<string, boolean>>(initialState.steps ?? {});
   const [dismissing, setDismissing] = useState(false);

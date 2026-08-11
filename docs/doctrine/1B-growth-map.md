@@ -48,11 +48,11 @@ The platform is its own ecosystem by design. Platform defaults stay generic to e
 The billing taxonomy already in the schema *is* the revenue map. Each layer is an engine; each engine has a different buyer, a different growth loop, and a different margin profile.
 
 ### Engine 1 — L1: Platform Subscriptions (tenant → Paige) · target ~$400M ARR
-The core: Individual, Agency, and Enterprise plans on `platform_subscription_plans` / `platform_subscriptions`.
+The core: Solo, Agency, and Enterprise plans on `platform_subscription_plans` / `platform_subscriptions`.
 
-| Account Type | The Buyer | The Growth Atom |
+| Plan | The Buyer | The Growth Atom |
 |---|---|---|
-| **Individual** ($97–$297/mo) | Solo coach/consultant/advisor who needs Paige + client portals, no sub-accounts | Volume + self-serve |
+| **Solo** ($97–$297/mo) | Solo coach/consultant/advisor who needs Paige + client portals, no sub-accounts | Volume + self-serve |
 | **Agency** ($497–$997/mo base + per-sub-account) | Agencies/consultancies running a **book of business** — unlimited sub-accounts, each a full tenant | **The compounding unit.** One agency logo = 10, 50, 500 sub-accounts over time. Expansion revenue is structural, not sold. |
 | **Enterprise / White-Label** ($50K–$500K/yr) | Franchises, associations, multi-brand operators on `/workspace/*` under their own skin | Big logos, multi-year contracts, the moat against churn |
 

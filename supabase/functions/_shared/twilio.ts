@@ -920,8 +920,36 @@ export async function mintVoiceAccessToken(
   const applicationSid = appRes.data.applicationSid;
 
   const ttlSeconds = clampVoiceTtl(opts.ttlSeconds);
+  // §18 ONE home for the token assembly — both the tenant minter (here) and the operator minter
+  // (mintOperatorVoiceAccessToken) build the identical Twilio-fpa JWT via buildVoiceAccessTokenJwt.
+  return await buildVoiceAccessTokenJwt({
+    apiKeySid: creds.apiKeySid, // SK… (API Key SID) — iss + HMAC identity
+    apiKeySecret: creds.authToken, // API-Key SECRET — HMAC signing key
+    accountSid: creds.accountSid, // AC… (the tenant SUBaccount SID the token acts on) — sub
+    identity,
+    applicationSid,
+    ttlSeconds,
+  });
+}
+
+/**
+ * §18 ONE home for the Twilio Voice Access Token JWT assembly. Given a resolved API-Key credential
+ * (SK… + secret), the account the token acts on (AC…), the server-derived identity, the TwiML
+ * application the outgoing VoiceGrant references, and a clamped TTL, produce the HS256-signed
+ * twilio-fpa JWT. Used by BOTH the tenant minter (subaccount creds + subaccount TwiML app) and the
+ * operator minter (master creds + master TwiML app). Kept private — callers use the two minters,
+ * which own the credential/app resolution (tenant Vault vs master env).
+ */
+async function buildVoiceAccessTokenJwt(p: {
+  apiKeySid: string;
+  apiKeySecret: string;
+  accountSid: string;
+  identity: string;
+  applicationSid: string;
+  ttlSeconds: number;
+}): Promise<TwilioResult<VoiceAccessToken>> {
   const nowSec = Math.floor(Date.now() / 1000);
-  const expiresAt = nowSec + ttlSeconds;
+  const expiresAt = nowSec + p.ttlSeconds;
   // Backdate nbf by 30s to absorb clock skew between us and Twilio's registrar. An nbf set
   // to exactly `now` makes the token momentarily "not yet valid" if Twilio's clock lags ours,
   // an intermittent device-registration/first-call flake that compiles clean but fails live
@@ -930,24 +958,89 @@ export async function mintVoiceAccessToken(
 
   const header = { typ: "JWT", alg: "HS256", cty: "twilio-fpa;v=1" };
   const payload = {
-    jti: `${creds.apiKeySid}-${nowSec}`,
-    iss: creds.apiKeySid, // SK… (API Key SID)
-    sub: creds.accountSid, // AC… (the tenant SUBaccount SID the token acts on)
+    jti: `${p.apiKeySid}-${nowSec}`,
+    iss: p.apiKeySid, // SK… (API Key SID)
+    sub: p.accountSid, // AC… (the account the token acts on)
     iat: nowSec,
     nbf: nbfSec,
     exp: expiresAt,
     grants: {
-      identity,
+      identity: p.identity,
       voice: {
         incoming: { allow: true },
-        outgoing: { application_sid: applicationSid },
+        outgoing: { application_sid: p.applicationSid },
       },
     },
   };
 
   const signingInput = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
-  const sig = await hmacSha256Bytes(creds.authToken, signingInput);
+  const sig = await hmacSha256Bytes(p.apiKeySecret, signingInput);
   const token = `${signingInput}.${b64url(sig)}`;
 
-  return { ok: true, status: 200, error: null, data: { token, identity, expiresAt, ttlSeconds, applicationSid } };
+  return {
+    ok: true,
+    status: 200,
+    error: null,
+    data: { token, identity: p.identity, expiresAt, ttlSeconds: p.ttlSeconds, applicationSid: p.applicationSid },
+  };
+}
+
+/**
+ * Mint a SHORT-lived Twilio Voice Access Token for the PLATFORM OPERATOR (God/Super-Admin) —
+ * Phase 3 (§9/§53). The operator is tenant-LESS: their voice runs on the platform MASTER account
+ * (the SAME account as operator SMS + the +1 470 number), NOT a tenant subaccount. So this NEVER
+ * reads tenant_twilio_subaccounts / Vault (§9 — no tenant creds, no tenant data); it uses master
+ * creds (env, masterCreds) + a MASTER-account TwiML Application.
+ *
+ * §588 — the CALLER derives `identity` (operator.<userId>) server-side from the verified JWT and
+ * passes it here; this helper NEVER reads a request body and REJECTS a blank identity.
+ *
+ * §13 HONEST DEGRADE — returns needs_config (never a fabricated token) when:
+ *   • master creds are unset (twilio_master_not_configured), or
+ *   • master creds carry no API Key SID (twilio_master_api_key_missing) — Twilio Access Tokens
+ *     require the API-Key credential model (iss = SK…, HMAC key = API-Key secret); the legacy
+ *     account-auth-token master path cannot mint one, so degrade rather than sign an invalid token, or
+ *   • the master TwiML Application SID is not configured (operator_twiml_app_not_configured).
+ *
+ * OWED SECRET (§13/§34 — NAMES only): TWILIO_OPERATOR_TWIML_APP_SID (an AP… TwiML Application on the
+ * MASTER account whose VoiceUrl points at voice-twiml). There is NO master row in
+ * tenant_twilio_subaccounts to persist a minted app on (unlike ensureTwimlApp for tenants), so the
+ * operator app SID is env-provided. If the owner has not created/pointed a master TwiML app yet, the
+ * operator token honestly degrades to needs_config until this is set.
+ */
+export async function mintOperatorVoiceAccessToken(
+  opts: { identity: string; ttlSeconds?: number },
+): Promise<TwilioResult<VoiceAccessToken>> {
+  const { identity } = opts;
+  // §9/§13: identity MUST be a non-empty, server-derived operator principal.
+  if (!identity || identity.length === 0) {
+    return { ok: false, status: 0, error: "voice_identity_required", data: null };
+  }
+
+  const master = masterCreds();
+  if (!master) {
+    return { ok: false, status: 0, error: "twilio_master_not_configured", data: null, needs_config: true };
+  }
+  if (!master.apiKeySid) {
+    // Access Tokens require the API-Key credential model (iss=SK…, HMAC key=API-Key secret). The
+    // legacy account-auth-token master fallback has no SK… and can't sign a valid token → degrade.
+    return { ok: false, status: 0, error: "twilio_master_api_key_missing", data: null, needs_config: true };
+  }
+
+  // The MASTER-account TwiML Application the outgoing VoiceGrant references. Env-provided (there is
+  // no master subaccount row to persist a minted app on). needs_config when unset (§13 — owed secret).
+  const applicationSid = Deno.env.get("TWILIO_OPERATOR_TWIML_APP_SID") ?? "";
+  if (!applicationSid) {
+    return { ok: false, status: 0, error: "operator_twiml_app_not_configured", data: null, needs_config: true };
+  }
+
+  const ttlSeconds = clampVoiceTtl(opts.ttlSeconds);
+  return await buildVoiceAccessTokenJwt({
+    apiKeySid: master.apiKeySid,
+    apiKeySecret: master.authToken, // API-Key SECRET (master path)
+    accountSid: master.accountSid, // AC… (the MASTER account the operator token acts on)
+    identity,
+    applicationSid,
+    ttlSeconds,
+  });
 }

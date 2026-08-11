@@ -86,10 +86,12 @@ function featherlessKey(): string | undefined { return envKey("FEATHERLESS_API_K
 // directive 2026-07-15: "don't default and assume" — every id below was checked against
 // Featherless's live model catalog before being wired in). Each is env-overridable
 // (FEATHERLESS_MODEL_<KIND>) so the mix can be retuned without a code deploy.
-// NOTE (plan gate): the larger ids (14B+) need a Featherless plan tier above Basic ($10, 15B
-// cap) — Featherless bills flat-rate by model-size tier, not per-token. If the configured
-// model isn't reachable on the active plan, featherlessChat's catch-and-fall-through still
-// protects the call: it degrades to Claude, never a hard failure.
+// NOTE (plan): the platform is on Featherless's "Feather Per-Request" DEVELOPER plan
+// (subscribed 2026-08-10) — per-request billing from a credit balance, with NO model-size cap,
+// so the 14B/70B ids below (and the 70B open-flexible default) are reachable. If a configured id
+// is ever unreachable (e.g. a plan downgrade), featherlessChat returns null so the callers
+// degrade to Claude, never a hard failure: routedChatCompletion self-rescues in-file, and the
+// callModel open-flexible degrade-to-Claude path lands in HOTFIX A / PR #436 (complementary).
 const FEATHERLESS_MODEL_BY_KIND: Partial<Record<JobKind, string>> = {
   classify: "Qwen/Qwen2.5-7B-Instruct",             // best cheap-tier JSON/label adherence
   score: "Qwen/Qwen2.5-7B-Instruct",                 // numeric/rubric-out, high-volume
@@ -98,12 +100,22 @@ const FEATHERLESS_MODEL_BY_KIND: Partial<Record<JobKind, string>> = {
   summarize: "Qwen/Qwen2.5-14B-Instruct",            // coherence for briefs/heartbeat feeds
   internal_first_draft: "meta-llama/Llama-3.3-70B-Instruct", // internal draft only, never sent
 };
-const FEATHERLESS_CHEAP_FALLBACK_MODEL =
-  Deno.env.get("FEATHERLESS_CHEAP_MODEL") ?? "meta-llama/Meta-Llama-3.1-8B-Instruct";
+// The Featherless model the open-flexible (callModel) tier uses when the caller passes no
+// model_override, and the last-resort default for any future CHEAP_KIND lacking a per-kind map
+// entry above. Env-overridable (§10 config-as-data) so the owner can rotate the model with NO
+// code deploy: FEATHERLESS_DEFAULT_MODEL is the primary name; FEATHERLESS_CHEAP_MODEL is kept as
+// a back-compat alias. Default = Llama-3.3-70B (owner's ranked #1 cheap-tier pick, allow-listed):
+// stronger JSON/instruction-following than the prior 8B, which lowers the malformed-output rate
+// that would otherwise trigger the pricier Claude rescue. A cheaper alternative (Qwen2.5-14B) is a
+// one-env-var change away if per-request spend warrants it.
+const FEATHERLESS_DEFAULT_MODEL =
+  Deno.env.get("FEATHERLESS_DEFAULT_MODEL") ??
+  Deno.env.get("FEATHERLESS_CHEAP_MODEL") ??
+  "meta-llama/Llama-3.3-70B-Instruct";
 
 function featherlessModelFor(jobKind: JobKind): string {
   const envOverride = Deno.env.get(`FEATHERLESS_MODEL_${jobKind.toUpperCase()}`);
-  return envOverride || FEATHERLESS_MODEL_BY_KIND[jobKind] || FEATHERLESS_CHEAP_FALLBACK_MODEL;
+  return envOverride || FEATHERLESS_MODEL_BY_KIND[jobKind] || FEATHERLESS_DEFAULT_MODEL;
 }
 
 /** Decide who does a job. Pure + synchronous — safe to log/inspect. */
@@ -396,7 +408,7 @@ async function claudeText(task: unknown, model?: string): Promise<ProviderCallRe
 async function featherlessProvider(messages: { role: string; content: unknown }[], model?: string): Promise<ProviderCallResult> {
   if (!envKey("FEATHERLESS_API_KEY")) throw new NeedsConfigError("featherless");
   const started = Date.now();
-  const m = model || FEATHERLESS_CHEAP_FALLBACK_MODEL;
+  const m = model || FEATHERLESS_DEFAULT_MODEL;
   const data = await featherlessChat({ messages, max_tokens: 2048 }, m);
   if (!data) throw new Error("Featherless call failed or returned no choice");
   const content = data?.choices?.[0]?.message?.content ?? "";
@@ -868,16 +880,58 @@ export async function callModel(
         needs_config: true,
       };
     }
-    // Real provider error → trace it (scrubbed message) before rethrowing to the caller.
+    // Real provider error → trace it (scrubbed message). Keep this trace ALWAYS — we WANT the
+    // failed cheap-tier provider outage (e.g. featherless/groq) on record even when the fallback
+    // below rescues the call.
+    const failedProvider = cell.provider;
     traceLLMCall({
       ...traceBase,
-      provider: cell.provider,
+      provider: failedProvider,
       model: opts.model_override ?? null,
       status: "error",
       error_class: (e as Error)?.name ?? "error",
       error_message: (e as Error)?.message ?? String(e),
     });
-    throw e;
+    // §34 resilience — the router can never harden into an outage (worst case is we paid Claude
+    // prices, never the feature broke). For NON-frontier TEXT, a real provider error degrades to
+    // the healthy Claude frontier cell (mirrors routeText's featherless→Claude fallback). TEXT-only
+    // by design: a failed binary gen keeps its honest needs_config/error behavior — silently
+    // escalating an image to a pricier tier is a different decision we are NOT making here. §17 is
+    // safe: sensitive text (customer_send/approval) is already forced to frontier upstream, so it
+    // never reaches this branch — the fallback only ever fires for non-sensitive cheap-tier text.
+    const frontierCell = ROUTE_TABLE.text?.frontier;
+    if (modality === "text" && tier !== "frontier" && frontierCell && frontierCell !== cell) {
+      try {
+        // A SINGLE DIRECT call to the frontier cell — NOT a recursive callModel, so no gate
+        // re-entry and no infinite loop. Pass `undefined` as the override so we never forward a
+        // featherless/groq model id to Claude. On success, execution flows OUT of this try/catch
+        // into the §3 voice gate + §2 finance re-scan + persist + audit + success trace below —
+        // the fallback output MUST still pass those gates (we do not bypass them).
+        result = await frontierCell.invoke(task, undefined);
+        traceLLMCall({
+          ...traceBase,
+          provider: "anthropic",
+          model: null,
+          status: "success",
+          metadata: { ...traceBase.metadata, fallback_from: `${failedProvider}/${tier}` },
+        });
+      } catch (fallbackErr) {
+        // The rescue itself failed — trace the fallback attempt as an error, then re-throw the
+        // ORIGINAL provider error (not the fallback's) so the caller sees the true first cause.
+        traceLLMCall({
+          ...traceBase,
+          provider: "anthropic",
+          model: null,
+          status: "error",
+          error_class: (fallbackErr as Error)?.name ?? "error",
+          error_message: (fallbackErr as Error)?.message ?? String(fallbackErr),
+          metadata: { ...traceBase.metadata, fallback_from: `${failedProvider}/${tier}` },
+        });
+        throw e;
+      }
+    } else {
+      throw e;
+    }
   }
 
   // 5) POST-generation doctrine on SHIPPED text — copy that reaches a customer (is_customer_send) OR

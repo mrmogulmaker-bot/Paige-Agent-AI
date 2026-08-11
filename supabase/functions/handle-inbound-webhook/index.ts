@@ -1,9 +1,37 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Resolve the inviting party's DISPLAY NAME present-only from the inviting user's
+// tenant (§45/§9) — the practice's own brand, never a hardcoded operator name. Returns
+// undefined when nothing resolves so the email template degrades to a neutral "your
+// admin" line rather than inventing an identity.
+async function resolveInviterName(
+  supabase: ReturnType<typeof createClient>,
+  invitedById: string | null,
+): Promise<string | undefined> {
+  if (!invitedById) return undefined;
+  const [{ data: profile }, { data: memberships }] = await Promise.all([
+    supabase.from("profiles").select("active_tenant_id").eq("user_id", invitedById).maybeSingle(),
+    supabase
+      .from("tenant_members")
+      .select("tenant_id")
+      .eq("user_id", invitedById)
+      .eq("status", "active")
+      .order("joined_at", { ascending: true })
+      .limit(1),
+  ]);
+  const tenantId =
+    (profile as { active_tenant_id?: string | null } | null)?.active_tenant_id ??
+    (memberships as Array<{ tenant_id?: string }> | null)?.[0]?.tenant_id ??
+    null;
+  const operator = await resolveOperatorIdentity(supabase, tenantId);
+  return operator.signer_name ?? operator.from_name ?? operator.product_name ?? undefined;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -288,6 +316,9 @@ Deno.serve(async (req) => {
         // Send branded invite email via the registered template
         const inviteUrl = `https://paigeagent.ai/auth?invite=${plaintextToken}`;
         const displayName = [first_name, last_name].filter(Boolean).join(" ").trim();
+        // §45: the inviter shown is the inviting practice's OWN identity, resolved
+        // present-only from its tenant — never a hardcoded operator ("Antonio Cook").
+        const inviterName = await resolveInviterName(supabase, invitedById);
         try {
           await supabase.functions.invoke("send-transactional-email", {
             body: {
@@ -297,7 +328,7 @@ Deno.serve(async (req) => {
               templateData: {
                 role: String(tier).toLowerCase() === "vip" ? "VIP Member" : "Premium Member",
                 inviteUrl,
-                invitedBy: invited_by_email || "Antonio Cook",
+                invitedBy: inviterName,
                 recipientName: displayName || undefined,
               },
             },
@@ -363,7 +394,9 @@ Deno.serve(async (req) => {
                   templateData: {
                     role: "Coach",
                     inviteUrl: `https://paigeagent.ai/auth?invite=${plaintextToken}`,
-                    invitedBy: "Antonio Cook",
+                    // §45: no inviting tenant is resolvable on this bridge path, so the
+                    // inviter is omitted present-only (the template shows a neutral
+                    // "your admin" line) — never a hardcoded operator ("Antonio Cook").
                   },
                 },
               });

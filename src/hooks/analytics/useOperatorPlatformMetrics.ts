@@ -31,6 +31,7 @@ export interface OperatorMetrics {
     total: number;
     individual: number;
     standalone: number;
+    sub_account: number;
     agency: number;
     enterprise: number;
   };
@@ -110,6 +111,7 @@ export function useOperatorPlatformMetrics(
           total: Number(tenants.total) || 0,
           individual: Number(tenants.individual) || 0,
           standalone: Number(tenants.standalone) || 0,
+          sub_account: Number(tenants.sub_account) || 0,
           agency: Number(tenants.agency) || 0,
           enterprise: Number(tenants.enterprise) || 0,
         },

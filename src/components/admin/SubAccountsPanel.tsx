@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Network, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { canOwnSubaccounts } from "@/lib/agency/accountCapabilities";
 import { toast } from "sonner";
 
 export function SubAccountsPanel() {
@@ -37,8 +38,9 @@ export function SubAccountsPanel() {
 
   // Only the tenant owner may spin up sub-accounts (the RPC enforces this too).
   const isOwner = !!activeTenant && !!uid && activeTenant.owner_user_id === uid;
-  // Only agency/enterprise accounts get sub-accounts (RPC enforces this too).
-  const canSubaccounts = activeTenant?.account_type === "agency" || activeTenant?.account_type === "enterprise";
+  // Only parent-capable accounts get sub-accounts (RPC enforces this too). Generic
+  // predicate — the parent-capable tier set lives in one place (§213.e/§51).
+  const canSubaccounts = canOwnSubaccounts(activeTenant?.account_type);
 
   const upgradeToAgency = async () => {
     if (!activeTenantId) return;
@@ -60,6 +62,13 @@ export function SubAccountsPanel() {
   };
 
   if (!activeTenantId || !isOwner) return null;
+
+  // A SUB-ACCOUNT (has a parent) can never become an agency nor own sub-accounts of
+  // its own — the §51 sub-account-never-agency invariant, now enforced by the
+  // tenants_subaccount_not_agency CHECK. Without this guard a parented owner would see
+  // the "Become an Agency" CTA and its set_tenant_account_type('agency') call would
+  // surface a raw check_violation toast. Never offer the upgrade to a sub-account.
+  if (activeTenant?.parent_tenant_id) return null;
 
   // Standalone owner → offer the upgrade instead of a management UI.
   if (!canSubaccounts) {

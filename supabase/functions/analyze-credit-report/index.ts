@@ -1,7 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
-import { PME_KNOWLEDGE_BASE } from "../_shared/pme-knowledge-base.ts";
+// N5 §2/§9 — the funding methodology corpus is no longer bundled into platform code;
+// it lives in the installable Marketplace funding preset (tenant KB). This extraction
+// pass parses the report structure and does not need the coaching methodology inline.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -275,10 +277,6 @@ ACCOUNT NUMBER RULES (NON-NEGOTIABLE):
 - NEVER guess or fabricate account numbers — accuracy is critical for deduplication
 
 Use the verified read-check below as hard evidence. If your extraction conflicts with the verified read-check, leave the conflicting field null instead of inventing a value.
-
-=== PME FUNDING KNOWLEDGE BASE ===
-${PME_KNOWLEDGE_BASE}
-=== END PME FUNDING KNOWLEDGE BASE ===
 `;
 
 class AIRequestError extends Error {
@@ -308,11 +306,6 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableApiKey = "unused";
-
-    if (!lovableApiKey) {
-      throw new Error("LOVABLE_API_KEY is not configured");
-    }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const token = authHeader.replace("Bearer ", "");
@@ -390,7 +383,7 @@ serve(async (req) => {
     }
 
     const base64 = arrayBufferToBase64(await fileData.arrayBuffer());
-    const readCheck = await runReadCheck(base64, lovableApiKey);
+    const readCheck = await runReadCheck(base64);
 
     // Check if this is a business report — reject early
     if (readCheck.report_category === "business") {
@@ -415,7 +408,7 @@ serve(async (req) => {
       return await failUpload(supabase, uploadId, message, 422);
     }
 
-    const analysisResult = await runStructuredExtraction(base64, lovableApiKey, readCheck);
+    const analysisResult = await runStructuredExtraction(base64, readCheck);
 
     // Double-check: if AI says it's a business report, reject
     if (analysisResult.report_type === "business") {
@@ -756,9 +749,8 @@ serve(async (req) => {
   }
 });
 
-async function runReadCheck(base64: string, lovableApiKey: string) {
+async function runReadCheck(base64: string) {
   return await callAiJson(
-    lovableApiKey,
     READ_CHECK_PROMPT,
     [
       { type: "text", text: "Perform the read-check on this uploaded PDF credit report before any analysis." },
@@ -768,14 +760,13 @@ async function runReadCheck(base64: string, lovableApiKey: string) {
   );
 }
 
-async function runStructuredExtraction(base64: string, lovableApiKey: string, readCheck: any) {
+async function runStructuredExtraction(base64: string, readCheck: any) {
   const prompt = `${CREDIT_REPORT_EXTRACTION_PROMPT}
 === VERIFIED READ CHECK ===
 ${JSON.stringify(readCheck, null, 2)}
 === END VERIFIED READ CHECK ===`;
 
   return await callAiJson(
-    lovableApiKey,
     prompt,
     [
       { type: "text", text: "Extract the structured credit report data from this uploaded PDF using only document-visible facts." },
@@ -785,11 +776,10 @@ ${JSON.stringify(readCheck, null, 2)}
   );
 }
 
-async function callAiJson(lovableApiKey: string, systemPrompt: string, userContent: any[], model: string) {
+async function callAiJson(systemPrompt: string, userContent: any[], model: string) {
   const response = await gatewayCompat("anthropic", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${lovableApiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -806,7 +796,7 @@ async function callAiJson(lovableApiKey: string, systemPrompt: string, userConte
     const statusMessage = response.status === 429
       ? "Rate limits exceeded, please try again later."
       : response.status === 402
-        ? "Payment required, please add funds to your Lovable AI workspace."
+        ? "Payment required — the AI provider reported a billing/quota issue."
         : "AI analysis failed. Please try again.";
     throw new AIRequestError(response.status, statusMessage);
   }

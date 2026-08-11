@@ -29,7 +29,7 @@ import { TableCell, TableRow } from "@/components/ui/table";
  * §11 gold ONLY on the Generate act; the copy/revoke are neutral; StatePill carries status.
  * §13 nothing rendered that the RPC didn't return.
  *
- * Slug note: mirrors the DB-true plan slugs after the 1-A rename (solo / agency). Enterprise
+ * Slug note: mirrors the DB-true plan slugs after the tier reconcile (solo / agency). Enterprise
  * is contact-sales (custom price) and is intentionally NOT invite-generatable here.
  */
 

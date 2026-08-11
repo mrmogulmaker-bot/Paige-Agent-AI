@@ -2,6 +2,9 @@
 //
 // EMAIL verbs:  list | add | refresh | set_default | remove   (Resend sender-domain registry)
 // WEB verbs:    web_list | web_add | web_verify | web_set_default | web_remove   (#178 publishing spine)
+// Tenant EMAIL sender-domain management (Resend).
+//
+// Verbs: list | add | refresh | set_default | remove   (the Resend sender-domain registry)
 //
 // §9 (fixed): the caller's tenant is SERVER-DERIVED. A non-owner admin is pinned to their OWN
 // active tenant and can NEVER target another tenant via body.tenant_id (that was a live
@@ -10,6 +13,8 @@
 // tenant-scoped so a row from another tenant can't be read/mutated/deleted by id. Web-domain
 // WRITES go through SECURITY DEFINER RPCs (web_domain_claim / web_domain_mark_verified) called
 // with the USER's JWT, so those RPCs re-derive the tenant themselves — never a forgeable body.
+// Only is_platform_owner() may pass an explicit body.tenant_id (a fleet operation). Every by-id
+// operation is tenant-scoped so a row from another tenant can't be read/mutated/deleted by id.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { deriveCallerTenant } from "../_shared/tenant-domain-scope.ts";
 

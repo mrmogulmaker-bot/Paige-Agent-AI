@@ -212,7 +212,7 @@ Six different sources of truth for "what plan is a tenant on":
 | `subscription_plans` (legacy) | consumer credit-repair | "5 disputes/month", etc. |
 | `create-trial-checkout` (not wired) | starter | $49 |
 | `stripe-webhook` | standard / premium / vip | — |
-| `platform_subscription_plans` (§17-canonical, seeded, unread) | practice / academy / enterprise | $149 / $397 / — |
+| `platform_subscription_plans` (§17-canonical, seeded, unread) | solo / agency / enterprise | $149 / $397 / — |
 
 **Same concept problem:** already tracked by DOCTRINE_197_BILLING_LAYER_TAXONOMY. L1 = platform_subscription_plans (§17-canonical). L2 = the legacy subscription_plans (queued for deletion). Fix per PLATFORM_ASSESSMENT Move 3: make platform_subscription_plans the single source; retire the rest.
 

@@ -49,8 +49,13 @@ export function sanitizePhoneFilter(phone: string | null | undefined): string {
  * contact's sms/email threads) — first-class to the same standard as every channel (§49). PURE
  * + smoked so a drift from the canonical format is caught headless, never on a live call.
  */
-export function voiceThreadKey(tenantId: string, phone: string): string {
-  return `voice:${tenantId}:${sanitizePhoneFilter(phone)}`;
+export function voiceThreadKey(tenantId: string, phone: string, contactId?: string | null): string {
+  // §49 one-thread-per-contact: key on the CONTACT so a call sits in the SAME thread as that
+  // person's email/sms/outbound messages. voice-twiml always resolves a contact before writing a
+  // row (it refuses orphan rows), so the phone fallback is a defensive tail only.
+  return contactId
+    ? `contact:${tenantId}:${contactId}`
+    : `voice:${tenantId}:${sanitizePhoneFilter(phone)}`;
 }
 
 /**
@@ -118,6 +123,61 @@ export function parseClientCaller(from: string | null | undefined): ParsedIdenti
 /** Build the identity string `${tenantId}.${userId}` (A1 format) for a <Client> dial. */
 export function buildIdentity(tenantId: string, userId: string): string {
   return `${tenantId}.${userId}`;
+}
+
+// ── OPERATOR (God/Super-Admin) voice identity — Phase 3 (§9/§53) ──────────────────────────
+// The platform OPERATOR is tenant-LESS: their voice runs on the platform MASTER Twilio account
+// (the same account as operator SMS + the +1 470 number), NOT a tenant subaccount. So the operator
+// identity carries a literal `operator.` sentinel prefix instead of a tenant UUID:
+//   tenant identity   = `${tenantId}.${userId}`   (both UUIDs)
+//   operator identity = `operator.${userId}`      (literal "operator", not a UUID)
+// "operator" is not a UUID, so it can NEVER collide with a real tenantId — the two namespaces are
+// disjoint by construction. voice-access-token mints this (server-derived userId, §588); voice-twiml
+// routes on it: an OUTBOUND `client:operator.<userId>` presents the MASTER caller-id (never a tenant
+// number), and an INBOUND call to the master number rings the operator seat(s). An operator call
+// NEVER resolves a tenant or touches tenant data (§9).
+
+/** Sentinel prefix marking the tenant-less platform-operator voice identity. */
+export const OPERATOR_IDENTITY_PREFIX = "operator.";
+
+/** Build the operator voice identity `operator.<userId>` (userId server-derived from the JWT, §588). */
+export function buildOperatorIdentity(userId: string): string {
+  return `${OPERATOR_IDENTITY_PREFIX}${userId}`;
+}
+
+/**
+ * True when a BARE identity is the operator sentinel `operator.<userId>` (non-empty userId). A tenant
+ * identity is `<uuid>.<uuid>`, so this never matches a tenant (the leading token is the literal
+ * "operator", never a UUID).
+ */
+export function isOperatorIdentity(identity: string | null | undefined): boolean {
+  const id = (identity ?? "").trim();
+  return id.startsWith(OPERATOR_IDENTITY_PREFIX) && id.length > OPERATOR_IDENTITY_PREFIX.length;
+}
+
+/**
+ * True when an OUTBOUND Twilio `From` is the authenticated operator client `client:operator.<userId>`.
+ * MUST be checked BEFORE parseClientCaller() in the outbound handler: parseClientCaller would parse
+ * `operator.<userId>` into { tenantId:"operator", userId } (a valid-looking but WRONG tenant), so the
+ * operator branch has to intercept first. Since "operator" is not a UUID, no real tenant collides.
+ */
+export function isOperatorClientCaller(from: string | null | undefined): boolean {
+  const f = (from ?? "").trim();
+  return f.startsWith(CLIENT_PREFIX) && isOperatorIdentity(f.slice(CLIENT_PREFIX.length));
+}
+
+/**
+ * Parse the operator `userId` from `client:operator.<userId>`, or null when the value is not the
+ * operator sentinel. Returns null (not a guess) on any malformed value so the caller degrades
+ * honestly (§13) instead of dialing with a wrong identity.
+ */
+export function parseOperatorClientCaller(from: string | null | undefined): string | null {
+  const f = (from ?? "").trim();
+  if (!f.startsWith(CLIENT_PREFIX)) return null;
+  const id = f.slice(CLIENT_PREFIX.length);
+  if (!isOperatorIdentity(id)) return null;
+  const userId = id.slice(OPERATOR_IDENTITY_PREFIX.length).trim();
+  return userId.length > 0 ? userId : null;
 }
 
 /**

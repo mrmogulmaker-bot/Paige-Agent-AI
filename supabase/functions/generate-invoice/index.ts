@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { PLATFORM_IDENTITY } from "../_shared/platform-identity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -135,8 +136,7 @@ const generateInvoiceHTML = (order: any, user: any) => {
 <body>
   <div class="header">
     <div>
-      <div class="logo">PaigeAgent.ai</div>
-      <p style="color: #666; margin-top: 4px;">Mogul Maker Academy</p>
+      <div class="logo">${PLATFORM_IDENTITY.name}</div>
     </div>
     <div class="invoice-info">
       <div class="invoice-title">INVOICE</div>
@@ -171,7 +171,7 @@ const generateInvoiceHTML = (order: any, user: any) => {
     <tbody>
       <tr>
         <td>
-          <strong>PaigeAgent.ai Subscription</strong><br>
+          <strong>${PLATFORM_IDENTITY.name} Subscription</strong><br>
           <span style="color: #666; font-size: 12px;">Monthly subscription - ${order.plan_type.charAt(0).toUpperCase() + order.plan_type.slice(1)} Plan</span>
         </td>
         <td>${order.plan_type.charAt(0).toUpperCase() + order.plan_type.slice(1)}</td>
@@ -197,8 +197,8 @@ const generateInvoiceHTML = (order: any, user: any) => {
 
   <div class="footer">
     <p>Thank you for your business!</p>
-    <p>Questions? Contact us at support@paigeagent.ai</p>
-    <p style="margin-top: 20px;">PaigeAgent.ai - Mogul Maker Academy</p>
+    <p>Questions? Contact us at ${PLATFORM_IDENTITY.support_email}</p>
+    <p style="margin-top: 20px;">${PLATFORM_IDENTITY.name}</p>
   </div>
 </body>
 </html>

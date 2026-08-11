@@ -13,7 +13,9 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { PaigeAttribution } from "@/components/ui/page";
 import { cn } from "@/lib/utils";
+import { resolveVpForActionKind } from "@/lib/paige/vpDepartments";
 import type { ApprovalQueueRow } from "@/hooks/usePendingApprovals";
 
 const SLA_LABEL: Record<string, string> = {
@@ -91,6 +93,10 @@ export function ApprovalRow({
       : String(dc ?? "");
   const summary = a.summary ?? fallback;
   const state = a.sla_state;
+  // VP attribution (§243/#245): credit the department's owning VP from the action_kind
+  // (`category`). Resolves to null for legacy categories that map to no department, so
+  // <PaigeAttribution> renders nothing — never a fabricated credit (§13).
+  const draftedVp = resolveVpForActionKind(a.category);
 
   const approve = async () => {
     setBusy(true);
@@ -138,6 +144,14 @@ export function ApprovalRow({
                 </span>
               )}
             </div>
+            {draftedVp && (
+              <PaigeAttribution
+                contributors={[{ vp: draftedVp }]}
+                size="sm"
+                showMark={false}
+                leadIn="Drafted by your Paige team"
+              />
+            )}
             <div className="flex items-center justify-end gap-1.5 pt-0.5">
               <Button
                 size="sm"

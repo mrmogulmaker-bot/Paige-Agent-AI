@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
+import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -394,6 +395,23 @@ serve(async (req) => {
         // Get client email from auth (via edge function context)
         const { data: { user: clientUser } } = await supabase.auth.admin.getUserById(client_id);
 
+        // §45: sign the client alert from the tenant's OWN brand, resolved present-only
+        // from the client's tenant — never a hardcoded operator ("The PME Team"). The
+        // login line uses the tenant's own sending domain when set, else the neutral
+        // platform domain.
+        const { data: clientRow } = await supabase
+          .from("clients")
+          .select("tenant_id")
+          .eq("linked_user_id", client_id)
+          .maybeSingle();
+        const clientTenantId =
+          (clientRow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+        const operator = await resolveOperatorIdentity(supabase, clientTenantId);
+        const signOffName = operator.from_name ?? operator.product_name;
+        const signOff = signOffName ? `\n\nThe ${signOffName} Team` : "";
+        const loginDomain =
+          (operator.sender as { domain?: string } | undefined)?.domain ?? "paigeagent.ai";
+
         if (clientUser?.email) {
           for (const alert of criticalAlerts) {
             try {
@@ -401,8 +419,8 @@ serve(async (req) => {
                 body: {
                   type: "credit_alert",
                   to: clientUser.email,
-                  subject: `Action Required — ${alert.alert_title} on Your PaigeAgent Report`,
-                  message: `Hi ${(clientProfile.full_name || "").split(" ")[0] || "there"},\n\nWe detected something important on your credit file that needs your attention.\n\n${alert.alert_title}\n\n${alert.alert_description}\n\nLog in to paigeagent.ai to review the details and take action.\n\nThe PME Team`,
+                  subject: `Action Required — ${alert.alert_title} on Your Credit Report`,
+                  message: `Hi ${(clientProfile.full_name || "").split(" ")[0] || "there"},\n\nWe detected something important on your credit file that needs your attention.\n\n${alert.alert_title}\n\n${alert.alert_description}\n\nLog in to ${loginDomain} to review the details and take action.${signOff}`,
                 },
               });
             } catch (e) {

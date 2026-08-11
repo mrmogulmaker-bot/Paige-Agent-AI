@@ -111,6 +111,8 @@ import {
   validateBlock,
 } from "../_shared/growth-blocks.ts";
 import { cleanFormSchema, GROWTH_FORM_SCHEMA_SPEC, type CleanFormSchema } from "../_shared/growth-forms.ts";
+// #184 — the generic finance-in-scope signal (no vertical literal) lives in ONE home (§18).
+import { deriveFinanceInScopeFromFeatures } from "../_shared/client-context.ts";
 import { retrieveTenantKnowledge, buildKnowledgeBlock } from "../_shared/studio-brain.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -423,15 +425,12 @@ serve(async (req: Request) => {
           const { data: trow } = await admin2.from("tenants").select("features").eq("id", tenantId).maybeSingle();
           const f = ((trow as { features?: Record<string, unknown> } | null)?.features ?? {}) as Record<string, unknown>;
           pb = f.playbook_config ?? null;
-          const skills = Array.isArray(f.enabled_skills) ? (f.enabled_skills as unknown[]) : [];
-          // Mirror the SQL COALESCE in get_paige_persona_context (migration ...320000:40-46) so the
-          // headless path gates funding EXACTLY like the JWT path — never looser.
-          fundingEnabled =
-            f.paige_funding_skill === true ||
-            f.paige_funding_skill === "true" ||
-            f.playbook === "funding" ||
-            (!!pb && (pb as Record<string, unknown>).slug === "funding") ||
-            skills.includes("funding");
+          // #184 — GENERIC finance-in-scope signal, no vertical literal. The JWT path (below)
+          // reads funding_enabled from get_paige_persona_context, whose derivation is now the
+          // is_finance marketplace catalog gate OR features.finance_in_scope; this no-join
+          // service-role path reads the same flag (set by any is_finance Blueprint's install +
+          // backfilled for legacy funding tenants), so it gates EXACTLY like the JWT path.
+          fundingEnabled = deriveFinanceInScopeFromFeatures(f);
         }
       } else {
         const authed2 = createClient(supabaseUrl, supabaseAnonKey, { global: { headers: { Authorization: authHeader } } });

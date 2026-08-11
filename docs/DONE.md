@@ -276,3 +276,141 @@ not driven here. **Follow-ups filed:** #575 (complete-signup writes invalid life
 (`handle_new_user()` trigger inserts `lifecycle_stage='lead'` inside a swallow → silently drops the
 signup auto-contact), #577 (stale lifecycle-vocabulary sweep on UPDATE + search paths). §49 Wave C #167
 (#563 voice picker) remains owner-directed — NOT auto-started.
+
+## §200 platform-operator-tenant seam — replace stale phantom MMA_TENANT_ID (#578, PR #313) — 2026-08-01
+
+The god/platform actor's tenant was pinned to a hardcoded `MMA_TENANT_ID` constant that had gone
+**stale/phantom** — the UUID (`a25194e0…`) matched no tenant row (verified: zero orphan rows anywhere),
+so every god-key tenant-scoped op resolved to a non-existent tenant. Classic §200 failure: one tenant's
+id baked into a platform-wide code path. **Diagnosis (§13):** of the "3 MMA hardcodes," the
+`tenant_sender_identity` `slug='mma'` branch was already superseded live (resolves per-tenant via
+`resolve_tenant_sender`) and the `btf_enabled` `slug='mma'` seed was dead (`btf_enabled` null for every
+tenant) — neither a live bug. The phantom const was the only live one.
+
+**Fix (config-as-data, §18/§10):** new `_shared/platform-operator-tenant.ts` `platformOperatorTenantId(admin)`
+resolves the operator's designated system tenant from `admin_app_settings` (`platform_operator_tenant_id`),
+UUID-validated, **fail-closed null** when unset/malformed/on error (never the phantom, never a default,
+never throws), TTL-cached (60s hit / 10s unset-null / never on error). Three consumers moved in §37
+lockstep: paige-mcp `actorTenantId()` platform branch, the `resolveMarketplaceActor` guard, and
+`workflowDispatch`'s §118 provider gate (implemented **restrict-don't-open** — plain `!==` inside the
+block so an unset operator tenant keeps real tenant callers blocked; god/null and the cron sweeper/undefined
+bypass via the unchanged precondition). Phantom literal deleted from all runtime code. **Behavior unchanged
+until designation** — god ops fail closed honestly instead of hitting a phantom.
+
+**Crew:** resolver architect + §9/§37 adversarial verifier → GO_WITH_GUARDS, all guards applied.
+**§32:** headless smoke `scripts/platform-operator-tenant-smoke.mts` 12/12; grep-clean; prod facts
+verified (phantom has no row + zero orphans; `admin_app_settings` RLS `is_platform_owner()` on read+write
+so no tenant self-designation; `paige_ingestion_proposals.tenant_id` nullable). Merged `4c519f1`; edge-deploy
+CI confirmed — `edge-live` advanced, `git diff edge-live..main -- supabase/functions` empty (paige-mcp +
+dispatch-queued-workflow-runs redeployed).
+
+**Owed (NOT in this PR):** designating a real coaching-generic operator system tenant ("Paige Operations")
+is a one-time prod-data step (fresh auth user + in-tx `provision_tenant` impersonation + `admin_app_settings`
+key) — needs a GoTrue/dashboard session, can't run headless. Runbook:
+`docs/architecture/platform-operator-tenant-200.md`. Live god-key drive verify owed to a capable/Cowork
+session. **Standing rule for #93:** every update gets a per-tier availability + gating check
+(God/Super-Admin · Agency · Tenant · Sub-account · Client) before it's called done.
+
+## #579 — Platform TTS default OpenAI nova → ElevenLabs (owner-locked) + OpenAI honest fallback — 2026-08-01
+
+Swapped the platform-default Paige chat/voice-playback voice from OpenAI `nova` to the owner-locked
+ElevenLabs primary female (`6aDn1KB0hjpdcocrUkmq`), added the backup female (`g6xIsTj2HwM6VR4iXFCw`)
+and a male option (`vBKc2FfBKJfcZNyEt1n6`) as selectable voices, and kept **OpenAI as the honest
+fallback tier** (never silently drops audio). Voice ids verified real via the ElevenLabs MCP (all 3
+render mp3).
+
+**Router rewrite (`_shared/tts-router.ts`):** un-reserved the ElevenLabs route cell; added
+`ResolvedVoice{provider,id}`, the `ELEVENLABS_TTS_VOICES` catalog + `PRIMARY/BACKUP/OPENAI_FALLBACK`
+constants, `DEFAULT_TTS_VOICE={elevenlabs,PRIMARY}`, `classifyVoice/isOpenAiVoice/isElevenLabsVoice`,
+cross-provider `ttsCacheKey`, `elevenLabsConfigured()`, and `planTtsSynthesis(resolved)` — an ORDERED
+fallback chain (EL primary→backup→OpenAI nova) that returns `{needs_config}` when NEITHER key is set.
+**Endpoint (`paige-tts/index.ts`)** iterates the plan attempts, per-attempt cache key/path, records the
+**actual** provider + a `fell_back` flag to the meter, 502 on all-failed, 503 `tts_not_configured` when
+neither keyed. **Migration `20260801200000`** extends `set_tenant_paige_voice`'s `_allowed` allowlist
+with the 3 EL ids (the §37 producer that would otherwise 22000-reject persisting an EL voice) — identical
+auth gates + merge-without-clobber write.
+
+**Crew (same shape as #166):** engineer + adversarial verifier (GO_WITH_GUARDS, guards applied) +
+design critic (ITERATE items addressed) + Codex peer review (SHIP). **§32:** headless smoke
+`scripts/tts-router-smoke.mts` 40/40; migration rollback-tx proof pre-merge. **§200 per-tier:** every
+subscription tier's default resolves to the same EL primary (no tier hardcodes a voice); tenants override
+via the tenant-authored `paige_voice` seam. Merged `98a50ad`; **post-merge persisted-apply confirmed** —
+`schema_migrations` 20260801200000 applied, `set_tenant_paige_voice` on prod carries all 3 EL ids,
+`db-live..main` and `edge-live..main` drift both zero (paige-tts + tts-router deployed).
+
+**Owed (§13):** `ELEVENLABS_API_KEY` must be set on the paige-tts function or the ElevenLabs default
+**silently degrades to OpenAI nova** (the honest fallback) — the swap is code-live but audibly inert
+until that secret is present. A human voice-listen on the 3 voices is owed (headless can't hear).
+
+## §9 IDOR fix — manage-tenant-domain server-derive tenant (Interim Triage Item 1, PR #316) — 2026-08-01
+
+The tenant Resend **email sender-domain** function (`manage-tenant-domain`) carried a live cross-tenant
+IDOR: (1) it scoped the tenant from `body.tenant_id` ("owner can target any") while admitting any
+`has_role('admin')` caller — so a non-owner admin could forge `body.tenant_id` and act on another
+tenant's rows; and (2) the by-id verbs `refresh`/`set_default`/`remove` resolved rows by `body.id` with
+**no tenant predicate**, letting any admin refresh, re-default, or **DELETE** any tenant's sender domain
+(and drop the Resend domain via API) by id.
+
+**Fix — server-derived tenant, `body` never trusted for a non-owner.** New pure
+`_shared/tenant-domain-scope.ts` `deriveCallerTenant`: platform **owner** may target any tenant via
+`body.tenant_id` (fleet op); a **non-owner** is pinned to their own `active_tenant_id`, a disagreeing
+`body.tenant_id` → `403 cross_tenant_forbidden` (loud-logged), no resolvable tenant → `400`. Every by-id
+verb is tenant-scoped with `.eq("tenant_id", …)` + a 404 guard (both `set_default` legs — the mass reset
+and the flip — scoped). Headless §32 smoke `scripts/tenant-domain-scope-smoke.mts` (7/7) proves each
+attack case. Only `is_platform_owner()` unlocks body-targeting — never `has_role('admin')`.
+
+**Extraction discipline (§18/§30):** lifted **byte-identical** from the in-flight publishing-spine
+branch's already-crew-verified Slice 2 — the EMAIL half only, so the two branches don't drift and #312
+rebases trivially. The Slice-1-dependent website-domain verbs (`web_*` + `vercelAttach`, needing a
+`tenant_web_domains` table/RPCs absent on main) were intentionally left out. **No migration, no schema
+change.**
+
+**Crew (§1/§5):** adversarial §9 verifier (**SHIP**) + compliance officer (**GO_WITH_GUARDS** — only the
+owed live-walk) + independent security peer review (**SHIP** — additionally confirmed the
+`trg_guard_active_tenant` DB trigger blocks a tenant admin from even switching `active_tenant_id` to a
+victim, so the IDOR is genuinely closed for the customer trust boundary). **§37 producer inventory:** the
+sole live caller (`EmailDomainsPanel.tsx`) never forges `tenant_id` and only acts on its own rows — no
+legitimate caller regresses; no cron/trigger/n8n/webhook/MCP producer exists.
+
+**§32:** merged `40bbe86`; edge-deploy CI succeeded — `edge-live` advanced, `git diff edge-live..main --
+supabase/functions/manage-tenant-domain + _shared/tenant-domain-scope.ts` = **empty** (fix live on prod).
+**Owed (§13):** a live-JWT cross-tenant-attack walk (authenticate as a non-owner admin of tenant A,
+forge `body.tenant_id=B` → expect 403 + the warn line; call a by-id verb with a tenant-B row id → expect
+404) is owed to a browser/JWT-capable session — the auth-gated edge fn can't be driven headless.
+
+## §49 one thread per contact (#197, Interim Triage Item 2, PR #318) — 2026-08-01
+
+Conversation threads fragmented per-channel: `thread_key` was `{channel}:{tenant}:{counterparty}`, so the
+same person reached on email vs voice vs SMS got SEPARATE threads (live: MMA's Tashia Anderson had 2 —
+email + voice). Now keyed on the CONTACT: a contact-bearing row keys `contact:{tenant}:{contact_id}`
+(NULL-contact keeps the old `{channel}:{tenant}:{counterparty}` fallback). Same contact's messages across
+every channel compute the SAME key, so the EXISTING `tg_message_upsert_thread ON CONFLICT (tenant_id,
+thread_key)` collapses them to one thread — the unique constraint + trigger are UNCHANGED (the minimal,
+safe design; §18/§30 extend-not-rebuild).
+
+**Producers (all 6):** `create_and_attach_conversation` RPC · `canonicalThreadKey` + `ComposeThreadDialog`
+(passes `client.id`) · `handle-inbound-email` · `voice-twiml` (`voiceThreadKey` + call site) ·
+`send-message` (5 fallbacks via a new `perContactKey`) · `tg_comms_file_outbound_draft`.
+
+**Consolidation backfill** (migration `20260801120000`) merged existing fragmented threads per
+`(tenant_id, contact_id)`: aggregate surfacing state onto a survivor, delete the redundant (reconstructable)
+thread rows, RE-POINT every message that lived in any merged thread by THREAD MEMBERSHIP (`member_keys`) —
+NOT by `message.contact_id`. That membership re-point is the adversarial-verifier fix: one old key can hold
+mixed contact_id values (a NULL-contact inbound co-residing with a resolved-contact row), and a
+contact_id-predicated re-point would strand those rows on a key naming no surviving thread — a silent,
+FK-invisible orphan. A fail-loud `B8` assertion aborts the migration if any `contact:%` message is orphaned.
+
+**Crew (§1/§5):** migration/consolidation architect + adversarial §9/§13 safety verifier (caught the
+orphaning bug, FIX_REQUIRED → fixed) + compliance officer (GO_WITH_GUARDS) + independent peer (GO_WITH_GUARDS;
+independently re-ran tsc + smoke, traced all 7 attack vectors incl. constructing the one pathological
+unique-constraint collision and proving it can't arise from normal operation). **§32:** headless smoke
+`scripts/thread-key-smoke.mjs` 16/16 (derivation invariants + all 6 producers key per-contact) + an ATOMIC
+`BEGIN..RAISE-abort` dry-run of the full backfill on REAL prod data (msgs 7→7 no loss, Tashia 2→1, orphans=0,
+nothing persisted). Merged `e51cbd93`. **Post-merge persisted-apply PROVEN on prod:** `schema_migrations`
+20260801120000 applied · `db-live..main` + `edge-live..main` (3 producer fns) drift = 0 · platform-wide
+`orphans=0` AND `contacts_with_multi_threads=0` (compliance guard G1 — the deploy-order race did not
+materialize) · Tashia = 1 thread keyed `contact:d8a0a880…:53970758…`.
+
+**§13 owed (honest):** the live inbox render (one unified thread on the deployed surface) needs a
+capable/Cowork/owner session — not driven headless. **Out of scope (flagged):** SMS-inbound is not yet
+wired to the unified `messages`/`threads` substrate — a separate gap, not a keying bug.

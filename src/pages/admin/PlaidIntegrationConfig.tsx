@@ -14,6 +14,7 @@ export default function PlaidIntegrationConfig() {
 
   useEffect(() => {
     void (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing, unrelated to this change; CI whole-file-lints changed files
       const { data } = await (supabase as any).from("paige_config").select("plaid_activated, plaid_env").eq("id", 1).maybeSingle();
       setActivated(!!data?.plaid_activated);
       setEnv(data?.plaid_env ?? "sandbox");
@@ -22,6 +23,7 @@ export default function PlaidIntegrationConfig() {
   }, []);
 
   const save = async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing, unrelated to this change; CI whole-file-lints changed files
     const { error } = await (supabase as any).from("paige_config").update({ plaid_activated: activated, plaid_env: env }).eq("id", 1);
     if (error) toast.error(error.message);
     else toast.success("Saved");
@@ -51,7 +53,7 @@ export default function PlaidIntegrationConfig() {
           </div>
           <Button onClick={save}>Save</Button>
           <div className="text-xs text-muted-foreground space-y-1">
-            <p>Add these in Project Settings → Secrets when Antonio signs up: <code>PLAID_CLIENT_ID</code>, <code>PLAID_SECRET</code>.</p>
+            <p>Add these in Project Settings → Secrets to activate: <code>PLAID_CLIENT_ID</code>, <code>PLAID_SECRET</code>.</p>
             <p>Webhook URL: <code>/functions/v1/handle-paige-plaid-webhook</code>.</p>
             <p>All scaffolding (tables, functions, UI) returns <code>activated:false</code> until the toggle above is on and secrets are present.</p>
           </div>

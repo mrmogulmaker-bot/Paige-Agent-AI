@@ -1,0 +1,248 @@
+# premerge-migration-proof — ADVISORY §32 pre-merge migration proof (task #222).
+#
+# Proves a PR's NEW migration file(s) apply cleanly on top of a fresh restore of
+# prod's CURRENT schema, inside a throwaway supabase/postgres container, then throws
+# the container away. It never touches prod except one READ-ONLY `supabase db dump`.
+# It is the PRE-merge twin of deploy-migrations.yml (the POST-merge actuator that
+# applies to prod on push to main and moves the `db-live` tag).
+#
+# ── POSTURE: ADVISORY / NON-REQUIRED (owner-ruled 2026-08-03) ────────────────────
+# This check reports pass/fail but MUST NOT be added to branch-protection required
+# checks yet. It does NOT gate merge. Rationale (§13/§32): the baseline-restore step
+# (Finding B — auth.users FKs, pg_cron/vector extensions) cannot be proven viable
+# headless, so making it blocking risks false-RED-ing legitimate migrations. Promote
+# to REQUIRED only after BOTH: (1) green across 3+ successive real migration PRs, and
+# (2) Finding B empirically resolved (restore succeeds against real prod schema). Until
+# then, migration PRs still carry the manual chunked BEGIN..ROLLBACK proof (Slice A
+# pattern); the owner has authorized merge under that manual proof.
+#
+# ── WHY A DUMP, NOT A REPLAY (#275) ──────────────────────────────────────────────
+# Full-history replay from empty is BROKEN: duplicate unguarded CREATE TABLE
+# public.profiles (20250908112334 + 20251009234919 -> 42P07) and a bare ALTER TABLE
+# realtime.messages ENABLE RLS (20260419181105 -> 42501). We restore a DUMP (the
+# already-resolved end-state) and apply ONLY the PR's new migration(s) on top, so none
+# of the #275 replay breakers are ever re-executed.
+#
+# ── FIDELITY (adversarial-hardened) ──────────────────────────────────────────────
+#  A) Apply PER-STATEMENT (no `psql -1`) to MATCH prod's `db push` (which auto-commits
+#     per statement). A file-level transaction would false-RED self-wrapping
+#     BEGIN;..COMMIT; files, top-level ALTER TYPE ADD VALUE, and CREATE INDEX
+#     CONCURRENTLY — all of which apply fine on prod.
+#  C) SKIP migrations already recorded on prod (schema_migrations Remote list) — a
+#     hand-applied migration is already in the dump; re-applying a non-idempotent file
+#     would false-RED while prod skips it.
+#  D) search_path parity — put `extensions` on the path like prod so unqualified
+#     extension-function calls resolve. (Role parity is imperfect — psql connects as
+#     superuser; a superuser may permit DDL a prod role would reject: an ADVISORY-phase
+#     false-GREEN risk, acceptable until promotion.)
+#
+# SECRETS (all already set for deploy-migrations.yml — zero new required):
+#   SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD (read-only dump), SUPABASE_PROJECT_ID (optional).
+# Same-repo guard: fork PRs get no secrets — the job errors VISIBLY rather than silently
+# no-op'ing. (A least-privilege read-only dump role is a promotion-time follow-up.)
+name: premerge-migration-proof
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**"
+
+concurrency:
+  group: premerge-migration-proof-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write # to post the advisory outcome comment
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        # supabase/postgres ships the Supabase roles/schemas/extensions a plain
+        # `postgres` image lacks. Pin a concrete tag (NOT :latest) to prod's Postgres
+        # major so the baseline is reproducible; the tag below is illustrative — confirm
+        # against the Supabase dashboard before promoting to required.
+        image: supabase/postgres:15.8.1.020
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      # Ephemeral target — NOT prod. Everything applied lands here and is destroyed.
+      PGHOST: localhost
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+
+    steps:
+      # ── Same-repo guard: fork PRs have no credentials. Error visibly (not silent). ──
+      - name: Same-repo guard (fork PRs have no DB credentials)
+        run: |
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]; then
+            echo "::error::The advisory §32 pre-merge proof cannot run on a fork PR (no DB credentials). This is a NON-BLOCKING advisory check — not a merge gate."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need base..head to diff the PR's new migrations
+
+      # ── Finding-C input + change detection: MIRROR of migration-lint.yml diff. ──
+      - name: Collect changed migrations
+        id: changed
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          # Added or Modified .sql only, sorted so timestamp prefix == apply order.
+          git diff --name-only --diff-filter=AM "$base" "$head" -- 'supabase/migrations/*.sql' \
+            | sort \
+            | tee changed_migrations.txt
+          echo "count=$(grep -c . changed_migrations.txt || true)" >> "$GITHUB_OUTPUT"
+
+      - name: No new migrations — skip cleanly
+        if: steps.changed.outputs.count == '0'
+        run: echo "No added/modified migration .sql in this PR — nothing to prove. Advisory PASS (no-op)."
+
+      - name: Install psql client
+        if: steps.changed.outputs.count != '0'
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Setup Supabase CLI
+        if: steps.changed.outputs.count != '0'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # ── Baseline = READ-ONLY dump of prod's current schema (+ custom roles) and the
+      #    list of versions already recorded on prod (Finding C skip-set). ──
+      - name: Dump prod baseline (READ-ONLY on prod)
+        id: baseline
+        if: steps.changed.outputs.count != '0'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ] || [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN and SUPABASE_DB_PASSWORD are required for the read-only baseline dump."
+            exit 1
+          fi
+          ref="${SUPABASE_PROJECT_ID:-}"
+          if [ -z "$ref" ]; then
+            ref="$(sed -n 's/^project_id = "\(.*\)"/\1/p' supabase/config.toml | head -1)"
+          fi
+          if [ -z "$ref" ]; then echo "::error::could not resolve prod project ref"; exit 1; fi
+          echo "Linking prod project $ref (read-only usage: dump + migration list only)"
+          supabase link --project-ref "$ref"
+          # db dump is pg_dump under the hood -> READ-ONLY. No --data-only, so no rows
+          # (or PII) leave prod. --role-only excludes Supabase-managed roles by design,
+          # so it restores cleanly onto the image's stock roles.
+          supabase db dump --linked --role-only -f baseline_roles.sql
+          supabase db dump --linked -f baseline_schema.sql
+          # Finding C: versions already recorded on prod (the Remote column). A PR
+          # migration already hand-applied to prod must be SKIPPED, not re-applied.
+          supabase migration list --linked > migration_list.txt || true
+          awk -F'|' '{gsub(/[^0-9]/,"",$3); if (length($3)==14) print $3}' migration_list.txt \
+            | sort -u > recorded_versions.txt || true
+          echo "Prod has $(grep -c . recorded_versions.txt || echo 0) recorded migration versions."
+
+      # ── Restore the baseline into the ephemeral engine. Finding B lives here: if the
+      #    restore chokes it is a NON-BLOCKING restore-viability issue, not a real fail. ──
+      - name: Restore baseline into ephemeral DB
+        id: restore
+        if: steps.changed.outputs.count != '0'
+        run: |
+          set -uo pipefail
+          # Roles first; tolerate collisions with the image's stock roles.
+          psql -v ON_ERROR_STOP=0 -q -f baseline_roles.sql >/dev/null 2>&1 || true
+          # Schema must restore clean. If it does not, that is Finding B (restore
+          # viability) — report inconclusive and DO NOT fail the job (advisory).
+          if ! psql -v ON_ERROR_STOP=1 -q -f baseline_schema.sql; then
+            echo "::warning::Baseline schema restore FAILED (Finding B: restore-viability, e.g. auth.users / pg_cron / vector). Advisory check is INCONCLUSIVE — this is NOT a merge gate."
+            echo "restore_ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Finding D: search_path parity so unqualified extension calls resolve like prod.
+          psql -v ON_ERROR_STOP=1 -c 'ALTER DATABASE postgres SET search_path TO "$user", public, extensions;' >/dev/null
+          echo "restore_ok=true" >> "$GITHUB_OUTPUT"
+
+      # ── Apply the PR's new migrations the way prod does: PER-STATEMENT (Finding A),
+      #    skipping any version already recorded on prod (Finding C). ──
+      - name: Apply PR migrations (prod-parity per-statement)
+        id: apply
+        if: steps.changed.outputs.count != '0' && steps.restore.outputs.restore_ok == 'true'
+        run: |
+          set -uo pipefail
+          fail=0
+          failfile=""
+          failmsg=""
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            ver="$(basename "$f" | grep -oE '^[0-9]{14}' || true)"
+            if [ -n "$ver" ] && grep -qx "$ver" recorded_versions.txt 2>/dev/null; then
+              echo "skip $f — version $ver already recorded on prod (Finding C)"
+              continue
+            fi
+            echo "applying $f (per-statement, prod parity)"
+            # NO -1: match prod db push per-statement autocommit (Finding A). ON_ERROR_STOP
+            # aborts at the first real error; --echo-errors prints the failing statement.
+            if ! psql -v ON_ERROR_STOP=1 --echo-errors -f "$f" 2> apply_err.txt; then
+              cat apply_err.txt
+              echo "::error file=$f::Migration failed to apply on the prod-schema baseline."
+              fail=1
+              failfile="$f"
+              failmsg="$(tail -3 apply_err.txt | tr '\n' ' ' | sed 's/"/'"'"'/g')"
+              break
+            fi
+          done < changed_migrations.txt
+          {
+            echo "fail=$fail"
+            echo "failfile=$failfile"
+            echo "failmsg=$failmsg"
+          } >> "$GITHUB_OUTPUT"
+          [ "$fail" = "0" ] || exit 1
+
+      # ── §13 advisory outcome comment (always, when the PR carries migrations). ──
+      - name: Post advisory outcome (§13)
+        if: always() && steps.changed.outputs.count != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const restoreOk = '${{ steps.restore.outputs.restore_ok }}';
+            const applyFail = '${{ steps.apply.outputs.fail }}';
+            const failFile = `${{ steps.apply.outputs.failfile }}`;
+            const failMsg = `${{ steps.apply.outputs.failmsg }}`;
+            let body;
+            if (restoreOk !== 'true') {
+              body = [
+                '**§32 pre-merge proof: advisory INCONCLUSIVE** — the prod-schema baseline could not be restored into the ephemeral engine (Finding B: restore-viability, e.g. `auth.users` FKs / `pg_cron` / `vector`).',
+                '',
+                'This is a **NON-BLOCKING advisory check** — it did **not** evaluate your migration. Owner has authorized merge under the manual chunked `BEGIN..ROLLBACK` proof if the migration is verified that way. Do **not** treat this as a merge gate yet.',
+              ].join('\n');
+            } else if (applyFail === '0') {
+              body = '**§32 pre-merge proof: advisory PASS** — migration applied cleanly against prod schema baseline. Reviewer verification still recommended until this check is promoted to required.';
+            } else {
+              body = [
+                `**§32 pre-merge proof: advisory FAIL** — \`${failFile}\` did not apply on the prod-schema baseline. Error: \`${failMsg || 'see job log'}\`.`,
+                '',
+                'This is a **NON-BLOCKING advisory check**; owner has authorized merge under manual proof if the migration is verified via chunked `BEGIN..ROLLBACK`. Do **not** treat this as a merge gate yet.',
+              ].join('\n');
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

@@ -1,6 +1,7 @@
 // Setup sub-tab strip (IA slice 1c-xi) — the tenant-config consolidation home:
-// General · Brand · Automations · Integrations · Legal · Billing · Playbook & Paige
-// · Team. MIRRORS ClientsSubTabs 1:1 (the proven 1c-viii-c pattern): a gate-AWARE
+// General · Brand · Automations · Integrations · Legal · Billing · Playbook & Paige.
+// (Team is NOT here — it has its own main-nav hub; a Setup › Team tab would be pure
+// nav duplication, §18.) MIRRORS ClientsSubTabs 1:1 (the proven 1c-viii-c pattern): a gate-AWARE
 // strip wrapped by a pathless layout, so a tab is shown iff its route would
 // actually render for the current viewer — no tab ever dead-ends on a "Restricted
 // area" card. Indigo underline on the active tab, NEVER gold (§11 — nav-active is
@@ -13,7 +14,7 @@
 //   • admin+platformStaff (RoleGate allow=["admin"] allowPlatformStaff) — General
 //   • admin-or-owner (AdminOnly = RoleGate allow=["admin"]) — Integrations · Legal ·
 //     Billing · Playbook  (AdminOnly does NOT admit scoped platform staff)
-//   • coach-visible (all staff) — Brand · Automations · Team
+//   • coach-visible (all staff) — Brand · Automations
 import { Link, useLocation } from "react-router-dom";
 import {
   SlidersHorizontal,
@@ -23,14 +24,13 @@ import {
   Scale,
   CreditCard,
   BookOpen,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 import { useUserRoles } from "@/hooks/useUserRoles";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { cn } from "@/lib/utils";
 
-type Access = { isAdmin: boolean; isPlatformOwner: boolean; isPlatformStaff: boolean };
+type Access = { isAdmin: boolean; isPlatformOwner: boolean; isPlatformStaff: boolean; isSubAccount: boolean };
 type SetupTab = {
   key: string;
   label: string;
@@ -62,9 +62,13 @@ const SETUP_TABS: SetupTab[] = [
   { key: "automations", label: "Automations", href: "/admin/setup/automations", dept: "Technology", icon: Workflow, canSee: coachVisible },
   { key: "integrations", label: "Integrations", href: "/admin/setup/integrations", dept: "Technology", icon: Plug, canSee: adminOnly },
   { key: "legal", label: "Legal", href: "/admin/setup/legal", dept: "Legal & Compliance", icon: Scale, canSee: adminOnly },
-  { key: "billing", label: "Billing", href: "/admin/setup/billing", dept: "Finance", icon: CreditCard, canSee: adminOnly },
+  // §217: a sub-account's platform billing is managed by its parent agency — hide the
+  // tab for it (defense-in-depth; the route/page also guards). Standalone + agency keep it.
+  { key: "billing", label: "Billing", href: "/admin/setup/billing", dept: "Finance", icon: CreditCard, canSee: (a) => adminOnly(a) && !a.isSubAccount },
   { key: "playbook", label: "Playbook & Paige", href: "/admin/setup/playbook", dept: "Product", icon: BookOpen, canSee: adminOnly },
-  { key: "team", label: "Team", href: "/admin/setup/team", dept: "People", icon: Users, canSee: coachVisible },
+  // Team is NOT a Setup sub-tab — it has its own main-nav hub (/admin/team → TeamHub).
+  // A Setup › Team tab would be pure nav duplication (§18), so it lives only in the
+  // main nav; the People department is reached there, not here.
 ];
 
 const GENERAL_HREF = "/admin/setup/general";
@@ -88,6 +92,8 @@ export function SetupSubTabs() {
     isAdmin: roles.isAdmin,
     isPlatformOwner: tenant.isPlatformOwner,
     isPlatformStaff: tenant.isPlatformStaff,
+    // §217 sub-account signal — server-authoritative tenant row, not a role flag.
+    isSubAccount: tenant.activeTenant?.parent_tenant_id != null,
   };
 
   // Exact/prefix match. general is the default: the bare /admin/setup index resolves

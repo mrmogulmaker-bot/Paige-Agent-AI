@@ -11,7 +11,6 @@ const supabase = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   { auth: { persistSession: false } },
 );
-const LOVABLE_API_KEY = "unused";
 
 type Channel = "email" | "sms" | "lender_intro" | "coach_nudge";
 interface Input {
@@ -84,10 +83,7 @@ Deno.serve(async (req) => {
   }
 
   let draft = "";
-  if (!LOVABLE_API_KEY) {
-    // Fallback template
-    draft = `Hi ${client.first_name ?? "there"},\n\nQuick note on ${goal}. Let me know a time this week that works to talk through next steps for ${client.entity_name ?? "your business"}.\n\n— ${brandName}`;
-  } else {
+  {
     const system = `You are Paige, drafting a ${tone} ${channel} message on behalf of ${brandName}.
 Hard rules: never guarantee approval/funding/results; never promise to remove negatives; never use the phrase "credit repair"; no legal or tax advice; sign as "${brandName}". Keep under 140 words for email, under 50 words for sms.
 Doctrine §116 — WHEN GIVING EXAMPLES: never name another specific client, coach, admin, or customer of the platform. Use archetype phrasing only — "a client", "the contact", "their business", "a coach in your tenant". This applies even if the user explicitly names another client in their query — translate them to archetype in your response.`;
@@ -101,7 +97,7 @@ Goal of message: ${goal}`;
 
     const aiRes = await gatewayCompat("anthropic", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
@@ -148,6 +144,6 @@ Goal of message: ${goal}`;
     draft_id: draftId,
     requires_approval: true,
     confidence: flags.length > 0 ? "low" : "medium",
-    sources: ["outreach_drafts", "PME brand voice"],
+    sources: ["outreach_drafts", "brand voice"],
   });
 });

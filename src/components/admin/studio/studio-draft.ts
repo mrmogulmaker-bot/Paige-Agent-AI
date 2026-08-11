@@ -12,7 +12,7 @@
 // operator has committed for real.
 //
 // Guarded exactly the way every other small localStorage read/write in this codebase is
-// guarded (BusinessContext, RoleLensContext, usePresenceHeartbeat): a plain try/catch that
+// guarded (BusinessContext, usePresenceHeartbeat): a plain try/catch that
 // never throws. A corrupted or foreign entry fails open — a console.warn, then nothing,
 // never a crash (§13).
 import type { GrowthBlock, GrowthFormSchema, GrowthPageTheme } from "@/lib/growth";

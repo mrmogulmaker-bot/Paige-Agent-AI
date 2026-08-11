@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from "framer-motion";
-import { Clock, Lock } from "lucide-react";
+import { Clock, Lock, Users2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,26 @@ interface Props {
   onToggle: (on: boolean) => void;
   /** Open the full detail view (whole card is a stretched-link overlay button). */
   onOpen?: () => void;
+  /**
+   * AGENCY CURATION mode (#277, §18 — one card, not a fork). When true, the SAME
+   * card presents an agency operator's "Available to my sub-accounts" decision
+   * instead of the tenant's install/purchase act: the pill reads Shared/Hidden,
+   * the switch (gold on the act) shares the item down to sub-accounts, and the
+   * footer copy is curation-correct. Paid/roadmap/locked branches are bypassed —
+   * a curated item is an approved catalog item, and curation is never a purchase.
+   * Every curation prop is optional; unset ⇒ the tenant install card is
+   * byte-identical to before.
+   */
+  curationMode?: boolean;
+  /** Whether this item is currently pending the agency's review (no decision yet). */
+  curationPending?: boolean;
+  /**
+   * PER-CHILD curation scope (#277 Slice 3): names the single sub-account this toggle
+   * governs. When set, the curation copy is scope-accurate ("On"/"Off", "for {name}")
+   * instead of the plural agency-wide vocabulary ("Shared", "your sub-accounts").
+   * Absent ⇒ agency-wide default scope — copy byte-identical to before (§18, one card).
+   */
+  curationScopeLabel?: string;
 }
 
 /**
@@ -42,10 +62,41 @@ function formatUsd(cents: number): string {
 
 export function SkillCard({
   skill, Icon, isOn, available, lockedOn, saving, loading, justArmed, onToggle, onOpen, isPaid, priceCents,
+  curationMode, curationPending, curationScopeLabel,
 }: Props) {
   const reduce = useReducedMotion();
 
   const StatePill = () => {
+    // Agency curation pill: Shared (gold, the act) / Pending / Hidden — never the
+    // tenant install vocabulary (Live/Off), which would misread here (§13).
+    if (curationMode) {
+      // Per-child scope (curationScopeLabel set) reads On/Off for the single named
+      // sub-account; agency-wide scope keeps the plural Shared/Pending/Hidden vocab.
+      const perChild = Boolean(curationScopeLabel);
+      if (isOn) {
+        return (
+          <motion.span
+            initial={reduce ? false : { scale: 0.9 }}
+            animate={{ scale: 1 }}
+            className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--gold))] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--accent-foreground))]"
+          >
+            {perChild ? "On" : (<><Users2 className="h-3 w-3" /> Shared</>)}
+          </motion.span>
+        );
+      }
+      if (curationPending) {
+        return (
+          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <Clock className="h-3 w-3" /> Pending
+          </span>
+        );
+      }
+      return (
+        <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {perChild ? "Off" : "Hidden"}
+        </span>
+      );
+    }
     if (lockedOn) {
       return (
         <span className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--gold)/0.5)] bg-transparent px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[hsl(var(--gold-dark))]">
@@ -78,15 +129,25 @@ export function SkillCard({
     );
   };
 
-  const footerMicrocopy = lockedOn
-    ? "Included with your Funding playbook — manage it in Your Paige."
-    : !available
-      ? "On the roadmap."
+  const footerMicrocopy = curationMode
+    ? curationScopeLabel
+      ? isOn
+        ? `On for ${curationScopeLabel}.`
+        : `Off for ${curationScopeLabel} — switch on to turn it on.`
       : isOn
-        ? "On — Paige runs this with every client."
-        : isPaid
-          ? "One-time purchase — adds it to your Paige."
-          : "Off — switch on to add it.";
+        ? "Available to your sub-accounts."
+        : curationPending
+          ? "Pending your review — switch on to share it down."
+          : "Hidden from sub-accounts — switch on to share it."
+    : lockedOn
+      ? "Included with your Funding playbook — manage it in Your Paige."
+      : !available
+        ? "On the roadmap."
+        : isOn
+          ? "On — Paige runs this with every client."
+          : isPaid
+            ? "One-time purchase — adds it to your Paige."
+            : "Off — switch on to add it.";
 
   return (
     <motion.div
@@ -143,7 +204,22 @@ export function SkillCard({
           {footerMicrocopy}
         </span>
 
-        {available && !lockedOn ? (
+        {curationMode ? (
+          // Agency curation: one switch — "Available to my sub-accounts". Gold on
+          // the on-act only (§11); the write goes through set_agency_item_allowlist
+          // (§10 — this switch is one caller, Paige is another).
+          <Switch
+            checked={isOn}
+            disabled={saving || loading}
+            onCheckedChange={onToggle}
+            aria-label={
+              curationScopeLabel
+                ? `Turn ${skill.name} ${isOn ? "off" : "on"} for ${curationScopeLabel}`
+                : `${isOn ? "Stop sharing" : "Share"} ${skill.name} with your sub-accounts`
+            }
+            className="shrink-0 data-[state=checked]:bg-[hsl(var(--gold))] focus-visible:ring-[hsl(var(--ring))]"
+          />
+        ) : available && !lockedOn ? (
           isPaid && !isOn ? (
             // Paid add-on, not yet owned: the act is a purchase, lit in gold — the ONE
             // gold moment on the card (§11). Clicking hands off to Stripe checkout.

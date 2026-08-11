@@ -85,7 +85,7 @@ const KnowledgeBaseReviewQueue = lazy(() => import("@/components/dashboard/admin
 const LenderBureauManager = lazy(() => import("@/components/dashboard/admin/LenderBureauManager").then(m => ({ default: m.LenderBureauManager })));
 const FundingPortfolioView = lazy(() => import("@/components/dashboard/admin/FundingPortfolioView").then(m => ({ default: m.FundingPortfolioView })));
 const FundingPipelineView = lazy(() => import("@/components/dashboard/admin/FundingPipelineView").then(m => ({ default: m.FundingPipelineView })));
-// UserManagement removed in Ship #3 / Task #15 — canonical Team & Roles is /admin/members (MembersAdmin).
+// UserManagement removed in Ship #3 / Task #15 — canonical Team & Roles is /admin/team (TeamHub).
 const PlaybookAdmin = lazy(() => import("@/pages/admin/PlaybookAdmin"));
 const Marketplace = lazy(() => import("@/pages/admin/Marketplace"));
 const PortalStudio = lazy(() => import("@/pages/admin/PortalStudio"));
@@ -96,6 +96,7 @@ const OperatorCommandCenter = lazy(() => import("@/pages/admin/OperatorCommandCe
 const PlatformTeam = lazy(() => import("@/pages/admin/PlatformTeam"));
 const PlatformSendingIdentities = lazy(() => import("@/pages/admin/PlatformSendingIdentities"));
 const PlatformSends = lazy(() => import("@/pages/admin/PlatformSends"));
+const PlatformFleetCommunications = lazy(() => import("@/pages/admin/PlatformFleetCommunications"));
 const PlatformIntelligence = lazy(() => import("@/pages/admin/PlatformIntelligence"));
 // Super Admin restructure (operator console SPINE): 9 NEW operator nav items each
 // land on a real, honest §13 in-development placeholder route (§18 one home each).
@@ -122,11 +123,11 @@ const TeamHub = lazy(() => import("@/pages/admin/TeamHub"));
 const SetupGeneral = lazy(() => import("@/pages/admin/setup/SetupGeneral"));
 const SetupBrand = lazy(() => import("@/pages/admin/setup/SetupBrand"));
 const SetupAutomations = lazy(() => import("@/pages/admin/setup/SetupAutomations"));
-const SetupIntegrations = lazy(() => import("@/pages/admin/setup/SetupIntegrations"));
+// Setup › Integrations mounts the REAL IntegrationsHub inline (§18/§31 — one home);
+// the standalone /admin/integrations index redirects here. See the routes below.
 const SetupLegal = lazy(() => import("@/pages/admin/setup/SetupLegal"));
 const SetupBilling = lazy(() => import("@/pages/admin/setup/SetupBilling"));
 const SetupPlaybook = lazy(() => import("@/pages/admin/setup/SetupPlaybook"));
-const SetupTeam = lazy(() => import("@/pages/admin/setup/SetupTeam"));
 const PlatformSettings = lazy(() => import("@/pages/admin/PlatformSettings"));
 const PlatformInvites = lazy(() => import("@/pages/admin/PlatformInvites"));
 const KnowledgeBaseAdmin = lazy(() => import("@/pages/admin/KnowledgeBaseAdmin"));
@@ -142,7 +143,6 @@ const SupportAdmin = lazy(() => import("@/pages/admin/SupportAdmin"));
 const ContactsAdmin = lazy(() => import("@/pages/admin/ContactsAdmin"));
 const ContactDetail = lazy(() => import("@/pages/admin/ContactDetail"));
 const ClientJourney = lazy(() => import("@/pages/admin/ClientJourney"));
-const CoachesAdmin = lazy(() => import("@/pages/admin/CoachesAdmin"));
 // PipelineAdmin is reused by the Clients container's Pipeline tab (ClientsPipelinePane
 // imports it directly); /admin/pipeline 301-redirects into that tab.
 const PipelineSettings = lazy(() => import("@/pages/admin/PipelineSettings"));
@@ -151,6 +151,10 @@ const StageAutomationRules = lazy(() => import("@/pages/admin/StageAutomationRul
 const ReadinessProposalsAdmin = lazy(() => import("@/pages/admin/ReadinessProposalsAdmin"));
 const PlanningAdmin = lazy(() => import("@/pages/admin/PlanningAdmin"));
 const SubAgentsAdmin = lazy(() => import("@/pages/admin/SubAgentsAdmin"));
+// #244 — the canonical "About Your Paige Team" directory (operator scope). Lives
+// INSIDE the Paige workspace group (its natural home — it's about Paige's own team),
+// NOT /admin/team (the human Team floor). ONE component; scope prop set by the route.
+const PaigeTeamDirectory = lazy(() => import("@/pages/PaigeTeamDirectory"));
 const ActionsQueue = lazy(() => import("@/pages/admin/ActionsQueue"));
 const SkillsHub = lazy(() => import("@/pages/admin/SkillsHub"));
 const CampaignsHub = lazy(() => import("@/pages/admin/CampaignsHub"));
@@ -173,8 +177,10 @@ import {
   ConversationsSnippets,
   ConversationsTriggerLinks,
   ConversationsAnalytics,
-  ConversationsSettings,
 } from "@/pages/admin/conversations/ConversationsSubPages";
+// Settings is a substantial 5-panel surface (numbers/texting/consent/signatures/notifications);
+// lazy-load it so it doesn't weigh down the eager Admin chunk on every /admin/* entry (perf).
+const ConversationsSettings = lazy(() => import("@/pages/admin/conversations/ConversationsSettings"));
 // Setup container (IA slice 1c-xi): pathless-style path-nested layout wraps the 8
 // tenant-config sub-tab pages. Eager like ClientsTabsLayout — small chrome.
 import SetupTabsLayout from "@/components/setup/SetupTabsLayout";
@@ -212,7 +218,6 @@ const SmartCreditIntegrationConfig = lazy(() => import("@/pages/admin/SmartCredi
 const OwnerCreditAdmin = lazy(() => import("@/pages/admin/OwnerCreditAdmin"));
 const PlaidIntegrationConfig = lazy(() => import("@/pages/admin/PlaidIntegrationConfig"));
 const BankingAdmin = lazy(() => import("@/pages/admin/BankingAdmin"));
-const MembersAdmin = lazy(() => import("@/pages/admin/MembersAdmin"));
 const FundingLensHub = lazy(() => import("@/pages/admin/FundingLensHub"));
 
 
@@ -385,8 +390,9 @@ const Admin = () => {
               sub-tab strip (GHL-parity: sections OF Conversations, not top-nav). The
               index child resolves BYTE-IDENTICAL to /admin/clients-hub/conversations so
               every existing link/caller still lands on the inbox (§37). Snippets embeds
-              the live SnippetsTab; Settings points to Communications (§18 reuse). The
-              other three are crafted "coming soon" EmptyState stubs (§11). */}
+              the live SnippetsTab; Settings is the tenant messaging-config home
+              (numbers, business texting, consent, signatures, notifications — §45/§18).
+              The other three are crafted "coming soon" EmptyState stubs (§11). */}
           <Route path="conversations" element={<ConversationsTabsLayout />}>
             <Route index element={
               <Suspense fallback={<SuspenseFallback />}><ClientsConversations /></Suspense>
@@ -395,7 +401,9 @@ const Admin = () => {
             <Route path="snippets" element={<ConversationsSnippets />} />
             <Route path="trigger-links" element={<ConversationsTriggerLinks />} />
             <Route path="analytics" element={<ConversationsAnalytics />} />
-            <Route path="settings" element={<ConversationsSettings />} />
+            <Route path="settings" element={
+              <Suspense fallback={<SuspenseFallback />}><ConversationsSettings /></Suspense>
+            } />
           </Route>
           {/* DELIVERY — CalendarAdmin (its own internal Calendar/List/Settings/Connections tabs). */}
           <Route path="delivery" element={
@@ -432,8 +440,10 @@ const Admin = () => {
           <Route path="automations" element={
             <Suspense fallback={<SuspenseFallback />}><SetupAutomations /></Suspense>
           } />
+          {/* Integrations is the REAL hub, mounted inline as the ONE home (§18/§31).
+              The standalone /admin/integrations index redirects here (below). */}
           <Route path="integrations" element={
-            <AdminOnly><Suspense fallback={<SuspenseFallback />}><SetupIntegrations /></Suspense></AdminOnly>
+            <AdminOnly><Suspense fallback={<SuspenseFallback />}><IntegrationsHub /></Suspense></AdminOnly>
           } />
           <Route path="legal" element={
             <AdminOnly><Suspense fallback={<SuspenseFallback />}><SetupLegal /></Suspense></AdminOnly>
@@ -444,18 +454,16 @@ const Admin = () => {
           <Route path="playbook" element={
             <AdminOnly><Suspense fallback={<SuspenseFallback />}><SetupPlaybook /></Suspense></AdminOnly>
           } />
-          <Route path="team" element={
-            <Suspense fallback={<SuspenseFallback />}><SetupTeam /></Suspense>
-          } />
+          {/* Team is NOT a Setup sub-tab — it has its own main-nav hub (/admin/team).
+              Removed to kill nav duplication (§18). */}
         </Route>
         {/* Legacy /admin/tasks now lands on the real Planning hub — the task
             manager the owner asked to be "wired to the admin user". The old
             TasksAdmin page is retired from the router; notifications and any
             saved deep-links resolve to Planning. */}
         <Route path="tasks" element={<Navigate to="/admin/planning" replace />} />
-        <Route path="coaches" element={
-          <Suspense fallback={<SuspenseFallback />}><CoachesAdmin /></Suspense>
-        } />
+        {/* #616: Coaches folded into the one Team home; coach roster opens filtered. */}
+        <Route path="coaches" element={<Navigate to="/admin/team?role=coach" replace />} />
         <Route path="growth" element={<Navigate to="/admin/campaigns?tab=pages" replace />} />
         <Route path="growth/*" element={<Navigate to="/admin/campaigns?tab=pages" replace />} />
         {/* sub-agents · skills · actions · playbook are absorbed into the Paige
@@ -608,6 +616,13 @@ const Admin = () => {
           <Route path="skills" element={
             <Suspense fallback={<SuspenseFallback />}><SkillsHub /></Suspense>
           } />
+          {/* #244 — learn about your Paige team. Same gate as the Paige hub
+              (admin + platform-staff) so the sub-tab never dead-ends (§9). */}
+          <Route path="paige-team" element={
+            <RoleGate allow={["admin"]} allowPlatformStaff>
+              <Suspense fallback={<SuspenseFallback />}><PaigeTeamDirectory scope="operator" /></Suspense>
+            </RoleGate>
+          } />
         </Route>
         <Route path="agreement" element={<Navigate to="/admin/setup/legal" replace />} />
         <Route path="marketplace" element={
@@ -696,9 +711,11 @@ const Admin = () => {
           <Suspense fallback={<SuspenseFallback />}><ApprovalDetail /></Suspense>
         } />
         {/* actions absorbed into the Paige workspace group (1c-vi) above. */}
-        <Route path="integrations" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><IntegrationsHub /></Suspense></AdminOnly>
-        } />
+        {/* Integrations now lives in Setup as the ONE home (§18): the hub is mounted
+            at /admin/setup/integrations. Redirect the old index so saved deep-links,
+            the connector back-links, and the AdminLayout Setup alias all resolve there.
+            The /admin/integrations/:sub deep config pages stay mounted below. */}
+        <Route path="integrations" element={<Navigate to="/admin/setup/integrations" replace />} />
         <Route path="integrations/n8n" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><N8nIntegrationConfig /></Suspense></AdminOnly>
         } />
@@ -772,9 +789,8 @@ const Admin = () => {
         <Route path="banking" element={
           <AdminOnly><Suspense fallback={<SuspenseFallback />}><BankingAdmin /></Suspense></AdminOnly>
         } />
-        <Route path="members" element={
-          <AdminOnly><Suspense fallback={<SuspenseFallback />}><MembersAdmin /></Suspense></AdminOnly>
-        } />
+        {/* #616: Members & Roles consolidated into the one Team home (/admin/team). */}
+        <Route path="members" element={<Navigate to="/admin/team" replace />} />
         <Route path="funding-lens" element={
           <FundingRoute><Suspense fallback={<SuspenseFallback />}><FundingLensHub /></Suspense></FundingRoute>
         } />
@@ -787,6 +803,9 @@ const Admin = () => {
         } />
         <Route path="platform/team" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformTeam /></Suspense></PlatformStaffOnly>
+        } />
+        <Route path="platform/fleet-communications" element={
+          <PlatformOwnerOnly><Suspense fallback={<SuspenseFallback />}><PlatformFleetCommunications /></Suspense></PlatformOwnerOnly>
         } />
         <Route path="platform/sending" element={
           <PlatformStaffOnly><Suspense fallback={<SuspenseFallback />}><PlatformSendingIdentities /></Suspense></PlatformStaffOnly>

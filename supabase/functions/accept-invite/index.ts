@@ -15,6 +15,7 @@
 // White-label: BTF responses NEVER mention "Paige". Team responses use Paige branding.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -121,6 +122,17 @@ Deno.serve(async (req) => {
     const displayName = meta.preferred_name || meta.full_name || btf.email.split("@")[0];
 
     if (action === "lookup") {
+      // §45: the white-label brand is the inviting tenant's OWN identity, resolved
+      // present-only from its tenant (never "Paige", never a hardcoded operator brand).
+      // Falls back to the invitee's display name when a tenant brand doesn't resolve;
+      // program is present-only from the invite metadata (omitted when unset).
+      const { data: btfClient } = await admin
+        .from("clients")
+        .select("tenant_id")
+        .eq("id", btf.client_id)
+        .maybeSingle();
+      const btfTenantId = (btfClient as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+      const operator = await resolveOperatorIdentity(admin, btfTenantId);
       return json(200, {
         ok: true,
         type: "btf_client",
@@ -131,7 +143,10 @@ Deno.serve(async (req) => {
         expired,
         alreadyUsed,
         // White-label: never expose "Paige" branding to BTF clients
-        brand: { name: "Mogul Maker Academy", program: "Build to Fund" },
+        brand: {
+          name: operator.product_name ?? displayName,
+          program: (meta.program as string | undefined) ?? "",
+        },
         redirectTo: "/onboard/welcome",
       });
     }

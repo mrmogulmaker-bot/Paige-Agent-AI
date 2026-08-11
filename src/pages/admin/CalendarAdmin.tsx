@@ -137,6 +137,7 @@ export default function CalendarAdmin() {
     // bookings, but a raw table UPDATE is RLS-scoped to own rows, so cancelling
     // a teammate's booking would silently no-op and falsely report success.
     // The RPC performs the change server-side and errors truthfully if refused.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing (untyped RPC name cast); unrelated to #257's one-line backHref repoint; CI whole-file-lints changed files
     const { error } = await supabase.rpc("admin_set_booking_status" as any, { _booking_id: id, _status: status });
     if (error) {
       toast.error(/FORBIDDEN/.test(error.message) ? "You can't change that booking" : error.message);
@@ -343,6 +344,7 @@ export default function CalendarAdmin() {
   };
 
   const toggleCal = (id: string) =>
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions -- pre-existing (ternary-as-statement); unrelated to #257; CI whole-file-lints changed files
     setHidden((h) => { const n = new Set(h); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const statsLoading = loading && bookings.length === 0;
@@ -527,7 +529,7 @@ export default function CalendarAdmin() {
             className="border-primary/30"
           >
             <Button asChild variant="outline" size="sm">
-              <Link to="/admin/integrations">
+              <Link to="/admin/setup/integrations">
                 Go to Integrations <ChevronRight className="h-4 w-4 ml-1.5" />
               </Link>
             </Button>

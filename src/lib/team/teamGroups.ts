@@ -54,6 +54,23 @@ export function groupForRoles(roles: string[]): TeamGroup {
   return "ops";
 }
 
+/**
+ * #227 Part E: per-tenant authority wins for grouping. The child sub-account's own
+ * tenant_members owner/admin lands in Leadership regardless of the (possibly agency-wide)
+ * GLOBAL roles; the finer lanes (sales/delivery/support/marketing) still come from the
+ * richer global roles via groupForRoles. Keeps the roster's grouping in lockstep with the
+ * per-tenant crown/badge so an agency-wide "admin" role never mis-groups a child member.
+ */
+export function groupForMember(m: {
+  tenant_is_owner: boolean;
+  tenant_role: string | null;
+  roles: string[];
+}): TeamGroup {
+  if (m.tenant_is_owner) return "leadership";
+  if (m.tenant_role === "owner" || m.tenant_role === "admin") return "leadership";
+  return groupForRoles(m.roles);
+}
+
 // COACHING DISPLAY LABEL — a coaching-friendly name shown ONLY where a real mapped
 // role backs it (§13). cs_rep legitimately IS the success-coach seat; every other row
 // uses its honest role name. No "Setter"/"Closer" label is emitted because no such

@@ -28,6 +28,7 @@ export default function N8nIntegrationConfig() {
 
   async function load() {
     setLoading(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing untyped-RPC-name cast; unrelated to #263; CI whole-file-lints changed files
     const { data, error } = await (supabase as any).rpc("get_tenant_n8n_connection");
     setLoading(false);
     if (error) { toast.error("Couldn't load your n8n connection."); return; }
@@ -39,6 +40,7 @@ export default function N8nIntegrationConfig() {
   async function connect() {
     if (!baseUrl.trim() || !apiKey.trim()) return;
     setBusy("connect");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing untyped-RPC-name cast; unrelated to #263; CI whole-file-lints changed files
     const { error: setErr } = await (supabase as any).rpc("set_tenant_n8n_connection", {
       _base_url: baseUrl.trim(),
       _api_key: apiKey.trim(),
@@ -61,9 +63,11 @@ export default function N8nIntegrationConfig() {
     const { data: test, error: testErr } = await supabase.functions.invoke("paige-n8n", { body: { action: "test" } });
     setBusy(null);
     setApiKey("");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing edge-response cast; unrelated to #263; CI whole-file-lints changed files
     if (testErr || (test as any)?.error) {
       toast.error("Saved, but couldn't reach n8n — check the URL and key.");
     } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing edge-response cast; unrelated to #263; CI whole-file-lints changed files
       toast.success(`Connected — ${(test as any)?.workflow_count ?? 0} workflows found.`);
     }
     await load();
@@ -73,13 +77,16 @@ export default function N8nIntegrationConfig() {
     setBusy("test");
     const { data, error } = await supabase.functions.invoke("paige-n8n", { body: { action: "test" } });
     setBusy(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing edge-response cast; unrelated to #263; CI whole-file-lints changed files
     if (error || (data as any)?.error) { toast.error("Couldn't reach n8n. Re-check the URL and key."); }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing edge-response cast; unrelated to #263; CI whole-file-lints changed files
     else { toast.success(`Connected — ${(data as any)?.workflow_count ?? 0} workflows.`); }
     await load();
   }
 
   async function disconnect() {
     setBusy("disconnect");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing untyped-RPC-name cast; unrelated to #263; CI whole-file-lints changed files
     const { error } = await (supabase as any).rpc("clear_tenant_n8n_connection");
     setBusy(null);
     if (error) { toast.error("Couldn't disconnect."); return; }
@@ -92,11 +99,11 @@ export default function N8nIntegrationConfig() {
   const errored = conn?.configured && conn?.status === "error";
 
   return (
-    <PageShell width="prose">
+    <PageShell width="narrow">
       <PageHeader
         icon={Workflow}
         title="n8n"
-        description="Connect your n8n account so Paige can run — and build — automations across all your tools on your behalf. Your key is encrypted and never leaves the server."
+        description="Connect n8n and Paige runs — and builds — your automations across every tool you use, on your behalf. Your key is encrypted and never leaves the server."
       />
 
       {loading ? (
@@ -145,11 +152,23 @@ export default function N8nIntegrationConfig() {
           </div>
         </SectionCard>
       ) : (
-        <SectionCard icon={Plug} title="Connect your n8n" description="Paste your instance URL and an n8n API key (n8n → Settings → API). Admin only.">
+        <SectionCard icon={Plug} title="Connect your n8n" description="Once you connect, Paige runs and builds your automations for you. Paste your instance URL and an n8n API key (n8n → Settings → API). Admin only.">
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="n8n-url">Instance URL</Label>
-              <Input id="n8n-url" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://your-instance.app.n8n.cloud" />
+              {/* name/type deliberately non-email so browsers never autofill a saved account email into this field */}
+              <Input
+                id="n8n-url"
+                name="n8n-instance-url"
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="https://your-instance.app.n8n.cloud"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="n8n-key">API key</Label>
@@ -157,7 +176,7 @@ export default function N8nIntegrationConfig() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="n8n-label">Label <span className="text-muted-foreground">(optional)</span></Label>
-              <Input id="n8n-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Production" />
+              <Input id="n8n-label" name="n8n-connection-label" autoComplete="off" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Production" />
             </div>
             <Button variant="gold" onClick={connect} disabled={busy !== null || !baseUrl.trim() || !apiKey.trim()}>
               {busy === "connect" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plug className="mr-1.5 h-4 w-4" />}

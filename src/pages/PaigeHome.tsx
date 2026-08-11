@@ -15,6 +15,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { Component, Suspense, lazy, useEffect, useRef, useState, type ReactNode } from "react";
 import { paigeAnim } from "@/lib/paigeAnim";
 import { appUrl } from "@/lib/hostRouting";
+import { onboardingPathWithPlan } from "@/lib/auth/signupPlanIntent";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -88,7 +89,7 @@ const PROOF = [
   { q: "Onboarding, check-ins, recaps — Paige runs all of it. It's like a full ops team.", a: "Author & thought leader · Dallas" },
 ];
 
-// DB-true Solo / Agency / Enterprise (1-A ruling): Solo $149/mo, Agency $397/mo,
+// DB-true Solo / Agency / Enterprise: Solo $149/mo, Agency $397/mo,
 // Enterprise custom. Each entry carries its `slug` so the card CTA wires straight to
 // platform-subscription-checkout; `custom` gates the Enterprise "Talk to us" contact
 // path (no $0 subscribe). §13 — every number matches platform_subscription_plans
@@ -421,18 +422,33 @@ export default function PaigeHome() {
 
   const [subscribingSlug, setSubscribingSlug] = useState<string | null>(null);
 
-  // Real Tier-1 subscribe — mirrors Pricing.tsx handleSubscribe so the plan choice +
-  // checkout START from the homepage (no scroll-to-pricing indirection). Signed-out
-  // (the landing case): carry plan intent to signup; Auth.tsx auto-launches checkout
-  // when the session lands. goAuth crosses to the app origin where the auth session
-  // actually lives (host split), so on the marketing origin the session is null and
-  // this path is taken — correct.
+  // Real Tier-1 subscribe — mirrors Pricing.tsx handleSubscribe so the plan choice
+  // STARTS from the homepage (no scroll-to-pricing indirection). Signed-out (the
+  // landing case): carry plan intent to signup; after the account is created Auth.tsx
+  // routes to /onboarding?plan=… (business context + terms) and checkout is the LAST
+  // step from there (task #66 reorder). goAuth crosses to the app origin where the auth
+  // session actually lives (host split), so on the marketing origin the session is null
+  // and this path is taken — correct.
   const handleSubscribe = async (slug: string) => {
     setSubscribingSlug(slug);
     try {
       const { data: sessionRes } = await supabase.auth.getSession();
       if (!sessionRes.session?.user) {
         goAuth(`/auth?mode=signup&plan=${slug}&billing=monthly`);
+        return;
+      }
+      // S1 compliance hardening (mirrors Pricing.tsx): a signed-in but TENANT-LESS user
+      // has never seen the /onboarding clickwrap, so route them there to accept the
+      // subscriber agreement before checkout — never straight to Stripe. Direct checkout
+      // is reserved for the grandfathered has-tenant path. (On the marketing origin the
+      // session is usually null anyway; this covers a signed-in app-origin visit.)
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("active_tenant_id")
+        .eq("user_id", sessionRes.session.user.id)
+        .maybeSingle();
+      if (!prof?.active_tenant_id) {
+        goAuth(onboardingPathWithPlan({ plan: slug, billing: "monthly" }));
         return;
       }
       const { data, error } = await supabase.functions.invoke(

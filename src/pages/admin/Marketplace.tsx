@@ -13,7 +13,8 @@
  * a Playbook preset (e.g. the Funding coach type), so we reconcile all three paths
  * — the AI gate reads enabled_skills, and the card must never misrepresent it.
  */
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -24,6 +25,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useConfirm } from "@/hooks/useConfirm";
 import { PageShell, PageHeader, Toolbar, FilterChip, EmptyState, GlyphPlate } from "@/components/ui/page";
 import { SkillCard } from "@/components/marketplace/SkillCard";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,6 +40,64 @@ import { SKILL_CATEGORIES, type MarketplaceSkill } from "@/lib/marketplace/skill
 const ICONS: Record<string, LucideIcon> = {
   TrendingUp, Palette, Mic, Workflow, BookOpen, Dumbbell, Briefcase, Building2, LineChart, Sparkles,
 };
+
+// §210/§32: surface the REAL edge-function error instead of the opaque framework
+// string "Edge Function returned a non-2xx status code". On a non-2xx,
+// supabase.functions.invoke() sets data=null and puts the honest JSON body on
+// `error.context` (the raw Response) — never on `error.message`. We read that body,
+// pull out `.error` (a plain string like "Not authorized for this tenant", or a Zod
+// `flatten()` object on a 400), and render it legibly. Always logs the raw detail to
+// the console so the NEXT failure is diagnosable, while the toast stays user-legible
+// (capped, no stack, framework-generic filtered out — §11/§13/§36).
+async function edgeErrorMessage(error: unknown, fallback: string): Promise<string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const anyErr = error as any;
+  // Always log the raw framework error for developer diagnosis (§32).
+  console.error("[marketplace-install] edge invoke failed:", anyErr?.message ?? error, anyErr);
+
+  const clean = (s: string): string => {
+    const t = s.trim();
+    // The framework's opaque string is exactly what we're replacing — never surface it.
+    if (!t || /returned a non-2xx status code/i.test(t)) return fallback;
+    return t.length > 300 ? `${t.slice(0, 297)}…` : t;
+  };
+
+  // Summarize a Zod flatten() object ({ fieldErrors, formErrors }) or any object body
+  // into one legible line, rather than dumping "[object Object]" or raw JSON at a tenant.
+  const summarize = (v: unknown): string => {
+    if (typeof v === "string") return clean(v);
+    if (v && typeof v === "object") {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const o = v as any;
+      const parts: string[] = [];
+      if (o.formErrors && Array.isArray(o.formErrors)) parts.push(...o.formErrors.map(String));
+      if (o.fieldErrors && typeof o.fieldErrors === "object") {
+        for (const [k, msgs] of Object.entries(o.fieldErrors)) {
+          if (Array.isArray(msgs) && msgs.length) parts.push(`${k}: ${msgs.join(", ")}`);
+        }
+      }
+      if (parts.length) return clean(parts.join("; "));
+    }
+    return fallback;
+  };
+
+  const ctx = anyErr?.context;
+  if (ctx && typeof ctx.json === "function") {
+    try {
+      const body = await ctx.json();
+      if (body?.error != null) return summarize(body.error);
+    } catch {
+      // Non-JSON body (HTML error page, already-consumed) — fall through.
+    }
+  } else if (ctx && typeof ctx === "object" && (ctx as { error?: unknown }).error != null) {
+    // Some client versions expose an already-parsed object on .context.
+    return summarize((ctx as { error?: unknown }).error);
+  }
+
+  // No honest body available — surface the framework message only if it isn't the
+  // opaque generic; otherwise the caller's fallback.
+  return typeof anyErr?.message === "string" ? clean(anyErr.message) : fallback;
+}
 
 // Module-scope grouping helper so the full catalog (chip source) and the filtered
 // catalog (rendered sections) build their maps the same way.
@@ -96,6 +156,29 @@ type CatalogRow = {
   version: string | null;
 };
 
+// Pre-install "What's inside" preview, projected from the published manifest by
+// the marketplace_item_detail(slug) RPC (platform catalog content only, no tenant
+// data). has_version:false for roadmap cards → the preview renders nothing.
+type ItemDetail = {
+  slug: string;
+  name: string;
+  has_version: boolean;
+  version?: string | null;
+  persona?: { greeting: string | null; role: string | null; domain: string | null; tone: string | null } | null;
+  values?: string[] | null;
+  probing?: string[] | null;
+  journey_stages?: { label: string; display_order: number }[] | null;
+  skills?: string[] | null;
+  kb_docs?: string[] | null;
+};
+
+const SKILL_LABELS: Record<string, string> = {
+  draft_and_email_document: "Draft & email documents",
+  research_to_concept_brief: "Research → concept brief",
+};
+const prettySkill = (slug: string) =>
+  SKILL_LABELS[slug] ?? slug.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
 type TenantFeatures = {
   enabledSkills: string[];
   presetFundingOn: boolean;
@@ -115,6 +198,12 @@ export default function Marketplace() {
   const [status, setStatus] = useState<"all" | "available" | "on" | "soon">("all");
   const reduce = useReducedMotion();
   const shelfRef = useRef<HTMLDivElement | null>(null);
+  // Promise-based destructive confirm (§11 — no hand-rolled dialog; the shared
+  // primitive keeps gold off the confirm button and uses --destructive for teardown).
+  const { confirm, dialog } = useConfirm();
+  // Read Stripe's return param so the paid-install path gets an HONEST receipt (§13):
+  // the free path already toasts, but the paid return previously surfaced nothing.
+  const [searchParams, setSearchParams] = useSearchParams();
   // Declared with the other hooks (before any early return) so the hook order is
   // stable — it freezes the opened row so the detail dialog keeps its content
   // through the close animation (assigned below, §11/a11y).
@@ -213,6 +302,27 @@ export default function Marketplace() {
       qc.invalidateQueries({ queryKey: ["marketplace_features", activeTenantId] }),
     ]);
 
+  // Stripe-return loop-closer (#275): after a paid checkout the browser lands back
+  // here at /admin/marketplace?purchase=success (the install is completed server-side
+  // by stripe-webhook). Give the honest receipt, refetch so the item flips to Live,
+  // then strip the param so a refresh/back-nav doesn't re-toast (§13 — say what
+  // actually happened; the webhook, not this toast, is what installed it).
+  useEffect(() => {
+    const purchase = searchParams.get("purchase");
+    if (purchase !== "success" && purchase !== "cancelled") return;
+    if (purchase === "success") {
+      toast.success("Payment cleared — your new capability is being switched on.");
+      if (activeTenantId) void refresh();
+    } else {
+      toast.info("Checkout cancelled — nothing was charged.");
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("purchase");
+    next.delete("session_id");
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, activeTenantId]);
+
   const install = async (r: CatalogRow) => {
     // B-ii price gate (§17): a paid add-on NEVER installs through the free direct
     // path — that would write a phantom, unpaid ledger revenue row. Instead we mint
@@ -222,10 +332,20 @@ export default function Marketplace() {
     // only ever written for money that actually cleared (§13). Free items unchanged.
     const isPaid = (r.pricing_model && r.pricing_model !== "free") || (r.price_cents ?? 0) > 0;
     if (isPaid) {
+      // The success/cancel destinations are the marketplace's OWN route to declare
+      // (§10 — the UI owns where IT returns). This surface lives at /admin/marketplace
+      // (there is no top-level /marketplace route), so Stripe must return here — not
+      // to a 404/root as it did on the server's old "/marketplace…" default (#275).
+      // The completed install lands the item as "Live" on this same surface; the
+      // ?purchase=success param below is read to confirm the charge cleared.
       const { data, error } = await supabase.functions.invoke("marketplace-checkout-session", {
-        body: { item_slug: r.slug },
+        body: {
+          item_slug: r.slug,
+          success_path: "/admin/marketplace?purchase=success",
+          cancel_path: "/admin/marketplace?purchase=cancelled",
+        },
       });
-      if (error) throw new Error(error.message ?? "Couldn't start checkout");
+      if (error) throw new Error(await edgeErrorMessage(error, "Couldn't start checkout — please try again."));
       const res = (data ?? {}) as Record<string, unknown>;
       if (res.error) throw new Error(String(res.error));
       const url = typeof res.url === "string" ? res.url : "";
@@ -236,10 +356,13 @@ export default function Marketplace() {
 
     // The edge function is the universal install path — it embeds a knowledge
     // pack's docs (which SQL can't) and finalizes through the gated RPC.
+    // No `installed_by_agent`: this is the human clicking Install in the UI, so there
+    // is no agent author (Paige-chat/MCP/Stripe callers send their own string). The
+    // edge guard accepts it absent OR null (#269) — we send it absent, the clean shape.
     const { data, error } = await supabase.functions.invoke("marketplace-install", {
-      body: { item_slug: r.slug, installed_by_agent: null },
+      body: { item_slug: r.slug },
     });
-    if (error) throw new Error(error.message ?? "Install failed");
+    if (error) throw new Error(await edgeErrorMessage(error, "Couldn't add this to your Paige — please try again."));
     const res = (data ?? {}) as Record<string, unknown>;
     if (res.error) throw new Error(String(res.error));
 
@@ -292,6 +415,23 @@ export default function Marketplace() {
 
   const toggle = async (r: CatalogRow, on: boolean) => {
     if (!activeTenantId || saving) return;
+    // Switching OFF runs the real teardown RPC — for a knowledge pack that DELETES
+    // the docs it seeded (and can tear down bundle children), so a stray tap must not
+    // silently destroy seeded knowledge (#276). Gate the destructive OFF path behind
+    // a confirm that spells out the consequence; a plain skill toggle-off is reversible
+    // (just flips the gate) and needs no prompt, so keep that UX friction-free.
+    if (!on) {
+      const destructive = r.item_type === "kb_pack" || r.requires_embedding === true;
+      const ok = await confirm({
+        title: `Switch off ${r.name}?`,
+        description: destructive
+          ? "This removes the knowledge Paige seeded from this pack. You can switch it back on anytime, but she'll re-embed it fresh."
+          : "Paige stops carrying this into client conversations. You can switch it back on anytime.",
+        actionLabel: "Switch off",
+        destructive,
+      });
+      if (!ok) return;
+    }
     setSaving(r.slug);
     try {
       if (on) await install(r);
@@ -553,6 +693,10 @@ export default function Marketplace() {
           onToggle={toggle}
         />
       )}
+
+      {/* Destructive-confirm dialog for switching a capability OFF (#276) — rendered
+          once; opened on-demand by toggle()'s OFF branch via the useConfirm promise. */}
+      {dialog}
     </PageShell>
   );
 }
@@ -576,6 +720,111 @@ function MarketplaceSkeleton() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Pre-install "What's inside" preview for a Blueprint/capability, fed by the
+ * marketplace_item_detail(slug) RPC. Its own component (own hook scope) because
+ * MarketplaceDetailDialog early-returns before any hooks (rules-of-hooks). §13:
+ * reflects the ACTUAL published manifest — no per-item hardcoding, renders nothing
+ * for roadmap cards (has_version:false) or manifests with no previewable content.
+ * §18: no new artifact-type tab/mode — it enriches the existing dialog in place.
+ */
+function BlueprintPreview({ slug }: { slug: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["marketplace_item_detail", slug],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("marketplace_item_detail" as never, { _slug: slug } as never);
+      if (error) throw error;
+      return (data as ItemDetail | null) ?? null;
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2 rounded-lg border border-border/70 bg-muted/40 p-3">
+        <div className="h-3 w-24 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+        <div className="h-3 w-full animate-pulse rounded bg-muted motion-reduce:animate-none" />
+        <div className="h-3 w-3/4 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+      </div>
+    );
+  }
+  if (!data || !data.has_version) return null;
+
+  const greeting = data.persona?.greeting ?? null;
+  const journey = data.journey_stages ?? [];
+  const probing = data.probing ?? [];
+  const skills = data.skills ?? [];
+  const kb = data.kb_docs ?? [];
+  if (!greeting && journey.length === 0 && skills.length === 0 && kb.length === 0) return null;
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border/70 bg-muted/40 p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What&apos;s inside</p>
+
+      {greeting && (
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">How Paige opens</p>
+          <p className="mt-1 leading-relaxed text-foreground/90">&ldquo;{greeting}&rdquo;</p>
+        </div>
+      )}
+
+      {journey.length > 0 && (
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Client journey &middot; {journey.length} stages
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {journey.map((st) => (
+              <span key={st.display_order} className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
+                {st.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {probing.length > 0 && (
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Paige probes for</p>
+          <ul className="mt-1 space-y-0.5">
+            {probing.slice(0, 3).map((q, i) => (
+              <li key={i} className="text-[13px] leading-snug text-muted-foreground">&mdash; {q}</li>
+            ))}
+            {probing.length > 3 && (
+              <li className="text-[12px] text-muted-foreground">+{probing.length - 3} more</li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {skills.length > 0 && (
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Skills switched on</p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {skills.map((sk) => (
+              <span key={sk} className="rounded-full border border-border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
+                {prettySkill(sk)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {kb.length > 0 && (
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            Knowledge added &middot; {kb.length} guides
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {kb.map((t) => (
+              <li key={t} className="text-[13px] leading-snug text-muted-foreground">&mdash; {t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -643,6 +892,7 @@ function MarketplaceDetailDialog({
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">What this does</p>
               <p className="mt-1 leading-relaxed text-muted-foreground">{whatItAdds(row.item_type)}</p>
             </div>
+            <BlueprintPreview slug={row.slug} />
           </div>
         </DialogDescription>
 

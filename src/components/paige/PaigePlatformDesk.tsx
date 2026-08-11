@@ -13,11 +13,13 @@
 // and points at the real platform desks for live numbers — it fabricates ZERO
 // metrics and claims no deep MRR wiring. The real platform persona + platform
 // metrics in paige-ai-chat are the owed server-side follow-up (see file's export).
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Building2, LineChart, Wallet, ArrowUpRight, Info } from "lucide-react";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
 import { GlyphPlate } from "@/components/ui/page";
+import { supabase } from "@/integrations/supabase/client";
 import type { QuickChip } from "./commandCenterTypes";
 
 // The one place the platform mode is stated to the model. clientId stays null —
@@ -40,8 +42,15 @@ const PLATFORM_CHIPS: QuickChip[] = [
   { label: "Pressure-test positioning", prompt: "Pressure-test how we position Paige as the intelligent client portal against the static-portal category." },
 ];
 
-const PLATFORM_GREETING =
+// §52/§36 — Paige OPENS already knowing the operator, and leads with his name. The
+// opening bubble is captured once at mount, so the name must be resolved BEFORE the
+// chat renders. The name comes from RUNTIME auth metadata (never the repo, §45); a
+// missing name degrades to the name-less opener (§13 — never fabricate a name).
+const PLATFORM_GREETING_BODY =
   "I'm at the platform level with you — your Chief of Staff for the company itself, not any one workspace. Tell me what you're steering: priorities across tenants, the roadmap, positioning, or an operator update you need drafted. For live numbers, I'll point you to the platform desks.";
+
+const buildGreeting = (firstName: string | null): string =>
+  firstName ? `${firstName} — ${PLATFORM_GREETING_BODY}` : PLATFORM_GREETING_BODY;
 
 /** Real platform surfaces we LINK to (§18 — never re-render another home's data). */
 const DESKS: Array<{ to: string; label: string; blurb: string; icon: typeof Building2 }> = [
@@ -51,6 +60,29 @@ const DESKS: Array<{ to: string; label: string; blurb: string; icon: typeof Buil
 ];
 
 export function PaigePlatformDesk() {
+  // Resolve the operator's first name from runtime auth (§45 — never the repo) BEFORE
+  // mounting the chat, so Paige's opening bubble leads with his name rather than
+  // personalizing only once he speaks. `undefined` = still resolving; `null` = no name
+  // on record (degrade to the name-less opener, §13). The session is already cached for
+  // a logged-in operator, so this resolves in a tick.
+  const [firstName, setFirstName] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (cancelled) return;
+        const full = String(data?.user?.user_metadata?.full_name ?? "").trim();
+        setFirstName(full.split(/\s+/)[0]?.trim() || null);
+      })
+      .catch(() => {
+        if (!cancelled) setFirstName(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="flex h-full min-h-[34rem] flex-col">
       {/* Compact header — mirrors the tenant command bar for one continuous
@@ -100,18 +132,31 @@ export function PaigePlatformDesk() {
         </div>
       </div>
 
-      {/* The SAME single PaigeAIChat (§20 — never a per-mode tab). Platform mode
-          is carried by clientContext prose; clientId stays null (§9). */}
+      {/* The SAME single PaigeAIChat (§20 — never a per-mode tab). `platform`
+          declares the tenant-less operator scope (#130): threads are created +
+          listed with lens='platform' + NULL tenant, so the Super Admin can chat
+          with no active tenant. Persona prose still rides clientContext; clientId
+          stays null (§9). */}
       <div className="min-h-0 w-full flex-1">
-        <PaigeAIChat
-          hideHeader
-          fill
-          enableHistory
-          greeting={PLATFORM_GREETING}
-          clientId={null}
-          clientContext={PLATFORM_SCOPE_PROSE}
-          chips={PLATFORM_CHIPS}
-        />
+        {firstName === undefined ? (
+          // Brief hold while the operator's name resolves, so the opening bubble lands
+          // personalized on first paint (no generic-then-swap flash). Near-instant for a
+          // logged-in operator (cached session).
+          <div className="flex h-full items-center justify-center">
+            <PaigeMark className="h-10 w-10 animate-pulse opacity-70 motion-reduce:animate-none" />
+          </div>
+        ) : (
+          <PaigeAIChat
+            hideHeader
+            fill
+            enableHistory
+            platform
+            greeting={buildGreeting(firstName)}
+            clientId={null}
+            clientContext={PLATFORM_SCOPE_PROSE}
+            chips={PLATFORM_CHIPS}
+          />
+        )}
       </div>
     </div>
   );

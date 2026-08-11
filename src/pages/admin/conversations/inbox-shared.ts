@@ -44,13 +44,19 @@ export interface MessageRow {
   scheduled_for: string | null; // R7 — queued outbound release instant (drives scheduled view/pill/cancel)
   sent_at: string | null;
   created_at: string;
+  // Phase-4 call fields (schema-present on public.messages; a voice row is channel_type='voice').
+  // Nullable — null for non-voice rows and calls with no recording/transcript/completed duration (§13).
+  call_duration_seconds: number | null;
+  recording_url: string | null;
+  transcript: string | null;
   clients: ClientJoin | null;
 }
 
 export const MESSAGE_COLS =
   "id, thread_key, contact_id, connector_id, channel_type, direction, status, sender, recipients, " +
   "subject, body_text, body_html, attachments, provider_message_id, in_reply_to_provider_id, " +
-  "action_id, error, scheduled_for, sent_at, created_at, clients(first_name, last_name, entity_name, email)";
+  "action_id, error, scheduled_for, sent_at, created_at, call_duration_seconds, recording_url, transcript, " +
+  "clients(first_name, last_name, entity_name, email)";
 
 // ── C-1.5 threads aggregate (source of truth for order/unread/snooze/archive/labels) ─
 export type ThreadFilter = "active" | "snoozed" | "archived" | "all";
@@ -440,7 +446,16 @@ export function readSendResult(data: unknown): SendResult {
  * (send-message's own fallback `${channel}:${to}` is NON-canonical and would fragment —
  * that is exactly why compose-new passes this explicit key.)
  */
-export function canonicalThreadKey(channel: ChannelType, tenantId: string, counterparty: string): string {
+export function canonicalThreadKey(
+  channel: ChannelType,
+  tenantId: string,
+  counterparty: string,
+  contactId?: string | null,
+): string {
+  // §49 one-thread-per-contact: when the contact is known, the canonical key is per-CONTACT so a
+  // send and any later inbound reply on ANY channel coalesce into the ONE thread. The channel+
+  // counterparty form is the fallback only when no contact id is available.
+  if (contactId) return `contact:${tenantId}:${contactId}`;
   const cp = channel === "email"
     ? counterparty.trim().toLowerCase()
     : counterparty.replace(/[^\d+]/g, "");

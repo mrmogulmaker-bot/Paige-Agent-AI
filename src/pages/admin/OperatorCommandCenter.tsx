@@ -31,12 +31,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot, DollarSign, Building2, Receipt, AlertTriangle, Sparkles, Percent,
   Zap, Activity, Users, Gauge, ArrowUpRight, ShieldAlert, TrendingUp,
-  HeartPulse, Filter, LineChart as LineChartIcon, Layers, Inbox, RefreshCw,
+  HeartPulse, Filter, LineChart as LineChartIcon, Layers, RefreshCw,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { PaigeDepartmentStatus } from "@/components/paige/PaigeDepartmentStatus";
+import { SystemsCheckTile } from "@/components/systems-check/SystemsCheckTile";
 import {
   PageShell, PageHeader, SectionCard, StatTile, StatRow, DataTableShell,
   EmptyState, StatePill, DateRangePicker, rangeToDates, KpiPillRow, DonutCard,
@@ -50,6 +52,7 @@ type TierSplit = {
   total?: number | null;
   individual?: number | null;
   standalone?: number | null;
+  sub_account?: number | null;
   agency?: number | null;
   enterprise?: number | null;
 };
@@ -265,6 +268,7 @@ export default function OperatorCommandCenter() {
     [
       { label: "Solo", value: tenants?.individual, colorVar: "--chart-1" },
       { label: "Standalone", value: tenants?.standalone, colorVar: "--chart-2" },
+      { label: "Sub-account", value: tenants?.sub_account, colorVar: "--chart-5" },
       { label: "Agency", value: tenants?.agency, colorVar: "--chart-3" },
       { label: "Enterprise", value: tenants?.enterprise, colorVar: "--chart-4" },
     ] as Array<{ label: string; value?: number | null; colorVar: string }>
@@ -608,24 +612,25 @@ export default function OperatorCommandCenter() {
         }}
       />
 
-      {/* Honest reserved slots — real SectionCards naming their populate trigger, never a
-          fabricated count (§13). These sit below the fold on purpose. */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard icon={Layers} title="Cohort retention">
-          <EmptyState
-            icon={HeartPulse}
-            title="Retention cohorts are coming"
-            description="Once enough monthly cohorts have a full retention window, their curves render here — no source exists to chart yet, so nothing is shown rather than a placeholder."
-          />
-        </SectionCard>
-        <SectionCard icon={Inbox} title="Drafts awaiting you">
-          <EmptyState
-            icon={Sparkles}
-            title="Your platform draft queue is coming"
-            description="A fleet-scoped approvals queue — Paige's drafted platform moves waiting on your one-click approval — lands with the operator C-Suite roster. Until then, tenant drafts stay in each tenant's own Command Center."
-          />
-        </SectionCard>
-      </div>
+      {/* "See them work" (Task #245, §7 3-layer VP framework), operator/fleet scope.
+          Fleet-wide because the operator's has_role(admin) RLS returns every tenant's
+          open actions (§9/§51 God-tier outcome). Gold-free read (§11). */}
+      <PaigeDepartmentStatus scope="operator" />
+
+      {/* Systems Check (Wave S3 L3) — the reserved fleet-scoped attention queue, now live:
+          Paige's platform-infra checks (security, RLS, DB, delivery) surfaced ONE at a time
+          with her drafted fix + one-click approve (§36 draft-first, §11 gold on the act). */}
+      <SystemsCheckTile scope="operator" />
+
+      {/* Honest reserved slot — a real SectionCard naming its populate trigger, never a
+          fabricated count (§13). Sits below the fold on purpose. */}
+      <SectionCard icon={Layers} title="Cohort retention">
+        <EmptyState
+          icon={HeartPulse}
+          title="Retention cohorts are coming"
+          description="Once enough monthly cohorts have a full retention window, their curves render here — no source exists to chart yet, so nothing is shown rather than a placeholder."
+        />
+      </SectionCard>
       </>
       )}
     </PageShell>
@@ -640,21 +645,24 @@ function tierSplitHint(t?: TierSplit | null): string | null {
   const parts: string[] = [];
   if (has(t.individual)) parts.push(`${t.individual} solo`);
   if (has(t.standalone)) parts.push(`${t.standalone} standalone`);
+  if (has(t.sub_account)) parts.push(`${t.sub_account} sub-account`);
   if (has(t.agency)) parts.push(`${t.agency} agency`);
   if (has(t.enterprise)) parts.push(`${t.enterprise} enterprise`);
   return parts.length ? parts.join(" · ") : null;
 }
 
-const TIER_KEYS = ["individual", "standalone", "agency", "enterprise"] as const;
+const TIER_KEYS = ["individual", "standalone", "sub_account", "agency", "enterprise"] as const;
 const TIER_LABEL: Record<(typeof TIER_KEYS)[number], string> = {
   individual: "Solo",
   standalone: "Standalone",
+  sub_account: "Sub-account",
   agency: "Agency",
   enterprise: "Enterprise",
 };
 const TIER_COLOR: Record<(typeof TIER_KEYS)[number], string> = {
   individual: "--chart-1",
   standalone: "--chart-2",
+  sub_account: "--chart-5",
   agency: "--chart-3",
   enterprise: "--chart-4",
 };

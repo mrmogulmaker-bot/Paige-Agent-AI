@@ -27,15 +27,25 @@ import { AdminViewBanner } from "@/components/admin/AdminViewBanner";
 import { TenantSwitcher } from "@/components/admin/TenantSwitcher";
 import { AccountSwitcher } from "@/components/admin/AccountSwitcher";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useProviderAttribution } from "@/hooks/useProviderAttribution";
 import { useTenantFeature } from "@/hooks/useTenantFeature";
 import { usePresenceHeartbeat } from "@/hooks/usePresenceHeartbeat";
 
-import { useRoleLens } from "@/contexts/RoleLensContext";
 import { useBrokerProfile } from "@/hooks/useBrokerProfile";
 import { performSignOut } from "@/lib/auth/signOut";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { AgentPresenceProvider, AgentPresence } from "@/components/ui/paige";
+
+/**
+ * Height (rem) of THIS shell's fixed top bar on md+ (where the presence rail shows):
+ * Row 1 `h-14` (3.5rem) + Row 2 nav `h-11` (2.75rem) = 6.25rem. The presence rail
+ * docks below it (§39 S1). Kept in sync with the header markup below by name; the
+ * godMode gold top edge (`h-0.5`) sits ABOVE this and, being under the z-40 header
+ * over the z-30 rail, needs no offset compensation.
+ */
+const ADMIN_TOPBAR_REM = 6.25;
 
 // 7-hub top bar. Each hub has a primary route and optional sub-routes
 // surfaced via a dropdown so power users can jump deep with one click.
@@ -159,8 +169,9 @@ const adminNavItems = hubs.flatMap((h) => [
 // (Fleet · Team · Intelligence) plus the two non-owner-restricted new surfaces
 // (Marketplace · Analytics). Owner-only new console surfaces route through
 // GOD_MORE below.
-// The operator (God) console nav — restructured into 7 hub-and-sub-tab destinations
-// mirroring the TENANT hub pattern (Clients → People/Pipeline/…). The old 16-item
+// The operator (God) console nav — 8 hub-and-sub-tab destinations (Command Center added
+// Wave S3 for the Systems Check tile) mirroring the TENANT hub pattern (Clients →
+// People/Pipeline/…). The old 16-item
 // "Workspace tools" overflow ("More" dropdown) is DELETED; every destination now lands
 // under exactly ONE hub, its sub-tabs surfaced by a gate-aware *SubTabs strip (the proven
 // ClientsSubTabs primitive, §18 reuse) below the hub bar — never a junk-drawer dropdown.
@@ -170,34 +181,38 @@ const GOD_HUBS: Hub[] = [
   //     Skills). Aliases carry the three absorbed leaves so Paige highlights on them.
   { label: "Paige", href: "/admin/playbook", icon: Bot,
     aliases: ["/admin/sub-agents", "/admin/actions", "/admin/skills"] },
-  // 2 — Fleet. Absorbs the standalone Team hub + Deploy Health.
+  // 2 — Command Center. The operator's /admin index (OperatorCommandCenter, godMode) — fleet
+  //     state, the attention queue, and the platform Systems Check tile. `isActive("/admin")`
+  //     is exact-match (see hubIsActive), so this highlights ONLY on /admin, never on a sub-hub.
+  { label: "Command Center", href: "/admin", icon: BarChart3 },
+  // 3 — Fleet. Absorbs the standalone Team hub + Deploy Health.
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2,
-    aliases: ["/admin/platform/team", "/admin/platform/deploy-health"] },
-  // 3 — Intelligence. Live Activity index + the model/money/forge/defaults/usage tools.
+    aliases: ["/admin/platform/fleet-communications", "/admin/platform/team", "/admin/platform/deploy-health"] },
+  // 4 — Intelligence. Live Activity index + the model/money/forge/defaults/usage tools.
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain,
     aliases: [
       "/admin/platform/money", "/admin/platform/model-router",
       "/admin/platform/prompt-forge", "/admin/platform/content-defaults",
       "/admin/observability/usage",
     ] },
-  // 4 — Compliance. Compliance + Doctrine (owner) + Legal/Security/Error (staff).
+  // 5 — Compliance. Compliance + Doctrine (owner) + Legal/Security/Error (staff).
   { label: "Compliance", href: "/admin/platform/compliance", icon: ShieldCheck,
     aliases: [
       "/admin/platform/doctrine", "/admin/legal",
       "/admin/security", "/admin/observability/errors",
     ] },
-  // 5 — Marketplace (fleet-wide moderation/revenue). In development → "Soon"; no strip yet.
+  // 6 — Marketplace (fleet-wide moderation/revenue). In development → "Soon"; no strip yet.
   { label: "Marketplace", href: "/admin/platform/marketplace", icon: Store, comingSoon: true },
-  // 6 — Analytics (fleet funnel/conversion). In development → "Soon"; no strip yet.
+  // 7 — Analytics (fleet funnel/conversion). In development → "Soon"; no strip yet.
   { label: "Analytics", href: "/admin/platform/analytics", icon: TrendingUp, comingSoon: true },
-  // 7 — Settings. Platform config + invites + support + send pipes/identities.
+  // 8 — Settings. Platform config + invites + support + send pipes/identities.
   { label: "Settings", href: "/admin/platform/settings", icon: Settings,
     aliases: [
       "/admin/platform/invites", "/admin/support",
       "/admin/platform/sends", "/admin/platform/sending",
     ] },
 ];
-// Scoped Platform Admins run the fleet at a minimal tier. They see the SAME 7 hubs —
+// Scoped Platform Admins run the fleet at a minimal tier. They see the SAME 8 hubs —
 // the gate-aware *SubTabs strips filter owner-only sub-tabs out per-tab (canSee), and a
 // strip with ≤1 visible tab hides itself, so staff automatically get the lean subset with
 // no separate array to drift. The ONLY divergence is the Compliance hub's default href:
@@ -209,8 +224,10 @@ const GOD_HUBS: Hub[] = [
 const GOD_STAFF_HUBS: Hub[] = [
   { label: "Paige", href: "/admin/playbook", icon: Bot,
     aliases: ["/admin/sub-agents", "/admin/actions", "/admin/skills"] },
+  // Command Center — same operator /admin index as GOD_HUBS (Systems Check tile lands here).
+  { label: "Command Center", href: "/admin", icon: BarChart3 },
   { label: "Fleet", href: "/admin/platform/tenants", icon: Building2,
-    aliases: ["/admin/platform/team", "/admin/platform/deploy-health"] },
+    aliases: ["/admin/platform/fleet-communications", "/admin/platform/team", "/admin/platform/deploy-health"] },
   { label: "Intelligence", href: "/admin/platform/intelligence", icon: Brain,
     aliases: [
       "/admin/platform/money", "/admin/platform/model-router",
@@ -249,9 +266,11 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // flex item and let each child surface choose its one scroll owner; padding
   // belongs inside ClientsTabsLayout so a negative-margin compensation is never needed.
   const isClientsHub = location.pathname.startsWith("/admin/clients-hub");
-  const { lens, setLens, canSwitch } = useRoleLens();
   const { hasBrokerAccess, profile: brokerProfile } = useBrokerProfile();
   const { isPlatformOwner, isPlatformStaff, activeTenantId, activeTenant } = useTenantContext();
+  // ATTRIBUTION column, Sub-account tier row (#221). Non-null only for a sub-account
+  // operator; null (→ nothing rendered) for God / Agency / Standalone (§51).
+  const { providedBy } = useProviderAttribution();
   // Funding surfaces are an opt-in tenant offer (§2/§9) — hidden unless this
   // tenant has chosen the funding preset (which flips the funding_readiness
   // feature). Generic coaching/consulting/agency tenants never see them.
@@ -297,10 +316,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // Publish this staff member's live presence while they're in the admin
   // workspace (#148). The heartbeat self-resolves auth.uid() server-side.
   usePresenceHeartbeat(true);
-  // When a multi-hat user picks the Coach lens, treat the UI as coach-scoped
-  // even if their real role is admin. Real permissions still come from RLS.
-  const effectiveRole: "admin" | "coach" =
-    userRole === "admin" && canSwitch && lens === "coach" ? "coach" : userRole;
+  // #219 "Role IS the view": a user's view is a function of the roles they hold —
+  // there is no manual "View as" lens. effectiveRole is simply the caller-resolved
+  // role (a multi-hat admin+coach resolves to the admin superset and sees the union).
+  // Real permissions always come from RLS. (Per-role "customize view" is the gated
+  // §219-B Roles slice; richer multi-role identity display lands there too.)
+  const effectiveRole: "admin" | "coach" = userRole;
   // Both the tenant "... More" overflow (Slice 1c-v) AND the God console "Workspace
   // tools" overflow (Finding 4) are now DELETED — every operator destination re-homes
   // under one of the 7 hubs + its gate-aware sub-tab strip. No surface uses the More
@@ -345,6 +366,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         ?? "Admin");
 
   return (
+    // launcherEnabled={!isStudio}: ⌘K only acts where the launcher renders — on Studio
+    // it's a no-op passthrough (§21). hasChatBody={false}: the shared Paige chat body
+    // isn't wired into the rail this slice, so the onboarding docked-open stays gated
+    // OFF (rail defaults collapsed, never opens onto an empty placeholder — §36/§13);
+    // flip to true when the chat body lands.
+    <AgentPresenceProvider launcherEnabled={!isStudio} hasChatBody={false}>
     <VoiceDeviceProvider>
     {/* #140 A2 — the ONE dialer surface (a viewport Sheet), rendered once so every
         trigger + click-to-call opens the SAME pad on ANY breakpoint (§18). */}
@@ -355,6 +382,20 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
     {/* #140 B2 — the ONE live-call co-pilot transcript panel. Rendered once so it
         appears on ANY surface the moment a call goes live (§18/§47/§48). */}
     <LiveTranscriptPanel />
+    {/* Wave 4 Slice 4a.1 — reserve the collapsed presence-rail gutter (md+) so the
+        docked rail never covers the working surface when idle (spec §3.5). The
+        expanded panel slides over content on demand. Suppressed on the immersive
+        Vibe Studio (§21 — Studio owns its full canvas; no separate Paige rail).
+        NOTE (N1/§39): the `3.25rem` here MUST match AGENT_RAIL_COLLAPSED_REM (=3.25)
+        exported from `@/components/ui/paige` — Tailwind can't read the JS const in an
+        arbitrary value, so keep the two in sync by hand if either changes.
+        FIX (§11/§27): the gutter must NOT live on the column, or it insets EVERY child
+        including the full-bleed dark `<header>`, leaving a light `bg-background` notch in
+        the top-right corner above the fixed rail. So the header goes edge-to-edge, and
+        the gutter is applied per-child to the content regions that actually sit in the
+        rail's vertical band: the OperatorHubStrip strip and `<main>` (see below). The
+        mobile drawer is `md:hidden`+`fixed` (immune to `md:pr`) and the rail is md-only,
+        so neither the drawer nor the rail itself needs it. */}
     <div className="h-dvh flex flex-col bg-background overflow-hidden">
       {/* Banner intentionally omitted on /admin — it's redundant when already on
           the admin dashboard. AppShell still renders it inside the client view. */}
@@ -368,15 +409,13 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
         {godMode && <div className="h-0.5 w-full bg-accent" aria-hidden />}
         {/* Row 1: brand + utilities */}
         <div className="flex items-center justify-between gap-3 px-3 md:px-6 h-14">
+          <div className="flex items-center gap-2 min-w-0">
           <Link to="/admin" className="flex items-center gap-2 min-w-0">
             <PaigeMark className="h-8 w-8 flex-shrink-0" />
             <span className="font-bold text-sm tracking-tight truncate">{PLATFORM.adminName}</span>
-            {/* Passive identity chip only. The multi-hat "View as" switcher used
-                to live here as a DropdownMenu nested INSIDE this <Link> — its
-                trigger click bubbled to the anchor and navigated. It's relocated
-                to the header profile dropdown per handoff §4 (Slice 1c-iii); the
-                chip that hosted it was a switcher affordance, not a lens-status
-                indicator, so nothing ambient is lost for the canSwitch case. */}
+            {/* Passive identity chip only — shows the caller's role. #219 "role IS
+                the view" removed the "View as" lens switcher entirely; this is a
+                plain status indicator, never an affordance. */}
             {godMode ? (
               <>
                 <Badge
@@ -400,15 +439,26 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
               >
                 {activeTenant.name}
               </Badge>
-            ) : !canSwitch ? (
+            ) : (
               <Badge
                 variant="outline"
                 className="hidden sm:inline-flex ml-2 text-[10px] font-medium capitalize border-accent/40 text-accent bg-transparent"
               >
                 {userRole}
               </Badge>
-            ) : null}
+            )}
           </Link>
+            {/* "Provided by <agency>" — sub-account attribution (#221 ATTRIBUTION
+                column). Neutral, never gold (§11); a hairline divider gives it
+                definition (§27). Only renders when the resolver returns a provider,
+                so God / Agency / Standalone show nothing (§51). */}
+            {providedBy && (
+              <span className="hidden lg:inline-flex items-center gap-1 pl-2 ml-0.5 border-l border-primary-foreground/15 text-[10px] leading-none truncate max-w-[200px]">
+                <span className="text-primary-foreground/45">Provided by</span>
+                <span className="font-medium text-primary-foreground/85 truncate">{providedBy}</span>
+              </span>
+            )}
+          </div>
 
           {/* Mobile: current section + dialer + menu trigger */}
           <div className="flex md:hidden items-center gap-2">
@@ -444,11 +494,12 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
             <AdminBridgeBell />
             <ThemeToggle variant="on-primary" />
 
-            {/* Profile dropdown (Slice 1c-iii): identity + View-as (relocated) +
-                Workspace settings (admin-only) + Sign out. Replaces the bare
-                Sign-out icon. Personal settings + Help/Docs are intentionally
-                omitted — no destination exists yet (filed follow-ups); shipping
-                them would be dead links (§11/§13). */}
+            {/* Profile dropdown (Slice 1c-iii): identity + Workspace settings
+                (admin-only) + Sign out. Replaces the bare Sign-out icon. The
+                "View as" lens switcher was removed (#219 "role IS the view").
+                Personal settings + Help/Docs are intentionally omitted — no
+                destination exists yet (filed follow-ups); shipping them would be
+                dead links (§11/§13). */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -480,21 +531,6 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
                     <span className="capitalize">{userRole}</span>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-
-                  {canSwitch && (
-                    <>
-                      <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                        View as
-                      </DropdownMenuLabel>
-                      <DropdownMenuItem onClick={() => setLens("admin")} className={lens === "admin" ? "bg-muted" : ""}>
-                        <UserCog className="w-4 h-4 mr-2" /> Admin
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setLens("coach")} className={lens === "coach" ? "bg-muted" : ""}>
-                        <Users className="w-4 h-4 mr-2" /> Coach
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                    </>
-                  )}
 
                   {effectiveRole === "admin" && (
                     <>
@@ -625,7 +661,7 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           on hubs without a strip (Paige has its own via PaigeTabsLayout; Marketplace /
           Analytics are bare). Desktop-only, matching the row-2 hub bar (mobile uses the drawer). */}
       {!isStudio && (
-        <div className="hidden md:block shrink-0">
+        <div className="hidden md:block shrink-0 md:pr-[3.25rem]">
           <OperatorHubStrip />
         </div>
       )}
@@ -758,16 +794,27 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
           // Immersive Studio and the nested Clients Hub each own their internal
           // height/scroll contract. Every other route keeps the padded document
           // scroller. min-h-0 is required so every flex child may actually shrink.
+          // Non-Studio branches carry the collapsed-rail gutter (md:pr) so content clears
+          // the fixed rail; Studio has no rail, so no gutter. `md:pr-[3.25rem]` overrides
+          // the right side of `md:p-6` (Tailwind emits pr after the p shorthand) so the
+          // default scroller's content edge sits flush to the collapsed rail.
           isStudio
             ? "min-h-0 flex-1 overflow-hidden"
             : isClientsHub
-              ? "min-h-0 flex-1 overflow-hidden"
-              : `min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] p-3 sm:p-4 md:p-6`
+              ? "min-h-0 flex-1 overflow-hidden md:pr-[3.25rem]"
+              : `min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-[calc(env(safe-area-inset-bottom)+1rem)] p-3 sm:p-4 md:p-6 md:pr-[3.25rem]`
         }
       >
         {children}
       </main>
+      {/* Wave 4 Slice 4a.1 — the persistent Paige presence: docked right-rail +
+          universal ⌘K launcher, account-type-aware (spec §5/§5a). Auth-gated by
+          living only in this operator/tenant console shell; hidden on the immersive
+          Vibe Studio (§21). Mobile uses a different surface (later slice), so the
+          rail self-hides under md. */}
+      {!isStudio && <AgentPresence topOffsetRem={ADMIN_TOPBAR_REM} />}
     </div>
     </VoiceDeviceProvider>
+    </AgentPresenceProvider>
   );
 }

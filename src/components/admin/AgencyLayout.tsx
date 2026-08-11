@@ -29,7 +29,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
-  Building2, ChevronDown, Loader2, LogOut, Network, UserCog, Users, LayoutDashboard, LogIn,
+  Building2, ChevronDown, Loader2, LogOut, Network, UserCog, Users, Users2, LayoutDashboard, LogIn, Store,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +48,15 @@ import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import AgencyBoard from "@/pages/admin/AgencyBoard";
 import { AgencyTeamPanel } from "@/components/admin/agency/AgencyTeamPanel";
+// #244 — the canonical "About Your Paige Team" directory (agency scope). ONE
+// component; scope prop set by the route. Distinct from /agency/team (the human
+// agency roster) — this teaches Paige's own VP team (§18 non-colliding home).
+import PaigeTeamDirectory from "@/pages/PaigeTeamDirectory";
+// #277 — the agency-side Marketplace CURATION surface. Distinct from the tenant's
+// own install view (/admin/marketplace): here the agency owner decides what their
+// sub-accounts may install. Reuses the tenant Marketplace primitives in curation
+// mode (§18 — one card, not a fork).
+import AgencyMarketplace from "@/pages/agency/AgencyMarketplace";
 import { toast } from "sonner";
 
 type LoginPref = "agency" | "last_account";
@@ -61,6 +70,11 @@ interface AgencyNav {
 const AGENCY_NAV: AgencyNav[] = [
   { label: "Dashboard", href: "/agency", icon: LayoutDashboard },
   { label: "Team", href: "/agency/team", icon: UserCog },
+  // #244 — Paige's own VP team (learn layer). Named distinctly from "Team" (the
+  // human roster) so the two never blur together.
+  { label: "Paige Team", href: "/agency/paige-team", icon: Users2 },
+  // #277 — curate which Marketplace capabilities the agency's sub-accounts can use.
+  { label: "Marketplace", href: "/agency/marketplace", icon: Store },
 ];
 
 /**
@@ -241,7 +255,7 @@ export default function AgencyLayout() {
         </div>
 
         {/* Row 2: agency nav */}
-        <div className="flex items-center gap-1 px-3 md:px-6 h-11 overflow-x-auto scrollbar-none border-t border-sidebar-border/60">
+        <div className="flex items-center gap-1 px-3 md:px-6 min-h-11 overflow-x-auto overflow-y-hidden no-scrollbar border-t border-sidebar-border/60">
           {AGENCY_NAV.map((item) => {
             const active = isActive(item.href);
             return (
@@ -279,6 +293,12 @@ export default function AgencyLayout() {
         <Routes>
           <Route index element={<AgencyBoard />} />
           <Route path="team" element={<AgencyTeamPanel agencyName={agencyName} />} />
+          {/* #244 — learn about your Paige team (agency scope). Inherits the shell's
+              server-proven eligibility gate; read-only, no extra guard. */}
+          <Route path="paige-team" element={<PaigeTeamDirectory scope="agency" />} />
+          {/* #277 — agency Marketplace curation. Inherits the shell's server-proven
+              agency eligibility gate; the RPC + RLS re-check authority server-side. */}
+          <Route path="marketplace" element={<AgencyMarketplace />} />
           <Route path="*" element={<Navigate to="/agency" replace />} />
         </Routes>
       </main>

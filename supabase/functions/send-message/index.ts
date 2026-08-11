@@ -476,6 +476,13 @@ Deno.serve(async (req) => {
       .maybeSingle();
     tenantId = contactRow?.tenant_id ?? null;
   }
+  // §49 one-thread-per-contact: when both the contact and tenant are known, the canonical key is
+  // per-CONTACT so every channel's messages coalesce into ONE thread. The `${channel}:${to}` /
+  // `email:${to}` / `sms:${to}` tails below remain only for a genuinely contactless raw-`to` send.
+  // INVARIANT: this is computed AFTER the contact→tenant resolution above (L471-477), so whenever
+  // effectiveContactId is set, tenantId is non-null and the per-contact key is well-formed. Keep this
+  // line below that block if it is ever reordered.
+  const perContactKey = effectiveContactId && tenantId ? `contact:${tenantId}:${effectiveContactId}` : null;
   if (effectiveConnectorId) {
     const { data } = await admin
       .from("channel_connectors")
@@ -593,7 +600,7 @@ Deno.serve(async (req) => {
             schedRowId = patched?.id ?? body.message_id;
           } else if (effectiveContactId || effectiveConnectorId) {
             const { data: inserted } = await admin.from("messages").insert({
-              thread_key: body.thread_key || draftRow?.thread_key || `${body.channel}:${body.to}`,
+              thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `${body.channel}:${body.to}`,
               contact_id: effectiveContactId, connector_id: effectiveConnectorId,
               channel_type: body.channel, direction: "outbound",
               status: "queued", scheduled_for: schedIso,
@@ -672,7 +679,7 @@ Deno.serve(async (req) => {
           preMessageRowId = patched?.id ?? body.message_id;
         } else if (effectiveContactId || effectiveConnectorId) {
           const { data: inserted } = await admin.from("messages").insert({
-            thread_key: body.thread_key || draftRow?.thread_key || `${body.channel}:${body.to}`,
+            thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `${body.channel}:${body.to}`,
             contact_id: effectiveContactId, connector_id: effectiveConnectorId,
             channel_type: body.channel, direction: "outbound",
             status: terminalStatus, scheduled_for: preSend.queueUntil,
@@ -747,7 +754,7 @@ Deno.serve(async (req) => {
       const adapter = getOutboundAdapter("email");
       if (!adapter) throw new Error("no_email_adapter_registered");
       const outMsg: NormalizedMessage = {
-        thread_key: body.thread_key || draftRow?.thread_key || `email:${body.to}`,
+        thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `email:${body.to}`,
         channel_type: "email",
         direction: "outbound",
         status: "queued",
@@ -838,7 +845,7 @@ Deno.serve(async (req) => {
         (supabaseUrl ? `${supabaseUrl}/functions/v1/twilio-status-callback` : null);
 
       const outMsg: NormalizedMessage = {
-        thread_key: body.thread_key || draftRow?.thread_key || `sms:${body.to}`,
+        thread_key: body.thread_key || draftRow?.thread_key || perContactKey || `sms:${body.to}`,
         channel_type: "sms",
         direction: "outbound",
         status: "queued",
@@ -938,7 +945,7 @@ Deno.serve(async (req) => {
               // tenant_id intentionally OMITTED — set_message_tenant() derives it from
               // connector_id → contact_id (§9). Requires one of them to be present,
               // which the branch condition guarantees.
-              thread_key: body.thread_key || `${body.channel}:${body.to}`,
+              thread_key: body.thread_key || perContactKey || `${body.channel}:${body.to}`,
               contact_id: effectiveContactId,
               connector_id: effectiveConnectorId,
               channel_type: body.channel,

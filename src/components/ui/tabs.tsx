@@ -11,7 +11,7 @@ const TabsList = React.forwardRef<
 >(({ className, ...props }, ref) => (
   // Wrapper enables horizontal scroll on narrow screens so tab triggers never
   // clip off the right edge. The inner List keeps its inline-flex layout.
-  <div className="w-full max-w-full overflow-x-auto scrollbar-none -mx-1 px-1">
+  <div className="w-full max-w-full overflow-x-auto no-scrollbar -mx-1 px-1">
     <TabsPrimitive.List
       ref={ref}
       className={cn(

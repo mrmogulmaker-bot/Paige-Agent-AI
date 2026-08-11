@@ -20,6 +20,7 @@ import { Hono } from "npm:hono@4";
 import { McpServer, StreamableHttpTransport } from "npm:mcp-lite@^0.10.0";
 import { z } from "npm:zod@^3.25.0";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { resolveOperatorIdentity } from "../_shared/operator-identity.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -123,7 +124,10 @@ async function audit(action: string, target_type: string | null, target_id: stri
 
 // Workflow dispatcher lives in _shared so the pg_cron sweeper
 // (dispatch-queued-workflow-runs) can re-use the same routing logic.
-import { dispatchWorkflowRun, MMA_TENANT_ID } from "../_shared/workflowDispatch.ts";
+import { dispatchWorkflowRun } from "../_shared/workflowDispatch.ts";
+// §200: the god/platform actor has no tenant of its own; resolve the operator's
+// designated system tenant from config-as-data (fail-closed null when unset).
+import { platformOperatorTenantId } from "../_shared/platform-operator-tenant.ts";
 // Tier Rail Spine (Phase D): one shared tier resolver, off the same declared rail
 // (public.get_actor_access) a human resolves through — so Paige's tier == a human's.
 import { getActorTier, isClientSeatByScopes } from "../_shared/actorTier.ts";
@@ -179,7 +183,10 @@ async function actorIsPlatformOwner(actor = currentActor()): Promise<boolean> {
 
 async function actorTenantId(): Promise<string | null> {
   const actor = currentActor();
-  if (actor.kind === "platform") return MMA_TENANT_ID;
+  // §200: was a hardcoded (and stale/phantom) MMA_TENANT_ID. Now the operator's
+  // designated system tenant, or null when none is designated (every consumer
+  // below fails closed on null — strictly safer than pinning to a phantom).
+  if (actor.kind === "platform") return await platformOperatorTenantId(admin);
   if (!actor.user_id) return null;
 
   const [{ data: profile }, { data: memberships }, isPlatformOwner] = await Promise.all([
@@ -1380,18 +1387,19 @@ function mdToHtml(md: string): string {
 // Per-product_scope sender map. Each `from` must be on a domain verified in the Resend
 // account that holds RESEND_API_KEY. All scopes route through Paige's verified
 // paigeagent.ai subdomain post-Ship #2 (MMA sender identities retired).
-// btf/mma reply_to temporarily routes to coach@mogulmakeracademy.com until a
-// dedicated Paige support inbox is provisioned (follow-up ship).
+// §45: reply_to defaults to the platform-neutral support inbox; the actual per-send
+// reply_to is resolved present-only from the CALLER'S tenant operator identity in the
+// handler (support_email / sender.reply_to) — never a hardcoded operator address.
 const SCOPE_SENDERS: Record<string, { from: string; name: string; reply_to: string }> = {
   btf: {
     from: "alerts@paigeagent.ai",
     name: "Paige",
-    reply_to: "coach@mogulmakeracademy.com",
+    reply_to: "support@paigeagent.ai",
   },
   mma: {
     from: "alerts@paigeagent.ai",
     name: "Paige",
-    reply_to: "coach@mogulmakeracademy.com",
+    reply_to: "support@paigeagent.ai",
   },
   paige: {
     from: "hello@paigeagent.ai",
@@ -1445,7 +1453,16 @@ mcp.tool("send_btf_template_email", {
     const fromName = args.from_name ?? scopeCfg.name;
     const fromEmail = args.from_override ?? scopeCfg.from;
     const fromAddr = `${fromName} <${fromEmail}>`;
-    const replyTo = args.reply_to ?? scopeCfg.reply_to;
+    // §45: reply_to resolves present-only from the caller's tenant operator identity
+    // (the tenant's OWN support/reply address) — falling to the platform-neutral scope
+    // default, never a hardcoded operator inbox.
+    const tenantIdForReplyTo = await actorTenantId();
+    const operatorForReplyTo = await resolveOperatorIdentity(admin, tenantIdForReplyTo);
+    const tenantReplyTo =
+      operatorForReplyTo.support_email ??
+      (operatorForReplyTo.sender as { reply_to?: string } | undefined)?.reply_to ??
+      undefined;
+    const replyTo = args.reply_to ?? tenantReplyTo ?? scopeCfg.reply_to;
 
     // Single shared Resend account authenticates all sends from paigeagent.ai.
     // sender_account label retained as a constant for historical audit continuity.
@@ -3639,14 +3656,27 @@ mcp.tool("exit_subaccount", {
 
 mcp.tool("list_tenants", {
   description:
-    "Master-admin only. List every tenant on the platform with status, seat/customer caps, owner, and Stripe linkage. Filter by `status` (trial/active/past_due/suspended/canceled) or `query` (matches name/slug).",
+    "Master-admin only. List every tenant on the platform with status, seat/customer caps, owner, Stripe linkage, and revenue_class (paid/promotional/internal_test — the operator-internal #29 axis). Filter by `status` (trial/active/past_due/suspended/canceled), `revenue_class`, or `query` (matches name/slug).",
   inputSchema: z.object({
     status: z.string().optional(),
     query: z.string().optional(),
+    revenue_class: z.enum(["paid", "promotional", "internal_test"]).optional(),
     limit: z.number().int().optional(),
   }),
-  handler: async ({ status, query, limit }) => {
+  handler: async ({ status, query, revenue_class, limit }) => {
     const max = Math.min(Math.max(limit ?? 50, 1), 200);
+    // A revenue_class filter resolves to tenant_ids FIRST, so `.in(...)` bounds the
+    // page correctly (filtering after `.limit` would silently under-return, §13).
+    let onlyIds: string[] | null = null;
+    if (revenue_class) {
+      const { data: cls, error: clsErr } = await admin
+        .from("tenant_revenue_classification")
+        .select("tenant_id")
+        .eq("revenue_class", revenue_class);
+      if (clsErr) return err(clsErr.message);
+      onlyIds = (cls ?? []).map((r: any) => r.tenant_id);
+      if (onlyIds.length === 0) return ok({ items: [], count: 0 });
+    }
     let q = admin
       .from("tenants")
       .select("id, name, slug, status, owner_user_id, seat_limit, customer_limit, storefront_enabled, plan_offer, stripe_customer_id, stripe_subscription_id, trial_ends_at, created_at, updated_at")
@@ -3654,9 +3684,27 @@ mcp.tool("list_tenants", {
       .limit(max);
     if (status) q = q.eq("status", status as any);
     if (query) q = q.or(`name.ilike.%${query}%,slug.ilike.%${query}%`);
+    if (onlyIds) q = q.in("id", onlyIds);
     const { data, error } = await q;
     if (error) return err(error.message);
-    return ok({ items: data ?? [], count: (data ?? []).length });
+    // Annotate each returned tenant with its revenue_class (operator-internal, §9).
+    const items = data ?? [];
+    // Annotate by tenant_id — that IS the PK of tenant_revenue_classification.
+    let classById = new Map<string, string>();
+    if (items.length > 0) {
+      const { data: annots } = await admin
+        .from("tenant_revenue_classification")
+        .select("tenant_id, revenue_class")
+        .in("tenant_id", items.map((t: any) => t.id));
+      classById = new Map(
+        (annots ?? []).map((r: any) => [r.tenant_id, r.revenue_class]),
+      );
+    }
+    const annotated = items.map((t: any) => ({
+      ...t,
+      revenue_class: classById.get(t.id) ?? "promotional",
+    }));
+    return ok({ items: annotated, count: annotated.length });
   },
 });
 
@@ -3767,26 +3815,37 @@ mcp.tool("update_tenant_features", {
 
 mcp.tool("get_platform_metrics", {
   description:
-    "Master-admin only. Returns rolled-up platform health: tenant counts by status, total users, total contacts, BTF active clients, workflow runs in the last 7d, and pending approvals.",
+    "Master-admin only. Returns rolled-up platform health: tenant counts by status AND by revenue_class (paid/promotional/internal_test — the operator-internal #29 axis), total users, total contacts, BTF active clients, workflow runs in the last 7d, and pending approvals.",
   inputSchema: z.object({}).optional() as any,
   handler: async () => {
     const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const [tenants, contacts, profiles, btf, runs7d, pending] = await Promise.all([
+    const [tenants, contacts, profiles, btf, runs7d, pending, revClasses] = await Promise.all([
       admin.from("tenants").select("status", { count: "exact" }),
       admin.from("clients").select("id", { count: "exact", head: true }),
       admin.from("profiles").select("user_id", { count: "exact", head: true }),
       admin.from("clients").select("id", { count: "exact", head: true }).eq("tier", "btf"),
       admin.from("paige_workflow_runs").select("id", { count: "exact", head: true }).gte("created_at", since7d),
       admin.from("paige_pending_approvals").select("id", { count: "exact", head: true }).eq("status", "pending"),
+      admin.from("tenant_revenue_classification").select("revenue_class"),
     ]);
     const tenantStatus: Record<string, number> = {};
     for (const row of tenants.data ?? []) {
       const s = String((row as any).status);
       tenantStatus[s] = (tenantStatus[s] ?? 0) + 1;
     }
+    // #29 revenue honesty: paying vs comped vs internal-test. A tenant with no
+    // classification row reads promotional (the #29 baseline), so the split always sums.
+    const revClass: Record<string, number> = { paid: 0, promotional: 0, internal_test: 0 };
+    for (const row of revClasses.data ?? []) {
+      const c = String((row as any).revenue_class);
+      if (c in revClass) revClass[c] += 1;
+    }
+    const classified = (revClasses.data ?? []).length;
+    revClass.promotional += Math.max((tenants.count ?? 0) - classified, 0);
     return ok({
       tenants_total: tenants.count ?? 0,
       tenants_by_status: tenantStatus,
+      tenants_by_revenue_class: revClass,
       users_total: profiles.count ?? 0,
       contacts_total: contacts.count ?? 0,
       btf_clients: btf.count ?? 0,
@@ -4054,12 +4113,16 @@ mcp.tool("bulk_send_template_email", {
 
 mcp.tool("list_journey_stages", {
   description:
-    "List the canonical Paige journey stages (slug, label, display_order, color) used by the 6-stage client journey tracker. Reference these slugs when calling `advance_contact_journey_stage`.",
+    "List this tenant's client-journey stages (slug, label, display_order, color). Returns the tenant's own installed journey when they have one (e.g. from a Practice Blueprint), otherwise the platform-default stages. Reference these slugs when calling `advance_contact_journey_stage`.",
   inputSchema: z.object({}).optional() as any,
   handler: async () => {
-    const { data, error } = await admin.from("paige_journey_stages")
-      .select("slug, label, display_order, color_hex, description")
-      .order("display_order", { ascending: true });
+    // Blueprints REPOINT-READER: prefer the tenant's installed journey (tenant_journey_stages),
+    // COALESCE-falling-back to the global paige_journey_stages defaults when they have none.
+    // tenant_id comes from the already-authorized actor context (never request input), so there
+    // is no cross-tenant read here (§9). The RPC also returns stage_id_global (real int for global
+    // rows, null for tenant-only slugs) — this reference list ignores it, which is harmless.
+    const tenant_id = await actorTenantId();
+    const { data, error } = await admin.rpc("get_tenant_journey_stages", { _tenant: tenant_id });
     if (error) return err(error.message);
     return ok({ items: data ?? [], count: (data ?? []).length });
   },
@@ -4074,6 +4137,21 @@ mcp.tool("advance_contact_journey_stage", {
     source_event: z.string().optional(),
   }),
   handler: async ({ contact_id, stage_slug, source_event }) => {
+    // §9/§37/§51: set_journey_stage runs as service_role and its IDOR guard bypasses
+    // service_role callers ("Paige, already actor-authorized") — so THIS producer must
+    // prove the contact belongs to the actor's tenant, exactly like every sibling
+    // contact tool. Without this a tenant-A caller could move a tenant-B contact's stage.
+    const tenantId = await actorTenantId();
+    if (!tenantId) return err("tenant_not_resolved");
+    const { data: owned, error: ownErr } = await admin
+      .from("clients")
+      .select("id")
+      .eq("id", contact_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (ownErr) return err(ownErr.message);
+    if (!owned) return err("contact_not_found");
+
     const { data, error } = await admin.rpc("set_journey_stage", {
       _contact_id: contact_id,
       _stage_slug: stage_slug,
@@ -4331,11 +4409,12 @@ async function resolveMarketplaceActor(tenantId: string): Promise<string | null>
   const a = currentActor();
   if (a.user_id) return a.user_id;
   // The platform (god) key has no user_id. Only back it with the tenant OWNER when the
-  // resolved tenant is the operator's OWN (actorTenantId() pins a platform actor to
-  // MMA_TENANT_ID today). This guard means a future change to that pin can never quietly
-  // open a cross-tenant god write — the overload would reject a borrowed non-owner actor,
-  // but we fail closed here first (§9/§17: no silent break-glass).
-  if (tenantId !== MMA_TENANT_ID) return null;
+  // resolved tenant is the operator's OWN designated system tenant (§200/§37 lockstep
+  // with actorTenantId()). This guard means the god key can never quietly back a
+  // cross-tenant write — the overload would reject a borrowed non-owner actor, but we
+  // fail closed here first (§9/§17: no silent break-glass). Undesignated => null => null.
+  const operatorTenantId = await platformOperatorTenantId(admin);
+  if (!operatorTenantId || tenantId !== operatorTenantId) return null;
   const { data } = await admin.from("tenants").select("owner_user_id").eq("id", tenantId).maybeSingle();
   return (data?.owner_user_id as string | null) ?? null;
 }

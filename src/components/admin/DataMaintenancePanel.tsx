@@ -55,7 +55,7 @@ export function DataMaintenancePanel() {
 
   // Beta launch email preview state
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewName, setPreviewName] = useState("Antonio");
+  const [previewName, setPreviewName] = useState("Alex");
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewSubject, setPreviewSubject] = useState<string | null>(null);
 
@@ -174,6 +174,7 @@ export function DataMaintenancePanel() {
       });
 
       if (analyzeResp.error) throw new Error(analyzeResp.error.message || "Analysis failed");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing, unrelated to this change; CI whole-file-lints changed files
       const data: any = analyzeResp.data;
       if (data?.error) throw new Error(data.error);
 
@@ -220,6 +221,7 @@ export function DataMaintenancePanel() {
       if (!uploads) return [];
 
       // Group by user_id
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing, unrelated to this change; CI whole-file-lints changed files
       const userMap = new Map<string, any>();
       for (const u of uploads) {
         const uid = u.user_id as string;
@@ -276,6 +278,7 @@ export function DataMaintenancePanel() {
           completeness: total > 0 ? Math.round((complete / total) * 100) : 0,
           last_extraction: info.reports[0]?.last_analyzed_at || info.reports[0]?.created_at,
           backfill_status: info.reports[0]?.backfill_status || "not_needed",
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- pre-existing, unrelated to this change; CI whole-file-lints changed files
           quality_score: (qualityLog as any)?.[0]?.overall_quality_score || null,
         });
       }
@@ -644,7 +647,7 @@ export function DataMaintenancePanel() {
                 id="preview-name"
                 value={previewName}
                 onChange={(e) => setPreviewName(e.target.value)}
-                placeholder="Antonio"
+                placeholder="Alex"
                 maxLength={80}
               />
             </div>

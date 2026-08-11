@@ -30,6 +30,12 @@ interface CommandDialogProps extends DialogProps {
   title?: string;
   /** Optional accessible description; visually hidden when provided. */
   description?: string;
+  /**
+   * Forwarded to the inner cmdk {@link Command}. Set `false` for an "ask anything"
+   * launcher where action items must stay visible regardless of the typed text
+   * (their `value` won't match free prose). Omitted → cmdk's default filtering.
+   */
+  shouldFilter?: boolean;
 }
 
 const CommandDialog = ({
@@ -37,6 +43,7 @@ const CommandDialog = ({
   className,
   title = "Command menu",
   description,
+  shouldFilter,
   ...props
 }: CommandDialogProps) => {
   return (
@@ -47,7 +54,10 @@ const CommandDialog = ({
           <DialogTitle>{title}</DialogTitle>
           {description ? <DialogDescription>{description}</DialogDescription> : null}
         </DialogHeader>
-        <Command className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5">
+        <Command
+          shouldFilter={shouldFilter}
+          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group]:not([hidden])_~[cmdk-group]]:pt-0 [&_[cmdk-group]]:px-2 [&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5 [&_[cmdk-input]]:h-12 [&_[cmdk-item]]:px-2 [&_[cmdk-item]]:py-3 [&_[cmdk-item]_svg]:h-5 [&_[cmdk-item]_svg]:w-5"
+        >
           {children}
         </Command>
       </DialogContent>

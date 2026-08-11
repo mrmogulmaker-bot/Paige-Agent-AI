@@ -42,7 +42,6 @@ import { MetaPixel } from "./components/seo/MetaPixel";
 import { TenantProvider } from "./hooks/useTenantContext";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
 import { DashboardModeProvider } from "./contexts/DashboardModeContext";
-import { RoleLensProvider } from "./contexts/RoleLensContext";
 import { BusinessProvider } from "./contexts/BusinessContext";
 import { ImpersonationProvider } from "./contexts/ImpersonationContext";
 import { ClientOnlyRouteGuard } from "./components/auth/ClientOnlyRouteGuard";
@@ -74,7 +73,6 @@ const GrowthFunnelRenderer = lazyWithReload(() => import("./pages/public/GrowthF
 import NotFound from "./pages/NotFound";
 
 // Everything else is lazy-loaded for a smaller initial bundle
-const Dashboard = lazyWithReload(() => import("./pages/Dashboard"));
 const AppShell = lazyWithReload(() => import("./pages/AppShell"));
 const CreditIntelligence = lazyWithReload(() => import("./pages/CreditIntelligence"));
 const FundingMatches = lazyWithReload(() => import("./pages/FundingMatches"));
@@ -131,6 +129,9 @@ const MyAgreements = lazyWithReload(() => import("./pages/MyAgreements"));
 const ClientApprovals = lazyWithReload(() => import("./pages/ClientApprovals"));
 const ActionItems = lazyWithReload(() => import("./pages/app/ActionItems"));
 const Planning = lazyWithReload(() => import("./pages/app/Planning"));
+// #244 — the canonical "About Your Paige Team" directory. ONE component, scope prop
+// per route (tenant here; operator in Admin.tsx; agency in AgencyLayout.tsx).
+const PaigeTeamDirectory = lazyWithReload(() => import("./pages/PaigeTeamDirectory"));
 const GoogleCalendarCallback = lazyWithReload(() => import("./pages/GoogleCalendarCallback"));
 const GmailCallback = lazyWithReload(() => import("./pages/GmailCallback"));
 
@@ -188,7 +189,6 @@ const App = () => (
       <SubscriptionProvider>
         <BusinessProvider>
         <DashboardModeProvider>
-        <RoleLensProvider>
         <ImpersonationProvider>
         <Toaster />
         <Sonner />
@@ -245,6 +245,10 @@ const App = () => (
               <Route path="approvals" element={<PageSuspense><ClientApprovals /></PageSuspense>} />
               <Route path="actions" element={<PageSuspense><ActionItems /></PageSuspense>} />
               <Route path="planning" element={<PageSuspense><Planning /></PageSuspense>} />
+              {/* #244 — learn about your Paige team (tenant scope). Read-only; inherits
+                  /app's RequireCompleteSignup, no extra gate. NOT /team — that would break
+                  the /app/* tenant convention (§18); this is the non-colliding home. */}
+              <Route path="paige-team" element={<PageSuspense><PaigeTeamDirectory scope="tenant" /></PageSuspense>} />
             </Route>
 
             {/* Backward compat redirect */}
@@ -323,7 +327,6 @@ const App = () => (
           <GatedChatbot />
         </BrowserRouter>
         </ImpersonationProvider>
-        </RoleLensProvider>
         </DashboardModeProvider>
         </BusinessProvider>
       </SubscriptionProvider>

@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ShieldCheck, AlertCircle, ArrowLeft } from "lucide-react";
 import { PasswordStrengthIndicator } from "@/components/auth/PasswordStrengthIndicator";
-import paigeLogo from "@/assets/paige-logo-transparent.png";
 import { trackEvent } from "@/hooks/useAnalytics";
 import { recordAcceptances } from "@/lib/legal/useLegalDocuments";
 
@@ -28,6 +27,7 @@ interface InviteRow {
   role: string;
   invitation_expires_at: string | null;
   business_name: string;
+  logo_url: string | null;
 }
 
 const roleLabel = (r: string) =>
@@ -70,7 +70,12 @@ const AcceptBrokerInvite = () => {
         setLoading(false);
         return;
       }
-      const row = data as any;
+      const row = data as unknown as {
+        id: string; broker_id: string; email: string;
+        first_name: string | null; last_name: string | null;
+        role: string; invitation_expires_at: string | null; status: string;
+        broker_profiles?: { business_name?: string | null; logo_url?: string | null } | null;
+      };
       const expired = row.invitation_expires_at && new Date(row.invitation_expires_at) < new Date();
       if (expired || row.status === "active" || row.status === "removed") {
         setError("This invitation link is invalid or has expired. Please ask your broker to send a new invitation.");
@@ -86,6 +91,11 @@ const AcceptBrokerInvite = () => {
         role: row.role,
         invitation_expires_at: row.invitation_expires_at,
         business_name: row.broker_profiles?.business_name || "your broker",
+        // Broker brand mark. Resolves to null until broker_profiles carries a
+        // logo column and the select above fetches it (see follow-up); null
+        // falls back to the broker-initial glyph in the header, never a Paige
+        // asset (§6/§13).
+        logo_url: row.broker_profiles?.logo_url ?? null,
       });
       setFirstName(row.first_name || "");
       setLastName(row.last_name || "");
@@ -175,9 +185,10 @@ const AcceptBrokerInvite = () => {
       try {
         await supabase.from("user_roles").insert({
           user_id: authUserId,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- valid app_role not yet in generated enum types
           role: "broker_team_member" as any,
         });
-      } catch (_) {}
+      } catch { /* best-effort: role tag is non-critical to onboarding */ }
 
       // 4b. Record Workforce Acknowledgment + Terms acceptances (audit trail).
       try {
@@ -189,7 +200,7 @@ const AcceptBrokerInvite = () => {
         if (reqDocs && reqDocs.length) {
           await recordAcceptances(
             authUserId,
-            reqDocs.map((d: any) => ({
+            reqDocs.map((d) => ({
               slug: d.slug,
               version: d.version,
               context: {
@@ -217,8 +228,8 @@ const AcceptBrokerInvite = () => {
         description: "Your account is ready.",
       });
       navigate("/broker/app", { replace: true });
-    } catch (err: any) {
-      toast({ title: "Unexpected error", description: err?.message || "", variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Unexpected error", description: err instanceof Error ? err.message : "", variant: "destructive" });
       setSubmitting(false);
     }
   };
@@ -259,7 +270,20 @@ const AcceptBrokerInvite = () => {
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <div className="w-full max-w-md space-y-6">
         <div className="flex flex-col items-center text-center space-y-3">
-          <img src={paigeLogo} alt="PaigeAgent" className="h-12 w-auto" />
+          {invite.logo_url ? (
+            <img
+              src={invite.logo_url}
+              alt={invite.business_name}
+              className="h-12 w-auto object-contain"
+            />
+          ) : (
+            <div
+              className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-xl font-semibold text-primary-foreground"
+              aria-label={invite.business_name}
+            >
+              {invite.business_name.charAt(0).toUpperCase()}
+            </div>
+          )}
           <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
             <ShieldCheck className="h-3 w-3 mr-1" />
             Team invitation

@@ -371,9 +371,10 @@ export function ComposeThreadDialog({
 
     const connector = selectComposeConnector(sendable, connectorId, channel);
     if (!connector) { toast.error("Choose an active sending address."); return; }
-    // Canonical key so a later inbound reply MERGES into this thread (not a fragment).
+    // §49 per-contact key so a later inbound reply on ANY channel MERGES into this one thread (not a
+    // fragment). client is non-null here (guarded above), so the key is contact:tenant:contact_id.
     const threadKey = tenantId
-      ? canonicalThreadKey(channel, tenantId, toAddress)
+      ? canonicalThreadKey(channel, tenantId, toAddress, client.id)
       : `${channel}:${toAddress}`; // fallback only if tenant unresolved (should not happen)
 
     setSending(true);

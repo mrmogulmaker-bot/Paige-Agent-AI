@@ -3,7 +3,7 @@
 //
 // This is the "sign up + pay to run your practice on Paige" money leg. It mints a
 // `mode: "subscription"` Stripe Checkout Session for a self-serve platform plan
-// (practice / academy) and returns its hosted URL. The webhook's
+// (practice / agency) and returns its hosted URL. The webhook's
 // checkout.session.completed arm — discriminated on the Stripe-signed
 // `platform_plan_slug` metadata — is what actually WRITES `platform_subscriptions`
 // (service role; the table's RLS lets only the platform owner write, so the webhook
@@ -48,10 +48,12 @@
 // platform subscription (correct). It is a PLAIN platform charge: no transfer_data,
 // no application_fee (that pattern is only for tenant→client destination charges).
 //
-// Price: the plan rows have stripe_price_id = NULL and a single monthly/annual price
-// pair, so we build an INLINE `price_data` with a recurring interval derived from
-// billing_period. Inline is correct AND self-contained — it lets one plan row serve
-// both monthly and annual without pre-provisioning two Stripe Price objects.
+// Price (task #66): the plan rows DO carry a registered `stripe_price_id`, verified
+// live to be the MONTHLY price object (there is no registered annual price). So the
+// MONTHLY leg uses `price: stripe_price_id` (links the real Stripe Product), and the
+// ANNUAL leg keeps INLINE `price_data` (annual_price_cents, discounted; 12× monthly
+// only as the fallback when annual_price_cents is unset) — using the monthly price
+// object for annual would charge the wrong amount. See the PRICE block below.
 //
 // Stripe metadata is the SIGNED bridge the webhook trusts (§9): it carries
 // `platform_plan_slug` (the discriminant), platform_plan_id, tenant_id,
@@ -166,6 +168,34 @@ Deno.serve(async (req) => {
       .eq("user_id", actorUserId)
       .maybeSingle();
     tenantId = prof?.active_tenant_id ?? null;
+  }
+
+  // ── §217 SUB-ACCOUNT REJECT (server-derived, never body-trusted) ───────────────
+  // A sub-account under an agency does NOT independently subscribe to a platform plan
+  // — the parent agency's plan covers it (§9 tenant seam, §17 unlimited-sub NRR, §38
+  // money boundary). If the RESOLVED tenant carries a parent, refuse BEFORE any Stripe
+  // call, on BOTH the grandfathered and body-override(owner) paths. `tenantId` is null
+  // here only for onboarding (no workspace yet) — nothing to reject, and the onboarding
+  // branch below already restricts owned-tenant grandfathering to top-level tenants.
+  // This fires BEFORE invite-token resolution ON PURPOSE: a super-admin trial invite is
+  // granted at the AGENCY level, never to a sub-account, so a sub-account is refused
+  // even with an invite. DISTINCT from the onboarding branch's `parent_tenant_id IS NULL`
+  // owned-tenant *filter* (~:281, which selects which owned top-level tenant to
+  // grandfather) — this is a separate REJECT on an already-resolved sub-account tenant.
+  if (tenantId) {
+    const { data: scopeRow, error: scopeErr } = await admin
+      .from("tenants")
+      .select("parent_tenant_id")
+      .eq("id", tenantId)
+      .maybeSingle();
+    if (scopeErr) return json(400, { error: scopeErr.message });
+    if (scopeRow?.parent_tenant_id) {
+      return json(403, {
+        error: "sub_account_billing_managed_by_agency",
+        detail:
+          "This workspace runs on its parent agency's plan. Platform billing is managed by the agency — you can manage your own client billing under Setup.",
+      });
+    }
   }
 
   // ── INVITE TOKEN (super-admin 30-day trial invite) ─────────────────────────────
@@ -306,8 +336,34 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── PRICE (inline recurring; plan.stripe_price_id is NULL and can't carry annual) ─
+  // ── PRICE (task #66 fix) ───────────────────────────────────────────────────────
+  // The plan rows DO carry a registered `stripe_price_id`, but — VERIFIED live via the
+  // Stripe API — each is a MONTHLY price object (interval=month; lookup_key
+  // solo_monthly / agency_monthly; unit_amount == monthly_price_cents). There is NO
+  // registered ANNUAL price. So:
+  //   • MONTHLY  → use the REGISTERED price (`price: stripe_price_id`) — this links the
+  //     checkout to the real Stripe Product for catalog/reporting instead of minting an
+  //     ad-hoc inline product every time (the bug this fixes).
+  //   • ANNUAL   → keep the INLINE price_data (annual_price_cents, discounted; falls
+  //     back to 12× monthly only when annual_price_cents is unset). Using the monthly
+  //     price object for an annual selection would charge the monthly amount — a real
+  //     billing bug — so inline is the correct, documented fallback for annual until a
+  //     registered annual Price exists.
+  // The registered Price id is used ONLY for the monthly period AND only when the plan
+  // row's monthly_price_cents equals the computed `amount`. NOTE (§13): this compares
+  // the DB row to itself — it does NOT fetch the Stripe Price's unit_amount, so it does
+  // NOT detect Stripe-side drift (a registered Price whose amount diverged from the DB).
+  // It only guards against using the monthly Price object for a non-monthly/mismatched
+  // amount; a true Stripe-vs-DB reconciliation would require a Stripe price retrieve.
   const interval = billingPeriod === "annual" ? "year" : "month";
+  const registeredPriceId =
+    typeof plan.stripe_price_id === "string" && plan.stripe_price_id.length > 0
+      ? plan.stripe_price_id
+      : null;
+  const useRegisteredPrice =
+    billingPeriod === "monthly" &&
+    registeredPriceId !== null &&
+    Number(plan.monthly_price_cents) === Number(amount);
 
   const stripe = new Stripe(STRIPE_KEY, { apiVersion: "2024-11-20.acacia" });
 
@@ -366,15 +422,17 @@ Deno.serve(async (req) => {
   const params: Stripe.Checkout.SessionCreateParams = {
     mode: "subscription",
     line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency: "usd",
-          unit_amount: Number(amount),
-          recurring: { interval },
-          product_data: { name: `Paige ${plan.name} (${billingPeriod})` },
-        },
-      },
+      useRegisteredPrice
+        ? { quantity: 1, price: registeredPriceId! }
+        : {
+            quantity: 1,
+            price_data: {
+              currency: "usd",
+              unit_amount: Number(amount),
+              recurring: { interval },
+              product_data: { name: `Paige ${plan.name} (${billingPeriod})` },
+            },
+          },
     ],
     success_url: successUrl,
     cancel_url: cancelUrl,
@@ -388,7 +446,8 @@ Deno.serve(async (req) => {
   console.log(
     `[platform-subscription-checkout] path=${onboarding ? "onboarding" : "grandfathered"} ` +
       `tenant=${tenantId ?? "(provision-on-pay)"} actor=${actorUserId} plan=${plan.slug} ` +
-      `billing_period=${billingPeriod} amount=${Number(amount)}`,
+      `billing_period=${billingPeriod} amount=${Number(amount)} ` +
+      `price=${useRegisteredPrice ? `registered:${registeredPriceId}` : "inline"}`,
   );
 
   // §13/§32 double-charge guard: on the ONBOARDING path there is no tenant/sub yet, so

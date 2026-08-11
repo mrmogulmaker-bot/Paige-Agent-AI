@@ -10,6 +10,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { contactHintsFromPayload, emitAutomationRail } from "./railAutomation.ts";
+import { platformOperatorTenantId } from "./platform-operator-tenant.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -44,9 +45,9 @@ export type DispatchOpts = {
   contactId?: string | null;
 };
 
-// Doctrine §118: platform-owner tenant for shared infra (MMA OS LangGraph bridge,
-// MMA n8n instance). Kept in sync with public.tenants WHERE slug='mma'.
-export const MMA_TENANT_ID = "a25194e0-93c4-4e2c-91d0-66ea012660b2";
+// Doctrine §118 / §200: n8n + langgraph_bridge are platform-owner-only shared infra.
+// The platform-owner tenant is now resolved from config-as-data (the operator's
+// designated system tenant), never a hardcoded/stale id — see platformOperatorTenantId.
 const PLATFORM_OWNER_PROVIDERS = new Set(["n8n", "langgraph_bridge"]);
 
 export type DispatchResult = {
@@ -123,16 +124,24 @@ export async function dispatchWorkflowRun(opts: DispatchOpts): Promise<DispatchR
     return { status: "failed", error: errText };
   }
 
-  // Doctrine §118 provider gate — n8n + langgraph_bridge are MMA-tenant only.
+  // Doctrine §118 / §200 provider gate — n8n + langgraph_bridge are platform-owner only.
+  // Resolve the operator's designated system tenant (config-as-data), then refuse any
+  // tenant caller whose id isn't it. RESTRICT-DON'T-OPEN: the operator-tenant compare
+  // stays a plain `!==` INSIDE the block — never folded into the precondition — so when
+  // the operator tenant is unset (null), a real (truthy) callerTenantId is still `!== null`
+  // and still blocked. A god caller resolves callerTenantId=null and bypasses via the
+  // precondition; the cron sweeper omits callerTenantId (undefined) and bypasses too.
   if (
     opts.callerTenantId !== undefined &&
     opts.callerTenantId !== null &&
-    PLATFORM_OWNER_PROVIDERS.has(provider) &&
-    opts.callerTenantId !== MMA_TENANT_ID
+    PLATFORM_OWNER_PROVIDERS.has(provider)
   ) {
-    const errText = "provider_restricted_to_platform_owner";
-    await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
-    return { status: "failed", error: errText };
+    const operatorTenantId = await platformOperatorTenantId(admin);
+    if (opts.callerTenantId !== operatorTenantId) {
+      const errText = "provider_restricted_to_platform_owner";
+      await updateRun({ status: "failed", error: errText, completed_at: new Date().toISOString() });
+      return { status: "failed", error: errText };
+    }
   }
 
   const controller = new AbortController();

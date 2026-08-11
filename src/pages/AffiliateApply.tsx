@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import AffiliateApplyForm from "@/components/affiliates/AffiliateApplyForm";
+import { PLATFORM } from "@/lib/platform/identity";
 import { supabase } from "@/integrations/supabase/client";
 import {
   TrendingUp,
@@ -178,7 +179,7 @@ export default function AffiliateApply() {
           />
           <TierCard
             icon={Crown}
-            name="PME Team / Admin"
+            name="Platform Team / Admin"
             rate="40%"
             duration="Lifetime recurring"
             cta="By invitation only"
@@ -323,7 +324,7 @@ export default function AffiliateApply() {
       {/* Footer mini */}
       <footer className="mx-auto max-w-6xl px-6 py-10 text-sm text-white/50">
         <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
-          <p>© {new Date().getFullYear()} PaigeAgent · Project Mogul Enterprise Inc.</p>
+          <p>© {new Date().getFullYear()} {PLATFORM.name}</p>
           <div className="flex gap-5">
             <Link to="/" className="hover:text-white">Home</Link>
             <Link to="/terms" className="hover:text-white">Terms</Link>

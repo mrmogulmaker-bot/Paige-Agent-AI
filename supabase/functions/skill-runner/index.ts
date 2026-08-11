@@ -9,7 +9,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = "unused";
 
 interface RunRequest {
   skill_slug: string;
@@ -107,11 +106,11 @@ Deno.serve(async (req) => {
             stepsLog.push({ step: "firecrawl", count: sources.length });
           }
           // LLM synthesize
-          if (LOVABLE_API_KEY) {
+          {
             const summary = sources.map((s: any, i: number) => `[${i + 1}] ${s.title ?? s.url}\n${(s.markdown ?? "").slice(0, 1500)}`).join("\n\n");
             const ai = await gatewayCompat("anthropic", {
               method: "POST",
-              headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 model: "google/gemini-2.5-flash",
                 messages: [
@@ -123,8 +122,6 @@ Deno.serve(async (req) => {
             const aiData = await ai.json();
             outputs = { brief: aiData?.choices?.[0]?.message?.content ?? "", sources };
             stepsLog.push({ step: "synthesize", ok: ai.ok });
-          } else {
-            outputs = { brief: "LOVABLE_API_KEY missing", sources };
           }
           break;
         }
@@ -134,10 +131,10 @@ Deno.serve(async (req) => {
           const { data: contact } = await admin.from("clients").select("*").eq("id", contact_id).maybeSingle();
           const { data: memory } = await admin.from("client_memory").select("*").eq("client_id", contact_id).order("created_at", { ascending: false }).limit(10);
           stepsLog.push({ step: "context", memory_count: memory?.length ?? 0 });
-          if (LOVABLE_API_KEY) {
+          {
             const ai = await gatewayCompat("anthropic", {
               method: "POST",
-              headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 model: "google/gemini-2.5-flash",
                 messages: [
@@ -166,11 +163,10 @@ Deno.serve(async (req) => {
           if (!contact_id) throw new Error("contact_id required");
           const { data: contact } = await admin.from("clients").select("id, first_name, last_name, email, tenant_id").eq("id", contact_id).maybeSingle();
           if (!contact?.email) throw new Error("contact has no email on file");
-          if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY missing");
 
           const ai = await gatewayCompat("anthropic", {
             method: "POST",
-            headers: { "Authorization": `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               model: "google/gemini-2.5-flash",
               messages: [

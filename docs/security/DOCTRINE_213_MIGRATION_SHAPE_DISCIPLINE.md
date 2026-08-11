@@ -171,6 +171,33 @@ The §213.c retro-audit of 332 migrations found zero violations because every pr
 
 ---
 
+## §213.e — Framework-Level Scope (No Single-Account Tunneling)
+
+**Owner-standing-ruled 2026-08-04** (during the #227 sub-account roster hotfix).
+
+### Directive (verbatim, owner)
+
+> "if we are making a change on the agency level or if we are making a change on the sub-account level, we need to make sure that this affects every single one. This is not a single account fix. Remember that."
+
+### Rule
+
+Any data migration or behavior change scoped to an **agency-tier** or **sub-account-tier** concern MUST be framework-level: written with **generic predicates over the tier** (e.g. `WHERE parent_tenant_id IS NOT NULL`, `user_id = parent.owner_user_id`), with **zero references to any specific tenant id / name / email**, and correct for **every** current AND future account of that tier the moment it exists — no manual re-run, no per-account patch. A change that only fixes the account(s) that happen to exist today is a §213.e violation even if it makes the reported symptom go away.
+
+### The small-blast-radius TRAP
+
+A low live count (e.g. "only 1 sub-account exists platform-wide") is **not** license to tunnel on that one account — it is the exact condition that *invites* tunneling and hides the generic bug. When the sampled population is 1 (or small), the generalization CANNOT be proven from live data, so the §32 pre-merge proof MUST seed **synthetic multi-account fixtures** (multiple agencies × multiple sub-accounts, Enterprise-as-parent, multi-level nesting, and a legitimately-invited edge case that must SURVIVE the change) to prove the framework behavior. "It worked on the one real account" is not verification (§13).
+
+### Applies to
+
+- Every migration/behavior touching `tenants` (agency/sub-account rows), `tenant_members`, per-tenant rosters, per-tenant display grouping, agency↔sub-account attribution, and any tier-scoped RLS/RPC.
+- The adversarial verifier on any such change carries a mandatory question: *"Does this cover ALL current + future accounts of this tier, or does it tunnel on the ones that exist today?"*
+
+### Precedent case — #227 (2026-08-04)
+
+The #227 hotfix targets a §215 violation (agency owner auto-injected into a sub-account roster). Ground-truth found **exactly one** sub-account in prod (Antonio Daniel LLC). The trap was to write a one-row cleanup for that tenant. §213.e forces the fix to be a generic set-based migration over `parent_tenant_id IS NOT NULL` + `user_id = parent.owner_user_id`, a standing display guardrail on every sub-account view, and a §32 proof over synthetic multi-agency/multi-sub-account fixtures — so the invariant holds the instant a second sub-account (or a test tenant) is provisioned, with no re-run.
+
+---
+
 ## Companion doctrines
 
 - **§66** — Antonio rules, migration writes. §213 preserves this: post-apply audits surface issues; Antonio confirms remediation migration content before ship.

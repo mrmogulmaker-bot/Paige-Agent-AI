@@ -14,7 +14,7 @@
 // pre-signup shell. They can remove it here (signup-cancel edge function) so an
 // abandoned account never gets stuck in the database.
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHead } from "@/components/seo/PageHead";
 import { WorkspaceProvisioner } from "@/components/onboarding/WorkspaceProvisioner";
@@ -29,8 +29,18 @@ import { Loader2 } from "lucide-react";
 export default function Onboarding() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<"checking" | "ready">("checking");
   const [cancelling, setCancelling] = useState(false);
+
+  // Task #66: a plan chosen on /pricing rides in as ?plan=&billing=(&invite=). Its
+  // presence makes this the PAID path — WorkspaceProvisioner fixes the tier from it,
+  // stages the intake + logs terms, then launches checkout as the last step. Absent ⇒
+  // the free/legacy standalone path (direct provision, no checkout).
+  const planSlug = searchParams.get("plan");
+  const billingPeriod = searchParams.get("billing");
+  const inviteToken = searchParams.get("invite");
+  const isPaid = !!planSlug;
 
   useEffect(() => {
     let mounted = true;
@@ -127,11 +137,16 @@ export default function Onboarding() {
                 Let's set up your workspace.
               </h1>
               <p className="mt-3 text-muted-foreground">
-                Pick how you'll run it, then name the business. You can invite your team and add
-                sub-accounts once you're in — and change any of this later as you grow.
+                {isPaid
+                  ? "Tell us about your business — then a quick checkout starts your free trial. You can invite your team and change any of this later as you grow."
+                  : "Name your business and tell us what you do. You can invite your team once you're in — and change any of this later as you grow."}
               </p>
             </header>
-            <WorkspaceProvisioner />
+            <WorkspaceProvisioner
+              planSlug={planSlug}
+              billingPeriod={billingPeriod}
+              inviteToken={inviteToken}
+            />
 
             <div className="mt-8 pt-6 border-t border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <p className="text-xs text-muted-foreground">

@@ -1,13 +1,16 @@
 /**
- * Centralized affiliate link registry for Paige's third-party recommendations.
+ * Centralized registry of NEUTRAL third-party product URLs Paige can reference.
  *
- * Update placeholder URLs with real affiliate URLs as partnerships are established.
- * Paige's edge function references these by name when surfacing recommendations.
+ * §45 de-brand: this is a shared/platform-level registry, so it must NEVER carry an
+ * operator's affiliate/referral code (e.g. a personal `?affi=` or `/l/<code>/` link).
+ * Per-tenant affiliate offers are TENANT-AUTHORED and resolve at runtime from the
+ * operator-identity seam (resolve_operator_identity → tradeline_partners), present-only —
+ * never from a hardcoded code here. Entries below are bare public URLs only.
  */
 export const affiliateLinks = {
-  // Credit Building
-  creditStrong: "https://creditstrong.referralrock.com/l/3ANTONIO94/",
-  creditRentBoost: "https://affiliates.creditrentboost.com/?affi=00498",
+  // Credit Building — bare public URLs (no operator referral code, §45)
+  creditStrong: "https://www.creditstrong.com",
+  creditRentBoost: "https://www.creditrentboost.com",
   navyFederal: "https://www.navyfederal.org",
   experianBoost: "https://www.experian.com/boost",
 
