@@ -65,7 +65,25 @@ The interpreter reads the skill ROW and drives a doctrine-clean run:
 per-skill baseline (`--capture`) and diffs bespoke-vs-interpreter (`--diff`) — the automated parity proof
 that must be byte-identical before the interpreter may replace a bespoke handler (Fork-2: additive first).
 
+## Anchoring — mechanic-descriptive ONLY in code; branded reference in the registry docs (owner-locked 2026-08-11)
+
+A skill's `methodology_anchor` (concept 4) is grounded in a proven professional framework — but the framework's
+MECHANICS are what ship, never the author's name or the branded framework title (those are IP). The rule:
+- **Code-side** — `paige_skills.methodology_anchor`, system prompts, default replies, seeded skill copy, and any
+  hardwired Paige text = **mechanic-descriptive ONLY** (e.g. *"Answer-first, top-down brief structure — lead with
+  the conclusion, then group MECE supporting points in logical order"*, **never** *"Minto — The Pyramid Principle"*).
+- **Doc-side** — the **GOAT Anchor Registry** (`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §14 + `docs/brain/goat-anchor-registry.md`)
+  carries the branded names + attribution for crew reference and investor IP disclosure. That is bibliography-style
+  fair use and is FINE in docs; it is the crew's source of truth for WHICH framework a mechanic models, so the
+  mechanic wording stays faithful — but the name never enters a `paige_skills` row.
+- **Paige's conversational chat** may pay occasional taste-level homage ("a well-known framework describes this as…"),
+  never as scripted/hardwired default. Owner (Antonio Cook) is name-referenceable on funding surfaces (owns the IP).
+- **S2 seeding rule:** every new skill's anchor uses the mechanic-descriptive form. The 4 shipped anchors were
+  audited + rewritten mechanic-first in migration `20260827000000` (§32.a-proven).
+
 ## Do NOT
+- Do **not** put a GOAT name or branded framework title into a `paige_skills` row, a system prompt, seed content,
+  or Paige's hardwired replies — mechanic-descriptive only (registry docs carry the attribution).
 - Do **not** rename `paige_skills`, `paige_subagents`, `marketplace_items`, `skill-runner`, `skill-forge`,
   `subagent-forge` — MEDIUM vocab means docs + comments only (§58 anti-regression, owner-ruled 2026-08-11).
 - Do **not** conflate `skill-forge` (authors concept 1) with `subagent-forge` (authors concept 3) — they
