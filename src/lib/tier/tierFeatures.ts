@@ -23,8 +23,10 @@
  *     never silently appear on one tier and vanish on another. For most features
  *     that is backed by server RLS/RPC authority (§9), so the UI mirror is the
  *     convenience layer. `customer_portal_invite` IS now server-enforced too — the
- *     RPC `create_tenant_invite_token` rejects a `_kind='consumer'` mint for an
- *     agency/enterprise target tenant (migration 20260823000000, §60 server half).
+ *     RPC `create_tenant_invite_token` rejects a `_kind='consumer'` mint for a pure
+ *     AGENCY target tenant only (migration 20260824000000 narrowed the guard from
+ *     agency+enterprise → agency, matching the Enterprise HYBRID ruling; enterprise
+ *     now gets portal-invite on BOTH layers, closing flag 1 from PR #458).
  *     Likewise `growth`/`studio` gate the /admin/campaigns + /admin/studio routes
  *     via `RequireFeature` (not nav-only, §13). The UI helper and the server gate
  *     mirror one owner ruling (2026-08-11).
@@ -66,14 +68,15 @@ export type Feature =
   // sub-accounts, it doesn't run its own campaigns/creative book).
   | "growth"
   | "studio"
-  // Consumer/client portal invite — THE §60 enforced lock: solo + sub_account ONLY.
+  // Consumer/client portal invite — THE §60 enforced lock: solo + sub_account +
+  // enterprise (the HYBRID tier). A pure agency is excluded on BOTH layers.
   | "customer_portal_invite"
   // Parent-tier only.
   | "subaccount_management"
   // Operator only.
   | "fleet_console";
 
-/** The resolved tier key. `enterprise` inherits Agency (a superset today). */
+/** The resolved tier key. `enterprise` is the HYBRID tier (Solo ∪ Agency baselines). */
 export type TierKey = "god" | "agency" | "enterprise" | "sub_account" | "solo";
 
 /**
@@ -185,14 +188,18 @@ const AGENCY_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   // CI-guarded helper.
 ]);
 
-// Enterprise = Agency superset (inherits everything Agency has; add extras here).
+// Enterprise = the HYBRID tier (owner-locked 2026-08-11). It is the ONLY tier that
+// inherits BOTH baselines: the full Solo/Sub-account "doing" surface (CRM, creation,
+// customer_portal_invite) AND the Agency "managing" surface (subaccount_management).
+// Built as a strict UNION so it can never silently fall below either parent. This
+// closes flag 1 from PR #458 — before this ruling enterprise carried creation but NOT
+// customer_portal_invite, an internal inconsistency (creation-capable yet unable to
+// invite the very clients those campaigns are for). Per-tenant Enterprise
+// customization layers ON TOP per the §60 Enterprise carve-out.
 const ENTERPRISE_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
-  ...AGENCY_FEATURES,
-  // Enterprise KEEPS creation (growth) and GAINS studio — a deliberate flagged
-  // choice (owner 2026-08-11): enterprise is creation-capable like solo/sub, unlike
-  // a plain agency. Added explicitly so enterprise never regresses below where it
-  // was before the growth/studio split. Fuller Enterprise baseline is task #124.
-  ...CREATION_SURFACES,
+  ...SOLO_FEATURES, // the full doing surface: CRM + creation + customer_portal_invite
+  ...AGENCY_FEATURES, // + the managing surface: subaccount_management
+  ...CREATION_SURFACES, // explicit (already in SOLO) — enterprise is never non-creation
 ]);
 
 const GOD_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
