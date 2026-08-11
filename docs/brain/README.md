@@ -76,7 +76,11 @@ section; see `glossary.md` for the full anchor map). The docs below are the long
 `CLAUDE.md` sections point to. **§56 (2026-08-10) — the pre-build tier-matrix gate:** before ANY
 build, open `docs/doctrine/tier-matrix.md`, name which account type(s) the change is for, and decide
 per-tier whether the feature belongs (a "every tier" capability must render regardless of
-empty-book/branch/route accident). See `lessons-learned.md` #11 for the anchoring bug.
+empty-book/branch/route accident). See `lessons-learned.md` #11 for the anchoring bug. **§61
+(2026-08-11) — the DEFAULT placement answer** (same doc, tier-matrix.md §61): don't ask the owner
+"which tier?" — a RESELLABLE capability (skill/pack/tool) defaults to all tenant tiers + God (agencies
+resell); a "doing" surface (own client/campaign book) → all-but-Agency + God; operator tooling → God
+only. God always gets everything (§57).
 
 | Path | One-line | When to read |
 |---|---|---|

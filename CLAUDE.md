@@ -2135,3 +2135,55 @@ on every locked capability is not optional.
 (department model), §2 (opt-in installs are chosen config), §18 (one home + CI guard), §37 (producer
 inventory — enumerate ALL minters of a locked capability), §39 (peer-gate), §9/§53 (server is the real
 auth boundary), D10 `getTierBookNoun` (the label twin).
+
+## 61. Default tier-placement rule — the answer is already known; stop asking the owner per-feature.
+
+> **PROPOSED — owner RULED the substance 2026-08-11; exact wording ratified in a later pass (same
+> pattern as §57–§60). §-number provisional.** Authoritative statement + decision procedure live in
+> `docs/doctrine/tier-matrix.md` §61 (the §18 one home); this section is the CLAUDE.md pointer.
+
+**Directive (owner: Antonio, 2026-08-11).** §56 says *check the tier matrix before you build*; §60 says
+*declare the per-tier answer in the one helper*. §61 supplies the **default answer itself**, so the
+recurring "which tier gets this?" question stops going to the owner. His framing, verbatim: *"This is
+yet another time that you guys have asked me… where things should be placed when we should actually
+already have this understanding for the entire platform… I would love for us to lock this in as a
+complete doctrine and as an understanding somewhere inside of our brain, also inside of the master
+project."* Asking the owner to place a feature that the rule below already answers is itself the miss.
+
+- **The rule keys on ONE question — is this a RESELLABLE capability or an OPERATIONAL "doing" surface?**
+  1. **God / Super Admin governs and derives EVERYTHING** (§57 source-of-truth) and **dogfoods every
+     capability it can operate** (§35). Concretely, in `tierFeatures.ts` God's baseline carries the
+     UNIVERSAL surfaces + every RESELLABLE capability (rule 2) + the creation surfaces + `fleet_console`.
+     **The ONE thing God's own baseline does NOT carry is a tenant-book "doing" feature God structurally
+     has no book for** — `customer_portal_invite` and the CRM cluster (people/pipeline/conversations) are
+     deliberately excluded from `GOD_FEATURES` because God is the platform operator, not a tenant with a
+     client book (it reaches tenant data by act-as, §51 Tier 1, not by carrying the flag). So "God has
+     everything" = §57 governance + §35 dogfood of everything it can operate — never read it as putting a
+     client-book flag into God's set. God is still never the tier you omit for a resellable capability.
+  2. **RESELLABLE capability** (skill, capability pack, tool, knowledge asset, marketplace add-on — anything
+     a tenant installs/authors that an agency can **resell** to its sub-accounts) → **Solo + Agency +
+     Sub-account + Enterprise + God** (every tier key). Agencies ARE included because they hold resell power
+     (owner: *"the agencies have the power to resell those things"*); God dogfoods it (§35).
+  3. **OPERATIONAL "doing" surface** tied to a tenant's OWN direct client/campaign/creative book (invite
+     your own clients, run your own campaigns, build your own funnels) → **Solo + Sub-account + Enterprise,
+     NOT Agency** (an agency manages, it doesn't operate its own client/campaign book). God carries the
+     ones it can dogfood without a client book (`growth`/`studio` ARE in `GOD_FEATURES`) but NOT the
+     client-book ones (`customer_portal_invite` is not). This is the existing owner-locked pattern
+     (`customer_portal_invite`, `growth`, `studio`), now generalized.
+  4. **Operator-only tooling** (fleet, provisioning, platform billing, default registries) → **God only**
+     (`fleet_console`). The one direction the default narrows below all tenants.
+- **The procedure (run it silently):** classify the capability (resellable / doing-surface / operator
+  tooling) → apply the matching default → encode in `tierFeatures.ts` (§60) → gate every producer (§37).
+  Only a genuinely novel case with no fit escalates to the owner; a narrowing below the default needs a
+  named reason + owner note.
+- **Anchoring application (owner-ruled 2026-08-11):** the Skills Wave `skills` feature is a RESELLABLE
+  capability → **Solo · Agency · Sub-account · Enterprise · God** (all tier keys). The Marketplace "skills"
+  surface is being renamed to "capability packs" so the word "skill" means only the executable recipe (§58
+  anti-regression slice).
+- **The test, every time:** *"Does the default-placement rule already answer where this goes — resellable
+  (all tenants + God), doing-surface (all-but-Agency + God), or operator tooling (God only)? If yes, I
+  place it and move on; I do NOT ask the owner."* Asking a question the rule already answers is the §61 miss.
+
+**Cross-references:** §56 (pre-build tier gate — WHEN to check), §60 (the helper — WHERE to encode), §57
+(God derive-from-source), §51 (tier matrix / parity railing), §35 (God dogfoods everything), §2 (resellable
+installs are chosen config), §37 (gate every producer), `docs/doctrine/tier-matrix.md` §61 (authoritative home).

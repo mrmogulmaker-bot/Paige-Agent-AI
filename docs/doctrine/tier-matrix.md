@@ -28,9 +28,12 @@ which tiers a feature is for (question 2), that decision is ENCODED in
 via `useTierFeatures().has(feature)` / `hasFeature(classification, feature)` — never an inline
 `account_type ===` compare (the `lint:tier-features` CI guard rejects those). Enterprise is the only
 tier that customizes on top of its (Agency) baseline. Owner-locked cells (2026-08-11):
-- **`customer_portal_invite` = Solo + Sub-account ONLY** — agency/enterprise/god excluded. Enforced
-  end-to-end (#122 UI helper + lint; **#125 server gate** — `create_tenant_invite_token` raises 42501 on
-  a `_kind='consumer'` mint for an agency/enterprise target, §32.a-proven).
+- **`customer_portal_invite` = Solo + Sub-account + Enterprise** (Enterprise gained it via the HYBRID
+  ruling, PR #460 — `ENTERPRISE_FEATURES = SOLO ∪ AGENCY ∪ CREATION`); **Agency + God excluded** (a
+  client-book "doing" surface, §61 rule 3 — neither has its own consumer client book). Enforced end-to-end
+  (#122 UI helper + lint; **#125 server gate** — `create_tenant_invite_token` raises 42501 on a
+  `_kind='consumer'` mint for an **agency** target, §32.a-proven; #460 narrowed that guard to agency-only
+  so Enterprise passes).
 - **`growth` + `studio` (Vibe Studio + Campaigns) = Solo · Sub-account · Enterprise · God — NOT Agency**
   (#125; agency manages sub-accounts, not its own campaign book; god dogfoods per §35). Route-gated via
   `RequireFeature` (`/admin/campaigns`, `/admin/studio`), not nav-only.
@@ -39,6 +42,54 @@ tier that customizes on top of its (Agency) baseline. Owner-locked cells (2026-0
 And per §37: when a capability is tier-locked, gate EVERY producer of its underlying seam (UI + the
 server RPC), not just the obvious surfaces — a lock that misses one minter, or that stops at the UI, is
 not a lock (§9/§13).
+
+## §61 DEFAULT TIER-PLACEMENT RULE — the answer is already known; stop asking per-feature (owner-ruled 2026-08-11)
+
+**Owner-ruled 2026-08-11 (CLAUDE.md §61, PROPOSED pending Cowork's formal wording).** The owner's
+framing, verbatim: *"This is yet another time that you guys have asked me… where things should be
+placed when we should actually already have this understanding for the entire platform… I would love
+for us to lock this in as a complete doctrine."* So the per-feature "which tier gets this?" question
+has a **standing default** — decide it from the rule below, do NOT re-ask the owner each time. Deviating
+from the default is what requires a specific, named reason (and, for a narrowing, an owner note).
+
+**The rule keys on ONE question: is this a RESELLABLE capability, or an OPERATIONAL "doing" surface?**
+
+1. **God / Super Admin governs and derives EVERYTHING (§57) and dogfoods everything it can operate
+   (§35).** In `tierFeatures.ts`, `GOD_FEATURES` carries UNIVERSAL + every resellable capability (rule 2)
+   + the creation surfaces + `fleet_console`. The ONE thing God's baseline does NOT carry is a
+   **tenant-book "doing" feature God has no book for** — `customer_portal_invite` + the CRM cluster are
+   deliberately excluded from `GOD_FEATURES` (God reaches tenant data by act-as, Tier 1 above, not by
+   carrying the flag). So "God has everything" = §57 governance + §35 dogfood, never a client-book flag in
+   God's set. God is still never the tier you omit for a **resellable** capability.
+2. **A RESELLABLE capability** — a skill, capability pack, tool, knowledge asset, marketplace add-on,
+   or anything a tenant *installs/authors and an agency can resell to its sub-accounts* — defaults to
+   **Solo + Agency + Sub-account + Enterprise + God.** Agencies ARE included precisely because they
+   hold **resell power** over their sub-accounts (owner: *"the agencies have the power to resell those
+   things"*); sub-accounts receive it (agency-curated); Enterprise gets it as the hybrid superset; God
+   dogfoods it. → In `tierFeatures.ts` this is every per-tier set (solo · sub_account · agency ·
+   enterprise · god).
+3. **An OPERATIONAL "doing" surface** tied to a tenant's OWN direct client book or campaign/creative
+   book — inviting your own clients, running your own campaigns, building your own funnels — defaults to
+   **Solo + Sub-account + Enterprise, NOT Agency.** An agency **manages** sub-accounts; it does not
+   operate its own direct client/campaign book, so these surfaces exclude it. God carries the ones it can
+   dogfood without a client book (`growth`/`studio` ARE in `GOD_FEATURES`) but NOT the client-book ones
+   (`customer_portal_invite` is not). This is the existing owner-locked pattern (`customer_portal_invite`,
+   `growth`, `studio`), not a new exception.
+4. **Operator-only tooling** (fleet, provisioning, platform billing, default registries) is **God only**
+   (`fleet_console`). This is the one direction the default narrows below all tenants.
+
+**The decision procedure (run it silently, don't ask):** *"Is this a resellable capability (→ all tenant
+tiers + God) or an operational doing-surface (→ all tenant tiers except Agency, + God), or operator
+tooling (→ God only)?"* Pick the matching default, encode it in `tierFeatures.ts`, gate every producer
+(§37/§60). Only a genuinely novel case with no fit escalates to the owner.
+
+**Owner-locked cells this rule GENERALIZES (not contradicts) — cross-check any change against them:**
+- `customer_portal_invite` = Solo + Sub-account only (doing-surface — inviting your own clients; #122/#125).
+- `growth` + `studio` = Solo · Sub-account · Enterprise · God, NOT Agency (doing-surface — your own
+  campaign/creative book; #125).
+- `subaccount_management` = Agency + Enterprise; `fleet_console` = God only (operator tooling).
+- **`skills` (Skills Wave, owner-ruled 2026-08-11)** = RESELLABLE capability → **Solo · Agency ·
+  Sub-account · Enterprise · God** (all tier keys). The anchoring application of rule #2 above.
 
 If you have NOT named the target tier(s) and confirmed per-tier belonging, you are already in
 violation — stop and check this matrix. Log the decision/correction to the master doc §4/§10 and
@@ -288,6 +339,7 @@ posture**, and **(d) permitted-RPC scoping**, each grounded in a named resolver 
 | sub-account ≠ account_type | Sub-account is `parent_tenant_id IS NOT NULL`, not a distinct `account_type`. Filtering by `account_type = 'sub_account'` matches nothing. | `tenants` shape. |
 
 ## Canonical references
+- `CLAUDE.md` §61 — default tier-placement rule (the §56/§60 companion; this doc's §61 above is the authoritative home).
 - `CLAUDE.md` §9 — platform vs tenant seam ("who is this for?").
 - `CLAUDE.md` §37 — producer inventory (this doc is the tier axis it crosses).
 - `CLAUDE.md` §32 — dual-layer verification (per-tier smoke walk).
