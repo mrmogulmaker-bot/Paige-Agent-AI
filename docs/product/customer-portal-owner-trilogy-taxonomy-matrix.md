@@ -25,6 +25,22 @@ Without this matrix, the seam between operator / agency / tenant / sub-account /
 | **Agency** | Parent tenant that houses sub-accounts. Curates defaults and marketplace items for its sub-accounts. Cannot override an individual sub-account's tenant-authored portal choices. | §9 |
 | **God / Super Admin** | Platform operator (us). Owns platform defaults, safety rails, cross-tenant policy, break-glass access. Never appears in a client's portal experience. | §9, §17 governance |
 
+### 2.1 Platform Team vs Tenant Team (the operator/tenant Team-surface seam)
+
+**Owner flag (Antonio, 2026-08-09; enforced by the #89 fix):** a **Platform Team** surface and a **Tenant Team** surface are DISTINCT and must never commingle. This is the §9/§51 seam expressed at the "Team" surface — the same class of leak the #89 fix closed (an operator-unscoped `admin-list-users` response bleeding non-tenant members into a tenant Team list).
+
+| | Platform Team | Tenant Team |
+|---|---|---|
+| **Surface** | `/admin/platform/team` | `/admin/team` |
+| **Roster** | `super_admin` / `platform_admin` only | the tenant's OWN coaches / staff |
+| **Gate** | `is_platform_operator()` (§53) | tenant-scoped (`current_user_tenant_id()`) |
+| **Audience (§9)** | operator (us) | tenant |
+| **Who it lists** | platform operators (never by email domain — future operators won't carry `@paigeagent.ai`, §53) | tenant-authored members, scoped to the active tenant |
+
+**Rule:** showing tenant-tier admins/coaches/clients on a Platform Team surface — or operators on a Tenant Team surface — is a §9/§53 leak. Filter platform surfaces by `role IN ('super_admin','platform_admin')`, never by identity/email; filter tenant surfaces by the active tenant's membership.
+
+*(Placement note for the integrator: this is a stakeholder-seam clarification, not a client-portal pillar, so it lives here in §2 rather than as a row inside the §4 per-pillar matrix — the 7 pillars are client-experience surfaces and have no "Team" pillar. Fold/cross-reference from §5 cross-pillar rules if a "Team" pillar is ever added.)*
+
 ---
 
 ## 3. The Customer Portal pillars

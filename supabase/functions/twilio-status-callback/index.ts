@@ -45,13 +45,20 @@
 
 // #168 VOICE EXTENSION (§18 extend, not fork): this fn now ALSO receives Twilio CALL-status callbacks
 // (the voice-twiml <Number>/<Client> statusCallback), which carry CallSid + CallStatus + CallDuration
-// (never MessageSid). A top-of-handler branch detects and handles those, stamping the voice messages
-// row's terminal status + call_duration_seconds. The SMS DLR path below is UNCHANGED — a call payload
-// has no MessageSid, so it can never reach the message logic (§37: the message branch reads
-// MessageSid/SmsSid, the voice branch reads CallSid; disjoint by construction). The pure CallStatus
-// mapping lives in ./call-status.ts and is smoke-tested headless (§32).
+// (never MessageSid). A top-of-handler branch detects and handles those, stamping the voice row's
+// terminal status + call_duration_seconds. The SMS DLR path below is UNCHANGED — a call payload has no
+// MessageSid, so it can never reach the message logic (§37: the message branch reads MessageSid/SmsSid,
+// the voice branch reads CallSid; disjoint by construction). The pure CallStatus mapping lives in
+// ./call-status.ts and is smoke-tested headless (§32).
+//
+// Fleet Comms S3 P3 (§9/§53): the voice branch now resolves BOTH scopes by WHERE the row lives (the
+// CallSid is globally unique and in exactly ONE store): TENANT public.messages OR OPERATOR
+// public.operator_messages. A tenant call updates only messages; an operator call updates only
+// operator_messages — never crossing (no guessing scope). It also persists recording_url / transcript
+// when Twilio provides them (null otherwise — never fabricated, §13; recording is not enabled on the
+// <Dial> yet, so today they are null — the read is defensive so enabling it later needs no code change).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { mapCallStatus, callMatchSids, parseCallDuration } from "./call-status.ts";
+import { mapCallStatus, callMatchSids, parseCallDuration, nonEmptyOrNull } from "./call-status.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -119,13 +126,84 @@ async function verifyTwilio(req: Request, rawBody: string): Promise<boolean> {
   return computed === sig;
 }
 
+/** The REAL call facts a completion callback carries — resolved once, applied to whichever store owns the row. */
+interface CallFacts {
+  mapped: string;
+  duration: number | null;
+  recordingUrl: string | null;
+  transcript: string | null;
+  twilioStatus: string;
+  callSid: string;
+}
+
 /**
- * #168 — stamp a VOICE messages row's terminal status + call_duration_seconds from a Twilio call-status
- * callback. Matched on provider_message_id = the parent Call SID (voice-twiml stored it); the child-leg
+ * Apply a completion callback's facts to the ONE matched voice row, on EITHER store (§18 one applier).
+ * `table`/`metaKey` differ by scope: TENANT public.messages uses the `meta` jsonb + has an `updated_at`
+ * column; OPERATOR public.operator_messages uses the `metadata` jsonb + has NO `updated_at` column. Status
+ * is ADVANCE-ONLY (shouldApply: queued → delivered/failed advances; a duplicate 'completed' won't regress
+ * delivered but STILL records duration). meta.call is merged non-destructively (§13). recording_url /
+ * transcript are stamped ONLY when Twilio actually provided them (null otherwise — never fabricated, §13).
+ */
+async function applyCallUpdate(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  table: "messages" | "operator_messages",
+  metaKey: "meta" | "metadata",
+  row: { id: string; status: string | null; meta?: unknown; metadata?: unknown },
+  f: CallFacts,
+): Promise<Response> {
+  const nowIso = new Date().toISOString();
+  const currentStatus = String(row.status ?? "");
+  const advance = shouldApply(currentStatus, f.mapped);
+
+  const prevMetaRaw = (row as Record<string, unknown>)[metaKey];
+  const prevMeta = (prevMetaRaw && typeof prevMetaRaw === "object" ? prevMetaRaw : {}) as Record<string, unknown>;
+  const prevCall = (prevMeta.call && typeof prevMeta.call === "object" ? prevMeta.call : {}) as Record<string, unknown>;
+  const call: Record<string, unknown> = {
+    ...prevCall,
+    provider: "twilio",
+    provider_status: f.twilioStatus,
+    mapped_status: f.mapped,
+    updated_at: nowIso,
+  };
+  if (f.duration !== null) call.duration_seconds = f.duration;
+
+  const update: Record<string, unknown> = { [metaKey]: { ...prevMeta, call } };
+  // Only public.messages has an updated_at column; operator_messages does not (§13 — never write a
+  // column that doesn't exist, which would 42703-fail the whole update and lose the real facts).
+  if (table === "messages") update.updated_at = nowIso;
+  if (advance) update.status = f.mapped;
+  // Duration / recording / transcript are stamped whenever Twilio reports them, independent of the
+  // advance-only status guard. null ⇒ omitted (never overwrites a prior real value with null, §13).
+  if (f.duration !== null) update.call_duration_seconds = f.duration;
+  if (f.recordingUrl !== null) update.recording_url = f.recordingUrl;
+  if (f.transcript !== null) update.transcript = f.transcript;
+
+  const { error: updErr } = await admin.from(table).update(update).eq("id", row.id);
+  if (updErr) {
+    console.error(`[twilio-status-callback] ${table} voice update_error`, updErr, "callSid=", f.callSid);
+    return new Response("ok", { status: 200, headers: corsHeaders });
+  }
+
+  console.log(
+    `[twilio-status-callback] ${table} voice callSid=${f.callSid} twilio="${f.twilioStatus}" mapped=${f.mapped} ` +
+      `from=${currentStatus} applied=${advance}${f.duration !== null ? ` dur=${f.duration}s` : ""}` +
+      `${f.recordingUrl ? " +rec" : ""}${f.transcript ? " +transcript" : ""}`,
+  );
+  return new Response("ok", { status: 200, headers: corsHeaders });
+}
+
+/**
+ * #168 + Fleet Comms S3 P3 — stamp a VOICE row's terminal status + call_duration_seconds (+ recording_url /
+ * transcript when Twilio provides them) from a Twilio call-status callback, on the CORRECT scope. Matched on
+ * provider_message_id = the parent Call SID (voice-twiml / operator voice writer stored it); the child-leg
  * callback carries ParentCallSid (that parent) + CallSid (the child), so we match on either (callMatchSids).
- * ADVANCE-ONLY (reuses shouldApply: queued → delivered/failed advances; a duplicate 'completed' won't
- * regress delivered but STILL records duration). meta.call is merged non-destructively (§13). No matching
- * voice row ⇒ log + 200, never a fabricated row. Ack 200 on every DB blip so Twilio doesn't hammer retries.
+ *
+ * SCOPE RESOLUTION (§9/§53) — the CallSid is globally unique and lives in EXACTLY ONE store, so we resolve
+ * the scope by WHERE the row is, never by guessing: try TENANT public.messages first, then OPERATOR
+ * public.operator_messages. A tenant call updates only messages; an operator call updates only
+ * operator_messages — the two scopes never cross. No matching row in either ⇒ log + 200, never a fabricated
+ * row (§13). Ack 200 on every DB blip so Twilio doesn't hammer retries.
  */
 async function handleCallStatus(
   params: URLSearchParams,
@@ -138,68 +216,58 @@ async function handleCallStatus(
     console.log(`[twilio-status-callback] unmapped CallStatus="${twilioStatus}" callSid=${callSid} — ack, no update`);
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
-  const duration = parseCallDuration(params.get("CallDuration"));
   const sids = callMatchSids(callSid, parentCallSid);
+  // The REAL facts Twilio sent — recording/transcript are read defensively so that once recording is
+  // enabled on the <Dial> (not yet — human-answered bridge only), the same URL persists them with no
+  // code change; today they are null and stored null (§13, never fabricated).
+  const facts: CallFacts = {
+    mapped,
+    duration: parseCallDuration(params.get("CallDuration")),
+    recordingUrl: nonEmptyOrNull(params.get("RecordingUrl")),
+    transcript: nonEmptyOrNull(params.get("TranscriptionText")),
+    twilioStatus,
+    callSid,
+  };
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin = createClient(supabaseUrl, serviceKey);
 
-  // Match the parent-SID voice row. channel_type='voice' is defensive scoping (provider_message_id is
-  // globally unique, so a message row could never collide, but this guarantees we never touch a non-voice row).
-  const { data: row, error: lookupErr } = await admin
+  // 1) TENANT store. channel_type='voice' is defensive scoping (provider_message_id is globally unique,
+  //    so a message row could never collide, but this guarantees we never touch a non-voice row).
+  const { data: tRow, error: tErr } = await admin
     .from("messages")
     .select("id, status, meta")
     .in("provider_message_id", sids)
     .eq("channel_type", "voice")
     .maybeSingle();
-
-  if (lookupErr) {
-    console.error("[twilio-status-callback] voice lookup_error", lookupErr, "sids=", sids.join("|"));
+  if (tErr) {
+    console.error("[twilio-status-callback] messages voice lookup_error", tErr, "sids=", sids.join("|"));
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
-  if (!row) {
-    // No voice row for this call (e.g. the start-of-call write was skipped on a contactless honest degrade).
-    // Log + 200; NEVER fabricate a row (§13).
-    console.log(`[twilio-status-callback] no voice row for callSid=${callSid} parent=${parentCallSid} — ack, no fabrication`);
-    return new Response("ok", { status: 200, headers: corsHeaders });
+  if (tRow) {
+    return await applyCallUpdate(admin, "messages", "meta", tRow, facts);
   }
 
-  const nowIso = new Date().toISOString();
-  const currentStatus = String(row.status ?? "");
-  const advance = shouldApply(currentStatus, mapped);
-
-  // Merge the REAL call facts into meta.call non-destructively (§13) — always record what Twilio
-  // reported, even when the status itself does not advance.
-  const prevMeta = (row.meta && typeof row.meta === "object" ? row.meta : {}) as Record<string, unknown>;
-  const prevCall = (prevMeta.call && typeof prevMeta.call === "object" ? prevMeta.call : {}) as Record<string, unknown>;
-  const call: Record<string, unknown> = {
-    ...prevCall,
-    provider: "twilio",
-    provider_status: twilioStatus,
-    mapped_status: mapped,
-    updated_at: nowIso,
-  };
-  if (duration !== null) call.duration_seconds = duration;
-
-  const update: Record<string, unknown> = {
-    meta: { ...prevMeta, call },
-    updated_at: nowIso,
-  };
-  if (advance) update.status = mapped;
-  // Duration is stamped whenever Twilio reports it, independent of the advance-only status guard.
-  if (duration !== null) update.call_duration_seconds = duration;
-
-  const { error: updErr } = await admin.from("messages").update(update).eq("id", row.id);
-  if (updErr) {
-    console.error("[twilio-status-callback] voice update_error", updErr, "callSid=", callSid);
+  // 2) OPERATOR store (§9/§53). Reached ONLY when no tenant row matched — the SID lives in one store, so
+  //    this is scope-resolution by the row, never a guess. Operator rows carry NO tenant_id.
+  const { data: oRow, error: oErr } = await admin
+    .from("operator_messages")
+    .select("id, status, metadata")
+    .in("provider_message_id", sids)
+    .eq("channel_type", "voice")
+    .maybeSingle();
+  if (oErr) {
+    console.error("[twilio-status-callback] operator_messages voice lookup_error", oErr, "sids=", sids.join("|"));
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
+  if (oRow) {
+    return await applyCallUpdate(admin, "operator_messages", "metadata", oRow, facts);
+  }
 
-  console.log(
-    `[twilio-status-callback] voice callSid=${callSid} twilio="${twilioStatus}" mapped=${mapped} ` +
-      `from=${currentStatus} applied=${advance}${duration !== null ? ` dur=${duration}s` : ""}`,
-  );
+  // No voice row in EITHER store (e.g. the start-of-call write was skipped on an honest degrade).
+  // Log + 200; NEVER fabricate a row (§13).
+  console.log(`[twilio-status-callback] no voice row (tenant or operator) for callSid=${callSid} parent=${parentCallSid} — ack, no fabrication`);
   return new Response("ok", { status: 200, headers: corsHeaders });
 }
 

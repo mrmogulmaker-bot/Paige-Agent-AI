@@ -60,6 +60,30 @@ export function operatorMessagingServiceSid(): string {
 }
 
 /**
+ * The E.164 caller-ID an OPERATOR outbound VOICE call presents (Phase 3, §9/§53). The operator's own
+ * A2P number lives on the platform MASTER account (+1 (470) 200-3444). Resolved from env (NAMES only,
+ * §34), in precedence order:
+ *   TWILIO_OPERATOR_CALLER_ID (preferred, dedicated) → TWILIO_OPERATOR_PHONE_NUMBER →
+ *   generic TWILIO_PHONE_NUMBER (the master account's own number the legacy platform SMS path used).
+ * Returns "" when none is set — the caller then honest-degrades (speaks a message, NEVER dials with a
+ * bogus/placeholder callerId, §13).
+ *
+ * HONEST NOTE (§13): operator SMS sends through an `MG…` A2P Messaging Service SID, which CANNOT be a
+ * voice caller-id — a `<Dial callerId>` needs a real E.164 number — so the voice caller-id is resolved
+ * SEPARATELY here, not from operatorMessagingServiceSid(). If none of the three env names is set, the
+ * operator voice caller-id is an OWED secret (the number exists on the master account; it just isn't
+ * exposed to the edge runtime yet).
+ */
+export function operatorVoiceCallerId(): string {
+  return (
+    Deno.env.get("TWILIO_OPERATOR_CALLER_ID") ??
+    Deno.env.get("TWILIO_OPERATOR_PHONE_NUMBER") ??
+    Deno.env.get("TWILIO_PHONE_NUMBER") ??
+    ""
+  );
+}
+
+/**
  * Resolve operator Twilio creds from env, or null when not configured (honest degrade,
  * §13 — callers surface `needs_config`, never send with an empty credential).
  *

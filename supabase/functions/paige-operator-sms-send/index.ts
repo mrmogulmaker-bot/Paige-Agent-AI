@@ -30,6 +30,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
+  try {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) return json({ error: "unauthorized" }, 401);
 
@@ -41,8 +42,25 @@ Deno.serve(async (req) => {
   const caller = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
   });
-  const { data: isOwner, error: ownerErr } = await caller.rpc("is_platform_owner");
-  if (ownerErr) return json({ error: "authz_check_failed" }, 500);
+  // Resolve the caller's uid from the JWT, then call the EXPLICIT is_platform_owner(_user_id)
+  // overload. A no-arg .rpc("is_platform_owner") is AMBIGUOUS under PostgREST because the
+  // function is overloaded — is_platform_owner() AND is_platform_owner(uuid) both exist — so
+  // PostgREST returns PGRST203 ("could not choose the best candidate function"), which
+  // surfaced as the opaque `authz_check_failed` 500 the owner hit on the live-drive (D.1).
+  // Passing `_user_id` disambiguates to the uuid overload (verified: it checks that uid's
+  // super_admin role in user_roles). Every OTHER caller uses is_platform_owner() INSIDE an
+  // RLS policy (definer context, no PostgREST resolution), which is why this direct rpc caller
+  // was the first to break.
+  const { data: userData, error: userErr } = await caller.auth.getUser();
+  if (userErr || !userData?.user) return json({ error: "unauthorized" }, 401);
+  const { data: isOwner, error: ownerErr } = await caller.rpc("is_platform_owner", {
+    _user_id: userData.user.id,
+  });
+  if (ownerErr) {
+    // §32/§13: log the REAL cause, never a swallowed opaque 500.
+    console.error("[paige-operator-sms-send] is_platform_owner check failed:", ownerErr.message);
+    return json({ error: "authz_check_failed", detail: ownerErr.message }, 500);
+  }
   if (isOwner !== true) return json({ error: "forbidden" }, 403);
 
   let payload: { to?: string; body?: string; conversation_id?: string; counterparty_name?: string };
@@ -143,4 +161,9 @@ Deno.serve(async (req) => {
     message_id: msg?.id ?? null,
     provider_message_id: providerMsgId ?? null,
   });
+  } catch (e) {
+    // §32 loud-failure: never a swallowed opaque 500 — log the real cause + return its detail.
+    console.error("[paige-operator-sms-send] unhandled error:", (e as Error)?.message, (e as Error)?.stack);
+    return json({ error: "internal_error", detail: (e as Error)?.message ?? "unknown" }, 500);
+  }
 });

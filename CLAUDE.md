@@ -1598,6 +1598,18 @@ of those rails Paige holds and which are tenant-side.
   tables DELETE), §35 (OS north star — the same rule extends to future household /
   portfolio / device contexts: Paige powers operators everywhere, doesn't hold their money
   anywhere).
+- **Processor/vendor-agnostic is the rule for every tenant-side CHECK and surface, not just the money leg
+  (owner-locked 2026-08-09, ref Systems Check L2 / master-doc §10 miss #28).** A Systems Check runner, a
+  Playbook check, or any surface that inspects a tenant's setup must NEVER assume WHICH tool the tenant
+  uses for anything Paige does not own — payments (Stripe · PayPal · Square · bank merchant · QuickBooks ·
+  manual), comms (SMS/email are already tenant-BYO via subaccount routing), calendar, storage. It reads a
+  tenant-**DECLARED** field (e.g. `tenants.payment_processor_declared` / `payment_methods_declared`), not a
+  specific processor's API. Per-processor deep-verify (reading a connected Stripe account's live methods,
+  a PayPal API, etc.) is a POST-MVP Playbook slice (§35 Marketplace Check Spec DSL), never the MVP default.
+  **Assumption-baking is a §38 violation regardless of build-cost** — "Stripe-native read because it's the
+  cheapest path" is the exact drift this bullet exists to kill. The §5 compliance officer checks every
+  tenant-side check/runner for a baked-in processor/vendor assumption, in the read path AND in the drafted
+  remediation copy.
 - **The test, every time:** *"Is this money going INTO Paige's own bank as revenue for a
   Paige rail, or would activating it put a tenant's client's money through Paige's bank?"*
   If the latter: Connect direct-charge pattern on tenant's account, or BYO-processor
@@ -1825,3 +1837,92 @@ after a ConvAI agent change a **hard refresh / fresh session** is required befor
 on that path. (Moot for the in-app Direct-TTS path, which fetches fresh mp3 per message, but the
 `tts-cache` Storage bucket keys on `provider:model:voice:text` — a voice change is a new key, so cached
 audio for the OLD voice is never re-served for the new one.)
+
+## 50. Trademark hygiene — no active pop-culture marks in code, docs, or any public artifact (owner-locked 2026-08-09).
+
+**Directive (owner: Antonio, 2026-08-09):** do NOT use active, well-known third-party pop-culture marks — even as internal codenames or "analogs for clarity" — anywhere that a Marvel/Disney/Apple/Amazon/Microsoft/IBM/Salesforce IP-monitoring bot could find. This includes but is not limited to: **JARVIS** (Marvel/Disney) · Skynet · HAL 9000 · TARS · Cortana (Microsoft) · Siri (Apple) · Alexa (Amazon) · Bixby (Samsung) · Watson (IBM) · Einstein (Salesforce) · Copilot (Microsoft/GitHub) · Ultron · FRIDAY (Marvel) · Data (Star Trek/CBS) · Samantha (Her) · Ava (Ex Machina) · Aria (character marks generally).
+
+- **The public-repo test:** if the mark would be findable in this repo, in a public GitHub commit message, in a public PR title, in a code comment, in a component name, in a table name, in a migration name, in an error message, in doc filenames, in doc body content, or in any deliverable a tenant/investor could see — it does NOT go there. Even as an "internal codename." Even as an "analog for clarity."
+- **Historical analog references must abstract.** When earlier docs need to gesture at "the JARVIS-tier experience," rewrite to "the operator-AI-COO archetype" or "the fictional operator-AI archetype" — describe the pattern, do not name the mark.
+- **The strategy-doc rule that failed:** the Owner Trilogy strategy doc itself said *"referenced as an analog for internal clarity — never as the framing of any code, table, feature, or tenant-visible surface."* That rule held for code (zero hits) but leaked into 4 doc files (BRD, agent-ui spec, analytics UI spec, strategy doc itself). This section closes that hole: the rule now applies to docs, not just code.
+- **Enforcement:** every §5 compliance officer + §39 adversarial verifier includes a `grep -ri "jarvis\|skynet\|hal 9000\|cortana\|alexa\|siri\|watson\|einstein\|copilot\|ultron\|friday\|tars\|samantha\|ava"` (case-insensitive) on the PR diff. Any hit fails the pass until removed or reframed. The list expands as new marks come up; add to the doctrine, not to the exception list.
+- **Meta-exempt surfaces (exactly two permitted uses of a listed mark, and ONLY these):** (1) **this §50 doctrine section itself** — it must name the marks to prohibit them (same as §25 CHEESY-TELLS naming the exact tells to avoid); (2) **§13 corrections-log entries recording a prior purge** (e.g. master-doc §10) — they must name what was reversed to preserve the audit trail (§11 "never remove — mark reversed and add the new entry" hard-binds). These are self-referential purge/prohibition surfaces, not product-name association — an IP bot finding *"we prohibit JARVIS"* or *"we purged Jarvis Initiative on this date"* is the OPPOSITE of the exposure risk. **Every other appearance in the repo fails the pass.** The §5/§39 grep pass explicitly `grep -v`s these two paths (`CLAUDE.md` §50 + the corrections log) so it never false-positives on the recursion.
+- **The test, every time:** *"If Marvel/Disney/Microsoft/Apple/Amazon IP counsel opened this repo tomorrow, would they find a mark that lets them argue product-name association?"* If yes, purge it before it merges.
+
+Real cost of this discipline: ~10 seconds per PR (the grep). Real cost of skipping it: legal fees + a rename after launch.
+
+## 52. Paige opens every OPERATOR session already briefed — runtime context-loading (the §36 anchoring gate).
+
+**Directive (owner: Antonio, 2026-08-09):** On 2026-08-09 the God/Super-Admin Paige chat opened a session and asked the FOUNDER who he was — and asked him for the North Star, the BRD, and the System Architecture, every one of which already exists as owner-locked, shipped material. For an AI COO that is a catastrophic §36 miss — a real chief of staff walks in already knowing who they report to, what the company is, and what's on the table. **Paige must open EVERY operator session ALREADY briefed** — never asking the operator to establish identity, company, or context she should already hold. This is the runtime context-loading substrate; it is a real gate, not a nicety.
+
+- **The briefing is loaded at runtime, from data + compiled constants — never asked for.** The operator's identity, preferences, active priorities, permissions, and known context live as **config-as-data** rows in `paige_owner_memory` (§10 — the owner's identity is NEVER hardcoded in edge code), read server-side and rendered into a system block that leads the operator's chat (after Paige's persona + voice, before the operating core). Live platform state (tenant counts, real ARR) is loaded by **REAL queries with honest fallbacks** (§13/§32 — a query that returns nothing emits "not available", never a fabricated number). The doctrine §-index and master/Owner-Trilogy excerpt are **compiled constants versioned with the code** — an edge function cannot read the repo at runtime, so "read CLAUDE.md/the master doc at compose time" is a lie; the pointer index ships in the composer (`_shared/owner-context.ts`) and is kept in sync deliberately. The operator's NAME is read from **runtime auth metadata** (never the repo — §45), so Paige greets him by name without any PII in a committed artifact.
+- **Operator-only, server-detected, §9/§51-clean.** The briefing ships ONLY to a tenant-less platform operator, detected SERVER-SIDE and dual-gated: `is_platform_operator()` (super_admin OR platform_admin, §53) derived from the verified JWT's `auth.uid()` (NEVER a request body, §588), plus a tenant-less persona. It is a strict NO-OP for every tenant persona and stays coaching-generic (§2 — zero finance vertical), exactly like every other platform default.
+- **Honest degrade.** If the operator has no seeded memory rows, the composer returns null and the caller NO-OPs — Phase 1 never fabricates an operator identity. Missing platform metrics degrade to an explicit "not available" line, never an estimate presented as fact.
+- **ENFORCEMENT GATE:** any operator-facing Paige surface that asks the operator to establish who he is, what the company does, or context Paige should already hold is a §52 (and §36) violation — the briefing must be wired into that surface's prompt assembly before it ships. Extending the briefing (new memory types, new metrics, non-operator personas in a later phase) EXTENDS the one composer, never forks a second (§18). Phase 2 (agency / tenant / sub-account / client personas, each scoped per §9/§51, plus the cross-persona identity link so Antonio's agency-owner account is known as the same founder as the super_admin account) is a separate, sequenced slice — never folded silently into Phase 1.
+- **The test, every time:** *"Does Paige open this operator session already knowing who he is, how he works, what's in play, and the live state of the platform — or does she make the founder tell her?"* If she has to ask, §52 isn't wired.
+
+## 53. Operator role tiers — `super_admin` is God-tier and invite-only via an existing super_admin; `platform_admin` is the delegated operator tier (owner-locked 2026-08-09).
+
+**Directive (owner: Antonio, 2026-08-09):** the platform has a two-tier operator model, structurally locked. The lockdown is scoped to the **operator tiers only** — every tenant-side and staff role grant stays open per today's design.
+
+- **`super_admin` = God-tier.** Full platform control; can grant any role. **`admin@paigeagent.ai` is the sole super_admin** until Antonio explicitly invites more. A super_admin is grantable ONLY by an existing super_admin (or a trusted service/migration context) — never self-provisioned, never minted by signup, invite, or any tenant-tier actor. It is **bootstrap-only** by construction.
+- **`platform_admin` = the delegated operator tier.** A real lower-tier operator (Fleet Console, support, provisioning approval, all-tenant read) that carries platform-staff status WITHOUT God-tier. Antonio can delegate platform-admin duties without granting super_admin — but **only a super_admin can grant a platform_admin** (same lockdown as super_admin). A platform_admin CANNOT grant super_admin and CANNOT bypass the DB integrity gates (the #31 revenue-integrity trigger, Systems Check RLS, `tenant_revenue_classification` writes) — those stay super_admin-only because they are gated on `is_platform_owner()`, which is **frozen as super_admin-only**.
+- **Two helpers, one frozen.** `is_platform_owner()` = super_admin only — **do NOT widen it in place** (it is load-bearing under every integrity gate; widening it would demand a §37 sweep across dozens of callers and risk a launch-critical behavior change). `is_platform_operator()` = `is_super_admin() OR is_platform_admin()` is the NEW widened helper; operator-scoped surfaces migrate from `is_platform_owner()` → `is_platform_operator()` **deliberately, one at a time**, as each opens to platform_admin (§18 — add, don't widen in place).
+- **Enforced structurally, not by convention (§51-invariant pattern).** A `user_roles` BEFORE INSERT/UPDATE trigger blocks any `super_admin`/`platform_admin` grant unless the writer is an existing super_admin (via verified JWT) or a trusted service/migration context — so the lock holds on every write path (RPCs, the tenant→app_role sync trigger, a direct insert), not just the one an audit happened to check. This closed a real §9 escalation: `grant_tenant_member_role()` was tenant-admin-callable and blocked only super_admin, so a tenant admin could have minted `platform_admin` and crossed the tenant→platform seam. Every OTHER role grant (admin, coach, client, broker_team_member, sales_rep, …) is untouched.
+- **Every operator surface is tier-scoped, not identity-scoped.** A platform-tier list (team, fleet, operators) filters by `role IN ('super_admin','platform_admin')` — NEVER by email domain (future operators won't carry a `@paigeagent.ai` address). Showing tenant-tier admins/coaches/clients on a platform surface is a §9/§53 leak (the same class as the grant gap above).
+- **The test, every time:** *"Is this operator capability/surface gated on the right tier — super_admin for God-tier/integrity actions, `is_platform_operator()` for delegated operator work — and scoped by ROLE, never by identity or email?"* If a tenant-tier actor can reach it, or a platform surface shows tenant-tier people, it isn't §53-clean.
+
+## 56. Check the tier matrix FIRST — the PRE-BUILD platform-impact gate (which account type, and does the feature belong there?).
+
+**Directive (owner: Antonio, 2026-08-10) — this LANDS §51's forward-referenced "platform impact
+assessment" as a real numbered section (question #1 on any change).** §51 is the *verification*
+railing — it proves a shipped change works across all six tiers *after* it's built. §56 is the
+*design* gate that runs **before the first line of code**: for ANY development — a feature, tile,
+route, RPC, edge function, migration, surface, or copy block — you STOP and check
+`docs/doctrine/tier-matrix.md` to answer, out loud, **two** questions:
+
+1. **Which version of the platform / which ACCOUNT TYPE am I working on?** God/Super-Admin ·
+   Agency · Standalone (solo) Tenant · Sub-account · Client · Anonymous. Name the tier(s) this
+   change is FOR — never assume "a tenant is a tenant." A solo tenant, a sub-account, and an
+   agency-as-a-tenant resolve their `tenant_id`, land on different home surfaces, and hit
+   different gates. "Correct for the account I built on" is exactly the trap.
+2. **Is this feature RELEVANT to that account type — should it appear there, or NOT?** Some
+   capabilities belong on **every** tier (the Systems Check: God, solo, sub-account, agency —
+   all must have it, "repeatable throughout the entire process," owner's words). Others belong
+   on exactly one (operator fleet controls → God only; a sub-account roster → never the parent
+   aggregate). Decide **deliberately**, per tier, and make the availability match the decision —
+   do not let a feature silently appear on one account type and vanish on another by accident of
+   which branch/emptyState/route it was bolted into.
+
+- **This is a real gate, not a reminder (the §18/§1 pattern).** Because "this has happened one
+  too many times," §56 fires mechanically: *if you are about to build/place anything and have NOT
+  named the target account type(s) and confirmed the feature belongs on each, you are already in
+  violation — stop and check the matrix first.* The crew's compliance pass (§5/§51) confirms the
+  per-tier availability decision was made on purpose, not by default.
+- **Availability is deliberate, uniform where the owner says "every tier."** When a capability is
+  meant for every account type, it must render for every account type **regardless of incidental
+  state** — empty book, no data yet, default landing surface. The anchoring bug (below) is the
+  exact failure: a capability meant for all tenants was gated behind an `emptyBook`/branch/route
+  accident and silently disappeared on the very accounts (fresh sub-accounts) that needed it most.
+- **Propagation is part of the gate (§0/§BRAIN).** A tier/availability decision or correction is
+  logged to the master doc (`docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §4/§10) and the second brain
+  (`docs/brain/`) in the SAME PR — the matrix, the master doc, and the brain never drift from what
+  actually shipped.
+- **Anchoring case (2026-08-10, task #99):** the tenant **Systems Check** tile was gated INSIDE the
+  non-empty branch of `PracticeOverview.tsx`'s `{emptyBook ? … : …}` conditional, so any tenant
+  with 0 clients/attention/approvals — every freshly-provisioned solo OR sub-account — rendered
+  only the "blank canvas" empty state and NEVER saw the setup check (while Mogul Maker Academy,
+  which has clients, did). The owner reported it as "sub-accounts don't show the Systems Check."
+  Root cause was NOT a tier-classification bug but an **availability-by-accident**: the check meant
+  for every tenant was hidden by an empty-book gate, and the agency's own default landing
+  (`/agency` → `AgencyBoard`) never carried the tile at all. Fix: render the tenant Systems Check
+  ABOVE the empty/non-empty split on `PracticeOverview` (solo + sub-account) AND add it to
+  `AgencyBoard` (agency-as-a-tenant) — matching the operator tile already on `OperatorCommandCenter`
+  (God). Now uniform across God · agency · solo · sub-account, exactly the owner's "every tier"
+  requirement. Had §56 fired before the tile was first placed, the "which tiers, does it belong on
+  each, does it survive an empty book?" questions would have caught it pre-build.
+- **The test, every time:** *"Before I build or place this, did I open the tier matrix, name which
+  account type(s) it's for, and decide — on purpose — whether it belongs on each one and renders
+  there regardless of empty/default state? Or did I build for the account in front of me and let
+  the other tiers fall where they may?"* If the matrix wasn't checked and the per-tier availability
+  wasn't a deliberate decision, it isn't §56-clean.

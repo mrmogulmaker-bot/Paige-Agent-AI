@@ -149,7 +149,7 @@ Same primitives as Super Admin Fleet, scoped to the agency's sub-accounts only.
 - Onboarding time per new sub-account (how fast agency admin can set up a new client)
 - Report generation time saved (compared to prior tools)
 - Cross-sub-account trend spotting (e.g., "3 sub-accounts all seeing engagement dip this week — pattern?")
-- Sub-account health-check compliance (which sub-accounts have completed their Jarvis 10 checks per BRD §6.2)
+- Sub-account health-check compliance (which sub-accounts have completed their Systems Check 10 checks per BRD §6.2)
 
 **Agency chat-scope switcher (from Agent UI Placement §5a) works IN Analytics too** — agency-view shows roll-up, switching to a sub-account narrows analytics to that scope.
 
@@ -166,7 +166,7 @@ Same primitives as Super Admin Fleet, scoped to the agency's sub-accounts only.
 - Active clients, at-risk count, new-this-month, churned-this-month
 - MRR from retainers + one-time revenue this month
 - Time saved by Paige actions (drafts approved, tasks auto-completed)
-- Systems Check status (Jarvis 10-check completion)
+- Systems Check status (10-check completion)
 
 **Clients tab — persona-specific curation:**
 

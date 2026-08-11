@@ -30,6 +30,9 @@ import { useChatDocumentUpload, type AttachedDocument, type AttachedDocKind } fr
 import { DocumentAttachmentChip } from "@/components/chat/DocumentAttachmentChip";
 import { DocumentMessageBubble } from "@/components/chat/DocumentMessageBubble";
 import { MessageAudioButton } from "@/components/chat/MessageAudioButton";
+import { PaigeThinkingIndicator } from "@/components/paige/chat/PaigeThinkingIndicator";
+import { PaigeArtifactCard, type PaigeArtifact } from "@/components/paige/chat/PaigeArtifactCard";
+import { PaigeCompactingCard, type CompactingSignal } from "@/components/paige/chat/PaigeCompactingCard";
 
 /** An action Paige filed to the approvals queue this turn (propose→confirm). */
 type QueuedApproval = { id: string; summary: string; category: string; contact_id: string | null };
@@ -50,6 +53,10 @@ type Message = {
   /** True on turns rehydrated from history: their confirm cards render settled,
    *  not as a live Approve button (§15 — never re-fire a past action). */
   confirmResolved?: boolean;
+  /** #29 — deliverables Paige produced this turn (document/image), streamed as
+   *  `paige_artifact` frames and rendered as inline handoff cards. Live-turn only;
+   *  the card re-hydrates from marketing_content by id, so it isn't persisted. */
+  artifacts?: PaigeArtifact[];
 };
 
 // crypto.randomUUID is undefined in some insecure-context / older webviews — guard
@@ -132,6 +139,14 @@ const PaigeAIChatInner = ({
   const [slashActive, setSlashActive] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [steps, setSteps] = useState<PaigeStep[]>([]);
+  // #11 — true once the first answer token arrives this turn (label flips Thinking→Writing).
+  const [writingPhase, setWritingPhase] = useState(false);
+  // #12 — the live conversation-compacting signal (this surface persists → it can fold). Reset per turn.
+  const [compacting, setCompacting] = useState<CompactingSignal | null>(null);
+  // The streamed reasoning thoughts (paige_step kind:"thought") exposed under "Thought process".
+  const thinkingThoughts = steps
+    .filter((s) => s.kind === "thought")
+    .map((s) => ({ id: s.id, label: s.label }));
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
@@ -256,6 +271,8 @@ const PaigeAIChatInner = ({
     const newMessages = base;
     setIsLoading(true);
     setSteps([]); // fresh "watch her work" trace per turn
+    setWritingPhase(false); // #11 — back to "Thinking…" until the first token this turn
+    setCompacting(null); // #12 — clear any prior turn's compacting card
     const assistantId = safeUuid();
     const assistantTs = Date.now();
 
@@ -352,6 +369,9 @@ const PaigeAIChatInner = ({
       // Accumulate EVERY pending confirmation this turn — a blanket "Approve" runs
       // all of them, so the operator must see all of them (design-crew B1).
       const confirmThisTurn: Array<{ tool: string; summary: string }> = [];
+      // #29 — deliverables (document/image) Paige persisted this turn, streamed as
+      // paige_artifact frames BEFORE the reply text, rendered as inline handoff cards.
+      const artifactsThisTurn: PaigeArtifact[] = [];
       let textBuffer = "";
       let streamDone = false;
 
@@ -385,22 +405,43 @@ const PaigeAIChatInner = ({
               setSteps((prev) => upsertStep(prev, parsed.paige_step as PaigeStep));
               continue;
             }
+            // #11 — the server confirmed the transition into the reply. A lightweight signal; the
+            // client also derives "writing" from the first content delta below, so this is belt-and-braces.
+            if (parsed.paige_phase === "writing") { setWritingPhase(true); continue; }
+            // #12 — conversation-compacting lifecycle (approaching/start/progress/done/skipped).
+            if (parsed.paige_compacting) { setCompacting(parsed.paige_compacting as CompactingSignal); continue; }
             // Structured event: Paige queued an action to the approvals desk.
             if (Array.isArray(parsed.approval_queued)) {
               queuedThisTurn = parsed.approval_queued as QueuedApproval[];
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn, confirm: confirmThisTurn.length ? confirmThisTurn : undefined }]);
+              // #29 §39 — carry artifacts here too so the invariant "the card survives every rebuild"
+              // never depends on the backend's frame ORDER (today approval_queued precedes paige_artifact,
+              // but a reorder or a second approval_queued after an artifact must not wipe the card).
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn, confirm: confirmThisTurn.length ? confirmThisTurn : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
               continue;
             }
             // Structured event: Paige is asking to confirm a mutating action → render an approve/deny card.
             if (parsed.paige_confirm?.summary) {
               confirmThisTurn.push({ tool: String(parsed.paige_confirm.tool || "action"), summary: String(parsed.paige_confirm.summary) });
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn] }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: [...confirmThisTurn], artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
+              continue;
+            }
+            // #29 — Paige handed the user a deliverable (document/image) → attach an inline handoff card.
+            // Arrives BEFORE the reply text, so build the assistant bubble now; the content rebuild below
+            // preserves artifactsThisTurn so the card survives the streaming text.
+            if (parsed.paige_artifact?.id && (parsed.paige_artifact.artifactType === "document" || parsed.paige_artifact.artifactType === "image")) {
+              const a = parsed.paige_artifact as PaigeArtifact;
+              // Capture the frame's tenant_id — the EXACT tenant the row was saved under — so the card's
+              // RLS-safe hydrate scopes to it, not the viewer's activeTenantId (they diverge when an
+              // operator manages another tenant → wrong-tenant query → 0 rows → "Preview unavailable").
+              artifactsThisTurn.push({ id: String(a.id), title: String(a.title ?? ""), url: a.url ?? undefined, artifactType: a.artifactType, tenantId: (parsed.paige_artifact.tenant_id as string | undefined) ?? undefined });
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, artifacts: [...artifactsThisTurn] }]);
               continue;
             }
             const content = parsed.choices?.[0]?.delta?.content as string | undefined;
             if (content) {
+              if (!assistantMessage) setWritingPhase(true); // #11 — first token → "Writing…"
               assistantMessage += content;
-              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined }]);
+              setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, artifacts: artifactsThisTurn.length ? [...artifactsThisTurn] : undefined }]);
             }
           } catch {
             textBuffer = line + "\n" + textBuffer;
@@ -609,6 +650,25 @@ const PaigeAIChatInner = ({
                             </p>
                           </div>
                         )}
+                        {/* #29 — inline handoff cards for the deliverables Paige produced this turn. Open
+                            renders the real artifact; Send prefills the composer so Paige drives the send
+                            through her own tools (§10/§16 — never a dead-end send button). Gold is spent
+                            only on that Send inside the card. Needs a resolved tenant for the RLS hydrate. */}
+                        {!!message.artifacts?.length && activeTenantId && (
+                          <div className="mt-2 flex flex-col gap-2">
+                            {message.artifacts.map((a) => (
+                              <PaigeArtifactCard
+                                key={a.id}
+                                artifact={a}
+                                tenantId={a.tenantId ?? activeTenantId}
+                                onSend={() => {
+                                  setInput(`Send "${a.title}" to `);
+                                  requestAnimationFrame(() => inputRef.current?.focus());
+                                }}
+                              />
+                            ))}
+                          </div>
+                        )}
                       </>
                     );
                   })() : (
@@ -653,6 +713,21 @@ const PaigeAIChatInner = ({
                 </div>
               </div>
             ))}
+
+            {/* #11/#12 — live thinking timer + conversation-compacting card. Aligned under the
+                assistant bubbles (avatar gutter). The card renders only when the server streams a
+                compacting frame; this surface persists threads, so it can genuinely fold (§13). */}
+            {(isLoading || compacting) && (
+              <div className="flex flex-col gap-2 pl-[52px]">
+                <PaigeThinkingIndicator
+                  active={isLoading}
+                  writing={writingPhase}
+                  thoughts={thinkingThoughts}
+                  personaName={persona.name}
+                />
+                <PaigeCompactingCard signal={compacting} personaName={persona.name} />
+              </div>
+            )}
           </div>
 
           {!hideReasoningStrip && (isLoading || steps.length > 0) && (

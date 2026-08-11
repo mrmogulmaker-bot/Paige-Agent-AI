@@ -11,61 +11,55 @@
 // §11/§25 premium on @/components/ui/page + @/components/ui/select (NO native select);
 // gold ONLY on Send/Approve; realtime on messages + threads; motion-safe; token-only.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useSearchParams, Link } from "react-router-dom";
 import {
   MessageCircle, Inbox, Send, Pencil, Loader2, Sparkles, AlertTriangle, Paperclip,
-  Search, SearchX, PanelRight, Clock, X, ChevronDown, Bell, Plus, PlugZap,
-  ArrowUpDown, Rows3, AlignJustify, Archive, Tag, CheckCheck, MessageCircleReply, Check, Trash2,
+  PanelRight, Bell, Plus, PlugZap, Trash2,
 } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { PageShell, SectionCard, EmptyState, StatePill } from "@/components/ui/page";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 
 import {
   type ChannelType, type MessageRow, type DbThread, type Label,
   type ThreadFilter, type Suppression, type SelectedView, type InboxView, type EmailTemplate,
-  MESSAGE_COLS, THREAD_COLS, CHANNEL_ICON, CHANNEL_LABEL, LABEL_DOT,
+  MESSAGE_COLS, THREAD_COLS, CHANNEL_ICON, CHANNEL_LABEL,
   partyLabel, bodyPreview, msgTime, contactNameFromClient,
   INBOX_VIEWS, endOfTodayMs, readSendResult, resolveMergeVars, UNDO_WINDOW_MS,
   useCommsAttachments,
-  type Density, type ThreadSort,
-  THREAD_SORTS, SORT_LABEL, DENSITY_STORAGE_KEY, readDensity, sortThreads, snoozePresets,
-  SNOOZE_SENTINEL_UNTIL_REPLY,
 } from "./conversations/inbox-shared";
-import { AttachmentChip } from "./conversations/AttachmentChip";
 import { ComposeThreadDialog } from "./conversations/ComposeThreadDialog";
 import { FirstRunOnboarding } from "./conversations/FirstRunOnboarding";
 import { ThreadRow } from "./conversations/ThreadRow";
 import { ThreadFilters, useLabelCatalog } from "./conversations/ThreadFilters";
 import { ContactCardRail } from "./conversations/ContactCardRail";
 import { readableMessageBody, shouldFoldEmail } from "./conversations/messageReading";
+// Shared conversation atoms (§18 one home) — the SAME bubble the operator Fleet inbox renders.
+import { MessageBubble as SharedMessageBubble } from "./conversations/MessageBubble";
 import { SnoozeMenu } from "./conversations/SnoozeMenu";
 import { LabelPopover } from "./conversations/LabelPopover";
 import { QuickAddDialog } from "@/components/planning/QuickAddDialog";
-import { DictationMicButton } from "@/components/voice/DictationMicButton";
 import { appendDictation } from "@/lib/voice/useDictation";
+// The extracted three-column conversation SHELL + its scope-adapter contract (§18 one home) —
+// the tenant container feeds this the SAME shell the operator Fleet inbox will feed (Phase 2).
+import { ConversationsThreeColumnShell } from "./conversations/shell/ConversationsThreeColumnShell";
+import { ConversationsThreadList } from "./conversations/shell/ConversationsThreadList";
+import { ConversationsRichComposer } from "./conversations/shell/ConversationsRichComposer";
+import { ConversationsContactPanel } from "./conversations/shell/ConversationsContactPanel";
+import { ConversationsCallButton } from "./conversations/shell/ConversationsCallButton";
+import { useVoiceDevice } from "@/lib/voice/VoiceDeviceProvider";
+import type {
+  ConversationsCapabilities, ConversationsListModel, ConversationsComposerModel,
+  ConversationsContactPanelModel, ShellThread, DraftTone,
+} from "./conversations/shell/conversationsAdapter";
 
 // ── Connector (channel_connectors row — kept local, not in shared) ─────────────────
 interface Connector {
@@ -146,14 +140,13 @@ function MessageBubble({
   onCancelScheduled: (id: string) => void;
   approving: boolean;
 }) {
-  const outbound = m.direction === "outbound";
   const isDraft = m.status === "draft";
   const body = readableMessageBody(m);
-  const foldable = shouldFoldEmail(m.channel_type, body);
-  const [expanded, setExpanded] = useState(false);
-  const bodyRegionId = `message-body-${m.id}`;
 
-  // A Paige draft is a distinct, approval-forcing card — never a plain sent bubble (§36).
+  // A Paige draft is a distinct, approval-forcing card — never a plain sent bubble (§36). This
+  // gold "Approve & send" card IS an act (gold is earned), so it stays a TENANT-SIDE wrapper and
+  // is deliberately NOT pushed into the shared, gold-free MessageBubble atom (§11 gold only on
+  // the act; the atom's contract keeps it gold-free).
   if (isDraft) {
     return (
       <div className="flex justify-end">
@@ -186,55 +179,37 @@ function MessageBubble({
     );
   }
 
+  // Every non-draft message renders through the SHARED atom (§18 one home) so the tenant inbox
+  // and the operator Fleet inbox never drift into divergent bubbles (§6). The tenant's richer
+  // affordances — email subject, attachment chips, foldable long email bodies, the scheduled-cancel
+  // control — inject through the atom's OPTIONAL presentational props; the only tenant-local part is
+  // the raw MessageRow → props mapping below.
+  // §49 — a voice-call row renders INLINE as the shared call bubble (direction/duration/recording/
+  // transcript, each only when present, §13). Gold-free; the header Call button owns the act (§11).
+  const isCall = m.channel_type === "voice";
   return (
-    <div className={cn("flex", outbound ? "justify-end" : "justify-start")}>
-      <div
-        className={cn(
-          "max-w-[85%] rounded-xl border p-3 shadow-card",
-          // Directional corner tail toward the sender (classic chat polish, pure radius).
-          outbound ? "rounded-br-md border-primary/25 bg-primary/[0.06]" : "rounded-bl-md border-border bg-card",
-        )}
-      >
-        {/* No per-bubble channel glyph: the whole thread is one channel and direction is
-            already encoded by alignment + bubble color — repeating it is noise (§25 density). */}
-        <div className="mb-1 flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">
-            {outbound ? "You" : partyLabel(m.sender) || "Client"}
-            <span className="opacity-60">
-              {" · "}
-              {formatDistanceToNow(new Date(m.sent_at ?? m.created_at), { addSuffix: true })}
-            </span>
-          </span>
-          <span className="ml-auto">{messageStatusPill(m)}</span>
-        </div>
-        {m.subject && <p className="mb-0.5 text-sm font-medium text-foreground">{m.subject}</p>}
-        <div className="relative">
-          <p
-            id={bodyRegionId}
-            className={cn(
-              "break-words whitespace-pre-wrap text-sm leading-relaxed text-foreground/90",
-              foldable && !expanded && "max-h-40 overflow-hidden pb-4",
-            )}
-          >
-            {body || "—"}
-          </p>
-          {foldable && !expanded && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-card to-transparent" />
-          )}
-        </div>
-        {foldable && (
-          <button
-            type="button"
-            aria-expanded={expanded}
-            aria-controls={bodyRegionId}
-            onClick={() => setExpanded((value) => !value)}
-            className="mt-2 min-h-11 w-full rounded-md border border-border/70 bg-muted/40 px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-          >
-            {expanded ? "Show less" : "Show full email"}
-          </button>
-        )}
-        {!!m.attachments?.length && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
+    <SharedMessageBubble
+      direction={m.direction}
+      body={body}
+      timestamp={m.sent_at ?? m.created_at}
+      senderLabel={m.direction === "outbound" ? "You" : partyLabel(m.sender) || "Client"}
+      status={isCall ? null : messageStatusPill(m)}
+      error={m.status === "failed" ? m.error : null}
+      subject={isCall ? undefined : (m.subject ?? undefined)}
+      foldable={!isCall && shouldFoldEmail(m.channel_type, body)}
+      call={
+        isCall
+          ? {
+              direction: m.direction,
+              durationSec: m.call_duration_seconds,
+              recordingUrl: m.recording_url,
+              transcript: m.transcript,
+            }
+          : null
+      }
+      attachments={
+        m.attachments?.length ? (
+          <div className="flex flex-wrap gap-1.5">
             {m.attachments.map((a, i) => (
               <span
                 key={i}
@@ -244,30 +219,30 @@ function MessageBubble({
               </span>
             ))}
           </div>
-        )}
-        {/* R-B1/R3: a queued scheduled outbound is findable + cancellable in the thread. */}
-        {m.status === "queued" && m.scheduled_for && (
+        ) : undefined
+      }
+      footer={
+        // R-B1/R3: a queued scheduled outbound is findable + cancellable in the thread.
+        m.status === "queued" && m.scheduled_for ? (
           <button
             type="button"
             onClick={() => onCancelScheduled(m.id)}
-            className="mt-1.5 text-[11px] text-muted-foreground underline hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+            className="text-[11px] text-muted-foreground underline hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
           >
             Scheduled for {new Date(m.scheduled_for).toLocaleString()} · Cancel
           </button>
-        )}
-        {m.status === "failed" && m.error && (
-          <p className="mt-1.5 flex items-center gap-1 text-[11px] text-destructive">
-            <AlertTriangle className="h-3 w-3" /> {m.error}
-          </p>
-        )}
-      </div>
-    </div>
+        ) : undefined
+      }
+    />
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════════
 export default function ClientsConversations() {
   const reduce = useReducedMotion();
+  // The ONE shared Voice Device (§18) — the tenant places calls on their OWN provisioned number
+  // via the tenant voice token path; the same Device the top-nav dialer uses.
+  const voice = useVoiceDevice();
   const [rows, setRows] = useState<MessageRow[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -276,23 +251,10 @@ export default function ClientsConversations() {
   // keep-valid-selection guard doesn't clobber the pick to visibleThreads[0] in the gap.
   const pendingSelectRef = useRef<string | null>(null);
 
-  // #121 GHL-parity list UX ----------------------------------------------------------
-  // Density persists to localStorage; sort is client-side over the loaded list.
-  const [density, setDensity] = useState<Density>(readDensity);
-  const [sort, setSort] = useState<ThreadSort>("recent");
-  // Multi-select is a Set of thread_key, distinct from the single-open `selectedKey`.
-  const [selection, setSelection] = useState<Set<string>>(() => new Set());
-  const selectAnchorRef = useRef<string | null>(null); // shift-click range anchor
-  const [bulkBusy, setBulkBusy] = useState(false);
-  // #121 keyboard cursor — the highlighted row (Gmail-style). SEPARATE from selectedKey (the OPEN
-  // thread): arrows/j-k move the cursor WITHOUT opening/marking-read (so an unread-first sort never
-  // reorders the row out from under the cursor); Enter opens the cursored row; `x` toggles its
-  // multi-select. Decoupling nav from open is what fixes the unread-sort skip + the keyboard-a11y
-  // gap in one move.
-  const [cursorKey, setCursorKey] = useState<string | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);         // roving-focus target for keyboard nav
+  // #121 GHL-parity list UX now lives INSIDE the extracted ConversationsThreadList (§18):
+  // density (+ its localStorage persistence), sort, multi-select, and the Gmail-style keyboard
+  // cursor are all list-internal. The container keeps only the single OPEN-thread selection.
   const paneRef = useRef<HTMLDivElement>(null);         // Enter focuses the thread pane
-  useEffect(() => { try { localStorage.setItem(DENSITY_STORAGE_KEY, density); } catch { /* private mode */ } }, [density]);
   useEffect(() => { setContactDrawerOpen(false); }, [selectedKey]);
 
   // C-1.5 threads-as-source-of-truth
@@ -336,7 +298,6 @@ export default function ClientsConversations() {
   } = useCommsAttachments(() => tenantIdRef.current);
   const [dragOver, setDragOver] = useState(false);
   const [scheduledFor, setScheduledFor] = useState<string | null>(null); // ISO | null
-  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [, setUndo] = useState<{ messageId: string; expiresAt: number } | null>(null);
   const [snippets, setSnippets] = useState<Snippet[]>([]);
   const [signatures, setSignatures] = useState<Signature[]>([]);
@@ -352,13 +313,12 @@ export default function ClientsConversations() {
   // document(s). Drives the "Reading attachment…" button state; never claimed with no doc.
   const [draftReadingDoc, setDraftReadingDoc] = useState(false);
   const [draftFlags, setDraftFlags] = useState<string[]>([]);
-  const [draftGuideOpen, setDraftGuideOpen] = useState(false);
-  const [draftGuide, setDraftGuide] = useState("");
-  const [draftTone, setDraftTone] = useState<"professional" | "friendly" | "warm" | "direct">("professional");
+  // The Draft-with-Paige guide popover (guide + tone), the schedule popover open state, and the
+  // hidden file input now live INSIDE the extracted ConversationsRichComposer (§18); guide/tone
+  // arrive as call args on onDraftWithPaige below.
   // #482 Phase-2 — the current operator's auth id, so the thread-header "Set a reminder"
   // quick action can file a plan row (plan_set_reminder is keyed to the caller). Server-derived.
   const [userId, setUserId] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Deep-link: read ?filter=<view> once; unknown slug → keep default (never blank). ─
   const [searchParams] = useSearchParams();
@@ -579,24 +539,18 @@ export default function ClientsConversations() {
     return n;
   }, [dbThreads, messagesByKey, nowMs]);
 
-  // ── visible threads: state filter is server-side; search + label + view client-side.
-  //    #121 sort composes LAST, over the already-filtered list (never a new query, §9). ─
+  // ── visible threads: state filter is server-side; search + label + view client-side. The FINAL sort
+  // now lives INSIDE ConversationsThreadList (§18) over the normalized threads — the container
+  // hands the rail the already-filtered list in recent order (the list's default), and the list
+  // re-sorts per the user's chosen mode. The only order-dependent consumer left here is the
+  // keep-valid-selection fallback (visibleThreads[0]); the default recent order matches the
+  // shipped behavior, so auto-selection is unchanged (§13 zero regression).
   const visibleThreads = useMemo(() =>
-    sortThreads(
-      dbThreads.filter((t) =>
-        (matchedKeys === null || matchedKeys.has(t.thread_key)) &&
-        (labelFilter === null || (t.labels ?? []).some((l) => l.id === labelFilter)) &&
-        viewPredicate(t)),
-      sort,
-      // Name (A–Z) alphabetizes by the SAME display name ThreadRow shows — contact name, else the
-      // preview party's name/address — so null-contact threads sort where the user sees them, not
-      // as "" (Codex P2, §13).
-      (t) => {
-        const p = previewByKey.get(t.thread_key);
-        return contactNameFromClient(t.clients)
-          || (p ? partyLabel(p.direction === "inbound" ? p.sender : p.recipients?.[0]) : "");
-      }),
-    [dbThreads, matchedKeys, labelFilter, viewPredicate, sort, previewByKey]);
+    dbThreads.filter((t) =>
+      (matchedKeys === null || matchedKeys.has(t.thread_key)) &&
+      (labelFilter === null || (t.labels ?? []).some((l) => l.id === labelFilter)) &&
+      viewPredicate(t)),
+    [dbThreads, matchedKeys, labelFilter, viewPredicate]);
 
   const activeConnectors = useMemo(() => connectors.filter((c) => c.active && c.status === "active"), [connectors]);
 
@@ -748,117 +702,10 @@ export default function ClientsConversations() {
 
   const selectThread = (key: string) => {
     setSelectedKey(key);
-    setCursorKey(key); // keep the keyboard cursor on the row the user just opened
+    // The Gmail-style keyboard cursor lives in ConversationsThreadList and follows the open
+    // thread there; multi-select, bulk, and keyboard nav are all list-internal now (§18).
     const t = dbThreads.find((x) => x.thread_key === key);
     if (t && t.unread_count > 0) void markThreadRead(t.id);
-  };
-
-  // ── #121 multi-select ─────────────────────────────────────────────────────────────
-  const toggleSelect = (key: string, e: { shiftKey: boolean }) => {
-    setSelection((prev) => {
-      const next = new Set(prev);
-      if (e.shiftKey && selectAnchorRef.current) {
-        const keys = visibleThreads.map((t) => t.thread_key);
-        const a = keys.indexOf(selectAnchorRef.current);
-        const b = keys.indexOf(key);
-        if (a !== -1 && b !== -1) {
-          const [lo, hi] = a < b ? [a, b] : [b, a];
-          for (let i = lo; i <= hi; i++) next.add(keys[i]);
-          selectAnchorRef.current = key;
-          return next;
-        }
-      }
-      if (next.has(key)) next.delete(key); else next.add(key);
-      selectAnchorRef.current = key;
-      return next;
-    });
-  };
-  const allVisibleSelected = visibleThreads.length > 0 && visibleThreads.every((t) => selection.has(t.thread_key));
-  const someVisibleSelected = visibleThreads.some((t) => selection.has(t.thread_key));
-  // Only rows that are BOTH selected AND currently visible can actually be acted on (runBulk
-  // scopes to visible ∩ selection). The bulk bar's count + visibility derive from THIS, never the
-  // raw Set — so the toolbar can never overstate what a bulk action will touch (§13 honesty).
-  const selectedVisibleCount = visibleThreads.reduce((n, t) => n + (selection.has(t.thread_key) ? 1 : 0), 0);
-  const toggleSelectAll = () => {
-    setSelection((prev) => {
-      const next = new Set(prev);
-      if (allVisibleSelected) visibleThreads.forEach((t) => next.delete(t.thread_key));
-      else visibleThreads.forEach((t) => next.add(t.thread_key));
-      return next;
-    });
-    selectAnchorRef.current = null;
-  };
-  const clearSelection = () => { setSelection(new Set()); selectAnchorRef.current = null; };
-  // ANY change that narrows the visible set — view, label filter, OR search — resets the
-  // selection (and the keyboard cursor) so a bulk action can never reach, and the toolbar can
-  // never count, a row the coach can no longer see. The runner is also scoped to visibleThreads
-  // and the bar reads selectedVisibleCount, but resetting here keeps the mental model honest:
-  // change what you're looking at → your selection starts fresh (GHL/Gmail behavior). (§13/§36)
-  useEffect(() => { clearSelection(); setCursorKey(null); }, [view, labelFilter, search]);
-
-  // Bulk runner — reuses the per-thread seams in a loop (§18 no new mutation path), scoped to
-  // the SELECTED ∩ VISIBLE rows, with honest partial reporting (§13: never claim a failed row).
-  const runBulk = async (verb: string, fn: (t: DbThread) => Promise<boolean>) => {
-    const targets = visibleThreads.filter((t) => selection.has(t.thread_key));
-    if (targets.length === 0 || bulkBusy) return;
-    setBulkBusy(true);
-    const results = await Promise.allSettled(targets.map(fn));
-    setBulkBusy(false);
-    const ok = results.filter((r) => r.status === "fulfilled" && r.value === true).length;
-    const fail = results.length - ok;
-    if (fail === 0) toast.success(`${verb} ${ok}.`);
-    else if (ok === 0) toast.error(`Couldn't ${verb.toLowerCase()} any — ${fail} failed.`);
-    else toast.warning(`${ok} of ${results.length} done — ${fail} failed.`);
-    clearSelection();
-  };
-  const bulkArchive = () => runBulk("Archived", (t) => archiveThread(t.id, true, { silent: true }));
-  const bulkMarkRead = () => runBulk("Marked read", (t) => markThreadRead(t.id, { silent: true }));
-  const bulkSnooze = (until: Date | string) => runBulk("Snoozed", (t) => snoozeThread(t.id, until, { silent: true }));
-  const bulkApplyLabel = (label: Label) =>
-    runBulk("Labeled", (t) =>
-      setThreadLabels(
-        t.id,
-        (t.labels ?? []).some((l) => l.id === label.id) ? (t.labels ?? []) : [...(t.labels ?? []), label],
-        { silent: true },
-      ));
-
-  // ── #121 keyboard nav (Gmail-style cursor) ────────────────────────────────────────
-  // Roving focus over the role=button rows. Arrows/j-k move a CURSOR (highlight only) — they do
-  // NOT open or mark-read, so nothing reorders the list under the cursor (an unread-first sort
-  // stays put while you navigate). Enter opens the cursored row; `x` toggles its multi-select
-  // (the keyboard path to build a selection — the row checkbox is pointer-only). The handler
-  // lives on the scroll container, so it only fires when focus is INSIDE the list; it also bails
-  // on any focused input/textarea/contenteditable so typing is never hijacked.
-  const onListKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const nav = ["ArrowDown", "ArrowUp", "j", "k", "Enter", "x", "X"];
-    if (!nav.includes(e.key)) return;
-    if ((e.target as HTMLElement).closest("input, textarea, [contenteditable='true']")) return;
-    if (visibleThreads.length === 0) return;
-    const keys = visibleThreads.map((t) => t.thread_key);
-    // Base actions on the row the user is ACTUALLY focused on (every row is tabbable), THEN fall
-    // back to the keyboard cursor, then the open thread — so tabbing to a row and pressing an
-    // arrow / `x` never moves focus or toggles selection on a different, unfocused conversation
-    // (§13 a11y correctness — Codex P2).
-    const focusedKey = (e.target as HTMLElement).closest?.("[data-thread-key]")?.getAttribute("data-thread-key") ?? null;
-    const baseKey = focusedKey && keys.includes(focusedKey) ? focusedKey
-      : cursorKey && keys.includes(cursorKey) ? cursorKey
-      : selectedKey && keys.includes(selectedKey) ? selectedKey : null;
-    if (e.key === "Enter") { e.preventDefault(); if (baseKey) { selectThread(baseKey); paneRef.current?.focus(); } return; }
-    if (e.key === "x" || e.key === "X") { e.preventDefault(); if (baseKey) toggleSelect(baseKey, { shiftKey: false }); return; }
-    e.preventDefault();
-    const dir = (e.key === "ArrowDown" || e.key === "j") ? 1 : -1;
-    const baseIdx = baseKey ? keys.indexOf(baseKey) : -1;
-    // No cursor yet → first Down lands on row 0, first Up on the last row (no off-by-one skip).
-    const nextIdx = baseIdx === -1
-      ? (dir === 1 ? 0 : keys.length - 1)
-      : Math.min(keys.length - 1, Math.max(0, baseIdx + dir)); // clamp at ends
-    const key = keys[nextIdx];
-    setCursorKey(key);
-    requestAnimationFrame(() => {
-      const node = listRef.current?.querySelector<HTMLElement>(`[data-thread-key="${CSS.escape(key)}"]`);
-      node?.scrollIntoView({ block: "nearest" });
-      node?.focus();
-    });
   };
 
   // Cancel a queued scheduled send (R3) — routed through the any handle (typed-RPC ratchet).
@@ -1005,7 +852,7 @@ export default function ClientsConversations() {
   // ── "Draft with Paige": ask the email-composer sub-agent to draft a reply on demand ──
   // Reads the thread's last inbound message as context (§36 one-click) + optional guide/tone.
   // Lands the draft in the composer for review/edit/send — never auto-sends (§36 draft-first).
-  const draftWithPaige = useCallback(async () => {
+  const draftWithPaige = useCallback(async ({ guide, tone }: { guide: string; tone: DraftTone }) => {
     if (!selected) return;
     // §13: never silently discard the coach's typed reply. Only draft into an empty body.
     if (body.trim()) {
@@ -1029,8 +876,8 @@ export default function ClientsConversations() {
       const { data, error } = await supabase.functions.invoke("subagent-email-composer", {
         body: {
           input: {
-            intent: draftGuide.trim() || "Write a reply to the client's most recent message in this conversation.",
-            tone: draftTone,
+            intent: guide.trim() || "Write a reply to the client's most recent message in this conversation.",
+            tone,
             length: "medium",
             key_points: [lastText ? `Client's last message: ${lastText}` : ""].filter(Boolean),
             contact_id: selected.contactId ?? undefined,
@@ -1068,7 +915,6 @@ export default function ClientsConversations() {
       setBody(text);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       setDraftFlags(((data as any)?.compliance_flags ?? []) as string[]);
-      setDraftGuideOpen(false);
       // §13 honesty (critic): don't let a generic "drafted" success imply the attachment was
       // used when it wasn't. Compare what the server actually READ to what was staged — if a
       // staged doc couldn't be read, say so plainly instead of claiming "Reading attachment…".
@@ -1090,7 +936,7 @@ export default function ClientsConversations() {
       setDrafting(false);
       setDraftReadingDoc(false);
     }
-  }, [selected, body, draftGuide, draftTone, subject, attachments]);
+  }, [selected, body, subject, attachments]);
 
   // ── Send a fresh reply (or an edited draft) into the selected thread ──────────────
   const send = async () => {
@@ -1160,742 +1006,454 @@ export default function ClientsConversations() {
     view === "active" &&
     labelFilter === null;
 
+  // ── Shell wiring (§18 extract-not-fork): normalize the tenant's threads / messages /
+  //    connectors + existing seams onto the scope-adapter the extracted three-column shell
+  //    consumes. Every tenant capability is ON — this is the full-fidelity tenant scope. ─────
+  const capabilities: ConversationsCapabilities = {
+    canDraftWithPaige: true,
+    canSchedule: true,
+    hasTemplates: true,
+    hasSignature: true,
+    hasAttachments: true,
+    hasContactBusinessPanels: true,
+  };
+
+  // visibleThreads (DbThread, already view+label+search filtered) → the shell's normalized shape.
+  // `raw` hands each row's DbThread straight back to renderRow so the EXISTING ThreadRow renders
+  // at full fidelity (§13/§37 zero regression). Fields mirror what ThreadRow itself resolves.
+  const shellThreads: ShellThread<DbThread>[] = visibleThreads.map((t) => {
+    const p = previewByKey.get(t.thread_key) ?? null;
+    return {
+      id: t.id,
+      key: t.thread_key,
+      title:
+        contactNameFromClient(t.clients) ||
+        (p ? partyLabel(p.direction === "inbound" ? p.sender : p.recipients?.[0]) : "") ||
+        "Unknown contact",
+      lastPreview: p ? (bodyPreview(p) || p.subject || "") : "",
+      unread: t.unread_count,
+      lastMessageAt: t.last_message_at,
+      lastDirection: t.last_direction,
+      labels: t.labels ?? [],
+      snoozedUntil: t.snoozed_until,
+      archivedAt: t.archived_at,
+      channel: p?.channel_type ?? "email",
+      hasDraft: p?.status === "draft",
+      scheduled: p?.status === "queued" && !!p.scheduled_for,
+      raw: t,
+    };
+  });
+
+  // LEFT-rail list model — the container owns the DATA (server state filter, view predicate,
+  // label filter, search matched-keys, the thread mutators); the list owns the PRESENTATION
+  // (sort, density, select-all, multi-select, Gmail keyboard cursor, bulk toolbar). renderRow
+  // reuses the EXISTING ThreadRow verbatim (its SnoozeMenu/LabelPopover intact) so the rich row
+  // never changed (§37). resetKey bumps on view/label/search → the list resets selection + cursor.
+  const listModel: ConversationsListModel<DbThread> = {
+    threads: shellThreads,
+    loading,
+    searching,
+    search,
+    onSearch: setSearch,
+    matchedEmpty: matchedKeys?.size === 0,
+    selectedKey,
+    onSelect: selectThread,
+    onOpenFocus: () => paneRef.current?.focus(),
+    snooze: snoozeThread,
+    archive: archiveThread,
+    markRead: markThreadRead,
+    setLabels: setThreadLabels,
+    labelCatalog,
+    resetKey: `${view}|${labelFilter ?? ""}|${search}`,
+    renderRow: (t, ctx) => (
+      <ThreadRow
+        key={t.id}
+        thread={t.raw}
+        preview={previewByKey.get(t.key) ?? null}
+        channel={previewByKey.get(t.key)?.channel_type ?? "email"}
+        active={ctx.active}
+        cursored={ctx.cursored}
+        onClick={ctx.onClick}
+        catalog={labelCatalog}
+        onSnooze={snoozeThread}
+        onArchive={archiveThread}
+        onSetThreadLabels={setThreadLabels}
+        onRenameCatalogLabel={renameCatalogLabel}
+        density={ctx.density}
+        selected={ctx.selected}
+        selectionActive={ctx.selectionActive}
+        onToggleSelect={ctx.onToggleSelect}
+      />
+    ),
+    renderFilters: () => (
+      <ThreadFilters
+        view={view} onView={setView} activeUnread={activeUnread} foldedPending={foldedPending}
+        catalog={labelCatalog} labelFilter={labelFilter} onLabelFilter={setLabelFilter}
+      />
+    ),
+    // §43 — start a NEW outbound thread (gold on the act, §11). With no sendable channel this is
+    // NOT a dead disabled button — it routes to setup (§31 no dead-end; §36 the label tells a
+    // non-technical coach exactly what to do). The first-run surface owns its own gold act.
+    renderNewConversation: () =>
+      !canCompose ? (
+        <Button variant="gold" size="sm" className="w-full" asChild>
+          <Link to="/admin/integrations/email">
+            <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
+          </Link>
+        </Button>
+      ) : (
+        <Button variant="gold" size="sm" className="w-full" onClick={() => setComposeOpen(true)}>
+          <Plus className="mr-1.5 h-4 w-4" /> New conversation
+        </Button>
+      ),
+    // The view-dependent empty (archived / snoozed / active + connect CTA). The shell renders the
+    // loading skeleton and the search-no-match state itself; this fills the "rows in no view" slot.
+    renderEmpty: () => (
+      <EmptyState
+        icon={Inbox} tone="brand"
+        title={view === "archived" ? "Nothing archived." : view === "snoozed" ? "Nothing snoozed." : "No conversations yet."}
+        description={
+          view === "active"
+            ? !canCompose
+              ? "Connect an email or SMS channel and the moment a client reaches out, their thread lands here — with Paige's draft reply ready for your approval."
+              : "Start a new conversation, or the moment a client reaches out their thread lands here — with Paige's draft reply ready for your approval."
+            : "When you snooze or archive a conversation, it shows up here."
+        }
+        action={
+          view === "active"
+            ? canCompose
+              ? (
+                // Secondary (outline), not gold — the always-visible left-rail "New conversation"
+                // at the top of this column is the ONE gold compose act (§11).
+                <Button variant="outline" size="sm" onClick={() => setComposeOpen(true)}>
+                  <Plus className="mr-1.5 h-4 w-4" /> New conversation
+                </Button>
+              )
+              : (
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/admin/integrations/email">Connect a channel</Link>
+                </Button>
+              )
+            : undefined
+        }
+        className="py-10"
+      />
+    ),
+  };
+
+  // Composer model — the container keeps ALL substantive values + seams (body, subject,
+  // scheduledFor, attachments, drafting, send/draft/schedule); ConversationsRichComposer owns
+  // only the transient popover state. Templates stay EMAIL-only (empty list on SMS) to preserve
+  // the shipped gating without widening the static capability flag (§37). Dictation feeds THROUGH
+  // handleBodyChange (via bodyRef, no stale closure) so #trigger snippet expansion still runs.
+  const composerModel: ConversationsComposerModel | null = selected ? {
+    capabilities,
+    value: body,
+    onChange: handleBodyChange,
+    onSend: () => void send(),
+    sending,
+    disabled: drafting || uploading,
+    placeholder: `Reply to ${selected.name}…  (drop a file to attach)`,
+    rows: 2,
+    sendLabel: scheduledFor ? "Schedule" : editingDraftId ? "Send edited" : "Send",
+    note: selected.toAddress ? `To ${selected.toAddress}` : "No address on this thread",
+    textareaClassName: "min-h-[4.5rem] focus:min-h-[6rem]",
+    identities: activeConnectors.map((c) => ({
+      id: c.id,
+      label: c.display_name?.trim() || CHANNEL_LABEL[c.channel_type],
+      sublabel: c.from_address,
+      channel: c.channel_type,
+    })),
+    identityId: composeConnectorId,
+    onIdentityChange: (id) => {
+      const connector = activeConnectors.find((c) => c.id === id);
+      setComposeConnectorId(id);
+      setComposeChannel(connector?.channel_type ?? "");
+    },
+    showSubject: composeChannel === "email",
+    subject,
+    onSubjectChange: setSubject,
+    attachments,
+    uploading,
+    onAttachFiles: (files) => void uploadFiles(files),
+    onRemoveAttachment: (a) => void removeAttachment(a),
+    showDraftWithPaige: composeChannel === "email",
+    onDraftWithPaige: ({ guide, tone }) => void draftWithPaige({ guide, tone }),
+    drafting,
+    draftReadingDoc,
+    draftFlags,
+    canDraft: !!selected.toAddress,
+    templates: composeChannel === "email" ? templates : [],
+    onApplyTemplate: applyTemplate,
+    signatureAvailable: hasSignature,
+    appendSignature,
+    onToggleSignature: () => setAppendSignature((s) => !s),
+    scheduledFor,
+    onSchedule: setScheduledFor,
+    showDictation: true,
+    onDictate: (seg) => handleBodyChange(appendDictation(bodyRef.current, seg)),
+    onDictateError: (msg) => toast.error(msg),
+    editingDraft: !!editingDraftId,
+    onCancelEdit: resetComposer,
+    dragOver,
+    onDropFiles: (f) => void uploadFiles(f),
+    onDragOverZone: () => setDragOver(true),
+    onDragLeaveZone: () => setDragOver(false),
+  } : null;
+
+  // RIGHT rail — the rich tenant ContactCardRail, reused UNCHANGED as a pass-through (§37). Two
+  // instances differ only by onClose target (desktop rail toggle vs mobile Sheet).
+  const contactPanelDesktop: ConversationsContactPanelModel | null = selected ? {
+    hasContactBusinessPanels: true,
+    renderRich: () => (
+      <ContactCardRail
+        contact={selectedThread?.clients ?? null}
+        channel={selected.channel}
+        toAddress={selected.toAddress}
+        recentMessages={selected.messages}
+        labels={selectedThread?.labels ?? []}
+        suppressions={suppressions}
+        userId={userId}
+        tenantId={tenantIdRef.current}
+        onClose={() => setRailOpen(false)}
+        onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
+      />
+    ),
+  } : null;
+  const contactPanelMobile: ConversationsContactPanelModel | null = selected ? {
+    hasContactBusinessPanels: true,
+    renderRich: () => (
+      <ContactCardRail
+        contact={selectedThread?.clients ?? null}
+        channel={selected.channel}
+        toAddress={selected.toAddress}
+        recentMessages={selected.messages}
+        labels={selectedThread?.labels ?? []}
+        suppressions={suppressions}
+        userId={userId}
+        tenantId={tenantIdRef.current}
+        onClose={() => setContactDrawerOpen(false)}
+        onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
+      />
+    ),
+  } : null;
+
+  // ── call capability for the open thread (Phase 4) — the tenant dials the contact's phone on the
+  //    SAME shared Device (§18) via the tenant voice token path. §13: no fake dial — the button
+  //    disables with an honest tooltip when there's no phone on file or voice reports needs_config. ──
+  const tenantVoiceReady = !!voice && voice.status !== "needs_config";
+  const callDestination = selected?.dbThread.clients?.phone ?? null;
+  const placeTenantCall = (destination: string) => { voice?.callFrom(destination); };
+
+  // MIDDLE pane — container-owned (it carries the tenant's draft-card MessageBubble wrapper + the
+  // thread-header quick actions + the composer). Passed to the shell as the `activeThread` slot.
+  const activeThread = (
+    <SectionCard padded={false} bodyClassName="flex min-h-0 flex-1 flex-col" className="flex min-h-0 flex-col overflow-hidden">
+      {!selected ? (
+        <div className="grid flex-1 place-items-center">
+          <EmptyState
+            icon={MessageCircle}
+            tone="brand"
+            title="Your unified inbox."
+            description="Pick a conversation on the left to read the thread and approve Paige's drafted reply. One thread per client, so nothing gets missed."
+          />
+        </div>
+      ) : (
+        <>
+          {/* Thread header — also the focus target when Enter is pressed in the rail (#121). */}
+          <div
+            ref={paneRef}
+            tabIndex={-1}
+            className="flex items-center gap-3 border-b border-border/60 px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(var(--ring))]"
+          >
+            <ChannelGlyph channel={selected.channel} />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-foreground">{selected.name}</p>
+              <p className="truncate text-[11px] text-muted-foreground select-text">
+                {CHANNEL_LABEL[selected.channel]}{selected.toAddress ? ` · ${selected.toAddress}` : ""}
+              </p>
+            </div>
+            {/* #482 Phase-2 — thread-level quick actions promoted to the open-thread header
+                (§18 reuse: the same SnoozeMenu/LabelPopover already wired on the list rows), so
+                label / snooze / archive / remind are reachable without hovering a row. All
+                icon-only ghost buttons; gold stays on Send/Approve (§11). */}
+            <div className="flex items-center gap-1">
+              {/* CALL act — gold (§11, a distinct primary act like Send/Approve). Shared
+                  ConversationsCallButton, adapter-driven; disabled with an honest tooltip when the
+                  contact has no phone on file or voice isn't provisioned (§13 — no blind dial). */}
+              <ConversationsCallButton
+                hasVoiceCalling={tenantVoiceReady}
+                destination={callDestination}
+                onPlaceCall={placeTenantCall}
+                unavailableReason={voice?.reason ?? "Calling isn’t set up for this practice yet."}
+                iconOnly
+                className="mr-0.5"
+              />
+              <LabelPopover
+                thread={selected.dbThread} catalog={labelCatalog}
+                onSetThreadLabels={setThreadLabels} onRenameCatalogLabel={renameCatalogLabel}
+              />
+              <SnoozeMenu thread={selected.dbThread} onSnooze={snoozeThread} onArchive={archiveThread} />
+              {userId && selected.contactId && (
+                <QuickAddDialog
+                  userId={userId}
+                  contactId={selected.contactId}
+                  contactName={selected.name}
+                  defaultKind="reminder"
+                  onCreated={() => toast.success("Reminder set.")}
+                  trigger={
+                    <Button
+                      variant="ghost" size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                      aria-label="Set a reminder about this contact"
+                    >
+                      <Bell className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+              )}
+              {/* #4 delete-conversation — trash sits where GHL users expect it, in the thread
+                  header (§36). Soft-archive via the RPC; destructive/red confirm, NEVER gold (§11). */}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="ghost" size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    aria-label="Delete conversation"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This removes the conversation from your inbox. It stays in your Archive, where you can restore it anytime.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={async () => {
+                        const ok = await deleteConversation(selected.dbThread.id);
+                        if (ok) setSelectedKey(null);
+                      }}
+                    >
+                      Delete
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+            {selected.hasDraft && <StatePill state="building">Draft ready</StatePill>}
+            <Button
+              variant="ghost" size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] xl:hidden"
+              onClick={() => setContactDrawerOpen(true)}
+              aria-label="Show contact details"
+            >
+              <PanelRight className="h-4 w-4" />
+            </Button>
+            {!railOpen && (
+              <Button
+                variant="ghost" size="icon"
+                className="hidden h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] xl:inline-flex"
+                onClick={() => setRailOpen(true)} aria-label="Show contact panel"
+              >
+                <PanelRight className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+
+          {/* Messages (chronological) */}
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+            {selected.messages.map((m) =>
+              reduce ? (
+                <MessageBubble
+                  key={m.id}
+                  m={m}
+                  onApprove={approveDraft}
+                  onEdit={editDraft}
+                  onCancelScheduled={cancelScheduled}
+                  approving={approvingId === m.id}
+                />
+              ) : (
+                <motion.div
+                  key={m.id}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <MessageBubble
+                    m={m}
+                    onApprove={approveDraft}
+                    onEdit={editDraft}
+                    onCancelScheduled={cancelScheduled}
+                    approving={approvingId === m.id}
+                  />
+                </motion.div>
+              ),
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          {/* Composer — converged onto the shared MessageComposer atom via the extracted
+              ConversationsRichComposer (§18/§6): the tenant's full affordance cluster injects
+              through the shell's capability-gated slots; gold is spent once, on its Send act
+              (the only other earned gold is the draft card's "Approve & send", kept tenant-side
+              above). No sendable channel → the connect CTA replaces the composer entirely. */}
+          <div className="mt-auto">
+            {noChannel ? (
+              <div className="border-t border-border/60 bg-muted/30 px-3 py-2">
+                <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="flex items-start gap-2 text-xs text-muted-foreground">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
+                    <span>Connect a channel and Paige sends from here — inbound messages start landing in this inbox once a channel is live.</span>
+                  </p>
+                  {/* Secondary connect CTA → outline, so it never becomes a SECOND gold
+                      "Connect a channel" co-visible with the rail-top gold one (§11 gold budget). */}
+                  <Button variant="outline" size="sm" asChild className="shrink-0 self-start sm:self-auto">
+                    <Link to="/admin/integrations/email">
+                      <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            ) : composerModel ? (
+              <ConversationsRichComposer {...composerModel} />
+            ) : null}
+          </div>
+        </>
+      )}
+    </SectionCard>
+  );
+
   return (
     <PageShell width="full" fill className="lg:flex-1 lg:overflow-hidden">
       <h1 className="sr-only">Conversations</h1>
-      {/* §36 first-run: before a single thread exists, one cohesive guided surface replaces the
-          two disconnected empty boxes (left-rail "No conversations yet." + middle "Your unified
-          inbox.") — it teaches the model and offers ONE honest next step. Everything else (search-
-          no-match, filtered/archived/snoozed empties) keeps its own dedicated EmptyState below. */}
-      {isFirstRun ? (
-        <FirstRunOnboarding
-          canCompose={canCompose}
-          onCompose={() => setComposeOpen(true)}
-          connectHref="/admin/integrations/email"
-        />
-      ) : (
-      /* The pane grid flows as the flex-1 last child of the `fill` shell (lg+), so it
-          consumes exactly the height its scroll parent gives it and its columns' own
-          overflow-y-auto engage — instead of a magic calc(100dvh-…) that undershot the
-          chrome and double-scrolled (Finding 2). Below lg it stacks with natural scroll. */
-      <div className={cn(
-        "grid grid-cols-1 gap-3 lg:min-h-0 lg:flex-1 lg:grid-rows-[minmax(0,1fr)] lg:grid-cols-[minmax(260px,288px)_minmax(0,1fr)] lg:overflow-hidden xl:gap-4",
-        selected && railOpen
-          ? "xl:grid-cols-[minmax(280px,304px)_minmax(0,1fr)_minmax(280px,320px)] 2xl:grid-cols-[320px_minmax(0,1fr)_320px]"
-          : "xl:grid-cols-[minmax(280px,304px)_minmax(0,1fr)] 2xl:grid-cols-[320px_minmax(0,1fr)]",
-      )}>
-        {/* ── LEFT: thread rail ─────────────────────────────────────────────────── */}
-        <SectionCard padded={false} bodyClassName="flex min-h-0 flex-1 flex-col" className="flex min-h-0 flex-col overflow-hidden">
-          <div className="space-y-2.5 border-b border-border/60 px-3 py-2.5">
-            {/* §43 — start a NEW outbound thread. Relocated off the PageHeader to reclaim
-                header space; lives atop the thread list (GHL pattern), NOT the right rail
-                (which unmounts with no thread selected). Gold on the act (§11). With no
-                sendable channel this is NOT a dead disabled button — it routes to setup
-                (§31 no dead-end; §36 the label tells a non-technical coach exactly what to
-                do). The first-run surface owns its own gold act and replaces this whole
-                grid, and the middle-pane connect CTA is outline, so only ONE gold connect
-                act is ever on screen (§11 gold budget). */}
-            {!canCompose ? (
-              <Button variant="gold" size="sm" className="w-full" asChild>
-                <Link to="/admin/integrations/email">
-                  <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
-                </Link>
-              </Button>
-            ) : (
-              <Button
-                variant="gold" size="sm" className="w-full"
-                onClick={() => setComposeOpen(true)}
-              >
-                <Plus className="mr-1.5 h-4 w-4" /> New conversation
-              </Button>
-            )}
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search messages…"
-                className="h-9 pl-8"
-                aria-label="Search messages"
-              />
-            </div>
-          </div>
-          <ThreadFilters
-            view={view} onView={setView} activeUnread={activeUnread} foldedPending={foldedPending}
-            catalog={labelCatalog} labelFilter={labelFilter} onLabelFilter={setLabelFilter}
+      {/* The three-column conversation shell (§18 one home) — pure layout: the §36 first-run
+          swap, the railOpen 3↔2-col toggle, and the mobile contact Sheet. The container feeds it
+          the rendered LEFT rail, the container-owned MIDDLE pane, and the RIGHT contact panel. */}
+      <ConversationsThreeColumnShell
+        firstRun={
+          <FirstRunOnboarding
+            canCompose={canCompose}
+            onCompose={() => setComposeOpen(true)}
+            connectHref="/admin/integrations/email"
           />
-
-          {/* #121 controls: select-all · count · sort · density. Only when the rail has rows. */}
-          {!loading && !searching && visibleThreads.length > 0 && (
-            <div className="flex items-center gap-2 border-b border-border/60 px-3 py-1.5">
-              <Checkbox
-                checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
-                onCheckedChange={toggleSelectAll}
-                aria-label="Select all visible conversations"
-              />
-              <span className="text-[11px] tabular-nums text-muted-foreground">
-                {visibleThreads.length} {visibleThreads.length === 1 ? "conversation" : "conversations"}
-              </span>
-              <div className="ml-auto flex items-center gap-1.5">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground">
-                      <ArrowUpDown className="h-3.5 w-3.5" aria-hidden /> {SORT_LABEL[sort]}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">Sort by</DropdownMenuLabel>
-                    {THREAD_SORTS.map((s) => (
-                      <DropdownMenuItem key={s} onSelect={() => setSort(s)}>
-                        <Check className={cn("mr-2 h-3.5 w-3.5", sort === s ? "opacity-100" : "opacity-0")} aria-hidden />
-                        {SORT_LABEL[s]}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                {/* Density segmented toggle (native <button>s — §11 only bans native select/checkbox). */}
-                <div className="flex items-center rounded-md border border-border p-0.5" role="group" aria-label="Row density">
-                  {([["comfortable", Rows3, "Comfortable"], ["compact", AlignJustify, "Compact"]] as const).map(([d, Icon, label]) => (
-                    <button
-                      key={d}
-                      type="button"
-                      aria-label={`${label} density`}
-                      aria-pressed={density === d}
-                      onClick={() => setDensity(d)}
-                      className={cn(
-                        "grid h-6 w-6 place-items-center rounded-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]",
-                        density === d ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      <Icon className="h-3.5 w-3.5" aria-hidden />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* #121 bulk-action toolbar — appears when a selection exists. NEUTRAL/ghost buttons
-              (management, not an outward commit → no gold, §11). Motion-safe (§25). */}
-          <AnimatePresence initial={false}>
-            {selectedVisibleCount > 0 && (
-              <motion.div
-                key="bulk-bar"
-                initial={reduce ? false : { height: 0, opacity: 0 }}
-                animate={reduce ? { opacity: 1 } : { height: "auto", opacity: 1 }}
-                exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
-                transition={{ duration: reduce ? 0 : 0.16 }}
-                className="flex flex-wrap items-center gap-1 overflow-hidden border-b border-[hsl(var(--primary)/0.25)] bg-[hsl(var(--primary)/0.05)] px-2 py-1.5"
-              >
-                <span className="mr-1 pl-1 text-xs font-medium tabular-nums text-foreground">{selectedVisibleCount} selected</span>
-                <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" disabled={bulkBusy} onClick={bulkArchive}>
-                  <Archive className="h-3.5 w-3.5" aria-hidden /> Archive
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" disabled={bulkBusy}>
-                      <Clock className="h-3.5 w-3.5" aria-hidden /> Snooze
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-48">
-                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">Snooze {selectedVisibleCount}</DropdownMenuLabel>
-                    {snoozePresets().map((p) => (
-                      <DropdownMenuItem key={p.key} onSelect={() => bulkSnooze(p.until)}>
-                        <Clock className="mr-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden /> {p.label}
-                      </DropdownMenuItem>
-                    ))}
-                    <DropdownMenuItem onSelect={() => bulkSnooze(SNOOZE_SENTINEL_UNTIL_REPLY)}>
-                      <MessageCircleReply className="mr-2 h-3.5 w-3.5 text-muted-foreground" aria-hidden /> Until they reply
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" disabled={bulkBusy || labelCatalog.length === 0}>
-                      <Tag className="h-3.5 w-3.5" aria-hidden /> Label
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-48">
-                    <DropdownMenuLabel className="text-[11px] uppercase tracking-wide text-muted-foreground">Apply label</DropdownMenuLabel>
-                    {labelCatalog.length === 0 ? (
-                      <DropdownMenuItem disabled>No labels yet</DropdownMenuItem>
-                    ) : labelCatalog.map((l) => (
-                      <DropdownMenuItem key={l.id} onSelect={() => bulkApplyLabel(l)}>
-                        <span className={cn("mr-2 h-2 w-2 rounded-full", LABEL_DOT[l.color])} aria-hidden /> {l.name}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Button variant="ghost" size="sm" className="h-7 gap-1.5 px-2 text-xs" disabled={bulkBusy} onClick={bulkMarkRead}>
-                  <CheckCheck className="h-3.5 w-3.5" aria-hidden /> Mark read
-                </Button>
-                <Button
-                  variant="ghost" size="icon" className="ml-auto h-7 w-7 text-muted-foreground hover:text-foreground"
-                  onClick={clearSelection} aria-label="Clear selection"
-                >
-                  <X className="h-4 w-4" aria-hidden />
-                </Button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div
-            ref={listRef}
-            onKeyDown={onListKeyDown}
-            className="min-h-0 flex-1 overflow-y-auto p-2"
-          >
-            {loading || searching ? (
-              <div className="space-y-2">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="flex items-start gap-3 rounded-lg px-3 py-2.5">
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <div className="flex-1 space-y-1.5">
-                      <Skeleton className="h-3.5 w-2/3" />
-                      <Skeleton className="h-3 w-full" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : matchedKeys?.size === 0 ? (
-              <EmptyState
-                icon={SearchX} tone="muted"
-                title={`No messages match "${search.trim()}".`}
-                description="Try a client's name, a phone number, or a word from the message."
-                className="py-10"
-              />
-            ) : visibleThreads.length === 0 ? (
-              <EmptyState
-                icon={Inbox} tone="brand"
-                title={view === "archived" ? "Nothing archived." : view === "snoozed" ? "Nothing snoozed." : "No conversations yet."}
-                description={
-                  view === "active"
-                    ? !canCompose
-                      ? "Connect an email or SMS channel and the moment a client reaches out, their thread lands here — with Paige's draft reply ready for your approval."
-                      : "Start a new conversation, or the moment a client reaches out their thread lands here — with Paige's draft reply ready for your approval."
-                    : "When you snooze or archive a conversation, it shows up here."
-                }
-                action={
-                  view === "active"
-                    ? canCompose
-                      ? (
-                        // Secondary (outline), not gold — the always-visible left-rail "New
-                        // conversation" at the top of this column is the ONE gold compose act
-                        // (§11 never two identical gold acts co-visible in one column).
-                        <Button variant="outline" size="sm" onClick={() => setComposeOpen(true)}>
-                          <Plus className="mr-1.5 h-4 w-4" /> New conversation
-                        </Button>
-                      )
-                      : (
-                        <Button variant="outline" size="sm" asChild>
-                          <Link to="/admin/integrations/email">Connect a channel</Link>
-                        </Button>
-                      )
-                    : undefined
-                }
-                className="py-10"
-              />
-            ) : (
-              <div className="space-y-1">
-                {visibleThreads.map((t) => (
-                  <ThreadRow
-                    key={t.id}
-                    thread={t}
-                    preview={previewByKey.get(t.thread_key) ?? null}
-                    channel={previewByKey.get(t.thread_key)?.channel_type ?? "email"}
-                    active={t.thread_key === selectedKey}
-                    cursored={t.thread_key === cursorKey}
-                    onClick={() => selectThread(t.thread_key)}
-                    catalog={labelCatalog}
-                    onSnooze={snoozeThread}
-                    onArchive={archiveThread}
-                    onSetThreadLabels={setThreadLabels}
-                    onRenameCatalogLabel={renameCatalogLabel}
-                    density={density}
-                    selected={selection.has(t.thread_key)}
-                    selectionActive={selection.size > 0}
-                    onToggleSelect={(e) => toggleSelect(t.thread_key, e)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        </SectionCard>
-
-        {/* ── MIDDLE: thread detail (scrolls) + composer (footer) ────────────────── */}
-        <SectionCard padded={false} bodyClassName="flex min-h-0 flex-1 flex-col" className="flex min-h-0 flex-col overflow-hidden">
-          {!selected ? (
-            <div className="grid flex-1 place-items-center">
-              <EmptyState
-                icon={MessageCircle}
-                tone="brand"
-                title="Your unified inbox."
-                description="Pick a conversation on the left to read the thread and approve Paige's drafted reply. One thread per client, so nothing gets missed."
-              />
-            </div>
-          ) : (
-            <>
-              {/* Thread header — also the focus target when Enter is pressed in the rail (#121). */}
-              <div
-                ref={paneRef}
-                tabIndex={-1}
-                className="flex items-center gap-3 border-b border-border/60 px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[hsl(var(--ring))]"
-              >
-                <ChannelGlyph channel={selected.channel} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-foreground">{selected.name}</p>
-                  <p className="truncate text-[11px] text-muted-foreground select-text">
-                    {CHANNEL_LABEL[selected.channel]}{selected.toAddress ? ` · ${selected.toAddress}` : ""}
-                  </p>
-                </div>
-                {/* #482 Phase-2 — thread-level quick actions promoted to the open-thread header
-                    (§18 reuse: the same SnoozeMenu/LabelPopover already wired on the list rows), so
-                    label / snooze / archive / remind are reachable without hovering a row. All
-                    icon-only ghost buttons, matching the header control group; gold stays on
-                    Send/Approve (§11). */}
-                <div className="flex items-center gap-1">
-                  <LabelPopover
-                    thread={selected.dbThread} catalog={labelCatalog}
-                    onSetThreadLabels={setThreadLabels} onRenameCatalogLabel={renameCatalogLabel}
-                  />
-                  <SnoozeMenu thread={selected.dbThread} onSnooze={snoozeThread} onArchive={archiveThread} />
-                  {userId && selected.contactId && (
-                    <QuickAddDialog
-                      userId={userId}
-                      contactId={selected.contactId}
-                      contactName={selected.name}
-                      defaultKind="reminder"
-                      onCreated={() => toast.success("Reminder set.")}
-                      trigger={
-                        <Button
-                          variant="ghost" size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-                          aria-label="Set a reminder about this contact"
-                        >
-                          <Bell className="h-4 w-4" />
-                        </Button>
-                      }
-                    />
-                  )}
-                  {/* #4 delete-conversation — trash sits where GHL users expect it, in the
-                      thread header (§36). Soft-archive via the RPC; destructive/red confirm,
-                      NEVER gold (§11 gold is only the act/approve). */}
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="ghost" size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-                        aria-label="Delete conversation"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This removes the conversation from your inbox. It stays in your Archive, where you can restore it anytime.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction
-                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                          onClick={async () => {
-                            const ok = await deleteConversation(selected.dbThread.id);
-                            if (ok) setSelectedKey(null);
-                          }}
-                        >
-                          Delete
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </div>
-                {selected.hasDraft && <StatePill state="building">Draft ready</StatePill>}
-                <Button
-                  variant="ghost" size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] xl:hidden"
-                  onClick={() => setContactDrawerOpen(true)}
-                  aria-label="Show contact details"
-                >
-                  <PanelRight className="h-4 w-4" />
-                </Button>
-                {!railOpen && (
-                  <Button
-                    variant="ghost" size="icon"
-                    className="hidden h-7 w-7 text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] xl:inline-flex"
-                    onClick={() => setRailOpen(true)} aria-label="Show contact panel"
-                  >
-                    <PanelRight className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-
-              {/* Messages (chronological) */}
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
-                {selected.messages.map((m) =>
-                  reduce ? (
-                    <MessageBubble
-                      key={m.id}
-                      m={m}
-                      onApprove={approveDraft}
-                      onEdit={editDraft}
-                      onCancelScheduled={cancelScheduled}
-                      approving={approvingId === m.id}
-                    />
-                  ) : (
-                    <motion.div
-                      key={m.id}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <MessageBubble
-                        m={m}
-                        onApprove={approveDraft}
-                        onEdit={editDraft}
-                        onCancelScheduled={cancelScheduled}
-                        approving={approvingId === m.id}
-                      />
-                    </motion.div>
-                  ),
-                )}
-                <div ref={bottomRef} />
-              </div>
-
-              {/* Composer */}
-              <div className="mt-auto border-t border-border/60 bg-muted/30 px-3 py-2">
-                {noChannel ? (
-                  <div className="flex flex-col gap-3 rounded-lg border border-border bg-card px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="flex items-start gap-2 text-xs text-muted-foreground">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />
-                      <span>Connect a channel and Paige sends from here — inbound messages start landing in this inbox once a channel is live.</span>
-                    </p>
-                    {/* Secondary connect CTA → outline, so it never becomes a SECOND gold
-                        "Connect a channel" co-visible with the rail-top gold one (§11 gold
-                        budget; mirrors the empty-state precedent where secondary=outline). */}
-                    <Button variant="outline" size="sm" asChild className="shrink-0 self-start sm:self-auto">
-                      <Link to="/admin/integrations/email">
-                        <PlugZap className="mr-1.5 h-4 w-4" /> Connect a channel
-                      </Link>
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {editingDraftId && (
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        <Pencil className="h-3 w-3" /> Editing Paige's draft — Send replaces and delivers it.
-                        <button type="button" className="ml-1 underline hover:text-foreground"
-                          onClick={resetComposer}>Cancel</button>
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Select
-                        value={composeConnectorId}
-                        onValueChange={(id) => {
-                          const connector = activeConnectors.find((c) => c.id === id);
-                          setComposeConnectorId(id);
-                          setComposeChannel(connector?.channel_type ?? "");
-                        }}
-                      >
-                        <SelectTrigger className="h-9 min-w-[220px]">
-                          <SelectValue placeholder="Sending address" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {activeConnectors.map((c) => {
-                            const Icon = CHANNEL_ICON[c.channel_type];
-                            return (
-                              <SelectItem key={c.id} value={c.id}>
-                                <span className="flex items-center gap-2">
-                                  <Icon className="h-3.5 w-3.5" />
-                                  <span>
-                                    {c.display_name?.trim() || CHANNEL_LABEL[c.channel_type]}
-                                    {c.from_address ? <span className="ml-1.5 text-xs text-muted-foreground">· {c.from_address}</span> : null}
-                                  </span>
-                                </span>
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                      {composeChannel === "email" && (
-                        <Input value={subject} onChange={(e) => setSubject(e.target.value)}
-                          placeholder="Subject" className="h-9 flex-1 min-w-[180px]" />
-                      )}
-                    </div>
-
-                    {/* Attachment chip row */}
-                    {attachments.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {attachments.map((a) => (
-                          <AttachmentChip key={a.url} a={a} onRemove={() => void removeAttachment(a)} />
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Drop zone wrapping the textarea */}
-                    <div
-                      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                      onDragLeave={() => setDragOver(false)}
-                      onDrop={(e) => {
-                        e.preventDefault(); setDragOver(false);
-                        if (e.dataTransfer.files?.length) void uploadFiles(e.dataTransfer.files);
-                      }}
-                      className={cn(
-                        "rounded-lg transition-shadow",
-                        dragOver && "ring-2 ring-[hsl(var(--ring))]",
-                      )}
-                    >
-                      <Textarea
-                        value={body}
-                        onChange={(e) => handleBodyChange(e.target.value)}
-                        placeholder={`Reply to ${selected.name}…  (drop a file to attach)`}
-                        rows={2}
-                        className="min-h-[4.5rem] resize-none focus:min-h-[6rem]"
-                      />
-                    </div>
-
-                    {/* Toolbar: attach · dictate · Draft with Paige · template · signature · schedule.
-                        Affordances read left→right as [attach][mic][draft] (matches ComposeThreadDialog,
-                        §6), with Send the terminal gold act in its own row below (§11). */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        ref={fileInputRef} type="file" multiple hidden
-                        onChange={(e) => { if (e.target.files?.length) void uploadFiles(e.target.files); e.target.value = ""; }}
-                      />
-
-                      {/* Attach — leads the cluster; neutral/indigo utility (gold is Send, §11). */}
-                      <Button variant="outline" size="sm" className="h-8"
-                        onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-                        {uploading
-                          ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                          : <Paperclip className="mr-1.5 h-3.5 w-3.5" />}
-                        Attach
-                      </Button>
-
-                      {/* Hold-to-dictate — neutral/indigo utility, matches "Draft with Paige"
-                          (NOT gold — gold stays on Send/Approve, §11). Dictated text feeds
-                          THROUGH handleBodyChange so snippet expansion still runs. */}
-                      <DictationMicButton
-                        onText={(seg) => handleBodyChange(appendDictation(bodyRef.current, seg))}
-                        onError={(msg) => toast.error(msg)}
-                        disabled={sending || drafting || uploading}
-                        variant="outline"
-                        size="sm"
-                        label="Dictate"
-                        activeLabel="Listening…"
-                        className="h-8 border-[hsl(var(--primary)/0.4)]"
-                      />
-
-                      {/* Draft with Paige — the headline assist. Email-only for Phase-1 (§13).
-                          Out-ranks the utility cluster with an indigo-tinted border (NOT gold —
-                          gold stays on Send/Approve, §11); one-click primary + optional guide popover. */}
-                      {composeChannel === "email" && (
-                        <div className="inline-flex items-center">
-                          <Button
-                            variant="outline" size="sm"
-                            className="h-8 min-w-[8.5rem] justify-center rounded-r-none border-r-0 border-[hsl(var(--primary)/0.4)]"
-                            onClick={() => void draftWithPaige()}
-                            disabled={drafting || sending || uploading || !selected.toAddress}
-                            aria-busy={drafting}
-                            title={!selected.toAddress ? "Add a recipient to draft a reply" : undefined}
-                          >
-                            {drafting
-                              ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                              : <Sparkles className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />}
-                            {drafting
-                              ? (draftReadingDoc ? "Reading attachment…" : "Paige is drafting…")
-                              : "Draft with Paige"}
-                          </Button>
-                          <Popover open={draftGuideOpen} onOpenChange={setDraftGuideOpen}>
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="outline" size="sm"
-                                className="h-8 rounded-l-none border-[hsl(var(--primary)/0.4)] px-2"
-                                aria-label="Guide Paige's draft" disabled={drafting}
-                              >
-                                <ChevronDown className="h-3.5 w-3.5" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent align="start" className="w-72 space-y-2 p-3">
-                              <label htmlFor="draft-guide" className="block text-[11px] font-medium text-muted-foreground">
-                                Optional — tell Paige the angle &amp; tone
-                              </label>
-                              <Textarea
-                                id="draft-guide" rows={2} value={draftGuide}
-                                onChange={(e) => setDraftGuide(e.target.value)}
-                                placeholder="e.g. Confirm the Thursday call and ask for their intake form"
-                                className="resize-none text-sm"
-                              />
-                              <Select value={draftTone} onValueChange={(v) => setDraftTone(v as typeof draftTone)}>
-                                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="professional">Professional</SelectItem>
-                                  <SelectItem value="friendly">Friendly</SelectItem>
-                                  <SelectItem value="warm">Warm</SelectItem>
-                                  <SelectItem value="direct">Direct</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Button variant="outline" size="sm" className="h-8 w-full"
-                                onClick={() => void draftWithPaige()} disabled={drafting}>
-                                <Sparkles className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" /> Draft it
-                              </Button>
-                            </PopoverContent>
-                          </Popover>
-                        </div>
-                      )}
-
-                      {/* Saved email templates (ported §31) — email-only, non-gold utility (§11). */}
-                      {composeChannel === "email" && templates.length > 0 && (
-                        <Select onValueChange={applyTemplate}>
-                          <SelectTrigger className="h-8 w-[190px]">
-                            <SelectValue placeholder="Insert template…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {templates.map((t) => (
-                              <SelectItem key={t.template_key} value={t.template_key}>
-                                <span className="mr-1.5 text-xs text-muted-foreground">[{t.category}]</span>{t.subject}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-
-                      {hasSignature && (
-                        <Button
-                          variant="outline" size="sm" className="h-8"
-                          aria-pressed={appendSignature}
-                          data-state={appendSignature ? "on" : "off"}
-                          onClick={() => setAppendSignature((s) => !s)}
-                        >
-                          <Pencil className="mr-1.5 h-3.5 w-3.5" />
-                          Signature {appendSignature ? "on" : "off"}
-                        </Button>
-                      )}
-
-                      <Popover open={scheduleOpen} onOpenChange={setScheduleOpen}>
-                        <PopoverTrigger asChild>
-                          <Button variant="outline" size="sm" className="h-8">
-                            <Clock className="mr-1.5 h-3.5 w-3.5" />
-                            {scheduledFor ? "Scheduled" : "Schedule"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="start" className="w-64 space-y-1 p-2">
-                          <button type="button"
-                            className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
-                            onClick={() => { setScheduledFor(new Date(Date.now() + 3600_000).toISOString()); setScheduleOpen(false); }}>
-                            In 1 hour
-                          </button>
-                          <button type="button"
-                            className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
-                            onClick={() => {
-                              const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0);
-                              setScheduledFor(d.toISOString()); setScheduleOpen(false);
-                            }}>
-                            Tomorrow, 9:00 AM
-                          </button>
-                          <div className="px-2 pt-1">
-                            <label className="text-[11px] text-muted-foreground">Custom</label>
-                            <Input
-                              type="datetime-local"
-                              className="mt-1 h-9"
-                              min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
-                              onChange={(e) => {
-                                if (!e.target.value) return;
-                                const d = new Date(e.target.value);
-                                if (d.getTime() > Date.now()) { setScheduledFor(d.toISOString()); setScheduleOpen(false); }
-                              }}
-                            />
-                          </div>
-                        </PopoverContent>
-                      </Popover>
-
-                      {scheduledFor && (
-                        <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[11px] text-foreground">
-                          <Clock className="h-3 w-3 text-muted-foreground" />
-                          {new Date(scheduledFor).toLocaleString()}
-                          <button type="button" onClick={() => setScheduledFor(null)}
-                            className="rounded p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
-                            aria-label="Clear schedule">
-                            <X className="h-3 w-3" />
-                          </button>
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Compliance flags from Paige's draft — tokened, not raw amber (§11). */}
-                    {draftFlags.length > 0 && (
-                      <div className="flex items-start gap-1.5 rounded-md border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] px-2.5 py-1.5 text-[11px] text-[hsl(var(--warning))]">
-                        <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-                        <span><span className="font-medium">Check before sending:</span> {draftFlags.join(" · ")}</span>
-                      </div>
-                    )}
-
-                    {/* Send row */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-muted-foreground">
-                        {selected.toAddress ? `To ${selected.toAddress}` : "No address on this thread"}
-                      </span>
-                      <Button
-                        variant="gold" size="sm" onClick={send}
-                        disabled={sending || drafting || uploading || !composeConnectorId || !body.trim() || !selected.toAddress}
-                        className="h-9"
-                      >
-                        {sending
-                          ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                          : scheduledFor
-                            ? <Clock className="mr-1.5 h-4 w-4" />
-                            : <Send className="mr-1.5 h-4 w-4" />}
-                        {scheduledFor ? "Schedule" : editingDraftId ? "Send edited" : "Send"}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </SectionCard>
-
-        {/* ── RIGHT: contact rail ───────────────────────────────────────────────── */}
-        {selected && railOpen && (
-          <div className="hidden min-h-0 overflow-hidden xl:flex">
-            <ContactCardRail
-              contact={selectedThread?.clients ?? null}
-              channel={selected.channel}
-              toAddress={selected.toAddress}
-              recentMessages={selected.messages}
-              labels={selectedThread?.labels ?? []}
-              suppressions={suppressions}
-              userId={userId}
-              tenantId={tenantIdRef.current}
-              onClose={() => setRailOpen(false)}
-              onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
-            />
-          </div>
-        )}
-      </div>
-      )}
-
-      {selected && (
-        <Sheet open={contactDrawerOpen} onOpenChange={setContactDrawerOpen}>
-          <SheetContent side="right" className="flex h-full w-[min(26rem,100vw)] max-w-none flex-col gap-0 p-0">
-            <SheetTitle className="sr-only">Contact details for {selected.name}</SheetTitle>
-            <ContactCardRail
-              contact={selectedThread?.clients ?? null}
-              channel={selected.channel}
-              toAddress={selected.toAddress}
-              recentMessages={selected.messages}
-              labels={selectedThread?.labels ?? []}
-              suppressions={suppressions}
-              userId={userId}
-              tenantId={tenantIdRef.current}
-              onClose={() => setContactDrawerOpen(false)}
-              onChanged={() => { void load(); void loadThreads(); void refreshSuppressions(); }}
-            />
-          </SheetContent>
-        </Sheet>
-      )}
+        }
+        showFirstRun={isFirstRun}
+        threadList={<ConversationsThreadList {...listModel} />}
+        activeThread={activeThread}
+        contactPanel={contactPanelDesktop ? <ConversationsContactPanel {...contactPanelDesktop} /> : undefined}
+        mobileContactPanel={contactPanelMobile ? <ConversationsContactPanel {...contactPanelMobile} /> : undefined}
+        hasSelection={!!selected}
+        railOpen={railOpen}
+        mobileSheetOpen={contactDrawerOpen}
+        onMobileSheetOpenChange={setContactDrawerOpen}
+        mobileSheetTitle={selected?.name}
+      />
 
       {/* §43 — compose a NEW outbound thread (reuses the send-message seam + canonical
           thread key so it merges cleanly with any later inbound reply). */}

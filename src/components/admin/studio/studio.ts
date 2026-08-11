@@ -2810,7 +2810,7 @@ export async function loadDocument(tenantId: string, contentId: string): Promise
     const parsed = JSON.parse(data.body) as { docType?: string; title?: string; blocks?: unknown };
     const blocks = Array.isArray(parsed.blocks) ? (parsed.blocks as StudioDocBlock[]) : [];
     if (!blocks.length) return null;
-    const docType = (["guide", "one_pager", "ebook", "checklist", "worksheet"].includes(String(parsed.docType))
+    const docType = (["guide", "one_pager", "ebook", "checklist", "worksheet", "proposal", "offer_letter", "sales_offer"].includes(String(parsed.docType))
       ? parsed.docType : "guide") as StudioDocType;
     return { id: data.id, title: data.title || parsed.title || "Untitled document", docType, blocks };
   } catch {

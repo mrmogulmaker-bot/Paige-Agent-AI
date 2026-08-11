@@ -54,11 +54,6 @@ serve(async (req) => {
     
     console.log('Analyzing credit mix:', creditMix);
 
-    const LOVABLE_API_KEY = "unused";
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY not configured");
-    }
-
     // Build context about user's current credit profile
     const hasAccounts = Object.entries(creditMix).filter(([_, has]) => has);
     const missingAccounts = Object.entries(creditMix).filter(([_, has]) => !has);
@@ -78,11 +73,10 @@ Provide 3-5 prioritized recommendations that:
 
     const userPrompt = `Based on my current credit profile, what are my next best steps to build fundable personal credit? Focus on which accounts I should apply for and how to maximize my approval odds.`;
 
-    // Use Lovable AI with tool calling for structured output
+    // Use the model-router AI with tool calling for structured output
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -156,7 +150,7 @@ Provide 3-5 prioritized recommendations that:
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Lovable AI error:", response.status, errorText);
+      console.error("AI provider error:", response.status, errorText);
       throw new Error(`AI request failed: ${response.status}`);
     }
 

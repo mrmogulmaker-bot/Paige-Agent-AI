@@ -16,7 +16,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = "unused"!;
 
 const SYSTEM_PROMPT = `You are Paige's Problem Reverse-Engineer — a specialist sub-agent that decomposes a client's stated problem into root causes and concrete next actions.
 
@@ -111,7 +110,6 @@ Deno.serve(async (req) => {
     const aiResp = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

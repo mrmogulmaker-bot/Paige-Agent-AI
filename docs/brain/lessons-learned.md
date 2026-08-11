@@ -140,6 +140,60 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   tenant-scoped change runs the **six-tier matrix** (God/Agency/Standalone/Sub-account/Client/
   Anonymous) pre- and post-deploy, and post-deploy-walks a tier you did **not** build on.
 
+## 11. "Migration-only PR can't fail `verify`, so it's flaky" — a misdiagnosed real failure (§13, PR #437)
+
+- **Symptom:** A migration-only PR's `verify` check went `failure` with an **empty** output
+  summary. Assuming a migration touches no frontend, the failure was called a "phantom flake" and
+  re-triggered with an empty commit — twice — instead of read. The empty check-run `output` (a
+  GitHub App quirk) reinforced the wrong "nothing really failed" read.
+- **Root cause:** `verify` is ONE job that bundles the **migration** regression-lint (`npm run
+  ci:regression`, which scans `supabase/migrations/**`) alongside the frontend steps. A migration
+  PR absolutely can fail it. Here the real cause was line-oriented: `scripts/ci/regression-lint.mjs`
+  flags any ADDED line with `USING (false)`/`WITH CHECK (false)` that lacks `restrictive` **on that
+  same line** — the policy WAS `AS RESTRICTIVE` but spread across 3 lines, so the modifier sat on
+  the line above the deny clause and the lint couldn't see it. Fix: collapse so `AS RESTRICTIVE` and
+  the `USING/WITH CHECK (false)` share one line (semantically identical, lint-visible).
+- **Rule:** **Never label a CI failure "flaky" without reading the failing STEP's logs.** The
+  check-run `output` is often empty; the truth is in `get_job_logs` — grep the full log for
+  `##[error]` and the step group above it. A red check is real until its own logs prove otherwise;
+  an empty summary is not proof. And a multi-line `CREATE POLICY … AS RESTRICTIVE … USING (false)`
+  trips the line-oriented regression-lint — keep `AS RESTRICTIVE` on the deny-clause line.
+
+## 12. Availability-by-accident — a tier-universal feature hidden by an empty-book gate (§56, task #99)
+
+- **Symptom:** The tenant Systems Check showed on Mogul Maker Academy but not on several fresh
+  sub-accounts. Owner reported it as a tier bug ("Paige thinks it's a solo account still").
+- **Root cause:** NOT tier classification. `<SystemsCheckTile scope="tenant" />` was mounted INSIDE
+  the non-empty branch of `PracticeOverview.tsx`'s `{emptyBook ? … : …}` conditional (`emptyBook` =
+  0 clients + 0 attention + 0 approvals), so every freshly-provisioned tenant — solo OR sub-account —
+  rendered only the "blank canvas" and never the check. Academy has clients so it showed. A
+  capability meant for *every* tenant was hidden by an incidental empty-state gate; the agency's own
+  default landing (`/agency`→`AgencyBoard`) never carried the tile at all.
+- **Rule (§56 — new doctrine):** Before building/placing anything, check `docs/doctrine/tier-matrix.md`:
+  (1) name which account type(s) it's for; (2) decide per-tier whether it belongs. A feature meant
+  for "every tier" must render on every tier **regardless of empty-book/branch/route accident** — an
+  empty account needs a setup check *most*. Fix mounted the tile ABOVE the empty/non-empty split
+  (`PracticeOverview`, solo + sub-account) and added it to `AgencyBoard` (agency), matching the
+  operator tile on `OperatorCommandCenter` (God).
+
+## 13. `activeTenantId` on an OPERATOR surface can be a CHILD — tenant-scoped tiles leak (§9/§51, Codex P1 on PR #434)
+
+- **Symptom:** the own-business Systems Check tile added to `AgencyBoard` (`/agency`) could show a
+  *sub-account's* check as the agency's own, and let the agency approve the child's remediation from
+  the agency dashboard.
+- **Root cause:** on `/agency` the operator may still be scoped INTO a child (e.g. Back after
+  `agency_enter_subaccount`); `AgencyLayout` preserves eligibility, so `useTenantContext().activeTenantId`
+  is the CHILD id. A `scope="tenant"` tile trusts that ambient id → cross-tenant surface + action. The
+  §39 adversarial verifier and the §5 compliance officer both MISSED it (they reasoned "activeTenantId
+  here is the agency parent" from the happy path); Codex's independent read caught it — a live example
+  of §39's "peer-gate is one layer, not infallible."
+- **Rule:** On any OPERATOR/agency surface, never trust ambient `activeTenantId` for a tenant-scoped
+  tile/action — it can be a child. Guard on the §51 invariant (own top-level tenant:
+  `parent_tenant_id === null` AND `account_type ∈ {agency,enterprise}`) or resolve the intended tenant
+  explicitly. Add "does this surface ever hold a DIFFERENT tenant in context than the one this
+  tile/action is FOR?" to the §51 per-tier check. Third independent reviewer (Codex/CI) is worth
+  keeping — it catches what the crew's own passes rationalize away.
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same

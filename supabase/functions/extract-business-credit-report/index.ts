@@ -160,10 +160,7 @@ serve(async (req) => {
     if (insertErr) throw new Error(`Insert failed: ${insertErr.message}`);
     const reportId = inserted.id as string;
 
-    // 3) Run AI extraction via Lovable AI Gateway
-    const lovableApiKey = "unused";
-    if (!lovableApiKey) throw new Error("LOVABLE_API_KEY not configured");
-
+    // 3) Run AI extraction via the direct-Anthropic gateway shim
     // Re-encode bytes to base64 for the Gateway image_url payload
     let binStr = "";
     const chunk = 0x8000;
@@ -179,7 +176,6 @@ serve(async (req) => {
     const aiRes = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

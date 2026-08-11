@@ -35,6 +35,7 @@ import { ExportClientsButton } from "@/components/dashboard/admin/ExportClientsB
 import { CommandCenterViewToggle } from "@/components/dashboard/admin/CommandCenterViewToggle";
 import { DraftsAwaitingPanel } from "@/components/dashboard/DraftsAwaitingPanel";
 import { PaigeDepartmentStatus } from "@/components/paige/PaigeDepartmentStatus";
+import { SystemsCheckTile } from "@/components/systems-check/SystemsCheckTile";
 import { OwnerWelcome, type OnboardingState } from "@/components/onboarding/OwnerWelcome";
 import { usePracticeDashboard, type PracticeMetrics } from "@/hooks/usePracticeDashboard";
 import { useCommsSummary } from "@/hooks/useCommsSummary";
@@ -254,6 +255,14 @@ export function PracticeOverview({ children }: { children?: ReactNode }) {
           onClose={() => setWelcomeHidden(true)}
         />
       )}
+
+      {/* Systems Check (Wave S3 L3) — renders for EVERY tenant tier (God-tenant-context,
+          solo, sub-account, agency-as-tenant) regardless of book state, ABOVE the
+          empty/non-empty split: a fresh account with no clients needs the "is your
+          business set up to run?" check the MOST (§51 tier-parity, §36 proactive
+          surfacing). Paige surfaces the single highest-severity gap with her drafted fix
+          + one-click approve (§9 tenant-scoped; §11 gold budget owned by the tile). */}
+      <SystemsCheckTile scope="tenant" />
 
       {emptyBook ? (
         <SectionCard>

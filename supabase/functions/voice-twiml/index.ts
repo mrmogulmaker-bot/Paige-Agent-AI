@@ -17,9 +17,17 @@
 //        - inbound tenant  = the OWNER of the dialed To number (tenant_phone_numbers), so a
 //          caller is only ever bridged to seats of the tenant whose number they dialed. A
 //          caller can NEVER reach another tenant's client.
+//  §53 PHASE 3 — the OPERATOR (God/Super-Admin) scope runs on the platform MASTER account and is
+//      TENANT-LESS. OUTBOUND: a `client:operator.<userId>` caller presents the MASTER caller-id
+//      (operatorVoiceCallerId, env) — never a tenant number — intercepted BEFORE the tenant parse.
+//      INBOUND: a call to the master number (owned by NO tenant) rings the operator seat(s)
+//      (super_admin/platform_admin), never a tenant. Operator call rows write ONLY to
+//      operator_messages/operator_conversations (is_platform_owner()-gated, NO tenant_id) — the two
+//      scopes never mix (§9/§51). No co-pilot fork on the operator scope (that is tenant STT).
 //  §13 Honest degrade — no owned caller-ID / unknown number / no seat available speaks a plain
 //      message and hangs up. Never a dial with a bogus callerId, never a silent 500, never a
-//      fabricated bridge.
+//      fabricated bridge. On the operator scope: no configured operator caller-id → the same honest
+//      spoken degrade (owed secret TWILIO_OPERATOR_CALLER_ID), never a bogus dial.
 //  §18 verify_jwt=false (Twilio can't present a Supabase JWT). Reuses the ONE Twilio seam's
 //      canonical validateTwilioSignature (no fourth inline copy) + the ONE phone normalizer.
 //  §32 The request-shaping logic (direction, identity parse, TwiML) is PURE + unit-smoked
@@ -27,16 +35,20 @@
 //  §3  Every spoken <Say> is plain and jargon-free (copy lives in ./twiml.ts).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { validateTwilioSignature } from "../_shared/twilio.ts";
+import { operatorVoiceCallerId } from "../_shared/operator-twilio.ts";
 import { normalizePhone } from "../_shared/pre-send-pipeline.ts";
 import { mintStreamToken } from "../_shared/voice-stream-token.ts";
 import {
   buildIdentity,
   buildInboundTwiml,
+  buildOperatorIdentity,
   buildOutboundTwiml,
   buildSayHangupTwiml,
   buildStreamStart,
   classifyDirection,
+  isOperatorClientCaller,
   parseClientCaller,
+  parseOperatorClientCaller,
   sanitizePhoneFilter,
   voiceThreadKey,
   CALL_UNAVAILABLE_MESSAGE,
@@ -313,6 +325,170 @@ async function writeVoiceMessageRow(
   }
 }
 
+// ── OPERATOR (God/Super-Admin) scope — Phase 3 (§9/§53) ──────────────────────────────────────
+// An operator call runs on the platform MASTER account and is TENANT-LESS. Its rows live ONLY in
+// operator_messages / operator_conversations (is_platform_owner()-gated, NO tenant_id) — NEVER in
+// the tenant messages/threads store. An operator call NEVER resolves or touches a tenant (§9).
+
+/**
+ * §53 — the browser-seat identities to ring for an INBOUND operator call: the platform operators
+ * (super_admin OR platform_admin), each as `operator.<userId>` (the Phase-3 operator identity
+ * format). Reads user_roles (user_id, role); scoped to the operator tiers ONLY, so a tenant member
+ * is never rung. Empty array when no operator seat exists (→ honest voicemail-ish message). This is
+ * the operator analog of resolveTenantSeatIdentities — it never returns a tenant identity.
+ */
+async function resolveOperatorSeatIdentities(admin: Admin): Promise<string[]> {
+  const { data, error } = await admin
+    .from("user_roles")
+    .select("user_id, role")
+    .in("role", ["super_admin", "platform_admin"]);
+  if (error) {
+    console.error("[voice-twiml] operator seat lookup failed:", error.code, error.message);
+    return [];
+  }
+  const ids = (data ?? [])
+    .map((r: { user_id?: string | null }) => r.user_id)
+    .filter((u: string | null | undefined): u is string => typeof u === "string" && u.length > 0)
+    .map((userId: string) => buildOperatorIdentity(userId));
+  // De-dupe defensively (a user could hold both super_admin and platform_admin rows).
+  return [...new Set(ids)];
+}
+
+/**
+ * §49/§9/§53 — write the ONE operator_messages row that makes this call a first-class operator
+ * Conversations entry (channel_type='voice'), and roll its operator_conversations thread. The
+ * operator store has NO tenant_id and NO set_message_tenant() trigger — these are service-role
+ * writes gated upstream by the is_platform_owner() RLS posture of the tables.
+ *
+ * THREAD MODEL (§49 — a call is an inline row in the SAME thread, never a separate channel): the
+ * thread is keyed on the counterparty phone. If an operator thread already exists for this phone
+ * (ANY channel — e.g. an SMS thread), the call joins THAT thread (a channel_type='voice' message
+ * row); only when NO thread exists does a call-only thread open with channel='voice'. This mirrors
+ * the Phase-1 migration's stated intent ("an SMS phone thread keeps channel='sms' and simply gains
+ * channel_type='voice' rows; a call-only thread may open with channel='voice'"). The unique key is
+ * (channel, counterparty_phone), so we SELECT-then-INSERT rather than upsert (upsert can't express
+ * "match any channel for this phone").
+ *
+ * IDEMPOTENCY: provider_message_id = the Twilio Call SID (operator_messages_provider_msg_uq) — a
+ * webhook retry re-inserting the same SID hits 23505 and is a no-op. §32: NEVER breaks/delays the
+ * <Dial> bridge — every failure path logs loudly and returns; the caller bridges regardless.
+ */
+async function writeOperatorVoiceMessageRow(
+  admin: Admin,
+  opts: {
+    callSid: string;
+    direction: "outbound" | "inbound";
+    counterpartyPhone: string;
+    ownNumber: string;
+  },
+): Promise<void> {
+  const { callSid, direction, counterpartyPhone: rawCounterparty, ownNumber } = opts;
+  // Normalize to E.164 BEFORE the thread SELECT/INSERT — both operator SMS paths store
+  // counterparty_phone E.164-normalized (paige-operator-sms-{send,inbound}), so a call whose
+  // Twilio To/From isn't normalized (e.g. an outbound browser-dialed '4705551234') must be
+  // normalized here or it opens a DUPLICATE voice-only thread instead of joining the SMS thread (§49).
+  const counterpartyPhone = normalizePhone(rawCounterparty);
+  try {
+    if (!callSid || !counterpartyPhone) {
+      console.warn("[voice-twiml] operator voice row skipped — missing key field", {
+        hasCall: !!callSid, hasCounterparty: !!counterpartyPhone,
+      });
+      return;
+    }
+
+    // Find an existing operator thread for this phone (ANY channel) so a call joins the SAME thread
+    // as this counterparty's SMS (§49). Only open a new channel='voice' thread when none exists.
+    const { data: existing, error: findErr } = await admin
+      .from("operator_conversations")
+      .select("id")
+      .eq("counterparty_phone", counterpartyPhone)
+      .order("last_message_at", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    if (findErr) {
+      console.error("[voice-twiml] operator thread lookup failed — call bridges, row NOT written:", findErr.code, findErr.message);
+      return;
+    }
+
+    let conversationId: string | null = (existing?.id as string | undefined) ?? null;
+    if (!conversationId) {
+      const { data: created, error: insErr } = await admin
+        .from("operator_conversations")
+        .insert({ channel: "voice", counterparty_phone: counterpartyPhone })
+        .select("id")
+        .single();
+      if (insErr) {
+        if (insErr.code === "23505") {
+          // A concurrent insert created the thread — re-select it (any channel) and reuse.
+          const { data: raced } = await admin
+            .from("operator_conversations")
+            .select("id")
+            .eq("counterparty_phone", counterpartyPhone)
+            .order("last_message_at", { ascending: false, nullsFirst: false })
+            .limit(1)
+            .maybeSingle();
+          conversationId = (raced?.id as string | undefined) ?? null;
+        }
+        if (!conversationId) {
+          console.error("[voice-twiml] operator thread insert failed — call bridges, row NOT written:", insErr.code, insErr.message);
+          return;
+        }
+      } else {
+        conversationId = created.id as string;
+      }
+    }
+
+    // from/to reflect the two numbers by direction; the operator's own master number is ownNumber.
+    const fromAddr = direction === "outbound" ? ownNumber : counterpartyPhone;
+    const toAddr = direction === "outbound" ? counterpartyPhone : ownNumber;
+    const body = direction === "outbound"
+      ? `Outbound call to ${counterpartyPhone}`
+      : `Inbound call from ${counterpartyPhone}`;
+
+    const { error: msgErr } = await admin.from("operator_messages").insert({
+      conversation_id: conversationId,
+      channel_type: "voice",
+      direction,
+      body,
+      // §13 honest in-flight value: 'queued' (a valid operator_messages.status). The CallStatus
+      // completion webhook advances it to delivered/failed + stamps call_duration_seconds.
+      status: "queued",
+      provider_message_id: callSid,
+      from_phone: fromAddr || null,
+      to_phone: toAddr || null,
+      sent_at: new Date().toISOString(),
+    });
+    if (msgErr) {
+      if (msgErr.code === "23505") {
+        console.log("[voice-twiml] operator voice row already present (webhook retry) — dedup", { callSid });
+        return;
+      }
+      console.error("[voice-twiml] operator voice row insert failed — call still bridges:", msgErr.code, msgErr.message);
+      return;
+    }
+
+    // Roll the thread forward. An inbound call bumps unread (mirrors paige-operator-sms-inbound).
+    const update: Record<string, unknown> = {
+      last_message_at: new Date().toISOString(),
+      last_direction: direction,
+      last_preview: body.slice(0, 140),
+    };
+    if (direction === "inbound") {
+      const { data: convo } = await admin
+        .from("operator_conversations")
+        .select("unread_count")
+        .eq("id", conversationId)
+        .maybeSingle();
+      update.unread_count = ((convo?.unread_count as number | undefined) ?? 0) + 1;
+    }
+    await admin.from("operator_conversations").update(update).eq("id", conversationId);
+
+    console.log("[voice-twiml] operator voice row written", { direction });
+  } catch (e) {
+    console.error("[voice-twiml] writeOperatorVoiceMessageRow threw — call still bridges:", (e as Error)?.message);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return new Response("method_not_allowed", { status: 405 });
@@ -361,6 +537,40 @@ Deno.serve(async (req) => {
 
   try {
     if (direction === "outbound") {
+      // ── OPERATOR outbound (§9/§53, Phase 3) — intercept the operator sentinel BEFORE
+      //    parseClientCaller (which would mis-parse `operator.<userId>` into a tenantId="operator").
+      //    Present the platform MASTER caller-id; write the operator voice row; NO tenant lookup and
+      //    NO co-pilot fork (that is tenant STT, §9). "operator" is not a UUID, so no tenant collides. ──
+      if (isOperatorClientCaller(from)) {
+        const operatorUserId = parseOperatorClientCaller(from);
+        if (!operatorUserId) {
+          console.error("[voice-twiml] operator outbound: unparseable operator identity", { from });
+          return twiml(buildSayHangupTwiml(OUTBOUND_NO_NUMBER_MESSAGE));
+        }
+        if (!to) {
+          console.error("[voice-twiml] operator outbound: missing To (dialed number)");
+          return twiml(buildSayHangupTwiml(OUTBOUND_NO_NUMBER_MESSAGE));
+        }
+        // The operator's own E.164 number on the MASTER account (+1 470 …). Resolved from env, NOT
+        // from any tenant_phone_numbers row (§9 — the operator has no tenant number).
+        const opCallerId = operatorVoiceCallerId();
+        if (!opCallerId) {
+          // §13: no operator voice number configured → speak the honest "not set up" message; NEVER
+          // dial with a bogus/placeholder callerId. Owed secret: TWILIO_OPERATOR_CALLER_ID (the
+          // master account's +1 470 number, exposed to the edge runtime).
+          console.warn("[voice-twiml] operator outbound: no operator voice caller-id configured — honest degrade");
+          return twiml(buildSayHangupTwiml(NO_CALLER_ID_MESSAGE));
+        }
+        // §9/§53: operator scope writes ONLY operator_messages/operator_conversations (no tenant_id),
+        // NEVER the tenant messages/threads store. Non-blocking (§32) — the bridge proceeds regardless.
+        await writeOperatorVoiceMessageRow(admin, {
+          callSid, direction: "outbound", counterpartyPhone: to, ownNumber: opCallerId,
+        });
+        console.log("[voice-twiml] operator outbound bridge");
+        // No co-pilot stream on the operator scope (co-pilot is tenant STT, §9). streamXml = "".
+        return twiml(buildOutboundTwiml(opCallerId, to, "", statusCallbackUrl));
+      }
+
       // §9: tenant is the AUTHENTICATED client identity Twilio populated From with.
       const caller = parseClientCaller(from);
       if (!caller) {
@@ -396,6 +606,31 @@ Deno.serve(async (req) => {
     // §9: the tenant is the OWNER of the dialed number — derived from To, never a body.
     const tenantId = await resolveOwningTenant(admin, to);
     if (!tenantId) {
+      // ── OPERATOR inbound (§9/§53, Phase 3) — the null-tenant branch is the operator attach point.
+      //    A number owned by NO tenant is the platform MASTER (+1 470 …) number when it matches the
+      //    operator voice caller-id; route it to the operator seat(s), NEVER to any tenant. If it does
+      //    not match the operator number (or no operator number is configured), fall through to the
+      //    existing honest "unknown number" degrade. This preserves §9/§51: the master number NEVER
+      //    routes to a tenant, and a subaccount/tenant number NEVER reaches this operator branch (it
+      //    resolved a tenantId above and rang that tenant's seats). ──
+      const opNumber = operatorVoiceCallerId();
+      if (opNumber && normalizePhone(to) === normalizePhone(opNumber)) {
+        const opIdentities = await resolveOperatorSeatIdentities(admin);
+        if (opIdentities.length === 0) {
+          // Graceful fallback — no operator seat available: speak the honest "no one available"
+          // message and hang up (mirrors the tenant no-seat path). Never a fabricated bridge (§13).
+          console.warn("[voice-twiml] operator inbound: no operator seat available — voicemail message");
+          return twiml(buildSayHangupTwiml(VOICEMAIL_UNAVAILABLE_MESSAGE));
+        }
+        // §9/§53: operator scope writes ONLY operator_messages (no tenant_id). INBOUND: counterparty
+        // = the external caller (From); the operator's own master number is the dialed To. Non-blocking (§32).
+        await writeOperatorVoiceMessageRow(admin, {
+          callSid, direction: "inbound", counterpartyPhone: from, ownNumber: to,
+        });
+        console.log("[voice-twiml] operator inbound ring", { seats: opIdentities.length });
+        // No co-pilot stream on the operator scope (co-pilot is tenant STT, §9). streamXml = "".
+        return twiml(buildInboundTwiml(opIdentities, "", statusCallbackUrl));
+      }
       console.warn("[voice-twiml] inbound: To number owned by no active tenant — honest degrade", { to });
       return twiml(buildSayHangupTwiml(UNKNOWN_NUMBER_MESSAGE));
     }

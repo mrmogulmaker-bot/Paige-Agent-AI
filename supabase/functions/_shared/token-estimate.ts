@@ -59,6 +59,21 @@ export function shouldCompact(params: {
 }
 
 /**
+ * The tail's "pressure" as a percent of its token budget — a cheap, honest ESTIMATE (§13) the
+ * pre-flight uses to (a) emit a ~80% APPROACHING pre-signal before a fold, and (b) label the
+ * compacting card. It is NOT a percent of a model's exact context window: it is chars/4 tail tokens
+ * over the absolute `tailTokenBudget` this codebase folds at, so it reads "how full is the verbatim
+ * tail we keep before summarizing," never "how full is the model." Clamped to [0,100]; the caller
+ * caps the APPROACHING signal below 100 (100 means it's folding, not approaching). Isolated here as a
+ * pure function so it lives in the ONE estimate home (§18) and is unit/smoke-testable (§32).
+ */
+export function compactionPressurePct(tailTokens: number, tailTokenBudget: number): number {
+  if (!(tailTokenBudget > 0)) return 0;
+  const pct = Math.round((Math.max(0, tailTokens) / tailTokenBudget) * 100);
+  return Math.max(0, Math.min(100, pct));
+}
+
+/**
  * How many of the most-recent tail turns to keep VERBATIM when a fold is triggered — isolated as a
  * pure function so it is unit/smoke-testable without a DB or a model (§32).
  *

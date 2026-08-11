@@ -365,10 +365,15 @@ export default function ContactsAdmin() {
   const stats = useMemo(() => {
     const totalOpenDeals = Object.values(rollup).reduce((a, r) => a + (r.open_deals || 0), 0);
     const totalOpenValue = Object.values(rollup).reduce((a, r) => a + (r.open_value_cents || 0), 0);
-    const customers = clients.filter((c) => c.lifecycle_stage === "client_active").length;
-    const leads = clients.filter((c) => ["new_lead", "qualified", "nurturing", "hot_lead"].includes(c.lifecycle_stage)).length;
+    // KPI tiles count the SAME rows the table shows (`filtered`), not the full `clients`
+    // set — otherwise a scoped view (e.g. "My Queue" narrowing to my assigned rows) shows
+    // tiles like "2 leads" over a listing of 0, which reads as a bug. Tiles now move in
+    // lockstep with the table. (open-deal counts stay rollup-based — a deal aggregate, not
+    // a per-contact-row metric.)
+    const customers = filtered.filter((c) => c.lifecycle_stage === "client_active").length;
+    const leads = filtered.filter((c) => ["new_lead", "qualified", "nurturing", "hot_lead"].includes(c.lifecycle_stage)).length;
     return { totalOpenDeals, totalOpenValue, customers, leads };
-  }, [clients, rollup]);
+  }, [filtered, rollup]);
 
   const assignCoach = async (clientId: string, coachId: string | null) => {
     const { error } = await supabase.from("clients").update({ assigned_coach_user_id: coachId }).eq("id", clientId);
@@ -494,7 +499,7 @@ export default function ContactsAdmin() {
         />
 
         <StatRow cols={4}>
-          <StatTile icon={Users} label="Total contacts" value={clients.length.toString()} />
+          <StatTile icon={Users} label="Total contacts" value={filtered.length.toString()} />
           <StatTile icon={Sparkles} label="Active leads (Lead → SQL)" value={stats.leads.toString()} />
           <StatTile icon={Briefcase} label="Open deals" value={stats.totalOpenDeals.toString()} hint={formatMoney(stats.totalOpenValue)} />
           <StatTile icon={Tag} label="Customers" value={stats.customers.toString()} />

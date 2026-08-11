@@ -1275,11 +1275,20 @@ All colors MUST be HSL.
   }
   .cc-busflow { animation: cc-busflow 1.4s ease-in-out infinite; }
 
+  /* Motion #4: indeterminate compaction bar — a ~1/3 fill sweeps left→right while Paige folds
+     older turns into the rolling summary (#12). Token-tinted, no-oped under reduced motion. */
+  @keyframes cc-indeterminate {
+    0%   { transform: translateX(-120%); }
+    100% { transform: translateX(320%); }
+  }
+  .cc-indeterminate { animation: cc-indeterminate 1.3s ease-in-out infinite; }
+
   @media (prefers-reduced-motion: reduce) {
     .cc-breathe { animation: none; }
     .cc-count-pulse { animation: none; }
     .cc-collapse { transition: none; }
     .cc-busflow { animation: none; top: 50%; }
+    .cc-indeterminate { animation: none; }
   }
 
   /* ── Growth renderer motion (shared by public page + Studio preview) ──

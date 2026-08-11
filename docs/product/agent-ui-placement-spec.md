@@ -56,7 +56,7 @@ Not one pattern. A layered system:
 | **Vibe Studio** | The Studio session IS Paige (§21). No separate rail. The session composer + streaming artifacts + project rail ARE the chat. | §21 explicitly bans a Paige rail inside Studio — Studio's whole UI is her chat. |
 | **Customer Portal** (tenant's clients, mobile-first per BRD) | Floating avatar bottom-right → tap opens full-screen chat (ChatGPT/Claude mobile pattern). | Clients aren't managing a platform; they're talking to their coach's AI. Full-screen is the mobile default. Fallback to Home/Chat/Profile nav pattern if floating doesn't feel right in usability testing. |
 | **Landing / marketing site** | No persistent chat. | §11 primary content leads. A chat widget on a landing hurts conversion. |
-| **Setup / onboarding wizard** | Guided embedded chat — Paige leads the tenant through setup as a conversation (Jarvis Initiative surface). | Onboarding IS the introduction to Paige. She drives it. |
+| **Setup / onboarding wizard** | Guided embedded chat — Paige leads the tenant through setup as a conversation (Systems Check MVP onboarding surface). | Onboarding IS the introduction to Paige. She drives it. |
 | **Every authenticated surface** | ⌘K / Ctrl+K opens Paige from anywhere. Focused input over current surface, dismisses when done. Expands to full session on demand. | Power-user pattern (Superhuman/Linear/Raycast). Auth-gated only — marketing stays clean. |
 
 ---
@@ -185,7 +185,7 @@ Per §20 — the chat is the control surface, not a wrapper around one:
 
 - **This spec does not design the chat UI itself** — that lives in the shared Paige chat component. This spec is about PLACEMENT, not the chat's internal design.
 - **This spec does not define motion / cinematic treatment** — Studio's cinematic layer is defined in §22 doctrine, not here.
-- **This spec does not include the Jarvis Initiative build** — that's a separate feature that USES this placement (embedded chat in setup wizard) but is defined elsewhere.
+- **This spec does not include the Systems Check MVP build** — that's a separate feature that USES this placement (embedded chat in setup wizard) but is defined elsewhere.
 
 ---
 

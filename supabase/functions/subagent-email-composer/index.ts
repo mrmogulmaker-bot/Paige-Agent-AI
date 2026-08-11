@@ -24,7 +24,6 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-const LOVABLE_API_KEY = "unused";
 
 // #176 — Conversations attachments → draft-with-Paige. A coach can stage document(s)
 // into the reply composer and have Paige READ them so the drafted reply can reference
@@ -199,7 +198,7 @@ Deno.serve(async (req) => {
   const invokeModel: ModelInvoker = async (system, userParts) => {
     const res = await gatewayCompat("anthropic", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "google/gemini-2.5-pro",
         messages: [
@@ -289,20 +288,7 @@ Deno.serve(async (req) => {
   let subject = input.subject_hint ?? "";
   let bodyPlain = "";
 
-  if (!LOVABLE_API_KEY) {
-    // Deterministic fallback so the tool still returns a usable draft.
-    subject = subject || `Following up${entityName ? ` — ${entityName}` : ""}`;
-    bodyPlain = [
-      `Hi ${recipientName || "there"},`,
-      "",
-      input.intent,
-      ...(input.key_points ?? []).map((p) => `• ${p}`),
-      "",
-      input.cta || "Let me know a good time to connect.",
-      "",
-      `— ${senderName}${senderTitle ? `\n  ${senderTitle}` : ""}`,
-    ].join("\n");
-  } else {
+  {
     const system = `You are the Email Composer sub-agent for Paige Agent AI.
 Draft ONE email in a "${tone}" tone. Word budget: ${wordBudget} words in the body.
 Hard rules:
@@ -336,7 +322,7 @@ Return STRICT JSON with this shape (no markdown, no code fences):
 
     const aiRes = await gatewayCompat("anthropic", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Lovable-API-Key": LOVABLE_API_KEY },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         response_format: { type: "json_object" },

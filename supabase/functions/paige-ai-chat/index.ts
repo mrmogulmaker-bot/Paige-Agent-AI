@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { embeddingsCompat } from "../_shared/voyage.ts";
 // Wave 4 · 4a.3 — token-aware compaction trigger (§18 one home; smoke-tested per §32).
-import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold } from "../_shared/token-estimate.ts";
+import { estimateTokens, estimateTurnsTokens, shouldCompact, keepCountForFold, compactionPressurePct } from "../_shared/token-estimate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.75.0";
 import { z } from "https://esm.sh/zod@3.22.4";
 // N5 §2 de-hardcode — the client-side prompt assembly (persona block, neutral core,
@@ -22,6 +22,10 @@ import {
 // edge function AND the §2/§3 denylist test import the same text (§32: the assembled
 // voice is scannable). A tenant-authored persona still OVERRIDES it (read first below).
 import { PAIGE_VOICE_BLOCK } from "../_shared/paige-voice.ts";
+// §52 Phase 1 — the SUPER-ADMIN owner runtime-context composer (§18 one home). Reads the operator's
+// paige_owner_memory identity rows + live platform state and renders the operator briefing injected
+// below. NO-OP (returns null) for anyone but a seeded platform operator (the tenant-less God account).
+import { loadOwnerContextBlock } from "../_shared/owner-context.ts";
 // #292 / #343 U1 — the Studio design-agent system-prompt WRAPPER (identity + operating core + the
 // generative-UI choice-card rule), externalized so it lives in one editable home (§9/§12/§18).
 import { buildStudioWhereYouAre, STUDIO_OPERATING_CORE } from "../_shared/design-agent-prompt.ts";
@@ -471,7 +475,6 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableApiKey = "unused"!;
 
     const supabaseClient = createClient(supabaseUrl, supabaseKey, {
       global: { headers: { Authorization: authHeader } }
@@ -610,17 +613,17 @@ JSON:`;
       const [summaryResponse, milestoneResponse, preferenceResponse] = await Promise.all([
         gatewayCompat("anthropic", {
           method: "POST",
-          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: summaryPrompt }] }),
         }),
         gatewayCompat("anthropic", {
           method: "POST",
-          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: milestonePrompt }] }),
         }),
         gatewayCompat("anthropic", {
           method: "POST",
-          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: preferencePrompt }] }),
         }),
       ]);
@@ -749,7 +752,7 @@ JSON:`;
       // Only run the credit-report read-check on PDFs — images/docx can't be credit reports here.
       if (docKind === "pdf" && attachedDocument.base64) {
         try {
-          documentReadCheck = await runDocumentReadCheck(attachedDocument.base64, lovableApiKey);
+          documentReadCheck = await runDocumentReadCheck(attachedDocument.base64);
           isCreditReportPdf = !!(documentReadCheck?.can_read_document
             && documentReadCheck?.document_kind === "credit_report"
             && (documentReadCheck?.first_five_account_names || []).length >= 1);
@@ -812,7 +815,6 @@ JSON:`;
         try {
           extractionProposal = await runGeneralDocumentExtraction(
             attachedDocument,
-            lovableApiKey,
           );
         } catch (e) {
           console.warn("[Paige] general extraction failed:", e);
@@ -3110,6 +3112,34 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       { role: "system", content: "REASONING NARRATION (backstage — shown live in the operator's \"watch Paige work\" panel, never sent as your reply): Whenever you are about to call one or more tools this turn, FIRST write ONE short sentence (max ~16 words) in your own voice saying what you're about to do and why — e.g. \"Let me pull up your team so I can route her to the right coach.\" or \"Checking who's online before I hand this off.\" This is the ONLY time you narrate: on the turn where you actually answer the user (no tool calls), write only your real reply with no narration. Keep it jargon-free — never mention internal tool or table names." },
     ];
 
+    // ── §52 PLATFORM-OPERATOR RUNTIME CONTEXT (Phase 1) ──────────────────────
+    // The God/Super-Admin (and, per the 2026-08-09 role ruling, platform_admin) Paige must open
+    // EVERY operator session ALREADY knowing who the operator is + live platform state — never
+    // asking the founder who he is (the §36 miss this fixes). Detection is SERVER-SIDE and
+    // dual-gated (§51/§588): (a) a TENANT-LESS persona (an operator has no tenant → tenant_id is
+    // null/undefined; personaCtx defaults to null), AND (b) is_platform_operator() — super_admin OR
+    // platform_admin — derived from the VERIFIED JWT's auth.uid() via the user-scoped client, NEVER
+    // the request body. NO-OP for every tenant persona (Phase 1 scope). The block is spliced at index
+    // 2 (after persona[0] + VOICE[1], before the operating core): identity → voice → operator briefing
+    // → task/tools. The SERVICE-ROLE client (`supabase`) does the RLS-free operator reads; the
+    // identity content is owner-memory rows (§10 config-as-data — never hardcoded here). The studio
+    // swap below targets the core by VALUE (never fires for an operator, no studio thread), so the
+    // splice can't desync it. A platform_admin with no seeded rows gets a NO-OP (loadOwnerContextBlock
+    // returns null) — honest, never a fabricated identity (§13); seed their rows to enable their brief.
+    if (personaCtx.tenant_id == null) {
+      try {
+        const { data: isOperator } = await supabaseClient.rpc("is_platform_operator");
+        if (isOperator === true) {
+          const ownerBlock = await loadOwnerContextBlock(supabase, user.id);
+          if (ownerBlock) {
+            aiMessages.splice(2, 0, { role: "system", content: ownerBlock });
+          }
+        }
+      } catch (e) {
+        console.warn("[paige-ai-chat] §52 operator-context injection skipped:", (e as Error)?.message);
+      }
+    }
+
     // ── OWNER MULTI-CHAT PERSISTENCE + RECALL (#94) ──────────────────────────
     // When a thread is active (Your Paige), persist the user turn NOW (survives a
     // model error) and rehydrate the rolling summary so a long thread keeps its
@@ -3124,6 +3154,132 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // guessed manifest index (the manifest is newest-LAST and doesn't re-order on edits).
     let studioSessionId: string | null = null;
     const studioLinked: Array<{ kind: string; id: string; title: string; url: string | null }> = [];
+    // #29 — REGULAR-CHAT deliverables. Outside a Studio session there is no canvas to link to, but a
+    // chat surface (PaigeChat/PaigeAIChat/FloatingChatbot/BrokerPaigeSession) still earns the
+    // Cowork-style "Created a file" handoff card. This collects the artifacts the agent PERSISTED
+    // this turn (document/image) so the stream can name each one for the client to render — the SAME
+    // `paige_artifact` frame the Studio canvas already consumes (§18 one home), just emitted on the
+    // non-Studio path. Mutually exclusive with `studioLinked`: populated ONLY when studioSessionId is
+    // null, so a turn never emits both. `artifactType` distinguishes the card's render/hydrate lane.
+    const chatArtifacts: Array<{ kind: string; id: string; title: string; url: string | null; artifactType: "document" | "image"; tenant_id: string | null }> = [];
+
+    // #12 — pre-flight compaction frames are COLLECTED here (before inference) and FLUSHED as the very
+    // first bytes of the response stream, so the client's compacting card renders before Paige's
+    // answer. Each entry is a fully-formed SSE record. Empty on every turn that doesn't fold — a pure
+    // no-op for short threads and for surfaces that don't persist (client portal / floating widget),
+    // exactly matching the "persisted threads only" scope (§13 — never fake a compaction card).
+    const compactionLeadFrames: string[] = [];
+
+    // Rolling-summary compaction (4a.3), extracted to ONE shared fold (§18) so BOTH the pre-flight
+    // (inline, before inference — streams its lifecycle to the client) and the post-turn fallback
+    // (waitUntil, silent — unchanged behavior) call the SAME summarizer. It folds older turns into the
+    // thread summary when the thread "approaches token limits" OR on a bounded turn cadence — whichever
+    // fires first — keeping the last KEEP verbatim turns and advancing summary_through_seq so the
+    // summarized range and the verbatim tail never overlap. The token trigger (chars/4 ESTIMATE, §13)
+    // makes a thread of long turns compact BEFORE its live context overflows, not only on count cadence.
+    //
+    // `emit` (pre-flight only) is an OPTIONAL progress sink; when absent (the post-turn fallback) the
+    // fold is byte-for-byte the prior silent behavior. Returns a status the pre-flight uses to decide
+    // what it streamed. NEVER dead-ends (§13): any fold error emits {state:"skipped"} and the caller
+    // continues the turn UNCOMPACTED.
+    const foldThreadSummary = async (
+      threadId: string,
+      opts?: { emit?: (payload: Record<string, unknown>) => void },
+    ): Promise<"compacted" | "approaching" | "not_needed" | "skipped"> => {
+      const emit = opts?.emit;
+      // KEEP        — verbatim turns the CADENCE fold retains (unchanged sane batch).
+      // KEEP_FLOOR  — the fewest verbatim turns a TOKEN fold will ever leave, for conversational
+      //               continuity, even if those turns exceed budget (a lone huge recent turn can't
+      //               shove the whole tail into the summary).
+      // MIN_COMPACTION_INTERVAL — belt-and-suspenders (§14): once compacted, don't compact again
+      //               until at least this many NEW turns have been appended, so a pathological heavy
+      //               tail the floor must keep can't re-trip the paid summarizer every turn. It is a
+      //               GLOBAL floor on fire frequency — it can legitimately skip a redundant fold that
+      //               would land within N turns of a prior one (including a cadence hit right after a
+      //               token fold); it does NOT alter the cadence TRIGGER itself, and being < EVERY it
+      //               never blocks two successive cadence fires on a long light thread.
+      // APPROACH_RATIO — the ~80% pre-signal threshold (honest ESTIMATE, not an exact model %).
+      const KEEP = 12, EVERY = 8, TAIL_TOKEN_BUDGET = 6000, KEEP_FLOOR = 5, MIN_COMPACTION_INTERVAL = 4;
+      const APPROACH_RATIO = 0.8;
+      try {
+        const { data: th } = await supabaseClient.from("paige_chat_threads")
+          .select("message_count, summary, summary_through_seq, last_compacted_at").eq("id", threadId).maybeSingle();
+        if (!th || th.message_count <= KEEP) return "not_needed";
+        // The un-summarized verbatim tail (seq past the watermark) is exactly what loads into the
+        // model context, so weigh only that — fetch it via the (thread_id, seq) index and estimate.
+        // created_at rides along ONLY for the min-interval guard below.
+        const { data: rows } = await supabaseClient.from("paige_chat_turns")
+          .select("role,content,seq,created_at").eq("thread_id", threadId).in("role", ["user", "assistant"])
+          .gt("seq", th.summary_through_seq ?? 0).order("seq", { ascending: true });
+        if (!rows?.length) return "not_needed";
+        // MIN-INTERVAL watermark guard (§14): count tail turns appended AFTER the last fold; if fewer
+        // than MIN_COMPACTION_INTERVAL, skip — no repeated paid summarizer calls on back-to-back turns.
+        // A NULL watermark (never compacted) skips the guard so the first fold always proceeds.
+        if (th.last_compacted_at) {
+          const lastAt = th.last_compacted_at as string;
+          const turnsSince = (rows as Array<{ created_at?: string | null }>)
+            .filter((r) => typeof r.created_at === "string" && r.created_at > lastAt).length;
+          if (turnsSince < MIN_COMPACTION_INTERVAL) return "not_needed";
+        }
+        const tailTokens = estimateTurnsTokens(rows as Array<{ role?: string; content?: string }>);
+        const triggeredByToken = tailTokens >= TAIL_TOKEN_BUDGET;
+        if (!shouldCompact({ messageCount: th.message_count, tailTokens, keep: KEEP, every: EVERY, tailTokenBudget: TAIL_TOKEN_BUDGET })) {
+          // #12 ~80% PRE-SIGNAL — approaching the token budget but not folding yet (honest ESTIMATE).
+          // Cheap: it's just an extra frame off numbers already computed. Capped below 100 (100 = folding).
+          if (emit && tailTokens >= TAIL_TOKEN_BUDGET * APPROACH_RATIO) {
+            emit({ state: "approaching", pct: Math.min(99, compactionPressurePct(tailTokens, TAIL_TOKEN_BUDGET)) });
+            return "approaching";
+          }
+          return "not_needed";
+        }
+        // FOLD — stream the lifecycle: start → progress(summarize dispatched / returned / written) → done.
+        emit?.({ state: "start" });
+        emit?.({ state: "progress", pct: 10 });
+        // Decide how many NEWEST turns stay verbatim, then fold the contiguous OLDER prefix. On a
+        // TOKEN-triggered fold we keep only enough turns to drop the tail back under budget×0.5
+        // (hysteresis, so it doesn't immediately re-trip), floored at KEEP_FLOOR; on a CADENCE fold
+        // we keep KEEP (the prior behavior). In every case the no-loss/no-dup invariant holds — `toFold`
+        // is a contiguous prefix of the tail (all seq > watermark), and we advance summary_through_seq
+        // to the LAST folded seq, so each turn is EITHER in the summary XOR in the verbatim tail.
+        const keepCount = keepCountForFold({
+          turnTokens: (rows as Array<{ content?: string }>).map((r) => estimateTokens(r.content)),
+          keep: KEEP, floor: KEEP_FLOOR, tailTokenBudget: TAIL_TOKEN_BUDGET, triggeredByToken,
+        });
+        const foldCount = rows.length - keepCount;
+        if (foldCount <= 0) { emit?.({ state: "done" }); return "not_needed"; }
+        const toFold = (rows as Array<{ seq: number }>).slice(0, foldCount);
+        const cutoffSeq = toFold[toFold.length - 1].seq;
+        const transcript = toFold.map((t: any) => `${t.role === "user" ? "Owner" : "Paige"}: ${t.content}`).join("\n").slice(0, 12000);
+        const prompt = `Maintain a rolling memory of a long working chat between a business owner and their assistant Paige. Update the summary so nothing important is lost as older turns scroll off. PRESERVE explicitly: the owner's name & preferences, decisions made, tasks/actions Paige took or QUEUED, any PENDING approvals still open, names of clients/contacts, dates, numbers, and open loops. 4-8 tight sentences, flowing prose, no bullets.\n\nPRIOR SUMMARY:\n${th.summary ?? "(none)"}\n\nOLDER TURNS TO FOLD IN:\n${transcript}\n\nUPDATED SUMMARY:`;
+        emit?.({ state: "progress", pct: 35 }); // cheap-model summarizer call dispatched
+        const resp = await gatewayCompat("anthropic", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: prompt }] }),
+        });
+        if (!resp.ok) { emit?.({ state: "skipped" }); return "skipped"; }
+        emit?.({ state: "progress", pct: 80 }); // summarizer returned
+        const summary = (await resp.json())?.choices?.[0]?.message?.content?.trim();
+        if (summary) {
+          await supabaseClient.from("paige_chat_threads")
+            .update({ summary, summary_through_seq: cutoffSeq, last_compacted_at: new Date().toISOString() }).eq("id", threadId);
+          emit?.({ state: "progress", pct: 100 });
+          emit?.({ state: "done" });
+          return "compacted";
+        }
+        // Summarizer returned empty — nothing written; degrade honestly, keep the turn going (§13).
+        emit?.({ state: "skipped" });
+        return "skipped";
+      } catch (e) {
+        console.warn("[paige] summary fold failed:", (e as Error)?.message);
+        emit?.({ state: "skipped" });
+        return "skipped";
+      }
+    };
+    // Post-turn fallback wrapper (unchanged behavior): silent fold in waitUntil for threads that
+    // didn't trip the pre-flight (e.g. Paige's long reply is what pushed the tail over).
+    const maybeRefreshSummary = (threadId: string) => foldThreadSummary(threadId);
+
     if (payloadThreadId) {
       const latestUserText = [...messages].reverse().find((m: any) => m.role === "user")?.content;
       if (typeof latestUserText === "string" && latestUserText.trim()) {
@@ -3135,6 +3291,21 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
           });
         } catch (e) { console.error("[paige] persist user turn failed:", (e as Error)?.message); }
       }
+
+      // #12 — PRE-FLIGHT COMPACTION (the sequencing change). The user turn is now appended, so the
+      // tail includes it. If the un-summarized tail is at/over the fold threshold, compact INLINE
+      // NOW — BEFORE the summary is read (below) and injected into the model context — so this very
+      // turn's inference runs on the compacted context, and the client SEES it happen: the fold's
+      // lifecycle is collected into `compactionLeadFrames` and flushed as the first bytes of the
+      // response stream. If nothing needs folding it's a fast two-select no-op. If the tail is only
+      // APPROACHING (~80%) it emits a single pre-warn frame. Errors degrade to {state:"skipped"} and
+      // the turn continues UNCOMPACTED (§13 never dead-end). The post-turn maybeRefreshSummary still
+      // runs as the fallback for threads that trip the budget only after Paige's reply is appended.
+      // §9: reads/writes ONLY the caller's own thread — the exact scoping maybeRefreshSummary uses.
+      await foldThreadSummary(payloadThreadId, {
+        emit: (payload) => compactionLeadFrames.push(`data: ${JSON.stringify({ paige_compacting: payload })}\n\n`),
+      });
+
       try {
         const { data: th } = await supabaseClient
           .from("paige_chat_threads").select("summary, studio_session_id").eq("id", payloadThreadId).maybeSingle();
@@ -3202,79 +3373,9 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
       } catch (e) { console.warn("[paige] recall fetch failed:", (e as Error)?.message); }
     }
 
-    // Rolling-summary compaction (4a.3): fold older turns into the thread summary when the thread
-    // "approaches token limits" OR on a bounded turn cadence — whichever fires first — keeping the
-    // last KEEP verbatim turns and advancing summary_through_seq so the summarized range and the
-    // verbatim tail never overlap. The token trigger (chars/4 ESTIMATE, §13) makes a thread of long
-    // turns compact BEFORE its live context overflows, instead of waiting for the count cadence.
-    const maybeRefreshSummary = async (threadId: string) => {
-      // KEEP        — verbatim turns the CADENCE fold retains (unchanged sane batch).
-      // KEEP_FLOOR  — the fewest verbatim turns a TOKEN fold will ever leave, for conversational
-      //               continuity, even if those turns exceed budget (a lone huge recent turn can't
-      //               shove the whole tail into the summary).
-      // MIN_COMPACTION_INTERVAL — belt-and-suspenders (§14): once compacted, don't compact again
-      //               until at least this many NEW turns have been appended, so a pathological heavy
-      //               tail the floor must keep can't re-trip the paid summarizer every turn. It is a
-      //               GLOBAL floor on fire frequency — it can legitimately skip a redundant fold that
-      //               would land within N turns of a prior one (including a cadence hit right after a
-      //               token fold); it does NOT alter the cadence TRIGGER itself, and being < EVERY it
-      //               never blocks two successive cadence fires on a long light thread.
-      const KEEP = 12, EVERY = 8, TAIL_TOKEN_BUDGET = 6000, KEEP_FLOOR = 5, MIN_COMPACTION_INTERVAL = 4;
-      try {
-        const { data: th } = await supabaseClient.from("paige_chat_threads")
-          .select("message_count, summary, summary_through_seq, last_compacted_at").eq("id", threadId).maybeSingle();
-        if (!th || th.message_count <= KEEP) return;
-        // The un-summarized verbatim tail (seq past the watermark) is exactly what loads into the
-        // model context, so weigh only that — fetch it via the (thread_id, seq) index and estimate.
-        // created_at rides along ONLY for the min-interval guard below.
-        const { data: rows } = await supabaseClient.from("paige_chat_turns")
-          .select("role,content,seq,created_at").eq("thread_id", threadId).in("role", ["user", "assistant"])
-          .gt("seq", th.summary_through_seq ?? 0).order("seq", { ascending: true });
-        if (!rows?.length) return;
-        // MIN-INTERVAL watermark guard (§14): count tail turns appended AFTER the last fold; if fewer
-        // than MIN_COMPACTION_INTERVAL, skip — no repeated paid summarizer calls on back-to-back turns.
-        // A NULL watermark (never compacted) skips the guard so the first fold always proceeds.
-        if (th.last_compacted_at) {
-          const lastAt = th.last_compacted_at as string;
-          const turnsSince = (rows as Array<{ created_at?: string | null }>)
-            .filter((r) => typeof r.created_at === "string" && r.created_at > lastAt).length;
-          if (turnsSince < MIN_COMPACTION_INTERVAL) return;
-        }
-        const tailTokens = estimateTurnsTokens(rows as Array<{ role?: string; content?: string }>);
-        const triggeredByToken = tailTokens >= TAIL_TOKEN_BUDGET;
-        if (!shouldCompact({ messageCount: th.message_count, tailTokens, keep: KEEP, every: EVERY, tailTokenBudget: TAIL_TOKEN_BUDGET })) return;
-        // Decide how many NEWEST turns stay verbatim, then fold the contiguous OLDER prefix. On a
-        // TOKEN-triggered fold we keep only enough turns to drop the tail back under budget×0.5
-        // (hysteresis, so it doesn't immediately re-trip), floored at KEEP_FLOOR; on a CADENCE fold
-        // we keep KEEP (the prior behavior). This is NOT identical to the old fixed keep-KEEP fold:
-        // for a heavy tail (M ≥ KEEP) it folds MORE turns to reclaim tokens, and right after a
-        // compaction (M < KEEP) it may keep the whole short tail. In every case the no-loss/no-dup
-        // invariant holds — `toFold` is a contiguous prefix of the tail (all seq > watermark), and we
-        // advance summary_through_seq to the LAST folded seq, so each turn is EITHER in the summary
-        // XOR in the verbatim tail, never dropped, never double-counted.
-        const keepCount = keepCountForFold({
-          turnTokens: (rows as Array<{ content?: string }>).map((r) => estimateTokens(r.content)),
-          keep: KEEP, floor: KEEP_FLOOR, tailTokenBudget: TAIL_TOKEN_BUDGET, triggeredByToken,
-        });
-        const foldCount = rows.length - keepCount;
-        if (foldCount <= 0) return;
-        const toFold = (rows as Array<{ seq: number }>).slice(0, foldCount);
-        const cutoffSeq = toFold[toFold.length - 1].seq;
-        const transcript = toFold.map((t: any) => `${t.role === "user" ? "Owner" : "Paige"}: ${t.content}`).join("\n").slice(0, 12000);
-        const prompt = `Maintain a rolling memory of a long working chat between a business owner and their assistant Paige. Update the summary so nothing important is lost as older turns scroll off. PRESERVE explicitly: the owner's name & preferences, decisions made, tasks/actions Paige took or QUEUED, any PENDING approvals still open, names of clients/contacts, dates, numbers, and open loops. 4-8 tight sentences, flowing prose, no bullets.\n\nPRIOR SUMMARY:\n${th.summary ?? "(none)"}\n\nOLDER TURNS TO FOLD IN:\n${transcript}\n\nUPDATED SUMMARY:`;
-        const resp = await gatewayCompat("anthropic", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: "google/gemini-2.5-flash-lite", messages: [{ role: "user", content: prompt }] }),
-        });
-        if (!resp.ok) return;
-        const summary = (await resp.json())?.choices?.[0]?.message?.content?.trim();
-        if (summary) {
-          await supabaseClient.from("paige_chat_threads")
-            .update({ summary, summary_through_seq: cutoffSeq, last_compacted_at: new Date().toISOString() }).eq("id", threadId);
-        }
-      } catch (e) { console.warn("[paige] summary refresh failed:", (e as Error)?.message); }
-    };
+    // (Rolling-summary compaction (4a.3) is defined ABOVE as `foldThreadSummary` + the
+    // `maybeRefreshSummary` post-turn wrapper, so the PRE-FLIGHT fold can reuse the SAME summarizer
+    // before inference — §18 one home, no forked second summarizer.)
 
     // Persist Paige's reply after the stream (via EdgeRuntime.waitUntil so a closed
     // tab still saves it), then auto-title a new thread and refresh the summary.
@@ -3862,7 +3963,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "crm_create_contact",
-              description: "Admin/coach only. Add a new contact (client) to the CRM. BEFORE calling this, confirm the details with the operator in one short line — e.g. \"Adding Jacqueline Turner, +1-310-661-1679 — want me to add her?\" — and only call the tool once they say yes. Missing fields like email are fine; add what you have and note they can fill the rest later. Returns the new contact id; a matching email for this operator returns the existing id instead of duplicating.",
+              description: "Admin/coach only. Add a new contact (client) to the CRM. BEFORE calling this, confirm the details with the operator in one short line — e.g. \"Adding Jacqueline Turner, +1-310-661-1679 — want me to add her?\" — and only call the tool once they say yes. Missing fields like email are fine; add what you have and note they can fill the rest later. Returns the new contact id. DEDUP: if a contact with a very similar name (or the same email) already exists for this workspace, the tool does NOT create — it returns { needs_dedup_confirmation: true, matches: [...] }. When that happens, do NOT silently make a second record: show the operator the match(es) and ask whether it's the same person. If they want to update the existing one, call crm_update_contact with that contact_id. Only if they confirm it's a genuinely different, separate person do you call crm_create_contact again with confirm_new: true to force the new record.",
               parameters: {
                 type: "object",
                 properties: {
@@ -3876,7 +3977,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                   primary_offer: { type: "string", description: "The offer/program this contact is being worked for." },
                   notes: { type: "string", description: "Freeform notes to seed the contact with." },
                   tags: { type: "array", items: { type: "string" } },
-                  assigned_coach_user_id: { type: "string", description: "Optional auth user UUID of the coach to assign." }
+                  assigned_coach_user_id: { type: "string", description: "Optional auth user UUID of the coach to assign." },
+                  confirm_new: { type: "boolean", description: "Only set true AFTER the operator confirms this is a genuinely NEW, separate person despite a close match. Bypasses the duplicate check and forces creation. Never set true on the first call — let the dedup check run so an accidental duplicate is caught first." }
                 },
                 required: []
               }
@@ -4077,11 +4179,11 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             type: "function",
             function: {
               name: "document_generate",
-              description: "Admin/coach only. Build a finished, on-brand LONG-FORM DOCUMENT — a guide, one-pager, ebook, checklist, worksheet, or proposal — and save it. Use when the operator/customer asks for a document, guide, ebook, PDF, one-pager, checklist, worksheet, proposal, quote, statement of work, lead magnet, or 'something they can hand out/download'. YOU author the whole document as an ordered list of design BLOCKS (below) — do NOT describe it, produce it. It renders on the studio canvas and the customer can Print / Save as PDF. Craft bar (never a 'Word dump'): the FIRST block is ALWAYS a 'cover'; lead every section with a benefit-stating header, not a bare label; vary the blocks — never more than ~3 'prose' blocks in a row without a callout/list/pull-quote/stat between them; short paragraphs; second person, active voice, one concrete example or number per section; exactly ONE primary 'cta'. Coaching-generic; never introduce credit/funding/finance framing unless the customer explicitly asked for it.\n\nMATCH THE BLOCK SHAPE TO THE doc_type — a worksheet is not a guide, an ebook is not a one-pager, a proposal is not a checklist:\n• guide — cover → optional toc → repeated (section-header + prose/callout/list/stat), ~3-6 sections → one cta. Teaching depth.\n• one_pager — cover → 1-2 section-headers → tight prose + a stat + a short list → one cta. Fits one page; no toc, no chapters.\n• ebook — cover → toc → per chapter: chapter-divider + prose/pull-quote/callout (3+ chapters) → cta. The chapter-divider OPENS each chapter — it is the ebook signature; a guide with no chapter-dividers is NOT an ebook.\n• checklist — cover → short intro prose → list(style:\"checklist\") grouped under section-headers → optional cta. Mostly checkable items.\n• worksheet — cover → brief prose per section → worksheet-field blocks the user FILLS IN (line/lines/box/scale/checkbox) → optional cta. A worksheet MUST contain worksheet-field blocks (real blanks); with none it is just a guide and is wrong.\n• proposal — cover (client + project) → prose (their goals / your understanding) → section-header 'Scope' + list → section-header 'Timeline' + prose/list with REAL dates → section-header 'Investment' + pricing-table (rows + total) → cta ('Approve & start'). A proposal MUST carry a pricing-table and real client name, scope, and dates.\n\nPROPOSALS NEED REAL SPECIFICS — NEVER ship [PLACEHOLDER]s. A proposal is worthless with [CLIENT NAME]/[SCOPE]/[AMOUNT]/[DATE] in it. Before building a proposal, make sure you actually know: the client's real name, what they're buying (scope), the price(s), and the start/delivery dates. Pull them from the brief/brand/contact when present; otherwise ASK the customer FIRST — use ask_choices for pricing tiers or packaging where you can offer 2-4 concrete options, or just ask in chat for the name and dates. The system REJECTS any document that still contains bracketed placeholder tokens (e.g. [CLIENT NAME], [DATE], [AMOUNT]) — resolve them from real data or by asking, never guess.",
+              description: "Admin/coach only. Build a finished, on-brand LONG-FORM DOCUMENT — a guide, one-pager, ebook, checklist, worksheet, proposal, offer letter, or sales offer — and save it. Use when the operator/customer asks for a document, guide, ebook, PDF, one-pager, checklist, worksheet, proposal, quote, statement of work, lead magnet, offer letter, hiring/engagement offer, sales offer, offer sheet, or 'something they can hand out/download'. YOU author the whole document as an ordered list of design BLOCKS (below) — do NOT describe it, produce it. It renders on the studio canvas and the customer can Print / Save as PDF. Craft bar (never a 'Word dump'): the FIRST block is ALWAYS a 'cover'; lead every section with a benefit-stating header, not a bare label; vary the blocks — never more than ~3 'prose' blocks in a row without a callout/list/pull-quote/stat between them; short paragraphs; second person, active voice, one concrete example or number per section; exactly ONE primary 'cta'. Coaching-generic; never introduce credit/funding/finance framing unless the customer explicitly asked for it.\n\nMATCH THE BLOCK SHAPE TO THE doc_type — a worksheet is not a guide, an ebook is not a one-pager, a proposal is not a checklist:\n• guide — cover → optional toc → repeated (section-header + prose/callout/list/stat), ~3-6 sections → one cta. Teaching depth.\n• one_pager — cover → 1-2 section-headers → tight prose + a stat + a short list → one cta. Fits one page; no toc, no chapters.\n• ebook — cover → toc → per chapter: chapter-divider + prose/pull-quote/callout (3+ chapters) → cta. The chapter-divider OPENS each chapter — it is the ebook signature; a guide with no chapter-dividers is NOT an ebook.\n• checklist — cover → short intro prose → list(style:\"checklist\") grouped under section-headers → optional cta. Mostly checkable items.\n• worksheet — cover → brief prose per section → worksheet-field blocks the user FILLS IN (line/lines/box/scale/checkbox) → optional cta. A worksheet MUST contain worksheet-field blocks (real blanks); with none it is just a guide and is wrong.\n• proposal — cover (client + project) → prose (their goals / your understanding) → section-header 'Scope' + list → section-header 'Timeline' + prose/list with REAL dates → section-header 'Investment' + pricing-table (rows + total) → cta ('Approve & start'). A proposal MUST carry a pricing-table and real client name, scope, and dates.\n• offer_letter — cover (candidate name + role) → prose (a warm, specific why-you-fit opening) → section-header 'The Role' + prose → section-header 'Compensation' + pricing-table OR stat blocks (base / variable / equity or benefits summary) → section-header 'Start & Reporting' + prose (real start date + who they report to) → prose (engagement/at-will terms, coaching-generic) → worksheet-field signature lines (candidate + company) → one cta 'Accept'. An offer letter MUST carry the REAL candidate name, role, compensation, and start date — never [CANDIDATE]/[ROLE]/[SALARY]/[DATE] blanks.\n• sales_offer — cover (prospect + offer name) → prose (their goal and the outcome you deliver) → section-header 'What You Get' + list → pricing-table (packages/tiers + total) → section-header 'Terms' + prose (real expiration date) → pull-quote OR stat (a real result/proof you can stand behind, never invented) → one cta 'Accept this offer'. Direct-response, benefit-led copy; a real prospect name, real packages/prices, and a real expiration date — no placeholders.\n\nPROPOSALS NEED REAL SPECIFICS — NEVER ship [PLACEHOLDER]s. A proposal is worthless with [CLIENT NAME]/[SCOPE]/[AMOUNT]/[DATE] in it. Before building a proposal, make sure you actually know: the client's real name, what they're buying (scope), the price(s), and the start/delivery dates. Pull them from the brief/brand/contact when present; otherwise ASK the customer FIRST — use ask_choices for pricing tiers or packaging where you can offer 2-4 concrete options, or just ask in chat for the name and dates. The system REJECTS any document that still contains bracketed placeholder tokens (e.g. [CLIENT NAME], [DATE], [AMOUNT]) — resolve them from real data or by asking, never guess.",
               parameters: {
                 type: "object",
                 properties: {
-                  doc_type: { type: "string", enum: ["guide", "one_pager", "ebook", "checklist", "worksheet", "proposal"], description: "Which kind of document. Infer it from the request, then follow that type's block skeleton above." },
+                  doc_type: { type: "string", enum: ["guide", "one_pager", "ebook", "checklist", "worksheet", "proposal", "offer_letter", "sales_offer"], description: "Which kind of document. Infer it from the request, then follow that type's block skeleton above." },
                   title: { type: "string", description: "The document's title (benefit-led and specific, not the bare topic). For a proposal, name the client + engagement." },
                   brief: { type: "string", description: "Optional one-line brief/prompt that produced it." },
                   target_content_id: { type: "string", description: "Set to the on-canvas artifact's id (see CANVAS STATE) ONLY when the user is refining/revising the document already on the canvas — this updates that same document in place and keeps its version history. OMIT it to create a brand-new/additional document as a separate asset. Never pass an id for a genuinely new document." },
@@ -5209,16 +5311,38 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // byte-for-byte what it is today (buildClaudeRequest only acts on paige_thinking === true).
     const STUDIO_THINKING_ENABLED = false; // HOTFIX: extended-thinking request 400'd the live Studio stream ("chat hit a snag"); disabled pending a real root-cause of the thinking+model interaction (§344). Sonnet lift stays; thinking param is dropped so the call reverts to a plain working stream.
     const paigeThinkingOn = !!studioSessionId && STUDIO_THINKING_ENABLED;
+
+    // #34 — Route SUBSTANTIVE turns to the reasoning tier (the "pro" legacy label ⇒ claude-sonnet-5
+    // via tierForLegacyModel) so the mutating tool the cheap Haiku tier was DROPPING actually fires.
+    // The anchoring bug: on "approved — run it" the Haiku tier failed to reliably emit the
+    // document_generate tool_use, so the turn re-asked instead of acting (the 4×-reask loop). The
+    // signal is the LAST user message ONLY (already extracted at line 871) — a pure string test, no
+    // extra LLM/DB call, no new provider, no streaming change (both tiers flow through the same
+    // gatewayCompat → streamAnthropicAsOpenAI). Trivial lookups ("what is X's email") match nothing
+    // here and stay on Haiku (§17 economics preserved).
+    const substantiveTurnIntent = (raw: string): boolean => {
+      const t = (raw || "").toLowerCase().trim();
+      if (!t || t.length > 2000) return false; // a huge paste isn't a terse command
+      // (a) APPROVAL of a queued proposal — the exact #34 failure case.
+      if (/\b(approv(e|ed)|confirm(ed)?|go ahead|do it|run it|send it|ship it|proceed|make it (so|happen)|yes[,.!\s]*(run|do|send|go|proceed|build|create|make|it)|let'?s (do|run|go|build|ship|make)|(sounds |looks )?good[,.!\s]*(run|do|send|go|build|make)|that works[,.!\s]*(run|do|go|build))\b/.test(t)) return true;
+      // (b) explicit CREATE/RUN action request (maps to the substantive tool set: document_generate,
+      //     contact/deal/pipeline moves, growth page/funnel, image, enroll…).
+      if (/\b(creat(e|ing)|build( me| a| an| the)|generat(e|ing)|draft( me| a| an| the)|make me|write me (a|an|the)|set up|schedule|book (a|an|the|this)|enroll|move .* (to|into) .* stage|publish|launch|add (a|an|the|this) (contact|deal|task|meeting|event|pipeline|stage))\b/.test(t)) return true;
+      return false;
+    };
+    const substantiveTurn =
+      !!lastUserMessage && substantiveTurnIntent(String(lastUserMessage.content ?? ""));
+
     const response = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
         // U2/§14 — the Studio design agent runs on the REASONING tier (pro ⇒ claude-sonnet-5) so its
         // extended thinking is a real reasoning model, never Haiku; the doc-attach path already did.
-        model: (studioSessionId || attachedDocument) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
+        // #34 — substantiveTurn adds the reasoning tier for approval/creation intents (see above).
+        model: (studioSessionId || attachedDocument || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash",
         messages: aiMessages,
         tools: toolDefs,
         tool_choice: "auto",
@@ -6016,27 +6140,82 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               if (error) throw error;
               result = { success: true, task_id: row?.id };
             } else if (tc.function.name === "crm_create_contact") {
-              // Caller-authed client so auth.uid() resolves inside the RPC (sets
-              // created_by, role gate, tenant). tenant_id passed explicitly too.
-              const { data: newId, error } = await supabaseClient.rpc("create_contact", {
-                p_first_name: args.first_name ?? null,
-                p_last_name: args.last_name ?? null,
-                p_email: args.email ?? null,
-                p_phone: args.phone ?? null,
-                p_entity_name: args.entity_name ?? null,
-                p_title: args.title ?? null,
-                p_lifecycle_stage: args.lifecycle_stage ?? "new_lead", // #172: 'lead' violates clients_lifecycle_stage_chk (23514)
-                p_source: "paige",
-                p_channel: "api", // #10 channel-of-origin (Paige-in-chat programmatic)
-                p_tags: Array.isArray(args.tags) ? args.tags : [],
-                p_primary_offer: args.primary_offer ?? null,
-                p_notes: args.notes ?? null,
-                p_assigned_coach_user_id: args.assigned_coach_user_id ?? null,
-                p_tenant_id: personaCtx?.tenant_id ?? null,
-                p_created_by: user.id, // auth.uid() is null in this call path; pass the verified operator
-              });
-              if (error) throw error;
-              result = { success: true, contact_id: newId };
+              // §15/§18 DEDUP GUARD (#27): fuzzy-match existing contacts in THIS tenant
+              // before a blind insert. Root cause of the two "Tashia Anderson" paige
+              // dupes was create_contact doing no dedup at all. Skipped only when the
+              // operator has explicitly confirmed a genuinely new contact (confirm_new).
+              // Tenant scope is the SERVER-RESOLVED tenant (§9/§51) — never a body value.
+              const dedupTenantId = personaCtx?.tenant_id ?? crmTenantId ?? null;
+              let dupeMatches: any[] = [];
+              if (args.confirm_new !== true && dedupTenantId && (args.first_name || args.email)) {
+                // admin (service-role) client — the ONLY grantee of the RPC (§9/§39).
+                const { data: dupes, error: dErr } = await admin.rpc("find_duplicate_contacts", {
+                  p_tenant_id: dedupTenantId,
+                  p_first_name: args.first_name ?? "",
+                  p_last_name: args.last_name ?? null,
+                  p_email: args.email ?? null,
+                  p_limit: 3,
+                });
+                // §33/§5 FAIL OPEN: a broken/absent dedup lookup (e.g. the edge deploys
+                // before the migration installs find_duplicate_contacts) must NEVER block
+                // a legitimate create. Log loudly and proceed — a dup is recoverable; a
+                // blocked create is a hard user-facing regression in a core tool.
+                if (dErr) {
+                  console.error("crm_create_contact: dedup lookup failed, proceeding to create (fail-open):", dErr?.message ?? dErr);
+                  dupeMatches = [];
+                } else {
+                  dupeMatches = Array.isArray(dupes) ? dupes : [];
+                }
+              } else if (args.confirm_new !== true && !dedupTenantId && (args.first_name || args.email)) {
+                // §39 visibility: no server-resolved tenant → no tenant book to dedup
+                // against (a tenant-less operator not scoped into any tenant). We proceed
+                // (create_contact resolves tenant itself), but log so this path is never
+                // a SILENT dedup bypass.
+                console.warn("crm_create_contact: no resolved tenant for dedup lookup — proceeding without fuzzy check (operator/tenant-less path).");
+              }
+              if (dupeMatches.length > 0) {
+                // Do NOT insert. Hand the matches back so the LLM asks the §15
+                // "is this the same person?" question. To create anyway → confirm_new;
+                // to update instead → crm_update_contact with the matching contact_id.
+                result = {
+                  success: false,
+                  needs_dedup_confirmation: true,
+                  matches: dupeMatches.map((d: any) => ({
+                    contact_id: d.id,
+                    name: [d.first_name, d.last_name].filter(Boolean).join(" ").trim() || d.entity_name || "(no name)",
+                    email: d.email,
+                    phone: d.phone,
+                    lifecycle_stage: d.lifecycle_stage,
+                    source: d.source,
+                    created_at: d.created_at,
+                    match: d.email_exact ? "email_exact" : `name~${Number(d.name_similarity ?? 0).toFixed(2)}`,
+                  })),
+                  message: "One or more existing contacts closely match this person. Ask the operator whether this is the same person before creating a new one. To update the existing contact, call crm_update_contact with the matching contact_id. To create a genuinely new, separate contact anyway, call crm_create_contact again with confirm_new: true.",
+                };
+              } else {
+                // No match, or the operator confirmed a new contact → existing create.
+                // Caller-authed client so auth.uid() resolves inside the RPC (sets
+                // created_by, role gate, tenant). tenant_id passed explicitly too.
+                const { data: newId, error } = await supabaseClient.rpc("create_contact", {
+                  p_first_name: args.first_name ?? null,
+                  p_last_name: args.last_name ?? null,
+                  p_email: args.email ?? null,
+                  p_phone: args.phone ?? null,
+                  p_entity_name: args.entity_name ?? null,
+                  p_title: args.title ?? null,
+                  p_lifecycle_stage: args.lifecycle_stage ?? "new_lead", // #172: 'lead' violates clients_lifecycle_stage_chk (23514)
+                  p_source: "paige",
+                  p_channel: "api", // #10 channel-of-origin (Paige-in-chat programmatic)
+                  p_tags: Array.isArray(args.tags) ? args.tags : [],
+                  p_primary_offer: args.primary_offer ?? null,
+                  p_notes: args.notes ?? null,
+                  p_assigned_coach_user_id: args.assigned_coach_user_id ?? null,
+                  p_tenant_id: personaCtx?.tenant_id ?? null,
+                  p_created_by: user.id, // auth.uid() is null in this call path; pass the verified operator
+                });
+                if (error) throw error;
+                result = { success: true, contact_id: newId };
+              }
             } else if (tc.function.name === "crm_update_contact") {
               if (!args.contact_id) throw new Error("contact_id is required");
               const { error } = await supabaseClient.rpc("update_contact", {
@@ -6323,7 +6502,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // marketing_content row kind='document' (body = the block JSON). Keep only known block
               // types so a slightly-off block degrades instead of breaking the render (§13); ensure a
               // cover leads. Returns only what actually persisted.
-              const docType = ["guide", "one_pager", "ebook", "checklist", "worksheet", "proposal"].includes(args.doc_type) ? args.doc_type : "guide";
+              const docType = ["guide", "one_pager", "ebook", "checklist", "worksheet", "proposal", "offer_letter", "sales_offer"].includes(args.doc_type) ? args.doc_type : "guide";
               // Keep only blocks whose REQUIRED content field is the right type — a well-typed `type`
               // with a mis-typed value (a list of objects, a non-string markdown) is dropped here so
               // nothing malformed persists (§13; the renderer also coerces defensively).
@@ -6359,7 +6538,7 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               // [Your Company], [Date]) far more than ALL-CAPS, so an all-caps-only test (the earlier
               // version) let the common form through. Anchoring to real placeholder words also drops the
               // [NASDAQ]-style all-caps false-positive; the `(?!\()` tail still spares markdown links.
-              const PLACEHOLDER_RE = /\[[^\]]*\b(CLIENT|NAME|DATE|AMOUNT|SCOPE|COMPANY|PRICE|COST|ADDRESS|EMAIL|PHONE|YOUR|INSERT|TBD|TODO|XXX)\b[^\]]*\](?!\()/i;
+              const PLACEHOLDER_RE = /\[[^\]]*\b(CLIENT|NAME|DATE|AMOUNT|SCOPE|COMPANY|PRICE|COST|ADDRESS|EMAIL|PHONE|YOUR|INSERT|TBD|TODO|XXX|ROLE|SALARY|CANDIDATE|COMPENSATION|EQUITY|BENEFITS|POSITION|MANAGER|PROSPECT|EXPIR)\b[^\]]*\](?!\()/i;
               const hasPlaceholder = (v: unknown): boolean => {
                 if (typeof v === "string") return PLACEHOLDER_RE.test(v);
                 if (Array.isArray(v)) return v.some(hasPlaceholder);
@@ -6959,6 +7138,27 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
               }
             }
 
+            // REGULAR-CHAT ARTIFACT EMIT (#29) — the non-Studio twin of the Studio linkage above.
+            // When this is NOT a project design session there is no canvas link, but the agent still
+            // just handed the user a real deliverable — surface it as a handoff card. Only on a genuine
+            // success carrying a real content_id (§13 — never a needs_config/errored call, never a
+            // fabricated artifact). `content_save` (pure copy) is deliberately excluded: copy is a chat
+            // deliverable, not a file card (§19/§21). Gated on `!studioSessionId` so this and the Studio
+            // block above are mutually exclusive — an artifact is never double-emitted.
+            if (!studioSessionId && result && (result as any).success) {
+              const r = result as any;
+              if (tc.function.name === "document_generate" && r.content_id) {
+                // Stamp the frame with the EXACT tenant the row was saved under (personaCtx.tenant_id
+                // = the tenant save_marketing_content wrote to). Without this the client falls back to
+                // the viewer's activeTenantId, and when an operator is managing another tenant those
+                // diverge → loadDocument queries the wrong tenant → 0 rows → "Preview unavailable".
+                chatArtifacts.push({ kind: "document", id: r.content_id, title: String(r.title ?? "Document"), url: null, artifactType: "document", tenant_id: personaCtx.tenant_id });
+              } else if (tc.function.name === "generate_image" && r.content_id) {
+                // generate_image's result carries no title — fall back to "Image" so the card never shows a blank name.
+                chatArtifacts.push({ kind: "content", id: r.content_id, title: String(r.title ?? "Image"), url: r.url ?? null, artifactType: "image", tenant_id: personaCtx.tenant_id });
+              }
+            }
+
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
           } catch (err) {
             toolResults.push({
@@ -7340,6 +7540,9 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
         controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_step: s })}\n\n`));
       const finalStream = new ReadableStream({
         async start(controller) {
+         // #12 — flush any PRE-FLIGHT compaction frames FIRST, so the compacting card renders
+         // before Paige's reasoning/answer streams. Empty (no-op) on every turn that didn't fold.
+         for (const f of compactionLeadFrames) controller.enqueue(enc.encode(f));
          // The whole live loop + final answer runs here. Because the gateway calls
          // now execute inside the stream, a mid-flight throw must degrade to a clean
          // fallback + [DONE] rather than a broken stream (§13). The outer handler's
@@ -7443,8 +7646,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             if (overCap || overTime || lastRound) { forcedTermination = true; break; }
             currentResponse = await gatewayCompat("anthropic", {
               method: "POST",
-              headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ model: studioSessionId ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, tools: toolDefs, tool_choice: "auto", stream: true }),
             });
             if (!currentResponse.ok) { forcedTermination = true; break; }
           }
@@ -7455,8 +7658,8 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           if (!finalChunks && forcedTermination) {
             finalStreamResponse = await gatewayCompat("anthropic", {
               method: "POST",
-              headers: { Authorization: `Bearer ${lovableApiKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({ model: studioSessionId ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, stream: true }),
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ model: (studioSessionId || substantiveTurn) ? "google/gemini-2.5-pro" : "google/gemini-2.5-flash", messages: convo, stream: true }),
             });
           }
           // Approvals + confirm cards, then her actual reply.
@@ -7465,6 +7668,17 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           // #292 — tell the Studio canvas the exact artifact this turn produced (server-authoritative;
           // the client opens THIS, never a guessed manifest index). Last visual wins if several built.
           if (studioLinked.length) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_artifact: studioLinked[studioLinked.length - 1] })}\n\n`));
+          // #29 — REGULAR-CHAT handoff cards. Outside a Studio session, emit ONE paige_artifact frame
+          // per deliverable the agent persisted this turn so the chat renders a Cowork-style "Created a
+          // file" card. Same frame the Studio canvas consumes (backward-compatible: kind/id/title/url +
+          // the new artifactType). A turn can produce several (a document AND an image), so each gets its
+          // own frame — unlike the Studio path's single last-wins canvas frame above. chatArtifacts is
+          // only populated when studioSessionId is null, so this and the studioLinked emit never both fire.
+          for (const a of chatArtifacts) controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_artifact: a })}\n\n`));
+          // #11 — mark the transition into the ANSWER: the loop's reasoning (paige_step "thought"
+          // frames) is done and the reply text begins now. The client also derives "writing" from
+          // the first delta.content, so this is a lightweight explicit confirmation, not a dependency.
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
           if (finalChunks) {
             for (const c of finalChunks) controller.enqueue(c);
           } else if (finalStreamResponse?.ok && finalStreamResponse.body) {
@@ -7547,8 +7761,18 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
     // Leftover-line buffer across pulls: a `data:` record split over two reads
     // must still contribute its delta to the persisted text (#94 integrity).
     let directSseBuf = "";
+    // #11 — emit paige_phase:"writing" once, on the first forwarded bytes (this direct/document
+    // path has no reasoning loop, so first bytes ≈ writing start). The client also derives it from
+    // the first delta, so this is a lightweight confirmation, not a dependency.
+    let sentWritingPhase = false;
 
     const stream = new ReadableStream({
+      // #12 — flush any PRE-FLIGHT compaction frames FIRST so the compacting card renders before the
+      // reply. Empty (no-op) on every turn that didn't fold. A persisted Studio thread reaching this
+      // path (a doc-attached turn) still shows its compaction card.
+      start(controller) {
+        for (const f of compactionLeadFrames) controller.enqueue(new TextEncoder().encode(f));
+      },
       async pull(controller) {
         const { done, value } = await reader.read();
         if (done) {
@@ -7570,7 +7794,6 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
                 authHeader,
                 supabaseUrl,
                 supabaseServiceKey,
-                lovableApiKey,
                 supabase,
                 payloadClientId || null,
                 paigeChatUploadId
@@ -7648,6 +7871,10 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
           return;
         }
 
+        if (!sentWritingPhase) {
+          sentWritingPhase = true;
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ paige_phase: "writing" })}\n\n`));
+        }
         controller.enqueue(value);
         directSseBuf += decoder.decode(value, { stream: true });
         let nl: number;
@@ -7788,11 +8015,10 @@ function structuredChatError(
   return { code: "chat_unavailable", reason: "Something went wrong on our side while answering.", recommendation: "Try again in a moment — if it keeps happening, let support know." };
 }
 
-async function runDocumentReadCheck(base64: string, lovableApiKey: string) {
+async function runDocumentReadCheck(base64: string) {
   const response = await gatewayCompat("anthropic", {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${lovableApiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -7840,7 +8066,6 @@ async function runStructuredExtractionAndSync(
   authHeader: string,
   supabaseUrl: string,
   serviceRoleKey: string,
-  lovableApiKey: string,
   supabase: any,
   clientId: string | null = null,
   uploadRecordId: string | null = null
@@ -7852,7 +8077,6 @@ async function runStructuredExtractionAndSync(
     const extractionResponse = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

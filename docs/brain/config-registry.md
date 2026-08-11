@@ -105,6 +105,26 @@ relying on either. (Secret **values** intentionally not recorded.)
   signup trigger landed in #402; concurrency-safe entitlements + `user_subscriptions` unique in #403
   (repairs the latent stripe-webhook subscription-record bug).
 
+## Tenant classification & revenue integrity (§29/#412 merged · §31/#415 in-flight)
+
+**Three ORTHOGONAL axes on a tenant — never conflate them** (✅ code + migration + MCP-verified 2026-08-09):
+
+| Axis | Where | Values | Who sets it |
+|---|---|---|---|
+| **Topology** | `tenants.account_type` | `standalone` · `sub_account` · `agency` · `enterprise` | provisioning; §51-locked |
+| **Lifecycle** | `tenants.status` (enum) | `trial` · `active` · `past_due` · `canceled` · `suspended` | billing/lifecycle |
+| **Revenue-class** | `tenant_revenue_classification.revenue_class` (dedicated operator-only table, #412) | `promotional` · `paid` · `internal_test` | operator; default `promotional` |
+
+- **Why revenue-class is a SEPARATE table, not a `tenants` column** (§9/§18/§51): a column on `tenants` would (a) be read by every tenant member via `Members read own tenant` RLS (operator-internal leak) and (b) collide with the §51-locked `account_type`. So it lives in `tenant_revenue_classification`, RLS `is_platform_owner()`-only + FORCE. Read seams: `get_tenant_revenue_breakdown()` (operator RPC), `operator_dashboard_metrics` (reconciled to `revenue_class='paid'` only, #412).
+- **§51 ABSOLUTE INVARIANT (DB-locked, migration `20260807230000`):** a child (`parent_tenant_id` not null) can NEVER be `agency`/`enterprise` — enforced 3 layers deep (`tenants` CHECK `tenants_subaccount_not_agency` · `agency_team_members` trigger · `agency_current_id()` both branches). Do not weaken without an owner ruling.
+- **Current prod distribution** (✅ MCP, 2026-08-09, post-#412): **9 tenants** — `promotional 8`, `internal_test 1`, **`paid 0`**. (Was 11 before #412 deleted 2 retired tenants — supersedes the "Tenants 11" row in the Supabase section above.) **Real ARR = $0** — every tenant is comped/internal; the 3 live `platform_subscriptions.status='active'` rows are comped (NULL `stripe_subscription_id`).
+- **"Real revenue" / paid definition (one canonical form across surfaces):** `revenue_class='paid'` AND a live Stripe subscription (`status='active'` + non-null `stripe_subscription_id`). Used by `get_tenant_revenue_breakdown().paying_count` (#412) and the #31 gate below.
+
+**⚠ Revenue integrity chain — IN-FLIGHT (PR #415, task #31, owner §32.c-gated — NOT yet on main):**
+- Migration `20260815120000_revenue_integrity_chain.sql` adds a fail-closed trigger `enforce_revenue_integrity_chain()` on `tenant_revenue_classification`: a row may only be MINTED `revenue_class='paid'` when the tenant owner has a **subscriber** agreement in `legal_acceptances` (slug in `subscriber_agreement_slugs()` = `saas-standalone`/`saas-agency`/`saas-enterprise`) AND a live active Stripe sub. Enforced at the transition; already-paid rows aren't re-gated (no auto-demote — reconcile follow-up, task #85).
+- Audit seam: `operator_revenue_integrity_audit(_tenant_id)` — `is_platform_owner`-gated RPC (RAISES 42501); Fleet Console "Revenue Integrity" section + CSV export consume it (§10/§18 one home).
+- Verified §32.b against the verbatim file (COMPILE PASS + reject/accept/edit), §37 producer-inventory clean, §39 + §5 both passed. Marked in-flight per §BRAIN — move to a "merged" fact when PR #415 lands on main.
+
 ## Twilio (SMS / voice — last-mile telecom commodity, §34)
 
 **Platform-wide Twilio secret NAMES** (✅ grep `Deno.env.get`): `TWILIO_ACCOUNT_SID`,
@@ -248,11 +268,23 @@ Grouped by domain; these are the env-var **names**, evidence the integration exi
 Values intentionally omitted.
 
 - **LLM / model router (§14/§34):** `ANTHROPIC_API_KEY`, `OPENAI_BASE_URL`, `GROQ_BASE_URL`,
-  `FEATHERLESS_BASE_URL`/`FEATHERLESS_CHEAP_MODEL`, `GEMINI_BASE_URL`/`GEMINI_IMAGE_MODEL`,
-  `VOYAGE_API_KEY` (voyage-3 embeddings, §26). LangGraph bridge: `LANGGRAPH_API_KEY`/`_BASE_URL`,
-  `LANGGRAPH_BRIDGE_API_KEY`/`_URL`, plus `PAIGE_OS_*` bridge keys/URLs.
+  `FEATHERLESS_API_KEY`, `FEATHERLESS_BASE_URL`, `FEATHERLESS_DEFAULT_MODEL` (primary open-flexible
+  slug override; back-compat alias `FEATHERLESS_CHEAP_MODEL`), `FEATHERLESS_MODEL_<KIND>` (per-job-kind
+  overrides), `GEMINI_BASE_URL`/`GEMINI_IMAGE_MODEL`, `VOYAGE_API_KEY` (voyage-3 embeddings, §26).
+  LangGraph bridge: `LANGGRAPH_API_KEY`/`_BASE_URL`, `LANGGRAPH_BRIDGE_API_KEY`/`_URL`, plus
+  `PAIGE_OS_*` bridge keys/URLs.
+  - Featherless plan: **"Feather Per-Request" DEVELOPER** ($50/mo credit, per-request billing, NO
+    model-size cap) subscribed 2026-08-10 → open-flexible default is `meta-llama/Llama-3.3-70B-Instruct`
+    (allow-listed). Cheap-tier §34 economics restored; Claude remains the frontier/rescue tier.
 - **Image / 3D generation (Studio):** `REPLICATE_BASE_URL`, `IDEOGRAM_BASE_URL`, `MESHY_BASE_URL`,
-  `STUDIO_REPLICATE_IMAGE_MODEL`, `STUDIO_REPLICATE_3D_MODEL`, `LOVABLE_API_KEY`/`LOVABLE_SEND_URL`.
+  `STUDIO_REPLICATE_IMAGE_MODEL`, `STUDIO_REPLICATE_3D_MODEL`.
+- **`LOVABLE_API_KEY` / `LOVABLE_SEND_URL` (§34 — scoped for removal, task #112):** post-PR #442 these
+  are used by ONLY the live **email trinity** (`auth-email-hook` + `process-email-queue` +
+  `handle-email-suppression` — `@lovable.dev` HMAC-signing + email DELIVERY) + `preview-transactional-email`
+  (caller-auth) + `ship-26-legacy-cleanup` (Drive-push). The Paige chat + the 16 credit/subagent fns NO
+  LONGER reference Lovable (purged in #442 — they always ran on direct-Anthropic via `gatewayCompat`). Do
+  NOT assume the chat touches Lovable (§10 corrections log 2026-08-10). Removing these is a launch-critical
+  email-provider migration (owner-set replacement secret + §32 live-email verify) — see task #112.
 - **Visual critique (§33):** `VISUAL_RENDERER_URL`, `VISUAL_RENDERER_SECRET`,
   `STUDIO_VISUAL_CRITIQUE_ENABLED`, `STUDIO_CRITIQUE_MAX_ITERATIONS`, `STUDIO_CRITIQUE_COST_CAP_USD`.
 - **Email:** `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, plus from-address names

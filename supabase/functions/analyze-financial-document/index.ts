@@ -22,9 +22,6 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = "unused";
-
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -195,7 +192,6 @@ Be thorough. Return ONLY valid JSON — no markdown.`;
     const aiResponse = await gatewayCompat("anthropic", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -218,7 +214,7 @@ Be thorough. Return ONLY valid JSON — no markdown.`;
       const statusMessage = aiResponse.status === 429
         ? "Rate limits exceeded, please try again later."
         : aiResponse.status === 402
-          ? "Payment required, please add funds to your Lovable AI workspace."
+          ? "Payment required — the AI provider reported a billing/quota issue."
           : "AI analysis failed. Please try again.";
 
       await supabase.from('financial_document_analyses')
