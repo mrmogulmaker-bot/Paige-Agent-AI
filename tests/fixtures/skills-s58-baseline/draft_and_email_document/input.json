@@ -1,0 +1,1 @@
+{ "contact_id": "REPLACE_WITH_REAL_CONTACT_UUID_WITH_EMAIL", "tenant_id": "REPLACE_WITH_REAL_TENANT_UUID", "inputs": { "doc_type": "summary", "prompt": "A short welcome summary for the client." } }
