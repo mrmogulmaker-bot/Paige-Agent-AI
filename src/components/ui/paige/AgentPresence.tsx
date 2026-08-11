@@ -1,4 +1,5 @@
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { canOwnSubaccounts } from "@/lib/agency/accountCapabilities";
 import { AgentRail } from "./AgentRail";
 import { CommandLauncher } from "./CommandLauncher";
 import { resolveAgentPersona, type AgentAccountType, type AgentPersona } from "./persona";
@@ -51,9 +52,8 @@ function deriveAccountType(args: {
   if (activeTenant) {
     // §51 invariant: a child (parent_tenant_id set) is NEVER an agency. Check parent first.
     if (activeTenant.parent_tenant_id) return "sub_account";
-    if (activeTenant.account_type === "agency" || activeTenant.account_type === "enterprise") {
-      return "agency";
-    }
+    // §18: parent-capable check via the ONE shared predicate (not a re-inlined literal).
+    if (canOwnSubaccounts(activeTenant.account_type)) return "agency";
   }
   return "solo";
 }

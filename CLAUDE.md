@@ -2058,3 +2058,80 @@ check is.
 **Cross-references:** §9 (tenant isolation), §53 (operator tiers — the global-role trap),
 §37 (producer inventory), §51 (per-tier check), §32 (SET ROLE proofs), §39 (peer-gate),
 #116 (the view class — same mechanism, different object type).
+
+## 60. Same-tier feature parity + Enterprise-only customization — every feature DECLARES its tiers through the one helper.
+
+> **PROPOSED — owner RULED the substance 2026-08-11 (structural enforcement is MANDATORY, not
+> deferred); exact wording ratified in a later pass (same pattern as §57–§59). §-number provisional.**
+
+**Directive (owner: Antonio, 2026-08-11).** Every tenant at the same tier structurally receives the
+same **base** feature set. If a feature exists on ONE Solo account it MUST exist on ALL Solo accounts —
+same for Sub-accounts, same for Agencies. **Every feature built on the platform DECLARES which tiers
+receive it via the shared `getTierFeatureSet()` / `hasFeature()` helper (`src/lib/tier/tierFeatures.ts`)**,
+and every render gate DERIVES its answer from that helper — never from an inline `account_type` /
+`tenant_id` / tier compare. The helper is the ONE HOME (§18) for tier→feature mapping. **Enterprise is
+the ONLY tier that receives per-tenant customization** — on top of the Agency baseline. Feature
+availability is DERIVED from CURRENT tier classification (§57), never per-tenant, never inherited from
+historical state.
+
+Owner's framing (verbatim, 2026-08-11): *"I do want getTierFeatureSet() or something like it. That way
+anything we build will HAVE to have those features set for each tier. That's not an ask… You have both
+mis-quoted features, skills, designs, tools, resources, etc. at every level of the platform. That stops
+today. We have a Taxonomy for a reason… Sub accounts and Solo accounts will be able to send customer
+portal access but there's no need for Super Admin and Agency to be able to do that… LOCK in the things
+we need to LOCK into specific account types. We are a CRM and that's how they work. Then we give people
+the ability to customize on top of that."*
+
+- **Solo ≡ Sub-account, except billing.** The only base-feature difference between Solo and Sub-account
+  is BILLING (Solo billed directly by Paige L1; Sub-accounts billed by the parent Agency). Every other
+  base feature is identical.
+- **Opt-in layers ON TOP, never replaces the baseline (§2).** Marketplace installs, Playbook choices,
+  and per-tenant opt-in features EXTEND a tenant's effective set on top of its tier baseline — legitimate
+  chosen customization, NOT tier variance and NOT leaks. `effective = tier_baseline(classification) ⊕
+  tenant_opt_ins`. Do NOT collapse opt-ins into the baseline (the helper models baseline only; the ∪ is
+  a documented call-site layer in `useTierFeatures`).
+- **Enterprise customization** is the only per-tenant BASE variance permitted — Agency baseline + that
+  tenant's negotiated, documented, classification-gated customizations; never leaked to other Enterprise
+  tenants without an explicit flag. Enterprise is built as a strict superset of Agency so it can never
+  silently fall below it.
+
+**Baseline the owner has LOCKED (starting content — extend as features are added):**
+- **Customer portal access / invite sending → Solo + Sub-account ONLY.** Agency + Super Admin do NOT
+  get it (an Agency manages sub-accounts, not a direct consumer client book; Super Admin manages
+  tenants).
+
+**Enforcement — three layers, all mandatory:**
+- **The helper is the ONE HOME.** If you're about to write `if (tenant.account_type === '…')` in a render
+  gate, that's the wrong code — declare the feature's tier set in the helper and call `hasFeature(...)`.
+- **§39 peer-gate checklist item (binding):** *"Does every feature-render decision in this diff derive
+  from `getTierFeatureSet()` / `hasFeature()`? Any hardcoded `account_type` / `tenant_id` gate outside the
+  helper (without a justified `// tier-feature-exempt:` marker for legitimate tier-ROUTING) is a §60
+  violation."* And, from the anchor case below: **enumerate EVERY producer of a locked capability (§37) —
+  a lock that gates 4 of 5 minters is not a lock.**
+- **CI guard `lint:tier-features`** (sibling of `lint:views` #116 + `lint:definer-fns` #117): scans `src/`
+  for render gates referencing `account_type ===` / a hardcoded tenant-UUID compare; any match outside the
+  helper without an inline `// tier-feature-exempt: <reason>` escape fails CI. Positive + negative fixtures
+  ship with it.
+
+- **HONESTY on the enforcement LAYER (§13).** The helper + lint enforce the lock at the **UI / build-time**
+  layer (every render gate derives from the helper; CI blocks new drift). For MOST features that is backed
+  by server RLS/RPC authority (§9). Where a locked capability's server RPC does NOT yet tier-gate (today:
+  `customer_portal_invite` → `create_tenant_invite_token` does not gate `_kind='consumer'` on
+  `account_type`), the lock is UI-only until the server gate lands — say so, do NOT claim "server-enforced."
+  This is not a §9 IDOR when the tenant can only act under its own `tenant_id`; it is a product-scope rule.
+  The server-side tier gate is a tracked follow-up (tied to the owner-decision on whether an Agency keeps
+  any direct client book).
+
+**Anchor (§13, task #122 / owner ruling):** MMA's §16 block divergence (#121) was an empty-state placement
+bug, and the platform sweep found zero same-tier leaks — but the owner ruled the helper MANDATORY anyway,
+because features/skills/designs drift silently and get mis-quoted across tiers, and text-only doctrine
+relies on humans/agents remembering. The structural primitive (helper + CI guard) is the tier-lock
+equivalent of #116 (`security_invoker` + `lint:views`) and #117 (DEFINER caller-scope + `lint:definer-fns`).
+The build's §39 peer-gate then caught the exact failure this section names: a 5th consumer-portal minter
+(`WorkspaceSettingsPanel`, on the UNIVERSAL Setup surface) was ungated — proving a §37 producer inventory
+on every locked capability is not optional.
+
+**Cross-references:** §57 (Super Admin = source of truth — derivation), §51/§56 (tier matrix), §16
+(department model), §2 (opt-in installs are chosen config), §18 (one home + CI guard), §37 (producer
+inventory — enumerate ALL minters of a locked capability), §39 (peer-gate), §9/§53 (server is the real
+auth boundary), D10 `getTierBookNoun` (the label twin).

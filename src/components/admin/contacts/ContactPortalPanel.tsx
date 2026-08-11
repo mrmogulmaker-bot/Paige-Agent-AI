@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { callAdminAccountAction } from "@/lib/functions/adminAccountActions";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useTierFeatures } from "@/hooks/useTierFeatures";
 
 type Invite = {
   id: string;
@@ -58,6 +59,11 @@ export function ContactPortalPanel({
   linkedUserId: string | null;
 }) {
   const { activeTenantId } = useTenantContext();
+  // §60 tier lock (owner-ruled 2026-08-11): the consumer/client portal invite is a
+  // solo + sub_account capability ONLY. An Agency manages sub-accounts, not a direct
+  // consumer client book — this closes the portal-invite leak on the Agency tier.
+  const { has: hasTierFeature } = useTierFeatures();
+  const canInvitePortal = hasTierFeature("customer_portal_invite");
   const [invites, setInvites] = useState<Invite[]>([]);
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
   const [busy, setBusy] = useState<"invite" | "revoke" | "agreement" | "signout" | "reset" | null>(null);
@@ -114,6 +120,9 @@ export function ContactPortalPanel({
   // fallback. On accept, accept_tenant_invite links them to THIS exact contact
   // (via the bound contact_id), and the token can only ever email this address.
   const sendInvite = async () => {
+    // §60: portal-invite is solo + sub_account only — hard-guard the action too,
+    // not just the UI, so a stale/hidden trigger can never mint a consumer token.
+    if (!canInvitePortal) return;
     if (!email) return toast.error("Contact needs an email address first");
     if (!activeTenantId) return toast.error("No active workspace to invite into");
     setBusy("invite");
@@ -221,6 +230,11 @@ export function ContactPortalPanel({
     : "none";
 
   const hasAccess = Boolean(localLinkedUserId);
+
+  // §60 tier lock: the whole consumer-portal panel (invite + agreements + access
+  // controls) is a solo + sub_account capability. An Agency/Enterprise/God tier
+  // never sees it — the panel is entirely about a direct consumer client book.
+  if (!canInvitePortal) return null;
 
   return (
     <div className="space-y-3">

@@ -37,6 +37,7 @@ import { ContactPortalPanel } from "@/components/admin/contacts/ContactPortalPan
 import { ClientOnboardingStatusPanel } from "@/components/admin/contacts/ClientOnboardingStatusPanel";
 import { ImpersonateClientButton } from "@/components/admin/ImpersonateClientButton";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useTierFeatures } from "@/hooks/useTierFeatures";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -186,6 +187,11 @@ export default function ContactDetail() {
 
   const fullName = useMemo(() => client ? `${client.first_name} ${client.last_name}`.trim() : "", [client]);
   const { activeTenantId } = useTenantContext();
+  // §60 tier lock (owner-ruled 2026-08-11): the client Portal & Agreements tab is
+  // the consumer-portal invite surface — solo + sub_account ONLY, never Agency
+  // (which manages sub-accounts, not a direct consumer client book).
+  const { has: hasTierFeature } = useTierFeatures();
+  const canInvitePortal = hasTierFeature("customer_portal_invite");
   const { enabled: btfEnabled } = useTenantFeature("btf_enabled");
   // "Funding Readiness" is a vertical-specific surface (credit/funding coaching).
   // It is NOT a platform default (§2/§9): the tab shows only for tenants whose
@@ -200,6 +206,8 @@ export default function ContactDetail() {
     // access" flow — mint a consumer token BOUND to this contact so, on accept,
     // accept_tenant_invite links them to this exact row (clients row + client
     // role, NO tenant_members membership → no operator dashboard).
+    // §60: hard-guard the consumer-portal invite — solo + sub_account only.
+    if (!canInvitePortal) return;
     if (!client?.email) {
       toast.error("This contact has no email on file — add one before inviting.");
       return;
@@ -298,9 +306,15 @@ export default function ContactDetail() {
         </Button>
         {btfEnabled && isAdmin && (
           <>
-            <Button variant="outline" size="sm" onClick={sendClientProgramInvite}>
-              <Send className="h-4 w-4 mr-1" /> Resend Client Program Invite
-            </Button>
+            {/* §60: the portal-invite resend is solo + sub_account only — gate the
+                button to match its handler (which hard-returns on !canInvitePortal),
+                so Agency doesn't see a dead control. Start Onboarding is a SEPARATE
+                capability and stays under btfEnabled && isAdmin. */}
+            {canInvitePortal && (
+              <Button variant="outline" size="sm" onClick={sendClientProgramInvite}>
+                <Send className="h-4 w-4 mr-1" /> Resend Client Program Invite
+              </Button>
+            )}
             {client.lifecycle_stage === "won" && (
               <Button size="sm" onClick={startOnboarding}>
                 <Send className="h-4 w-4 mr-1" /> Start Onboarding
@@ -405,7 +419,9 @@ export default function ContactDetail() {
           {fundingReadinessEnabled && (
             <TabsTrigger value="funding-lens"><TrendingUp className="h-4 w-4 mr-1" /> Funding Readiness</TabsTrigger>
           )}
-          <TabsTrigger value="portal"><User className="h-4 w-4 mr-1" /> Portal & Agreements</TabsTrigger>
+          {canInvitePortal && (
+            <TabsTrigger value="portal"><User className="h-4 w-4 mr-1" /> Portal & Agreements</TabsTrigger>
+          )}
           <TabsTrigger value="approvals">
             <ClipboardCheck className="h-4 w-4 mr-1" /> Approvals
             {contactApprovals.length > 0 && (
@@ -519,16 +535,18 @@ export default function ContactDetail() {
           <TabsContent value="funding-lens"><FundingReadinessLens contactId={client.id} mode="admin" /></TabsContent>
         )}
 
-        <TabsContent value="portal">
-          <div className="space-y-4">
-            <ClientOnboardingStatusPanel contactId={client.id} />
-            <ContactPortalPanel
-              contactId={client.id}
-              email={client.email}
-              linkedUserId={client.linked_user_id}
-            />
-          </div>
-        </TabsContent>
+        {canInvitePortal && (
+          <TabsContent value="portal">
+            <div className="space-y-4">
+              <ClientOnboardingStatusPanel contactId={client.id} />
+              <ContactPortalPanel
+                contactId={client.id}
+                email={client.email}
+                linkedUserId={client.linked_user_id}
+              />
+            </div>
+          </TabsContent>
+        )}
 
 
         <TabsContent value="approvals">

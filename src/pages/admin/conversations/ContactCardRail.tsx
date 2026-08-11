@@ -41,6 +41,7 @@ import { ContactPortalPanel } from "@/components/admin/contacts/ContactPortalPan
 import { ContactBillingPanel } from "@/components/admin/contacts/ContactBillingPanel";
 import { ContactAutomationHistory } from "@/components/admin/contacts/ContactAutomationHistory";
 import { ClientOnboardingStatusPanel } from "@/components/admin/contacts/ClientOnboardingStatusPanel";
+import { useTierFeatures } from "@/hooks/useTierFeatures";
 import {
   type ClientContact, type MessageRow, type Label, type ChannelType, type Suppression,
   CHANNEL_ICON, CHANNEL_LABEL, CREATED_VIA_LABEL, LABEL_COLOR, bodyPreview, contactNameFromClient,
@@ -265,6 +266,12 @@ export function ContactCardRail({
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [ownerBusy, setOwnerBusy] = useState(false);
   const [inviteBusy, setInviteBusy] = useState(false);
+  // §60 tier lock (owner-ruled 2026-08-11): the consumer/client portal invite is a
+  // solo + sub_account capability ONLY — an Agency manages sub-accounts, not a
+  // direct consumer client book. Gates both the inline "Send portal invite" act
+  // and the "Portal & Agreements" fold below.
+  const { has: hasTierFeature } = useTierFeatures();
+  const canInvitePortal = hasTierFeature("customer_portal_invite");
   const [dndBusy, setDndBusy] = useState<"email" | "sms" | null>(null);
   const [emailDnd, setEmailDnd] = useState(false);
   const [smsDnd, setSmsDnd] = useState(false);
@@ -348,6 +355,7 @@ export function ContactCardRail({
 
   const sendPortalInvite = useCallback(async () => {
     if (!contact) return;
+    if (!canInvitePortal) return; // §60 hard-guard: solo + sub_account only
     if (!contact.email) { toast.error("Add an email to this contact first."); return; }
     if (!tenantId) { toast.error("No active workspace to invite into."); return; }
     setInviteBusy(true);
@@ -375,7 +383,7 @@ export function ContactCardRail({
     } finally {
       setInviteBusy(false);
     }
-  }, [contact, tenantId]);
+  }, [contact, tenantId, canInvitePortal]);
 
   // Resolve from the FULL roster (not just assignable) so a set owner always shows a real
   // name for an admin; a non-admin (empty roster) falls back to "Current owner" — honest,
@@ -637,16 +645,19 @@ export function ContactCardRail({
 
             {/* Actions — every one wired to a real seam (§13, no dead buttons). */}
             <TabsContent value="actions" className="mt-3 space-y-3">
-              {/* Send portal invite — the one gold act (outward commit). */}
-              <Button
-                variant="gold" size="sm" className="w-full"
-                onClick={() => void sendPortalInvite()}
-                disabled={inviteBusy || !contact.email}
-                title={!contact.email ? "Add an email to invite this contact" : undefined}
-              >
-                {inviteBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
-                Send portal invite
-              </Button>
+              {/* Send portal invite — the one gold act (outward commit).
+                  §60: solo + sub_account only; hidden on Agency/Enterprise/God. */}
+              {canInvitePortal && (
+                <Button
+                  variant="gold" size="sm" className="w-full"
+                  onClick={() => void sendPortalInvite()}
+                  disabled={inviteBusy || !contact.email}
+                  title={!contact.email ? "Add an email to invite this contact" : undefined}
+                >
+                  {inviteBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
+                  Send portal invite
+                </Button>
+              )}
 
               {/* Reminder + task — real plan_* RPCs via QuickAddDialog. */}
               {userId && (
@@ -733,14 +744,17 @@ export function ContactCardRail({
               defaultValue={[]}
               className="overflow-hidden rounded-lg border border-border/70"
             >
-              <FoldSection value="portal" icon={FileSignature} label="Portal & Agreements">
-                <ClientOnboardingStatusPanel contactId={contact.id} />
-                <ContactPortalPanel
-                  contactId={contact.id}
-                  email={contact.email}
-                  linkedUserId={contact.linked_user_id ?? null}
-                />
-              </FoldSection>
+              {/* §60: consumer Portal & Agreements — solo + sub_account only. */}
+              {canInvitePortal && (
+                <FoldSection value="portal" icon={FileSignature} label="Portal & Agreements">
+                  <ClientOnboardingStatusPanel contactId={contact.id} />
+                  <ContactPortalPanel
+                    contactId={contact.id}
+                    email={contact.email}
+                    linkedUserId={contact.linked_user_id ?? null}
+                  />
+                </FoldSection>
+              )}
               <FoldSection value="billing" icon={CreditCard} label="Billing">
                 {/* dense — the reused panel's default responsive form keys off the VIEWPORT
                     (md:), which over-widens inside this ~300px rail on desktop; dense forces

@@ -248,6 +248,28 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   `lint:definer-fns` CI guard + `pg_proc` drift advisor (shipped #117/PR #448). See Lesson #14 for the
   full A/B/C classification.
 
+- **§60 — structural tier-lock over text-only doctrine (owner-named drift class).** When an owner has
+  re-stated a discipline across sessions and keeps catching drift, the correct response is a STRUCTURAL
+  enforcement primitive (§18 one home + CI guard), NOT a text-only rule that relies on humans/agents
+  remembering. `getTierFeatureSet()` + `lint:tier-features` is the tier-lock equivalent of #116's
+  `security_invoker` + `lint:views` and #117's DEFINER caller-scope + `lint:definer-fns`. **Rule:** if the
+  owner has said it 3+ times and it keeps drifting, structurally lock it — don't wait for the next
+  violation. Corollary to §18 "don't scaffold": a structural anti-recurrence primitive for an owner-named
+  drift class is NOT "scaffolding a non-problem" — it is the fix. (Anchor: task #122; the §18-grounds
+  deferral was explicitly reversed by the owner, master §10 correction #7.)
+- **§37/§60 — a lock that gates N of N+1 producers is not a lock (enumerate ALL minters).** The #122
+  build gated 4 of the 5 surfaces that mint a consumer-portal token and reported the lock closed; the §39
+  peer-gate found the 5th (`WorkspaceSettingsPanel`, on the UNIVERSAL Setup surface) still fully
+  functional on the excluded tier. **Rule:** when locking a CAPABILITY to a tier, run a §37 producer
+  inventory on the underlying seam (here: every caller of `create_tenant_invite_token` with
+  `_kind='consumer'`) and gate EVERY producer — "4 senders gated" GREENs the diff while the capability
+  is still reachable. The peer-gate (§39) exists to catch exactly this; a build's own self-report doesn't.
+- **§13/§60 — don't let a UI gate's comments claim SERVER enforcement.** A build-time/UI tier lock (helper
+  + lint) is real, but it is not the server auth boundary (§9). If the server RPC doesn't yet tier-gate,
+  the in-code comments must say the lock is UI-only, not "structural / server-enforced." (Anchor: #122
+  `customer_portal_invite` — `create_tenant_invite_token` does not gate `_kind='consumer'` on
+  `account_type`; corrected in the helper header before ship.)
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same

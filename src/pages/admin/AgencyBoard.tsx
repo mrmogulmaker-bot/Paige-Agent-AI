@@ -36,6 +36,7 @@ import {
   useAgencyPortfolio, type PortfolioHealthKey, type LeaderboardRow,
 } from "@/hooks/useAgencyPortfolio";
 import { getTierBookNounLower, getTierBookNounSingular, type TierClassification } from "@/lib/agency/tierLabels";
+import { canOwnSubaccounts } from "@/lib/agency/accountCapabilities";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -110,6 +111,7 @@ export default function AgencyBoard() {
   // 'enterprise' is preserved so a future Enterprise operator still sees the reserved
   // "Portfolio". isPlatformStaff:false deliberately — even an operator's book here is
   // Sub-accounts/Portfolio, never the platform Fleet.
+  // tier-feature-exempt: book-noun ROUTING (which tier label to show), not a feature toggle
   const agencyBookAccountType = activeTenant?.account_type === "enterprise" ? "enterprise" : "agency";
   const tierClassification: TierClassification = {
     account_type: agencyBookAccountType,
@@ -124,10 +126,12 @@ export default function AgencyBoard() {
   // approved) from the agency dashboard (§9 leak, Codex P1). Only mount when the active tenant is the
   // agency's OWN top-level tenant per the §51 invariant (parent-less + a manager account_type); when
   // scoped into a child the child's own check correctly lives on the child's /admin PracticeOverview.
+  // §51 own-agency-context scope guard: parent-less AND a parent-capable (manager)
+  // tier — via the ONE shared predicate (§18), not a re-inlined account_type literal.
   const isOwnAgencyContext =
     !!activeTenant &&
     activeTenant.parent_tenant_id === null &&
-    (activeTenant.account_type === "agency" || activeTenant.account_type === "enterprise");
+    canOwnSubaccounts(activeTenant.account_type);
 
   // ONE parentage-gated rollup across the whole book — replaces the old
   // per-child N+1. Polls every 45s and on window focus (live/dynamic doctrine).
@@ -672,6 +676,7 @@ export default function AgencyBoard() {
                         <div className="truncate font-medium text-foreground">{s.name}</div>
                         <div className="text-xs text-muted-foreground">
                           /{s.slug}
+                          {/* tier-feature-exempt: roster LABEL (show the type suffix), not a feature toggle */}
                           {s.account_type !== "standalone" && s.account_type !== "sub_account" && (
                             <span className="capitalize"> · {s.account_type}</span>
                           )}
