@@ -277,7 +277,14 @@ Values intentionally omitted.
     model-size cap) subscribed 2026-08-10 → open-flexible default is `meta-llama/Llama-3.3-70B-Instruct`
     (allow-listed). Cheap-tier §34 economics restored; Claude remains the frontier/rescue tier.
 - **Image / 3D generation (Studio):** `REPLICATE_BASE_URL`, `IDEOGRAM_BASE_URL`, `MESHY_BASE_URL`,
-  `STUDIO_REPLICATE_IMAGE_MODEL`, `STUDIO_REPLICATE_3D_MODEL`, `LOVABLE_API_KEY`/`LOVABLE_SEND_URL`.
+  `STUDIO_REPLICATE_IMAGE_MODEL`, `STUDIO_REPLICATE_3D_MODEL`.
+- **`LOVABLE_API_KEY` / `LOVABLE_SEND_URL` (§34 — scoped for removal, task #112):** post-PR #442 these
+  are used by ONLY the live **email trinity** (`auth-email-hook` + `process-email-queue` +
+  `handle-email-suppression` — `@lovable.dev` HMAC-signing + email DELIVERY) + `preview-transactional-email`
+  (caller-auth) + `ship-26-legacy-cleanup` (Drive-push). The Paige chat + the 16 credit/subagent fns NO
+  LONGER reference Lovable (purged in #442 — they always ran on direct-Anthropic via `gatewayCompat`). Do
+  NOT assume the chat touches Lovable (§10 corrections log 2026-08-10). Removing these is a launch-critical
+  email-provider migration (owner-set replacement secret + §32 live-email verify) — see task #112.
 - **Visual critique (§33):** `VISUAL_RENDERER_URL`, `VISUAL_RENDERER_SECRET`,
   `STUDIO_VISUAL_CRITIQUE_ENABLED`, `STUDIO_CRITIQUE_MAX_ITERATIONS`, `STUDIO_CRITIQUE_COST_CAP_USD`.
 - **Email:** `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, plus from-address names
