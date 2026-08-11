@@ -68,6 +68,14 @@ export type Feature =
   // sub-accounts, it doesn't run its own campaigns/creative book).
   | "growth"
   | "studio"
+  // Skills engine — the methodology-anchored paige_skills a tenant RUNS on its own book.
+  // §61 Standing Tier Distribution Default: this Feature is the SELF-USE gate → solo ·
+  // sub_account · enterprise · god. An AGENCY does NOT self-use skills; its §61 "resell"
+  // right (reselling the skill library to its sub-accounts) is a MARKETPLACE concept, NOT
+  // a tier Set bit (the baseline Sets carry self-use only; Marketplace opt-ins/resale
+  // layer at the call site — see the scope note above). enterprise = yes+resell (self-use
+  // here via the Solo union + resell in the Marketplace layer).
+  | "skills"
   // Consumer/client portal invite — THE §60 enforced lock: solo + sub_account +
   // enterprise (the HYBRID tier). A pure agency is excluded on BOTH layers.
   | "customer_portal_invite"
@@ -166,6 +174,7 @@ const SOLO_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...TENANT_WORKING,
   ...CREATION_SURFACES, // solo runs its own campaigns/Studio
   "customer_portal_invite", // solo owns its own client book → can invite clients
+  "skills", // §61 self-use — solo runs the skills engine on its own book
 ]);
 
 const SUB_ACCOUNT_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
@@ -173,6 +182,7 @@ const SUB_ACCOUNT_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...TENANT_WORKING,
   ...CREATION_SURFACES, // a sub-account runs its own campaigns/Studio
   "customer_portal_invite", // a sub-account runs its OWN client book → can invite
+  "skills", // §61 self-use — a sub-account runs the skills engine on its own book
 ]);
 
 const AGENCY_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
@@ -206,6 +216,7 @@ const GOD_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...UNIVERSAL,
   ...CREATION_SURFACES, // §35 dogfooding — operators use the creation tools too
   "fleet_console",
+  "skills", // §61/§35 — God dogfoods the skills engine (source of truth §57)
   // NOTE: NO tenant CRM cluster (people/pipeline/conversations) and NO
   // customer_portal_invite — God is the platform operator, not a tenant with a
   // client book. Creation surfaces ARE carried for operator dogfooding (§35).
