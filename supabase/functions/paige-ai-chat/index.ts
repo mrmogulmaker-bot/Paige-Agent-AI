@@ -7301,6 +7301,15 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             const draftContent: Record<string, unknown> = { channel, body };
             if (args.to) draftContent.to = String(args.to);
             if (channel === "email" && args.subject) draftContent.subject = String(args.subject);
+            // Gap 3 guard (#132): never file a headless send approval — one with no
+            // linked contact AND no recipient address can never be sent (the DB CHECK
+            // constraint enforces this too). Return a clean, actionable signal so Paige
+            // resolves the recipient first (look the contact up, or ask the user) rather
+            // than queueing an un-sendable draft or hitting a raw constraint error.
+            if (!contactId && !draftContent.to) {
+              toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify({ success: false, error: "no_recipient", note: `This ${channel} draft has no recipient on file. Resolve the contact first — look them up (crm_search_contacts) or ask the user for the ${channel === "sms" ? "phone number" : "email address"} — then file it for approval.` }) });
+              continue;
+            }
             const { data: inserted, error: insErr } = await supabase
               .from("paige_pending_approvals")
               .insert({
