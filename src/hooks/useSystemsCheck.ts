@@ -1,20 +1,21 @@
 // Systems Check read seam (Wave S3 L3 frontend) — the ONE hook the SystemsCheckTile
-// reads, scope-aware (§9/§51). It fetches the tenant's OR the operator's latest scan
-// run + its findings from paige_systems_check_run / _finding, joining the shared
-// registry for the human check name + domain + priority.
+// reads, scope-aware (§9/§51). It calls the `systems_check_snapshot` RPC, which returns
+// the tenant's OR the operator's latest scan run + its findings (joined to the shared
+// registry for the human check name + domain + priority) + the tenant's created_at, in
+// ONE round-trip (task #122 perf — replaced 2–3 serialized PostgREST queries per mount).
 //
-// SCOPE ISOLATION (§9/§51/§53): a `scope="tenant"` read filters `.eq("tenant_id",
-// tenantId)` (the caller's own resolved tenant — a sub-account can never widen to the
-// parent, §51 invariant); a `scope="operator"` read filters `.is("tenant_id", null)`
-// so a super_admin (whose RLS returns ALL rows) still sees ONLY the tenant-less
-// operator rows, never a tenant's findings. RLS is the real boundary underneath; these
-// filters keep the surfaced set correct for each persona. A tenant JWT never requests
-// operator findings — the operator tile only mounts in the godMode operator console.
+// SCOPE ISOLATION (§9/§51/§53/§59): the client passes ONLY the scope, never a tenant id.
+// The RPC enforces caller-scope IN-BODY (§59): `scope="tenant"` derives the tenant from
+// current_user_tenant_id() (the caller's own resolved tenant — a sub-account can never
+// widen to the parent, §51 invariant); `scope="operator"` gates on is_platform_operator()
+// and reads only the tenant-less (tenant_id IS NULL) operator lens, so a super_admin still
+// sees ONLY operator rows, never a tenant's findings. RLS is the real boundary underneath.
+// A tenant JWT never requests operator scope — the operator tile only mounts in godMode.
 //
 // §13 HONESTY: no run yet → { run: null, findings: [] } (the tile renders an honest
-// "no scan yet", never a fabricated pass). The registry/table types are not in the
-// generated Supabase types yet (migrations owner-review-gated), so the `.from(... as
-// any)` casts match the repo's pre-typegen convention (rag_documents / rag_retrieval_log).
+// "no scan yet", never a fabricated pass). The RPC is not in the generated Supabase types
+// yet (migrations owner-review-gated), so the `(supabase as any).rpc(...)` cast matches
+// the repo's pre-typegen convention (rag_documents / rag_retrieval_log).
 import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -102,56 +103,27 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
     enabled,
     refetchOnWindowFocus: true,
     refetchInterval: 60_000,
+    // Navigation re-mounts no longer re-pay the round-trip within the refresh window; the RPC
+    // is the single source and the 60s refetchInterval keeps it fresh (task #122 perf).
+    staleTime: 60_000,
     queryFn: async (): Promise<{ run: SystemsCheckRun | null; findings: SystemsCheckFinding[]; tenantCreatedAt?: string | null }> => {
+      // ONE round-trip: the systems_check_snapshot RPC merges the former Query A (latest run) +
+      // Query B (findings + registry embed) + Query C (tenant created_at) into a single jsonb.
+      // §59 caller-scope is enforced IN-BODY (tenant derived from current_user_tenant_id(),
+      // operator gated on is_platform_operator()) — the client passes only the scope, never a
+      // tenant id. The returned shape is byte-for-byte the same rows the three queries produced.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = supabase as any;
+      const { data, error } = await (supabase as any).rpc("systems_check_snapshot", { p_scope: scope });
+      if (error) throw error;
 
-      // 1) latest scan run for this scope.
-      let runQ = db
-        .from("paige_systems_check_run")
-        .select("id, started_at, completed_at, check_count, pass_count, fail_count")
-        .order("started_at", { ascending: false })
-        .limit(1);
-      runQ = scope === "operator"
-        ? runQ.is("tenant_id", null)
-        : runQ.eq("tenant_id", activeTenantId as string);
+      const snap = (data ?? {}) as {
+        run?: SystemsCheckRun | null;
+        findings?: RawFinding[] | null;
+        tenant_created_at?: string | null;
+      };
 
-      const { data: runRows, error: runErr } = await runQ;
-      if (runErr) throw runErr;
-      const run = ((runRows ?? [])[0] as SystemsCheckRun | undefined) ?? null;
-      if (!run) {
-        // No run yet. For a TENANT scope, read the tenant's created_at so the tile can honestly
-        // distinguish "first scan is still running" (brand-new tenant) from the terminal "no scan
-        // yet" empty state (§13). Operator scope is cron-driven — no per-tenant recency signal.
-        let tenantCreatedAt: string | null = null;
-        if (scope === "tenant" && activeTenantId) {
-          const { data: tRow } = await db
-            .from("tenants")
-            .select("created_at")
-            .eq("id", activeTenantId)
-            .maybeSingle();
-          tenantCreatedAt = (tRow?.created_at as string | null) ?? null;
-        }
-        return { run: null, findings: [], tenantCreatedAt };
-      }
-
-      // 2) findings for that run + the registry join (one shared catalog, §18).
-      let findQ = db
-        .from("paige_systems_check_finding")
-        .select(
-          "id, run_id, check_id, status, severity_at_finding, evidence, paige_interpretation, " +
-            "paige_drafted_fix, department_id, resolved_at, resolution, resolution_action_id, created_at, " +
-            "reg:paige_systems_check_registry(check_name, domain, priority)",
-        )
-        .eq("run_id", run.id);
-      findQ = scope === "operator"
-        ? findQ.is("tenant_id", null)
-        : findQ.eq("tenant_id", activeTenantId as string);
-
-      const { data: findRows, error: findErr } = await findQ;
-      if (findErr) throw findErr;
-
-      const findings: SystemsCheckFinding[] = ((findRows ?? []) as RawFinding[]).map((r) => ({
+      const run = snap.run ?? null;
+      const findings: SystemsCheckFinding[] = ((snap.findings ?? []) as RawFinding[]).map((r) => ({
         id: r.id,
         run_id: r.run_id,
         check_id: r.check_id,
@@ -170,7 +142,9 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
         priority: r.reg?.priority ?? null,
       }));
 
-      return { run, findings };
+      // tenant_created_at is only populated (and only consumed) when there is no run yet, in
+      // tenant scope — it drives scanPending below. Operator scope always returns null.
+      return { run, findings, tenantCreatedAt: snap.tenant_created_at ?? null };
     },
   });
 
