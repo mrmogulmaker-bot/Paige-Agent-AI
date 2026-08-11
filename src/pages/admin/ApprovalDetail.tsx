@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- pre-existing legacy `any` debt in this
+   approval-detail page (untyped approval / contact / draft_content rows from stale generated
+   types). The Send-recipient resolution fix (#131) does not add to it; this file-level disable
+   matches the repo's established pattern for legacy `any`-heavy surfaces touched under the CI
+   ESLint gate, rather than retyping the whole component in a focused hotfix. */
 import { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -116,7 +121,7 @@ export default function ApprovalDetail() {
     // (contact_id NULL, the downstream effect of a contact-search false-miss —
     // hotfix #127/#131) always tripped "no email on file" even though Paige had
     // the address in the draft. Mirror the backend's snapshot→live precedence.
-    const dc = (approval.draft_content ?? {}) as any;
+    const dc = approval.draft_content ?? {};
     let to = String(dc.to ?? dc.recipient ?? "").trim();
     if (!to) to = channel === "email" ? String(contact?.email ?? "") : String(contact?.phone ?? "");
     // Last resort: re-resolve from the live clients row by the linked id (covers a
@@ -124,7 +129,7 @@ export default function ApprovalDetail() {
     if (!to && approval.contact_id) {
       const { data: c } = await supabase
         .from("clients").select("email, phone").eq("id", approval.contact_id).maybeSingle();
-      to = channel === "email" ? String((c as any)?.email ?? "") : String((c as any)?.phone ?? "");
+      to = channel === "email" ? String(c?.email ?? "") : String(c?.phone ?? "");
     }
     if (!to) {
       return toast.error(
