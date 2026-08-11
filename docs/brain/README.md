@@ -76,7 +76,13 @@ section; see `glossary.md` for the full anchor map). The docs below are the long
 `CLAUDE.md` sections point to. **§56 (2026-08-10) — the pre-build tier-matrix gate:** before ANY
 build, open `docs/doctrine/tier-matrix.md`, name which account type(s) the change is for, and decide
 per-tier whether the feature belongs (a "every tier" capability must render regardless of
-empty-book/branch/route accident). See `lessons-learned.md` #11 for the anchoring bug.
+empty-book/branch/route accident). See `lessons-learned.md` #11 for the anchoring bug. **§61
+Standing Tier Distribution Default (2026-08-11, PROPOSED)** (same doc, tier-matrix.md §61): don't ask
+the owner "which tier?" — every new feature defaults to **God = YES · Solo = YES · Sub-account = YES ·
+Agency = RESELL** (resells to sub-accounts via Marketplace, does NOT operator-use it) **· Enterprise =
+YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; matching features ship noting
+"§61 default: no exception". Preserved exceptions: `customer_portal_invite` (Solo+Sub+Enterprise),
+`growth`/`studio` (Solo+Sub+God, Agency excluded).
 
 | Path | One-line | When to read |
 |---|---|---|

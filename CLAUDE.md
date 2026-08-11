@@ -2135,3 +2135,52 @@ on every locked capability is not optional.
 (department model), §2 (opt-in installs are chosen config), §18 (one home + CI guard), §37 (producer
 inventory — enumerate ALL minters of a locked capability), §39 (peer-gate), §9/§53 (server is the real
 auth boundary), D10 `getTierBookNoun` (the label twin).
+
+## 61. Default tier-placement rule — the answer is already known; stop asking the owner per-feature.
+
+> **PROPOSED — owner RULED the substance 2026-08-11; exact wording ratified in a later pass (same
+> pattern as §57–§60). §-number provisional.** Authoritative statement + decision procedure live in
+> `docs/doctrine/tier-matrix.md` §61 (the §18 one home); this section is the CLAUDE.md pointer.
+
+**Directive (owner: Antonio, 2026-08-11).** §56 says *check the tier matrix before you build*; §60 says
+*declare the per-tier answer in the one helper*. §61 supplies the **default answer itself**, so the
+recurring "which tier gets this?" question stops going to the owner. His framing, verbatim: *"This is
+yet another time that you guys have asked me… where things should be placed when we should actually
+already have this understanding for the entire platform… I would love for us to lock this in as a
+complete doctrine and as an understanding somewhere inside of our brain, also inside of the master
+project."* Asking the owner to place a feature that the rule below already answers is itself the miss.
+
+- **The standing default distribution — every new `getTierFeatureSet()` feature follows this unless the
+  owner explicitly rules an exception:**
+  - **Super Admin (God-level) — YES.** Has EVERYTHING (source of truth §57; dogfooding §35). Honest code
+    note (§13): God's own `tierFeatures.ts` baseline still omits a tenant-book "doing" flag it has no book
+    for (`customer_portal_invite`, the CRM cluster) — it reaches tenant data by act-as (§51 Tier 1), not by
+    carrying the flag. "Has everything" = governs/derives + dogfoods everything it can operate.
+  - **Solo — YES.** The operator running their own business.
+  - **Sub-account — YES.** Same as Solo (§60).
+  - **Agency — RESELL.** Does **NOT** use the feature at its own operator surface; it has the ability to
+    **RESELL** the capability to its sub-accounts via the Marketplace. (So an Agency's `getTierFeatureSet()`
+    does NOT carry the operator flag; its resell ability is the separate Marketplace mechanism.)
+  - **Enterprise — YES + RESELL.** The HYBRID tier — inherits Solo ∪ Agency, so it gets both operator-use
+    AND reseller ability.
+- **Exception rule.** Any deviation from this default requires an explicit owner ruling AND is documented
+  in the feature's declaration comment in `tierFeatures.ts`. Past-ruled exceptions, preserved:
+  - `customer_portal_invite` = Solo + Sub-account + Enterprise only (Agency + Super Admin excluded).
+  - `growth` + `studio` = Solo + Sub-account + Super Admin only (Agency EXCLUDED entirely — no resell).
+- **Cowork/CC behavioral rule.** When a new feature ships and its tier distribution matches the §61 default,
+  ship it WITHOUT asking the owner — note "§61 default: no exception." Only ask when the feature's nature
+  suggests it might BE an exception (e.g. an admin-only surface that doesn't fit "operator running a
+  business"). Asking a tier question the §61 default already answers is itself the §61 miss (Cowork miss #12).
+- **Anchoring application (owner-ruled 2026-08-11):** the Skills Wave `skills` feature follows the §61
+  DEFAULT → **God YES · Solo YES · Sub-account YES · Agency RESELL (skill-library resell via Marketplace) ·
+  Enterprise YES + RESELL.** Vocab reconciliation is **MEDIUM scope** (owner-ruled): a living
+  `docs/doctrine/skills-vocabulary.md` glossary + inline code comments disambiguating the four concepts
+  (`paige_skills` recipes · Marketplace add-ons · sub-agents/specialists · department methodology) — **NO
+  renames of shipped tables or UI surfaces** (§58 anti-regression risk, no user-facing value).
+- **The test, every time:** *"Does the §61 default already answer this feature's tier distribution (God/
+  Solo/Sub YES, Agency RESELL, Enterprise YES+RESELL)? If yes, I ship it and note '§61 default: no
+  exception' — I do NOT ask the owner. Only a genuine exception candidate escalates."*
+
+**Cross-references:** §56 (pre-build tier gate — WHEN to check), §60 (the helper — WHERE to encode), §57
+(God derive-from-source), §51 (tier matrix / parity railing), §35 (God dogfoods everything), §2 (resellable
+installs are chosen config), §37 (gate every producer), `docs/doctrine/tier-matrix.md` §61 (authoritative home).
