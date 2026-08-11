@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import { useReducedMotion } from "framer-motion";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -366,9 +367,16 @@ export function AdminLayout({ children, userRole }: AdminLayoutProps) {
   // rail is gone, else it would leave dead right-padding). Tier-safe by inheritance —
   // `useIsPaigeActive` → `usePaigeDeptStatus` is RLS-tenant-scoped (§51).
   const isPaigeActive = useIsPaigeActive();
+  const reduceMotion = useReducedMotion();
   // The collapsed-rail gutter (kept in sync with AGENT_RAIL_COLLAPSED_REM by name,
-  // N1/§39): reserved only while the rail is mounted, dropped to 0 when idle.
-  const railGutter = isPaigeActive ? "md:pr-[3.25rem]" : "md:pr-0";
+  // N1/§39): reserved only while the rail is mounted, dropped to 0 when idle. The
+  // padding CHANGE is choreographed with the rail's spring (§6/§25) via a CSS padding
+  // transition, so on exit the content doesn't snap ~52px to full-width in one frame
+  // while the ghost rail is still sliding out. Under reduced motion the swap is instant
+  // (no transition class), consistent with the rail's reduced-motion path (§22).
+  const railGutter = `${isPaigeActive ? "md:pr-[3.25rem]" : "md:pr-0"}${
+    reduceMotion ? "" : " transition-[padding] duration-300 ease-out"
+  }`;
   // #219 "Role IS the view": a user's view is a function of the roles they hold —
   // there is no manual "View as" lens. effectiveRole is simply the caller-resolved
   // role (a multi-hat admin+coach resolves to the admin superset and sees the union).
