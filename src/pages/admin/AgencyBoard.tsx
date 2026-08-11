@@ -101,13 +101,19 @@ export default function AgencyBoard() {
 
   // §57 tier-noun derivation — the merged section heading + the revenue tile read
   // their tier label from the ONE source of truth (§18), never a hardcode. This
-  // surface is the AGENCY's own book, so the noun follows the ACTIVE tenant's
-  // account_type (agency → "Sub-accounts", enterprise → "Portfolio" RESERVED) — we
-  // pass isPlatformStaff:false deliberately: even when a platform operator is scoped
-  // into an agency here, "its book" is Sub-accounts/Portfolio, not the platform Fleet.
+  // surface is DEFINITIONALLY the AGENCY control room; its data is always the parent
+  // agency's sub-accounts. So the noun must reflect the AGENCY, not the ambient active
+  // tenant — because an operator can reach /agency while scoped INTO a child (activeTenant
+  // is then that child, a sub_account/standalone; recognized in the §9/§51 guard below and
+  // authorized independently by AgencyLayout). Deriving from the child would mislabel this
+  // page "Your people" / "Person revenue". Coerce any non-manager ambient type to 'agency';
+  // 'enterprise' is preserved so a future Enterprise operator still sees the reserved
+  // "Portfolio". isPlatformStaff:false deliberately — even an operator's book here is
+  // Sub-accounts/Portfolio, never the platform Fleet.
+  const agencyBookAccountType = activeTenant?.account_type === "enterprise" ? "enterprise" : "agency";
   const tierClassification: TierClassification = {
-    account_type: activeTenant?.account_type ?? null,
-    parent_tenant_id: activeTenant?.parent_tenant_id ?? null,
+    account_type: agencyBookAccountType,
+    parent_tenant_id: null,
     isPlatformStaff: false,
   };
   const bookNounLower = getTierBookNounLower(tierClassification);
@@ -626,8 +632,12 @@ export default function AgencyBoard() {
 
             <DataTableShell
               columns={columns}
-              loading={loading}
-              isEmpty={!loading && orderedSubs.length === 0}
+              // §13: metric cells overlay the leaderboard and render "—" for genuinely-absent
+              // data. On a cold load where the roster resolves before agency_portfolio_metrics,
+              // show the skeleton until BOTH resolve — otherwise every row flashes "—" (read as
+              // absent) then pops in values + reorders. So the table's loading tracks both.
+              loading={loading || portfolioLoading}
+              isEmpty={!loading && !portfolioLoading && orderedSubs.length === 0}
               empty={
                 // §57 TODO: this empty-state + "New sub-account" copy is hardcoded to the
                 // agency word. Correct for the only shipping parent tier today (agency); when
