@@ -269,11 +269,18 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
-### In-flight (as of 2026-08-09)
+### Recently SHIPPED (2026-08-09)
+
+- ✅ **PR #412 — Tenant revenue classification + ARR reconciliation** (task #29) — MERGED. Topology fix + hard-delete-cascade of Paige Operations + Claude Studio Dev + Platform Defaults relocation + Part-5 dropdown + reconciliation + MCP splits. §39 peer-gate 4 findings all resolved. **§32.a persisted-apply PROVEN on prod** (all 4 migrations in `schema_migrations`; 2 retired tenants deleted → 11→9 tenants; 4 PME sub-accounts; 0 paid-class → Fleet Console reconciled to $0).
+- ✅ **PR #413 — Master project reference + CLAUDE.md §0** — MERGED (this doc + the session-start rule + Cowork research discipline + verified Comms facts).
+- ✅ **PR #410 — Second Brain** (task #26) — MERGED. `docs/brain/` is now live; §BRAIN reloads every session. (Owed follow-up: the §BRAIN.3 "Tenant Classification" config-registry section.)
+
+### In-flight
 
 - 🔥 **PR #415 — Revenue integrity chain** (task #31, Wave 8 launch gate). Fail-closed trigger (`enforce_revenue_integrity_chain`) + operator audit RPC (`operator_revenue_integrity_audit`) + Fleet Console audit UI. §30-diagnosed (handoff schema wrong on every gate → real tables), §37 producer inventory clean, §39 peer-gate + §5 compliance BOTH passed (2 §39 defects + 1 §5 blocker fixed), §32.b proven against the verbatim file. **Draft PR, owner §32.c-gated.** See Section 10.
 - 🔥 **Second Brain now LIVE on main** (`docs/brain/`, PR #410 merged 2026-08-09). §BRAIN.1/.2/.3 discipline binds: read `docs/brain/README.md` at session start; answer "do we have X?" from the brain; update the relevant brain file in the same commit as a change.
 - 🔥 **Wave 2.5 tail** per canonical-build-order.
+- 🔥 **Task #31 — investor-grade revenue integrity chain** (the write-side of #412's read-side; three-gate signup enforcement + audit-trail export). Queued; fires with a §1 crew on owner go.
 
 *(PR #412 revenue classification + $0-ARR and PR #413 master doc + §0 both merged 2026-08-09 — moved to Section 4 SHIPPED.)*
 
@@ -308,10 +315,10 @@ Per `docs/strategy/client-experience-workstream-2026-07-21.md` — CX-1 (polish,
 | #23 | Signup flow SMS integration | pending | #22 live-drive + phone capture |
 | #24 | Voice fix end-to-end | ✅ closed (Ivanna live) | — |
 | #25 | paige_conversations unsafe RLS | pending | — |
-| #26 | Second Brain (PR #410) | in-flight | Owner §BRAIN approval |
+| #26 | Second Brain (PR #410) | ✅ MERGED (brain live) | — |
 | #27 | Twilio number-search tools in Communications | pending | — |
 | #28 | Tenant-as-operator-client auto-provision + consent capture | pending | #29 |
-| #29 | Promotional-account classification + ARR reconciliation (PR #412) | in-flight | Owner §32.c live-drive |
+| #29 | Promotional-account classification + ARR reconciliation (PR #412) | ✅ MERGED (§32.a-proven) | — |
 | #30 | Super Admin full CRUD on tenants + §10 seams | pending | #29 |
 | #14 | Paige Voice AI on Twilio ConversationRelay — Client Experience team answers via Paige's model router (§17); §34-compliant (Twilio = telecom pipes ONLY; NEVER Twilio Conversation Intelligence / Virtual Agents / AI Assistants) | queued | Wave 4 |
 | #10 | Paige document-creation expansion — offer letters, sales offers, presentations, markdown, in-chat payment links, agreement customization | queued | Wave 4 |
