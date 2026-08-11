@@ -563,7 +563,7 @@ The timing window on this vector is a function of **how fast the coaching-CRM in
 7. **Foreign-tenant defaults** — beyond the "US-calibrated by default, get local counsel" banner, does Paige offer any actual foreign-entity Playbooks day-one? Recommend NO — signal the surface exists, don't half-ship inaccurate guidance.
 8. **Systems Check false-positive fatigue** — the "3 submissions vs. usual 47" anomaly is only useful if the baseline is right. How does Paige learn a tenant's true baseline vs. seasonal fluctuation? Recommend rolling 30-day + day-of-week normalization; explicit "vacation mode" tenant can toggle to suppress alerts.
 9. **Insurance L3 legal timeline** — the Coterie/Coverdash embedded-API deal is going to take 3-6 months of legal review + partner negotiation. Do we hold Vault L3 until it lands, or ship the L4 CoverWallet stub first? Recommend ship the L4 stub first; the L3 upgrade is transparent to the tenant.
-10. **Paige-on-Paige internal build** — should Paige Agent AI LLC itself run on Paige (§45 "Paige on Paige" workstream)? Ties to the demand for a working proof of the whole trilogy. Recommend yes — the strongest investor artifact and the highest-fidelity dogfood.
+10. **Paige-on-Paige internal build** — should Paige Agent AI Inc. itself run on Paige (§45 "Paige on Paige" workstream)? Ties to the demand for a working proof of the whole trilogy. Recommend yes — the strongest investor artifact and the highest-fidelity dogfood.
 ---
 ## Next moves
 Following this strategy doc, three deliverables (in order):

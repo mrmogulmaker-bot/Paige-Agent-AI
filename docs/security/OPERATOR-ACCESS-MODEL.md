@@ -5,7 +5,7 @@
 ## The rule
 
 **Operate the Paige Agent AI platform from `admin@paigeagent.ai`.** That is the
-Paige Agent AI LLC platform-owner identity — the account correctly designed to
+Paige Agent AI Inc. platform-owner identity — the account correctly designed to
 reach every operator surface (Fleet / Tenants, Platform Team, Platform Settings,
 operator dashboards, intelligence, sends). It is the sole `super_admin` and the
 `app_settings_owner.owner_email`.
@@ -19,7 +19,7 @@ separation, not a throwaway.
 
 ## Why (§9 clean seam)
 
-1. The Paige Agent AI LLC operator identity must not be a Project Mogul Enterprise
+1. The Paige Agent AI Inc. operator identity must not be a Project Mogul Enterprise
    Agency sub-account — mixing them blurs the entity boundary §9 exists to protect.
 2. Mirrors the pattern already applied at Meta app setup (a dedicated Paige-specific
    account, separate from the personal one).

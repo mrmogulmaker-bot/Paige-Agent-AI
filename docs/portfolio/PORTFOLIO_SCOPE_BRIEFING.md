@@ -1,7 +1,25 @@
-# Portfolio Scope Briefing (Authoritative)
+# Portfolio Scope Briefing (SUPERSEDED 2026-08-11 — no longer authoritative for Paige's corporate structure)
+
+> **⚠ SUPERSEDED 2026-08-11 (owner ruling, D7).** The corporate structure described below — in which
+> **Paige Agent AI was a subsidiary of a Givalli Heritage Holdings Inc. holding company / Aedis Brands
+> LLC IP-licensing structure**, one of 9 operating LLCs — is **NO LONGER AUTHORITATIVE for Paige.** The
+> owner ruled 2026-08-11: **Paige Agent AI Inc. is a STANDALONE Delaware C-Corp — no parent holdco, not
+> a subsidiary of any entity.** The authoritative corporate-structure doctrine is now
+> **`docs/doctrine/paige-corporate-structure.md`**. This file is retained for historical reference and
+> because it also records details of the owner's *other, separate* businesses (PME, MMA, MCC, Disputera,
+> etc.) — those are the owner's own concern, NOT Paige doctrine, and were not touched. **Do not use this
+> file as a source of truth for Paige's entity, parent, or "portfolio mode."**
+>
+> **⚠ OWNER-OWED FLAG (§13, D7):** the public site Footer (`src/components/landing/Footer.tsx`) still
+> states Paige "operates under license from Aedis Brands LLC, a wholly-owned subsidiary of Givalli
+> Heritage Holdings Inc." That brand/IP-licensing line was PRESERVED (a standalone C-Corp *can* license
+> its marks), but it reflects this superseded holdco structure and was **not** part of the CoreConnect
+> ruling. The owner should confirm whether the Aedis/Givalli brand-license survives the C-Corp
+> conversion or should be removed for a fully-clean standalone statement (tracked, task #128).
 
 **Committed:** 2026-07-02 as authoritative reference for all future architectural decisions.
 **Custodian:** mma-os workspace + Paige repo.
+**Status:** SUPERSEDED for Paige corporate structure (see banner above); historical/other-business reference only.
 
 ## Corporate Structure
 
