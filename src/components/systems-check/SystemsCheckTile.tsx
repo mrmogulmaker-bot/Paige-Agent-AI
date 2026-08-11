@@ -82,7 +82,7 @@ function draftedFixText(fix: SystemsCheckFinding["paige_drafted_fix"]): string |
 }
 
 export function SystemsCheckTile({ scope }: { scope: SystemsCheckScope }) {
-  const { run, findings, loading, isError, refresh } = useSystemsCheck(scope);
+  const { run, findings, loading, isError, scanPending, refresh } = useSystemsCheck(scope);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -209,6 +209,18 @@ export function SystemsCheckTile({ scope }: { scope: SystemsCheckScope }) {
         icon={AlertTriangle}
         title="Couldn't load the systems check"
         description="The latest scan results didn't load just now. This panel refreshes on its own — nothing else on the page is affected."
+      />
+    );
+  } else if (!run && scanPending) {
+    // Brand-new tenant: the first onboarding scan is enqueued/running, its run row hasn't landed yet.
+    // §13 honest — "in progress", never a claim it finished. The panel self-refreshes (60s) and swaps
+    // to real results the moment the run lands. Motion-safe pulse (§11).
+    body = (
+      <EmptyState
+        icon={Loader2}
+        tone="brand"
+        title="Paige is running your first systems check…"
+        description="Paige is scanning your setup right now — comms, website, CRM, pipeline, payments and more. The results land here automatically, usually within a minute or two."
       />
     );
   } else if (!run) {

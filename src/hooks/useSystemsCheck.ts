@@ -58,8 +58,19 @@ export interface SystemsCheckSnapshot {
   findings: SystemsCheckFinding[];
   loading: boolean;
   isError: boolean;
+  /** True when a tenant has NO run yet but was created very recently — the first onboarding scan is
+   *  enqueued/running and its row hasn't landed. §13: an HONEST "in progress" signal, never a claim
+   *  that a scan finished. There is no queued row to read (the scan writes its run only on completion),
+   *  so this keys on tenant.created_at recency; after the window it falls back to the honest empty
+   *  state so a genuinely-failed enqueue never shows "running" forever. Tenant scope only. */
+  scanPending: boolean;
   refresh: () => void;
 }
+
+// How long after tenant creation we treat "no run yet" as "first scan in progress" rather than the
+// terminal empty state. The onboarding scan fires on creation (enqueue → edge fn → run row); this
+// window comfortably covers the enqueue + scan latency without claiming progress indefinitely.
+const FIRST_SCAN_PENDING_WINDOW_MS = 10 * 60 * 1000;
 
 interface RawFinding {
   id: string;
@@ -91,7 +102,7 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
     enabled,
     refetchOnWindowFocus: true,
     refetchInterval: 60_000,
-    queryFn: async (): Promise<{ run: SystemsCheckRun | null; findings: SystemsCheckFinding[] }> => {
+    queryFn: async (): Promise<{ run: SystemsCheckRun | null; findings: SystemsCheckFinding[]; tenantCreatedAt?: string | null }> => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const db = supabase as any;
 
@@ -108,7 +119,21 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
       const { data: runRows, error: runErr } = await runQ;
       if (runErr) throw runErr;
       const run = ((runRows ?? [])[0] as SystemsCheckRun | undefined) ?? null;
-      if (!run) return { run: null, findings: [] };
+      if (!run) {
+        // No run yet. For a TENANT scope, read the tenant's created_at so the tile can honestly
+        // distinguish "first scan is still running" (brand-new tenant) from the terminal "no scan
+        // yet" empty state (§13). Operator scope is cron-driven — no per-tenant recency signal.
+        let tenantCreatedAt: string | null = null;
+        if (scope === "tenant" && activeTenantId) {
+          const { data: tRow } = await db
+            .from("tenants")
+            .select("created_at")
+            .eq("id", activeTenantId)
+            .maybeSingle();
+          tenantCreatedAt = (tRow?.created_at as string | null) ?? null;
+        }
+        return { run: null, findings: [], tenantCreatedAt };
+      }
 
       // 2) findings for that run + the registry join (one shared catalog, §18).
       let findQ = db
@@ -153,11 +178,24 @@ export function useSystemsCheck(scope: SystemsCheckScope): SystemsCheckSnapshot 
     qc.invalidateQueries({ queryKey: ["systems_check", scope, scopeKey] });
   }, [qc, scope, scopeKey]);
 
+  const run = query.data?.run ?? null;
+  const tenantCreatedAt = query.data?.tenantCreatedAt ?? null;
+  // "First scan in progress" only when: tenant scope, no run row yet, the load succeeded (not an
+  // error masquerading as empty), and the tenant was created inside the pending window. §13: honest —
+  // after the window, or on any error, this is false and the tile shows the terminal empty state.
+  const scanPending =
+    scope === "tenant" &&
+    !run &&
+    !query.isError &&
+    !!tenantCreatedAt &&
+    Date.now() - new Date(tenantCreatedAt).getTime() < FIRST_SCAN_PENDING_WINDOW_MS;
+
   return {
-    run: query.data?.run ?? null,
+    run,
     findings: query.data?.findings ?? [],
     loading: enabled && query.isLoading,
     isError: query.isError,
+    scanPending,
     refresh,
   };
 }

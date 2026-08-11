@@ -3161,7 +3161,7 @@ Rule 17 — Strongest Bureau First Rule: When coaching on application strategy P
     // `paige_artifact` frame the Studio canvas already consumes (§18 one home), just emitted on the
     // non-Studio path. Mutually exclusive with `studioLinked`: populated ONLY when studioSessionId is
     // null, so a turn never emits both. `artifactType` distinguishes the card's render/hydrate lane.
-    const chatArtifacts: Array<{ kind: string; id: string; title: string; url: string | null; artifactType: "document" | "image" }> = [];
+    const chatArtifacts: Array<{ kind: string; id: string; title: string; url: string | null; artifactType: "document" | "image"; tenant_id: string | null }> = [];
 
     // #12 — pre-flight compaction frames are COLLECTED here (before inference) and FLUSHED as the very
     // first bytes of the response stream, so the client's compacting card renders before Paige's
@@ -7148,10 +7148,14 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             if (!studioSessionId && result && (result as any).success) {
               const r = result as any;
               if (tc.function.name === "document_generate" && r.content_id) {
-                chatArtifacts.push({ kind: "document", id: r.content_id, title: String(r.title ?? "Document"), url: null, artifactType: "document" });
+                // Stamp the frame with the EXACT tenant the row was saved under (personaCtx.tenant_id
+                // = the tenant save_marketing_content wrote to). Without this the client falls back to
+                // the viewer's activeTenantId, and when an operator is managing another tenant those
+                // diverge → loadDocument queries the wrong tenant → 0 rows → "Preview unavailable".
+                chatArtifacts.push({ kind: "document", id: r.content_id, title: String(r.title ?? "Document"), url: null, artifactType: "document", tenant_id: personaCtx.tenant_id });
               } else if (tc.function.name === "generate_image" && r.content_id) {
                 // generate_image's result carries no title — fall back to "Image" so the card never shows a blank name.
-                chatArtifacts.push({ kind: "content", id: r.content_id, title: String(r.title ?? "Image"), url: r.url ?? null, artifactType: "image" });
+                chatArtifacts.push({ kind: "content", id: r.content_id, title: String(r.title ?? "Image"), url: r.url ?? null, artifactType: "image", tenant_id: personaCtx.tenant_id });
               }
             }
 

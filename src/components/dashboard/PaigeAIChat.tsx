@@ -430,7 +430,10 @@ const PaigeAIChatInner = ({
             // preserves artifactsThisTurn so the card survives the streaming text.
             if (parsed.paige_artifact?.id && (parsed.paige_artifact.artifactType === "document" || parsed.paige_artifact.artifactType === "image")) {
               const a = parsed.paige_artifact as PaigeArtifact;
-              artifactsThisTurn.push({ id: String(a.id), title: String(a.title ?? ""), url: a.url ?? undefined, artifactType: a.artifactType });
+              // Capture the frame's tenant_id — the EXACT tenant the row was saved under — so the card's
+              // RLS-safe hydrate scopes to it, not the viewer's activeTenantId (they diverge when an
+              // operator manages another tenant → wrong-tenant query → 0 rows → "Preview unavailable").
+              artifactsThisTurn.push({ id: String(a.id), title: String(a.title ?? ""), url: a.url ?? undefined, artifactType: a.artifactType, tenantId: (parsed.paige_artifact.tenant_id as string | undefined) ?? undefined });
               setMessages([...newMessages, { id: assistantId, ts: assistantTs, role: "assistant", content: assistantMessage, queued: queuedThisTurn.length ? queuedThisTurn : undefined, confirm: confirmThisTurn.length ? [...confirmThisTurn] : undefined, artifacts: [...artifactsThisTurn] }]);
               continue;
             }
@@ -657,7 +660,7 @@ const PaigeAIChatInner = ({
                               <PaigeArtifactCard
                                 key={a.id}
                                 artifact={a}
-                                tenantId={activeTenantId}
+                                tenantId={a.tenantId ?? activeTenantId}
                                 onSend={() => {
                                   setInput(`Send "${a.title}" to `);
                                   requestAnimationFrame(() => inputRef.current?.focus());

@@ -387,10 +387,14 @@ project_id = "xygzykjyynhzqytbqnzu"
 
   # Systems Check runner (task #80, L2) — three flavor edge fns over the ONE core
   # (_shared/systems-check-runner.ts). Tenant is resolved from the VERIFIED JWT, never the body
-  # (§9/§588), so onboarding + change keep the default verify_jwt=true (declared here for clarity).
-  # The operator may target a specific tenant via an owner-gated body.tenant_id (resolveTenantFromJwt).
+  # (§9/§588). `change` keeps the default verify_jwt=true (declared here for clarity). `onboarding` is
+  # verify_jwt=FALSE so the provisioning enqueue (a brand-new tenant with no user session — cron/service
+  # caller presenting no Supabase user JWT) can reach it; it fails closed in-function to an internal-caller
+  # gate (service-role bearer OR x-cron-token) OR a user/owner JWT (resolveTenantFromJwt, which does full
+  # in-function JWT verification), exactly like systems-check-run-operator / -scheduled.
   [functions.systems-check-run-onboarding]
-    verify_jwt = true
+    verify_jwt = false
+  # The operator may target a specific tenant via an owner-gated body.tenant_id (resolveTenantFromJwt).
   [functions.systems-check-run-change]
     verify_jwt = true
   # Scheduled flavor is CRON-invoked (the cron poster presents no Supabase JWT), so verify_jwt=false;

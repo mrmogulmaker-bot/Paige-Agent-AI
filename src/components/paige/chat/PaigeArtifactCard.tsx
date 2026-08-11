@@ -53,6 +53,10 @@ export interface PaigeArtifact {
   title: string;
   url?: string;
   artifactType: "document" | "image";
+  /** The exact tenant the row was saved under (stamped on the streamed frame by paige-ai-chat).
+   *  The card's document hydrate must scope to THIS tenant, not the viewer's activeTenantId — when
+   *  an operator manages another tenant the two diverge and the wrong-tenant query returns 0 rows. */
+  tenantId?: string;
 }
 
 export interface PaigeArtifactCardProps {
