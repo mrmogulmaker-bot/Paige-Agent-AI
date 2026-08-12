@@ -1,12 +1,16 @@
 # Node 20 + Playwright Chromium + system deps. The base-image tag MUST match the EXACT playwright
-# version pinned in package.json (both 1.56.1 — the repo's canonical version, same as the root
-# devDep). §18 — ONE playwright version across the repo's browser services (paige-browser +
-# visual-renderer) AND the root live-drive helper; do not introduce a third.
-# §13 root-cause note (Task #126 §32.c finding #2): package.json previously used a CARET (`^1.48.0`),
-# so the Fly build silently pulled the latest 1.x (1.62.x) while this base image stayed at 1.48.0 —
-# the npm playwright package and the image's Chromium diverged and the browser could not launch.
-# The pin is now EXACT on both sides so the two can never drift apart again.
-FROM mcr.microsoft.com/playwright:v1.56.1-jammy
+# version pinned in package.json (both 1.62.1 — the ONE canonical version across the browser
+# services AND the root live-drive devDep; §18 — do not introduce a second/third).
+#
+# WHY EXACT, NOT A CARET (Task #126 §32.c finding #2 — proven live): package.json previously used a
+# CARET (`^1.48.0`), so the Fly build silently resolved the latest 1.x (1.62.x) while this base image
+# stayed pinned at v1.48.0-jammy. Playwright 1.55+ launches Chromium via a `chromium-headless-shell`
+# binary that the 1.48.0 image does not ship — so the drifted npm package could not find its browser
+# and the launch failed (the honest infra-block Paige reported on three live-drives). The pin is now
+# EXACT on both the npm and image sides at 1.62.1 (the version proven working live: 817 MB rebuild,
+# healthz 200, real paigeagent.ai content returned). Keep it EXACT — a caret or a Dependabot bump that
+# moves ONLY package.json will re-open this exact gap. Bump BOTH lines together, in lockstep, always.
+FROM mcr.microsoft.com/playwright:v1.62.1-jammy
 WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev

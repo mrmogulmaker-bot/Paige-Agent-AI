@@ -436,3 +436,13 @@ wired to the unified `messages`/`threads` substrate — a separate gap, not a ke
   baseline/diff = fired from Cowork (paige-mcp live there; CC headless lacks the connection).
 - **NEXT (not this session):** S2 GOAT-anchored professional-skills content seed (the wave that makes
   Paige intelligent) → web-browser install (#126) → memory layering.
+
+## Task #126 — Paige self-verify BROWSER, Slices 1a–2 + §32.c GREEN (2026-08-12)
+- **#136 Slice 1a** (PR #486): `services/paige-browser` Fly host — warm Playwright, SSRF-guarded, shared-secret, DB-free, self-verify-only. CodeQL caught 4 highs the crew verifier missed (§39 layers).
+- **#139 hotfix** (PR #487): Paige business-profile setup wired end-to-end for ALL tiers (was deflecting).
+- **#140 Slice 1b** (PR #488): interpreter's FIRST real tool-dispatch seam — `browser` step routes through the §16 clamp; `allowed_tools` now actually executed; `browser_use_sessions` ledger.
+- **#143 Slice 2** (PR #491): `verify_deployed_surface` skill seeded; §32.a proof ran green; §32 persisted-apply confirmed.
+- **#144 operator-tenant hotfix** (PR #492): §32.c live-drive #1 returned honest `tenant_unresolved`; root cause = §200 phantom operator tenant + `actorTenantId()` no operator-user fallback. Fix: dedicated `Paige Operator Workspace` tenant (`system_workspace=true`) + resolver fallback. §39 peer-gate SHIP (56-site inventory, no cross-tenant leak).
+- **#145 §63 doctrine** (PR #493): owner's real accounts off-limits as agent example/default targets; audit found zero example-misuse to scrub.
+- **#149 §32.c finding #2** (PR #494 + 1.56.1→1.62.1 reconciliation): live-drive #2/#3 named a Playwright/Docker mismatch — caret `^1.48.0` drifted npm to 1.62 while the base stayed 1.48 (which lacks the `chromium-headless-shell` PW 1.55+ needs). Fixed: EXACT-pin `1.62.1` = `v1.62.1-jammy` across both Fly services + root (§18). §13 corrections logged (healthz≠container-version over-claim; my 1.56.1 merge reconciled UP to proven-live 1.62.1).
+- **§32.c GREEN:** owner drove `paigeagent.ai` through `verify_deployed_surface` → real live content (hero/pricing/security/CTAs). The owner-owed-live-walk pattern is dead — Paige self-verifies her own deployed surfaces. **Slice 3 (public-web browsing) GREENLIT.**

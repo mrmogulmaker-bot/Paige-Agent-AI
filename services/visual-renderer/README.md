@@ -81,7 +81,7 @@ a fabricated critique — §13).
 ## Redeploy
 
 Just `fly deploy --app paige-visual-renderer` after any change here. The Dockerfile pins the
-Playwright base image (`mcr.microsoft.com/playwright:v1.56.1-jammy`) so the browser and library
-versions always match. The `playwright` npm pin is EXACT (`1.56.1`, not a caret) and equal to
+Playwright base image (`mcr.microsoft.com/playwright:v1.62.1-jammy`) so the browser and library
+versions always match. The `playwright` npm pin is EXACT (`1.62.1`, not a caret) and equal to
 `services/paige-browser` + the root live-drive devDep (§18) so npm can never drift ahead of the
 image (Task #126 §32.c finding #2).

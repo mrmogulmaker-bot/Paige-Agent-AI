@@ -42,7 +42,7 @@ inside its own `assert` callback, where it stays out of any log.
 | `LIVE_DRIVE_URL` | Target URL for the Example B template. |
 
 Do **not** run `playwright install` — the sandbox pre-provisions the browser
-(`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`). The root `playwright` devDep is pinned to `1.56.1` to match
+(`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`). The root `playwright` devDep is pinned to `1.62.1` to match
 the pre-provisioned build.
 
 ## Running the examples
