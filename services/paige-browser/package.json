@@ -1,0 +1,16 @@
+{
+  "name": "paige-browser",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-hosted warm-browser Playwright service that drives a URL headless and returns a structured honest observation — Paige's self-verify eyes (§32.c). Deployed to Fly.io.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.js",
+    "smoke": "node smoke.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "playwright": "^1.48.0"
+  }
+}
