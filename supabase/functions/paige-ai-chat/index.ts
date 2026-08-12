@@ -182,11 +182,29 @@ const RAIL_KIND_LABEL: Record<string, string> = {
 const railKindLabel = (k: string): string =>
   RAIL_KIND_LABEL[k] ?? (k?.split(".").pop() ?? "event").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 
+// A single chat turn's text. CLAMP overlong content instead of HARD-REJECTING the whole request.
+// Owner P0 (2026-08-11): the "Your Paige" Command Center (enableHistory=true, the sub-account's
+// DIRECT owner login) re-sends the FULL persisted thread on every turn. A prior long assistant reply
+// — e.g. a multi-bureau credit-report analysis, easily >50k chars — is rehydrated into `messages[]`,
+// and the old `.max(50000)` per-message cap threw a ZodError -> HTTP 400 "Invalid input format" for
+// the ENTIRE send (the orange toast). The agency acting-as view does NOT rehydrate that thread, so
+// its short message array passed — same person, same PDF, different BODY (the accumulated history),
+// which is why it worked there. The PDF itself was never the problem: its bytes ride UNCAPPED in
+// `document.base64` (line ~219) and are consumed as a multimodal data URI, never inlined into a
+// capped message string. Fix mirrors the #393 windowing philosophy (loosen, NEVER a hard ceiling)
+// and the clientContext clamp below (line ~254): clamp, don't reject. 200k matches
+// `document.textContent`'s cap — the largest single text blob the schema already accepts. PURE
+// LOOSENING — any content that passed the old `.max(50000)` is far below the clamp and is returned
+// byte-untouched, so no producer breaks (§37). No downstream code assumes content <= 50000
+// (index.ts:575/3660/3673/3678 pass `msg.content` straight through), and model-context management
+// happens downstream regardless.
+const MAX_MESSAGE_CONTENT = 200_000;
+
 const messageSchema = z.object({
   messages: z.array(
     z.object({
       role: z.enum(['user', 'assistant', 'system']),
-      content: z.string().min(1).max(50000),
+      content: z.string().min(1).transform((s) => (s.length > MAX_MESSAGE_CONTENT ? s.slice(0, MAX_MESSAGE_CONTENT) : s)),
       documentFileName: z.string().optional(),
     })
   ).min(1).transform((arr) => {
