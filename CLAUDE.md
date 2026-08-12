@@ -2184,3 +2184,40 @@ project."* Asking the owner to place a feature that the rule below already answe
 **Cross-references:** §56 (pre-build tier gate — WHEN to check), §60 (the helper — WHERE to encode), §57
 (God derive-from-source), §51 (tier matrix / parity railing), §35 (God dogfoods everything), §2 (resellable
 installs are chosen config), §37 (gate every producer), `docs/doctrine/tier-matrix.md` §61 (authoritative home).
+
+## 62. Two-tier skills sourcing — platform baseline (OSS-distilled) + tenant-loadable.
+
+> **PROPOSED — owner ruled the substance 2026-08-11; exact wording ratified in a later pass (same pattern
+> as §57–§61). §-number provisional.**
+
+**Directive (owner: Antonio, 2026-08-11).** Paige's skills library (`paige_skills`, concept 1 in
+`docs/doctrine/skills-vocabulary.md`) has two first-class sources — both use the SAME schema, the SAME
+interpreter runtime (S1b default dispatch), the SAME §16 autonomy clamp, and the SAME §61 tier framework;
+the only difference is `scoping` + who authored the row. Paige treats both as first-class capabilities she
+can reason with and run.
+
+- **Platform baseline skills (`scoping='platform'`)** — NOT written from scratch. They are **pulled from
+  OSS skill repos** (the Anthropic Skills registry, community skill repos, owner-curated local skills),
+  **distilled mechanic-descriptive (IP-clean per §14)**, and seeded into `paige_skills`. This is what every
+  tenant gets by default per the §61 tier distribution.
+- **Tenant-loadable skills (`scoping='tenant'`)** — a tenant installs their OWN GitHub-repo skills into
+  their Paige instance via a skill-installer / marketplace surface. Tenant-authored, tenant-scoped, lives in
+  that tenant's Paige only — per-tenant intellectual property (§9). This is a follow-up wave, sequenced
+  AFTER the S2 platform-baseline seeding completes.
+
+**The distillation rule (IP-clean, per §14).** For each source skill, extract the MECHANIC (what it does,
+what steps/tools, how it structures the work) and rewrite as a `paige_skills` row whose `methodology_anchor`
++ `description` + `steps` are **mechanic-descriptive ONLY** — never a source-repo name, an anchor person's
+name, or a branded framework title. Source attribution stays in an internal code-review comment on the
+migration commit (the §14 pattern: attribution in reference, mechanic-only in the row). `tier_availability`
+= §61 default; `scoping='platform'`; `autonomy_lane` per the §16 risk mapping; `allowed_tools` least-privilege.
+
+- **The test, every time:** *"Is this skill pulled from a proven OSS source and distilled IP-clean (platform
+  baseline), or authored by a tenant for their own instance (tenant-loadable)? Did any source-repo/person/
+  branded name leak into the row instead of staying in the commit comment?"* If a name leaked, it isn't
+  §14/§62-clean.
+
+**Cross-references:** §14 (GOAT registry — the IP-clean attribution pattern) · §16 (autonomy clamp) · §26
+(prompt-forge — the interpreter forges from the anchor) · §51/§60/§61 (tier framework) · §9 (tenant vs
+platform scoping) · `docs/doctrine/skills-vocabulary.md` (concept 1) · master §15 (the Skills Inventory this
+sources into).
