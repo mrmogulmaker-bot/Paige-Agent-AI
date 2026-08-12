@@ -7,7 +7,9 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node server.js",
-    "smoke": "node smoke.mjs"
+    "smoke": "node smoke.mjs",
+    "smoke:ssrf": "node smoke-ssrf.mjs",
+    "smoke:all": "node smoke-ssrf.mjs && node smoke.mjs"
   },
   "dependencies": {
     "express": "^4.19.2",

@@ -40,10 +40,40 @@ run.
 (timing-safe compare). No secret set → the service returns **500** (fails closed, never runs
 unauthenticated).
 
-| Method + path       | Body                                                    | Returns          |
-| ------------------- | ------------------------------------------------------- | ---------------- |
-| `GET  /healthz`     | —                                                       | `200 ok`         |
-| `POST /self-verify` | `{ url, viewport?, waitForSelector?, waitMs?, steps? }` | `200` JSON below |
+| Method + path            | Body                                                        | Returns          |
+| ------------------------ | ----------------------------------------------------------- | ---------------- |
+| `GET  /healthz`          | —                                                           | `200 ok`         |
+| `POST /self-verify`      | `{ url, viewport?, waitForSelector?, waitMs?, steps? }`     | `200` JSON below |
+| `POST /browse-public-url` (Slice 3a) | `{ url, viewport?, waitForSelector?, waitMs?, maxContentBytes? }` | `200`/`403` JSON |
+
+### `POST /browse-public-url` — wildcard public-web research (Slice 3a, D1=(c))
+
+Extracts structured research content from an **arbitrary public URL** behind the full SSRF + two-layer
+denylist guard. **Distinct** from `/self-verify` (§18): that observes/asserts Paige's OWN surfaces;
+this reads arbitrary pages. **GATED OFF by default** — with `PAIGE_BROWSER_WILDCARD_ENABLED` unset, any
+non-`paigeagent.ai` URL returns `403 { ok:false, blocked_reason:"wildcard:disabled", error:"capability_disabled" }`.
+An owner flips the flag to `true` **only after** the §39 live peer-gate returns SHIP. `/self-verify` is
+never affected by the flag (§58).
+
+**Success (`200`):**
+
+```json
+{ "ok": true, "url": "…", "final_url": "…", "http_status": 200, "blocked_reason": null,
+  "title": "…", "meta_description": "…", "h1_headers": ["…"], "body_text": "… (<=maxContentBytes)",
+  "links_inventory": [{ "text": "…", "href": "https://…" }], "content_bytes": 1234,
+  "honest_verdict": "ok", "duration_ms": 1234 }
+```
+
+**Blocked (`200`, `ok:false`, reason-coded for the audit rail):**
+
+```json
+{ "ok": false, "url": "…", "blocked_reason": "ssrf:link-local:metadata",
+  "error": "blocked: ssrf:link-local:metadata", "http_status": null }
+```
+
+`blocked_reason` is one of `ssrf:{loopback|private-ipv4|private-ipv6|link-local[:metadata]|cgnat|reserved|scheme|unresolved}`,
+`denylist:{cloudflare-families|stevenblack}`, or `wildcard:disabled`. The DB-free host **returns** this;
+the calling edge function (Slice 3b) writes it to the `paige_browser_usage` audit rail with the tenant.
 
 `steps` (all **read-only** in Slice 1a): each `{ kind, selector?, text? }` where `kind` is one of:
 
@@ -73,11 +103,25 @@ silent blank.
 ## Security posture
 
 - **Shared-secret gated**, timing-safe. No secret → 500 (fails closed).
-- **SSRF egress guard (Fork 7, non-negotiable).** Every request the browser makes — the top-level
-  URL **and** every sub-resource — is filtered against private / link-local / cloud-metadata ranges
-  via a DNS-resolving, **fail-closed** `page.route("**/*")` interceptor. The `final_url` is
-  **re-checked public after redirects**, so a public start URL can't 30x into internal
-  infrastructure. This is the same guard verbatim as `services/visual-renderer`.
+- **SSRF egress guard (`ssrf-guard.mjs`, HARDENED in Slice 3a for D1=(c)).** Every request the browser
+  makes — the top-level URL **and** every sub-resource — is filtered against private / loopback /
+  link-local / **cloud-metadata (`169.254.169.254`)** / CGNAT / reserved-broadcast-multicast ranges,
+  plus the IPv6 ULA/link-local ranges and the **6to4 / NAT64 / IPv4-mapped embedded-v4 tunnels**, via a
+  DNS-resolving, **fail-closed** `page.route("**/*")` interceptor. Non-http(s) schemes are rejected;
+  `new URL()` normalization closes the numeric-encoding + `user@host` bypass classes. The `final_url`
+  is **re-checked after redirects**. Each block returns a granular **reason code** for the audit rail.
+  The guard lives in a **shared module** (§18 one home) tested as the REAL code by `smoke-ssrf.mjs`
+  (§32). **Honest caveat (§13/#138):** full DNS-rebinding closure (a short-TTL record that flips
+  between our check and Chromium's connect) is tracked as #138; mid-redirect to a literal internal host
+  IS caught.
+- **Two-layer content denylist (Slice 3a, owner-ruled 2026-08-12).** Layer 1: the container resolver is
+  Cloudflare for Families (`1.1.1.3`/`1.0.0.3`) — malware/adult domains sinkhole to `0.0.0.0`, which the
+  guard denies (`denylist:cloudflare-families`). Layer 2: a StevenBlack/hosts snapshot baked into the
+  image (`fakenews-gambling-porn`), parent-domain matched (`denylist:stevenblack`). Refreshed weekly by
+  CI. Missing snapshot → Layer 2 is a no-op (guard + Families still hold).
+- **Wildcard capability flag (`PAIGE_BROWSER_WILDCARD_ENABLED`, default OFF).** `/browse-public-url`
+  refuses non-`paigeagent.ai` URLs with `403 capability_disabled` until an owner flips it AFTER the §39
+  live peer-gate returns SHIP. `/self-verify` is never gated by it (§58).
 - **Concurrency + timing caps.** A soft in-process concurrency cap
   (`PAIGE_BROWSER_MAX_CONCURRENT`, default 3) returns `429 { ok:false, error:"busy, retry" }` over
   the cap; a per-run nav timeout (`PAIGE_BROWSER_NAV_TIMEOUT_MS`, default 30000) and an overall hard
