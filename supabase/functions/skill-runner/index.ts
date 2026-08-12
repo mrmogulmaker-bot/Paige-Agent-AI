@@ -25,6 +25,9 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
  * with a structured observation (ok:false on failure), so a non-ok body is passed through as an honest
  * failed observation, not swallowed.
  */
+// ACTIVATED 2026-08-12: the Fly host is live (paige-browser.fly.dev) and PAIGE_BROWSER_URL /
+// PAIGE_BROWSER_SECRET are set as edge secrets. This redeploy is what makes skill-runner read them —
+// the seam transitions from needs_config → live calling the host on the next self-verify skill run.
 async function browseViaHost(args: { url: string; steps?: unknown[]; waitForSelector?: string; waitMs?: number }): Promise<BrowseResult> {
   const base = Deno.env.get("PAIGE_BROWSER_URL");
   const secret = Deno.env.get("PAIGE_BROWSER_SECRET");
