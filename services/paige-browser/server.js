@@ -257,7 +257,7 @@ async function observe({ url, viewport, waitForSelector, waitMs, steps }, navTim
     try {
       response = await page.goto(String(url), { waitUntil: "networkidle", timeout: navTimeout });
     } catch (e) {
-      console.error(`[paige-browser] navigation failed for ${url}:`, e?.message || e);
+      console.error("[paige-browser] navigation failed for", String(url) + ":", e?.message || e);
       screenshot_b64 = await captureScreenshotB64(page); // visible fallback of whatever rendered
       return { ok: false, url, error: `navigation failed: ${String(e?.message || e)}`, http_status: null, screenshot_b64, duration_ms: Date.now() - start };
     }
@@ -268,7 +268,7 @@ async function observe({ url, viewport, waitForSelector, waitMs, steps }, navTim
     try {
       await assertPublicUrl(final_url);
     } catch (e) {
-      console.error(`[paige-browser] final_url blocked ${final_url}:`, e?.message || e);
+      console.error("[paige-browser] final_url blocked", String(final_url) + ":", e?.message || e);
       return { ok: false, url, final_url, error: `blocked redirect to private/internal host: ${String(e?.message || e)}`, http_status, screenshot_b64: null, duration_ms: Date.now() - start };
     }
 
@@ -282,7 +282,7 @@ async function observe({ url, viewport, waitForSelector, waitMs, steps }, navTim
 
     return { ok: true, url, final_url, http_status, title, text_excerpt, screenshot_b64, steps: stepResults, duration_ms: Date.now() - start };
   } catch (e) {
-    console.error(`[paige-browser] observe error for ${url}:`, e?.message || e);
+    console.error("[paige-browser] observe error for", String(url) + ":", e?.message || e);
     if (!screenshot_b64 && page) screenshot_b64 = await captureScreenshotB64(page);
     return { ok: false, url, error: String(e?.message || e), screenshot_b64, duration_ms: Date.now() - start };
   } finally {
@@ -325,7 +325,28 @@ function auth(req, res) {
 // piling work onto one shared-cpu-1x machine.
 let inFlight = 0;
 
-app.post("/self-verify", async (req, res) => {
+// Fixed-window per-IP rate limiter — defense-in-depth ON TOP of the shared-secret gate + concurrency
+// cap, so even a caller holding the secret can't hammer the (expensive) browser host. Runs BEFORE
+// auth so unauthenticated floods are bounded too. Map is pruned opportunistically so an IP-spray
+// can't grow it unbounded.
+const RATE_MAX = Math.max(1, Number(process.env.PAIGE_BROWSER_RATE_MAX) || 60);
+const RATE_WINDOW_MS = Math.max(1000, Number(process.env.PAIGE_BROWSER_RATE_WINDOW_MS) || 60000);
+const _rate = new Map(); // ip -> { count, resetAt }
+function rateLimit(req, res, next) {
+  const now = Date.now();
+  const ip = req.ip || req.socket?.remoteAddress || "unknown";
+  let entry = _rate.get(ip);
+  if (!entry || now >= entry.resetAt) { entry = { count: 0, resetAt: now + RATE_WINDOW_MS }; _rate.set(ip, entry); }
+  entry.count++;
+  if (_rate.size > 10_000) { for (const [k, v] of _rate) if (now >= v.resetAt) _rate.delete(k); }
+  if (entry.count > RATE_MAX) {
+    res.set("Retry-After", String(Math.ceil((entry.resetAt - now) / 1000)));
+    return res.status(429).json({ ok: false, error: "rate limited, retry later" });
+  }
+  return next();
+}
+
+app.post("/self-verify", rateLimit, async (req, res) => {
   if (!auth(req, res)) return;
   const { url } = req.body || {};
   if (!url || !/^https?:\/\//i.test(String(url))) return res.status(400).json({ ok: false, error: "valid http(s) url required" });
@@ -347,7 +368,7 @@ app.post("/self-verify", async (req, res) => {
   } catch (e) {
     // observe() is written not to throw, but a truly unexpected error still returns a structured
     // honest result (200 ok:false) — the caller always needs the observation shape, never a 5xx.
-    console.error(`[paige-browser] /self-verify unexpected error for ${url}:`, e?.message || e);
+    console.error("[paige-browser] /self-verify unexpected error for", String(url) + ":", e?.message || e);
     return res.status(200).json({ ok: false, url, error: String(e?.message || e), duration_ms: Date.now() - start });
   } finally {
     inFlight--;
