@@ -102,13 +102,23 @@ cleanupServiceWorkers();
 // Clear the stale-chunk reload guard once the app successfully boots, so the
 // auto-reload recovery can run again on the next deploy.
 window.addEventListener("load", () => {
-  try { sessionStorage.removeItem("__chunk_reload__"); } catch {}
+  try { sessionStorage.removeItem("__chunk_reload__"); } catch { /* ignore */ }
 });
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <HelmetProvider>
       <App />
+      {/*
+        Post-hydration marker (Task #126, owner-ruled 2026-08-12). This element exists ONLY in
+        the React tree — never in index.html's static no-JS skeleton — so it appears in the DOM
+        only after React has mounted. Paige's `verify_deployed_surface` skill waits on
+        `[data-app-ready]` (not on `h1`, which the static skeleton also has), so a headless
+        self-verify resolves against POST-HYDRATION content and can never read the pre-render
+        skeleton by mistake. Keep this attribute name stable and DO NOT add it to index.html;
+        the `lint:skeleton` guard enforces the skeleton stays free of product content.
+      */}
+      <div data-app-ready hidden aria-hidden="true" />
     </HelmetProvider>
   </React.StrictMode>
 );
