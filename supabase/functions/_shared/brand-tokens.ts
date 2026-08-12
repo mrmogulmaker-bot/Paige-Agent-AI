@@ -37,6 +37,11 @@ export interface BrandTokens {
   logo_url?: string;
   from_name?: string;
   support_email?: string;
+  /** Company-detail keys written by the chat's update_business_profile tool (present-only). */
+  website?: string;
+  address?: string;
+  phone?: string;
+  legal_entity_name?: string;
 }
 
 function str(v: unknown): string | undefined {
@@ -103,6 +108,17 @@ export async function readBrandTokens(
   if (fromName) out.from_name = fromName;
   const support = str(brand.support_email);
   if (support) out.support_email = support;
+
+  // Company-detail keys (written by the chat's update_business_profile tool). Present-only,
+  // exactly like every field above — an unset key is simply omitted, never a placeholder (§15).
+  const website = str(brand.website);
+  if (website) out.website = website;
+  const address = str(brand.address);
+  if (address) out.address = address;
+  const phone = str(brand.phone);
+  if (phone) out.phone = phone;
+  const legalEntity = str(brand.legal_entity_name);
+  if (legalEntity) out.legal_entity_name = legalEntity;
 
   return out;
 }
