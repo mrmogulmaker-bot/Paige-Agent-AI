@@ -8,7 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { forge } from "../_shared/prompt-forge.ts";
 import { interpretSkill } from "../_shared/skill-interpreter.ts";
-import { shouldUseInterpreter, type SkillRow, type CallerTier } from "../_shared/skill-interpreter-core.ts";
+import { shouldUseInterpreter, type SkillRow, type CallerTier, type BrowseResult } from "../_shared/skill-interpreter-core.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -16,6 +16,37 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+/**
+ * S1b — the HOST implementation of the interpreter's injected `browse` seam (§18: the core stays pure;
+ * the outbound fetch lives here, in the host that already does outbound fetches). Calls the paige-browser
+ * /self-verify contract. §34 — references ONLY the env NAMES; when either is unset it degrades honestly
+ * to { needs_config:true } (§13), never a fabricated observation. paige-browser always answers HTTP 200
+ * with a structured observation (ok:false on failure), so a non-ok body is passed through as an honest
+ * failed observation, not swallowed.
+ */
+async function browseViaHost(args: { url: string; steps?: unknown[]; waitForSelector?: string; waitMs?: number }): Promise<BrowseResult> {
+  const base = Deno.env.get("PAIGE_BROWSER_URL");
+  const secret = Deno.env.get("PAIGE_BROWSER_SECRET");
+  if (!base || !secret) return { needs_config: true };
+  try {
+    const res = await fetch(`${base.replace(/\/+$/, "")}/self-verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Browser-Secret": secret },
+      body: JSON.stringify({
+        url: args.url,
+        steps: args.steps ?? undefined,
+        waitForSelector: args.waitForSelector,
+        waitMs: args.waitMs,
+      }),
+    });
+    // paige-browser answers 200 with { ok, ... } even on failure; return the parsed observation as-is.
+    return await res.json();
+  } catch (e) {
+    // A network throw is an HONEST failed observation (§13) — never a fabricated success.
+    return { ok: false, url: args.url, error: (e as Error)?.message ?? "browse fetch failed" };
+  }
+}
 
 interface RunRequest {
   skill_slug: string;
@@ -107,7 +138,7 @@ Deno.serve(async (req) => {
         }
         const interpTenantId = contactTenantId ?? body.tenant_id ?? null;
         const interp = await interpretSkill(
-          { forge, admin },
+          { forge, admin, browse: browseViaHost },
           {
             skill: skill as unknown as SkillRow,
             inputs: body.inputs ?? {},
