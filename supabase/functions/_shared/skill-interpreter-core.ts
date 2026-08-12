@@ -34,6 +34,13 @@ export interface SkillStep {
   id?: string;
   tool?: string;
   desc?: string;
+  // ── S1b browser-dispatch fields (all OPTIONAL) — a `tool:"browser"` step carries the page to
+  //    observe + optional read-only observation steps for the paige-browser /self-verify contract. ──
+  url?: string;
+  /** Read-only observation steps passed through to paige-browser (assertSelector|assertText|readText). */
+  steps?: unknown[];
+  waitForSelector?: string;
+  waitMs?: number;
 }
 
 /** The subset of a `paige_skills` row the interpreter reasons over. */
@@ -48,6 +55,86 @@ export interface SkillRow {
   tier_availability: Record<string, unknown> | null; // per-skill §61 doc, added #466
   steps: SkillStep[] | null;
   allowed_tools: string[] | null;
+}
+
+// ── S1b browser-dispatch seam types (§18 — mirrors the forge seam; the outbound fetch lives in the HOST) ──
+/** The args the interpreter hands the injected browse dep — the paige-browser /self-verify contract subset. */
+export interface BrowseArgs {
+  url: string;
+  steps?: unknown[];
+  waitForSelector?: string;
+  waitMs?: number;
+}
+
+/** The honest structured observation paige-browser returns (HTTP 200 either way; `ok:false` on failure). */
+export interface BrowseObservation {
+  ok: boolean;
+  url?: string;
+  final_url?: string;
+  http_status?: number | null;
+  title?: string;
+  text_excerpt?: string;
+  steps?: Array<{ kind?: string | null; ok?: boolean; detail?: string }>;
+  screenshot_b64?: string | null;
+  duration_ms?: number | null;
+  error?: string;
+}
+
+/** Honest degrade — the browse seam is unconfigured (no PAIGE_BROWSER_URL/SECRET on the host). */
+export interface BrowseNeedsConfig { needs_config: true }
+
+export type BrowseResult = BrowseObservation | BrowseNeedsConfig;
+
+/** The injected browse dep (the actual outbound fetch lives in the HOST — skill-runner — never the pure core). */
+export type BrowseFn = (args: BrowseArgs) => Promise<BrowseResult>;
+
+// ── S1b browser-dispatch decision helpers (PURE — unit-tested; the orchestrator wires them to the seam) ──
+/** The first `tool:"browser"` step in the skill's plan, or null. Uses the existing tool-detection idiom. */
+export function pickBrowserStep(skill: SkillRow): SkillStep | null {
+  if (!Array.isArray(skill.steps)) return null;
+  return skill.steps.find((s) => (s?.tool ?? "").toLowerCase() === "browser") ?? null;
+}
+
+/**
+ * §37 — is "browser" in the skill's allowed_tools? This makes allowed_tools ACTUALLY EXECUTED for the
+ * first time: a browser step present in the plan is NOT dispatched unless the grant is present too.
+ */
+export function browserToolAllowed(skill: SkillRow): boolean {
+  return (skill.allowed_tools ?? []).map((t) => String(t ?? "").trim().toLowerCase()).includes("browser");
+}
+
+/**
+ * §16 risk floor consulted BEFORE navigating. A browse (a side-effecting, cost-bearing dispatch) runs
+ * only when the run is cleared to auto-execute — i.e. resolveExecutionMode resolves to "execute". A
+ * write-class skill (risk mutating/external_send) can NEVER resolve to execute (the structural floor),
+ * so its browse is gated and the run lands as approval/brief per the clamp — the browse never fires
+ * ahead of the human. Reuses the SAME floor as the landing clamp; no second risk vocabulary.
+ */
+export function browseGatePermits(lane: string | null | undefined, riskLevel?: string | null): boolean {
+  return resolveExecutionMode(lane, riskLevel) === "execute";
+}
+
+/**
+ * Fold an HONEST browser observation into a plaintext block for the forge context (§13 — only the
+ * fields the browse actually returned; never an invented result). Returns "" when there is nothing
+ * real to report. On a failed observation it reports the failure honestly rather than a fake success.
+ */
+export function foldBrowserObservation(obs: BrowseObservation): string {
+  const lines: string[] = ["Browser observation (read-only self-verify):"];
+  if (!obs.ok) {
+    lines.push(`- status: FAILED${obs.error ? ` — ${String(obs.error).slice(0, 400)}` : ""}`);
+  }
+  if (obs.final_url) lines.push(`- final_url: ${obs.final_url}`);
+  if (obs.http_status !== undefined && obs.http_status !== null) lines.push(`- http_status: ${obs.http_status}`);
+  if (obs.title) lines.push(`- title: ${String(obs.title).slice(0, 300)}`);
+  if (obs.text_excerpt) lines.push(`- excerpt: ${String(obs.text_excerpt).slice(0, 1200)}`);
+  if (Array.isArray(obs.steps)) {
+    for (const s of obs.steps) {
+      lines.push(`- step[${s?.kind ?? "?"}]: ${s?.ok ? "ok" : "not ok"}${s?.detail ? ` — ${String(s.detail).slice(0, 300)}` : ""}`);
+    }
+  }
+  // Nothing real beyond the header (e.g. an ok:true with no fields) → emit nothing rather than a stub.
+  return lines.length > 1 ? lines.join("\n") : "";
 }
 
 // ── resolveExecutionMode — the §16 autonomy clamp ────────────────────────────────────────────────

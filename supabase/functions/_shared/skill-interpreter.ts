@@ -16,6 +16,8 @@ import { forge } from "./prompt-forge.ts";
 import {
   type SkillRow,
   type CallerTier,
+  type BrowseFn,
+  type BrowseObservation,
   resolveExecutionMode,
   mapApprovalRisk,
   tierAllowsSkill,
@@ -23,6 +25,10 @@ import {
   pickModality,
   pickTier,
   buildForgeIntent,
+  pickBrowserStep,
+  browserToolAllowed,
+  browseGatePermits,
+  foldBrowserObservation,
   FORMAT_OPTIONS,
   FORMAT_PROMPT,
 } from "./skill-interpreter-core.ts";
@@ -48,6 +54,13 @@ export interface InterpretDeps {
   forge: typeof forge;
   /** A service-role Supabase client. */
   admin: any;
+  /**
+   * S1b — the FIRST real tool-dispatch seam (§18: MIRRORS `forge`). The interpreter core stays pure +
+   * unit-testable; the actual outbound fetch to the paige-browser host lives in the HOST (skill-runner)
+   * and is INJECTED here. Absent (or returning { needs_config:true }) → honest needs_config, never a
+   * fabricated observation (§13). Read-only observation only — paige-browser rejects write/interact.
+   */
+  browse?: BrowseFn;
 }
 
 export interface InterpretCtx {
@@ -138,6 +151,115 @@ export async function interpretSkill(deps: InterpretDeps, ctx: InterpretCtx): Pr
       // Context is best-effort — a read hiccup degrades to no-context, never a failed run (§13).
       console.error(`skill-interpreter[${skill.slug}] context read failed:`, (e as Error)?.message);
       stepsLog.push({ step: "context", memory_count: 0, error: (e as Error)?.message });
+    }
+  }
+
+  // 4b) S1b — the FIRST real tool-dispatch: a READ-ONLY browser observation folded into the forge
+  //     context. This is where allowed_tools becomes ACTUALLY EXECUTED for the first time (a browser
+  //     step in the plan is NOT dispatched unless "browser" is also granted in allowed_tools), and
+  //     where the §16 risk floor is consulted BEFORE navigating (a write-class skill's browse is gated
+  //     ahead of the human, never fired autonomously). The observation is folded into contextText so
+  //     it rides into buildForgeIntent — honestly (§13), only the fields the browse actually returned.
+  const browserStep = pickBrowserStep(skill);
+  if (browserStep) {
+    const toolAllowed = browserToolAllowed(skill);
+    const gatePermits = browseGatePermits(skill.autonomy_lane, skill.risk_level);
+    const url = typeof browserStep.url === "string" ? browserStep.url.trim() : "";
+    if (!toolAllowed) {
+      // allowed_tools now genuinely gates dispatch — a browser step without the grant is a no-op here.
+      stepsLog.push({ step: "browse", dispatched: false, reason: "browser_not_in_allowed_tools" });
+    } else if (!gatePermits) {
+      // §16 structural floor: the browse is gated before navigating; the run still lands per the clamp.
+      stepsLog.push({ step: "browse", dispatched: false, reason: "risk_floor_gated", risk_level: skill.risk_level ?? null });
+    } else if (!deps.browse || !url) {
+      // Honest degrade (§13/§32) — no browse seam wired, or the step carries no url. Same posture as the
+      // forge needs_config branch: surface it, never fabricate an observation.
+      stepsLog.push({ step: "browse", dispatched: false, needs_config: true, reason: url ? "no_browse_seam" : "missing_url" });
+      return {
+        status: "needs_config",
+        outputs: { reason: "browser_unavailable", note: "This skill needs the browser seam to observe a page; it is not configured." },
+        steps_log: stepsLog,
+      };
+    } else {
+      // Dispatch the read-only browse + write the browser_use_sessions ledger. §9 — scope is via
+      // related_contact_id (there is NO tenant_id column); the service-role client bypasses RLS, so
+      // write-time discipline (the contact's own tenant already resolved by the host) is the boundary.
+      const browseSteps = Array.isArray(browserStep.steps) ? browserStep.steps : undefined;
+      let ledgerId: string | null = null;
+      try {
+        const { data: led } = await deps.admin
+          .from("browser_use_sessions")
+          .insert({
+            goal: `skill:${skill.slug} — ${skill.name}`,
+            start_url: url,
+            steps: browseSteps ?? [],
+            related_contact_id: contactId ?? null,
+            invoker_kind: "skill", // §37 — browser_use_sessions.invoker_kind CHECK allows admin|coach|paige|skill|system; a skill-driven browse is "skill"
+            status: "running",
+          })
+          .select("id")
+          .single();
+        ledgerId = (led?.id as string) ?? null;
+      } catch (e) {
+        // A ledger miss must not fabricate a run nor block the observation — log loudly and proceed (§13/§32).
+        console.error(`skill-interpreter[${skill.slug}] browse ledger insert failed:`, (e as Error)?.message);
+      }
+
+      const markLedger = async (fields: Record<string, unknown>) => {
+        if (!ledgerId) return;
+        try {
+          await deps.admin.from("browser_use_sessions").update(fields).eq("id", ledgerId);
+        } catch (e) {
+          console.error(`skill-interpreter[${skill.slug}] browse ledger update failed:`, (e as Error)?.message);
+        }
+      };
+
+      let observed: BrowseObservation | null = null;
+      try {
+        const result = await deps.browse({
+          url,
+          steps: browseSteps,
+          waitForSelector: typeof browserStep.waitForSelector === "string" ? browserStep.waitForSelector : undefined,
+          waitMs: typeof browserStep.waitMs === "number" ? browserStep.waitMs : undefined,
+        });
+        if ((result as { needs_config?: boolean })?.needs_config) {
+          await markLedger({ status: "failed", error: "browser seam needs_config", completed_at: new Date().toISOString() });
+          stepsLog.push({ step: "browse", dispatched: false, needs_config: true, ledger_id: ledgerId });
+          return {
+            status: "needs_config",
+            outputs: { reason: "browser_unavailable", note: "The browser seam is not configured on the host." },
+            steps_log: stepsLog,
+          };
+        }
+        observed = result as BrowseObservation;
+      } catch (e) {
+        // A browse throw is a real fault — degrade honestly, mark the ledger failed, NEVER fabricate (§13/§32).
+        console.error(`skill-interpreter[${skill.slug}] browse threw:`, (e as Error)?.message);
+        await markLedger({ status: "failed", error: (e as Error)?.message ?? "browse threw", completed_at: new Date().toISOString() });
+        stepsLog.push({ step: "browse", dispatched: true, ok: false, error: (e as Error)?.message, ledger_id: ledgerId });
+        return {
+          status: "needs_config",
+          outputs: { reason: "browser_unavailable", note: "The browser observation failed." },
+          steps_log: stepsLog,
+        };
+      }
+
+      // Real observation — update the ledger with the honest outcome, then fold it into the forge context.
+      const shot = typeof observed.screenshot_b64 === "string" && observed.screenshot_b64 ? [observed.screenshot_b64] : [];
+      // §13/efficiency (peer-gate): the screenshot b64 lives in exactly ONE place — the screenshots[]
+      // column — so a real screenshot is never persisted twice in the same row. Strip it from result.
+      const { screenshot_b64: _b64, ...resultNoShot } = observed as unknown as Record<string, unknown>;
+      await markLedger({
+        status: observed.ok ? "succeeded" : "failed",
+        result: resultNoShot,
+        screenshots: shot,
+        duration_ms: typeof observed.duration_ms === "number" ? observed.duration_ms : null,
+        error: observed.ok ? null : (observed.error ?? "browse failed"),
+        completed_at: new Date().toISOString(),
+      });
+      const folded = foldBrowserObservation(observed);
+      if (folded) contextText = contextText ? `${contextText}\n\n${folded}` : folded;
+      stepsLog.push({ step: "browse", dispatched: true, ok: observed.ok, http_status: observed.http_status ?? null, ledger_id: ledgerId });
     }
   }
 
