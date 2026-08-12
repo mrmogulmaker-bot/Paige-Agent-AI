@@ -24,6 +24,12 @@ on:
       - "services/paige-browser/**"
       - "services/visual-renderer/**"
 
+# Least-privilege GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions). This workflow
+# only READS the repo (checkout) and deploys to Fly via FLY_API_TOKEN — it never writes to the
+# repo (no tag push, unlike deploy-edge-functions.yml which needs contents:write for edge-live).
+permissions:
+  contents: read
+
 jobs:
   # Which service(s) actually changed in this push? Emits a JSON array so the deploy job
   # fans out over ONLY the changed services — a change to paige-browser never redeploys
