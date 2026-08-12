@@ -135,8 +135,10 @@ Like `services/visual-renderer`, this service does nothing until it's deployed t
 is set. With `PAIGE_BROWSER_SHARED_SECRET` unset it returns 500 on `/self-verify` (fails closed,
 never runs unauthenticated). The Slice 1b caller degrades honestly when `PAIGE_BROWSER_URL` /
 `PAIGE_BROWSER_SECRET` are unset — it never fabricates an observation. The Dockerfile pins the
-Playwright base image (`mcr.microsoft.com/playwright:v1.48.0-jammy`, the **same** version as
-`services/visual-renderer`) so browser and library versions always match.
+Playwright base image (`mcr.microsoft.com/playwright:v1.56.1-jammy`, the **same** version as
+`services/visual-renderer` and the root live-drive devDep — §18) so browser and library versions
+always match. The `playwright` npm pin is EXACT (`1.56.1`, not a caret) so npm can never drift
+ahead of the image (Task #126 §32.c finding #2).
 
 ## Redeploy
 
