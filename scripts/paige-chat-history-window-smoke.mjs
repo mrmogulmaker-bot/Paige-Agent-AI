@@ -14,10 +14,13 @@
 import { z } from "zod";
 
 // ── VERBATIM re-embed of the patched messages field (index.ts messageSchema) ──────────────
+// content: CLAMP overlong turns, never hard-reject (owner P0 2026-08-11 — a rehydrated >50k
+// prior assistant credit-report analysis 400'd the whole send on the enableHistory Command Center).
+const MAX_MESSAGE_CONTENT = 200_000;
 const messages = z.array(
   z.object({
     role: z.enum(['user', 'assistant', 'system']),
-    content: z.string().min(1).max(50000),
+    content: z.string().min(1).transform((s) => (s.length > MAX_MESSAGE_CONTENT ? s.slice(0, MAX_MESSAGE_CONTENT) : s)),
     documentFileName: z.string().optional(),
   })
 ).min(1).transform((arr) => {
@@ -84,11 +87,31 @@ const firstNonSystemIsUser = (out) => {
   check('1-turn: unchanged', out.length === 1 && out[0].content === 'turn-0');
 }
 
-// 4. Per-message content cap (50000) still enforced.
+// 4. Per-message content: CLAMP overlong turns, NEVER hard-reject (owner P0 2026-08-11 fix).
 {
-  let threw = false;
-  try { messages.parse([{ role: 'user', content: 'x'.repeat(50001) }]); } catch { threw = true; }
-  check('content > 50000 still REJECTS (per-message cap intact)', threw);
+  // 4a. The exact repro: a rehydrated 51-turn thread where a PRIOR ASSISTANT turn is a 60k-char
+  //     credit-report analysis (>50k). Under the OLD .max(50000) this threw ZodError -> 400
+  //     "Invalid input format" and killed the send. It must now PARSE cleanly.
+  const bigAnalysis = 'A'.repeat(60_000); // a real multi-bureau credit analysis, >50k chars
+  const input = alternating(51);
+  input[1].content = bigAnalysis; // an assistant turn (odd index) carries the oversized reply
+  let out, threw = false;
+  try { out = messages.parse(input); } catch { threw = true; }
+  check('4a. 51-turn history w/ 60k assistant turn PARSES (no more 400)', !threw);
+  check('4a. windowed result is bounded (still <= 50)', out && out.length <= 50, `len=${out?.length}`);
+  check('4a. first non-system is USER (no Anthropic 400)', out && firstNonSystemIsUser(out));
+
+  // 4b. A single 60k-char turn (between 50k and 200k) passes UNTOUCHED — not truncated.
+  const out2 = messages.parse([{ role: 'user', content: bigAnalysis }]);
+  check('4b. 60k content passes untouched (not clamped below 200k)', out2[0].content.length === 60_000);
+
+  // 4c. A pathological >200k turn CLAMPS to 200k (safety valve) instead of rejecting.
+  const out3 = messages.parse([{ role: 'user', content: 'B'.repeat(250_000) }]);
+  check('4c. 250k content CLAMPS to 200k (never rejects)', out3[0].content.length === 200_000);
+
+  // 4d. A normal short turn is byte-identical (pure loosening — no producer breaks).
+  const out4 = messages.parse([{ role: 'user', content: 'hello' }]);
+  check('4d. short content byte-identical', out4[0].content === 'hello');
 }
 
 // 5. No hard upper ceiling — a very long thread WINDOWS (never re-introduces the 400).
