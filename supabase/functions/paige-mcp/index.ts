@@ -215,7 +215,16 @@ async function actorTenantId(): Promise<string | null> {
     if (member?.tenant_id) return member.tenant_id as string;
   }
 
-  return (memberships?.[0]?.tenant_id as string | null) ?? null;
+  const firstMembership = (memberships?.[0]?.tenant_id as string | null) ?? null;
+  if (firstMembership) return firstMembership;
+  // §200/Task #126: a platform-OWNER user with no tenant of their own (the tenant-less
+  // super_admin operator) resolves to the DESIGNATED operator workspace — the same fallback
+  // the platform-KEY branch above already uses — so operator-run platform-scope work has a
+  // real forge tenant instead of failing tenant_unresolved. A non-owner tenant-less user
+  // still resolves null (unchanged). §9-clean: the operator is authorized for the operator
+  // workspace by construction.
+  if (isPlatformOwner) return await platformOperatorTenantId(admin);
+  return null;
 }
 
 // ── Tier derivation (§9/§25) ────────────────────────────────────────────────
