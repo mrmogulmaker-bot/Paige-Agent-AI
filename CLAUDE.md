@@ -2221,3 +2221,51 @@ migration commit (the §14 pattern: attribution in reference, mechanic-only in t
 (prompt-forge — the interpreter forges from the anchor) · §51/§60/§61 (tier framework) · §9 (tenant vs
 platform scoping) · `docs/doctrine/skills-vocabulary.md` (concept 1) · master §15 (the Skills Inventory this
 sources into).
+
+
+## 63. Owner's real business accounts are OFF-LIMITS as agent example / default / suggestion targets.
+
+> **PROPOSED — owner RULED the substance 2026-08-12 (binding as intent immediately); exact wording +
+> final §-number ratified in a later pass (same PROPOSED pattern as §57–§62). Owner picks the final
+> §-number.**
+
+**Directive (owner: Antonio, 2026-08-12) — extends §9 and §57.** Cowork and CC must **NEVER** suggest,
+propose, default to, or reference the owner's REAL production business accounts — **Project Mogul
+(agency), Mogul Maker Academy / MMA (sub-account), Antonio Daniel LLC (sub-account)**, or any other real
+owner-operated business account — as an **example tenant, reference workspace, default target, fork
+option, or suggestion** for platform work. Owner's verbatim framing: *"I don't even want them to ever
+make a suggestion about something specific to Project Mogul or MMA. I don't even understand why they keep
+doing that. Can we please clean that up?"*
+
+These are the owner's REAL revenue-bearing production accounts. Treating them as "development tenants" or
+"example tenants" is a §9 seam violation waiting to happen and a §57 source-of-truth muddle — every
+mention entrenches drift toward pattern-matching them as "the reference tenants."
+
+- **Off-limits everywhere an agent is choosing an example/default/target:** not in fork widgets, not in
+  code comments, not in migration examples, not in "here's what a real tenant looks like" framing, **not
+  even as a negative example** ("don't point platform-scope skills at MMA"). If you catch yourself about
+  to name one, replace it BEFORE the recommendation is surfaced.
+- **When an example/target tenant is genuinely needed, use, in order:**
+  1. the designated **Paige Operator Workspace** (the §200 `platform_operator_tenant_id` config-as-data
+     pointer — a purpose-built, coaching-generic operator workspace);
+  2. a fresh, purpose-built **test tenant** (the platform already uses `test-tenant-*-verification` rows
+     for exactly this);
+  3. **anonymized placeholder** text (`some-tenant-uuid`, `example-agency`).
+- **What this rule does NOT touch (§13/§58 — audit integrity):** it is a GO-FORWARD choosing rule, not a
+  purge. LEGITIMATE existing references stay: real §13 corrections-log / decision-log / audit entries
+  (e.g. "Antonio Daniel LLC upload seam bug"), real master-tenant gate LOGIC (the `MASTER_ONLY_TOOLS` /
+  MMA-fallback resolution, migration names, real data-fix migrations), real portfolio/architecture
+  documentation (the owner's actual accounts ARE the subject there, not an example), and meta-prohibition
+  surfaces that must NAME the marks to enforce the ban (the platform-independence sweep regex, the "MMA
+  OS" jargon lint, this section itself). Never rewrite git history.
+- **Both agents, going forward:** Cowork never surfaces these accounts in any recommendation/fork/example/
+  negative comparison; CC additionally never uses them as test/fixture tenants in new code.
+- **The test, every time:** *"Am I about to name Project Mogul / MMA / Antonio Daniel LLC as an example,
+  default, suggestion, fork option, or reference/negative-comparison tenant? If yes — swap to the Paige
+  Operator Workspace, a fresh test tenant, or a placeholder before it leaves my mouth."*
+
+**Cross-references:** §9 (tenant isolation / operator-vs-tenant seam), §57 (Super Admin = source of
+truth), §200 (platform independence — no real-account phantoms baked into platform paths; the Paige
+Operator Workspace pointer is the sanctioned example target), §58 (anti-regression — this is a go-forward
+rule, legitimate audit entries are NEVER purged), §50 (the same meta-exempt pattern: a prohibition
+surface must name what it prohibits).
