@@ -84,10 +84,12 @@ for (const { re, why } of BANNED) {
 //    non-trivial leftover (that leftover is undeclared content that would drift).
 let text = rootInner
   .replace(/<[^>]+>/g, " ")   // strip tags
-  .replace(/&amp;/g, "&")
-  .replace(/&copy;/g, "")
-  .replace(/&middot;/g, "·")
   .replace(/&nbsp;/g, " ")
+  .replace(/&#\d+;/g, " ")    // numeric entities → space
+  .replace(/&[a-z]+;/gi, (e) => (e === "&amp;" ? "&" : " ")) // named entities in ONE pass;
+  //                              &amp; decoded here and NOT again below — avoids double-unescaping
+  //                              (CodeQL js/double-unescaping). The skeleton carries no entities today;
+  //                              this only keeps the text extractor robust if stable SEO copy adds one.
   .replace(/\s+/g, " ")
   .trim();
 
