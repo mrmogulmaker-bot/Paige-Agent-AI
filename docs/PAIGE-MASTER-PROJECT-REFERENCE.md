@@ -120,6 +120,8 @@ Canonical: **`docs/product/customer-portal-owner-trilogy-taxonomy-matrix.md`**.
 **§14 (this doc) + `docs/brain/goat-anchor-registry.md`** — WHOSE proven framework anchors WHICH domain of
 Paige's professional intelligence (v1, 13 anchors). Doc-side branded names = FINE (bibliography); code-side
 (`methodology_anchor`, prompts, seeds, hardwired replies) = mechanic-descriptive ONLY (owner-locked 2026-08-11).
+**§15 (this doc) + `docs/brain/paige-skills-inventory.md`** — what Paige DOES (12 categories, ~100 skills, v1);
+the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP-clean code rule.
 
 ### Paige-strategic doctrine (`docs/doctrine/paige-*.md`)
 
@@ -537,6 +539,7 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 
 Things Cowork/CC/Codex have claimed that the codebase disagrees with. **Never remove entries** — mark as reversed/resolved but keep the record. **CC's code check is authoritative.**
 
+- **2026-08-12 · §15 Paige Skills Inventory v1 FILED (paste-through unblock):** the §15 content — blocked for several handoffs because Cowork's session `scratchpad/` isn't shared with CC's container — was delivered by the owner **via chat** and filed verbatim to master **§15** + **`docs/brain/paige-skills-inventory.md`** (cross-linked from the brain README), with the §3 index updated. 12 categories, ~100 skills, owner-approved as launch pad; complements §14 (what Paige DOES vs whose thinking anchors her). Sequencing gate reaffirmed: ALL 12 categories seeded before Task #126 (browser). Owner ruled **proceed after §15 files** → CC begins **Category 1 (Vision & Strategy)** seeding next (OSS-source + distill IP-clean + seed; lineage in commit body). **Delivery-channel lesson (§13/§46):** a Cowork `scratchpad/` file is NOT reachable from CC — cross-agent content must be committed to the repo or pasted in chat; paste-through was the working fix.
 - **2026-08-12 · S2 sourcing MAP delivered + reachability CONFIRMED (owner addendum):** the owner delivered the concrete OSS source map for S2 seeding — master aggregators (`anthropics/skills`, `VoltAgent/awesome-agent-skills` [1000+], `GetBindu/awesome-claude-code-and-skills`, `abubakarsiddik31/claude-skills-collection`, `ComposioHQ/awesome-claude-skills`) + category-specific repos (Sales: `TheCraigHewitt/sales-skills`, `louisblythe/Sales-Skills`, `gtmagents/gtm-agents`, `ericosiu/ai-marketing-skills`, `filip-michalsky/SalesGPT`; Orchestration: `am-will/swarms`, `bobmatnyc/claude-mpm`, `dsifry/metaswarm`, `stellarlinkco/myclaude`, `Yeachan-Heo/oh-my-claudecode`) + Anthropic plugin skills (`marketing/sales/human-resources/finance/legal/operations/product-management/design/data/customer-support/small-business/brand-voice/productivity/engineering:*` → §15 categories 2–10). **§13 reachability CONFIRMED from CC:** all tested OSS repos are git-reachable through the agent proxy, AND `/mnt/skills` IS the Anthropic skills content locally — so the sourcing channel is fully open. **Sourcing lineage rule (per §14):** each seeded `paige_skills` row records its source-repo lineage in the MIGRATION COMMIT BODY only, never in the row (mechanic-only in code). **STILL-OPEN FORK (§44):** the §15 Paige Skills Inventory (the authoritative per-category skill LIST) has still not reached CC — so S2 seeding awaits either (a) §15 delivered as the target list, or (b) an explicit owner OK to derive the per-category list from the now-reachable sources and reconcile with §15 later. Sources ready; only the target list / go-ahead is pending.
 - **2026-08-11 · S2 wave SOURCING ruling + §62 Two-tier skills sourcing doctrine (owner):** the ~100 S2 skills are NOT written from scratch — they are pulled from three source channels and distilled IP-clean: **(1) Anthropic Skills registry** (public OSS SKILL.md repos), **(2) owner's locally-installed Claude skills** (readable on disk), **(3) platform marketplace data** (paige-mcp `marketplace_browse`, fired from Cowork for funding-coaching). Each source skill is distilled to its MECHANIC (what it does / how it structures the work) and rewritten as a `paige_skills` row that is mechanic-descriptive per §14 — no source-repo/person/branded name in the row (attribution stays in the migration commit comment). **§62 (PROPOSED, CLAUDE.md + §3 index):** two first-class skill sources — **platform baseline** (OSS-distilled, `scoping='platform'`, every tenant per §61) and **tenant-loadable** (tenant-authored GitHub-repo skills, `scoping='tenant'`, a follow-up wave); both use the same schema + S1b interpreter + §16 clamp + §61 tiers. **§13 CAPABILITY CHECK (CC actually tried the paths):** the skill sources ARE readable from CC's container — `/mnt/skills/public` + `/mnt/skills/examples` (Anthropic public/example skills), `/root/.claude/skills/synced/` (**40 owner-curated skills**), and unzipped OSS repos (`superpowers-main`, `taste-skill-main`, `skills-main`). **§30 honest note:** the readable OSS skills are heavily design/dev/document (docx/pptx/xlsx/pdf/canvas-design/brand-guidelines/animate/taste/mcp-builder) — they map STRONGLY to §15 category 12 (Superpowers) + partially Documents/Marketing; the 9 service-business-ops categories (Vision/Sales/Client-Delivery/Analytics/Team/Financial/Compliance/Operations/Agent-Orchestration) are sourced from the §14 GOAT mechanics + §15 definitions distilled, not a direct OSS SKILL.md. **BLOCKER (§13):** the §15 Paige Skills Inventory content (the 12-category target list, `scratchpad/skills-inventory-v1.md` in Cowork's session) is NOT reachable from CC's container (Cowork scratchpad isn't shared with CC's clone; not in repo/git) — owner/Cowork owes it via repo-commit or chat paste before §15 files and S2 seeding starts. §62 doctrine + §3 index + this log filed now on `claude/registry-filing-v1`; §15 table + amendment add to the same branch when content lands.
 - **2026-08-11 · GOAT Anchor Registry filed + IP-clean code rule LOCKED (owner ruling):** the intellectual DNA of Paige's professional intelligence is documented in TWO durable places — master **§14** (investor-facing IP disclosure) + **`docs/brain/goat-anchor-registry.md`** (second-brain crew reference), cross-linked from the brain README. v1 = 13 anchors (Hormozi/offers · Brunson/funnels · Priestley/positioning · Martell/time-leverage · Sanchez/SMB-acq · Vaynerchuk/content · Bartlett/media · Cardone/sales · Patel/SEO · Robbins/peak-performance · Shands/podcasting · **Cook** (owner) + Dolce/funding). **The IP-clean code rule (LOCKED):** business-strategy MECHANICS are not copyrightable and are fair to use; a PERSON'S NAME and their BRANDED FRAMEWORK TITLE are IP. So — **doc-side (master §14 + brain) = branded names + attribution = FINE** (bibliography-style); **code-side (`paige_skills.methodology_anchor`, system prompts, defaults, seeded skill copy, Paige's hardwired replies) = mechanic-descriptive ONLY, never a name or branded title.** Paige's conversational chat MAY cite/homage at taste-level (never scripted default); owner (Antonio Cook) is name-referenceable on funding surfaces (owns the platform + IP). **Retroactive audit (own PR, migration 20260827000000):** the #466 backfill had seeded 3 of the 4 shipped anchors in "Person — Branded Framework" form (GROW/Whitmore, Cialdini/Influence, Minto/Pyramid Principle); rewritten mechanic-descriptive (the 4th, verify_business_sos = "KYB standard — Secretary-of-State…", was already clean). §32.a rollback-proven on prod (bad=0; 3 rewrites mechanic-descriptive; verify_business_sos unchanged); §37 headless smoke confirms the new anchors still flow coherently through `buildForgeIntent`. **S2 seeding rule:** every new `paige_skills` anchor uses the mechanic-descriptive format; the GOAT registry is the crew's source of truth for WHERE the DNA came from so the mechanic wording stays faithful — but the name never enters the row.
@@ -663,6 +666,59 @@ or branded title. Paige's conversational chat = occasional taste-level homage OK
 closing, agency ops, e-commerce, course creation, membership / recurring revenue, negotiation, public
 speaking, book writing / thought leadership, team building, mindset / grit. Owner rules per-domain when
 adding anchors. **Durable twin:** `docs/brain/goat-anchor-registry.md` (identical content, second-brain layer).
+
+---
+
+## 15. Paige Skills Inventory — what Paige DOES at professional level
+
+The Paige Skills Inventory documents what Paige DOES at professional level — the atomic capabilities that
+make her the AI-COO for client-based service businesses (coaches, consultants, agencies, thought leaders,
+advisors). It complements the GOAT Anchor Registry (§14 — whose thinking anchors her methodology). **This is
+what she executes; that is what she reasons from.** Investor-facing IP disclosure alongside the GOAT registry;
+both together document the intelligence layer as an acquirable, defensible asset.
+
+**IP posture (unchanged from §14):** skill mechanics live in `paige_skills` rows as mechanic-descriptive text
+(no branded framework names, no anchor person names hardwired). Attribution lives in the GOAT registry only.
+Paige's conversational chat may pay occasional taste-level homage; hardwired defaults never.
+
+**Seeding strategy (per §62):** platform baseline skills for each category are pulled from OSS skill repos
+(Anthropic Skills registry + community aggregators + owner-curated local skills) and distilled
+mechanic-descriptive per §14. Tenants additionally load their own GitHub-repo skills (tenant-loadable-skills
+surface, a follow-up wave). Sourcing lineage recorded in migration commit bodies only, never in a row.
+
+**Sequencing gate (owner ruling, 2026-08-11):** ALL 12 categories must be seeded before Task #126 (Paige
+web-browser install) begins — the professional-skills library is the operating instinct that drives Paige's
+browsing intelligence; the library comes first, the browser comes after.
+
+**The 12 categories (~100 skills):** (1) **Vision & Strategy** — vision interpret/create, roadmap + daily-action
+translation, where-you-are diagnostic, gap analysis, scaling roadmap, quarterly OKR planning, risk id. (2)
+**Client Delivery** — onboarding, kickoff agenda, per-client milestone tracking, deliverable drafting,
+check-in cadence, wrap-up/graduation, reactivation. (3) **Sales & Growth** — lead triage, outreach drafting,
+follow-up sequences, pipeline mgmt, forecast, competitive intel, discovery prep/summary, proposal drafting,
+objection-handling library. (4) **Marketing & Content** — content strategy, brand-voice enforcement, blog/
+social(per-platform)/newsletter/ad/landing-page drafting, campaign planning, email-sequence design, SEO audit,
+performance report. (5) **Document Creation** (Studio §19) — offer letter, proposal, contract (basic),
+welcome/follow-up email, meeting recap/agenda, one-pager, case study, ebook/guide, checklist, sales letter,
+SOP, onboarding/offboarding packet, invoice/SOW, dunning notice, testimonial outline, board deck, landing
+page, funnel steps — each offers Word/GDoc/PDF/Markdown (S1d shipped). (6) **Analytics Interpretation** —
+revenue/pipeline/engagement reads, funnel diagnosis, cohort analysis, churn detection, ad-spend efficiency,
+client-health, weekly-review/QBR/quarterly synthesis. (7) **Team Management & Building** — JD drafting,
+interview design + questions, role/org mapping, hiring pipeline, onboarding sequence, review templates, 1:1
+agenda, comp benchmarking, PIP script, offboarding, sub-account team building. (8) **Financial Ops** (not
+accounting advice) — invoice gen+send, dunning, cash-flow snapshot, reconciliation prep, month-end close,
+price analysis, tax-prep organizer. (9) **Compliance & Legal** (basic — escalate for real) — contract review,
+NDA triage, policy lookup, risk assessment, escalation routing. (10) **Operations & Process** — SOP/runbook
+drafting, process optimization, change request, status report, vendor review, capacity planning. (11)
+**Agent Orchestration** (§14/§16 — Paige's meta-skill) — roster knowledge, delegation, composition, agent
+forging, agent-learning loop (§34 L6), cross-department action-bus routing (§16), knowing when NOT to
+delegate. (12) **Superpowers** (imported from the Claude Skills ecosystem) — docx/pptx/xlsx/pdf, canvas-design,
+brand-guidelines/brandkit, algorithmic-art, imagegen, high-end-visual-design/apple-design, theme-factory,
+web-artifacts-builder, image-to-code, mcp-builder, skill-creator, morning, schedule, learn, doc-coauthoring,
+memory-management, task-management.
+
+**S2 seeding order (owner may reorder):** Vision → Documents → Client Delivery → Sales → Marketing → Analytics
+→ Team → Financial → Compliance → Operations → Agent Orchestration → Superpowers. One PR per category
+(OSS-source → distill IP-clean → seed; lineage in commit body). **Durable twin:** `docs/brain/paige-skills-inventory.md`.
 
 ---
 

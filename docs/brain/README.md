@@ -36,6 +36,7 @@ worse than none — it lies with authority.
 | `lessons-learned.md` | Recurring traps: symptom → root cause → rule | Before a class of work that's bitten us before |
 | `glossary.md` | §-anchors, tier vocab, VP roster, wave/slice names, project jargon | Any unfamiliar term |
 | `goat-anchor-registry.md` | The intellectual DNA of Paige's professional intelligence — WHOSE proven framework anchors WHICH domain (v1, 13 anchors). Branded names OK in docs; **code = mechanic-descriptive only** | Seeding a skill / authoring a methodology anchor / investor IP disclosure |
+| `paige-skills-inventory.md` | What Paige DOES at professional level — the 12-category, ~100-skill inventory (v1). The S2 seeding target list; complements the GOAT registry (what she executes vs whose thinking she reasons from) | Seeding a skill / S2 wave / investor IP disclosure |
 
 ---
 
