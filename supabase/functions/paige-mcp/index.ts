@@ -3371,6 +3371,15 @@ mcp.tool("run_skill", {
       const skillOut = { ...skill, tools: skill.allowed_tools, external_send: skill.risk_level === "external_send" };
       return ok({ dry_run: true, skill: skillOut, resolved_inputs: inputs, would_gate_on_confirm: willGate });
     }
+    // §9/#135 — for a BUSINESS-WIDE skill (no contact_id: compliance, ops, finance) resolve the
+    // caller's tenant SERVER-SIDE (from the authenticated actor, never a body-trusted claim) and
+    // forward it. Without it the interpreter's tenant-resolution guard returns needs_config and the
+    // skill can never run from the Paige-chat/MCP surface. When a contact_id IS present, skill-runner
+    // already derives the authoritative tenant from the contact (and its tenant_mismatch guard treats a
+    // divergent body tenant as an IDOR) — so we forward ONLY in the no-contact case, leaving the
+    // contact path byte-identical (§37). actorTenantId() mirrors current_user_tenant_id(); a genuinely
+    // tenant-less caller resolves null and the run still degrades honestly.
+    const forwardedTenantId = contact_id ? undefined : ((await actorTenantId()) ?? undefined);
     const r = await fetch(`${SUPABASE_URL}/functions/v1/skill-runner`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE_KEY}`, apikey: SERVICE_ROLE_KEY },
@@ -3378,6 +3387,7 @@ mcp.tool("run_skill", {
         skill_slug: slug,
         inputs: inputs ?? {},
         contact_id: contact_id ?? null,
+        tenant_id: forwardedTenantId,
         invoker_kind: "mcp",
         invoker_user_id: actor.user_id ?? null,
         confirm_token,
