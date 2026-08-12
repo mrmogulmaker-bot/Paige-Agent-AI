@@ -112,6 +112,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:tier-features
 
+      - name: Skeleton-content guard (§18/§24 Task #126 — index.html #root must carry only whitelisted SEO copy, no product content)
+        if: ${{ !cancelled() }}
+        run: npm run lint:skeleton
+
       - name: ESLint (changed src)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt ./node_modules/.bin/eslint
