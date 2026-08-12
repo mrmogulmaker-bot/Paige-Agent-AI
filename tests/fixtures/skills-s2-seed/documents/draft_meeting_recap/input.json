@@ -1,0 +1,6 @@
+{
+  "inputs": {
+    "prompt": "[sample brief for Meeting Recap Drafter]",
+    "format": "Markdown"
+  }
+}
