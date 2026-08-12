@@ -156,10 +156,21 @@ export async function interpretSkill(deps: InterpretDeps, ctx: InterpretCtx): Pr
       userIntent,
       actorRole: actorRole ?? undefined,
       actorUserId: actorUserId ?? undefined,
-      // §2 — a platform-scoped skill forges as a platform default so forge's finance re-scan engages
-      // (assertPromptFinanceClean short-circuits for non-defaults); a tenant-scoped skill may opt into
-      // finance content per §2, so it is not a platform default.
-      is_platform_default: (skill.scoping ?? "").trim().toLowerCase() === "platform",
+      // §9/§2 — NEVER a platform default here. `scoping` is REGISTRY PROVENANCE (who authored the
+      // paige_skills row), NOT the nature of THIS generation. A tenant running a platform-authored
+      // skill produces TENANT content for their own book — it is not "authoring the shared/God
+      // defaults that ship to everyone." forge's `is_platform_default` gate means the LATTER: it
+      // requires an OPERATOR role (assertTenantScope, model-router-gates.ts) and forces the §2
+      // finance-in-default ban + §3 platform-voice rewrite on the OUTPUT. Mapping scoping='platform'
+      // → is_platform_default=true (the pre-#135 bug) made assertTenantScope THROW §9 for every real
+      // caller (skill-runner passes actorRole 'admin'/'mcp'/'coach'/'paige'/'system' — none operator),
+      // so EVERY seeded platform-baseline skill failed at runtime. It was also a latent §2 over-reach:
+      // the finance ban is a PLATFORM-DEFAULT rule, but finance/credit is an ALLOWED per-tenant OPT-IN
+      // (§2 clarification) — forcing the default-scan on a tenant's own run would wrongly block a
+      // funding-coach tenant from running a generic skill with finance in THEIR brief. The seeded
+      // DEFINITION's finance-cleanliness is proven once at seed time (the migration's §2 SQL scan);
+      // it does not need re-proving on every tenant execution. So this generation is tenant content:
+      is_platform_default: false,
       is_customer_send: false, // interpreter DRAFTS; the send (if any) is a later, human-approved seam (§16)
       callerFunction: `skill-interpreter:${skill.slug}`,
       metadata: { skill_slug: skill.slug, run_id: runId, risk_level: skill.risk_level ?? null },

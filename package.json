@@ -18,7 +18,8 @@
     "lint:definer-fns": "node scripts/ci/definer-fn-lint.mjs",
     "lint:tier-features": "node scripts/ci/tier-feature-lint.mjs",
     "lint:tier-features:test": "node scripts/ci/tier-feature-lint.mjs --self-test",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "smoke:skills-interpreter": "node --experimental-strip-types --import ./scripts/_register-forge-stub.mjs scripts/skills-interpreter-provenance-smoke.mjs"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",
@@ -130,5 +131,4 @@
     "launch-editor": "^2.11.2",
     "ws": "^8.18.4"
   }
-
 }
