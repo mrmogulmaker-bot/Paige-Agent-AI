@@ -43,6 +43,15 @@ export function buildBrandSection(brand: Record<string, any> | null, tenant: str
     b.logo_url && `Logo (for light backgrounds): ${b.logo_url}`,
     b.logo_dark_url && `Logo (for dark backgrounds): ${b.logo_dark_url}`,
     b.tagline && `Tagline: "${b.tagline}"`,
+    // Company-detail keys written by update_business_profile — surfaced present-only so Paige can
+    // SEE what she saved and doesn't re-ask for it (§7/§15). Labeled distinctly so the real business
+    // website is never confused with the Paige portal/subdomain.
+    b.website && `Business website: ${b.website}`,
+    b.address && `Business address: ${b.address}`,
+    b.phone && `Business phone: ${b.phone}`,
+    b.legal_entity_name && `Legal entity: ${b.legal_entity_name}`,
+    b.from_name && `Outbound sending name: ${b.from_name}`,
+    b.support_email && `Outbound / support email: ${b.support_email}`,
   ].filter(Boolean).join("\n");
   const kitPointer = `The owner can set or change any of this in their Brand Kit (Campaigns → Brand Kit) — logo (light/dark), colors, font, product name, tagline, sending identity — and it flows into everything you build. Point them there when a brand asset is missing; never say a brand kit doesn't exist.`;
   if (!lines) {
