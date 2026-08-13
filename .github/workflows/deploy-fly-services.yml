@@ -1,0 +1,152 @@
+# deploy-fly-services — keep the prod Fly services in lockstep with `main` (§24/§64).
+#
+# WHY THIS EXISTS (§64 cloud-first): the two self-hosted Fly services — paige-browser
+# (Paige's headless-browser "eyes") and paige-visual-renderer (the §33 screenshot host) —
+# used to deploy ONLY via a manual `flyctl deploy` from a local CLI. That makes a prod
+# capability depend on the owner's laptop being on — exactly what §64 forbids. This mirrors
+# deploy-edge-functions.yml (§18 — extend the established CI-deploy pattern, do NOT invent a
+# second mechanism): on every push to main that touches a service's directory, it deploys
+# EXACTLY the service(s) whose bundle changed, and nothing else.
+#
+# SETUP (one-time, owner): add a repo secret FLY_API_TOKEN
+#   1. Run `flyctl auth token` locally once (the last local-CLI action for this class of work).
+#   2. Copy the printed token.
+#   3. GitHub → Settings → Secrets and variables → Actions → New repository secret.
+#   4. Name: FLY_API_TOKEN   Value: <the token>
+# Without the secret the deploy job FAILS LOUDLY with these instructions — it never silently
+# no-ops (§13).
+name: deploy-fly-services
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/paige-browser/**"
+      - "services/visual-renderer/**"
+  # Manual on-demand deploy — for the FIRST deploy of a service whose code merged BEFORE this workflow
+  # existed, or any redeploy without a code change. Pick a specific service or "all".
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Which Fly service(s) to deploy"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - paige-browser
+          - paige-visual-renderer
+
+# Least-privilege GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions). This workflow
+# only READS the repo (checkout) and deploys to Fly via FLY_API_TOKEN — it never writes to the
+# repo (no tag push, unlike deploy-edge-functions.yml which needs contents:write for edge-live).
+permissions:
+  contents: read
+
+jobs:
+  # Which service(s) actually changed in this push? Emits a JSON array so the deploy job
+  # fans out over ONLY the changed services — a change to paige-browser never redeploys
+  # visual-renderer, and vice-versa (peer-gate R2: matrix separation).
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.detect.outputs.services }}
+      count: ${{ steps.detect.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need history to diff before..after
+
+      - name: Detect changed services
+        id: detect
+        run: |
+          # Manual dispatch: deploy exactly the requested service(s), bypassing the push diff.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            sel="${{ github.event.inputs.service }}"
+            svcs=""
+            { [ "$sel" = "all" ] || [ "$sel" = "paige-browser" ]; }         && svcs="$svcs paige-browser"
+            { [ "$sel" = "all" ] || [ "$sel" = "paige-visual-renderer" ]; } && svcs="$svcs paige-visual-renderer"
+            json="$(printf '%s\n' $svcs | grep . | jq -R . | jq -cs .)"; [ -z "$json" ] && json='[]'
+            count="$(printf '%s\n' $svcs | grep -c . || true)"
+            echo "services=$json" >> "$GITHUB_OUTPUT"
+            echo "count=$count"    >> "$GITHUB_OUTPUT"
+            echo "→ manual dispatch (service=$sel): $json (count=$count)"
+            exit 0
+          fi
+          before="${{ github.event.before }}"
+          after="${{ github.sha }}"
+          # First push / force-push / unknown parent → fall back to this commit's parent.
+          if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            before="$(git rev-parse "${after}^" 2>/dev/null || echo "$after")"
+          fi
+          changed="$(git diff --name-only "$before" "$after")"
+          echo "changed files:"; echo "$changed"
+          svcs=""
+          echo "$changed" | grep -q '^services/paige-browser/'   && svcs="$svcs paige-browser"
+          echo "$changed" | grep -q '^services/visual-renderer/' && svcs="$svcs paige-visual-renderer"
+          json="$(printf '%s\n' $svcs | grep . | jq -R . | jq -cs .)"
+          [ -z "$json" ] && json='[]'
+          count="$(printf '%s\n' $svcs | grep -c . || true)"
+          echo "services=$json"   >> "$GITHUB_OUTPUT"
+          echo "count=$count"      >> "$GITHUB_OUTPUT"
+          echo "→ services to deploy: $json (count=$count)"
+
+  deploy:
+    needs: detect
+    if: needs.detect.outputs.count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # one service's failure must not cancel the other's deploy
+      matrix:
+        service: ${{ fromJSON(needs.detect.outputs.services) }}
+    # Per-service: a newer push supersedes an in-flight deploy of the SAME service only.
+    concurrency:
+      group: deploy-fly-${{ matrix.service }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fail fast if FLY_API_TOKEN is missing
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -z "${FLY_API_TOKEN:-}" ]; then
+            echo "::error::FLY_API_TOKEN secret is not set — cannot deploy Fly services."
+            echo "::error::Owner: run 'flyctl auth token', then add it in Settings → Secrets and variables → Actions (name: FLY_API_TOKEN). See this workflow's header."
+            exit 1
+          fi
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Resolve service directory
+        id: dir
+        run: |
+          case "${{ matrix.service }}" in
+            paige-browser)         echo "dir=services/paige-browser"   >> "$GITHUB_OUTPUT" ;;
+            paige-visual-renderer) echo "dir=services/visual-renderer" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::unknown service '${{ matrix.service }}'"; exit 1 ;;
+          esac
+
+      - name: Deploy ${{ matrix.service }}
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          dir="${{ steps.dir.outputs.dir }}"
+          echo "Deploying ${{ matrix.service }} from $dir (remote build)"
+          flyctl deploy "$dir" --config "$dir/fly.toml" --app "${{ matrix.service }}" --remote-only
+
+      - name: Record deployed image (§32.a evidence)
+        if: success()
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          echo "::group::${{ matrix.service }} status"
+          flyctl status --app "${{ matrix.service }}" || true
+          img="$(flyctl image show --app "${{ matrix.service }}" --json 2>/dev/null | jq -r '.Ref // .ref // .Tag // empty' 2>/dev/null || true)"
+          echo "✓ deployed ${{ matrix.service }} — image: ${img:-see status above}"
+          {
+            echo "### Fly deploy — ${{ matrix.service }}"
+            echo "- image: \`${img:-see status}\`"
+            echo "- commit: \`${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::endgroup::"

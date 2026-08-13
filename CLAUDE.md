@@ -2269,3 +2269,37 @@ truth), §200 (platform independence — no real-account phantoms baked into pla
 Operator Workspace pointer is the sanctioned example target), §58 (anti-regression — this is a go-forward
 rule, legitimate audit entries are NEVER purged), §50 (the same meta-exempt pattern: a prohibition
 surface must name what it prohibits).
+
+## 64. Cloud-first, laptop-independent by default.
+
+**Directive (owner: Antonio, 2026-08-12).** Every function, agent, deploy path, and maintenance job
+MUST have a **cloud-native execution path** so no capability the platform needs depends on the owner's
+laptop being on, awake, connected, or running a specific process. Local CLI commands and dev-tool
+sessions (Cowork / CC on the desktop) remain valid *working* environments — but they are **NEVER the
+sole path**. Anything that MUST run on a schedule, respond to a webhook, deploy on merge, or be
+reachable by Paige runs on the **cloud** (Vercel, Supabase, Fly, GitHub Actions, cloud sandbox).
+
+- **The test, every time:** *"If my laptop is off for a week, does anything the platform needs stop
+  working?"* If yes, the missing capability gets a cloud execution path **before it ships**.
+- **Concrete implications:**
+  - **Deploys → CI, not a local CLI.** Merge to `main` triggers the deploy (edge functions via
+    `deploy-edge-functions.yml`; the Fly services `paige-browser` + `paige-visual-renderer` via
+    `deploy-fly-services.yml`; migrations via `deploy-migrations.yml`; the frontend via Vercel). A
+    manual `flyctl deploy` / `supabase functions deploy` from a laptop is a **last resort only when CI
+    is unavailable** (§24), never the standing mechanism.
+  - **Scheduled tasks / cron / drift monitors → platform, not local cron** (`pg_cron`, GitHub Actions
+    `schedule`, a cloud trigger) — never a job that only fires when a laptop is awake.
+  - **Long-running agent sessions → the cloud-sandbox option**, not laptop-only, whenever the work must
+    outlive the desk session.
+  - **Git operations that MUST happen → a GitHub Action or the API**, not a local checkout someone has
+    to remember to run.
+- **Honest reporting (§13):** "the platform is up" must NEVER silently mean "if my laptop is on." When a
+  capability's only execution path is local, say so plainly and file the cloud path as the fix — do not
+  let a laptop dependency hide behind a green status.
+- **The test restated:** *"Does this capability have a home in the cloud that runs without me?"* If not,
+  it isn't done.
+
+**Cross-references:** §24 (automate the repeat — the *mechanism* this rule generalizes), §34 (Paige owns
+her intelligence end-to-end — cloud-first is the deploy corollary), §35 (OS north star — an OS that dies
+when the owner's laptop sleeps isn't an OS), §13 (honest reporting — a green status must not depend on a
+laptop being on), §32.a/§32.c (a cloud deploy still owes its persisted/live proof).
