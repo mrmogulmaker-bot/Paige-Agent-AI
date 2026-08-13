@@ -133,7 +133,11 @@ jobs:
         run: |
           dir="${{ steps.dir.outputs.dir }}"
           echo "Deploying ${{ matrix.service }} from $dir (remote build)"
-          flyctl deploy "$dir" --config "$dir/fly.toml" --app "${{ matrix.service }}" --remote-only
+          # Deploy FROM the service dir (cd), so flyctl auto-resolves ./fly.toml + ./Dockerfile.
+          # Do NOT pass both a positional working-dir AND --config: flyctl then resolves --config
+          # relative to that dir and doubles the path (flyctl 0.4.82: "config file not found at
+          # services/paige-browser/fly.toml"). The cd form matches the service README exactly.
+          ( cd "$dir" && flyctl deploy --app "${{ matrix.service }}" --remote-only )
 
       - name: Record deployed image (§32.a evidence)
         if: success()
