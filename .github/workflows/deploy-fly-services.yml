@@ -23,6 +23,19 @@ on:
     paths:
       - "services/paige-browser/**"
       - "services/visual-renderer/**"
+  # Manual on-demand deploy — for the FIRST deploy of a service whose code merged BEFORE this workflow
+  # existed, or any redeploy without a code change. Pick a specific service or "all".
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Which Fly service(s) to deploy"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - paige-browser
+          - paige-visual-renderer
 
 # Least-privilege GITHUB_TOKEN (CodeQL actions/missing-workflow-permissions). This workflow
 # only READS the repo (checkout) and deploys to Fly via FLY_API_TOKEN — it never writes to the
@@ -47,6 +60,19 @@ jobs:
       - name: Detect changed services
         id: detect
         run: |
+          # Manual dispatch: deploy exactly the requested service(s), bypassing the push diff.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            sel="${{ github.event.inputs.service }}"
+            svcs=""
+            { [ "$sel" = "all" ] || [ "$sel" = "paige-browser" ]; }         && svcs="$svcs paige-browser"
+            { [ "$sel" = "all" ] || [ "$sel" = "paige-visual-renderer" ]; } && svcs="$svcs paige-visual-renderer"
+            json="$(printf '%s\n' $svcs | grep . | jq -R . | jq -cs .)"; [ -z "$json" ] && json='[]'
+            count="$(printf '%s\n' $svcs | grep -c . || true)"
+            echo "services=$json" >> "$GITHUB_OUTPUT"
+            echo "count=$count"    >> "$GITHUB_OUTPUT"
+            echo "→ manual dispatch (service=$sel): $json (count=$count)"
+            exit 0
+          fi
           before="${{ github.event.before }}"
           after="${{ github.sha }}"
           # First push / force-push / unknown parent → fall back to this commit's parent.
