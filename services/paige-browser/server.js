@@ -34,9 +34,10 @@
 // re-checked public after redirects. Fork 7 guard, owner-signed-off, NON-NEGOTIABLE.
 import express from "express";
 import { chromium } from "playwright";
-import dns from "node:dns/promises";
-import net from "node:net";
 import crypto from "node:crypto";
+// SSRF egress guard + two-layer content denylist — extracted to a shared module (§18 one home) so the
+// smoke test exercises the SAME real code the server runs (§32), not a mirror that can drift.
+import { hostIsPrivate, urlBlockReason, assertPublicUrl, loadDenylist } from "./ssrf-guard.mjs";
 
 const PORT = process.env.PORT || 8080;
 const SECRET = process.env.PAIGE_BROWSER_SHARED_SECRET || "";
@@ -59,54 +60,34 @@ const MAX_SCREENSHOT_BYTES = 4_500_000; // png bytes before base64 (~6mb b64); o
 // Only these READ-ONLY observation step kinds are permitted in Slice 1a.
 const ALLOWED_STEP_KINDS = new Set(["assertSelector", "assertText", "readText"]);
 
-// ── SSRF egress guard (verbatim from services/visual-renderer — Fork 7, NON-NEGOTIABLE) ──────────
-function isPrivateIp(ip) {
-  const v = net.isIP(ip);
-  if (v === 4) {
-    const [a, b] = ip.split(".").map(Number);
-    if (a === 10 || a === 127 || a === 0) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true;   // link-local / cloud metadata
-    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
-    return false;
-  }
-  if (v === 6) {
-    const s = ip.toLowerCase();
-    if (s === "::1" || s === "::") return true;
-    if (s.startsWith("fe80")) return true;              // link-local
-    if (s.startsWith("fc") || s.startsWith("fd")) return true; // unique-local
-    const mapped = s.match(/::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-    if (mapped) return isPrivateIp(mapped[1]);
-    return false;
-  }
-  return false;
+// ── Slice 3a: wildcard capability flag + content caps + honest bot user-agent ────────────────────
+// D1=(c) wildcard browsing is OFF by default (owner-ruled 2026-08-12). It flips to true ONLY by an
+// explicit owner action AFTER the §39 live peer-gate returns SHIP — NEVER automatically on merge.
+// While OFF, /browse-public-url refuses any non-self URL with 403 capability_disabled. /self-verify
+// (Slice 2) is UNAFFECTED — its target is paigeagent.ai, always allowed, never the wildcard path (§58).
+const WILDCARD_ENABLED = String(process.env.PAIGE_BROWSER_WILDCARD_ENABLED || "").toLowerCase() === "true";
+// Self-verify targets always allowed regardless of the wildcard flag (§58 anti-regression).
+const SELF_TARGET_SUFFIXES = ["paigeagent.ai"];
+function isSelfTarget(host) {
+  const h = String(host).toLowerCase();
+  return SELF_TARGET_SUFFIXES.some((s) => h === s || h.endsWith("." + s));
 }
+// R4 page-bomb cap: bound the body text returned so one huge page can't blow up the caller's context
+// window or this machine's memory (char cap ≈ byte cap for ASCII; UTF-8 multibyte may run slightly
+// under the byte figure — honest approximation, the content_bytes field reports the true UTF-8 size).
+const MAX_CONTENT_BYTES = Math.max(1000, Number(process.env.PAIGE_BROWSER_MAX_CONTENT_BYTES) || 500_000);
+// R6 honest UA: identify as PaigeBot so a target site can recognize/rate-limit/block us if it chooses.
+const PAIGE_UA = "Mozilla/5.0 (compatible; PaigeBot/1.0; +https://paigeagent.ai/bot)";
 
-const _dnsCache = new Map(); // host -> {private:boolean, at:number}
-async function hostIsPrivate(host) {
-  const h = host.replace(/^\[|\]$/g, "").toLowerCase();
-  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h.endsWith(".internal")) return true;
-  if (net.isIP(h)) return isPrivateIp(h);
-  const hit = _dnsCache.get(h);
-  if (hit && Date.now() - hit.at < 30_000) return hit.private;
-  let priv = true; // fail-closed if we can't resolve
-  try {
-    const addrs = await dns.lookup(h, { all: true });
-    priv = addrs.length === 0 || addrs.some((a) => isPrivateIp(a.address));
-  } catch {
-    priv = true;
-  }
-  _dnsCache.set(h, { private: priv, at: Date.now() });
-  return priv;
-}
+// Layer-2 content denylist (StevenBlack/hosts, owner-ruled 2026-08-12): load the /app/blocklist.txt
+// snapshot into the shared guard's Set once at startup. Missing file (local dev / a failed build
+// fetch) -> empty Set -> this layer is a no-op (the SSRF private-IP guard + Cloudflare Families still
+// hold). HONEST (§13): build-time snapshot, refreshed on image rebuild; a scheduled weekly refresh is
+// a tracked follow-up (task #151), not yet built.
+loadDenylist();
 
-async function assertPublicUrl(raw) {
-  let u;
-  try { u = new URL(String(raw)); } catch { throw new Error("invalid url"); }
-  if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("only http(s) is allowed");
-  if (await hostIsPrivate(u.hostname)) throw new Error("blocked private/internal host");
-}
+// The SSRF egress guard (isPrivateIp/hostBlockReason/urlBlockReason/assertPublicUrl) + the two-layer
+// content denylist now live in ./ssrf-guard.mjs (§18 one home; §32 the smoke test runs the REAL code).
 
 // One long-lived browser, launched lazily and relaunched if it ever dies — keeps the loop warm.
 // A FAILED launch nulls the cached promise so the next request retries instead of awaiting a
@@ -304,6 +285,100 @@ function withHardCap(promise, ms, url, start) {
   return Promise.race([promise.finally(() => clearTimeout(timer)), timeout]);
 }
 
+// ── Slice 3a: structured content extraction for /browse-public-url (the D2/D3 read-only shape) ────
+// Returns the research shape Paige reasons over: title, meta description, h1 headers, capped body text,
+// and a bounded links inventory. Never throws — a failed extraction returns an empty shell (§13/§32).
+async function extractStructured(page, cap) {
+  try {
+    return await withTimeout(page.evaluate((maxChars) => {
+      const clean = (t) => String(t || "").replace(/\s+/g, " ").trim();
+      const metaOf = (sel) => document.querySelector(sel)?.getAttribute("content") || null;
+      const body = document.body ? document.body.innerText : "";
+      const links = Array.from(document.querySelectorAll("a[href]"))
+        .map((a) => ({ text: clean(a.innerText).slice(0, 120), href: a.href }))
+        .filter((l) => l.href && /^https?:/i.test(l.href))
+        .slice(0, 100);
+      return {
+        title: clean(document.title),
+        meta_description: metaOf('meta[name="description"]') || metaOf('meta[property="og:description"]'),
+        h1_headers: Array.from(document.querySelectorAll("h1")).map((h) => clean(h.innerText)).filter(Boolean).slice(0, 20),
+        body_text: clean(body).slice(0, maxChars),
+        links_inventory: links,
+      };
+    }, cap), STEP_TIMEOUT_MS, "extractStructured");
+  } catch (e) {
+    console.error("[paige-browser] structured extraction failed:", e?.message || e);
+    return { title: "", meta_description: null, h1_headers: [], body_text: "", links_inventory: [] };
+  }
+}
+
+// Drive an arbitrary (guard-passed) public URL and return the structured research observation. Same
+// warm-browser + SSRF page.route + post-redirect re-check discipline as observe(); NEVER throws.
+// DB-FREE (§9/§34): returns blocked_reason + timing so the CALLING edge function (Slice 3b) writes the
+// tenant-scoped paige_browser_usage row — this host never holds tenant data or Supabase creds.
+async function browsePublic({ url, viewport, waitForSelector, waitMs, maxContentBytes }, navTimeout) {
+  const start = Date.now();
+  const cap = Math.min(MAX_CONTENT_BYTES, Math.max(1000, Number(maxContentBytes) || MAX_CONTENT_BYTES));
+  const browser = await getBrowser();
+  let ctx = null, page = null;
+  try {
+    ctx = await browser.newContext({ viewport: clampVp(viewport), userAgent: PAIGE_UA });
+    page = await ctx.newPage();
+    page.setDefaultTimeout(STEP_TIMEOUT_MS);
+    await page.route("**/*", async (route) => {
+      try {
+        const host = new URL(route.request().url()).hostname;
+        if (await hostIsPrivate(host)) return route.abort("blockedbyclient");
+        return route.continue();
+      } catch { return route.abort("blockedbyclient"); }
+    });
+
+    let response;
+    try {
+      response = await page.goto(String(url), { waitUntil: "networkidle", timeout: navTimeout });
+    } catch (e) {
+      console.error("[paige-browser] browse nav failed for", String(url) + ":", e?.message || e);
+      return { ok: false, url, blocked_reason: null, error: `navigation failed: ${String(e?.message || e)}`, http_status: null, duration_ms: Date.now() - start };
+    }
+
+    const http_status = response ? response.status() : null;
+    const final_url = page.url();
+    // Re-check the post-redirect URL — a public start URL can 30x into an internal host or a denylisted domain.
+    const redirectReason = await urlBlockReason(final_url);
+    if (redirectReason) {
+      console.error("[paige-browser] browse final_url blocked", String(final_url) + ":", redirectReason);
+      return { ok: false, url, final_url, blocked_reason: redirectReason, error: `blocked redirect: ${redirectReason}`, http_status, duration_ms: Date.now() - start };
+    }
+    // §39 peer-gate fix: re-assert the wildcard flag on the FINAL host too. Without this, a self-target
+    // (`*.paigeagent.ai`) with an open redirect could 30x to an arbitrary public URL and run the wildcard
+    // capability while the flag is OFF — the pre-check only gated the INITIAL host. Redirect target must
+    // ALSO clear the flag/self-target gate, not just the SSRF+denylist guard.
+    let finalHost = "";
+    try { finalHost = new URL(final_url).hostname; } catch { /* keep "" -> treated as non-self */ }
+    if (!WILDCARD_ENABLED && !isSelfTarget(finalHost)) {
+      console.error("[paige-browser] browse final_url redirected off a self-target while wildcard disabled:", String(final_url));
+      return { ok: false, url, final_url, blocked_reason: "wildcard:disabled", error: "blocked redirect: wildcard browsing not yet enabled", http_status, duration_ms: Date.now() - start };
+    }
+
+    if (waitForSelector) await page.waitForSelector(String(waitForSelector), { timeout: 10000 }).catch(() => {});
+    if (waitMs) await page.waitForTimeout(Math.min(8000, Math.max(0, Number(waitMs) || 0)));
+
+    const content = await extractStructured(page, cap);
+    const content_bytes = Buffer.byteLength(content.body_text || "", "utf8");
+    return {
+      ok: true, url, final_url, http_status, blocked_reason: null,
+      ...content, content_bytes,
+      honest_verdict: http_status && http_status < 400 ? "ok" : `http_${http_status ?? "unknown"}`,
+      duration_ms: Date.now() - start,
+    };
+  } catch (e) {
+    console.error("[paige-browser] browse error for", String(url) + ":", e?.message || e);
+    return { ok: false, url, blocked_reason: null, error: String(e?.message || e), duration_ms: Date.now() - start };
+  } finally {
+    if (ctx) await ctx.close().catch(() => {});
+  }
+}
+
 const app = express();
 app.use(express.json({ limit: "2mb" }));
 
@@ -370,6 +445,51 @@ app.post("/self-verify", rateLimit, async (req, res) => {
     // honest result (200 ok:false) — the caller always needs the observation shape, never a 5xx.
     console.error("[paige-browser] /self-verify unexpected error for", String(url) + ":", e?.message || e);
     return res.status(200).json({ ok: false, url, error: String(e?.message || e), duration_ms: Date.now() - start });
+  } finally {
+    inFlight--;
+  }
+});
+
+// ── Slice 3a: wildcard public-URL browsing (D1=(c)) — gated OFF until an owner flips the flag ──────
+// Distinct from /self-verify (§18): that observes/asserts Paige's OWN surfaces; this EXTRACTS research
+// content from arbitrary public URLs behind the full SSRF + two-layer denylist guard. §37: this
+// endpoint has ZERO producers until Slice 3b ships the browse_public_url skill — nothing calls the
+// wildcard capability yet, and the flag keeps it inert even after the skill lands, until owner sign-off.
+// CodeQL js/missing-rate-limiting is a FALSE POSITIVE here: this route IS rate-limited by the
+// `rateLimit` middleware (fixed-window per-IP, same limiter as /self-verify), PLUS the MAX_CONCURRENT
+// concurrency cap, PLUS the timing-safe shared-secret `auth()`. CodeQL doesn't model our custom
+// in-process limiter (which is also why /self-verify is unflagged only because it's not new-in-diff).
+app.post("/browse-public-url", rateLimit, async (req, res) => { // codeql[js/missing-rate-limiting]
+  if (!auth(req, res)) return;
+  const { url } = req.body || {};
+  if (!url || !/^https?:\/\//i.test(String(url))) {
+    return res.status(400).json({ ok: false, error: "valid http(s) url required", blocked_reason: "scheme:invalid-url" });
+  }
+  let host;
+  try { host = new URL(String(url)).hostname; } catch { return res.status(400).json({ ok: false, error: "invalid url", blocked_reason: "scheme:invalid-url" }); }
+
+  // D3 feature flag: wildcard browsing OFF by default. Non-self URLs are refused until an owner flips
+  // PAIGE_BROWSER_WILDCARD_ENABLED=true (AFTER the §39 live peer-gate returns SHIP). §58: self targets
+  // (paigeagent.ai) stay allowed — the wildcard flag never gates Paige's own-surface verification.
+  if (!WILDCARD_ENABLED && !isSelfTarget(host)) {
+    return res.status(403).json({ ok: false, url, error: "capability_disabled", reason: "wildcard browsing not yet enabled", blocked_reason: "wildcard:disabled" });
+  }
+
+  // Resolve-first SSRF + denylist pre-check (reason-coded) BEFORE the browser ever touches the URL.
+  const blocked = await urlBlockReason(url);
+  if (blocked) {
+    return res.status(200).json({ ok: false, url, blocked_reason: blocked, error: `blocked: ${blocked}`, http_status: null });
+  }
+
+  if (inFlight >= MAX_CONCURRENT) return res.status(429).json({ ok: false, error: "busy, retry" });
+  inFlight++;
+  const start = Date.now();
+  try {
+    const result = await withHardCap(browsePublic(req.body, NAV_TIMEOUT_MS), RUN_CAP_MS, String(url), start);
+    return res.status(200).json(result);
+  } catch (e) {
+    console.error("[paige-browser] /browse-public-url unexpected error for", String(url) + ":", e?.message || e);
+    return res.status(200).json({ ok: false, url, blocked_reason: null, error: String(e?.message || e), duration_ms: Date.now() - start });
   } finally {
     inFlight--;
   }
