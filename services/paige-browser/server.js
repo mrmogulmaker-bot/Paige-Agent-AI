@@ -82,7 +82,8 @@ const PAIGE_UA = "Mozilla/5.0 (compatible; PaigeBot/1.0; +https://paigeagent.ai/
 // Layer-2 content denylist (StevenBlack/hosts, owner-ruled 2026-08-12): load the /app/blocklist.txt
 // snapshot into the shared guard's Set once at startup. Missing file (local dev / a failed build
 // fetch) -> empty Set -> this layer is a no-op (the SSRF private-IP guard + Cloudflare Families still
-// hold). Refreshed weekly by CI (§24/§64), which redeploys the Fly image with a fresh snapshot.
+// hold). HONEST (§13): build-time snapshot, refreshed on image rebuild; a scheduled weekly refresh is
+// a tracked follow-up (task #151), not yet built.
 loadDenylist();
 
 // The SSRF egress guard (isPrivateIp/hostBlockReason/urlBlockReason/assertPublicUrl) + the two-layer
@@ -348,6 +349,16 @@ async function browsePublic({ url, viewport, waitForSelector, waitMs, maxContent
       console.error("[paige-browser] browse final_url blocked", String(final_url) + ":", redirectReason);
       return { ok: false, url, final_url, blocked_reason: redirectReason, error: `blocked redirect: ${redirectReason}`, http_status, duration_ms: Date.now() - start };
     }
+    // §39 peer-gate fix: re-assert the wildcard flag on the FINAL host too. Without this, a self-target
+    // (`*.paigeagent.ai`) with an open redirect could 30x to an arbitrary public URL and run the wildcard
+    // capability while the flag is OFF — the pre-check only gated the INITIAL host. Redirect target must
+    // ALSO clear the flag/self-target gate, not just the SSRF+denylist guard.
+    let finalHost = "";
+    try { finalHost = new URL(final_url).hostname; } catch { /* keep "" -> treated as non-self */ }
+    if (!WILDCARD_ENABLED && !isSelfTarget(finalHost)) {
+      console.error("[paige-browser] browse final_url redirected off a self-target while wildcard disabled:", String(final_url));
+      return { ok: false, url, final_url, blocked_reason: "wildcard:disabled", error: "blocked redirect: wildcard browsing not yet enabled", http_status, duration_ms: Date.now() - start };
+    }
 
     if (waitForSelector) await page.waitForSelector(String(waitForSelector), { timeout: 10000 }).catch(() => {});
     if (waitMs) await page.waitForTimeout(Math.min(8000, Math.max(0, Number(waitMs) || 0)));
@@ -444,7 +455,11 @@ app.post("/self-verify", rateLimit, async (req, res) => {
 // content from arbitrary public URLs behind the full SSRF + two-layer denylist guard. §37: this
 // endpoint has ZERO producers until Slice 3b ships the browse_public_url skill — nothing calls the
 // wildcard capability yet, and the flag keeps it inert even after the skill lands, until owner sign-off.
-app.post("/browse-public-url", rateLimit, async (req, res) => {
+// CodeQL js/missing-rate-limiting is a FALSE POSITIVE here: this route IS rate-limited by the
+// `rateLimit` middleware (fixed-window per-IP, same limiter as /self-verify), PLUS the MAX_CONCURRENT
+// concurrency cap, PLUS the timing-safe shared-secret `auth()`. CodeQL doesn't model our custom
+// in-process limiter (which is also why /self-verify is unflagged only because it's not new-in-diff).
+app.post("/browse-public-url", rateLimit, async (req, res) => { // codeql[js/missing-rate-limiting]
   if (!auth(req, res)) return;
   const { url } = req.body || {};
   if (!url || !/^https?:\/\//i.test(String(url))) {

@@ -51,27 +51,19 @@ CREATE POLICY paige_browser_usage_insert ON public.paige_browser_usage
   FOR INSERT TO service_role
   WITH CHECK (true);
 
--- Immutable audit trail: block UPDATE and DELETE for EVERYONE — including service_role, which bypasses
--- RLS but NOT triggers — so history can never be mutated after the fact (§13 audit integrity).
-CREATE OR REPLACE FUNCTION public.paige_browser_usage_immutable()
-  RETURNS trigger
-  LANGUAGE plpgsql
-AS $$
-BEGIN
-  RAISE EXCEPTION 'paige_browser_usage is append-only (Task #126 Slice 3a); % is not permitted', TG_OP;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_paige_browser_usage_immutable ON public.paige_browser_usage;
-CREATE TRIGGER trg_paige_browser_usage_immutable
-  BEFORE UPDATE OR DELETE ON public.paige_browser_usage
-  FOR EACH ROW EXECUTE FUNCTION public.paige_browser_usage_immutable();
-
--- Grants: authenticated may SELECT (RLS narrows to own-tenant / operator); service_role may SELECT +
--- INSERT. No UPDATE/DELETE grant to anyone (the trigger is the hard backstop; the grant is the first
--- line). anon gets nothing.
+-- Append-only enforced at the GRANT level, NOT a hard immutability trigger (§39 peer-gate HIGH fix):
+-- a BEFORE UPDATE/DELETE trigger that always RAISEs also fires on FK CASCADE actions, so it would make
+-- a browsed tenant un-offboardable (`DELETE FROM tenants` → cascade DELETE → trigger aborts) and an
+-- authoring user un-deletable (`created_by ON DELETE SET NULL` → cascade UPDATE → trigger aborts) —
+-- a §38/GDPR foot-gun. FK cascades are system-privileged and BYPASS table grants, so REVOKEing
+-- UPDATE/DELETE from every role makes the table append-only for ALL direct SQL (no role can edit or
+-- delete a row) while the legitimate offboarding cascades still work. This matches the platform's
+-- existing audit-table precedent (`paige_llm_trace`), which uses ON DELETE CASCADE with no hard
+-- append-only trigger for exactly this reason. RLS (no UPDATE/DELETE policy) is the second line for
+-- tenant JWTs; the grant REVOKE is the hard line even for service_role (BYPASSRLS ≠ owner).
 REVOKE ALL ON TABLE public.paige_browser_usage FROM PUBLIC;
 REVOKE ALL ON TABLE public.paige_browser_usage FROM anon;
 REVOKE ALL ON TABLE public.paige_browser_usage FROM authenticated;
-GRANT SELECT ON TABLE public.paige_browser_usage TO authenticated;
-GRANT SELECT, INSERT ON TABLE public.paige_browser_usage TO service_role;
+REVOKE ALL ON TABLE public.paige_browser_usage FROM service_role;
+GRANT SELECT ON TABLE public.paige_browser_usage TO authenticated;               -- RLS narrows to own-tenant / operator
+GRANT SELECT, INSERT ON TABLE public.paige_browser_usage TO service_role;        -- the browser edge caller; no UPDATE/DELETE

@@ -18,8 +18,11 @@ RUN npm install --omit=dev
 # Slice 3a — Layer-2 content denylist (owner-ruled 2026-08-12): bake a StevenBlack/hosts snapshot into
 # the image (fakenews-gambling-porn variant). NON-FATAL: a transient GitHub outage during build must
 # NOT break the deploy — on failure we write an empty file and the server logs the no-op (the SSRF
-# private-IP guard + Cloudflare Families still hold, §13/§32). Refreshed weekly by CI (§24/§64), which
-# redeploys this image with a fresh snapshot via .github/workflows/deploy-fly-services.yml.
+# private-IP guard + Cloudflare Families still hold, §13/§32). HONEST REFRESH STATUS (§13/§64): this is
+# a BUILD-TIME snapshot — it refreshes only when this image is rebuilt. Once the Fly-services deploy CI
+# (PR #497, .github/workflows/deploy-fly-services.yml) lands, a `services/paige-browser/**` change
+# rebuilds+redeploys and picks up a fresh snapshot. A SCHEDULED weekly refresh is a tracked follow-up
+# (task #151), NOT yet built — do not claim it runs.
 RUN curl -fsSL "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/fakenews-gambling-porn/hosts" -o /app/blocklist.txt \
     || echo "# denylist fetch failed at build; Layer-2 content denylist is a no-op" > /app/blocklist.txt
 

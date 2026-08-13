@@ -117,8 +117,11 @@ silent blank.
 - **Two-layer content denylist (Slice 3a, owner-ruled 2026-08-12).** Layer 1: the container resolver is
   Cloudflare for Families (`1.1.1.3`/`1.0.0.3`) — malware/adult domains sinkhole to `0.0.0.0`, which the
   guard denies (`denylist:cloudflare-families`). Layer 2: a StevenBlack/hosts snapshot baked into the
-  image (`fakenews-gambling-porn`), parent-domain matched (`denylist:stevenblack`). Refreshed weekly by
-  CI. Missing snapshot → Layer 2 is a no-op (guard + Families still hold).
+  image (`fakenews-gambling-porn`), parent-domain matched (`denylist:stevenblack`). **Refresh (honest,
+  §13):** Layer 2 is a **build-time snapshot** — it refreshes only on image rebuild (a
+  `services/paige-browser/**` change, once the Fly-services deploy CI in #497 lands). A scheduled weekly
+  refresh is a tracked follow-up (task #151), not yet built. Missing snapshot → Layer 2 is a no-op
+  (guard + Families still hold).
 - **Wildcard capability flag (`PAIGE_BROWSER_WILDCARD_ENABLED`, default OFF).** `/browse-public-url`
   refuses non-`paigeagent.ai` URLs with `403 capability_disabled` until an owner flips it AFTER the §39
   live peer-gate returns SHIP. `/self-verify` is never gated by it (§58).

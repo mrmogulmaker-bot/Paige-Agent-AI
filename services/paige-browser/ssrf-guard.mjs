@@ -28,6 +28,8 @@ import fs from "node:fs";
 // A hostname is denied if IT or any PARENT domain is listed (sub.evil.com blocked when evil.com is).
 // Missing file (local dev / failed build fetch) -> empty Set -> no-op layer (the SSRF private-IP guard
 // + Cloudflare Families still hold). Loaded from PAIGE_BROWSER_DENYLIST_PATH (default /app/blocklist.txt).
+// HONEST REFRESH STATUS (§13): this is a BUILD-TIME snapshot, refreshed only on image rebuild. A
+// scheduled weekly refresh is a tracked follow-up (task #151), not yet built.
 const DENYLIST = new Set();
 export function loadDenylist(pathOverride) {
   DENYLIST.clear();
