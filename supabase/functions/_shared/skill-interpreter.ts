@@ -18,6 +18,8 @@ import {
   type CallerTier,
   type BrowseFn,
   type BrowseObservation,
+  type PublicBrowseFn,
+  type PublicBrowseObservation,
   resolveExecutionMode,
   mapApprovalRisk,
   tierAllowsSkill,
@@ -29,6 +31,9 @@ import {
   browserToolAllowed,
   browseGatePermits,
   foldBrowserObservation,
+  pickPublicBrowseStep,
+  isHttpUrl,
+  foldPublicBrowse,
   FORMAT_OPTIONS,
   FORMAT_PROMPT,
 } from "./skill-interpreter-core.ts";
@@ -61,6 +66,15 @@ export interface InterpretDeps {
    * fabricated observation (§13). Read-only observation only — paige-browser rejects write/interact.
    */
   browse?: BrowseFn;
+  /**
+   * S3b — the PUBLIC-WEB browse seam (§18: a SECOND browse contract distinct from `browse`). Routes a
+   * `mode:"public"` step to paige-browser's /browse-public-url (arbitrary public-URL research shape),
+   * NOT /self-verify. The actual outbound fetch (30s cap + retry) lives in the HOST (skill-runner) and
+   * is INJECTED here so the core stays pure. Absent (or returning { needs_config:true }) → honest
+   * needs_config, never a fabricated page (§13). The audit row (paige_browser_usage) is written by THIS
+   * caller via `admin` (service_role) — the DB-free Fly host never writes to the DB (§9/§34).
+   */
+  browsePublic?: PublicBrowseFn;
 }
 
 export interface InterpretCtx {
@@ -260,6 +274,120 @@ export async function interpretSkill(deps: InterpretDeps, ctx: InterpretCtx): Pr
       const folded = foldBrowserObservation(observed);
       if (folded) contextText = contextText ? `${contextText}\n\n${folded}` : folded;
       stepsLog.push({ step: "browse", dispatched: true, ok: observed.ok, http_status: observed.http_status ?? null, ledger_id: ledgerId });
+    }
+  }
+
+  // 4b') S3b — the PUBLIC-WEB browse dispatch (a `tool:"browser"` step with `mode:"public"`). Distinct
+  //      from the self-verify browse above: it routes to paige-browser's /browse-public-url (arbitrary
+  //      public-URL research) and writes ONE row to paige_browser_usage — the §17 metered/audit rail —
+  //      per call, allowed OR blocked. The URL is RUNTIME INPUT (inputs.url), so this is where a
+  //      tenant's chat request ("browse example.com") becomes a real observation. Same §37 allowed_tools
+  //      gate + §16 risk floor as the self-verify path; the audit write is a SYSTEM write (service_role
+  //      via deps.admin) with tenant_id passed as DATA (ctx.tenantId, already server-resolved) — never
+  //      derived from a JWT at write-time, and NEVER written by the DB-free Fly host (§9/§34).
+  const publicStep = pickPublicBrowseStep(skill);
+  if (publicStep) {
+    const toolAllowed = browserToolAllowed(skill);
+    const gatePermits = browseGatePermits(skill.autonomy_lane, skill.risk_level);
+    const inputUrl = typeof inputs?.url === "string" ? inputs.url.trim() : "";
+    const url = inputUrl || (typeof publicStep.url === "string" ? publicStep.url.trim() : "");
+    if (!toolAllowed) {
+      stepsLog.push({ step: "browse_public", dispatched: false, reason: "browser_not_in_allowed_tools" });
+    } else if (!gatePermits) {
+      // §16 structural floor: a write-class public-browse skill is gated ahead of the human.
+      stepsLog.push({ step: "browse_public", dispatched: false, reason: "risk_floor_gated", risk_level: skill.risk_level ?? null });
+    } else if (!isHttpUrl(url)) {
+      // No URL, or a non-http(s) URL — surface honestly (§13), don't dispatch a bad request.
+      stepsLog.push({ step: "browse_public", dispatched: false, reason: url ? "url_not_http" : "missing_url" });
+      return {
+        status: "needs_config",
+        outputs: { reason: "browse_url_missing", note: "This skill browses a public URL; provide a valid http(s) URL to browse." },
+        steps_log: stepsLog,
+      };
+    } else if (!deps.browsePublic) {
+      // Honest degrade (§13/§32) — the public-browse seam isn't wired on this host.
+      stepsLog.push({ step: "browse_public", dispatched: false, needs_config: true, reason: "no_browse_seam" });
+      return {
+        status: "needs_config",
+        outputs: { reason: "browser_unavailable", note: "This skill needs the public-browse seam; it is not configured." },
+        steps_log: stepsLog,
+      };
+    } else {
+      let observed: PublicBrowseObservation | null = null;
+      try {
+        const result = await deps.browsePublic({
+          url,
+          waitForSelector: typeof publicStep.waitForSelector === "string" ? publicStep.waitForSelector : undefined,
+          maxContentBytes: typeof publicStep.maxContentBytes === "number" ? publicStep.maxContentBytes : undefined,
+        });
+        if ((result as { needs_config?: boolean })?.needs_config) {
+          // Seam reported unconfigured — honest needs_config, and NO audit row (no call reached the endpoint).
+          stepsLog.push({ step: "browse_public", dispatched: false, needs_config: true });
+          return {
+            status: "needs_config",
+            outputs: { reason: "browser_unavailable", note: "The public-browse seam is not configured on the host." },
+            steps_log: stepsLog,
+          };
+        }
+        observed = result as PublicBrowseObservation;
+      } catch (e) {
+        // A dispatch throw is a real fault — degrade honestly, write NO fabricated row (§13/§32).
+        console.error(`skill-interpreter[${skill.slug}] public-browse threw:`, (e as Error)?.message);
+        stepsLog.push({ step: "browse_public", dispatched: true, ok: false, error: (e as Error)?.message });
+        return {
+          status: "needs_config",
+          outputs: { reason: "browser_unavailable", note: "The public-browse observation failed." },
+          steps_log: stepsLog,
+        };
+      }
+
+      // The endpoint was actually called (allowed OR blocked) — write EXACTLY ONE audit/metered row to
+      // paige_browser_usage. §9/§51: tenant_id is EXPLICIT (ctx.tenantId, service-role bypasses RLS, so a
+      // NULL would leak the row to every tenant). §13/§32: an audit-write miss is logged LOUDLY and never
+      // fabricated nor allowed to block the observation the user asked for (the browse already happened at
+      // the Fly host — failing the run here would not un-browse it, and would hide a real user result).
+      // §13/§17 audit fidelity (§39 peer-gate M1): the rail reads blocked_reason=null as "allowed", so a
+      // HOST transport failure (timeout / host 5xx / navigation-failed — ok:false with NO guard reason)
+      // must NOT persist looking identical to a successful allowed browse. Stamp a `host:*` sentinel for
+      // any ok:false that carries no explicit SSRF/denylist reason, so the safety surface AND the §17
+      // Slice-3c rate meter both count it as a FAILED attempt, not a silent success. A real guard block
+      // (ssrf:*/denylist:*/wildcard:disabled) keeps its own reason; a genuine allowed browse stays null.
+      const auditBlockedReason = observed.blocked_reason
+        ?? (!observed.ok
+              ? `host:${String(observed.error ?? (observed.http_status != null ? `http_${observed.http_status}` : "failed")).slice(0, 120)}`
+              : null);
+      try {
+        const { error: auditErr } = await deps.admin.from("paige_browser_usage").insert({
+          tenant_id: tenantId,
+          endpoint: "browse-public-url",
+          url_requested: url,
+          url_resolved: observed.final_url ?? null,
+          blocked_reason: auditBlockedReason,
+          http_status: typeof observed.http_status === "number" ? observed.http_status : null,
+          content_bytes: typeof observed.content_bytes === "number" ? observed.content_bytes : null,
+          response_time_ms: typeof observed.duration_ms === "number" ? observed.duration_ms : null,
+          created_by: actorUserId,
+        });
+        if (auditErr) {
+          console.error(`skill-interpreter[${skill.slug}] paige_browser_usage insert failed:`, auditErr?.message);
+          stepsLog.push({ step: "browse_public_audit", ok: false, error: auditErr?.message });
+        } else {
+          stepsLog.push({ step: "browse_public_audit", ok: true });
+        }
+      } catch (e) {
+        console.error(`skill-interpreter[${skill.slug}] paige_browser_usage insert threw:`, (e as Error)?.message);
+        stepsLog.push({ step: "browse_public_audit", ok: false, error: (e as Error)?.message });
+      }
+
+      const folded = foldPublicBrowse(observed);
+      if (folded) contextText = contextText ? `${contextText}\n\n${folded}` : folded;
+      stepsLog.push({
+        step: "browse_public",
+        dispatched: true,
+        ok: observed.ok,
+        http_status: observed.http_status ?? null,
+        blocked_reason: observed.blocked_reason ?? null,
+      });
     }
   }
 

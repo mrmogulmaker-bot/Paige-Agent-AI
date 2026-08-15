@@ -9,8 +9,12 @@ import {
   browserToolAllowed,
   browseGatePermits,
   foldBrowserObservation,
+  pickPublicBrowseStep,
+  isHttpUrl,
+  foldPublicBrowse,
   type SkillRow,
   type BrowseObservation,
+  type PublicBrowseObservation,
 } from "../../supabase/functions/_shared/skill-interpreter-core";
 
 function skill(partial: Partial<SkillRow>): SkillRow {
@@ -27,6 +31,63 @@ describe("pickBrowserStep — the §18 tool-detection idiom", () => {
     expect(pickBrowserStep(s)?.url).toBe("https://a.co");
     expect(pickBrowserStep(skill({ steps: [{ tool: "context" }] }))).toBeNull();
     expect(pickBrowserStep(skill({ steps: null }))).toBeNull();
+  });
+  it("§58 — EXCLUDES a mode:'public' step (that routes to the S3b public path, not self-verify)", () => {
+    const s = skill({ steps: [{ tool: "browser", mode: "public", url: "https://pub.co" }] });
+    expect(pickBrowserStep(s)).toBeNull();
+    // a mixed plan still returns the self-verify (mode-less) step, never the public one
+    const mixed = skill({ steps: [{ tool: "browser", mode: "public", url: "https://pub.co" }, { tool: "browser", url: "https://self.co" }] });
+    expect(pickBrowserStep(mixed)?.url).toBe("https://self.co");
+  });
+});
+
+describe("pickPublicBrowseStep — S3b routes ONLY a mode:'public' browser step", () => {
+  it("finds the mode:'public' step (case-insensitive) and returns null otherwise", () => {
+    const s = skill({ steps: [{ tool: "context" }, { tool: "Browser", mode: "PUBLIC" }] });
+    expect(pickPublicBrowseStep(s)).not.toBeNull();
+    // a self-verify (mode-less) browser step is NOT a public step
+    expect(pickPublicBrowseStep(skill({ steps: [{ tool: "browser", url: "https://a.co" }] }))).toBeNull();
+    expect(pickPublicBrowseStep(skill({ steps: null }))).toBeNull();
+  });
+});
+
+describe("isHttpUrl — only http(s) URLs are dispatchable (§13 honest guard)", () => {
+  it("accepts http/https and rejects everything else", () => {
+    expect(isHttpUrl("https://example.com/x")).toBe(true);
+    expect(isHttpUrl("http://example.com")).toBe(true);
+    expect(isHttpUrl("file:///etc/passwd")).toBe(false);
+    expect(isHttpUrl("javascript:alert(1)")).toBe(false);
+    expect(isHttpUrl("not a url")).toBe(false);
+    expect(isHttpUrl("")).toBe(false);
+    expect(isHttpUrl(null)).toBe(false);
+    expect(isHttpUrl(undefined)).toBe(false);
+  });
+});
+
+describe("foldPublicBrowse — §13 honest fold of the research shape", () => {
+  it("renders only the fields the public browse actually returned", () => {
+    const obs: PublicBrowseObservation = {
+      ok: true, final_url: "https://a.co/x", http_status: 200, title: "T",
+      meta_description: "a page about things", h1_headers: ["Hello", "World"],
+      body_text: "the body text", links_inventory: [{ text: "Home", href: "https://a.co" }],
+    };
+    const out = foldPublicBrowse(obs);
+    expect(out).toContain("final_url: https://a.co/x");
+    expect(out).toContain("http_status: 200");
+    expect(out).toContain("meta: a page about things");
+    expect(out).toContain("Hello | World");
+    expect(out).toContain("the body text");
+    expect(out).toContain("Home → https://a.co");
+  });
+  it("reports a BLOCKED observation with its honest reason (never a fake page)", () => {
+    const out = foldPublicBrowse({ ok: false, blocked_reason: "ssrf:link-local:metadata", final_url: "http://169.254.169.254/" });
+    expect(out).toContain("BLOCKED/FAILED");
+    expect(out).toContain("ssrf:link-local:metadata");
+  });
+  it("falls back to error when there is no blocked_reason on a failure", () => {
+    const out = foldPublicBrowse({ ok: false, error: "navigation failed" });
+    expect(out).toContain("BLOCKED/FAILED");
+    expect(out).toContain("navigation failed");
   });
 });
 

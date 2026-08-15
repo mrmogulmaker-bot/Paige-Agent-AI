@@ -145,6 +145,8 @@ Markdown before generating.
 - Status report — weekly / monthly ops summary
 - Vendor review — evaluate a proposed vendor
 - Capacity planning — team utilization forecast
+- **Verify deployed surface** — `verify_deployed_surface` skill (SEEDED, Task #126 Slice 2): drives a deployed public Paige page read-only and reports an honest render verdict (§32.c software counterpart).
+- **Browse a public web page** — `browse_public_url` skill (SEEDED, Task #126 Slice 3b): opens an arbitrary public URL read-only (via the SSRF-guarded `paige-browser` `/browse-public-url`), extracts title/meta/headings/body/links, and summarizes honestly; every call writes one tenant-scoped `paige_browser_usage` audit row (§9/§17). `read_only`+`auto`, `scoping='platform'`, tier §61 default.
 
 ## 11. Agent Orchestration (§14 + §16 — Paige's meta-skill)
 - Sub-agent roster knowledge — knows who exists, what each does
