@@ -41,6 +41,11 @@ export interface SkillStep {
   steps?: unknown[];
   waitForSelector?: string;
   waitMs?: number;
+  // ── S3b public-web browse fields ── a `tool:"browser"` step with `mode:"public"` routes to the
+  //    paige-browser /browse-public-url endpoint (arbitrary public URL research), NOT /self-verify.
+  //    The URL comes from RUNTIME INPUT (inputs.url) at dispatch; a static `url` here is a fallback.
+  mode?: string;
+  maxContentBytes?: number;
 }
 
 /** The subset of a `paige_skills` row the interpreter reasons over. */
@@ -89,10 +94,16 @@ export type BrowseResult = BrowseObservation | BrowseNeedsConfig;
 export type BrowseFn = (args: BrowseArgs) => Promise<BrowseResult>;
 
 // ── S1b browser-dispatch decision helpers (PURE — unit-tested; the orchestrator wires them to the seam) ──
-/** The first `tool:"browser"` step in the skill's plan, or null. Uses the existing tool-detection idiom. */
+/**
+ * The first SELF-VERIFY `tool:"browser"` step (i.e. NOT `mode:"public"`), or null. Excluding the
+ * public-browse mode keeps `verify_deployed_surface` (mode-less) routing to /self-verify byte-unchanged
+ * (§58) while a `mode:"public"` step is handled by the separate S3b path below.
+ */
 export function pickBrowserStep(skill: SkillRow): SkillStep | null {
   if (!Array.isArray(skill.steps)) return null;
-  return skill.steps.find((s) => (s?.tool ?? "").toLowerCase() === "browser") ?? null;
+  return skill.steps.find(
+    (s) => (s?.tool ?? "").toLowerCase() === "browser" && String((s as SkillStep)?.mode ?? "").toLowerCase() !== "public",
+  ) ?? null;
 }
 
 /**
@@ -134,6 +145,82 @@ export function foldBrowserObservation(obs: BrowseObservation): string {
     }
   }
   // Nothing real beyond the header (e.g. an ok:true with no fields) → emit nothing rather than a stub.
+  return lines.length > 1 ? lines.join("\n") : "";
+}
+
+// ── S3b public-web browse seam (§18 — a SECOND browse contract: /browse-public-url research shape) ──
+/** Args for the public-browse dep — the paige-browser /browse-public-url request subset. */
+export interface PublicBrowseArgs {
+  url: string;
+  waitForSelector?: string;
+  maxContentBytes?: number;
+}
+
+/** The structured research content /browse-public-url returns (blocked_reason non-null when guarded). */
+export interface PublicBrowseObservation {
+  ok: boolean;
+  url?: string;
+  final_url?: string;
+  http_status?: number | null;
+  blocked_reason?: string | null;
+  title?: string;
+  meta_description?: string | null;
+  h1_headers?: string[];
+  body_text?: string;
+  links_inventory?: Array<{ text?: string; href?: string }>;
+  content_bytes?: number | null;
+  honest_verdict?: string;
+  duration_ms?: number | null;
+  error?: string;
+}
+
+export type PublicBrowseResult = PublicBrowseObservation | BrowseNeedsConfig;
+/** The injected public-browse dep (the actual outbound fetch + 30s cap + retry lives in the HOST). */
+export type PublicBrowseFn = (args: PublicBrowseArgs) => Promise<PublicBrowseResult>;
+
+/** The first `tool:"browser"` step with `mode:"public"` (routes to /browse-public-url), or null. */
+export function pickPublicBrowseStep(skill: SkillRow): SkillStep | null {
+  if (!Array.isArray(skill.steps)) return null;
+  return skill.steps.find(
+    (s) => (s?.tool ?? "").toLowerCase() === "browser" && String((s as SkillStep)?.mode ?? "").toLowerCase() === "public",
+  ) ?? null;
+}
+
+/** True for a well-formed http(s) URL — the only scheme the public-browse endpoint accepts. */
+export function isHttpUrl(u: string | null | undefined): boolean {
+  if (typeof u !== "string" || !u.trim()) return false;
+  try {
+    const p = new URL(u.trim()).protocol;
+    return p === "http:" || p === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fold a public-browse observation into a plaintext block for the forge context (§13 — only real
+ * returned fields; on a blocked/failed fetch report the honest denial reason, never a fake page).
+ */
+export function foldPublicBrowse(obs: PublicBrowseObservation): string {
+  const lines: string[] = ["Public web observation (read-only browse):"];
+  if (!obs.ok) {
+    const why = obs.blocked_reason || obs.error || "unknown";
+    lines.push(`- status: BLOCKED/FAILED — ${String(why).slice(0, 300)}`);
+    if (obs.final_url) lines.push(`- final_url: ${obs.final_url}`);
+    return lines.join("\n"); // an honest denial IS worth folding so the forge can explain it to the user
+  }
+  if (obs.final_url) lines.push(`- final_url: ${obs.final_url}`);
+  if (obs.http_status !== undefined && obs.http_status !== null) lines.push(`- http_status: ${obs.http_status}`);
+  if (obs.title) lines.push(`- title: ${String(obs.title).slice(0, 300)}`);
+  if (obs.meta_description) lines.push(`- meta: ${String(obs.meta_description).slice(0, 400)}`);
+  if (Array.isArray(obs.h1_headers) && obs.h1_headers.length) {
+    lines.push(`- headings: ${obs.h1_headers.slice(0, 12).map((h) => String(h).slice(0, 120)).join(" | ")}`);
+  }
+  if (obs.body_text) lines.push(`- content: ${String(obs.body_text).slice(0, 4000)}`);
+  if (Array.isArray(obs.links_inventory) && obs.links_inventory.length) {
+    const links = obs.links_inventory.slice(0, 20).map((l) => `${String(l?.text ?? "").slice(0, 60)} → ${l?.href ?? ""}`.trim());
+    lines.push(`- links: ${links.join(" ; ")}`);
+  }
   return lines.length > 1 ? lines.join("\n") : "";
 }
 

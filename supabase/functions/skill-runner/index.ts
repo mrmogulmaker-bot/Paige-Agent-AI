@@ -8,7 +8,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { gatewayCompat } from "../_shared/claude.ts";
 import { forge } from "../_shared/prompt-forge.ts";
 import { interpretSkill } from "../_shared/skill-interpreter.ts";
-import { shouldUseInterpreter, type SkillRow, type CallerTier, type BrowseResult } from "../_shared/skill-interpreter-core.ts";
+import { shouldUseInterpreter, type SkillRow, type CallerTier, type BrowseResult, type PublicBrowseResult } from "../_shared/skill-interpreter-core.ts";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -49,6 +49,67 @@ async function browseViaHost(args: { url: string; steps?: unknown[]; waitForSele
     // A network throw is an HONEST failed observation (§13) — never a fabricated success.
     return { ok: false, url: args.url, error: (e as Error)?.message ?? "browse fetch failed" };
   }
+}
+
+/**
+ * S3b — the HOST implementation of the interpreter's injected `browsePublic` seam (§18: a SECOND browse
+ * contract distinct from browseViaHost). Calls paige-browser's /browse-public-url (arbitrary public-URL
+ * research). §34 — references ONLY the env NAMES; when either is unset it degrades honestly to
+ * { needs_config:true } (§13). D4 — a HARD 30s per-call timeout (AbortController) with a SINGLE retry on
+ * a 5xx or a timeout/network throw (short backoff), so a transient host hiccup doesn't fail a legit
+ * research call while a real block/failure still returns its honest structured body. paige-browser
+ * answers HTTP 200 with { ok, blocked_reason, ... } even on a guarded/failed fetch, so a non-ok body is
+ * passed through as an honest observation, never swallowed. The audit row is written by the CALLER
+ * (interpretSkill via service_role) — this host holds no DB creds and writes nothing (§9/§34).
+ */
+const PUBLIC_BROWSE_TIMEOUT_MS = 30_000; // D4 — hard per-call ceiling
+async function browsePublicViaHost(args: { url: string; waitForSelector?: string; maxContentBytes?: number }): Promise<PublicBrowseResult> {
+  const base = Deno.env.get("PAIGE_BROWSER_URL");
+  const secret = Deno.env.get("PAIGE_BROWSER_SECRET");
+  if (!base || !secret) return { needs_config: true };
+  const endpoint = `${base.replace(/\/+$/, "")}/browse-public-url`;
+  const payload = JSON.stringify({
+    url: args.url,
+    waitForSelector: args.waitForSelector,
+    maxContentBytes: args.maxContentBytes,
+  });
+
+  const attempt = async (): Promise<{ status: number; body: any } | { throwErr: Error }> => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), PUBLIC_BROWSE_TIMEOUT_MS);
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Browser-Secret": secret },
+        body: payload,
+        signal: ctrl.signal,
+      });
+      const body = await res.json().catch(() => ({}));
+      return { status: res.status, body };
+    } catch (e) {
+      return { throwErr: e as Error };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  // First try; retry ONCE on a 5xx or a timeout/network throw (§13 — a transient hiccup, not a real block).
+  let r = await attempt();
+  const transient = "throwErr" in r || (r as { status: number }).status >= 500;
+  if (transient) {
+    await new Promise((res) => setTimeout(res, 400)); // short backoff
+    r = await attempt();
+  }
+  if ("throwErr" in r) {
+    // Both attempts threw/timed out — an HONEST failed observation (§13), never a fabricated success.
+    const msg = r.throwErr?.name === "AbortError" ? `public-browse timed out after ${PUBLIC_BROWSE_TIMEOUT_MS}ms` : (r.throwErr?.message ?? "public-browse fetch failed");
+    return { ok: false, url: args.url, error: msg };
+  }
+  if (r.status >= 500) {
+    return { ok: false, url: args.url, http_status: r.status, error: `public-browse host ${r.status}` };
+  }
+  // 200 (allowed OR blocked) — pass the structured body through as-is (it already carries ok/blocked_reason).
+  return r.body as PublicBrowseResult;
 }
 
 interface RunRequest {
@@ -141,7 +202,7 @@ Deno.serve(async (req) => {
         }
         const interpTenantId = contactTenantId ?? body.tenant_id ?? null;
         const interp = await interpretSkill(
-          { forge, admin, browse: browseViaHost },
+          { forge, admin, browse: browseViaHost, browsePublic: browsePublicViaHost },
           {
             skill: skill as unknown as SkillRow,
             inputs: body.inputs ?? {},

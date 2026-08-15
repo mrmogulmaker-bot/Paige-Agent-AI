@@ -294,6 +294,13 @@ Values intentionally omitted.
   email-provider migration (owner-set replacement secret + §32 live-email verify) — see task #112.
 - **Visual critique (§33):** `VISUAL_RENDERER_URL`, `VISUAL_RENDERER_SECRET`,
   `STUDIO_VISUAL_CRITIQUE_ENABLED`, `STUDIO_CRITIQUE_MAX_ITERATIONS`, `STUDIO_CRITIQUE_COST_CAP_USD`.
+- **Paige browser — self-hosted headless browser (Task #126, §32.c self-verify + §17 public-web browse):**
+  edge secret NAMES `PAIGE_BROWSER_URL` + `PAIGE_BROWSER_SECRET` (skill-runner → the Fly host's
+  `/self-verify` and `/browse-public-url`; unset → honest `needs_config`, §13). Fly-side (on the
+  `paige-browser` app, NOT edge): `PAIGE_BROWSER_SHARED_SECRET` (must equal the edge `PAIGE_BROWSER_SECRET`),
+  `PAIGE_BROWSER_WILDCARD_ENABLED` (`true` = wildcard public browsing ON, owner-flipped 2026-08-13),
+  `PAIGE_BROWSER_MAX_CONTENT_BYTES` (default 500000). Audit rail: `paige_browser_usage` (written by the
+  CALLER edge fn via service_role; the Fly host is DB-free, §9/§34).
 - **Email:** `RESEND_API_KEY`, `RESEND_WEBHOOK_SECRET`, plus from-address names
   `PLATFORM_DEFAULT_EMAIL_FROM`, `BILLING_EMAIL_FROM`, `WELCOME_EMAIL_FROM`, `CALENDAR_EMAIL_FROM`,
   `PLATFORM_SUPPORT_EMAIL`.
