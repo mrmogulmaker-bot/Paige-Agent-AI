@@ -346,13 +346,23 @@ export async function interpretSkill(deps: InterpretDeps, ctx: InterpretCtx): Pr
       // NULL would leak the row to every tenant). §13/§32: an audit-write miss is logged LOUDLY and never
       // fabricated nor allowed to block the observation the user asked for (the browse already happened at
       // the Fly host — failing the run here would not un-browse it, and would hide a real user result).
+      // §13/§17 audit fidelity (§39 peer-gate M1): the rail reads blocked_reason=null as "allowed", so a
+      // HOST transport failure (timeout / host 5xx / navigation-failed — ok:false with NO guard reason)
+      // must NOT persist looking identical to a successful allowed browse. Stamp a `host:*` sentinel for
+      // any ok:false that carries no explicit SSRF/denylist reason, so the safety surface AND the §17
+      // Slice-3c rate meter both count it as a FAILED attempt, not a silent success. A real guard block
+      // (ssrf:*/denylist:*/wildcard:disabled) keeps its own reason; a genuine allowed browse stays null.
+      const auditBlockedReason = observed.blocked_reason
+        ?? (!observed.ok
+              ? `host:${String(observed.error ?? (observed.http_status != null ? `http_${observed.http_status}` : "failed")).slice(0, 120)}`
+              : null);
       try {
         const { error: auditErr } = await deps.admin.from("paige_browser_usage").insert({
           tenant_id: tenantId,
           endpoint: "browse-public-url",
           url_requested: url,
           url_resolved: observed.final_url ?? null,
-          blocked_reason: observed.blocked_reason ?? null,
+          blocked_reason: auditBlockedReason,
           http_status: typeof observed.http_status === "number" ? observed.http_status : null,
           content_bytes: typeof observed.content_bytes === "number" ? observed.content_bytes : null,
           response_time_ms: typeof observed.duration_ms === "number" ? observed.duration_ms : null,

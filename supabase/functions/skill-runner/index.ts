@@ -93,9 +93,10 @@ async function browsePublicViaHost(args: { url: string; waitForSelector?: string
     }
   };
 
-  // First try; retry ONCE on a 5xx or a timeout/network throw (§13 — a transient hiccup, not a real block).
+  // First try; retry ONCE on a 5xx, a 429 busy (§39 peer-gate L1 — a MAX_CONCURRENT spike is transient,
+  // not a real block), or a timeout/network throw (§13 — a transient hiccup, not a real block).
   let r = await attempt();
-  const transient = "throwErr" in r || (r as { status: number }).status >= 500;
+  const transient = "throwErr" in r || (r as { status: number }).status >= 500 || (r as { status: number }).status === 429;
   if (transient) {
     await new Promise((res) => setTimeout(res, 400)); // short backoff
     r = await attempt();
