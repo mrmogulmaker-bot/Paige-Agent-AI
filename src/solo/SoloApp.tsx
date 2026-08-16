@@ -2,6 +2,7 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { performSignOut } from "@/lib/auth/signOut";
+import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import "./solo-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead } from "./_shared";
 import { CommandHub } from "./CommandCenter";
@@ -23,7 +24,7 @@ import { VibeStudio } from "./vibe";
 const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['cal','Calendar',()=><Ic.cal/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
 const NAV2=[['market','Marketplace',()=><Ic.store/>],['vault','Business Vault',()=><Ic.vault/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
 
-const Rail=({route,go,collapsed,setCollapsed})=>{const w=collapsed?70:238;
+const Rail=({route,go,collapsed,setCollapsed,homeCount})=>{const w=collapsed?70:238;
 const Item=([k,label,Icn])=>{const on=route===k;
 return <button key={k} onClick={()=>go(k)} title={label} className="row" style={{width:'100%',gap:12,padding:collapsed?'10px':'9px 12px',borderRadius:11,marginBottom:2,
 justifyContent:collapsed?'center':'flex-start',background:on?'var(--rail-2)':'transparent',color:on?'#fff':'var(--rail-text)',position:'relative',transition:'.15s'}}
@@ -31,7 +32,7 @@ onMouseEnter={e=>{if(!on)e.currentTarget.style.background='rgba(255,255,255,.05)
 {on&&<span style={{position:'absolute',left:collapsed?6:0,top:'50%',transform:'translateY(-50%)',width:3,height:18,borderRadius:3,background:'var(--gold-bright)'}}/>}
 <span style={{display:'flex',color:on?'var(--gold-bright)':'inherit'}}>{Icn()}</span>
 {!collapsed&&<span className="grow trunc" style={{fontSize:13.4,fontWeight:on?600:450,textAlign:'left'}}>{label}</span>}
-{!collapsed&&k==='home'&&<span className="pill" style={{background:'var(--gold-bright)',color:'#2A1C00',height:19,padding:'0 7px'}}>6</span>}</button>};
+{!collapsed&&k==='home'&&homeCount>0&&<span className="pill" style={{background:'var(--gold-bright)',color:'#2A1C00',height:19,padding:'0 7px'}}>{homeCount}</span>}</button>};
 return <nav style={{width:w,flex:'none',background:'var(--rail)',display:'flex',flexDirection:'column',padding:collapsed?'16px 12px':'16px 14px',transition:'width .22s',overflowX:'hidden',overflowY:'auto'}}>
 <div className="row" style={{gap:10,padding:collapsed?'0 0 18px':'2px 4px 18px',justifyContent:collapsed?'center':'flex-start'}}>
 <Logo size={collapsed?24:26}/>{!collapsed&&<div className="grow" style={{minWidth:0}}>
@@ -103,6 +104,10 @@ const Stub=({title,sub})=>(<Wrap max={900}><PageHead eyebrow="Coming into view" 
 const SoloApp=()=>{
 const navigate=useNavigate();
 const[route,setRoute]=React.useState('home');
+// Real approvals count for the rail's Command Center badge (§13 — hidden when 0).
+// Own instance (unique realtime topic via the hook's useId); scope:'all' matches
+// the Command Center's own read so the badge and the queue agree.
+const{items:railApprovals}=usePendingApprovals({scope:'all'});
 // The 'setup' rail item routes OUT to the real editable Setup (§18 one home) —
 // the shell's own setup.tsx is a demo fixture. Every other item drives the shell.
 const go=k=>{if(k==='setup'){navigate('/admin/setup');return}setRoute(k)};
@@ -118,7 +123,7 @@ const full=route==='paige'||route==='auto'||route==='cal'||route==='setup'||rout
 const screens={home:<CommandHub openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<ClientsHub openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
 return <div className="paige-solo" data-theme={theme} style={{height:'100vh'}}>
 <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
-<Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed}/>
+<Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} homeCount={railApprovals.length}/>
 <div style={{display:'flex',flexDirection:'column',flex:1,minWidth:0}}>
 <TopBar theme={theme} setTheme={setTheme} openPaige={openPaige} route={route}/>
 <main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0}}>{screens[route]}</main></div>

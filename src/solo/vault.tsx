@@ -290,8 +290,9 @@ return <button onClick={e=>{e.stopPropagation();setDial(dial===o.id?null:o.id)}}
 {toast&&<div className="fade-in row" style={{position:'fixed',bottom:26,left:'50%',transform:'translateX(-50%)',gap:9,background:'var(--rail)',color:'var(--ink-inv)',padding:'11px 18px',borderRadius:12,fontSize:13,boxShadow:'var(--sh-3)',zIndex:95}}>
 <span style={{color:'var(--gold-bright)',display:'flex'}}><Ic.check size={15}/></span>{toast}</div>}</div></div>};
 
-export const VaultTile=()=>{const items=[...VLT].sort((a,b)=>a.d-b.d).slice(0,3);const due30=VLT.filter(o=>o.d<30).length;const act=VLT.filter(o=>o.drafted).length;
-return <div className="card"><div className="hd"><div><h3>Business Vault</h3><div className="sub">{VLT.length} obligations tracked</div></div><Ic.vault size={17} style={{color:'var(--ink-3)'}}/></div>
+export const VaultTile=({preview})=>{const items=[...VLT].sort((a,b)=>a.d-b.d).slice(0,3);const due30=VLT.filter(o=>o.d<30).length;const act=VLT.filter(o=>o.drafted).length;
+return <div className="card"><div className="hd"><div><h3>Business Vault</h3><div className="sub">{VLT.length} obligations tracked</div></div>
+<div className="row" style={{gap:8}}>{preview&&<span className="pill pill-n" title="Sample obligations — the Vault has no live backend yet">Preview</span>}<Ic.vault size={17} style={{color:'var(--ink-3)'}}/></div></div>
 <div className="row" style={{padding:'12px 20px',gap:18,borderBottom:'1px solid var(--line-soft)'}}>
 <div><div className="eyebrow" style={{fontSize:9.5}}>Due in 30 days</div><div style={{fontSize:19,fontWeight:600,marginTop:2}}>{due30}</div></div>
 <div><div className="eyebrow" style={{fontSize:9.5}}>Need your action</div><div style={{fontSize:19,fontWeight:600,marginTop:2,color:'var(--warn)'}}>{act}</div></div></div>
