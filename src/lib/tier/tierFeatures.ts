@@ -122,6 +122,19 @@ export function resolveTierKey(c: TierClassification): TierKey {
   }
 }
 
+/**
+ * STRICT Solo-shell mount gate (§51/§58). Unlike `resolveTierKey` — which fail-safes
+ * a `null`/unknown `account_type` to the least-privileged "solo" — this requires the
+ * LITERAL `account_type='standalone'` on a top-level (no-parent) tenant. It exists so
+ * the flag-gated Solo greenfield shell (Admin.tsx) can NEVER take over a freshly
+ * provisioned tenant whose `account_type` is still `null`, a mistyped child, or an
+ * operator/retired row. Kept in this one home so no render gate hardcodes an
+ * `account_type ===` compare (§60 lint:tier-features).
+ */
+export function isSoloStandalone(c: TierClassification): boolean {
+  return !c.parent_tenant_id && c.account_type === "standalone";
+}
+
 // --- Baseline building blocks ------------------------------------------------
 
 /** Universal surfaces (§35) — present on every tier, God included. */

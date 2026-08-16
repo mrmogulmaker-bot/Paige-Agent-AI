@@ -34,6 +34,7 @@ import { AdminLoaderBoundary } from "@/components/admin/AdminLoaderBoundary";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { FundingRoute, FundingGate } from "@/components/admin/FundingRoute";
 import { RequireFeature } from "@/components/tier/RequireFeature";
+import { useTierFeatures } from "@/hooks/useTierFeatures";
 
 /** Wraps a route element so it's only visible to admins (or platform owner). */
 const AdminOnly = ({ children }: { children: React.ReactNode }) => (
@@ -76,6 +77,11 @@ const PlatformOwnerOnly = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+
+// Solo greenfield shell (faithful port of the Claude Design Solo pack). Lazy-loaded so
+// its ~400KB of chunks NEVER enter the shared Admin bundle unless a flagged solo tenant
+// actually mounts it — every non-solo admin's bundle + cache keys stay unchanged (§58).
+const SoloApp = lazy(() => import("@/solo/SoloApp"));
 
 // Lazy-load admin sub-pages
 const ClientManagementDashboard = lazy(() => import("@/components/dashboard/ClientManagementDashboard").then(m => ({ default: m.ClientManagementDashboard })));
@@ -242,6 +248,10 @@ const Admin = () => {
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<"admin" | "coach">("admin");
   const { isPlatformStaff, activeTenantId, loading: tenantLoading } = useTenantContext();
+  // §51-safe canonical tier resolver — tierKey === "solo" ONLY for a standalone,
+  // no-parent tenant (never god/agency/sub_account/enterprise). This is tier ROUTING
+  // (which shell to mount), not a feature gate.
+  const { tierKey, soloStandalone, loading: tierLoading } = useTierFeatures();
 
   useEffect(() => {
     let cancelled = false;
@@ -327,6 +337,30 @@ const Admin = () => {
         {/* Page-shaped skeleton, not a full-screen bare-text splash (§11). The
             AdminLoaderBoundary still owns the 8s stall CTA + error boundary. */}
         <PageSkeleton />
+      </AdminLoaderBoundary>
+    );
+  }
+
+  // Flag-gated Solo-shell takeover (§58 byte-unchanged when the flag is unset/false).
+  // Fires ONLY for a standalone solo tenant once the tier hooks resolve, BEFORE the
+  // godMode / tenant AdminLayout+Routes branch below. tierKey === "solo" is the
+  // §51-safe canonical resolver, so god/agency/sub_account/enterprise never enter here.
+  const soloShellEnabled = import.meta.env.VITE_SOLO_SHELL_ENABLED === "true";
+  // STRICT gate (§51/§58): require BOTH the canonical solo tierKey AND a LITERAL
+  // account_type='standalone' on a no-parent tenant (soloStandalone). resolveTierKey
+  // fail-safes null/unknown account_type to "solo", so tierKey alone would take over a
+  // freshly-provisioned tenant mid-setup; soloStandalone rejects that. Suspense because
+  // SoloApp is a lazy chunk (see its definition) — loaded only when this gate fires.
+  if (soloShellEnabled && !tierLoading && tierKey === "solo" && soloStandalone) {
+    // Mirror the normal branch's error boundary (§32): a SoloApp render throw or a
+    // genuine chunk-import failure must degrade to a visible error UI, never a
+    // whole-app white-screen (there is no error boundary above /admin). SoloApp is
+    // @ts-nocheck, so TS does not guard its runtime — the boundary is load-bearing.
+    return (
+      <AdminLoaderBoundary>
+        <Suspense fallback={<PageSkeleton />}>
+          <SoloApp />
+        </Suspense>
       </AdminLoaderBoundary>
     );
   }

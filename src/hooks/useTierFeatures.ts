@@ -21,6 +21,7 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import {
   getTierFeatureSet,
   resolveTierKey,
+  isSoloStandalone,
   type Feature,
   type TierClassification,
   type TierKey,
@@ -29,6 +30,8 @@ import {
 export function useTierFeatures(): {
   has: (f: Feature) => boolean;
   tierKey: TierKey;
+  /** STRICT literal-standalone gate (§51/§58) — see isSoloStandalone. Rejects null/unknown. */
+  soloStandalone: boolean;
   loading: boolean;
 } {
   const { activeTenant, isPlatformStaff, loading } = useTenantContext();
@@ -44,6 +47,7 @@ export function useTierFeatures(): {
       // baseline-only today; an opt-in `∪` would layer in here (see file header).
       has: (f: Feature) => baseline.has(f),
       tierKey: resolveTierKey(classification),
+      soloStandalone: isSoloStandalone(classification),
       // Surfaced so route guards (RequireFeature) can hold before the tenant
       // resolves — while loading, `activeTenant` is null and the classification
       // defaults to the permissive `solo` tier, so a gate must NOT decide yet.
