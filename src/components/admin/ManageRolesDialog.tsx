@@ -33,12 +33,14 @@ const roleColor: Record<string, string> = {
   owner: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300",
 };
 
-const ROLE_LABEL: Record<EditableRole, string> = {
+// Exported (§18 one home) so tenant-scoped role legends elsewhere (e.g. the Solo
+// Setup › People roles legend) reuse the SAME copy instead of forking it.
+export const ROLE_LABEL: Record<EditableRole, string> = {
   admin: "Admin", coach: "Coach", sales_rep: "Sales Rep", broker: "Broker",
   cs_rep: "Customer Success", finance: "Finance", viewer: "Viewer",
 };
 
-const ROLE_BLURB: Record<EditableRole, string> = {
+export const ROLE_BLURB: Record<EditableRole, string> = {
   admin: "Runs the whole account — settings, billing, and the team.",
   coach: "Carries their own clients and shows up in the Coaches roster.",
   sales_rep: "Works the pipeline and closes new business.",
