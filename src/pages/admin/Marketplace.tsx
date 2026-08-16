@@ -185,7 +185,7 @@ type TenantFeatures = {
 };
 
 export default function Marketplace() {
-  const { activeTenantId, loading: tenantLoading } = useTenantContext();
+  const { activeTenantId, loading: tenantLoading, refresh: refreshTenant } = useTenantContext();
   const qc = useQueryClient();
   const [saving, setSaving] = useState<string | null>(null);
   const [justArmed, setJustArmed] = useState<string | null>(null);
@@ -313,6 +313,7 @@ export default function Marketplace() {
     if (purchase === "success") {
       toast.success("Payment cleared — your new capability is being switched on.");
       if (activeTenantId) void refresh();
+      void refreshTenant(); // a paid Blueprint may set features.playbook_config → open the Setup gate in-session (BLOCKER 3)
     } else {
       toast.info("Checkout cancelled — nothing was charged.");
     }
@@ -379,6 +380,12 @@ export default function Marketplace() {
     warns.forEach((w) => toast.warning(w));
     setJustArmed(r.slug);
     setTimeout(() => setJustArmed((s) => (s === r.slug ? null : s)), 400);
+    // An install can write features.playbook_config (a Blueprint / playbook-preset skill),
+    // which is the Setup-gate's "you've chosen" signal. The tenant-context provider has no
+    // realtime, so without this a just-chosen tenant would carry STALE features and the
+    // Setup gate would bounce them back here on the next /admin nav (peer-gate BLOCKER 3).
+    // Refresh it now so the gate opens in-session, no hard reload needed.
+    void refreshTenant();
   };
 
   const uninstall = async (r: CatalogRow) => {

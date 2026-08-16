@@ -49,20 +49,6 @@ const INDUSTRIES = [
   "Other",
 ] as const;
 
-// Seed each new tenant's Paige with the closest starter Playbook preset from the
-// industry they pick — so Paige is native to their practice on day one.
-const INDUSTRY_TO_PLAYBOOK: Record<string, string> = {
-  "Coaching": "coaching-default",
-  "Fitness & wellness": "fitness",
-  "Consulting": "consultant",
-  "Advisory / Professional services": "consultant",
-  "Real estate": "consultant",
-  "Agency / Marketing": "agency",
-  "Creative / Design": "agency",
-  "Course creator / Thought leader": "general",
-  "Other": "general",
-};
-
 type AccountType = "standalone" | "agency" | "enterprise";
 
 // The owner-ruled plan→account_type map (task #66). The tier is derived from the plan
@@ -219,11 +205,10 @@ export function WorkspaceProvisioner({ onProvisioned, planSlug, billingPeriod, i
     });
     if (error) throw error;
 
-    const tenantId = (provisioned as { id?: string } | null)?.id;
-    const slug = INDUSTRY_TO_PLAYBOOK[industry] ?? "general";
-    if (tenantId) {
-      await supabase.rpc("set_tenant_playbook", { _tenant_id: tenantId, _slug: slug, _only_if_unset: true });
-    }
+    // Owner directive (2026-08-16): NEVER default a tenant into a guessed business.
+    // We no longer stamp a playbook here — a freshly provisioned tenant leaves
+    // features.playbook UNSET and is routed through Setup (the marketplace chooser,
+    // enforced by RequireSetupComplete) to CHOOSE their playbook/pipeline/calendar.
     toast({ title: "Workspace ready", description: "Welcome to Paige — this is yours to run." });
     if (onProvisioned) onProvisioned();
     else window.location.assign("/admin");
