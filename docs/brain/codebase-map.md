@@ -59,12 +59,16 @@ trigger-links,analytics,settings},`/delivery`,`/portal`; `clients`, `contacts/:i
 **Integrations** (`/n8n`,`/zapier`,`/telegram`,`/email`,`/docusign`,`/cal`,`/meta`,`/meta-pixel`,`/apollo`,
 `/plaid`,`/smartcredit`,`/subscriptions`,`/ai-activity`,`/nav`).
 
-**Solo shell overlay** (`src/solo/**` → `SoloApp`, faithful port of the Claude Design Solo pack): a
-flag-gated (`VITE_SOLO_SHELL_ENABLED`, default OFF) early-return takeover in `Admin.tsx` — for STRICT
-solo-standalone tenants ONLY it renders the ported Rail/TopBar shell + 12 fixture-data screens (Command
-Center · Paige · Trust Compass · Automations · Clients · Growth · Analytics · Marketplace · Business
-Vault · Integrations · Team · Setup) instead of `AdminLayout`. Sub-account/Agency/God each get their own
-Claude Design pack later (owner-ruled 2026-08-15). Fixture-data now; real wiring is a later phase.
+**Solo shell overlay** (`src/solo/**` → `SoloApp`, faithful port of the Claude Design Solo pack; merged
+#503 2026-08-16): a flag-gated (`VITE_SOLO_SHELL_ENABLED`, default OFF) early-return takeover in
+`Admin.tsx` — for STRICT solo-standalone tenants ONLY (`tierKey==='solo' && soloStandalone`, wrapped in
+`AdminLoaderBoundary` + lazy code-split) it renders the ported Rail/TopBar shell + **13** fixture-data
+screens (Command Center · Paige · Trust Compass · Automations · Clients · **Calendar** (incl. webinars) ·
+Growth · Analytics · Marketplace · Business Vault · Integrations · Team · Setup) instead of `AdminLayout`.
+Sub-account/Agency/God each get their OWN Claude Design pack later (owner-ruled 2026-08-15 — the prior
+"sub-accounts inherit Solo" reading is RETRACTED; §60 governs feature availability, NOT visual design).
+Flag OFF ⇒ prod render byte-unchanged (§58); fixture-data now, real wiring + activation are owner-gated
+later phases. Lint exemptions scoped to `src/solo/**` only (eslint override + gold-discipline skip, §63).
 
 ### Super-admin / platform (`/admin/platform/*`)
 `tenants`, `team`, `fleet-communications`, `sending`, `sends`, `intelligence`, `settings`, `affiliates`,
