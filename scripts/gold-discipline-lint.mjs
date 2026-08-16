@@ -219,6 +219,11 @@ function lintPaths(paths) {
   }
   const results = [];
   for (const file of files) {
+    // §63 faithful-port exemption: src/solo/** is the byte-faithful port of the owner-approved
+    // Claude Design Solo pack ("keep it as is, do not redesign in any fashion"). Its gold usage
+    // is the vendor's approved design, not our primitive-layer surfaces — our gold-discipline
+    // retrofit does not apply. (The pack is a frozen approved design, §28-adjacent.)
+    if (/(^|\/)src\/solo\//.test(file.replace(/\\/g, "/"))) continue;
     let src;
     try { src = readFileSync(file, "utf8"); } catch { continue; }
     const v = lintGoldDisciplineSource(src, file);
