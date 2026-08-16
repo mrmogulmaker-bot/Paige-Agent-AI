@@ -22,7 +22,7 @@ const lazy = <T extends React.ComponentType<any>>(factory: () => Promise<{ defau
       throw err;
     }
   });
-import { useNavigate, Routes, Route, useParams, Navigate } from "react-router-dom";
+import { useNavigate, useLocation, Routes, Route, useParams, Navigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageSkeleton } from "@/components/ui/page";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -252,6 +252,7 @@ const Admin = () => {
   // no-parent tenant (never god/agency/sub_account/enterprise). This is tier ROUTING
   // (which shell to mount), not a feature gate.
   const { tierKey, soloStandalone, loading: tierLoading } = useTierFeatures();
+  const location = useLocation();
 
   useEffect(() => {
     let cancelled = false;
@@ -356,7 +357,24 @@ const Admin = () => {
   // fail-safes null/unknown account_type to "solo", so tierKey alone would take over a
   // freshly-provisioned tenant mid-setup; soloStandalone rejects that. Suspense because
   // SoloApp is a lazy chunk (see its definition) — loaded only when this gate fires.
-  if (soloShellEnabled && !tierLoading && tierKey === "solo" && soloStandalone) {
+  //
+  // Setup PASSTHROUGH (§18 one home / §31 reuse-don't-rebuild): the Solo shell's
+  // own Setup screen is a demo fixture (src/solo/setup.tsx), NOT the tenant's real
+  // editable record. `SetupTabsLayout` is route-context-dependent (renders <Outlet/>
+  // whose editable panels are the child routes defined below), so it cannot be
+  // embedded in the shell chrome — it would render an empty tab strip. Instead we let
+  // /admin/setup fall THROUGH to the real AdminLayout+Routes branch below, where the
+  // gated, editable Setup tabs already live. Every other solo path still renders the
+  // shell (URL stays /admin; the shell drives its screens via internal state).
+  // FOLLOW-UP: in-shell Setup continuity (a "back to workspace" affordance + shell
+  // chrome on the Setup page) is a future upgrade — today it hands off to AdminLayout.
+  if (
+    soloShellEnabled &&
+    !tierLoading &&
+    tierKey === "solo" &&
+    soloStandalone &&
+    !location.pathname.startsWith("/admin/setup")
+  ) {
     // Mirror the normal branch's error boundary (§32): a SoloApp render throw or a
     // genuine chunk-import failure must degrade to a visible error UI, never a
     // whole-app white-screen (there is no error boundary above /admin). SoloApp is
