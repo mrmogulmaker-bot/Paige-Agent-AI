@@ -24,6 +24,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Json, TablesUpdate } from "@/integrations/supabase/types";
 import { useTenantContext } from "@/hooks/useTenantContext";
 
 /** The brand keys the app already reads/writes. Null when the tenant hasn't set one. */
@@ -162,7 +163,7 @@ export function useSoloBusiness(): SoloBusinessData {
             nextBrand[key] = typeof v === "string" && v.trim() ? v.trim() : null;
           }
         }
-        const update: { name?: string; brand: Record<string, unknown> } = { brand: nextBrand };
+        const update: TablesUpdate<"tenants"> = { brand: nextBrand as Json };
         if (patch.name !== undefined) {
           update.name = patch.name.trim() || name || "Untitled Workspace";
         }

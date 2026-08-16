@@ -17,6 +17,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { TablesUpdate } from "@/integrations/supabase/types";
 
 export interface SoloOwner {
   /** Display name (profiles.full_name → auth metadata full_name/name → null). */
@@ -112,7 +113,7 @@ export function useSoloOwner(): SoloOwnerData {
       setSaving(true);
       try {
         // Only send the keys the caller actually edited; empty string clears to null.
-        const update: SoloOwnerPatch & { [k: string]: string | null } = {};
+        const update: TablesUpdate<"profiles"> = {};
         (["full_name", "work_email", "phone", "website_url"] as const).forEach((k) => {
           if (k in patch) {
             const v = patch[k];

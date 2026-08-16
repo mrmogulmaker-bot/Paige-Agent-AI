@@ -178,7 +178,7 @@ export function useSoloComms(): SoloCommsData {
       if (isSubAccount) {
         setBilling(null);
       } else {
-        const [plansRes, subRes, adminRes] = billingRes as [
+        const [plansRes, subRes, adminRes] = billingRes as unknown as [
           { data: PlanRow[] | null; error: unknown },
           { data: unknown; error: unknown },
           { data: unknown; error: unknown },
