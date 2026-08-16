@@ -465,7 +465,7 @@ comms:'Sending identity, notifications, retention, and billing.'};
 const body={biz:<SuBusiness/>,owner:<SuOwner/>,contacts:<SuContacts/>,people:<SuPeople/>,comms:<SuComms/>}[tab];
 return <div style={{display:'flex',flexDirection:'column',height:'100%',minHeight:0,minWidth:0,alignItems:'stretch'}}>
 <SubTabs tabs={tabs} cur={tab} set={setTab} right={<>
-<span className="pill pill-ok cc-hide"><span className="dot"/>Saved automatically</span>
+<span className="pill pill-n cc-hide" title="This Setup shows sample data — your real business data and editing are being wired in.">Preview · sample data</span>
 <span className="row pill pill-n" style={{gap:6}}><LockIcon size={11}/>Encrypted</span></>}/>
 <Wrap><PageHead eyebrow="Setup" title={(tabs.find(t=>t[0]===tab)||[])[1]} sub={subs[tab]}/>
 <div key={tab} className="fade-in su-page">{body}</div></Wrap></div>};

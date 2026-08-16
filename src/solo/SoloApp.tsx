@@ -1,6 +1,5 @@
 // @ts-nocheck
 import React from "react";
-import { useNavigate } from "react-router-dom";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import "./solo-tokens.css";
@@ -49,8 +48,7 @@ return <nav style={{width:w,flex:'none',background:'var(--rail)',display:'flex',
 <button onClick={()=>setCollapsed(!collapsed)} className="row" style={{width:'100%',justifyContent:'center',padding:9,borderRadius:10,color:'var(--rail-text)'}}>
 <span style={{display:'flex',transform:collapsed?'':'rotate(180deg)',transition:'.2s'}}><Ic.chev size={15}/></span></button></div></nav>};
 
-const TopBar=({theme,setTheme,openPaige,route})=>{const title=[...NAV,...NAV2].find(n=>n[0]===route)?.[1]||'';
-const nav=useNavigate();
+const TopBar=({theme,setTheme,openPaige,route,go})=>{const title=[...NAV,...NAV2].find(n=>n[0]===route)?.[1]||'';
 const[menu,setMenu]=React.useState(false);
 const[foc,setFoc]=React.useState(false);
 const mref=React.useRef(null);
@@ -78,12 +76,12 @@ return <header className="row" style={{height:56,flex:'none',padding:'0 22px',bo
 onFocus={()=>setFoc(true)} onBlur={()=>setFoc(false)}
 style={{padding:0,border:'none',background:'transparent',cursor:'pointer',borderRadius:'50%',display:'flex',outline:'none',boxShadow:(menu||foc)?'0 0 0 2px var(--violet)':'none'}}>
 <Avatar name="Jordan Avery" size={28} tone="var(--violet)"/></button>
-{menu&&<div role="menu" className="fade-in" style={{position:'absolute',top:'calc(100% + 8px)',right:0,zIndex:60,width:220,background:'var(--surface)',border:'1px solid var(--line)',borderRadius:12,boxShadow:'var(--sh-3)',padding:6,overflow:'hidden'}}>
+{menu&&<div role="menu" className="fade-in" style={{position:'fixed',top:58,right:16,zIndex:200,width:220,background:'var(--surface)',border:'1px solid var(--line)',borderRadius:12,boxShadow:'var(--sh-3)',padding:6,overflow:'hidden'}}>
 <div style={{padding:'8px 10px 6px'}}>
 <div style={{fontSize:13,fontWeight:600,color:'var(--ink)'}}>Jordan Avery</div>
 <div style={{fontSize:11.5,color:'var(--ink-3)'}}>Solo workspace</div></div>
 <div style={{height:1,background:'var(--line-soft)',margin:'2px 0 4px'}}/>
-<button role="menuitem" onClick={()=>{setMenu(false);nav('/admin/setup')}} className="row"
+<button role="menuitem" onClick={()=>{setMenu(false);go('setup')}} className="row"
 style={{width:'100%',gap:10,padding:'9px 10px',borderRadius:8,fontSize:13,color:'var(--ink)',background:'transparent',border:'none',cursor:'pointer',textAlign:'left'}}
 onMouseEnter={e=>e.currentTarget.style.background='var(--surface-2)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}
 onFocus={e=>e.currentTarget.style.background='var(--surface-2)'} onBlur={e=>e.currentTarget.style.background='transparent'}>
@@ -102,15 +100,14 @@ const Stub=({title,sub})=>(<Wrap max={900}><PageHead eyebrow="Coming into view" 
 <div className="sub" style={{maxWidth:380,margin:'6px auto 0'}}>Command Center, Paige, Clients, Growth, and Analytics are designed. Say the word and this one is next.</div></div></Wrap>);
 
 const SoloApp=()=>{
-const navigate=useNavigate();
 const[route,setRoute]=React.useState('home');
 // Real approvals count for the rail's Command Center badge (§13 — hidden when 0).
 // Own instance (unique realtime topic via the hook's useId); scope:'all' matches
 // the Command Center's own read so the badge and the queue agree.
 const{items:railApprovals}=usePendingApprovals({scope:'all'});
-// The 'setup' rail item routes OUT to the real editable Setup (§18 one home) —
-// the shell's own setup.tsx is a demo fixture. Every other item drives the shell.
-const go=k=>{if(k==='setup'){navigate('/admin/setup');return}setRoute(k)};
+// Setup renders the shell's OWN designed Setup (setup.tsx) IN-SHELL — never the
+// old /admin/setup view (owner directive 2026-08-16). Every nav item drives the shell.
+const go=setRoute;
 const[collapsed,setCollapsed]=React.useState(false);
 const[panel,setPanel]=React.useState(false);
 const[studio,setStudio]=React.useState(false);
@@ -125,7 +122,7 @@ return <div className="paige-solo" data-theme={theme} style={{height:'100vh'}}>
 <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
 <Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} homeCount={railApprovals.length}/>
 <div style={{display:'flex',flexDirection:'column',flex:1,minWidth:0}}>
-<TopBar theme={theme} setTheme={setTheme} openPaige={openPaige} route={route}/>
+<TopBar theme={theme} setTheme={setTheme} openPaige={openPaige} route={route} go={go}/>
 <main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0}}>{screens[route]}</main></div>
 <PaigePanel open={panel} onClose={()=>setPanel(false)}/>
 {studio&&<VibeStudio onBack={()=>setStudio(false)}/>}</div></div>};
