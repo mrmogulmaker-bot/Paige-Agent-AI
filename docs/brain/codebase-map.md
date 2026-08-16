@@ -59,6 +59,13 @@ trigger-links,analytics,settings},`/delivery`,`/portal`; `clients`, `contacts/:i
 **Integrations** (`/n8n`,`/zapier`,`/telegram`,`/email`,`/docusign`,`/cal`,`/meta`,`/meta-pixel`,`/apollo`,
 `/plaid`,`/smartcredit`,`/subscriptions`,`/ai-activity`,`/nav`).
 
+**Solo shell overlay** (`src/solo/**` → `SoloApp`, faithful port of the Claude Design Solo pack): a
+flag-gated (`VITE_SOLO_SHELL_ENABLED`, default OFF) early-return takeover in `Admin.tsx` — for STRICT
+solo-standalone tenants ONLY it renders the ported Rail/TopBar shell + 12 fixture-data screens (Command
+Center · Paige · Trust Compass · Automations · Clients · Growth · Analytics · Marketplace · Business
+Vault · Integrations · Team · Setup) instead of `AdminLayout`. Sub-account/Agency/God each get their own
+Claude Design pack later (owner-ruled 2026-08-15). Fixture-data now; real wiring is a later phase.
+
 ### Super-admin / platform (`/admin/platform/*`)
 `tenants`, `team`, `fleet-communications`, `sending`, `sends`, `intelligence`, `settings`, `affiliates`,
 `invites`, `marketplace`, `money`, `doctrine`, `prompt-forge`, `model-router`, `compliance`,
@@ -147,6 +154,7 @@ number. `/edge-drift` shows what's ahead of prod.)*
 ## 4. Feature flags / gates (name → where read)
 
 **Compile-time boolean kill-switches (client):**
+- `VITE_SOLO_SHELL_ENABLED` (env, default **off**) — `src/pages/Admin.tsx`; when `"true"` AND the tenant is a STRICT solo-standalone (`useTierFeatures().tierKey==='solo' && soloStandalone`, i.e. literal `account_type==='standalone'` + no `parent_tenant_id`), an early return replaces the whole tenant admin shell with the faithful-ported Claude Design Solo pack `SoloApp` (`src/solo/**`, lazy-loaded → separate chunk, wrapped in `AdminLoaderBoundary`). Fixture-data greenfield; OFF everywhere until owner-activated. Never fires for sub-account/agency/enterprise/god (canonical `resolveTierKey` + the strict `isSoloStandalone` in `src/lib/tier/tierFeatures.ts` reject null/unknown account_type).
 - `TEAM_VIEW_ENABLED = false` — `src/lib/roleViews/commandCenterRegistry.ts`; Team view stays OFF until flipped (read in `PracticeOverview`, `TeamHub`, `ContactsAdmin`, `team/TeamViewToggle`).
 - `HOST_SPLIT_ENABLED = false` — `src/lib/hostRouting.ts`; gates app/marketing host split.
 - `ISOFTPULL_ENABLED_CLIENT = false` — `src/components/credit/SoftPullAuthorizationCard.tsx`; hides soft-pull UI until server keys set.
