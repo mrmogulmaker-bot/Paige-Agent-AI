@@ -37,6 +37,10 @@ export default tseslint.config(
       // (e.g. `let rng`, particle `x;y;` statements). Rewriting them would drift the design.
       "prefer-const": "off",
       "@typescript-eslint/no-unused-expressions": "off",
+      // Source screens open with an early `if(!x)return null;` guard before their
+      // `React.useState` calls (e.g. calendar-book `PublicPage`). Reordering the hook
+      // above the guard would rewrite the ported source and drift the approved design.
+      "react-hooks/rules-of-hooks": "off",
     },
   },
 );

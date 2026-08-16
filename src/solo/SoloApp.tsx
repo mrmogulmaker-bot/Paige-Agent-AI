@@ -9,6 +9,7 @@ import { TrustCompass } from "./compass";
 import { AutomationsHub } from "./automations-build";
 import { ClientsHub } from "./conversations";
 import { GrowthHub } from "./growth2";
+import { CalendarHub } from "./calendar-book";
 import { Analytics2 } from "./analytics2";
 import { Marketplace } from "./marketplace";
 import { VaultView } from "./vault";
@@ -17,7 +18,7 @@ import { TeamHub } from "./team";
 import { Setup } from "./setup";
 import { VibeStudio } from "./vibe";
 
-const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
+const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['cal','Calendar',()=><Ic.cal/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
 const NAV2=[['market','Marketplace',()=><Ic.store/>],['vault','Business Vault',()=><Ic.vault/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
 
 const Rail=({route,go,collapsed,setCollapsed})=>{const w=collapsed?70:238;
@@ -77,8 +78,8 @@ React.useEffect(()=>{const h=()=>setStudio(true);window.addEventListener('paige-
 const[theme,setTheme]=React.useState(()=>localStorage.getItem('paige-theme')||'light');
 React.useEffect(()=>{localStorage.setItem('paige-theme',theme)},[theme]);
 const openPaige=()=>setPanel(true);
-const full=route==='paige'||route==='auto'||route==='setup'||route==='team'||route==='home';
-const screens={home:<CommandHub openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<ClientsHub openPaige={openPaige}/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
+const full=route==='paige'||route==='auto'||route==='cal'||route==='setup'||route==='team'||route==='home';
+const screens={home:<CommandHub openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<ClientsHub openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
 return <div className="paige-solo" data-theme={theme} style={{height:'100vh'}}>
 <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
 <Rail route={route} go={setRoute} collapsed={collapsed} setCollapsed={setCollapsed}/>

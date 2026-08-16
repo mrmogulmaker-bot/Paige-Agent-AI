@@ -28,6 +28,7 @@ clock:I(<><circle cx="12" cy="12" r="8"/><path d="M12 8v4.3l3 1.8"/></>),
 shield:I(<><path d="M12 3.5l7 2.5v5.5c0 4.3-3 7.4-7 9-4-1.6-7-4.7-7-9V6z"/><path d="M9 12l2.2 2.2L15.5 10"/></>),
 bolt:I(<><path d="M13.5 3L6 13.5h4.5L10 21l7.5-10.5H13z"/></>),
 filter:I(<><path d="M4 6.5h16M7 12h10M10 17.5h4"/></>),
+cal:I(<><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3.5v3M16 3.5v3"/><circle cx="8.5" cy="14" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="14" r="1.1" fill="currentColor" stroke="none"/></>),
 plus:I(<><path d="M12 5.5v13M5.5 12h13"/></>),
 };
 export const Logo=({size=26})=>(<svg width={size} height={size} viewBox="0 0 32 32" fill="none"><ellipse cx="16" cy="16" rx="8.4" ry="8.4" stroke="var(--gold-bright)" strokeWidth="2.1"/><ellipse cx="16" cy="16" rx="14.5" ry="5.4" transform="rotate(-22 16 16)" stroke="var(--gold-bright)" strokeWidth="1.7" opacity=".8"/><circle cx="16" cy="16" r="3.1" fill="var(--gold-bright)"/></svg>);

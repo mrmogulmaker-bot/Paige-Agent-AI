@@ -118,6 +118,26 @@
 .paige-solo .bk-fill{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:12px;height:100%;min-height:0}
 .paige-solo .bk-fill>*{min-width:0;min-height:0}
 @media(max-width:900px){.paige-solo .pg-body:has(>.bk-fill){overflow:auto}.paige-solo .bk-fill{grid-template-columns:minmax(0,1fr);grid-template-rows:none;height:auto}}
+.paige-solo .cal-fill{display:grid;grid-template-rows:auto minmax(0,1fr);gap:12px;height:100%;min-height:0}
+.paige-solo .cal-fill>*{min-width:0;min-height:0}
+.paige-solo .cal-2{display:grid;grid-template-columns:minmax(0,1fr) 242px;grid-template-rows:minmax(0,1fr);gap:12px;min-height:0}
+.paige-solo .cal-2>*{min-width:0;min-height:0}
+.paige-solo .cal-month{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.paige-solo .cal-set{display:grid;grid-template-columns:212px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:12px;height:100%;min-height:0}
+.paige-solo .cal-set>*{min-width:0;min-height:0}
+@media(max-width:900px){.paige-solo .cal-set{grid-template-columns:minmax(0,1fr);grid-template-rows:none;height:auto}}
+.paige-solo .cal-dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-bottom:1px solid var(--line);flex:none;background:var(--surface-2)}
+.paige-solo .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-template-rows:repeat(6,minmax(0,1fr));flex:1;min-height:0}
+.paige-solo .cal-cell{border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);padding:4px 5px 5px;display:flex;flex-direction:column;gap:2px;min-width:0;overflow:hidden;text-align:left}
+.paige-solo .cal-cell:nth-child(7n){border-right:0}
+.paige-solo .cal-wk-hd{display:grid;grid-template-columns:50px repeat(7,minmax(0,1fr));border-bottom:1px solid var(--line);background:var(--surface-2);position:sticky;top:0;z-index:3}
+.paige-solo .cal-wk-all{display:grid;grid-template-columns:50px repeat(7,minmax(0,1fr));border-bottom:1px solid var(--line);min-height:34px;background:var(--surface)}
+.paige-solo .cal-wk-body{display:grid;grid-template-columns:50px repeat(7,minmax(0,1fr))}
+.paige-solo .pub-body{flex:1;min-height:0;display:grid;grid-template-columns:288px minmax(0,1fr)}
+.paige-solo .pub-body>*{min-width:0;min-height:0}
+.paige-solo .pub-slots{width:216px;flex:none;border-left:1px solid var(--line);padding:22px 18px;overflow-y:auto;min-height:0}
+@media(max-width:1100px){.paige-solo .cal-2{grid-template-columns:minmax(0,1fr)}.paige-solo .cal-2>.cal-rail{display:none}}
+@media(max-width:900px){.paige-solo .pub-body{grid-template-columns:minmax(0,1fr)}}
 .paige-solo .pane{min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden}
 .paige-solo .pg-fill{flex:1;min-height:0;min-width:0;overflow:hidden;padding:14px 30px 18px;display:grid;gap:16}
 .paige-solo .tc-grid{grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
