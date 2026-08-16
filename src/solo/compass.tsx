@@ -198,9 +198,14 @@ style={{position:'relative',width:'100%',appearance:'none',background:'transpare
 <span className="sub" style={{fontSize:10.5}}>She briefs, you decide</span></div>
 <style>{'.tc-range::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;border:2.5px solid var(--ok);box-shadow:var(--sh-1);cursor:grab}.tc-range::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#fff;border:2.5px solid var(--ok);box-shadow:var(--sh-1)}'}</style></div>};
 
-export const CompassTile=({go})=>{const trust=useTrust();const ref=React.useRef(null);
+export const CompassTile=({go,preview,departments})=>{const trust=useTrust();const ref=React.useRef(null);
 const tot=TC_DEPTS.reduce((a,d)=>[a[0]+d.w[0],a[1]+d.w[1],a[2]+d.w[2]],[0,0,0]);
 const all=tot[0]+tot[1]+tot[2];const auto=Math.round(tot[0]/all*100);
+// Real per-department OPEN counts (usePaigeDeptStatus) when passed — the ONE live
+// signal on this tile. The autonomy WEIGHT split below has no rollup seam yet (§13),
+// so the tile carries a Preview marker while the sub line reports the live count.
+const liveDepts=Array.isArray(departments)?departments:null;
+const liveOpen=liveDepts?liveDepts.reduce((a,d)=>a+(d.openCount||0),0):null;
 React.useEffect(()=>{const cv=ref.current;if(!cv)return;const ctx=cv.getContext('2d');if(!ctx)return;const dpr=Math.min(devicePixelRatio||1,2);
 const W=cv.clientWidth,H=120;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
 const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;let t=0,raf,orbs=[];
@@ -223,7 +228,8 @@ const draw=()=>{t++;ctx.clearRect(0,0,W,H);const cx=W/2,cy=H*.72,R=Math.min(W*.4
  raf=requestAnimationFrame(draw)};
 draw();return()=>cancelAnimationFrame(raf)},[trust]);
 return <div className="card" style={{overflow:'hidden'}}>
-<div className="hd"><div><h3>Trust Compass</h3><div className="sub">{auto}% autopilot across ten departments</div></div><Ic.shield size={17} style={{color:'var(--ink-3)'}}/></div>
+<div className="hd"><div><h3>Trust Compass</h3><div className="sub">{liveDepts?(liveOpen+' open across '+liveDepts.length+' departments'):(auto+'% autopilot across ten departments')}</div></div>
+<div className="row" style={{gap:8}}>{preview&&<span className="pill pill-n" title="Autonomy split is a sample — not yet wired to your live data">Preview</span>}<Ic.shield size={17} style={{color:'var(--ink-3)'}}/></div></div>
 <canvas ref={ref} style={{display:'block',width:'100%',height:120}}/>
 <div className="row" style={{padding:'12px 20px',gap:16,borderTop:'1px solid var(--line-soft)'}}>
 {[['Autopilot',tot[0],'var(--ok)'],['Drafts for you',tot[1],'var(--warn)'],['Your call',tot[2],'var(--bad)']].map(([k,v,c],i)=>
