@@ -1,5 +1,7 @@
 // @ts-nocheck
 import React from "react";
+import { useNavigate } from "react-router-dom";
+import { performSignOut } from "@/lib/auth/signOut";
 import "./solo-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead } from "./_shared";
 import { CommandHub } from "./CommandCenter";
@@ -47,6 +49,15 @@ return <nav style={{width:w,flex:'none',background:'var(--rail)',display:'flex',
 <span style={{display:'flex',transform:collapsed?'':'rotate(180deg)',transition:'.2s'}}><Ic.chev size={15}/></span></button></div></nav>};
 
 const TopBar=({theme,setTheme,openPaige,route})=>{const title=[...NAV,...NAV2].find(n=>n[0]===route)?.[1]||'';
+const nav=useNavigate();
+const[menu,setMenu]=React.useState(false);
+const[foc,setFoc]=React.useState(false);
+const mref=React.useRef(null);
+React.useEffect(()=>{if(!menu)return;
+const onDoc=e=>{if(mref.current&&!mref.current.contains(e.target))setMenu(false)};
+const onEsc=e=>{if(e.key==='Escape')setMenu(false)};
+window.addEventListener('mousedown',onDoc);window.addEventListener('keydown',onEsc);
+return()=>{window.removeEventListener('mousedown',onDoc);window.removeEventListener('keydown',onEsc)}},[menu]);
 return <header className="row" style={{height:56,flex:'none',padding:'0 22px',borderBottom:'1px solid var(--line)',background:'var(--surface)',gap:14,zIndex:20}}>
 <div className="row" style={{gap:9,fontSize:13,color:'var(--ink-3)',flex:'none',whiteSpace:'nowrap'}}>
 <span className="row" style={{gap:7,fontWeight:500,color:'var(--ink)',whiteSpace:'nowrap'}}>Jordan Avery</span>
@@ -61,7 +72,27 @@ return <header className="row" style={{height:56,flex:'none',padding:'0 22px',bo
 <button className="btn btn-s" style={{width:30,padding:0,justifyContent:'center',position:'relative'}}><Ic.bell size={15}/>
 <span style={{position:'absolute',top:5,right:6,width:6,height:6,borderRadius:'50%',background:'var(--bad)'}}/></button>
 <button className="btn btn-s" style={{width:30,padding:0,justifyContent:'center'}} onClick={()=>setTheme(theme==='dark'?'light':'dark')} title="Theme">{theme==='dark'?<Ic.sun size={15}/>:<Ic.moon size={15}/>}</button>
-<Avatar name="Jordan Avery" size={28} tone="var(--violet)"/></div></header>};
+<div ref={mref} style={{position:'relative',flex:'none'}}>
+<button onClick={()=>setMenu(v=>!v)} title="Account" aria-haspopup="menu" aria-expanded={menu}
+onFocus={()=>setFoc(true)} onBlur={()=>setFoc(false)}
+style={{padding:0,border:'none',background:'transparent',cursor:'pointer',borderRadius:'50%',display:'flex',outline:'none',boxShadow:(menu||foc)?'0 0 0 2px var(--violet)':'none'}}>
+<Avatar name="Jordan Avery" size={28} tone="var(--violet)"/></button>
+{menu&&<div role="menu" className="fade-in" style={{position:'absolute',top:'calc(100% + 8px)',right:0,zIndex:60,width:220,background:'var(--surface)',border:'1px solid var(--line)',borderRadius:12,boxShadow:'var(--sh-3)',padding:6,overflow:'hidden'}}>
+<div style={{padding:'8px 10px 6px'}}>
+<div style={{fontSize:13,fontWeight:600,color:'var(--ink)'}}>Jordan Avery</div>
+<div style={{fontSize:11.5,color:'var(--ink-3)'}}>Solo workspace</div></div>
+<div style={{height:1,background:'var(--line-soft)',margin:'2px 0 4px'}}/>
+<button role="menuitem" onClick={()=>{setMenu(false);nav('/admin/setup')}} className="row"
+style={{width:'100%',gap:10,padding:'9px 10px',borderRadius:8,fontSize:13,color:'var(--ink)',background:'transparent',border:'none',cursor:'pointer',textAlign:'left'}}
+onMouseEnter={e=>e.currentTarget.style.background='var(--surface-2)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+onFocus={e=>e.currentTarget.style.background='var(--surface-2)'} onBlur={e=>e.currentTarget.style.background='transparent'}>
+<Ic.gear size={15}/><span className="grow">Setup &amp; account</span></button>
+<button role="menuitem" onClick={()=>{setMenu(false);performSignOut({redirectTo:'/'})}} className="row"
+style={{width:'100%',gap:10,padding:'9px 10px',borderRadius:8,fontSize:13,color:'var(--bad)',background:'transparent',border:'none',cursor:'pointer',textAlign:'left'}}
+onMouseEnter={e=>e.currentTarget.style.background='var(--surface-2)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+onFocus={e=>e.currentTarget.style.background='var(--surface-2)'} onBlur={e=>e.currentTarget.style.background='transparent'}>
+<Ic.arrow size={15}/><span className="grow">Sign out</span></button></div>}
+</div></div></header>};
 
 const Stub=({title,sub})=>(<Wrap max={900}><PageHead eyebrow="Coming into view" title={title} sub={sub}/>
 <div className="card" style={{padding:'54px 30px',textAlign:'center'}}>
@@ -70,7 +101,11 @@ const Stub=({title,sub})=>(<Wrap max={900}><PageHead eyebrow="Coming into view" 
 <div className="sub" style={{maxWidth:380,margin:'6px auto 0'}}>Command Center, Paige, Clients, Growth, and Analytics are designed. Say the word and this one is next.</div></div></Wrap>);
 
 const SoloApp=()=>{
+const navigate=useNavigate();
 const[route,setRoute]=React.useState('home');
+// The 'setup' rail item routes OUT to the real editable Setup (§18 one home) —
+// the shell's own setup.tsx is a demo fixture. Every other item drives the shell.
+const go=k=>{if(k==='setup'){navigate('/admin/setup');return}setRoute(k)};
 const[collapsed,setCollapsed]=React.useState(false);
 const[panel,setPanel]=React.useState(false);
 const[studio,setStudio]=React.useState(false);
@@ -83,7 +118,7 @@ const full=route==='paige'||route==='auto'||route==='cal'||route==='setup'||rout
 const screens={home:<CommandHub openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<ClientsHub openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
 return <div className="paige-solo" data-theme={theme} style={{height:'100vh'}}>
 <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
-<Rail route={route} go={setRoute} collapsed={collapsed} setCollapsed={setCollapsed}/>
+<Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed}/>
 <div style={{display:'flex',flexDirection:'column',flex:1,minWidth:0}}>
 <TopBar theme={theme} setTheme={setTheme} openPaige={openPaige} route={route}/>
 <main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0}}>{screens[route]}</main></div>
