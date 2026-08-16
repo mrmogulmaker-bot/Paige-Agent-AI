@@ -4,7 +4,7 @@ import { Ic, Avatar, Foldout } from "./_shared";
 import { TM } from "./team";
 
 export const TM_ROLES=[
- {k:'Owner',n:'Owner',who:'Antonio Cook',seats:'1 of 1',admin:true,c:'var(--gold)',
+ {k:'Owner',n:'Owner',who:'Jordan Avery',seats:'1 of 1',admin:true,c:'var(--gold)',
   purpose:'Runs the business and answers for it. The only seat that can move autonomy or open sealed records.',
   resp:['Sets every department\'s autonomy level','Approves anything Paige drafts above draft-only','Owns pricing, contracts and repricing conversations','Signs off on new seats and role changes','Reads the books monthly'],
   owns:'All 8 accounts',

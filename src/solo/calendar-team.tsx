@@ -6,7 +6,7 @@ import { CfgRow, Sw } from "./calendar-cfg";
 
 export const TCAL={
 seats:[
- {n:'Antonio Cook',role:'Founder & Principal',cap:'4 calls a day',host:true,join:true,cal:'Google · connected',st:'Active',
+ {n:'Jordan Avery',role:'Founder & Principal',cap:'4 calls a day',host:true,join:true,cal:'Google · connected',st:'Active',
   can:['Host every link','See every client','Move any booking','Collect payment'],
   note:'Every link can land on you, which is the problem — you are at 112 hours against 96.'},
  {n:'Maya Rios',role:'Account lead · Client Success',cap:'3 calls a day',host:true,join:true,cal:'Not connected',st:'Invited',
@@ -89,7 +89,7 @@ return <div key={s.n} style={{border:'1px solid '+(open?'var(--violet)':'var(--l
 <button className="btn btn-s btn-g" style={{height:26,fontSize:11.5,marginTop:9}}><Ic.mail size={11}/>Send all three invites</button></div></>};
 
 export const OnCall=({e})=>{const deep=e.n.includes('deep-dive'),quart=e.n.includes('Quarterly'),onb=e.n.includes('Onboarding');
-const who=[['Antonio Cook','Host','var(--violet)']];
+const who=[['Jordan Avery','Host','var(--violet)']];
 if(deep)who.push(['Devon Park','Second chair','#2E7D8F']);
 if(quart)who.push(['Dolores Ruiz','Joins for the filing','#2E7D8F']);
 if(onb)who.push(['Maya Rios','Host after this one','var(--violet)']);

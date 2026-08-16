@@ -13,7 +13,7 @@ seed:[
  {who:'paige',t:'Filed. I named it, put it under Finance, and set it to confirm for the first thirty days — once it runs clean I will ask you about promoting it to auto.',
   draft:{n:'Dunning · Two-fail retry with escalation',dept:'Finance',c:'#2E7D8F',tier:'confirm',
    trig:'When a client\'s card fails twice, then wait 24 hours',
-   act:'Send the standard three-message retry sequence · flag Antonio in chat on a third failure',
+   act:'Send the standard three-message retry sequence · flag Jordan in chat on a third failure',
    why:'Confirm, not auto, because money leaving a client\'s account in your name is the kind of thing you want to see for a month first.'}}],
 chips:['Automate my dunning sequence','Send a welcome kit when a new client signs up','Flag me when a client goes quiet for two weeks','Run my Monday brief every week'],
 replies:{
@@ -79,7 +79,7 @@ return <div className="an-2">
 {msgs.map((m,i)=>m.who==='you'
 ?<div key={i} className="row" style={{gap:10,alignItems:'flex-start',justifyContent:'flex-end'}}>
 <div style={{maxWidth:'78%',padding:'10px 13px',borderRadius:'14px 14px 4px 14px',background:'var(--surface-sunk)',fontSize:12.9,lineHeight:1.55}}>{m.t}</div>
-<Avatar name="Antonio Cook" size={26} tone="var(--gold)"/></div>
+<Avatar name="Jordan Avery" size={26} tone="var(--gold)"/></div>
 :<div key={i} className="row" style={{gap:10,alignItems:'flex-start'}}>
 <span className="tile" style={{width:26,height:26,borderRadius:9,background:'var(--violet-tint)',color:'var(--violet)',marginTop:1}}><Ic.spark size={13}/></span>
 <div style={{maxWidth:'82%',minWidth:0,display:'grid',gap:9}}>

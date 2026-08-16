@@ -7,15 +7,15 @@ import { Pipeline } from "./growth2";
 
 export const CV={
 threads:[
- {n:'Tashia Anderson',role:'Co-Founder · Mogul Maker Academy',t:'2 days',pre:'You: Tashia, Welcome to Mogul M…',unread:false,ch:'email',state:'Hot Lead',owner:'Antonio Cook',email:'tashiaanderson@me.com',phone:'404 343 5583',tenure:'Client for 14 days'},
- {n:'Lavelle Napier',role:'CEO · Napier Holdings LLC',t:'14 days',pre:'You: Just wanted to check in',unread:false,ch:'email',state:'Nurture',owner:'Antonio Cook',email:'lavelle@napierholdings.com',phone:'678 220 9114',tenure:'Client for 9 months'},
- {n:'Dana Harper',role:'Partner · Harper & Vale',t:'3h',pre:'Paige drafted: renewal note, 94% confidence',unread:true,ch:'email',state:'Renewal',owner:'Antonio Cook',email:'dana@harpervale.co',phone:'415 882 3310',tenure:'Client for 14 months'},
- {n:'Ridgeline Co.',role:'Ops team · shared inbox',t:'1 day',pre:'Marcus: Can we push Thursday to next week?',unread:true,ch:'email',state:'Watch',owner:'Antonio Cook',email:'ops@ridgeline.co',phone:'503 771 0042',tenure:'Client for 7 months'},
- {n:'Selby Group',role:'Founder · Selby Group',t:'19 days',pre:'Paige drafted: low-pressure reset',unread:false,ch:'email',state:'At risk',owner:'Antonio Cook',email:'hello@selbygroup.com',phone:'312 604 7788',tenure:'Client for 5 months'}],
+ {n:'Tashia Anderson',role:'Co-Founder · Fairgrove Group',t:'2 days',pre:'You: Tashia, Welcome to Meridian…',unread:false,ch:'email',state:'Hot Lead',owner:'Jordan Avery',email:'tashiaanderson@me.com',phone:'404 343 5583',tenure:'Client for 14 days'},
+ {n:'Lavelle Napier',role:'CEO · Napier Holdings LLC',t:'14 days',pre:'You: Just wanted to check in',unread:false,ch:'email',state:'Nurture',owner:'Jordan Avery',email:'lavelle@napierholdings.com',phone:'678 220 9114',tenure:'Client for 9 months'},
+ {n:'Dana Harper',role:'Partner · Harper & Vale',t:'3h',pre:'Paige drafted: renewal note, 94% confidence',unread:true,ch:'email',state:'Renewal',owner:'Jordan Avery',email:'dana@harpervale.co',phone:'415 882 3310',tenure:'Client for 14 months'},
+ {n:'Ridgeline Co.',role:'Ops team · shared inbox',t:'1 day',pre:'Marcus: Can we push Thursday to next week?',unread:true,ch:'email',state:'Watch',owner:'Jordan Avery',email:'ops@ridgeline.co',phone:'503 771 0042',tenure:'Client for 7 months'},
+ {n:'Selby Group',role:'Founder · Selby Group',t:'19 days',pre:'Paige drafted: low-pressure reset',unread:false,ch:'email',state:'At risk',owner:'Jordan Avery',email:'hello@selbygroup.com',phone:'312 604 7788',tenure:'Client for 5 months'}],
 msgs:[
- {me:false,who:'Tashia Anderson',t:'2 days ago',subj:'Re: Welcome to Mogul Maker Academy',body:"This is exactly what I needed to see laid out. Two questions before we start phase one — does the BUILD phase need my EIN letter, and can my bookkeeper sit in on the STACK call?"},
- {me:true,who:'You',t:'2 days ago',subj:'Welcome to Mogul Maker Academy, Tashia',body:"Tashia,\n\nWelcome to Mogul Maker Academy — and to BUILD-to-FUND.\n\nYou're stepping into a done-for-you process built to take your business from where it stands today to a business that can actually borrow. Three phases: BUILD gets your foundation fundable, STACK gets your business credit reporting, and FUND puts you in front of the right lenders.\n\nYour first task is in the portal and takes about ten minutes."},
- {me:false,who:'Paige',t:'12 minutes ago',subj:'Draft ready for your approval',body:"Answering both questions: the EIN letter is needed at BUILD step three, not now, and the bookkeeper is welcome on the STACK call — I've drafted the reply and attached the phase-one checklist. Approve and I'll send it under your address.",paige:true}],
+ {me:false,who:'Tashia Anderson',t:'2 days ago',subj:'Re: Welcome to Meridian Advisory',body:"This is exactly what I needed to see laid out. Two questions before we start phase one — does the Foundation phase need my brand assets, and can my operations lead sit in on the kickoff call?"},
+ {me:true,who:'You',t:'2 days ago',subj:'Welcome to Meridian Advisory, Tashia',body:"Tashia,\n\nWelcome to Meridian Advisory — and to your engagement.\n\nYou're stepping into a done-for-you process built to take your business from where it stands today to one that runs like a staffed company. Three phases: Foundation gets your systems in order, Build turns them into a repeatable process, and Scale puts the plan into motion.\n\nYour first task is in the portal and takes about ten minutes."},
+ {me:false,who:'Paige',t:'12 minutes ago',subj:'Draft ready for your approval',body:"Answering both questions: the brand assets are needed at Foundation step three, not now, and your operations lead is welcome on the kickoff call — I've drafted the reply and attached the onboarding checklist. Approve and I'll send it under your address.",paige:true}],
 manual:[
  {t:'Call Ridgeline about the Thursday push',who:'You',due:'Today',state:'Open'},
  {t:'Send Harper & Vale the renewal PDF',who:'You',due:'Today',state:'Waiting on you'},
@@ -34,11 +34,11 @@ links:[
  {t:'Teardown lead magnet',clicks:1240,conv:'8%',dest:'paigeagent.ai/teardown'},
  {t:'Pay invoice',clicks:97,conv:'88%',dest:'billing/invoice'}],
 delivery:[
- {c:'Northwind Partners',ms:'Kickoff & 30-day plan',prog:35,due:'Aug 16',owner:'Antonio Cook',state:'On track'},
- {c:'Harper & Vale',ms:'Q3 campaign build',prog:78,due:'Aug 22',owner:'Antonio Cook',state:'On track'},
- {c:'Ridgeline Co.',ms:'Site migration',prog:41,due:'Aug 15',owner:'Antonio Cook',state:'Slipping'},
- {c:'Bellweather Co.',ms:'Brand refresh, phase 2',prog:92,due:'Aug 14',owner:'Antonio Cook',state:'Ready for review'},
- {c:'Selby Group',ms:'Reporting handover',prog:15,due:'Aug 29',owner:'Antonio Cook',state:'Blocked'}],
+ {c:'Northwind Partners',ms:'Kickoff & 30-day plan',prog:35,due:'Aug 16',owner:'Jordan Avery',state:'On track'},
+ {c:'Harper & Vale',ms:'Q3 campaign build',prog:78,due:'Aug 22',owner:'Jordan Avery',state:'On track'},
+ {c:'Ridgeline Co.',ms:'Site migration',prog:41,due:'Aug 15',owner:'Jordan Avery',state:'Slipping'},
+ {c:'Bellweather Co.',ms:'Brand refresh, phase 2',prog:92,due:'Aug 14',owner:'Jordan Avery',state:'Ready for review'},
+ {c:'Selby Group',ms:'Reporting handover',prog:15,due:'Aug 29',owner:'Jordan Avery',state:'Blocked'}],
 portal:[
  {c:'Harper & Vale',seats:4,active:'2h ago',docs:12,tasks:'3 of 5',state:'Active'},
  {c:'Northwind Partners',seats:6,active:'4h ago',docs:5,tasks:'1 of 9',state:'Onboarding'},
@@ -82,7 +82,7 @@ padding:'13px 16px',borderRadius:m.me?'16px 16px 5px 16px':'5px 16px 16px 16px',
 {m.paige&&<div className="row" style={{gap:7,marginTop:12}}><button className="btn btn-s btn-p"><Ic.check size={12}/>Approve & send</button><button className="btn btn-s">Edit</button></div>}</div></div>)}</div>
 <div style={{padding:'12px 16px 14px',borderTop:'1px solid var(--line-soft)',display:'grid',gap:9}}>
 <div className="row" style={{gap:9,padding:'8px 12px',border:'1px solid var(--line)',borderRadius:10,background:'var(--surface-2)'}}>
-<Ic.mail size={14} style={{color:'var(--ink-3)'}}/><span style={{fontSize:12.7,fontWeight:500}}>Paige email</span><span className="sub trunc">mogul-maker-academy@mail.paigeagent.ai</span><Ic.chev size={13} style={{marginLeft:'auto',color:'var(--ink-3)'}}/></div>
+<Ic.mail size={14} style={{color:'var(--ink-3)'}}/><span style={{fontSize:12.7,fontWeight:500}}>Paige email</span><span className="sub trunc">meridian-advisory@mail.paigeagent.ai</span><Ic.chev size={13} style={{marginLeft:'auto',color:'var(--ink-3)'}}/></div>
 <input placeholder="Subject" style={{height:36,border:'1px solid var(--line)',borderRadius:10,padding:'0 12px',background:'var(--surface)',color:'var(--ink)',fontFamily:'inherit',fontSize:13.2,outline:'none'}}/>
 <div className="row" style={{alignItems:'stretch',gap:9}}>
 <textarea placeholder={'Reply to '+c.n+'…  (drop a file to attach)'} style={{flex:1,minHeight:74,resize:'none',border:'1px solid var(--line)',borderRadius:10,padding:'10px 12px',background:'var(--surface)',color:'var(--ink)',fontFamily:'inherit',fontSize:13.2,outline:'none',lineHeight:1.55}}/>
@@ -146,7 +146,7 @@ const ConvoAnalytics=()=>(<div className="g4">
 
 const ConvoSettings=()=>(<div className="two">
 <div className="card"><div className="hd"><h3>Sending</h3></div><div style={{padding:'6px 20px 16px'}}>
-{[['Paige email address','mogul-maker-academy@mail.paigeagent.ai'],['Custom domain','Not connected — optional'],['SPF / DKIM / DMARC','All passing'],['Daily send cap','400 per domain'],['Signature','Antonio Cook · Project Mogul']].map(([k,v],i)=>
+{[['Paige email address','meridian-advisory@mail.paigeagent.ai'],['Custom domain','Not connected — optional'],['SPF / DKIM / DMARC','All passing'],['Daily send cap','400 per domain'],['Signature','Jordan Avery · Meridian Advisory']].map(([k,v],i)=>
 <div key={i} className="row" style={{padding:'12px 0',borderBottom:i<4?'1px solid var(--line-soft)':'0',gap:12}}>
 <span className="grow" style={{fontSize:13.2}}>{k}</span><span className="sub trunc" style={{maxWidth:220,textAlign:'right'}}>{v}</span><Ic.chev size={13} style={{color:'var(--ink-3)'}}/></div>)}</div></div>
 <div className="card"><div className="hd"><h3>How Paige behaves here</h3></div><div style={{padding:'6px 20px 16px'}}>
@@ -196,10 +196,10 @@ const Portal=()=>(<div className="two-w">
 <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr)',gap:16}}>
 <div className="card"><div className="hd"><h3>What they see</h3><span className="pill pill-n">Preview</span></div>
 <div style={{padding:16}}><div style={{border:'1px solid var(--line)',borderRadius:'var(--r-m)',overflow:'hidden'}}>
-<div className="row" style={{gap:9,padding:'11px 13px',background:'var(--rail)',color:'#fff'}}><Logo size={18}/><span style={{fontSize:12.5,fontWeight:600}}>Project Mogul</span>
+<div className="row" style={{gap:9,padding:'11px 13px',background:'var(--rail)',color:'#fff'}}><Logo size={18}/><span style={{fontSize:12.5,fontWeight:600}}>Meridian Advisory</span>
 <span className="pill" style={{marginLeft:'auto',background:'rgba(255,255,255,.12)',color:'#fff'}}>Client</span></div>
 <div style={{padding:13,display:'grid',gap:9,background:'var(--surface-2)'}}>
-{[['Your next task','Upload your EIN letter'],['Phase','BUILD · step 2 of 6'],['Your contact','Antonio Cook']].map(([k,v],i)=>
+{[['Your next task','Upload your brand assets'],['Phase','Foundation · step 2 of 6'],['Your contact','Jordan Avery']].map(([k,v],i)=>
 <div key={i} style={{padding:'10px 12px',background:'var(--surface)',border:'1px solid var(--line)',borderRadius:10}}>
 <div className="eyebrow" style={{fontSize:10}}>{k}</div><div style={{fontSize:12.8,marginTop:3,fontWeight:500}}>{v}</div></div>)}</div></div>
 <div className="sub" style={{marginTop:11}}>Logo, colors, and domain are yours. Paige answers their questions inside the portal at the autonomy you set.</div></div></div>

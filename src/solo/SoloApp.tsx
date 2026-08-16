@@ -49,19 +49,19 @@ return <nav style={{width:w,flex:'none',background:'var(--rail)',display:'flex',
 const TopBar=({theme,setTheme,openPaige,route})=>{const title=[...NAV,...NAV2].find(n=>n[0]===route)?.[1]||'';
 return <header className="row" style={{height:56,flex:'none',padding:'0 22px',borderBottom:'1px solid var(--line)',background:'var(--surface)',gap:14,zIndex:20}}>
 <div className="row" style={{gap:9,fontSize:13,color:'var(--ink-3)',flex:'none',whiteSpace:'nowrap'}}>
-<span className="row" style={{gap:7,fontWeight:500,color:'var(--ink)',whiteSpace:'nowrap'}}>Antonio Cook</span>
+<span className="row" style={{gap:7,fontWeight:500,color:'var(--ink)',whiteSpace:'nowrap'}}>Jordan Avery</span>
 <Ic.chev size={13}/><span style={{whiteSpace:'nowrap'}}>{title}</span></div>
 <div className="row grow hide-1100" style={{justifyContent:'center',minWidth:0}}>
 <div className="row" style={{gap:8,height:32,flex:'0 1 400px',minWidth:0,padding:'0 12px',border:'1px solid var(--line)',borderRadius:10,background:'var(--surface-2)',color:'var(--ink-3)'}}>
 <Ic.search size={14}/><span className="trunc" style={{fontSize:12.8}}>Search clients, threads, obligations</span>
 <span className="mono" style={{marginLeft:'auto',fontSize:11,padding:'1px 5px',border:'1px solid var(--line)',borderRadius:5}}>⌘K</span></div></div>
 <div className="row" style={{gap:6,flex:'none',marginLeft:'auto'}}>
-<span className="pill pill-n hide-1280" style={{height:26,flex:'none'}}>Provided by Project Mogul Enterprise</span>
+<span className="pill pill-n hide-1280" style={{height:26,flex:'none'}}>Provided by Northwind Partners</span>
 <button className="btn btn-s" style={{width:30,padding:0,justifyContent:'center'}} onClick={openPaige} title="Ask Paige"><Ic.spark size={15}/></button>
 <button className="btn btn-s" style={{width:30,padding:0,justifyContent:'center',position:'relative'}}><Ic.bell size={15}/>
 <span style={{position:'absolute',top:5,right:6,width:6,height:6,borderRadius:'50%',background:'var(--bad)'}}/></button>
 <button className="btn btn-s" style={{width:30,padding:0,justifyContent:'center'}} onClick={()=>setTheme(theme==='dark'?'light':'dark')} title="Theme">{theme==='dark'?<Ic.sun size={15}/>:<Ic.moon size={15}/>}</button>
-<Avatar name="Antonio Cook" size={28} tone="var(--violet)"/></div></header>};
+<Avatar name="Jordan Avery" size={28} tone="var(--violet)"/></div></header>};
 
 const Stub=({title,sub})=>(<Wrap max={900}><PageHead eyebrow="Coming into view" title={title} sub={sub}/>
 <div className="card" style={{padding:'54px 30px',textAlign:'center'}}>
@@ -78,6 +78,7 @@ React.useEffect(()=>{const h=()=>setStudio(true);window.addEventListener('paige-
 const[theme,setTheme]=React.useState(()=>localStorage.getItem('paige-theme')||'light');
 React.useEffect(()=>{localStorage.setItem('paige-theme',theme)},[theme]);
 const openPaige=()=>setPanel(true);
+React.useEffect(()=>{const h=e=>{if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){e.preventDefault();setPanel(true)}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[]);
 const full=route==='paige'||route==='auto'||route==='cal'||route==='setup'||route==='team'||route==='home';
 const screens={home:<CommandHub openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<ClientsHub openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
 return <div className="paige-solo" data-theme={theme} style={{height:'100vh'}}>

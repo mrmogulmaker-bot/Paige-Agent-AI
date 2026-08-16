@@ -247,7 +247,7 @@ const Admin = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<"admin" | "coach">("admin");
-  const { isPlatformStaff, activeTenantId, loading: tenantLoading } = useTenantContext();
+  const { isPlatformStaff, activeTenantId, loading: tenantLoading, soloShellEnabled } = useTenantContext();
   // §51-safe canonical tier resolver — tierKey === "solo" ONLY for a standalone,
   // no-parent tenant (never god/agency/sub_account/enterprise). This is tier ROUTING
   // (which shell to mount), not a feature gate.
@@ -345,7 +345,12 @@ const Admin = () => {
   // Fires ONLY for a standalone solo tenant once the tier hooks resolve, BEFORE the
   // godMode / tenant AdminLayout+Routes branch below. tierKey === "solo" is the
   // §51-safe canonical resolver, so god/agency/sub_account/enterprise never enter here.
-  const soloShellEnabled = import.meta.env.VITE_SOLO_SHELL_ENABLED === "true";
+  //
+  // RUNTIME per-tenant flag (§57 source-of-truth / §10 config-as-data): `soloShellEnabled`
+  // is derived by the tenant context from the ACTIVE tenant's OWN
+  // `features.solo_shell_enabled` (§51-safe, no cross-tenant read) — a Super-Admin-set,
+  // per-tenant canary, NOT the old build-time VITE_SOLO_SHELL_ENABLED env flag (which was
+  // tier-wide and could not target one tenant). Absent flag → false → prod render unchanged.
   // STRICT gate (§51/§58): require BOTH the canonical solo tierKey AND a LITERAL
   // account_type='standalone' on a no-parent tenant (soloStandalone). resolveTierKey
   // fail-safes null/unknown account_type to "solo", so tierKey alone would take over a

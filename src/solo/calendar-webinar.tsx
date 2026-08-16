@@ -8,15 +8,15 @@ import { SetSect } from "./calendar-settings";
 export const WB={
 sessions:[
  {n:'Trust structures for founders',st:'Scheduled',when:'Thu Aug 27 · 1:00pm',dur:'60 min',plat:'Zoom Webinar',cap:100,reg:64,wait:8,price:'Free',
-  slug:'antonio/trust-webinar',replay:'14 days',approve:false,rules:5,
+  slug:'jordan/trust-webinar',replay:'14 days',approve:false,rules:5,
   d:'The sixty-minute version of the deep-dive, for a room instead of one person. Structure, control, and who owns what.',
   note:'Sixty-four registered in nine days with no ad spend. Eight on the waitlist because you capped it at a hundred and Zoom charges past that.'},
  {n:'Compliance clinic · quarterly',st:'Draft',when:'Not scheduled',dur:'45 min',plat:"Paige's own room",cap:40,reg:0,wait:0,price:'$49',
-  slug:'antonio/clinic',replay:'30 days',approve:true,rules:0,
+  slug:'jordan/clinic',replay:'30 days',approve:true,rules:0,
   d:'Bring one filing question. Forty seats, paid, approval required so it stays clients and serious prospects.',
   note:'Drafted and never scheduled. Paid and approval-gated means it needs a date and a chain before it can open.'},
  {n:'Trust structures for founders · June cohort',st:'Ended',when:'Thu Jun 18 · 1:00pm',dur:'60 min',plat:'Zoom Webinar',cap:100,reg:82,wait:0,price:'Free',
-  slug:'antonio/trust-webinar-june',replay:'Expired',approve:false,rules:5,att:47,
+  slug:'jordan/trust-webinar-june',replay:'Expired',approve:false,rules:5,att:47,
   d:'The first run of this session.',
   note:'Eighty-two registered, forty-seven showed, three became clients. Cairn Advisory closed eleven weeks later at $6,200.'}],
 regs:[
@@ -164,7 +164,7 @@ style={{fontSize:10,flex:'none'}}>{r.st}</span></div>)}</div>
 {msgs.map((m,i)=>m.who==='you'
 ?<div key={i} className="row" style={{gap:10,alignItems:'flex-start',justifyContent:'flex-end'}}>
 <div style={{maxWidth:'80%',padding:'10px 13px',borderRadius:'14px 14px 4px 14px',background:'var(--surface-sunk)',fontSize:12.6,lineHeight:1.55}}>{m.t}</div>
-<Avatar name="Antonio Cook" size={24} tone="var(--gold)"/></div>
+<Avatar name="Jordan Avery" size={24} tone="var(--gold)"/></div>
 :<div key={i} className="row" style={{gap:10,alignItems:'flex-start'}}>
 <span className="tile" style={{width:24,height:24,borderRadius:8,background:'var(--violet-tint)',color:'var(--violet)',marginTop:1}}><Ic.spark size={12}/></span>
 <div style={{maxWidth:'86%',minWidth:0,display:'grid',gap:9}}>

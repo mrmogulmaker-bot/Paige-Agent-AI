@@ -18,7 +18,7 @@ export const CfgCard=({t,d,children,tone})=>(<div style={{border:'1px solid '+(t
 {d&&<div style={{fontSize:11.4,color:'var(--ink-3)',lineHeight:1.45,marginTop:3}}>{d}</div>}</div>{children}</div>);
 
 export const CFG={
-pool:[{n:'Antonio Cook',r:'Owner',load:82,cap:'4 a day',tone:'var(--violet)'},
+pool:[{n:'Jordan Avery',r:'Owner',load:82,cap:'4 a day',tone:'var(--violet)'},
  {n:'Maya Rios',r:'Account lead · invite unopened',load:0,cap:'3 a day',tone:'#2E7D8F'}],
 wf:[['24 hours before','Reminder with the intake answers attached',true],
  ['1 hour before','Short reminder with the join link',true],
@@ -43,8 +43,8 @@ forms:[
    {a:'Review my filings',to:'Quarterly compliance review',n:0,note:'Sixty minutes, summary attached beforehand.'},
    {a:'Something else',to:'Ad-hoc · request a time',n:0,note:'Which is the link you currently have switched off.'}],
   read:'This one is drafted but not live, and the fallback branch points at the ad-hoc link that is off. Turn that on and this can ship.'}],
-conn:[['Google Calendar','antonio@projectmogul.com','Read and write',true],
- ['Outlook','antonio@mogulenterprise.co','Read for conflicts only',true],
+conn:[['Google Calendar','jordan@meridianadvisory.com','Read and write',true],
+ ['Outlook','jordan@meridianholdings.co','Read for conflicts only',true],
  ['iCloud','Personal','Read for conflicts only',false]]};
 
 export const cfgFor=t=>{const n=t.n.toLowerCase();

@@ -5,7 +5,7 @@ import { deptTier, useTrust, MiniCompass } from "./compass";
 
 const SC_DOMAINS=[['all','All checks'],['infra','Infrastructure'],['mkt','Marketing & tracking'],['forms','Forms & booking'],['comms','Comms & deliverability'],['pay','Payments & ops'],['data','Data quality']];
 const SC_CHECKS=[
- {id:1,d:'comms',n:'SPF, DKIM & DMARC',m:'3 domains passing',s:'ok',ev:['mail.paigeagent.ai — SPF pass, DKIM pass, DMARC p=quarantine','projectmogul.com — all pass','mogul-maker-academy.com — all pass'],found:'All three sending domains authenticate cleanly.',fix:null},
+ {id:1,d:'comms',n:'SPF, DKIM & DMARC',m:'3 domains passing',s:'ok',ev:['mail.paigeagent.ai — SPF pass, DKIM pass, DMARC p=quarantine','meridianadvisory.com — all pass','meridiancoaching.com — all pass'],found:'All three sending domains authenticate cleanly.',fix:null},
  {id:2,d:'comms',n:'Inbox placement',m:'98.2% inbox, 1.8% spam',s:'ok',ev:['Seed test across Gmail, Outlook, Yahoo — 47 of 48 landed primary'],found:'Placement is strong and holding for the third week.',fix:null},
  {id:3,d:'comms',n:'Sender reputation',m:'Google Postmaster: medium',s:'warn',ev:['Aug 8 — reputation dropped high → medium','2,840 recipients in a single send window','Complaint rate 0.28% (threshold 0.30%)'],found:'The Teardown blast went out to 2,840 addresses in one window and pushed you within a hair of the complaint threshold.',fix:'Throttle to 400/day, warm the second domain over nine days, and split the list by engagement. Sequence rewritten and ready.'},
  {id:4,d:'infra',n:'Uptime & SSL',m:'99.98% · cert 71 days',s:'ok',ev:['No incidents in 30 days','Cert auto-renews Oct 23 via Cloudflare'],found:'Nothing to do here.',fix:null},

@@ -88,6 +88,13 @@ export interface TenantSummary {
   account_type: string;
   parent_tenant_id: string | null;
   /**
+   * Per-tenant `tenants.features` JSONB — the §18 one home for config-as-data flags
+   * (e.g. `features.playbook`, `features.finance_in_scope`, `features.solo_shell_enabled`).
+   * Set by the platform operator (§57 source-of-truth); read here to derive
+   * `soloShellEnabled` below. `null` when the row has no features object.
+   */
+  features: Record<string, unknown> | null;
+  /**
    * Operator-internal REVENUE classification (#29): 'paid' | 'promotional' |
    * 'internal_test'. Orthogonal to `account_type` (topology) and `status`
    * (lifecycle). The `tenant_revenue_classification` table is RLS-gated to
@@ -109,6 +116,13 @@ interface TenantContextState {
   tenants: TenantSummary[];
   activeTenantId: string | null;
   activeTenant: TenantSummary | null;
+  /**
+   * Runtime per-tenant Solo-shell activation (§57 config-as-data, §51-safe):
+   * `true` ONLY when the ACTIVE tenant's OWN `features.solo_shell_enabled === true`.
+   * Reads no other tenant's features (no cross-tenant / param path). Defaults to
+   * `false` while loading or when the flag is absent → shell OFF (§58 byte-unchanged).
+   */
+  soloShellEnabled: boolean;
   switchTenant: (tenantId: string | null) => Promise<boolean>;
   refresh: () => Promise<void>;
 }
@@ -176,7 +190,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         // RLS already filters: platform staff see all, members see their own.
         supabase
           .from("tenants")
-          .select("id, slug, name, status, plan_offer, seat_limit, customer_limit, owner_user_id, account_type, parent_tenant_id")
+          .select("id, slug, name, status, plan_offer, seat_limit, customer_limit, owner_user_id, account_type, parent_tenant_id, features")
           .order("created_at", { ascending: true }),
         // #29: operator-internal revenue classification, for the operator switcher's
         // grouping. RLS (is_platform_owner) returns rows ONLY to platform staff — a
@@ -344,6 +358,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const activeTenant = tenants.find((t) => t.id === activeTenantId) ?? null;
 
+  // §57 config-as-data: derive the Solo-shell flag from ONLY the active tenant's own
+  // features (§51-safe — no cross-tenant read, no request param). Absent flag → false.
+  const soloShellEnabled = activeTenant?.features?.solo_shell_enabled === true;
+
   const value: TenantContextState = {
     loading,
     isPlatformOwner,
@@ -351,6 +369,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     tenants,
     activeTenantId,
     activeTenant,
+    soloShellEnabled,
     switchTenant,
     // Always a foreground refresh — wrapped so an event-handler caller (onClick={refresh})
     // can't pass its event as the `background` arg and silently skip the loader/commit.
