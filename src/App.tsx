@@ -138,6 +138,7 @@ const GmailCallback = lazyWithReload(() => import("./pages/GmailCallback"));
 // Bounces a signed-in-but-incomplete signup (no lane/agreement/workspace yet) to
 // the /onboarding gate. Not lazy — it's a thin wrapper around the app shells.
 import { RequireCompleteSignup } from "@/components/auth/RequireCompleteSignup";
+import { RequireSetupComplete } from "@/components/auth/RequireSetupComplete";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -254,7 +255,16 @@ const App = () => (
             {/* Backward compat redirect */}
             <Route path="/dashboard" element={<Navigate to="/app" replace />} />
 
-            <Route path="/admin/*" element={<RequireCompleteSignup><PageSuspense><Admin /></PageSuspense></RequireCompleteSignup>} />
+            {/* Setup gate (owner 2026-08-16): a tenant with no chosen playbook is held on
+                the marketplace/Setup chooser — nested INSIDE RequireCompleteSignup so signup
+                (provision + agreement) still comes first. NO-OP for operators/God, clients,
+                and any tenant that already chose a playbook. Chooser (/admin/marketplace) is
+                reachable while gated — no loop. */}
+            <Route path="/admin/*" element={<RequireCompleteSignup><RequireSetupComplete><PageSuspense><Admin /></PageSuspense></RequireSetupComplete></RequireCompleteSignup>} />
+            {/* /agency is the agency-MANAGER console — an agency never picks a business
+                playbook (§61), so it is NOT wrapped in RequireSetupComplete (that gate is
+                for Solo/Sub-account business tenants only). The gate also no-ops for the
+                agency tier defensively, so a stray /admin hit by an agency owner is safe too. */}
             <Route path="/agency/*" element={<RequireCompleteSignup><PageSuspense><AgencyLayout /></PageSuspense></RequireCompleteSignup>} />
             <Route path="/unsubscribe" element={<PageSuspense><Unsubscribe /></PageSuspense>} />
             {/* Comms C-2s-C — tenant one-click/footer unsubscribe. SAME Unsubscribe surface (§18),
