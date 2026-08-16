@@ -12,7 +12,7 @@ kpi:[{k:'Active automations',v:'9',s:'Of eleven built · three of them from the 
 rules:[
  {n:'Dunning · Two-fail retry with escalation',dept:'Finance',c:'#2E7D8F',tier:'confirm',status:'Live',eng:'bus',
   trig:'When a client\'s card fails twice, then wait 24 hours',
-  act:'Send the retry sequence, and flag Antonio if a third failure lands',
+  act:'Send the retry sequence, and flag Jordan if a third failure lands',
   last:'2 hrs ago',ok:true,runs:14,rate:'93%',by:'Paige-drafted',mod:'Aug 2',
   needs:['Card processor webhook','Retry sequence (3 messages)'],feeds:['Finance queue','Owner Ops escalation'],
   note:'Her read: thirteen of fourteen runs cleared on the second message. This one is ready to promote to auto.'},

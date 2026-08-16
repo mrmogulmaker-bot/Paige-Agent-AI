@@ -4,15 +4,15 @@ import { Ic, Avatar, PeekCard, Foldout, SlideOut, SubTabs, Wrap, PageHead } from
 import { PT } from "./paigehub";
 
 const SU_BIZ={
-legal:'Project Mogul Enterprise LLC',dba:'Mogul Maker Academy',entity:'LLC · Delaware',formed:'March 4, 2023',
+legal:'Meridian Advisory LLC',dba:'Meridian Coaching',entity:'LLC · Delaware',formed:'March 4, 2023',
 naics:'611430 — Professional and Management Development Training',fiscal:'Calendar year',state:'Georgia (foreign qualified)',
 site:'paigeagent.ai',phone:'(404) 555-0142',support:'help@paigeagent.ai',
 addr:['1180 Peachtree St NE, Suite 1200','Atlanta, GA 30309','United States'],
 mail:['PO Box 77412','Atlanta, GA 30357'],
 hours:'Mon–Thu 9:00am–5:00pm ET · Fri by appointment',tz:'America/New_York',currency:'USD',lang:'English (US)'};
-const SU_OWNER={n:'Antonio Cook',title:'Founder & Principal',email:'antonio@paigeagent.ai',
-pronouns:'he/him',since:'March 2023',cal:'cal.paigeagent.ai/antonio',
-sig:'Antonio Cook · Founder, Project Mogul',bio:'Builds systems that let a one-person company operate like a staffed one.'};
+const SU_OWNER={n:'Jordan Avery',title:'Founder & Principal',email:'jordan@paigeagent.ai',
+pronouns:'he/him',since:'March 2023',cal:'cal.paigeagent.ai/jordan',
+sig:'Jordan Avery · Founder, Meridian Advisory',bio:'Builds systems that let a one-person company operate like a staffed one.'};
 const SU_SECRETS=[
  {id:'ein',k:'EIN',v:'88-4392104',cls:'Tax identifier',who:'You only',note:'Used on filings Paige prepares. Never included in anything she sends a client.'},
  {id:'state_id',k:'Georgia withholding ID',v:'GA-0142887',cls:'Tax identifier',who:'You and your CPA',note:'Shared with Ruiz & Whitfield for quarterly filings.'},
@@ -27,24 +27,24 @@ const SU_CONTACTS=[
  {r:'Bookkeeper',n:'Unassigned',org:'—',e:'—',p:'—',note:'Paige flagged this gap — reconciliation is manual right now.',sees:[],gap:true},
  {r:'Emergency contact',n:'Sealed',org:'—',e:'—',p:'—',note:'Held encrypted. Visible only after an identity check.',sees:[],sealed:true}];
 const SU_PEOPLE=[
- {n:'Antonio Cook',role:'Founder & Principal',dept:'Leadership',type:'Owner',seat:'Full access',rep:null,paige:['All departments'],status:'Active',start:'Mar 2023',
-  email:'antonio@paigeagent.ai',mfa:true,last:'Active now',clients:'All 8',sensitive:true},
- {n:'Maya Rios',role:'Account lead',dept:'Client Success',type:'Employee',seat:'Standard',rep:'Antonio Cook',paige:['Client Success','Marketing'],status:'Invited',start:'—',
+ {n:'Jordan Avery',role:'Founder & Principal',dept:'Leadership',type:'Owner',seat:'Full access',rep:null,paige:['All departments'],status:'Active',start:'Mar 2023',
+  email:'jordan@paigeagent.ai',mfa:true,last:'Active now',clients:'All 8',sensitive:true},
+ {n:'Maya Rios',role:'Account lead',dept:'Client Success',type:'Employee',seat:'Standard',rep:'Jordan Avery',paige:['Client Success','Marketing'],status:'Invited',start:'—',
   email:'maya@paigeagent.ai',mfa:false,last:'Invite sent 3d ago',clients:'Harper & Vale, Northwind, Bellweather',sensitive:false},
- {n:'Devon Park',role:'Strategist',dept:'Delivery',type:'Contractor',seat:'Standard',rep:'Antonio Cook',paige:['Operations'],status:'Invited',start:'—',
+ {n:'Devon Park',role:'Strategist',dept:'Delivery',type:'Contractor',seat:'Standard',rep:'Jordan Avery',paige:['Operations'],status:'Invited',start:'—',
   email:'devon@contract.co',mfa:false,last:'Invite sent 3d ago',clients:'Ridgeline, Mercer, Cairn',sensitive:false},
  {n:'Sasha Kim',role:'Client success',dept:'Client Success',type:'Contractor',seat:'Limited',rep:'Maya Rios',paige:['Client Success'],status:'Not invited',start:'—',
   email:'sasha@contract.co',mfa:false,last:'Never signed in',clients:'Selby, Okonkwo',sensitive:false},
- {n:'Dolores Ruiz',role:'CPA',dept:'Finance',type:'Advisor',seat:'Guest',rep:'Antonio Cook',paige:['Finance (read-only)'],status:'Not invited',start:'—',
+ {n:'Dolores Ruiz',role:'CPA',dept:'Finance',type:'Advisor',seat:'Guest',rep:'Jordan Avery',paige:['Finance (read-only)'],status:'Not invited',start:'—',
   email:'druiz@ruizwhitfield.com',mfa:false,last:'Never signed in',clients:'None',sensitive:true}];
 const SU_ENTITIES=[
- {n:'Project Mogul Enterprise LLC',kind:'Parent · Delaware LLC',reg:'Formed Mar 2023',states:'DE, GA',status:'Active',
+ {n:'Meridian Advisory LLC',kind:'Parent · Delaware LLC',reg:'Formed Mar 2023',states:'DE, GA',status:'Active',
   ob:['General liability policy','Delaware annual report','Q3 estimated tax','Trademark §8'],agent:'Northpoint Agents',secret:'reg'},
- {n:'Mogul Maker Academy',kind:'DBA of parent',reg:'Registered Jan 2024',states:'GA',status:'Active',ob:['City business license'],agent:'—',secret:null},
- {n:'Project Mogul Holdings LLC',kind:'Planned holding entity',reg:'Not formed',states:'—',status:'Planned',ob:[],agent:'—',secret:null}];
+ {n:'Meridian Coaching',kind:'DBA of parent',reg:'Registered Jan 2024',states:'GA',status:'Active',ob:['City business license'],agent:'—',secret:null},
+ {n:'Meridian Holdings LLC',kind:'Planned holding entity',reg:'Not formed',states:'—',status:'Planned',ob:[],agent:'—',secret:null}];
 const SU_ROLES=[['Owner','Everything, including billing, autonomy, and sealed records'],['Standard','Their departments, drafts, and client threads'],
  ['Limited','Assigned clients only'],['Guest','One department, read-only, no sensitive records']];
-const SU_TREE={'Antonio Cook':['Maya Rios','Devon Park','Dolores Ruiz'],'Maya Rios':['Sasha Kim']};
+const SU_TREE={'Jordan Avery':['Maya Rios','Devon Park','Dolores Ruiz'],'Maya Rios':['Sasha Kim']};
 
 const SuField=({k,v,w,mono,hint})=>(<div style={{gridColumn:w?'span '+w:'auto',minWidth:0}}>
 <div className="eyebrow" style={{fontSize:9.5}}>{k}</div>
@@ -278,7 +278,7 @@ peek={<div className="row" style={{padding:'12px 16px 16px',gap:13}}><Avatar nam
 <SuGrid><SuField k="Email signature" v={SU_OWNER.sig} w={2}/><SuField k="How you describe the business" v={SU_OWNER.bio} w={3}/></SuGrid>
 <div style={{marginTop:16}}><div className="eyebrow" style={{fontSize:9.5,marginBottom:8}}>Sealed personal details</div>
 <div style={{display:'grid',gap:8}}><Secret item={{id:'mob',k:'Mobile',v:'(404) 555-0188',note:'Used for critical alerts only.'}}/>
-<Secret item={{id:'rec',k:'Recovery email',v:'antonio.personal@fastmail.com',note:'Where account recovery codes go.'}}/></div></div></div></PeekCard>
+<Secret item={{id:'rec',k:'Recovery email',v:'jordan.personal@fastmail.com',note:'Where account recovery codes go.'}}/></div></div></div></PeekCard>
 
 <PeekCard title="Access and recovery" sub="You are the only full-access seat" foldTitle="Access and recovery"
 peek={<div style={{padding:'12px 16px 14px',display:'grid',gap:8}}>
@@ -386,8 +386,8 @@ return <div className="su-2">
 
 <div className="su-stack">
 <PeekCard title="Hierarchy" sub="Who reports to whom" foldTitle="Reporting structure"
-peek={<div style={{padding:'11px 14px 14px'}}><Node name="Antonio Cook" depth={0}/></div>}>
-<div style={{padding:'16px 18px'}}><Node name="Antonio Cook" depth={0}/>
+peek={<div style={{padding:'11px 14px 14px'}}><Node name="Jordan Avery" depth={0}/></div>}>
+<div style={{padding:'16px 18px'}}><Node name="Jordan Avery" depth={0}/>
 <div className="sub" style={{marginTop:14,lineHeight:1.55}}>Advisors sit outside the reporting line and hold read-only access to their own department. Paige escalates up this chain when a decision is above someone's seat.</div></div></PeekCard>
 
 <PeekCard title="Departments" sub="Paige's six departments, and who owns each" foldTitle="Department ownership"
@@ -415,8 +415,8 @@ peek={<div style={{padding:'11px 14px 14px',display:'grid',gap:8}}>
 {[['Custom domain','mail.paigeagent.ai'],['SPF / DKIM / DMARC','All passing']].map(([k,v],i)=>
 <div key={i} className="row" style={{gap:10,fontSize:12.6}}><span className="dot" style={{color:'var(--ok)'}}/>
 <span className="grow trunc">{k}</span><span className="sub trunc">{v}</span></div>)}</div>}>
-<div>{[['Paige address','mogul-maker-academy@mail.paigeagent.ai'],['Custom domain','mail.paigeagent.ai · verified'],['SPF / DKIM / DMARC','All passing'],
-['Daily send cap','400 per domain'],['Reply routing','Into Conversations'],['Signature','Antonio Cook · Founder, Project Mogul']].map(([k,v],i)=>
+<div>{[['Paige address','meridian-advisory@mail.paigeagent.ai'],['Custom domain','mail.paigeagent.ai · verified'],['SPF / DKIM / DMARC','All passing'],
+['Daily send cap','400 per domain'],['Reply routing','Into Conversations'],['Signature','Jordan Avery · Founder, Meridian Advisory']].map(([k,v],i)=>
 <div key={i} className="row" style={{gap:12,padding:'11px 16px',borderTop:i?'1px solid var(--line-soft)':'0'}}>
 <span className="grow" style={{fontSize:12.9}}>{k}</span><span className="sub trunc" style={{maxWidth:250,textAlign:'right'}}>{v}</span>
 <Ic.chev size={12} style={{color:'var(--ink-3)',flex:'none'}}/></div>)}</div></PeekCard>
@@ -452,7 +452,7 @@ peek={<div style={{padding:'10px 14px 14px'}}><SuGrid>
 <SuField k="Plan" v="Solo"/><SuField k="Renews" v="Sep 1, 2026"/></SuGrid></div>}>
 <div style={{padding:'16px 20px 20px'}}><SuGrid>
 <SuField k="Plan" v="Solo"/><SuField k="Seats" v="1 of 1 in use"/><SuField k="Renews" v="Sep 1, 2026"/>
-<SuField k="Payment method" v="Visa ••••4471"/><SuField k="Provided by" v="Project Mogul Enterprise"/><SuField k="Invoices" v="billing@paigeagent.ai"/></SuGrid></div></PeekCard></div>);
+<SuField k="Payment method" v="Visa ••••4471"/><SuField k="Provided by" v="Northwind Partners"/><SuField k="Invoices" v="billing@paigeagent.ai"/></SuGrid></div></PeekCard></div>);
 
 export const Setup=({start='biz'})=>{const[tab,setTab]=React.useState(start);
 const tabs=[['biz','Business',()=><Ic.store size={14}/>],['owner','Owner',()=><Ic.users size={14}/>],['contacts','Contacts',()=><Ic.mail size={14}/>],

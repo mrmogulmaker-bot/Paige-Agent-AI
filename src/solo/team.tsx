@@ -6,7 +6,7 @@ import { TmRoles, InviteFlow } from "./team-roles";
 
 export const TM={
 people:[
- {n:'Antonio Cook',role:'Founder & Principal',dept:'Leadership',type:'Owner',status:'Active',pres:'online',
+ {n:'Jordan Avery',role:'Founder & Principal',dept:'Leadership',type:'Owner',status:'Active',pres:'online',
   cap:96,load:112,accts:8,openWork:14,resp:'2.4h',win:'44%',pipe:38400,saved:0,
   covers:['All departments'],note:'You are over capacity by twelve hours. Two of the four things eating them are inside her range already.'},
  {n:'Maya Rios',role:'Account lead',dept:'Client Success',type:'Employee',status:'Invited',pres:'pending',
@@ -52,10 +52,10 @@ gaps:[
   act:'Move Ridgeline to Devon',tone:'warn'}],
 feed:[
  {who:'Finance',ai:true,t:'Sent the Ridgeline dunning reminder',d:'Second attempt. Card still declining.',w:'8 min ago'},
- {who:'Antonio Cook',ai:false,t:'Approved the Northwind kickoff sequence',d:'Five emails over fourteen days.',w:'41 min ago'},
+ {who:'Jordan Avery',ai:false,t:'Approved the Northwind kickoff sequence',d:'Five emails over fourteen days.',w:'41 min ago'},
  {who:'Marketing',ai:true,t:'Drafted the reframe email for Verity',d:'Waiting on your read. Sales autonomy is draft-only.',w:'1 hr ago'},
  {who:'Operations',ai:true,t:'Rescheduled two discovery calls',d:'Both moved out of your Thursday block.',w:'2 hrs ago'},
- {who:'Antonio Cook',ai:false,t:'Raised Finance autonomy to full',d:'Invoicing and dunning now run without approval.',w:'yesterday'},
+ {who:'Jordan Avery',ai:false,t:'Raised Finance autonomy to full',d:'Invoicing and dunning now run without approval.',w:'yesterday'},
  {who:'Systems',ai:true,t:'Reconnected the HubSpot sync',d:'Token expired overnight. Repaired in 40 seconds.',w:'yesterday'},
  {who:'Client Success',ai:true,t:'Answered 6 routine client emails',d:'All inside the approved reply library.',w:'yesterday'},
  {who:'Marketing',ai:true,t:'Flagged a competitor price change',d:'Coach Sarah Linley dropped her mid-tier to $750.',w:'2 days ago'}],

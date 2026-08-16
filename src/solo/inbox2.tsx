@@ -5,14 +5,14 @@ import { Ic, Avatar } from "./_shared";
 const CH={email:['Email','var(--violet)'],sms:['SMS','#2E7D8F'],wa:['WhatsApp','var(--ok)'],ig:['Instagram','#B4529E']};
 export const IB={
 threads:[
- {id:1,n:'Tashia Anderson',role:'Co-Founder · Mogul Maker Academy',ch:'email',t:'2d',unread:0,pin:true,pres:'Active 12m ago',online:true,state:'Hot Lead',tenure:'Client for 14 days',email:'tashiaanderson@me.com',phone:'404 343 5583',
-  smart:['Answer both questions','Send phase-one checklist','Book the STACK call'],
+ {id:1,n:'Tashia Anderson',role:'Co-Founder · Fairgrove Group',ch:'email',t:'2d',unread:0,pin:true,pres:'Active 12m ago',online:true,state:'Hot Lead',tenure:'Client for 14 days',email:'tashiaanderson@me.com',phone:'404 343 5583',
+  smart:['Answer both questions','Send the onboarding checklist','Book the kickoff call'],
   msgs:[{d:'Monday'},
-   {me:true,body:"Welcome to Mogul Maker Academy — and to BUILD-to-FUND.\n\nThree phases: BUILD gets your foundation fundable, STACK gets your business credit reporting, FUND puts you in front of the right lenders. Your first task is in the portal and takes about ten minutes.",t:'9:04am',st:'read',ch:'email',subj:'Welcome to Mogul Maker Academy, Tashia'},
+   {me:true,body:"Welcome to Meridian Advisory — and to your engagement.\n\nThree phases: Foundation gets your systems in order, Build turns them into a repeatable process, and Scale puts the plan into motion. Your first task is in the portal and takes about ten minutes.",t:'9:04am',st:'read',ch:'email',subj:'Welcome to Meridian Advisory, Tashia'},
    {body:'This is exactly what I needed to see laid out.',t:'2:11pm',ch:'email'},
-   {body:'Two questions before we start phase one — does the BUILD phase need my EIN letter, and can my bookkeeper sit in on the STACK call?',t:'2:12pm',ch:'email'},
+   {body:'Two questions before we start phase one — does the Foundation phase need my brand assets, and can my operations lead sit in on the kickoff call?',t:'2:12pm',ch:'email'},
    {d:'Today'},
-   {paige:true,body:'Both answers are easy: the EIN letter is needed at BUILD step three, not now, and the bookkeeper is welcome on the STACK call. Draft is written in your voice with the phase-one checklist attached.',t:'8:52am'}]},
+   {paige:true,body:'Both answers are easy: the brand assets are needed at Foundation step three, not now, and your operations lead is welcome on the kickoff call. Draft is written in your voice with the onboarding checklist attached.',t:'8:52am'}]},
  {id:2,n:'Dana Harper',role:'Partner · Harper & Vale',ch:'email',t:'3h',unread:2,pres:'Active 3h ago',online:false,state:'Renewal',tenure:'Client for 14 months',email:'dana@harpervale.co',phone:'415 882 3310',
   smart:['Send the renewal note','Offer two call windows','Attach the quarter numbers'],
   msgs:[{d:'Today'},{body:'Are we still on for the Q4 planning session next week?',t:'6:40am',ch:'email'},
@@ -25,7 +25,7 @@ threads:[
    {d:'Today'},{body:'Appreciate it. Any chance you can look at the redirect list too?',t:'9:12am',ch:'sms'}]},
  {id:4,n:'Lavelle Napier',role:'CEO · Napier Holdings LLC',ch:'wa',t:'14d',unread:0,pres:'Active 14d ago',online:false,state:'Nurture',tenure:'Client for 9 months',email:'lavelle@napierholdings.com',phone:'678 220 9114',
   smart:['Check in without pressure','Share the teardown','Ask about Q4 plans'],
-  msgs:[{d:'Jul 30'},{me:true,body:'Just wanted to check in — how did the lender conversation land?',t:'11:02am',st:'read',ch:'wa'},
+  msgs:[{d:'Jul 30'},{me:true,body:'Just wanted to check in — how did the board conversation land?',t:'11:02am',st:'read',ch:'wa'},
    {body:'Went well. Circling back after the holiday.',t:'11:40am',ch:'wa'}]},
  {id:5,n:'Selby Group',role:'Founder · Selby Group',ch:'ig',t:'19d',unread:0,pres:'Active 19d ago',online:false,state:'At risk',tenure:'Client for 5 months',email:'hello@selbygroup.com',phone:'312 604 7788',
   smart:['Send the reset note','Offer a 15-minute call','Ask what changed'],
@@ -132,7 +132,7 @@ background:'var(--violet-tint)',color:'var(--violet)',fontSize:12.3,fontWeight:5
 <div className="row" style={{gap:6,overflowX:'auto'}}>{Object.keys(CH).map(k=>{const on=ch===k;
 return <button key={k} onClick={()=>setCh(k)} className="row" style={{gap:7,flex:'none',height:28,padding:'0 11px',borderRadius:99,fontSize:12.2,fontWeight:on?600:450,
 background:on?'var(--surface-sunk)':'transparent',border:'1px solid '+(on?'var(--line)':'transparent'),color:on?'var(--ink)':'var(--ink-3)'}}><ChDot ch={k} size={7}/>{CH[k][0]}</button>})}
-<span className="sub" style={{marginLeft:'auto',flex:'none',fontSize:11.5}}>{ch==='email'?'mogul-maker-academy@mail.paigeagent.ai':t.phone}</span></div>
+<span className="sub" style={{marginLeft:'auto',flex:'none',fontSize:11.5}}>{ch==='email'?'meridian-advisory@mail.paigeagent.ai':t.phone}</span></div>
 {ch==='email'&&<input placeholder="Subject" style={{height:36,border:'1px solid var(--line)',borderRadius:12,padding:'0 13px',background:'var(--surface-2)',color:'var(--ink)',fontFamily:'inherit',fontSize:13.2,outline:'none'}}/>}
 <div className="row" style={{gap:8,minWidth:0,alignItems:'flex-end',border:'1px solid var(--line)',borderRadius:22,padding:'7px 7px 7px 14px',background:'var(--surface-2)'}}>
 <button className="row" style={{color:'var(--ink-3)',flex:'none',paddingBottom:6}}><Ic.plus size={17}/></button>

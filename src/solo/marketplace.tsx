@@ -18,11 +18,11 @@ export const MK=[
  {id:'fit',n:'Fitness Coaching',dev:'Paige Verticals',cat:'vert',tag:"Paige runs your fitness practice's client journey.",g:G('#B4529E','#E07AC0'),ic:'pulse',rate:0,cnt:0,size:'Playbook preset',state:'soon',age:'All practices',
   d:'A Playbook preset that tunes Paige for fitness and wellness coaches — client intake, program check-ins, and accountability follow-ups, in your voice.',
   adds:['Program check-in cadence','Accountability nudges','Intake with health screening'],perms:['Read your client threads','Draft messages for your approval'],new:null},
- {id:'fund',n:'Funding & Capital Raising',dev:'Project Mogul',cat:'play',tag:'The Borrower-to-Banker methodology.',g:G('#C9860C','#E9A83A'),ic:'vault',rate:4.9,cnt:1240,size:'Curriculum · 42 docs',state:'installed',age:'Funding coaches',
-  d:'The complete funding and capital-raising coaching methodology: program sequence, phase framing, four-bureau business-credit progression, lender intelligence, and a compliance-first posture. Install it and Paige has a funding brain.',
-  adds:['BUILD · STACK · FUND phase framing','Four-bureau progression logic','Lender intelligence by tier','Compliance-first language rules','18-step client sequence'],
-  perms:['Read your client threads','Draft messages for your approval','Write to your knowledge base','Read financial connections'],
-  new:'Lender tier data refreshed for Q3. Two new objection scripts.',feat:true,badge:'Included'},
+ {id:'fund',n:'Funding & Capital Raising',dev:'Northwind Partners',cat:'play',tag:'A selectable coaching Playbook a tenant can install.',g:G('#C9860C','#E9A83A'),ic:'vault',rate:4.9,cnt:1240,size:'Curriculum · 42 docs',state:'get',age:'All practices',
+  d:'A selectable coaching Playbook a tenant can install — program sequence, phase framing, and a compliance-first posture, native to your practice. Off by default; install it only if it fits your offer.',
+  adds:['Program phase framing','Client progression logic','Guidance by tier','Compliance-first language rules','18-step client sequence'],
+  perms:['Read your client threads','Draft messages for your approval','Write to your knowledge base'],
+  new:'Program tier data refreshed for Q3. Two new objection scripts.',feat:true,badge:'Opt-in'},
  {id:'acct',n:'Accountability & Follow-Through',dev:'Paige Playbooks',cat:'play',tag:'Turn what happens in the session into what gets done between them.',g:G('#2E7D8F','#5BB5C4'),ic:'check',rate:4.6,cnt:196,size:'Playbook · 9 docs',state:'get',age:'All practices',
   d:"A practitioner's playbook for building between-session accountability, running a follow-through nudge cadence, and re-engaging clients who go quiet before it becomes churn.",
   adds:['Between-session nudge cadence','Quiet-client detection at 7, 14, 21 days','Commitment tracker per client'],
@@ -74,7 +74,7 @@ export const MK=[
   perms:['Read GA4 data'],new:'Adds UTM normalization at ingest.'}];
 
 const FEAT=[
- {id:'fund',kick:'Now included on Solo',t:'Give Paige a funding brain',s:'The Borrower-to-Banker methodology, 42 documents, installed in one tap.',g:G('#3A2A08','#C9860C')},
+ {id:'biz',kick:'New this week',t:'Give Paige a new skill',s:'Install a Playbook, a skill, or an integration in one tap.',g:G('#1B1338','#5B3FD6')},
  {id:'ret',kick:'Editors’ pick',t:'Catch churn three weeks early',s:'Nightly risk scoring, and the save already drafted in your voice.',g:G('#0B2A1E','#1B7A52')},
  {id:'disc',kick:'Most installed this month',t:'Run a discovery call that closes',s:'The question ladder, the silence rules, and a same-day proposal.',g:G('#1A1340','#5B3FD6')}];
 
@@ -106,23 +106,23 @@ const Shot=({app,i,w=248,h=150})=>(<div style={{width:w,height:h,flex:'none',bor
 <span style={{height:4,width:(60+((i+j)*13)%30)+'%',background:'rgba(255,255,255,.4)',borderRadius:3}}/>
 <span style={{height:3,width:(80-((i+j)*9)%35)+'%',background:'rgba(255,255,255,.2)',borderRadius:3}}/></div>)}</div></div>);
 
-const AppRow=({app,states,onGet,onOpen})=>(<button onClick={()=>onOpen(app)} className="row" style={{width:'100%',textAlign:'left',gap:13,padding:'11px 0'}}>
+const AppRow=({app,states,onGet,onOpen})=>(<div role="button" tabIndex={0} onClick={()=>onOpen(app)} className="row" style={{width:'100%',textAlign:'left',gap:13,padding:'11px 0'}}>
 <Icon app={app} size={54}/>
 <span className="grow" style={{minWidth:0}}>
 <span className="trunc" style={{fontWeight:600,fontSize:14,display:'block'}}>{app.n}</span>
 <span className="sub trunc" style={{display:'block',marginTop:1}}>{app.tag}</span>
 <span className="row" style={{gap:8,marginTop:5}}>{app.rate>0?<><MkStars v={app.rate}/><span className="mono sub" style={{fontSize:11}}>{app.rate}</span></>:<span className="sub" style={{fontSize:11.5}}>Not yet rated</span>}
 <span className="sub" style={{fontSize:11.5}}>· {app.size}</span></span></span>
-<GetBtn app={app} state={states[app.id]||app.state} onGet={()=>onGet(app)}/></button>);
+<GetBtn app={app} state={states[app.id]||app.state} onGet={()=>onGet(app)}/></div>);
 
-const AppCard=({app,states,onGet,onOpen})=>(<button onClick={()=>onOpen(app)} className="card" style={{width:236,flex:'none',textAlign:'left',padding:14,display:'grid',gap:10,borderRadius:'var(--r-l)'}}>
+const AppCard=({app,states,onGet,onOpen})=>(<div role="button" tabIndex={0} onClick={()=>onOpen(app)} className="card" style={{width:236,flex:'none',textAlign:'left',padding:14,display:'grid',gap:10,borderRadius:'var(--r-l)'}}>
 <div className="row" style={{gap:11,alignItems:'flex-start'}}><Icon app={app} size={48}/>
 <span className="grow" style={{minWidth:0}}><span className="trunc" style={{fontWeight:600,fontSize:13.6,display:'block'}}>{app.n}</span>
 <span className="sub trunc" style={{display:'block'}}>{app.dev}</span></span></div>
 <div style={{fontSize:12.6,color:'var(--ink-2)',lineHeight:1.45,minHeight:36}}>{app.tag}</div>
 <div className="row" style={{justifyContent:'space-between'}}>
 {app.rate>0?<span className="row" style={{gap:6}}><MkStars v={app.rate}/><span className="mono sub" style={{fontSize:11}}>{app.cnt}</span></span>:<span className="sub" style={{fontSize:11.5}}>New</span>}
-<GetBtn app={app} state={states[app.id]||app.state} onGet={()=>onGet(app)}/></div></button>);
+<GetBtn app={app} state={states[app.id]||app.state} onGet={()=>onGet(app)}/></div></div>);
 
 const MkRail=({title,sub,items,states,onGet,onOpen})=>{const ref=React.useRef(null);
 const go=d=>ref.current.scrollBy({left:d*520,behavior:'smooth'});
@@ -250,7 +250,7 @@ return <div style={{display:'flex',flexDirection:'column',height:'100%',minHeigh
 <div className="row" style={{gap:9,marginTop:14}}>
 <button className="btn btn-s" style={{background:'var(--gold-bright)',borderColor:'var(--gold-bright)',color:'#2A1C00',fontWeight:600}}>Start a listing</button>
 <button className="btn btn-s" style={{background:'transparent',borderColor:'var(--rail-line)',color:'#fff'}}>Publisher terms</button></div></div>
-<div className="card"><div className="hd"><h3>Because you installed Funding</h3></div>
+<div className="card"><div className="hd"><h3>Recommended for you</h3></div>
 <div style={{padding:'6px 20px 12px'}}>{[MK.find(a=>a.id==='obj'),MK.find(a=>a.id==='disc'),MK.find(a=>a.id==='acct')].map((a,i)=>
 <div key={a.id} style={{borderTop:i?'1px solid var(--line-soft)':'0'}}><AppRow app={a} states={states} onGet={get} onOpen={setOpen}/></div>)}</div></div></div></div>
 
@@ -291,7 +291,7 @@ right={<button className="btn"><Ic.gear size={15}/>Manage permissions</button>}/
 <button className="btn btn-s">Open</button>
 <button className="btn btn-s" onClick={()=>setStates(x=>({...x,[a.id]:'get'}))} style={{color:'var(--bad)'}}>Remove</button></div></div>)}</div>
 <div className="card" style={{marginTop:16,padding:'16px 20px',background:'var(--surface-2)',fontSize:13,color:'var(--ink-2)',lineHeight:1.6}}>
-<span style={{fontWeight:600,color:'var(--ink)'}}>Paige: </span>Funding and Client Onboarding overlap on two intake questions. I deduplicated them so your clients are not asked twice.</div></div>}
+<span style={{fontWeight:600,color:'var(--ink)'}}>Paige: </span>Two of your installed capabilities overlap on two intake questions. I deduplicated them so your clients are not asked twice.</div></div>}
 
 {tab==='updates'&&<div className="fade-in">
 <PageHead eyebrow="Keeping her current" title="Updates" sub={updates.length?updates.length+' capabilities have new versions. Each one lists what changed before you take it.':'Everything is on the current version.'}

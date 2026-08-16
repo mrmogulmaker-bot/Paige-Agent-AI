@@ -25,8 +25,8 @@ display:'flex',flexDirection:'column',borderRadius:'var(--r-l)',overflow:'hidden
 <button className="btn btn-s" onClick={onClose} style={{width:26,height:26,padding:0,justifyContent:'center',borderRadius:'50%',flex:'none'}}><Ic.x size={13}/></button></div>
 <div className="pub-body">
 <div style={{padding:'26px 24px',borderRight:'1px solid var(--line)',display:'flex',flexDirection:'column',minWidth:0,overflow:'auto'}}>
-<Avatar name="Antonio Cook" size={44} tone="var(--violet)"/>
-<div style={{fontSize:12.6,color:'var(--ink-3)',marginTop:14,fontWeight:500}}>Antonio Cook</div>
+<Avatar name="Jordan Avery" size={44} tone="var(--violet)"/>
+<div style={{fontSize:12.6,color:'var(--ink-3)',marginTop:14,fontWeight:500}}>Jordan Avery</div>
 <div style={{fontSize:20,fontWeight:600,letterSpacing:'-.03em',marginTop:2,lineHeight:1.25}}>{t.n}</div>
 <div style={{display:'grid',gap:9,marginTop:16}}>
 {[[<Ic.clock size={14}/>,t.dur],[<Ic.pulse size={14}/>,t.loc],[<Ic.bolt size={14}/>,t.price]].map(([ic,v],i)=>

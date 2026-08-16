@@ -4,7 +4,7 @@ import { Ic } from "./_shared";
 
 export const KC=[
  {id:'play',n:'Playbook & doctrine',c:'#E9A83A',docs:14,trained:'2h ago',dir:[0,.72,.28],
-  items:[['Agency doctrine v4','Rewritten Aug 9 · 42 pages'],['BUILD-to-FUND phases','3 phases, 18 steps'],['Escalation rules','When to stop and ask you'],['Tone guardrails','Never hype, never hedge']]},
+  items:[['Agency doctrine v4','Rewritten Aug 9 · 42 pages'],['Signature program phases','3 phases, 18 steps'],['Escalation rules','When to stop and ask you'],['Tone guardrails','Never hype, never hedge']]},
  {id:'cli',n:'Clients & threads',c:'#8A72F5',docs:31,trained:'12m ago',dir:[-.78,.14,.42],
   items:[['8 client dossiers','History, scope, sentiment'],['19 live threads','Every channel, indexed'],['Scope changes','What shifted and when'],['Portal activity','Login and task signal']]},
  {id:'off',n:'Offers & pricing',c:'#3FA6B8',docs:9,trained:'1d ago',dir:[.76,-.2,.5],

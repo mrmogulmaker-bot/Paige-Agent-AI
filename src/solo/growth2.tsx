@@ -6,7 +6,7 @@ export const GR={
 stats:[['Live funnels',3,'funnels'],['Live pages',7,'pages'],['Live forms',5,'forms'],['Submissions (7d)',184,'submissions']],
 pages:[
  {n:'Masterclass registration',views:4820,conv:32,state:'Live',edited:'2h ago',built:'Vibe Studio'},
- {n:'BUILD-to-FUND overview',views:2140,conv:18,state:'Live',edited:'1d ago',built:'Vibe Studio'},
+ {n:'Signature program overview',views:2140,conv:18,state:'Live',edited:'1d ago',built:'Vibe Studio'},
  {n:'Teardown lead magnet',views:9410,conv:8,state:'Live',edited:'4d ago',built:'Vibe Studio'},
  {n:'Discovery call booking',views:1260,conv:44,state:'Live',edited:'6d ago',built:'Template'},
  {n:'Q4 pricing page',views:0,conv:0,state:'Draft',edited:'12m ago',built:'Vibe Studio'}],
@@ -21,9 +21,9 @@ forms:[
  {n:'Teardown request',subs:1240,done:71,fields:3,state:'Live'},
  {n:'Scope change request',subs:9,done:100,fields:7,state:'Draft'}],
 social:[
- {ch:'LinkedIn',handle:'@antoniocook',foll:'12.4k',queued:6,best:'Tue 8am',state:'Connected'},
- {ch:'Instagram',handle:'@projectmogul',foll:'8.1k',queued:4,best:'Thu 7pm',state:'Connected'},
- {ch:'YouTube',handle:'Project Mogul',foll:'3.2k',queued:1,best:'Sun 10am',state:'Connected'},
+ {ch:'LinkedIn',handle:'@jordanavery',foll:'12.4k',queued:6,best:'Tue 8am',state:'Connected'},
+ {ch:'Instagram',handle:'@meridianadvisory',foll:'8.1k',queued:4,best:'Thu 7pm',state:'Connected'},
+ {ch:'YouTube',handle:'Meridian Advisory',foll:'3.2k',queued:1,best:'Sun 10am',state:'Connected'},
  {ch:'X',handle:'@paigeagentai',foll:'1.1k',queued:0,best:'—',state:'Not connected'}],
 queue:[
  {t:'Teardown #14 — the offer that could not close',ch:'LinkedIn',when:'Today 8:00am',state:'Scheduled'},
@@ -41,7 +41,7 @@ brand:{colors:[['Ink','#171331'],['Gold','#E9A83A'],['Violet','#5B3FD6'],['Paper
  voice:['Plain, direct, no hype','Lead with the number, then the reason','Never more than two sentences before a next step','Say "you" more than "we"'],
  assets:[['Primary logo','SVG · light + dark'],['Planet mark','SVG · favicon set'],['Deck template','16:9 · 12 layouts'],['Email header','600px'],['Social frames','1:1, 4:5, 9:16']]},
 projects:[
- {n:'MMA Website',type:'Site · 6 pages',edited:'2h ago',state:'Published'},
+ {n:'Meridian Advisory website',type:'Site · 6 pages',edited:'2h ago',state:'Published'},
  {n:'Masterclass landing page',type:'Page + form',edited:'Yesterday',state:'Published'},
  {n:'Discovery-call intake',type:'Form',edited:'3d ago',state:'Published'},
  {n:'Client-scoring dashboard',type:'Internal tool',edited:'5d ago',state:'Draft'},

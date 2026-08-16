@@ -13,7 +13,7 @@ return <svg style={{position:'absolute',inset:0,width:'100%',height:'100%'}} pre
 
 export const VibeStudio=({onBack})=>{
 const[nav,setNav]=React.useState('recent');const[q,setQ]=React.useState('');const[building,setBuilding]=React.useState(null);
-const chips=['MMA Website','Masterclass landing page','Discovery-call intake','New-client welcome'];
+const chips=['Meridian Advisory website','Masterclass landing page','Discovery-call intake','New-client welcome'];
 React.useEffect(()=>{const k=e=>{if(e.key==='Escape')onBack()};window.addEventListener('keydown',k);return()=>window.removeEventListener('keydown',k)},[onBack]);
 const go=t=>{setQ(t);setBuilding({t,step:0});};
 React.useEffect(()=>{if(!building||building.step>3)return;const id=setTimeout(()=>setBuilding(b=>({...b,step:b.step+1})),900);return()=>clearTimeout(id)},[building]);

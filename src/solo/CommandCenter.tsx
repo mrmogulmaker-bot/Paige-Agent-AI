@@ -84,7 +84,7 @@ return <div className="fade-in pg" style={{maxWidth:1440,margin:'0 auto',width:'
 <div className="grow" style={{minWidth:220}}>
 <div className="row" style={{gap:10,alignItems:'baseline',flexWrap:'wrap'}}>
 <span className="eyebrow" style={{fontSize:10}}>Wednesday, August 13</span>
-<h1 style={{fontSize:20,letterSpacing:'-.03em'}}>Good morning, Antonio.</h1></div>
+<h1 style={{fontSize:20,letterSpacing:'-.03em'}}>Good morning, Jordan.</h1></div>
 <p style={{color:'var(--ink-2)',fontSize:12.8,marginTop:3}}>Six drafts waiting, $4,180 to chase, one client gone quiet.</p></div>
 <div className="row" style={{gap:9}}>
 <div className="seg">{['My work','Whole business'].map(s=><button key={s} aria-pressed={scope===s} onClick={()=>setScope(s)}>{s}</button>)}</div>

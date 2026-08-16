@@ -3,16 +3,16 @@ import React from "react";
 import { Ic, Avatar, Meter, SlideOut } from "./_shared";
 
 export const TM_DIR_SEED=[
- {n:'Antonio Cook',pref:'Antonio',title:'Founder & Principal',role:'Owner',dept:'Leadership',
-  e:'antonio@paigeagent.ai',p:'(404) 555-0188',tz:'Eastern · GMT-4',loc:'Atlanta, GA',start:'Mar 2023',rep:'—',
+ {n:'Jordan Avery',pref:'Jordan',title:'Founder & Principal',role:'Owner',dept:'Leadership',
+  e:'jordan@paigeagent.ai',p:'(404) 555-0188',tz:'Eastern · GMT-4',loc:'Atlanta, GA',start:'Mar 2023',rep:'—',
   bio:'Runs the business. Carries all eight accounts today and answers for pricing, scope and anything Paige escalates.',
   skills:['Pricing','Retention','Positioning'],photo:null,pres:'online'},
  {n:'Maya Rios',pref:'Maya',title:'Account lead',role:'Manager',dept:'Client Success',
-  e:'maya@paigeagent.ai',p:'(404) 555-0244',tz:'Eastern · GMT-4',loc:'Decatur, GA',start:'Starts on accept',rep:'Antonio Cook',
+  e:'maya@paigeagent.ai',p:'(404) 555-0244',tz:'Eastern · GMT-4',loc:'Decatur, GA',start:'Starts on accept',rep:'Jordan Avery',
   bio:'Will own the Harper & Vale, Northwind and Bellweather relationships, and approve Client Success drafts.',
   skills:['Onboarding','Client comms','QBRs'],photo:null,pres:'pending'},
  {n:'Devon Park',pref:'Devon',title:'Strategist',role:'Specialist',dept:'Delivery',
-  e:'devon@contract.co',p:'(312) 555-0173',tz:'Central · GMT-5',loc:'Chicago, IL',start:'Starts on accept',rep:'Antonio Cook',
+  e:'devon@contract.co',p:'(312) 555-0173',tz:'Central · GMT-5',loc:'Chicago, IL',start:'Starts on accept',rep:'Jordan Avery',
   bio:'Contract strategist, twenty hours a week through December. First candidate for the Ridgeline handoff.',
   skills:['Funnels','Reporting','Ops audits'],photo:null,pres:'pending'},
  {n:'Sasha Kim',pref:'Sasha',title:'Client success',role:'Coordinator',dept:'Client Success',

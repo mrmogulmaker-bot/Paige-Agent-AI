@@ -111,11 +111,11 @@ vault:[
  {name:'Trademark maintenance',org:'USPTO §8 decl.',days:112,amount:'$525',state:'ok',action:'Reminder filed'}
 ],
 team:[
- {who:'Antonio Cook',role:'You',act:'approved Paige\'s renewal note to Bellweather',t:'12m ago',kind:'approve'},
+ {who:'Jordan Avery',role:'You',act:'approved Paige\'s renewal note to Bellweather',t:'12m ago',kind:'approve'},
  {who:'Paige',role:'Growth agent',act:'drafted 4 follow-ups after the Ridgeline call',t:'38m ago',kind:'paige'},
- {who:'Antonio Cook',role:'You',act:'edited the October calendar before sending it back to Paige',t:'1h ago',kind:'edit'},
+ {who:'Jordan Avery',role:'You',act:'edited the October calendar before sending it back to Paige',t:'1h ago',kind:'edit'},
  {who:'Paige',role:'Systems agent',act:'caught the Meta Pixel drop on /book-a-call',t:'2h ago',kind:'paige'},
- {who:'Antonio Cook',role:'You',act:'raised Finance autonomy to Act with notice',t:'3h ago',kind:'setting'},
+ {who:'Jordan Avery',role:'You',act:'raised Finance autonomy to Act with notice',t:'3h ago',kind:'setting'},
  {who:'Paige',role:'Client success agent',act:'closed 6 conversations in Selby Group\'s thread after your replies',t:'4h ago',kind:'paige'}
 ],
 checklist:[
@@ -130,14 +130,14 @@ depts:[
  {name:'Finance',level:2},{name:'Operations',level:3},{name:'Systems',level:3}
 ],
 clients:[
- {name:'Harper & Vale',owner:'Antonio Cook',tier:'Retainer',mrr:4800,health:92,risk:'Healthy',last:'2h ago',stage:'Delivery',open:3},
- {name:'Ridgeline Co.',owner:'Antonio Cook',tier:'Retainer',mrr:2400,health:61,risk:'Watch',last:'1d ago',stage:'Delivery',open:5},
- {name:'Selby Group',owner:'Antonio Cook',tier:'Project',mrr:1900,health:38,risk:'At risk',last:'19d ago',stage:'Delivery',open:1},
- {name:'Northwind Partners',owner:'Antonio Cook',tier:'Retainer',mrr:6200,health:80,risk:'Healthy',last:'4h ago',stage:'Onboarding',open:7},
- {name:'Mercer Studio',owner:'Antonio Cook',tier:'Retainer',mrr:1180,health:55,risk:'Watch',last:'3d ago',stage:'Delivery',open:2},
- {name:'Okonkwo Group',owner:'Antonio Cook',tier:'Advisory',mrr:600,health:71,risk:'Healthy',last:'6h ago',stage:'Delivery',open:0},
- {name:'Bellweather Co.',owner:'Antonio Cook',tier:'Retainer',mrr:3400,health:88,risk:'Healthy',last:'1h ago',stage:'Renewal',open:4},
- {name:'Cairn Advisory',owner:'Antonio Cook',tier:'Project',mrr:2750,health:74,risk:'Healthy',last:'2d ago',stage:'Delivery',open:1}
+ {name:'Harper & Vale',owner:'Jordan Avery',tier:'Retainer',mrr:4800,health:92,risk:'Healthy',last:'2h ago',stage:'Delivery',open:3},
+ {name:'Ridgeline Co.',owner:'Jordan Avery',tier:'Retainer',mrr:2400,health:61,risk:'Watch',last:'1d ago',stage:'Delivery',open:5},
+ {name:'Selby Group',owner:'Jordan Avery',tier:'Project',mrr:1900,health:38,risk:'At risk',last:'19d ago',stage:'Delivery',open:1},
+ {name:'Northwind Partners',owner:'Jordan Avery',tier:'Retainer',mrr:6200,health:80,risk:'Healthy',last:'4h ago',stage:'Onboarding',open:7},
+ {name:'Mercer Studio',owner:'Jordan Avery',tier:'Retainer',mrr:1180,health:55,risk:'Watch',last:'3d ago',stage:'Delivery',open:2},
+ {name:'Okonkwo Group',owner:'Jordan Avery',tier:'Advisory',mrr:600,health:71,risk:'Healthy',last:'6h ago',stage:'Delivery',open:0},
+ {name:'Bellweather Co.',owner:'Jordan Avery',tier:'Retainer',mrr:3400,health:88,risk:'Healthy',last:'1h ago',stage:'Renewal',open:4},
+ {name:'Cairn Advisory',owner:'Jordan Avery',tier:'Project',mrr:2750,health:74,risk:'Healthy',last:'2d ago',stage:'Delivery',open:1}
 ],
 pipeline:[
  {stage:'New lead',deals:[{n:'Lumen Health',v:3200,src:'Referral',age:'2d'},{n:'Fairgrove Coaching',v:1400,src:'Website',age:'1d'},{n:'Atlas Reps',v:2600,src:'Webinar',age:'4d'}]},
