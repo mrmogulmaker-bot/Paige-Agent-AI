@@ -258,3 +258,42 @@ piece of fiction currently on that panel except the fibre meaning.
   makes the fibres true.
 - **Build order = the note's order:** corpus snapshot → retrieval broadcast → weekly growth
   → adjacency+PCA. Feeds 1+2 replace nearly all the fiction.
+
+## Per-tier scope — OWNER RULING 2026-08-17 (the load-bearing §9 constraint)
+
+The owner flagged that this spec was authored from the **platform-operator / Super-Admin
+vantage** (the "master brain, total scope"). That total view MUST NOT be inherited by the
+tenant brains — **every tier's knowledge graph is scoped to its OWN account and shows only
+knowledge relevant to that account.** The feeds are ONE primitive (§18); the SCOPE the
+feed resolves is what differs per tier, and it is always derived server-side from the
+authenticated session (RLS / `current_user_tenant_id()` / operator role) — **never** a
+client-supplied scope (§9/§51/§57). Verbatim owner framing (2026-08-17): *"those specs …
+were for the platform controls, so if we're going to do anything with any of the knowledge
+graphs … let's make them relevant to their specific account."*
+
+- **Solo brain = the Solo tenant's OWN knowledge base only.** Its corpus = that tenant's
+  own `tenant_knowledge_docs` (its own domains/categories), its retrievals = its own book's
+  reasoning. It NEVER renders another tenant's document and NEVER the platform corpus.
+  (Honest taxonomy note, §13/§51: a *standalone Solo* has no child sub-accounts — those
+  belong to an Agency. The owner's "control Solo sub-accounts" reads as **the Solo's own
+  scope — its own clients/book + its own knowledge base** — so the Solo brain stays strictly
+  its own tenant scope; it does not aggregate any other tenant. If the owner later means a
+  literal Solo→children model, that's a taxonomy change to raise first, not to assume.)
+- **Agency brain = the Agency's OWN knowledge base (agency scope).** Its corpus = the
+  agency's own docs/domains. Any cross-book signal is the **anonymized aggregate only**
+  (domain + count, no `doc_id`, no sub-account identity — the option-(2) emitter rule above),
+  so a sub-account's document identity NEVER surfaces on the agency brain (§9/§51, the #86
+  leak class). A sub-account's OWN brain, in its own workspace, is its own tenant scope —
+  isolated from the parent aggregate exactly like every other sub-account surface.
+- **Super Admin / platform-operator brain = TOTAL scope — the master brain.** Platform
+  doctrine, the skills library, the integration surface, cross-tenant **meta**-patterns, the
+  support corpus in aggregate. It renders NO single tenant's document (motes are
+  platform-scope only); tenant retrieval traffic appears ONLY as the anonymized
+  domain+count pulse, and **only after the owner's explicit confirm at ship time** (the
+  standing §9 gate above). This total view is the operator's alone and is NEVER handed down
+  to a tenant brain.
+
+The gate, every feed, every tier: *"Is this brain showing only what THIS account is entitled
+to know — its own corpus, its own retrievals, its own growth — or did the platform/master
+scope (or another tenant's identity) leak in?"* If anything beyond the account's own scope
+appears, it isn't §9-clean and does not ship.
