@@ -521,3 +521,69 @@ addressable branches = Paige cannot orchestrate.* An interaction surface whose s
 (not the URL) has nothing for the §8 action bus, §16 departments, or §37 producer inventory to point at —
 "route data inside the brain" has no address to route to. Every interaction surface's sections must be real
 URL branches, or the orchestration machine is operating over a map with no coordinates.
+
+---
+
+## 16. The 3-level tree — sub-tabs (owner 2026-08-17, agency VERIFIED against live screens)
+
+The branch tree goes one level deeper: `/agency/{account}/{branch}/{subtab}`. Every sub-surface is
+addressable (a §10 seam Paige can route to; a bookmark). Encoded as `Branch.subtabs` in
+`src/lib/routing/tierBranches.ts` (config-as-data). `subtabs[0]` is the DEFAULT — the bare
+`/agency/{n}/{branch}` renders it (no 3rd segment). Slugs verified against the live `src/agency/*.tsx`
+screens (each currently tracks its sub-tab in a local `useState` that resets on branch entry — the
+per-screen state→URL conversion is the implementation work, task #172).
+
+### 16a. Agency sub-tab map (VERIFIED)
+| Branch | Sub-tabs (slug) — first is default |
+|---|---|
+| `command-center` | `overview`* · `systems-check` · `team-pulse` · `prospect-pipeline` |
+| `paige` | `chat` · `knowledge` · `sub-agents` · `actions` · `skills` · `paige-team` |
+| `trust-compass` | `agency` · `book` · `per-sub-account` — **SCOPE switch, agency-only** (sub/solo: none) |
+| `automations` | `library` · `runs` · `build` |
+| `clients` | `sub-accounts` · `pipelines` · `conversations` (own-mode relabels to Clients/Pipeline) |
+| `calendar` | `schedule` · `booking-links` · `availability` · `requests` · `settings` |
+| `client-support` | **NONE** (single ticket surface + status filter chips) |
+| `growth` | `overview` · `brand-kit` · `social` · `pages` · `funnels` · `forms` · `builders` |
+| `analytics` | `brief` · `money` · `profitability` · `retention` · `decisions` · `market-watch` |
+| `billing` | `sub-account-billing` · `revenue` · `your-plan` (sub-mode: invoices label + no revenue) |
+| `marketplace` | `today` · `browse` · `installed` · `updates` · `curated` · `publish` (sub-mode: first 4 only) |
+| `business-vault` | `vault` · `registry` · `renewals` · `vendors` |
+| `integrations` | **NONE** (stub placeholder — not yet built) |
+| `team` | `roster` · `directory` · `roles-invites` · `workload` · `performance` · `activity` |
+| `setup` | `business` · `presence` · `owner` · `contacts` · `people` · `banking` · `comms-data` |
+
+\* `command-center`'s default sub-tab is labeled "Command Center" (== branch); slug'd `overview` to
+avoid `/command-center/command-center`. Same for `automations`→`library`.
+
+### 16b. Discrepancies caught vs the owner's from-memory list (§13)
+- **command-center** — it's **"Team Pulse"**, not "Team Post"; and there are **4** sub-tabs (the default
+  "Command Center" overview was omitted from the owner's list).
+- **analytics** — the 5th is **"Decisions"**, not "Discussion".
+- **marketplace** — the 6th is **"Publish"**, not "Published".
+- **team** — it's **"Roles & invites"**, not "Role Invites".
+- **trust-compass** — NOT "one URL": agency mode has a 3-way **scope** strip (Agency/Book/Per-sub); it is
+  hidden entirely in sub/solo, where compass truly has no sub-tabs.
+- **client-support** & **integrations** — **no sub-tabs** (support = filter chips only; integrations = a
+  stub). Confirmed.
+- **growth** — Vibe Studio is **NOT a sub-tab** (a full-screen overlay from the header); not deep-linkable
+  as a sub-tab. The 7 real sub-tabs match.
+
+### 16c. Design decisions (flagged for owner)
+- **Scope vs destination.** A cross-cutting **scope** switch (Agency · Book · Per-sub) is layered on top
+  of the *real* sub-tabs on several screens (autos, calendar, marketplace, vault, team) as a filter, and
+  IS the only nav on `trust-compass`. Decision: **destination sub-tabs are path segments; the scope
+  switch is NOT a path segment** (it's a filter — better a `?scope=` query param or state), EXCEPT on
+  `trust-compass` where scope IS the nav, so its scope becomes its sub-tab path. (Recommended; owner may
+  override.)
+- **Sub-account / solo sub-tabs are NOT yet mapped.** The owner read the AGENCY account only. Sub-account
+  is the SOLO tree (§11c) and solo has its own screens — both get their own sub-tab audit when the Solo
+  shell converts (R3). Do NOT assume they mirror agency (billing/marketplace/command already differ by
+  mode even within the agency shell).
+- **Mode-variant sub-tab sets** (command: sub shows only overview+systems-check; billing: sub drops
+  revenue; marketplace: sub drops curated+publish; fleet: relabels) are a per-mode render concern, not a
+  registry fork — the registry lists the full agency set; the screen shows the mode-appropriate subset.
+
+### 16d. Implementation (task #172, per-screen slices)
+Each screen's internal sub-tab `useState` converts to reading the 3rd URL segment — the same state→URL
+swap done at the branch level (`AgencyApp.tsx` already parses `params['*'].split('/')`: `[0]`=branch,
+`[1]`=sub-tab). Sliced one/few screens per commit, each verifiable; §28/§63 markup preserved.

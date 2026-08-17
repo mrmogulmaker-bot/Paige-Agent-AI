@@ -32,6 +32,16 @@ export type RouteTierKey =
   | "solo"
   | "sub_account";
 
+/** One deep-linkable SUB-tab within a branch (the 2nd nav level, §65 3-level tree). */
+export interface SubTab {
+  /** URL segment `/agency/{n}/{branch}/{slug}` — human mental-model word, url-safe. */
+  slug: string;
+  /** The screen's internal sub-tab id (its `useState` value). May differ from slug. */
+  key: string;
+  /** Sub-tab label. */
+  label: string;
+}
+
 /** One deep-linkable branch (a tab that is a real URL segment). Pure data. */
 export interface Branch {
   /** URL segment — the human mental-model word (§65). Lowercase, url-safe. */
@@ -42,6 +52,15 @@ export interface Branch {
   label: string;
   /** Which nav group the rail renders it under. */
   group: "main" | "platform";
+  /**
+   * Optional 2nd-level sub-tabs (§65 3-level tree, owner 2026-08-17). `subtabs[0]` is the
+   * DEFAULT — rendered at the bare `/agency/{n}/{branch}` URL (no 3rd segment). A branch
+   * with no sub-tabs (Trust Compass in sub/solo mode, Client Support, Integrations) omits
+   * this. Slugs verified against the live agency screens (`src/agency/*.tsx`); the screen's
+   * internal `useState` sub-tab converts to reading the 3rd URL segment in the per-screen
+   * implementation slices (task #172).
+   */
+  subtabs?: SubTab[];
 }
 
 /** A tier's tree: its URL root prefix + its ordered branch set. */
@@ -78,21 +97,147 @@ export const SOLO_BRANCHES: Branch[] = [
  * sub-accounts). Enterprise extends this (§3/§61).
  */
 export const AGENCY_BRANCHES: Branch[] = [
-  { slug: "command-center", key: "command", label: "Command Center", group: "main" },
-  { slug: "paige", key: "paige", label: "Paige", group: "main" },
-  { slug: "trust-compass", key: "compass", label: "Trust Compass", group: "main" },
-  { slug: "automations", key: "autos", label: "Automations", group: "main" },
-  { slug: "clients", key: "fleet", label: "Clients", group: "main" },
-  { slug: "calendar", key: "calendar", label: "Calendar", group: "main" },
+  {
+    slug: "command-center", key: "command", label: "Command Center", group: "main",
+    // NOTE: `main`'s label is "Command Center" (== branch); slug'd "overview" to avoid
+    // /command-center/command-center. Sub-account mode shows only overview + systems-check.
+    subtabs: [
+      { slug: "overview", key: "main", label: "Command Center" },
+      { slug: "systems-check", key: "systems", label: "Systems Check" },
+      { slug: "team-pulse", key: "team", label: "Team Pulse" },
+      { slug: "prospect-pipeline", key: "pipe", label: "Prospect Pipeline" },
+    ],
+  },
+  {
+    slug: "paige", key: "paige", label: "Paige", group: "main",
+    subtabs: [
+      { slug: "chat", key: "chat", label: "Chat" },
+      { slug: "knowledge", key: "knowledge", label: "Knowledge" },
+      { slug: "sub-agents", key: "agents", label: "Sub-Agents" },
+      { slug: "actions", key: "actions", label: "Actions" },
+      { slug: "skills", key: "skills", label: "Skills" },
+      { slug: "paige-team", key: "pteam", label: "Paige Team" },
+    ],
+  },
+  {
+    slug: "trust-compass", key: "compass", label: "Trust Compass", group: "main",
+    // SCOPE switch, AGENCY-ONLY (hidden in sub/solo). Not destination tabs — flags which
+    // book the compass shows. Sub/solo Trust Compass has NO sub-tabs.
+    subtabs: [
+      { slug: "agency", key: "agency", label: "Agency" },
+      { slug: "book", key: "book", label: "Book" },
+      { slug: "per-sub-account", key: "sub", label: "Per sub-account" },
+    ],
+  },
+  {
+    slug: "automations", key: "autos", label: "Automations", group: "main",
+    subtabs: [
+      { slug: "library", key: "library", label: "Automations" },
+      { slug: "runs", key: "runs", label: "Runs" },
+      { slug: "build", key: "build", label: "Build" },
+    ],
+  },
+  {
+    slug: "clients", key: "fleet", label: "Clients", group: "main",
+    // Labels are the agency variant; own-account mode relabels sub-accounts→"Clients",
+    // pipelines→"Pipeline" (slugs stay stable).
+    subtabs: [
+      { slug: "sub-accounts", key: "directory", label: "Sub-accounts" },
+      { slug: "pipelines", key: "pipes", label: "Pipelines" },
+      { slug: "conversations", key: "convos", label: "Conversations" },
+    ],
+  },
+  {
+    slug: "calendar", key: "calendar", label: "Calendar", group: "main",
+    subtabs: [
+      { slug: "schedule", key: "schedule", label: "Schedule" },
+      { slug: "booking-links", key: "links", label: "Booking links" },
+      { slug: "availability", key: "avail", label: "Availability" },
+      { slug: "requests", key: "requests", label: "Requests" },
+      { slug: "settings", key: "settings", label: "Settings" },
+    ],
+  },
+  // Client Support has NO sub-tabs (single ticket surface + status filter chips).
   { slug: "client-support", key: "support", label: "Client Support", group: "main" },
-  { slug: "growth", key: "growth", label: "Growth", group: "main" },
-  { slug: "analytics", key: "analytics", label: "Analytics", group: "main" },
-  { slug: "billing", key: "billing", label: "Billing", group: "main" },
-  { slug: "marketplace", key: "market", label: "Marketplace", group: "platform" },
-  { slug: "business-vault", key: "vault", label: "Business Vault", group: "platform" },
+  {
+    slug: "growth", key: "growth", label: "Growth", group: "main",
+    // Vibe Studio is NOT a sub-tab — a full-screen overlay opened from the header; not deep-linkable here.
+    subtabs: [
+      { slug: "overview", key: "overview", label: "Overview" },
+      { slug: "brand-kit", key: "brand", label: "Brand Kit" },
+      { slug: "social", key: "social", label: "Social" },
+      { slug: "pages", key: "pages", label: "Pages" },
+      { slug: "funnels", key: "funnels", label: "Funnels" },
+      { slug: "forms", key: "forms", label: "Forms" },
+      { slug: "builders", key: "builders", label: "Builders" },
+    ],
+  },
+  {
+    slug: "analytics", key: "analytics", label: "Analytics", group: "main",
+    subtabs: [
+      { slug: "brief", key: "brief", label: "Brief" },
+      { slug: "money", key: "money", label: "The money" },
+      { slug: "profitability", key: "profit", label: "Profitability" },
+      { slug: "retention", key: "retain", label: "Retention" },
+      { slug: "decisions", key: "decide", label: "Decisions" },
+      { slug: "market-watch", key: "market", label: "Market watch" },
+    ],
+  },
+  {
+    slug: "billing", key: "billing", label: "Billing", group: "main",
+    // Sub-account mode: invoices relabels "Invoices" + revenue is dropped.
+    subtabs: [
+      { slug: "sub-account-billing", key: "invoices", label: "Sub-account billing" },
+      { slug: "revenue", key: "revenue", label: "Revenue" },
+      { slug: "your-plan", key: "plan", label: "Your plan" },
+    ],
+  },
+  {
+    slug: "marketplace", key: "market", label: "Marketplace", group: "platform",
+    // Sub-account mode: only today/browse/installed/updates (curated + publish are agency-only).
+    subtabs: [
+      { slug: "today", key: "today", label: "Today" },
+      { slug: "browse", key: "browse", label: "Browse" },
+      { slug: "installed", key: "installed", label: "Installed" },
+      { slug: "updates", key: "updates", label: "Updates" },
+      { slug: "curated", key: "curated", label: "Curated" },
+      { slug: "publish", key: "publish", label: "Publish" },
+    ],
+  },
+  {
+    slug: "business-vault", key: "vault", label: "Business Vault", group: "platform",
+    subtabs: [
+      { slug: "vault", key: "vault", label: "Vault" },
+      { slug: "registry", key: "registry", label: "Registry" },
+      { slug: "renewals", key: "renewals", label: "Renewals" },
+      { slug: "vendors", key: "vendors", label: "Vendors" },
+    ],
+  },
+  // Integrations is a STUB today (placeholder card, no content / no sub-tabs).
   { slug: "integrations", key: "integrations", label: "Integrations", group: "platform" },
-  { slug: "team", key: "team", label: "Team", group: "platform" },
-  { slug: "setup", key: "setup", label: "Setup", group: "platform" },
+  {
+    slug: "team", key: "team", label: "Team", group: "platform",
+    subtabs: [
+      { slug: "roster", key: "roster", label: "Roster" },
+      { slug: "directory", key: "directory", label: "Directory" },
+      { slug: "roles-invites", key: "roles", label: "Roles & invites" },
+      { slug: "workload", key: "workload", label: "Workload" },
+      { slug: "performance", key: "performance", label: "Performance" },
+      { slug: "activity", key: "activity", label: "Activity" },
+    ],
+  },
+  {
+    slug: "setup", key: "setup", label: "Setup", group: "platform",
+    subtabs: [
+      { slug: "business", key: "business", label: "Business" },
+      { slug: "presence", key: "presence", label: "Presence" },
+      { slug: "owner", key: "owner", label: "Owner" },
+      { slug: "contacts", key: "contacts", label: "Contacts" },
+      { slug: "people", key: "people", label: "People" },
+      { slug: "banking", key: "banking", label: "Banking" },
+      { slug: "comms-data", key: "comms", label: "Comms & data" },
+    ],
+  },
 ];
 
 /**
@@ -145,4 +290,24 @@ export function branchByKey(tier: RouteTierKey, key: string): Branch | null {
 /** Build the canonical path for a branch: `${root}/{account}/{slug}`. */
 export function branchPath(tier: RouteTierKey, account: string, slug: string): string {
   return `${TIER_TREES[tier].root}/${account}/${slug}`;
+}
+
+/** The default (first) sub-tab slug for a branch, or null if the branch has no sub-tabs. */
+export function defaultSubtabSlug(tier: RouteTierKey, branchSlug: string): string | null {
+  return branchBySlug(tier, branchSlug)?.subtabs?.[0]?.slug ?? null;
+}
+
+/** Resolve a sub-tab URL slug → its SubTab within a branch (null if not a sub-tab). */
+export function subtabBySlug(tier: RouteTierKey, branchSlug: string, subSlug: string): SubTab | null {
+  return branchBySlug(tier, branchSlug)?.subtabs?.find((s) => s.slug === subSlug) ?? null;
+}
+
+/** Resolve a screen's internal sub-tab key → its SubTab (for state→URL migration sites). */
+export function subtabByKey(tier: RouteTierKey, branchSlug: string, key: string): SubTab | null {
+  return branchBySlug(tier, branchSlug)?.subtabs?.find((s) => s.key === key) ?? null;
+}
+
+/** Build the canonical 3-level path: `${root}/{account}/{branchSlug}/{subSlug}`. */
+export function subtabPath(tier: RouteTierKey, account: string, branchSlug: string, subSlug: string): string {
+  return `${TIER_TREES[tier].root}/${account}/${branchSlug}/${subSlug}`;
 }
