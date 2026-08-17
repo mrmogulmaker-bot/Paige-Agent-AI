@@ -32,6 +32,9 @@ import CommandCenter from "./CommandCenter";
 import PaigeHub from "./paige";
 import TrustCompass from "./compass";
 import AutomationsHub from "./automations";
+import ClientsHub from "./clients";
+import CalendarHub from "./calendar";
+import ClientSupport from "./support";
 
 // ── Nav (Agency Shell.dc.html:12587 navMain / 12599 navPlatform) ────────────
 // [route, label, IconFn, badge(sub)] — badge is a fn of `sub` (presenting as a
@@ -307,6 +310,9 @@ const AgencyApp = ({ mode = "agency" }) => {
     paige: <PaigeHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     compass: <TrustCompass isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     autos: <AutomationsHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
+    fleet: <ClientsHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
+    calendar: <CalendarHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
+    support: <ClientSupport isAgency={isAgency} acting={acting} openAsk={openAsk} />,
   };
   const body = screens[route] || <Stub route={route} />;
 
