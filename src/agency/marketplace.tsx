@@ -41,10 +41,57 @@ import {
   MK_TABS, MK_GRAD, MK_ITEMS, MK_CATS, MK_UPDATES, MK_LISTINGS,
   AGENCY, TEAM_SUBS, GREEN, AMBER,
 } from "./fixtures";
+// Slice C — the §51-safe, session-derived CURATION adapter. REAL (agency-aggregate
+// only): the platform catalog rows (agency_curation_catalog), the sub-account picker
+// (agency_list_my_subaccounts — the Args:never firewall), and the curate allowlist
+// WRITE (set_agency_item_allowlist). PREVIEW (§38/§13, never fabricated): install
+// counts, reseller earnings, reseller markup, and per-sub adoption (the #86 leak).
+import { useAgencyMarketplace } from "./data/useAgencyMarketplace";
 
 const noop = () => {};
 const GOLD_BG = "var(--gold-bright)", GOLD_INK = "#241C05";
 const money = n => "$" + n;
+const DASH = "—"; // §13 — where no money/adoption backend exists, show a dash, never a fake figure.
+
+// Honest marker for surfaces the adapter reports NO backend for (§13). Mirrors the
+// Solo/CommandCenter PreviewPill (the `pill pill-n` chip).
+const PreviewPill = () => (
+  <span className="pill pill-n" title="Sample layout — not yet wired to your live data">Preview</span>
+);
+
+// Deterministic decorative dressing for a REAL catalog row (§13 — decoration, not
+// data). The row carries no hue/glyph (those are viz, not platform records), so a
+// stable gradient/glyph is derived from its slug; every money/adoption field the
+// frozen card would show is Preview (DASH / empty stack), never invented.
+const REAL_HUES = Object.keys(MK_GRAD);
+const GLYPHS = ["◍", "◉", "✦", "▣", "◆", "❖", "⬡", "✷"];
+const hashStr = s => { let h = 0; for (let i = 0; i < (s || "").length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); };
+function realCard(row) {
+  const hueKey = REAL_HUES[hashStr(row.slug) % REAL_HUES.length];
+  const g = MK_GRAD[hueKey] || [hueKey, hueKey];
+  return {
+    real: true, id: row.id, raw: row, name: row.name, cat: row.category,
+    hue: g[0], glyph: GLYPHS[hashStr(row.id) % GLYPHS.length],
+    grad: "linear-gradient(150deg," + g[0] + "," + g[1] + ")",
+    initials: (row.name || "").split(" ").slice(0, 2).map(w => w[0]).join(""),
+    pub: row.tagline || row.itemType,
+    note: row.description || row.tagline || "",
+    // §51/§9 curation status is REAL (the allowlist flag); resale-licensing has no
+    // separate real field, so the pill states the curation fact, not a fabricated one.
+    shared: row.shared, pending: row.pending,
+    resell: row.shared ? "Curated to book" : "In catalog",
+    resellBg: row.shared ? "var(--ok-tint)" : "var(--surface-sunk)",
+    resellColor: row.shared ? "var(--ok)" : "var(--ink-2)",
+    // PREVIEW money/adoption (§38/§13).
+    base: DASH, markup: DASH, final: DASH,
+    stars: "", installs: DASH, rating: DASH,
+    adoptLine: DASH, adoptPct: DASH, stack: [], overflow: null,
+    status: row.shared ? "Live to book" : "Not curated",
+    statusBg: row.shared ? "var(--ok-tint)" : "var(--surface-sunk)",
+    statusColor: row.shared ? "var(--ok)" : "var(--ink-2)",
+    open: noop, // real rows curate inline (no fixture-item detail drawer)
+  };
+}
 
 // tab-key → ./_shared Ic glyph (design's own glyphs are decorative; re-expressed
 // here on the shared icon vocabulary).
@@ -126,8 +173,17 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
   const [mScope, setMScope] = React.useState("agency");
   const [mkFilter, setMkFilter] = React.useState("All");
   const [tSub, setTSub] = React.useState(0);
-  const [mkItem, setMkItem] = React.useState(null);           // index | null
+  const [mkItem, setMkItem] = React.useState(null);           // index | null (fixture item)
   const [mkRail, setMkRail] = React.useState(false);
+  const [childId, setChildId] = React.useState(null);         // real sub tenant_id | null (per-child scope)
+  const [toast, setToast] = React.useState(null);
+  const flash = msg => { setToast(msg); setTimeout(() => setToast(null), 3200); };
+
+  // §51 scope spine — session-derived only. Agency-aggregate resolves the real catalog
+  // + sub picker + curate WRITE; own-book/acting returns available:false (never touches
+  // the parentage/curation RPCs — the #86-leak firewall). The per-child scope is keyed
+  // on a real tenant_id the picker sets (the adapter re-validates it is in the book).
+  const mp = useAgencyMarketplace({ isAgency, acting }, { selectedChildId: childId });
 
   // Tab set: agency (crossBook) gets all six; a sub in view (acting OR standalone)
   // gets today/browse/installed/updates only — Curated + Publish are the agency's
@@ -179,6 +235,28 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
   };
   const items = MK_ITEMS.map(card);
   const detailRaw = mkItem == null ? null : MK_ITEMS[mkItem];
+
+  // ── REAL catalog wiring (agency-aggregate only; §51-gated by the adapter) ──────
+  const realItems = mp.available ? mp.rows.map(r => realCard(r)) : [];
+  const hasReal = mp.available && realItems.length > 0;
+  // REAL sub picker (Args:never firewall). Null → fall back to the frozen fixture chips.
+  const realSubs = mp.available && mp.subaccounts.length ? mp.subaccounts : null;
+  // The curate WRITE (§10 callable seam) — agency-default allowlist, or a per-child
+  // override when a real child is selected. Reports what actually happened (§13).
+  const doCurate = async (row, on) => {
+    const res = childId ? await mp.curateChild(row, on, childId) : await mp.curate(row, on);
+    flash(res.ok ? (on ? "Curated to the book." : "Removed from the book.")
+                 : (res.error || "Couldn't update that."));
+  };
+  // Browse over real rows, honoring the resell/curated filter (Free has no price
+  // backend, so it never fabricates a $0 subset — it falls through to all).
+  const browseReal = realItems.filter(i => {
+    const f = mkFilter || "All";
+    if (f === "Resellable") return i.shared;
+    if (f === "Agency only") return !i.shared;
+    return true;
+  });
+  const curatedReal = realItems.filter(i => i.shared);
 
   // ── Derived view values (mirrors the vals object) ───────────────────────────
   const mkTitle = tabDef.label;
@@ -356,6 +434,10 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
               <span style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: ".15em", color: "var(--ink-3)" }}>MARKETPLACE</span>
               <span style={{ fontSize: 21, fontWeight: 700, letterSpacing: "-0.02em" }}>{mkTitle}</span>
               <span title={mkBanner} style={{ width: 19, height: 19, borderRadius: 6, background: "var(--warn-tint)", border: "1px solid var(--gold-line)", color: "var(--warn)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700, cursor: "help", flex: "none" }}>!</span>
+              {/* §13 — Browse/Curated show REAL catalog + a live curate write; Today,
+                  Installed, Updates and Publish remain the frozen sample (install counts,
+                  earnings and markup have no backend), so they carry the honest marker. */}
+              {["today", "installed", "updates", "publish"].indexOf(cur) >= 0 && <PreviewPill />}
             </div>
             <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 5 }}>{mkSub}</div>
           </div>
@@ -374,14 +456,18 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
 
         <div style={{ fontSize: 11.5, color: "var(--ink-3)", flex: "none", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{mkScopeNote}</div>
 
-        {/* Per-sub-account picker (§51: crossBook + read-only scope only) */}
+        {/* Per-sub-account picker (§51: crossBook + read-only scope only). REAL roster
+            (Args:never firewall) when the adapter sourced it; selecting a real sub sets
+            the per-child curation scope (childId) the adapter re-validates in-book. */}
         {showPicker && (
           <div className="row" style={{ gap: 7, flex: "none", overflowX: "auto", paddingBottom: 2 }}>
-            {TEAM_SUBS.map((s, i) => {
-              const on = (tSub || 0) === i;
+            {(realSubs || TEAM_SUBS).map((s, i) => {
+              const sid = realSubs ? s.id : null;
+              const on = realSubs ? childId === sid : (tSub || 0) === i;
+              const dot = realSubs ? (TEAM_SUBS[i % TEAM_SUBS.length].color) : s.color;
               return (
-                <div key={i} onClick={() => setTSub(i)} className="row" style={{ gap: 7, padding: "6px 11px", borderRadius: 20, border: "1px solid " + (on ? s.color + "66" : "var(--line)"), background: on ? s.color + "1A" : "var(--surface)", fontSize: 12, fontWeight: on ? 600 : 500, cursor: "pointer", whiteSpace: "nowrap", flex: "none" }}>
-                  <span style={{ width: 7, height: 7, borderRadius: 2, background: s.color, flex: "none" }} />{s.name}
+                <div key={sid || i} onClick={() => { setTSub(i); setChildId(realSubs ? (on ? null : sid) : null); }} className="row" style={{ gap: 7, padding: "6px 11px", borderRadius: 20, border: "1px solid " + (on ? dot + "66" : "var(--line)"), background: on ? dot + "1A" : "var(--surface)", fontSize: 12, fontWeight: on ? 600 : 500, cursor: "pointer", whiteSpace: "nowrap", flex: "none" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 2, background: dot, flex: "none" }} />{s.name}
                 </div>
               );
             })}
@@ -490,10 +576,13 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
                   <div key={l} onClick={() => setMkFilter(l)} style={{ padding: "6px 12px", borderRadius: 20, border: "1px solid " + (on ? "var(--ink)" : "var(--line)"), background: on ? "var(--ink)" : "var(--surface)", color: on ? "var(--ink-inv)" : "var(--ink-2)", fontSize: 11.5, fontWeight: 500, cursor: "pointer", whiteSpace: "nowrap", flex: "none" }}>{l}</div>
                 );
               })}
+              {/* §13 — names/categories/curation status are REAL; pricing has no backend. */}
+              {hasReal && <span className="row" style={{ gap: 6, marginLeft: "auto", flex: "none" }}><span style={{ fontSize: 10.5, color: "var(--ink-3)" }}>Prices</span><PreviewPill /></span>}
             </div>
+            {mp.isError && <div style={{ flex: "none", padding: "9px 13px", borderRadius: 10, border: "1px solid var(--bad)", fontSize: 12, fontWeight: 600, color: "var(--bad)" }}>Couldn't load the live catalog just now.</div>}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", display: "grid", gridTemplateColumns: cardCols, gap: 10, alignContent: "start", paddingRight: 2 }}>
-              {browseItems.map((i, k) => (
-                <div key={k} onClick={i.open} style={{ border: "1px solid var(--line)", borderRadius: 13, background: "var(--surface)", padding: "13px 14px", cursor: "pointer", minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+              {(hasReal ? browseReal : browseItems).map((i, k) => (
+                <div key={i.real ? i.id : k} onClick={i.real ? undefined : i.open} style={{ border: "1px solid var(--line)", borderRadius: 13, background: "var(--surface)", padding: "13px 14px", cursor: i.real ? "default" : "pointer", minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
                   <div className="row" style={{ gap: 10, minWidth: 0 }}>
                     <div style={{ width: 38, height: 38, borderRadius: 12, background: i.grad, color: "#FFFFFF", display: "grid", placeItems: "center", fontSize: 15, flex: "none", boxShadow: "0 5px 12px rgba(30,22,60,.16)" }}>{i.glyph}</div>
                     <div style={{ minWidth: 0 }}>
@@ -502,11 +591,24 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
                     </div>
                     <span style={{ marginLeft: "auto", padding: "2px 8px", borderRadius: 20, background: i.resellBg, color: i.resellColor, fontSize: 10, fontWeight: 600, flex: "none" }}>{i.resell}</span>
                   </div>
-                  <div className="row" style={{ alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 10, color: "var(--ink-3)" }}>BASE {i.base}</span>
-                    <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{i.markup}</span>
-                    <span style={{ marginLeft: "auto", fontSize: 13.5, fontWeight: 700 }}>{i.final}</span>
-                  </div>
+                  {i.real ? (
+                    // REAL row — the live curate toggle (§10 write); pricing is Preview.
+                    <div className="row" style={{ alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 10, color: "var(--ink-3)" }}>Price</span><PreviewPill />
+                      <button
+                        onClick={e => { e.stopPropagation(); doCurate(i.raw, !i.shared); }}
+                        disabled={mp.saving === i.id || mp.forbidden}
+                        title={mp.forbidden ? "Only an agency owner or admin can curate" : ""}
+                        style={{ marginLeft: "auto", padding: "6px 13px", borderRadius: 9, background: i.shared ? "var(--surface)" : GOLD_BG, color: i.shared ? "var(--ink-2)" : GOLD_INK, border: "1px solid " + (i.shared ? "var(--line)" : "transparent"), fontSize: 11.5, fontWeight: 600, cursor: mp.forbidden ? "not-allowed" : "pointer", flex: "none", opacity: mp.forbidden ? 0.6 : 1 }}
+                      >{mp.saving === i.id ? "Working…" : i.shared ? "Curated ✓" : "Curate for the book"}</button>
+                    </div>
+                  ) : (
+                    <div className="row" style={{ alignItems: "baseline", gap: 9, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 10, color: "var(--ink-3)" }}>BASE {i.base}</span>
+                      <span style={{ fontSize: 10, color: "var(--ink-3)" }}>{i.markup}</span>
+                      <span style={{ marginLeft: "auto", fontSize: 13.5, fontWeight: 700 }}>{i.final}</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -588,6 +690,12 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
         {/* ── CURATED (§60/§61 resell — crossBook only) ── */}
         {cur === "curated" && (
           <>
+            {/* §13 — CURATED/INSTALLED/ADOPTION/MARKUP have no adoption/earnings backend. */}
+            <div className="row" style={{ gap: 7, flex: "none", alignItems: "center" }}>
+              <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".13em", color: "var(--ink-3)" }}>YOUR CURATION</span>
+              <PreviewPill />
+              <span style={{ fontSize: 10.5, color: "var(--ink-3)" }}>Counts, adoption and markup revenue are stand-ins; the curate toggles below are live.</span>
+            </div>
             <KpiRow kpis={kpis} pad={kpiPad} size={kpiSize} />
             <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 13 }}>
               <div style={{ flex: "1 1 0", minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 9 }}>
@@ -597,8 +705,37 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
                     <div key={i} style={{ padding: "6px 11px", borderRadius: 20, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 11, color: "var(--ink-2)", cursor: "pointer", whiteSpace: "nowrap", flex: "none" }}>{b}</div>
                   ))}
                 </div>
+                {mp.forbidden && (
+                  <div className="row" style={{ gap: 8, flex: "none", padding: "9px 13px", borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface-2)", fontSize: 11.5, color: "var(--ink-2)" }}>
+                    <span style={{ flex: "none" }}>⚿</span>Read-only — only an agency owner or admin can curate the catalog.
+                  </div>
+                )}
                 <div style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", border: "1px solid var(--line)", borderRadius: 13, background: "var(--surface)" }}>
-                  {mkCurated.map((i, k) => (
+                  {/* REAL curation catalog + live curate WRITE (§10). Preview only where the
+                      frozen design shows adoption/price (no backend). Fixture fallback keeps
+                      the byte-identical sample when there is no real catalog to show yet. */}
+                  {hasReal
+                    ? (curatedReal.length === 0
+                        ? <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--ink-2)", fontSize: 13 }}>Nothing curated to the book yet. Open Browse to curate a capability.</div>
+                        : curatedReal.map((i, k) => (
+                          <div key={i.id} style={{ padding: "10px 14px", borderBottom: "1px solid var(--line-soft)", minWidth: 0 }}>
+                            <div className="row" style={{ gap: 10, minWidth: 0 }}>
+                              <div style={{ width: 30, height: 30, borderRadius: 10, background: i.grad, color: "#FFFFFF", display: "grid", placeItems: "center", fontSize: 13, flex: "none", boxShadow: "0 4px 10px rgba(30,22,60,.16)" }}>{i.glyph}</div>
+                              <span style={{ fontSize: 12.5, fontWeight: 600, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i.name}</span>
+                              <span style={{ padding: "2px 8px", borderRadius: 20, background: i.statusBg, color: i.statusColor, fontSize: 10, fontWeight: 600, flex: "none" }}>{i.status}</span>
+                              <span style={{ marginLeft: "auto", flex: "none" }}><PreviewPill /></span>
+                            </div>
+                            <div className="row" style={{ gap: 9, marginTop: 7, minWidth: 0 }}>
+                              <span style={{ fontSize: 11, color: "var(--ink-3)", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{i.cat}</span>
+                              <button
+                                onClick={() => doCurate(i.raw, false)}
+                                disabled={mp.saving === i.id}
+                                style={{ marginLeft: "auto", padding: "6px 12px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 11.5, fontWeight: 600, color: "var(--ink-2)", cursor: "pointer", flex: "none" }}
+                              >{mp.saving === i.id ? "Working…" : "Remove from book"}</button>
+                            </div>
+                          </div>
+                        )))
+                    : mkCurated.map((i, k) => (
                     <div key={k} onClick={i.open} style={{ padding: "10px 14px", borderBottom: "1px solid var(--line-soft)", cursor: "pointer", minWidth: 0 }}>
                       <div className="row" style={{ gap: 10, minWidth: 0 }}>
                         <div style={{ width: 30, height: 30, borderRadius: 10, background: i.grad, color: "#FFFFFF", display: "grid", placeItems: "center", fontSize: 13, flex: "none", boxShadow: "0 4px 10px rgba(30,22,60,.16)" }}>{i.glyph}</div>
@@ -755,6 +892,11 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
             </div>
           </div>
         </div>
+      )}
+
+      {/* Curate-write toast (§13 — reports what actually happened, never a hope). */}
+      {toast && (
+        <div className={reduced ? "" : "fade-in"} style={{ position: "fixed", left: "50%", bottom: 26, transform: "translateX(-50%)", zIndex: 96, padding: "10px 16px", borderRadius: 10, background: "var(--ink)", color: "var(--ink-inv)", fontSize: 12.5, fontWeight: 600, boxShadow: "0 12px 30px rgba(20,16,8,.3)" }}>{toast}</div>
       )}
     </div>
   );
