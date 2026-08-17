@@ -67,25 +67,42 @@ same smart-redirect discipline.
 
 ### 2b. Per-account unique URL segment (`{account}`)
 
-Owner ruling 2026-08-17: **every tenant-tier account gets a unique numeric account number in
-its URL** — `/business/3855`, `/solo/1234`, `/agency/42`, `/enterprise/7`. The account's *name*
-stays **out** of the URL (it lives in chrome/branding).
+Owner ruling 2026-08-17 (refined same day): **numeric at creation, then account-holder editable
+to a vanity name.** Every tenant-tier account is BORN with a unique numeric segment —
+`/business/3855`, `/solo/1234`, `/agency/42`, `/enterprise/7` — because at creation we must NOT
+assume how the owner will spell, modify, or brand their name. The account holder can then CHANGE
+the URL segment to their own name / company name from inside their account. Owner's framing:
+*"initially we set it up like [a number], but then we allow them to modify the URL to their own
+name or company name. We should have that feature built into the platform anyway."*
 
-- **Net-new.** Today a tenant has `slug` (name-based) + `account_number_prefix` (initials only,
-  e.g. `ADL`/`MMM` — a code, but name-derived and not a stable unique number). The taxonomy
-  adds a stable, unique **`account_number`** per tenant, assigned at creation.
+- **Net-new column.** Today a tenant has `slug` (name-based) + `account_number_prefix` (initials
+  only, e.g. `ADL`/`MMM` — a code, but name-derived and not a stable unique number). The taxonomy
+  adds a stable, unique **`account_number`** per tenant, assigned at creation — the PERMANENT
+  address that never changes or gets reused (it is what deep-links, audit trails, and support
+  reference).
+- **Vanity URL is a first-class, self-serve feature (§10-governable).** The account holder edits
+  a `url_segment` (their name / company) from Setup; the route resolver accepts EITHER the numeric
+  `account_number` OR the current `url_segment` and resolves both to the same account. Requirements
+  for the implementation slice: (1) uniqueness across the tenant-tier segment space (a claimed
+  vanity can't collide with another account's number OR vanity); (2) a reserved-word denylist
+  (`operator`, `admin`, `portal`, `api`, `new`, tier prefixes, etc. — never claimable); (3)
+  format validation (lowercase, url-safe, length bounds, no leading digits so it can't shadow a
+  number); (4) on change, the OLD segment 301-redirects to the new for a grace window (§58 — a
+  shared/bookmarked link never dead-ends); (5) the permanent numeric address ALWAYS still resolves
+  even after a vanity is set (never breaks). Config-as-data + a callable seam so Paige can rename
+  it by voice/text too (§10), not a React-only control.
 - **Address, not an access grant (§9).** The route stays auth-gated (session + RLS via
-  `current_user_tenant_id()` / the §51 firewall). A guessed number never exposes another
-  account's data — it only fails the auth/scope check. The number is for *addressing +
-  tracking*, not authorization.
-- **Number shape — OPEN SUB-CHOICE for owner (default = recommended):**
+  `current_user_tenant_id()` / the §51 firewall) whether the segment is numeric or vanity. A
+  guessed number/name never exposes another account's data — it only fails the auth/scope check.
+  The segment is for *addressing + tracking*, never authorization.
+- **Number shape at creation — OPEN SUB-CHOICE for owner (default = recommended):**
   - **(recommended) offset/scrambled numeric** — short number feel (e.g. `3855`), but not a raw
     `1,2,3…` sequence, so the URL space doesn't broadcast the exact account count.
   - pure sequential `3855, 3856…` — simplest, but enumerable/count-leaking.
   Either is a *number*, per owner intent; pick before the implementation slice.
 - **Scope:** applies to the four tenant tiers (agency / enterprise / solo / business).
-  `/operator` is singular (us) — no number. `/portal/:tenantSlug` (clients) keeps the tenant
-  slug it already uses (unchanged per ruling).
+  `/operator` is singular (us) — no number, no vanity. `/portal/:tenantSlug` (clients) keeps the
+  tenant slug it already uses (unchanged per ruling).
 
 ---
 
@@ -225,6 +242,12 @@ zero traffic on the old paths (verify via logs), remove the redirects.
 2. **Delete the `test-agency-preview` throwaway agency** (tenant `2de8ca80…` + its auth user) — but
    **only after** Antonio's real-agency live-check succeeds on the migrated routes **and** he confirms
    no further §32.c drive he wants on the throwaway. **Milestone-gated cleanup task**, not urgent.
+3. **URL segment: numeric at creation, then self-serve editable to a vanity name (§2b).** Don't assume
+   the owner's name spelling/branding at creation → born numeric (`account_number`, permanent). Ship a
+   first-class **vanity-URL editor** inside the account (edit `url_segment` to name/company) with
+   uniqueness + reserved-word denylist + format validation + old→new 301 grace redirect (§58) + the
+   permanent number always still resolving, exposed as a §10-callable seam (Paige can rename it too).
+   Part of the `account_number` implementation slice.
 
 ---
 

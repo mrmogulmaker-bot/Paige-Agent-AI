@@ -163,9 +163,13 @@ PR #406). Build order was L1 → L4 → L2 → L5.
 - **`/admin` overload** — the naming-debt bug §65 fixes: one route (`/admin`) meant four surfaces
   (Solo, Sub-account, Agency, God), so the router/human couldn't tell whose surface it was → agency
   owner "lands on the same page." One route per mental model is the fix.
-- **`account_number` (address-not-grant)** — net-new per-account stable numeric URL segment
-  (`/business/3855`), distinct from the initials-only `account_number_prefix` (MMA/ADL/…). Lets a human
-  find THEIR account; authority stays session-derived (§9/§51).
+- **`account_number` (address-not-grant)** — net-new per-account stable, PERMANENT numeric URL segment
+  (`/business/3855`), assigned at creation; distinct from the initials-only `account_number_prefix`
+  (MMA/ADL/…). Lets a human find THEIR account; authority stays session-derived (§9/§51).
+- **`url_segment` (vanity URL)** — the account-holder-editable name/company URL segment (owner ruling
+  2026-08-17): born numeric (`account_number`), self-serve editable from Setup to a vanity name; the
+  route resolver accepts EITHER. Uniqueness + reserved-word denylist + format validation + old→new 301
+  grace (§58) + the permanent number always still resolves. §10-callable (Paige can rename it too).
 
 ---
 
