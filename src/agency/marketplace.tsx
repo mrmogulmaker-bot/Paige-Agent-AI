@@ -531,22 +531,29 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
             </div>
             {showRail && (
               <aside style={{ width: 288, flex: "none", minHeight: 0, display: "flex", flexDirection: "column", gap: 10, overflowY: "auto", overflowX: "hidden" }}>
-                <div style={{ border: "1px solid var(--line)", borderRadius: 13, background: "var(--surface)", padding: "12px 14px", flex: "none" }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{matrixTitle}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 9 }}>
-                    {matrixRows.map((r, i) => (
-                      <div key={i} style={{ minWidth: 0 }}>
-                        <div className="row" style={{ gap: 8, minWidth: 0 }}>
-                          <span style={{ fontSize: 11.5, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</span>
-                          <span style={{ marginLeft: "auto", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10.5, color: "var(--ink-3)", flex: "none" }}>{r.adopt}</span>
+                {/* §51/#86: the "Adoption across the book" matrix is a CROSS-BOOK
+                    aggregate (TEAM_SUBS cells + AGENCY.subCount) — it renders ONLY in
+                    agency mode with no acting-as. A standalone sub (isAgency false) OR
+                    the agency acting-as a sub (acting != null) has crossBook===false and
+                    must never see another book's adoption; it keeps only "Her read". */}
+                {crossBook && (
+                  <div style={{ border: "1px solid var(--line)", borderRadius: 13, background: "var(--surface)", padding: "12px 14px", flex: "none" }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600 }}>{matrixTitle}</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 9 }}>
+                      {matrixRows.map((r, i) => (
+                        <div key={i} style={{ minWidth: 0 }}>
+                          <div className="row" style={{ gap: 8, minWidth: 0 }}>
+                            <span style={{ fontSize: 11.5, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</span>
+                            <span style={{ marginLeft: "auto", fontFamily: "'IBM Plex Mono',monospace", fontSize: 10.5, color: "var(--ink-3)", flex: "none" }}>{r.adopt}</span>
+                          </div>
+                          <div className="row" style={{ gap: 3, marginTop: 5 }}>
+                            {r.cells.map((c, j) => <span key={j} style={{ flex: 1, height: 12, borderRadius: 3, border: "1px solid " + c.edge, background: c.bg }} />)}
+                          </div>
                         </div>
-                        <div className="row" style={{ gap: 3, marginTop: 5 }}>
-                          {r.cells.map((c, j) => <span key={j} style={{ flex: 1, height: 12, borderRadius: 3, border: "1px solid " + c.edge, background: c.bg }} />)}
-                        </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
                 <ReadCard title={readTitle} body={read} ask={askCta} onAsk={openAsk} />
               </aside>
             )}
