@@ -74,9 +74,23 @@ gates data). Tests: `src/lib/routing/tierBranches.test.ts`.
 `agency_my_membership` (session-scoped by `auth.uid()`, §9/§51). Operator name+email come from
 `supabase.auth.getUser()`. A §39 URL ownership guard redirects a non-own `account_number` to the caller's
 own and canonicalizes bare `/agency/{n}`. §13-honest Preview where no backend (per-sub drafts, hours-saved,
-brand color). Switcher click → Clients hub (listing); real per-sub view-as ENTRY is B2. The Clients-hub
-Directory roster (`clients.tsx`) is still fixtures → B1b. Sibling adapters ready but not yet all wired:
-`useAgencyCommandCenter` (in use), `useAgencyBilling/Compass/Contacts/Marketplace/People`.
+brand color). Switcher click → Clients hub (listing); real per-sub view-as ENTRY is B2. Sibling adapters
+ready but not yet all wired: `useAgencyCommandCenter` (in use), `useAgencyBilling/Compass/Contacts/Marketplace/People`.
+
+**B1b (2026-08-17):** the Clients-hub Directory (`src/agency/clients.tsx`) — the primary "Your sub-accounts"
+grid — is also real now, via the same `useAgencyRoster`. New `src/agency/data/rosterFormat.ts` (§18 one
+home) holds the shared presentational helpers any roster-row screen imports: `healthDot`/`healthLabel`
+(3-state bucket healthy/watch/at_risk → dot+label, unknown→"Not yet scored"), `swatchFor` (deterministic
+decorative per-sub color, no brand-color backend), `tenureLabel`/`isNewThisMonth` (REAL, from the child's
+`created_at`), `mrrLabel` (cents→"$X.XK", "—" if unknown). `AgencyApp.tsx` imports the same
+`healthDot`/`swatchFor` rather than a second copy. The "Needs your attention" rail is derived from real
+watch/at-risk rows — no fabricated narrative/dollar-figures (that was the fixture's failure mode this
+slice fixed). **Known gap (task #175):** `agency_portfolio_metrics()`'s leaderboard caps at `LIMIT 20`
+(ORDER BY mrr_cents DESC) — a sub-account outside the top 20 by MRR gets `health:null` and silently drops
+out of the attention rail even if genuinely at-risk. Non-blocking for books under 20 subs; needs a §37
+producer inventory before the limit can be safely raised. Pipelines/Conversations/own-book still fixtures
+(own tracked slice); the pack's existing `pipesFlag` honesty-tooltip (`fixtures.ts`) now explicitly
+discloses the Pipelines sub-account NAMES are stand-ins too, not just the figures.
 
 **URL-DRIVEN IS AGENCY-ONLY so far (task #173, R3 owed).** SOLO (`src/solo/SoloApp.tsx`) and SUB-ACCOUNT
 (`AgencyApp mode="subaccount"`) still render as a STATE-DRIVEN inline `/admin` takeover (`Admin.tsx` solo

@@ -37,24 +37,9 @@ import { SUBS, GREEN, AMBER } from "./fixtures";
 // (§28/§63): only the DATA source swaps from fixtures to these hooks.
 import { useAgencyMetrics } from "./data/useAgencyMetrics";
 import { useAgencyRoster } from "./data/useAgencyRoster";
-
-// Health bucket (agency_portfolio_metrics leaderboard) → dot color. Real roster rows
-// carry a PortfolioHealthKey bucket ("healthy" | "watch" | "at_risk"), NOT the
-// fixtures' 0–100 number — so we map the bucket. Any unknown value → neutral dot.
-const healthDot = (b) =>
-  b === "healthy" ? "var(--ok)"
-    : b === "watch" ? "var(--warn)"
-      : b === "at_risk" ? "var(--bad)"
-        : "var(--ink-3)";
-// Stable per-sub swatch (real subs have no brand-color field yet — §13 Preview, so we
-// derive a deterministic dot from the tenant id/name; never fabricated data, purely
-// decorative and consistent across renders).
-const SUB_SWATCH = ["#7C6CE0", "#3F7F5C", "#2F6FA8", "#C1652F", "#A8425A", "#B3932A"];
-const swatchFor = (key) => {
-  let h = 0;
-  for (let i = 0; i < (key || "").length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
-  return SUB_SWATCH[h % SUB_SWATCH.length];
-};
+// §18 one home — health-bucket→dot + the deterministic per-sub swatch are shared
+// with the Clients-hub Directory (B1b) via ./data/rosterFormat, not re-derived here.
+import { healthDot, swatchFor } from "./data/rosterFormat";
 // ── Screen modules (Slice 1b-2 wired the first MAIN group; the rest land in
 // 1b-3..5 into the same `screens` registry below) ───────────────────────────
 import CommandCenter from "./CommandCenter";
