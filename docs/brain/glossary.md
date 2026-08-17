@@ -166,6 +166,19 @@ PR #406). Build order was L1 → L4 → L2 → L5.
 - **`account_number` (address-not-grant)** — net-new per-account stable, PERMANENT numeric URL segment
   (`/business/3855`), assigned at creation; distinct from the initials-only `account_number_prefix`
   (MMA/ADL/…). Lets a human find THEIR account; authority stays session-derived (§9/§51).
+- **offset/scrambled `account_number`** — the §65 R0 permanent per-account URL address (`/agency/3855/…`).
+  Owner-locked 2026-08-17: a random unused 7-digit number in [1000000,9999999] assigned at creation by
+  `assign_tenant_account_number` (migration `20260916000000`). Random (not sequential) so a raw grep of
+  URLs in the wild reveals neither the tenant count nor signup order. Permanent — survives tier promotion,
+  vanity edits, redirects. Address not a grant (§9): RLS still gates every read.
+- **actor-namespacing (act-as URLs)** — owner-locked 2026-08-17: an impersonated view encodes the ACTOR in
+  the URL, not the target's bare root — `/operator/act-as/{n}/{branch}` and `/agency/{n}/sub/{subN}/{branch}`.
+  So §51 impersonation audit + Paige's §32.c "am I acting or being" self-awareness read straight off the
+  address; a bare `/business/{n}/…` for an impersonated view would erase the actor from the trail.
+- **`TIER_BRANCHES` registry** (`src/lib/routing/tierBranches.ts`) — the §65 config-as-data route-tree
+  spine: per-tier ordered branch set (slug·key·label·group) + root prefix. One home (§18) the router, the
+  nav rail, and Paige all read. Encodes §11c (sub_account inherits the SOLO tree) + §3/§61 (enterprise =
+  agency baseline superset). Adding a branch is a data row, not per-tier code.
 - **`url_segment` (vanity URL)** — the account-holder-editable name/company URL segment (owner ruling
   2026-08-17): born numeric (`account_number`), self-serve editable from Setup to a vanity name; the
   route resolver accepts EITHER. Uniqueness + reserved-word denylist + format validation + old→new 301
