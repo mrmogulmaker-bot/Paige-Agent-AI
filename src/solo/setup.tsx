@@ -8,15 +8,27 @@ import { useSoloPeople } from "./data/useSoloPeople";
 import { useSoloComms } from "./data/useSoloComms";
 
 /* ------------------------------------------------------------------ *
+ * Claude Design "Solo Setup" pack — pop-out / slide-out / foldout edit
+ * pattern restored FAITHFULLY (owner directive 2026-08-17: "I want all
+ * of my design that I got from Claude design. I don't want your
+ * version."). The regression fixed here: the earlier inline-edit
+ * "WiredCard" rewrite dropped PersonDrawer, the EntityDrawer/ContactDrawer
+ * footers, and the Business/Owner PeekCard foldouts. Now the Edit button
+ * opens the design's own SlideOut (EditDrawer) whose Save persists through
+ * the REAL adapters — the design is Claude Design's, the data is live.
+ *
  * PREVIEW-ONLY fixtures — surfaces with NO backend in this schema
- * (§31/§13). These render behind an explicit per-card Preview marker;
- * they are never presented as live data. Wired cards read the real
- * adapters above and carry NO Preview pill.
+ * (§31/§13) — render behind an explicit per-card Preview marker and are
+ * never presented as live data. §63: these are FICTIONAL sample values
+ * (Meridian / Jordan Avery), never the owner's real accounts.
  * ------------------------------------------------------------------ */
 const SU_BIZ={
 addr:['1180 Peachtree St NE, Suite 1200','Atlanta, GA 30309','United States'],
 mail:['PO Box 77412','Atlanta, GA 30357'],
 hours:'Mon–Thu 9:00am–5:00pm ET · Fri by appointment',tz:'America/New_York',currency:'USD',lang:'English (US)'};
+const SU_OWNER={n:'Jordan Avery',title:'Founder & Principal',email:'jordan@meridianadvisory.co',
+pronouns:'they/them',since:'March 2023',cal:'cal.paigeagent.ai/jordan',
+sig:'Jordan Avery · Founder, Meridian Advisory',bio:'Builds systems that let a one-person company operate like a staffed one.'};
 const SU_SECRETS=[
  {id:'ein',k:'EIN',v:'88-4392104',cls:'Tax identifier',who:'You only',note:'Used on filings Paige prepares. Never included in anything she sends a client.'},
  {id:'state_id',k:'Georgia withholding ID',v:'GA-0142887',cls:'Tax identifier',who:'You and your CPA',note:'Shared with Ruiz & Whitfield for quarterly filings.'},
@@ -31,11 +43,16 @@ const SU_CONTACTS=[
  {r:'Bookkeeper',n:'Unassigned',org:'—',e:'—',p:'—',note:'Paige flagged this gap — reconciliation is manual right now.',sees:[],gap:true},
  {r:'Emergency contact',n:'Sealed',org:'—',e:'—',p:'—',note:'Held encrypted. Visible only after an identity check.',sees:[],sealed:true}];
 const SU_PEOPLE=[
- {n:'Jordan Avery',role:'Founder & Principal',type:'Owner'},
- {n:'Maya Rios',role:'Account lead',type:'Employee'},
- {n:'Devon Park',role:'Strategist',type:'Contractor'},
- {n:'Sasha Kim',role:'Client success',type:'Contractor'},
- {n:'Dolores Ruiz',role:'CPA',type:'Advisor'}];
+ {n:'Jordan Avery',role:'Founder & Principal',dept:'Leadership',type:'Owner',seat:'Full access',rep:null,paige:['All departments'],status:'Active',start:'Mar 2023',
+  email:'jordan@meridianadvisory.co',mfa:true,last:'Active now',clients:'All 8',sensitive:true},
+ {n:'Maya Rios',role:'Account lead',dept:'Client Success',type:'Employee',seat:'Standard',rep:'Jordan Avery',paige:['Client Success','Marketing'],status:'Invited',start:'—',
+  email:'maya@meridianadvisory.co',mfa:false,last:'Invite sent 3d ago',clients:'Harper & Vale, Northwind, Bellweather',sensitive:false},
+ {n:'Devon Park',role:'Strategist',dept:'Delivery',type:'Contractor',seat:'Standard',rep:'Jordan Avery',paige:['Operations'],status:'Invited',start:'—',
+  email:'devon@contract.co',mfa:false,last:'Invite sent 3d ago',clients:'Ridgeline, Mercer, Cairn',sensitive:false},
+ {n:'Sasha Kim',role:'Client success',dept:'Client Success',type:'Contractor',seat:'Limited',rep:'Maya Rios',paige:['Client Success'],status:'Not invited',start:'—',
+  email:'sasha@contract.co',mfa:false,last:'Never signed in',clients:'Selby, Okonkwo',sensitive:false},
+ {n:'Dolores Ruiz',role:'CPA',dept:'Finance',type:'Advisor',seat:'Guest',rep:'Jordan Avery',paige:['Finance (read-only)'],status:'Not invited',start:'—',
+  email:'druiz@ruizwhitfield.com',mfa:false,last:'Never signed in',clients:'None',sensitive:true}];
 const SU_ENTITIES=[
  {n:'Meridian Advisory LLC',kind:'Parent · Delaware LLC',reg:'Formed Mar 2023',states:'DE, GA',status:'Active',
   ob:['General liability policy','Delaware annual report','Q3 estimated tax','Trademark §8'],agent:'Northpoint Agents',secret:'reg'},
@@ -48,6 +65,7 @@ const SU_TREE={'Jordan Avery':['Maya Rios','Devon Park','Dolores Ruiz'],'Maya Ri
  * ------------------------------------------------------------------ */
 const DASH='—';
 const PreviewPill=()=>(<span className="pill pill-n" title="Sample layout — no live backend for this yet">Preview</span>);
+const colorSwatch=v=>(<span className="row" style={{gap:7}}><span style={{width:14,height:14,borderRadius:4,background:v||'var(--surface-sunk)',border:'1px solid var(--line)',flex:'none'}}/><span className="mono" style={{fontSize:12.6}}>{v||DASH}</span></span>);
 
 const SuField=({k,v,w,mono,hint})=>(<div style={{gridColumn:w?'span '+w:'auto',minWidth:0}}>
 <div className="eyebrow" style={{fontSize:9.5}}>{k}</div>
@@ -85,37 +103,27 @@ const SuInput=({label,value,onChange,placeholder,type,mono,textarea,w})=>(<label
 </label>);
 
 /**
- * WiredCard — a card backed by a REAL adapter (Business / Owner). Read view shows
- * present-guarded values (em-dash when null); Edit reveals inline inputs and Save
- * persists through the adapter. Admin-gated: when `canEdit` is false the Edit
- * affordance never renders and the card is read-only (§9 fail-closed).
+ * EditDrawer — the pop-out edit form (the piece the inline rewrite dropped).
+ * It REUSES the Claude Design SlideOut (its foot slot is where Save/Cancel
+ * live) + the SuInput field. One primitive serves Business + Owner edits;
+ * Save persists through the real adapter (§9 — no client-supplied tenant_id).
  */
-const WiredCard=({title,sub,fields,canEdit,saving,loading,onSave,notify,successMsg,footNote})=>{
-const[editing,setEditing]=React.useState(false);
+const EditDrawer=({open,onClose,title,sub,fields,initial,saving,onSave,notify,successMsg})=>{
 const[draft,setDraft]=React.useState({});
-// Seed the draft from current values ONLY when entering edit — re-seeding on every
-// render (fields is a fresh array each pass) would clobber the user's typing.
+// Seed the draft ONLY when the drawer opens — re-seeding every render (fields/
+// initial are fresh each pass) would clobber the user's typing.
 // eslint-disable-next-line react-hooks/exhaustive-deps
-React.useEffect(()=>{if(editing){const d={};fields.forEach(f=>{d[f.key]=f.value==null?'':f.value});setDraft(d)}},[editing]);
+React.useEffect(()=>{if(open){const d={};fields.forEach(f=>{d[f.key]=initial[f.key]==null?'':initial[f.key]});setDraft(d)}},[open]);
 const submit=async()=>{
  const res=await onSave(draft);
- if(res&&res.ok){setEditing(false);notify&&notify(successMsg||'Saved.')}
+ if(res&&res.ok){onClose();notify&&notify(successMsg||'Saved.')}
  else notify&&notify((res&&res.error)||'That didn\'t save. Try again.')};
-const colorSwatch=v=>(<span className="row" style={{gap:7}}><span style={{width:14,height:14,borderRadius:4,background:v||'var(--surface-sunk)',border:'1px solid var(--line)',flex:'none'}}/><span className="mono" style={{fontSize:12.6}}>{v||DASH}</span></span>);
-return <div className="card" style={{display:'flex',flexDirection:'column',minHeight:0,overflow:'hidden'}}>
-<div className="hd" style={{flex:'none',padding:'12px 16px'}}><div style={{minWidth:0}}><h3 style={{fontSize:13.6}}>{title}</h3>{sub&&<div className="sub trunc">{sub}</div>}</div>
-{canEdit&&!editing&&!loading&&<button className="btn btn-s" onClick={()=>setEditing(true)}>Edit</button>}</div>
-{loading?<CardSkel/>:editing?
- <div style={{padding:'16px 20px 18px'}}>
- <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(200px,100%),1fr))',gap:'14px 18px'}}>
- {fields.map(f=><SuInput key={f.key} label={f.label} value={draft[f.key]??''} onChange={v=>setDraft(d=>({...d,[f.key]:v}))} type={f.type} mono={f.mono} textarea={f.textarea} w={f.w} placeholder={f.placeholder}/>)}</div>
- <div className="row" style={{gap:9,marginTop:16}}>
- <button className="btn btn-s btn-p" disabled={saving} onClick={submit}><Ic.check size={13}/>{saving?'Saving…':'Save'}</button>
- <button className="btn btn-s" disabled={saving} onClick={()=>setEditing(false)}>Cancel</button></div></div>
- :<div style={{padding:'16px 20px 20px'}}>
- <SuGrid>{fields.map(f=><SuField key={f.key} k={f.label} v={f.type==='color'?colorSwatch(f.value):f.value} w={f.w} mono={f.mono} hint={f.hint}/>)}</SuGrid>
- {footNote&&<div className="sub" style={{marginTop:12,lineHeight:1.5}}>{footNote}</div>}</div>}
-</div>};
+return <SlideOut open={open} onClose={onClose} title={title} sub={sub} icon={<Ic.gear size={15}/>}
+foot={<><button className="btn btn-s btn-p" disabled={saving} onClick={submit}><Ic.check size={13}/>{saving?'Saving…':'Save'}</button>
+<button className="btn btn-s" disabled={saving} onClick={onClose}>Cancel</button></>}>
+<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(min(200px,100%),1fr))',gap:'14px 18px'}}>
+{fields.map(f=><SuInput key={f.key} label={f.label} value={draft[f.key]??''} onChange={v=>setDraft(d=>({...d,[f.key]:v}))} type={f.type} mono={f.mono} textarea={f.textarea} w={f.w} placeholder={f.placeholder}/>)}</div>
+</SlideOut>};
 
 const RevealGate=({item,onClose,onGrant})=>{const[step,setStep]=React.useState('ask');const[code,setCode]=React.useState('');
 React.useEffect(()=>{const k=e=>e.key==='Escape'&&onClose();window.addEventListener('keydown',k);return()=>window.removeEventListener('keydown',k)},[onClose]);
@@ -172,9 +180,71 @@ const Sect=({t,d,children,right})=>(<div style={{marginBottom:20,minWidth:0}}>
 {d&&<div className="sub trunc" style={{fontSize:11.4,marginTop:1}}>{d}</div>}</div>
 {right&&<div className="row" style={{gap:8,flex:'none'}}>{right}</div>}</div>{children}</div>);
 
+/* ------------------------------------------------------------------ *
+ * PersonDrawer — the People slide-out (RESTORED from Claude Design).
+ * `source='real'` maps a live roster row: header renders real name /
+ * status / email; every sub-field with no backend renders DASH under a
+ * Preview marker (§13/§31 — never a fabricated "Not enrolled"/"Nobody"),
+ * and the management footer is disabled (§53 — deferred slice).
+ * `source='sample'` renders the full Claude Design sample (the Preview
+ * hierarchy tree opens people this way).
+ * ------------------------------------------------------------------ */
+const PersonDrawer=({p,open,onClose,source='sample'})=>{
+const real=source==='real';
+const[perm,setPerm]=React.useState(p?(p.paige||[]):[]);
+React.useEffect(()=>{if(p)setPerm(p.paige||[])},[p]);
+if(!p)return null;
+const all=['Client Success','Growth','Marketing','Finance','Operations','Systems'];
+const status=p.status||(real?'Active':'—');
+return <SlideOut open={open} onClose={onClose} title={p.n} sub={real?(p.role||DASH):(p.role+' · '+(p.dept||DASH))} icon={<Ic.users size={15}/>}
+foot={<><button className="btn btn-s btn-p" disabled title="Inviting and managing teammates is coming soon"><Ic.send size={13}/>{status==='Not invited'?'Send invite':'Resend invite'}</button>
+<button className="btn btn-s" disabled title="Editing teammate details is coming soon">Edit details</button>
+<button className="btn btn-s" disabled title="Removing access is coming soon" style={{marginLeft:'auto',color:'var(--bad)'}}>Remove access</button></>}>
+<div className="row" style={{gap:14,alignItems:'center',marginBottom:16}}>
+<Avatar name={p.n} size={52}/>
+<div className="grow" style={{minWidth:0}}>
+<div className="row" style={{gap:8,flexWrap:'wrap'}}>
+<span className={'pill '+(status==='Active'?'pill-ok':status==='Invited'?'pill-warn':'pill-n')}>{status==='Active'&&<span className="dot"/>}{status}</span>
+<span className="pill pill-n">{p.type||DASH}</span>{p.seat&&p.seat!==DASH?<span className="pill pill-n">{p.seat}</span>:null}</div>
+<div className="sub" style={{marginTop:5}}>{p.email||DASH}{p.last&&p.last!==DASH?' · '+p.last:''}</div></div></div>
+
+{real&&<div className="row" style={{marginBottom:16,gap:8,flexWrap:'wrap'}}><PreviewPill/><span className="sub" style={{lineHeight:1.5}}>Reporting, permissions, and security aren't wired to live data yet — the name, role, email, and status above are live.</span></div>}
+
+<Sect t="Reporting" d="Paige uses this to route and escalate">
+<div style={{display:'grid',gap:8}}>
+{[['Reports to',real?DASH:(p.rep||'Nobody — owner')],['Clients',real?DASH:p.clients],['Started',real?DASH:p.start]].map(([k,v],i)=>
+<div key={i} className="row" style={{gap:11,padding:'10px 13px',border:'1px solid var(--line)',borderRadius:'var(--r-m)'}}>
+<span className="sub" style={{flex:'0 0 96px'}}>{k}</span><span className="grow trunc" style={{fontSize:12.9,fontWeight:500}}>{v==null||v===''?DASH:v}</span></div>)}</div></Sect>
+
+<Sect t="Which departments they can reach" d="Paige will not surface work outside these">
+<div className="row" style={{gap:7,flexWrap:'wrap'}}>{all.map(d=>{const on=!real&&perm.some(x=>x.startsWith(d));
+return <button key={d} disabled={real} onClick={()=>!real&&setPerm(v=>on?v.filter(x=>!x.startsWith(d)):[...v,d])} className="row"
+style={{gap:6,height:29,padding:'0 11px',borderRadius:99,fontSize:12.1,fontWeight:on?600:450,opacity:real?.6:1,cursor:real?'default':'pointer',
+background:on?'var(--violet-tint)':'var(--surface)',border:'1px solid '+(on?'var(--violet-line)':'var(--line)'),color:on?'var(--violet)':'var(--ink-2)'}}>
+{on&&<Ic.check size={11}/>}{d}</button>})}</div></Sect>
+
+<Sect t="Security" d="What this seat is allowed to see">
+<div style={{border:'1px solid var(--line)',borderRadius:'var(--r-m)',overflow:'hidden'}}>
+{(real?[['Two-factor authentication',DASH,null],['Can view sealed records',DASH,null],['Can export client data',DASH,null],['Can change autonomy',DASH,null]]
+:[['Two-factor authentication',p.mfa?'Enrolled':'Not enrolled',p.mfa],
+['Can view sealed records',p.sensitive?'Yes — after identity check':'No',p.sensitive],
+['Can export client data',p.seat==='Full access'?'Yes':'No',p.seat==='Full access'],
+['Can change autonomy',p.seat==='Full access'?'Yes':'No',p.seat==='Full access']]).map(([k,v,ok],i)=>
+<div key={i} className="row" style={{gap:11,padding:'10px 13px',borderTop:i?'1px solid var(--line-soft)':'0'}}>
+<span style={{display:'flex',width:14,justifyContent:'center',color:'var(--ink-3)',flex:'none'}}>{ok==null?<span style={{fontSize:13,lineHeight:1}}>–</span>:ok?<Ic.check size={14} style={{color:'var(--ok)'}}/>:<Ic.x size={14}/>}</span>
+<span className="grow" style={{fontSize:12.8}}>{k}</span><span className="sub trunc">{v}</span></div>)}</div>
+{!real&&!p.mfa&&status!=='Not invited'&&<div className="sub" style={{marginTop:7}}>Paige will require enrollment on their first sign-in.</div>}</Sect>
+
+<Sect t="Access log" d="Append-only">
+<div style={{display:'grid',gap:0}}>{(real?[]:[['Invite sent by you','3d ago'],['Seat created · Standard','3d ago'],['Departments assigned','3d ago']]).map(([t,w],i)=>
+<div key={i} className="row" style={{gap:11,padding:'8px 0',borderTop:i?'1px solid var(--line-soft)':'0'}}>
+<span className="grow" style={{fontSize:12.6,color:'var(--ink-2)'}}>{t}</span><span className="mono sub" style={{fontSize:11}}>{w}</span></div>)}
+{real&&<div className="row" style={{gap:8,marginTop:2}}><PreviewPill/><span className="sub">Access history isn't wired to live data yet.</span></div>}</div></Sect></SlideOut>};
+
 const EntityDrawer=({e,open,onClose})=>{if(!e)return null;
 const sec=e.secret&&SU_SECRETS.find(s=>s.id===e.secret);
-return <SlideOut open={open} onClose={onClose} title={e.n} sub={e.kind} icon={<Ic.vault size={15}/>}>
+return <SlideOut open={open} onClose={onClose} title={e.n} sub={e.kind} icon={<Ic.vault size={15}/>}
+foot={<><button className="btn btn-s btn-p" disabled>Edit entity</button><button className="btn btn-s" disabled>Open its obligations</button></>}>
 <div className="row" style={{gap:9,marginBottom:16,flexWrap:'wrap'}}>
 <span className={'pill '+(e.status==='Active'?'pill-ok':'pill-n')}>{e.status==='Active'&&<span className="dot"/>}{e.status}</span>
 <span className="pill pill-n">{e.reg}</span><span className="mono pill pill-n">{e.states}</span><PreviewPill/></div>
@@ -191,7 +261,9 @@ return <SlideOut open={open} onClose={onClose} title={e.n} sub={e.kind} icon={<I
 
 const ContactDrawer=({c,open,onClose})=>{const[sealed,setSealed]=React.useState(false);if(!c)return null;
 return <SlideOut open={open} onClose={onClose} title={c.sealed?'Emergency contact':c.n} sub={c.r} icon={c.sealed?<LockIcon size={15}/>:<Ic.mail size={15}/>}
-tone={c.sealed?'var(--gold-tint)':null}>
+tone={c.sealed?'var(--gold-tint)':null}
+foot={c.gap?<button className="btn btn-s btn-p" disabled><Ic.spark size={13}/>Draft the search brief</button>
+:<><button className="btn btn-s btn-p" disabled>Edit contact</button><button className="btn btn-s" disabled>Message</button></>}>
 {c.sealed?<>
 <div style={{padding:'16px 18px',background:'var(--gold-tint)',border:'1px solid var(--gold-line)',borderRadius:'var(--r-l)'}}>
 <div className="row" style={{gap:9,color:'var(--gold)',fontSize:10.5,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase'}}><LockIcon size={12}/>Sealed · Preview</div>
@@ -216,44 +288,26 @@ tone={c.sealed?'var(--gold-tint)':null}>
 <Sect t="Notes"><div style={{fontSize:12.9,color:'var(--ink-2)',lineHeight:1.6}}>{c.note}</div></Sect></>}</SlideOut>};
 
 /* ================================================================== *
- * BUSINESS — legal name + reachability WIRED; the rest Preview.
+ * BUSINESS — legal name + reachability WIRED (Edit -> SlideOut -> save);
+ * registered details, location, and entities are Preview.
  * ================================================================== */
-const SuBusiness=({notify})=>{const b=useSoloBusiness();const[ent,setEnt]=React.useState(null);
+const SuBusiness=({notify})=>{const b=useSoloBusiness();const[ent,setEnt]=React.useState(null);const[editBiz,setEditBiz]=React.useState(null);
 const readOnlyNote=!b.loading&&!b.isAdmin?'Only a workspace admin can edit these. You have read-only access.':null;
+const EditBtn=({which})=>b.isAdmin?<button className="btn btn-s" onClick={()=>setEditBiz(which)}>Edit</button>:null;
 return <div className="su-fill">
 {b.error&&<div className="card" style={{padding:'12px 16px',fontSize:12.8,color:'var(--bad)'}}>Couldn't load your business details. {b.error}</div>}
 
-<WiredCard title="Legal identity" sub="The name on filings, contracts, and invoices"
- loading={b.loading} canEdit={b.isAdmin} saving={b.saving} notify={notify} successMsg="Business name saved."
- onSave={patch=>b.saveBusiness({name:patch.name})}
- fields={[{key:'name',label:'Legal name',value:b.name,w:2,placeholder:'Your business name'}]}
- footNote={readOnlyNote}/>
-
-<WiredCard title="How the business is reached" sub="Paige uses these when she speaks for you"
- loading={b.loading} canEdit={b.isAdmin} saving={b.saving} notify={notify} successMsg="Contact details saved."
- onSave={patch=>b.saveBusiness(patch)}
- fields={[
-  {key:'website',label:'Website',value:b.brand.website,placeholder:'yourbusiness.com'},
-  {key:'business_phone',label:'Main phone',value:b.brand.business_phone,mono:true,type:'tel',placeholder:'(555) 000-0000'},
-  {key:'support_email',label:'Support inbox',value:b.brand.support_email,type:'email',placeholder:'help@yourbusiness.com'},
-  {key:'from_name',label:'Email “from” name',value:b.brand.from_name,placeholder:'Your Business'},
-  {key:'industry',label:'Industry',value:b.brand.industry,placeholder:'Consulting'},
-  {key:'logo_url',label:'Logo URL',value:b.brand.logo_url,w:2,placeholder:'https://…/logo.png'},
-  {key:'primary_color',label:'Brand color',value:b.brand.primary_color,type:'color'},
-  {key:'about',label:'How you describe the business',value:b.brand.about,textarea:true,w:3,placeholder:'A sentence Paige can use when she introduces you.'},
- ]}
- footNote={readOnlyNote}/>
-
-<PeekCard title="Registered details" sub="DBA, entity type, and sealed identifiers" foldTitle="Registered details"
- right={<PreviewPill/>}
+<PeekCard title="Legal identity" sub="The name on filings, contracts, and invoices" foldTitle="Legal identity"
+ right={<EditBtn which="legal"/>}
  peek={<div style={{padding:'10px 14px 14px'}}><SuGrid>
- <SuField k="Doing business as" v="Meridian Coaching"/><SuField k="Tax IDs" v={<span className="row" style={{gap:6}}><LockIcon size={12}/>2 sealed</span>}/></SuGrid></div>}>
+ <SuField k="Legal name" v={b.loading?'…':b.name||DASH}/>
+ <SuField k="Tax IDs" v={<span className="row" style={{gap:6}}><LockIcon size={12}/>2 sealed<PreviewPill/></span>}/></SuGrid></div>}>
 <div style={{padding:'16px 20px 20px',display:'grid',gap:18}}>
-<SuGrid><SuField k="Doing business as" v="Meridian Coaching"/><SuField k="Entity type" v="LLC · Delaware"/>
+<SuGrid><SuField k="Legal name" v={b.loading?'…':b.name||DASH}/><SuField k="Doing business as" v="Meridian Coaching"/><SuField k="Entity type" v="LLC · Delaware"/>
 <SuField k="Date formed" v="March 4, 2023"/><SuField k="Industry code" v="611430 — Professional & Management Development Training" w={2}/><SuField k="Fiscal year" v="Calendar year"/></SuGrid>
-<div><div className="eyebrow" style={{fontSize:9.5,marginBottom:8}}>Sealed identifiers</div>
+<div><div className="row" style={{gap:8,marginBottom:8}}><div className="eyebrow" style={{fontSize:9.5}}>Sealed identifiers</div><PreviewPill/></div>
 <div style={{display:'grid',gap:8}}>{SU_SECRETS.filter(s=>s.cls==='Tax identifier'||s.cls==='Entity record').map(s=><Secret key={s.id} item={s}/>)}</div>
-<div className="sub" style={{marginTop:8,lineHeight:1.5}}>Sample only — sealed identifiers and entity records have no live backend yet.</div></div></div></PeekCard>
+<div className="sub" style={{marginTop:8,lineHeight:1.5}}>Sample only — DBA, entity type, and sealed identifiers have no live backend yet. Your legal name is live.</div></div></div></PeekCard>
 
 <PeekCard title="Where you are" sub="Addresses, hours, and locale" foldTitle="Location and locale"
  right={<PreviewPill/>}
@@ -263,11 +317,22 @@ return <div className="su-fill">
 <SuField k="Principal address" v={SU_BIZ.addr.map((l,i)=><div key={i}>{l}</div>)} w={2}/>
 <SuField k="Mailing address" v={SU_BIZ.mail.map((l,i)=><div key={i}>{l}</div>)}/>
 <SuField k="Time zone" v={SU_BIZ.tz}/><SuField k="Business hours" v={SU_BIZ.hours} w={2}/>
-<SuField k="Currency" v={SU_BIZ.currency}/><SuField k="Language" v={SU_BIZ.lang}/></SuGrid></div></PeekCard>
+<SuField k="Currency" v={SU_BIZ.currency}/><SuField k="Language" v={SU_BIZ.lang}/></SuGrid>
+<div className="sub" style={{marginTop:12,lineHeight:1.5}}>Sample only — location and locale have no live backend yet.</div></div></PeekCard>
+
+<PeekCard title="How the business is reached" sub="Paige uses these when she speaks for you" foldTitle="Public contact points"
+ right={<EditBtn which="reach"/>}
+ peek={<div style={{padding:'10px 14px 14px'}}><SuGrid>
+ <SuField k="Website" v={b.loading?'…':b.brand.website}/><SuField k="Support inbox" v={b.loading?'…':b.brand.support_email}/></SuGrid></div>}>
+{b.loading?<CardSkel/>:<div style={{padding:'16px 20px 20px'}}><SuGrid>
+<SuField k="Website" v={b.brand.website}/><SuField k="Main phone" v={b.brand.business_phone} mono/><SuField k="Support inbox" v={b.brand.support_email}/>
+<SuField k="Email “from” name" v={b.brand.from_name}/><SuField k="Industry" v={b.brand.industry}/><SuField k="Brand color" v={colorSwatch(b.brand.primary_color)}/>
+<SuField k="Logo URL" v={b.brand.logo_url} w={2}/><SuField k="How you describe the business" v={b.brand.about} w={3}/></SuGrid>
+{readOnlyNote&&<div className="sub" style={{marginTop:12,lineHeight:1.5}}>{readOnlyNote}</div>}</div>}</PeekCard>
 
 <div className="card" style={{display:'flex',flexDirection:'column',minHeight:0,overflow:'hidden'}}>
 <div className="hd" style={{flex:'none',padding:'12px 16px'}}><div style={{minWidth:0}}><h3 style={{fontSize:13.6}}>Entities</h3>
-<div className="sub trunc">{SU_ENTITIES.length} tracked · sample data</div></div><PreviewPill/></div>
+<div className="sub trunc">{SU_ENTITIES.length} tracked · click one to open it · sample data</div></div><PreviewPill/></div>
 <div className="pane" style={{flex:1}}>{SU_ENTITIES.map((e,i)=>
 <button key={i} onClick={()=>setEnt(e)} className="row" style={{width:'100%',textAlign:'left',gap:11,padding:'11px 16px',borderTop:i?'1px solid var(--line-soft)':'0'}}>
 <span className="tile" style={{width:24,height:24,borderRadius:7,background:'var(--violet-tint)',color:'var(--violet)',flex:'none'}}><Ic.vault size={12}/></span>
@@ -276,43 +341,54 @@ return <div className="su-fill">
 {e.secret&&<LockIcon size={12}/>}
 <span className={'pill '+(e.status==='Active'?'pill-ok':'pill-n')} style={{flex:'none'}}>{e.status}</span>
 <Ic.chev size={13} style={{color:'var(--ink-3)',flex:'none'}}/></button>)}</div></div>
-<EntityDrawer e={ent} open={!!ent} onClose={()=>setEnt(null)}/></div>};
+
+<EntityDrawer e={ent} open={!!ent} onClose={()=>setEnt(null)}/>
+
+<EditDrawer open={editBiz==='legal'} onClose={()=>setEditBiz(null)} title="Legal identity" sub="The name on filings and invoices"
+ saving={b.saving} notify={notify} successMsg="Business name saved." initial={{name:b.name}}
+ fields={[{key:'name',label:'Legal name',w:2,placeholder:'Your business name'}]}
+ onSave={patch=>b.saveBusiness({name:patch.name})}/>
+
+<EditDrawer open={editBiz==='reach'} onClose={()=>setEditBiz(null)} title="How the business is reached" sub="Paige uses these when she speaks for you"
+ saving={b.saving} notify={notify} successMsg="Contact details saved." initial={b.brand}
+ fields={[
+  {key:'website',label:'Website',placeholder:'yourbusiness.com'},
+  {key:'business_phone',label:'Main phone',mono:true,type:'tel',placeholder:'(555) 000-0000'},
+  {key:'support_email',label:'Support inbox',type:'email',placeholder:'help@yourbusiness.com'},
+  {key:'from_name',label:'Email “from” name',placeholder:'Your Business'},
+  {key:'industry',label:'Industry',placeholder:'Consulting'},
+  {key:'logo_url',label:'Logo URL',w:2,placeholder:'https://…/logo.png'},
+  {key:'primary_color',label:'Brand color',type:'color'},
+  {key:'about',label:'How you describe the business',textarea:true,w:3,placeholder:'A sentence Paige can use when she introduces you.'},
+ ]}
+ onSave={patch=>b.saveBusiness(patch)}/></div>};
 
 /* ================================================================== *
- * OWNER — profile WIRED; access/reveal-log/continuity Preview.
+ * OWNER — profile WIRED (Edit -> SlideOut -> save); access, reveal log,
+ * and continuity are Preview.
  * ================================================================== */
-const SuOwner=({notify})=>{const o=useSoloOwner();const[cont,setCont]=React.useState(false);
+const SuOwner=({notify})=>{const o=useSoloOwner();const[cont,setCont]=React.useState(false);const[editOwner,setEditOwner]=React.useState(false);
 return <div className="su-fill">
 {o.error&&<div className="card" style={{padding:'12px 16px',fontSize:12.8,color:'var(--bad)'}}>Couldn't load your profile. {o.error}</div>}
 
-<div className="card" style={{display:'flex',flexDirection:'column',minHeight:0,overflow:'hidden'}}>
-<div className="hd" style={{flex:'none',padding:'12px 16px'}}><div style={{minWidth:0}}><h3 style={{fontSize:13.6}}>Owner profile</h3><div className="sub trunc">How Paige signs as you</div></div></div>
-<div className="pane" style={{flex:1}}>
+<PeekCard title="Owner profile" sub="How Paige signs as you" foldTitle="Owner profile"
+ right={!o.loading?<button className="btn btn-s" onClick={()=>setEditOwner(true)}>Edit</button>:null}
+ peek={<div className="row" style={{padding:'12px 16px 16px',gap:13}}><Avatar name={o.owner.name||'You'} size={44} tone="var(--violet)"/>
+ <div className="grow" style={{minWidth:0}}><div className="trunc" style={{fontSize:13.4,fontWeight:600}}>{o.loading?'…':o.owner.name||DASH}</div>
+ <div className="sub trunc">{o.loading?'':o.owner.email||DASH}</div></div></div>}>
 {o.loading?<CardSkel/>:<div style={{padding:'16px 20px 20px'}}>
-<div className="row" style={{gap:14,alignItems:'center',marginBottom:14}}>
-<Avatar name={o.owner.name||'You'} size={52} tone="var(--violet)"/>
-<div className="grow" style={{minWidth:0}}><div style={{fontSize:14.5,fontWeight:600}} className="trunc">{o.owner.name||DASH}</div>
-<div className="sub trunc">{o.owner.email||DASH}</div></div></div>
-</div>}</div></div>
-
-<WiredCard title="Your details" sub="Name, email, and how clients reach you"
- loading={o.loading} canEdit={!o.loading} saving={o.saving} notify={notify} successMsg="Profile saved."
- onSave={patch=>o.saveOwner({full_name:patch.full_name,work_email:patch.work_email,phone:patch.phone,website_url:patch.website_url})}
- fields={[
-  {key:'full_name',label:'Name',value:o.owner.name,placeholder:'Your name'},
-  {key:'work_email',label:'Work email',value:o.owner.email,type:'email',placeholder:'you@yourbusiness.com'},
-  {key:'phone',label:'Phone',value:o.owner.phone,mono:true,type:'tel',placeholder:'(555) 000-0000'},
-  {key:'website_url',label:'Website',value:o.owner.website,placeholder:'yourbusiness.com'},
- ]}/>
-
-<PeekCard title="Signature & bio" sub="How Paige introduces you" foldTitle="Signature & bio" right={<PreviewPill/>}
- peek={<div style={{padding:'12px 16px 14px'}}><SuGrid>
- <SuField k="Title" v="Founder & Principal"/><SuField k="Pronouns" v="he/him"/></SuGrid></div>}>
-<div style={{padding:'16px 20px 20px'}}><SuGrid>
-<SuField k="Title" v="Founder & Principal"/><SuField k="Pronouns" v="he/him"/><SuField k="Owner since" v="March 2023"/>
-<SuField k="Email signature" v="Jordan Avery · Founder, Meridian Advisory" w={2}/>
-<SuField k="Short bio" v="Builds systems that let a one-person company operate like a staffed one." w={3}/></SuGrid>
-<div className="sub" style={{marginTop:10,lineHeight:1.5}}>Sample only — signature, pronouns, and bio have no live backend yet.</div></div></PeekCard>
+<div className="row" style={{gap:16,flexWrap:'wrap',alignItems:'flex-start',marginBottom:16}}>
+<div style={{display:'grid',justifyItems:'center',gap:8}}><Avatar name={o.owner.name||'You'} size={66} tone="var(--violet)"/>
+<button className="btn btn-s" disabled title="Photo upload is coming soon">Change photo</button></div>
+<div className="grow" style={{minWidth:240}}><SuGrid>
+<SuField k="Name" v={o.owner.name}/><SuField k="Title" v={SU_OWNER.title}/><SuField k="Pronouns" v={SU_OWNER.pronouns}/>
+<SuField k="Work email" v={o.owner.email}/><SuField k="Phone" v={o.owner.phone} mono/><SuField k="Website" v={o.owner.website}/>
+<SuField k="Owner since" v={SU_OWNER.since}/><SuField k="Booking link" v={SU_OWNER.cal}/></SuGrid></div></div>
+<SuGrid><SuField k="Email signature" v={SU_OWNER.sig} w={2}/><SuField k="How you describe the business" v={SU_OWNER.bio} w={3}/></SuGrid>
+<div style={{marginTop:16}}><div className="row" style={{gap:8,marginBottom:8}}><div className="eyebrow" style={{fontSize:9.5}}>Sealed personal details</div><PreviewPill/></div>
+<div style={{display:'grid',gap:8}}><Secret item={{id:'mob',k:'Mobile',v:'(404) 555-0188',note:'Used for critical alerts only.'}}/>
+<Secret item={{id:'rec',k:'Recovery email',v:'jordan.personal@fastmail.com',note:'Where account recovery codes go.'}}/></div>
+<div className="sub" style={{marginTop:10,lineHeight:1.5}}>Name, work email, phone, and website are live. Title, pronouns, signature, bio, and sealed details are sample — no live backend yet.</div></div></div>}</PeekCard>
 
 <PeekCard title="Access and recovery" sub="You are the only full-access seat" foldTitle="Access and recovery" right={<PreviewPill/>}
  peek={<div style={{padding:'12px 16px 14px',display:'grid',gap:8}}>
@@ -345,7 +421,19 @@ return <div className="su-fill">
 <span className="grow trunc" style={{fontSize:12.8,fontWeight:500}}>{k}</span>
 <span className="sub trunc" style={{flex:'none',maxWidth:150}}>{v}</span><Ic.chev size={12} style={{color:'var(--ink-3)',flex:'none'}}/></button>)}
 <div className="sub" style={{padding:'11px 16px'}}>Sample only — continuity planning has no live backend yet.</div></div></div>
-<ContactDrawer c={SU_CONTACTS.find(c=>c.sealed)} open={cont} onClose={()=>setCont(false)}/></div>};
+
+<ContactDrawer c={SU_CONTACTS.find(c=>c.sealed)} open={cont} onClose={()=>setCont(false)}/>
+
+<EditDrawer open={editOwner} onClose={()=>setEditOwner(false)} title="Your details" sub="Name, email, and how clients reach you"
+ saving={o.saving} notify={notify} successMsg="Profile saved."
+ initial={{full_name:o.owner.name,work_email:o.owner.email,phone:o.owner.phone,website_url:o.owner.website}}
+ fields={[
+  {key:'full_name',label:'Name',placeholder:'Your name'},
+  {key:'work_email',label:'Work email',type:'email',placeholder:'you@yourbusiness.com'},
+  {key:'phone',label:'Phone',mono:true,type:'tel',placeholder:'(555) 000-0000'},
+  {key:'website_url',label:'Website',placeholder:'yourbusiness.com'},
+ ]}
+ onSave={patch=>o.saveOwner({full_name:patch.full_name,work_email:patch.work_email,phone:patch.phone,website_url:patch.website_url})}/></div>};
 
 /* ================================================================== *
  * CONTACTS — professional bench (no backend) → entirely Preview.
@@ -392,17 +480,20 @@ Sample bench — the professional-contacts registry has no live backend yet.</di
 <ContactDrawer c={cur} open={!!cur} onClose={()=>setCur(null)}/></div>};
 
 /* ================================================================== *
- * PEOPLE — roster WIRED read-only; management deferred (§53); tree Preview.
+ * PEOPLE — roster WIRED read-only, row → PersonDrawer slide-out;
+ * management deferred (§53); reporting tree + departments Preview.
  * ================================================================== */
 const statusPill=s=>s==='Active'?'pill-ok':s==='Suspended'?'pill-bad':'pill-warn';
-const SuPeople=()=>{const pe=useSoloPeople();const[roles,setRoles]=React.useState(false);
+const mapRealPerson=sp=>({n:sp.name,role:sp.role,dept:DASH,type:sp.isOwner?'Owner':DASH,seat:DASH,status:sp.status,email:sp.email,
+last:DASH,rep:DASH,clients:DASH,start:DASH,paige:[],mfa:null,sensitive:null});
+const SuPeople=()=>{const pe=useSoloPeople();const[roles,setRoles]=React.useState(false);const[cur,setCur]=React.useState(null);
 const Node=({name,depth})=>{const p=SU_PEOPLE.find(x=>x.n===name);const kids=SU_TREE[name]||[];
 return <div style={{display:'grid',gap:7}}>
-<div className="row" style={{gap:10,padding:'9px 11px',border:'1px solid '+(depth?'var(--line)':'var(--violet-line)'),background:depth?'var(--surface)':'var(--violet-tint)',borderRadius:'var(--r-m)'}}>
+<button onClick={()=>p&&setCur({source:'sample',p})} className="row" style={{width:'100%',textAlign:'left',gap:10,padding:'9px 11px',border:'1px solid '+(depth?'var(--line)':'var(--violet-line)'),background:depth?'var(--surface)':'var(--violet-tint)',borderRadius:'var(--r-m)'}}>
 <Avatar name={name} size={26}/>
 <span className="grow" style={{minWidth:0}}><span className="trunc" style={{fontSize:12.7,fontWeight:600,display:'block'}}>{name}</span>
 <span className="sub trunc" style={{display:'block'}}>{p?p.role:DASH}</span></span>
-<span className="pill pill-n" style={{flex:'none'}}>{p?p.type:DASH}</span></div>
+<span className="pill pill-n" style={{flex:'none'}}>{p?p.type:DASH}</span></button>
 {kids.length>0&&<div style={{marginLeft:16,paddingLeft:14,borderLeft:'1px solid var(--line)',display:'grid',gap:7}}>
 {kids.map(k=><Node key={k} name={k} depth={depth+1}/>)}</div>}</div>};
 return <div className="su-2">
@@ -419,14 +510,15 @@ return <div className="su-2">
 :pe.people.length===0?<div style={{padding:'34px 20px',textAlign:'center'}}><div style={{fontWeight:600,fontSize:13.4}}>No teammates yet</div>
 <div className="sub" style={{marginTop:3}}>It's just you running this workspace.</div></div>
 :pe.people.map((p,i)=>
-<div key={p.id} className="row" style={{gap:12,padding:'11px 16px',borderTop:i?'1px solid var(--line-soft)':'0'}}>
+<button key={p.id} onClick={()=>setCur({source:'real',p:mapRealPerson(p)})} className="row" style={{width:'100%',textAlign:'left',gap:12,padding:'11px 16px',borderTop:i?'1px solid var(--line-soft)':'0'}}>
 <Avatar name={p.name} size={28}/>
 <span className="grow" style={{minWidth:0}}><span className="trunc" style={{fontSize:12.9,fontWeight:600,display:'block'}}>{p.name}</span>
 <span className="sub trunc" style={{display:'block'}}>{p.role}{p.email?' · '+p.email:''}</span></span>
 {p.isOwner&&<LockIcon size={12}/>}
-<span className={'pill '+statusPill(p.status)} style={{flex:'none'}}>{p.status}</span></div>)}</div>
+<span className={'pill '+statusPill(p.status)} style={{flex:'none'}}>{p.status}</span>
+<Ic.chev size={13} style={{color:'var(--ink-3)',flex:'none'}}/></button>)}</div>
 <div style={{padding:'11px 16px',borderTop:'1px solid var(--line)',background:'var(--surface-2)',fontSize:12.3,color:'var(--ink-2)',lineHeight:1.5}}>
-Inviting, role changes, and removing access are coming soon — the roster above is live.</div></div>
+Inviting, role changes, and removing access are coming soon — the roster above is live. Click a teammate to open their seat.</div></div>
 
 <div className="su-stack">
 <PeekCard title="Hierarchy" sub="Who reports to whom" foldTitle="Reporting structure" right={<PreviewPill/>}
@@ -450,7 +542,9 @@ Inviting, role changes, and removing access are coming soon — the roster above
 <Foldout open={roles} onClose={()=>setRoles(false)} title="Roles and permissions" sub="What each seat can reach">
 <div>{pe.roleLegend.map((r,i)=><div key={r.role} className="row" style={{gap:12,padding:'13px 20px',borderTop:i?'1px solid var(--line-soft)':'0'}}>
 <span style={{flex:'0 0 120px',fontSize:13,fontWeight:600}}>{r.label}</span><span className="sub grow" style={{lineHeight:1.5}}>{r.blurb}</span></div>)}
-<div className="sub" style={{padding:'14px 20px',borderTop:'1px solid var(--line)',lineHeight:1.55}}>These are the roles you can assign to teammates. Granting and changing roles is coming soon.</div></div></Foldout></div>};
+<div className="sub" style={{padding:'14px 20px',borderTop:'1px solid var(--line)',lineHeight:1.55}}>These are the roles you can assign to teammates. Granting and changing roles is coming soon.</div></div></Foldout>
+
+<PersonDrawer p={cur?cur.p:null} source={cur?cur.source:'sample'} open={!!cur} onClose={()=>setCur(null)}/></div>};
 
 /* ================================================================== *
  * COMMS & DATA — sending identity + billing WIRED read-only; rest Preview.
