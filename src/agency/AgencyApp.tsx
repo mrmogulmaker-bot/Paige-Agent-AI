@@ -1,0 +1,539 @@
+// @ts-nocheck
+// Agency pack — the faithful shell chrome. Owner-locked port of the Claude Design
+// "CRM agency mode" pack (§28/§63 — "We do not drift off this whatsoever"),
+// mirroring src/solo/SoloApp.tsx (the Solo shell precedent) for the Agency design.
+//
+// Source of truth: "Agency Shell.dc.html" — the two-group Rail (MAIN + PLATFORM),
+// the header identity/breadcrumb + account SWITCHER + account/profile MENU + theme
+// toggle + Ask-Paige + Help + notifications, the acting-banner, and the FIVE global
+// chrome pop-outs (switcher popover · account menu · 3-step provisioning wizard ·
+// Ask Paige launcher · Help drawer). The DCLogic runtime is NOT ported — its markup,
+// measurements, copy, and interaction are mirrored onto React + the ./_shared
+// primitives (Modal/Popover/SlideOut carry portal/focus-trap/Esc/reduced-motion).
+//
+// THIS PASS mounts nothing (no Admin.tsx edit, no flag) and every SCREEN renders a
+// faithful <Stub/> — the real screen modules (Command Center, Paige, Team, Setup, …)
+// are later sub-passes wired into the same `screens` registry.
+//
+// §51 INVARIANT — a sub-account is NEVER the parent aggregate. In mode="subaccount"
+// the switcher, the acting-banner, the "return to agency view" path, and the whole
+// act-as machinery are STRUCTURALLY absent: `acting` can never leave null (no UI
+// path sets it), and the switcher/banner branches are gated on `isAgency` so their
+// code is unreachable. A sub-account owner sees only their own book.
+import React from "react";
+import { performSignOut } from "@/lib/auth/signOut";
+import "./agency-tokens.css";
+import { Ic, Logo, Avatar, Wrap, PageHead, Modal, Popover, SlideOut, AV } from "./_shared";
+import { tmInit } from "./TeamBlock";
+import { SUBS, AGENCY, GREEN, AMBER } from "./fixtures";
+
+// ── Nav (Agency Shell.dc.html:12587 navMain / 12599 navPlatform) ────────────
+// [route, label, IconFn, badge(sub)] — badge is a fn of `sub` (presenting as a
+// sub-account) so the design's isSub badge variants stay faithful. Icons map the
+// design's glyphs onto the ./_shared SVG Ic set (the Agency-specific glyphs —
+// Billing ◈, Client Support ◫ — were added to Ic for exactly this).
+const NAV_MAIN = [
+  ["command", "Command Center", () => <Ic.grid />, s => (s ? "6" : "3")],
+  ["paige", "Paige", () => <Ic.spark />, () => ""],
+  ["compass", "Trust Compass", () => <Ic.shield />, () => ""],
+  ["autos", "Automations", () => <Ic.bolt />, () => "1"],
+  ["fleet", "Clients", () => <Ic.users />, s => (s ? "" : "12")],
+  ["calendar", "Calendar", () => <Ic.cal />, () => "3"],
+  ["support", "Client Support", () => <Ic.support />, s => (s ? "2" : "4")],
+  ["growth", "Growth", () => <Ic.trend />, () => ""],
+  ["analytics", "Analytics", () => <Ic.chart />, () => ""],
+  ["billing", "Billing", () => <Ic.card />, s => (s ? "" : "1")],
+];
+const NAV_PLATFORM = [
+  ["market", "Marketplace", () => <Ic.store />],
+  ["vault", "Business Vault", () => <Ic.vault />],
+  ["integrations", "Integrations", () => <Ic.bolt />],
+  ["team", "Team", () => <Ic.users />],
+  ["setup", "Setup", () => <Ic.gear />],
+];
+
+// Route → crumb/title map (Agency Shell.dc.html:12610 crumb map + OTHER copy).
+const TITLES = {
+  command: ["Command Center", "The three decisions that carry your week, and the drafts waiting on you across the book."],
+  paige: ["Paige", "Her ten departments, working both directions — your book and each sub-account."],
+  compass: ["Trust Compass", "Ten department segments for the agency, plus the autonomy spread across your book."],
+  autos: ["Automations", "The plays running across your book, and the ones drafted and waiting to go live."],
+  fleet: ["Clients", "Every sub-account you run, ranked by what needs you — not alphabetically."],
+  calendar: ["Calendar", "The agency's week and the sub-account calendars Paige keeps in sync."],
+  support: ["Client Support", "Tickets across your book, most already drafted by Paige in the sender's voice."],
+  growth: ["Growth", "The agency's own pipeline: prospects considering a sub-account, and what's bringing them in."],
+  analytics: ["Analytics", "The agency's own numbers, plus an Across sub-accounts roll-up for portfolio profitability."],
+  billing: ["Billing", "What each sub-account is billed, the agency's revenue, and your platform plan."],
+  market: ["Marketplace", "Playbooks, automations, and skills you can install — or resell to your book for a cut."],
+  vault: ["Business Vault", "The agency's obligations in six categories, plus what's coming due across your book."],
+  integrations: ["Integrations", "The agency's own connections, and which tools each sub-account has handed to Paige."],
+  team: ["Team", "Agency staff and the sub-accounts each of them services."],
+  setup: ["Setup", "Agency profile, billing, brand cascade defaults, and provisioning defaults."],
+};
+
+// Decorative Ask-Paige profitability rows (Agency Shell.dc.html:12825). §63 — the
+// design's own decorative account names; tones token-ized so they theme light↔dark.
+const PROFIT_ROWS = [
+  { name: "Ridgeline Outdoor", color: "#3F7F5C", hours: "74 hrs", fee: "$2,400", rate: "$32/hr", tone: "var(--bad)" },
+  { name: "Copperline Roofing", color: "#9C5533", hours: "51 hrs", fee: "$3,100", rate: "$61/hr", tone: "var(--warn)" },
+  { name: "Sarah's Coaching", color: "#7C6CE0", hours: "18 hrs", fee: "$8,400", rate: "$467/hr", tone: "var(--ok)" },
+  { name: "Northwind Dental", color: "#2F6FA8", hours: "12 hrs", fee: "$3,600", rate: "$300/hr", tone: "var(--ok)" },
+];
+// Help launcher quick-prompts (Agency Shell.dc.html:11475).
+const HELP_PROMPTS = ["Something's not working", "Question about billing", "How do I…"];
+const hc = h => (h >= 85 ? "var(--ok)" : h >= 70 ? "var(--warn)" : "var(--bad)");
+
+// ── Rail ────────────────────────────────────────────────────────────────────
+// Two nav groups + brand block + plan card + collapse — mirrors SoloApp's Rail
+// but carries the Agency brand mark (a rounded-square plate, AA-mixed via AV) and
+// the design's second group. `sub` drives the badge/plan variants; `brand` is the
+// resolved workspace identity (agency, own sub-account, or the account being acted
+// on) so the mark and name always speak for the workspace in view.
+const Rail = ({ route, go, collapsed, setCollapsed, sub, brand }) => {
+  const w = collapsed ? 72 : 248;
+  const av = AV(brand.color);
+  const Item = ([k, label, Icn, badgeOf]) => {
+    const on = route === k;
+    const badge = badgeOf ? badgeOf(sub) : "";
+    return (
+      <button key={k} onClick={() => go(k)} title={label} className="row"
+        style={{ width: "100%", gap: 12, padding: collapsed ? "10px" : "9px 12px", borderRadius: 11, marginBottom: 2,
+          justifyContent: collapsed ? "center" : "flex-start", background: on ? "var(--rail-2)" : "transparent",
+          color: on ? "#fff" : "var(--rail-text)", position: "relative", transition: ".15s" }}
+        onMouseEnter={e => { if (!on) e.currentTarget.style.background = "rgba(255,255,255,.05)"; }}
+        onMouseLeave={e => { if (!on) e.currentTarget.style.background = "transparent"; }}>
+        {on && <span style={{ position: "absolute", left: collapsed ? 6 : 0, top: "50%", transform: "translateY(-50%)", width: 3, height: 18, borderRadius: 3, background: "var(--gold-bright)" }} />}
+        <span style={{ display: "flex", color: on ? "var(--gold-bright)" : "inherit" }}>{Icn()}</span>
+        {!collapsed && <span className="grow trunc" style={{ fontSize: 13.4, fontWeight: on ? 600 : 450, textAlign: "left" }}>{label}</span>}
+        {!collapsed && badge && <span className="pill" style={{ background: "var(--gold-bright)", color: "#241C05", height: 19, padding: "0 7px" }}>{badge}</span>}
+      </button>
+    );
+  };
+  return (
+    <nav style={{ width: w, flex: "none", background: "var(--rail)", display: "flex", flexDirection: "column", padding: collapsed ? "16px 12px" : "16px 14px", transition: "width .22s", overflowX: "hidden", overflowY: "auto" }}>
+      <div className="row" style={{ gap: 11, padding: collapsed ? "0 0 18px" : "2px 4px 18px", justifyContent: collapsed ? "center" : "flex-start" }}>
+        {brand.isAgency && !brand.acting
+          ? <Logo size={collapsed ? 26 : 28} />
+          : <div style={{ width: collapsed ? 26 : 30, height: collapsed ? 26 : 30, borderRadius: 9, background: av.plate, boxShadow: "inset 0 0 0 2px " + av.ring, color: av.ink, display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700, flex: "none" }}>{brand.initials}</div>}
+        {!collapsed && <div className="grow" style={{ minWidth: 0 }}>
+          <div className="trunc" style={{ color: "#FFFDF8", fontWeight: 600, fontSize: 14, letterSpacing: "-.02em" }}>{brand.name}</div>
+          <div className="row" style={{ gap: 6, marginTop: 2 }}>
+            <span style={{ color: "var(--rail-text)", fontSize: 9.5, letterSpacing: ".15em", textTransform: "uppercase", opacity: .8 }}>{sub ? "Sub-account" : "Agency workspace"}</span>
+            {brand.acting && <span style={{ width: 7, height: 7, borderRadius: 2, background: brand.color }} />}
+          </div>
+        </div>}
+      </div>
+
+      {NAV_MAIN.map(Item)}
+      <div style={{ height: 1, background: "var(--rail-line)", margin: "14px 4px" }} />
+      {!collapsed && <div style={{ color: "var(--rail-text)", fontSize: 10, letterSpacing: ".15em", textTransform: "uppercase", padding: "0 12px 8px", opacity: .7 }}>Platform</div>}
+      {NAV_PLATFORM.map(Item)}
+
+      <div style={{ marginTop: "auto", paddingTop: 14, flex: "none" }}>
+        {!collapsed && <div style={{ border: "1px solid var(--rail-line)", borderRadius: 11, padding: "12px 13px", marginBottom: 10, background: "var(--rail-2)" }}>
+          <div className="row" style={{ gap: 7, color: "var(--gold-bright)", fontSize: 12.5, fontWeight: 600 }}><Ic.bolt size={13} />
+            <span className="trunc">{sub ? "Solo plan" : AGENCY.plan + " · " + AGENCY.subCount + " sub-accounts"}</span></div>
+          <div style={{ color: "var(--rail-text)", fontSize: 12, marginTop: 5, lineHeight: 1.5 }}>
+            {sub
+              ? "147 hours saved this month. One seat, six departments running."
+              : AGENCY.hoursSaved + " hours saved this month across your book. " + AGENCY.departmentsWord + " departments running per sub-account."}</div>
+        </div>}
+        <button onClick={() => setCollapsed(!collapsed)} className="row" style={{ width: "100%", justifyContent: "center", padding: 9, borderRadius: 10, color: "var(--rail-text)" }}>
+          <span style={{ display: "flex", transform: collapsed ? "" : "rotate(180deg)", transition: ".2s" }}><Ic.chev size={15} /></span></button>
+      </div>
+    </nav>
+  );
+};
+
+// ── TopBar ───────────────────────────────────────────────────────────────────
+// Identity/breadcrumb · account SWITCHER (agency only) · search · provider chip ·
+// Help · Ask Paige · notifications · theme · account/profile MENU. The switcher and
+// the acting crumb render only in agency mode — §51 keeps the parent-aggregate path
+// out of a sub-account's chrome entirely.
+const TopBar = ({ theme, setTheme, route, isAgency, acting, brand, openSwitcher, switcherOpen, switcherRef, openAcct, acctOpen, acctRef, openAsk, openHelp, sub }) => {
+  const crumb = (TITLES[route] || ["Command Center"])[0];
+  return (
+    <header className="row" style={{ height: 56, flex: "none", padding: "0 24px", background: "var(--canvas)", gap: 14, zIndex: 20 }}>
+      <div className="row" style={{ gap: 9, fontSize: 13.5, color: "var(--ink-3)", flex: "0 1 auto", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden" }}>
+        <span className="trunc" style={{ fontWeight: 600, color: "var(--ink)" }}>{AGENCY.operator}</span>
+        <Ic.chev size={13} />
+        {isAgency && acting && <span className="row" style={{ gap: 7, flex: "none" }}>
+          <span style={{ width: 7, height: 7, borderRadius: 2, background: acting.color }} />{acting.name.split(" ")[0]}<Ic.chev size={13} /></span>}
+        <span className="trunc">{crumb}</span>
+      </div>
+
+      {isAgency && <div ref={switcherRef} style={{ position: "relative", flex: "none" }}>
+        <button onClick={openSwitcher} aria-haspopup="menu" aria-expanded={switcherOpen} className="row"
+          style={{ gap: 9, padding: "7px 12px", border: "1px solid var(--line)", borderRadius: 9, cursor: "pointer", background: "var(--surface)", fontSize: 12.5, fontWeight: 500, color: "var(--ink)" }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: acting ? acting.color : "var(--gold-bright)" }} />
+          <span>{acting ? "Sub-account: " + acting.name.split(" ")[0] : "Agency view"}</span>
+          <span style={{ color: "var(--ink-3)", fontSize: 9 }}>▾</span>
+        </button>
+      </div>}
+
+      <div className="row hide-1100" style={{ flex: "1 1 0", minWidth: 0, maxWidth: 420, gap: 9, padding: "0 13px", height: 34, border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface)", color: "var(--ink-3)" }}>
+        <Ic.search size={14} />
+        <span className="trunc" style={{ fontSize: 12.8 }}>{sub ? "Search clients, threads, obligations" : "Search sub-accounts, threads, obligations"}</span>
+        <span className="mono" style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)" }}>⌘K</span>
+      </div>
+
+      <div className="row" style={{ gap: 10, flex: "none", marginLeft: "auto" }}>
+        <span className="pill pill-n hide-1280" style={{ height: 28, padding: "0 13px", borderRadius: 20 }}>{AGENCY.provider}</span>
+        <button onClick={openHelp} className="btn btn-s" style={{ height: 32, padding: "0 13px", borderRadius: 9, fontSize: 12.5, fontWeight: 600 }}>Help</button>
+        <button onClick={openAsk} className="btn btn-s" title="Ask Paige" style={{ width: 32, height: 32, padding: 0, justifyContent: "center", borderRadius: 9 }}><Ic.spark size={15} /></button>
+        <button className="btn btn-s" title="Notifications" style={{ width: 32, height: 32, padding: 0, justifyContent: "center", borderRadius: 9, position: "relative" }}>
+          <Ic.bell size={15} /><span style={{ position: "absolute", top: 6, right: 7, width: 6, height: 6, borderRadius: "50%", background: "var(--bad)" }} /></button>
+        <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="btn btn-s" title="Theme" style={{ width: 32, height: 32, padding: 0, justifyContent: "center", borderRadius: 9 }}>{theme === "dark" ? <Ic.sun size={15} /> : <Ic.moon size={15} />}</button>
+        <div ref={acctRef} style={{ position: "relative", flex: "none" }}>
+          <button onClick={openAcct} title={AGENCY.operator} aria-haspopup="menu" aria-expanded={acctOpen}
+            style={{ padding: 0, border: "2px solid " + (acctOpen ? "var(--gold-bright)" : "transparent"), background: "transparent", cursor: "pointer", borderRadius: "50%", display: "flex", outline: "none" }}>
+            <Avatar name={AGENCY.operator} size={30} tone="var(--rail-2)" /></button>
+        </div>
+      </div>
+    </header>
+  );
+};
+
+// ── Stub (this-pass screen placeholder — mirrors SoloApp's Stub) ─────────────
+const Stub = ({ route }) => {
+  const [title, sub] = TITLES[route] || ["Coming into view", ""];
+  return (
+    <Wrap max={900}>
+      <PageHead eyebrow="Coming into view" title={title} sub={sub} />
+      <div className="card" style={{ padding: "54px 30px", textAlign: "center" }}>
+        <div className="tile" style={{ margin: "0 auto 14px", width: 44, height: 44, borderRadius: 15, background: "var(--violet-tint)", color: "var(--violet)" }}><Ic.spark size={22} /></div>
+        <div style={{ fontWeight: 600, fontSize: 15 }}>This surface is next</div>
+        <div className="sub" style={{ maxWidth: 400, margin: "6px auto 0" }}>The Agency shell chrome is designed. This screen is a later sub-pass — say the word and it's the one we build next.</div>
+      </div>
+    </Wrap>
+  );
+};
+
+// ── AgencyApp (root) ─────────────────────────────────────────────────────────
+const AgencyApp = ({ mode = "agency" }) => {
+  const isAgency = mode === "agency";
+  const [route, setRoute] = React.useState("command");
+  const go = k => { setRoute(k); setSwitcherOpen(false); setAcctOpen(false); };
+  const [collapsed, setCollapsed] = React.useState(false);
+  const [theme, setTheme] = React.useState(() => localStorage.getItem("paige-agency-theme") || "light");
+  React.useEffect(() => { localStorage.setItem("paige-agency-theme", theme); }, [theme]);
+
+  // acting-as-a-sub — AGENCY MODE ONLY. In subaccount mode there is NO UI path that
+  // ever assigns this, so it is permanently null: the switcher, the banner, and the
+  // parent aggregate are structurally unreachable (§51 invariant).
+  const [acting, setActing] = React.useState(null);
+
+  // Global chrome pop-out open-state (all held here, per the task).
+  const [switcherOpen, setSwitcherOpen] = React.useState(false);
+  const [acctOpen, setAcctOpen] = React.useState(false);
+  const [askOpen, setAskOpen] = React.useState(false);
+  const [helpOpen, setHelpOpen] = React.useState(false);
+  const [helpSent, setHelpSent] = React.useState(false);
+  const [provisionOpen, setProvisionOpen] = React.useState(false);
+  const [provStep, setProvStep] = React.useState(1);
+  const [feed, setFeed] = React.useState([]);
+  const [scanDone, setScanDone] = React.useState(0);
+  const [formName, setFormName] = React.useState("Sarah's Coaching Practice");
+  const [formEmail, setFormEmail] = React.useState("sarah@sarahcoaching.example");
+  const [formColor, setFormColor] = React.useState("#7C6CE0");
+  const [tools, setTools] = React.useState({ Stripe: true, "Google Business": true, HubSpot: false, Calendar: true, "Meta Ads": false });
+  const timer = React.useRef(null);
+  const switcherRef = React.useRef(null);
+  const acctRef = React.useRef(null);
+
+  const openAsk = () => { setAskOpen(true); setAcctOpen(false); setSwitcherOpen(false); };
+  const openHelp = () => { setHelpOpen(true); setHelpSent(false); setAcctOpen(false); };
+  // Provisioning is an AGENCY act — never offered in subaccount mode.
+  const openProvision = () => { if (!isAgency) return; setProvisionOpen(true); setProvStep(1); setFeed([]); setSwitcherOpen(false); };
+  const closeProvision = () => { if (timer.current) clearInterval(timer.current); setProvisionOpen(false); setProvStep(1); setFeed([]); };
+
+  // ⌘K opens Ask Paige (the design's search-key → command surface).
+  React.useEffect(() => {
+    const h = e => { if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); openAsk(); } };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, []);
+  React.useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
+
+  // 3-step provisioning scan (Agency Shell.dc.html runScan) — streams the seven
+  // real check lines, then resolves into the welcome step.
+  const runScan = () => {
+    if (!isAgency) return;
+    const first = formName.split("'")[0];
+    const lines = [
+      { text: "Provisioning workspace…", mark: "✓", color: GREEN },
+      { text: "Checking " + first + "'s website… 240ms, clean", mark: "✓", color: GREEN },
+      { text: "Verifying her SSL… expires in 9 days, no auto-renew", mark: "⚠", color: AMBER },
+      { text: "Looking at her Meta Pixel… fires twice on checkout", mark: "⚠", color: AMBER },
+      { text: "Reading her booking flow… mobile drop-off at calendar", mark: "⚠", color: AMBER },
+      { text: "Mapping her offers and pricing… 4 found", mark: "✓", color: GREEN },
+      { text: "Setting up six departments… Paige is on shift", mark: "✓", color: GREEN },
+    ];
+    setFeed([]); setScanDone(0); setProvStep(2);
+    if (timer.current) clearInterval(timer.current);
+    let i = 0;
+    timer.current = setInterval(() => {
+      if (i >= lines.length) { clearInterval(timer.current); setProvStep(3); return; }
+      const line = lines[i++];
+      setFeed(f => f.concat([line])); setScanDone(i);
+    }, 620);
+  };
+  // "Walk through them with me" — enter the freshly-provisioned sub (agency only).
+  const enterNew = () => { if (timer.current) clearInterval(timer.current); setProvisionOpen(false); setProvStep(1); setActing(SUBS[0]); setRoute("command"); };
+
+  // `sub` = presenting as a sub-account (standalone subaccount mode, or agency acting
+  // into a sub). Drives the design's isSub nav/plan/label variants.
+  const sub = mode === "subaccount" || !!acting;
+  // Resolved workspace identity for the rail mark. Subaccount mode locks to its own
+  // tenant (SUBS[0] as the decorative own-tenant, §63); agency shows the agency mark
+  // unless it is acting into a sub.
+  const own = SUBS[0];
+  const brand = isAgency
+    ? (acting ? { name: acting.name, initials: tmInit(acting.name), color: acting.color, isAgency: true, acting: true }
+      : { name: AGENCY.provider.replace("Provided by ", ""), initials: AGENCY.initials, color: "#C8A02E", isAgency: true, acting: false })
+    : { name: own.name, initials: tmInit(own.name), color: own.color, isAgency: false, acting: false };
+
+  const screens = {}; // real screen modules land here in later sub-passes.
+  const body = screens[route] || <Stub route={route} />;
+
+  const swatches = ["#7C6CE0", "#3F7F5C", "#2F6FA8", "#C1652F", "#A8425A", "#B3932A"];
+
+  return (
+    <div className="paige-agency" data-theme={theme} style={{ height: "100vh" }}>
+      <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+        <Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} sub={sub} brand={brand} />
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+          <TopBar theme={theme} setTheme={setTheme} route={route} isAgency={isAgency} acting={acting} brand={brand} sub={sub}
+            openSwitcher={() => setSwitcherOpen(v => !v)} switcherOpen={switcherOpen} switcherRef={switcherRef}
+            openAcct={() => setAcctOpen(v => !v)} acctOpen={acctOpen} acctRef={acctRef}
+            openAsk={openAsk} openHelp={openHelp} />
+
+          {/* Account SWITCHER popover — agency only (§51). */}
+          {isAgency && (
+            <div style={{ position: "absolute", top: 50, left: 300, zIndex: 60 }}>
+              <div style={{ position: "relative" }}>
+                <Popover open={switcherOpen} onClose={() => setSwitcherOpen(false)} anchorRef={switcherRef} align="left" width={348} top="0" pad={8}>
+                  <button onClick={() => { setActing(null); setSwitcherOpen(false); }} className="row" style={{ width: "100%", gap: 10, padding: "9px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 600, color: "var(--ink)", textAlign: "left" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: "var(--gold-bright)" }} />Agency view</button>
+                  <div style={{ height: 1, background: "var(--line-soft)", margin: "6px 4px" }} />
+                  <button onClick={() => go("fleet")} className="row" style={{ width: "100%", gap: 10, padding: "9px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", fontSize: 13.5, color: "var(--ink)", textAlign: "left" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <span style={{ width: 17, textAlign: "center", color: "var(--ink-3)", fontSize: 12 }}>▥</span>All sub-accounts ({AGENCY.subCount})</button>
+                  <div style={{ height: 1, background: "var(--line-soft)", margin: "6px 4px" }} />
+                  <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: ".14em", color: "var(--ink-3)", padding: "6px 10px" }}>RECENT</div>
+                  {SUBS.slice(0, 5).map(s => (
+                    <button key={s.name} onClick={() => { setActing(s); setRoute("command"); setSwitcherOpen(false); }} className="row" style={{ width: "100%", gap: 10, padding: "8px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flex: "none" }} />
+                      <span className="grow trunc" style={{ fontSize: 13, color: "var(--ink)" }}>{s.name}</span>
+                      <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>{s.drafts ? s.drafts + " drafts" : "clear"}</span>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: hc(s.health), flex: "none" }} />
+                    </button>
+                  ))}
+                  <div style={{ padding: "8px 6px 4px" }}>
+                    <input placeholder="Search sub-accounts" style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)", fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
+                  </div>
+                  <button onClick={openProvision} className="row" style={{ width: "100%", gap: 8, padding: "9px 10px", marginTop: 2, borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "var(--gold)", textAlign: "left" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>+ Add a sub-account</button>
+                </Popover>
+              </div>
+            </div>
+          )}
+
+          {/* Account / profile MENU popover (both modes). */}
+          <div style={{ position: "absolute", top: 50, right: 16, zIndex: 70 }}>
+            <div style={{ position: "relative" }}>
+              <Popover open={acctOpen} onClose={() => setAcctOpen(false)} anchorRef={acctRef} align="right" width={308} top="0" pad={0}>
+                <div className="row" style={{ gap: 11, padding: "14px 15px", background: "var(--surface-2)", borderBottom: "1px solid var(--line-soft)" }}>
+                  <Avatar name={AGENCY.operator} size={38} tone="var(--rail-2)" />
+                  <div style={{ minWidth: 0 }}>
+                    <div className="trunc" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>{AGENCY.operator}</div>
+                    <div className="trunc" style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>antonio@agency.example</div>
+                    <div className="row" style={{ gap: 7, marginTop: 6 }}>
+                      <span className="pill pill-v" style={{ height: 18 }}>Owner · Admin</span>
+                      <span className="trunc" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{sub ? "Solo plan" : AGENCY.plan}</span>
+                    </div>
+                  </div>
+                </div>
+                {isAgency && acting && (
+                  <div className="row" style={{ gap: 8, padding: "8px 15px", background: "var(--gold-tint)", borderBottom: "1px solid var(--gold-line)" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: acting.color, flex: "none" }} />
+                    <div className="trunc" style={{ fontSize: 11.5, color: "var(--warn)" }}>Acting as {acting.name} — actions affect them</div>
+                  </div>
+                )}
+                <div style={{ padding: "7px 6px", borderBottom: "1px solid var(--line-soft)" }}>
+                  <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: ".14em", color: "var(--ink-3)", padding: "5px 9px" }}>YOUR PREFERENCES</div>
+                  <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="row" style={{ width: "100%", gap: 9, padding: "7px 9px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <span style={{ display: "flex", color: "var(--ink-3)" }}>{theme === "dark" ? <Ic.sun size={13} /> : <Ic.moon size={13} />}</span>
+                    <span style={{ fontSize: 12, color: "var(--ink)" }}>Appearance</span>
+                    <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)" }}>{theme === "dark" ? "Dark" : "Light"}</span></button>
+                  <button onClick={() => go("setup")} className="row" style={{ width: "100%", gap: 9, padding: "7px 9px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <Ic.gear size={13} /><span style={{ fontSize: 12, color: "var(--ink)" }}>Your profile</span>
+                    <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--ink-3)" }}>Setup › Owner</span></button>
+                </div>
+                <div style={{ padding: "7px 6px" }}>
+                  <button onClick={openHelp} className="row" style={{ width: "100%", gap: 9, padding: "7px 9px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <Ic.support size={13} /><span style={{ fontSize: 12, color: "var(--ink)" }}>Help and support</span></button>
+                </div>
+                <button onClick={() => { setAcctOpen(false); performSignOut({ redirectTo: "/" }); }} className="row" style={{ width: "100%", gap: 9, padding: "11px 15px", borderTop: "1px solid var(--line-soft)", background: "var(--surface-2)", border: "none", cursor: "pointer", textAlign: "left" }}
+                  onMouseEnter={e => e.currentTarget.style.background = "var(--bad-tint)"} onMouseLeave={e => e.currentTarget.style.background = "var(--surface-2)"}>
+                  <Ic.arrow size={13} style={{ color: "var(--bad)" }} /><span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--bad)" }}>Sign out</span></button>
+              </Popover>
+            </div>
+          </div>
+
+          {/* Acting-banner — agency mode acting into a sub ONLY (§51). */}
+          {isAgency && acting && (
+            <div className="row" style={{ gap: 12, padding: "9px 26px", background: "var(--gold-tint)", borderTop: "1px solid var(--gold-line)", borderBottom: "1px solid var(--gold-line)" }}>
+              <span style={{ width: 9, height: 9, borderRadius: 2, background: acting.color }} />
+              <span style={{ fontSize: 13, color: "var(--ink)" }}>Now viewing: <b style={{ fontWeight: 600 }}>{acting.name}</b></span>
+              <span className="hide-1100" style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Their workspace, exactly as they see it. Actions here affect them, not your agency.</span>
+              <button onClick={() => setActing(null)} className="row" style={{ marginLeft: "auto", gap: 6, background: "transparent", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: "var(--gold)" }}>Return to agency view →</button>
+            </div>
+          )}
+
+          <main key={route} style={{ flex: 1, overflow: "auto", minHeight: 0 }}>{body}</main>
+        </div>
+
+        {/* Provisioning wizard (agency only) — 3-step center Modal. */}
+        {isAgency && (
+          <Modal open={provisionOpen} onClose={closeProvision} size={640}
+            title={provStep === 3 ? "Welcome your new sub-account" : "Add a sub-account"} sub={"Step " + provStep + " of 3"} accent="var(--gold-bright)"
+            foot={provStep === 1 ? (
+              <>
+                <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Paige scans her systems next — takes about two minutes.</div>
+                <button onClick={runScan} className="row" style={{ marginLeft: "auto", gap: 6, padding: "10px 17px", borderRadius: 10, background: "var(--gold-bright)", color: "#241C05", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer" }}>Provision and scan</button>
+              </>
+            ) : null}>
+            {provStep === 1 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 17 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 13 }}>
+                  <div>
+                    <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 7 }}>Sub-account name</div>
+                    <input value={formName} onChange={e => setFormName(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 7 }}>Owner email</div>
+                    <input value={formEmail} onChange={e => setFormEmail(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 9 }}>Brand color — cascades into her portal and her Paige emails</div>
+                  <div className="row" style={{ gap: 10 }}>
+                    {swatches.map(c => (
+                      <button key={c} onClick={() => setFormColor(c)} style={{ width: 32, height: 32, borderRadius: 9, cursor: "pointer", background: c, border: "none", boxShadow: formColor === c ? "0 0 0 2px var(--surface), 0 0 0 4px " + c : "none" }} />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: "var(--ink-3)", marginBottom: 9 }}>Connect her tools now (optional — she can do it later)</div>
+                  <div className="row" style={{ gap: 9, flexWrap: "wrap" }}>
+                    {Object.keys(tools).map(label => {
+                      const on = tools[label];
+                      return <button key={label} onClick={() => setTools(t => ({ ...t, [label]: !t[label] }))} style={{ padding: "8px 13px", borderRadius: 20, cursor: "pointer", fontSize: 12.5, border: "1px solid " + (on ? "var(--gold-line)" : "var(--line)"), background: on ? "var(--gold-tint)" : "var(--surface)", color: on ? "var(--gold)" : "var(--ink-2)" }}>{label}</button>;
+                    })}
+                  </div>
+                </div>
+                <div style={{ border: "1px solid var(--line-soft)", borderRadius: 11, padding: "13px 14px", background: "var(--surface-2)", fontSize: 13, lineHeight: 1.55, color: "var(--ink-2)" }}>She stays a sub-account, always. She owns her autonomy settings and her data — you can see, recommend, and work alongside her, not override her.</div>
+              </div>
+            )}
+            {provStep === 2 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+                <div className="row" style={{ gap: 11 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--gold-bright)" }} />
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Paige is scanning {formName}</div>
+                  <div className="mono" style={{ marginLeft: "auto", fontSize: 12, color: "var(--ink-3)" }}>{scanDone} of 7 checks</div>
+                </div>
+                <div className="mono" style={{ border: "1px solid var(--line-soft)", borderRadius: 11, background: "var(--surface-2)", padding: 15, minHeight: 236, fontSize: 12.5, display: "flex", flexDirection: "column", gap: 9 }}>
+                  {feed.map((f, i) => (
+                    <div key={i} className="fade-in row" style={{ gap: 10, alignItems: "flex-start" }}>
+                      <span style={{ color: f.color, width: 14 }}>{f.mark}</span>
+                      <span style={{ color: "var(--ink-2)" }}>{f.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {provStep === 3 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div className="row" style={{ gap: 11 }}>
+                  <div className="tile" style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--ok-tint)", color: "var(--ok)" }}><Ic.check size={16} /></div>
+                  <div style={{ fontSize: 15.5, fontWeight: 600 }}>{formName} is provisioned.</div>
+                </div>
+                <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--ink-2)" }}>I found 3 things that need attention: her Meta Pixel fires twice on checkout, her SSL renews in 9 days with no auto-renew, and her booking page drops mobile visitors at the calendar step. Want to walk through them now, or send her a welcome and let her handle them?</div>
+                <div className="row" style={{ gap: 10 }}>
+                  <button onClick={enterNew} className="row" style={{ gap: 6, padding: "10px 16px", borderRadius: 10, background: "var(--gold-bright)", color: "#241C05", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer" }}>Walk through them with me</button>
+                  <button onClick={closeProvision} className="btn" style={{ height: 38, borderRadius: 10, fontSize: 13, color: "var(--ink-2)" }}>Send her the welcome</button>
+                </div>
+              </div>
+            )}
+          </Modal>
+        )}
+
+        {/* Ask Paige launcher (both modes) — center Modal. */}
+        <Modal open={askOpen} onClose={() => setAskOpen(false)} size={680} title="Ask Paige" icon={<Ic.spark size={16} />} sub={sub ? "This sub-account" : "Across your book"}
+          foot={<div style={{ fontSize: 13, color: "var(--ink-3)" }}>Ask about any sub-account, or your whole book…</div>}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+            <div style={{ alignSelf: "flex-end", maxWidth: "80%", padding: "11px 14px", borderRadius: 12, background: "var(--surface-sunk)", fontSize: 13.5 }}>Which sub-account is losing me the most money to service?</div>
+            <div style={{ maxWidth: "88%", fontSize: 13.5, lineHeight: 1.65, color: "var(--ink-2)" }}>Ridgeline. Your team logged 74 hours on it last month against a $2,400 retainer — $32 an hour. Northwind took 12 hours for $3,600. Two of the 74 hours were billable scope; the rest was rework after their own team edited campaigns mid-flight.</div>
+            <div style={{ border: "1px solid var(--line-soft)", borderRadius: 12, overflow: "hidden" }}>
+              {PROFIT_ROWS.map(p => (
+                <div key={p.name} className="row" style={{ gap: 12, padding: "11px 15px", borderBottom: "1px solid var(--line-soft)" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color }} />
+                  <span style={{ fontSize: 13, width: 154, color: "var(--ink)" }}>{p.name}</span>
+                  <span className="mono" style={{ fontSize: 12, color: "var(--ink-3)", width: 70 }}>{p.hours}</span>
+                  <span className="mono" style={{ fontSize: 12, color: "var(--ink-3)", width: 70 }}>{p.fee}</span>
+                  <span className="mono" style={{ marginLeft: "auto", fontSize: 12.5, color: p.tone }}>{p.rate}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize: 13.5, lineHeight: 1.65, color: "var(--ink-2)" }}>I drafted the sunset conversation for Ridgeline — a 60-day wind-down that keeps the relationship and hands their data back clean. Or a repriced retainer at $5,200 with scope boundaries written in.</div>
+            <div className="row" style={{ gap: 10 }}>
+              <button className="btn btn-p" style={{ height: 36, borderRadius: 9, fontSize: 12.5, fontWeight: 600 }}>Read the sunset draft</button>
+              <button className="btn" style={{ height: 36, borderRadius: 9, fontSize: 12.5, color: "var(--ink-2)" }}>Show the reprice instead</button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* Help (both modes) — right drawer SlideOut → sendHelp → helpSent. */}
+        <SlideOut open={helpOpen} onClose={() => setHelpOpen(false)} title="Help and support" sub="Tell me what's going on — I pull your account context in myself." icon={<Ic.spark size={15} />}
+          foot={
+            <>
+              <input placeholder="Describe what's happening…" style={{ width: "100%", padding: "11px 13px", borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)", fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+              <div className="row" style={{ gap: 10, width: "100%" }}>
+                <div style={{ fontSize: 12, color: "var(--ink-3)", cursor: "pointer" }}>＋ Attach a screenshot</div>
+                <button onClick={() => setHelpSent(true)} className="row" style={{ marginLeft: "auto", gap: 6, padding: "9px 16px", borderRadius: 9, background: "var(--gold-bright)", color: "#241C05", fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer" }}>Send to Paige</button>
+              </div>
+            </>
+          }>
+          {!helpSent ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "var(--ink-2)" }}>Tell me what's going on in your own words. I'll pull your account context in myself — no ticket form.</div>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                {HELP_PROMPTS.map(p => (
+                  <span key={p} className="pill pill-n" style={{ height: 30, padding: "0 12px", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)", cursor: "pointer" }}>{p}</span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ alignSelf: "flex-end", maxWidth: "86%", padding: "11px 14px", borderRadius: 12, background: "var(--surface-sunk)", fontSize: 13.5, lineHeight: 1.55 }}>Two of my sub-accounts' Stripe connections dropped overnight. Is this on your side?</div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)" }}>Paige Agent AI support · just now</div>
+              <div style={{ maxWidth: "88%", padding: "12px 14px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line)", fontSize: 13.5, lineHeight: 1.6, color: "var(--ink-2)" }}>Yes — a Stripe token rotation last night dropped connections for 41 workspaces, yours among them. Reconnection is automatic and both of yours are already back; no charges failed in the window. I'm holding this thread open until you confirm your dashboards agree.</div>
+              <div className="row" style={{ gap: 9 }}>
+                <span className="pill pill-ok" style={{ height: 24 }}>Response ready</span>
+                <span style={{ fontSize: 12, color: "var(--ink-3)" }}>First response in 6 minutes</span>
+              </div>
+            </div>
+          )}
+        </SlideOut>
+      </div>
+    </div>
+  );
+};
+
+export default AgencyApp;
