@@ -35,6 +35,9 @@ import AutomationsHub from "./automations";
 import ClientsHub from "./clients";
 import CalendarHub from "./calendar";
 import ClientSupport from "./support";
+import GrowthHub from "./growth";
+import Analytics2 from "./analytics";
+import Billing from "./billing";
 
 // ── Nav (Agency Shell.dc.html:12587 navMain / 12599 navPlatform) ────────────
 // [route, label, IconFn, badge(sub)] — badge is a fn of `sub` (presenting as a
@@ -302,9 +305,11 @@ const AgencyApp = ({ mode = "agency" }) => {
       : { name: AGENCY.provider.replace("Provided by ", ""), initials: AGENCY.initials, color: "#C8A02E", isAgency: true, acting: false })
     : { name: own.name, initials: tmInit(own.name), color: own.color, isAgency: false, acting: false };
 
-  // Real screen modules (Slice 1b-2: the first MAIN group). Each receives the shell
+  // Real screen modules (MAIN group, Slices 1b-2..1b-4). Each receives the shell
   // context { isAgency, acting, openAsk }; CommandCenter also takes enterSub (act-as
-  // jump, agency-only). Screens still on Stub land in 1b-3..5.
+  // jump, agency-only). Vibe Studio is NOT registered here — GrowthHub owns its full
+  // lifecycle (opens VibeStudio inline from its own studioOpen state). Remaining
+  // PLATFORM-group screens (market/vault/integrations/team/setup) land in 1b-5.
   const screens = {
     command: <CommandCenter isAgency={isAgency} acting={acting} openAsk={openAsk} enterSub={setActing} />,
     paige: <PaigeHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
@@ -313,6 +318,9 @@ const AgencyApp = ({ mode = "agency" }) => {
     fleet: <ClientsHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     calendar: <CalendarHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     support: <ClientSupport isAgency={isAgency} acting={acting} openAsk={openAsk} />,
+    growth: <GrowthHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
+    analytics: <Analytics2 isAgency={isAgency} acting={acting} openAsk={openAsk} />,
+    billing: <Billing isAgency={isAgency} acting={acting} openAsk={openAsk} />,
   };
   const body = screens[route] || <Stub route={route} />;
 
