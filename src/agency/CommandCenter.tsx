@@ -257,7 +257,9 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
     { who: "Ridgeline Outdoor Co.", color: "#3F7F5C", amount: "6 days lost", tone: "var(--bad)", cta: "Fix the pixel", text: "Systems Check found a broken purchase pixel. Six days of attribution are already missing from their ad reporting." },
     { who: "Coach James Fitness", color: "#C1652F", amount: "22% off plan", tone: "var(--warn)", cta: "Read my draft", text: "Third month below plan. I drafted the conversation, including the two offers that carried him last winter." }
   ];
-  const openSubByName = name => { const s = SUBS.find(x => x.name === name); if (s) enterSub(s); };
+  // Decorative-only (see the CommandCenter header comment) — `attention` rows
+  // have no real tenant id/account_number, so this never calls the real enterSub;
+  // its button is disabled below rather than silently no-op on click (§13).
 
   return (
     <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -445,7 +447,7 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
                 <div style={{ fontSize: 14, lineHeight: 1.6, color: "var(--ink-2)" }}>{a.text}</div>
                 <div className="row" style={{ gap: 9, marginTop: 13 }}>
                   <GoldBtn style={{ padding: "9px 15px", fontSize: 13 }}>{a.cta}</GoldBtn>
-                  <button onClick={() => openSubByName(a.who)} className="btn btn-s">Open sub-account</button>
+                  <button disabled title="Real per-sub-account jump lands once this panel reads the real roster" className="btn btn-s" style={{ opacity: 0.5, cursor: "not-allowed" }}>Open sub-account</button>
                 </div>
               </div>
             ))}
@@ -938,11 +940,15 @@ const PipeTab = ({ openAsk }) => {
 };
 
 // ── CommandCenter (root screen) ───────────────────────────────────────────────
-// Props from the AgencyApp shell: { isAgency, acting, openAsk }.
-//  • enterSub(sub) is OPTIONAL — the Needs-attention modal's "Open sub-account"
-//    action needs the shell's act-as setter; absent it (and always in sub mode,
-//    where it is unreachable), it is a no-op. If the shell wants that jump wired,
-//    pass enterSub={setActing}.
+// Props from the AgencyApp shell: { isAgency, acting, openAsk, enterSub }.
+//  • enterSub(child) is the shell's REAL act-as action (§65 Option B2,
+//    AgencyApp.tsx's enterSubaccount — agency_enter_subaccount + switchTenant).
+//    It expects a REAL roster row (child.id + child.accountNumber); it silently
+//    no-ops on anything else (§13 — never fakes an act-as into non-existent
+//    data). The `attention` array below is 100% decorative demo content (no
+//    real per-sub-account backend yet), so its "Open sub-account" CTA is
+//    disabled rather than wired to enterSub — an honest inert control beats a
+//    button that pretends to jump into a sub-account that isn't real.
 const CommandCenter = ({ isAgency = true, acting = null, openAsk = noop, enterSub = noop }) => {
   React.useEffect(() => { ensureStyles(); }, []);
   const [tab, setTab] = useSubtabRoute("agency", "command-center", "main");

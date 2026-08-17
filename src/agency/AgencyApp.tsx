@@ -290,7 +290,7 @@ const AgencyApp = ({ mode = "agency" }) => {
   // The adapters read ONLY session-scoped seams (agency_portfolio_metrics /
   // agency_list_my_subaccounts, gated by auth.uid()); they never touch a
   // client-supplied tenant_id and RAISE-safe for non-agency callers (§9/§51).
-  const { activeTenant, tenants, switchTenant } = useTenantContext();
+  const { activeTenant, tenants, switchTenant, refresh: refreshTenants } = useTenantContext();
   // §65 Option B2 — the caller's OWN agency/enterprise tenant, sourced independent of
   // `activeTenant` (which becomes the CHILD while acting). A caller's membership on
   // their own agency is never removed by entering a child (§37/§9), so this stays
@@ -395,11 +395,19 @@ const AgencyApp = ({ mode = "agency" }) => {
   // AND runs queryClient.invalidateQueries(), the established §9 cache-safety step;
   // see src/components/admin/TenantSwitcher.tsx). Never presented as done until the
   // RPC actually succeeds (§13) — callers must catch and surface `switchError`.
+  // §39 fix (peer-gate finding #1) — `tenants` is only refetched on mount/auth
+  // events, NEVER by switchTenant itself. On a FIRST-EVER entry into a child,
+  // agency_enter_subaccount's membership grant is the only thing that makes the
+  // child RLS-readable — the client's cached `tenants` list won't contain it yet,
+  // so `activeTenant` would resolve to null/stale and `actingConfirmed` could
+  // never become true (a permanently-stuck syncing screen). refresh() re-fetches
+  // the tenant list under the NEW membership before we rely on activeTenant.
   const syncIntoChild = React.useCallback(async (childId) => {
     const { error } = await supabase.rpc("agency_enter_subaccount", { _child: childId });
     if (error) throw error;
     await switchTenant(childId);
-  }, [switchTenant]);
+    await refreshTenants();
+  }, [switchTenant, refreshTenants]);
 
   // enterSubaccount — the user-facing action (switcher row, Directory card, …).
   // Defensive: a fixture row (no real id/accountNumber) silently no-ops rather than
@@ -466,8 +474,17 @@ const AgencyApp = ({ mode = "agency" }) => {
       }
     })();
     return () => { cancelled = true; };
+    // §39 fix (peer-gate finding #2) — `switchBusy` is set INSIDE this effect, so
+    // listing it as a dep made the effect self-cancelling: setSwitchBusy(true)
+    // changes a dep → React tears down (cancelled=true) and re-invokes before the
+    // in-flight RPC resolves → the resolved call's `if (cancelled) return` skips
+    // `setSwitchBusy(false)` on every path → stuck forever on the syncing screen.
+    // The guard at the top of the effect body still reads the LATEST switchBusy/
+    // navigate/syncIntoChild via closure on every real re-run; they intentionally
+    // stay OUT of the deps array so the effect only re-runs on a genuine URL/
+    // session change, never on a re-render that merely redefines a callback.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSubPrefixed, actingConfirmed, urlActingAccountNumber, switchBusy, urlAccount]);
+  }, [isSubPrefixed, actingConfirmed, urlActingAccountNumber, urlAccount]);
 
   // Global chrome pop-out open-state (all held here, per the task).
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
