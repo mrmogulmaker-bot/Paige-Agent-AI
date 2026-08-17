@@ -425,7 +425,7 @@ const VideoOverlay = ({ open, live, secs, who, asLine, initials, onEnd, tools })
 };
 
 // ── Expand thread — wide two-pane reader (expandOpen) ─────────────────────────
-const ExpandModal = ({ open, onClose, th, ownerWord, sendAsLine, crossBook, onActAs }) => (
+const ExpandModal = ({ open, onClose, th, ownerWord, sendAsLine, crossBook, onActAs, onCall }) => (
   <Modal open={open} onClose={onClose} wide pad="0">
     <div style={{ display: "flex", flexDirection: "column", height: "min(84vh,720px)" }}>
       <div className="row" style={{ gap: 11, padding: "14px 20px", borderBottom: "1px solid var(--line-soft)", flex: "none" }}>
@@ -434,7 +434,14 @@ const ExpandModal = ({ open, onClose, th, ownerWord, sendAsLine, crossBook, onAc
           <div className="trunc" style={{ fontSize: 15, fontWeight: 600 }}>{th.who}{crossBook ? " · " + th.tenant : ""}</div>
           <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>{sendAsLine}</div>
         </div>
-        <button onClick={onClose} className="btn btn-s" style={{ marginLeft: "auto", width: 30, height: 30, padding: 0, justifyContent: "center", borderRadius: 9, flex: "none" }}><Ic.x size={14} /></button>
+        {/* Call actions in the expand reader header (design L4917–4920): Call / Video /
+            Voice note, then Collapse. Voice note is inert (design ships it inert too). */}
+        <div className="row" style={{ marginLeft: "auto", gap: 8, flex: "none" }}>
+          {[{ icon: "☏", label: "Call", m: "voice" }, { icon: "▢", label: "Video", m: "video" }, { icon: "◉", label: "Voice note", m: null }].map(a => (
+            <button key={a.label} onClick={() => a.m && onCall && onCall(a.m)} title={a.label} style={{ width: 30, height: 30, padding: 0, borderRadius: 9, border: "1px solid var(--line)", background: "var(--surface)", display: "grid", placeItems: "center", fontSize: 13, color: "var(--ink-2)", cursor: "pointer", flex: "none" }}>{a.icon}</button>
+          ))}
+          <button onClick={onClose} title="Collapse" className="btn btn-s" style={{ width: 30, height: 30, padding: 0, justifyContent: "center", borderRadius: 9, flex: "none" }}><Ic.x size={14} /></button>
+        </div>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: "flex" }}>
         <div style={{ flex: "1 1 0", minWidth: 0, display: "flex", flexDirection: "column", minHeight: 0 }}>
@@ -946,7 +953,7 @@ const ConversationsConsole = ({ isAgency = true, acting = null, openAsk = noop }
       {/* ── Pop-outs ─────────────────────────────────────────────────────────── */}
       <CsDrawer open={csRow != null} onClose={() => setCsRow(null)} group={csGroup} row={csRow} />
       {crossBook && <ActAsModal open={actAsOpen} onClose={() => setActAsOpen(false)} tenant={th.tenant} owner={th.owner} />}
-      <ExpandModal open={expandOpen} onClose={() => setExpandOpen(false)} th={th} ownerWord={ownerWord} sendAsLine={sendAsLine} crossBook={crossBook} onActAs={() => setActAsOpen(true)} />
+      <ExpandModal open={expandOpen} onClose={() => setExpandOpen(false)} th={th} ownerWord={ownerWord} sendAsLine={sendAsLine} crossBook={crossBook} onActAs={() => setActAsOpen(true)} onCall={m => { setExpandOpen(false); startCall(m); }} />
       <NewConvoModal open={newConvoOpen} onClose={() => setNewConvoOpen(false)} crossBook={crossBook} tenant={th.tenant} owner={firstOwner} color={th.color} onCall={m => { setNewConvoOpen(false); startCall(m); }} />
       {crossBook && <BatchModal open={batchOpen} onClose={() => setBatchOpen(false)} ownerWord={ownerWord} rows={batchRows} />}
       <CaReport open={caReport} onClose={() => setCaReport(false)} step={caStep} setStep={setCaStep} ownerWord={ownerWord} />
