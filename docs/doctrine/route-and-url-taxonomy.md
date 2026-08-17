@@ -583,7 +583,30 @@ avoid `/command-center/command-center`. Same for `automations`→`library`.
   revenue; marketplace: sub drops curated+publish; fleet: relabels) are a per-mode render concern, not a
   registry fork — the registry lists the full agency set; the screen shows the mode-appropriate subset.
 
-### 16d. Implementation (task #172, per-screen slices)
+### 16d. Implementation (task #172, per-screen slices) — SHIPPED (Option A, 2026-08-17)
 Each screen's internal sub-tab `useState` converts to reading the 3rd URL segment — the same state→URL
 swap done at the branch level (`AgencyApp.tsx` already parses `params['*'].split('/')`: `[0]`=branch,
 `[1]`=sub-tab). Sliced one/few screens per commit, each verifiable; §28/§63 markup preserved.
+
+**Shipped mechanism:** the one-line-per-screen swap is the `useSubtabRoute(tier, branchSlug, defaultKey)`
+hook (`src/lib/routing/useSubtabRoute.ts`) — a drop-in replacement for the screen's local sub-tab
+`useState` that DERIVES the active sub-tab from URL segment `[1]` (via the registry `subtabBySlug`) and
+NAVIGATES on every set (`subtabByKey` → `subtabPath`). All 12 sub-tabbed agency screens wired:
+`CommandCenter` (`command-center`/main) · `paige` (`paige`/chat) · `automations` (`automations`/library) ·
+`clients` (`clients`/directory) · `calendar` (`calendar`/schedule) · `growth` (`growth`/overview) ·
+`analytics` (`analytics`/brief) · `billing` (`billing`/invoices) · `marketplace` (`marketplace`/today) ·
+`vault` (`business-vault`/vault) · `team` (`team`/roster) · `setup` (`setup`/business). Client Support +
+Integrations have no sub-tabs (unchanged). **DUAL-MODE (§58):** mounted WITHOUT a `:account` param (the
+sub-account `/admin` inline takeover, whose `/business` tree lands in R3) the hook degrades to plain local
+state, so that path is byte-unchanged. Each screen's default key == its branch's FIRST sub-tab key, so a
+bare `/agency/{n}/{branch}` renders the default sub-tab (honest fallback, §13).
+
+**Remaining (A2, not part of this slice):** the cross-cutting `?scope=` query-param conversion (§16c —
+autos/calendar/marketplace/vault/team scope filter + `trust-compass` scope-as-nav) is deferred to a
+follow-up; today those screens keep their existing scope handling, and only the *destination* sub-tabs
+are URL-driven.
+
+**Verification:** `tierBranches.test.ts` 16/16 green (6 sub-tab invariants); `tsc` 0 new (baseline 18);
+`vite build` green. §32.c owner live-drive owed (login → land on
+`/agency/{PME-number}/command-center/overview`; click a sub-tab → URL updates; refresh → stays;
+bookmark → resolves) before Option B (#171) fires.

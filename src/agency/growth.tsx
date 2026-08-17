@@ -20,6 +20,7 @@
 // sub (acting set), this screen shows ONLY that one book's own Growth — no scope
 // segment, no picker, no aggregate. The Studio it opens is scoped to that same book.
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, SubTabs, ScopeSeg, useReducedMotion } from "./_shared";
 import {
   GROWTH_TABS, CAMPAIGNS, BRAND_TOKENS, SOCIAL_POSTS, PAGES_LIST, FUNNELS_LIST,
@@ -257,7 +258,7 @@ const GrowthHub = ({ isAgency = true, acting = null, openAsk = noop }) => {
   useReducedMotion(); // keep the pack's motion-preference subscription warm on this surface
   const crossBook = isAgency && !acting; // §51 — cross-book UI lives ONLY here
 
-  const [tab, setTab] = React.useState("overview");
+  const [tab, setTab] = useSubtabRoute("agency", "growth", "overview");
   const [scopeRaw, setScopeRaw] = React.useState("agency");
   const [sel, setSel] = React.useState(0);
   const [pickOpen, setPickOpen] = React.useState(false);

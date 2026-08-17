@@ -27,6 +27,7 @@
 // stay literal — a decorative chart palette with no semantic token, exactly as the rest
 // of the pack treats data colors.
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, SubTabs, Modal, useReducedMotion } from "./_shared";
 
 const noop = () => {};
@@ -773,7 +774,7 @@ const Analytics2 = ({ isAgency = true, acting = null, openAsk = noop }) => {
   const crossBook = isAgency && !acting;               // §51: single-book when a sub is in view
   const reduce = useReducedMotion();
   const [stageRef, mW, mH] = useStage();
-  const [anTab, setAnTab] = React.useState("brief");
+  const [anTab, setAnTab] = useSubtabRoute("agency", "analytics", "brief");
   const [anScope, setAnScope] = React.useState("agency");
   const [anSubIdx, setAnSubIdx] = React.useState(0);
   const [anRange, setAnRange] = React.useState("Last 30 days");

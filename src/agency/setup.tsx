@@ -51,6 +51,7 @@
 // variant. `crossBook = isAgency && !acting` is computed and used to select that note.
 // §63: every fixture name (Cook & Co, Antonio Cook, Dolores Ruiz …) is fictional.
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { SlideOut, Modal } from "./_shared";
 import SetupCard, { SETUP_VIEW } from "./SetupCard";
 import { SETUP_TABS, SU_FIELDS } from "./fixtures";
@@ -105,7 +106,7 @@ const SU_EDIT_FOOT =
 
 // Props from the AgencyApp shell: { isAgency, acting, openAsk }.
 const SetupScreen = ({ isAgency = true, acting = null, openAsk = noop }) => {
-  const [tab, setTab] = React.useState("business"); // business|presence|owner|contacts|people|banking|comms
+  const [tab, setTab] = useSubtabRoute("agency", "setup", "business"); // business|presence|owner|contacts|people|banking|comms
   const [suCard, setSuCard] = React.useState(null); // expanded card index | null → suPop
   const [suEdit, setSuEdit] = React.useState(null); // { card, mode } | null → suEdit drawer
 

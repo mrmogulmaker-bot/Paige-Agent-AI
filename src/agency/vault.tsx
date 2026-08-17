@@ -36,6 +36,7 @@
 // TEAM_SUBS coaches). §50 — no pop-culture marks. Every const consumed here is
 // already exported from ./fixtures — nothing is redefined (§18 one home).
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, Modal, SlideOut, ScopeSeg, AV } from "./_shared";
 import {
   BV_TABS, BV_OBS, BV_VENDORS, BV_BOOK_VENDORS, TEAM_SUBS, AGENCY,
@@ -83,7 +84,7 @@ const VENDOR_HUES = ["#7C6CE0", "#3F7F5C", "#B5822A", "#C05B45", "#2F6B8F", "#8A
 
 // Props from the AgencyApp shell: { isAgency, acting, openAsk }.
 const VaultHub = ({ isAgency = true, acting = null, openAsk = noop }) => {
-  const [tab, setTab] = React.useState("vault");             // vault | registry | renewals | vendors
+  const [tab, setTab] = useSubtabRoute("agency", "business-vault", "vault");             // vault | registry | renewals | vendors
   const [scopeState, setScopeState] = React.useState("agency"); // agency | book | sub
   const [tSub, setTSub] = React.useState(0);                 // picked sub-account (readOnly scope)
   const [filter, setFilter] = React.useState("All");         // registry filter chip

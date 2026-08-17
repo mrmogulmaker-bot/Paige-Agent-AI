@@ -37,6 +37,7 @@
 // ONLY that book's own calendar — the CAL_SUB_* data path, that book's slug/brand,
 // no scope toggle and no picker.
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, SubTabs, SlideOut, Modal, AV } from "./_shared";
 import {
   CAL_TABS, CAL_CALENDARS, CAL_SETTING_GROUPS, CAL_FORMS, CAL_ROLES, CAL_LAYERS,
@@ -207,7 +208,7 @@ const CalendarHub = ({ isAgency = true, acting = null, openAsk = () => {} }) => 
   const narrow = dim.w > 0 && dim.w < 1000;
   const tight = short && isBook;
 
-  const [tab, setTab] = React.useState("schedule");
+  const [tab, setTab] = useSubtabRoute("agency", "calendar", "schedule");
   const [scope, setScope] = React.useState("agency");      // agencyView only
   const [tSub, setTSub] = React.useState(0);               // sub-picker index
   const [calView, setCalView] = React.useState("Month");   // cosmetic segment
