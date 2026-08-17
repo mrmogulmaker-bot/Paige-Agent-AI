@@ -296,6 +296,8 @@ const AgencyApp = ({ mode = "agency" }) => {
   // their own agency is never removed by entering a child (§37/§9), so this stays
   // stable through the whole act-as lifecycle — the correct "own number" for both the
   // top-level URL guard below and the act-as flow.
+  // tier-feature-exempt: tier ROUTING (identifying which of the caller's own tenants
+  // IS their agency/enterprise identity), not a §60 feature-availability decision.
   const ownAgencyTenant = (tenants || []).find(t => t.account_type === "agency" || t.account_type === "enterprise") ?? null;
 
   // ── §65 Option B2 — REAL act-as. `acting` is DERIVED, never a raw setState —
