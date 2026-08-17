@@ -34,26 +34,21 @@
 // Needs-attention modal are all gated behind isAgency and are structurally absent.
 // §63: the design's decorative fixture names are preserved verbatim.
 import React from "react";
-import { Ic, Modal, useReducedMotion } from "./_shared";
+import { Ic, Modal } from "./_shared";
 import {
-  AGENCY, AGENCY_KPI_DATA, SUB_KPI_DATA, CLUSTERS, FINDINGS, TEAM, DEPT_LOAD,
-  STAGES, LIFECYCLE, BOARD, DEALS, AUDIT, TIER_META, SUBS, GREEN, AMBER, RED
+  AGENCY, CLUSTERS, FINDINGS, TEAM, DEPT_LOAD,
+  STAGES, LIFECYCLE, BOARD, DEALS, AUDIT, TIER_META, SUBS, GREEN, AMBER
 } from "./fixtures";
 import { tmInit } from "./TeamBlock";
-import { spark, pstr } from "./helpers";
+// Slice A wiring (§28 — only the DATA SOURCE changes, the ported design is frozen):
+// the greeting, the KPI row, and the "Waiting on you" drafts queue read from the
+// real adapter; every surface with no parentage-gated backend (cross-sub attention,
+// autonomy/audit, vault, Systems Check, Team Pulse, Prospect Pipeline) keeps its
+// frozen fixture markup and is truthfully flagged Preview (§13 — never fabricated).
+import { useAgencyCommandCenter } from "./data/useAgencyCommandCenter";
 
 // ── Screen-local fixtures (the design inlines these in its render logic — they are
 //    NOT exported from ./fixtures, so they live here, ported verbatim). ──────────
-const AGENCY_DRAFTS = [
-  { title: "Two prospects are past your follow-up window", dept: "Growth", kind: "Email draft", body: "Bellweather Studio and Hartline Group both asked for pricing nine days ago. Both follow-ups are written in your voice, with the case study each one asked about attached.", primary: "Approve", meta: "92% confidence · ⏱ 3h" },
-  { title: "Agency E&O policy renews in 12 days", dept: "Finance", kind: "Decision", body: "Same carrier quoted 8% higher. I found two comparable quotes and put the coverage differences side by side.", primary: "Approve", meta: "88% confidence · ⏱ 6h" },
-  { title: "Ops is the constraint at 94% utilization", dept: "Operations", kind: "Decision", body: "You can take one more sub-account before quality slips. Onboarding the next one without a hire pushes Ridgeline's rework further behind.", primary: "Approve", meta: "84% confidence · ⏱ 11h" }
-];
-const SOLO_DRAFTS = [
-  { title: "Renewal note to Harper & Vale", dept: "Client Success", kind: "Email draft", body: "Retainer renews in 21 days. Usage up 34% this quarter.", primary: "Approve", meta: "94% confidence · ⏱ 2h" },
-  { title: "Reprice mid-tier package — competitor moved", dept: "Growth", kind: "Decision", body: "Coach Sarah dropped her mid-tier to $890. You sit at $1,150.", primary: "Approve", meta: "81% confidence · ⏱ 5h" },
-  { title: "Chase 3 failed charges ($4,180)", dept: "Finance", kind: "Sequence", body: "Stripe webhook flagged 3 declines in the last 48 hours.", primary: "Approve", meta: "97% confidence · ⏱ 11h" }
-];
 const AGENCY_VAULT = [
   { due: "8d", dueColor: "var(--bad)", name: "Q3 payroll filing", detail: "Gusto · $18,400", pill: "Draft ready", pillBg: "var(--violet-tint)", pillColor: "var(--violet)" },
   { due: "12d", dueColor: "var(--warn)", name: "Agency E&O insurance", detail: "Hartwell Mutual · $4,120 / yr", pill: "Draft ready", pillBg: "var(--violet-tint)", pillColor: "var(--violet)" },
@@ -100,6 +95,17 @@ const toneVar = t => (t === "red" ? "var(--bad)" : t === "amber" ? "var(--warn)"
 const clusterTone = h => (h >= 90 ? "var(--ok)" : h >= 75 ? "var(--warn)" : "var(--bad)");
 const noop = () => {};
 
+// Time-of-day greeting from the real clock (never a hardcoded "morning"). Mirrors
+// the Solo wiring — the design's static AGENCY.greetingWord is replaced by this.
+const greetPhrase = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
+
+// Honest marker for surfaces the adapter reports NO backend for (§13). The frozen
+// fixture layout still renders as the sample it is — truthfully labeled, never a
+// fabricated live value. Mirrors Solo's PreviewPill (the `pill pill-n` chip).
+const PreviewPill = () => (
+  <span className="pill pill-n" title="Sample layout — not yet wired to your live data">Preview</span>
+);
+
 // One-time keyframe injection for the KPI sparkline draw (the DC put this in its
 // <helmet><style>; agency-tokens.css only ships `fi`). Idempotent + SSR-safe.
 const CC_STYLE_ID = "cc-styles";
@@ -129,52 +135,80 @@ const GoldBtn = ({ children, onClick, style }) => (
   <button onClick={onClick} className="row" style={{ gap: 6, padding: "7px 13px", borderRadius: 9, background: "var(--gold-bright)", color: "#241C05", fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", ...style }}>{children}</button>
 );
 
-// KPI card with animated sparkline (spark/pstr from ./helpers).
-const Kpi = ({ k, reduce }) => {
-  const pts = spark(k.seed, k.up);
-  const sparkColor = k.up ? GREEN : RED;
-  return (
-    <div className="card" style={{ padding: "15px 17px" }}>
-      <div className="row" style={{ alignItems: "flex-start", gap: 10 }}>
-        <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: ".13em", color: "var(--ink-3)", lineHeight: 1.45, maxWidth: 130 }}>{k.label}</div>
-        <svg viewBox="0 0 100 30" preserveAspectRatio="none" style={{ marginLeft: "auto", width: 64, maxWidth: "52%", height: 26, overflow: "hidden" }}>
-          <polyline points={pstr(pts)} fill="none" stroke={sparkColor} strokeWidth="1.7" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" style={reduce ? {} : { animation: "ccDraw .9s cubic-bezier(.4,0,.2,1) both" }} />
-          <circle cx="88" cy={pts[8][1].toFixed(1)} r="2.4" fill={sparkColor} />
-        </svg>
-      </div>
-      <div className="row" style={{ alignItems: "baseline", gap: 8, marginTop: 14, flexWrap: "wrap", rowGap: 2 }}>
-        <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-.02em", minWidth: 0 }}>{k.value}</span>
-        <span style={{ fontSize: 13, fontWeight: 500, color: k.tone }}>{k.delta}</span>
-      </div>
+// KPI card — REAL value when the adapter sourced it, an honest Preview chip when it
+// did not (§13). No sparkline / delta: the RPCs return point-in-time with no history,
+// so a fabricated trend line or "+7.5%" delta would be invented — dropped exactly as
+// the Solo Metric does. The card shell (padding, label + value typography) is frozen.
+const KpiCard = ({ k }) => (
+  <div className="card" style={{ padding: "15px 17px" }}>
+    <div className="row" style={{ alignItems: "flex-start", gap: 10 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: ".13em", color: "var(--ink-3)", lineHeight: 1.45, maxWidth: 130 }}>{k.label.toUpperCase()}</div>
+      {k.kind === "preview" && <span style={{ marginLeft: "auto", flex: "none" }}><PreviewPill /></span>}
     </div>
-  );
-};
+    <div className="row" style={{ alignItems: "baseline", gap: 8, marginTop: 14, flexWrap: "wrap", rowGap: 2 }}>
+      {k.kind === "real"
+        ? <span style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-.02em", minWidth: 0 }}>{k.value}</span>
+        : <span style={{ fontSize: 22, fontWeight: 700, color: "var(--ink-3)", letterSpacing: "-.02em" }}>—</span>}
+    </div>
+  </div>
+);
 
-// One draft row (full form — icon, title, dept/kind chips, body, action row).
-const DraftRow = ({ d, first }) => (
+const KpiSkeleton = () => (
+  <div className="card" style={{ padding: "15px 17px" }}>
+    <div style={{ height: 9, width: "58%", background: "var(--surface-sunk)", borderRadius: 4 }} />
+    <div style={{ height: 22, width: "48%", background: "var(--surface-sunk)", borderRadius: 5, marginTop: 18 }} />
+  </div>
+);
+
+// One draft row (full form — icon, title, dept/kind chips, body, action row). Now
+// bound to a real CommandApproval: Approve → execute-approval, Dismiss → RLS reject
+// (both via the adapter's server-gated seams). "Read draft" stays the frozen design's
+// static affordance (the body already renders inline). meta shows the real age only —
+// the design's confidence figure has no backend, so it is dropped, not invented (§13).
+const DraftRow = ({ a, first, onAct, busy }) => (
   <div style={{ borderTop: first ? "0" : "1px solid var(--line-soft)", padding: "12px 14px", display: "flex", gap: 11, minWidth: 0 }}>
     <div className="tile" style={{ width: 30, height: 30, borderRadius: 9, background: "var(--violet-tint)", color: "var(--violet)", flex: "none" }}><Ic.spark size={14} /></div>
     <div style={{ flex: 1, minWidth: 0 }}>
       <div className="row" style={{ gap: 9, flexWrap: "wrap" }}>
-        <span style={{ fontSize: 13.5, fontWeight: 600, minWidth: 0 }}>{d.title}</span>
-        <span className="pill pill-n">{d.dept}</span>
-        <span className="pill pill-v">{d.kind}</span>
+        <span style={{ fontSize: 13.5, fontWeight: 600, minWidth: 0 }}>{a.title}</span>
+        <span className="pill pill-n">{a.dept}</span>
+        {a.type && <span className="pill pill-v">{a.type}</span>}
       </div>
-      <div style={{ fontSize: 13.5, color: "var(--ink-2)", marginTop: 7, lineHeight: 1.5 }}>{d.body}</div>
+      <div style={{ fontSize: 13.5, color: "var(--ink-2)", marginTop: 7, lineHeight: 1.5 }}>{a.preview || "Paige has no draft body for this one yet."}</div>
       <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap", rowGap: 7 }}>
-        <button className="btn btn-s btn-p"><Ic.check size={12} />{d.primary}</button>
+        <button className="btn btn-s btn-p" disabled={busy} onClick={() => onAct(a.id, "ok")}><Ic.check size={12} />{busy ? "Working…" : "Approve"}</button>
         <button className="btn btn-s">Read draft</button>
-        <button className="btn btn-s">Dismiss</button>
-        <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)", whiteSpace: "nowrap" }}>{d.meta}</span>
+        <button className="btn btn-s" disabled={busy} onClick={() => onAct(a.id, "no")}>Dismiss</button>
+        <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)", whiteSpace: "nowrap" }}>⏱ {a.aging}</span>
       </div>
     </div>
   </div>
 );
 
+const DraftSkeleton = ({ first }) => (
+  <div style={{ borderTop: first ? "0" : "1px solid var(--line-soft)", padding: "12px 14px", display: "flex", gap: 11 }}>
+    <span className="tile" style={{ width: 30, height: 30, borderRadius: 9, background: "var(--surface-sunk)", flex: "none" }} />
+    <div style={{ flex: 1, display: "grid", gap: 8 }}>
+      <span style={{ height: 11, width: "52%", background: "var(--surface-sunk)", borderRadius: 4 }} />
+      <span style={{ height: 9, width: "80%", background: "var(--surface-sunk)", borderRadius: 4 }} />
+    </div>
+  </div>
+);
+
+// Crafted empty state (§11 — never a bare "Loading…" / blank). Mirrors Solo's queue empty.
+const EmptyQueue = ({ hasLive }) => (
+  <div style={{ padding: "46px 20px", textAlign: "center", borderTop: "1px solid var(--line-soft)" }}>
+    <div className="tile" style={{ margin: "0 auto 12px", width: 40, height: 40, borderRadius: 14, background: "var(--ok-tint)", color: "var(--ok)" }}><Ic.check size={20} /></div>
+    <div style={{ fontWeight: 600 }}>{hasLive ? "Nothing in this window" : "Nothing waiting on you"}</div>
+    <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 4 }}>{hasLive ? "Switch to All to see the rest." : "Paige will raise the next thing when it earns your attention."}</div>
+  </div>
+);
+
 // ── Main dashboard tab (isDash) ───────────────────────────────────────────────
 const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
-  const reduce = useReducedMotion();
   const sub = !isAgency || !!acting;
+  // §51 scope spine — the adapter owns the parentage-RPC gating from this context.
+  const cc = useAgencyCommandCenter({ isAgency, acting });
   const [scope, setScope] = React.useState(sub ? "My work" : "My agency");
   const [range, setRange] = React.useState("Today");
   const [draftsAll, setDraftsAll] = React.useState(false);
@@ -182,18 +216,27 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
   const [auditOpen, setAuditOpen] = React.useState(true);
   const [auditPop, setAuditPop] = React.useState(false);
 
-  const kpiData = sub ? SUB_KPI_DATA : AGENCY_KPI_DATA;
-  const kpis = kpiData.map((d, i) => ({
-    label: d.label,
-    value: i === 0 && acting ? acting.mrr : d.value,
-    delta: d.delta, seed: d.seed, up: d.up,
-    tone: d.neutral ? "var(--ink-2)" : d.up ? "var(--ok)" : d.label.indexOf("UTILIZATION") > -1 ? "var(--warn)" : "var(--bad)"
-  }));
-  const drafts = sub ? SOLO_DRAFTS : AGENCY_DRAFTS;
+  // Optimistic hide + toast on approve/decline (mirrors the Solo Command Center):
+  // the resolved id disappears immediately, the seam refresh confirms, and on error
+  // it is restored with a toast. §13 — reports what actually happened, never a hope.
+  const [toast, setToast] = React.useState(null);
+  const [resolved, setResolved] = React.useState(() => new Set());
+  const [busyId, setBusyId] = React.useState(null);
+  const flash = msg => { setToast(msg); setTimeout(() => setToast(null), 3200); };
+  const onAct = async (id, k) => {
+    const it = cc.approvals.find(x => x.id === id);
+    setBusyId(id);
+    setResolved(s => new Set(s).add(id));
+    const res = k === "ok" ? await cc.approve(id) : await cc.decline(id);
+    setBusyId(null);
+    if (!res.ok) { setResolved(s => { const n = new Set(s); n.delete(id); return n; }); flash(res.error || "That didn't go through. Try again."); return; }
+    flash(k === "ok" ? (it ? 'Approved — Paige is handling "' + it.title + '"' : "Approved.") : "Dismissed. Paige won't raise it again.");
+  };
+  const live = cc.approvals.filter(a => !resolved.has(a.id));
+  const rangeKey = range === "Today" ? "today" : range === "This week" ? "week" : "all";
+  const shown = live.filter(a => rangeKey === "all" || a.urgency === rangeKey);
+
   const vault = sub ? SOLO_VAULT : AGENCY_VAULT;
-  const subhead = sub
-    ? drafts.length + " drafts waiting, $4,180 to chase, one client gone quiet."
-    : "Your agency billed " + AGENCY.billedThisMonth + " this month and kept every sub-account. " + AGENCY.decisionsWaiting + " decisions are yours.";
   const compassLine = (sub ? 74 : AGENCY.autopilotPct) + "% autopilot across " + AGENCY.departments + " departments";
   const vaultLine = sub
     ? (SOLO_VAULT.length + 12) + " obligations tracked"
@@ -221,10 +264,10 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
       <div className="row" style={{ alignItems: "flex-start", gap: 18, flexWrap: "wrap" }}>
         <div style={{ minWidth: 0 }}>
           <div className="row" style={{ alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".16em", color: "var(--ink-3)" }}>{AGENCY.today}</span>
-            <span style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-.02em" }}>{AGENCY.greetingWord + ", " + AGENCY.operatorFirst + "."}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: ".16em", color: "var(--ink-3)" }}>{cc.greeting.dateLabel.toUpperCase()}</span>
+            <span style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-.02em" }}>{greetPhrase() + ", " + cc.greeting.name + "."}</span>
           </div>
-          <div style={{ fontSize: 14, color: "var(--ink-2)", marginTop: 7 }}>{subhead}</div>
+          <div style={{ fontSize: 14, color: "var(--ink-2)", marginTop: 7 }}>{cc.greeting.summary}</div>
         </div>
         <div className="row" style={{ marginLeft: "auto", gap: 10, flex: "none", flexWrap: "wrap" }}>
           <Seg items={sub ? ["My work", "Whole business"] : ["My agency", "Whole book"]} value={scope} onChange={setScope} />
@@ -232,9 +275,11 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
         </div>
       </div>
 
-      {/* KPI row */}
+      {/* KPI row — REAL where the adapter sourced it, honest Preview otherwise (§13) */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 13, flex: "none" }}>
-        {kpis.map((k, i) => <Kpi key={i} k={k} reduce={reduce} />)}
+        {cc.metrics.loading
+          ? [0, 1, 2, 3].map(i => <KpiSkeleton key={i} />)
+          : cc.metrics.kpis.map((k, i) => <KpiCard key={i} k={k} />)}
       </div>
 
       {/* queue + sidebar */}
@@ -252,10 +297,14 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
             </div>
           </div>
           <div className="pane" style={{ flex: "1 1 auto", minHeight: 0, minWidth: 0 }}>
-            {drafts.map((d, i) => <DraftRow key={i} d={d} first={i === 0} />)}
+            {cc.loading
+              ? [0, 1, 2].map(i => <DraftSkeleton key={i} first={i === 0} />)
+              : shown.length
+                ? shown.map((a, i) => <DraftRow key={a.id} a={a} first={i === 0} onAct={onAct} busy={busyId === a.id} />)
+                : <EmptyQueue hasLive={live.length > 0} />}
           </div>
           <button onClick={() => setDraftsAll(true)} className="row" style={{ gap: 8, padding: "9px 14px", borderTop: "1px solid var(--line-soft)", fontSize: 12, fontWeight: 600, color: "var(--warn)", flex: "none", justifyContent: "flex-start" }}>
-            Open the full queue · {drafts.length}<span style={{ marginLeft: "auto", color: "var(--ink-3)" }}>›</span>
+            Open the full queue · {live.length}<span style={{ marginLeft: "auto", color: "var(--ink-3)" }}>›</span>
           </button>
           <div className="row" style={{ gap: 10, padding: "11px 15px", borderTop: "1px solid var(--line-soft)", flex: "none" }}>
             <button className="btn btn-s grow" style={{ justifyContent: "center" }}><span style={{ color: "var(--gold)" }}><Ic.bolt size={13} /></span>Put Paige to work · {sub ? "2 of 5" : "4 of 9"}</button>
@@ -268,7 +317,7 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
           <div className="card" style={{ padding: "16px 18px", flex: "none" }}>
             <div className="row" style={{ alignItems: "flex-start" }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>Trust Compass</div>
+                <div className="row" style={{ gap: 8 }}><div style={{ fontSize: 14, fontWeight: 600 }}>Trust Compass</div><PreviewPill /></div>
                 <div style={{ fontSize: 12, color: "var(--ink-2)", marginTop: 4 }}>{compassLine}</div>
               </div>
               <span style={{ marginLeft: "auto", color: "var(--ink-3)", display: "flex" }}><Ic.shield size={15} /></span>
@@ -319,7 +368,7 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
           <div className="card" style={{ padding: "11px 14px", flex: "none", overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <div className="row" style={{ alignItems: "flex-start", flex: "none" }}>
               <div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>Business Vault</div>
+                <div className="row" style={{ gap: 8 }}><div style={{ fontSize: 14, fontWeight: 600 }}>Business Vault</div><PreviewPill /></div>
                 <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 5 }}>{vaultLine}</div>
               </div>
               <span style={{ marginLeft: "auto", color: "var(--ink-3)", display: "flex" }}><Ic.vault size={15} /></span>
@@ -353,32 +402,37 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
 
       {/* ── pop-outs ── */}
       {/* All-drafts queue (draftsAllOpen) */}
-      <Modal open={draftsAll} onClose={() => setDraftsAll(false)} size={700} title={"Waiting on you · " + drafts.length} sub="Paige drafted it. You decide." pad="0">
+      <Modal open={draftsAll} onClose={() => setDraftsAll(false)} size={700} title={"Waiting on you · " + live.length} sub="Paige drafted it. You decide." pad="0">
         <div>
-          {drafts.map((d, i) => (
-            <div key={i} className="row" style={{ gap: 12, padding: "15px 20px", borderBottom: "1px solid var(--line-soft)", alignItems: "flex-start" }}>
+          {live.length ? live.map((a) => (
+            <div key={a.id} className="row" style={{ gap: 12, padding: "15px 20px", borderBottom: "1px solid var(--line-soft)", alignItems: "flex-start" }}>
               <div className="tile" style={{ width: 30, height: 30, borderRadius: 9, background: "var(--violet-tint)", color: "var(--violet)", flex: "none" }}><Ic.spark size={14} /></div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="row" style={{ gap: 9, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>{d.title}</span>
-                  <span className="pill pill-n">{d.dept}</span>
-                  <span className="mono" style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)", flex: "none" }}>{d.meta}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>{a.title}</span>
+                  <span className="pill pill-n">{a.dept}</span>
+                  {a.type && <span className="pill pill-v">{a.type}</span>}
+                  <span className="mono" style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)", flex: "none" }}>⏱ {a.aging}</span>
                 </div>
-                <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6, lineHeight: 1.5 }}>{d.body}</div>
+                <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6, lineHeight: 1.5 }}>{a.preview || "Paige has no draft body for this one yet."}</div>
                 <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-                  <GoldBtn><Ic.check size={12} />{d.primary}</GoldBtn>
+                  <GoldBtn onClick={() => onAct(a.id, "ok")}><Ic.check size={12} />{busyId === a.id ? "Working…" : "Approve"}</GoldBtn>
                   <button className="btn btn-s">Read draft</button>
-                  <button className="btn btn-s">Dismiss</button>
+                  <button className="btn btn-s" onClick={() => onAct(a.id, "no")}>Dismiss</button>
                 </div>
               </div>
             </div>
-          ))}
+          )) : (
+            <div style={{ padding: "40px 20px", textAlign: "center" }}>
+              <div style={{ fontSize: 13, color: "var(--ink-2)" }}>Nothing waiting on you — Paige will raise the next thing when it earns your attention.</div>
+            </div>
+          )}
         </div>
       </Modal>
 
       {/* Needs-attention modal (attnOpen) — agency only, cross-sub */}
       {isAgency && (
-        <Modal open={attn} onClose={() => setAttn(false)} size={660} title="Needs your attention today" sub={"Ranked by dollar impact across all " + AGENCY.subCount + " sub-accounts."}>
+        <Modal open={attn} onClose={() => setAttn(false)} size={660} title={<span className="row" style={{ gap: 8 }}>Needs your attention today <PreviewPill /></span>} sub={"Ranked by dollar impact across all " + AGENCY.subCount + " sub-accounts."}>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {attention.map((a, i) => (
               <div key={i} style={{ border: "1px solid var(--line-soft)", borderLeft: "3px solid " + a.tone, borderRadius: "var(--r-m)", padding: "14px 15px", background: "var(--surface-2)" }}>
@@ -399,7 +453,7 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
       )}
 
       {/* Autonomy change-log pop (auditPopOpen) */}
-      <Modal open={auditPop} onClose={() => setAuditPop(false)} size={640} title="Recent changes">
+      <Modal open={auditPop} onClose={() => setAuditPop(false)} size={640} title={<span className="row" style={{ gap: 8 }}>Recent changes <PreviewPill /></span>}>
         <div>
           {audit.map((a, i) => (
             <div key={i} className="row" style={{ alignItems: "flex-start", gap: 12, padding: "13px 0", borderBottom: "1px solid var(--line-soft)" }}>
@@ -413,6 +467,8 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
           ))}
         </div>
       </Modal>
+
+      {toast && <div className="fade-in" style={{ position: "fixed", bottom: 26, left: "50%", transform: "translateX(-50%)", background: "var(--rail)", color: "var(--ink-inv)", padding: "11px 18px", borderRadius: 12, fontSize: 13, boxShadow: "var(--sh-3)", zIndex: 60, maxWidth: "min(560px,90vw)" }}>{toast}</div>}
     </div>
   );
 };
@@ -439,6 +495,7 @@ const SystemsTab = ({ isAgency, acting }) => {
           <div className="row" style={{ gap: 11 }}>
             <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Systems Check</div>
             <span className="pill pill-ok" style={{ height: 24 }}><span className="dot" />Scanning continuously</span>
+            <PreviewPill />
           </div>
           <div style={{ fontSize: 13.5, color: "var(--ink-2)", marginTop: 6 }}>{header}</div>
         </div>
@@ -546,7 +603,7 @@ const TeamTab = ({ openAsk }) => {
     <>
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14, minHeight: 0 }}>
         <div>
-          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Team pulse</div>
+          <div className="row" style={{ gap: 11 }}><div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Team pulse</div><PreviewPill /></div>
           <div style={{ fontSize: 13.5, color: "var(--ink-2)", marginTop: 6 }}>{header}</div>
         </div>
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 12, alignContent: "start", paddingRight: 4 }}>
@@ -676,7 +733,7 @@ const PipeTab = ({ openAsk }) => {
     <>
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14, minHeight: 0 }}>
         <div>
-          <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Prospect Pipeline</div>
+          <div className="row" style={{ gap: 11 }}><div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Prospect Pipeline</div><PreviewPill /></div>
           <div style={{ fontSize: 13.5, color: "var(--ink-2)", marginTop: 6 }}>{AGENCY.pipeProspects} active prospects · {AGENCY.pipeWeighted} weighted · {AGENCY.pipeClosing} closing this week</div>
         </div>
 

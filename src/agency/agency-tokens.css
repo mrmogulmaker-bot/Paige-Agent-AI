@@ -185,6 +185,8 @@
 .paige-agency .card:has(>.tbl){overflow:visible}
 .paige-agency .tbl{min-width:0!important;max-width:100%;overflow-x:auto!important}
 @keyframes fi-agency{from{opacity:0}}
+/* Growth › Funnels — the drifting "river" fill (ported from the design's riverDrift). */
+@keyframes riverDrift{from{background-position:0 0}to{background-position:56px 0}}
 @media(max-width:1280px){.paige-agency .hide-1280{display:none !important}}
 @media(max-width:1100px){.paige-agency .hide-1100{display:none !important}}
 @media(max-width:1180px){.paige-agency .hide-1180{display:none !important}.paige-agency .lbl-1180{display:none !important}}
