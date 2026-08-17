@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useId } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -40,6 +40,9 @@ const POLL = { refetchInterval: 45_000, refetchOnWindowFocus: true } as const;
 
 export function usePracticeDashboard(windowDays = 30) {
   const queryClient = useQueryClient();
+  // Per-mount unique id for the realtime channel topic (matches the
+  // usePendingApprovals / useSoloActions idiom, §18) — see the useEffect below.
+  const instanceId = useId();
 
   const metrics = useQuery({
     queryKey: ["practice-dashboard-metrics", windowDays],
@@ -66,21 +69,36 @@ export function usePracticeDashboard(windowDays = 30) {
 
   // Realtime bridge: an approval landing or clearing should refresh the rail
   // immediately. paige_pending_approvals is already in the realtime publication.
+  //
+  // UNIQUE topic per mount (§32) — a FIXED channel name ("practice-attention-
+  // approvals") lets supabase-js hand back an already-`subscribe()`d channel when
+  // this effect re-runs or two consumers mount at once; calling `.on('postgres_
+  // changes', …)` on that channel then THROWS "cannot add postgres_changes
+  // callbacks after subscribe()", which crashed the whole Admin workspace. A
+  // per-mount unique topic guarantees a fresh channel every time.
   useEffect(() => {
-    const channel = supabase
-      .channel("practice-attention-approvals")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "paige_pending_approvals" },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["practice-attention-queue"] });
-        },
-      )
-      .subscribe();
+    const topic = `practice-attention-approvals:${instanceId}`;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    // Belt-and-suspenders (§32): a realtime failure must degrade quietly, never
+    // take down the dashboard render. The rail still refreshes on its 45s poll.
+    try {
+      channel = supabase
+        .channel(topic)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "paige_pending_approvals" },
+          () => {
+            queryClient.invalidateQueries({ queryKey: ["practice-attention-queue"] });
+          },
+        )
+        .subscribe();
+    } catch (err) {
+      console.error("[usePracticeDashboard] realtime subscribe failed (non-fatal)", err);
+    }
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, instanceId]);
 
   return {
     metrics: metrics.data,

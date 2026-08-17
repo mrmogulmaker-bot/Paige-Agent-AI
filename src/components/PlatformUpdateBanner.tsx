@@ -3,6 +3,7 @@ import { RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlyphPlate } from "@/components/ui/page";
 import { usePlatformUpdate } from "@/hooks/usePlatformUpdate";
+import { useScopedUserId } from "@/hooks/useScopedUserId";
 
 /**
  * PlatformUpdateBanner — a subtle, NON-BLOCKING toast-style bar that appears
@@ -11,15 +12,21 @@ import { usePlatformUpdate } from "@/hooks/usePlatformUpdate";
  * dismisses THIS build's notice — dismissal is tracked per-build in the hook, so
  * if a FURTHER build ships while the tab stays open the notice re-appears.
  *
- * Mounted once at the App root so it is global on every surface — authenticated
- * admin, public marketing, and tenant custom domains (it's client-side, so
- * domain-agnostic by construction).
+ * SIGNED-IN ONLY (owner-ruled 2026-08-17): this is an IN-APP affordance — it must
+ * NEVER surface on a public/marketing/landing page or to any logged-out visitor.
+ * It is mounted once at the App root (so it persists across in-app navigation and
+ * is domain-agnostic on tenant custom domains), but it renders ONLY when a real
+ * auth session exists. No session ⇒ nothing renders, on any surface.
  */
 export function PlatformUpdateBanner() {
   const { updateAvailable, reload, dismiss } = usePlatformUpdate();
   const reduce = useReducedMotion();
+  // Gate on a real signed-in user. `useScopedUserId` resolves the effective
+  // session uid (null until confirmed, and null for every anonymous visitor), so
+  // the safe default is "don't show" — a public visitor never sees this.
+  const userId = useScopedUserId();
 
-  const show = updateAvailable;
+  const show = updateAvailable && userId !== null;
 
   return (
     <AnimatePresence>
