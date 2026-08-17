@@ -321,6 +321,27 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 16. State-driven tabs = no addressable branches = Paige can't orchestrate (§65 tree, 2026-08-17)
+
+- **Symptom:** the owner asked why Paige couldn't "find the growth branch on that sub-account" and why
+  every tab in the new shells had no URL (refresh always snapped back to Command Center, nothing
+  bookmarkable). Deeper: "how are we routing data inside a brain and orchestrating a machine when we don't
+  have any actual branches of data?"
+- **Root cause:** the new tier shells (`src/agency/AgencyApp.tsx`, `src/solo/SoloApp.tsx`) switch tabs with
+  a `useState` (`const [route,setRoute]=useState('command')` + `screens[route]`), importing nothing from
+  react-router. Each "tab" is in-memory state, not a URL. So no section is addressable — and an
+  interaction surface whose sections aren't addresses gives the §8 action bus, the §16 departments, and
+  the §37 producer inventory **nothing to point at**. "Route data inside the brain" has no coordinates.
+  (Contrast: the legacy `/admin` console is already real nested routes — the proven pattern.)
+- **Rule (§65 tree architecture):** every interaction surface's sections must be **real URL branches**,
+  not `useState`. The route tree is the addressing SPINE — an address IS a data route (`/business/{n}/growth`
+  is a handle Paige routes to/from, a §10 callable seam, an §8 action-bus target owned by a §16 department,
+  a §37 producer address). Design it as a **declarative per-tier registry** (`TIER_BRANCHES`, §18 one home)
+  cloned per account at signup, rooted at `account_number`. Convert state→routes, never ship state-tabs on a
+  surface Paige must orchestrate. Full design: `docs/doctrine/route-and-url-taxonomy.md` §10–§15.
+
+---
+
 ## Standing bars — owner-locked doctrine (2026-08-11)
 
 Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked morning 2026-08-11). Binding on every future PR.

@@ -282,3 +282,242 @@ operationalizes) · §18 (one home per capability) · §60/§61 (same-tier parit
 customization — the shared-shell basis) · §51/§56 (tier matrix — the pattern this mirrors;
 `docs/doctrine/tier-matrix.md`) · §37 (producer inventory) · §58 (anti-regression — redirect-alive) ·
 §9 (auth-gated routes — the account number is an address, not a grant) · §13 (honest reporting).
+
+---
+
+## 10. The branch-tree model — one canonical tree per account type, cloned per account (owner ruling 2026-08-17)
+
+**Owner's framing (verbatim):** *"Each account type should have their own series of URL routing. Each
+account almost becomes like a tree with a lot of different branches. We should be able to clone that
+every single time somebody sets up… That way it'll make it a lot easier to find a specific branch to
+fix, or to route data from."* And the deeper point: *"How are we routing data inside of a brain and
+orchestrating an entire machine when we don't even have any actual branches of data?"*
+
+The URL system is not navigation chrome — it is the **addressing backbone** the orchestration brain
+(§7/§8/§16/§52) routes over. An address **is** a data route: `/agency/3855/clients` is a stable handle
+Paige can route *to* and pull data *from*, not just "where the UI is." Without addressable branches,
+"route data inside the brain" has nowhere concrete to point. Three governing principles:
+
+1. **One canonical tree per account type.** Each tier (Agency · Sub-account · Solo · Operator · Client)
+   has a **declarative branch registry** — its tab set defined ONCE (§18 one home), not hand-wired per
+   account. `TIER_BRANCHES['agency']` is the template.
+2. **Cloned per account at signup.** Every new account of a tier is instantiated as the SAME branch set,
+   rooted at its own `account_number`. `/agency/3855/trust-compass` and `/agency/4012/trust-compass` are
+   the *same branch* on two different account trees. A new agency signs up → the whole branch set exists
+   for them day one, identical shape, their number at the root. ("Clone" = the same declarative tree
+   rendered under each account's root — not copied data.)
+3. **Every branch is an addressable seam (§10-governable).** Each branch resolves to a stable URL Paige
+   can drive by voice/text, not only a human clicking. When the owner says "the growth branch on that
+   sub-account," the address is `/business/{n}/growth` — the code, the data, and the §16 department that
+   owns it are all pinned by that one handle.
+
+---
+
+## 11. The complete per-tier branch map (deep-linkable tabs)
+
+Every tab is its own route segment under the account root. Internal component keys differ from URL slugs
+(the slug is the human-readable address; the registry maps slug ↔ key ↔ component).
+
+### 11a. Agency — `/agency/{account}/…` (15 branches; shell = `src/agency/AgencyApp.tsx`, mode="agency")
+| URL slug | Tab label | key | component |
+|---|---|---|---|
+| `command-center` (default) | Command Center | `command` | `CommandCenter` |
+| `paige` | Paige | `paige` | `PaigeHub` |
+| `trust-compass` | Trust Compass | `compass` | `TrustCompass` |
+| `automations` | Automations | `autos` | `AutomationsHub` |
+| `clients` | Clients | `fleet` | `ClientsHub` |
+| `calendar` | Calendar | `calendar` | `CalendarHub` |
+| `client-support` | Client Support | `support` | `ClientSupport` |
+| `growth` | Growth | `growth` | `GrowthHub` |
+| `analytics` | Analytics | `analytics` | `Analytics2` |
+| `billing` | Billing | `billing` | `Billing` |
+| `marketplace` | Marketplace | `market` | `AgencyMarketplace` |
+| `business-vault` | Business Vault | `vault` | `VaultHub` |
+| `integrations` | Integrations | `integrations` | `IntegrationsHub` |
+| `team` | Team | `team` | `TeamScreen` |
+| `setup` | Setup | `setup` | `SetupScreen` |
+
+`/agency/{account}` (no branch) → redirect to `/agency/{account}/command-center`.
+
+**"Settings" (§13 honest):** the owner listed a 16th "Settings" tab; there is no separate Settings tab —
+it is folded into **Setup** today. Decision for the build: keep one `setup` branch (recommended, matches
+the shell), OR add a dedicated `/agency/{account}/settings` branch. Micro-decision, flagged for owner.
+
+### 11b. Agency → sub-account context switch (owner req 2026-08-17)
+The agency, while in agency mode, flips INTO a sub-account and views it **with the URL reflecting which
+sub**, staying in agency chrome. Proposed address:
+`/agency/{agencyAccount}/sub/{subAccount}/{branch}` — the acted-upon sub is a URL segment under the
+agency root, so the agency operator's chrome + "return to agency" affordance persist and the view is
+bookmarkable. This REPLACES the current in-memory `acting` fixture state (`AgencyApp.tsx:241`, fed by
+`SUBS` fixtures) and must wire the **real** roster (`agency_list_my_subaccounts`) + the **real** act-as
+RPC (`agency_enter_subaccount`) — both exist (`src/agency/data/useAgencyRoster.ts`) but are not wired to
+the shell switcher today. §51: viewing a sub is a server-gated act-as, the URL segment is an address not
+a grant.
+
+### 11c. Sub-account — `/business/{account}/…` (inherits the SOLO tree, §60 — CORRECTED)
+**Ruling (2026-08-17, corrects the earlier draft): a Sub-account's tree SHAPE = the Solo tree (§11d), NOT
+the Agency tree.** §60 is explicit — Solo ≡ Sub-account except billing — and that parity includes the
+branch set. `/solo` + `/business` share the shell family (§3), so a sub-account gets Solo's 13 branches at
+`/business/{account}/…`, never Agency's 15 (the Agency-only branches — a fleet-scoped Client Support /
+Billing over a *book of sub-accounts* — belong to the manager tier, not a child running its own book). A
+sub-account has **no** act-as switcher (§51 invariant — a child never manages).
+
+**Honest build note (§13):** today the code renders sub-accounts via `AgencyApp mode="subaccount"`
+(`Admin.tsx` Gate B), i.e. the *agency* shell — which contradicts this ruling and §3. Resolving it (move
+the `/business` tree onto the Solo-family shell) is a deliberate step in the R3 slice, NOT a silent flip;
+it interacts with the #513 match-accounts adapters and the owner's 2026-08-15 "own design pack per tier"
+ruling, so the crew confirms the shell/pack choice (Solo pack vs a sub-account-specific pack over the same
+Solo SHAPE) rather than assuming. The SHAPE ruling (Solo's branch set) is firm; the visual pack is the
+open sub-question.
+
+### 11d. Solo — `/solo/{account}/…` (13 branches; shell = `src/solo/SoloApp.tsx`)
+| URL slug | Tab label | key | component |
+|---|---|---|---|
+| `command-center` (default) | Command Center | `home` | `CommandHub` |
+| `paige` | Paige | `paige` | `PaigeHub` |
+| `trust-compass` | Trust Compass | `compass` | `TrustCompass` |
+| `automations` | Automations | `auto` | `AutomationsHub` |
+| `clients` | Clients | `clients` | `ClientsHub` |
+| `calendar` | Calendar | `cal` | `CalendarHub` |
+| `growth` | Growth | `growth` | `GrowthHub` |
+| `analytics` | Analytics | `analytics` | `Analytics2` |
+| `marketplace` | Marketplace | `market` | `Marketplace` |
+| `business-vault` | Business Vault | `vault` | `VaultView` |
+| `integrations` | Integrations | `integrations` | `Integrations` |
+| `team` | Team | `team` | `TeamHub` |
+| `setup` | Setup | `setup` | `Setup` |
+
+**§13 honest gaps vs the agency set:** Solo has **no top-level Client Support, Billing, or Settings tab** —
+Billing + Settings live inside the state-driven `Setup` surface's sub-tabs (`src/solo/setup.tsx`). Bringing
+Solo to full parity (adding Client Support + surfacing Billing) is a §60 parity question flagged for the
+Solo slice, not silently assumed.
+
+### 11e. Operator — `/operator/…` (DEFERRED)
+Mapped after the new Super-Admin design uploads (owner sequencing). Today the operator (God) console is the
+real-route `/admin/platform/*` tree (fully deep-linkable already). The branch map is authored when the new
+design lands.
+
+### 11f. Client — `/portal/:tenantSlug` (UNCHANGED)
+Clients keep the tenant slug they already use (owner ruling §2b). Not part of this migration.
+
+---
+
+## 12. Current-state audit findings (the §30 diagnostic, 2026-08-17)
+
+The three-scout audit (agency shell · solo/tenant console · shared routing) established:
+
+- **The new tier shells are state-driven, ZERO URLs.** `AgencyApp.tsx` (`route` useState `:232`, `go=setRoute`
+  `:233`, `screens[route]` registry `:318`) and `SoloApp.tsx` (`route` useState `:103`, `screens[route]` `:120`)
+  import nothing from react-router. Every tab shares one `/admin` URL; refresh resets to the default tab.
+- **TWO agency surfaces exist.** The real `/agency` route today renders the OLD 4-tab `AgencyBoard`
+  (`src/components/admin/AgencyLayout.tsx`, real nested routes); the owner's 15-tab shell (`AgencyApp`) renders
+  as a takeover INSIDE `/admin` (`Admin.tsx:405-434`, gated on `agency_shell_enabled` + `resolveTierKey`).
+  The migration unifies these: `/agency` reclaims to the NEW shell; the old board retires behind the redirect.
+- **The legacy `/admin` console is already fully real-route** (`Admin.tsx:439-989` — `/admin/clients-hub`,
+  `/admin/setup/billing`, `/admin/campaigns`, `/admin/platform/*`, …). This is the proven in-repo pattern the
+  new shells convert TO (§18/§30 — reference the working part).
+- **§37 producer blast-radius:** ~404 `/admin` refs, ~146 `/app`, ~29 `/agency` in `src/`. Two authoritative
+  role→path tables — `src/lib/auth/resolveLandingRoute.ts` and `supabase/functions/accept-invite/index.ts`
+  (`ROLE_DASHBOARD`). Nav authority hotspot: `AdminLayout.tsx` (120 refs). **Silent-break producers** (render
+  outside frontend routing): edge-function deep links in emails (`notify-team-event`, `notify-approval-event`,
+  `sla-watcher`, `security-canary-probe`, `bridge-auth-watcher`, `paige-mcp`), Stripe success/cancel URLs
+  (`broker-workspace-checkout`, `create-trial-checkout`, `add-business-slot-checkout`, platform/marketplace
+  checkout), and `zoom-oauth-callback:77` (`/admin/settings`). `hostRouting.ts` carries a reserved-subdomain
+  set + `APP_PREFIXES` + literal `/admin` test assertions that a rename must update.
+- **No tier-specific landing today:** `resolveLandingRoute` sends solo AND sub_account AND agency operators all
+  to `/admin`; the shell they see is decided inside `Admin.tsx` by tier gates. Post-migration, landing resolves
+  to the tier root + account (`/agency/{n}`, `/solo/{n}`, `/business/{n}`).
+
+---
+
+## 13. The migration engine — declarative branch registry + URL-driven shell
+
+The reusable primitive both shells adopt (§18 one home), so we convert state→routes ONCE:
+
+1. **`TIER_BRANCHES` registry** (`src/lib/routing/tierBranches.ts`, net-new) — the §10 template: per tier, an
+   ordered list of `{ slug, key, label, icon, component, badge? }`. This is the single source both the nav rail
+   and the router read. Adding a capability (§21) = add a branch row here, never a new tab strip.
+2. **`<AccountShell>` wrapper** — reads `useParams()` `{account}` + `{branch}`; resolves the account_number →
+   tenant and **verifies the session may access it (§9/§51 — the number is an address, RLS/act-as still gate)**;
+   looks up the branch in the registry; renders its component. The nav rail emits `<Link to={/{root}/{account}/{slug}}>`;
+   active state from `useLocation().pathname`. Default branch when `{branch}` absent.
+3. **Shell refactor** — `AgencyApp`/`SoloApp` change from `const [route,setRoute]=useState('command')` to
+   `const branch = useParams().branch ?? DEFAULT`; `go(k)` becomes `navigate(/{root}/{account}/{slug})`. The
+   `screens[route]` registry is replaced by the shared registry lookup. Minimal surface change — the screens
+   themselves are untouched (§28 approved designs preserved).
+4. **Mount** — `App.tsx`: `<Route path="/agency/:account/:branch?/*" .../>`, `/business/:account/:branch?/*`,
+   `/solo/:account/:branch?/*`. The `/admin` takeover in `Admin.tsx` is replaced by a **smart-redirect** to the
+   session's tier root + account + default branch.
+
+---
+
+## 14. Revised phased plan (redirect-safe, §58; supersedes §6's R-slices where they conflict)
+
+Each slice: §1 crew + §39 peer-gate + §32.c owner live-drive; old paths stay redirect-alive ≥1 release.
+
+- **R0 — substrate (needs owner number-shape ruling).** `account_number` column + uniform backfill (§2b/§7.4) +
+  the `TIER_BRANCHES` registry + `resolveAccountRoute(session)` helper. No visible change. **BLOCKED on the owner's
+  number-shape choice** (offset/scrambled recommended vs sequential).
+- **R1 — URL-driven shell engine.** Build `<AccountShell>`; refactor `AgencyApp` + `SoloApp` to read branch from
+  URL (behind the EXISTING shell flags — no new exposure). Mount the `:account/:branch` routes. `/admin` + old
+  `/agency` become smart-redirects. Keep every `/admin/*` deep-link (emails/Stripe/OAuth) redirecting to the new
+  branch URL — the §12 producer list is the checklist.
+- **R2 — Agency + sub-account LIVE.** Flip agency/sub to `/agency/{n}/…` + `/business/{n}/…`; wire the
+  context-switch to `/agency/{n}/sub/{subN}/…` + the real `agency_enter_subaccount` act-as (replace the `SUBS`
+  fixtures). Retire the old `AgencyBoard`. §32.c owner drive.
+- **R3 — Solo LIVE.** Same for `/solo/{n}/…`; resolve the Solo parity gaps (§11d).
+- **R4 — Operator + retire redirects.** After the new operator design; author `/operator/…`; then remove the
+  `/admin`/`/agency` redirect shims once logs show zero old-path traffic + all external allowlists (§12) updated.
+
+**Sequencing note (§13 honest):** the `{account}` segment depends on R0's `account_number`. The prefix rename
+(`/admin`→`/agency`) COULD ship without the number first, but the owner's model roots every tree at the number, so
+R0 leads. The one genuinely-owner decision blocking R0 is the number shape.
+
+---
+
+## 15. Design rulings on the ten tree implications (2026-08-17)
+
+Cowork surfaced ten design implications while the tree was being designed. CC rulings below (owner handed
+the wheel on Solo/Agency/Sub-account; the one genuinely owner-stakes call — R4 act-as namespacing — is
+ruled with the owner's override explicitly invited).
+
+1. **Config-as-data, not per-tier React (RULED — already the design).** The tree is a declarative
+   `TIER_BRANCHES` registry (§13); adding a branch is a data row, never per-tier code. §10-governable so
+   Paige can read/act on the registry.
+2. **Sub-account inherits SOLO's tree, not Agency's (RULED — §60; corrected §11c).** Shape = Solo (13),
+   billing the only §60 difference. Visual pack = deliberate build sub-question (§11c note).
+3. **Enterprise = Agency tree + tier-customization sub-branches (RULED — §3/§60).** Same agency shell at
+   `/enterprise/{account}`; Enterprise's negotiated customizations render as extra branches via
+   `getTierFeatureSet()`, never a fork.
+4. **Act-as URL namespacing (RULED, owner may override — the §51-stakes call).** The actor is encoded in
+   the URL, not the acted-into tenant's bare root: Agency→sub = `/agency/{n}/sub/{subN}/{branch}` (§11b);
+   Operator→any tenant = `/operator/act-as/{n}/{branch}`. Rationale: the URL always says WHO is acting, so
+   §51 impersonation audit + Paige's §32.c "am I acting or being" self-awareness read straight off the
+   address — a bare `/business/{n}/growth` for an impersonated view would erase the actor from the audit
+   trail. **Owner: say the word if you'd rather act-as adopt the target's bare URL.**
+5. **Shared slug, tier-specific component (RULED — §18 registry).** `growth` is one human slug in every
+   tier; the `TIER_BRANCHES` row per tier names its own component (Agency Growth = fleet-scoped; Solo
+   Growth = single-business). Same address word, tier-correct surface — no drift.
+6. **Branch-preserved on account switch (RULED — §36).** Switching accounts while on
+   `/agency/{n}/trust-compass` lands on `/agency/{newN}/trust-compass`, never bounces to Command Center.
+   The switcher swaps the `{account}` segment, keeps the `{branch}`.
+7. **Tier-promotion is redirect-resilient (RULED — §58, keeps tier-explicit URLs).** `account_number` is
+   permanent; the resolver knows the account's CURRENT tier, so a bookmarked `/agency/{n}/growth` after a
+   promotion 301s to `/enterprise/{n}/growth`. URLs stay tier-explicit (owner ruling) AND bookmarks never
+   die.
+8. **Automations scope to a branch (NOTED — §67 affordance, forward).** Every Paige-forged automation
+   cites its branch URL as its scope ("when a client hits stage 4 on `/business/{n}/clients`, do X"), so
+   the §67 Automations surface becomes a reviewable list where each rule's scope is a real address. Design
+   affordance the tree unlocks; not a blocking decision.
+9. **The registry IS Paige's capability catalog (NOTED — §52 self-knowledge).** "What branches exist on my
+   tenant?" answers by querying `TIER_BRANCHES` for the tier. The route registry and the capability
+   catalog (§159 self-knowledge) are one primitive viewed by two audiences — build once.
+10. **Client Portal tree is TENANT-AUTHORED, scoped separately (RULED — §7).** `/portal/:tenantSlug`
+    branches are authored by each tenant (§7 tenant-authored portal), a DIFFERENT primitive from the
+    platform-defined tier trees. Out of this migration's scope; do not unify.
+
+**The lesson this whole design kills (for `docs/brain/lessons-learned.md`):** *state-driven tabs = no
+addressable branches = Paige cannot orchestrate.* An interaction surface whose sections live in `useState`
+(not the URL) has nothing for the §8 action bus, §16 departments, or §37 producer inventory to point at —
+"route data inside the brain" has no address to route to. Every interaction surface's sections must be real
+URL branches, or the orchestration machine is operating over a map with no coordinates.
