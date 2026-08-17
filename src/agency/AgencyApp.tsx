@@ -24,10 +24,37 @@ import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { performSignOut } from "@/lib/auth/signOut";
 import { branchBySlug, branchByKey, branchPath, defaultBranchSlug } from "@/lib/routing/tierBranches";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { supabase } from "@/integrations/supabase/client";
 import "./agency-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead, Modal, Popover, SlideOut, AV } from "./_shared";
 import { tmInit } from "./TeamBlock";
 import { SUBS, AGENCY, GREEN, AMBER } from "./fixtures";
+// §65 Option B (B1a) — real agency identity + real sub-account roster. These THIN
+// adapters wrap the EXISTING RLS-safe seams (agency_portfolio_metrics /
+// agency_list_my_subaccounts / agency_my_membership), session-scoped by auth.uid()
+// — never a client-supplied tenant_id (§9/§51). The design markup is byte-identical
+// (§28/§63): only the DATA source swaps from fixtures to these hooks.
+import { useAgencyMetrics } from "./data/useAgencyMetrics";
+import { useAgencyRoster } from "./data/useAgencyRoster";
+
+// Health bucket (agency_portfolio_metrics leaderboard) → dot color. Real roster rows
+// carry a PortfolioHealthKey bucket, NOT the fixtures' 0–100 number, so we map the
+// bucket rather than the numeric `hc()` used for the fixture path.
+const healthDot = (b) =>
+  b === "healthy" || b === "thriving" ? "var(--ok)"
+    : b === "steady" || b === "watch" ? "var(--warn)"
+      : b === "at_risk" || b === "critical" ? "var(--bad)"
+        : "var(--ink-3)";
+// Stable per-sub swatch (real subs have no brand-color field yet — §13 Preview, so we
+// derive a deterministic dot from the tenant id/name; never fabricated data, purely
+// decorative and consistent across renders).
+const SUB_SWATCH = ["#7C6CE0", "#3F7F5C", "#2F6FA8", "#C1652F", "#A8425A", "#B3932A"];
+const swatchFor = (key) => {
+  let h = 0;
+  for (let i = 0; i < (key || "").length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return SUB_SWATCH[h % SUB_SWATCH.length];
+};
 // ── Screen modules (Slice 1b-2 wired the first MAIN group; the rest land in
 // 1b-3..5 into the same `screens` registry below) ───────────────────────────
 import CommandCenter from "./CommandCenter";
@@ -108,7 +135,7 @@ const hc = h => (h >= 85 ? "var(--ok)" : h >= 70 ? "var(--warn)" : "var(--bad)")
 // the design's second group. `sub` drives the badge/plan variants; `brand` is the
 // resolved workspace identity (agency, own sub-account, or the account being acted
 // on) so the mark and name always speak for the workspace in view.
-const Rail = ({ route, go, collapsed, setCollapsed, sub, brand }) => {
+const Rail = ({ route, go, collapsed, setCollapsed, sub, brand, planLine, bookLine }) => {
   const w = collapsed ? 72 : 248;
   const av = AV(brand.color);
   const Item = ([k, label, Icn, badgeOf]) => {
@@ -151,11 +178,11 @@ const Rail = ({ route, go, collapsed, setCollapsed, sub, brand }) => {
       <div style={{ marginTop: "auto", paddingTop: 14, flex: "none" }}>
         {!collapsed && <div style={{ border: "1px solid var(--rail-line)", borderRadius: 11, padding: "12px 13px", marginBottom: 10, background: "var(--rail-2)" }}>
           <div className="row" style={{ gap: 7, color: "var(--gold-bright)", fontSize: 12.5, fontWeight: 600 }}><Ic.bolt size={13} />
-            <span className="trunc">{sub ? "Solo plan" : AGENCY.plan + " · " + AGENCY.subCount + " sub-accounts"}</span></div>
+            <span className="trunc">{sub ? "Solo plan" : planLine}</span></div>
           <div style={{ color: "var(--rail-text)", fontSize: 12, marginTop: 5, lineHeight: 1.5 }}>
             {sub
               ? "147 hours saved this month. One seat, six departments running."
-              : AGENCY.hoursSaved + " hours saved this month across your book. " + AGENCY.departmentsWord + " departments running per sub-account."}</div>
+              : bookLine}</div>
         </div>}
         <button onClick={() => setCollapsed(!collapsed)} className="row" style={{ width: "100%", justifyContent: "center", padding: 9, borderRadius: 10, color: "var(--rail-text)" }}>
           <span style={{ display: "flex", transform: collapsed ? "" : "rotate(180deg)", transition: ".2s" }}><Ic.chev size={15} /></span></button>
@@ -169,12 +196,12 @@ const Rail = ({ route, go, collapsed, setCollapsed, sub, brand }) => {
 // Help · Ask Paige · notifications · theme · account/profile MENU. The switcher and
 // the acting crumb render only in agency mode — §51 keeps the parent-aggregate path
 // out of a sub-account's chrome entirely.
-const TopBar = ({ theme, setTheme, route, isAgency, acting, brand, openSwitcher, switcherOpen, switcherRef, openAcct, acctOpen, acctRef, openAsk, openHelp, sub }) => {
+const TopBar = ({ theme, setTheme, route, isAgency, acting, brand, openSwitcher, switcherOpen, switcherRef, openAcct, acctOpen, acctRef, openAsk, openHelp, sub, operatorName, providerLabel }) => {
   const crumb = (TITLES[route] || ["Command Center"])[0];
   return (
     <header className="row" style={{ height: 56, flex: "none", padding: "0 24px", background: "var(--canvas)", gap: 14, zIndex: 20 }}>
       <div className="row" style={{ gap: 9, fontSize: 13.5, color: "var(--ink-3)", flex: "0 1 auto", minWidth: 0, whiteSpace: "nowrap", overflow: "hidden" }}>
-        <span className="trunc" style={{ fontWeight: 600, color: "var(--ink)" }}>{AGENCY.operator}</span>
+        <span className="trunc" style={{ fontWeight: 600, color: "var(--ink)" }}>{operatorName}</span>
         <Ic.chev size={13} />
         {isAgency && acting && <span className="row" style={{ gap: 7, flex: "none" }}>
           <span style={{ width: 7, height: 7, borderRadius: 2, background: acting.color }} />{acting.name.split(" ")[0]}<Ic.chev size={13} /></span>}
@@ -197,16 +224,16 @@ const TopBar = ({ theme, setTheme, route, isAgency, acting, brand, openSwitcher,
       </div>
 
       <div className="row" style={{ gap: 10, flex: "none", marginLeft: "auto" }}>
-        <span className="pill pill-n hide-1280" style={{ height: 28, padding: "0 13px", borderRadius: 20 }}>{AGENCY.provider}</span>
+        <span className="pill pill-n hide-1280" style={{ height: 28, padding: "0 13px", borderRadius: 20 }}>{providerLabel}</span>
         <button onClick={openHelp} className="btn btn-s" style={{ height: 32, padding: "0 13px", borderRadius: 9, fontSize: 12.5, fontWeight: 600 }}>Help</button>
         <button onClick={openAsk} className="btn btn-s" title="Ask Paige" style={{ width: 32, height: 32, padding: 0, justifyContent: "center", borderRadius: 9 }}><Ic.spark size={15} /></button>
         <button className="btn btn-s" title="Notifications" style={{ width: 32, height: 32, padding: 0, justifyContent: "center", borderRadius: 9, position: "relative" }}>
           <Ic.bell size={15} /><span style={{ position: "absolute", top: 6, right: 7, width: 6, height: 6, borderRadius: "50%", background: "var(--bad)" }} /></button>
         <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="btn btn-s" title="Theme" style={{ width: 32, height: 32, padding: 0, justifyContent: "center", borderRadius: 9 }}>{theme === "dark" ? <Ic.sun size={15} /> : <Ic.moon size={15} />}</button>
         <div ref={acctRef} style={{ position: "relative", flex: "none" }}>
-          <button onClick={openAcct} title={AGENCY.operator} aria-haspopup="menu" aria-expanded={acctOpen}
+          <button onClick={openAcct} title={operatorName} aria-haspopup="menu" aria-expanded={acctOpen}
             style={{ padding: 0, border: "2px solid " + (acctOpen ? "var(--gold-bright)" : "transparent"), background: "transparent", cursor: "pointer", borderRadius: "50%", display: "flex", outline: "none" }}>
-            <Avatar name={AGENCY.operator} size={30} tone="var(--rail-2)" /></button>
+            <Avatar name={operatorName} size={30} tone="var(--rail-2)" /></button>
         </div>
       </div>
     </header>
@@ -267,6 +294,61 @@ const AgencyApp = ({ mode = "agency" }) => {
   // ever assigns this, so it is permanently null: the switcher, the banner, and the
   // parent aggregate are structurally unreachable (§51 invariant).
   const [acting, setActing] = React.useState(null);
+
+  // ── §65 Option B (B1a) — REAL agency identity + REAL sub-account roster ──────
+  // The adapters read ONLY session-scoped seams (agency_portfolio_metrics /
+  // agency_list_my_subaccounts, gated by auth.uid()); they never touch a
+  // client-supplied tenant_id and RAISE-safe for non-agency callers (§9/§51).
+  const { activeTenant } = useTenantContext();
+  const shellCtx = { isAgency, acting };
+  const metrics = useAgencyMetrics(shellCtx);
+  const roster = useAgencyRoster(shellCtx);
+
+  // Operator PERSON identity from the auth session (best-effort, §15 — never a
+  // placeholder; falls back to the agency's own name, then a neutral label).
+  const [op, setOp] = React.useState({ name: null, email: null });
+  React.useEffect(() => {
+    let live = true;
+    void supabase.auth.getUser().then(({ data }) => {
+      if (!live) return;
+      const u = data?.user;
+      const meta = (u?.user_metadata ?? {});
+      setOp({ name: meta.full_name || meta.name || null, email: u?.email ?? null });
+    });
+    return () => { live = false; };
+  }, []);
+
+  const agencyName = metrics.identity.name || activeTenant?.name || "Your agency";
+  const operatorName = op.name || agencyName;
+  const operatorEmail = op.email || "";
+  const planLabel = metrics.identity.plan || "Agency plan";
+  // Prefer the literal roster length; fall back to the portfolio count. Preview "—"
+  // while it resolves (§13 — a number is shown only once a real seam returns it).
+  const subCountReal = roster.available ? roster.rows.length : (metrics.subCount ?? null);
+  const subCountLabel = subCountReal == null ? "—" : String(subCountReal);
+  const planLine = planLabel + " · " + subCountLabel + " sub-accounts";
+  const bookLine = subCountReal == null
+    ? "Your book, with ten departments running per sub-account."
+    : subCountLabel + " sub-accounts on your book. Ten departments running per account.";
+  const providerLabel = agencyName;
+
+  // §39 (task #171) — the /agency/{n} address is NOT authority (§9); RLS gates every
+  // read. Keep the URL honest: redirect a number that isn't the caller's own account
+  // to their own, and canonicalize a bare /agency/{n} → its default branch. Acts ONLY
+  // once the caller's own account_number is known, so a mid-load null never bounces.
+  const urlSplat = params["*"] || "";
+  React.useEffect(() => {
+    if (!urlDriven) return;
+    const own = activeTenant?.account_number;
+    if (own == null) return;
+    if (String(own) !== String(urlAccount)) {
+      navigate(branchPath("agency", String(own), defaultBranchSlug("agency")), { replace: true });
+      return;
+    }
+    if (!urlSplat) {
+      navigate(branchPath("agency", urlAccount, defaultBranchSlug("agency")), { replace: true });
+    }
+  }, [urlDriven, urlAccount, urlSplat, activeTenant?.account_number, navigate]);
 
   // Global chrome pop-out open-state (all held here, per the task).
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
@@ -335,7 +417,7 @@ const AgencyApp = ({ mode = "agency" }) => {
   const own = SUBS[0];
   const brand = isAgency
     ? (acting ? { name: acting.name, initials: tmInit(acting.name), color: acting.color, isAgency: true, acting: true }
-      : { name: AGENCY.provider.replace("Provided by ", ""), initials: AGENCY.initials, color: "#C8A02E", isAgency: true, acting: false })
+      : { name: agencyName, initials: tmInit(agencyName), color: "#C8A02E", isAgency: true, acting: false })
     : { name: own.name, initials: tmInit(own.name), color: own.color, isAgency: false, acting: false };
 
   // Real screen modules (MAIN group Slices 1b-2..1b-4 + PLATFORM group Slice 1b-5).
@@ -368,9 +450,10 @@ const AgencyApp = ({ mode = "agency" }) => {
   return (
     <div className="paige-agency" data-theme={theme} style={{ height: "100vh" }}>
       <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-        <Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} sub={sub} brand={brand} />
+        <Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} sub={sub} brand={brand} planLine={planLine} bookLine={bookLine} />
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
           <TopBar theme={theme} setTheme={setTheme} route={route} isAgency={isAgency} acting={acting} brand={brand} sub={sub}
+            operatorName={operatorName} providerLabel={providerLabel}
             openSwitcher={() => setSwitcherOpen(v => !v)} switcherOpen={switcherOpen} switcherRef={switcherRef}
             openAcct={() => setAcctOpen(v => !v)} acctOpen={acctOpen} acctRef={acctRef}
             openAsk={openAsk} openHelp={openHelp} />
@@ -386,18 +469,24 @@ const AgencyApp = ({ mode = "agency" }) => {
                   <div style={{ height: 1, background: "var(--line-soft)", margin: "6px 4px" }} />
                   <button onClick={() => go("fleet")} className="row" style={{ width: "100%", gap: 10, padding: "9px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", fontSize: 13.5, color: "var(--ink)", textAlign: "left" }}
                     onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                    <span style={{ width: 17, textAlign: "center", color: "var(--ink-3)", fontSize: 12 }}>▥</span>All sub-accounts ({AGENCY.subCount})</button>
+                    <span style={{ width: 17, textAlign: "center", color: "var(--ink-3)", fontSize: 12 }}>▥</span>All sub-accounts ({subCountLabel})</button>
                   <div style={{ height: 1, background: "var(--line-soft)", margin: "6px 4px" }} />
                   <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: ".14em", color: "var(--ink-3)", padding: "6px 10px" }}>RECENT</div>
-                  {SUBS.slice(0, 5).map(s => (
-                    <button key={s.name} onClick={() => { setActing(s); go("command"); }} className="row" style={{ width: "100%", gap: 10, padding: "8px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
+                  {/* B1a: REAL sub-accounts (agency_list_my_subaccounts). Clicking routes to
+                      the Clients hub (honest LISTING); per-sub view-as ENTRY is B2. Client
+                      count stands in for the design's per-sub "drafts" (no drafts backend, §13). */}
+                  {roster.rows.slice(0, 5).map(r => (
+                    <button key={r.id} onClick={() => { setSwitcherOpen(false); go("fleet"); }} className="row" style={{ width: "100%", gap: 10, padding: "8px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
                       onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flex: "none" }} />
-                      <span className="grow trunc" style={{ fontSize: 13, color: "var(--ink)" }}>{s.name}</span>
-                      <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>{s.drafts ? s.drafts + " drafts" : "clear"}</span>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: hc(s.health), flex: "none" }} />
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: swatchFor(r.id), flex: "none" }} />
+                      <span className="grow trunc" style={{ fontSize: 13, color: "var(--ink)" }}>{r.name}</span>
+                      <span className="mono" style={{ fontSize: 11, color: "var(--ink-3)" }}>{r.clientCount != null ? r.clientCount + (r.clientCount === 1 ? " client" : " clients") : "—"}</span>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: healthDot(r.health), flex: "none" }} />
                     </button>
                   ))}
+                  {roster.rows.length === 0 && (
+                    <div style={{ fontSize: 12, color: "var(--ink-3)", padding: "6px 10px" }}>{roster.loading ? "Loading your sub-accounts…" : "No sub-accounts yet."}</div>
+                  )}
                   <div style={{ padding: "8px 6px 4px" }}>
                     <input placeholder="Search sub-accounts" style={{ width: "100%", padding: "9px 11px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface-2)", color: "var(--ink)", fontSize: 12.5, fontFamily: "inherit", outline: "none" }} />
                   </div>
@@ -413,13 +502,13 @@ const AgencyApp = ({ mode = "agency" }) => {
             <div style={{ position: "relative" }}>
               <Popover open={acctOpen} onClose={() => setAcctOpen(false)} anchorRef={acctRef} align="right" width={308} top="0" pad={0}>
                 <div className="row" style={{ gap: 11, padding: "14px 15px", background: "var(--surface-2)", borderBottom: "1px solid var(--line-soft)" }}>
-                  <Avatar name={AGENCY.operator} size={38} tone="var(--rail-2)" />
+                  <Avatar name={operatorName} size={38} tone="var(--rail-2)" />
                   <div style={{ minWidth: 0 }}>
-                    <div className="trunc" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>{AGENCY.operator}</div>
-                    <div className="trunc" style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>antonio@agency.example</div>
+                    <div className="trunc" style={{ fontSize: 13.5, fontWeight: 600, color: "var(--ink)" }}>{operatorName}</div>
+                    {operatorEmail && <div className="trunc" style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>{operatorEmail}</div>}
                     <div className="row" style={{ gap: 7, marginTop: 6 }}>
                       <span className="pill pill-v" style={{ height: 18 }}>Owner · Admin</span>
-                      <span className="trunc" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{sub ? "Solo plan" : AGENCY.plan}</span>
+                      <span className="trunc" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{sub ? "Solo plan" : planLabel}</span>
                     </div>
                   </div>
                 </div>
