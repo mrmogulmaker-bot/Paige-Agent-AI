@@ -55,6 +55,8 @@ const decorateReal = row => {
   const bucket = row.health;
   return {
     id: row.id, name: row.name, color,
+    // §65 Option B2 — carried through for the "Enter →" act-as action below.
+    accountNumber: row.accountNumber,
     initials: initialsOf(row.name), tint: av.plate, ink: av.ink,
     healthColor: healthDot(bucket), healthBucket: bucket,
     line: healthLabel(bucket) + (typeof row.clientCount === "number"
@@ -90,7 +92,7 @@ const DirectoryEmpty = () => (
 );
 
 // ── Sub-accounts directory (agency) ───────────────────────────────────────────
-const Directory = ({ openAsk, isAgency, acting }) => {
+const Directory = ({ openAsk, isAgency, acting, enterSubaccount = noop }) => {
   const [filter, setFilter] = React.useState("All");
   const [attnOpen, setAttnOpen] = React.useState(false);
   const roster = useAgencyRoster({ isAgency, acting });
@@ -211,9 +213,9 @@ const Directory = ({ openAsk, isAgency, acting }) => {
                   </svg>
                 </div>
               </div>
-              <div className="row" style={{ marginTop: "auto", padding: "11px 16px", borderTop: "1px solid var(--line-soft)", justifyContent: "space-between", fontSize: 12.5, color: "var(--ink-2)" }}>
+              <button onClick={() => enterSubaccount({ id: s.id, accountNumber: s.accountNumber })} className="row" style={{ marginTop: "auto", padding: "11px 16px", borderTop: "1px solid var(--line-soft)", justifyContent: "space-between", fontSize: 12.5, color: "var(--ink-2)", background: "transparent", cursor: "pointer", width: "100%", textAlign: "left" }}>
                 <span>{s.tenureLine}</span><span style={{ color: "var(--gold)", fontWeight: 600 }}>Enter →</span>
-              </div>
+              </button>
             </div>
           ))}
         </div>
@@ -236,7 +238,7 @@ const Directory = ({ openAsk, isAgency, acting }) => {
             </div>
             <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{a.mrr === "—" ? "MRR not yet available." : a.mrr + " MRR."}</div>
             <div className="row" style={{ gap: 8, marginTop: 11 }}>
-              <button className="btn btn-s" style={{ height: 30, borderRadius: 9, fontSize: 12, color: "var(--ink-2)" }}>Open sub-account</button>
+              <button onClick={() => enterSubaccount({ id: a.id, accountNumber: a.accountNumber })} className="btn btn-s" style={{ height: 30, borderRadius: 9, fontSize: 12, color: "var(--ink-2)" }}>Open sub-account</button>
             </div>
           </div>
         ))}
@@ -510,7 +512,7 @@ const Pipelines = ({ crossBook, ownName, ownIdx, openAsk }) => {
 };
 
 // ── ClientsHub (root screen) ──────────────────────────────────────────────────
-const ClientsHub = ({ isAgency = true, acting = null, openAsk = noop }) => {
+const ClientsHub = ({ isAgency = true, acting = null, openAsk = noop, enterSubaccount = noop }) => {
   useReducedMotion(); // keep the pack's motion-preference subscription warm on this surface
   const crossBook = isAgency && !acting;
   const ownName = acting ? acting.name : SUBS[0].name;
@@ -527,7 +529,7 @@ const ClientsHub = ({ isAgency = true, acting = null, openAsk = noop }) => {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0, alignItems: "stretch" }}>
       <SubTabs tabs={tabs} cur={tab} set={setTab} />
       <div key={tab} className="fade-in" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "18px 26px 22px", width: "100%", maxWidth: 1440, margin: "0 auto" }}>
-        {tab === "directory" && (crossBook ? <Directory openAsk={openAsk} isAgency={isAgency} acting={acting} /> : <OwnBook ownName={ownName} />)}
+        {tab === "directory" && (crossBook ? <Directory openAsk={openAsk} isAgency={isAgency} acting={acting} enterSubaccount={enterSubaccount} /> : <OwnBook ownName={ownName} />)}
         {tab === "pipes" && <Pipelines crossBook={crossBook} ownName={ownName} ownIdx={ownIdx} openAsk={openAsk} />}
         {tab === "convos" && <ConversationsConsole isAgency={isAgency} acting={acting} openAsk={openAsk} />}
       </div>
