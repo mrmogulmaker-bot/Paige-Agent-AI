@@ -88,6 +88,13 @@ export interface TenantSummary {
   account_type: string;
   parent_tenant_id: string | null;
   /**
+   * §65 R0: the permanent unique numeric URL address (`/agency/{account_number}/…`).
+   * Assigned at creation by `trg_assign_tenant_account_number` (migration 20260916000000),
+   * NOT NULL on prod. Address not a grant (§9) — the route resolver uses it to build the
+   * canonical URL; RLS still gates every read. `null` only defends the pre-migration window.
+   */
+  account_number: number | null;
+  /**
    * Per-tenant `tenants.features` JSONB — the §18 one home for config-as-data flags
    * (e.g. `features.playbook`, `features.finance_in_scope`, `features.solo_shell_enabled`).
    * Set by the platform operator (§57 source-of-truth); read here to derive
@@ -197,7 +204,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         // RLS already filters: platform staff see all, members see their own.
         supabase
           .from("tenants")
-          .select("id, slug, name, status, plan_offer, seat_limit, customer_limit, owner_user_id, account_type, parent_tenant_id, features")
+          .select("id, slug, name, status, plan_offer, seat_limit, customer_limit, owner_user_id, account_type, parent_tenant_id, account_number, features")
           .order("created_at", { ascending: true }),
         // #29: operator-internal revenue classification, for the operator switcher's
         // grouping. RLS (is_platform_owner) returns rows ONLY to platform staff — a
@@ -230,7 +237,11 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         }
       }
       setTenants(
-        ((tenantsRes.data ?? []) as Omit<TenantSummary, "revenue_class">[]).map((t) => ({
+        // `account_number` (§65 R0, migration 20260916000000) is live on prod but not yet
+        // in the generated Supabase types, so `.select(...)` widens to a SelectQueryError
+        // union — cast through `unknown` to the real shape (TS2352). Safe: the column is
+        // selected literally above and read as `number | null` (guarded everywhere).
+        ((tenantsRes.data ?? []) as unknown as Omit<TenantSummary, "revenue_class">[]).map((t) => ({
           ...t,
           revenue_class: classById.get(t.id) ?? null,
         })) as TenantSummary[],
@@ -239,7 +250,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       // lets them read all of them — they operate at the God tier by default.
       const baseActiveTenantId =
         profileRes.data?.active_tenant_id ??
-        (staff.data ? null : (tenantsRes.data?.[0] as TenantSummary | undefined)?.id ?? null);
+        (staff.data ? null : (tenantsRes.data?.[0] as unknown as TenantSummary | undefined)?.id ?? null);
       setActiveTenantId(baseActiveTenantId);
 
       // --- #233: on a GENUINE new sign-in, reset the active tenant to the user's

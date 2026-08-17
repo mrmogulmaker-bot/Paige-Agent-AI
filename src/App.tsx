@@ -79,9 +79,11 @@ const FundingMatches = lazyWithReload(() => import("./pages/FundingMatches"));
 const FundingJourney = lazyWithReload(() => import("./pages/FundingJourney"));
 const FinancialProfile = lazyWithReload(() => import("./pages/FinancialProfile"));
 const Admin = lazyWithReload(() => import("./pages/Admin"));
-// Agency Operator side (§9) — its own top-level shell, peer to the God console,
-// gated on server-proven agency-manager eligibility inside AgencyLayout.
-const AgencyLayout = lazyWithReload(() => import("./components/admin/AgencyLayout"));
+// Agency Operator side (§9) — its own top-level shell, peer to the God console.
+// AgencyEntry (§65 R0-slice-2) dispatches `/agency/*`: a numeric first segment
+// (/agency/{account}/…) → the new URL-driven AgencyApp shell; anything else → the
+// legacy AgencyLayout board (gated on server-proven agency-manager eligibility).
+const AgencyEntry = lazyWithReload(() => import("./agency/AgencyEntry"));
 const ResetPassword = lazyWithReload(() => import("./pages/ResetPassword"));
 const AffiliateApply = lazyWithReload(() => import("./pages/AffiliateApply"));
 const BrokerApply = lazyWithReload(() => import("./pages/BrokerApply"));
@@ -265,7 +267,7 @@ const App = () => (
                 playbook (§61), so it is NOT wrapped in RequireSetupComplete (that gate is
                 for Solo/Sub-account business tenants only). The gate also no-ops for the
                 agency tier defensively, so a stray /admin hit by an agency owner is safe too. */}
-            <Route path="/agency/*" element={<RequireCompleteSignup><PageSuspense><AgencyLayout /></PageSuspense></RequireCompleteSignup>} />
+            <Route path="/agency/*" element={<RequireCompleteSignup><PageSuspense><AgencyEntry /></PageSuspense></RequireCompleteSignup>} />
             <Route path="/unsubscribe" element={<PageSuspense><Unsubscribe /></PageSuspense>} />
             {/* Comms C-2s-C — tenant one-click/footer unsubscribe. SAME Unsubscribe surface (§18),
                 branded /u/:token path form; the component routes the token to comms-email-unsubscribe. */}

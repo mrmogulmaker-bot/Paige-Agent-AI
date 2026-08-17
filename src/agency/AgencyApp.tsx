@@ -21,7 +21,9 @@
 // path sets it), and the switcher/banner branches are gated on `isAgency` so their
 // code is unreachable. A sub-account owner sees only their own book.
 import React from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { performSignOut } from "@/lib/auth/signOut";
+import { branchBySlug, branchByKey, branchPath, defaultBranchSlug } from "@/lib/routing/tierBranches";
 import "./agency-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead, Modal, Popover, SlideOut, AV } from "./_shared";
 import { tmInit } from "./TeamBlock";
@@ -229,8 +231,34 @@ const Stub = ({ route }) => {
 // ── AgencyApp (root) ─────────────────────────────────────────────────────────
 const AgencyApp = ({ mode = "agency" }) => {
   const isAgency = mode === "agency";
-  const [route, setRoute] = React.useState("command");
-  const go = k => { setRoute(k); setSwitcherOpen(false); setAcctOpen(false); };
+
+  // §65 URL-driven branch — every tab is its own deep-linkable route
+  // (/agency/{account}/{branch}). The screen `route` is DERIVED from the URL slug via
+  // the TIER_BRANCHES registry, and `go(k)` NAVIGATES rather than mutating local state.
+  // DUAL-MODE (§58): when this shell is mounted INLINE without a :account param (the
+  // sub-account /admin takeover, §51 Gate B, whose /business tree lands in R3), it falls
+  // back to local state so that path is byte-unchanged. `acting` (sub context) stays
+  // state for now — its actor-namespaced URL (/agency/{n}/sub/{subN}/…) + real-roster
+  // wiring is the immediate fast-follow (§13 honest: not in this slice).
+  const params = useParams();
+  const navigate = useNavigate();
+  const urlAccount = params.account || null;
+  const urlDriven = isAgency && !!urlAccount;
+  const urlBranchSlug = urlDriven
+    ? ((params["*"] || "").split("/")[0] || defaultBranchSlug("agency"))
+    : null;
+  const [stateRoute, setStateRoute] = React.useState("command");
+  const route = urlDriven ? (branchBySlug("agency", urlBranchSlug)?.key ?? "command") : stateRoute;
+  const go = k => {
+    if (urlDriven) {
+      const slug = branchByKey("agency", k)?.slug ?? defaultBranchSlug("agency");
+      navigate(branchPath("agency", urlAccount, slug));
+    } else {
+      setStateRoute(k);
+    }
+    setSwitcherOpen(false);
+    setAcctOpen(false);
+  };
   const [collapsed, setCollapsed] = React.useState(false);
   const [theme, setTheme] = React.useState(() => localStorage.getItem("paige-agency-theme") || "light");
   React.useEffect(() => { localStorage.setItem("paige-agency-theme", theme); }, [theme]);
@@ -296,7 +324,7 @@ const AgencyApp = ({ mode = "agency" }) => {
     }, 620);
   };
   // "Walk through them with me" — enter the freshly-provisioned sub (agency only).
-  const enterNew = () => { if (timer.current) clearInterval(timer.current); setProvisionOpen(false); setProvStep(1); setActing(SUBS[0]); setRoute("command"); };
+  const enterNew = () => { if (timer.current) clearInterval(timer.current); setProvisionOpen(false); setProvStep(1); setActing(SUBS[0]); go("command"); };
 
   // `sub` = presenting as a sub-account (standalone subaccount mode, or agency acting
   // into a sub). Drives the design's isSub nav/plan/label variants.
@@ -362,7 +390,7 @@ const AgencyApp = ({ mode = "agency" }) => {
                   <div style={{ height: 1, background: "var(--line-soft)", margin: "6px 4px" }} />
                   <div style={{ fontSize: 9.5, fontWeight: 600, letterSpacing: ".14em", color: "var(--ink-3)", padding: "6px 10px" }}>RECENT</div>
                   {SUBS.slice(0, 5).map(s => (
-                    <button key={s.name} onClick={() => { setActing(s); setRoute("command"); setSwitcherOpen(false); }} className="row" style={{ width: "100%", gap: 10, padding: "8px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
+                    <button key={s.name} onClick={() => { setActing(s); go("command"); }} className="row" style={{ width: "100%", gap: 10, padding: "8px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
                       onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flex: "none" }} />
                       <span className="grow trunc" style={{ fontSize: 13, color: "var(--ink)" }}>{s.name}</span>
