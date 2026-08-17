@@ -1676,7 +1676,7 @@ export const OTHER = {
 //    see the crew report gap note.
 export const FLAGS = {
   anFlag: "Cross-book aggregation, cost-to-serve, at-risk classification and market signals have no confirmed backend route yet — figures here are stand-ins, not platform figures.",
-  pipesFlag: "No cross-book pipeline query is confirmed in the codebase — stage counts, values and stalls here are stand-ins, not platform figures.",
+  pipesFlag: "No cross-book pipeline query is confirmed in the codebase — the sub-account names, stage counts, values and stalls here are all stand-ins, not your real sub-accounts or platform figures. Your real roster is on the Sub-accounts tab.",
   convosFlag: "Cross-book threads, send-from-identity routing and per-" + LBL.tenant + " draft voice have no confirmed backend route — this console is the layout only.",
   caFlag: "No cross-book metrics query exists yet, and draft-approval and auto-send outcomes aren't being recorded per draft. Everything on this tab is layout with stand-in figures, not measured performance.",
   csFlag: "Defaults and policies aren't structurally distinct in the codebase yet, and no send-time enforcement layer is confirmed — the [POLICY] locks here describe intent, not enforced behavior.",

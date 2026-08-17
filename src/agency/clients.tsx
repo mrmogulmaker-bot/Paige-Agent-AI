@@ -112,6 +112,11 @@ const Directory = ({ openAsk, isAgency, acting }) => {
 
   const needAttentionCount = (counts["Needs attention"] || 0) + (counts["At-risk"] || 0);
   const healthyCount = counts["Healthy"] || 0;
+  // A freshly-provisioned sub-account has no leaderboard row yet (health: null) —
+  // it counts toward "active" but matches none of Healthy/Needs attention/At-risk,
+  // so the three numbers won't sum without this. Named explicitly rather than left
+  // as unexplained missing math (§13/§25).
+  const unscoredCount = rows.length - healthyCount - needAttentionCount;
 
   // "Needs your attention" — REAL, derived from the watch/at-risk roster rows
   // (worst bucket first). No fabricated narrative/dollar-impact/specific CTA —
@@ -133,6 +138,23 @@ const Directory = ({ openAsk, isAgency, acting }) => {
       </div>
     );
   }
+  // Honest error state (§13/§39) — a fetch failure is NOT "no sub-accounts yet."
+  // roster.isError degrades to a real, actionable message instead of a false claim.
+  if (roster.isError) {
+    return (
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 15 }}>
+        <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Your sub-accounts</div>
+        <div className="card" style={{ flex: 1, display: "grid", placeItems: "center", padding: 40, textAlign: "center" }}>
+          <div>
+            <div className="tile" style={{ margin: "0 auto 14px", width: 44, height: 44, borderRadius: 15, background: "var(--bad-tint)", color: "var(--bad)" }}><Ic.x size={20} /></div>
+            <div style={{ fontWeight: 600, fontSize: 15 }}>Couldn't load your sub-accounts</div>
+            <div className="sub" style={{ maxWidth: 340, margin: "6px auto 14px" }}>Something went wrong reaching your roster. Try again.</div>
+            <button onClick={roster.refresh} className="btn btn-s" style={{ margin: "0 auto" }}>Retry</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!rows.length) {
     return (
       <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 15 }}>
@@ -148,7 +170,7 @@ const Directory = ({ openAsk, isAgency, acting }) => {
         <div className="row" style={{ alignItems: "flex-end", gap: 16, flex: "none", flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Your sub-accounts</div>
-            <div style={{ fontSize: 13.5, color: "var(--ink-2)", marginTop: 6 }}>{rows.length} active · {needAttentionCount} need attention today · {healthyCount} healthy</div>
+            <div style={{ fontSize: 13.5, color: "var(--ink-2)", marginTop: 6 }}>{rows.length} active · {needAttentionCount} need attention today · {healthyCount} healthy{unscoredCount > 0 ? " · " + unscoredCount + " not yet scored" : ""}</div>
           </div>
           <div className="row" style={{ marginLeft: "auto", gap: 9, flex: "none" }}>
             <button onClick={() => setAttnOpen(true)} style={{ padding: "10px 15px", borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12.5, fontWeight: 600, color: "var(--gold)", cursor: "pointer", whiteSpace: "nowrap" }}>Needs your attention · {needAttentionCount} →</button>
@@ -181,8 +203,11 @@ const Directory = ({ openAsk, isAgency, acting }) => {
                     <div className="eyebrow" style={{ fontSize: 10 }}>MRR</div>
                     <div style={{ fontSize: 17, fontWeight: 700, marginTop: 3 }}>{s.mrr}</div>
                   </div>
-                  <svg viewBox="0 0 92 26" width="92" height="26" style={{ marginLeft: "auto", overflow: "visible" }}>
-                    <polyline points={s.spark} fill="none" stroke={s.color} strokeWidth="1.7" strokeLinejoin="round" />
+                  {/* Decorative only — no real trend/activity-history backend yet (§13). Muted
+                      and neutral-toned so it reads as texture, not a real MRR trend line next
+                      to the genuinely real figure beside it. */}
+                  <svg viewBox="0 0 92 26" width="92" height="26" style={{ marginLeft: "auto", overflow: "visible", opacity: 0.45 }}>
+                    <polyline points={s.spark} fill="none" stroke="var(--ink-3)" strokeWidth="1.5" strokeLinejoin="round" />
                   </svg>
                 </div>
               </div>
