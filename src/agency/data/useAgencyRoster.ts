@@ -67,6 +67,10 @@ export interface AgencyRosterRow {
   name: string;
   /** child tenant slug — REAL */
   slug: string;
+  /** §65 Option B2 — the child's own URL address, for the actor-namespaced
+   * act-as path (/agency/{n}/sub/{accountNumber}/…). REAL, always present
+   * (assigned at provisioning, §9 address-not-grant). */
+  accountNumber: number;
   /** child lifecycle status — REAL */
   status: string;
   /** child account_type (always a non-manager tier under §51) — REAL */
@@ -108,6 +112,8 @@ interface SubAccountRow {
   status: string;
   account_type: string;
   created_at: string;
+  /** §65 Option B2 (migration 20260917000000) — the child's own URL address. */
+  account_number: number;
 }
 
 const POLL = { refetchInterval: 45_000, refetchOnWindowFocus: true } as const;
@@ -165,6 +171,7 @@ export function useAgencyRoster(ctx: AgencyShellCtx): AgencyRosterData {
       id: s.id,
       name: s.name,
       slug: s.slug,
+      accountNumber: s.account_number,
       status: s.status,
       accountType: s.account_type,
       createdAt: s.created_at,

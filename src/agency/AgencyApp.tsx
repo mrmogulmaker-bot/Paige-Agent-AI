@@ -255,15 +255,27 @@ const AgencyApp = ({ mode = "agency" }) => {
   const navigate = useNavigate();
   const urlAccount = params.account || null;
   const urlDriven = isAgency && !!urlAccount;
-  const urlBranchSlug = urlDriven
-    ? ((params["*"] || "").split("/")[0] || defaultBranchSlug("agency"))
-    : null;
+  // §65 Option B2 (owner-ruled actor namespacing) — an optional "sub/{childAccountNumber}"
+  // PREFIX on the splat marks an act-as URL (/agency/{n}/sub/{subN}/{branch}/{subtab}).
+  // Everything after the prefix (or the whole splat, if absent) is the ordinary
+  // branch/subtab pair — unchanged from R0/Option A.
+  const splatParts = urlDriven ? (params["*"] || "").split("/") : [];
+  const isSubPrefixed = urlDriven && splatParts[0] === "sub" && /^\d+$/.test(splatParts[1] || "");
+  const urlActingAccountNumber = isSubPrefixed ? Number(splatParts[1]) : null;
+  const branchParts = isSubPrefixed ? splatParts.slice(2) : splatParts;
+  const urlBranchSlug = urlDriven ? (branchParts[0] || defaultBranchSlug("agency")) : null;
   const [stateRoute, setStateRoute] = React.useState("command");
   const route = urlDriven ? (branchBySlug("agency", urlBranchSlug)?.key ?? "command") : stateRoute;
+  // go(k) navigates within the CURRENT act-as scope — stays "inside" the acted-as
+  // sub-account when one is active (preserves the sub/{n} prefix), drops back to
+  // the plain agency path otherwise.
   const go = k => {
     if (urlDriven) {
       const slug = branchByKey("agency", k)?.slug ?? defaultBranchSlug("agency");
-      navigate(branchPath("agency", urlAccount, slug));
+      const path = isSubPrefixed
+        ? "/agency/" + urlAccount + "/sub/" + urlActingAccountNumber + "/" + slug
+        : branchPath("agency", urlAccount, slug);
+      navigate(path);
     } else {
       setStateRoute(k);
     }
@@ -274,16 +286,41 @@ const AgencyApp = ({ mode = "agency" }) => {
   const [theme, setTheme] = React.useState(() => localStorage.getItem("paige-agency-theme") || "light");
   React.useEffect(() => { localStorage.setItem("paige-agency-theme", theme); }, [theme]);
 
-  // acting-as-a-sub — AGENCY MODE ONLY. In subaccount mode there is NO UI path that
-  // ever assigns this, so it is permanently null: the switcher, the banner, and the
-  // parent aggregate are structurally unreachable (§51 invariant).
-  const [acting, setActing] = React.useState(null);
-
   // ── §65 Option B (B1a) — REAL agency identity + REAL sub-account roster ──────
   // The adapters read ONLY session-scoped seams (agency_portfolio_metrics /
   // agency_list_my_subaccounts, gated by auth.uid()); they never touch a
   // client-supplied tenant_id and RAISE-safe for non-agency callers (§9/§51).
-  const { activeTenant } = useTenantContext();
+  const { activeTenant, tenants, switchTenant, refresh: refreshTenants } = useTenantContext();
+  // §65 Option B2 — the caller's OWN agency/enterprise tenant, sourced independent of
+  // `activeTenant` (which becomes the CHILD while acting). A caller's membership on
+  // their own agency is never removed by entering a child (§37/§9), so this stays
+  // stable through the whole act-as lifecycle — the correct "own number" for both the
+  // top-level URL guard below and the act-as flow.
+  // tier-feature-exempt: tier ROUTING (identifying which of the caller's own tenants
+  // IS their agency/enterprise identity), not a §60 feature-availability decision.
+  const ownAgencyTenant = (tenants || []).find(t => t.account_type === "agency" || t.account_type === "enterprise") ?? null;
+
+  // ── §65 Option B2 — REAL act-as. `acting` is DERIVED, never a raw setState —
+  // AGENCY MODE ONLY. In subaccount mode isSubPrefixed can never be true (urlDriven
+  // requires isAgency), so acting is permanently null there: the switcher, banner,
+  // and parent aggregate stay structurally unreachable (§51 invariant), exactly as
+  // before. "Confirmed" means the SESSION (activeTenant, via useTenantContext) is
+  // actually scoped to the child the URL names — agency_enter_subaccount sets that
+  // server-side; the URL is an address, never a grant (§9, same pattern as the
+  // top-level account-number guard below). Until confirmed, the shell shows a
+  // syncing state rather than flash the PREVIOUS identity under a URL claiming a
+  // different one (§13).
+  const actingConfirmed = isSubPrefixed && activeTenant?.account_number === urlActingAccountNumber;
+  const acting = actingConfirmed
+    ? {
+        id: activeTenant.id,
+        name: activeTenant.name,
+        accountNumber: activeTenant.account_number,
+        color: swatchFor(activeTenant.id),
+      }
+    : null;
+  const actingSyncing = isSubPrefixed && !actingConfirmed;
+
   const shellCtx = { isAgency, acting };
   const metrics = useAgencyMetrics(shellCtx);
   const roster = useAgencyRoster(shellCtx);
@@ -329,25 +366,127 @@ const AgencyApp = ({ mode = "agency" }) => {
   // read. Keep the URL honest: redirect a number that isn't the caller's own account
   // to their own, and canonicalize a bare /agency/{n} → its default branch. Acts ONLY
   // once the caller's own account_number is known, so a mid-load null never bounces.
+  // §65 Option B2 fix: compares against `ownAgencyTenant` (stable through act-as),
+  // NOT `activeTenant` (which becomes the CHILD while acting — comparing against it
+  // would wrongly bounce a valid sub/{n} URL using the child's own number).
   const urlSplat = params["*"] || "";
-  const activeType = activeTenant?.account_type;
   React.useEffect(() => {
     if (!urlDriven) return;
-    const own = activeTenant?.account_number;
+    const own = ownAgencyTenant?.account_number;
     if (own == null) return;
-    // Only redirect a mismatched number to "our own" when the ACTIVE tenant is truly an
-    // agency/enterprise account. A multi-membership user parked on a non-agency tenant
-    // (the §588/§51 resolution hazard) must NOT get bounced to a non-agency number —
-    // leave the URL (RLS still gates every read by auth.uid()), just don't rewrite it.
-    const activeIsAgency = activeType === "agency" || activeType === "enterprise";
-    if (activeIsAgency && String(own) !== String(urlAccount)) {
+    if (String(own) !== String(urlAccount)) {
       navigate(branchPath("agency", String(own), defaultBranchSlug("agency")), { replace: true });
       return;
     }
-    if (!urlSplat) {
+    // The bare-URL canonicalize only applies to the plain (non-acting) shape —
+    // a bare /agency/{n}/sub/{subN} (no branch yet) is handled by the resolving
+    // effect below, which supplies its own default branch on first entry.
+    if (!urlSplat && !isSubPrefixed) {
       navigate(branchPath("agency", urlAccount, defaultBranchSlug("agency")), { replace: true });
     }
-  }, [urlDriven, urlAccount, urlSplat, activeTenant?.account_number, activeType, navigate]);
+  }, [urlDriven, urlAccount, urlSplat, isSubPrefixed, ownAgencyTenant?.account_number, navigate]);
+
+  // ── §65 Option B2 — act-as ACTIONS. Both real, both server-authorized. ──────
+  const [switchBusy, setSwitchBusy] = React.useState(false);
+  const [switchError, setSwitchError] = React.useState("");
+
+  // syncIntoChild — the shared core: authorize + grant membership on the child
+  // (agency_enter_subaccount, SECURITY DEFINER, RAISEs 42501 if unauthorized), then
+  // sync the CLIENT's tenant scope via the SAME proven primitive the platform's own
+  // tenant-switcher already uses (useTenantContext().switchTenant — sets local state
+  // AND runs queryClient.invalidateQueries(), the established §9 cache-safety step;
+  // see src/components/admin/TenantSwitcher.tsx). Never presented as done until the
+  // RPC actually succeeds (§13) — callers must catch and surface `switchError`.
+  // §39 fix (peer-gate finding #1) — `tenants` is only refetched on mount/auth
+  // events, NEVER by switchTenant itself. On a FIRST-EVER entry into a child,
+  // agency_enter_subaccount's membership grant is the only thing that makes the
+  // child RLS-readable — the client's cached `tenants` list won't contain it yet,
+  // so `activeTenant` would resolve to null/stale and `actingConfirmed` could
+  // never become true (a permanently-stuck syncing screen). refresh() re-fetches
+  // the tenant list under the NEW membership before we rely on activeTenant.
+  const syncIntoChild = React.useCallback(async (childId) => {
+    const { error } = await supabase.rpc("agency_enter_subaccount", { _child: childId });
+    if (error) throw error;
+    await switchTenant(childId);
+    await refreshTenants();
+  }, [switchTenant, refreshTenants]);
+
+  // enterSubaccount — the user-facing action (switcher row, Directory card, …).
+  // Defensive: a fixture row (no real id/accountNumber) silently no-ops rather than
+  // acting-as garbage (§13) — see CommandCenter's enterSub wiring below.
+  const enterSubaccount = React.useCallback(async (child) => {
+    if (!child?.id || child?.accountNumber == null) return;
+    setSwitchBusy(true); setSwitchError("");
+    try {
+      await syncIntoChild(child.id);
+      navigate("/agency/" + urlAccount + "/sub/" + child.accountNumber + "/command-center");
+    } catch (e) {
+      setSwitchError(e?.message || "Couldn't switch into that sub-account.");
+    } finally {
+      setSwitchBusy(false);
+    }
+  }, [syncIntoChild, navigate, urlAccount]);
+
+  // exitSubaccount — "Return to agency view". agency_exit_subaccount() RE-DERIVES the
+  // caller's agency server-side from their OWN tenant_members role (never trusts a
+  // client-held id) and returns it; switchTenant syncs the client to that value.
+  const exitSubaccount = React.useCallback(async () => {
+    setSwitchBusy(true); setSwitchError("");
+    try {
+      const { data, error } = await supabase.rpc("agency_exit_subaccount");
+      if (error) throw error;
+      const agencyId = data?.active_tenant_id ?? ownAgencyTenant?.id ?? null;
+      if (agencyId) await switchTenant(agencyId);
+      const slug = branchByKey("agency", route)?.slug ?? defaultBranchSlug("agency");
+      navigate(branchPath("agency", urlAccount, slug));
+    } catch (e) {
+      setSwitchError(e?.message || "Couldn't return to the agency view.");
+    } finally {
+      setSwitchBusy(false);
+    }
+  }, [switchTenant, navigate, urlAccount, route, ownAgencyTenant?.id]);
+
+  // Deep-link / reload resolver — a bookmarked or freshly-loaded sub/{subN} URL whose
+  // SESSION isn't yet scoped there. §39 forward-IDOR guard: subN is an ADDRESS, never
+  // a grant — resolve it against the caller's OWN real roster (agency_list_my_subaccounts,
+  // scoped by auth.uid() server-side) before ever calling the act-as RPC. A subN that
+  // matches none of the caller's real children can never succeed (the RPC re-checks
+  // authorization regardless) and self-heals back to the agency's own default view,
+  // exactly like the top-level guard above — never a dead end, never a fake success.
+  React.useEffect(() => {
+    if (!isSubPrefixed || actingConfirmed || switchBusy) return;
+    let cancelled = false;
+    setSwitchBusy(true);
+    (async () => {
+      const { data, error } = await supabase.rpc("agency_list_my_subaccounts");
+      if (cancelled) return;
+      const rows = Array.isArray(data) ? data : [];
+      const match = rows.find(r => Number(r.account_number) === urlActingAccountNumber);
+      if (error || !match) {
+        navigate(branchPath("agency", urlAccount, defaultBranchSlug("agency")), { replace: true });
+        setSwitchBusy(false);
+        return;
+      }
+      try {
+        await syncIntoChild(match.id);
+      } catch {
+        navigate(branchPath("agency", urlAccount, defaultBranchSlug("agency")), { replace: true });
+      } finally {
+        if (!cancelled) setSwitchBusy(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // §39 fix (peer-gate finding #2) — `switchBusy` is set INSIDE this effect, so
+    // listing it as a dep made the effect self-cancelling: setSwitchBusy(true)
+    // changes a dep → React tears down (cancelled=true) and re-invokes before the
+    // in-flight RPC resolves → the resolved call's `if (cancelled) return` skips
+    // `setSwitchBusy(false)` on every path → stuck forever on the syncing screen.
+    // The guard at the top of the effect body still reads the LATEST switchBusy/
+    // navigate/syncIntoChild via closure on every real re-run; they intentionally
+    // stay OUT of the deps array so the effect only re-runs on a genuine URL/
+    // session change, never on a re-render that merely redefines a callback.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSubPrefixed, actingConfirmed, urlActingAccountNumber, urlAccount]);
 
   // Global chrome pop-out open-state (all held here, per the task).
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
@@ -404,8 +543,11 @@ const AgencyApp = ({ mode = "agency" }) => {
       setFeed(f => f.concat([line])); setScanDone(i);
     }, 620);
   };
-  // "Walk through them with me" — enter the freshly-provisioned sub (agency only).
-  const enterNew = () => { if (timer.current) clearInterval(timer.current); setProvisionOpen(false); setProvStep(1); setActing(SUBS[0]); go("command"); };
+  // "Walk through them with me" — closes the wizard and returns to Command Center.
+  // §13 honest: provisioning here is still the decorative demo wizard (no real
+  // tenant is created), so this can no longer fake an act-as into SUBS[0] now that
+  // `acting` is real (§65 Option B2) — it would desync the URL from the session.
+  const enterNew = () => { if (timer.current) clearInterval(timer.current); setProvisionOpen(false); setProvStep(1); go("command"); };
 
   // `sub` = presenting as a sub-account (standalone subaccount mode, or agency acting
   // into a sub). Drives the design's isSub nav/plan/label variants.
@@ -425,11 +567,11 @@ const AgencyApp = ({ mode = "agency" }) => {
   // GrowthHub owns its full lifecycle (opens VibeStudio inline from its own studioOpen
   // state). Every top-nav route now resolves to a real screen; Stub is the fallback.
   const screens = {
-    command: <CommandCenter isAgency={isAgency} acting={acting} openAsk={openAsk} enterSub={setActing} />,
+    command: <CommandCenter isAgency={isAgency} acting={acting} openAsk={openAsk} enterSub={enterSubaccount} />,
     paige: <PaigeHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     compass: <TrustCompass isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     autos: <AutomationsHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
-    fleet: <ClientsHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
+    fleet: <ClientsHub isAgency={isAgency} acting={acting} openAsk={openAsk} enterSubaccount={enterSubaccount} />,
     calendar: <CalendarHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     support: <ClientSupport isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     growth: <GrowthHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
@@ -442,6 +584,24 @@ const AgencyApp = ({ mode = "agency" }) => {
     integrations: <IntegrationsHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     setup: <SetupScreen isAgency={isAgency} acting={acting} openAsk={openAsk} />,
   };
+  // §65 Option B2 — while a sub/{n} URL's session scope is still resolving (a
+  // bookmarked/reloaded deep link, or the brief window right after an act-as
+  // click), show a lightweight syncing state INSTEAD of the shell — never flash
+  // the previous identity under a URL that already claims a different one (§13).
+  if (isSubPrefixed && (actingSyncing || switchBusy)) {
+    return (
+      <div className="paige-agency" data-theme={theme} style={{ height: "100vh", display: "grid", placeItems: "center" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+          <div className="tile" style={{ width: 40, height: 40, borderRadius: 14, background: "var(--gold-tint)", color: "var(--gold)" }}><Ic.spark size={19} /></div>
+          <div style={{ fontSize: 13.5, color: "var(--ink-2)" }}>Switching into that sub-account…</div>
+          {switchError && (
+            <div style={{ fontSize: 12.5, color: "var(--bad)", maxWidth: 320, textAlign: "center" }}>{switchError}</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const body = screens[route] || <Stub route={route} />;
 
   const swatches = ["#7C6CE0", "#3F7F5C", "#2F6FA8", "#C1652F", "#A8425A", "#B3932A"];
@@ -462,7 +622,7 @@ const AgencyApp = ({ mode = "agency" }) => {
             <div style={{ position: "absolute", top: 50, left: 300, zIndex: 60 }}>
               <div style={{ position: "relative" }}>
                 <Popover open={switcherOpen} onClose={() => setSwitcherOpen(false)} anchorRef={switcherRef} align="left" width={348} top="0" pad={8}>
-                  <button onClick={() => { setActing(null); setSwitcherOpen(false); }} className="row" style={{ width: "100%", gap: 10, padding: "9px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 600, color: "var(--ink)", textAlign: "left" }}
+                  <button onClick={() => { setSwitcherOpen(false); if (acting) void exitSubaccount(); }} className="row" style={{ width: "100%", gap: 10, padding: "9px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: 600, color: "var(--ink)", textAlign: "left" }}
                     onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                     <span style={{ width: 8, height: 8, borderRadius: 2, background: "var(--gold-bright)" }} />Agency view</button>
                   <div style={{ height: 1, background: "var(--line-soft)", margin: "6px 4px" }} />
@@ -475,7 +635,7 @@ const AgencyApp = ({ mode = "agency" }) => {
                       the Clients hub (honest LISTING); per-sub view-as ENTRY is B2. Client
                       count stands in for the design's per-sub "drafts" (no drafts backend, §13). */}
                   {roster.rows.slice(0, 5).map(r => (
-                    <button key={r.id} onClick={() => { setSwitcherOpen(false); go("fleet"); }} className="row" style={{ width: "100%", gap: 10, padding: "8px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
+                    <button key={r.id} onClick={() => { setSwitcherOpen(false); void enterSubaccount({ id: r.id, accountNumber: r.accountNumber }); }} className="row" style={{ width: "100%", gap: 10, padding: "8px 10px", borderRadius: 8, background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}
                       onMouseEnter={e => e.currentTarget.style.background = "var(--surface-sunk)"} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <span style={{ width: 8, height: 8, borderRadius: 2, background: swatchFor(r.id), flex: "none" }} />
                       <span className="grow trunc" style={{ fontSize: 13, color: "var(--ink)" }}>{r.name}</span>
@@ -541,13 +701,23 @@ const AgencyApp = ({ mode = "agency" }) => {
             </div>
           </div>
 
+          {/* §65 Option B2 — act-as error banner (a failed enter/exit RPC). Not gated
+              on `sub` since exitSubaccount can fail while still acting, or
+              enterSubaccount can fail before ever navigating. Dismissable. */}
+          {switchError && (
+            <div className="row" style={{ gap: 10, padding: "9px 26px", background: "var(--bad-tint)", borderTop: "1px solid var(--bad-line, var(--line))", borderBottom: "1px solid var(--bad-line, var(--line))" }}>
+              <span style={{ fontSize: 12.5, color: "var(--bad)" }}>{switchError}</span>
+              <button onClick={() => setSwitchError("")} className="row" style={{ marginLeft: "auto", background: "transparent", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--bad)" }}>Dismiss</button>
+            </div>
+          )}
+
           {/* Acting-banner — agency mode acting into a sub ONLY (§51). */}
           {isAgency && acting && (
             <div className="row" style={{ gap: 12, padding: "9px 26px", background: "var(--gold-tint)", borderTop: "1px solid var(--gold-line)", borderBottom: "1px solid var(--gold-line)" }}>
               <span style={{ width: 9, height: 9, borderRadius: 2, background: acting.color }} />
               <span style={{ fontSize: 13, color: "var(--ink)" }}>Now viewing: <b style={{ fontWeight: 600 }}>{acting.name}</b></span>
               <span className="hide-1100" style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Their workspace, exactly as they see it. Actions here affect them, not your agency.</span>
-              <button onClick={() => setActing(null)} className="row" style={{ marginLeft: "auto", gap: 6, background: "transparent", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: "var(--gold)" }}>Return to agency view →</button>
+              <button onClick={() => void exitSubaccount()} className="row" style={{ marginLeft: "auto", gap: 6, background: "transparent", border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: "var(--gold)" }}>Return to agency view →</button>
             </div>
           )}
 
