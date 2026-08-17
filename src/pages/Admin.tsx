@@ -252,7 +252,7 @@ const Admin = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<"admin" | "coach">("admin");
-  const { isPlatformStaff, activeTenantId, loading: tenantLoading, soloShellEnabled, agencyShellEnabled } = useTenantContext();
+  const { isPlatformStaff, activeTenantId, activeTenant, loading: tenantLoading, soloShellEnabled, agencyShellEnabled } = useTenantContext();
   // §51-safe canonical tier resolver — tierKey === "solo" ONLY for a standalone,
   // no-parent tenant (never god/agency/sub_account/enterprise). This is tier ROUTING
   // (which shell to mount), not a feature gate.
@@ -402,11 +402,20 @@ const Admin = () => {
   // its runtime — the boundary is load-bearing against a render throw / chunk-import fail.
   //
   // Gate A — agency operator (agency + enterprise): the parent-facing shell, isAgency=true.
+  // §65 R0-slice-2: the agency shell now lives at its OWN deep-linkable URL
+  // (/agency/{account}/{branch}), so /admin REDIRECTS there instead of rendering the
+  // shell inline — that is how every tab becomes a real, bookmarkable route.
+  // §58 fallback: if the account_number hasn't resolved yet (defensive; it is NOT NULL
+  // on prod), render inline exactly as before rather than redirect to a broken URL.
   if (
     agencyShellEnabled &&
     !tierLoading &&
     (tierKey === "agency" || tierKey === "enterprise")
   ) {
+    const acctNum = activeTenant?.account_number;
+    if (acctNum != null) {
+      return <Navigate to={`/agency/${acctNum}/command-center`} replace />;
+    }
     return (
       <AdminLoaderBoundary>
         <Suspense fallback={<PageSkeleton />}>
