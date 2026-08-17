@@ -292,6 +292,35 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
 
 ---
 
+## 15. Naming-debt — one internal route overloaded across account types (§65, `/admin`, 2026-08-17)
+
+- **Symptom:** the agency owner kept reporting he "lands on the same landing page" no matter what — and
+  a whole night of credits went to chasing routing that "keeps going in the wrong direction." Sub-account
+  vs Solo vs Agency vs God all felt indistinguishable at login.
+- **Root cause:** ONE internal route — `/admin` — was the login target for FOUR distinct user mental
+  models (Solo, Sub-account, Agency, God). Because the URL couldn't say *whose* surface it was, the
+  router (and the human) had to infer the account type from session state, and any miss (e.g.
+  `resolveAgencyLanding` sending an agency owner to the OLD `/agency` surface unless
+  `agency_login_default='last_account'`) read as "same page again." The defect was in the NAME, not the
+  auth: `/admin` carried four meanings, so no amount of routing logic could make it self-evident.
+- **Rule (§65):** every human-visible name — URL path, tier label, nav word, landing route — maps to
+  **how the user thinks about the surface**, one name per mental model, never to the internal router tree
+  or DB column. The fix is one route per account type named for WHO is there
+  (`docs/doctrine/route-and-url-taxonomy.md` §2a: `/operator` · `/agency/{account}` ·
+  `/enterprise/{account}` · `/solo/{account}` · `/business/{account}` · `/portal/:tenantSlug`). The name
+  READS; session-derived scope + `getTierFeatureSet()` still ENFORCE (the address is never the grant,
+  §9/§51/§60). Migration stays redirect-safe (§58 — old routes never 404) and staged; the taxonomy +
+  migration order are owner-reviewed BEFORE any code rename. **The three anchoring naming-debt cases:**
+  (a) **Solo vs `standalone`** — marketing "Solo" ≠ internal `account_type='standalone'` (task #67); the
+  user never types "standalone." (b) **Enterprise-in-name vs `account_type='agency'`** — "Project Mogul
+  Enterprise" is an AGENCY (owner: "PME is NOT an Enterprise account 😂"); the name misled a session into
+  reading it as the Enterprise tier. (c) **`/admin` 4-way overload** — this lesson. Ask: *"would a human
+  who's never seen our code know from this name whose surface they're on and what they can do — and does
+  this name mean exactly ONE thing?"* If it only makes sense from the inside, or it's overloaded, it's
+  naming-debt.
+
+---
+
 ## Standing bars — owner-locked doctrine (2026-08-11)
 
 Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked morning 2026-08-11). Binding on every future PR.
