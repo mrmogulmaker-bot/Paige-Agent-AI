@@ -39,6 +39,7 @@
 // own rules, runs and build. When agency is acting-as a sub, scope locks to that
 // sub's own view (no cross-book toggle), per the design.
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, Modal, ScopeSeg } from "./_shared";
 import { AUTO_TABS, AUTOMATIONS, AUTO_RUNS, AUTO_TEMPLATES, AUTO_BUILD, TEAM_SUBS, AGENCY } from "./fixtures";
 
@@ -82,7 +83,7 @@ const ghostBtn = (extra) => ({ padding: "10px 15px", borderRadius: 10, border: "
 // Props from the AgencyApp shell: { isAgency, acting, openAsk }.
 const noop = () => {};
 const AutomationsHub = ({ isAgency = true, acting = null, openAsk = noop }) => {
-  const [tab, setTab] = React.useState("library");            // library | runs | build
+  const [tab, setTab] = useSubtabRoute("agency", "automations", "library");            // library | runs | build
   const [scopeState, setScopeState] = React.useState("agency"); // agency | book | sub
   const [tSub, setTSub] = React.useState(0);                  // picked sub-account index (readOnly)
   const [libFilter, setLibFilter] = React.useState("All");

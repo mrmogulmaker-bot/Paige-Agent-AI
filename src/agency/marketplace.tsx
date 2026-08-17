@@ -35,6 +35,7 @@
 // §13: display-only design port over fixture data — inert affordances are
 // faithful, no screen or pop-out is stubbed down from the source.
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, SubTabs, ScopeSeg, AV, useReducedMotion } from "./_shared";
 import { tmInit } from "./TeamBlock";
 import {
@@ -169,7 +170,7 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
   const [stageRef, mainW, mainH] = useStage();
   const crossBook = isAgency && !acting;                       // §51 master gate
 
-  const [tab, setTab] = React.useState("today");
+  const [tab, setTab] = useSubtabRoute("agency", "marketplace", "today");
   const [mScope, setMScope] = React.useState("agency");
   const [mkFilter, setMkFilter] = React.useState("All");
   const [tSub, setTSub] = React.useState(0);

@@ -53,6 +53,21 @@ Index (`BrokerOverview`), `clients`, `sessions`(+`/:relationshipId` `BrokerPaige
 Index (`AgencyBoard`), `team` (`AgencyTeamPanel`), `paige-team`, `marketplace` (`AgencyMarketplace`).
 Small client surface by design — most agency management is server-side.
 
+### §65 URL-driven Agency shell (`/agency/{account_number}/{branch}/{subtab}`, `AgencyEntry`→`AgencyApp`)
+The NEW deep-linkable Agency tree (owner 2026-08-17). `src/agency/AgencyEntry.tsx` dispatches `/agency/*`:
+a NUMERIC first segment → the URL-driven `AgencyApp` (15 branches, each a real route); anything else →
+the legacy `AgencyLayout` board above (§58, no collision). **The route registry is config-as-data at
+`src/lib/routing/tierBranches.ts`** (`TIER_TREES`: operator/agency/enterprise/solo/sub_account; §11c
+sub_account inherits the SOLO tree; §3/§61 enterprise = agency superset) — the ONE HOME (§18) for
+tier→branch→subtab mapping (slug ≠ internal key by design). `AgencyApp` derives `branch` from splat `[0]`;
+each screen's sub-tab is derived from splat `[1]` via **`src/lib/routing/useSubtabRoute.ts`** (drop-in
+replacement for a screen's local sub-tab `useState` — reads the URL, navigates on set; DUAL-MODE §58: no
+`:account` param → plain local state, so the sub-account inline `/admin` takeover path is byte-unchanged).
+12 agency screens are sub-tabbed (CommandCenter·paige·automations·clients·calendar·growth·analytics·
+billing·marketplace·vault·team·setup); Client Support + Integrations have none. Per-account address =
+`tenants.account_number` (net-new bigint, migration `20260916000000`; §9 address-NOT-grant — RLS still
+gates data). Tests: `src/lib/routing/tierBranches.test.ts`.
+
 ### Admin / operator console (`/admin/*`, `Admin.tsx`)
 Grouped tab layouts: **Clients Hub** (`clients-hub`+`/pipeline`,`/conversations`{manual-actions,snippets,
 trigger-links,analytics,settings},`/delivery`,`/portal`; `clients`, `contacts/:id`, `clients/:id/journey`) ·

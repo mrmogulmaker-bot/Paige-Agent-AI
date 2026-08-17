@@ -33,6 +33,7 @@
 // opens the SAME content in a Modal (railOpen → blRailOpen), so the required pop-out
 // exists and is reachable regardless of viewport.
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, SubTabs, Modal } from "./_shared";
 import { AV } from "./_shared";
 import { tmInit } from "./TeamBlock";
@@ -235,7 +236,7 @@ const Billing = ({ isAgency = true, acting = null, openAsk = noop }) => {
   const rp = bill.plan;                                   // REAL plan | null
   const realSeats = typeof bill.seatLimit === "number" ? bill.seatLimit : null;
 
-  const [tabKey, setTab] = React.useState("invoices");
+  const [tabKey, setTab] = useSubtabRoute("agency", "billing", "invoices");
   const [railOpen, setRailOpen] = React.useState(false); // → blRailOpen ("Her read" pop-out)
 
   // Guard the active tab against the current tab-set (switching agency↔sub can strand

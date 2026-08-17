@@ -8,6 +8,10 @@ import {
   branchBySlug,
   branchByKey,
   branchPath,
+  defaultSubtabSlug,
+  subtabBySlug,
+  subtabByKey,
+  subtabPath,
   type RouteTierKey,
 } from "./tierBranches";
 
@@ -89,5 +93,62 @@ describe("TIER_BRANCHES registry (§65 §11)", () => {
 
   it("treeForTier returns the tier's tree", () => {
     expect(treeForTier("agency")).toBe(TIER_TREES.agency);
+  });
+});
+
+describe("Sub-tab tree (§65 3-level, agency verified 2026-08-17)", () => {
+  it("sub-tab slugs are unique + url-safe within each branch; keys unique too", () => {
+    for (const b of AGENCY_BRANCHES) {
+      if (!b.subtabs) continue;
+      const slugs = b.subtabs.map((s) => s.slug);
+      const keys = b.subtabs.map((s) => s.key);
+      expect(new Set(slugs).size, `dup sub-slug in ${b.slug}`).toBe(slugs.length);
+      expect(new Set(keys).size, `dup sub-key in ${b.slug}`).toBe(keys.length);
+      for (const s of slugs) expect(s, `unsafe sub-slug ${s}`).toMatch(/^[a-z0-9-]+$/);
+    }
+  });
+
+  it("no sub-tab slug collides with its own branch slug (avoids /x/x)", () => {
+    for (const b of AGENCY_BRANCHES) {
+      for (const s of b.subtabs ?? []) {
+        expect(s.slug, `${b.slug}/${s.slug} collides`).not.toBe(b.slug);
+      }
+    }
+  });
+
+  it("branches with NO sub-tabs are exactly Client Support + Integrations", () => {
+    const noSub = AGENCY_BRANCHES.filter((b) => !b.subtabs).map((b) => b.slug).sort();
+    expect(noSub).toEqual(["client-support", "integrations"]);
+  });
+
+  it("verified counts + first-is-default per the live-screen audit", () => {
+    const count = (slug: string) => branchBySlug("agency", slug)?.subtabs?.length ?? 0;
+    expect(count("command-center")).toBe(4);
+    expect(count("paige")).toBe(6);
+    expect(count("automations")).toBe(3);
+    expect(count("calendar")).toBe(5);
+    expect(count("growth")).toBe(7);
+    expect(count("analytics")).toBe(6);
+    expect(count("marketplace")).toBe(6);
+    expect(count("team")).toBe(6);
+    expect(count("setup")).toBe(7);
+    // first sub-tab is the screen's default (bare branch renders it).
+    expect(defaultSubtabSlug("agency", "command-center")).toBe("overview");
+    expect(defaultSubtabSlug("agency", "paige")).toBe("chat");
+    expect(defaultSubtabSlug("agency", "client-support")).toBeNull();
+  });
+
+  it("subtabBySlug / subtabByKey resolve (slug ≠ key by design)", () => {
+    expect(subtabBySlug("agency", "paige", "sub-agents")?.key).toBe("agents");
+    expect(subtabByKey("agency", "paige", "agents")?.slug).toBe("sub-agents");
+    expect(subtabBySlug("agency", "analytics", "money")?.label).toBe("The money");
+    expect(subtabBySlug("agency", "command-center", "nope")).toBeNull();
+    expect(subtabBySlug("agency", "client-support", "anything")).toBeNull();
+  });
+
+  it("subtabPath builds ${root}/{account}/{branch}/{sub}", () => {
+    expect(subtabPath("agency", "3855", "command-center", "systems-check"))
+      .toBe("/agency/3855/command-center/systems-check");
+    expect(subtabPath("agency", "42", "growth", "funnels")).toBe("/agency/42/growth/funnels");
   });
 });

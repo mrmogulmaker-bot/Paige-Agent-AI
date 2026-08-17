@@ -29,6 +29,7 @@
 // presenting a single book (standalone sub-account, or the agency acting into one)
 // it shows ONLY that book — no scope picker, no parent roll-up, no other-sub data.
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, SubTabs, useReducedMotion } from "./_shared";
 import PaigeBrain from "./PaigeBrain";
 import {
@@ -579,7 +580,7 @@ const TeamTab = ({ agencyView }) => (
 // rail breakpoints (showChatRail / showKnowRail derived from the body width) are
 // owned here — the module needs no extra prop from the shell.
 const PaigeHub = ({ isAgency = true, acting = null, openAsk = () => {} }) => {
-  const [tab, setTab] = React.useState("chat");
+  const [tab, setTab] = useSubtabRoute("agency", "paige", "chat");
   const [histOpen, setHistOpen] = React.useState(false);
   const [bodyRef, w] = useWidth();
   const reduce = useReducedMotion();

@@ -56,6 +56,7 @@
 // forced to "agency" (their own roster), no parent aggregate (§9/§51; the #86 leak
 // class). §63: every fixture name is fictional.
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { ScopeSeg, Modal, TONE } from "./_shared";
 import TeamBlock, { TEAM_VIEW, tmInit } from "./TeamBlock";
 import { TEAM_TABS, TEAM_SUBS, TEAM_CAP } from "./fixtures";
@@ -248,7 +249,7 @@ const CenterSkeleton = () => (
 );
 
 const TeamScreen = ({ isAgency = true, acting = null, openAsk = noop }) => {
-  const [tab, setTab] = React.useState("roster");            // roster|directory|roles|workload|performance|activity
+  const [tab, setTab] = useSubtabRoute("agency", "team", "roster");            // roster|directory|roles|workload|performance|activity
   const [scopeState, setScopeState] = React.useState("agency"); // agency|book|sub
   const [tSub, setTSub] = React.useState(0);                 // picked sub-account index (observe-a-sub)
   // pop-out state (the two the design's team view owns)

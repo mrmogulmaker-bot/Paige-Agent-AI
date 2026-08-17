@@ -34,6 +34,7 @@
 // Needs-attention modal are all gated behind isAgency and are structurally absent.
 // §63: the design's decorative fixture names are preserved verbatim.
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, Modal } from "./_shared";
 import {
   AGENCY, CLUSTERS, FINDINGS, TEAM, DEPT_LOAD,
@@ -944,7 +945,7 @@ const PipeTab = ({ openAsk }) => {
 //    pass enterSub={setActing}.
 const CommandCenter = ({ isAgency = true, acting = null, openAsk = noop, enterSub = noop }) => {
   React.useEffect(() => { ensureStyles(); }, []);
-  const [tab, setTab] = React.useState("main");
+  const [tab, setTab] = useSubtabRoute("agency", "command-center", "main");
   // §51: sub-account gets ONLY its own two tabs — no cross-book Team/Pipeline.
   const tabs = isAgency
     ? [["main", "Command Center", () => <Ic.grid size={15} />], ["systems", "Systems Check", () => <Ic.pulse size={15} />], ["team", "Team Pulse", () => <Ic.users size={15} />], ["pipe", "Prospect Pipeline", () => <Ic.trend size={15} />]]

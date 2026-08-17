@@ -21,6 +21,7 @@
 // / scope-picker / act-as affordance is gated behind crossBook and structurally
 // absent otherwise — a sub owner sees only their own clients, never the parent's.
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, Avatar, SubTabs, AV, useReducedMotion } from "./_shared";
 import { spark, pstr } from "./helpers";
 import {
@@ -412,7 +413,7 @@ const ClientsHub = ({ isAgency = true, acting = null, openAsk = noop }) => {
   const ownName = acting ? acting.name : SUBS[0].name;
   const ownIdx = acting ? Math.max(0, SUBS.findIndex(s => s.name === acting.name)) : 0;
 
-  const [tab, setTab] = React.useState("directory");
+  const [tab, setTab] = useSubtabRoute("agency", "clients", "directory");
   const tabs = [
     ["directory", crossBook ? "Sub-accounts" : "Clients", () => <Ic.users size={15} />],
     ["pipes", crossBook ? "Pipelines" : "Pipeline", () => <Ic.trend size={15} />],
