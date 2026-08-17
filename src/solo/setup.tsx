@@ -197,9 +197,9 @@ if(!p)return null;
 const all=['Client Success','Growth','Marketing','Finance','Operations','Systems'];
 const status=p.status||(real?'Active':'—');
 return <SlideOut open={open} onClose={onClose} title={p.n} sub={real?(p.role||DASH):(p.role+' · '+(p.dept||DASH))} icon={<Ic.users size={15}/>}
-foot={<><button className="btn btn-s btn-p" disabled={real} title={real?'Inviting and managing teammates is coming soon':undefined}><Ic.send size={13}/>{status==='Not invited'?'Send invite':'Resend invite'}</button>
-<button className="btn btn-s" disabled={real}>Edit details</button>
-<button className="btn btn-s" disabled={real} style={{marginLeft:'auto',color:'var(--bad)'}}>Remove access</button></>}>
+foot={<><button className="btn btn-s btn-p" disabled title="Inviting and managing teammates is coming soon"><Ic.send size={13}/>{status==='Not invited'?'Send invite':'Resend invite'}</button>
+<button className="btn btn-s" disabled title="Editing teammate details is coming soon">Edit details</button>
+<button className="btn btn-s" disabled title="Removing access is coming soon" style={{marginLeft:'auto',color:'var(--bad)'}}>Remove access</button></>}>
 <div className="row" style={{gap:14,alignItems:'center',marginBottom:16}}>
 <Avatar name={p.n} size={52}/>
 <div className="grow" style={{minWidth:0}}>
@@ -225,13 +225,13 @@ background:on?'var(--violet-tint)':'var(--surface)',border:'1px solid '+(on?'var
 
 <Sect t="Security" d="What this seat is allowed to see">
 <div style={{border:'1px solid var(--line)',borderRadius:'var(--r-m)',overflow:'hidden'}}>
-{(real?[['Two-factor authentication',DASH,false],['Can view sealed records',DASH,false],['Can export client data',DASH,false],['Can change autonomy',DASH,false]]
+{(real?[['Two-factor authentication',DASH,null],['Can view sealed records',DASH,null],['Can export client data',DASH,null],['Can change autonomy',DASH,null]]
 :[['Two-factor authentication',p.mfa?'Enrolled':'Not enrolled',p.mfa],
 ['Can view sealed records',p.sensitive?'Yes — after identity check':'No',p.sensitive],
 ['Can export client data',p.seat==='Full access'?'Yes':'No',p.seat==='Full access'],
 ['Can change autonomy',p.seat==='Full access'?'Yes':'No',p.seat==='Full access']]).map(([k,v,ok],i)=>
 <div key={i} className="row" style={{gap:11,padding:'10px 13px',borderTop:i?'1px solid var(--line-soft)':'0'}}>
-<span style={{display:'flex',color:ok?'var(--ok)':'var(--ink-3)',flex:'none'}}>{ok?<Ic.check size={14}/>:<Ic.x size={14}/>}</span>
+<span style={{display:'flex',width:14,justifyContent:'center',color:'var(--ink-3)',flex:'none'}}>{ok==null?<span style={{fontSize:13,lineHeight:1}}>–</span>:ok?<Ic.check size={14} style={{color:'var(--ok)'}}/>:<Ic.x size={14}/>}</span>
 <span className="grow" style={{fontSize:12.8}}>{k}</span><span className="sub trunc">{v}</span></div>)}</div>
 {!real&&!p.mfa&&status!=='Not invited'&&<div className="sub" style={{marginTop:7}}>Paige will require enrollment on their first sign-in.</div>}</Sect>
 
@@ -239,7 +239,7 @@ background:on?'var(--violet-tint)':'var(--surface)',border:'1px solid '+(on?'var
 <div style={{display:'grid',gap:0}}>{(real?[]:[['Invite sent by you','3d ago'],['Seat created · Standard','3d ago'],['Departments assigned','3d ago']]).map(([t,w],i)=>
 <div key={i} className="row" style={{gap:11,padding:'8px 0',borderTop:i?'1px solid var(--line-soft)':'0'}}>
 <span className="grow" style={{fontSize:12.6,color:'var(--ink-2)'}}>{t}</span><span className="mono sub" style={{fontSize:11}}>{w}</span></div>)}
-{real&&<div className="sub">No access-log entries yet.</div>}</div></Sect></SlideOut>};
+{real&&<div className="row" style={{gap:8,marginTop:2}}><PreviewPill/><span className="sub">Access history isn't wired to live data yet.</span></div>}</div></Sect></SlideOut>};
 
 const EntityDrawer=({e,open,onClose})=>{if(!e)return null;
 const sec=e.secret&&SU_SECRETS.find(s=>s.id===e.secret);
