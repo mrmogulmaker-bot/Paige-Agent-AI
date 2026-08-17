@@ -68,6 +68,22 @@ billing·marketplace·vault·team·setup); Client Support + Integrations have no
 `tenants.account_number` (net-new bigint, migration `20260916000000`; §9 address-NOT-grant — RLS still
 gates data). Tests: `src/lib/routing/tierBranches.test.ts`.
 
+**REAL DATA (Option B / B1a, 2026-08-17):** the shell chrome reads real per-tenant data via the
+`src/agency/data/` adapters — `useAgencyMetrics` (identity: agency name/plan/sub-count) + `useAgencyRoster`
+(the sub-account roster) over the RLS-safe RPCs `agency_portfolio_metrics` / `agency_list_my_subaccounts` /
+`agency_my_membership` (session-scoped by `auth.uid()`, §9/§51). Operator name+email come from
+`supabase.auth.getUser()`. A §39 URL ownership guard redirects a non-own `account_number` to the caller's
+own and canonicalizes bare `/agency/{n}`. §13-honest Preview where no backend (per-sub drafts, hours-saved,
+brand color). Switcher click → Clients hub (listing); real per-sub view-as ENTRY is B2. The Clients-hub
+Directory roster (`clients.tsx`) is still fixtures → B1b. Sibling adapters ready but not yet all wired:
+`useAgencyCommandCenter` (in use), `useAgencyBilling/Compass/Contacts/Marketplace/People`.
+
+**URL-DRIVEN IS AGENCY-ONLY so far (task #173, R3 owed).** SOLO (`src/solo/SoloApp.tsx`) and SUB-ACCOUNT
+(`AgencyApp mode="subaccount"`) still render as a STATE-DRIVEN inline `/admin` takeover (`Admin.tsx` solo
+gate + Gate B) — pure `useState` route, NO `/solo/{n}` or `/business/{n}` menu/sub-tab URLs. The taxonomy
+(`route-and-url-taxonomy.md`) roots them at `/solo` + `/business`; converting them (same `useSubtabRoute`
+pattern) is R3, sequenced after Option B and before the Super Admin console.
+
 ### Admin / operator console (`/admin/*`, `Admin.tsx`)
 Grouped tab layouts: **Clients Hub** (`clients-hub`+`/pipeline`,`/conversations`{manual-actions,snippets,
 trigger-links,analytics,settings},`/delivery`,`/portal`; `clients`, `contacts/:id`, `clients/:id/journey`) ·
