@@ -203,10 +203,16 @@ then remove. Each slice ships its **own** §37 producer inventory + §32 verific
 is **owner-gated** before it ships.
 
 **Slice R0 — smart-redirect scaffold + `account_number` substrate (foundation, no rename yet).**
-Add the `account_number` column (unique, assigned at creation; number-shape per §2b owner
-choice) + backfill existing tenants. Add a tier-resolving redirect helper (reuse
-`resolveLandingRoute`) that maps a session → its canonical home. No user-visible route change yet;
-this unblocks every later slice.
+Add the `account_number` column (unique; number-shape per §2b owner choice). **Backfill is UNIFORM
+across the ENTIRE platform — every existing account is treated as a BRAND-NEW account (owner ruling
+2026-08-17, §7.4):** every tenant-tier account already on the platform is assigned a fresh
+`account_number` by the same rule a new signup gets, with **zero grandfathering of any current
+slug / vanity URL**. We do NOT special-case, preserve, or migrate whoever happens to hold a
+name-based URL today — the numbering system + taxonomy apply identically to all. (Existing `slug`
+values stay in the DB untouched as data — clients still use `/portal/:tenantSlug`, §4b — but they
+are NOT the new tier-route segment and get no special routing treatment.) Add a tier-resolving
+redirect helper (reuse `resolveLandingRoute`) that maps a session → its canonical home. No
+user-visible route change yet; this unblocks every later slice.
 
 **Slice R1 — Operator (`/admin` godMode → `/operator`).** Lowest tenant-facing risk (operator-only).
 Point super_admin landing + the God console to `/operator`; `/admin` godMode → redirect. Update the
@@ -248,6 +254,14 @@ zero traffic on the old paths (verify via logs), remove the redirects.
    uniqueness + reserved-word denylist + format validation + old→new 301 grace redirect (§58) + the
    permanent number always still resolving, exposed as a §10-callable seam (Paige can rename it too).
    Part of the `account_number` implementation slice.
+4. **Treat EVERY existing account as brand-new — uniform numbering, NO grandfathering of current vanity
+   URLs (owner ruling 2026-08-17).** Owner: *"I really don't care who has a current vanity URL. I want
+   us to just get our complete numbering system and taxonomy in place, and treat every single account on
+   the platform as if they are a brand new account."* The R0 backfill assigns a fresh `account_number` to
+   every account on the platform by the exact rule a new signup uses; no current name-based URL is
+   preserved, special-cased, or migrated into the new tier-route segment. Anyone who wants a vanity URL
+   sets one via the §2b/§7.3 editor AFTER the numbering system is live — the same path a new account
+   would take. This removes any "grandfather the existing slugs" complexity from the migration entirely.
 
 ---
 
