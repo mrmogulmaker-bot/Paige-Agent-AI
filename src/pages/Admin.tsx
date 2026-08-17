@@ -83,6 +83,11 @@ const PlatformOwnerOnly = ({ children }: { children: React.ReactNode }) => {
 // actually mounts it — every non-solo admin's bundle + cache keys stay unchanged (§58).
 const SoloApp = lazy(() => import("@/solo/SoloApp"));
 
+// Agency/sub-account greenfield shell. Lazy-loaded so its chunks NEVER enter the shared
+// Admin bundle unless a flagged agency/enterprise/sub_account tenant actually mounts it —
+// every non-flagged admin's bundle + cache keys stay unchanged (§58).
+const AgencyApp = lazy(() => import("@/agency/AgencyApp"));
+
 // Lazy-load admin sub-pages
 const ClientManagementDashboard = lazy(() => import("@/components/dashboard/ClientManagementDashboard").then(m => ({ default: m.ClientManagementDashboard })));
 const ClientFileView = lazy(() => import("@/components/dashboard/ClientFileView").then(m => ({ default: m.ClientFileView })));
@@ -247,7 +252,7 @@ const Admin = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<"admin" | "coach">("admin");
-  const { isPlatformStaff, activeTenantId, loading: tenantLoading, soloShellEnabled } = useTenantContext();
+  const { isPlatformStaff, activeTenantId, loading: tenantLoading, soloShellEnabled, agencyShellEnabled } = useTenantContext();
   // §51-safe canonical tier resolver — tierKey === "solo" ONLY for a standalone,
   // no-parent tenant (never god/agency/sub_account/enterprise). This is tier ROUTING
   // (which shell to mount), not a feature gate.
@@ -374,6 +379,55 @@ const Admin = () => {
       <AdminLoaderBoundary>
         <Suspense fallback={<PageSkeleton />}>
           <SoloApp />
+        </Suspense>
+      </AdminLoaderBoundary>
+    );
+  }
+
+  // Flag-gated Agency-shell takeover (§58 byte-unchanged when the flag is unset/false).
+  // Mirrors the Solo gate above, fires ONLY once the tier hooks resolve, BEFORE the
+  // godMode / tenant AdminLayout+Routes branch below.
+  //
+  // RUNTIME per-tenant flag (§57 source-of-truth / §10 config-as-data): `agencyShellEnabled`
+  // is derived by the tenant context from the ACTIVE tenant's OWN
+  // `features.agency_shell_enabled` (§51-safe, no cross-tenant read) — a Super-Admin-set,
+  // per-tenant canary. Absent flag → false → prod render unchanged (§58: with no tenant
+  // setting agency_shell_enabled, EVERY render path is byte-identical to today).
+  //
+  // tierKey is the §51-safe canonical resolver (resolveTierKey already bakes in the
+  // parent-first invariant: a parented tenant is NEVER a manager tier), so the two gates
+  // route on it directly — no re-derivation here. Suspense because AgencyApp is a lazy
+  // chunk (see its definition), loaded only when a gate fires. AdminLoaderBoundary mirrors
+  // the Solo gate's error boundary (§32): AgencyApp is @ts-nocheck, so TS does not guard
+  // its runtime — the boundary is load-bearing against a render throw / chunk-import fail.
+  //
+  // Gate A — agency operator (agency + enterprise): the parent-facing shell, isAgency=true.
+  if (
+    agencyShellEnabled &&
+    !tierLoading &&
+    (tierKey === "agency" || tierKey === "enterprise")
+  ) {
+    return (
+      <AdminLoaderBoundary>
+        <Suspense fallback={<PageSkeleton />}>
+          <AgencyApp mode="agency" />
+        </Suspense>
+      </AdminLoaderBoundary>
+    );
+  }
+
+  // Gate B — sub-account: PINNED to mode="subaccount" so a sub-account NEVER sees the
+  // parent aggregate/switcher (the §51 invariant is enforced inside AgencyApp: in
+  // "subaccount" mode `acting` is provably null and the parent-aggregate is hard-off).
+  if (
+    agencyShellEnabled &&
+    !tierLoading &&
+    tierKey === "sub_account"
+  ) {
+    return (
+      <AdminLoaderBoundary>
+        <Suspense fallback={<PageSkeleton />}>
+          <AgencyApp mode="subaccount" />
         </Suspense>
       </AdminLoaderBoundary>
     );

@@ -123,6 +123,13 @@ interface TenantContextState {
    * `false` while loading or when the flag is absent → shell OFF (§58 byte-unchanged).
    */
   soloShellEnabled: boolean;
+  /**
+   * Runtime per-tenant Agency-shell activation (§57 config-as-data, §51-safe):
+   * `true` ONLY when the ACTIVE tenant's OWN `features.agency_shell_enabled === true`.
+   * Reads no other tenant's features (no cross-tenant / param path). Defaults to
+   * `false` while loading or when the flag is absent → shell OFF (§58 byte-unchanged).
+   */
+  agencyShellEnabled: boolean;
   switchTenant: (tenantId: string | null) => Promise<boolean>;
   refresh: () => Promise<void>;
 }
@@ -362,6 +369,10 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   // features (§51-safe — no cross-tenant read, no request param). Absent flag → false.
   const soloShellEnabled = activeTenant?.features?.solo_shell_enabled === true;
 
+  // §57 config-as-data: derive the Agency-shell flag from ONLY the active tenant's own
+  // features (§51-safe — no cross-tenant read, no request param). Absent flag → false.
+  const agencyShellEnabled = activeTenant?.features?.agency_shell_enabled === true;
+
   const value: TenantContextState = {
     loading,
     isPlatformOwner,
@@ -370,6 +381,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     activeTenantId,
     activeTenant,
     soloShellEnabled,
+    agencyShellEnabled,
     switchTenant,
     // Always a foreground refresh — wrapped so an event-handler caller (onClick={refresh})
     // can't pass its event as the `background` arg and silently skip the loader/commit.
