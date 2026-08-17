@@ -297,3 +297,47 @@ The gate, every feed, every tier: *"Is this brain showing only what THIS account
 to know — its own corpus, its own retrievals, its own growth — or did the platform/master
 scope (or another tenant's identity) leak in?"* If anything beyond the account's own scope
 appears, it isn't §9-clean and does not ship.
+
+## Open design question — the master orchestrator brain (owner-raised 2026-08-17, NOT yet ruled)
+
+The owner asked the right hard question: each tier's brain is §9-scoped to its own account,
+so **how do you connect all of them to a "master orchestrator brain" without breaking that
+isolation** — and to be mindful that a **sandbox feature** is coming. This is design-thinking
+captured for the Brain-Live crew; it is an owner-owed decision, not a ruling. The clean answer
+that keeps §9 intact:
+
+**Federate, don't fuse. Signal flows UP de-identified; the master never reads DOWN into a
+tenant's raw corpus.**
+
+1. **Sovereign tenant brains (§9, non-negotiable).** Each tier's brain owns its corpus +
+   retrievals; raw documents/vectors never leave tenant scope. This is enforced physically,
+   not by policy: §26's one embedding space is tagged per tenant (`tenant_id`,
+   `embedding_model`), and RLS means the master's queries **cannot select another tenant's
+   document rows** even if it tried.
+2. **The master orchestrator = the Super-Admin brain + an orchestration layer, total in
+   AWARENESS, never total in ACCESS.** It holds platform-scope knowledge (doctrine, skills
+   library, integration surface) as REAL motes, PLUS the anonymized aggregate pulse from every
+   book (domain + count, no `doc_id`/tenant id — the option-(2) emitter already ruled above).
+   So it knows the *shape and health* of the whole platform without ever holding one tenant's
+   content. "Master brain" = it can see everything is happening; it cannot read what.
+3. **Orchestration is routing + dispatch, not a shared memory pool.** When the master needs to
+   ACT on a specific tenant, it does NOT read that tenant's brain — it dispatches through the
+   existing §9-scoped seams (operator act-as, the §8 action bus, break-glass with append-only
+   audit §17). The two-team/department orchestration (§8/§16) is exactly this pattern applied
+   to knowledge: the Owner-Ops and Client-Experience teams already file actions across a seam
+   without sharing raw state.
+4. **The sandbox is where cross-brain LEARNING happens safely (the owner's "be mindful" note).**
+   Any experiment that reasons across many tenants' patterns runs in the **sandbox over
+   de-identified / synthetic aggregates — never live tenant corpora.** Only derived PATTERNS
+   flow back out (a better play, a distilled platform-default template, a §62 skill), and a
+   tenant's private learning is NEVER shared cross-tenant without consent (§15/§9). The sandbox
+   holds *signal, not data* — which is what makes it §9-safe to be the cross-brain lab.
+
+**Net:** one embedding space (§26), partitioned by scope. The master queries the UNION of
+{platform-scope rows} ∪ {anonymized cross-tenant aggregates} — never the set of {tenant
+document rows}. That is how you get a single master orchestrator brain over many sovereign
+tenant brains without a §9 leak. Maps to §8 (action bus), §16 (orchestrator + autonomy tiers),
+§34 (Paige owns her intelligence end-to-end), §35 (this federation IS the OS knowledge
+substrate). **Owner decides the actual shape at Brain-Live kickoff; this is the §9-clean
+default to build toward, and the sandbox is the home for the cross-brain layer, not the live
+tenant brains.**
