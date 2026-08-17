@@ -26,6 +26,12 @@ import "./agency-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead, Modal, Popover, SlideOut, AV } from "./_shared";
 import { tmInit } from "./TeamBlock";
 import { SUBS, AGENCY, GREEN, AMBER } from "./fixtures";
+// ── Screen modules (Slice 1b-2 wired the first MAIN group; the rest land in
+// 1b-3..5 into the same `screens` registry below) ───────────────────────────
+import CommandCenter from "./CommandCenter";
+import PaigeHub from "./paige";
+import TrustCompass from "./compass";
+import AutomationsHub from "./automations";
 
 // ── Nav (Agency Shell.dc.html:12587 navMain / 12599 navPlatform) ────────────
 // [route, label, IconFn, badge(sub)] — badge is a fn of `sub` (presenting as a
@@ -293,7 +299,15 @@ const AgencyApp = ({ mode = "agency" }) => {
       : { name: AGENCY.provider.replace("Provided by ", ""), initials: AGENCY.initials, color: "#C8A02E", isAgency: true, acting: false })
     : { name: own.name, initials: tmInit(own.name), color: own.color, isAgency: false, acting: false };
 
-  const screens = {}; // real screen modules land here in later sub-passes.
+  // Real screen modules (Slice 1b-2: the first MAIN group). Each receives the shell
+  // context { isAgency, acting, openAsk }; CommandCenter also takes enterSub (act-as
+  // jump, agency-only). Screens still on Stub land in 1b-3..5.
+  const screens = {
+    command: <CommandCenter isAgency={isAgency} acting={acting} openAsk={openAsk} enterSub={setActing} />,
+    paige: <PaigeHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
+    compass: <TrustCompass isAgency={isAgency} acting={acting} openAsk={openAsk} />,
+    autos: <AutomationsHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
+  };
   const body = screens[route] || <Stub route={route} />;
 
   const swatches = ["#7C6CE0", "#3F7F5C", "#2F6FA8", "#C1652F", "#A8425A", "#B3932A"];
