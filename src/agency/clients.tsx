@@ -25,9 +25,18 @@ import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, Avatar, SubTabs, AV, useReducedMotion } from "./_shared";
 import { spark, pstr } from "./helpers";
 import {
-  SUBS, OWNERS, AGENCY, STAGE_SET, seedPipes, CLIENT_NAMES, NEXT_ACTIONS, LBL, FLAGS,
+  SUBS, OWNERS, STAGE_SET, seedPipes, CLIENT_NAMES, NEXT_ACTIONS, LBL, FLAGS,
 } from "./fixtures";
 import ConversationsConsole from "./conversations";
+// §65 Option B (B1b) — the Directory grid below reads the REAL sub-account roster
+// via the EXISTING RLS-safe adapter (agency_list_my_subaccounts + the
+// agency_portfolio_metrics leaderboard overlay, session-scoped by auth.uid(),
+// §9/§51). Pipelines / Conversations / the own-book view stay on fixtures —
+// documented, out of scope for this slice (no roster/pipeline backend for those
+// yet); this is the same faithful, one-surface-at-a-time pattern as AgencyApp's
+// B1a chrome wiring.
+import { useAgencyRoster } from "./data/useAgencyRoster";
+import { healthDot, healthLabel, swatchFor, tenureLabel, isNewThisMonth, mrrLabel } from "./data/rosterFormat";
 
 const GOLD_BG = "var(--gold-bright)", GOLD_INK = "#241C05";
 const noop = () => {};
@@ -35,38 +44,103 @@ const money = n => "$" + (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + "
 const hc = h => (h >= 85 ? "var(--ok)" : h >= 70 ? "var(--warn)" : "var(--bad)");
 const initialsOf = s => s.replace(/[^A-Za-z ]/g, "").split(" ").filter(Boolean).slice(0, 2).map(w => w[0]).join("");
 
-// decorate(sub) — the design's fleet-card enrichment (AV plate/ink, health color,
-// sparkline path, one-line summary). Verbatim shape, token-ized so it themes.
-const decorate = s => {
-  const av = AV(s.color);
+// decorateReal(row) — the REAL-roster counterpart of the design's fleet-card
+// enrichment. Health/clientCount/mrr are REAL (the leaderboard overlay); color and
+// the sparkline shape are decorative-only (no brand-color/activity-trend backend,
+// §13 — never presented as a number). `line` never claims drafts/notes we don't
+// have; it states only what the roster actually knows.
+const decorateReal = row => {
+  const color = swatchFor(row.id);
+  const av = AV(color);
+  const bucket = row.health;
   return {
-    ...s, initials: initialsOf(s.name), tint: av.plate, ink: av.ink,
-    healthColor: hc(s.health),
-    line: "Health " + s.health + " · " + (s.drafts ? s.drafts + " drafts waiting" : "no drafts waiting") + " · " + s.note,
-    spark: pstr(spark(s.name.length + s.health / 10, s.health >= 80)),
-    tenureLine: s.tenure + " with you",
+    id: row.id, name: row.name, color,
+    initials: initialsOf(row.name), tint: av.plate, ink: av.ink,
+    healthColor: healthDot(bucket), healthBucket: bucket,
+    line: healthLabel(bucket) + (typeof row.clientCount === "number"
+      ? " · " + row.clientCount + (row.clientCount === 1 ? " client" : " clients")
+      : ""),
+    spark: pstr(spark(row.name.length + (bucket === "healthy" ? 8 : bucket === "watch" ? 5 : 3), bucket === "healthy")),
+    tenureLine: tenureLabel(row.createdAt) || "Recently onboarded",
+    mrr: mrrLabel(row.mrrCents),
+    isNew: isNewThisMonth(row.createdAt),
   };
 };
 
+const DirectorySkeleton = () => (
+  <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 13, paddingRight: 4, alignContent: "start" }}>
+    {[0, 1, 2, 3, 4, 5].map(i => (
+      <div key={i} className="card" style={{ minHeight: 208, padding: "15px 16px" }}>
+        <div style={{ height: 28, width: 28, borderRadius: 8, background: "var(--surface-sunk)" }} />
+        <div style={{ height: 12, width: "62%", background: "var(--surface-sunk)", borderRadius: 4, marginTop: 14 }} />
+        <div style={{ height: 10, width: "84%", background: "var(--surface-sunk)", borderRadius: 4, marginTop: 9 }} />
+      </div>
+    ))}
+  </div>
+);
+
+const DirectoryEmpty = () => (
+  <div className="card" style={{ flex: 1, display: "grid", placeItems: "center", padding: 40, textAlign: "center" }}>
+    <div>
+      <div className="tile" style={{ margin: "0 auto 14px", width: 44, height: 44, borderRadius: 15, background: "var(--violet-tint)", color: "var(--violet)" }}><Ic.users size={22} /></div>
+      <div style={{ fontWeight: 600, fontSize: 15 }}>No sub-accounts yet</div>
+      <div className="sub" style={{ maxWidth: 340, margin: "6px auto 0" }}>Once you add a sub-account, it shows up here with Paige already working its book.</div>
+    </div>
+  </div>
+);
+
 // ── Sub-accounts directory (agency) ───────────────────────────────────────────
-const Directory = ({ openAsk }) => {
+const Directory = ({ openAsk, isAgency, acting }) => {
   const [filter, setFilter] = React.useState("All");
   const [attnOpen, setAttnOpen] = React.useState(false);
-  const all = SUBS.map(decorate);
+  const roster = useAgencyRoster({ isAgency, acting });
+  const rows = React.useMemo(() => roster.rows.map(decorateReal), [roster.rows]);
 
-  const filterFns = {
-    All: () => true,
-    "Healthy (7)": s => s.health >= 80,
-    "Needs attention (3)": s => s.health < 70 || s.drafts >= 4,
-    "New this month (2)": s => s.tenure.indexOf("1 month") === 0 || s.tenure.indexOf("2 month") === 0,
-    "At-risk (0)": () => false,
-  };
-  const subs = all.filter(filterFns[filter] || filterFns.All);
-  const attention = [
-    { who: "Sarah's Coaching Practice", color: "#7C6CE0", amount: "$8,400", tone: "var(--gold)", cta: "Approve renewal", text: "Approve her renewal draft before Friday, when she opens Q4 planning. She has never negotiated on price." },
-    { who: "Ridgeline Outdoor Co.", color: "#3F7F5C", amount: "6 days lost", tone: "var(--bad)", cta: "Fix the pixel", text: "Systems Check found a broken purchase pixel. Six days of attribution are already missing from their ad reporting." },
-    { who: "Coach James Fitness", color: "#C1652F", amount: "22% off plan", tone: "var(--warn)", cta: "Read my draft", text: "Third month below plan. I drafted the conversation, including the two offers that carried him last winter." },
-  ];
+  const filterDefs = React.useMemo(() => ([
+    { key: "All", test: () => true },
+    { key: "Healthy", test: r => r.healthBucket === "healthy" },
+    { key: "Needs attention", test: r => r.healthBucket === "watch" },
+    { key: "At-risk", test: r => r.healthBucket === "at_risk" },
+    { key: "New this month", test: r => r.isNew },
+  ]), []);
+  const counts = React.useMemo(() => {
+    const c = {};
+    for (const f of filterDefs) c[f.key] = rows.filter(f.test).length;
+    return c;
+  }, [filterDefs, rows]);
+  const subs = rows.filter((filterDefs.find(f => f.key === filter) || filterDefs[0]).test);
+
+  const needAttentionCount = (counts["Needs attention"] || 0) + (counts["At-risk"] || 0);
+  const healthyCount = counts["Healthy"] || 0;
+
+  // "Needs your attention" — REAL, derived from the watch/at-risk roster rows
+  // (worst bucket first). No fabricated narrative/dollar-impact/specific CTA —
+  // we don't have a real signal for those, so this states only what's real: the
+  // account, its health, and its MRR if known (§13). Capped to keep the rail short.
+  const attention = React.useMemo(() => {
+    const rank = { at_risk: 0, watch: 1 };
+    return rows
+      .filter(r => r.healthBucket === "at_risk" || r.healthBucket === "watch")
+      .sort((a, b) => (rank[a.healthBucket] ?? 2) - (rank[b.healthBucket] ?? 2))
+      .slice(0, 5);
+  }, [rows]);
+
+  if (roster.loading) {
+    return (
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 15 }}>
+        <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Your sub-accounts</div>
+        <DirectorySkeleton />
+      </div>
+    );
+  }
+  if (!rows.length) {
+    return (
+      <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 15 }}>
+        <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Your sub-accounts</div>
+        <DirectoryEmpty />
+      </div>
+    );
+  }
 
   return (
     <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", gap: 15 }}>
@@ -74,26 +148,26 @@ const Directory = ({ openAsk }) => {
         <div className="row" style={{ alignItems: "flex-end", gap: 16, flex: "none", flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Your sub-accounts</div>
-            <div style={{ fontSize: 13.5, color: "var(--ink-2)", marginTop: 6 }}>{AGENCY.subCount} active · {AGENCY.needAttention} need attention today · book average health {AGENCY.bookHealth}</div>
+            <div style={{ fontSize: 13.5, color: "var(--ink-2)", marginTop: 6 }}>{rows.length} active · {needAttentionCount} need attention today · {healthyCount} healthy</div>
           </div>
           <div className="row" style={{ marginLeft: "auto", gap: 9, flex: "none" }}>
-            <button onClick={() => setAttnOpen(true)} style={{ padding: "10px 15px", borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12.5, fontWeight: 600, color: "var(--gold)", cursor: "pointer", whiteSpace: "nowrap" }}>Needs your attention · {AGENCY.needAttention} →</button>
+            <button onClick={() => setAttnOpen(true)} style={{ padding: "10px 15px", borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12.5, fontWeight: 600, color: "var(--gold)", cursor: "pointer", whiteSpace: "nowrap" }}>Needs your attention · {needAttentionCount} →</button>
             <button style={{ padding: "10px 16px", borderRadius: 10, background: GOLD_BG, color: GOLD_INK, fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: "none" }}>+ Add a sub-account</button>
           </div>
         </div>
 
         <div className="row" style={{ gap: 8, flexWrap: "wrap", flex: "none" }}>
-          {Object.keys(filterFns).map(label => {
-            const on = filter === label;
-            const shown = label === "All" ? "All (12)" : label;
-            return <button key={label} onClick={() => setFilter(label)} style={{ padding: "7px 13px", borderRadius: 20, cursor: "pointer", fontSize: 12.5, fontWeight: 500, border: "1px solid " + (on ? "var(--gold-line)" : "var(--line)"), background: on ? "var(--gold-tint)" : "var(--surface)", color: on ? "var(--gold)" : "var(--ink-2)" }}>{shown}</button>;
+          {filterDefs.map(f => {
+            const on = filter === f.key;
+            const shown = f.key + " (" + counts[f.key] + ")";
+            return <button key={f.key} onClick={() => setFilter(f.key)} style={{ padding: "7px 13px", borderRadius: 20, cursor: "pointer", fontSize: 12.5, fontWeight: 500, border: "1px solid " + (on ? "var(--gold-line)" : "var(--line)"), background: on ? "var(--gold-tint)" : "var(--surface)", color: on ? "var(--gold)" : "var(--ink-2)" }}>{shown}</button>;
           })}
           <div className="row" style={{ marginLeft: "auto", gap: 8, fontSize: 12.5, color: "var(--ink-2)" }}>Sort<span style={{ padding: "7px 12px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink)" }}>Health score ▾</span></div>
         </div>
 
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 13, paddingRight: 4, alignContent: "start" }}>
           {subs.map(s => (
-            <div key={s.name} className="card" style={{ overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 208, padding: 0 }}>
+            <div key={s.id} className="card" style={{ overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 208, padding: 0 }}>
               <div style={{ height: 3, background: s.color }} />
               <div style={{ padding: "15px 16px 12px", display: "flex", flexDirection: "column", gap: 11, flex: "0 0 auto" }}>
                 <div className="row" style={{ gap: 10 }}>
@@ -123,18 +197,20 @@ const Directory = ({ openAsk }) => {
       <aside style={{ width: 322, flex: "none", display: "flex", flexDirection: "column", gap: 13, minHeight: 0, overflowY: "auto" }}>
         <div className="card" style={{ padding: 17, flex: "none" }}>
           <div style={{ fontSize: 16.5, fontWeight: 600 }}>Needs your attention today</div>
-          <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 5 }}>Ranked by dollar impact across all {AGENCY.subCount} sub-accounts.</div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 5 }}>The sub-accounts marked watch or at-risk, across your book.</div>
         </div>
+        {attention.length === 0 && (
+          <div className="card" style={{ padding: "15px 16px", flex: "none", fontSize: 12.5, color: "var(--ink-2)" }}>Nothing flagged — every sub-account is healthy.</div>
+        )}
         {attention.map(a => (
-          <div key={a.who} style={{ border: "1px solid var(--line-soft)", borderLeft: "3px solid " + a.tone, borderRadius: 11, padding: "12px 13px", background: "var(--surface-2)", flex: "none" }}>
+          <div key={a.id} style={{ border: "1px solid var(--line-soft)", borderLeft: "3px solid " + healthDot(a.healthBucket), borderRadius: 11, padding: "12px 13px", background: "var(--surface-2)", flex: "none" }}>
             <div className="row" style={{ gap: 8, marginBottom: 7 }}>
               <span style={{ width: 8, height: 8, borderRadius: 2, background: a.color }} />
-              <span style={{ fontSize: 12, fontWeight: 600 }}>{a.who}</span>
-              <span className="mono" style={{ marginLeft: "auto", fontSize: 11.5, color: a.tone }}>{a.amount}</span>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>{a.name}</span>
+              <span className="mono" style={{ marginLeft: "auto", fontSize: 11.5, color: healthDot(a.healthBucket) }}>{healthLabel(a.healthBucket)}</span>
             </div>
-            <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{a.text}</div>
+            <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{a.mrr === "—" ? "MRR not yet available." : a.mrr + " MRR."}</div>
             <div className="row" style={{ gap: 8, marginTop: 11 }}>
-              <button style={{ padding: "7px 12px", borderRadius: 9, background: "var(--ink)", color: "var(--ink-inv)", fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none" }}>{a.cta}</button>
               <button className="btn btn-s" style={{ height: 30, borderRadius: 9, fontSize: 12, color: "var(--ink-2)" }}>Open sub-account</button>
             </div>
           </div>
@@ -147,20 +223,22 @@ const Directory = ({ openAsk }) => {
           <div className="card" style={{ width: "min(560px,100%)", maxHeight: "84vh", overflow: "hidden", display: "flex", flexDirection: "column" }}>
             <div className="row" style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-soft)", gap: 11 }}>
               <span style={{ width: 3, height: 22, borderRadius: 2, background: "var(--gold-bright)", flex: "none" }} />
-              <div className="grow"><div style={{ fontSize: 15, fontWeight: 600 }}>Needs your attention today</div><div className="sub">Ranked by dollar impact across all {AGENCY.subCount} sub-accounts.</div></div>
+              <div className="grow"><div style={{ fontSize: 15, fontWeight: 600 }}>Needs your attention today</div><div className="sub">The sub-accounts marked watch or at-risk, across your book.</div></div>
               <button onClick={() => setAttnOpen(false)} className="btn btn-s" style={{ width: 30, height: 30, padding: 0, justifyContent: "center", borderRadius: 9 }}><Ic.x size={14} /></button>
             </div>
             <div className="pane" style={{ padding: "8px 20px 18px" }}>
+              {attention.length === 0 && (
+                <div style={{ fontSize: 13, color: "var(--ink-2)", padding: "14px 2px" }}>Nothing flagged — every sub-account is healthy.</div>
+              )}
               {attention.map(a => (
-                <div key={a.who} style={{ border: "1px solid var(--line-soft)", borderLeft: "3px solid " + a.tone, borderRadius: 11, padding: "13px 14px", background: "var(--surface-2)", marginTop: 10 }}>
+                <div key={a.id} style={{ border: "1px solid var(--line-soft)", borderLeft: "3px solid " + healthDot(a.healthBucket), borderRadius: 11, padding: "13px 14px", background: "var(--surface-2)", marginTop: 10 }}>
                   <div className="row" style={{ gap: 8, marginBottom: 6 }}>
                     <span style={{ width: 8, height: 8, borderRadius: 2, background: a.color }} />
-                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>{a.who}</span>
-                    <span className="mono" style={{ marginLeft: "auto", fontSize: 12, color: a.tone }}>{a.amount}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 600 }}>{a.name}</span>
+                    <span className="mono" style={{ marginLeft: "auto", fontSize: 12, color: healthDot(a.healthBucket) }}>{healthLabel(a.healthBucket)}</span>
                   </div>
-                  <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{a.text}</div>
+                  <div style={{ fontSize: 13, lineHeight: 1.5, color: "var(--ink-2)" }}>{a.mrr === "—" ? "MRR not yet available." : a.mrr + " MRR."}</div>
                   <div className="row" style={{ gap: 8, marginTop: 11 }}>
-                    <button style={{ padding: "7px 13px", borderRadius: 9, background: GOLD_BG, color: GOLD_INK, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "none" }}>{a.cta}</button>
                     <button onClick={openAsk} className="btn btn-s" style={{ height: 30, borderRadius: 9, fontSize: 12, color: "var(--ink-2)" }}>Ask Paige</button>
                   </div>
                 </div>
@@ -424,7 +502,7 @@ const ClientsHub = ({ isAgency = true, acting = null, openAsk = noop }) => {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0, alignItems: "stretch" }}>
       <SubTabs tabs={tabs} cur={tab} set={setTab} />
       <div key={tab} className="fade-in" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", padding: "18px 26px 22px", width: "100%", maxWidth: 1440, margin: "0 auto" }}>
-        {tab === "directory" && (crossBook ? <Directory openAsk={openAsk} /> : <OwnBook ownName={ownName} />)}
+        {tab === "directory" && (crossBook ? <Directory openAsk={openAsk} isAgency={isAgency} acting={acting} /> : <OwnBook ownName={ownName} />)}
         {tab === "pipes" && <Pipelines crossBook={crossBook} ownName={ownName} ownIdx={ownIdx} openAsk={openAsk} />}
         {tab === "convos" && <ConversationsConsole isAgency={isAgency} acting={acting} openAsk={openAsk} />}
       </div>
