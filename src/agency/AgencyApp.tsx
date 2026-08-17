@@ -29,7 +29,7 @@ import { supabase } from "@/integrations/supabase/client";
 import "./agency-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead, Modal, Popover, SlideOut, AV } from "./_shared";
 import { tmInit } from "./TeamBlock";
-import { SUBS, AGENCY, GREEN, AMBER } from "./fixtures";
+import { SUBS, GREEN, AMBER } from "./fixtures";
 // §65 Option B (B1a) — real agency identity + real sub-account roster. These THIN
 // adapters wrap the EXISTING RLS-safe seams (agency_portfolio_metrics /
 // agency_list_my_subaccounts / agency_my_membership), session-scoped by auth.uid()
@@ -39,12 +39,12 @@ import { useAgencyMetrics } from "./data/useAgencyMetrics";
 import { useAgencyRoster } from "./data/useAgencyRoster";
 
 // Health bucket (agency_portfolio_metrics leaderboard) → dot color. Real roster rows
-// carry a PortfolioHealthKey bucket, NOT the fixtures' 0–100 number, so we map the
-// bucket rather than the numeric `hc()` used for the fixture path.
+// carry a PortfolioHealthKey bucket ("healthy" | "watch" | "at_risk"), NOT the
+// fixtures' 0–100 number — so we map the bucket. Any unknown value → neutral dot.
 const healthDot = (b) =>
-  b === "healthy" || b === "thriving" ? "var(--ok)"
-    : b === "steady" || b === "watch" ? "var(--warn)"
-      : b === "at_risk" || b === "critical" ? "var(--bad)"
+  b === "healthy" ? "var(--ok)"
+    : b === "watch" ? "var(--warn)"
+      : b === "at_risk" ? "var(--bad)"
         : "var(--ink-3)";
 // Stable per-sub swatch (real subs have no brand-color field yet — §13 Preview, so we
 // derive a deterministic dot from the tenant id/name; never fabricated data, purely
@@ -127,7 +127,6 @@ const PROFIT_ROWS = [
 ];
 // Help launcher quick-prompts (Agency Shell.dc.html:11475).
 const HELP_PROMPTS = ["Something's not working", "Question about billing", "How do I…"];
-const hc = h => (h >= 85 ? "var(--ok)" : h >= 70 ? "var(--warn)" : "var(--bad)");
 
 // ── Rail ────────────────────────────────────────────────────────────────────
 // Two nav groups + brand block + plan card + collapse — mirrors SoloApp's Rail
@@ -224,7 +223,7 @@ const TopBar = ({ theme, setTheme, route, isAgency, acting, brand, openSwitcher,
       </div>
 
       <div className="row" style={{ gap: 10, flex: "none", marginLeft: "auto" }}>
-        <span className="pill pill-n hide-1280" style={{ height: 28, padding: "0 13px", borderRadius: 20 }}>{providerLabel}</span>
+        {providerLabel && <span className="pill pill-n hide-1280" style={{ height: 28, padding: "0 13px", borderRadius: 20 }}>{providerLabel}</span>}
         <button onClick={openHelp} className="btn btn-s" style={{ height: 32, padding: "0 13px", borderRadius: 9, fontSize: 12.5, fontWeight: 600 }}>Help</button>
         <button onClick={openAsk} className="btn btn-s" title="Ask Paige" style={{ width: 32, height: 32, padding: 0, justifyContent: "center", borderRadius: 9 }}><Ic.spark size={15} /></button>
         <button className="btn btn-s" title="Notifications" style={{ width: 32, height: 32, padding: 0, justifyContent: "center", borderRadius: 9, position: "relative" }}>
@@ -314,7 +313,7 @@ const AgencyApp = ({ mode = "agency" }) => {
       const u = data?.user;
       const meta = (u?.user_metadata ?? {});
       setOp({ name: meta.full_name || meta.name || null, email: u?.email ?? null });
-    });
+    }).catch(() => { /* auth read failed — keep honest fallbacks (§13) */ });
     return () => { live = false; };
   }, []);
 
@@ -324,31 +323,46 @@ const AgencyApp = ({ mode = "agency" }) => {
   const planLabel = metrics.identity.plan || "Agency plan";
   // Prefer the literal roster length; fall back to the portfolio count. Preview "—"
   // while it resolves (§13 — a number is shown only once a real seam returns it).
-  const subCountReal = roster.available ? roster.rows.length : (metrics.subCount ?? null);
+  // §13 — show a real count ONLY once the roster RPC has resolved; while it loads,
+  // `available` is already true but `rows` is still [] (a fabricated 0), so gate on
+  // `loading` and render "—" until the seam actually returns.
+  const subCountReal = roster.available
+    ? (roster.loading ? null : roster.rows.length)
+    : (metrics.subCount ?? null);
   const subCountLabel = subCountReal == null ? "—" : String(subCountReal);
   const planLine = planLabel + " · " + subCountLabel + " sub-accounts";
   const bookLine = subCountReal == null
     ? "Your book, with ten departments running per sub-account."
     : subCountLabel + " sub-accounts on your book. Ten departments running per account.";
-  const providerLabel = agencyName;
+  // Provider chip is an AGENCY-context concept ("provided by {agency}"). In sub-mode
+  // the parent-agency name isn't wired yet, so we hide the chip rather than show the
+  // sub's own name as its "provider" (which would be wrong). Sub-mode real identity
+  // (incl. parent white-label) lands in a later slice.
+  const providerLabel = isAgency ? agencyName : "";
 
   // §39 (task #171) — the /agency/{n} address is NOT authority (§9); RLS gates every
   // read. Keep the URL honest: redirect a number that isn't the caller's own account
   // to their own, and canonicalize a bare /agency/{n} → its default branch. Acts ONLY
   // once the caller's own account_number is known, so a mid-load null never bounces.
   const urlSplat = params["*"] || "";
+  const activeType = activeTenant?.account_type;
   React.useEffect(() => {
     if (!urlDriven) return;
     const own = activeTenant?.account_number;
     if (own == null) return;
-    if (String(own) !== String(urlAccount)) {
+    // Only redirect a mismatched number to "our own" when the ACTIVE tenant is truly an
+    // agency/enterprise account. A multi-membership user parked on a non-agency tenant
+    // (the §588/§51 resolution hazard) must NOT get bounced to a non-agency number —
+    // leave the URL (RLS still gates every read by auth.uid()), just don't rewrite it.
+    const activeIsAgency = activeType === "agency" || activeType === "enterprise";
+    if (activeIsAgency && String(own) !== String(urlAccount)) {
       navigate(branchPath("agency", String(own), defaultBranchSlug("agency")), { replace: true });
       return;
     }
     if (!urlSplat) {
       navigate(branchPath("agency", urlAccount, defaultBranchSlug("agency")), { replace: true });
     }
-  }, [urlDriven, urlAccount, urlSplat, activeTenant?.account_number, navigate]);
+  }, [urlDriven, urlAccount, urlSplat, activeTenant?.account_number, activeType, navigate]);
 
   // Global chrome pop-out open-state (all held here, per the task).
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
