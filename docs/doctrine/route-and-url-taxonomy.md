@@ -354,9 +354,21 @@ RPC (`agency_enter_subaccount`) — both exist (`src/agency/data/useAgencyRoster
 the shell switcher today. §51: viewing a sub is a server-gated act-as, the URL segment is an address not
 a grant.
 
-### 11c. Sub-account — `/business/{account}/…` (same 15 branches; same `AgencyApp` shell, mode="subaccount")
-Identical branch set to Agency (§60 Solo≡Sub-account except billing; the shell already renders both modes
-from one codebase). A sub-account has **no** act-as switcher (§51 invariant — a child never manages).
+### 11c. Sub-account — `/business/{account}/…` (inherits the SOLO tree, §60 — CORRECTED)
+**Ruling (2026-08-17, corrects the earlier draft): a Sub-account's tree SHAPE = the Solo tree (§11d), NOT
+the Agency tree.** §60 is explicit — Solo ≡ Sub-account except billing — and that parity includes the
+branch set. `/solo` + `/business` share the shell family (§3), so a sub-account gets Solo's 13 branches at
+`/business/{account}/…`, never Agency's 15 (the Agency-only branches — a fleet-scoped Client Support /
+Billing over a *book of sub-accounts* — belong to the manager tier, not a child running its own book). A
+sub-account has **no** act-as switcher (§51 invariant — a child never manages).
+
+**Honest build note (§13):** today the code renders sub-accounts via `AgencyApp mode="subaccount"`
+(`Admin.tsx` Gate B), i.e. the *agency* shell — which contradicts this ruling and §3. Resolving it (move
+the `/business` tree onto the Solo-family shell) is a deliberate step in the R3 slice, NOT a silent flip;
+it interacts with the #513 match-accounts adapters and the owner's 2026-08-15 "own design pack per tier"
+ruling, so the crew confirms the shell/pack choice (Solo pack vs a sub-account-specific pack over the same
+Solo SHAPE) rather than assuming. The SHAPE ruling (Solo's branch set) is firm; the visual pack is the
+open sub-question.
 
 ### 11d. Solo — `/solo/{account}/…` (13 branches; shell = `src/solo/SoloApp.tsx`)
 | URL slug | Tab label | key | component |
@@ -460,3 +472,52 @@ Each slice: §1 crew + §39 peer-gate + §32.c owner live-drive; old paths stay 
 **Sequencing note (§13 honest):** the `{account}` segment depends on R0's `account_number`. The prefix rename
 (`/admin`→`/agency`) COULD ship without the number first, but the owner's model roots every tree at the number, so
 R0 leads. The one genuinely-owner decision blocking R0 is the number shape.
+
+---
+
+## 15. Design rulings on the ten tree implications (2026-08-17)
+
+Cowork surfaced ten design implications while the tree was being designed. CC rulings below (owner handed
+the wheel on Solo/Agency/Sub-account; the one genuinely owner-stakes call — R4 act-as namespacing — is
+ruled with the owner's override explicitly invited).
+
+1. **Config-as-data, not per-tier React (RULED — already the design).** The tree is a declarative
+   `TIER_BRANCHES` registry (§13); adding a branch is a data row, never per-tier code. §10-governable so
+   Paige can read/act on the registry.
+2. **Sub-account inherits SOLO's tree, not Agency's (RULED — §60; corrected §11c).** Shape = Solo (13),
+   billing the only §60 difference. Visual pack = deliberate build sub-question (§11c note).
+3. **Enterprise = Agency tree + tier-customization sub-branches (RULED — §3/§60).** Same agency shell at
+   `/enterprise/{account}`; Enterprise's negotiated customizations render as extra branches via
+   `getTierFeatureSet()`, never a fork.
+4. **Act-as URL namespacing (RULED, owner may override — the §51-stakes call).** The actor is encoded in
+   the URL, not the acted-into tenant's bare root: Agency→sub = `/agency/{n}/sub/{subN}/{branch}` (§11b);
+   Operator→any tenant = `/operator/act-as/{n}/{branch}`. Rationale: the URL always says WHO is acting, so
+   §51 impersonation audit + Paige's §32.c "am I acting or being" self-awareness read straight off the
+   address — a bare `/business/{n}/growth` for an impersonated view would erase the actor from the audit
+   trail. **Owner: say the word if you'd rather act-as adopt the target's bare URL.**
+5. **Shared slug, tier-specific component (RULED — §18 registry).** `growth` is one human slug in every
+   tier; the `TIER_BRANCHES` row per tier names its own component (Agency Growth = fleet-scoped; Solo
+   Growth = single-business). Same address word, tier-correct surface — no drift.
+6. **Branch-preserved on account switch (RULED — §36).** Switching accounts while on
+   `/agency/{n}/trust-compass` lands on `/agency/{newN}/trust-compass`, never bounces to Command Center.
+   The switcher swaps the `{account}` segment, keeps the `{branch}`.
+7. **Tier-promotion is redirect-resilient (RULED — §58, keeps tier-explicit URLs).** `account_number` is
+   permanent; the resolver knows the account's CURRENT tier, so a bookmarked `/agency/{n}/growth` after a
+   promotion 301s to `/enterprise/{n}/growth`. URLs stay tier-explicit (owner ruling) AND bookmarks never
+   die.
+8. **Automations scope to a branch (NOTED — §67 affordance, forward).** Every Paige-forged automation
+   cites its branch URL as its scope ("when a client hits stage 4 on `/business/{n}/clients`, do X"), so
+   the §67 Automations surface becomes a reviewable list where each rule's scope is a real address. Design
+   affordance the tree unlocks; not a blocking decision.
+9. **The registry IS Paige's capability catalog (NOTED — §52 self-knowledge).** "What branches exist on my
+   tenant?" answers by querying `TIER_BRANCHES` for the tier. The route registry and the capability
+   catalog (§159 self-knowledge) are one primitive viewed by two audiences — build once.
+10. **Client Portal tree is TENANT-AUTHORED, scoped separately (RULED — §7).** `/portal/:tenantSlug`
+    branches are authored by each tenant (§7 tenant-authored portal), a DIFFERENT primitive from the
+    platform-defined tier trees. Out of this migration's scope; do not unify.
+
+**The lesson this whole design kills (for `docs/brain/lessons-learned.md`):** *state-driven tabs = no
+addressable branches = Paige cannot orchestrate.* An interaction surface whose sections live in `useState`
+(not the URL) has nothing for the §8 action bus, §16 departments, or §37 producer inventory to point at —
+"route data inside the brain" has no address to route to. Every interaction surface's sections must be real
+URL branches, or the orchestration machine is operating over a map with no coordinates.
