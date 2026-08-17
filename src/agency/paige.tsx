@@ -482,6 +482,7 @@ const SkillsTab = ({ agencyView }) => {
     <>
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}>
         <TabHead title="Skills" sub={agencyView ? "What she knows how to do here, and which of it your sub-accounts can install." : "What she knows how to do for you here."} />
+        <Flag>The skills library has no confirmed registry — source, resell state and library-health figures here are layout stand-ins.</Flag>
         <div className="row" style={{ gap: 8, flexWrap: "wrap", flex: "none" }}>
           {srcs.map(f => {
             const on = filter === f;

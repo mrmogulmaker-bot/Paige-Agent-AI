@@ -14,6 +14,14 @@ it does **not** prove the feature is fully wired end-to-end (integration state l
 > surface X?" answer must check each: **`src/App.tsx`** (public / `/app` tenant / `/broker` / `/onboard`),
 > **`src/pages/Admin.tsx`** (`/admin/*` operator console + `/admin/platform/*` super-admin), and
 > **`src/components/admin/AgencyLayout.tsx`** (`/agency/*`).
+>
+> **TARGET taxonomy (§65, planned — NOT yet code).** The current `/admin` route is overloaded 4 ways
+> (Solo + Sub-account + Agency + God all log in there — the naming-debt §65 fixes). The LOCKED target
+> matrix + staged redirect-safe migration live in **`docs/doctrine/route-and-url-taxonomy.md`**:
+> Operator `/operator` · Agency `/agency/{account}` · Enterprise `/enterprise/{account}` · Solo
+> `/solo/{account}` · Sub-account `/business/{account}` · Client `/portal/:tenantSlug`. Until the
+> code-rename slices ship, THIS map reflects the current routes; consult the taxonomy doc for where each
+> is headed.
 
 ---
 

@@ -35,6 +35,13 @@
 import React from "react";
 import { Ic, useReducedMotion } from "./_shared";
 import { DEPARTMENTS, SUBS, OWNERS, TIERS, TIER_META, AUDIT, PROPOSALS, SENT, seedMatrix, GREEN, AMBER, RED } from "./fixtures";
+// Slice D wiring (§28 — only the DATA SOURCE changes, the ported design is frozen):
+// the Agency tab's OWN ten department knobs read their real roster + per-department
+// OPEN counts from the adapter (usePaigeDeptStatus, RLS own-scope, no tenant_id — §51-
+// safe). The tier POSITIONS, the change-log, the cross-sub Book matrix, the Per-sub
+// picker, and the propose flow have no confirmed backend (§13) and stay frozen fixture
+// Preview under the TC_FLAG banner already shipped in every aside.
+import { useAgencyCompass } from "./data/useAgencyCompass";
 
 // Gold act-token (§11 — gold only on the approve/send moment). The design paints
 // the primary CTA #C8A02E-family with #241C05 ink; we route the fill through the
@@ -127,14 +134,16 @@ const TC_FLAG = "Per-department autonomy tiers, the cross-tenant read of your su
 // tab); observe = static with an optional propose ✎ (Per-sub / single-book).
 // Faithful port of the design's two knob variants (bright metal / sunk dark).
 // ---------------------------------------------------------------------------
-const Knob = ({ dept, tier, live, dragging, onDown, onSet, onPropose, reduce, i, L }) => {
+const Knob = ({ dept, tier, live, dragging, onDown, onSet, onPropose, reduce, i, L, title }) => {
   const m = TIER_META[tier];
   const ring = m.glow + (live ? ".5)" : ".28)");
   const ringWide = m.glow + (live ? ".16)" : ".08)");
   const angle = "rotate(" + angleFor(tier) + "deg)";
   const spin = dragging ? "transform .08s linear" : "transform .42s cubic-bezier(.22,1.2,.32,1)";
   return (
-    <div style={{
+    // `title` (real per-department OPEN count, §13) is additive metadata on the existing
+    // root — an invisible hover tooltip, so the frozen knob layout is byte-identical (§28).
+    <div title={title} style={{
       display: "flex", flexDirection: L.dir, alignItems: "center", gap: L.tileGap, minWidth: 0, padding: L.pad,
       borderRadius: 11, border: "1px solid rgba(255,253,248," + (live ? ".05" : ".04") + ")",
       background: live ? "rgba(255,253,248,.02)" : "rgba(0,0,0,.22)",
@@ -299,8 +308,11 @@ const ProposePanel = ({ dept, from, ownerName, subName, onClose, reduce }) => {
 // (draggable + click-to-set) knobs, plus the change-log card. Turning a sensitive
 // department (Finance / Legal) to AUTO routes through ConfirmModal.
 // ---------------------------------------------------------------------------
-const AgencyPanel = ({ tiers, setTiers, onConfirm, onAsk, drag, setDrag, reduce, L, auditOpen, setAuditOpen }) => {
-  const list = DEPARTMENTS.map(d => tiers[d.name]);
+const AgencyPanel = ({ tiers, setTiers, onConfirm, onAsk, drag, setDrag, reduce, L, auditOpen, setAuditOpen, depts, openByDept }) => {
+  // REAL department roster (adapter) when the §16 seed exists, else the frozen fixture
+  // roster (§28 fallback). Tier VALUES stay Preview stand-ins (TC_FLAG); unseeded reals
+  // default to CONFIRM so pct() never reads undefined.
+  const list = depts.map(d => tiers[d.name] ?? "confirm");
   const setAgency = (dept, tv) => {
     const sensitive = dept === "Finance" || dept === "Legal / Compliance";
     if (sensitive && tv === "auto" && tiers[dept] !== "auto") { onConfirm(dept); return; }
@@ -318,11 +330,14 @@ const AgencyPanel = ({ tiers, setTiers, onConfirm, onAsk, drag, setDrag, reduce,
             {L.showHint && <div style={{ marginLeft: "auto", fontSize: 11, color: "rgba(255,253,248,.42)", flex: "none" }}>Drag a cap to turn it, or click a position</div>}
           </div>
           <div style={{ position: "relative", display: "grid", gridTemplateColumns: L.cols, gap: L.gap, marginTop: 12 }}>
-            {DEPARTMENTS.map((d, i) => {
+            {depts.map((d, i) => {
               const dragging = drag && drag.dept === d.name;
-              const tier = dragging ? drag.tier : tiers[d.name];
+              const cur = tiers[d.name] ?? "confirm";
+              const tier = dragging ? drag.tier : cur;
+              const oc = openByDept ? openByDept.get(d.name) : null;
               return <Knob key={d.name} dept={d.name} tier={tier} live dragging={!!dragging} i={i} L={L} reduce={reduce}
-                onDown={e => startKnobDrag(e, d.name, tiers[d.name], tv => setAgency(d.name, tv), setDrag)}
+                title={typeof oc === "number" ? d.name.split(" / ")[0] + " · " + oc + (oc === 1 ? " open item" : " open items") : undefined}
+                onDown={e => startKnobDrag(e, d.name, cur, tv => setAgency(d.name, tv), setDrag)}
                 onSet={tv => setAgency(d.name, tv)} />;
             })}
           </div>
@@ -527,6 +542,16 @@ const TrustCompass = ({ isAgency = true, acting = null, openAsk = () => {} }) =>
   const reduce = useReducedMotion();
   const [bodyRef, w] = useWidth();
 
+  // Slice D — the ONE live read (§51-safe: RLS own-scope, no tenant_id, no parentage
+  // RPC). REAL: the caller's own department roster + per-department OPEN counts. When
+  // the §16 seed is absent the adapter reports configured:false and we fall back to the
+  // frozen fixture roster so the owner-locked design still renders (§28) — never a blank
+  // grid. Tier positions / audit / cross-sub / propose remain Preview (TC_FLAG).
+  const compass = useAgencyCompass({ isAgency, acting });
+  const liveDepts = compass.configured ? compass.departments : null;
+  const agencyDepts = liveDepts ?? DEPARTMENTS;
+  const openByDept = liveDepts ? new Map(liveDepts.map(d => [d.name, d.openCount])) : null;
+
   const [tab, setTab] = React.useState("agency");                 // agencyView tab strip
   const [tiers, setTiers] = React.useState(() => { const o = {}; DEPARTMENTS.forEach(d => { o[d.name] = d.tier; }); return o; });
   const matrix = React.useMemo(() => seedMatrix(), []);
@@ -568,7 +593,8 @@ const TrustCompass = ({ isAgency = true, acting = null, openAsk = () => {} }) =>
 
       {agencyView && tab === "agency" && (
         <AgencyPanel tiers={tiers} setTiers={setTiers} onConfirm={setConfirmDept} onAsk={openAsk}
-          drag={drag} setDrag={setDrag} reduce={reduce} L={L} auditOpen={auditOpen} setAuditOpen={setAuditOpen} />
+          drag={drag} setDrag={setDrag} reduce={reduce} L={L} auditOpen={auditOpen} setAuditOpen={setAuditOpen}
+          depts={agencyDepts} openByDept={openByDept} />
       )}
       {agencyView && tab === "book" && (
         <BookPanel matrix={matrix} onAsk={openAsk} onCell={(ri, dept) => { setSelIdx(ri); setTab("sub"); }} />

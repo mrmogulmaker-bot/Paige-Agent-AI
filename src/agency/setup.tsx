@@ -54,10 +54,23 @@ import React from "react";
 import { SlideOut, Modal } from "./_shared";
 import SetupCard, { SETUP_VIEW } from "./SetupCard";
 import { SETUP_TABS, SU_FIELDS } from "./fixtures";
+// Slice C — the §51-safe, session-derived contacts/owner adapter. REAL own-book:
+// the Owner-profile card (own `profiles` row via the shipped useSoloOwner seam).
+// PREVIEW (never fabricated): signature + banking (no storage in this schema, §38).
+import { useAgencyContacts } from "./data/useAgencyContacts";
 
 const GOLD_BG = "var(--gold-bright)";
 const GOLD_INK = "#241C05";
 const noop = () => {};
+
+// Honest marker for surfaces with no live backend (§13) — mirrors Solo/CommandCenter.
+const PreviewPill = () => (
+  <span className="pill pill-n" title="Sample layout — not yet wired to your live data">Preview</span>
+);
+
+// Two-letter initials from a display name (the person-card avatar glyph).
+const initialsOf = (name) =>
+  (name || "").split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "—";
 
 // suEditGroups — faithful port of the design's field-shaping (Agency Shell.dc.html
 // 12554–12576). Given the open card title + mode, resolves SU_FIELDS[card] (config-
@@ -96,6 +109,13 @@ const SetupScreen = ({ isAgency = true, acting = null, openAsk = noop }) => {
   const [suCard, setSuCard] = React.useState(null); // expanded card index | null → suPop
   const [suEdit, setSuEdit] = React.useState(null); // { card, mode } | null → suEdit drawer
 
+  // §51 scope spine — session-derived only (own-book RLS reads; no client tenant_id).
+  // REAL: owner profile (name/email via the own `profiles` row). The own-book contacts
+  // query also fires here (§51-safe) but the frozen Setup has no clients surface, so it
+  // is not displayed — it is never faked into the professional-bench card (§13).
+  const contactsAdapter = useAgencyContacts({ isAgency, acting });
+  const owner = contactsAdapter.owner;
+
   // ── Responsive probe (design st.mainH; short = mainH < 620) ─────────────────
   const boxRef = React.useRef(null);
   const [dims, setDims] = React.useState({ h: 820 });
@@ -125,7 +145,23 @@ const SetupScreen = ({ isAgency = true, acting = null, openAsk = noop }) => {
 
   // ── Per-card descriptors: compact/rowCap/tighter + openExpand/openEdit wiring
   //    (design 12534–12543). ────────────────────────────────────────────────────
-  const suCards = built.cards.map((c, i) => ({
+  // REAL owner overlay (§13) — swap the Owner-profile person card to the caller's own
+  // profile (name/email) where the adapter sourced it; fall back to the frozen sample
+  // until it loads, so the layout stays byte-identical (§28) and nothing is fabricated.
+  const withRealOwner = (c) => {
+    if (tabKey !== "owner" || c.type !== "person" || !owner || !owner.name) return c;
+    return {
+      ...c,
+      person: {
+        ...(c.person || {}),
+        name: owner.name,
+        initials: initialsOf(owner.name),
+        mail: owner.email || (c.person && c.person.mail) || "",
+      },
+    };
+  };
+
+  const suCards = built.cards.map(withRealOwner).map((c, i) => ({
     ...c,
     compact: short,
     rowCap: short ? (tabKey === "people" ? 1 : 2) : 99,
@@ -139,7 +175,7 @@ const SetupScreen = ({ isAgency = true, acting = null, openAsk = noop }) => {
   const suPopCard =
     suCard == null
       ? null
-      : { ...built.cards[suCard], compact: false, rowCap: 99, actions: [] };
+      : { ...withRealOwner(built.cards[suCard]), compact: false, rowCap: 99, actions: [] };
 
   // suEdit derivations (design 12549–12577). ───────────────────────────────────
   const suEditMode = suEdit ? (suEdit.mode === "Add" ? "Add new" : "Editing") : "";
@@ -179,6 +215,9 @@ const SetupScreen = ({ isAgency = true, acting = null, openAsk = noop }) => {
             <div className="row" style={{ gap: 9 }}>
               <span className="eyebrow" style={{ fontSize: 9.5 }}>SETUP</span>
               <span style={{ fontSize: 21, fontWeight: 700, letterSpacing: "-.02em" }}>{built.title}</span>
+              {/* §13/§38 — signature + banking have no storage in this schema; the
+                  Owner tab's profile is REAL, so it carries no pill. */}
+              {tabKey === "banking" && <PreviewPill />}
             </div>
             <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 5 }}>{built.sub}</div>
           </div>

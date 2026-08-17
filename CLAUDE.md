@@ -2303,3 +2303,55 @@ reachable by Paige runs on the **cloud** (Vercel, Supabase, Fly, GitHub Actions,
 her intelligence end-to-end — cloud-first is the deploy corollary), §35 (OS north star — an OS that dies
 when the owner's laptop sleeps isn't an OS), §13 (honest reporting — a green status must not depend on a
 laptop being on), §32.a/§32.c (a cloud deploy still owes its persisted/live proof).
+
+## 65. Names map to the user's mental model — routes, tier labels, and surfaces are named for who's there, never for internal structure.
+
+> **PROPOSED — owner ruled the SUBSTANCE via the Route + URL Taxonomy brief (2026-08-12); exact
+> wording ratified in a later pass (same PROPOSED pattern as §57–§64). §-number provisional (§65
+> chosen as the next free anchor; §66 free, §67 reserved for Paige self-knowledge / task #159).**
+> Authoritative statement + the locked 6-row matrix + migration order live in
+> `docs/doctrine/route-and-url-taxonomy.md` (the §18 one home); this section is the CLAUDE.md pointer.
+
+**Directive (owner: Antonio, 2026-08-12).** Every name a human sees or types — a URL path, a tier
+label, a nav word, a landing route — must map to **how that human actually thinks about the surface
+they're on**, never to the internal router tree, the DB column, or the table name underneath. Owner's
+verbatim framing: *"Admin is not the place that an agency account should log in to… Admin should not
+be the link that a solo account logs in to… we have to make this make sense, like logical sense, not
+just technical but logical."* A name that forces the user to learn our internal structure — or that
+means four different things to four different account types — is a §36 (intuitiveness) failure and a
+naming-debt defect, not a cosmetic one.
+
+- **The bug that forced this: `/admin` was overloaded four ways.** Solo, Sub-account, Agency, AND God
+  all logged in through `/admin`, so the ONE word had to mean four different surfaces — and the agency
+  owner kept landing on "the same landing page" because the URL couldn't tell the router (or the human)
+  which of the four they were. That is naming-debt: one internal route bearing four distinct user
+  mental models. The fix is one route per mental model, named for the person standing there.
+- **The locked 6-row matrix (source of truth = the taxonomy doc §2a):** Operator → `/operator` ·
+  Agency → `/agency/{account}` · Enterprise → `/enterprise/{account}` · Solo → `/solo/{account}` ·
+  Sub-account → `/business/{account}` · Client → `/portal/:tenantSlug`. `/solo` + `/business` share
+  ONE shell (a sub-account IS a solo operator with a parent, §51/§60); `/agency` + `/enterprise` share
+  ONE shell + Enterprise's per-tenant customizations (§60). The route word names WHO is there, not
+  which React tree renders it.
+- **Per-account unique address (taxonomy §2b):** every account gets its own stable numeric URL segment
+  (`/business/3855`) — a net-new `account_number` (address, NOT a grant; the number never widens what
+  the session may do — §9/§51 still gate every read). The name/number is how a human finds THEIR
+  account; authority stays session-derived.
+- **The name is not the authority (§9/§51/§60).** Renaming a route or labeling a tier changes what the
+  human READS, never what the server ENFORCES. A prettier URL is still gated by the same
+  session-derived tenant scope and the same `getTierFeatureSet()` availability — the taxonomy is a
+  mental-model layer ON TOP of the security layer, never a replacement for it.
+- **Migration is redirect-safe (§58) and staged (taxonomy §6).** Old routes stay redirect-alive through
+  the whole migration — no shipped, owner-approved entry point 404s. This doctrine section + the
+  taxonomy doc ship as PR 1 (docs + matrix + migration order ONLY, zero code renames); the owner
+  reviews the taxonomy and the migration order BEFORE any code-rename slice fires.
+- **The test, every time:** *"Would a human who has never seen our codebase read this route/label/nav
+  word and know exactly whose surface they're on and what they can do here — or does it only make sense
+  if you already know our router tree and DB columns? And does this ONE name mean exactly ONE thing, or
+  is it overloaded across account types the way `/admin` was?"* If it only makes sense from the inside,
+  or it means more than one thing, it's naming-debt — fix the name to the mental model.
+
+**Cross-references:** §36 (intuitiveness — a name you must learn is friction), §51/§56 (tier matrix —
+one route per tier), §60/§61 (tier feature framework — the name reads, the helper enforces), §9
+(tenant isolation — the address is never the grant), §58 (anti-regression — old routes stay
+redirect-alive), §18 (one home — the taxonomy doc is the authoritative map),
+`docs/doctrine/route-and-url-taxonomy.md` (the full matrix + migration plan).

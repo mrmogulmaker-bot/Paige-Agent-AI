@@ -39,8 +39,21 @@ import { tmInit } from "./TeamBlock";
 import {
   BILL_TABS_AGENCY, BILL_TABS_SUB, BILL_INVOICES, BILL_PLANS, AGENCY, TEAM_SEATS, FLAGS,
 } from "./fixtures";
+// Slice C — the §51-safe, session-derived billing adapter (DISPLAY-ONLY per §38).
+// REAL: the caller's OWN L1 plan (name/charge/seats). PREVIEW (never fabricated):
+// invoice states + the cross-book revenue roll-up (no parentage RPC → #86 leak).
+import { useAgencyBilling } from "./data/useAgencyBilling";
 
 const noop = () => {};
+
+// Honest marker for surfaces the adapter reports NO backend for (§13) — the frozen
+// fixture layout still renders as the sample it is, truthfully labeled. Mirrors the
+// Solo/CommandCenter PreviewPill (the `pill pill-n` chip).
+const PreviewPill = () => (
+  <span className="pill pill-n" title="Sample layout — not yet wired to your live data">Preview</span>
+);
+
+const centsToDollars = (c) => Math.round((typeof c === "number" ? c : 0) / 100);
 
 // Billing-tab → ./_shared Ic mapping (the design's own glyphs ▤ ↗ ▣ are decorative
 // and re-expressed here onto the shared SVG vocabulary; mirrors growth.tsx TAB_ICON).
@@ -216,6 +229,12 @@ const Billing = ({ isAgency = true, acting = null, openAsk = noop }) => {
   const them = acting ? acting.name : "";
   const billTabs = isSub ? BILL_TABS_SUB : BILL_TABS_AGENCY;
 
+  // §51 scope spine — session-derived only (the adapter reads the caller's OWN
+  // tenant plan; no client-supplied tenant_id). REAL: plan; PREVIEW: invoices/revenue.
+  const bill = useAgencyBilling({ isAgency, acting });
+  const rp = bill.plan;                                   // REAL plan | null
+  const realSeats = typeof bill.seatLimit === "number" ? bill.seatLimit : null;
+
   const [tabKey, setTab] = React.useState("invoices");
   const [railOpen, setRailOpen] = React.useState(false); // → blRailOpen ("Her read" pop-out)
 
@@ -278,6 +297,23 @@ const Billing = ({ isAgency = true, acting = null, openAsk = noop }) => {
       ];
 
   const kpis = kpisFor(isSub, tab);
+  // REAL plan overlay (§13) — only substitute values the adapter actually sourced;
+  // leave the frozen fixture value in place where the caller has no matched plan row,
+  // so the layout stays byte-identical (§28) and nothing is fabricated.
+  if (blIsPlan) {
+    if (rp && kpis[0]) kpis[0] = { ...kpis[0], value: rp.name.replace(/ plan$/i, "") };
+    if (rp && kpis[1]) kpis[1] = { ...kpis[1], value: money(centsToDollars(rp.monthlyPriceCents)) };
+    if (!isSub && realSeats != null && kpis[2]) kpis[2] = { ...kpis[2], value: TEAM_SEATS.length + " of " + realSeats };
+  }
+  // planRows real overlay — PLAN name + SEATS allotment where the adapter sourced them.
+  if (blIsPlan) {
+    for (const r of planRows) {
+      if (r.label === "PLAN" && rp) r.value = isSub ? rp.name.replace(/ plan$/i, "") + " · " + them : rp.name;
+      if (r.label === "SEATS" && !isSub && realSeats != null) r.value = TEAM_SEATS.length + " of " + realSeats + " included";
+      if (r.label === "NEXT CHARGE" && !isSub && rp) r.value = money(centsToDollars(rp.monthlyPriceCents)) + " on Sep 1";
+    }
+  }
+
   const tabs = billTabs.map(t => [t.key, t.label, TAB_ICON[t.key]]);
 
   return (
@@ -292,6 +328,9 @@ const Billing = ({ isAgency = true, acting = null, openAsk = noop }) => {
               <span className="eyebrow" style={{ fontSize: 9.5 }}>BILLING</span>
               <span style={{ fontSize: 21, fontWeight: 700, letterSpacing: "-.02em" }}>{title}</span>
               <span title={FLAGS.blBanner} style={{ width: 19, height: 19, borderRadius: 6, background: "var(--gold-tint)", border: "1px solid var(--gold-line)", color: "var(--gold)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700, cursor: "help", flex: "none" }}>!</span>
+              {/* §13 honesty — invoices/revenue have no ledger/roll-up backend (the
+                  cross-book #86-leak surface); the plan tab is REAL, so it carries no pill. */}
+              {(blIsInvoices || blIsRevenue) && <PreviewPill />}
             </div>
             <div className="sub" style={{ fontSize: 12.5, marginTop: 5 }}>{sub}</div>
           </div>
@@ -312,6 +351,14 @@ const Billing = ({ isAgency = true, acting = null, openAsk = noop }) => {
             </div>
           ))}
         </div>
+
+        {/* §13/§32 — surface a real read failure loudly, never swallow it. */}
+        {bill.isError && (
+          <div className="row" style={{ gap: 8, flex: "none", padding: "9px 13px", borderRadius: 10, border: "1px solid var(--bad)", background: "var(--bad-tint, var(--surface-2))", fontSize: 12, fontWeight: 600, color: "var(--bad)", minWidth: 0 }}>
+            <span style={{ flex: "none" }}>!</span>
+            <span className="trunc" style={{ minWidth: 0 }}>Couldn't load your live plan just now — showing the last known layout.</span>
+          </div>
+        )}
 
         {/* Body: left column (scrolls) + right rail. */}
         <div className="row" style={{ flex: 1, minHeight: 0, alignItems: "stretch", gap: 13 }}>

@@ -122,6 +122,10 @@ const ClientSupport = ({ isAgency = true, acting = null, openAsk = () => {} }) =
   const header = sub
     ? "2 open · 1 draft ready for you · median response 18 min"
     : "7 open · 4 drafts ready for you · median response 4h";
+  // §13 honesty marker — this queue (own-book and the agency aggregate alike) has no
+  // ticket substrate yet, so the counts, response times, and tickets are stand-ins.
+  // Mirrors the "!" badge the automations / calendar / vault ports already ship.
+  const banner = "No support-ticket substrate exists yet — the ticket queue, open counts and response times here are stand-ins, not platform records.";
   const reads = sub ? READS_SUB : READS_AGENCY;
   const readsSub = sub ? "Patterns in what your clients are asking." : "Patterns across every sub-account's tickets.";
 
@@ -134,7 +138,10 @@ const ClientSupport = ({ isAgency = true, acting = null, openAsk = () => {} }) =
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 14 }}>
         <div className="row" style={{ alignItems: "flex-end", gap: 16, flex: "none" }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>Client Support</div>
+            <div className="row" style={{ gap: 9, alignItems: "center" }}>
+              <span style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>Client Support</span>
+              <span title={banner} style={{ width: 19, height: 19, borderRadius: 6, background: "var(--gold-tint)", border: "1px solid var(--gold-line)", color: "var(--warn)", display: "grid", placeItems: "center", fontSize: 11, fontWeight: 700, cursor: "help", flex: "none" }}>!</span>
+            </div>
             <div style={{ fontSize: 13.5, color: "var(--ink-2)", marginTop: 6 }}>{header}</div>
           </div>
           <div className="row" style={{ marginLeft: "auto", gap: 8, fontSize: 12.5, color: "var(--ink-2)", flex: "none" }}>
