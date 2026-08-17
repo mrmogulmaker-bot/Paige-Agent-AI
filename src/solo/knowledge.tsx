@@ -1,6 +1,10 @@
 // @ts-nocheck
 import React from "react";
 import { Ic } from "./_shared";
+import { useSoloKnowledge } from "./data/useSoloKnowledge";
+
+// Honest marker for a design fixture with no live backend yet (§13).
+const PreviewPill=()=>(<span className="pill pill-n" title="Sample layout — not yet wired to your live data">Preview</span>);
 
 export const KC=[
  {id:'play',n:'Playbook & doctrine',c:'#E9A83A',docs:14,trained:'2h ago',dir:[0,.72,.28],
@@ -110,6 +114,7 @@ return()=>{cancelAnimationFrame(raf);ro.disconnect();cv.removeEventListener('mou
 return <div ref={wrap} style={{position:'absolute',inset:0}}><canvas ref={ref} style={{display:'block',cursor:'grab'}}/></div>};
 
 export const Knowledge=()=>{
+const kb=useSoloKnowledge();
 const[sel,setSel]=React.useState(null);
 const[hov,setHov]=React.useState(null);
 const hovRef=React.useRef(null);
@@ -126,8 +131,8 @@ return <div style={{display:'grid',gap:16}}>
 <div style={{color:'#fff',fontSize:19,fontWeight:600,letterSpacing:'-.03em',marginTop:4}}>Knowledge graph</div>
 <div style={{color:'rgba(255,255,255,.6)',fontSize:12.4,marginTop:3}}>{total} documents · {KC.length} domains · indexed continuously</div></div>
 <div style={{display:'grid',gap:6,justifyItems:'end',pointerEvents:'auto'}}>
-<span className="row" style={{gap:7,height:26,padding:'0 11px',borderRadius:99,background:'rgba(76,196,140,.16)',color:'#4CC48C',fontSize:11.5,fontWeight:600}}>
-<span className="dot"/>Live · 3 sources syncing</span>
+<span className="row" title="Sample graph — not yet wired to your live knowledge base" style={{gap:7,height:26,padding:'0 11px',borderRadius:99,background:'rgba(255,255,255,.08)',color:'rgba(255,255,255,.72)',fontSize:11.5,fontWeight:600}}>
+<span style={{width:6,height:6,borderRadius:'50%',background:'rgba(255,255,255,.5)'}}/>Preview · sample graph</span>
 <span style={{color:'rgba(255,255,255,.45)',fontSize:11}}>Drag to rotate · scroll to zoom · click a domain</span></div></div>
 
 {hov&&<div style={{position:'absolute',left:Math.max(12,hov.x+16),top:Math.max(12,hov.y-10),pointerEvents:'none',
@@ -166,12 +171,15 @@ sel===3?'Every obligation here has a date. Two of them fall inside 30 days.':sel
 <button key={x} className="btn btn-s">{x}</button>)}</div></div>}</div>
 
 <div className="card"><div className="hd"><h3>Recently learned</h3><span className="pill pill-v"><Ic.spark size={11}/>Auto-filed</span></div>
-<div>{[['Ridgeline scope change memo','Clients & threads','12m ago','#8A72F5'],['Systems Check fix log, August','Systems & data','14m ago','#4CC48C'],
-['Hartwell renewal quote','Compliance & vault','6h ago','#E88A80'],['Teardown #13 performance','Brand & voice','1d ago','#F2C97A']].map(([t,d,w,c],i)=>
-<div key={i} className="row" style={{padding:'11px 20px',borderTop:i?'1px solid var(--line-soft)':'0',gap:11}}>
-<span style={{width:7,height:7,borderRadius:'50%',background:c,flex:'none'}}/>
-<span className="grow trunc" style={{fontSize:12.9}}>{t}</span><span className="sub trunc" style={{maxWidth:120}}>{d}</span><span className="mono sub" style={{fontSize:11}}>{w}</span></div>)}</div></div></div></div>
+{kb.loading?<div>{[0,1,2].map(i=><div key={i} className="row" style={{padding:'11px 20px',borderTop:i?'1px solid var(--line-soft)':'0',gap:11}}>
+<span style={{width:7,height:7,borderRadius:'50%',background:'var(--surface-sunk)',flex:'none'}}/>
+<span className="grow" style={{height:10,background:'var(--surface-sunk)',borderRadius:4}}/><span style={{width:80,height:9,background:'var(--surface-sunk)',borderRadius:4}}/></div>)}</div>
+:kb.recentlyLearned.length?<div>{kb.recentlyLearned.map((d,i)=>
+<div key={d.id} className="row" style={{padding:'11px 20px',borderTop:i?'1px solid var(--line-soft)':'0',gap:11}}>
+<span style={{width:7,height:7,borderRadius:'50%',background:d.color,flex:'none'}}/>
+<span className="grow trunc" style={{fontSize:12.9}}>{d.title}</span>{d.domain&&<span className="sub trunc" style={{maxWidth:120}}>{d.domain}</span>}<span className="mono sub" style={{fontSize:11}}>{d.when}</span></div>)}</div>
+:<div style={{padding:'26px 20px',textAlign:'center'}}><div className="sub" style={{maxWidth:300,margin:'0 auto'}}>Nothing indexed yet. Drop a document or paste a link and Paige files it here.</div></div>}</div></div></div>
 
-<div className="g4">{[['Documents indexed',total,'across 6 domains'],['Citations this week','218','she shows her sources'],['Gaps she flagged','2','pricing and voice'],['Retrieval accuracy','96%','on your own questions']].map(([k,v,d],i)=>
-<div key={i} className="card" style={{padding:'16px 18px'}}><div className="eyebrow">{k}</div>
+<div className="g4">{[['Documents indexed',kb.loading?'…':String(kb.documentsIndexed),'in your knowledge base',false],['Citations this week','—','she shows her sources',true],['Gaps she flagged','—','what she wants taught',true],['Retrieval accuracy','—','on your own questions',true]].map(([k,v,d,pv],i)=>
+<div key={i} className="card" style={{padding:'16px 18px'}}><div className="row" style={{gap:7,alignItems:'center'}}><div className="eyebrow">{k}</div>{pv&&<PreviewPill/>}</div>
 <div style={{fontSize:26,fontWeight:600,letterSpacing:'-.03em',marginTop:4}}>{v}</div><div className="sub" style={{marginTop:2}}>{d}</div></div>)}</div></div>};

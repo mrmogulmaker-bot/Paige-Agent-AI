@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
-import { Ic, DATA } from "./_shared";
+import { Ic } from "./_shared";
+import { useSoloProposals } from "./data/useSoloProposals";
 
 export const CHAT_MODELS=[
  {id:'paige-2',n:'Paige 2',d:'Her default. Fast, knows your Playbook, drafts in your voice.',tag:'Default'},
@@ -174,6 +175,8 @@ const[q,setQ]=React.useState('');
 const[proj,setProj]=React.useState(null);
 const[model,setModel]=React.useState('paige-2');
 const[railOpen,setRailOpen]=React.useState(true);
+const prop=useSoloProposals();
+const[railBusy,setRailBusy]=React.useState(null);
 const T=threads.find(t=>t.id===cur)||threads[0];
 const[focus,setFocus]=React.useState(T.foc||'none');
 const{msgs,setMsgs,think,send}=useChat(T.msgs);
@@ -227,11 +230,15 @@ chips={empty?null:["Show me the Selby reset draft","What's at risk this week?","
 <span className="dot" style={{color:i>1?'var(--ok)':'var(--violet)'}}/><span className="grow" style={{fontSize:12.4,fontWeight:500}}>{k}</span>
 <span className="sub trunc" style={{maxWidth:104,textAlign:'right',fontSize:11}}>{v}</span></div>)}</div>
 <div className="eyebrow" style={{marginTop:20}}>She proposed today</div>
-<div style={{display:'grid',gap:9,marginTop:10}}>{DATA.approvals.slice(0,3).map(a=>
+<div style={{display:'grid',gap:9,marginTop:10}}>
+{prop.loading?[0,1,2].map(i=><div key={i} style={{padding:'11px 12px',border:'1px solid var(--line)',borderRadius:11}}>
+<div style={{height:10,width:'80%',background:'var(--surface-sunk)',borderRadius:4}}/>
+<div style={{height:20,width:62,background:'var(--surface-sunk)',borderRadius:6,marginTop:9}}/></div>)
+:prop.proposals.length?prop.proposals.slice(0,3).map(a=>
 <div key={a.id} style={{padding:'11px 12px',border:'1px solid var(--line)',borderRadius:11}}>
 <div style={{fontSize:12.6,fontWeight:600,lineHeight:1.35}}>{a.title}</div>
-<div className="row" style={{marginTop:7,gap:6}}><button className="btn btn-s btn-p" style={{height:24,fontSize:11.5}}>Approve</button>
-<span className="mono sub" style={{fontSize:11}}>{a.conf}%</span></div></div>)}</div></div>}
+<div className="row" style={{marginTop:7,gap:6}}><button className="btn btn-s btn-p" disabled={railBusy===a.id} onClick={()=>{setRailBusy(a.id);prop.approve(a.id).finally(()=>setRailBusy(null))}} style={{height:24,fontSize:11.5}}>{railBusy===a.id?'Working…':'Approve'}</button></div></div>)
+:<div className="sub" style={{fontSize:11.6,padding:'2px 2px 4px'}}>Nothing waiting on you right now.</div>}</div></div>}
 <style>{'.chat-shell{display:grid;grid-template-columns:250px minmax(0,1fr) 268px;grid-template-rows:minmax(0,1fr);height:100%;min-height:0}.chat-shell>*{min-height:0;min-width:0;overflow:hidden}@media(max-width:1240px){.chat-shell{grid-template-columns:236px minmax(0,1fr)}.chat-rail{display:none}}@media(max-width:900px){.chat-shell{grid-template-columns:minmax(0,1fr)}.chat-side{display:none}}'}</style></div>};
 
 export const PaigePanel=({open,onClose})=>{const{msgs,think,send}=useChat(CHAT_THREADS[0].msgs);const[model,setModel]=React.useState('paige-2');const[focus,setFocus]=React.useState('none');
