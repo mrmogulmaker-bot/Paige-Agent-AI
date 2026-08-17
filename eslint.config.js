@@ -24,12 +24,13 @@ export default tseslint.config(
     },
   },
   {
-    // Faithful-ported Claude Design Solo pack (§63): these are untyped JS→TSX fixture
-    // screens that intentionally carry `// @ts-nocheck` (the source is a React-UMD SPA,
-    // ported byte-faithfully — retyping it would drift the approved design). Scope the
-    // ban-ts-comment rule OFF for this directory only so the port passes lint without
+    // Faithful-ported Claude Design packs (§63): the Solo shell (src/solo) and the
+    // Agency + Sub-account shell (src/agency) are untyped JS→TSX fixture screens that
+    // intentionally carry `// @ts-nocheck` (the source is a React-UMD SPA, ported
+    // byte-faithfully — retyping it would drift the owner-locked design). Scope the
+    // ban-ts-comment rule OFF for these directories only so the ports pass lint without
     // being rewritten. All other rules still apply.
-    files: ["src/solo/**/*.{ts,tsx}"],
+    files: ["src/solo/**/*.{ts,tsx}", "src/agency/**/*.{ts,tsx}"],
     rules: {
       // `@ts-nocheck` header (untyped ported source).
       "@typescript-eslint/ban-ts-comment": "off",
