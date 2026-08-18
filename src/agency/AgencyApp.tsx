@@ -29,7 +29,7 @@ import { supabase } from "@/integrations/supabase/client";
 import "./agency-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead, Modal, Popover, SlideOut, AV } from "./_shared";
 import { tmInit } from "./TeamBlock";
-import { SUBS, GREEN, AMBER } from "./fixtures";
+import { GREEN, AMBER } from "./fixtures";
 // §65 Option B (B1a) — real agency identity + real sub-account roster. These THIN
 // adapters wrap the EXISTING RLS-safe seams (agency_portfolio_metrics /
 // agency_list_my_subaccounts / agency_my_membership), session-scoped by auth.uid()
@@ -560,14 +560,20 @@ const AgencyApp = ({ mode = "agency" }) => {
   // `sub` = presenting as a sub-account (standalone subaccount mode, or agency acting
   // into a sub). Drives the design's isSub nav/plan/label variants.
   const sub = mode === "subaccount" || !!acting;
-  // Resolved workspace identity for the rail mark. Subaccount mode locks to its own
-  // tenant (SUBS[0] as the decorative own-tenant, §63); agency shows the agency mark
-  // unless it is acting into a sub.
-  const own = SUBS[0];
+  // Resolved workspace identity for the rail mark. §65 R3a-i fix (owner live-drive
+  // 2026-08-17) — standalone subaccount mode used to lock to the SUBS[0] fixture
+  // ("Sarah's Coaching Practice") regardless of which real tenant was logged in;
+  // it now reads the REAL logged-in tenant via useTenantContext().activeTenant, the
+  // same source AgencyApp already trusts for agencyName/operatorName. No real
+  // per-tenant brand-color backend exists yet, so the mark color is a deterministic
+  // swatch keyed on the tenant id (§13 — never a fabricated color, just a stable
+  // decorative one) via the SAME swatchFor() the roster/switcher already use (§18).
+  // Agency mode is unaffected — it still shows the agency mark unless acting into a sub.
+  const ownName = activeTenant?.name || "Your business";
   const brand = isAgency
     ? (acting ? { name: acting.name, initials: tmInit(acting.name), color: acting.color, isAgency: true, acting: true }
       : { name: agencyName, initials: tmInit(agencyName), color: "#C8A02E", isAgency: true, acting: false })
-    : { name: own.name, initials: tmInit(own.name), color: own.color, isAgency: false, acting: false };
+    : { name: ownName, initials: tmInit(ownName), color: activeTenant?.id ? swatchFor(activeTenant.id) : "#7C6CE0", isAgency: false, acting: false };
 
   // Real screen modules (MAIN group Slices 1b-2..1b-4 + PLATFORM group Slice 1b-5).
   // Each receives the shell context { isAgency, acting, openAsk }; CommandCenter also
