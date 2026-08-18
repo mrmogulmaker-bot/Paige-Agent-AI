@@ -11,6 +11,9 @@ import TrustCompass from "@/operator/surfaces/TrustCompass";
 import KnowledgeSurface from "@/operator/surfaces/KnowledgeSurface";
 import { useCompass } from "@/operator/data/useCompass";
 import { useKnowledge } from "@/operator/data/useKnowledge";
+import OperatorPanel from "@/operator/surfaces/OperatorPanel";
+import { getPanelSpec } from "@/operator/surfaces/panelSpecs";
+import WorkspaceSurface from "@/operator/surfaces/WorkspaceSurface";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { cn } from "@/lib/utils";
@@ -445,6 +448,7 @@ export default function OperatorApp() {
           <OperatorSurface
             branchSlug={branch.slug}
             subSlug={sub?.slug ?? null}
+            leafSlug={isSettings ? (leaf?.slug ?? null) : null}
             title={`${branch.label}${(isSettings ? leaf : sub) ? ` · ${(isSettings ? leaf : sub)!.label}` : ""}`}
             path={canonical}
             isOwner={isPlatformOwner}
@@ -464,11 +468,15 @@ export default function OperatorApp() {
  * make the others wait.
  */
 function OperatorSurface({
-  branchSlug, subSlug, title, path, isOwner,
-}: { branchSlug: string; subSlug: string | null; title: string; path: string; isOwner: boolean }) {
+  branchSlug, subSlug, leafSlug, title, path, isOwner,
+}: {
+  branchSlug: string; subSlug: string | null; leafSlug: string | null;
+  title: string; path: string; isOwner: boolean;
+}) {
   const isFleet = branchSlug === "fleet" && subSlug === "tenants";
   const isCompass = branchSlug === "trust-compass" && subSlug === "autonomy";
   const isKnow = branchSlug === "paige" && subSlug === "knowledge";
+  const isWorkspace = branchSlug === "paige" && subSlug === "chat";
 
   // Hooks are unconditional; each read is gated by its own `enabled` flag so an inactive
   // surface costs nothing (the same shape `useFleet` already uses).
@@ -494,6 +502,30 @@ function OperatorSurface({
         error={knowledge.error}
       />
     );
+  if (isWorkspace)
+    return (
+      /* CD's operator chat, with nothing put in Paige's mouth: no thread, no chat history and
+         no `onSend`, so the pane states that the chat seam is not connected and the composer
+         says it is disabled rather than swallowing what the operator typed. Only `scope` is
+         real — it is read from the session, not chosen as a label. Wiring the send + history
+         is its own slice; the live operator chat remains on the shipped console until then. */
+      <WorkspaceSurface
+        projects={[]}
+        recent={[]}
+        earlier={[]}
+        thread={[]}
+        scope={isOwner ? "Platform · full" : "Platform · scoped"}
+      />
+    );
+
+  /**
+   * Every other addressable tab is one of CD's generic panels — the same layout driven by its
+   * own copy, which is why the pack builds them from one block rather than 70-odd components.
+   * A tab the registry has no copy for still falls through to the stand-in, so a branch added
+   * to the tree without copy shows as an honest gap instead of a blank frame.
+   */
+  const spec = subSlug ? getPanelSpec(branchSlug, subSlug, leafSlug ?? undefined) : null;
+  if (spec) return <OperatorPanel spec={spec} bodyColumns={branchSlug === "analytics" ? 2 : 1} />;
 
   return <SurfacePlaceholder title={title} path={path} isOwner={isOwner} />;
 }
