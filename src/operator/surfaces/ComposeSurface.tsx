@@ -314,9 +314,13 @@ export function ComposeSurface({
           </button>
           <SecondaryAction label="Edit first" onClick={onEditFirst} />
           <SecondaryAction label="Preview as a tenant" onClick={onPreviewAsTenant} />
-          <span className="ml-auto flex-none text-[10.5px] text-muted-foreground">
-            {figure(foot)}
-          </span>
+          {/* `foot` is prose, not a figure: the em dash states that a NUMBER is
+              unknown, so an absent note draws nothing rather than "—". */}
+          {foot && (
+            <span className="ml-auto flex-none text-[10.5px] text-muted-foreground">
+              {foot}
+            </span>
+          )}
         </div>
       )}
     </div>

@@ -550,20 +550,20 @@ function OperatorSurface({
    */
   const bespoke = `${branchSlug}/${subSlug ?? ""}`;
   switch (bespoke) {
-    case "marketplace/discover":    return <MarketplaceStore items={[]} />;
+    case "marketplace/discover":    return <MarketplaceStore shelves={[]} />;
     case "marketplace/submissions": return <MarketplaceReview submissions={[]} />;
-    case "settings/integrations":   return <IntegrationsGrid integrations={[]} />;
+    case "settings/integrations":   return <IntegrationsGrid items={[]} />;
     case "calendar/month":          return <CalendarMonth events={[]} />;
-    case "calendar/tasks":          return <CalendarWeek events={[]} />;
-    case "comms/outbound":          return <ComposeSurface />;
-    case "support/inbox":           return <SupportThread messages={[]} />;
+    case "calendar/tasks":          return <CalendarWeek days={[]} />;
+    case "comms/outbound":          return <ComposeSurface subject={null} body={null} />;
+    case "support/inbox":           return <SupportThread clock={null} draft={null} />;
     case "fleet/prospects":
       // CD stacks the stat strip above the board — the head reads the same pipeline the board
       // draws, so they belong on one address, not two.
       return (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <PipelineHead sets={[]} filters={[]} categories={[]} />
-          <PipelineBoard stages={[]} />
+          <PipelineHead weighted={null} rawTotal={null} />
+          <PipelineBoard columns={[]} />
         </div>
       );
     case "provisioning/pipeline":   return <StageBoard lanes={[]} />;
@@ -572,13 +572,13 @@ function OperatorSurface({
       // posts seen from two ends, which is why CD puts them on the one surface.
       return (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <SocialGrid posts={[]} />
+          <SocialGrid networks={[]} />
           <SocialQueue posts={[]} />
         </div>
       );
-    case "automations/runs":        return <BufferDiagram stages={[]} />;
+    case "automations/runs":        return <BufferDiagram />;
     case "analytics/brief":         return <AreaChart series={[]} />;
-    case "analytics/performance":   return <Bench rows={[]} />;
+    case "analytics/performance":   return <Bench />;
     default:
       break;
   }

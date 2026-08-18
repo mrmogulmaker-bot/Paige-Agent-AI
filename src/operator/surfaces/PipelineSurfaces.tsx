@@ -1,4 +1,12 @@
 import { useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
 /**
@@ -265,7 +273,11 @@ export function PipelineHead({
    * slice missing silently misstates the proportions of the rest, which is a worse lie than
    * no bar at all (§13).
    */
-  const shares = categories?.every((c) => typeof c.share === "number") ? categories : null;
+  const shares = categories?.every(
+    (c) => typeof c.share === "number" && Number.isFinite(c.share) && c.share >= 0,
+  )
+    ? categories
+    : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -311,7 +323,11 @@ export function PipelineHead({
           <dd className="flex-none text-[19px] font-bold tabular-nums tracking-[-0.02em]">
             {figure(weighted)}
           </dd>
-          <dd className="flex-none text-[10px] text-muted-foreground">{figure(weightedNote)}</dd>
+          {/* Prose, not a figure — same rule already applied to `rawNote` below: the em
+              dash states that a NUMBER is unknown, so an absent note draws nothing. */}
+          {weightedNote && (
+            <dd className="flex-none text-[10px] text-muted-foreground">{weightedNote}</dd>
+          )}
           <dd className="ml-auto flex-none font-mono text-[11px] tabular-nums text-muted-foreground">
             {figure(rawTotal)}
             {rawNote ? ` ${rawNote}` : ""}
@@ -328,7 +344,7 @@ export function PipelineHead({
                 {shares.map((c) => (
                   <div
                     key={c.id}
-                    style={{ width: `${c.share ?? 0}%` }}
+                    style={{ width: `${Math.min(100, c.share ?? 0)}%` }}
                     className={cn("min-w-[3px]", DOT[c.tone ?? "neutral"])}
                   />
                 ))}
@@ -444,8 +460,8 @@ function DealCard({
   columnId,
   columns,
   canMove,
-  menuOpen,
-  onToggleMenu,
+  wonLabel,
+  lostLabel,
   onMove,
   onDragStart,
   onDragEnd,
@@ -454,8 +470,9 @@ function DealCard({
   columnId: string;
   columns: readonly PipelineColumn[];
   canMove: boolean;
-  menuOpen: boolean;
-  onToggleMenu: () => void;
+  /** The caller's own won/lost wording, so the menu cannot disagree with the drop zones. */
+  wonLabel: string;
+  lostLabel: string;
   onMove: (target: string) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
@@ -467,7 +484,18 @@ function DealCard({
   return (
     <li
       draggable={canMove}
-      onDragStart={canMove ? onDragStart : undefined}
+      onDragStart={
+        canMove
+          ? (e) => {
+              // Firefox ABORTS a drag whose dragstart set no data, so the board's
+              // state-only handoff would silently never begin there. The id is set as
+              // plain text (the drop path still reads the board's own state).
+              e.dataTransfer.setData("text/plain", deal.id);
+              e.dataTransfer.effectAllowed = "move";
+              onDragStart();
+            }
+          : undefined
+      }
       onDragEnd={canMove ? onDragEnd : undefined}
       className={cn(
         "relative min-w-0 rounded-[9px] border-[1.5px] border-border border-l-4 bg-card px-[9px] py-2 transition-shadow hover:border-border-strong hover:shadow-md",
@@ -508,80 +536,86 @@ function DealCard({
             {deal.name}
           </span>
         )}
-        <button
-          type="button"
-          aria-label={`Move ${deal.name} to another stage`}
-          aria-expanded={menuOpen}
-          disabled={!canMove}
-          onClick={onToggleMenu}
-          title={canMove ? "Move this deal" : "Moving deals is not wired to an action yet."}
-          className={cn(
-            FOCUS,
-            "ml-auto flex-none rounded px-0.5 text-[11px] leading-none text-muted-foreground",
-            canMove ? "hover:text-foreground" : "cursor-not-allowed opacity-50",
-          )}
-        >
-          ⋯
-        </button>
-      </div>
-
-      {menuOpen && canMove && (
-        <div className="absolute right-1.5 top-6 z-20 w-[150px] overflow-hidden rounded-[10px] border border-border bg-popover shadow-lg motion-safe:animate-in motion-safe:fade-in-0">
-          <div className="px-[9px] pb-1 pt-1.5 text-[8px] font-semibold tracking-[0.12em] text-muted-foreground">
-            MOVE TO
-          </div>
-          <ul>
-            {columns
-              .filter((c) => c.id !== columnId)
-              .map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    onClick={() => onMove(c.id)}
-                    className={cn(
-                      FOCUS,
-                      "flex w-full min-w-0 items-center gap-[7px] px-[9px] py-1.5 text-left hover:bg-muted",
-                    )}
+        {/*
+          The move menu is the KEYBOARD path (HTML5 drag is not keyboard-reachable), so it has
+          to actually open where it can be seen. The hand-rolled version was an absolutely
+          positioned div inside the card list — which is `overflow-y-auto` inside a stage
+          column that is `overflow-hidden` — so for any card low in a column the menu was
+          CLIPPED, and the one reachable move path was unusable. It also had no Escape, no
+          outside-click and no arrow-key navigation. The shared primitive PORTALS its content
+          out of both clipping ancestors and brings that keyboard behaviour with it (§18: one
+          home for menus, don't hand-roll a second).
+        */}
+        {canMove ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                draggable={false}
+                aria-label={`Move ${deal.name} to another stage`}
+                title="Move this deal"
+                className={cn(
+                  FOCUS,
+                  "ml-auto flex-none rounded px-0.5 text-[11px] leading-none text-muted-foreground hover:text-foreground",
+                )}
+              >
+                ⋯
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-[150px] p-1 motion-reduce:animate-none"
+            >
+              <DropdownMenuLabel className="px-[7px] py-1 text-[8px] font-semibold tracking-[0.12em] text-muted-foreground">
+                MOVE TO
+              </DropdownMenuLabel>
+              {columns
+                .filter((c) => c.id !== columnId)
+                .map((c) => (
+                  <DropdownMenuItem
+                    key={c.id}
+                    onSelect={() => onMove(c.id)}
+                    className="gap-[7px] px-[7px] py-1.5 text-[10.5px]"
                   >
                     <span
                       aria-hidden
                       className={cn("h-1.5 w-1.5 flex-none rounded-full", DOT[c.tone ?? "neutral"])}
                     />
-                    <span className="min-w-0 truncate whitespace-nowrap text-[10.5px]">
-                      {c.label}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            <li>
-              <button
-                type="button"
-                onClick={() => onMove(WON_TARGET)}
-                className={cn(
-                  FOCUS,
-                  "flex w-full min-w-0 items-center gap-[7px] border-t border-border px-[9px] py-1.5 text-left hover:bg-muted",
-                )}
+                    <span className="min-w-0 truncate whitespace-nowrap">{c.label}</span>
+                  </DropdownMenuItem>
+                ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => onMove(WON_TARGET)}
+                className="gap-[7px] px-[7px] py-1.5 text-[10.5px]"
               >
                 <span aria-hidden className={cn("h-1.5 w-1.5 flex-none rounded-full", DOT.ok)} />
-                <span className="min-w-0 truncate whitespace-nowrap text-[10.5px]">Won</span>
-              </button>
-            </li>
-            <li>
-              <button
-                type="button"
-                onClick={() => onMove(LOST_TARGET)}
-                className={cn(
-                  FOCUS,
-                  "flex w-full min-w-0 items-center gap-[7px] px-[9px] py-1.5 text-left hover:bg-muted",
-                )}
+                <span className="min-w-0 truncate whitespace-nowrap">{wonLabel}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => onMove(LOST_TARGET)}
+                className="gap-[7px] px-[7px] py-1.5 text-[10.5px]"
               >
                 <span aria-hidden className={cn("h-1.5 w-1.5 flex-none rounded-full", DOT.risk)} />
-                <span className="min-w-0 truncate whitespace-nowrap text-[10.5px]">Lost</span>
-              </button>
-            </li>
-          </ul>
-        </div>
-      )}
+                <span className="min-w-0 truncate whitespace-nowrap">{lostLabel}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <button
+            type="button"
+            disabled
+            aria-label={`Move ${deal.name} to another stage`}
+            title="Moving deals is not wired to an action yet."
+            className={cn(
+              FOCUS,
+              "ml-auto flex-none cursor-not-allowed rounded px-0.5 text-[11px] leading-none text-muted-foreground opacity-50",
+            )}
+          >
+            ⋯
+          </button>
+        )}
+      </div>
 
       <div className="mt-[5px] flex min-w-0 items-baseline gap-1.5">
         <span className="flex-none text-[13px] font-bold tabular-nums tracking-[-0.02em]">
@@ -663,13 +697,11 @@ export function PipelineBoard({
 }: PipelineBoardProps) {
   const canMove = !!onMoveDeal;
   const [dragging, setDragging] = useState<string | null>(null);
-  const [menuFor, setMenuFor] = useState<string | null>(null);
 
   function land(target: string, dealId: string | null) {
     if (!onMoveDeal || !dealId) return;
     onMoveDeal(dealId, target);
     setDragging(null);
-    setMenuFor(null);
   }
 
   if (loading) {
@@ -722,7 +754,10 @@ export function PipelineBoard({
                 e.preventDefault();
                 e.dataTransfer.dropEffect = "move";
               }}
-              onDrop={() => land(key, dragging)}
+              onDrop={(e) => {
+                e.preventDefault();
+                land(key, dragging);
+              }}
               className={cn(
                 "min-w-0 flex-1 rounded-[11px] border border-dashed px-3 py-2.5 text-center",
                 EDGE[tone],
@@ -751,7 +786,14 @@ export function PipelineBoard({
                     }
                   : undefined
               }
-              onDrop={canMove ? () => land(c.id, dragging) : undefined}
+              onDrop={
+                canMove
+                  ? (e) => {
+                      e.preventDefault();
+                      land(c.id, dragging);
+                    }
+                  : undefined
+              }
               className={cn(
                 "flex min-h-0 min-w-0 flex-none basis-[182px] flex-col self-stretch overflow-hidden rounded-xl border-2",
                 EDGE[tone],
@@ -794,8 +836,8 @@ export function PipelineBoard({
                     columnId={c.id}
                     columns={columns}
                     canMove={canMove}
-                    menuOpen={menuFor === d.id}
-                    onToggleMenu={() => setMenuFor(menuFor === d.id ? null : d.id)}
+                    wonLabel={won.label}
+                    lostLabel={lost.label}
                     onMove={(target) => land(target, d.id)}
                     onDragStart={() => setDragging(d.id)}
                     onDragEnd={() => setDragging(null)}
@@ -967,9 +1009,13 @@ export function StageBoard({ lanes, loading = false, error = null }: StageBoardP
                     <div className="mt-[5px] text-[10.5px] leading-[1.4] text-muted-foreground">
                       {figure(c.next)}
                     </div>
-                    <div className="mt-1 truncate whitespace-nowrap text-[9px] text-muted-foreground">
-                      via {figure(c.source)}
-                    </div>
+                    {/* "via —" reads as a broken sentence, not a missing number: with no
+                        source the line is omitted rather than prefixed onto an em dash. */}
+                    {c.source && (
+                      <div className="mt-1 truncate whitespace-nowrap text-[9px] text-muted-foreground">
+                        via {c.source}
+                      </div>
+                    )}
                   </>
                 );
                 return (

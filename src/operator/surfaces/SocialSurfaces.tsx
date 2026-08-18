@@ -22,7 +22,10 @@ import { cn } from "@/lib/utils";
  * every post's CTA in gold ink. A resting 4px border is not an act, so the band maps to
  * --warning instead; the CTA keeps gold-as-text ONLY on a post that is genuinely waiting on
  * the operator (that one IS the act — review and approve), and reads muted on a post that is
- * merely scheduled or already out.
+ * merely scheduled or already out. The "Awaiting you" pill also carries --gold-dark ink, which
+ * is NOT a third gold spend: plain --warning fails AA as text on a light card (~2:1), so
+ * --gold-dark is this console's amber-as-text token and is what every sibling surface pairs
+ * with a --warning/0.16 pill. No gold FILL is spent anywhere on this surface.
  *
  * NOT PORTED, deliberately: CD's per-network brand gradients (`linear-gradient(150deg,c1,c2)`
  * per platform, plus a matching ink). Those are third-party brand colours pasted as hex, they

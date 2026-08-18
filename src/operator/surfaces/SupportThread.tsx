@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils";
  * §11 gold — the ONE gold element is "Send it", the act. CD's clock strip is also painted
  * amber, but that is SLA STATUS, not an act: it resolves to --warning (tint and dot) with
  * --gold-dark as its text, which is the one gold that holds AA at 10–11px in both themes.
+ * And because that amber IS the claim "this thread is running against its clock", the strip
+ * degrades to neutral when no clock was reported — a colour asserts as loudly as a figure.
  *
  * DEVIATION — CD's L973–1005 template renders the clock strip, the earlier-messages link and
  * the drafted-reply card, but NOT the messages themselves: its `msgs` array (with the
@@ -120,29 +122,58 @@ export function SupportThread({
   error = null,
 }: SupportThreadProps) {
   const sendDead = !onSend || !draft;
+  /**
+   * Amber IS an assertion here — it says this thread is running against its clock. With no
+   * clock reported we know nothing of the kind, so the strip degrades to neutral rather than
+   * painting urgency the caller never claimed (§13: colour is a claim, same as a figure).
+   */
+  const hasClock = !!clock;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 gap-[13px] px-3.5 pb-[13px]">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-[9px]">
         {/* ── SLA clock strip · amber here is STATUS, not the act (§11) ──── */}
-        <div className="flex min-w-0 flex-none flex-wrap items-center gap-[7px] rounded-[10px] border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.10)] px-[11px] py-[7px]">
+        <div
+          className={cn(
+            "flex min-w-0 flex-none flex-wrap items-center gap-[7px] rounded-[10px] border px-[11px] py-[7px]",
+            hasClock
+              ? "border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.10)]"
+              : "border-border bg-muted/40",
+          )}
+        >
           <span
             aria-hidden
-            className="h-[7px] w-[7px] flex-none rounded-full bg-[hsl(var(--warning))]"
+            className={cn(
+              "h-[7px] w-[7px] flex-none rounded-full",
+              hasClock ? "bg-[hsl(var(--warning))]" : "bg-muted-foreground/50",
+            )}
           />
-          <span className="min-w-0 truncate whitespace-nowrap text-[11.5px] font-semibold text-[hsl(var(--gold-dark))]">
+          <span
+            className={cn(
+              "min-w-0 truncate whitespace-nowrap text-[11.5px] font-semibold",
+              hasClock ? "text-[hsl(var(--gold-dark))]" : "text-muted-foreground",
+            )}
+          >
             {clock ?? "Time-to-answer is not reported for this thread."}
           </span>
           {context?.map((c) => (
             <span
               key={c.id}
               title={c.label}
-              className="flex-none whitespace-nowrap rounded-full bg-muted px-[7px] py-px text-[9.5px] text-[hsl(var(--gold-dark))]"
+              className={cn(
+                "flex-none whitespace-nowrap rounded-full bg-muted px-[7px] py-px text-[9.5px]",
+                hasClock ? "text-[hsl(var(--gold-dark))]" : "text-muted-foreground",
+              )}
             >
               {figure(c.value)}
             </span>
           ))}
-          <span className="ml-auto flex-none font-mono text-[10px] tabular-nums text-[hsl(var(--gold-dark))]">
+          <span
+            className={cn(
+              "ml-auto flex-none font-mono text-[10px] tabular-nums",
+              hasClock ? "text-[hsl(var(--gold-dark))]" : "text-muted-foreground",
+            )}
+          >
             {figure(opened)}
           </span>
         </div>

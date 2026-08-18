@@ -24,9 +24,13 @@ import { cn } from "@/lib/utils";
  * `lo = min(min × 0.96, 0)`), not an assumption: a series with one point still scales, a series
  * with none is simply not drawn.
  *
- * §11 GOLD BUDGET — gold appears exactly once in this file: the bench hero's single act
- * ("watch her build"). The blocker strip, which CD tints gold, is a warning and takes --warning;
- * the chart spends the --chart-1..6 data ramp and no gold at all.
+ * §11 GOLD BUDGET — gold-as-FILL appears exactly once in this file: the bench hero's single
+ * act (`bg-cd-gold`). The blocker strip, which CD tints gold, is a warning and takes --warning;
+ * the chart spends the --chart-1..6 data ramp and no gold at all. The one other gold in the
+ * file is the shelf's "parked" glyph in --gold-dark, which is the console-wide AMBER-AS-TEXT
+ * token, not a gold spend: plain --warning measures ~2:1 as text on a light card and fails AA,
+ * so --gold-dark carries amber-as-text everywhere in this console (see OperatorPanel's note on
+ * the same substitution). It is a status ink, never an act.
  *
  * §5 — the bench act renders DISABLED with a title when the caller passed no handler, rather
  * than looking live and doing nothing.
@@ -122,42 +126,73 @@ export function AreaChart({
   const gradientBase = useId().replace(/:/g, "");
 
   const plotted = useMemo(() => {
-    const drawable = series.filter((s) => s.points.length > 0);
+    // §13 — A READING THE SOURCE DID NOT REPORT IS NOT A ZERO. `points` is typed number[],
+    // but a JSON payload puts `null` in the gap where a metric was not measured, and
+    // `(null - lo) / span` coerces to 0 — which plots the gap ON THE FLOOR of the chart and
+    // reads to the operator as "this metric was zero that day". A NaN is worse still: it
+    // reaches the DOM as d="M0,NaN". So every non-finite reading is DROPPED from the curve
+    // here, keeping its ORIGINAL index so the surviving points stay on their true x.
+    const drawable = series
+      .map((s, seriesIndex) => ({
+        source: s,
+        seriesIndex,
+        span: s.points.length,
+        readings: s.points
+          .map((value, index) => ({ value, index }))
+          .filter((r) => typeof r.value === "number" && Number.isFinite(r.value)),
+      }))
+      .filter((d) => d.readings.length > 0);
+
     if (drawable.length === 0) return null;
 
-    const all = drawable.flatMap((s) => s.points).filter((v) => Number.isFinite(v));
-    if (all.length === 0) return null;
+    // A running min/max, not `Math.max(...all)`: the spread form throws RangeError once a
+    // series is long enough to overflow the argument stack (~1e5 points).
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    for (const d of drawable) {
+      for (const r of d.readings) {
+        if (r.value < min) min = r.value;
+        if (r.value > max) max = r.value;
+      }
+    }
 
     // CD's own scale, to the decimal: a 4% headroom above the max, a 4% skirt below the min,
     // and a floor pinned at zero so a bar-like series is never drawn hanging in mid-air.
-    const hi = Math.max(...all) * 1.04;
-    const lo = Math.min(Math.min(...all) * 0.96, 0);
+    const hi = max * 1.04;
+    const lo = Math.min(min * 0.96, 0);
     const span = Math.max(1, hi - lo);
 
-    const built = drawable.map((s, i) => {
-      const n = s.points.length;
-      const pts = s.points.map((v, idx) => {
-        const x = (idx / Math.max(1, n - 1)) * VIEW_W;
-        const y = VIEW_H - ((v - lo) / span) * VIEW_H;
+    const built = drawable.map((d) => {
+      const denominator = Math.max(1, d.span - 1);
+      const pts = d.readings.map((r) => {
+        const x = (r.index / denominator) * VIEW_W;
+        const y = VIEW_H - ((r.value - lo) / span) * VIEW_H;
         return [Number(x.toFixed(2)), Number(y.toFixed(2))] as const;
       });
-      const line = pts.map((p, idx) => `${idx === 0 ? "M" : "L"}${p[0]},${p[1]}`).join(" ");
+      const first = pts[0];
+      const last = pts[pts.length - 1];
       return {
-        id: s.id,
-        name: s.name,
-        latest: s.latest,
-        colour: toneVar(s.tone, i),
-        line,
-        fill: `M${pts[0][0]},${VIEW_H} ${pts
+        id: d.source.id,
+        name: d.source.name,
+        latest: d.source.latest,
+        // Toned by the series' index in the CALLER'S array, never by its index among the
+        // drawable ones — otherwise an undrawable series shifts every swatch in the legend
+        // off the line it labels.
+        colour: toneVar(d.source.tone, d.seriesIndex),
+        // Built from that same index, so the fill reference can never be broken by a series
+        // id carrying a space, a '#' or a ')' — none of which survive `url(#…)`.
+        gradientId: `${gradientBase}-${d.seriesIndex}`,
+        line: pts.map((p, idx) => `${idx === 0 ? "M" : "L"}${p[0]},${p[1]}`).join(" "),
+        fill: `M${first[0]},${VIEW_H} ${pts
           .map((p) => `L${p[0]},${p[1]}`)
-          .join(" ")} L${pts[pts.length - 1][0]},${VIEW_H} Z`,
-        dot: pts[pts.length - 1],
+          .join(" ")} L${last[0]},${VIEW_H} Z`,
+        dot: last,
       };
     });
 
     const fmt = formatValue ?? ((v: number) => integerFormat.format(Math.round(v)));
     return { built, yLabels: [hi, lo + span * 0.5, lo].map(fmt) };
-  }, [series, formatValue]);
+  }, [series, formatValue, gradientBase]);
 
   const legend = series.map((s, i) => ({
     id: s.id,
@@ -170,6 +205,22 @@ export function AreaChart({
     return (
       <div className={cn("min-w-0", className)}>
         <div className="h-[132px] rounded-[11px] bg-muted motion-safe:animate-pulse" />
+      </div>
+    );
+  }
+
+  // §13 — a read that FAILED is not a read that returned data. Previously `error` was only
+  // ever surfaced when there also happened to be nothing to plot, so a caller reporting a
+  // failure alongside its last-known series got a confident curve and no warning at all.
+  if (error) {
+    return (
+      <div className={cn("min-w-0", className)}>
+        <div className="rounded-[11px] border border-dashed border-border bg-muted/40 px-[13px] py-[14px]">
+          <div className="text-[12.5px] font-semibold">The series could not be read.</div>
+          <div className="mt-1.5 max-w-xl text-[11.5px] leading-[1.5] text-muted-foreground">
+            {error}
+          </div>
+        </div>
       </div>
     );
   }
@@ -228,7 +279,7 @@ export function AreaChart({
                   {plotted.built.map((s) => (
                     <linearGradient
                       key={s.id}
-                      id={`${gradientBase}-${s.id}`}
+                      id={s.gradientId}
                       x1="0"
                       y1="0"
                       x2="0"
@@ -255,7 +306,7 @@ export function AreaChart({
               ))}
 
               {plotted?.built.map((s) => (
-                <path key={`${s.id}-fill`} d={s.fill} fill={`url(#${gradientBase}-${s.id})`} />
+                <path key={`${s.id}-fill`} d={s.fill} fill={`url(#${s.gradientId})`} />
               ))}
               {plotted?.built.map((s) => (
                 <path
@@ -289,17 +340,12 @@ export function AreaChart({
               <div className="absolute inset-0 grid place-items-center px-3">
                 <div className="max-w-md text-center">
                   <div className="text-[12.5px] font-semibold">
-                    {error
-                      ? "The series could not be read."
-                      : connected
-                        ? "No readings in this window."
-                        : "No data connected."}
+                    {connected ? "No readings in this window." : "No data connected."}
                   </div>
                   <div className="mt-1 text-[11px] leading-[1.5] text-muted-foreground">
-                    {error ??
-                      (connected
-                        ? "The source is attached but has reported nothing for this period."
-                        : "A curve here would be a claim about numbers nobody has measured, so none is drawn.")}
+                    {connected
+                      ? "The source is attached but has reported nothing for this period."
+                      : "A curve here would be a claim about numbers nobody has measured, so none is drawn."}
                   </div>
                 </div>
               </div>
