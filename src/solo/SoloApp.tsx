@@ -1,7 +1,10 @@
 // @ts-nocheck
 import React from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { branchBySlug, branchByKey, branchPath, defaultBranchSlug } from "@/lib/routing/tierBranches";
 import "./solo-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead } from "./_shared";
 import { CommandHub } from "./CommandCenter";
@@ -100,14 +103,54 @@ const Stub=({title,sub})=>(<Wrap max={900}><PageHead eyebrow="Coming into view" 
 <div className="sub" style={{maxWidth:380,margin:'6px auto 0'}}>Command Center, Paige, Clients, Growth, and Analytics are designed. Say the word and this one is next.</div></div></Wrap>);
 
 const SoloApp=()=>{
-const[route,setRoute]=React.useState('home');
+// §65 R3d-i — every tab is its own deep-linkable route (/solo/{account}/{branch}).
+// The screen `route` is DERIVED from the URL slug via the TIER_BRANCHES registry,
+// and `go(k)` NAVIGATES rather than mutating local state (mirrors AgencyApp.tsx's
+// R0-slice-2/R3c-i conversion, §18 same shell-conversion pattern, tier-parameterized).
+// DUAL-MODE (§58): when mounted INLINE without a :account param (Admin.tsx's Solo
+// gate, before account_number resolves), it falls back to local state so that path
+// stays byte-unchanged. Solo has no act-as/children concept (unlike AgencyApp), so
+// there is no sub-prefix parsing here — this is the simpler leg.
+const urlParams = useParams();
+const navigate = useNavigate();
+const urlAccount = urlParams.account || null;
+const urlDriven = !!urlAccount;
+const urlBranchSlug = urlDriven ? ((urlParams["*"] || "").split("/")[0] || defaultBranchSlug("solo")) : null;
+const[stateRoute,setStateRoute]=React.useState('home');
+const route = urlDriven ? (branchBySlug("solo", urlBranchSlug)?.key ?? "home") : stateRoute;
 // Real approvals count for the rail's Command Center badge (§13 — hidden when 0).
 // Own instance (unique realtime topic via the hook's useId); scope:'all' matches
 // the Command Center's own read so the badge and the queue agree.
 const{items:railApprovals}=usePendingApprovals({scope:'all'});
 // Setup renders the shell's OWN designed Setup (setup.tsx) IN-SHELL — never the
 // old /admin/setup view (owner directive 2026-08-16). Every nav item drives the shell.
-const go=setRoute;
+const go = (k) => {
+  if (urlDriven) {
+    const slug = branchByKey("solo", k)?.slug ?? defaultBranchSlug("solo");
+    navigate(branchPath("solo", urlAccount, slug));
+  } else {
+    setStateRoute(k);
+  }
+};
+// §39 (mirrors task #171/#526) — the /solo/{n} address is NOT authority (§9); RLS
+// gates every read. Keep the URL honest: redirect a number that isn't the caller's
+// own account to their own, and canonicalize a bare /solo/{n} -> its default branch.
+// Acts ONLY once the caller's own account_number is known, so a mid-load null never
+// bounces.
+const { activeTenant } = useTenantContext();
+const urlSplat = urlParams["*"] || "";
+React.useEffect(() => {
+  if (!urlDriven) return;
+  const own = activeTenant?.account_number;
+  if (own == null) return;
+  if (String(own) !== String(urlAccount)) {
+    navigate(branchPath("solo", String(own), defaultBranchSlug("solo")), { replace: true });
+    return;
+  }
+  if (!urlSplat) {
+    navigate(branchPath("solo", urlAccount, defaultBranchSlug("solo")), { replace: true });
+  }
+}, [urlDriven, urlAccount, urlSplat, activeTenant?.account_number, navigate]);
 const[collapsed,setCollapsed]=React.useState(false);
 const[panel,setPanel]=React.useState(false);
 const[studio,setStudio]=React.useState(false);

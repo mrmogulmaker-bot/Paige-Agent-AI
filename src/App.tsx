@@ -88,6 +88,9 @@ const AgencyEntry = lazyWithReload(() => import("./agency/AgencyEntry"));
 // "subaccount"), its own top-level address (/business/{account}), peer to
 // /agency and /admin.
 const BusinessEntry = lazyWithReload(() => import("./business/BusinessEntry"));
+// Solo operator side (§65 R3d-i) — the SoloApp shell, its own top-level
+// address (/solo/{account}), peer to /business and /admin.
+const SoloEntry = lazyWithReload(() => import("./solo/SoloEntry"));
 const ResetPassword = lazyWithReload(() => import("./pages/ResetPassword"));
 const AffiliateApply = lazyWithReload(() => import("./pages/AffiliateApply"));
 const BrokerApply = lazyWithReload(() => import("./pages/BrokerApply"));
@@ -283,6 +286,9 @@ const App = () => (
                 tenant (picks a playbook like Solo), so it carries the SAME Setup gate
                 as /admin, unlike /agency (a manager tier that never picks one, §61). */}
             <Route path="/business/*" element={<RequireCompleteSignup><RequireSetupComplete><PageSuspense><BusinessEntry /></PageSuspense></RequireSetupComplete></RequireCompleteSignup>} />
+            {/* /solo is a SOLO tenant's own address (§65 R3d-i) — same wrapping as
+                /business (a real business tenant that picks a playbook). */}
+            <Route path="/solo/*" element={<RequireCompleteSignup><RequireSetupComplete><PageSuspense><SoloEntry /></PageSuspense></RequireSetupComplete></RequireCompleteSignup>} />
             <Route path="/unsubscribe" element={<PageSuspense><Unsubscribe /></PageSuspense>} />
             {/* Comms C-2s-C — tenant one-click/footer unsubscribe. SAME Unsubscribe surface (§18),
                 branded /u/:token path form; the component routes the token to comms-email-unsubscribe. */}

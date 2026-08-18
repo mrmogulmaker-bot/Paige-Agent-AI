@@ -365,12 +365,21 @@ const Admin = () => {
   // The Solo shell owns EVERY /admin path for a solo-standalone tenant (owner directive
   // 2026-08-16): NOTHING falls through to the old AdminLayout view — Setup, like every
   // other surface, renders INSIDE the shell (src/solo/setup.tsx). No hand-off.
+  // §65 R3d-i: the Solo shell now lives at its OWN deep-linkable URL
+  // (/solo/{account}/{branch}), so /admin REDIRECTS there instead of rendering the
+  // shell inline — mirrors Gate A/B (task #171/#526). §58 fallback: if the
+  // account_number hasn't resolved yet, render inline exactly as before rather than
+  // redirect to a broken URL.
   if (
     soloShellEnabled &&
     !tierLoading &&
     tierKey === "solo" &&
     soloStandalone
   ) {
+    const acctNum = activeTenant?.account_number;
+    if (acctNum != null) {
+      return <Navigate to={`/solo/${acctNum}/command-center`} replace />;
+    }
     // Mirror the normal branch's error boundary (§32): a SoloApp render throw or a
     // genuine chunk-import failure must degrade to a visible error UI, never a
     // whole-app white-screen (there is no error boundary above /admin). SoloApp is
