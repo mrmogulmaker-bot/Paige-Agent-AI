@@ -24,6 +24,7 @@ import BufferDiagram from "@/operator/surfaces/BufferDiagram";
 import { AreaChart, Bench } from "@/operator/surfaces/AnalyticsSurfaces";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useIsPlatformOwner } from "@/operator/data/useIsPlatformOwner";
 import { cn } from "@/lib/utils";
 
 /**
@@ -183,7 +184,16 @@ export default function OperatorApp() {
   const section = params.section;
   const splat = params["*"] ?? "";
   const { branch, sub, leaf, stale } = useResolved(section, splat);
-  const { loading: contextLoading, isPlatformOwner } = useTenantContext();
+  const { isPlatformOwner: contextOwner } = useTenantContext();
+  /**
+   * Ownership is ASKED, not read off the context cache. `contextOwner` stays a fast path so a
+   * warm navigation never waits, but it can only ever say YES — a `false` there is
+   * indistinguishable from "not resolved yet" after a sign-in, and acting on it destroys the
+   * operator's deep link. Only the server's answer is allowed to say no.
+   */
+  const ownerVerdict = useIsPlatformOwner();
+  const isPlatformOwner = ownerVerdict === true || contextOwner;
+  const ownerAnswered = ownerVerdict !== null || contextOwner;
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ fleet: true, business: true });
 
@@ -193,13 +203,10 @@ export default function OperatorApp() {
   );
 
   /**
-   * Owner-only sections are hidden only once we KNOW the answer. `RequireOperator` admits on its
-   * own single RPC, which reliably beats `useTenantContext`'s five-query load — so while that
-   * load is still running `isPlatformOwner` is a not-yet, not a no. Treating it as a no here
-   * would flash a rail with Revenue and Comms missing for the owner (and, below, throw away
-   * their deep link entirely).
+   * Owner-only sections are hidden only once the server has answered. Until then
+   * `isPlatformOwner` is a not-yet, not a no, and treating it as a no would flash a rail with
+   * Revenue and Comms missing for the owner (and, below, throw away their deep link entirely).
    */
-  const ownerAnswered = contextLoading === false;
   const railBranches = useMemo(
     () =>
       OPERATOR_BRANCHES.filter(
@@ -548,11 +555,16 @@ function OperatorSurface({
    * dispatch as everything else (§18). All of them are prop-driven and ship with no data, so
    * each states what is not connected rather than rendering an invented board, thread or curve.
    */
-  const bespoke = `${branchSlug}/${subSlug ?? ""}`;
+  // Keyed on the LEAF where one exists, so a settings tab cannot silently borrow its sibling's
+  // surface — `integrations/health` and `integrations/available` have their own copy and must
+  // reach it, not land on the connected-catalog grid wearing the wrong title.
+  const bespoke = leafSlug
+    ? `${branchSlug}/${subSlug ?? ""}/${leafSlug}`
+    : `${branchSlug}/${subSlug ?? ""}`;
   switch (bespoke) {
     case "marketplace/discover":    return <MarketplaceStore shelves={[]} />;
     case "marketplace/submissions": return <MarketplaceReview submissions={[]} />;
-    case "settings/integrations":   return <IntegrationsGrid items={[]} />;
+    case "settings/integrations/connected": return <IntegrationsGrid items={[]} />;
     case "calendar/month":          return <CalendarMonth events={[]} />;
     case "calendar/tasks":          return <CalendarWeek days={[]} />;
     case "comms/outbound":          return <ComposeSurface subject={null} body={null} />;

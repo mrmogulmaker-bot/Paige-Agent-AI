@@ -81,7 +81,7 @@ function isAgency(t: FleetTenant): boolean {
 
 export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean }) {
   const navigate = useNavigate();
-  const { tenants, loading, error } = useFleet(true);
+  const { tenants, classificationVisible, loading, error } = useFleet(true);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
   /**
@@ -91,12 +91,23 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
    */
   const [showInternal, setShowInternal] = useState(false);
 
-  /** The fleet as the platform actually runs it: customers, not our own fixtures. */
+  /**
+   * The fleet as the platform actually runs it: customers, not our own fixtures.
+   *
+   * When the classification is not readable at this tier, NOTHING is filtered — filtering on an
+   * answer we never received would silently drop or keep the wrong rows. The header says so
+   * instead, so a scoped operator knows the count includes fixtures rather than believing it is
+   * the customer fleet.
+   */
   const fleet = useMemo(
-    () => (showInternal ? tenants : tenants.filter((t) => !isInternal(t))),
-    [tenants, showInternal],
+    () =>
+      showInternal || !classificationVisible ? tenants : tenants.filter((t) => !isInternal(t)),
+    [tenants, showInternal, classificationVisible],
   );
-  const internalCount = useMemo(() => tenants.filter(isInternal).length, [tenants]);
+  const internalCount = useMemo(
+    () => (classificationVisible ? tenants.filter(isInternal).length : 0),
+    [tenants, classificationVisible],
+  );
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -159,7 +170,10 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
                 ? "Reading the fleet…"
                 : error
                   ? "The fleet could not be read."
-                  : `${tenants.length} ${tenants.length === 1 ? "tenant" : "tenants"} on the platform.`}
+                  : `${fleet.length} ${fleet.length === 1 ? "tenant" : "tenants"} on the platform.` +
+                    (classificationVisible
+                      ? ""
+                      : " Platform fixtures cannot be told apart at your access level, so any are counted here.")}
             </div>
           </div>
           <div className="ml-auto flex min-w-0 flex-none items-center gap-2.5">

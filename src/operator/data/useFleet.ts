@@ -40,6 +40,16 @@ export function isInternal(t: FleetTenant): boolean {
 
 export type FleetData = {
   tenants: FleetTenant[];
+  /**
+   * Whether the operator-internal classification is READABLE by this session at all.
+   *
+   * `tenant_revenue_classification` is owner-only by RLS, so a scoped `platform_admin` reads
+   * ZERO rows — and zero rows is indistinguishable from "no tenant is internal". Without this
+   * flag the console would quietly show every fixture as fleet, with no chip to reveal them and
+   * no hint that anything was missing: a wrong count that looks right (§13/§57). The surface
+   * uses it to say what it cannot see instead of filtering on an answer it never got.
+   */
+  classificationVisible: boolean;
   loading: boolean;
   /** True when the read failed — the surface says so rather than rendering an empty fleet. */
   error: string | null;
@@ -47,6 +57,7 @@ export type FleetData = {
 
 export function useFleet(enabled: boolean): FleetData {
   const [tenants, setTenants] = useState<FleetTenant[]>([]);
+  const [classificationVisible, setClassificationVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -90,6 +101,9 @@ export function useFleet(enabled: boolean): FleetData {
           if (!c.tenant_id) return;
           custBy.set(c.tenant_id, (custBy.get(c.tenant_id) ?? 0) + 1);
         });
+        // Any row at all proves the read is permitted for this session. None proves nothing
+        // either way, so we report it as not-visible rather than as an empty classification.
+        setClassificationVisible((revenue ?? []).length > 0);
         const classBy = new Map<string, string>(
           ((revenue ?? []) as unknown as Array<{ tenant_id: string; revenue_class: string }>).map(
             (r) => [r.tenant_id, r.revenue_class],
@@ -124,5 +138,5 @@ export function useFleet(enabled: boolean): FleetData {
     };
   }, [enabled]);
 
-  return { tenants, loading, error };
+  return { tenants, classificationVisible, loading, error };
 }
