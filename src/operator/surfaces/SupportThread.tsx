@@ -104,7 +104,7 @@ function SecondaryAction({
   );
 }
 
-export default function SupportThread({
+export function SupportThread({
   clock,
   opened = null,
   context,
@@ -280,3 +280,5 @@ export default function SupportThread({
     </div>
   );
 }
+
+export default SupportThread;

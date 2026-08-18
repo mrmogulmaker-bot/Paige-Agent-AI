@@ -313,7 +313,8 @@ export function PipelineHead({
           </dd>
           <dd className="flex-none text-[10px] text-muted-foreground">{figure(weightedNote)}</dd>
           <dd className="ml-auto flex-none font-mono text-[11px] tabular-nums text-muted-foreground">
-            {figure(rawTotal)} {figure(rawNote)}
+            {figure(rawTotal)}
+            {rawNote ? ` ${rawNote}` : ""}
           </dd>
         </dl>
 

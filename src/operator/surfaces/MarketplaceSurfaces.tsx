@@ -387,7 +387,7 @@ function StoreCardTile({ card: c }: { card: StoreCard }) {
         ) : (
           <>
             <span
-              className="flex-none whitespace-nowrap text-[10.5px] tracking-[0.06em] text-[hsl(var(--gold-dark))]"
+              className="flex-none whitespace-nowrap text-[10.5px] tracking-[0.06em] text-foreground/80"
               aria-label={`Rated ${c.rating.toFixed(1)} out of 5`}
             >
               ★ {c.rating.toFixed(1)}

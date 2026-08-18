@@ -156,7 +156,7 @@ function SecondaryAction({ label, onClick }: { label: string; onClick?: () => vo
   );
 }
 
-export default function ComposeSurface({
+export function ComposeSurface({
   kind = null,
   kindTone = "neutral",
   subject,
@@ -322,3 +322,5 @@ export default function ComposeSurface({
     </div>
   );
 }
+
+export default ComposeSurface;
