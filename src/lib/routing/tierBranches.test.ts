@@ -1,21 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import {
-  TIER_TREES,
-  SOLO_BRANCHES,
-  AGENCY_BRANCHES,
-  treeForTier,
-  defaultBranchSlug,
-  branchBySlug,
-  branchByKey,
-  branchPath,
-  defaultSubtabSlug,
-  subtabBySlug,
-  subtabByKey,
-  subtabPath,
-  type RouteTierKey,
-} from "./tierBranches";
+import { TIER_TREES, SOLO_BRANCHES, AGENCY_BRANCHES, treeForTier, defaultBranchSlug, branchBySlug, branchByKey, branchPath, defaultSubtabSlug, subtabBySlug, subtabByKey, subtabPath, type RouteTierKey, OPERATOR_BRANCHES, leafPath, type Branch } from "./tierBranches";
 
 const TIERS: RouteTierKey[] = ["operator", "agency", "enterprise", "solo", "sub_account"];
 
@@ -388,5 +374,67 @@ describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
     // entry here would otherwise silently skip the contract check above.
     const declared = SOLO_BRANCHES.filter((b) => b.subtabs?.length).map((b) => b.slug);
     expect(declared.sort()).toEqual(Object.keys(SCREEN_FOR_BRANCH).sort());
+  });
+});
+
+/**
+ * OPERATOR tree (§65 R4 substrate) — authored from Claude Design's Super Admin pack.
+ * These guard the ADDRESSING CONTRACT, not any UI: a future edit must not silently
+ * drop a route, collide a slug, or break the account-less path shape.
+ */
+describe("OPERATOR_BRANCHES (Super Admin pack substrate)", () => {
+  const leaves = (b: Branch) =>
+    (b.subtabs ?? []).flatMap((s) => (s.subtabs?.length ? s.subtabs : [s]));
+
+  it("carries all 78 addressable tabs from the design registry", () => {
+    const total = OPERATOR_BRANCHES.reduce((n, b) => n + leaves(b).length, 0);
+    expect(total).toBe(78);
+  });
+
+  it("every slug at every level is a single url-safe segment", () => {
+    const seg = /^[a-z0-9-]+$/;
+    for (const b of OPERATOR_BRANCHES) {
+      expect(b.slug, `branch ${b.slug}`).toMatch(seg);
+      for (const s of b.subtabs ?? []) {
+        expect(s.slug, `${b.slug}/${s.slug}`).toMatch(seg);
+        for (const l of s.subtabs ?? []) {
+          expect(l.slug, `${b.slug}/${s.slug}/${l.slug}`).toMatch(seg);
+        }
+      }
+    }
+  });
+
+  it("sibling slugs are unique at every level", () => {
+    const uniq = (xs: string[], where: string) =>
+      expect(new Set(xs).size, `dup in ${where}`).toBe(xs.length);
+    uniq(OPERATOR_BRANCHES.map((b) => b.slug), "operator branches");
+    for (const b of OPERATOR_BRANCHES) {
+      uniq((b.subtabs ?? []).map((s) => s.slug), b.slug);
+      for (const s of b.subtabs ?? []) uniq((s.subtabs ?? []).map((l) => l.slug), `${b.slug}/${s.slug}`);
+    }
+  });
+
+  it("is account-less: operator paths carry no account segment", () => {
+    // §65 matrix row 1 — the operator is tenant-less. Passing an account must not leak it
+    // into the URL, which is why TIER_TREES.operator sets accountSegment:false.
+    expect(branchPath("operator", "IGNORED", "fleet")).toBe("/operator/fleet");
+    expect(subtabPath("operator", "IGNORED", "fleet", "tenants")).toBe("/operator/fleet/tenants");
+    expect(leafPath("operator", "IGNORED", "settings", "team", "roles")).toBe(
+      "/operator/settings/team/roles",
+    );
+    // Tenant tiers are unchanged — the account segment still lands.
+    expect(branchPath("agency", "1924546", "command-center")).toBe("/agency/1924546/command-center");
+  });
+
+  it("only the operator settings branch uses the third level", () => {
+    const withThird = OPERATOR_BRANCHES.filter((b) =>
+      (b.subtabs ?? []).some((s) => s.subtabs?.length),
+    ).map((b) => b.slug);
+    expect(withThird).toEqual(["settings"]);
+    for (const tier of ["agency", "solo", "sub_account", "enterprise"] as const) {
+      for (const b of TIER_TREES[tier].branches) {
+        for (const s of b.subtabs ?? []) expect(s.subtabs, `${tier}/${b.slug}/${s.slug}`).toBeUndefined();
+      }
+    }
   });
 });
