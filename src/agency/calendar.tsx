@@ -208,7 +208,8 @@ const CalendarHub = ({ isAgency = true, acting = null, openAsk = () => {} }) => 
   const narrow = dim.w > 0 && dim.w < 1000;
   const tight = short && isBook;
 
-  const [tab, setTab] = useSubtabRoute("agency", "calendar", "schedule");
+  // §39 fix (peer-gate, R3c-i finding #1) — see CommandCenter.tsx for the full note.
+  const [tab, setTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "calendar", "schedule");
   const [scope, setScope] = React.useState("agency");      // agencyView only
   const [tSub, setTSub] = React.useState(0);               // sub-picker index
   const [calView, setCalView] = React.useState("Month");   // cosmetic segment

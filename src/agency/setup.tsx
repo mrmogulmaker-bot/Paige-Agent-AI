@@ -106,7 +106,8 @@ const SU_EDIT_FOOT =
 
 // Props from the AgencyApp shell: { isAgency, acting, openAsk }.
 const SetupScreen = ({ isAgency = true, acting = null, openAsk = noop }) => {
-  const [tab, setTab] = useSubtabRoute("agency", "setup", "business"); // business|presence|owner|contacts|people|banking|comms
+  // §39 fix (peer-gate, R3c-i finding #1) — see CommandCenter.tsx for the full note.
+  const [tab, setTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "setup", "business"); // business|presence|owner|contacts|people|banking|comms
   const [suCard, setSuCard] = React.useState(null); // expanded card index | null → suPop
   const [suEdit, setSuEdit] = React.useState(null); // { card, mode } | null → suEdit drawer
 

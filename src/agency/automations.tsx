@@ -83,7 +83,8 @@ const ghostBtn = (extra) => ({ padding: "10px 15px", borderRadius: 10, border: "
 // Props from the AgencyApp shell: { isAgency, acting, openAsk }.
 const noop = () => {};
 const AutomationsHub = ({ isAgency = true, acting = null, openAsk = noop }) => {
-  const [tab, setTab] = useSubtabRoute("agency", "automations", "library");            // library | runs | build
+  // §39 fix (peer-gate, R3c-i finding #1) — see CommandCenter.tsx for the full note.
+  const [tab, setTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "automations", "library");            // library | runs | build
   const [scopeState, setScopeState] = React.useState("agency"); // agency | book | sub
   const [tSub, setTSub] = React.useState(0);                  // picked sub-account index (readOnly)
   const [libFilter, setLibFilter] = React.useState("All");

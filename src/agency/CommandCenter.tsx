@@ -956,7 +956,12 @@ const PipeTab = ({ openAsk }) => {
 //    button that pretends to jump into a sub-account that isn't real.
 const CommandCenter = ({ isAgency = true, acting = null, openAsk = noop, enterSub = noop }) => {
   React.useEffect(() => { ensureStyles(); }, []);
-  const [tab, setTab] = useSubtabRoute("agency", "command-center", "main");
+  // §39 fix (peer-gate, R3c-i finding #1) — tier must follow isAgency, not a
+  // hardcoded "agency": once subaccount mode gets a real :account URL param
+  // (this slice), useSubtabRoute's URL-navigate branch fires for BOTH modes,
+  // and a hardcoded tier sends a sub-account owner's sub-tab clicks to
+  // /agency/{n}/... — the Agency shell — regardless of which mode is mounted.
+  const [tab, setTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "command-center", "main");
   // §51: sub-account gets ONLY its own two tabs — no cross-book Team/Pipeline.
   const tabs = isAgency
     ? [["main", "Command Center", () => <Ic.grid size={15} />], ["systems", "Systems Check", () => <Ic.pulse size={15} />], ["team", "Team Pulse", () => <Ic.users size={15} />], ["pipe", "Prospect Pipeline", () => <Ic.trend size={15} />]]
