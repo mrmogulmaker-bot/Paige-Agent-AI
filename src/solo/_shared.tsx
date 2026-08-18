@@ -151,17 +151,21 @@ campaigns:[
  {n:'Client story: Harper & Vale',ch:'Email',sent:1210,open:52,rep:14.1,state:'Draft'},
  {n:'Dormant list revival',ch:'Email',sent:4600,open:22,rep:3.8,state:'Paused'}
 ],
-metrics:[
- {k:'MRR',v:'$23,230',d:'+8.4%',up:true,spark:[38,41,40,45,49,52,58,61,64,68,72,76]},
- {k:'Net revenue retention',v:'112%',d:'+6 pts',up:true,spark:[70,68,72,74,73,78,82,84,86,88,92,96]},
- {k:'Hours Paige saved',v:'147',d:'this month',up:true,spark:[20,28,34,30,44,52,60,58,72,80,88,96]},
- {k:'Approval rate',v:'89%',d:'−2%',up:false,spark:[80,84,88,92,90,94,96,92,90,88,86,84]}
-],
-convo:[
- {r:'paige',t:"Morning. Three things are load-bearing today: the Harper & Vale renewal note (94% confidence, ready to send), three failed charges worth $4,180, and Selby Group has gone quiet for 19 days. I'd start with the charges — money already earned."},
- {r:'me',t:'What made Selby go quiet?'},
- {r:'paige',t:"Two skipped calls on the 24th and 29th, both rescheduled by their side and never rebooked. Their last reply was a one-liner on the 25th. Sentiment on the thread dropped from warm to neutral after the scope change we shipped on the 18th — that's my best guess at the cause. Their portal logins also stopped the same week.\n\nI've drafted a low-pressure reset that names the gap without guilt and offers two exits: a 15-minute call or an async update. Want to read it?"}
-]};
+// §13 TRUTH WAVE (owner ruling 2026-08-18) — `metrics` and `convo` DELETED here.
+//
+// `metrics` was the fabricated "$23,230 MRR / 112% NRR / 147 hours saved / 89%
+// approval rate" strip, complete with invented 12-point sparklines. Its ONLY consumer
+// was the dead `Analytics` export in `screens.tsx` (deleted in the same commit), so
+// nothing rendered it — but it was the source the owner flagged, and a fixture nobody
+// reads is still a fixture waiting to be wired up by mistake.
+//
+// `convo` was a scripted Paige conversation ("three failed charges worth $4,180",
+// "Selby Group has gone quiet for 19 days") with ZERO consumers anywhere.
+//
+// NOT deleted here — `pipeline` and `campaigns` are equally fabricated but the LIVE
+// `growth2.tsx` still renders them, so removing them now would blank a mounted screen
+// with no replacement. They get their own slice of this wave.
+};
 
 // Shared primitives consumed pack-wide via `from "./_shared"` (team, team-dir,
 // market, automations all import these). Relocated here to their intended one
