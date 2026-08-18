@@ -15,7 +15,8 @@ import type { OperatorPanelSpec, PanelBlock } from "@/operator/surfaces/Operator
  *   • PORTED VERBATIM: every eyebrow, title, sub, anchor, chip frame, KPI label, CTA label, block
  *     `title` / `sub` / `foot`, the eight marketplace shelf names, the five submission checks, the
  *     five brand-token names and their uses, the six "type and voice" field labels, the twenty
- *     social channel names, the six calendar layer names, the six scheduling groups and every
+ *     social channel names and the seventeen of their notes that describe the CHANNEL rather
+ *     than read CD's fixture, the three funnel paths, the six calendar layer names, the six scheduling groups and every
  *     setting label inside them, the five booking-limit stepper labels and units, and the three
  *     automation starter prompts. These are CD's own words about the SECTION, not observations
  *     about a tenant.
@@ -133,14 +134,45 @@ const SUBMISSION_CHECKS = [
 ].map((c) => ({ ...c, value: null }));
 
 /**
- * The twenty channels CD's social grid lays out (`SOCIAL`, 3272). Channel NAMES are taxonomy;
- * handles, follower counts, engagement, cadence and connection state are all data.
+ * The twenty channels CD's social grid lays out (`SOCIAL`, 3272). Channel NAMES and their
+ * character notes are taxonomy; handles, follower counts, engagement, cadence and connection
+ * state are all data. Three notes ARE readings of the fixture and are dropped (sub-rule 2).
  */
 const SOCIAL_CHANNELS = [
-  "LinkedIn", "X", "Instagram", "Facebook", "TikTok", "YouTube", "Threads", "Slack", "Snapchat",
-  "Pinterest", "Bluesky", "Mastodon", "Tumblr", "WhatsApp", "Telegram", "WeChat", "Quora",
-  "Twitch", "Reddit", "Discord",
-].map((name) => ({ id: name.toLowerCase(), label: name, value: null }));
+  ["LinkedIn", "The operator voice — where agencies actually read"],
+  ["X", "Short takes and product notes"],
+  ["Instagram", "Where the visual work lands"],
+  // CD's Facebook note ("Quietest channel"), TikTok note ("Fastest growth") and Threads note
+  // ("Token expired nine days ago") are readings of its own fixture, not channel character.
+  ["Facebook"],
+  ["TikTok"],
+  ["YouTube", "Long-form walkthroughs"],
+  ["Threads"],
+  ["Slack", "Not a channel — where wins post internally"],
+  ["Snapchat", "Ephemeral, youngest audience"],
+  ["Pinterest", "Visual discovery — strong for templates"],
+  ["Bluesky", "Decentralised microblogging"],
+  ["Mastodon", "Federated, technical audience"],
+  ["Tumblr", "Long-tail multimedia blogging"],
+  ["WhatsApp", "Broadcast lists for onboarding"],
+  ["Telegram", "Public channels, release notes"],
+  ["WeChat", "Only if the platform goes to China"],
+  ["Quora", "Answer the questions agencies ask"],
+  ["Twitch", "Live build sessions, later"],
+  ["Reddit", "Where agency owners argue about tooling"],
+  ["Discord", "For a tenant community, later"],
+].map(([name, note]) => ({ id: name.toLowerCase(), label: name, note, value: null }));
+
+/**
+ * The three paths in (CD's funnel rows, authored inline at 5786–5788 rather than read from a
+ * fixture — the same class as MK_SHELF and the automation starter prompts). The path itself is
+ * the design; entries, conversions and the rate are data.
+ */
+const GROWTH_FUNNELS = [
+  { id: "solo-self-serve", label: "Solo self-serve", note: "Pricing → sign-up → first sign-in" },
+  { id: "agency-demo", label: "Agency demo", note: "For agencies → demo request → provisioning" },
+  { id: "enterprise", label: "Enterprise", note: "Enquiry → call → negotiated terms" },
+].map((f) => ({ ...f, big: true, value: null }));
 
 /** CD's six calendar layers (`CAL_LAYERS`, 3496) — the month grid's filter chips. */
 const CALENDAR_LAYERS = [
@@ -200,8 +232,7 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
     anchor:
       "What appears here is what every tenant sees. A listing you feature is a listing you are " +
       "standing behind.",
-    // CD: MK_LISTINGS.length + " listings", with a chipNote that is nothing but an install total.
-    chip: { label: "— listings" },
+    chip: { label: "— listings", note: "— installs across the fleet." },
     kpis: [
       { label: "LISTINGS", value: null, unit: "— in review" },
       { label: "INSTALLS", value: null, unit: "across the fleet" },
@@ -218,9 +249,9 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
           kind: "notWired",
           what: "The featured carousel is not connected to a listing source yet.",
           needs:
-            "CD's hero rotates five editorial slides over real listings — the artwork, the price " +
-            "and the install count all come from the catalog. Until a catalog is read, the slot " +
-            "shows nothing rather than a stand-in listing.",
+            "The hero rotates five editorial slides over real listings — the artwork, the price and " +
+            "the install count all come from the catalog. Until a catalog is read, the slot shows " +
+            "nothing rather than a stand-in listing.",
         },
       },
       {
@@ -245,7 +276,7 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
       { label: "IN FLIGHT", value: null, unit: "— ready to submit" },
       { label: "READY", value: null, unit: "passes every check" },
       { label: "TESTING", value: null, unit: "in sandbox" },
-      { label: "SHIPPED THIS QUARTER", value: null },
+      { label: "SHIPPED THIS QUARTER", value: null, unit: "all platform-owned" },
     ],
     blocks: [
       {
@@ -273,7 +304,7 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
     kpis: [
       { label: "SUBMITTED", value: null },
       { label: "OLDEST", value: null },
-      { label: "APPROVED THIS MONTH", value: null },
+      { label: "APPROVED THIS MONTH", value: null, unit: "median — hours" },
       { label: "SENT BACK", value: null },
     ],
     blocks: [
@@ -283,9 +314,9 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
           kind: "notWired",
           what: "No submission is queued for review on this surface yet.",
           needs:
-            "CD gives each submitted listing its own review card — the verdict, every check it " +
-            "passed or failed with the reason, and the approve / hold / send-back row. The " +
-            "checks it grades against are below; the cards arrive with the queue.",
+            "Each submitted listing gets its own review card — the verdict, every check it passed or " +
+            "failed with the reason, and the approve / hold / send-back row. The checks it grades " +
+            "against are below; the cards arrive with the queue.",
         },
       },
       {
@@ -400,9 +431,9 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
           kind: "notWired",
           what: "The post queue is not connected to a source yet.",
           needs:
-            "CD's queue shows each drafted post in full — the body, which channels it goes to, " +
-            "whether she or you wrote it, and the reach it earned once published. None of that " +
-            "exists to read, so the queue shows nothing rather than a written-in post.",
+            "The queue shows each drafted post in full — the body, which channels it goes to, whether " +
+            "she or you wrote it, and the reach it earned once published. None of that exists to " +
+            "read, so the queue shows nothing rather than a written-in post.",
         },
       },
     ],
@@ -449,12 +480,9 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
         id: "funnels",
         title: "Funnels",
         sub: "Where people enter, and where they stop.",
-        // CD's three funnel rows and its foot are both entirely entry/conversion findings.
-        body: {
-          kind: "rows",
-          rows: [],
-          empty: "No funnel is being read on this surface yet.",
-        },
+        // CD's foot reads its own conversion figures, so it is withheld; the three paths are not
+        // figures and ship.
+        body: { kind: "rows", rows: GROWTH_FUNNELS },
       },
     ],
   },
@@ -632,6 +660,8 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
     subtitle:
       "Tell her what you want automated at platform scope. She drafts it, names it, and files " +
       "it under a department.",
+    // CD's chip ternary special-cases only "runs", so Build carries the Library chip.
+    chip: { label: "— live" },
     blocks: [
       {
         id: "starters",
@@ -640,8 +670,8 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
         foot:
           "She names it, files it under a department, and starts it on ask-first — promotion " +
           "comes after thirty clean runs.",
-        // These three are CD's authored prompts, not platform records — the only rows in this
-        // file that ship with content. Their "Build it" chips do not, per the row-CTA rule above.
+        // CD's authored prompts, not platform records, so they ship. Their "Build it" chips do
+        // not, per the row-CTA rule above.
         body: {
           kind: "rows",
           rows: [
@@ -706,9 +736,9 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
           kind: "notWired",
           what: "The month grid is not connected to a calendar yet.",
           needs:
-            "CD draws thirty-five day cells with each day's events, marks the days where two " +
-            "commitments collide, and opens the selected day beside the grid. Every one of those " +
-            "is an event record; until events are read, the grid has nothing to draw.",
+            "The grid draws thirty-five day cells with each day's events, marks the days where two " +
+            "commitments collide, and opens the selected day beside it. Every one of those is an " +
+            "event record; until events are read, the grid has nothing to draw.",
         },
       },
     ],
@@ -759,9 +789,9 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
           kind: "notWired",
           what: "The weekly hours strip is not connected to a schedule yet.",
           needs:
-            "CD draws each day as a draggable band across a 6am–10pm rail, with a toggle per day " +
-            "and split ranges where the day has them. Those bands are a stored schedule; without " +
-            "one there is nothing to draw and nothing to drag.",
+            "Each day draws as a draggable band across the working rail, with a toggle per day and " +
+            "split ranges where the day has them. Those bands are a stored schedule; without one " +
+            "there is nothing to draw and nothing to drag.",
         },
       },
       {
@@ -779,9 +809,9 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
           kind: "notWired",
           what: "The buffer diagram is not connected to a schedule yet.",
           needs:
-            "CD draws the before-buffer, the meeting and the after-buffer to scale, so the real " +
-            "cost of a call is visible at a glance. The three durations are configuration; the " +
-            "diagram returns with them.",
+            "The before-buffer, the meeting and the after-buffer draw to scale, so the real cost of a " +
+            "call is visible at a glance. The three durations are configuration; the diagram " +
+            "returns with them.",
         },
       },
       {

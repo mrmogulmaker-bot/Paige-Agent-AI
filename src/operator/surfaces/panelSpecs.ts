@@ -1,5 +1,10 @@
 import { OPERATOR_BRANCHES, type Branch, type SubTab } from "@/lib/routing/tierBranches";
 import type { OperatorPanelSpec, PanelBlock } from "@/operator/surfaces/OperatorPanel";
+import { FLEET_SPECS } from "./specs/fleetSpecs";
+import { PAIGE_SPECS } from "./specs/paigeSpecs";
+import { MONEY_SPECS } from "./specs/moneySpecs";
+import { OPS_SPECS } from "./specs/opsSpecs";
+import { PLATFORM_SPECS } from "./specs/platformSpecs";
 
 /**
  * panelSpecs — the operator console's panel registry: one CD panel spec per addressable tab.
@@ -479,7 +484,27 @@ export function panelSpecKey(branchSlug: string, subSlug: string, leafSlug?: str
 }
 
 /**
- * The spec for one addressable tab, or `null` when the registry has no copy for it — the
+ * The ported panels, in one lookup.
+ *
+ * These carry Claude Design's ACTUAL panel content per tab — its KPI strip, its group chips,
+ * its structured blocks, its anchor — with every value that would be DATA left null so the
+ * renderer prints an em dash. That distinction is the whole point: the structure is the design
+ * and comes over verbatim; only CD's invented figures stay out (§13). The `COPY` table below
+ * remains the fallback for a tab no lot has ported yet, and prints an honest stand-in.
+ *
+ * Later spreads win on key collision, but the lots partition the tree by section, so a
+ * collision would itself be the bug — `assertPanelSpecCoverage()` and the specs test guard it.
+ */
+const PORTED: Record<string, OperatorPanelSpec> = {
+  ...FLEET_SPECS,
+  ...PAIGE_SPECS,
+  ...MONEY_SPECS,
+  ...OPS_SPECS,
+  ...PLATFORM_SPECS,
+};
+
+/**
+ * The spec for one addressable tab, or `null` when neither registry has copy for it — the
  * caller renders its own honest stand-in rather than a half-built panel.
  */
 export function getPanelSpec(
@@ -487,7 +512,11 @@ export function getPanelSpec(
   subSlug: string,
   leafSlug?: string,
 ): OperatorPanelSpec | null {
-  const copy = COPY[panelSpecKey(branchSlug, subSlug, leafSlug)];
+  const key = panelSpecKey(branchSlug, subSlug, leafSlug);
+  const ported = PORTED[key];
+  if (ported) return ported;
+
+  const copy = COPY[key];
   if (!copy) return null;
 
   const eyebrow =

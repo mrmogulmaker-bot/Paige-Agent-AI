@@ -20,6 +20,35 @@ describe("operator panel specs", () => {
     expect(operatorPanelKeys().length).toBe(78);
   });
 
+  /**
+   * The regression that got the first attempt rejected by the owner: every tab resolved a spec,
+   * every spec typechecked, every test passed — and all 78 rendered ONE empty "not connected"
+   * card, because the registry only ever emitted the stand-in. Counting keys proved nothing.
+   * So the bar is now CONTENT: no tab may fall back to the stand-in, and the KPI/block totals
+   * are pinned. A port that quietly thins out fails here instead of in front of the owner.
+   */
+  it("renders CD's real panel content — no tab falls back to the stand-in", () => {
+    const standIns: string[] = [];
+    let kpis = 0;
+    let blocks = 0;
+    for (const key of operatorPanelKeys()) {
+      const [branch, sub, leaf] = key.split("/");
+      const spec = getPanelSpec(branch, sub, leaf);
+      if (!spec) {
+        standIns.push(`${key} (no spec)`);
+        continue;
+      }
+      if (spec.blocks.length === 1 && spec.blocks[0].kind === "notWired") standIns.push(key);
+      kpis += spec.kpis?.length ?? 0;
+      blocks += spec.blocks.length;
+    }
+    expect(standIns).toEqual([]);
+    // Pinned to what the port actually delivers. Raise these when a lot lands more of CD's
+    // content; a DROP means someone thinned a panel and must say why.
+    expect(kpis).toBeGreaterThanOrEqual(196);
+    expect(blocks).toBeGreaterThanOrEqual(135);
+  });
+
   it("resolves a spec for every key, each with a title and at least one block", () => {
     for (const key of operatorPanelKeys()) {
       const [branch, sub, leaf] = key.split("/");

@@ -80,7 +80,7 @@ function nothingRead(noun: string): string {
 
 /**
  * CD's `isArea` chart has no counterpart body in `OperatorPanel` — the component's own header
- * lists `isArea` among the bespoke bodies it deliberately does not implement. Eleven Analytics
+ * lists `isArea` among the bespoke bodies it deliberately does not implement. Eight Analytics
  * blocks are area charts, so rather than silently degrading them into a different chart (which
  * would misstate the shape of the data) or dropping the section CD designed, each one ships as a
  * NAMED gap that carries its real title, sub and series/axis labels.
@@ -127,7 +127,16 @@ const REVENUE_ANCHOR =
   "This is the record every tenant surface derives from. A number shown to a tenant that " +
   "disagrees with this page is a bug in the tenant surface, not here.";
 
-/** CD hangs the same rail title off all four Revenue tabs (4869). */
+/**
+ * CD hangs the same rail title off all four Revenue tabs (4869). Its two `actions` are invented
+ * rulings about invented tenants and do not ship, so the rail carries the title alone and waits
+ * for real prompts to be bound at the call site.
+ *
+ * HONEST NOTE (§13): `OperatorPanel`'s `Rail` returns `null` when a rail has neither actions nor a
+ * read, so today this renders NOTHING — it is the CD title held in the registry, not a visible
+ * surface. It is kept rather than deleted because the title is CD's word for the slot; the moment
+ * a real action binds, the rail appears with the right heading instead of a guessed one.
+ */
 const REVENUE_RAIL = { actionsTitle: "Worth your ruling" };
 
 /** CD's Analytics chip is a window label, and its note is a statement about provenance (6162). */
@@ -146,8 +155,17 @@ const MONTHS = ["Apr", "May", "Jun", "Jul", "Aug", "Sep"];
 /** The three tiers (§51), in the order CD's stacked/donut legend names them. */
 const TIERS = ["Agency", "Enterprise", "Solo"];
 
-/** The same three tiers in CD's `PLAN_OFFER` order (3618) — ascending, as the plans list reads. */
-const PLAN_TIERS = ["Solo", "Agency", "Enterprise"];
+/**
+ * CD's `PLAN_OFFER` (3618), in its own ascending order. The tier NAME and CD's descriptor of what
+ * the tier IS are both offer taxonomy and port verbatim — the same class as the METERS notes below,
+ * which describe what a meter measures. What each plan COSTS (`base`), how many credits it
+ * `included`s and its `overage` rate are prices we have not set, and do not ship.
+ */
+const PLAN_TIERS = [
+  { name: "Solo", note: "One operator, six departments" },
+  { name: "Agency", note: "A book of sub-accounts, ten departments" },
+  { name: "Enterprise", note: "Negotiated · dedicated router tier" },
+];
 
 export const MONEY_SPECS: Record<string, OperatorPanelSpec> = {
   /* ══ REVENUE (CD 4736–4878) ═══════════════════════════════════════════════════════════ */
@@ -174,11 +192,13 @@ export const MONEY_SPECS: Record<string, OperatorPanelSpec> = {
         sub: "Base, what each tier includes, and what it currently carries.",
         body: {
           kind: "rows",
-          // The three tier NAMES are taxonomy (§51) and ship; CD's per-plan base price, included
-          // credits, overage rate, tenant count and sub-account count are all figures and do not.
-          rows: PLAN_TIERS.map((name) => ({
+          // The three tier names and CD's descriptor of each one (PLAN_TIERS above) are offer
+          // taxonomy (§51) and ship; CD's per-plan base price, included credits, overage rate,
+          // tenant count and sub-account count are all figures and do not.
+          rows: PLAN_TIERS.map(({ name, note }) => ({
             id: name.toLowerCase(),
             label: name,
+            note,
             glyph: "◈",
             big: true,
             value: null,
@@ -320,7 +340,16 @@ export const MONEY_SPECS: Record<string, OperatorPanelSpec> = {
   /* ══ ANALYTICS (CD 5810–6172) ═════════════════════════════════════════════════════════
    * Every Analytics panel lays its body out in two columns (`bodyColumns={2}`), so each one
    * carries the several blocks CD gives it — a single block in a two-column grid is the bug
-   * this registry exists to fix. */
+   * this registry exists to fix.
+   *
+   * `wide` IS PART OF THE PORT, NOT A TASTE CALL. Three of CD's block helpers hard-code
+   * `wide: true` on every block they build — `table` (4497), `stacked` (4546) and `heat` (4462) —
+   * while `area` and `rows` take it from their options and `gauge` · `donut` · `rank` · `cards`
+   * never span. So every table, every stacked column chart and every heat grid below carries
+   * `wide: true`, and the two area charts CD passes `{ wide: true }` (the brief's "Revenue and
+   * volume", 5928, and the forecast outlook, 6088) carry it too. Without it a six-column table
+   * renders at half width in the two-column grid, which is the same "thinner than the pack"
+   * failure as dropping a block. */
 
   /* ── The brief (CD lens `main`: 5826, 5843–5848, 5921–5940) ─────────────────────────── */
   "analytics/brief": {
@@ -375,8 +404,9 @@ export const MONEY_SPECS: Record<string, OperatorPanelSpec> = {
         body: { kind: "rows", rows: [], empty: nothingRead("change") },
       },
     ],
-    // CD sets `actionsTitle` on this lens only (6169). Its two actions are invented rulings about
-    // invented tenants, so the rail carries its title and waits for real ones.
+    // CD sets `actionsTitle` on this lens only (6169) — every other lens passes null. Its two
+    // actions are invented rulings about invented tenants, so the rail carries its title and waits
+    // for real ones; as with REVENUE_RAIL, an actions-less rail renders nothing until one binds.
     rail: { actionsTitle: "Worth acting on" },
   },
 
@@ -419,6 +449,7 @@ export const MONEY_SPECS: Record<string, OperatorPanelSpec> = {
         id: "revenue-by-layer",
         title: "Revenue by layer",
         sub: "Six months, every stream stacked.",
+        wide: true,
         body: {
           kind: "stacked",
           // The four §17 rails are the legend; the six-month axis is the frame. No segment is
@@ -457,6 +488,7 @@ export const MONEY_SPECS: Record<string, OperatorPanelSpec> = {
         // describes an affordance this table does not implement (see the report), so it is cut
         // rather than promised. CD's matching foot is cut for the same reason.
         sub: "Sorted by what they pay.",
+        wide: true,
         body: {
           kind: "table",
           // CD's `head` widths map to `flex`; its centre-aligned numeric columns map to right,
@@ -625,6 +657,7 @@ export const MONEY_SPECS: Record<string, OperatorPanelSpec> = {
         id: "automations-by-tier",
         title: "Automations by tier",
         sub: "Live automations, six months.",
+        wide: true,
         body: {
           kind: "stacked",
           legend: TIERS.map((name) => ({ id: `auto-${name.toLowerCase()}`, name, value: null })),
@@ -732,6 +765,7 @@ export const MONEY_SPECS: Record<string, OperatorPanelSpec> = {
         // CD opens with "Cells shade against their own column." — an affordance this table does
         // not implement — and closes with the sentence that is the section's actual point.
         sub: "Claimed revenue is what the platform reports, not what landed.",
+        wide: true,
         body: {
           kind: "table",
           columns: [

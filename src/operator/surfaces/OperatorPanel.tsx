@@ -342,7 +342,8 @@ export interface PanelLaneItem {
 export interface PanelLane {
   id: string;
   label: string;
-  count?: string;
+  /** `null` is the honest unknown and renders "—", exactly like every other figure here. */
+  count?: string | null;
   tone?: PanelTone;
   items: PanelLaneItem[];
   note?: string;
