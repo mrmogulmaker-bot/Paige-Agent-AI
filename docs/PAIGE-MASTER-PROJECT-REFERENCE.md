@@ -262,6 +262,95 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
   still owed.
 
 
+### §65 R4 slice 1c — the operator console RENDERS ITS SURFACES (2026-08-18, PRs #544, #545)
+
+- ✅ **Every one of the 78 tabs now renders a Claude Design surface**, through ONE dispatch
+  (`OperatorSurface` in `OperatorApp.tsx`) — bespoke surfaces first, then the generic panel, then the
+  honest stand-in. Adding a surface is a line there, never a second switch (§18).
+  - **Bespoke:** `FleetConsole` (#544) · `TrustCompass` (`trust-compass/autonomy`) ·
+    `KnowledgeSurface` (`paige/knowledge`) · `WorkspaceSurface` (`paige/chat`).
+  - **Generic:** `OperatorPanel` + `panelSpecs` — CD builds the majority of the console from ONE panel
+    driven by per-tab copy. A test asserts the registry covers `OPERATOR_BRANCHES` **exactly** (0
+    missing / 0 orphaned), so a branch added later fails in CI rather than showing a blank frame.
+- ✅ **The landing flip is DONE** (#544): `OperatorLogin`'s `GOD_CONSOLE` and `resolveLandingRoute`'s
+  operator branch both resolve to `/operator/fleet/tenants`. (Supersedes the "still `/admin/platform`"
+  line in Section 5 — corrected below.)
+- ✅ **The sign-in bounce is FIXED** (#545). Root cause was NOT routing: `RequireOperator` trusted
+  `useTenantContext`, which re-resolves on `SIGNED_IN` through a background load that never re-raises
+  `loading` — so `{loading:false, isPlatformStaff:false}` latched from a signed-OUT page load read as a
+  real denial and bounced the operator to `/admin` on every login. The guard now asks
+  `is_platform_admin()` itself: context flags can only ALLOW, only the server can DENY, and silence
+  never infers denial. **A second, real defect in that fix was caught by CI's tsc ratchet** —
+  `supabase.rpc()` RESOLVES with `{data, error}` rather than rejecting, so the `.catch()` was dead code
+  and a server-side error would have arrived as `data: null` → an unintended DENY. The error field is
+  now checked explicitly. (§39 layering, working exactly as written: the peer-gate is one layer, CI is
+  another, neither waives the other.)
+- ✅ **Fleet reports the REAL fleet** (#545, §57). Owner-stated rule (2026-08-18): *"the real customers
+  are our currently registered tenants, encapsulated inside of the shells that they belong to — the
+  agency accounts with all of their sub-accounts, and the solo accounts."* So the test is **BELONGING,
+  not naming**: anything inside a customer shell is a tenant of the Super Admin and stays counted,
+  whatever it is called. "TENANTS on the platform" was counting three rows that belong to no shell at all
+  — the platform default-set fixture, the operator workspace, and a preview agency of ours. Migration
+  `20260818210000` moves those three to `revenue_class='internal_test'` — the axis that already exists
+  for exactly this — guarded so a row an operator has since classified deliberately is untouched. **Every
+  sub-account of the customer agency is left counted, without exception**, including the two whose names
+  begin "[TEST]": they live inside the shell, so whether they are worth keeping is the owner's call on a
+  console that SHOWS them, not a call a migration makes by reading their names (§13). Result: the agency
+  + its 6 sub-accounts + the 2 solo shells = 9 tenants, and nothing else. The console hides internal rows from the count
+  and KPIs behind a **"Show internal (n)"** chip, so no shipped row is silently removed (§58). Rows are
+  ordered by **topology**: each top-level tenant, then its own sub-accounts beneath it with a hairline
+  elbow (§51). The "Agencies" filter now tests `account_type IN (agency, enterprise)` instead of matching
+  the substring "agency" in the plan NAME — a plan name is a label, the tier is a column.
+- ❗ **§13 — what these surfaces do NOT claim.** Trust Compass derives a department's lane from the lanes
+  its own action kinds actually run under (`paige_action_kinds.default_autonomy_lane`, platform rows
+  only), shows the TIGHTEST lane where they disagree, and is read-only (no `onCommit`) and says so — a
+  dial can only understate autonomy, never overstate a gate that is not there. Knowledge reads the
+  `knowledge_base` categories that actually hold rows (that table carries no `tenant_id` at all, which is
+  why it is the right corpus for a platform surface, §9); the neural field is NOT ported and the panel
+  says so rather than looping a decorative animation that would read as live retrieval traffic. Workspace
+  ships with an EMPTY thread and a disabled composer that states why — CD's pack contains a fully-written
+  conversation (a morning brief, named departments with millisecond timings, "41 chats · 4 projects") and
+  porting any of it as a literal would put words in Paige's mouth on the one surface whose job is
+  reporting what she actually did.
+- ✅ **§39 peer-gate ran on the real pushed diff and earned its keep** — an independent adversarial read
+  that verified its claims by EXECUTING postgrest-js (network error, 401 and 404 all resolve with
+  `data: null`; none reject). Six defects, all fixed in-PR:
+  - **The guard, three more false-deny paths.** A verdict issued under the PREVIOUS user's token could
+    land after the current user's and admit the wrong person (postgrest-js has its own `Retry-After`
+    path, so an in-flight check can outlive its session) → every read now carries a generation. Stale
+    context flags could hold the previous operator's `true` indefinitely after a failed background
+    revalidation and outrank a real server DENY → the server now wins. And `setVerdict(null)` fired on
+    EVERY auth event, so an hourly token refresh dropped all 78 routes to a skeleton, unmounting children
+    and destroying in-page state → a refresh on the same user is now a no-op.
+  - **The fix's own failure mode.** Staying undecided forever on an error turned a mis-deny into a
+    PERMANENT skeleton with no retry and no message — §32's "silently blank", indistinguishable from a
+    crash. Now: two retries with backoff, then an explicit "couldn't verify your access" with a retry.
+  - **The owner-only gate — the bounce class, one layer up.** `RequireOperator` admits on its single RPC,
+    which reliably beats `useTenantContext`'s five-query load, so `isPlatformOwner` was still a NOT-YET
+    when `OperatorApp` read it as a NO. An owner signing in with `?next=/operator/revenue/plans` was
+    redirected to Fleet — and because that redirect is `replace`, the deep link was DESTROYED, not
+    delayed. Both the redirect and the rail now wait for a real answer.
+  - **Three honesty defects.** The chat header appended "· every tenant, every seam" to any scope, so a
+    scoped `platform_admin` — redirected out of the owner-only sections entirely — was told they had
+    every seam. Knowledge counted documents by scanning rows, which PostgREST caps: a capped scan
+    under-reports SILENTLY, printing a confident platform figure while the corpus holds more (counts are
+    now exact + server-side, and the per-domain note is gone rather than invented, because describing
+    what a domain holds needs the very scan the cap makes unreliable). And every analytics tab laid its
+    single block into a two-column grid, leaving a half-width card beside an empty column.
+  - **Verified clean by the same read:** the compass non-null assertion (provably guarded by its own
+    filter), the tightest/mixed lane reduction (order-independent; lane `0` is never tested for
+    truthiness), `ago()`'s NaN and future-date paths, hooks order, §9 scope on all three reads
+    (`knowledge_base` has no `tenant_id`; `paige_action_kinds` is additionally pinned to platform rows so
+    an act-as'ing operator cannot pull a tenant's overrides into the platform compass), §58 (nothing
+    removed), §50 (no hits), and all 78 specs rendering.
+  - **§39 honesty:** this is one LAYER. CI's tsc ratchet caught the `.catch()` defect the peer-gate
+    independently confirmed — neither waives the other, exactly as §39 states.
+- ❗ **§32.c AUTHENTICATED DRIVE STILL OWED.** No operator credentials in these sessions and Chromium
+  cannot reach prod from the CI sandbox. The bounce fix in particular is exactly the class only a real
+  login proves. **No claim is made that any of this renders for a signed-in operator** — the claim is
+  that it typechecks, unit-tests, builds, and is reasoned from the real records.
+
+
 ### Roles & permissions — R1 call-site inventory + R2a platform-seam fix (2026-08-18)
 
 - ✅ **R1 — every role call site classified** (`docs/audits/R1-role-call-site-inventory.md`).
@@ -455,16 +544,31 @@ Grouped:
 - ✅ **DONE (#543) — the console is mounted** behind ONE guard at an `/operator/*` dispatcher, peer to
   `AgencyEntry`/`BusinessEntry`. See Section 4 "§65 R4 slice 1b". All 78 addresses navigable; every
   surface an honest placeholder.
-- ❌ **FLIP the landing targets — `OperatorLogin`'s `GOD_CONSOLE` and `resolveLandingRoute`'s operator
-  branch** (both still `/admin/platform`). **SEQUENCING RED-LINE, still binding:** mount → **verify** →
-  THEN flip. #543 did the mount; the flip waits on the §32.c live-drive, because flipping against an
-  unverified console sends the operator to a 404 from BOTH doors — the #538 lockout class.
+- ✅ **DONE (#544) — the landing targets are FLIPPED.** `OperatorLogin`'s `GOD_CONSOLE` and
+  `resolveLandingRoute`'s operator branch both resolve to `/operator/fleet/tenants`. The sequencing
+  red-line was honoured in substance: the flip shipped alongside the first REAL surface, not against an
+  empty console, so neither door lands on a 404 (the #538 lockout class). §13 correction: an earlier
+  revision of this line read "both still `/admin/platform`" — that is now stale.
+- ✅ **DONE (#545) — the sign-in bounce.** See Section 4 "§65 R4 slice 1c". It was a stale-context read
+  in `RequireOperator`, not a routing target.
 - ❌ **The 7 MIXED inner tier gates** (fleet · paige · growth · analytics · provisioning · marketplace ·
   settings/governance) — owner-only tabs inside operator-level sections. Land WITH their surfaces.
-- ❌ **§32.c authenticated drive** — the unauthenticated half is proven (10/10, see Section 4,
-  including the CD palette in both themes); the rail RENDER and the placeholders behind the guard
-  need a session with operator credentials. Re-run
+- ❌ **§32.c authenticated drive** — STILL THE LOAD-BEARING GAP, and now covers more: the
+  unauthenticated half is proven (10/10, see Section 4, including the CD palette in both themes), but the
+  rail RENDER, the 78 rendered surfaces, the Fleet topology/internal-chip behaviour, and above all the
+  SIGN-IN BOUNCE FIX (#545) all need a session with operator credentials. Re-run
   `scripts/live-drive/operator-console-drive.mjs` plus an authed walk + §25 taste pass.
+- ❌ **15 bespoke CD surfaces still fall back to the generic panel** (task #195): `isMkStore` ·
+  `isMkReview` · `isCalMonth` · `isIntGrid` · `isCompose` · `isSupThread` · `isWeekGrid` ·
+  `isBufferDiagram` · `isPipeHead` · `isSocialGrid` · `isSocialQueue` · `isPipeBoard` · `isStageBoard` ·
+  `isArea` · `isBench` — plus the `platform-brain.js` neural field (`KnowledgeSurface` exposes
+  `fieldSlot` as its mount point). Honest, but not the design.
+- ❌ **Real backends behind the surfaces** (task #193): the Compass lane WRITE path, the Workspace send
+  seam + chat history, and per-panel reads. Every panel body currently states it is not connected.
+- ⚠ **Optional owner cleanup (task #196), NOT a blocker:** four of the agency's sub-accounts look like
+  leftovers — two named "[TEST] …" and two with no `comp_reason` ("Sample Account LTD", "Unknown Name-
+  1"). All four are COUNTED and VISIBLE by design (they are inside the customer shell). If the owner wants
+  any of them gone, that is a data decision made on the console, not a filter guessed at in code.
 - ❌ **28 design tabs are genuinely net-new** (no shipped equivalent): fleet history/alert-rules/team-pulse/
   prospects · paige sandbox/research/memory · trust-compass escalations/dependencies · marketplace build/
   publishers · automations build · 6 analytics lenses · support escalations/response-policy · comms

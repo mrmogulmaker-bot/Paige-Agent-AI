@@ -16,6 +16,10 @@ export type FleetTenant = {
   slug: string | null;
   name: string;
   status: string | null;
+  /** agency | enterprise | sub_account | standalone — the §51 tier, read from the record. */
+  accountType: string | null;
+  /** Non-null on a sub-account: the agency it belongs to (§51 invariant). */
+  parentTenantId: string | null;
   planOffer: string | null;
   /** paid | promotional | internal_test — operator-internal axis, owner-only via RLS. */
   revenueClass: string | null;
@@ -24,8 +28,28 @@ export type FleetTenant = {
   trialEndsAt: string | null;
 };
 
+/**
+ * A tenant the platform runs for ITSELF — a fixture, a test account, a retired shell — rather
+ * than a customer. It is a real row and the operator can still ask to see it, but counting it
+ * as fleet would overstate the platform's own size on the operator's own console, which is the
+ * §57 divergence (a surface asserting something the God-level record contradicts) in miniature.
+ */
+export function isInternal(t: FleetTenant): boolean {
+  return t.revenueClass === "internal_test";
+}
+
 export type FleetData = {
   tenants: FleetTenant[];
+  /**
+   * Whether the operator-internal classification is READABLE by this session at all.
+   *
+   * `tenant_revenue_classification` is owner-only by RLS, so a scoped `platform_admin` reads
+   * ZERO rows — and zero rows is indistinguishable from "no tenant is internal". Without this
+   * flag the console would quietly show every fixture as fleet, with no chip to reveal them and
+   * no hint that anything was missing: a wrong count that looks right (§13/§57). The surface
+   * uses it to say what it cannot see instead of filtering on an answer it never got.
+   */
+  classificationVisible: boolean;
   loading: boolean;
   /** True when the read failed — the surface says so rather than rendering an empty fleet. */
   error: string | null;
@@ -33,6 +57,7 @@ export type FleetData = {
 
 export function useFleet(enabled: boolean): FleetData {
   const [tenants, setTenants] = useState<FleetTenant[]>([]);
+  const [classificationVisible, setClassificationVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +73,7 @@ export function useFleet(enabled: boolean): FleetData {
           await Promise.all([
             supabase
               .from("tenants")
-              .select("id, slug, name, status, plan_offer, trial_ends_at")
+              .select("id, slug, name, status, account_type, parent_tenant_id, plan_offer, trial_ends_at")
               .order("created_at", { ascending: true }),
             supabase.from("tenant_members").select("tenant_id").eq("status", "active"),
             supabase.from("clients").select("tenant_id"),
@@ -76,6 +101,9 @@ export function useFleet(enabled: boolean): FleetData {
           if (!c.tenant_id) return;
           custBy.set(c.tenant_id, (custBy.get(c.tenant_id) ?? 0) + 1);
         });
+        // Any row at all proves the read is permitted for this session. None proves nothing
+        // either way, so we report it as not-visible rather than as an empty classification.
+        setClassificationVisible((revenue ?? []).length > 0);
         const classBy = new Map<string, string>(
           ((revenue ?? []) as unknown as Array<{ tenant_id: string; revenue_class: string }>).map(
             (r) => [r.tenant_id, r.revenue_class],
@@ -89,6 +117,8 @@ export function useFleet(enabled: boolean): FleetData {
             slug: t.slug ?? null,
             name: t.name,
             status: t.status ?? null,
+            accountType: t.account_type ?? null,
+            parentTenantId: t.parent_tenant_id ?? null,
             planOffer: t.plan_offer ?? null,
             revenueClass: classBy.get(t.id) ?? null,
             seats: seatBy.get(t.id) ?? 0,
@@ -108,5 +138,5 @@ export function useFleet(enabled: boolean): FleetData {
     };
   }, [enabled]);
 
-  return { tenants, loading, error };
+  return { tenants, classificationVisible, loading, error };
 }

@@ -5,10 +5,26 @@ import {
   OPERATOR_BRANCHES, leafPath, subtabPath, branchPath,
   type Branch, type SubTab,
 } from "@/lib/routing/tierBranches";
-import { EmptyState } from "@/components/ui/page";
+import { EmptyState, PageSkeleton } from "@/components/ui/page";
 import FleetConsole from "@/operator/surfaces/FleetConsole";
+import TrustCompass from "@/operator/surfaces/TrustCompass";
+import KnowledgeSurface from "@/operator/surfaces/KnowledgeSurface";
+import { useCompass } from "@/operator/data/useCompass";
+import { useKnowledge } from "@/operator/data/useKnowledge";
+import OperatorPanel from "@/operator/surfaces/OperatorPanel";
+import { getPanelSpec } from "@/operator/surfaces/panelSpecs";
+import WorkspaceSurface from "@/operator/surfaces/WorkspaceSurface";
+import { MarketplaceStore, MarketplaceReview, IntegrationsGrid } from "@/operator/surfaces/MarketplaceSurfaces";
+import { CalendarMonth, CalendarWeek } from "@/operator/surfaces/CalendarSurfaces";
+import { ComposeSurface } from "@/operator/surfaces/ComposeSurface";
+import { SupportThread } from "@/operator/surfaces/SupportThread";
+import { PipelineHead, PipelineBoard, StageBoard } from "@/operator/surfaces/PipelineSurfaces";
+import { SocialGrid, SocialQueue } from "@/operator/surfaces/SocialSurfaces";
+import BufferDiagram from "@/operator/surfaces/BufferDiagram";
+import { AreaChart, Bench } from "@/operator/surfaces/AnalyticsSurfaces";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { useTenantContext } from "@/hooks/useTenantContext";
+import { useIsPlatformOwner } from "@/operator/data/useIsPlatformOwner";
 import { cn } from "@/lib/utils";
 
 /**
@@ -168,7 +184,16 @@ export default function OperatorApp() {
   const section = params.section;
   const splat = params["*"] ?? "";
   const { branch, sub, leaf, stale } = useResolved(section, splat);
-  const { isPlatformOwner } = useTenantContext();
+  const { isPlatformOwner: contextOwner } = useTenantContext();
+  /**
+   * Ownership is ASKED, not read off the context cache. `contextOwner` stays a fast path so a
+   * warm navigation never waits, but it can only ever say YES — a `false` there is
+   * indistinguishable from "not resolved yet" after a sign-in, and acting on it destroys the
+   * operator's deep link. Only the server's answer is allowed to say no.
+   */
+  const ownerVerdict = useIsPlatformOwner();
+  const isPlatformOwner = ownerVerdict === true || contextOwner;
+  const ownerAnswered = ownerVerdict !== null || contextOwner;
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ fleet: true, business: true });
 
@@ -177,12 +202,19 @@ export default function OperatorApp() {
     [],
   );
 
+  /**
+   * Owner-only sections are hidden only once the server has answered. Until then
+   * `isPlatformOwner` is a not-yet, not a no, and treating it as a no would flash a rail with
+   * Revenue and Comms missing for the owner (and, below, throw away their deep link entirely).
+   */
   const railBranches = useMemo(
     () =>
       OPERATOR_BRANCHES.filter(
-        (b) => b.group !== "settings" && (isPlatformOwner || !OWNER_ONLY_SECTIONS.has(b.slug)),
+        (b) =>
+          b.group !== "settings" &&
+          (isPlatformOwner || !ownerAnswered || !OWNER_ONLY_SECTIONS.has(b.slug)),
       ),
-    [isPlatformOwner],
+    [isPlatformOwner, ownerAnswered],
   );
   const visibleRowCount = RAIL_GROUPS.reduce(
     (n, g) => n + (openGroups[g.key as string] ? railBranches.filter((b) => b.group === g.key).length : 0),
@@ -195,7 +227,13 @@ export default function OperatorApp() {
 
   // §53 — a scoped platform_admin deep-linking an owner-only section goes to the default
   // branch, not to a dead-end card: they ARE a legitimate operator, just not for this surface.
+  //
+  // NEVER on a not-yet answer. This redirect is `replace`, so firing it early does not merely
+  // show the wrong surface — it DESTROYS the URL the operator asked for. An owner who signs in
+  // with `?next=/operator/revenue/plans`, or hard-loads that bookmark, would be silently moved
+  // to Fleet with no way back to where they were going. So we wait for a real answer first.
   if (OWNER_ONLY_SECTIONS.has(branch.slug) && !isPlatformOwner) {
+    if (!ownerAnswered) return <PageSkeleton />;
     return <Navigate to={branchPath("operator", "", OPERATOR_BRANCHES[0].slug)} replace />;
   }
 
@@ -438,19 +476,135 @@ export default function OperatorApp() {
             are both overflow:hidden for the same reason). */}
         <main className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
           {/* Real CD surfaces render here as each lands; anything not yet built says so. */}
-          {branch.slug === "fleet" && sub?.slug === "tenants" ? (
-            <FleetConsole canSeeRevenue={isPlatformOwner} />
-          ) : (
-            <SurfacePlaceholder
-              title={`${branch.label}${(isSettings ? leaf : sub) ? ` · ${(isSettings ? leaf : sub)!.label}` : ""}`}
-              path={canonical}
-              isOwner={isPlatformOwner}
-            />
-          )}
+          <OperatorSurface
+            branchSlug={branch.slug}
+            subSlug={sub?.slug ?? null}
+            leafSlug={isSettings ? (leaf?.slug ?? null) : null}
+            title={`${branch.label}${(isSettings ? leaf : sub) ? ` · ${(isSettings ? leaf : sub)!.label}` : ""}`}
+            path={canonical}
+            isOwner={isPlatformOwner}
+          />
         </main>
       </div>
     </div>
   );
+}
+
+/**
+ * The one place a canonical operator address becomes a surface.
+ *
+ * Every CD surface lands here as it is ported, so the shell keeps exactly ONE branch on
+ * "which screen is this" instead of growing a second dispatch next to the first (§18). Each
+ * surface owns its own read, because each reads a different record and none of them should
+ * make the others wait.
+ */
+function OperatorSurface({
+  branchSlug, subSlug, leafSlug, title, path, isOwner,
+}: {
+  branchSlug: string; subSlug: string | null; leafSlug: string | null;
+  title: string; path: string; isOwner: boolean;
+}) {
+  const isFleet = branchSlug === "fleet" && subSlug === "tenants";
+  const isCompass = branchSlug === "trust-compass" && subSlug === "autonomy";
+  const isKnow = branchSlug === "paige" && subSlug === "knowledge";
+  const isWorkspace = branchSlug === "paige" && subSlug === "chat";
+
+  // Hooks are unconditional; each read is gated by its own `enabled` flag so an inactive
+  // surface costs nothing (the same shape `useFleet` already uses).
+  const compass = useCompass(isCompass);
+  const knowledge = useKnowledge(isKnow);
+
+  if (isFleet) return <FleetConsole canSeeRevenue={isOwner} />;
+  if (isCompass)
+    return (
+      /* Read-only until the lane WRITE path lands: no `onCommit`, and the surface says so
+         itself rather than offering a control that would silently discard the movement. */
+      <TrustCompass
+        departments={compass.departments}
+        loading={compass.loading}
+        error={compass.error}
+      />
+    );
+  if (isKnow)
+    return (
+      <KnowledgeSurface
+        domains={knowledge.domains}
+        loading={knowledge.loading}
+        error={knowledge.error}
+      />
+    );
+  if (isWorkspace)
+    return (
+      /* CD's operator chat, with nothing put in Paige's mouth: no thread, no chat history and
+         no `onSend`, so the pane states that the chat seam is not connected and the composer
+         says it is disabled rather than swallowing what the operator typed. Only `scope` is
+         real — it is read from the session, not chosen as a label. Wiring the send + history
+         is its own slice; the live operator chat remains on the shipped console until then. */
+      <WorkspaceSurface
+        projects={[]}
+        recent={[]}
+        earlier={[]}
+        thread={[]}
+        scope={isOwner ? "Platform · full" : "Platform · scoped"}
+      />
+    );
+
+  /**
+   * CD's BESPOKE surfaces — the tabs the pack builds as their own component rather than as a
+   * generic panel body. Each is keyed to the address its design belongs to, in the same one
+   * dispatch as everything else (§18). All of them are prop-driven and ship with no data, so
+   * each states what is not connected rather than rendering an invented board, thread or curve.
+   */
+  // Keyed on the LEAF where one exists, so a settings tab cannot silently borrow its sibling's
+  // surface — `integrations/health` and `integrations/available` have their own copy and must
+  // reach it, not land on the connected-catalog grid wearing the wrong title.
+  const bespoke = leafSlug
+    ? `${branchSlug}/${subSlug ?? ""}/${leafSlug}`
+    : `${branchSlug}/${subSlug ?? ""}`;
+  switch (bespoke) {
+    case "marketplace/discover":    return <MarketplaceStore shelves={[]} />;
+    case "marketplace/submissions": return <MarketplaceReview submissions={[]} />;
+    case "settings/integrations/connected": return <IntegrationsGrid items={[]} />;
+    case "calendar/month":          return <CalendarMonth events={[]} />;
+    case "calendar/tasks":          return <CalendarWeek days={[]} />;
+    case "comms/outbound":          return <ComposeSurface subject={null} body={null} />;
+    case "support/inbox":           return <SupportThread clock={null} draft={null} />;
+    case "fleet/prospects":
+      // CD stacks the stat strip above the board — the head reads the same pipeline the board
+      // draws, so they belong on one address, not two.
+      return (
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <PipelineHead weighted={null} rawTotal={null} />
+          <PipelineBoard columns={[]} />
+        </div>
+      );
+    case "provisioning/pipeline":   return <StageBoard lanes={[]} />;
+    case "growth/social":
+      // The grid is what exists; the queue is what is going out. Both are the same book of
+      // posts seen from two ends, which is why CD puts them on the one surface.
+      return (
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <SocialGrid networks={[]} />
+          <SocialQueue posts={[]} />
+        </div>
+      );
+    case "automations/runs":        return <BufferDiagram />;
+    case "analytics/brief":         return <AreaChart series={[]} />;
+    case "analytics/performance":   return <Bench />;
+    default:
+      break;
+  }
+
+  /**
+   * Every other addressable tab is one of CD's generic panels — the same layout driven by its
+   * own copy, which is why the pack builds them from one block rather than 70-odd components.
+   * A tab the registry has no copy for still falls through to the stand-in, so a branch added
+   * to the tree without copy shows as an honest gap instead of a blank frame.
+   */
+  const spec = subSlug ? getPanelSpec(branchSlug, subSlug, leafSlug ?? undefined) : null;
+  if (spec) return <OperatorPanel spec={spec} bodyColumns={branchSlug === "analytics" ? 2 : 1} />;
+
+  return <SurfacePlaceholder title={title} path={path} isOwner={isOwner} />;
 }
 
 /**
