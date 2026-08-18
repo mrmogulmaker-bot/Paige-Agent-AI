@@ -173,15 +173,28 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
   `button`, zero link, zero `role`, zero `aria-current`, zero focus-visible. Shipped as real `<Link>`s
   with `aria-current`, real `<button>`s with `aria-expanded`/`aria-label`, and indigo focus rings
   throughout. Two source AA failures fixed rather than copied (rail eyebrows 4.11:1 · route path 2.84:1).
-- ❗ **THREE deliberate departures from the approved design, each named (§11/§28):** (1) the active
-  sub-tab underline is **INDIGO, not the design's gold** — nav-active is not an act, shipped
-  `OperatorTabs` already carries that rule in code, and the design's gold measures **2.35:1**, under even
-  the 3:1 non-text bar; **OWNER-OWED if the gold was specifically approved.** (2) Selected rail rows and
-  the open-menu ring are neutral/indigo for the same reason (the pack is internally inconsistent — white
-  on its front menu, gold on its settings menu; we unify on white). (3) The palette is **our cool indigo,
-  not the pack's warm cream** — mapped by ROLE, not hex; there is no warm-neutral family in our tokens and
-  inventing one would fork the platform palette (§23 is an owner ruling, not a porter's call). This
-  matches the design's STRUCTURE, deliberately **not** its temperature.
+- ✅ **OWNER RULING 2026-08-18 — CLAUDE DESIGN IS THE SOURCE OF TRUTH.** *"If Claude Design made it,
+  that's how it's supposed to be moving forward. Whatever we had before CD is no longer valid. None of
+  it!"* An earlier pass on this slice substituted our pre-CD conventions for three of CD's calls and
+  flagged them OWNER-OWED; the ruling **reverses all three** and they shipped in the same PR:
+  CD's **gold** is back on the active sub-tab underline and the settings-active rail rows (CD's own two
+  treatments, which the earlier pass had unified on white), and **CD's warm palette** replaces our cool
+  indigo. Delivered as a **scoped `.operator-console` token block** in `index.css` — the pattern
+  `.studio-surface` already establishes — so CD's design lands exactly where CD designed it and **no
+  other surface, including owner-approved §28-frozen ones, is repainted as a side effect.** Zero hex at
+  any call site; the CD-vs-platform decision is made in exactly ONE place (the `operator-console` class).
+  **Verified in the BUILT bundle, not asserted:** `--background` → `rgb(252,250,248)` vs CD's `#FBF9F7`,
+  `--rail` → `rgb(25,18,48)` vs `#191231`, `--cd-gold` → `rgb(200,158,45)` vs `#C8A02E` — within 1–2 per
+  channel (HSL rounding, not a choice).
+- ❗ **TWO CD values not copied verbatim — recorded, not quietly changed (§13/§29).** CD's rail eyebrow
+  measures **4.11:1** and CD's dark block paints the page the SAME colour as the rail so the rail
+  **vanishes**. Those read as artifacts of the pack rather than design intent (the §29 "shipped, correct,
+  invisible" class); each keeps CD's hue and moves only far enough to be seen. CD's gold underline
+  measures **2.35:1** — raised once, ruled on, ships as designed.
+- ✅ **OWNER RULING 2026-08-18 — "I only want the backend to now connect to our new front end."** This
+  re-points the remaining console slices: they wire REAL backends **into** these CD surfaces, rather than
+  porting CD's look onto the old `/admin/platform/*` screens. `/admin/platform/*` stays redirect-alive
+  (§58) but is no longer the build target.
 - ❗ **§13 — mounted ≠ built.** The 78 surfaces are NOT implemented. Each renders an honest placeholder
   saying so and naming the live console; **nothing fabricates data** — a placeholder never poses as an
   empty dashboard reading "you have no tenants."
@@ -198,6 +211,25 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
   mostly proving what it REFUSES. The `GOD_CONSOLE` default is unchanged.
 - **Gates:** tsc 0 · **325/325** tests (14 new: 6 routing, 8 redirect-allowlist) · `lint:views` +
   `lint:definer-fns` + `lint:tier-features` clean · eslint 0 · `vite build` ✓.
+- ✅ **§39 PEER-GATE ran and returned ITERATE — every finding reproduced before fixing.** Two HIGH, both
+  real: **(H1) an open redirect inside the origin.** The `?next=` allowlist tested
+  `/^\/operator\/[^/\\]/`, which only inspects the character AFTER `/operator/` — and `.` passes. So
+  `/operator/../../book/evil-slug` was accepted and react-router **normalizes** it to `/book/evil-slug`:
+  a freshly-authenticated operator landed on a tenant-authored page, on the real domain, the instant
+  after typing their password. Fixed by decomposing into segments and rejecting `.` / `..` / empty; 6
+  regression tests, all for what it must REFUSE. **(H2) the `?next=` round-trip was broken for the very
+  tier the guard admits.** `RequireOperator` admits `is_platform_admin()` (platform_admin OR super_admin)
+  but the door gated honoring `next` on `is_platform_owner()` (**super_admin only**, deliberately
+  frozen) — so a platform_admin bounced off a bookmark, signed in, had `next` silently discarded, and
+  fell through `resolveLandingRoute` (which has **no** platform_admin branch) to a tenant surface. The
+  door now uses the guard's predicate; **this also closes the door half of the long-standing #192.**
+  Three MEDIUM also fixed: **12 of the 78 leaves had no link anywhere** (nothing rendered the settings
+  GROUPS while a code comment asserted the back-menu existed — CD's back-menu is now actually built);
+  `/operator//fleet` rendered **blank** (a doubled slash still matches the outer splat so App's NotFound
+  never fires — catch-all added); and the anti-loop check was case-sensitive while react-router is not.
+  Plus three cheap LOWs: the redirect-target invariant is now locked by tests, `/operator` was added to
+  `CLIENT_FORBIDDEN_PREFIXES` (a §37 producer-inventory drift), and an unknown sub-tab now redirects to
+  the canonical address instead of rendering a surface its own URL contradicts.
 - ✅ **§32.c PARTIAL DRIVE RAN — 6/6, real Chromium, real bundle.** §32.c's deferral is keyed to
   LACKING browser capability, and this session had one (pre-provisioned Chromium + the repo's
   Playwright), so the unauthenticated half was DRIVEN rather than deferred. New reusable script
