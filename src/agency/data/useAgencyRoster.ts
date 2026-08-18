@@ -119,12 +119,25 @@ interface SubAccountRow {
 const POLL = { refetchInterval: 45_000, refetchOnWindowFocus: true } as const;
 
 export function useAgencyRoster(ctx: AgencyShellCtx): AgencyRosterData {
-  const aggregate = isAgencyAggregate(ctx);
+  // §65 Option B2 hotfix (owner live-drive 2026-08-17) — the account SWITCHER needs
+  // the caller's real sibling roster even WHILE acting (to jump Sub A -> Sub B
+  // directly, without detouring through "Return to agency view" first). That is a
+  // DIFFERENT question than "is this the agency-AGGREGATE portfolio view" (which
+  // every OTHER adapter — billing/compass/people/contacts/commandCenter/marketplace
+  // /metrics — still gates on `isAgencyAggregate`, correctly, so the acted-as sub's
+  // OWN book keeps showing there). So this hook's OWN queries are gated on the
+  // wider `ctx.isAgency` (agency owner, acting or not) rather than the narrower
+  // `isAgencyAggregate` — the exported `isAgencyAggregate` predicate itself is
+  // UNCHANGED (§18: still the one home those other adapters import). §51/#86-leak
+  // firewall preserved: a REAL standalone sub-account (`!ctx.isAgency`) still never
+  // touches these RPCs. Directory (the other `useAgencyRoster` consumer) only
+  // mounts when `crossBook = isAgency && !acting`, so it's unaffected either way.
+  const canReadRoster = ctx.isAgency;
 
-  // The authoritative child roster. Gated: fires ONLY in agency-aggregate mode.
+  // The authoritative child roster. Gated: fires for any agency-tier caller.
   const roster = useQuery({
     queryKey: ["agency-roster"],
-    enabled: aggregate,
+    enabled: canReadRoster,
     queryFn: async (): Promise<SubAccountRow[]> => {
       const { data, error } = await supabase.rpc("agency_list_my_subaccounts");
       if (error) throw error;
@@ -137,7 +150,7 @@ export function useAgencyRoster(ctx: AgencyShellCtx): AgencyRosterData {
   // client_count we overlay onto the roster by tenant_id (the AgencyBoard §18 merge).
   const portfolio = useQuery({
     queryKey: ["agency-portfolio-metrics"],
-    enabled: aggregate,
+    enabled: canReadRoster,
     queryFn: async (): Promise<AgencyPortfolioMetrics> => {
       // Not gen-typed (Json/Args:never); cast the name only, same convention as
       // useAgencyPortfolio + AgencyBoard's agency_enter_subaccount caller.
@@ -154,9 +167,9 @@ export function useAgencyRoster(ctx: AgencyShellCtx): AgencyRosterData {
     void portfolio.refetch();
   }, [roster, portfolio]);
 
-  // Own-book / acting mode: a sub has no roster. Return empty + available:false,
-  // never touching the parentage RPCs.
-  if (!aggregate) {
+  // A REAL standalone sub-account (never an agency owner): no roster exists for
+  // it, and it never touches the parentage RPCs (§51/#86-leak firewall).
+  if (!canReadRoster) {
     return { rows: [], loading: false, isError: false, available: false, refresh };
   }
 
