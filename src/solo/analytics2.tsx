@@ -3,6 +3,7 @@ import React from "react";
 import { Ic, Avatar, Foldout, PeekCard, SubTabs, Wrap, PageHead } from "./_shared";
 import { AN } from "./analytics-data";
 import { MW, MarketWatch, AttrDrawer, BranchTree, XInsights, WeeklyExec } from "./market";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 
 const money=n=>'$'+n.toLocaleString();
 const Ring=({v,tone})=>{const r=15,c=2*Math.PI*r,off=c-(Math.min(v,100)/100)*c;
@@ -199,7 +200,7 @@ const AskBar=({onOpen})=>(<button onClick={()=>onOpen()} className="card row" st
 <span key={q} onClick={e=>{e.stopPropagation();onOpen(q)}} className="pill pill-n" style={{height:24,cursor:'pointer'}}>{q}</span>)}</span>
 <span className="btn btn-s btn-p" style={{width:28,height:28,padding:0,justifyContent:'center',flex:'none'}}><Ic.send size={13}/></span></span></button>);
 
-export const Analytics2=()=>{const[per,setPer]=React.useState('This month');const[sec,setSec]=React.useState('brief');
+export const Analytics2=()=>{const[per,setPer]=React.useState('This month');const[sec,setSec]=useSubtabRoute("solo","analytics","brief");
 const[ask,setAsk]=React.useState(null);const[attr,setAttr]=React.useState(null);const[xi,setXi]=React.useState(false);const[wk,setWk]=React.useState(false);
 const openAsk=q=>setAsk({q:q||null,k:Date.now()});
 const tabs=[['brief','Brief',()=><Ic.spark size={14}/>],['money','The money',()=><Ic.chart size={14}/>],

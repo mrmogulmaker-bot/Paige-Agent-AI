@@ -3,6 +3,7 @@ import React from "react";
 import { Ic, Avatar, Meter, SlideOut, SubTabs, Wrap, PageHead } from "./_shared";
 import { TM_DIR_SEED, TmDirectory } from "./team-dir";
 import { TmRoles, InviteFlow } from "./team-roles";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 
 export const TM={
 people:[
@@ -266,7 +267,7 @@ background:l<=m.level?(m.level>2?'var(--gold)':'var(--violet)'):'var(--surface-s
 <div className="eyebrow" style={{fontSize:9.4}}>{k}</div><div style={{fontSize:14.5,fontWeight:600,marginTop:3}}>{v}</div></div>)}</div></>}
 <div className="sub" style={{marginTop:16,fontSize:11.8,lineHeight:1.55}}>Seat permissions, sealed-record access and the reporting line live in Setup. This view is about the work.</div></>}</SlideOut>};
 
-export const TeamHub=()=>{const[tab,setTab]=React.useState('roster');const[cur,setCur]=React.useState(null);
+export const TeamHub=()=>{const[tab,setTab]=useSubtabRoute("solo","team","roster");const[cur,setCur]=React.useState(null);
 const[dir,setDir]=React.useState(TM_DIR_SEED);const[inv,setInv]=React.useState(null);
 const openInv=r=>setInv({r:r||null,k:Date.now()});
 const tabs=[['roster','Roster',()=><Ic.users size={14}/>],['dir','Directory',()=><Ic.mail size={14}/>],

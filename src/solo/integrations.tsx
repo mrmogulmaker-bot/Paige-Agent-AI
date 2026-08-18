@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { Ic, PageHead, SubTabs } from "./_shared";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 
 const IG_CATS=[['all','All'],['pay','Payments & billing'],['comm','Communication'],['cal','Calendar & meetings'],['crm','CRM & funnels'],['ads','Ads & analytics'],['fin','Accounting'],['store','Storage & docs'],['auto','Automation']];
 export const IG=[
@@ -100,7 +101,7 @@ const IgDrawer=({app,state,onToggle,onClose})=>(<><div onClick={onClose} style={
 </div></aside></>);
 
 export const Integrations=()=>{
-const[cat,setCat]=React.useState('all');const[q,setQ]=React.useState('');const[view,setView]=React.useState('cat');
+const[cat,setCat]=React.useState('all');const[q,setQ]=React.useState('');const[view,setView]=useSubtabRoute("solo","integrations","cat");
 const[states,setStates]=React.useState(()=>Object.fromEntries(IG.map(a=>[a.id,a.st])));
 const[open,setOpen]=React.useState(null);
 const on=IG.filter(a=>states[a.id]==='on').length;

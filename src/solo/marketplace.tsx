@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { Ic, Avatar, PageHead, SubTabs } from "./_shared";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 
 const MK_CATS=[['vert','Practice Verticals'],['play','Playbooks & Knowledge'],['cx','Client Experience'],['growth','Growth & Automation'],['data','Data & Bridges']];
 const G=(a,b)=>'linear-gradient(145deg,'+a+' 0%,'+b+' 100%)';
@@ -191,7 +192,7 @@ return <><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgb
 <span style={{fontWeight:600,color:'var(--ink)'}}>Your persona stays yours. </span>Capabilities layer expertise onto Paige. They never overwrite your voice, your greeting, or your client journey.</div></div></div></>};
 
 export const Marketplace=()=>{
-const[tab,setTab]=React.useState('today');
+const[tab,setTab]=useSubtabRoute("solo","marketplace","today");
 const[states,setStates]=React.useState(()=>Object.fromEntries(MK.map(a=>[a.id,a.state])));
 const[open,setOpen]=React.useState(null);
 const[q,setQ]=React.useState('');

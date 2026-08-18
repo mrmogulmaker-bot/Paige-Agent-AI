@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, SubTabs, Wrap, PageHead, DATA } from "./_shared";
 import { Agent } from "./agent";
 import { Knowledge } from "./knowledge";
@@ -223,7 +224,7 @@ return <div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr)',gap:16}}>
 style={{height:6,flex:1,borderRadius:3,background:l<=d.level?(d.level>2?'var(--gold)':'var(--violet)'):'var(--surface-sunk)'}}/>)}</div></div>
 <div className="row" style={{gap:8,marginTop:'auto'}}><button className="btn btn-s">Open queue</button><button className="btn btn-s">Playbook</button></div></div>)}</div></div>};
 
-export const PaigeHub=()=>{const[tab,setTab]=React.useState('chat');
+export const PaigeHub=()=>{const[tab,setTab]=useSubtabRoute("solo","paige","chat");
 const tabs=[['chat','Chat',()=><Ic.mail size={15}/>],['know','Knowledge',()=><Ic.spark size={15}/>],['sub','Sub-Agents',()=><Ic.users size={15}/>],
 ['act','Actions',()=><Ic.check size={15}/>,3],['skills','Skills',()=><Ic.bolt size={15}/>],['team','Paige Team',()=><Ic.grid size={15}/>]];
 const heads={know:['What she knows','Knowledge','Her memory, drawn as it actually is — six domains, wired together, growing every time you teach her something.'],
