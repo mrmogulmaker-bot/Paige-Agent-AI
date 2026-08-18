@@ -171,9 +171,16 @@ const PageSuspense = ({ children }: { children: React.ReactNode }) => (
 
 // Keep the floating chat widget off the premium landing (homepage + preview).
 const CHATBOT_HIDDEN_ROUTES = ["/", "/premium"];
+// The Agency/Solo/Business shells (§65) already carry their OWN Paige entry point
+// (the TopBar "Ask Paige" launcher + a full Paige tab with Chat/Knowledge/Sub-Agents/
+// Actions/Skills) — a second floating chat bubble on top of that is a duplicate
+// surface for the same capability (§18 one home), not a second option. Hidden on
+// these three shells; unaffected everywhere else (legacy /admin, marketing, etc.).
+const CHATBOT_HIDDEN_PREFIXES = ["/agency/", "/business/", "/solo/"];
 const GatedChatbot = () => {
   const { pathname } = useLocation();
   if (CHATBOT_HIDDEN_ROUTES.includes(pathname)) return null;
+  if (CHATBOT_HIDDEN_PREFIXES.some((p) => pathname.startsWith(p))) return null;
   return <FloatingChatbot />;
 };
 
