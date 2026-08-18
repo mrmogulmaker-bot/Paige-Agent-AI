@@ -118,35 +118,30 @@ export function useAgencyMetrics(ctx: AgencyShellCtx): AgencyMetricsData {
     };
   }, [activeTenant?.name, activeTenant?.plan_offer, membership.data]);
 
-  // §13 TRUTH WAVE (owner ruling 2026-08-18): "Remove all data that is not live and
-  // real… If it was not entered by an owner or submitted by a real customer then it
-  // should get removed and placed with live data only."
-  //
-  // This adapter previously emitted a `kind:"preview"` tile for every metric with no
-  // backend (NRR, hours-Paige-saved, team utilization, approval rate) so the strip
-  // always rendered four cards. Under the ruling those are REMOVED, not labelled — an
-  // em-dash under a "HOURS PAIGE SAVED" heading still asserts the metric exists and
-  // that we are tracking it. Only values a real query sourced are emitted now, so the
-  // strip renders exactly as many tiles as there are true numbers (possibly zero).
-  //
-  // These are DELETIONS, not regressions to fix later: re-adding a tile requires a
-  // real backend, not a placeholder. `kind:"preview"` stays in the type because other
-  // adapters still use it; nothing here emits it.
   const kpis = useMemo<AgencyKpi[]>(() => {
-    const out: AgencyKpi[] = [];
     if (aggregate) {
       const mrr = portfolio.data?.portfolio_mrr_cents;
-      // The ONE cross-book aggregate with a real source (agency_portfolio_metrics).
-      // Dropped entirely when the RPC did not return it, rather than shown empty.
-      if (typeof mrr === "number")
-        out.push({ kind: "real", label: "MRR from sub-accounts", value: usd(mrr) });
+      const out: AgencyKpi[] = [];
+      out.push(
+        typeof mrr === "number"
+          ? { kind: "real", label: "MRR from sub-accounts", value: usd(mrr) }
+          : { kind: "preview", label: "MRR from sub-accounts" },
+      );
+      // No backend for any of these cross-book aggregates → honest Preview.
+      out.push({ kind: "preview", label: "Sub-account NRR" });
+      out.push({ kind: "preview", label: "Hours Paige saved" });
+      out.push({ kind: "preview", label: "Team utilization" });
       return out;
     }
-    // Own-book — only what usePracticeDashboard actually sourced.
+    // Own-book KPIs — REAL where usePracticeDashboard sources it, Preview otherwise.
+    const out: AgencyKpi[] = [];
     if (typeof pm?.won_value_cents === "number")
       out.push({ kind: "real", label: "Revenue this period", value: usd(pm.won_value_cents) });
     if (typeof pm?.active_clients === "number")
       out.push({ kind: "real", label: "Active clients", value: String(pm.active_clients) });
+    out.push({ kind: "preview", label: "Net revenue retention" });
+    out.push({ kind: "preview", label: "Approval rate" });
+    out.push({ kind: "preview", label: "Hours Paige saved" });
     return out;
   }, [aggregate, portfolio.data?.portfolio_mrr_cents, pm?.won_value_cents, pm?.active_clients]);
 

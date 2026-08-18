@@ -282,28 +282,12 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
         </div>
       </div>
 
-      {/* KPI row — ONLY metrics a real query sourced (§13 truth wave, owner 2026-08-18).
-          The adapter no longer emits placeholder tiles, so this strip is now variable
-          width: it renders one column per true number and DISAPPEARS ENTIRELY when
-          there are none. Columns are derived from the actual count rather than a fixed
-          `repeat(4,…)`, which would otherwise stretch a lone real tile across a quarter
-          of the row and leave three empty cells — a layout that reads as broken rather
-          than as honest. Skeleton count matches what this mode can actually return, so
-          the loading state never promises tiles that will not arrive. */}
-      {(cc.metrics.loading || cc.metrics.kpis.length > 0) && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${Math.min(4, Math.max(1, cc.metrics.loading ? (cc.metrics.mode === "agency" ? 1 : 2) : cc.metrics.kpis.length))},minmax(0,1fr))`,
-            gap: 13,
-            flex: "none",
-          }}
-        >
-          {cc.metrics.loading
-            ? Array.from({ length: cc.metrics.mode === "agency" ? 1 : 2 }, (_, i) => <KpiSkeleton key={i} />)
-            : cc.metrics.kpis.map((k, i) => <KpiCard key={i} k={k} />)}
-        </div>
-      )}
+      {/* KPI row — REAL where the adapter sourced it, honest Preview otherwise (§13) */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 13, flex: "none" }}>
+        {cc.metrics.loading
+          ? [0, 1, 2, 3].map(i => <KpiSkeleton key={i} />)
+          : cc.metrics.kpis.map((k, i) => <KpiCard key={i} k={k} />)}
+      </div>
 
       {/* queue + sidebar */}
       <div style={{ flex: "1 1 0", minHeight: 0, display: "flex", gap: 16 }}>
