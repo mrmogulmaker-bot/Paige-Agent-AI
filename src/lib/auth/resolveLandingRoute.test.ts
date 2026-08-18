@@ -31,8 +31,18 @@ vi.mock("@/integrations/supabase/client", () => ({
 
 const { resolveLandingRoute } = await import("./resolveLandingRoute");
 
-/** A signed-in user carrying the `admin` role and nothing else that redirects. */
-function mockTables(opts: { agencyLoginDefault?: string | null } = {}) {
+/**
+ * A signed-in user carrying the `admin` role and nothing else that redirects.
+ *
+ * `agencyVisible` models the §58 shell-visibility check: the RLS-gated `tenants`
+ * read returns the agency row for a normal owner (a `tenant_members` row exists),
+ * and NOTHING for a rail-only agency-team member — who is a manager to the RPC but
+ * invisible to `AgencyApp`'s identity resolution.
+ */
+function mockTables(
+  opts: { agencyLoginDefault?: string | null; agencyVisible?: boolean; tenantsError?: boolean } = {},
+) {
+  const agencyVisible = opts.agencyVisible ?? true;
   from.mockImplementation((table: string) => {
     const one = (data: unknown) => ({
       select: () => ({
@@ -49,7 +59,23 @@ function mockTables(opts: { agencyLoginDefault?: string | null } = {}) {
     if (table === "profiles") {
       return one({ agency_login_default: opts.agencyLoginDefault ?? "agency" });
     }
-    return one(null); // clients / tenants / tenant_members / agency_team_members
+    if (table === "tenants") {
+      // The §58 visibility probe (`.select("id").eq("id", …).maybeSingle()`) and the
+      // pre-existing owned-tenant lookup both hit this table. `tenantsError` models a
+      // transient failure, which must NOT demote (§13).
+      if (opts.tenantsError) {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: () => Promise.resolve({ data: null, error: { message: "boom" } }),
+              limit: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: "boom" } }) }),
+            }),
+          }),
+        };
+      }
+      return one(agencyVisible ? { id: AGENCY_ID } : null);
+    }
+    return one(null); // clients / tenant_members / agency_team_members
   });
 }
 
@@ -62,7 +88,13 @@ function mockCtx(ctx: Record<string, unknown> | null) {
   );
 }
 
-const MANAGER = { is_agency_manager: true, agency_shell_enabled: true, agency_account_number: 1924546 };
+const AGENCY_ID = "2de8ca80-0000-4000-8000-000000000000";
+const MANAGER = {
+  is_agency_manager: true,
+  agency_id: AGENCY_ID,
+  agency_shell_enabled: true,
+  agency_account_number: 1924546,
+};
 
 beforeEach(() => {
   rpc.mockReset();
@@ -124,6 +156,25 @@ describe("resolveLandingRoute — agency landing (§65)", () => {
   it("treats a missing agency_shell_enabled as OFF (strict === true)", async () => {
     mockCtx({ is_agency_manager: true, agency_account_number: 1924546 });
     expect(await resolveLandingRoute("u1")).toBe("/agency");
+  });
+
+  // §58 — a RAIL-ONLY agency-team member is a manager to the RPC but invisible to
+  // AgencyApp (which resolves identity from the RLS-gated `tenants` read, and
+  // `is_tenant_member` consults ONLY `tenant_members`, never the rail). Handing them
+  // the numeric URL yields a shell with no identity — or, if they own a DIFFERENT
+  // agency, silently bounces them onto it. They belong on the legacy board.
+  it("keeps a rail-only agency-team member on the legacy /agency board", async () => {
+    mockCtx(MANAGER);
+    mockTables({ agencyVisible: false });
+    expect(await resolveLandingRoute("u1")).toBe("/agency");
+  });
+
+  // §13 — a transient failure of that probe must NOT strand every agency owner on the
+  // legacy board. Only a definitive "not visible" demotes.
+  it("does NOT demote on a visibility-probe error (fails open to the new shell)", async () => {
+    mockCtx(MANAGER);
+    mockTables({ tenantsError: true });
+    expect(await resolveLandingRoute("u1")).toBe("/agency/1924546/command-center");
   });
 
   // Pre-existing branches that must keep working (§58).

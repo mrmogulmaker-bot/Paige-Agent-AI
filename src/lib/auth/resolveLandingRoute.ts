@@ -53,6 +53,8 @@ async function resolveAgencyLanding(userId: string): Promise<string | null> {
     const ctx =
       (ctxRes.data as {
         is_agency_manager?: boolean;
+        /** The rail-resolved agency. Used for the §58 shell-visibility check below. */
+        agency_id?: string | null;
         /** §65 R0 address of the caller's OWN agency (additive; may be absent). */
         agency_account_number?: number | string | null;
         /**
@@ -98,10 +100,47 @@ async function resolveAgencyLanding(userId: string): Promise<string | null> {
     // (fails > 0); Number(undefined)/Number("abc") → NaN (fails isSafeInteger). The
     // Number() coercion also normalizes a jsonb bigint that arrives as a string.
     const acctNum = Number(ctx.agency_account_number);
-    if (Number.isSafeInteger(acctNum) && acctNum > 0) {
-      return `/agency/${acctNum}/command-center`;
-    }
-    return "/agency";
+    if (!(Number.isSafeInteger(acctNum) && acctNum > 0)) return "/agency";
+
+    // §58 — RAIL-ONLY MEMBERS STAY ON THE LEGACY BOARD (Codex P2 on PR #535).
+    //
+    // `is_agency_manager` is resolved off the AGENCY RAIL — `agency_current_id()` +
+    // `agency_team_role()`, which read `agency_team_members`. `AgencyApp` resolves its
+    // own identity from an entirely different source: `useTenantContext().tenants`,
+    // which is a plain RLS-gated `SELECT` on `tenants` whose policy is
+    // `is_tenant_member(id) OR is_platform_owner()` — and `is_tenant_member` reads ONLY
+    // `tenant_members` (status='active'); it does NOT consult the rail (verified against
+    // prod `pg_get_functiondef`).
+    //
+    // So a user who is an agency-team member via the rail but has NO `tenant_members`
+    // row for that agency is a real manager to the RPC and invisible to the shell. Hand
+    // them `/agency/{n}/…` and `ownAgencyTenant` resolves to null — AgencyApp renders
+    // with no identity, and its own ownership guard can't save them because it bails on
+    // `own == null`. Worse, if they happen to own a DIFFERENT agency, that guard
+    // resolves to it and silently bounces them off the agency they were invited to.
+    //
+    // The agency-team-invitee branch further down already returns bare `/agency` for
+    // exactly this reason — but it is UNREACHABLE for these users, because the
+    // `admin`/`coach` branch above calls this resolver first, and `admin`/`coach` are
+    // GLOBAL roles (`user_roles` has no tenant_id, §59), so anyone running their own
+    // tenant carries one. This check is what makes that stated protection real.
+    //
+    // Tested by VISIBILITY, not by re-deriving the predicate: we ask for the agency row
+    // through the same RLS-gated read the shell depends on. If it comes back, the shell
+    // can resolve them; if not, the legacy board (which admits them explicitly via
+    // `agency_my_membership()`) is the honest destination. Re-implementing
+    // `is_tenant_member` here would be a proxy that could silently drift from it.
+    //
+    // §13: on a query ERROR we do NOT demote — an outage must not quietly strand every
+    // agency owner on the legacy board. Only a definitive "row not visible" falls back.
+    const { data: agencyVisible, error: visErr } = await supabase
+      .from("tenants")
+      .select("id")
+      .eq("id", String(ctx.agency_id))
+      .maybeSingle();
+    if (!visErr && !agencyVisible) return "/agency";
+
+    return `/agency/${acctNum}/command-center`;
   } catch {
     return null;
   }
