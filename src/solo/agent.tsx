@@ -216,13 +216,39 @@ chips={empty?null:["Show me the Selby reset draft","What's at risk this week?","
 :<div className="sub" style={{fontSize:11.6,padding:'2px 2px 4px'}}>Nothing waiting on you right now.</div>}</div></div>}
 <style>{'.chat-shell{display:grid;grid-template-columns:250px minmax(0,1fr) 268px;grid-template-rows:minmax(0,1fr);height:100%;min-height:0}.chat-shell>*{min-height:0;min-width:0;overflow:hidden}@media(max-width:1240px){.chat-shell{grid-template-columns:236px minmax(0,1fr)}.chat-rail{display:none}}@media(max-width:900px){.chat-shell{grid-template-columns:minmax(0,1fr)}.chat-side{display:none}}'}</style></div>};
 
-export const PaigePanel=({open,onClose})=>{const{msgs,think,send}=useSoloChat({autoResume:open});const[model,setModel]=React.useState('paige-2');const[focus,setFocus]=React.useState('none');
+// PaigePanel — the right-side slide-in "quick ask" Paige. This is the ONE home for
+// the pop-out conversation (§18): the Solo shell AND the Agency/Business shell both
+// mount THIS component, rather than each growing its own chat surface.
+//
+// `onOpenFull` (optional) is the §58 anti-regression seam — the panel is a fast,
+// always-in-context conversation, NOT a replacement for the full Paige workspace
+// (Knowledge · Sub-Agents · Actions · Skills · Paige Team). When the host shell can
+// navigate to that workspace it passes this handler, and the panel carries the way in.
+export const PaigePanel=({open,onClose,onOpenFull})=>{const{msgs,think,send}=useSoloChat({autoResume:open});const[model,setModel]=React.useState('paige-2');const[focus,setFocus]=React.useState('none');
+const scroll=React.useRef(null);
+// Keep the newest turn in view — without this the panel silently strands a reply
+// below the fold the moment the transcript outgrows the pane (§11 no dead ends).
+React.useEffect(()=>{if(scroll.current)scroll.current.scrollTop=scroll.current.scrollHeight},[msgs,think,open]);
+// §39 peer-gate (hotfix follow-up) — the old Agency center Modal this panel replaced
+// closed on Escape; a keyboard-only user must not lose that dismiss path just because
+// the panel now also mounts in the Agency/Business shell.
+React.useEffect(()=>{if(!open)return;const onKey=e=>{if(e.key==='Escape')onClose&&onClose()};
+document.addEventListener('keydown',onKey);return()=>document.removeEventListener('keydown',onKey)},[open,onClose]);
+const empty=!msgs.length&&!think;
 return <><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(23,19,49,.34)',opacity:open?1:0,pointerEvents:open?'auto':'none',transition:'.25s',zIndex:70,backdropFilter:'blur(2px)'}}/>
 <aside style={{position:'fixed',top:0,right:0,bottom:0,width:'min(440px,94vw)',background:'var(--surface)',borderLeft:'1px solid var(--line)',boxShadow:'var(--sh-3)',zIndex:71,
 transform:open?'none':'translateX(102%)',transition:'transform .3s cubic-bezier(.32,.72,0,1)',display:'flex',flexDirection:'column'}}>
 <div className="row" style={{padding:'14px 18px',borderBottom:'1px solid var(--line)',gap:11}}>
 <div className="tile" style={{borderRadius:'50%',background:'var(--violet-tint)',color:'var(--violet)'}}><Ic.spark size={17}/></div>
-<div className="grow"><div style={{fontWeight:600,fontSize:14}}>Paige</div><div className="sub">Your AI COO · always in context</div></div>
-<button className="btn btn-s" onClick={onClose} style={{width:28,padding:0,justifyContent:'center'}}><Ic.x size={14}/></button></div>
-<div className="pane" style={{flex:1,padding:'18px',display:'flex',flexDirection:'column',gap:14}}>{msgs.map((m,i)=><Bubble key={i} m={m}/>)}{think&&<Thinking/>}</div>
+<div className="grow" style={{minWidth:0}}><div style={{fontWeight:600,fontSize:14}}>Paige</div><div className="sub">Your AI COO · always in context</div></div>
+{onOpenFull&&<button className="btn btn-s" onClick={onOpenFull} style={{flex:'none'}}
+title="Open the full Paige workspace — Knowledge, Sub-Agents, Actions, Skills, Paige Team">Open workspace</button>}
+<button className="btn btn-s" onClick={onClose} title="Close" style={{width:28,padding:0,justifyContent:'center',flex:'none'}}><Ic.x size={14}/></button></div>
+{empty
+?<div className="pane" style={{flex:1,padding:'18px',display:'grid',placeItems:'center'}}>
+<div style={{textAlign:'center',maxWidth:290}}>
+<div className="tile" style={{margin:'0 auto 12px',width:40,height:40,borderRadius:14,background:'var(--violet-tint)',color:'var(--violet)'}}><Ic.spark size={19}/></div>
+<div style={{fontWeight:600,fontSize:14.5}}>What are we working on?</div>
+<div className="sub" style={{marginTop:5,lineHeight:1.55}}>Say it plainly — she routes to the right department herself.</div></div></div>
+:<div ref={scroll} className="pane" style={{flex:1,padding:'18px',display:'flex',flexDirection:'column',gap:14}}>{msgs.map((m,i)=><Bubble key={i} m={m}/>)}{think&&<Thinking/>}</div>}
 <Composer compact onSend={send} model={model} setModel={setModel} focus={focus} setFocus={setFocus} chips={["What needs me first?","Chase the failed charges"]}/></aside></>};
