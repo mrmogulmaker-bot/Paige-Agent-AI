@@ -32,6 +32,7 @@ worse than none — it lies with authority.
 | `README.md` (this) | Master index of every doc + orientation | First, every session |
 | `codebase-map.md` | Shipped surface area — routes (3 routers), component folders, edge-fn theme groups, feature gates, integration entry points | "Do we have surface/feature X **built**?" |
 | `config-registry.md` | Infra/integration state — Twilio (incl. ISV/subaccount), ElevenLabs (3 voice systems), Stripe, Supabase, CI, MCP, signup, third-party (NAMES/IDs only, no secret values) | Touching any integration or deploy |
+| `roles-permissions.md` | How roles actually work: the three stores, the owner→global-admin amplifier, which helper to use, live counts, what's not built | 2026-08-18 |
 | `decision-log.md` | Chronological one-liners: PRs #375+, dated rulings, wave decisions | "What changed / what did we decide?" |
 | `lessons-learned.md` | Recurring traps: symptom → root cause → rule | Before a class of work that's bitten us before |
 | `glossary.md` | §-anchors, tier vocab, VP roster, wave/slice names, project jargon | Any unfamiliar term |

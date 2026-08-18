@@ -131,6 +131,32 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
 
 ## 4. What's SHIPPED (stop asking about these)
 
+### Roles & permissions — R1 call-site inventory + R2a platform-seam fix (2026-08-18)
+
+- ✅ **R1 — every role call site classified** (`docs/audits/R1-role-call-site-inventory.md`).
+  Deterministic SQL over prod bucketed **all 186 RLS policies** (operator-intent 3 · tenant-filtered 3
+  · **no-tenant-predicate 82** · **OR-composition 98**) and **all 118 role-referencing functions**
+  (operator-intent 10 · **no-tenant-scope 31** · mixed 69 · other 8). Totals reconcile exactly.
+  **117 of 118 functions are `SECURITY DEFINER`** — RLS bypassed, so the in-body check is the only
+  guard (§59). **No behaviour change in R1 itself.**
+- ✅ **The amplifier, measured:** `map_tenant_role_to_app_role()` maps tenant `owner` AND `admin` →
+  global `admin`, and the ENABLED trigger `trg_sync_tenant_member_to_user_roles` writes it into the
+  tenant-less `user_roles`. **9 `admin` holders across 10 of 13 tenants vs 1 `super_admin`** — so
+  "global admin" is approximately "every tenant owner." Read every `has_role(uid,'admin')` guard
+  that way.
+- ✅ **R2a — `paige_workflow_registry` platform seam closed** (migration
+  `20260919000000_workflow_registry_platform_seam.sql`). All 23 rows are `tenant_id IS NULL`, so
+  `has_role('admin') AND (tenant_id IS NULL OR tenant_id = current_user_tenant_id())` collapsed to
+  `has_role('admin')` on a PERMISSIVE **cmd=ALL** policy — any tenant owner could rewrite
+  `requires_approval` / `direct_function_name`. Platform rows now require `is_platform_operator()`;
+  tenant-owned rows keep tenant-admin access (§58: the access reduction is explicit, and the `admin`
+  role stays meaningful). `platform_set_workflow_webhook_url` + `admin_get_workflow_webhook_url` →
+  operator-gated, `anon`/`PUBLIC` EXECUTE revoked. **§37: both functions had ZERO producers.**
+- ✅ **A broken function removed:** `admin_get_workflow_webhook_url(uuid)` selected a column
+  `n8n_webhook_url` that does not exist (table has `n8n_webhook_url_ct`) — threw `42703` on every
+  call, zero callers. Found *by the §32.a rollback proof refusing to recreate it*, and dropped.
+
+
 **§13 discipline:** every ✅ here has file/migration/PR evidence in the audit at `outputs/systems-inventory-2026-08-09` (Cowork's inventory work of 2026-08-09). If you're about to say "we don't have X," check this section first. **CC's code check is authoritative** — if your grep disagrees with this section, log a §13 correction in Section 10 and update Section 4 in the same PR.
 
 ### Cowork research discipline (owner-locked 2026-08-09, HARD RULE — mechanical, not aspirational)
@@ -292,6 +318,29 @@ Grouped:
 ---
 
 ## 5. Current focus + known gaps
+
+### Roles remediation — open slices after R1/R2a (2026-08-18)
+
+- ❌ **R2b — wrapper-closure sweep (do this before trusting any count).** The R1 corpus keys on the
+  literal tokens `has_role|has_any_role|user_roles`. Policies/functions that gate via `is_admin()`,
+  `is_staff()`, `studio_role_ok()` or `check_feature_access()` reach `user_roles` one level down and
+  **never enter the corpus** — so the true call-site count is **higher than 186 + 118**.
+- ❌ **R3a — `match_paige_memory` structural auth bypass (LATENT, no role required).** Passing
+  `_target_client_id := auth.uid()` makes the guard's AND-chain false so the RAISE never fires, while
+  the data predicate keys on the attacker-supplied `_target_user_id`; `authenticated`-reachable and
+  `SECURITY DEFINER`. **Not exposed today — both target tables have 0 rows** — but it arms itself on
+  the memory fabric's first write. Deferred deliberately: a correct fix must also scope the data
+  predicate's `client_id` branch, and it has a live caller (`paige-ai-chat`) whose two legitimate
+  paths must survive.
+- ❌ **R3b — remaining c1 (26 of 31 DEFINER functions) and the c2 review queue (98 policies).**
+  Subagent-audited as candidates; **not** independently confirmed object-by-object.
+- ❌ **R4/R5 — backfill + dual-read, then the `user_roles` Class-A-only CHECK.** Do not skip to R5.
+- ❌ **Net-new roles capability (owner-ruled 2026-08-18, NOT started):** custom-roles table, a
+  `title` field distinct from role, and the sales catalog (Sales Lead · Closer · Appointment Setter ·
+  SDR · Sales Ops). Verified absent on prod: no custom-roles/permissions table exists, `tenant_members`
+  has **no `title` column**, and `app_role` carries **none** of those sales values (only `sales_rep`).
+  UI deferred to the Super Admin Settings pack (owner's Option C).
+
 
 ### Paige self-verify BROWSER — Task #126 Slice 2 SHIPPED + §32.c GREEN (2026-08-12)
 
@@ -570,6 +619,15 @@ DOCTRINE_190/191/192, 194, 197, 198 + Addendum, 200, 201, 202, 203, 205, 208, 21
 ---
 
 ## 10. §13 corrections log
+
+- **2026-08-18 — "latent structural weakness rather than a confirmed live leak" was too optimistic.**
+  `docs/doctrine/role-taxonomy-and-matrix.md` §4 hedged that most reads also filter by tenant via RLS,
+  so the mis-scoped global grants were a latent weakness. **R1 found a LIVE platform-seam escalation**
+  (`paige_workflow_registry`: 23 platform rows, PERMISSIVE `cmd=ALL`, guard collapsing to a global
+  `admin` held by ~every tenant owner). The taxonomy doc's caveat that this "is not proven safe
+  either — that is exactly what the audit must establish per call site" was the operative half; the
+  reassuring half was wrong. Corrected by R1 + fixed by R2a in the same PR.
+
 
 Things Cowork/CC/Codex have claimed that the codebase disagrees with. **Never remove entries** — mark as reversed/resolved but keep the record. **CC's code check is authoritative.**
 
