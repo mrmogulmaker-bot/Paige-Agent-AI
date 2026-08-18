@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, Avatar, Meter, SlideOut, SubTabs } from "./_shared";
 import { CAL, CBK } from "./calendar-data";
 import { cWk, CalendarSchedule } from "./calendar";
@@ -230,7 +231,7 @@ fontSize:12.5,color:'var(--ink-2)',lineHeight:1.55}}><span style={{color:'var(--
 <div style={{fontSize:11.4,color:'var(--ink-3)',fontWeight:500}}>{q}</div>
 <div style={{fontSize:12.6,color:'var(--ink)',marginTop:4,lineHeight:1.5}}>{a}</div></div>)}</div></>}</SlideOut></>};
 
-export const CalendarHub=()=>{const[tab,setTab]=React.useState('sch');const[pv,setPv]=React.useState(null);
+export const CalendarHub=()=>{const[tab,setTab]=useSubtabRoute("solo","calendar","sch");const[pv,setPv]=React.useState(null);
 const tabs=[['sch','Schedule',()=><Ic.cal size={14}/>],['links','Booking links',()=><Ic.send size={14}/>],
 ['route','Routing',()=><Ic.filter size={14}/>],['avail','Availability',()=><Ic.clock size={14}/>],['req','Requests',()=><Ic.mail size={14}/>],['set','Settings',()=><Ic.gear size={14}/>]];
 const subs={sch:'Meetings, filings, automation runs and follow-ups on one grid — the deadline and the call in the same place.',

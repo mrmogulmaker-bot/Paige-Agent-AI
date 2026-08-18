@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, PeekCard, Wrap, PageHead, SubTabs, DATA } from "./_shared";
 
 export const GR={
@@ -206,7 +207,7 @@ return <div key={i} className="card" style={{background:'var(--surface-2)',paddi
 <button className="btn btn-s" style={{justifyContent:'center',border:'1px dashed var(--line)',background:'none'}}><Ic.plus size={13}/>Add</button></div></div>})}</div></Wrap>};
 
 const openStudio=()=>window.dispatchEvent(new CustomEvent('paige-studio'));
-export const GrowthHub=()=>{const[tab,setTab]=React.useState('ov');
+export const GrowthHub=()=>{const[tab,setTab]=useSubtabRoute("solo","growth","ov");
 const tabs=[['ov','Overview',()=><Ic.bolt size={14}/>],['brand','Brand Kit',()=><Ic.spark size={14}/>],['soc','Social',()=><Ic.users size={14}/>],
 ['pg','Pages',()=><Ic.grid size={14}/>],['fn','Funnels',()=><Ic.trend size={14}/>],['fm','Forms',()=><Ic.doc size={14}/>],['ext','Builders',()=><Ic.store size={14}/>]];
 return <div style={{display:'flex',flexDirection:'column',height:'100%',minHeight:0,minWidth:0,alignItems:'stretch'}}>

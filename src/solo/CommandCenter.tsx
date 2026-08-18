@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, Avatar, Foldout, SubTabs, DATA } from "./_shared";
 import { CompassTile } from "./compass";
 import { VaultTile } from "./vault";
@@ -151,7 +152,7 @@ return <div className="fade-in pg" style={{maxWidth:1440,margin:'0 auto',width:'
 
 {toast&&<div className="fade-in" style={{position:'fixed',bottom:26,left:'50%',transform:'translateX(-50%)',background:'var(--rail)',color:'var(--ink-inv)',padding:'11px 18px',borderRadius:12,fontSize:13,boxShadow:'var(--sh-3)',zIndex:60,maxWidth:'min(560px,90vw)'}}>{toast}</div>}
 </div>};
-const CommandHub=({openPaige})=>{const[tab,setTab]=React.useState('home');
+const CommandHub=({openPaige})=>{const[tab,setTab]=useSubtabRoute("solo","command-center","home");
 const tabs=[['home','Command Center',()=><Ic.grid size={15}/>],['sys','Systems Check',()=><Ic.pulse size={15}/>]];
 return <div style={{display:'flex',flexDirection:'column',height:'100%',minWidth:0,alignItems:'stretch'}}>
 <SubTabs tabs={tabs} cur={tab} set={setTab}/>

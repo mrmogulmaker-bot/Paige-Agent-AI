@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, Avatar, SubTabs } from "./_shared";
 import { TIER, TenantAutomationsLibrary, TenantAutomationsRuns, RuleDrawer, RunDrawer } from "./automations";
 
@@ -124,7 +125,7 @@ style={{height:25,cursor:'pointer',background:'var(--surface-sunk)',color:'var(-
 <div className="row" style={{gap:6,color:'var(--violet)',fontSize:10.6,fontWeight:600,letterSpacing:'.1em',textTransform:'uppercase'}}><Ic.spark size={12}/>Paige's read</div>
 <div style={{fontSize:12.3,color:'var(--ink-2)',lineHeight:1.55,marginTop:7}}>The gap I would close next is silence. Nothing you run watches for a client going quiet, and two of your eight accounts have not answered anything in eleven days.</div></div></div></div></div>};
 
-export const AutomationsHub=()=>{const[tab,setTab]=React.useState('lib');
+export const AutomationsHub=()=>{const[tab,setTab]=useSubtabRoute("solo","automations","lib");
 const[rule,setRule]=React.useState(null);const[run,setRun]=React.useState(null);
 const tabs=[['lib','Automations',()=><Ic.bolt size={14}/>],['runs','Runs',()=><Ic.pulse size={14}/>],['build','Build',()=><Ic.spark size={14}/>]];
 const subs={lib:'Every persistent rule Paige is running for you — one home, tune from here.',

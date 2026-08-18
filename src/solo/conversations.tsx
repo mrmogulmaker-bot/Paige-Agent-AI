@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React from "react";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, Avatar, Logo, SubTabs, Wrap, PageHead } from "./_shared";
 import { Inbox2 } from "./inbox2";
 import { Clients } from "./screens";
@@ -208,7 +209,7 @@ const Portal=()=>(<div className="two-w">
 <div style={{fontSize:12.7,color:'var(--ink-2)',marginTop:6,lineHeight:1.5}}>Portal silence is the earliest churn signal you have. Paige drafted a reset note and a one-click access reset.</div>
 <button className="btn btn-s" style={{marginTop:11}}>Open the draft</button></div></div></div>);
 
-export const ClientsHub=({openPaige})=>{const[tab,setTab]=React.useState('people');
+export const ClientsHub=({openPaige})=>{const[tab,setTab]=useSubtabRoute("solo","clients","people");
 const tabs=[['people','People',()=><Ic.users size={15}/>],['pipe','Pipeline',()=><Ic.trend size={15}/>],['convo','Conversations',()=><Ic.mail size={15}/>,2],
 ['deliv','Delivery',()=><Ic.doc size={15}/>],['portal','Client Portal',()=><Ic.store size={15}/>]];
 const titles={convo:['Conversations','Every thread, every channel, one place — and Paige drafting inside it.'],

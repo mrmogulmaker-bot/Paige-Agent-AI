@@ -6,6 +6,7 @@ import { useSoloBusiness } from "./data/useSoloBusiness";
 import { useSoloOwner } from "./data/useSoloOwner";
 import { useSoloPeople } from "./data/useSoloPeople";
 import { useSoloComms } from "./data/useSoloComms";
+import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 
 /* ------------------------------------------------------------------ *
  * Claude Design "Solo Setup" pack — pop-out / slide-out / foldout edit
@@ -610,7 +611,7 @@ return <div className="su-fill">
 <button className="btn btn-s" disabled>Download audit log</button></div>
 <div className="sub" style={{marginTop:8}}>Sample only — retention controls and export have no live backend yet.</div></div></div></PeekCard></div>};
 
-export const Setup=({start='biz'})=>{const[tab,setTab]=React.useState(start);const[toast,setToast]=React.useState(null);
+export const Setup=({start='biz'})=>{const[tab,setTab]=useSubtabRoute("solo","setup",start);const[toast,setToast]=React.useState(null);
 const notify=React.useCallback(msg=>{setToast(msg);window.setTimeout(()=>setToast(null),3200)},[]);
 const tabs=[['biz','Business',()=><Ic.store size={14}/>],['owner','Owner',()=><Ic.users size={14}/>],['contacts','Contacts',()=><Ic.mail size={14}/>],
 ['people','People',()=><Ic.grid size={14}/>],['comms','Comms & data',()=><Ic.gear size={14}/>]];

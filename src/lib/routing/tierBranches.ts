@@ -74,21 +74,146 @@ export interface TierTree {
 /**
  * SOLO_BRANCHES — the Solo tree (13). Shared by `solo` AND `sub_account` (§11c/§60).
  * Keys match `src/solo/SoloApp.tsx`'s `screens` registry.
+ *
+ * Sub-tabs verified screen-by-screen against the live Solo surfaces 2026-08-18 (53 across 11
+ * branches). Solo's internal sub-tab keys are its OWN abbreviations (`know`/`sub`/`pipe`/`sch`/
+ * `ov`/`mkt`/`dir`/`biz`…) and deliberately DIFFER from the agency keys for the same mental-model
+ * slug — the two tiers are separate shells with separate `useState` vocabularies. Do NOT
+ * "normalize" a Solo key to match its agency twin: the key is what the screen actually switches
+ * on, so an aligned-looking key produces a dead route (locked by test, §13).
  */
 export const SOLO_BRANCHES: Branch[] = [
-  { slug: "command-center", key: "home", label: "Command Center", group: "main" },
-  { slug: "paige", key: "paige", label: "Paige", group: "main" },
+  {
+    slug: "command-center", key: "home", label: "Command Center", group: "main",
+    // `home`'s label is "Command Center" (== branch); slug'd "overview" to avoid
+    // /command-center/command-center. Source: src/solo/CommandCenter.tsx.
+    subtabs: [
+      { slug: "overview", key: "home", label: "Command Center" },
+      { slug: "systems-check", key: "sys", label: "Systems Check" },
+    ],
+  },
+  {
+    slug: "paige", key: "paige", label: "Paige", group: "main",
+    // Source: src/solo/paigehub.tsx. NB `know`/`sub`/`act`/`team` — agency uses
+    // knowledge/agents/actions/pteam for the same slugs.
+    subtabs: [
+      { slug: "chat", key: "chat", label: "Chat" },
+      { slug: "knowledge", key: "know", label: "Knowledge" },
+      { slug: "sub-agents", key: "sub", label: "Sub-Agents" },
+      { slug: "actions", key: "act", label: "Actions" },
+      { slug: "skills", key: "skills", label: "Skills" },
+      { slug: "paige-team", key: "team", label: "Paige Team" },
+    ],
+  },
+  // Trust Compass has NO sub-tabs in Solo (full-page department drilldown, no sub-tab strip).
+  // The agency Trust Compass sub-tabs are an AGENCY-ONLY scope switch (§11c).
   { slug: "trust-compass", key: "compass", label: "Trust Compass", group: "main" },
-  { slug: "automations", key: "auto", label: "Automations", group: "main" },
-  { slug: "clients", key: "clients", label: "Clients", group: "main" },
-  { slug: "calendar", key: "cal", label: "Calendar", group: "main" },
-  { slug: "growth", key: "growth", label: "Growth", group: "main" },
-  { slug: "analytics", key: "analytics", label: "Analytics", group: "main" },
-  { slug: "marketplace", key: "market", label: "Marketplace", group: "platform" },
+  {
+    slug: "automations", key: "auto", label: "Automations", group: "main",
+    // Source: src/solo/automations-build.tsx.
+    subtabs: [
+      { slug: "library", key: "lib", label: "Automations" },
+      { slug: "runs", key: "runs", label: "Runs" },
+      { slug: "build", key: "build", label: "Build" },
+    ],
+  },
+  {
+    slug: "clients", key: "clients", label: "Clients", group: "main",
+    // Source: src/solo/conversations.tsx (ClientsHub). Solo owns a direct client book, so it
+    // carries Delivery + Client Portal where the agency tree carries sub-account management.
+    subtabs: [
+      { slug: "people", key: "people", label: "People" },
+      { slug: "pipeline", key: "pipe", label: "Pipeline" },
+      { slug: "conversations", key: "convo", label: "Conversations" },
+      { slug: "delivery", key: "deliv", label: "Delivery" },
+      { slug: "client-portal", key: "portal", label: "Client Portal" },
+    ],
+  },
+  {
+    slug: "calendar", key: "cal", label: "Calendar", group: "main",
+    // Source: src/solo/calendar-book.tsx. Solo has a Routing sub-tab the agency tree lacks.
+    subtabs: [
+      { slug: "schedule", key: "sch", label: "Schedule" },
+      { slug: "booking-links", key: "links", label: "Booking links" },
+      { slug: "routing", key: "route", label: "Routing" },
+      { slug: "availability", key: "avail", label: "Availability" },
+      { slug: "requests", key: "req", label: "Requests" },
+      { slug: "settings", key: "set", label: "Settings" },
+    ],
+  },
+  {
+    slug: "growth", key: "growth", label: "Growth", group: "main",
+    // Source: src/solo/growth2.tsx. Vibe Studio is NOT a sub-tab — a full-screen overlay
+    // opened from the header; not deep-linkable here.
+    subtabs: [
+      { slug: "overview", key: "ov", label: "Overview" },
+      { slug: "brand-kit", key: "brand", label: "Brand Kit" },
+      { slug: "social", key: "soc", label: "Social" },
+      { slug: "pages", key: "pg", label: "Pages" },
+      { slug: "funnels", key: "fn", label: "Funnels" },
+      { slug: "forms", key: "fm", label: "Forms" },
+      { slug: "builders", key: "ext", label: "Builders" },
+    ],
+  },
+  {
+    slug: "analytics", key: "analytics", label: "Analytics", group: "main",
+    // Source: src/solo/analytics2.tsx.
+    subtabs: [
+      { slug: "brief", key: "brief", label: "Brief" },
+      { slug: "money", key: "money", label: "The money" },
+      { slug: "profitability", key: "profit", label: "Profitability" },
+      { slug: "retention", key: "ret", label: "Retention" },
+      { slug: "decisions", key: "dec", label: "Decisions" },
+      { slug: "market-watch", key: "mkt", label: "Market watch" },
+    ],
+  },
+  {
+    slug: "marketplace", key: "market", label: "Marketplace", group: "platform",
+    // Source: src/solo/marketplace.tsx — FOUR only. Curated + Publish are agency-only
+    // (a Solo tenant consumes the marketplace, it does not curate or publish to a book).
+    subtabs: [
+      { slug: "today", key: "today", label: "Today" },
+      { slug: "browse", key: "browse", label: "Browse" },
+      { slug: "installed", key: "installed", label: "Installed" },
+      { slug: "updates", key: "updates", label: "Updates" },
+    ],
+  },
+  // Business Vault has NO sub-tabs in Solo — its `tabstrip`-classed chip rows are a due-date
+  // bucket FILTER + a bulk-action bar, not destinations (src/solo/vault.tsx).
   { slug: "business-vault", key: "vault", label: "Business Vault", group: "platform" },
-  { slug: "integrations", key: "integrations", label: "Integrations", group: "platform" },
-  { slug: "team", key: "team", label: "Team", group: "platform" },
-  { slug: "setup", key: "setup", label: "Setup", group: "platform" },
+  {
+    slug: "integrations", key: "integrations", label: "Integrations", group: "platform",
+    // Solo's Integrations is FULLY BUILT (src/solo/integrations.tsx) with three real sub-tabs
+    // — unlike the agency twin, which is still a placeholder stub.
+    subtabs: [
+      { slug: "catalog", key: "cat", label: "Catalog" },
+      { slug: "web-automator", key: "auto", label: "Web Automator" },
+      { slug: "activity", key: "act", label: "Activity" },
+    ],
+  },
+  {
+    slug: "team", key: "team", label: "Team", group: "platform",
+    // Source: src/solo/team.tsx. Same six slugs as agency; abbreviated keys.
+    subtabs: [
+      { slug: "roster", key: "roster", label: "Roster" },
+      { slug: "directory", key: "dir", label: "Directory" },
+      { slug: "roles-invites", key: "roles", label: "Roles & invites" },
+      { slug: "workload", key: "work", label: "Workload" },
+      { slug: "performance", key: "perf", label: "Performance" },
+      { slug: "activity", key: "act", label: "Activity" },
+    ],
+  },
+  {
+    slug: "setup", key: "setup", label: "Setup", group: "platform",
+    // Source: src/solo/setup.tsx — FIVE. Presence + Banking are agency-only sub-tabs.
+    subtabs: [
+      { slug: "business", key: "biz", label: "Business" },
+      { slug: "owner", key: "owner", label: "Owner" },
+      { slug: "contacts", key: "contacts", label: "Contacts" },
+      { slug: "people", key: "people", label: "People" },
+      { slug: "comms-data", key: "comms", label: "Comms & data" },
+    ],
+  },
 ];
 
 /**
@@ -213,7 +338,10 @@ export const AGENCY_BRANCHES: Branch[] = [
       { slug: "vendors", key: "vendors", label: "Vendors" },
     ],
   },
-  // Integrations is a STUB today (placeholder card, no content / no sub-tabs).
+  // The AGENCY Integrations screen is a STUB today (placeholder card, no content / no
+  // sub-tabs). §13 per-tier accuracy: this is true of the agency screen ONLY — Solo's
+  // Integrations (src/solo/integrations.tsx) is fully built and DOES carry three sub-tabs
+  // (Catalog · Web Automator · Activity), declared on SOLO_BRANCHES above.
   { slug: "integrations", key: "integrations", label: "Integrations", group: "platform" },
   {
     slug: "team", key: "team", label: "Team", group: "platform",
