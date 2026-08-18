@@ -36,6 +36,8 @@ export type RouteTierKey =
 export interface SubTab {
   /** URL segment `/agency/{n}/{branch}/{slug}` — human mental-model word, url-safe. */
   slug: string;
+  /** Rail glyph, where the tier's design gives one (the operator settings back-menu). */
+  glyph?: string;
   /** The screen's internal sub-tab id (its `useState` value). May differ from slug. */
   key: string;
   /** Sub-tab label. */
@@ -63,6 +65,12 @@ export interface Branch {
    * branch auto-opens the back menu. Additive union: no existing value changed.
    */
   group: "main" | "platform" | "fleet" | "business" | "settings";
+  /**
+   * The rail glyph, for tiers whose design carries one. Claude Design's operator rail sets a
+   * distinct mark per branch, and the rail reads as a bare list of words without them. Optional
+   * and additive: the tenant tiers leave it undefined and render exactly as before.
+   */
+  glyph?: string;
   /**
    * Optional 2nd-level sub-tabs (§65 3-level tree, owner 2026-08-17). `subtabs[0]` is the
    * DEFAULT — rendered at the bare `/agency/{n}/{branch}` URL (no 3rd segment). A branch
@@ -417,7 +425,7 @@ export const AGENCY_BRANCHES: Branch[] = [
  */
 export const OPERATOR_BRANCHES: Branch[] = [
   {
-    slug: "fleet", key: "fleet", label: "Fleet Console", group: "fleet",
+    slug: "fleet", key: "fleet", label: "Fleet Console", group: "fleet", glyph: "◎",
     subtabs: [
       { slug: "systems-check", key: "main", label: "Systems Check" },
       { slug: "tenants", key: "console", label: "Tenants" },
@@ -428,7 +436,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "paige", key: "workspace", label: "Paige", group: "fleet",
+    slug: "paige", key: "workspace", label: "Paige", group: "fleet", glyph: "✦",
     subtabs: [
       { slug: "chat", key: "main", label: "Chat" },
       { slug: "knowledge", key: "know", label: "Knowledge" },
@@ -444,7 +452,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "trust-compass", key: "compass", label: "Trust Compass", group: "fleet",
+    slug: "trust-compass", key: "compass", label: "Trust Compass", group: "fleet", glyph: "◈",
     subtabs: [
       { slug: "autonomy", key: "main", label: "Autonomy" },
       { slug: "escalations", key: "esc", label: "Escalations" },
@@ -452,7 +460,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "calendar", key: "calendar", label: "Calendar", group: "fleet",
+    slug: "calendar", key: "calendar", label: "Calendar", group: "fleet", glyph: "▦",
     subtabs: [
       { slug: "month", key: "main", label: "Month" },
       { slug: "booking-links", key: "links", label: "Booking links" },
@@ -461,7 +469,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "marketplace", key: "market", label: "Marketplace", group: "fleet",
+    slug: "marketplace", key: "market", label: "Marketplace", group: "fleet", glyph: "⌗",
     subtabs: [
       { slug: "discover", key: "main", label: "Discover" },
       { slug: "build", key: "build", label: "Build" },
@@ -470,7 +478,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "growth", key: "growth", label: "Growth", group: "fleet",
+    slug: "growth", key: "growth", label: "Marketing", group: "fleet", glyph: "◈",
     subtabs: [
       { slug: "brand-kit", key: "main", label: "Brand Kit" },
       { slug: "social", key: "social", label: "Social" },
@@ -482,7 +490,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "automations", key: "autos", label: "Automations", group: "fleet",
+    slug: "automations", key: "autos", label: "Automations", group: "fleet", glyph: "⊞",
     subtabs: [
       { slug: "library", key: "main", label: "Library" },
       { slug: "runs", key: "runs", label: "Runs" },
@@ -490,7 +498,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "analytics", key: "analytics", label: "Analytics", group: "fleet",
+    slug: "analytics", key: "analytics", label: "Analytics", group: "fleet", glyph: "▤",
     subtabs: [
       { slug: "brief", key: "main", label: "Brief" },
       { slug: "revenue", key: "rev", label: "Revenue" },
@@ -505,7 +513,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "revenue", key: "revenue", label: "Revenue", group: "fleet",
+    slug: "revenue", key: "revenue", label: "Revenue", group: "fleet", glyph: "◈",
     subtabs: [
       { slug: "plans", key: "main", label: "Plans" },
       { slug: "metering", key: "meters", label: "Metering" },
@@ -514,7 +522,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "support", key: "support", label: "Platform Support", group: "fleet",
+    slug: "support", key: "support", label: "Platform Support", group: "business", glyph: "◫",
     subtabs: [
       { slug: "inbox", key: "main", label: "Inbox" },
       { slug: "escalations", key: "esc", label: "Escalations" },
@@ -522,7 +530,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "comms", key: "comms", label: "Comms", group: "fleet",
+    slug: "comms", key: "comms", label: "Comms", group: "business", glyph: "✉",
     subtabs: [
       { slug: "outbound", key: "main", label: "Outbound" },
       { slug: "templates", key: "tpl", label: "Templates" },
@@ -530,7 +538,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     ],
   },
   {
-    slug: "provisioning", key: "provisioning", label: "Provisioning", group: "business",
+    slug: "provisioning", key: "provisioning", label: "Provisioning", group: "business", glyph: "⟳",
     subtabs: [
       { slug: "pipeline", key: "main", label: "Pipeline" },
       { slug: "history", key: "hist", label: "History" },
@@ -540,7 +548,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
     slug: "settings", key: "settings", label: "Settings", group: "settings",
     subtabs: [
       {
-        slug: "setup", key: "config", label: "Setup",
+        slug: "setup", glyph: "◈", key: "config", label: "Setup",
         subtabs: [
           { slug: "operator", key: "main", label: "Operator" },
           { slug: "brand-kit", key: "brand", label: "Brand kit" },
@@ -551,7 +559,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
         ],
       },
       {
-        slug: "integrations", key: "integrations", label: "Integrations",
+        slug: "integrations", glyph: "⚯", key: "integrations", label: "Integrations",
         subtabs: [
           { slug: "connected", key: "main", label: "Connected" },
           { slug: "health", key: "health", label: "Health" },
@@ -559,14 +567,14 @@ export const OPERATOR_BRANCHES: Branch[] = [
         ],
       },
       {
-        slug: "team", key: "team", label: "Platform Team",
+        slug: "team", glyph: "◍", key: "team", label: "Platform Team",
         subtabs: [
           { slug: "seats", key: "main", label: "Seats" },
           { slug: "roles", key: "roles", label: "Roles" },
         ],
       },
       {
-        slug: "vault", key: "vault", label: "Platform Vault",
+        slug: "vault", glyph: "▣", key: "vault", label: "Platform Vault",
         subtabs: [
           { slug: "obligations", key: "main", label: "Obligations" },
           { slug: "vendors", key: "vendors", label: "Vendors" },
@@ -574,7 +582,7 @@ export const OPERATOR_BRANCHES: Branch[] = [
         ],
       },
       {
-        slug: "governance", key: "governance", label: "Governance",
+        slug: "governance", glyph: "⛉", key: "governance", label: "Governance",
         subtabs: [
           { slug: "approvals", key: "main", label: "Approvals" },
           { slug: "audit-log", key: "audit", label: "Audit log" },

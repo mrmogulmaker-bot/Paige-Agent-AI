@@ -14,6 +14,7 @@ import { useKnowledge } from "@/operator/data/useKnowledge";
 import OperatorPanel from "@/operator/surfaces/OperatorPanel";
 import { getPanelSpec } from "@/operator/surfaces/panelSpecs";
 import WorkspaceSurface from "@/operator/surfaces/WorkspaceSurface";
+import { PaigePlatformDesk } from "@/components/paige/PaigePlatformDesk";
 import { MarketplaceStore, MarketplaceReview, IntegrationsGrid } from "@/operator/surfaces/MarketplaceSurfaces";
 import { CalendarMonth, CalendarWeek } from "@/operator/surfaces/CalendarSurfaces";
 import { ComposeSurface } from "@/operator/surfaces/ComposeSurface";
@@ -141,9 +142,15 @@ function useRailDensity(rowCount: number) {
 
 /** One rail row. A real <Link> with aria-current — the pack's rows are div+onClick (§36/C5). */
 function RailRow({
-  to, label, active, collapsed, tone = "default",
+  to, label, glyph, active, collapsed, tone = "default",
 }: {
   to: string; label: string; active: boolean; collapsed: boolean;
+  /**
+   * CD's per-branch mark. It is what makes the rail read as a console rather than a list of
+   * words, and it is the ONLY thing left when the rail collapses to 64px — so a branch without
+   * one falls back to the first letter of its label rather than to nothing.
+   */
+  glyph?: string;
   /** CD tints the SETTINGS menu's active row gold and the front menu's white. Both ship. */
   tone?: "default" | "gold";
 }) {
@@ -168,6 +175,16 @@ function RailRow({
             : "text-rail-foreground/70 hover:bg-rail-foreground/[0.06] hover:text-rail-foreground",
       )}
     >
+      <span
+        aria-hidden
+        className={cn(
+          "flex-none text-center leading-none",
+          active ? "opacity-100" : "opacity-70",
+        )}
+        style={{ width: "14px", fontSize: "calc(var(--rail-font) + 1px)" }}
+      >
+        {glyph ?? label.charAt(0)}
+      </span>
       <span
         className={cn("truncate leading-[1.35]", collapsed && "sr-only")}
         style={{ fontSize: "var(--rail-font)" }}
@@ -322,6 +339,7 @@ export default function OperatorApp() {
                     key={g.slug}
                     to={subtabPath("operator", "", branch.slug, g.slug)}
                     label={g.label}
+                    glyph={g.glyph}
                     active={g.slug === sub?.slug}
                     collapsed={collapsed}
                     tone="gold"
@@ -362,6 +380,7 @@ export default function OperatorApp() {
                           key={b.slug}
                           to={branchPath("operator", "", b.slug)}
                           label={b.label}
+                          glyph={b.glyph}
                           active={b.slug === branch.slug}
                           collapsed={collapsed}
                         />
@@ -535,65 +554,27 @@ function OperatorSurface({
     );
   if (isWorkspace)
     return (
-      /* CD's operator chat, with nothing put in Paige's mouth: no thread, no chat history and
-         no `onSend`, so the pane states that the chat seam is not connected and the composer
-         says it is disabled rather than swallowing what the operator typed. Only `scope` is
-         real — it is read from the session, not chosen as a label. Wiring the send + history
-         is its own slice; the live operator chat remains on the shipped console until then. */
+      /* CD's workspace chrome around the REAL operator chat.
+       *
+       * The platform already ships this conversation — `PaigePlatformDesk` mounts the live
+       * `PaigeAIChat` at platform scope with voice dictation, spoken playback, artifact cards
+       * and real thread history. CD's pack draws a thread and a composer of its own, but those
+       * are a PICTURE of a chat; shipping them here would have replaced a working capability
+       * with an illustration of it (§58) — which is exactly what the first pass did.
+       *
+       * So the rail, the header and the chrome are CD's, and the pane hosts the thing that
+       * actually works. The rail's own lists stay empty until the thread/project reads are
+       * wired to the same store the chat uses — an honest gap, not an invented one (§13).
+       */
       <WorkspaceSurface
         projects={[]}
         recent={[]}
         earlier={[]}
         thread={[]}
         scope={isOwner ? "Platform · full" : "Platform · scoped"}
+        chatSlot={<PaigePlatformDesk />}
       />
     );
-
-  /**
-   * CD's BESPOKE surfaces — the tabs the pack builds as their own component rather than as a
-   * generic panel body. Each is keyed to the address its design belongs to, in the same one
-   * dispatch as everything else (§18). All of them are prop-driven and ship with no data, so
-   * each states what is not connected rather than rendering an invented board, thread or curve.
-   */
-  // Keyed on the LEAF where one exists, so a settings tab cannot silently borrow its sibling's
-  // surface — `integrations/health` and `integrations/available` have their own copy and must
-  // reach it, not land on the connected-catalog grid wearing the wrong title.
-  const bespoke = leafSlug
-    ? `${branchSlug}/${subSlug ?? ""}/${leafSlug}`
-    : `${branchSlug}/${subSlug ?? ""}`;
-  switch (bespoke) {
-    case "marketplace/discover":    return <MarketplaceStore shelves={[]} />;
-    case "marketplace/submissions": return <MarketplaceReview submissions={[]} />;
-    case "settings/integrations/connected": return <IntegrationsGrid items={[]} />;
-    case "calendar/month":          return <CalendarMonth events={[]} />;
-    case "calendar/tasks":          return <CalendarWeek days={[]} />;
-    case "comms/outbound":          return <ComposeSurface subject={null} body={null} />;
-    case "support/inbox":           return <SupportThread clock={null} draft={null} />;
-    case "fleet/prospects":
-      // CD stacks the stat strip above the board — the head reads the same pipeline the board
-      // draws, so they belong on one address, not two.
-      return (
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <PipelineHead weighted={null} rawTotal={null} />
-          <PipelineBoard columns={[]} />
-        </div>
-      );
-    case "provisioning/pipeline":   return <StageBoard lanes={[]} />;
-    case "growth/social":
-      // The grid is what exists; the queue is what is going out. Both are the same book of
-      // posts seen from two ends, which is why CD puts them on the one surface.
-      return (
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <SocialGrid networks={[]} />
-          <SocialQueue posts={[]} />
-        </div>
-      );
-    case "automations/runs":        return <BufferDiagram />;
-    case "analytics/brief":         return <AreaChart series={[]} />;
-    case "analytics/performance":   return <Bench />;
-    default:
-      break;
-  }
 
   /**
    * Every other addressable tab is one of CD's generic panels — the same layout driven by its
