@@ -72,16 +72,26 @@ async function resolveAgencyLanding(userId: string): Promise<string | null> {
     // positive integer before it ever reaches a URL. `Number(null)` is 0 and
     // `Number(undefined)`/`Number("abc")` is NaN, so both fail this guard and
     // fall through to the pre-existing bare-/agency return (§13).
-    // §39 — MATCH `/admin` Gate A EXACTLY, canary flag included. Gate A gates the
-    // URL-driven shell on `agencyShellEnabled && tierKey === 'agency'|'enterprise'`,
-    // but `AgencyEntry` has NO such gate — a numeric segment goes straight to
-    // AgencyApp. Returning the numeric URL on `is_agency_manager` alone would hand
-    // EVERY eligible manager the new shell regardless of the flag, so login and
-    // `/admin` would disagree for the next agency provisioned (the flag is
-    // Super-Admin-set, not set at provisioning). The server returns it because this
-    // caller cannot read `tenants.features` itself: the SELECT policy is
+    // §39 — HONOR THE SAME CANARY `/admin` Gate A honors. Without this check,
+    // returning the numeric URL on `is_agency_manager` alone would hand EVERY
+    // eligible manager the new shell regardless of the flag — `AgencyEntry` has no
+    // gate of its own, so a numeric segment goes straight to AgencyApp. The flag is
+    // Super-Admin-set and NOT set at provisioning, so login and `/admin` would
+    // disagree for the next agency provisioned. The server returns the flag because
+    // this caller cannot read `tenants.features` itself: the SELECT policy is
     // `is_tenant_member(id) OR is_platform_owner()`, and an agency-team manager with
     // no `tenant_members` row would fail it and silently degrade forever.
+    //
+    // NOT identical to Gate A, deliberately (§13 — do not claim parity we don't have).
+    // The two gates read the flag off DIFFERENT tenants: Gate A reads the ACTIVE
+    // tenant (`useTenantContext().activeTenant`, i.e. `profiles.active_tenant_id` —
+    // which is the SUB's tenant while an owner is acting-as), and additionally
+    // requires `tierKey === 'agency'|'enterprise'`. This resolver reads the OWNER'S
+    // OWN AGENCY tenant (`agency_current_id()` inside the RPC), which is the correct
+    // subject for a LOGIN landing — at login there is no act-as in play, and the
+    // question being asked is "is this operator's agency on the new shell?", not
+    // "is whatever tenant they last had active on it?". Same flag, same intent,
+    // different (and appropriate) subject.
     if (ctx.agency_shell_enabled !== true) return "/agency";
     // §13 — a missing/garbage account number falls back to the pre-change bare
     // `/agency`, never a constructed `/agency/null/command-center`. Number(null) → 0

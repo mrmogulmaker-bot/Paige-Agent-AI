@@ -81,6 +81,23 @@ describe("resolveLandingRoute — agency landing (§65)", () => {
     expect(await resolveLandingRoute("u1")).toBe("/agency/1924546/command-center");
   });
 
+  // §39 — the case above passes the GUARD only because of the Number() coercion,
+  // but it cannot prove the URL carries the COERCED value: "1924546" interpolates
+  // byte-identically to 1924546. These two can only pass if the number that reaches
+  // the template is the normalized one, so a regression that guards on Number() and
+  // then interpolates the raw field still fails here.
+  for (const [label, raw, expected] of [
+    ["exponent notation", "1e6", 1000000],
+    ["leading whitespace", " 1924546", 1924546],
+  ] as const) {
+    it(`interpolates the COERCED number, not the raw field (${label})`, async () => {
+      mockCtx({ ...MANAGER, agency_account_number: raw });
+      const route = await resolveLandingRoute("u1");
+      expect(route).toBe(`/agency/${expected}/command-center`);
+      expect(route).not.toContain(raw);
+    });
+  }
+
   // §13 — never construct a URL from a value we don't have.
   for (const [label, value] of [
     ["absent (migration not deployed yet)", undefined],

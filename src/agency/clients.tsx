@@ -21,6 +21,7 @@
 // / scope-picker / act-as affordance is gated behind crossBook and structurally
 // absent otherwise — a sub owner sees only their own clients, never the parent's.
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, Avatar, SubTabs, AV, useReducedMotion } from "./_shared";
 import { spark, pstr } from "./helpers";
@@ -81,18 +82,30 @@ const DirectorySkeleton = () => (
   </div>
 );
 
-const DirectoryEmpty = () => (
+// §56/§58 — the ONE deliberate addition to this faithful port (see PR #535). The
+// pack's empty state tells the operator "once you add a sub-account…" and then gives
+// them no way to add one, and this branch returns EARLY, so the header's
+// "+ Add a sub-account" button never renders here. That is the exact §56 anchoring
+// bug (a capability hidden behind an empty-state branch) landing on the ONE account
+// state that most needs it: a brand-new agency with zero sub-accounts. The CTA below
+// is the same door the populated header offers, nothing more.
+const DirectoryEmpty = ({ onAdd = noop }) => (
   <div className="card" style={{ flex: 1, display: "grid", placeItems: "center", padding: 40, textAlign: "center" }}>
     <div>
       <div className="tile" style={{ margin: "0 auto 14px", width: 44, height: 44, borderRadius: 15, background: "var(--violet-tint)", color: "var(--violet)" }}><Ic.users size={22} /></div>
       <div style={{ fontWeight: 600, fontSize: 15 }}>No sub-accounts yet</div>
       <div className="sub" style={{ maxWidth: 340, margin: "6px auto 0" }}>Once you add a sub-account, it shows up here with Paige already working its book.</div>
+      <button
+        onClick={onAdd}
+        title="Opens the classic agency board, where sub-accounts are created"
+        style={{ marginTop: 16, padding: "10px 16px", borderRadius: 10, background: GOLD_BG, color: GOLD_INK, fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: "none" }}>+ Add a sub-account</button>
     </div>
   </div>
 );
 
 // ── Sub-accounts directory (agency) ───────────────────────────────────────────
 const Directory = ({ openAsk, isAgency, acting, enterSubaccount = noop }) => {
+  const navigate = useNavigate();
   const [filter, setFilter] = React.useState("All");
   const [attnOpen, setAttnOpen] = React.useState(false);
   const roster = useAgencyRoster({ isAgency, acting });
@@ -161,7 +174,7 @@ const Directory = ({ openAsk, isAgency, acting, enterSubaccount = noop }) => {
     return (
       <div style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", gap: 15 }}>
         <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Your sub-accounts</div>
-        <DirectoryEmpty />
+        <DirectoryEmpty onAdd={() => navigate("/agency")} />
       </div>
     );
   }
@@ -176,7 +189,21 @@ const Directory = ({ openAsk, isAgency, acting, enterSubaccount = noop }) => {
           </div>
           <div className="row" style={{ marginLeft: "auto", gap: 9, flex: "none" }}>
             <button onClick={() => setAttnOpen(true)} style={{ padding: "10px 15px", borderRadius: 10, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 12.5, fontWeight: 600, color: "var(--gold)", cursor: "pointer", whiteSpace: "nowrap" }}>Needs your attention · {needAttentionCount} →</button>
-            <button style={{ padding: "10px 16px", borderRadius: 10, background: GOLD_BG, color: GOLD_INK, fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: "none" }}>+ Add a sub-account</button>
+            {/* §58 RECOVERY PATH + §39 peer-gate (PR #535). This button shipped with NO
+                onClick — a dead affordance. It became load-bearing the moment login
+                started landing agency owners on `/agency/{n}/…` (this shell) instead of
+                bare `/agency`: `create_subaccount` is called from exactly ONE place in
+                the app — `src/pages/admin/AgencyBoard.tsx` (the classic board, which
+                bare `/agency` still renders) — and `src/agency/` had ZERO links back to
+                it, so a retargeted owner had no navigable way to add a sub-account.
+                Wiring it to `/agency` restores that path (and, since `AgencyLayout`
+                hosts `LoginDefaultControl`, the way to switch the login default back).
+                Porting the creation wizard INTO this shell is §65's later migration
+                step — until then this is the honest door, not a stub. */}
+            <button
+              onClick={() => navigate("/agency")}
+              title="Opens the classic agency board, where sub-accounts are created"
+              style={{ padding: "10px 16px", borderRadius: 10, background: GOLD_BG, color: GOLD_INK, fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: "none" }}>+ Add a sub-account</button>
           </div>
         </div>
 
