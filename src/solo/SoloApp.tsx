@@ -46,8 +46,10 @@ return <nav style={{width:w,flex:'none',background:'var(--rail)',display:'flex',
 {NAV2.map(Item)}
 <div style={{marginTop:'auto',paddingTop:14,flex:'none'}}>
 {!collapsed&&<div style={{border:'1px solid var(--rail-line)',borderRadius:14,padding:'12px 13px',marginBottom:10}}>
-<div className="row" style={{gap:7,color:'var(--gold-bright)',fontSize:12,fontWeight:600}}><Ic.bolt size={13}/>Solo plan</div>
-<div style={{color:'var(--rail-text)',fontSize:11.8,marginTop:5,lineHeight:1.45}}>147 hours saved this month. One seat, six departments running.</div></div>}
+{/* §13 — the "147 hours saved this month" line that sat under this chip was fixture
+copy with no backend seam, so it is stripped rather than replaced. "Solo plan" is
+tier-accurate on this shell and stays. */}
+<div className="row" style={{gap:7,color:'var(--gold-bright)',fontSize:12,fontWeight:600}}><Ic.bolt size={13}/>Solo plan</div></div>}
 <button onClick={()=>setCollapsed(!collapsed)} className="row" style={{width:'100%',justifyContent:'center',padding:9,borderRadius:10,color:'var(--rail-text)'}}>
 <span style={{display:'flex',transform:collapsed?'':'rotate(180deg)',transition:'.2s'}}><Ic.chev size={15}/></span></button></div></nav>};
 
