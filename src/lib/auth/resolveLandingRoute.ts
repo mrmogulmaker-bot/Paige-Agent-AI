@@ -205,7 +205,7 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     // The platform operator and the agency operator are different §9 audiences;
     // /admin renders the God console for platform staff (godMode).
     if (roles.includes("super_admin")) {
-      return "/admin";
+      return "/operator/fleet/tenants";
     }
     // Tenant/agency operators may prefer to land on their /agency side (#191);
     // a non-agency operator, or one who prefers 'last_account', falls to /admin.

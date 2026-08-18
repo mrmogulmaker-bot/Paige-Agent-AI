@@ -6,6 +6,7 @@ import {
   type Branch, type SubTab,
 } from "@/lib/routing/tierBranches";
 import { EmptyState } from "@/components/ui/page";
+import FleetConsole from "@/operator/surfaces/FleetConsole";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { cn } from "@/lib/utils";
@@ -436,11 +437,16 @@ export default function OperatorApp() {
         {/* The shell never page-scrolls; the pane owns its scroll (the pack's root and <main>
             are both overflow:hidden for the same reason). */}
         <main className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
-          <SurfacePlaceholder
-            title={`${branch.label}${(isSettings ? leaf : sub) ? ` · ${(isSettings ? leaf : sub)!.label}` : ""}`}
-            path={canonical}
-            isOwner={isPlatformOwner}
-          />
+          {/* Real CD surfaces render here as each lands; anything not yet built says so. */}
+          {branch.slug === "fleet" && sub?.slug === "tenants" ? (
+            <FleetConsole canSeeRevenue={isPlatformOwner} />
+          ) : (
+            <SurfacePlaceholder
+              title={`${branch.label}${(isSettings ? leaf : sub) ? ` · ${(isSettings ? leaf : sub)!.label}` : ""}`}
+              path={canonical}
+              isOwner={isPlatformOwner}
+            />
+          )}
         </main>
       </div>
     </div>
