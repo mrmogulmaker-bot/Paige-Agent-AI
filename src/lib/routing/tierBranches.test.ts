@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   TIER_TREES,
   SOLO_BRANCHES,
@@ -268,7 +270,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     // these to its agency twin compiles fine and silently produces a dead route — the exact
     // bug class this assertion exists to catch (§13). Left = shared slug, right = the AGENCY
     // key that must NOT appear on the Solo side.
-    const mustDiffer: Array<[string, string, string, string]> = [
+    const perTierKeys: Array<[string, string, string, string]> = [
       // [branch, shared slug, solo key, agency key]
       ["command-center", "systems-check", "sys", "systems"],
       ["paige", "knowledge", "know", "knowledge"],
@@ -290,7 +292,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
       ["team", "activity", "act", "activity"],
       ["setup", "business", "biz", "business"],
     ];
-    for (const [branch, slug, soloKey, agencyKey] of mustDiffer) {
+    for (const [branch, slug, soloKey, agencyKey] of perTierKeys) {
       expect(subtabBySlug("solo", branch, slug)?.key, `solo ${branch}/${slug}`).toBe(soloKey);
       expect(subtabBySlug("agency", branch, slug)?.key, `agency ${branch}/${slug}`).toBe(agencyKey);
       if (soloKey !== agencyKey) {
@@ -302,5 +304,89 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     // "consistency" sweep can't cite it as precedent for aligning the others.
     expect(subtabBySlug("solo", "growth", "brand-kit")?.key).toBe("brand");
     expect(subtabBySlug("agency", "growth", "brand-kit")?.key).toBe("brand");
+  });
+});
+
+/**
+ * §39 peer-gate finding #1 (PR #533) — the registry↔SCREEN contract.
+ *
+ * Every other test in this file reads the registry and asserts what the registry
+ * says, which cannot catch the failure mode that actually matters: the registry
+ * drifting from the tab strip the screen really renders. And there is no
+ * compensating control — all 11 Solo screens carry `// @ts-nocheck`, so a green
+ * `tsc` proves NOTHING about them.
+ *
+ * The regression this exists to catch: someone adds a tab to a Solo screen's
+ * strip (or renames a key) and forgets the registry. `tsc` stays green, every
+ * registry-only test stays green, and the new tab is a silent no-op in
+ * production — `setKey` finds no slug and falls back to local state that URL
+ * mode never reads.
+ *
+ * So this reads the actual screen SOURCE. It anchors on each screen's
+ * `useSubtabRoute("solo", "<branch>", …)` call and parses the tab strip that
+ * immediately follows it — which is precisely the routed component's own strip,
+ * never a nested/sibling one (several files carry more than one `const tabs=`:
+ * `conversations.tsx` also holds the nested Conversations strip, `paigehub.tsx`
+ * the SubAgents and Skills consoles, `CommandCenter.tsx` the inner approvals
+ * filter). Then it asserts set-AND-order equality with the registry.
+ */
+describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
+  const SCREEN_FOR_BRANCH: Record<string, string> = {
+    "command-center": "src/solo/CommandCenter.tsx",
+    paige: "src/solo/paigehub.tsx",
+    automations: "src/solo/automations-build.tsx",
+    clients: "src/solo/conversations.tsx",
+    calendar: "src/solo/calendar-book.tsx",
+    growth: "src/solo/growth2.tsx",
+    analytics: "src/solo/analytics2.tsx",
+    marketplace: "src/solo/marketplace.tsx",
+    integrations: "src/solo/integrations.tsx",
+    team: "src/solo/team.tsx",
+    setup: "src/solo/setup.tsx",
+  };
+
+  /** Slice the balanced `[...]` starting at `open`, so nested brackets can't truncate it. */
+  function balancedArray(src: string, open: number): string {
+    let depth = 0;
+    for (let i = open; i < src.length; i++) {
+      if (src[i] === "[") depth++;
+      else if (src[i] === "]" && --depth === 0) return src.slice(open, i + 1);
+    }
+    throw new Error(`unbalanced array at ${open}`);
+  }
+
+  /** The tab keys the SCREEN actually renders for `branchSlug`, read from source. */
+  function screenKeys(file: string, branchSlug: string): string[] {
+    const src = readFileSync(resolve(process.cwd(), file), "utf8");
+    // Anchor on the routed hook call (tolerant of spacing after commas).
+    const hook = new RegExp(
+      `useSubtabRoute\\(\\s*["']solo["']\\s*,\\s*["']${branchSlug}["']`,
+    ).exec(src);
+    if (!hook) throw new Error(`no useSubtabRoute("solo","${branchSlug}") in ${file}`);
+    const after = src.slice(hook.index);
+    // The strip is either `const tabs=[…]` or an inline `tabs={[…]}` (integrations).
+    const decl = after.search(/const\s+tabs\s*=\s*\[/);
+    const inline = after.search(/tabs=\{\[/);
+    const candidates = [decl, inline].filter((i) => i >= 0);
+    if (!candidates.length) throw new Error(`no tab strip after the hook in ${file}`);
+    const start = Math.min(...candidates);
+    const arr = balancedArray(after, after.indexOf("[", start));
+    // Each entry is a tuple whose FIRST element is the key: ['roster','Roster',…].
+    return [...arr.matchAll(/\[\s*['"]([A-Za-z0-9_-]+)['"]/g)].map((m) => m[1]);
+  }
+
+  for (const branch of SOLO_BRANCHES.filter((b) => b.subtabs?.length)) {
+    it(`${branch.slug}: registry keys match the rendered strip, in order`, () => {
+      const file = SCREEN_FOR_BRANCH[branch.slug];
+      expect(file, `no screen mapped for solo branch ${branch.slug}`).toBeTruthy();
+      expect(screenKeys(file, branch.slug)).toEqual(branch.subtabs!.map((s) => s.key));
+    });
+  }
+
+  it("covers every Solo branch that declares sub-tabs", () => {
+    // Guards the map itself: a future branch gaining sub-tabs without a screen
+    // entry here would otherwise silently skip the contract check above.
+    const declared = SOLO_BRANCHES.filter((b) => b.subtabs?.length).map((b) => b.slug);
+    expect(declared.sort()).toEqual(Object.keys(SCREEN_FOR_BRANCH).sort());
   });
 });

@@ -75,8 +75,10 @@ export interface TierTree {
  * SOLO_BRANCHES — the Solo tree (13). Shared by `solo` AND `sub_account` (§11c/§60).
  * Keys match `src/solo/SoloApp.tsx`'s `screens` registry.
  *
- * Sub-tabs verified screen-by-screen against the live Solo surfaces 2026-08-18 (53 across 11
- * branches). Solo's internal sub-tab keys are its OWN abbreviations (`know`/`sub`/`pipe`/`sch`/
+ * Sub-tabs verified screen-by-screen against the Solo screen SOURCE 2026-08-18 (53 across 11
+ * branches) — a source read, not a browser drive; the §32.c live-drive is owed separately.
+ * `tierBranches.test.ts` enforces this by parsing each screen's rendered strip, so the pairing
+ * can't silently drift. Solo's internal sub-tab keys are its OWN abbreviations (`know`/`sub`/`pipe`/`sch`/
  * `ov`/`mkt`/`dir`/`biz`…) and deliberately DIFFER from the agency keys for the same mental-model
  * slug — the two tiers are separate shells with separate `useState` vocabularies. Do NOT
  * "normalize" a Solo key to match its agency twin: the key is what the screen actually switches
@@ -121,6 +123,15 @@ export const SOLO_BRANCHES: Branch[] = [
     slug: "clients", key: "clients", label: "Clients", group: "main",
     // Source: src/solo/conversations.tsx (ClientsHub). Solo owns a direct client book, so it
     // carries Delivery + Client Portal where the agency tree carries sub-account management.
+    // SINGULAR `pipeline` is deliberate and is the ONE shared-concept slug that differs from
+    // agency's (`pipelines`): a solo operator runs one pipeline, an agency views many across a
+    // book, and each tier's slug matches its own visible label. Do NOT "align" them — agency's
+    // URLs have shipped (§58) and the divergence is semantic, not drift.
+    // OUT OF SCOPE (§13, so the next slice doesn't think this branch is fully mapped): the
+    // `convo` sub-tab renders a nested 6-destination strip of its own (Manual Actions, Snippets,
+    // Trigger Links, Analytics, Settings — conversations.tsx `Conversations`). That is a 4th URL
+    // level; `useSubtabRoute` reads splat index [1] only, so those stay local state for now.
+    // Same shape in `paige`: the Sub-Agents and Skills consoles carry their own nested strips.
     subtabs: [
       { slug: "people", key: "people", label: "People" },
       { slug: "pipeline", key: "pipe", label: "Pipeline" },
@@ -405,6 +416,16 @@ export const TIER_TREES: Record<RouteTierKey, TierTree> = {
   // once /business mounts SoloApp instead (owner-sequenced as a later slice,
   // after Solo's own URL conversion) — until then this points at what the
   // shell actually renders.
+  //
+  // ⚠ WHEN THAT SLICE FIRES, READ THIS FIRST (§39 peer-gate, PR #533). All 11
+  // Solo screens hardcode `useSubtabRoute("solo", …)` — safe today because
+  // SoloApp only ever mounts at /solo/*, but the moment /business mounts it,
+  // every sub-tab click by a sub-account owner builds a /solo/{n}/… path and
+  // silently throws them out of the /business tree — 53 routes at once. The
+  // agency screens already model the fix: `useSubtabRoute(isAgency ? "agency"
+  // : "sub_account", …)`. Thread the tier through SoloApp the same way BEFORE
+  // mounting it at /business; it was left hardcoded here only because there is
+  // no second mount to parameterize against yet.
   sub_account: { root: "/business", branches: AGENCY_BRANCHES },
 };
 

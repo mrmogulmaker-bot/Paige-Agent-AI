@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
+  branchBySlug,
   subtabBySlug,
   subtabByKey,
   subtabPath,
@@ -41,6 +42,16 @@ export function useSubtabRoute(
 
   const account = params.account || null;
 
+  // A typo'd branchSlug compiles (it's just `string`) and silently makes EVERY
+  // sub-tab on that screen inert. Surface it (§32 — never fail silently).
+  if (import.meta.env.DEV && !branchBySlug(tier, branchSlug)) {
+    console.warn(
+      `[useSubtabRoute] "${branchSlug}" is not a branch of tier "${tier}" — ` +
+        `every sub-tab on this screen will be inert. Check the slug against ` +
+        `src/lib/routing/tierBranches.ts.`,
+    );
+  }
+
   // Inline mount (sub-account Gate B / defensive inline agency): behave like useState.
   if (!account) return [localKey, setLocalKey];
 
@@ -52,8 +63,24 @@ export function useSubtabRoute(
 
   const setKey = (key: string) => {
     const slug = subtabByKey(tier, branchSlug, key)?.slug ?? null;
-    if (slug) navigate(subtabPath(tier, account, branchSlug, slug));
-    else setLocalKey(key); // key not in the registry → don't route to a dead URL.
+    if (slug) {
+      navigate(subtabPath(tier, account, branchSlug, slug));
+      return;
+    }
+    // Key not in the registry → don't route to a dead URL. But be LOUD about it
+    // (§32): in URL-driven mode `activeKey` derives from the URL alone, so this
+    // local write is never read — the click is a silent, error-free no-op. That
+    // is exactly the "compiles and builds clean but does nothing" failure the
+    // registry↔screen contract test exists to catch; warn so a dev hitting it in
+    // the browser sees a cause instead of a dead tab.
+    if (import.meta.env.DEV) {
+      console.warn(
+        `[useSubtabRoute] "${key}" is not a registered sub-tab of ${tier}/${branchSlug} — ` +
+          `the click cannot navigate and will appear to do nothing. Add it to that ` +
+          `branch's \`subtabs\` in src/lib/routing/tierBranches.ts.`,
+      );
+    }
+    setLocalKey(key);
   };
 
   return [activeKey, setKey];
