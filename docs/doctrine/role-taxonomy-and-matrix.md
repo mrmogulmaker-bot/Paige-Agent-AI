@@ -132,8 +132,10 @@ in the other it opens cross-tenant reads. **Therefore: no big-bang migration.**
 
 Each slice is its own PR with a §37 producer inventory, §32 proof, and §39 peer-gate.
 
-- **R0 — This document.** Taxonomy + matrix + audit. No code. *(you are here)*
-- **R1 — Classify every call site.** Mechanically label all 186 policies + 118 functions as:
+- **R0 — This document.** Taxonomy + matrix + audit. No code. ✅ **DONE** (PR #537)
+- **R1 — Classify every call site.** ✅ **DONE 2026-08-18** — `docs/audits/R1-role-call-site-inventory.md`.
+  *(R2a, the one LIVE finding — the `paige_workflow_registry` platform seam — shipped with it.)*
+  Original scope: Mechanically label all 186 policies + 118 functions as:
   (a) legitimately platform-global → migrate to `is_platform_operator()`;
   (b) already tenant-filtered → cosmetic;
   (c) **genuinely relying on a global tenant-role** → the real defects.
