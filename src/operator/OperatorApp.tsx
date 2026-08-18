@@ -30,16 +30,20 @@ import { cn } from "@/lib/utils";
  * parallel address at `/operator/*` while `/admin/platform/*` stays exactly as it is and
  * remains the operator's working surface. Nothing is retired, hidden, or gated off here.
  *
- * §11 — WHERE THIS DEPARTS FROM THE PACK, DELIBERATELY. Three departures, all named in the PR:
- *   • The active sub-tab underline is INDIGO, not the design's gold. A nav-active indicator is
- *     not an act (§11), our shipped OperatorTabs already carries the indigo rule in code, and
- *     the design's gold measures 2.35:1 on its own background — under even the 3:1 non-text
- *     bar. Doctrine and accessibility agree here.
- *   • The selected rail row and the open-menu ring are neutral/indigo for the same reason.
- *   • The palette is our cool indigo, not the pack's warm cream. We map by ROLE, not by hex —
- *     there is no warm-neutral family in our tokens and inventing one would fork the platform
- *     palette (§23 is an owner ruling, not a porter's call). This matches the design's
- *     STRUCTURE; it deliberately does not match its temperature.
+ * CLAUDE DESIGN IS THE SOURCE OF TRUTH HERE (owner ruling, 2026-08-18): *"If Claude Design
+ * made it, that's how it's supposed to be moving forward. Whatever we had before CD is no
+ * longer valid."* An earlier pass on this file substituted our pre-CD conventions for three of
+ * CD's calls — indigo instead of CD's gold on the active sub-tab and the settings-active rail
+ * row, and our cool-indigo palette instead of CD's warm neutrals. The ruling reverses all
+ * three: CD's palette and CD's gold ship as designed, via the scoped `.operator-console`
+ * token block in index.css (the same pattern `.studio-surface` already uses, so CD's design
+ * lands exactly here without repainting any other — including §28-frozen — surface).
+ *
+ * Two things were NOT copied verbatim, both recorded rather than quietly changed: CD's rail
+ * eyebrow measures 4.11:1 and its dark block paints the page the same colour as the rail so
+ * the rail vanishes. Those are legibility/visibility defects in the pack, not design intent
+ * (§29 — shipped, correct, invisible); each keeps CD's hue and moves only enough to be seen.
+ * CD's gold underline measures 2.35:1 — raised once, ruled on, shipping as designed.
  */
 
 /**
@@ -68,7 +72,7 @@ const RAIL_GROUPS: ReadonlyArray<{ key: Branch["group"]; label: string }> = [
 function useResolved(section: string | undefined, splat: string) {
   return useMemo(() => {
     const branch = OPERATOR_BRANCHES.find((b) => b.slug === section) ?? null;
-    if (!branch) return { branch: null, sub: null, leaf: null };
+    if (!branch) return { branch: null, sub: null, leaf: null, stale: false };
     const [subSlug, leafSlug] = splat.split("/").filter(Boolean);
     const subs = branch.subtabs ?? [];
     const sub = (subSlug ? subs.find((s) => s.slug === subSlug) : subs[0]) ?? subs[0] ?? null;
@@ -76,7 +80,14 @@ function useResolved(section: string | undefined, splat: string) {
     const leaf = leaves.length
       ? (leafSlug ? leaves.find((l) => l.slug === leafSlug) : leaves[0]) ?? leaves[0] ?? null
       : null;
-    return { branch, sub, leaf };
+    // A slug that was SUPPLIED but matched nothing falls back to the default tab — which
+    // would render one surface while the address bar names another. That quietly breaks the
+    // "deep-linkable and Paige-addressable" contract (§65/§10): a shared or agent-generated
+    // link would show content that disagrees with its own URL. Flag it so the caller can
+    // redirect to the canonical address instead of lying about where you are.
+    const stale =
+      (!!subSlug && sub?.slug !== subSlug) || (!!leafSlug && leaves.length > 0 && leaf?.slug !== leafSlug);
+    return { branch, sub, leaf, stale };
   }, [section, splat]);
 }
 
@@ -113,8 +124,12 @@ function useRailDensity(rowCount: number) {
 
 /** One rail row. A real <Link> with aria-current — the pack's rows are div+onClick (§36/C5). */
 function RailRow({
-  to, label, active, collapsed,
-}: { to: string; label: string; active: boolean; collapsed: boolean }) {
+  to, label, active, collapsed, tone = "default",
+}: {
+  to: string; label: string; active: boolean; collapsed: boolean;
+  /** CD tints the SETTINGS menu's active row gold and the front menu's white. Both ship. */
+  tone?: "default" | "gold";
+}) {
   return (
     <NavLink
       to={to}
@@ -126,12 +141,14 @@ function RailRow({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
         "focus-visible:ring-offset-rail",
         collapsed ? "justify-center px-1 py-1.5" : "gap-2.5 px-[11px] py-[var(--rail-row-pad)]",
-        // Selected is a neutral white-alpha lift, never gold — a resting selection is not an
-        // act (§11). The pack renders this exact state in white on its front menu and in gold
-        // on its settings menu; we unify on the white.
-        active
-          ? "bg-rail-foreground/10 font-medium text-rail-foreground"
-          : "text-rail-foreground/70 hover:bg-rail-foreground/[0.06] hover:text-rail-foreground",
+        // CD's own two treatments, both kept: white-alpha on the front menu, gold on the
+        // settings menu. An earlier pass unified them on white as a §11 call; the owner
+        // ruling puts CD's design back.
+        active && tone === "gold"
+          ? "bg-cd-gold/[0.14] font-medium text-cd-gold-ink"
+          : active
+            ? "bg-rail-foreground/10 font-medium text-rail-foreground"
+            : "text-rail-foreground/70 hover:bg-rail-foreground/[0.06] hover:text-rail-foreground",
       )}
     >
       <span
@@ -149,7 +166,7 @@ export default function OperatorApp() {
   const params = useParams();
   const section = params.section;
   const splat = params["*"] ?? "";
-  const { branch, sub, leaf } = useResolved(section, splat);
+  const { branch, sub, leaf, stale } = useResolved(section, splat);
   const { isPlatformOwner } = useTenantContext();
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ fleet: true, business: true });
@@ -192,14 +209,20 @@ export default function OperatorApp() {
       ? subtabPath("operator", "", branch.slug, sub.slug)
       : branchPath("operator", "", branch.slug);
 
+  // A URL naming a tab that does not exist gets rewritten to the address of what is actually
+  // on screen, rather than rendering a surface the address bar contradicts.
+  if (stale) return <Navigate to={canonical} replace />;
+
   // Level 2 for a normal branch is its subtabs; inside settings the rail holds the groups, so
   // the strip shows the selected group's leaves instead.
   const strip: SubTab[] = (isSettings ? sub?.subtabs : branch.subtabs) ?? [];
 
   return (
     <div
+      // `operator-console` scopes CD's palette to this subtree (index.css). Every colour below
+      // reads a token, so the class is the ONLY place the CD-vs-platform choice is made.
       className={cn(
-        "grid h-dvh overflow-hidden bg-background text-foreground",
+        "operator-console grid h-dvh overflow-hidden bg-background text-foreground",
         collapsed ? "grid-cols-[64px_1fr]" : "grid-cols-[232px_1fr]",
       )}
       style={
@@ -229,12 +252,45 @@ export default function OperatorApp() {
           )}
         </div>
 
-        {/* Nav */}
+        {/* Nav — CD's front menu, OR its settings back-menu when you have drilled in.
+            The back-menu is not decoration: without it the five settings GROUPS have no link
+            anywhere, which stranded 12 of the 78 leaves at typed-URL-only. The §39 peer-gate
+            caught that the code comment claimed this menu existed while nothing rendered it. */}
         <div
           ref={navRef}
           className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden pt-1.5"
           style={{ scrollbarWidth: "thin" }}
         >
+          {isSettings ? (
+            <nav aria-label="Settings groups">
+              <NavLink
+                to={branchPath("operator", "", OPERATOR_BRANCHES[0].slug)}
+                className="flex w-full items-center gap-2.5 border-b border-rail-foreground/10 px-3.5 py-2.5 text-[11.5px] font-semibold transition-colors hover:bg-rail-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+              >
+                <span aria-hidden className="text-[12px]">‹</span>
+                {!collapsed && <span>Back to the menu</span>}
+              </NavLink>
+              {!collapsed && (
+                <div className="px-3.5 pb-1.5 pt-3">
+                  <span className="text-[8.5px] font-semibold uppercase tracking-[0.16em] text-rail-muted">
+                    Settings
+                  </span>
+                </div>
+              )}
+              <div className="flex flex-col pb-1" style={{ gap: "var(--rail-gap)" }}>
+                {(branch.subtabs ?? []).map((g) => (
+                  <RailRow
+                    key={g.slug}
+                    to={subtabPath("operator", "", branch.slug, g.slug)}
+                    label={g.label}
+                    active={g.slug === sub?.slug}
+                    collapsed={collapsed}
+                    tone="gold"
+                  />
+                ))}
+              </div>
+            </nav>
+          ) : (
           <nav aria-label="Operator sections">
             {RAIL_GROUPS.map(({ key, label }) => {
               const items = railBranches.filter((b) => b.group === key);
@@ -249,9 +305,9 @@ export default function OperatorApp() {
                       aria-expanded={open}
                       className="flex w-full items-center gap-2 px-3.5 pb-1.5 pt-3 text-left transition-colors hover:bg-rail-foreground/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                     >
-                      {/* /60 rather than the pack's #7C73A0, which measures 4.11:1 on the rail
-                          and fails AA at 8.5px uppercase (C2). */}
-                      <span className="text-[8.5px] font-semibold uppercase tracking-[0.16em] text-rail-foreground/60">
+                      {/* CD's eyebrow hue, lifted to clear AA at 8.5px uppercase (its own
+                          #7C73A0 measures 4.11:1 on the rail) — see --rail-muted. */}
+                      <span className="text-[8.5px] font-semibold uppercase tracking-[0.16em] text-rail-muted">
                         {label}
                       </span>
                       <span className="font-mono text-[9.5px] text-rail-foreground/45">{items.length}</span>
@@ -277,6 +333,7 @@ export default function OperatorApp() {
               );
             })}
           </nav>
+          )}
         </div>
 
         {/* Settings entry */}
@@ -289,7 +346,7 @@ export default function OperatorApp() {
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
               collapsed && "justify-center px-1",
               isSettings
-                ? "bg-rail-foreground/10 font-medium text-rail-foreground"
+                ? "bg-cd-gold/[0.14] font-medium text-cd-gold-ink"
                 : "text-rail-foreground/70 hover:bg-rail-foreground/[0.06] hover:text-rail-foreground",
             )}
           >
@@ -365,9 +422,11 @@ export default function OperatorApp() {
                   )}
                 >
                   {t.label}
-                  {/* Indigo, not the design's gold — nav-active is not an ACT (§11), and the
-                      design's gold fails even the 3:1 non-text bar on its own ground. */}
-                  {on && <span aria-hidden className="absolute inset-x-0 -bottom-px h-0.5 rounded-t-full bg-primary" />}
+                  {/* CD's gold underline, as designed (owner ruling 2026-08-18). Its 2.35:1
+                      against CD's own ground was raised once and ruled on; the label itself
+                      carries the accessible signal via weight + `aria-current`, so the
+                      indicator is reinforcement rather than the only cue. */}
+                  {on && <span aria-hidden className="absolute inset-x-0 -bottom-px h-0.5 rounded-t-full bg-cd-gold" />}
                 </NavLink>
               );
             })}

@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import OperatorLogin from "@/pages/OperatorLogin";
 import RequireOperator from "@/operator/RequireOperator";
 import OperatorApp from "@/operator/OperatorApp";
@@ -47,6 +47,12 @@ export default function OperatorEntry() {
           </RequireOperator>
         }
       />
+      {/* A doubled slash (`/operator//fleet`) still matches the OUTER `/operator/*` in App.tsx,
+          so App's own `*` → NotFound never fires — and with no leg here it rendered a BLANK
+          page. That is exactly the "ships completely undetected" class the index leg above
+          exists to prevent; the §39 peer-gate found the defense had been written for the root
+          and never extended to a catch-all. Anything unmatched goes to the door. */}
+      <Route path="*" element={<Navigate to="/operator" replace />} />
     </Routes>
   );
 }

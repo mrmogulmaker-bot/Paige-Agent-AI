@@ -16,6 +16,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { OPERATOR_BRANCHES } from "@/lib/routing/tierBranches";
 
 vi.mock("@/pages/OperatorLogin", () => ({
   default: () => <div data-testid="login">OPERATOR_LOGIN</div>,
@@ -87,5 +88,24 @@ describe("OperatorEntry — the /operator subtree routing contract", () => {
     expect(mountAt("/operator/login", Entry)).toContain("OPERATOR_LOGIN");
     expect(mountAt("/operator/fleet", Entry)).toContain("DENIED");
     vi.doUnmock("@/operator/RequireOperator");
+  });
+});
+
+/**
+ * Both of OperatorApp's redirects target OPERATOR_BRANCHES[0]. If that entry ever became
+ * owner-only, a scoped platform_admin would be redirected to a section that redirects them
+ * straight back — "Maximum update depth exceeded", from a one-line array reorder. The §39
+ * peer-gate flagged that nothing locked this; now something does.
+ */
+describe("operator redirect-target invariant", () => {
+  it("the default branch is reachable by EVERY operator, not just the owner", () => {
+    const OWNER_ONLY = new Set(["revenue", "comms"]);
+    expect(OWNER_ONLY.has(OPERATOR_BRANCHES[0].slug)).toBe(false);
+  });
+
+  it("the settings branch is not the default landing branch", () => {
+    // The settings branch renders the back-menu instead of the section rail; landing there
+    // by default would open the console inside a drill-in with no way to have arrived.
+    expect(OPERATOR_BRANCHES[0].group).not.toBe("settings");
   });
 });

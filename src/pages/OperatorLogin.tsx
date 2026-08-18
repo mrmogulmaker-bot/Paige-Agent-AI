@@ -34,13 +34,23 @@ export default function OperatorLogin() {
     handledRef.current = true;
     setRouting(true);
     try {
-      // Race each Supabase call so a stalled network can never trap the operator
-      // on "Entering console…" — fall through to a sane default instead.
-      const isOwner = await Promise.race<boolean>([
-        supabase.rpc("is_platform_owner").then(({ data }) => data === true),
+      // WHICH PREDICATE, AND WHY IT IS NOT `is_platform_owner`. This door must admit exactly
+      // who `RequireOperator` admits, or the `?next=` round-trip it sets up is a trap.
+      // `is_platform_owner()` is super_admin ONLY (deliberately frozen, §53); the operator
+      // tier is `is_platform_admin()` = platform_admin OR super_admin — the same predicate
+      // behind `isPlatformStaff`, which is what the guard checks. Gating here on the OWNER
+      // predicate meant a platform_admin who opened a bookmarked /operator/fleet got bounced
+      // to this door, signed in, had their `next` silently discarded, and then fell through
+      // `resolveLandingRoute` — which has no platform_admin branch at all — to a tenant
+      // surface. Caught by the §39 peer-gate; verified against both migrations before fixing.
+      //
+      // Each call is raced so a stalled network can never trap the operator on
+      // "Entering console…" — it falls through to a sane default instead.
+      const isOperator = await Promise.race<boolean>([
+        supabase.rpc("is_platform_admin").then(({ data }) => data === true),
         new Promise<boolean>((r) => setTimeout(() => r(false), 4000)),
       ]);
-      if (isOwner) {
+      if (isOperator) {
         navigate(operatorTarget(window.location.search), { replace: true });
         return;
       }

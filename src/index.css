@@ -126,6 +126,70 @@ All colors MUST be HSL.
     --sidebar-ring: 212 100% 50%;
   }
 
+  /* ══ OPERATOR CONSOLE — Claude Design palette (owner ruling 2026-08-18) ══════════════
+     Owner: "If Claude Design made it, that's how it's supposed to be moving forward.
+     Whatever we had before CD is no longer valid." So the `/operator` console renders CD's
+     OWN palette — warm neutrals and its gold — rather than our pre-CD cool-indigo mapping.
+
+     SCOPED, not global, and deliberately so: this is the same pattern `.studio-surface`
+     below already uses for a palette exception. It gives CD's design exactly on the surface
+     CD designed, while every other surface — including owner-approved, §28-frozen ones —
+     keeps its palette untouched. Extending CD's warm neutrals platform-wide is a separate,
+     much larger change and its own owner call, not something this slice does by side effect.
+
+     Token-only: no call site carries a hex. Values are CD's, converted to HSL. */
+  .operator-console {
+    --background: 30 33% 98%;        /* #FBF9F7 — the warm ground */
+    --foreground: 240 7% 11%;        /* #1B1B1F */
+    --card: 48 38% 97%;              /* #FBFAF6 */
+    --card-foreground: 240 7% 11%;
+    --popover: 48 38% 97%;
+    --popover-foreground: 240 7% 11%;
+    --muted: 45 30% 92%;             /* #F1EEE5 — the recess step */
+    --muted-foreground: 42 6% 41%;   /* #6E6A61 — 5.3:1 on the ground, AA clear */
+    --border: 41 24% 82%;            /* #DCD5C6 — CD's warm hairline */
+    --border-strong: 41 24% 76%;
+    --input: 41 24% 82%;
+
+    /* CD's rail, and its ink. 10:1 — CD's own pairing, no adjustment needed. */
+    --rail: 254 46% 13%;             /* #191231 */
+    --rail-foreground: 255 42% 85%;  /* #CFC7E8 */
+    /* CD's rail eyebrow is #7C73A0, which measures 4.11:1 on the rail and misses AA at
+       8.5px uppercase. Same hue, lifted until it passes — CD's colour, legible. */
+    --rail-muted: 252 25% 66%;
+
+    /* CD spends gold on the active sub-tab underline and the settings-active rail row.
+       Per the ruling those are CD's calls, not ours, so they ship as designed. Recorded
+       honestly: CD's #C8A02E measures 2.35:1 against its own ground as a 2px underline —
+       raised once, ruled on, shipping as designed. */
+    --cd-gold: 44 63% 48%;           /* #C8A02E */
+    --cd-gold-ink: 44 69% 69%;       /* #E7C97A — gold ink on the dark rail */
+  }
+
+  /* CD authored one theme. Its own dark block paints the page the SAME colour as the rail,
+     so the rail disappears — a defect in the pack, not a design intent (§29: shipped,
+     correct, and invisible). Dark keeps CD's hues and lifts only what has to move to stay
+     visible and legible. */
+  .dark .operator-console,
+  .operator-console.dark {
+    --background: 265 44% 5%;
+    --foreground: 0 0% 96%;
+    --card: 265 40% 8%;
+    --card-foreground: 0 0% 96%;
+    --popover: 265 40% 8%;
+    --popover-foreground: 0 0% 96%;
+    --muted: 265 30% 13%;
+    --muted-foreground: 265 15% 66%;
+    --border: 270 32% 17%;
+    --border-strong: 270 30% 26%;
+    --input: 270 32% 17%;
+    --rail: 254 38% 24%;             /* lifted clear of the page so the rail is SEEN */
+    --rail-foreground: 255 42% 88%;
+    --rail-muted: 252 30% 72%;
+    --cd-gold: 44 72% 62%;           /* CD's gold, lifted for the dark ground */
+    --cd-gold-ink: 44 75% 72%;
+  }
+
   .dark {
     --background: 265 44% 5%;
     --foreground: 0 0% 96%;

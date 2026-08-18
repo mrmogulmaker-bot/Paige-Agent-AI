@@ -57,6 +57,14 @@ export default {
         rail: {
           DEFAULT: "hsl(var(--rail))",
           foreground: "hsl(var(--rail-foreground))",
+          muted: "hsl(var(--rail-muted))",
+        },
+        // Claude Design's own gold, scoped to the operator console (see index.css
+        // .operator-console). Distinct from --gold/--accent so the platform's §11 gold
+        // budget is untouched by CD's spend on that one surface.
+        "cd-gold": {
+          DEFAULT: "hsl(var(--cd-gold))",
+          ink: "hsl(var(--cd-gold-ink))",
         },
         popover: {
           DEFAULT: "hsl(var(--popover))",

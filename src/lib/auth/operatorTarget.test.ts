@@ -50,4 +50,36 @@ describe("operatorTarget", () => {
   it("refuses a malformed escape rather than throwing", () => {
     expect(operatorTarget("?next=%E0%A4%A")).toBe(GOD_CONSOLE);
   });
+
+  // ── The §39 peer-gate found the original prefix regex accepted these. It only looked at
+  //    the character after "/operator/", and "." passes that — then react-router NORMALIZES
+  //    the result, so the operator lands outside the subtree entirely. Reproduced before
+  //    fixing; these are the regression tests for it.
+  it("refuses ..-traversal that escapes the operator subtree", () => {
+    expect(operatorTarget("?next=%2Foperator%2F..%2F..%2Fbook%2Fevil-slug")).toBe(GOD_CONSOLE);
+    expect(operatorTarget("?next=%2Foperator%2F..%2F..%2Fauth")).toBe(GOD_CONSOLE);
+    expect(operatorTarget("?next=%2Foperator%2F..%2F..%2F%2Fevil.example")).toBe(GOD_CONSOLE);
+    expect(operatorTarget("?next=%2Foperator%2Ffleet%2F..%2F..%2Fadmin")).toBe(GOD_CONSOLE);
+  });
+
+  it("refuses a single-dot segment too", () => {
+    expect(operatorTarget("?next=%2Foperator%2F.%2Ffleet")).toBe(GOD_CONSOLE);
+  });
+
+  it("refuses a doubled slash anywhere in the path", () => {
+    expect(operatorTarget("?next=%2Foperator%2F%2Ffleet")).toBe(GOD_CONSOLE);
+  });
+
+  // react-router matches case-insensitively, so the anti-loop check must too — otherwise a
+  // crafted /operator/LOGIN passes the guard and resolves right back to the door.
+  it("refuses the door in any casing", () => {
+    expect(operatorTarget("?next=%2Foperator%2FLOGIN")).toBe(GOD_CONSOLE);
+    expect(operatorTarget("?next=%2Foperator%2FLogin")).toBe(GOD_CONSOLE);
+  });
+
+  it("keeps a query string on an otherwise-valid operator deep link", () => {
+    expect(operatorTarget("?next=%2Foperator%2Ffleet%3Ftab%3Dalerts")).toBe(
+      "/operator/fleet?tab=alerts",
+    );
+  });
 });
