@@ -229,6 +229,11 @@ const scroll=React.useRef(null);
 // Keep the newest turn in view — without this the panel silently strands a reply
 // below the fold the moment the transcript outgrows the pane (§11 no dead ends).
 React.useEffect(()=>{if(scroll.current)scroll.current.scrollTop=scroll.current.scrollHeight},[msgs,think,open]);
+// §39 peer-gate (hotfix follow-up) — the old Agency center Modal this panel replaced
+// closed on Escape; a keyboard-only user must not lose that dismiss path just because
+// the panel now also mounts in the Agency/Business shell.
+React.useEffect(()=>{if(!open)return;const onKey=e=>{if(e.key==='Escape')onClose&&onClose()};
+document.addEventListener('keydown',onKey);return()=>document.removeEventListener('keydown',onKey)},[open,onClose]);
 const empty=!msgs.length&&!think;
 return <><div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(23,19,49,.34)',opacity:open?1:0,pointerEvents:open?'auto':'none',transition:'.25s',zIndex:70,backdropFilter:'blur(2px)'}}/>
 <aside style={{position:'fixed',top:0,right:0,bottom:0,width:'min(440px,94vw)',background:'var(--surface)',borderLeft:'1px solid var(--line)',boxShadow:'var(--sh-3)',zIndex:71,
