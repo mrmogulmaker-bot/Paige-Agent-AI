@@ -230,7 +230,7 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
   Plus three cheap LOWs: the redirect-target invariant is now locked by tests, `/operator` was added to
   `CLIENT_FORBIDDEN_PREFIXES` (a §37 producer-inventory drift), and an unknown sub-tab now redirects to
   the canonical address instead of rendering a surface its own URL contradicts.
-- ✅ **§32.c PARTIAL DRIVE RAN — 6/6, real Chromium, real bundle.** §32.c's deferral is keyed to
+- ✅ **§32.c PARTIAL DRIVE RAN — 10/10, real Chromium, real bundle.** §32.c's deferral is keyed to
   LACKING browser capability, and this session had one (pre-provisioned Chromium + the repo's
   Playwright), so the unauthenticated half was DRIVEN rather than deferred. New reusable script
   `scripts/live-drive/operator-console-drive.mjs` (reuses the §18 helper's Chromium resolution)
@@ -240,11 +240,26 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
   `/operator/login?next=%2Foperator%2Ffleet` · the 3-level `/operator/settings/team/roles` likewise ·
   **no redirect loop** (3 mainframe navigations in 8s, settled) · `--rail` computes to
   `rgb(21, 12, 49)` rather than transparent. **Zero page crashes.** Notably the guard decided
-  correctly even with Supabase unreachable — it does not hang on `loading`.
+  correctly even with Supabase unreachable — it does not hang on `loading`. **Four further
+  assertions measure the CD palette in BOTH themes** (added after the CD ruling, because the
+  `.dark .operator-console` block had shipped unverified — the §29 "correct in source, possibly
+  shadowed at runtime" class): the light↔dark flip is **21.6:1** on the console ground
+  (`rgb(252,250,248)` ↔ `rgb(12,7,18)`, so §23's "genuinely light / genuinely dark" is measured,
+  not assumed) · the `.dark` override provably REACHES the palette (a shadowed block would leave
+  `dark.rail === light.rail`) · rail ink clears AA on the rail in both (**11.31:1** light,
+  **9.52:1** dark) · the rail reads as a distinct PANEL (**17.23:1** light, **1.46:1** dark —
+  modest by nature on a ~5%L ground and leaning on the `--border-strong` edge, but well above
+  CD's own ~1.0 where rail and page are identical and the rail disappears; the threshold catches
+  a regression back toward that, it does not claim the dark rail is dramatic). **Recorded, NOT
+  asserted:** CD's gold measures **2.41:1** on the light ground (11.27:1 dark) — under the 3:1
+  non-text bar, and owner-ruled to ship as designed, so the script prints it as a NOTE rather
+  than failing the build over a decision already made.
 - ❗ **§32.c AUTHENTICATED HALF STILL OWED** (needs operator credentials, which this session has none
-  of; the Vercel preview is behind an SSO wall): the rail render itself, the 78 placeholders behind
-  the guard, the light↔dark flip (§23), and the §25 taste pass. **No claim is made that the rail
-  renders** — only that the door, the guard, the addressing, and the token resolve for real.
+  of; the Vercel preview is behind an SSO wall): the rail RENDER itself, the 78 placeholders behind
+  the guard, and the §25 taste pass. **No claim is made that the rail renders** — only that the
+  door, the guard, the addressing, and the palette (both themes) resolve for real. **Measuring a
+  token is not the same as seeing a layout**, and that distinction is the whole point of what is
+  still owed.
 
 
 ### Roles & permissions — R1 call-site inventory + R2a platform-seam fix (2026-08-18)
@@ -446,9 +461,10 @@ Grouped:
   unverified console sends the operator to a 404 from BOTH doors — the #538 lockout class.
 - ❌ **The 7 MIXED inner tier gates** (fleet · paige · growth · analytics · provisioning · marketplace ·
   settings/governance) — owner-only tabs inside operator-level sections. Land WITH their surfaces.
-- ❌ **§32.c authenticated drive** — the unauthenticated half is proven (6/6, see Section 4); the rail
-  render, the placeholders behind the guard, and the light↔dark flip need a session with operator
-  credentials. Re-run `scripts/live-drive/operator-console-drive.mjs` plus an authed walk.
+- ❌ **§32.c authenticated drive** — the unauthenticated half is proven (10/10, see Section 4,
+  including the CD palette in both themes); the rail RENDER and the placeholders behind the guard
+  need a session with operator credentials. Re-run
+  `scripts/live-drive/operator-console-drive.mjs` plus an authed walk + §25 taste pass.
 - ❌ **28 design tabs are genuinely net-new** (no shipped equivalent): fleet history/alert-rules/team-pulse/
   prospects · paige sandbox/research/memory · trust-compass escalations/dependencies · marketplace build/
   publishers · automations build · 6 analytics lenses · support escalations/response-policy · comms
