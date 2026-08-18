@@ -580,7 +580,8 @@ const TeamTab = ({ agencyView }) => (
 // rail breakpoints (showChatRail / showKnowRail derived from the body width) are
 // owned here — the module needs no extra prop from the shell.
 const PaigeHub = ({ isAgency = true, acting = null, openAsk = () => {} }) => {
-  const [tab, setTab] = useSubtabRoute("agency", "paige", "chat");
+  // §39 fix (peer-gate, R3c-i finding #1) — see CommandCenter.tsx for the full note.
+  const [tab, setTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "paige", "chat");
   const [histOpen, setHistOpen] = React.useState(false);
   const [bodyRef, w] = useWidth();
   const reduce = useReducedMotion();

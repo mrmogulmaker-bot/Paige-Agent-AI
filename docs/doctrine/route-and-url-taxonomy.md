@@ -370,6 +370,14 @@ ruling, so the crew confirms the shell/pack choice (Solo pack vs a sub-account-s
 Solo SHAPE) rather than assuming. The SHAPE ruling (Solo's branch set) is firm; the visual pack is the
 open sub-question.
 
+**Confirmed + tracked (R3c-i, 2026-08-18, PR #526):** owner ruled to ship sub-accounts on the CURRENT
+shell first (`AgencyApp mode="subaccount"`), independent of Solo's own URL conversion — so `/business/{n}`
+went live at the branch level pointing `TIER_TREES.sub_account` at `AGENCY_BRANCHES` (what the shell
+actually renders today), not `SOLO_BRANCHES`, to avoid shipping dead routes. This is the R3 slice's
+interim step, not the final state — the shell-family swap onto Solo (closing this contradiction for real)
+remains a later, separately-sequenced slice (Solo's own `/solo` URL conversion lands first, per the
+owner's stated sequencing).
+
 ### 11d. Solo — `/solo/{account}/…` (13 branches; shell = `src/solo/SoloApp.tsx`)
 | URL slug | Tab label | key | component |
 |---|---|---|---|

@@ -774,7 +774,8 @@ const Analytics2 = ({ isAgency = true, acting = null, openAsk = noop }) => {
   const crossBook = isAgency && !acting;               // §51: single-book when a sub is in view
   const reduce = useReducedMotion();
   const [stageRef, mW, mH] = useStage();
-  const [anTab, setAnTab] = useSubtabRoute("agency", "analytics", "brief");
+  // §39 fix (peer-gate, R3c-i finding #1) — see CommandCenter.tsx for the full note.
+  const [anTab, setAnTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "analytics", "brief");
   const [anScope, setAnScope] = React.useState("agency");
   const [anSubIdx, setAnSubIdx] = React.useState(0);
   const [anRange, setAnRange] = React.useState("Last 30 days");

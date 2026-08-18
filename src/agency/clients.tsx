@@ -518,7 +518,8 @@ const ClientsHub = ({ isAgency = true, acting = null, openAsk = noop, enterSubac
   const ownName = acting ? acting.name : SUBS[0].name;
   const ownIdx = acting ? Math.max(0, SUBS.findIndex(s => s.name === acting.name)) : 0;
 
-  const [tab, setTab] = useSubtabRoute("agency", "clients", "directory");
+  // §39 fix (peer-gate, R3c-i finding #1) — see CommandCenter.tsx for the full note.
+  const [tab, setTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "clients", "directory");
   const tabs = [
     ["directory", crossBook ? "Sub-accounts" : "Clients", () => <Ic.users size={15} />],
     ["pipes", crossBook ? "Pipelines" : "Pipeline", () => <Ic.trend size={15} />],

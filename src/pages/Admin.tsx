@@ -428,11 +428,20 @@ const Admin = () => {
   // Gate B — sub-account: PINNED to mode="subaccount" so a sub-account NEVER sees the
   // parent aggregate/switcher (the §51 invariant is enforced inside AgencyApp: in
   // "subaccount" mode `acting` is provably null and the parent-aggregate is hard-off).
+  // §65 R3c-i: the sub-account shell now lives at its OWN deep-linkable URL
+  // (/business/{account}/{branch}), mirroring Gate A — /admin REDIRECTS there
+  // instead of rendering the shell inline. §58 fallback: if account_number
+  // hasn't resolved yet, render inline exactly as before rather than redirect
+  // to a broken URL.
   if (
     agencyShellEnabled &&
     !tierLoading &&
     tierKey === "sub_account"
   ) {
+    const acctNum = activeTenant?.account_number;
+    if (acctNum != null) {
+      return <Navigate to={`/business/${acctNum}/command-center`} replace />;
+    }
     return (
       <AdminLoaderBoundary>
         <Suspense fallback={<PageSkeleton />}>

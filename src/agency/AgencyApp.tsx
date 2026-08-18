@@ -244,37 +244,47 @@ const AgencyApp = ({ mode = "agency" }) => {
   const isAgency = mode === "agency";
 
   // §65 URL-driven branch — every tab is its own deep-linkable route
-  // (/agency/{account}/{branch}). The screen `route` is DERIVED from the URL slug via
-  // the TIER_BRANCHES registry, and `go(k)` NAVIGATES rather than mutating local state.
-  // DUAL-MODE (§58): when this shell is mounted INLINE without a :account param (the
-  // sub-account /admin takeover, §51 Gate B, whose /business tree lands in R3), it falls
-  // back to local state so that path is byte-unchanged. `acting` (sub context) stays
-  // state for now — its actor-namespaced URL (/agency/{n}/sub/{subN}/…) + real-roster
-  // wiring is the immediate fast-follow (§13 honest: not in this slice).
+  // (/agency/{account}/{branch} for agency mode, /business/{account}/{branch} for
+  // subaccount mode, §65 R3c-i). The screen `route` is DERIVED from the URL slug
+  // via the TIER_BRANCHES registry (tier-parameterized, §18 one shell for both
+  // modes), and `go(k)` NAVIGATES rather than mutating local state.
+  // DUAL-MODE (§58): when this shell is mounted INLINE without a :account param
+  // (e.g. a stray legacy render), it falls back to local state so that path stays
+  // byte-unchanged. `acting` (sub context, agency mode only) stays real per §65
+  // Option B2 — its own actor-namespaced URL is unaffected by this slice.
   const params = useParams();
   const navigate = useNavigate();
   const urlAccount = params.account || null;
-  const urlDriven = isAgency && !!urlAccount;
+  // §65 R3c-i — the sub-account /business/{n} URL reuses this SAME derive/
+  // navigate machinery as agency's /agency/{n} (§18: one shell, one routing
+  // path, tier-parameterized rather than forking a parallel branch). urlDriven
+  // now fires for BOTH modes whenever a :account param is present.
+  const tier = isAgency ? "agency" : "sub_account";
+  const urlDriven = !!urlAccount;
   // §65 Option B2 (owner-ruled actor namespacing) — an optional "sub/{childAccountNumber}"
   // PREFIX on the splat marks an act-as URL (/agency/{n}/sub/{subN}/{branch}/{subtab}).
   // Everything after the prefix (or the whole splat, if absent) is the ordinary
-  // branch/subtab pair — unchanged from R0/Option A.
+  // branch/subtab pair — unchanged from R0/Option A. §51 INVARIANT (R3c-i) —
+  // gated on isAgency too: a sub-account has no children to act-as, so this must
+  // never parse true in subaccount mode, even against a crafted URL. `acting`
+  // stays provably null there, exactly as the file-header invariant promises.
   const splatParts = urlDriven ? (params["*"] || "").split("/") : [];
-  const isSubPrefixed = urlDriven && splatParts[0] === "sub" && /^\d+$/.test(splatParts[1] || "");
+  const isSubPrefixed = urlDriven && isAgency && splatParts[0] === "sub" && /^\d+$/.test(splatParts[1] || "");
   const urlActingAccountNumber = isSubPrefixed ? Number(splatParts[1]) : null;
   const branchParts = isSubPrefixed ? splatParts.slice(2) : splatParts;
-  const urlBranchSlug = urlDriven ? (branchParts[0] || defaultBranchSlug("agency")) : null;
+  const urlBranchSlug = urlDriven ? (branchParts[0] || defaultBranchSlug(tier)) : null;
   const [stateRoute, setStateRoute] = React.useState("command");
-  const route = urlDriven ? (branchBySlug("agency", urlBranchSlug)?.key ?? "command") : stateRoute;
+  const route = urlDriven ? (branchBySlug(tier, urlBranchSlug)?.key ?? "command") : stateRoute;
   // go(k) navigates within the CURRENT act-as scope — stays "inside" the acted-as
   // sub-account when one is active (preserves the sub/{n} prefix), drops back to
-  // the plain agency path otherwise.
+  // the plain agency/business path otherwise. Subaccount mode never has
+  // isSubPrefixed=true (see above), so it always takes the plain branchPath(tier) leg.
   const go = k => {
     if (urlDriven) {
-      const slug = branchByKey("agency", k)?.slug ?? defaultBranchSlug("agency");
+      const slug = branchByKey(tier, k)?.slug ?? defaultBranchSlug(tier);
       const path = isSubPrefixed
         ? "/agency/" + urlAccount + "/sub/" + urlActingAccountNumber + "/" + slug
-        : branchPath("agency", urlAccount, slug);
+        : branchPath(tier, urlAccount, slug);
       navigate(path);
     } else {
       setStateRoute(k);
@@ -299,12 +309,17 @@ const AgencyApp = ({ mode = "agency" }) => {
   // tier-feature-exempt: tier ROUTING (identifying which of the caller's own tenants
   // IS their agency/enterprise identity), not a §60 feature-availability decision.
   const ownAgencyTenant = (tenants || []).find(t => t.account_type === "agency" || t.account_type === "enterprise") ?? null;
+  // §65 R3c-i — the sub-account's OWN address for the top-level ownership guard
+  // below. In subaccount mode there is no "acting" concept, so activeTenant IS
+  // the caller's own tenant (unlike agency mode, where activeTenant becomes the
+  // CHILD while acting — hence agency mode uses ownAgencyTenant, not activeTenant).
+  const ownAccountNumber = isAgency ? ownAgencyTenant?.account_number : activeTenant?.account_number;
 
   // ── §65 Option B2 — REAL act-as. `acting` is DERIVED, never a raw setState —
-  // AGENCY MODE ONLY. In subaccount mode isSubPrefixed can never be true (urlDriven
-  // requires isAgency), so acting is permanently null there: the switcher, banner,
-  // and parent aggregate stay structurally unreachable (§51 invariant), exactly as
-  // before. "Confirmed" means the SESSION (activeTenant, via useTenantContext) is
+  // AGENCY MODE ONLY. isSubPrefixed is itself gated on isAgency (see above), so
+  // it can never be true in subaccount mode, so acting is permanently null there:
+  // the switcher, banner, and parent aggregate stay structurally unreachable
+  // (§51 invariant), exactly as before. "Confirmed" means the SESSION (activeTenant, via useTenantContext) is
   // actually scoped to the child the URL names — agency_enter_subaccount sets that
   // server-side; the URL is an address, never a grant (§9, same pattern as the
   // top-level account-number guard below). Until confirmed, the shell shows a
@@ -370,29 +385,32 @@ const AgencyApp = ({ mode = "agency" }) => {
   // (incl. parent white-label) lands in a later slice.
   const providerLabel = isAgency ? agencyName : "";
 
-  // §39 (task #171) — the /agency/{n} address is NOT authority (§9); RLS gates every
-  // read. Keep the URL honest: redirect a number that isn't the caller's own account
-  // to their own, and canonicalize a bare /agency/{n} → its default branch. Acts ONLY
-  // once the caller's own account_number is known, so a mid-load null never bounces.
-  // §65 Option B2 fix: compares against `ownAgencyTenant` (stable through act-as),
-  // NOT `activeTenant` (which becomes the CHILD while acting — comparing against it
-  // would wrongly bounce a valid sub/{n} URL using the child's own number).
+  // §39 (task #171) — the /agency/{n} or /business/{n} address is NOT authority
+  // (§9); RLS gates every read. Keep the URL honest: redirect a number that isn't
+  // the caller's own account to their own, and canonicalize a bare root URL → its
+  // default branch. Acts ONLY once the caller's own account_number is known, so a
+  // mid-load null never bounces.
+  // §65 Option B2 fix: agency mode compares against `ownAgencyTenant` (stable
+  // through act-as), NOT `activeTenant` (which becomes the CHILD while acting —
+  // comparing against it would wrongly bounce a valid sub/{n} URL using the
+  // child's own number). §65 R3c-i: subaccount mode has no act-as, so
+  // `ownAccountNumber` is simply `activeTenant`'s own number (derived above).
   const urlSplat = params["*"] || "";
   React.useEffect(() => {
     if (!urlDriven) return;
-    const own = ownAgencyTenant?.account_number;
+    const own = ownAccountNumber;
     if (own == null) return;
     if (String(own) !== String(urlAccount)) {
-      navigate(branchPath("agency", String(own), defaultBranchSlug("agency")), { replace: true });
+      navigate(branchPath(tier, String(own), defaultBranchSlug(tier)), { replace: true });
       return;
     }
     // The bare-URL canonicalize only applies to the plain (non-acting) shape —
     // a bare /agency/{n}/sub/{subN} (no branch yet) is handled by the resolving
     // effect below, which supplies its own default branch on first entry.
     if (!urlSplat && !isSubPrefixed) {
-      navigate(branchPath("agency", urlAccount, defaultBranchSlug("agency")), { replace: true });
+      navigate(branchPath(tier, urlAccount, defaultBranchSlug(tier)), { replace: true });
     }
-  }, [urlDriven, urlAccount, urlSplat, isSubPrefixed, ownAgencyTenant?.account_number, navigate]);
+  }, [urlDriven, urlAccount, urlSplat, isSubPrefixed, ownAccountNumber, navigate, tier]);
 
   // ── §65 Option B2 — act-as ACTIONS. Both real, both server-authorized. ──────
   const [switchBusy, setSwitchBusy] = React.useState(false);

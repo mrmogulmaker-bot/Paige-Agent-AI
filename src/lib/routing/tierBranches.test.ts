@@ -18,15 +18,24 @@ import {
 const TIERS: RouteTierKey[] = ["operator", "agency", "enterprise", "solo", "sub_account"];
 
 describe("TIER_BRANCHES registry (§65 §11)", () => {
-  it("§11c/§60 — sub_account inherits the SOLO tree, NOT the agency tree", () => {
-    // Same branch set as solo (the load-bearing §60 invariant)…
-    expect(TIER_TREES.sub_account.branches).toBe(SOLO_BRANCHES);
+  it("§65 R3c-i CORRECTION — sub_account points at AGENCY_BRANCHES, matching what actually renders", () => {
+    // §11c/§60 doctrine ("sub-account inherits the Solo tree") is the TARGET once
+    // /business mounts SoloApp (a later, owner-sequenced slice). Until then,
+    // sub_account renders LIVE via AgencyApp mode="subaccount" (Admin.tsx Gate B),
+    // which shares AGENCY_BRANCHES' key set (command/paige/compass/autos/fleet/
+    // calendar/support/growth/analytics/billing/market/vault/integrations/team/
+    // setup) — NOT SOLO_BRANCHES' keys (home/clients/auto/cal, no support/billing),
+    // which match SoloApp.tsx's own screens map instead. This test locks the
+    // registry to CURRENT REALITY (§13) so it can't silently drift dead again.
+    expect(TIER_TREES.sub_account.branches).toBe(AGENCY_BRANCHES);
     expect(TIER_TREES.solo.branches).toBe(SOLO_BRANCHES);
-    // …but a distinct root prefix (§3 shared shell, §65 mental-model label).
+    // Distinct root prefix (§3 shared shell, §65 mental-model label) — same shell,
+    // different address.
     expect(TIER_TREES.sub_account.root).toBe("/business");
     expect(TIER_TREES.solo.root).toBe("/solo");
-    // And it is NOT the agency tree.
-    expect(TIER_TREES.sub_account.branches).not.toBe(AGENCY_BRANCHES);
+    // Sub_account and agency share the identical branch array reference (one
+    // registry entry, no fork, §18) — solo/business remain the target, not today.
+    expect(TIER_TREES.sub_account.branches).not.toBe(SOLO_BRANCHES);
   });
 
   it("§3/§61 — enterprise = agency baseline (superset), distinct root", () => {

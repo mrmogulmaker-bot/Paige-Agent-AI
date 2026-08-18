@@ -84,7 +84,8 @@ const VENDOR_HUES = ["#7C6CE0", "#3F7F5C", "#B5822A", "#C05B45", "#2F6B8F", "#8A
 
 // Props from the AgencyApp shell: { isAgency, acting, openAsk }.
 const VaultHub = ({ isAgency = true, acting = null, openAsk = noop }) => {
-  const [tab, setTab] = useSubtabRoute("agency", "business-vault", "vault");             // vault | registry | renewals | vendors
+  // §39 fix (peer-gate, R3c-i finding #1) — see CommandCenter.tsx for the full note.
+  const [tab, setTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "business-vault", "vault");             // vault | registry | renewals | vendors
   const [scopeState, setScopeState] = React.useState("agency"); // agency | book | sub
   const [tSub, setTSub] = React.useState(0);                 // picked sub-account (readOnly scope)
   const [filter, setFilter] = React.useState("All");         // registry filter chip

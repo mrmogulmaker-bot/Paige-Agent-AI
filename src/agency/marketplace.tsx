@@ -170,7 +170,8 @@ export default function AgencyMarketplace({ isAgency = true, acting = null, open
   const [stageRef, mainW, mainH] = useStage();
   const crossBook = isAgency && !acting;                       // §51 master gate
 
-  const [tab, setTab] = useSubtabRoute("agency", "marketplace", "today");
+  // §39 fix (peer-gate, R3c-i finding #1) — see CommandCenter.tsx for the full note.
+  const [tab, setTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "marketplace", "today");
   const [mScope, setMScope] = React.useState("agency");
   const [mkFilter, setMkFilter] = React.useState("All");
   const [tSub, setTSub] = React.useState(0);

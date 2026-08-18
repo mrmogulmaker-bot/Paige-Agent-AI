@@ -84,6 +84,10 @@ const Admin = lazyWithReload(() => import("./pages/Admin"));
 // (/agency/{account}/…) → the new URL-driven AgencyApp shell; anything else → the
 // legacy AgencyLayout board (gated on server-proven agency-manager eligibility).
 const AgencyEntry = lazyWithReload(() => import("./agency/AgencyEntry"));
+// Sub-account operator side (§65 R3c-i) — the same AgencyApp shell (mode=
+// "subaccount"), its own top-level address (/business/{account}), peer to
+// /agency and /admin.
+const BusinessEntry = lazyWithReload(() => import("./business/BusinessEntry"));
 const ResetPassword = lazyWithReload(() => import("./pages/ResetPassword"));
 const AffiliateApply = lazyWithReload(() => import("./pages/AffiliateApply"));
 const BrokerApply = lazyWithReload(() => import("./pages/BrokerApply"));
@@ -268,6 +272,10 @@ const App = () => (
                 for Solo/Sub-account business tenants only). The gate also no-ops for the
                 agency tier defensively, so a stray /admin hit by an agency owner is safe too. */}
             <Route path="/agency/*" element={<RequireCompleteSignup><PageSuspense><AgencyEntry /></PageSuspense></RequireCompleteSignup>} />
+            {/* /business is a SUB-ACCOUNT's own address (§65 R3c-i) — a real business
+                tenant (picks a playbook like Solo), so it carries the SAME Setup gate
+                as /admin, unlike /agency (a manager tier that never picks one, §61). */}
+            <Route path="/business/*" element={<RequireCompleteSignup><RequireSetupComplete><PageSuspense><BusinessEntry /></PageSuspense></RequireSetupComplete></RequireCompleteSignup>} />
             <Route path="/unsubscribe" element={<PageSuspense><Unsubscribe /></PageSuspense>} />
             {/* Comms C-2s-C — tenant one-click/footer unsubscribe. SAME Unsubscribe surface (§18),
                 branded /u/:token path form; the component routes the token to comms-email-unsubscribe. */}

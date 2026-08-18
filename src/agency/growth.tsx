@@ -258,7 +258,8 @@ const GrowthHub = ({ isAgency = true, acting = null, openAsk = noop }) => {
   useReducedMotion(); // keep the pack's motion-preference subscription warm on this surface
   const crossBook = isAgency && !acting; // §51 — cross-book UI lives ONLY here
 
-  const [tab, setTab] = useSubtabRoute("agency", "growth", "overview");
+  // §39 fix (peer-gate, R3c-i finding #1) — see CommandCenter.tsx for the full note.
+  const [tab, setTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "growth", "overview");
   const [scopeRaw, setScopeRaw] = React.useState("agency");
   const [sel, setSel] = React.useState(0);
   const [pickOpen, setPickOpen] = React.useState(false);

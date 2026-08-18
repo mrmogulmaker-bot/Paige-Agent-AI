@@ -236,7 +236,8 @@ const Billing = ({ isAgency = true, acting = null, openAsk = noop }) => {
   const rp = bill.plan;                                   // REAL plan | null
   const realSeats = typeof bill.seatLimit === "number" ? bill.seatLimit : null;
 
-  const [tabKey, setTab] = useSubtabRoute("agency", "billing", "invoices");
+  // §39 fix (peer-gate, R3c-i finding #1) — see CommandCenter.tsx for the full note.
+  const [tabKey, setTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "billing", "invoices");
   const [railOpen, setRailOpen] = React.useState(false); // → blRailOpen ("Her read" pop-out)
 
   // Guard the active tab against the current tab-set (switching agency↔sub can strand

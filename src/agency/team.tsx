@@ -249,7 +249,8 @@ const CenterSkeleton = () => (
 );
 
 const TeamScreen = ({ isAgency = true, acting = null, openAsk = noop }) => {
-  const [tab, setTab] = useSubtabRoute("agency", "team", "roster");            // roster|directory|roles|workload|performance|activity
+  // §39 fix (peer-gate, R3c-i finding #1) — see CommandCenter.tsx for the full note.
+  const [tab, setTab] = useSubtabRoute(isAgency ? "agency" : "sub_account", "team", "roster");            // roster|directory|roles|workload|performance|activity
   const [scopeState, setScopeState] = React.useState("agency"); // agency|book|sub
   const [tSub, setTSub] = React.useState(0);                 // picked sub-account index (observe-a-sub)
   // pop-out state (the two the design's team view owns)
