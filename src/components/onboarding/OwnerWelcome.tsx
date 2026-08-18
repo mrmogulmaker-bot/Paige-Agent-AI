@@ -94,6 +94,22 @@ const STANDALONE_STEPS: Step[] = [
   },
 ];
 
+// §65 R0 / §58 — the two agency steps below DELIBERATELY keep their bare `/agency`
+// and `/agency/team` hrefs (the LEGACY `AgencyLayout` board) rather than the numeric
+// `/agency/{account_number}/…` shell the landing route + `/admin` Gate A now emit.
+// The account number IS reachable here (PracticeOverview, this component's only
+// caller, already holds `activeTenant.account_number` from `useTenantContext`), so
+// this is a capability decision, not a plumbing limitation:
+//   • "Create your first sub-account" — `create_subaccount` is called from EXACTLY one
+//     place in the app, `src/pages/admin/AgencyBoard.tsx`, which is what bare `/agency`
+//     renders (AgencyLayout's index route). The URL-driven shell's Clients screen
+//     (`src/agency/clients.tsx`) has NO creation path. Re-pointing this step would send
+//     a brand-new owner to a surface where the step is impossible to complete — a §58
+//     regression on the primary first-run move.
+//   • "Invite your agency team" — the new shell's Team screen IS wired for real invites,
+//     so this one could migrate; it is held with its sibling so first-run onboarding
+//     stays inside ONE shell instead of straddling both mid-migration.
+// Both move in the §65 slice that ports sub-account creation into the URL-driven shell.
 const AGENCY_STEPS: Step[] = [
   {
     key: "activate_email",

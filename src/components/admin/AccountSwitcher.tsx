@@ -129,6 +129,24 @@ export function AccountSwitcher() {
   // the right scope; then hard-navigate so every per-instance tenant context
   // re-reads from scratch (switchNotice.ts). Already in agency view → straight to
   // /agency.
+  //
+  // §65 R0 / §58 — both assigns below DELIBERATELY keep bare `/agency` (the LEGACY
+  // board) rather than the numeric `/agency/{n}/…` shell the landing route + `/admin`
+  // Gate A now emit. The number IS reachable (this component already calls
+  // `agency_switch_context()` above for `agency_name`, and that RPC resolves the
+  // AGENCY even while scoped inside a child — so an additive `agency_account_number`
+  // would land here for free). It is held for two reasons:
+  //   1. This switcher renders inside `AgencyLayout` (the legacy board's own header)
+  //      as well as `AdminLayout`, and it cannot tell which one hosts it. On the
+  //      legacy board the `!insideChild` branch IS that board's "go to agency home"
+  //      control — re-pointing it would eject the operator out of the board they are
+  //      standing on, i.e. break the legacy board's own navigation, which is §65's
+  //      LAST migration step, not this one.
+  //   2. The legacy board is still the ONLY surface with real sub-account creation
+  //      (`create_subaccount`, src/pages/admin/AgencyBoard.tsx); the URL-driven shell's
+  //      Clients screen has no creation path. "Agency view" must keep landing where
+  //      the agency's actual book management lives.
+  // This moves in the same §65 slice that retires the legacy board.
   const goToAgency = useCallback(async (insideChild: boolean) => {
     if (!insideChild) {
       window.location.assign("/agency");
