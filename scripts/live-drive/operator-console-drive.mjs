@@ -12,10 +12,12 @@
 // asserts the actual settled URL, which is the only thing that can tell them apart.
 //
 // WHAT IT COVERS — and, honestly (§13), what it does NOT. Everything here is the UNAUTHENTICATED
-// half: the door, the guard's signed-out redirect, the `?next=` round-trip, loop-freedom, and that
-// the `--rail` token resolves to a real colour rather than transparent. It does NOT cover the
-// authenticated rail render, the 78 placeholders behind the guard, the theme flip, or any §25 taste
-// judgement — those need operator credentials and a look, and remain OWED to a capable session.
+// half: the door, the guard's signed-out redirect, the `?next=` round-trip, loop-freedom, and the
+// console PALETTE measured in BOTH themes (that the tokens resolve at all, that the `.dark`
+// override actually reaches them rather than being shadowed, that the flip is felt, and that rail
+// ink stays AA on the rail). It does NOT cover the authenticated rail RENDER, the 78 placeholders
+// behind the guard, or any §25 taste judgement — those need operator credentials and a human look,
+// and remain OWED to a capable session. Measuring a token is not the same as seeing a layout.
 //
 // Run against a local build (no credentials, no network needed):
 //   npx vite build && npx vite preview --port 4319 --strictPort --host 127.0.0.1 &
@@ -168,6 +170,93 @@ const crashNote = (r) =>
     "--rail / --rail-foreground resolve to real colours",
     ok,
     `--rail="${tok.rail}" --rail-foreground="${tok.railFg}" computed=${tok.resolved}`,
+  );
+  await page.close();
+}
+
+// 7 ── BOTH THEMES. The `.operator-console` block carries CD's palette and a `.dark` override;
+//      a selector that gets shadowed, or a dark block that never applies, is invisible in
+//      source review and produces either a light-looking "dark" mode or a vanished rail.
+//      §23 also requires the flip to be UNMISTAKABLE, so the page ground is measured in both.
+{
+  const page = await ctx.newPage();
+  await page.goto(BASE + "/operator", { waitUntil: "domcontentloaded", timeout: 30000 });
+  await page.waitForTimeout(2500);
+  const themes = await page.evaluate(() => {
+    const read = (dark) => {
+      document.documentElement.classList.toggle("dark", dark);
+      const host = document.createElement("div");
+      host.className = "operator-console";
+      document.body.appendChild(host);
+      const probe = (v) => {
+        const d = document.createElement("div");
+        d.style.backgroundColor = `hsl(var(${v}))`;
+        host.appendChild(d);
+        const c = getComputedStyle(d).backgroundColor;
+        d.remove();
+        return c;
+      };
+      const out = {
+        bg: probe("--background"), rail: probe("--rail"),
+        railFg: probe("--rail-foreground"), gold: probe("--cd-gold"),
+      };
+      host.remove();
+      return out;
+    };
+    const light = read(false);
+    const dark = read(true);
+    document.documentElement.classList.remove("dark");
+    return { light, dark };
+  });
+
+  const lum = (rgb) =>
+    rgb.match(/\d+/g).map(Number).map((v) => v / 255)
+      .map((v) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)))
+      .reduce((a, v, i) => a + [0.2126, 0.7152, 0.0722][i] * v, 0);
+  const ratio = (a, b) => {
+    const [hi, lo] = [lum(a), lum(b)].sort((m, n) => n - m);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+
+  const { light, dark } = themes;
+  // The flip must be FELT, not merely different (§23 "light must be genuinely LIGHT").
+  const flip = ratio(light.bg, dark.bg);
+  record(
+    "the light↔dark flip is unmistakable on the console ground",
+    flip > 10,
+    `light bg=${light.bg} · dark bg=${dark.bg} · ratio=${flip.toFixed(2)}:1`,
+  );
+  // The dark override must actually APPLY — if it were shadowed, dark.rail would equal light.rail.
+  record(
+    "the .dark override reaches the console palette",
+    dark.rail !== light.rail && dark.gold !== light.gold,
+    `rail light=${light.rail} dark=${dark.rail} · gold light=${light.gold} dark=${dark.gold}`,
+  );
+  // Rail ink must stay AA on the rail in BOTH themes — this is text, so 4.5 is the bar.
+  const inkLight = ratio(light.railFg, light.rail);
+  const inkDark = ratio(dark.railFg, dark.rail);
+  record(
+    "rail ink clears AA on the rail in both themes",
+    inkLight >= 4.5 && inkDark >= 4.5,
+    `light=${inkLight.toFixed(2)}:1 · dark=${inkDark.toFixed(2)}:1 (AA text bar 4.5)`,
+  );
+  // The rail must be a SEEN panel, not a sub-perceptual value change (§29). Dark is the hard
+  // case: CD's own dark block paints the page the same colour as the rail, netting ~1.0.
+  const panelLight = ratio(light.rail, light.bg);
+  const panelDark = ratio(dark.rail, dark.bg);
+  record(
+    "the rail reads as a distinct panel in both themes",
+    panelLight > 3 && panelDark > 1.25,
+    `light=${panelLight.toFixed(2)}:1 · dark=${panelDark.toFixed(2)}:1 — dark is modest by ` +
+      `nature on a ~5%L ground and leans on the --border-strong edge, but it is ABOVE CD's own ` +
+      `~1.0 (rail and page identical, rail invisible), which is the defect being avoided`,
+  );
+  // Recorded, deliberately NOT asserted: CD's gold measures ~2.4:1 on CD's ground, under the
+  // 3:1 non-text bar. Owner-ruled to ship as designed (2026-08-18), so failing on it here
+  // would just be this script re-litigating a decision that has already been made.
+  console.log(
+    `NOTE  CD gold on the console ground: light=${ratio(light.gold, light.bg).toFixed(2)}:1 · ` +
+      `dark=${ratio(dark.gold, dark.bg).toFixed(2)}:1 (owner-ruled, not asserted)`,
   );
   await page.close();
 }
