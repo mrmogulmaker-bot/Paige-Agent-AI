@@ -47,7 +47,7 @@ export function ClientOnlyRouteGuard() {
         .select("role")
         .eq("user_id", user.id);
       if (cancelled) return;
-      const list = (roles ?? []).map((r: any) => String(r.role));
+      const list = (roles ?? []).map((r) => String(r.role));
       const hasStaff = list.some((r) => STAFF_ROLES.has(r));
       setIsClientOnly(!hasStaff);
     })();
@@ -61,7 +61,7 @@ export function ClientOnlyRouteGuard() {
         .from("user_roles")
         .select("role")
         .eq("user_id", userId);
-      const list = (roles ?? []).map((r: any) => String(r.role));
+      const list = (roles ?? []).map((r) => String(r.role));
       setIsClientOnly(!list.some((r) => STAFF_ROLES.has(r)));
     };
 
