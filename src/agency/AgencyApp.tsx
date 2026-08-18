@@ -532,13 +532,10 @@ const AgencyApp = ({ mode = "agency" }) => {
   const switcherRef = React.useRef(null);
   const acctRef = React.useRef(null);
 
+  // Owner directive (2026-08-18) — the slide-in panel pops out from THIS launcher ONLY
+  // (the TopBar spark / ⌘K). EVERY rail item, "Paige" included, navigates to its own URL
+  // and nothing more; the rail is navigation, never a panel trigger.
   const openAsk = () => { setAskOpen(true); setAcctOpen(false); setSwitcherOpen(false); };
-  // Owner directive (2026-08-18) — the rail's "Paige" item POPS OUT the slide-in panel
-  // (the same one the TopBar spark opens), it does NOT navigate away to the full-page
-  // Paige workspace. §18: one home for the pop-out conversation. §58: the full workspace
-  // is NOT removed — /agency/{n}/paige and /business/{n}/paige still deep-link to it, and
-  // the panel carries "Open workspace". Every OTHER rail item routes exactly as before.
-  const railGo = k => { if (k === "paige") { openAsk(); return; } go(k); };
   const openHelp = () => { setHelpOpen(true); setHelpSent(false); setAcctOpen(false); };
   // Provisioning is an AGENCY act — never offered in subaccount mode.
   const openProvision = () => { if (!isAgency) return; setProvisionOpen(true); setProvStep(1); setFeed([]); setSwitcherOpen(false); };
@@ -647,7 +644,7 @@ const AgencyApp = ({ mode = "agency" }) => {
   return (
     <div className="paige-agency" data-theme={theme} style={{ height: "100vh" }}>
       <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-        <Rail route={route} go={railGo} collapsed={collapsed} setCollapsed={setCollapsed} sub={sub} brand={brand} planLine={planLine} bookLine={bookLine} />
+        <Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} sub={sub} brand={brand} planLine={planLine} bookLine={bookLine} />
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
           <TopBar theme={theme} setTheme={setTheme} route={route} isAgency={isAgency} acting={acting} brand={brand} sub={sub}
             operatorName={operatorName} providerLabel={providerLabel}

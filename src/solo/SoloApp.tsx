@@ -157,19 +157,16 @@ const[studio,setStudio]=React.useState(false);
 React.useEffect(()=>{const h=()=>setStudio(true);window.addEventListener('paige-studio',h);return()=>window.removeEventListener('paige-studio',h)},[]);
 const[theme,setTheme]=React.useState(()=>localStorage.getItem('paige-theme')||'light');
 React.useEffect(()=>{localStorage.setItem('paige-theme',theme)},[theme]);
+// Owner directive (2026-08-18) — the slide-in panel pops out from THIS launcher ONLY
+// (the TopBar spark / ⌘K). EVERY rail item, "Paige" included, navigates to its own URL
+// and nothing more; the rail is navigation, never a panel trigger.
 const openPaige=()=>setPanel(true);
-// Owner directive (2026-08-18) — the rail's "Paige" item POPS OUT the slide-in
-// panel (the same one the TopBar spark opens), it does NOT navigate away to the
-// full-page workspace. §18: one home for the pop-out conversation (PaigePanel),
-// never a second chat surface. §58: the full Paige workspace is NOT removed —
-// /solo/{n}/paige still deep-links to it and the panel carries "Open workspace".
-const railGo=(k)=>{if(k==='paige'){openPaige();return}go(k)};
 React.useEffect(()=>{const h=e=>{if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){e.preventDefault();setPanel(true)}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[]);
 const full=route==='paige'||route==='auto'||route==='cal'||route==='setup'||route==='team'||route==='home';
 const screens={home:<CommandHub openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<ClientsHub openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
 return <div className="paige-solo" data-theme={theme} style={{height:'100vh'}}>
 <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
-<Rail route={route} go={railGo} collapsed={collapsed} setCollapsed={setCollapsed} homeCount={railApprovals.length}/>
+<Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} homeCount={railApprovals.length}/>
 <div style={{display:'flex',flexDirection:'column',flex:1,minWidth:0}}>
 <TopBar theme={theme} setTheme={setTheme} openPaige={openPaige} route={route} go={go}/>
 <main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0}}>{screens[route]}</main></div>
