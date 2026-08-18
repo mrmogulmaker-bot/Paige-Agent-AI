@@ -8,13 +8,29 @@
 -- without a second round-trip (the same Option-B2 shape used for
 -- agency_list_my_subaccounts in 20260917000000).
 --
+-- ALSO returns `agency_shell_enabled` — WHY (§39 finding, do not drop this):
+-- `/admin` Gate A gates the new shell on `agencyShellEnabled && tierKey==='agency'`,
+-- but `AgencyEntry` has NO such gate — a numeric segment goes straight to AgencyApp.
+-- So a landing route that returned the numeric URL on `is_agency_manager` alone
+-- would hand EVERY eligible manager the new shell, canary flag or not, and the two
+-- entry points would disagree. Both live agencies already have the flag on, so
+-- today's delta is zero; the divergence would appear on the NEXT agency provisioned
+-- (the flag is Super-Admin-set, not set at provisioning). Returning it here is the
+-- only clean fix: the caller cannot read `tenants.features` itself — the tenants
+-- SELECT policy is `is_tenant_member(id) OR is_platform_owner()`, and an
+-- agency-team manager with no `tenant_members` row would fail it and silently
+-- degrade forever.
+--
 -- ADDITIVE-ONLY (§37): this is a byte-faithful superset of the live definition
 -- (20260714140017_tier_rail_phaseA.sql (1b) — re-verified against prod
--- pg_get_functiondef on 2026-08-18, identical). The delta is EXACTLY:
---   (a) one new DECLARE var `_agency_account_number bigint`,
---   (b) `t.account_number` added to the EXISTING `_is_mgr`-gated tenants SELECT,
---   (c) one new jsonb key `agency_account_number`, gated by the SAME `_is_mgr`
---       CASE as agency_name.
+-- pg_get_functiondef on 2026-08-18; semantics identical, prod's stored body
+-- differs only by two dropped comment lines, so this restores repo/prod parity).
+-- The delta is EXACTLY:
+--   (a) two new DECLARE vars `_agency_account_number bigint`,
+--       `_agency_shell_enabled boolean`,
+--   (b) `t.account_number` + the strict features flag added to the EXISTING
+--       `_is_mgr`-gated tenants SELECT (no new query),
+--   (c) two new jsonb keys, both gated by the SAME `_is_mgr` CASE as agency_name.
 -- The four existing keys, their values, their gates, the rail-derived
 -- `_is_mgr` logic, the `auth.uid()` derivation, LANGUAGE/STABLE/SECURITY
 -- DEFINER/search_path, and the REVOKE/GRANT are all unchanged.
@@ -45,6 +61,7 @@ DECLARE
   _agency_id   uuid;
   _agency_name text;
   _agency_account_number bigint;
+  _agency_shell_enabled  boolean;
   _active      uuid;
   _is_mgr      boolean;
 BEGIN
@@ -55,8 +72,13 @@ BEGIN
              AND public.agency_team_role(_agency_id, _uid) IS NOT NULL;
 
   IF _is_mgr THEN
-    SELECT t.name, t.account_number
-      INTO _agency_name, _agency_account_number
+    SELECT t.name,
+           t.account_number,
+           -- STRICT jsonb `true`, mirroring the frontend's
+           -- `activeTenant?.features?.agency_shell_enabled === true` exactly, so a
+           -- string "true"/1 does NOT enable the shell on either side.
+           COALESCE(t.features -> 'agency_shell_enabled' = 'true'::jsonb, false)
+      INTO _agency_name, _agency_account_number, _agency_shell_enabled
       FROM public.tenants t WHERE t.id = _agency_id;
   END IF;
 
@@ -67,6 +89,7 @@ BEGIN
     'agency_id',         CASE WHEN _is_mgr THEN _agency_id ELSE NULL END,
     'agency_name',       CASE WHEN _is_mgr THEN _agency_name ELSE NULL END,
     'agency_account_number', CASE WHEN _is_mgr THEN _agency_account_number ELSE NULL END,
+    'agency_shell_enabled',  CASE WHEN _is_mgr THEN COALESCE(_agency_shell_enabled, false) ELSE NULL END,
     'active_tenant_id',  _active
   );
 END;

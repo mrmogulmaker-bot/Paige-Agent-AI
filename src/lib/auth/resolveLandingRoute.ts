@@ -17,11 +17,31 @@ const PRE_PORTAL_STAGES = new Set(Object.keys(STAGE_TO_PATH));
  * child's on entry): `agency_switch_context().is_agency_manager` is the authority.
  * An eligible operator's per-owner preference (`profiles.agency_login_default`,
  * default 'agency') decides WHERE:
- *   - 'agency'       → open the /agency shell (also the brand-new-owner default).
+ *   - 'agency'       → open the agency shell (also the brand-new-owner default).
  *   - 'last_account' → resume their last active account (→ /admin, which reads
  *                      profiles.active_tenant_id).
- * Returns "/agency" only when eligible AND preference is 'agency'; otherwise null
+ * Returns a route only when eligible AND preference is 'agency'; otherwise null
  * so the caller falls through to "/admin". Non-agency users get null (unaffected).
+ *
+ * §65 R0 — LAND ON THE REAL URL, AT THE SOURCE. This used to return the bare
+ * `/agency`, which `AgencyEntry` (non-numeric first segment) routes to the LEGACY
+ * `AgencyLayout` board — so an owner whose preference is 'agency' (the default for
+ * EVERY newly provisioned owner) never reached the URL-driven shell, while an owner
+ * on 'last_account' reached it only incidentally via `/admin`'s Gate-A redirect.
+ * We now emit the same address Gate A emits (`Admin.tsx` — `/agency/{n}/command-center`),
+ * so both entry points agree. The fix is here, at the SENDER: bare `/agency` is NOT
+ * redirected inside `AgencyEntry`, because `AgencyLayout` links to bare `/agency`
+ * itself (its Dashboard nav item, its logo link, and its `*` catch-all) — redirecting
+ * it would break the legacy board's own navigation and effectively retire it, which
+ * is §65's LAST migration step, not this one. The legacy board stays fully intact
+ * and reachable at bare `/agency` (§58).
+ *
+ * §13 HONEST FALLBACK — `agency_account_number` is an ADDITIVE key on
+ * `agency_switch_context()`. If it is absent or non-numeric for ANY reason (the
+ * migration that adds it hasn't reached prod yet, an older cached client, a genuinely
+ * missing value), we return exactly what we returned before — bare `/agency` — rather
+ * than constructing `/agency/null/command-center`, which would be strictly worse than
+ * the bug this fixes. Never build a URL out of a null.
  */
 async function resolveAgencyLanding(userId: string): Promise<string | null> {
   try {
@@ -30,11 +50,48 @@ async function resolveAgencyLanding(userId: string): Promise<string | null> {
       supabase.rpc("agency_switch_context" as any),
       supabase.from("profiles").select("agency_login_default").eq("user_id", userId).maybeSingle(),
     ]);
-    const ctx = (ctxRes.data as { is_agency_manager?: boolean } | null) ?? null;
+    const ctx =
+      (ctxRes.data as {
+        is_agency_manager?: boolean;
+        /** §65 R0 address of the caller's OWN agency (additive; may be absent). */
+        agency_account_number?: number | string | null;
+        /**
+         * §39 — the per-tenant canary `/admin` Gate A gates the URL-driven shell on.
+         * Additive alongside `agency_account_number`; absent on an older deploy, which
+         * the strict `!== true` check below correctly reads as OFF.
+         */
+        agency_shell_enabled?: boolean | null;
+      } | null) ?? null;
     if (ctx?.is_agency_manager !== true) return null;
     const pref = (profileRes.data as { agency_login_default?: string } | null)?.agency_login_default;
     // Default (and first-signup) is 'agency'; 'last_account' resumes /admin.
-    return pref === "last_account" ? null : "/agency";
+    if (pref === "last_account") return null;
+
+    // The RPC returns jsonb, so a bigint may arrive as a number OR a string
+    // depending on how the server builds it — normalize, then prove it's a real
+    // positive integer before it ever reaches a URL. `Number(null)` is 0 and
+    // `Number(undefined)`/`Number("abc")` is NaN, so both fail this guard and
+    // fall through to the pre-existing bare-/agency return (§13).
+    // §39 — MATCH `/admin` Gate A EXACTLY, canary flag included. Gate A gates the
+    // URL-driven shell on `agencyShellEnabled && tierKey === 'agency'|'enterprise'`,
+    // but `AgencyEntry` has NO such gate — a numeric segment goes straight to
+    // AgencyApp. Returning the numeric URL on `is_agency_manager` alone would hand
+    // EVERY eligible manager the new shell regardless of the flag, so login and
+    // `/admin` would disagree for the next agency provisioned (the flag is
+    // Super-Admin-set, not set at provisioning). The server returns it because this
+    // caller cannot read `tenants.features` itself: the SELECT policy is
+    // `is_tenant_member(id) OR is_platform_owner()`, and an agency-team manager with
+    // no `tenant_members` row would fail it and silently degrade forever.
+    if (ctx.agency_shell_enabled !== true) return "/agency";
+    // §13 — a missing/garbage account number falls back to the pre-change bare
+    // `/agency`, never a constructed `/agency/null/command-center`. Number(null) → 0
+    // (fails > 0); Number(undefined)/Number("abc") → NaN (fails isSafeInteger). The
+    // Number() coercion also normalizes a jsonb bigint that arrives as a string.
+    const acctNum = Number(ctx.agency_account_number);
+    if (Number.isSafeInteger(acctNum) && acctNum > 0) {
+      return `/agency/${acctNum}/command-center`;
+    }
+    return "/agency";
   } catch {
     return null;
   }
@@ -142,6 +199,16 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     // Agency-team invitee — belongs to an agency via agency_team_members but has
     // no tenant_members row and no client link. Send them to their agency shell
     // (AgencyLayout admits them via agency_my_membership().agency_role).
+    //
+    // §65 R0 — DELIBERATELY still bare `/agency` (the legacy board), NOT the numeric
+    // URL the agency-MANAGER branch above now emits. This user has no
+    // `tenant_members` row, so `useTenantContext` resolves an EMPTY tenant list —
+    // which is exactly what the URL-driven `AgencyApp` derives its own account number
+    // and identity from (`ownAgencyTenant`). Routing them to `/agency/{n}/…` would
+    // hand them a shell that cannot resolve who they are, whereas `AgencyLayout`
+    // admits them explicitly via `agency_my_membership().agency_role`. Migrating this
+    // class is its own slice, gated on the shell reading membership off the same rail
+    // (§58: do not move a working entry point onto a surface that can't hold it).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if ((agencyTeamRes as any)?.data?.agency_tenant_id) {
       return "/agency";
