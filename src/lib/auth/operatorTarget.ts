@@ -19,8 +19,8 @@
  * directly, and so the page keeps a single component export (§18 — one home).
  */
 
-/** The operator's default landing surface. */
-export const GOD_CONSOLE = "/admin/platform/tenants";
+/** The operator's default landing surface — Claude Design's console. */
+export const GOD_CONSOLE = "/operator/fleet/tenants";
 
 export function operatorTarget(search: string): string {
   const raw = new URLSearchParams(search).get("next");

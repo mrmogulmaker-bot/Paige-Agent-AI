@@ -27,7 +27,7 @@
 //   node scripts/live-drive/operator-console-drive.mjs https://<host>
 //
 // Exits non-zero on any failed assertion, so it can gate a slice.
-import { resolvePlaywright, resolveExecutablePath } from "./live-drive.mjs";
+import { resolvePlaywright, buildLaunchOptions } from "./live-drive.mjs";
 
 const BASE = (process.argv[2] || process.env.OPERATOR_DRIVE_URL || "").replace(/\/$/, "");
 if (!BASE) {
@@ -52,12 +52,11 @@ const isBackendNoise = (t) =>
   /ERR_CERT_AUTHORITY_INVALID|ERR_CONNECTION|Failed to load resource|WebSocket connection to|supabase\.co/i.test(t);
 
 const { chromium } = await resolvePlaywright();
-const executablePath = resolveExecutablePath();
-const browser = await chromium.launch({
-  headless: true,
-  args: ["--no-sandbox", "--disable-dev-shm-usage"],
-  ...(executablePath ? { executablePath } : {}),
-});
+// buildLaunchOptions(), not a hand-rolled launch: it resolves the Chromium binary AND wires the
+// agent proxy when HTTPS_PROXY is set. Hand-rolling it worked fine against localhost and then
+// failed with ERR_CONNECTION_RESET the first time this drove a real deployed origin — the exact
+// §18 "don't fork the helper" tax, paid in a confusing error rather than a missing feature.
+const browser = await chromium.launch(buildLaunchOptions());
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 
 async function visit(path, { waitMs = 5000 } = {}) {
