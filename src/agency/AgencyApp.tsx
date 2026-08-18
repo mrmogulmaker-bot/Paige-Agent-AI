@@ -348,7 +348,15 @@ const AgencyApp = ({ mode = "agency" }) => {
   // §13 — show a real count ONLY once the roster RPC has resolved; while it loads,
   // `available` is already true but `rows` is still [] (a fabricated 0), so gate on
   // `loading` and render "—" until the seam actually returns.
-  const subCountReal = roster.available
+  // §39 defense-in-depth (peer-gate finding #5, §65 Option B2 hotfix) — `roster`
+  // now fetches even while acting (so the switcher can show real siblings), so
+  // `roster.available` alone no longer implies "safe to show the agency-wide
+  // count." Gate explicitly on `!acting` here too — this value is currently only
+  // ever rendered behind the Rail's own `sub`/`acting` ternary (never during
+  // acting-state render paths), but computing it as agency-scope-only at the
+  // SOURCE means a future caller can't accidentally pick up the sibling count by
+  // reading `planLine`/`bookLine` without independently re-deriving that gate.
+  const subCountReal = roster.available && !acting
     ? (roster.loading ? null : roster.rows.length)
     : (metrics.subCount ?? null);
   const subCountLabel = subCountReal == null ? "—" : String(subCountReal);
