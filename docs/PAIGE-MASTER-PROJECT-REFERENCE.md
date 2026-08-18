@@ -312,6 +312,39 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
   conversation (a morning brief, named departments with millisecond timings, "41 chats · 4 projects") and
   porting any of it as a literal would put words in Paige's mouth on the one surface whose job is
   reporting what she actually did.
+- ✅ **§39 peer-gate ran on the real pushed diff and earned its keep** — an independent adversarial read
+  that verified its claims by EXECUTING postgrest-js (network error, 401 and 404 all resolve with
+  `data: null`; none reject). Six defects, all fixed in-PR:
+  - **The guard, three more false-deny paths.** A verdict issued under the PREVIOUS user's token could
+    land after the current user's and admit the wrong person (postgrest-js has its own `Retry-After`
+    path, so an in-flight check can outlive its session) → every read now carries a generation. Stale
+    context flags could hold the previous operator's `true` indefinitely after a failed background
+    revalidation and outrank a real server DENY → the server now wins. And `setVerdict(null)` fired on
+    EVERY auth event, so an hourly token refresh dropped all 78 routes to a skeleton, unmounting children
+    and destroying in-page state → a refresh on the same user is now a no-op.
+  - **The fix's own failure mode.** Staying undecided forever on an error turned a mis-deny into a
+    PERMANENT skeleton with no retry and no message — §32's "silently blank", indistinguishable from a
+    crash. Now: two retries with backoff, then an explicit "couldn't verify your access" with a retry.
+  - **The owner-only gate — the bounce class, one layer up.** `RequireOperator` admits on its single RPC,
+    which reliably beats `useTenantContext`'s five-query load, so `isPlatformOwner` was still a NOT-YET
+    when `OperatorApp` read it as a NO. An owner signing in with `?next=/operator/revenue/plans` was
+    redirected to Fleet — and because that redirect is `replace`, the deep link was DESTROYED, not
+    delayed. Both the redirect and the rail now wait for a real answer.
+  - **Three honesty defects.** The chat header appended "· every tenant, every seam" to any scope, so a
+    scoped `platform_admin` — redirected out of the owner-only sections entirely — was told they had
+    every seam. Knowledge counted documents by scanning rows, which PostgREST caps: a capped scan
+    under-reports SILENTLY, printing a confident platform figure while the corpus holds more (counts are
+    now exact + server-side, and the per-domain note is gone rather than invented, because describing
+    what a domain holds needs the very scan the cap makes unreliable). And every analytics tab laid its
+    single block into a two-column grid, leaving a half-width card beside an empty column.
+  - **Verified clean by the same read:** the compass non-null assertion (provably guarded by its own
+    filter), the tightest/mixed lane reduction (order-independent; lane `0` is never tested for
+    truthiness), `ago()`'s NaN and future-date paths, hooks order, §9 scope on all three reads
+    (`knowledge_base` has no `tenant_id`; `paige_action_kinds` is additionally pinned to platform rows so
+    an act-as'ing operator cannot pull a tenant's overrides into the platform compass), §58 (nothing
+    removed), §50 (no hits), and all 78 specs rendering.
+  - **§39 honesty:** this is one LAYER. CI's tsc ratchet caught the `.catch()` defect the peer-gate
+    independently confirmed — neither waives the other, exactly as §39 states.
 - ❗ **§32.c AUTHENTICATED DRIVE STILL OWED.** No operator credentials in these sessions and Chromium
   cannot reach prod from the CI sandbox. The bounce fix in particular is exactly the class only a real
   login proves. **No claim is made that any of this renders for a signed-in operator** — the claim is
