@@ -56,43 +56,17 @@ onMouseEnter={e=>e.currentTarget.style.background='var(--surface-2)'} onMouseLea
 <span style={{flex:'0 0 110px'}}><span className={'pill '+riskTone(c.risk)}><span className="dot"/>{c.risk}</span></span>
 <span className="sub" style={{flex:'0 0 90px',textAlign:'right'}}>{c.last}</span></button>)}</div></div></div></Wrap>};
 
-export const Growth=()=>{const total=DATA.pipeline.reduce((s,st)=>s+st.deals.reduce((a,d)=>a+d.v,0),0);
-return <Wrap><PageHead eyebrow="Growth" title="Pipeline & campaigns" sub={'$'+total.toLocaleString()+' of monthly value in play across 8 deals. Paige drafts the next touch on every one.'}
-right={<div className="row" style={{gap:10}}><button className="btn"><Ic.filter size={15}/>This quarter</button><button className="btn btn-p"><Ic.plus size={15}/>New deal</button></div>}/>
-<div className="g4">{DATA.pipeline.map((st,i)=>{const v=st.deals.reduce((a,d)=>a+d.v,0);
-return <div key={i} className="card" style={{background:'var(--surface-2)',padding:12}}>
-<div className="row" style={{justifyContent:'space-between',padding:'2px 4px 10px'}}><span style={{fontWeight:600,fontSize:13}}>{st.stage}</span><span className="mono sub">${(v/1000).toFixed(1)}k</span></div>
-<div style={{display:'grid',gap:9}}>{st.deals.map((d,j)=><div key={j} className="card" style={{padding:'12px 13px',cursor:'grab'}}>
-<div style={{fontWeight:600,fontSize:13}}>{d.n}</div>
-<div className="row" style={{marginTop:7,justifyContent:'space-between'}}><span className="mono" style={{fontSize:13.5}}>${d.v.toLocaleString()}</span><span className="pill pill-n">{d.src}</span></div>
-<div className="row" style={{marginTop:9,paddingTop:9,borderTop:'1px solid var(--line-soft)',gap:6,color:'var(--violet)',fontSize:12}}><Ic.spark size={13}/>Follow-up drafted · {d.age}</div></div>)}
-<button className="btn btn-s" style={{justifyContent:'center',border:'1px dashed var(--line)',background:'none'}}><Ic.plus size={13}/>Add</button></div></div>})}</div>
-<div className="card" style={{marginTop:16,overflow:'hidden'}}><div className="hd"><div><h3>Campaigns</h3><div className="sub">Paige reports on outcomes, not sends</div></div><button className="btn btn-s">New campaign</button></div>
-{DATA.campaigns.map((c,i)=><div key={i} className="row" style={{padding:'14px 20px',borderTop:'1px solid var(--line-soft)',gap:14}}>
-<div className="grow"><div className="row" style={{gap:8}}><span style={{fontWeight:600,fontSize:13.5}}>{c.n}</span>
-<span className={'pill '+(c.state==='Live'?'pill-ok':c.state==='Draft'?'pill-v':'pill-n')}>{c.state}</span></div><div className="sub">{c.ch}</div></div>
-{[['Reached',c.sent.toLocaleString()],['Open',c.open+'%'],['Replies',c.rep+'%']].map(([k,v],j)=>
-<div key={j} style={{flex:'0 0 92px',textAlign:'right'}}><div className="eyebrow" style={{fontSize:10}}>{k}</div><div className="mono" style={{fontSize:14,fontWeight:500}}>{v}</div></div>)}
-<button className="btn btn-s">Open</button></div>)}</div></Wrap>};
-
-export const Analytics=()=>{const bars=[42,55,48,61,58,72,68,80,76,88,84,96];const mo=['Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'];
-return <Wrap><PageHead eyebrow="Analytics" title="What the numbers mean" sub="Not a dashboard. Paige interprets the movement and drafts what to do about it."
-right={<div className="seg"><button aria-pressed="true">12 months</button><button>90 days</button><button>30 days</button></div>}/>
-<div className="g4">{DATA.metrics.map((m,i)=><Metric key={i} m={m}/>)}</div>
-<div className="two-w" style={{marginTop:16}}>
-<div className="card"><div className="hd"><div><h3>Recurring revenue</h3><div className="sub">Retainers and advisory, net of churn</div></div><span className="pill pill-ok"><span className="dot"/>+8.4% MoM</span></div>
-<div style={{padding:'22px 20px 14px',display:'flex',alignItems:'flex-end',gap:'2.2%',height:220}}>
-{bars.map((b,i)=><div key={i} style={{flex:1,display:'flex',flexDirection:'column',justifyContent:'flex-end',alignItems:'center',gap:8,height:'100%'}}>
-<div style={{width:'100%',height:b+'%',borderRadius:'6px 6px 3px 3px',background:i>9?'var(--gold)':'var(--violet)',opacity:i>9?1:.28+i*.05}}/>
-<span className="mono" style={{fontSize:10.5,color:'var(--ink-3)'}}>{mo[i]}</span></div>)}</div></div>
-<div style={{display:'grid',gap:16}}>
-<div className="card"><div className="hd"><h3>Monday competitor brief</h3><span className="pill pill-v">New</span></div>
-<div style={{padding:'14px 20px',fontSize:13.3,color:'var(--ink-2)',lineHeight:1.6,display:'grid',gap:12}}>
-<div><span style={{color:'var(--ink)',fontWeight:600}}>Coach Sarah</span> dropped her mid-tier to $890 — first price move in 14 months.</div>
-<div><span style={{color:'var(--ink)',fontWeight:600}}>DidHer.com</span> started running Meta ads again after six months dark. Creative attached.</div>
-<div><span style={{color:'var(--ink)',fontWeight:600}}>Coach James</span> added a Systems-Check-style lead magnet. Closest thing to your wedge yet.</div>
-<button className="btn btn-s btn-g" style={{justifyContent:'center'}}>Read the full brief <Ic.arrow size={13}/></button></div></div>
-<div className="card"><div className="hd"><h3>Where the hours went</h3></div>
-<div style={{padding:'14px 20px',display:'grid',gap:12}}>{[['Drafting client comms',52,'var(--violet)'],['Follow-ups & chase',38,'var(--gold)'],['Reporting',31,'#2E7D8F'],['Systems fixes',26,'var(--ok)']].map(([k,v,c],i)=>
-<div key={i}><div className="row" style={{justifyContent:'space-between',fontSize:12.8,marginBottom:5}}><span>{k}</span><span className="mono sub">{v}h</span></div>
-<div style={{height:6,borderRadius:3,background:'var(--surface-sunk)'}}><div style={{width:(v/52*100)+'%',height:'100%',borderRadius:3,background:c}}/></div></div>)}</div></div></div></div></Wrap>};
+// §13 TRUTH WAVE (owner ruling 2026-08-18) — DELETED from here: the `Growth` and
+// `Analytics` screen exports.
+//
+// Both were DEAD CODE superseded by the live `growth2.tsx` (GrowthHub) and
+// `analytics2.tsx` (Analytics2) that `SoloApp` actually mounts; the only import of
+// this module anywhere is `conversations.tsx`, which takes `Clients` alone. Verified
+// before deleting rather than assumed.
+//
+// They mattered because `Analytics` was the sole consumer of `DATA.metrics` — the
+// fabricated "$23,230 MRR / 112% NRR / 147 hours saved / 89% approval rate" strip with
+// invented sparklines. That fixture is deleted alongside them in `_shared.tsx`.
+//
+// `Clients` (and its `ClientDetail`) stay: they ARE mounted. Their fixture data is a
+// separate, tracked slice of the same wave.
