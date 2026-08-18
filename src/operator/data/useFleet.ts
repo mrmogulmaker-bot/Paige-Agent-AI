@@ -16,6 +16,10 @@ export type FleetTenant = {
   slug: string | null;
   name: string;
   status: string | null;
+  /** agency | enterprise | sub_account | standalone — the §51 tier, read from the record. */
+  accountType: string | null;
+  /** Non-null on a sub-account: the agency it belongs to (§51 invariant). */
+  parentTenantId: string | null;
   planOffer: string | null;
   /** paid | promotional | internal_test — operator-internal axis, owner-only via RLS. */
   revenueClass: string | null;
@@ -23,6 +27,16 @@ export type FleetTenant = {
   customers: number;
   trialEndsAt: string | null;
 };
+
+/**
+ * A tenant the platform runs for ITSELF — a fixture, a test account, a retired shell — rather
+ * than a customer. It is a real row and the operator can still ask to see it, but counting it
+ * as fleet would overstate the platform's own size on the operator's own console, which is the
+ * §57 divergence (a surface asserting something the God-level record contradicts) in miniature.
+ */
+export function isInternal(t: FleetTenant): boolean {
+  return t.revenueClass === "internal_test";
+}
 
 export type FleetData = {
   tenants: FleetTenant[];
@@ -48,7 +62,7 @@ export function useFleet(enabled: boolean): FleetData {
           await Promise.all([
             supabase
               .from("tenants")
-              .select("id, slug, name, status, plan_offer, trial_ends_at")
+              .select("id, slug, name, status, account_type, parent_tenant_id, plan_offer, trial_ends_at")
               .order("created_at", { ascending: true }),
             supabase.from("tenant_members").select("tenant_id").eq("status", "active"),
             supabase.from("clients").select("tenant_id"),
@@ -89,6 +103,8 @@ export function useFleet(enabled: boolean): FleetData {
             slug: t.slug ?? null,
             name: t.name,
             status: t.status ?? null,
+            accountType: t.account_type ?? null,
+            parentTenantId: t.parent_tenant_id ?? null,
             planOffer: t.plan_offer ?? null,
             revenueClass: classBy.get(t.id) ?? null,
             seats: seatBy.get(t.id) ?? 0,

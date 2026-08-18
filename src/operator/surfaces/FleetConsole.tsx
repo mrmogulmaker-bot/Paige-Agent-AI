@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useFleet, type FleetTenant } from "@/operator/data/useFleet";
+import { useFleet, isInternal, type FleetTenant } from "@/operator/data/useFleet";
 import { cn } from "@/lib/utils";
 
 /**
@@ -53,46 +53,90 @@ const TONE_DOT: Record<string, string> = {
 
 type Filter = "all" | "agency" | "attention" | "trial";
 
+/**
+ * The fleet is ordered by TOPOLOGY, not by creation date: each top-level tenant, then its own
+ * sub-accounts directly beneath it. That is how the platform actually is (§51) and how the
+ * operator thinks about it — an agency is not a peer of the accounts it owns, and a
+ * sub-account read out of context next to unrelated tenants is exactly the seam confusion §51
+ * exists to end. A child whose parent is filtered out still appears, at top level, so a search
+ * can never silently swallow a tenant.
+ */
+function byTopology(rows: readonly FleetTenant[]): FleetTenant[] {
+  const present = new Set(rows.map((t) => t.id));
+  const roots = rows.filter((t) => !t.parentTenantId || !present.has(t.parentTenantId));
+  const childrenOf = new Map<string, FleetTenant[]>();
+  rows.forEach((t) => {
+    if (!t.parentTenantId || !present.has(t.parentTenantId)) return;
+    const kids = childrenOf.get(t.parentTenantId) ?? [];
+    kids.push(t);
+    childrenOf.set(t.parentTenantId, kids);
+  });
+  return roots.flatMap((r) => [r, ...(childrenOf.get(r.id) ?? [])]);
+}
+
+/** Manager tiers, per §51. Never a substring of the plan name — that is a label, not the tier. */
+function isAgency(t: FleetTenant): boolean {
+  return t.accountType === "agency" || t.accountType === "enterprise";
+}
+
 export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean }) {
   const navigate = useNavigate();
   const { tenants, loading, error } = useFleet(true);
   const [filter, setFilter] = useState<Filter>("all");
   const [q, setQ] = useState("");
+  /**
+   * Platform fixtures and test accounts are hidden by default and revealed by a chip — never
+   * dropped. Hiding them keeps the console reporting the real fleet; keeping the chip means no
+   * shipped row is silently removed and the operator can always see everything (§58).
+   */
+  const [showInternal, setShowInternal] = useState(false);
+
+  /** The fleet as the platform actually runs it: customers, not our own fixtures. */
+  const fleet = useMemo(
+    () => (showInternal ? tenants : tenants.filter((t) => !isInternal(t))),
+    [tenants, showInternal],
+  );
+  const internalCount = useMemo(() => tenants.filter(isInternal).length, [tenants]);
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return tenants.filter((t) => {
-      if (needle && !`${t.name} ${t.slug ?? ""}`.toLowerCase().includes(needle)) return false;
-      if (filter === "attention") return health(t).tone !== "ok";
-      if (filter === "trial") return !!t.trialEndsAt;
-      if (filter === "agency") return (t.planOffer ?? "").toLowerCase().includes("agency");
-      return true;
-    });
-  }, [tenants, filter, q]);
+    return byTopology(
+      fleet.filter((t) => {
+        if (needle && !`${t.name} ${t.slug ?? ""}`.toLowerCase().includes(needle)) return false;
+        if (filter === "attention") return health(t).tone !== "ok";
+        if (filter === "trial") return !!t.trialEndsAt;
+        if (filter === "agency") return isAgency(t);
+        return true;
+      }),
+    );
+  }, [fleet, filter, q]);
+
+  /** Which tenants are actually on screen — decides whether a child may be drawn as nested. */
+  const rowIds = useMemo(() => new Set(rows.map((t) => t.id)), [rows]);
 
   // Every KPI is a count of real rows. Nothing here is a projection or an estimate.
   const kpis = useMemo(() => {
-    const attention = tenants.filter((t) => health(t).tone !== "ok").length;
-    const paid = tenants.filter((t) => t.revenueClass === "paid").length;
-    const people = tenants.reduce((n, t) => n + t.seats, 0);
-    const clients = tenants.reduce((n, t) => n + t.customers, 0);
+    const attention = fleet.filter((t) => health(t).tone !== "ok").length;
+    const paid = fleet.filter((t) => t.revenueClass === "paid").length;
+    const people = fleet.reduce((n, t) => n + t.seats, 0);
+    const clients = fleet.reduce((n, t) => n + t.customers, 0);
     return [
-      { label: "TENANTS", value: String(tenants.length), unit: "on the platform" },
+      { label: "TENANTS", value: String(fleet.length), unit: "on the platform" },
       { label: "NEEDS ATTENTION", value: String(attention), unit: attention === 1 ? "tenant" : "tenants" },
       ...(canSeeRevenue
-        ? [{ label: "PAID", value: String(paid), unit: `of ${tenants.length}` }]
+        ? [{ label: "PAID", value: String(paid), unit: `of ${fleet.length}` }]
         : []),
       { label: "PEOPLE", value: String(people), unit: `${clients} clients` },
     ];
-  }, [tenants, canSeeRevenue]);
+  }, [fleet, canSeeRevenue]);
 
   const attention = useMemo(
-    () => tenants.filter((t) => health(t).tone !== "ok").slice(0, 4),
-    [tenants],
+    () => fleet.filter((t) => health(t).tone !== "ok").slice(0, 4),
+    [fleet],
   );
 
   const FILTERS: ReadonlyArray<{ key: Filter; label: string }> = [
-    { key: "all", label: `All (${tenants.length})` },
+    { key: "all", label: `All (${fleet.length})` },
     { key: "attention", label: "Needs attention" },
     { key: "trial", label: "On trial" },
     { key: "agency", label: "Agencies" },
@@ -171,6 +215,25 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
               </button>
             );
           })}
+          {internalCount > 0 && (
+            /* The escape hatch for the rows above: our own fixtures and test accounts are out
+               of the fleet count by default, and one click puts them back (§58). */
+            <button
+              type="button"
+              onClick={() => setShowInternal((v) => !v)}
+              aria-pressed={showInternal}
+              className={cn(
+                "whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                showInternal
+                  ? "border-border-strong bg-muted text-foreground"
+                  : "border-dashed border-border bg-card text-muted-foreground hover:text-foreground",
+              )}
+              title="Platform fixtures and test accounts. Hidden from the fleet count so the console reports real tenants."
+            >
+              {showInternal ? "Hide" : "Show"} internal ({internalCount})
+            </button>
+          )}
           <div className="ml-auto flex min-w-0 flex-none items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5">
             <span aria-hidden className="flex-none text-[11px] text-muted-foreground">⌕</span>
             <input
@@ -244,19 +307,38 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
             !error &&
             rows.map((t) => {
               const h = health(t);
+              // A row sits under its parent only when that parent is actually on screen —
+              // otherwise the indent would imply a hierarchy the operator cannot see.
+              const nested = !!t.parentTenantId && rowIds.has(t.parentTenantId);
               return (
                 <div
                   key={t.id}
                   className="flex min-w-0 items-center gap-2.5 border-b border-border/60 px-3.5 py-2.5 transition-colors last:border-b-0 hover:bg-muted/40"
                 >
                   <div className="flex min-w-0 flex-[2.1] items-center gap-2.5">
+                    {nested && (
+                      /* CD's ownership tick: a hairline elbow, so a sub-account reads as
+                         BELONGING to the agency above it rather than sitting beside it (§51). */
+                      <span
+                        aria-hidden
+                        className="ml-1 h-4 w-3 flex-none rounded-bl-[4px] border-b border-l border-border"
+                      />
+                    )}
                     <span className="grid h-7 w-7 flex-none place-items-center rounded-[9px] bg-muted text-[10px] font-bold text-foreground/70">
                       {initials(t.name)}
                     </span>
                     <div className="min-w-0">
-                      <div className="truncate text-[12.5px] font-semibold">{t.name}</div>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-[12.5px] font-semibold">{t.name}</span>
+                        {isInternal(t) && (
+                          <span className="flex-none whitespace-nowrap rounded-full border border-dashed border-border px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Internal
+                          </span>
+                        )}
+                      </div>
                       <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">
                         {t.slug ?? "—"}
+                        {nested ? " · sub-account" : isAgency(t) ? " · agency" : ""}
                       </div>
                     </div>
                   </div>

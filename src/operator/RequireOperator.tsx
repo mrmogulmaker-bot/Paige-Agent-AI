@@ -73,17 +73,23 @@ export default function RequireOperator({ children }: { children: React.ReactNod
       }
       // Re-ask on every session change — a different user may have signed in.
       setVerdict(null);
-      supabase
-        .rpc("is_platform_admin")
-        .then(({ data }) => {
-          if (alive) setVerdict(data === true);
-        })
-        .catch(() => {
-          // A failed check is NOT a denial: denying on a transient network error would
-          // strand a legitimate operator on the old console, which is the failure we are
-          // here to fix. Fall back to whatever the context managed to resolve.
+      void (async () => {
+        // NOTE THE SHAPE. `supabase.rpc()` is a thenable that RESOLVES with `{data, error}`;
+        // it does not reject, so a `.catch()` here would never fire and a server-side failure
+        // would arrive as `data: null` — which `data === true` would read as a DENY. That is
+        // precisely the false-negative this guard exists to prevent, so the error field is
+        // checked explicitly. `try` still wraps it for the genuine transport throw.
+        try {
+          const { data, error } = await supabase.rpc("is_platform_admin");
+          if (!alive) return;
+          // A failed check is NOT a denial: denying on a transient network or RLS error would
+          // strand a legitimate operator on the old console, which is the failure we are here
+          // to fix. Stay undecided and fall back to whatever context resolved.
+          setVerdict(error ? null : data === true);
+        } catch {
           if (alive) setVerdict(null);
-        });
+        }
+      })();
     };
 
     supabase.auth
