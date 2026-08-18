@@ -53,6 +53,11 @@ export default {
           dark: "hsl(var(--gold-dark))",
         },
         surface: "hsl(var(--surface))",
+        // Operator console rail (§11 shared layer — see index.css --rail).
+        rail: {
+          DEFAULT: "hsl(var(--rail))",
+          foreground: "hsl(var(--rail-foreground))",
+        },
         popover: {
           DEFAULT: "hsl(var(--popover))",
           foreground: "hsl(var(--popover-foreground))",

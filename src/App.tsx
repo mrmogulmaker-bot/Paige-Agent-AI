@@ -54,7 +54,7 @@ import { PlatformUpdateBanner } from "./components/PlatformUpdateBanner";
 // Eagerly load only the public landing + auth pages (likely first-paint)
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
-const OperatorLogin = lazyWithReload(() => import("./pages/OperatorLogin"));
+const OperatorEntry = lazyWithReload(() => import("@/operator/OperatorEntry"));
 const JoinPlatform = lazyWithReload(() => import("./pages/JoinPlatform"));
 const BookingPage = lazyWithReload(() => import("./pages/BookingPage"));
 const ManageBooking = lazyWithReload(() => import("./pages/ManageBooking"));
@@ -226,7 +226,10 @@ const App = () => (
             <Route path="/legacy" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/login" element={<Navigate to="/auth" replace />} />
-            <Route path="/operator" element={<PageSuspense><OperatorLogin /></PageSuspense>} />
+            {/* §65 R4 — the operator subtree. The `index` leg inside OperatorEntry keeps bare
+                /operator as the login door (nothing in the product links to it, so a blank
+                root would ship undetected); `:section/*` is the console behind ONE guard. */}
+            <Route path="/operator/*" element={<PageSuspense><OperatorEntry /></PageSuspense>} />
             <Route path="/join-platform" element={<PageSuspense><JoinPlatform /></PageSuspense>} />
             <Route path="/book/:slug" element={<PageSuspense><BookingPage /></PageSuspense>} />
             <Route path="/booking/manage" element={<PageSuspense><ManageBooking /></PageSuspense>} />

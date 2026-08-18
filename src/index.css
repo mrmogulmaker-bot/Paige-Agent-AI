@@ -52,6 +52,18 @@ All colors MUST be HSL.
     --input: 250 30% 84%;
     --ring: 258 70% 50%; /* indigo focus ring — 7.7:1 on white (gold ring fails 3:1) */
 
+    /* ── OPERATOR RAIL (§11 "if a primitive is missing, add it to the layer"). The Super Admin
+       console is a dark left rail against a light content column. In LIGHT that is just
+       --primary, but in DARK --primary lifts to a vivid 56%-lightness indigo (see .dark below)
+       — a bright violet slab where the design wants a deep, quiet panel. Painting the rail with
+       --primary would therefore invert its role on theme flip, and hardcoding a dark hex at the
+       call site is exactly what §11 forbids. So the rail gets its OWN token pair, defined per
+       theme: the deep brand ink in light, and in dark a lifted indigo that sits a real step
+       ABOVE the near-black page instead of dissolving into it (the source design's own rail
+       vanishes in its dark theme — a defect we do not reproduce, §29 perceptibility). */
+    --rail: 255 60% 12%;
+    --rail-foreground: 0 0% 98%;
+
     --radius: 0.75rem; /* 12px base — tighter, gives a real hierarchy vs pills/inputs */
 
     --success: 142 76% 36%;
@@ -142,6 +154,13 @@ All colors MUST be HSL.
     /* Gold-as-TEXT flips to the bright brand gold on dark — the light theme's
        --gold-dark (32% lightness) sinks below AA against a 5%-lightness surface. */
     --gold-dark: 41 82% 61%;
+
+    /* Rail on dark: lifted well clear of --background (265 44% 5%) so the panel is actually
+       SEEN, not merely "technically a different value" (§29 — a sub-perceptual delta is a
+       defect). ~1.45:1 against the page as a large adjacent surface, reinforced by an explicit
+       --border-strong right edge; --rail-foreground on it measures ≈12.6:1. */
+    --rail: 258 38% 24%;
+    --rail-foreground: 0 0% 96%;
 
     /* Data-viz ramp on dark — same cohesive cool jewel-tone spread as :root, LIFTED into the
        mid/upper-60s lightness so each series clears ≥3:1 non-text graphical contrast against the

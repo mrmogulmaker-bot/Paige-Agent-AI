@@ -18,8 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
-
-const GOD_CONSOLE = "/admin/platform/tenants";
+import { operatorTarget } from "@/lib/auth/operatorTarget";
 
 export default function OperatorLogin() {
   const navigate = useNavigate();
@@ -42,7 +41,7 @@ export default function OperatorLogin() {
         new Promise<boolean>((r) => setTimeout(() => r(false), 4000)),
       ]);
       if (isOwner) {
-        navigate(GOD_CONSOLE, { replace: true });
+        navigate(operatorTarget(window.location.search), { replace: true });
         return;
       }
       // Authenticated, but not an operator — send them where they belong.
