@@ -181,7 +181,7 @@ const Rail = ({ route, go, collapsed, setCollapsed, sub, brand, planLine, bookLi
 // Help · Ask Paige · notifications · theme · account/profile MENU. The switcher and
 // the acting crumb render only in agency mode — §51 keeps the parent-aggregate path
 // out of a sub-account's chrome entirely.
-const TopBar = ({ theme, setTheme, route, isAgency, acting, brand, openSwitcher, switcherOpen, switcherRef, openAcct, acctOpen, acctRef, openAsk, openHelp, sub, operatorName, providerLabel }) => {
+const TopBar = ({ theme, setTheme, route, isAgency, acting, brand, openSwitcher, switcherOpen, switcherRef, openAcct, acctOpen, acctRef, openAsk, openHelp, sub, operatorName, providerLabel, onBackToAgency }) => {
   const crumb = (TITLES[route] || ["Command Center"])[0];
   return (
     <header className="row" style={{ height: 56, flex: "none", padding: "0 24px", background: "var(--canvas)", gap: 14, zIndex: 20 }}>
@@ -192,6 +192,33 @@ const TopBar = ({ theme, setTheme, route, isAgency, acting, brand, openSwitcher,
           <span style={{ width: 7, height: 7, borderRadius: 2, background: acting.color }} />{acting.name.split(" ")[0]}<Ic.chev size={13} /></span>}
         <span className="trunc">{crumb}</span>
       </div>
+
+      {/* §58 ESCAPE HATCH — the sub-account shell must not be a one-way door.
+          THE BUG THIS FIXES (owner-reported P0, 2026-08-18): the switcher below is gated
+          on `isAgency`, so /business/{n} renders NONE. AccountSwitcher lives only in
+          AgencyLayout + AdminLayout, and /admin cannot rescue you either — Admin.tsx's
+          Gate B redirects sub_account straight back to /business BEFORE AdminLayout (which
+          holds the switcher) can render. An agency owner whose active tenant was a
+          sub-account was therefore trapped with no navigable way back to their own agency.
+          That trap came from the §65 Gate B work; this is its fix.
+
+          Shown ONLY when the caller genuinely has somewhere to go: `ownAgencyTenant` is
+          the agency/enterprise tenant in their OWN RLS-scoped tenant list, so a real
+          sub-account-only owner (who has no agency) correctly sees nothing — no dead
+          button promising a destination that does not exist for them (§13).
+
+          Deliberately NOT the full switcher: this is one honest door back to the agency,
+          not a cross-account picker on a surface that should stay scoped to one book (§9). */}
+      {!isAgency && onBackToAgency && (
+        <button
+          onClick={onBackToAgency.go}
+          title={"Back to " + (onBackToAgency.name || "your agency")}
+          className="row"
+          style={{ gap: 8, padding: "7px 12px", border: "1px solid var(--line)", borderRadius: 9, cursor: "pointer", background: "var(--surface)", fontSize: 12.5, fontWeight: 500, color: "var(--ink)", flex: "none" }}>
+          <Ic.arrow size={13} style={{ transform: "rotate(180deg)", color: "var(--ink-3)" }} />
+          <span className="trunc">Back to agency</span>
+        </button>
+      )}
 
       {isAgency && <div ref={switcherRef} style={{ position: "relative", flex: "none" }}>
         <button onClick={openSwitcher} aria-haspopup="menu" aria-expanded={switcherOpen} className="row"
@@ -669,7 +696,17 @@ const AgencyApp = ({ mode = "agency" }) => {
             operatorName={operatorName} providerLabel={providerLabel}
             openSwitcher={() => setSwitcherOpen(v => !v)} switcherOpen={switcherOpen} switcherRef={switcherRef}
             openAcct={() => setAcctOpen(v => !v)} acctOpen={acctOpen} acctRef={acctRef}
-            openAsk={openAsk} openHelp={openHelp} />
+            openAsk={openAsk} openHelp={openHelp}
+            /* §58 escape hatch. Computed HERE because `ownAgencyTenant` and `navigate`
+               live in AgencyApp, not TopBar — passing the pieces separately would have
+               put two out-of-scope identifiers inside a @ts-nocheck file, where tsc
+               cannot catch a ReferenceError (§32: compiles clean, crashes at render).
+               null when the caller has no agency to return to, which is the correct
+               state for a genuine sub-account-only owner. */
+            onBackToAgency={!isAgency && ownAgencyTenant?.account_number != null ? {
+              name: ownAgencyTenant.name,
+              go: () => navigate(branchPath("agency", String(ownAgencyTenant.account_number), defaultBranchSlug("agency"))),
+            } : null} />
 
           {/* Account SWITCHER popover — agency only (§51). */}
           {isAgency && (
