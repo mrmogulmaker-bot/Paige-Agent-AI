@@ -141,12 +141,67 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
   used ONLY by the operator settings branch. Five invariant tests guard the addressing contract.
 - ✅ **The Settings back-menu is specified:** Setup · Integrations · **Platform Team (Seats · Roles)** ·
   Platform Vault · Governance — this is the roles/permissions home the owner asked for, now addressable.
-- ❗ **§13 — authored ≠ built.** The registry is the ADDRESSING CONTRACT only. Most of the 78 tabs have no
-  surface, and **the console is NOT mounted** — `/operator/{section}` still falls through to the catch-all.
-  The live God console remains the real-route `/admin/platform/*` tree.
 - ❗ **§13 correction:** an earlier claim that `/operator` was a login-vs-console *collision* was WRONG —
   the pack has **zero** routes at bare `/operator` (verified by executing its registry). It is a prefix; the
   login keeps the root as an index leg.
+
+### §65 R4 slice 1b — the operator console is MOUNTED (2026-08-18, PR #543)
+
+- ✅ **All 78 addresses are live and navigable** at `/operator/{branch}/{subtab}` (and
+  `/operator/settings/{group}/{tab}`), resolved from `OPERATOR_BRANCHES`. This closes the "authored ≠
+  mounted" gap the 1a entry above recorded. Three new files: `src/operator/OperatorEntry.tsx` (3-leg
+  dispatcher — index + login + guarded console, peer to `AgencyEntry`/`BusinessEntry`),
+  `RequireOperator.tsx` (**ONE** guard above all 78 routes, not 78 copies), `OperatorApp.tsx` (the
+  URL-driven left-rail shell). `App.tsx`'s `/operator` exact route became a `/operator/*` splat.
+- ✅ **The guard reuses what already resolves** — `isPlatformStaff || isPlatformOwner` from
+  `useTenantContext`; the staff flag is populated from `is_platform_admin()`, semantically identical to
+  §53's `is_platform_operator()`. No new RPC, no second async hop, no fork of `AgencyLayout`'s waterfall
+  (§18). `loading` is gated FIRST and unconditionally — the "Restricted area" latch bug already shipped
+  once on `/admin/platform/*`, and at a subtree root its blast radius is all 78 routes at once.
+- ✅ **§53 gating is on the ROUTE, not only the nav.** `revenue` + `comms` are owner-only (their shipped
+  twins `MoneySpineAdmin` / `PlatformFleetCommunications` are both `<PlatformOwnerOnly>`) — a hidden tab
+  whose route stays open is not a gate. **7 MIXED branches** (fleet · paige · growth · analytics ·
+  provisioning · marketplace · settings/governance) carry owner-only tabs INSIDE an operator-level
+  section; those inner gates land WITH their surfaces rather than being guessed against a placeholder.
+- ✅ **NEW shared token `--rail` / `--rail-foreground`** (`index.css` + `tailwind.config.ts`). The rail is
+  `--primary` in light, but on dark `--primary` lifts to a vivid 56%-L indigo — a violet slab where the
+  design wants a quiet panel. Own token pair per theme; the dark value is lifted **well clear** of
+  `--background` (~1.45:1 as a large adjacent surface + an explicit `--border-strong` edge) because the
+  source design's own rail is the same colour as its dark page and **vanishes** — a real source defect we
+  do not reproduce (§29 perceptibility). §11 "add it to the layer," never an inline hex.
+- ✅ **Accessibility was AUTHORED, not ported.** The pack's entire chrome is `div + onClick` — zero
+  `button`, zero link, zero `role`, zero `aria-current`, zero focus-visible. Shipped as real `<Link>`s
+  with `aria-current`, real `<button>`s with `aria-expanded`/`aria-label`, and indigo focus rings
+  throughout. Two source AA failures fixed rather than copied (rail eyebrows 4.11:1 · route path 2.84:1).
+- ❗ **THREE deliberate departures from the approved design, each named (§11/§28):** (1) the active
+  sub-tab underline is **INDIGO, not the design's gold** — nav-active is not an act, shipped
+  `OperatorTabs` already carries that rule in code, and the design's gold measures **2.35:1**, under even
+  the 3:1 non-text bar; **OWNER-OWED if the gold was specifically approved.** (2) Selected rail rows and
+  the open-menu ring are neutral/indigo for the same reason (the pack is internally inconsistent — white
+  on its front menu, gold on its settings menu; we unify on white). (3) The palette is **our cool indigo,
+  not the pack's warm cream** — mapped by ROLE, not hex; there is no warm-neutral family in our tokens and
+  inventing one would fork the platform palette (§23 is an owner ruling, not a porter's call). This
+  matches the design's STRUCTURE, deliberately **not** its temperature.
+- ❗ **§13 — mounted ≠ built.** The 78 surfaces are NOT implemented. Each renders an honest placeholder
+  saying so and naming the live console; **nothing fabricates data** — a placeholder never poses as an
+  empty dashboard reading "you have no tenants."
+- ❗ **§58 — ADDITIVE, nothing retired.** The design is a LEFT-RAIL shell; the live God console
+  (`AdminLayout`) is a TOP-BAR shell. `AdminLayout` is **untouched** and `/admin/platform/*` remains the
+  operator's working surface while `/operator/*` fills in per-surface. Standing checklist item answered
+  explicitly: **no previously-shipped, owner-approved capability is removed, hidden, or gated off.**
+- ❗ **SEQUENCING RED-LINE (held).** `OperatorLogin`'s `GOD_CONSOLE` and `resolveLandingRoute`'s operator
+  branch **still point at `/admin/platform`**. Flipping them before the console is verified would 404
+  both doors — the #538 lockout class. Order is **mount → verify → flip**; the flip is its own slice.
+- ✅ **Open-redirect-safe deep links.** `RequireOperator` sends a signed-out operator to the door carrying
+  `?next=`; `OperatorLogin` honours it via new `src/lib/auth/operatorTarget.ts` — same-origin, inside
+  `/operator/`, never protocol-relative, never backslash-smuggled, never the door itself. 8 unit tests,
+  mostly proving what it REFUSES. The `GOD_CONSOLE` default is unchanged.
+- **Gates:** tsc 0 · **325/325** tests (14 new: 6 routing, 8 redirect-allowlist) · `lint:views` +
+  `lint:definer-fns` + `lint:tier-features` clean · eslint 0 · `vite build` ✓.
+- ❗ **§32.c LIVE-DRIVE OWED.** The build session is headless with no browser credentials — the deployed
+  console has **NOT** been driven and no screenshot exists. Owed to the next capable session (Cowork /
+  Chrome-MCP): walk `/operator`, the rail groups, a deep link, and confirm the rail renders in **both**
+  themes. No claim is made that it renders — only that it compiles, tests green, and builds.
 
 
 ### Roles & permissions — R1 call-site inventory + R2a platform-seam fix (2026-08-18)
@@ -337,12 +392,17 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
-### Super Admin console import — open slices after #541 (2026-08-18)
+### Super Admin console import — open slices after #543 (2026-08-18)
 
-- ❌ **Mount the console behind ONE `is_platform_operator()` guard** (§53) at an `/operator/*` dispatcher,
-  peer to `AgencyEntry`/`BusinessEntry`. **SEQUENCING RED-LINE:** mount → verify → THEN flip
-  `OperatorLogin`'s console target and `resolveLandingRoute`'s operator branch. Flipping first sends the
-  operator to a 404 from BOTH doors — the #538 lockout class.
+- ✅ **DONE (#543) — the console is mounted** behind ONE guard at an `/operator/*` dispatcher, peer to
+  `AgencyEntry`/`BusinessEntry`. See Section 4 "§65 R4 slice 1b". All 78 addresses navigable; every
+  surface an honest placeholder.
+- ❌ **FLIP the landing targets — `OperatorLogin`'s `GOD_CONSOLE` and `resolveLandingRoute`'s operator
+  branch** (both still `/admin/platform`). **SEQUENCING RED-LINE, still binding:** mount → **verify** →
+  THEN flip. #543 did the mount; the flip waits on the §32.c live-drive, because flipping against an
+  unverified console sends the operator to a 404 from BOTH doors — the #538 lockout class.
+- ❌ **The 7 MIXED inner tier gates** (fleet · paige · growth · analytics · provisioning · marketplace ·
+  settings/governance) — owner-only tabs inside operator-level sections. Land WITH their surfaces.
 - ❌ **28 design tabs are genuinely net-new** (no shipped equivalent): fleet history/alert-rules/team-pulse/
   prospects · paige sandbox/research/memory · trust-compass escalations/dependencies · marketplace build/
   publishers · automations build · 6 analytics lenses · support escalations/response-policy · comms
