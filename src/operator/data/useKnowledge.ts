@@ -10,11 +10,29 @@ import type { KnowledgeDomain } from "@/operator/surfaces/KnowledgeSurface";
  * panel is specified for (doctrine, the skills library, cross-tenant meta-patterns), and it is
  * why this hook reads that table and no other.
  *
- * §13 — a domain is a `knowledge_category` that ACTUALLY HAS ROWS. Categories are enumerated
- * from the rows themselves rather than from the enum, so an empty category is absent instead
- * of claiming a corpus that is not there; `docs` is a real count; `lastIndexed` is a real
- * `updated_at`, and renders "—" when the rows carry none.
+ * §13 — a domain is a `knowledge_category`, and its `docs` is an EXACT count.
+ *
+ * WHY NOT A ROW SCAN. Counting rows client-side looks simpler, but PostgREST caps how many rows
+ * a request returns (`db-max-rows`), and a capped scan under-reports SILENTLY: the surface would
+ * print "1,204 documents" as a platform figure while the corpus held more, with nothing to show
+ * the number was truncated. A wrong number that looks right is worse than no number (§13). So
+ * each category is counted with `head: true, count: "exact"` — the server counts, the cap does
+ * not apply, and a category with no rows is simply absent rather than claiming a corpus that is
+ * not there. `lastIndexed` is the newest `updated_at` in that category, read as one row.
+ *
+ * The rail's per-domain note is deliberately left null: describing what a domain HOLDS would
+ * mean scanning its rows, which is the very thing the cap makes unreliable. An empty note
+ * renders as nothing; an invented one would render as fact.
  */
+/**
+ * The platform corpus categories, from the `knowledge_category` enum. Enumerated rather than
+ * discovered from rows, because discovering them requires the very scan the cap makes
+ * unreliable — and an enum member with zero rows is filtered out below anyway.
+ */
+const CATEGORIES = [
+  "framework", "principle", "practice", "model", "stage", "implementation",
+] as const;
+
 const DOMAIN_LABEL: Record<string, string> = {
   framework: "Frameworks",
   principle: "Principles",
@@ -61,46 +79,47 @@ export function useKnowledge(enabled: boolean): KnowledgeData {
       setLoading(true);
       setError(null);
       try {
-        const { data, error: kErr } = await supabase
-          .from("knowledge_base")
-          .select("category, framework, updated_at");
+        const results = await Promise.all(
+          CATEGORIES.map(async (category) => {
+            const [{ count, error: cErr }, { data: newest, error: nErr }] = await Promise.all([
+              supabase
+                .from("knowledge_base")
+                .select("id", { head: true, count: "exact" })
+                .eq("category", category),
+              supabase
+                .from("knowledge_base")
+                .select("updated_at")
+                .eq("category", category)
+                .order("updated_at", { ascending: false, nullsFirst: false })
+                .limit(1)
+                .maybeSingle(),
+            ]);
+            return { category, count, newest: newest?.updated_at ?? null, err: cErr ?? nErr };
+          }),
+        );
 
         if (!alive) return;
-        if (kErr) {
-          setError(kErr.message);
+        const failed = results.find((r) => r.err);
+        if (failed?.err) {
+          setError(failed.err.message);
           setDomains([]);
           setLoading(false);
           return;
         }
 
-        const byCategory = new Map<
-          string,
-          { docs: number; last: string | null; frameworks: Set<string> }
-        >();
-        (data ?? []).forEach((r) => {
-          const key = String(r.category);
-          const acc = byCategory.get(key) ?? { docs: 0, last: null, frameworks: new Set<string>() };
-          acc.docs += 1;
-          if (r.framework) acc.frameworks.add(r.framework);
-          if (r.updated_at && (!acc.last || r.updated_at > acc.last)) acc.last = r.updated_at;
-          byCategory.set(key, acc);
-        });
-
         setDomains(
-          [...byCategory.entries()]
-            .sort((a, b) => b[1].docs - a[1].docs)
-            .map(([id, acc]) => ({
-              id,
-              name: DOMAIN_LABEL[id] ?? id,
-              // The note states what the corpus actually holds — a count of the distinct
-              // frameworks in that category — rather than a written-in description (§13).
-              note:
-                acc.frameworks.size > 0
-                  ? `${acc.frameworks.size} ${acc.frameworks.size === 1 ? "framework" : "frameworks"}`
-                  : null,
-              docs: acc.docs,
-              lastIndexed: ago(acc.last),
-              hue: DOMAIN_HUE[id] ?? null,
+          results
+            // A category with no rows is not a domain. Drawing an empty one would claim a
+            // corpus that does not exist.
+            .filter((r) => (r.count ?? 0) > 0)
+            .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
+            .map((r) => ({
+              id: r.category,
+              name: DOMAIN_LABEL[r.category] ?? r.category,
+              note: null,
+              docs: r.count ?? null,
+              lastIndexed: ago(r.newest),
+              hue: DOMAIN_HUE[r.category] ?? null,
             })),
         );
       } catch (e) {

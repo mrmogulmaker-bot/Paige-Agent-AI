@@ -341,7 +341,10 @@ export default function WorkspaceSurface({
               )}
             </div>
             <div className="mt-0.5 truncate text-[10.5px] text-muted-foreground">
-              {scope ? `${scope} · every tenant, every seam` : "Scope not resolved"}
+              {/* The authority this session runs at — and NOTHING about its reach. CD's line
+                  reads "· every tenant, every seam", which is false for a scoped platform_admin:
+                  they are redirected out of the owner-only sections entirely (§13/§53). */}
+              {scope ? `Signed in at ${scope}` : "Scope not resolved"}
             </div>
           </div>
           <div className="ml-auto flex flex-none items-center gap-1.5">

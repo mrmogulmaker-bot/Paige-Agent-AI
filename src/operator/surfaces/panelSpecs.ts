@@ -459,6 +459,9 @@ function notWiredBlock(title: string): PanelBlock {
   return {
     id: "not-wired",
     title,
+    // Spans the grid. The analytics tabs lay their bodies out in two columns, and a single
+    // half-width card beside an empty column reads as a broken layout rather than a stated gap.
+    wide: true,
     body: {
       kind: "notWired",
       what: "This surface is not connected to a platform source yet.",

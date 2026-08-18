@@ -5,7 +5,7 @@ import {
   OPERATOR_BRANCHES, leafPath, subtabPath, branchPath,
   type Branch, type SubTab,
 } from "@/lib/routing/tierBranches";
-import { EmptyState } from "@/components/ui/page";
+import { EmptyState, PageSkeleton } from "@/components/ui/page";
 import FleetConsole from "@/operator/surfaces/FleetConsole";
 import TrustCompass from "@/operator/surfaces/TrustCompass";
 import KnowledgeSurface from "@/operator/surfaces/KnowledgeSurface";
@@ -175,7 +175,7 @@ export default function OperatorApp() {
   const section = params.section;
   const splat = params["*"] ?? "";
   const { branch, sub, leaf, stale } = useResolved(section, splat);
-  const { isPlatformOwner } = useTenantContext();
+  const { loading: contextLoading, isPlatformOwner } = useTenantContext();
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ fleet: true, business: true });
 
@@ -184,12 +184,22 @@ export default function OperatorApp() {
     [],
   );
 
+  /**
+   * Owner-only sections are hidden only once we KNOW the answer. `RequireOperator` admits on its
+   * own single RPC, which reliably beats `useTenantContext`'s five-query load — so while that
+   * load is still running `isPlatformOwner` is a not-yet, not a no. Treating it as a no here
+   * would flash a rail with Revenue and Comms missing for the owner (and, below, throw away
+   * their deep link entirely).
+   */
+  const ownerAnswered = contextLoading === false;
   const railBranches = useMemo(
     () =>
       OPERATOR_BRANCHES.filter(
-        (b) => b.group !== "settings" && (isPlatformOwner || !OWNER_ONLY_SECTIONS.has(b.slug)),
+        (b) =>
+          b.group !== "settings" &&
+          (isPlatformOwner || !ownerAnswered || !OWNER_ONLY_SECTIONS.has(b.slug)),
       ),
-    [isPlatformOwner],
+    [isPlatformOwner, ownerAnswered],
   );
   const visibleRowCount = RAIL_GROUPS.reduce(
     (n, g) => n + (openGroups[g.key as string] ? railBranches.filter((b) => b.group === g.key).length : 0),
@@ -202,7 +212,13 @@ export default function OperatorApp() {
 
   // §53 — a scoped platform_admin deep-linking an owner-only section goes to the default
   // branch, not to a dead-end card: they ARE a legitimate operator, just not for this surface.
+  //
+  // NEVER on a not-yet answer. This redirect is `replace`, so firing it early does not merely
+  // show the wrong surface — it DESTROYS the URL the operator asked for. An owner who signs in
+  // with `?next=/operator/revenue/plans`, or hard-loads that bookmark, would be silently moved
+  // to Fleet with no way back to where they were going. So we wait for a real answer first.
   if (OWNER_ONLY_SECTIONS.has(branch.slug) && !isPlatformOwner) {
+    if (!ownerAnswered) return <PageSkeleton />;
     return <Navigate to={branchPath("operator", "", OPERATOR_BRANCHES[0].slug)} replace />;
   }
 

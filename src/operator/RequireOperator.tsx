@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { PageSkeleton } from "@/components/ui/page";
+import { EmptyState, PageSkeleton } from "@/components/ui/page";
+import { Button } from "@/components/ui/button";
 
 /**
  * RequireOperator — the ONE guard above the whole `/operator/{section}` subtree (§53).
@@ -61,40 +62,75 @@ export default function RequireOperator({ children }: { children: React.ReactNod
    * operator); only this RPC can produce a DENY.
    */
   const [verdict, setVerdict] = useState<boolean | null>(null);
+  /** Set when the check has been retried to exhaustion. Never a denial — an honest failure. */
+  const [unverifiable, setUnverifiable] = useState(false);
 
   useEffect(() => {
     let alive = true;
-    const readSession = (present: boolean) => {
+    /**
+     * Which question the answers belong to. Every read bumps it, and a reply for an older
+     * generation is dropped. Without this, a verdict issued under the PREVIOUS user's token can
+     * land after the current user's and admit the wrong person: postgrest-js retries on its own
+     * `Retry-After` path, so an in-flight check really can outlive the session that started it.
+     */
+    let generation = 0;
+    /** Whose answer we currently hold, so a token refresh is not mistaken for a user swap. */
+    let subject: string | null = null;
+
+    const ask = async (gen: number) => {
+      // NOTE THE SHAPE. `supabase.rpc()` is a thenable that RESOLVES with `{data, error}`; it
+      // does not reject, so a `.catch()` here would never fire and a server-side failure would
+      // arrive as `data: null` — which `data === true` reads as a DENY. That is precisely the
+      // false-negative this guard exists to prevent, so the error field is checked explicitly.
+      //
+      // A failed check is NOT a denial: denying on a transient network error, or on the 401 that
+      // can land mid token-refresh, would strand a legitimate operator on the old console. But
+      // staying undecided forever is its own failure — a skeleton that never resolves is the
+      // "silently blank" symptom (§32), indistinguishable from a crash. So we retry a bounded
+      // number of times and then SAY we could not verify, rather than spinning.
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const { data, error } = await supabase.rpc("is_platform_admin");
+          if (!alive || gen !== generation) return;
+          if (!error) {
+            setVerdict(data === true);
+            return;
+          }
+        } catch {
+          if (!alive || gen !== generation) return;
+        }
+        // 400ms, then 800ms — long enough to outlast a refresh blip, short enough that a real
+        // operator is not left staring at a skeleton.
+        await new Promise((r) => setTimeout(r, 400 * 2 ** attempt));
+        if (!alive || gen !== generation) return;
+      }
+      if (alive && gen === generation) setUnverifiable(true);
+    };
+
+    const readSession = (userId: string | null) => {
       if (!alive) return;
-      setHasSession(present);
-      if (!present) {
+      setHasSession(!!userId);
+      if (!userId) {
+        subject = null;
+        generation += 1;
         setVerdict(false);
         return;
       }
-      // Re-ask on every session change — a different user may have signed in.
+      // A token refresh on the SAME user must not reset the verdict: doing so drops the whole
+      // 78-route subtree to a skeleton, unmounting `children` and destroying in-page state (a
+      // half-typed composer draft, a set of dials, a filter, the scroll position) roughly once
+      // an hour. Only a genuine user swap re-opens the question.
+      if (userId === subject) return;
+      subject = userId;
+      const gen = (generation += 1);
       setVerdict(null);
-      void (async () => {
-        // NOTE THE SHAPE. `supabase.rpc()` is a thenable that RESOLVES with `{data, error}`;
-        // it does not reject, so a `.catch()` here would never fire and a server-side failure
-        // would arrive as `data: null` — which `data === true` would read as a DENY. That is
-        // precisely the false-negative this guard exists to prevent, so the error field is
-        // checked explicitly. `try` still wraps it for the genuine transport throw.
-        try {
-          const { data, error } = await supabase.rpc("is_platform_admin");
-          if (!alive) return;
-          // A failed check is NOT a denial: denying on a transient network or RLS error would
-          // strand a legitimate operator on the old console, which is the failure we are here
-          // to fix. Stay undecided and fall back to whatever context resolved.
-          setVerdict(error ? null : data === true);
-        } catch {
-          if (alive) setVerdict(null);
-        }
-      })();
+      setUnverifiable(false);
+      void ask(gen);
     };
 
     supabase.auth
       .getSession()
-      .then(({ data }) => readSession(!!data.session))
+      .then(({ data }) => readSession(data.session?.user?.id ?? null))
       .catch(() => {
         if (alive) {
           setHasSession(false);
@@ -102,10 +138,11 @@ export default function RequireOperator({ children }: { children: React.ReactNod
         }
       });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) =>
-      readSession(!!session),
+      readSession(session?.user?.id ?? null),
     );
     return () => {
       alive = false;
+      generation += 1;
       sub.subscription.unsubscribe();
     };
   }, []);
@@ -119,12 +156,37 @@ export default function RequireOperator({ children }: { children: React.ReactNod
 
   // 2. ALLOW as soon as anything says yes — our own RPC, or a context that has already
   //    resolved this operator. This is what keeps a warm navigation from flashing.
-  if (verdict === true || isPlatformStaff || isPlatformOwner) return <>{children}</>;
+  //
+  //    `verdict !== false` guards the context path: the flags are a CACHE we do not control,
+  //    and after a user swap whose background revalidation failed they can still hold the
+  //    PREVIOUS operator's `true`. Our own explicit DENY must outrank a stale yes.
+  if (verdict === true || (verdict !== false && (isPlatformStaff || isPlatformOwner))) {
+    return <>{children}</>;
+  }
 
-  // 3. Nothing has said yes yet. Wait — do NOT infer a denial from silence. This is the
+  // 3. The check failed and kept failing. Say so — an operator who cannot be verified gets a
+  //    reason and a retry, never an endless skeleton (§32: a blank is indistinguishable from a
+  //    crash) and never a bounce to the old console over what may be a network blip.
+  if (unverifiable) {
+    return (
+      <div className="grid min-h-[60vh] place-items-center p-6">
+        <EmptyState
+          title="Couldn't verify your access"
+          description="The platform could not confirm your operator role just now. This is usually a network hiccup rather than a permissions problem — try again."
+          action={
+            <Button variant="gold" onClick={() => window.location.reload()}>
+              Try again
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  // 4. Nothing has said yes yet. Wait — do NOT infer a denial from silence. This is the
   //    whole point: the stale-false window after sign-in lives exactly here.
   if (hasSession === null || verdict === null || loading) return <PageSkeleton />;
 
-  // 4. Signed in, and the server said no. A real denial: they are not an operator.
+  // 5. Signed in, and the server said no. A real denial: they are not an operator.
   return <Navigate to="/admin" replace />;
 }
