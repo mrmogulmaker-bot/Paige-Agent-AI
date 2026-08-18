@@ -57,6 +57,14 @@ import TeamScreen from "./team";
 import VaultHub from "./vault";
 import SetupScreen from "./setup";
 import IntegrationsHub from "./integrations";
+// §18 ONE HOME — the right-side "Ask Paige" pop-out is the SAME component the Solo
+// shell mounts (src/solo/agent.tsx › PaigePanel): a real, session-scoped conversation
+// (useSoloChat → usePaigeThreads + paige-ai-chat, §9 never a client tenant_id), not a
+// second chat surface. Cross-pack reuse follows the established precedent in this repo
+// (src/agency/data/useAgencyContacts.ts imports @/solo/data/useSoloOwner); the two token
+// layers are one-for-one mirrors (.paige-solo / .paige-agency), so the panel themes
+// correctly inside this shell.
+import { PaigePanel } from "@/solo/agent";
 
 // ── Nav (Agency Shell.dc.html:12587 navMain / 12599 navPlatform) ────────────
 // [route, label, IconFn, badge(sub)] — badge is a fn of `sub` (presenting as a
@@ -102,14 +110,6 @@ const TITLES = {
   setup: ["Setup", "Agency profile, billing, brand cascade defaults, and provisioning defaults."],
 };
 
-// Decorative Ask-Paige profitability rows (Agency Shell.dc.html:12825). §63 — the
-// design's own decorative account names; tones token-ized so they theme light↔dark.
-const PROFIT_ROWS = [
-  { name: "Ridgeline Outdoor", color: "#3F7F5C", hours: "74 hrs", fee: "$2,400", rate: "$32/hr", tone: "var(--bad)" },
-  { name: "Copperline Roofing", color: "#9C5533", hours: "51 hrs", fee: "$3,100", rate: "$61/hr", tone: "var(--warn)" },
-  { name: "Sarah's Coaching", color: "#7C6CE0", hours: "18 hrs", fee: "$8,400", rate: "$467/hr", tone: "var(--ok)" },
-  { name: "Northwind Dental", color: "#2F6FA8", hours: "12 hrs", fee: "$3,600", rate: "$300/hr", tone: "var(--ok)" },
-];
 // Help launcher quick-prompts (Agency Shell.dc.html:11475).
 const HELP_PROMPTS = ["Something's not working", "Question about billing", "How do I…"];
 
@@ -533,6 +533,12 @@ const AgencyApp = ({ mode = "agency" }) => {
   const acctRef = React.useRef(null);
 
   const openAsk = () => { setAskOpen(true); setAcctOpen(false); setSwitcherOpen(false); };
+  // Owner directive (2026-08-18) — the rail's "Paige" item POPS OUT the slide-in panel
+  // (the same one the TopBar spark opens), it does NOT navigate away to the full-page
+  // Paige workspace. §18: one home for the pop-out conversation. §58: the full workspace
+  // is NOT removed — /agency/{n}/paige and /business/{n}/paige still deep-link to it, and
+  // the panel carries "Open workspace". Every OTHER rail item routes exactly as before.
+  const railGo = k => { if (k === "paige") { openAsk(); return; } go(k); };
   const openHelp = () => { setHelpOpen(true); setHelpSent(false); setAcctOpen(false); };
   // Provisioning is an AGENCY act — never offered in subaccount mode.
   const openProvision = () => { if (!isAgency) return; setProvisionOpen(true); setProvStep(1); setFeed([]); setSwitcherOpen(false); };
@@ -641,7 +647,7 @@ const AgencyApp = ({ mode = "agency" }) => {
   return (
     <div className="paige-agency" data-theme={theme} style={{ height: "100vh" }}>
       <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-        <Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} sub={sub} brand={brand} planLine={planLine} bookLine={bookLine} />
+        <Rail route={route} go={railGo} collapsed={collapsed} setCollapsed={setCollapsed} sub={sub} brand={brand} planLine={planLine} bookLine={bookLine} />
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
           <TopBar theme={theme} setTheme={setTheme} route={route} isAgency={isAgency} acting={acting} brand={brand} sub={sub}
             operatorName={operatorName} providerLabel={providerLabel}
@@ -831,30 +837,14 @@ const AgencyApp = ({ mode = "agency" }) => {
           </Modal>
         )}
 
-        {/* Ask Paige launcher (both modes) — center Modal. */}
-        <Modal open={askOpen} onClose={() => setAskOpen(false)} size={680} title="Ask Paige" icon={<Ic.spark size={16} />} sub={sub ? "This sub-account" : "Across your book"}
-          foot={<div style={{ fontSize: 13, color: "var(--ink-3)" }}>Ask about any sub-account, or your whole book…</div>}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
-            <div style={{ alignSelf: "flex-end", maxWidth: "80%", padding: "11px 14px", borderRadius: 12, background: "var(--surface-sunk)", fontSize: 13.5 }}>Which sub-account is losing me the most money to service?</div>
-            <div style={{ maxWidth: "88%", fontSize: 13.5, lineHeight: 1.65, color: "var(--ink-2)" }}>Ridgeline. Your team logged 74 hours on it last month against a $2,400 retainer — $32 an hour. Northwind took 12 hours for $3,600. Two of the 74 hours were billable scope; the rest was rework after their own team edited campaigns mid-flight.</div>
-            <div style={{ border: "1px solid var(--line-soft)", borderRadius: 12, overflow: "hidden" }}>
-              {PROFIT_ROWS.map(p => (
-                <div key={p.name} className="row" style={{ gap: 12, padding: "11px 15px", borderBottom: "1px solid var(--line-soft)" }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color }} />
-                  <span style={{ fontSize: 13, width: 154, color: "var(--ink)" }}>{p.name}</span>
-                  <span className="mono" style={{ fontSize: 12, color: "var(--ink-3)", width: 70 }}>{p.hours}</span>
-                  <span className="mono" style={{ fontSize: 12, color: "var(--ink-3)", width: 70 }}>{p.fee}</span>
-                  <span className="mono" style={{ marginLeft: "auto", fontSize: 12.5, color: p.tone }}>{p.rate}</span>
-                </div>
-              ))}
-            </div>
-            <div style={{ fontSize: 13.5, lineHeight: 1.65, color: "var(--ink-2)" }}>I drafted the sunset conversation for Ridgeline — a 60-day wind-down that keeps the relationship and hands their data back clean. Or a repriced retainer at $5,200 with scope boundaries written in.</div>
-            <div className="row" style={{ gap: 10 }}>
-              <button className="btn btn-p" style={{ height: 36, borderRadius: 9, fontSize: 12.5, fontWeight: 600 }}>Read the sunset draft</button>
-              <button className="btn" style={{ height: 36, borderRadius: 9, fontSize: 12.5, color: "var(--ink-2)" }}>Show the reprice instead</button>
-            </div>
-          </div>
-        </Modal>
+        {/* Ask Paige (both modes) — the RIGHT-SIDE slide-in, opened by the TopBar spark,
+            the rail's "Paige" item, and ⌘K. §58 NOTE: this replaces the design-port's
+            decorative center Modal (a static, composer-less transcript of fixture
+            sub-account names and figures) with the shell's real, session-scoped
+            conversation. No live capability is removed — the fixture copy was never
+            wired to anything — and the full-page Paige workspace stays reachable via
+            "Open workspace" and its own /…/paige URL. */}
+        <PaigePanel open={askOpen} onClose={() => setAskOpen(false)} onOpenFull={() => { setAskOpen(false); go("paige"); }} />
 
         {/* Help (both modes) — right drawer SlideOut → sendHelp → helpSent. */}
         <SlideOut open={helpOpen} onClose={() => setHelpOpen(false)} title="Help and support" sub="Tell me what's going on — I pull your account context in myself." icon={<Ic.spark size={15} />}
