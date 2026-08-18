@@ -146,7 +146,10 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
         .maybeSingle(),
     ]);
 
-    let roles = (rolesRes.data || []).map((r: any) => r.role as string);
+    // Typed rather than `any` (was pre-existing): CI lints CHANGED files, so touching
+    // this file pulled the old `no-explicit-any` into scope. The select is
+    // `user_roles.select("role")`, so the row shape is exactly this.
+    let roles = (rolesRes.data || []).map((r: { role: string }) => r.role);
 
     // Platform operators (super_admin) ALWAYS land on the God console — never
     // diverted to an agency side, even if they also own/admin an agency tenant.
