@@ -1,7 +1,11 @@
 // @ts-nocheck
 import React from "react";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
-import { Ic, SubTabs, Wrap, PageHead, DATA } from "./_shared";
+// `DATA` is deliberately NOT imported any more: the Test-console client picker was
+// its last consumer in this file, so the Paige tab now reads exclusively from real
+// per-tenant adapters (useSoloActions / useSoloSubagents / useSoloSkills /
+// useSoloPaigeTeam) plus the real Agent + Knowledge components. Zero fixtures.
+import { Ic, SubTabs, Wrap, PageHead } from "./_shared";
 import { Agent } from "./agent";
 import { Knowledge } from "./knowledge";
 import { useSoloActions } from "./data/useSoloActions";
@@ -108,7 +112,16 @@ background:tab===k?'var(--surface)':'transparent',color:tab===k?'var(--ink)':'va
 {tab==='test'&&<div className="card"><div className="hd"><div className="row" style={{gap:8}}><h3>Test console</h3><PreviewPill/></div><div className="sub">Run a sub-agent against real data without shipping anything</div></div>
 <div style={{padding:'16px 20px 20px',display:'grid',gridTemplateColumns:'minmax(0,1fr)',gap:12}}>
 <div className="row" style={{gap:9,flexWrap:'wrap'}}><select className="btn" style={{paddingRight:26}}>{list.map(a=><option key={a.n}>{a.n}</option>)}</select>
-<select className="btn" style={{paddingRight:26}}>{DATA.clients.map(c=><option key={c.name}>{c.name}</option>)}</select>
+{/* §13 (owner 2026-08-18): "we don't want to hardcode any customers any clients or
+    any data… when a new agency or solo or sub account enroll on our platform they
+    need to start with fresh new data."
+    This picker listed FIXTURE client names (Ridgeline Co. etc), so every freshly
+    enrolled tenant would open the Test console and see another business's invented
+    customers as if they were their own book. The PANEL stays exactly as designed and
+    stays parked (PreviewPill above) — only the invented names go. It reads empty
+    until the real per-tenant client source is wired, which is the tracked follow-up. */}
+<select className="btn" style={{paddingRight:26}} disabled defaultValue="">
+<option value="">No clients yet</option></select>
 <button className="btn btn-p"><Ic.send size={14}/>Run test</button></div>
 <div style={{background:'#0A0818',borderRadius:'var(--r-m)',padding:'14px 16px',fontFamily:'var(--mono)',fontSize:11.8,color:'#A6E3C0',lineHeight:1.75,minHeight:150}}>
 <div style={{color:'#7D779A'}}>$ run follow_up_drafter --client "Ridgeline Co." --dry-run</div>
