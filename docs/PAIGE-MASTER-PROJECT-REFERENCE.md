@@ -198,10 +198,21 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
   mostly proving what it REFUSES. The `GOD_CONSOLE` default is unchanged.
 - **Gates:** tsc 0 · **325/325** tests (14 new: 6 routing, 8 redirect-allowlist) · `lint:views` +
   `lint:definer-fns` + `lint:tier-features` clean · eslint 0 · `vite build` ✓.
-- ❗ **§32.c LIVE-DRIVE OWED.** The build session is headless with no browser credentials — the deployed
-  console has **NOT** been driven and no screenshot exists. Owed to the next capable session (Cowork /
-  Chrome-MCP): walk `/operator`, the rail groups, a deep link, and confirm the rail renders in **both**
-  themes. No claim is made that it renders — only that it compiles, tests green, and builds.
+- ✅ **§32.c PARTIAL DRIVE RAN — 6/6, real Chromium, real bundle.** §32.c's deferral is keyed to
+  LACKING browser capability, and this session had one (pre-provisioned Chromium + the repo's
+  Playwright), so the unauthenticated half was DRIVEN rather than deferred. New reusable script
+  `scripts/live-drive/operator-console-drive.mjs` (reuses the §18 helper's Chromium resolution)
+  serves the real `dist/` build and asserts, in a browser: bare `/operator` renders the login door
+  (**not blank** — the failure that would have shipped undetected, since nothing links to it) ·
+  `/operator/login` renders · signed-out `/operator/fleet` settles at
+  `/operator/login?next=%2Foperator%2Ffleet` · the 3-level `/operator/settings/team/roles` likewise ·
+  **no redirect loop** (3 mainframe navigations in 8s, settled) · `--rail` computes to
+  `rgb(21, 12, 49)` rather than transparent. **Zero page crashes.** Notably the guard decided
+  correctly even with Supabase unreachable — it does not hang on `loading`.
+- ❗ **§32.c AUTHENTICATED HALF STILL OWED** (needs operator credentials, which this session has none
+  of; the Vercel preview is behind an SSO wall): the rail render itself, the 78 placeholders behind
+  the guard, the light↔dark flip (§23), and the §25 taste pass. **No claim is made that the rail
+  renders** — only that the door, the guard, the addressing, and the token resolve for real.
 
 
 ### Roles & permissions — R1 call-site inventory + R2a platform-seam fix (2026-08-18)
@@ -403,6 +414,9 @@ Grouped:
   unverified console sends the operator to a 404 from BOTH doors — the #538 lockout class.
 - ❌ **The 7 MIXED inner tier gates** (fleet · paige · growth · analytics · provisioning · marketplace ·
   settings/governance) — owner-only tabs inside operator-level sections. Land WITH their surfaces.
+- ❌ **§32.c authenticated drive** — the unauthenticated half is proven (6/6, see Section 4); the rail
+  render, the placeholders behind the guard, and the light↔dark flip need a session with operator
+  credentials. Re-run `scripts/live-drive/operator-console-drive.mjs` plus an authed walk.
 - ❌ **28 design tabs are genuinely net-new** (no shipped equivalent): fleet history/alert-rules/team-pulse/
   prospects · paige sandbox/research/memory · trust-compass escalations/dependencies · marketplace build/
   publishers · automations build · 6 analytics lenses · support escalations/response-policy · comms
