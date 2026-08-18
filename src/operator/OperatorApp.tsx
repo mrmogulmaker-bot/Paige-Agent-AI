@@ -7,6 +7,10 @@ import {
 } from "@/lib/routing/tierBranches";
 import { EmptyState } from "@/components/ui/page";
 import FleetConsole from "@/operator/surfaces/FleetConsole";
+import TrustCompass from "@/operator/surfaces/TrustCompass";
+import KnowledgeSurface from "@/operator/surfaces/KnowledgeSurface";
+import { useCompass } from "@/operator/data/useCompass";
+import { useKnowledge } from "@/operator/data/useKnowledge";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { cn } from "@/lib/utils";
@@ -438,19 +442,60 @@ export default function OperatorApp() {
             are both overflow:hidden for the same reason). */}
         <main className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
           {/* Real CD surfaces render here as each lands; anything not yet built says so. */}
-          {branch.slug === "fleet" && sub?.slug === "tenants" ? (
-            <FleetConsole canSeeRevenue={isPlatformOwner} />
-          ) : (
-            <SurfacePlaceholder
-              title={`${branch.label}${(isSettings ? leaf : sub) ? ` · ${(isSettings ? leaf : sub)!.label}` : ""}`}
-              path={canonical}
-              isOwner={isPlatformOwner}
-            />
-          )}
+          <OperatorSurface
+            branchSlug={branch.slug}
+            subSlug={sub?.slug ?? null}
+            title={`${branch.label}${(isSettings ? leaf : sub) ? ` · ${(isSettings ? leaf : sub)!.label}` : ""}`}
+            path={canonical}
+            isOwner={isPlatformOwner}
+          />
         </main>
       </div>
     </div>
   );
+}
+
+/**
+ * The one place a canonical operator address becomes a surface.
+ *
+ * Every CD surface lands here as it is ported, so the shell keeps exactly ONE branch on
+ * "which screen is this" instead of growing a second dispatch next to the first (§18). Each
+ * surface owns its own read, because each reads a different record and none of them should
+ * make the others wait.
+ */
+function OperatorSurface({
+  branchSlug, subSlug, title, path, isOwner,
+}: { branchSlug: string; subSlug: string | null; title: string; path: string; isOwner: boolean }) {
+  const isFleet = branchSlug === "fleet" && subSlug === "tenants";
+  const isCompass = branchSlug === "trust-compass" && subSlug === "autonomy";
+  const isKnow = branchSlug === "paige" && subSlug === "knowledge";
+
+  // Hooks are unconditional; each read is gated by its own `enabled` flag so an inactive
+  // surface costs nothing (the same shape `useFleet` already uses).
+  const compass = useCompass(isCompass);
+  const knowledge = useKnowledge(isKnow);
+
+  if (isFleet) return <FleetConsole canSeeRevenue={isOwner} />;
+  if (isCompass)
+    return (
+      /* Read-only until the lane WRITE path lands: no `onCommit`, and the surface says so
+         itself rather than offering a control that would silently discard the movement. */
+      <TrustCompass
+        departments={compass.departments}
+        loading={compass.loading}
+        error={compass.error}
+      />
+    );
+  if (isKnow)
+    return (
+      <KnowledgeSurface
+        domains={knowledge.domains}
+        loading={knowledge.loading}
+        error={knowledge.error}
+      />
+    );
+
+  return <SurfacePlaceholder title={title} path={path} isOwner={isOwner} />;
 }
 
 /**

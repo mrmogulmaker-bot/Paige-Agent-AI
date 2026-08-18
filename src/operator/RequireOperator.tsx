@@ -43,41 +43,82 @@ export default function RequireOperator({ children }: { children: React.ReactNod
   const location = useLocation();
   // null = still resolving; true/false = a real answer.
   const [hasSession, setHasSession] = useState<boolean | null>(null);
+  /**
+   * OUR OWN verdict, asked of the server. null = not answered yet.
+   *
+   * This exists because the context's flags are NOT trustworthy in the one moment that
+   * matters most — the instant after sign-in. `useTenantContext` re-resolves on SIGNED_IN
+   * via a BACKGROUND load that deliberately never flips `loading` back to true (so a routine
+   * token refresh can't unmount every consumer mid-session). Correct for that purpose, and
+   * fatal here: an operator who opened this page signed-out has `{loading:false,
+   * isPlatformStaff:false}` latched, signs in, gets navigated here, and the guard reads those
+   * stale falses as a real denial — bouncing them to `/admin`, the old console, on every
+   * single login. That is the bug the owner hit, and no amount of gating on `loading` catches
+   * it, because `loading` is already false and never rises again.
+   *
+   * So the guard asks the database directly rather than inferring from a cache it does not
+   * control. The context flags remain a fast ALLOW path (no flash for an already-resolved
+   * operator); only this RPC can produce a DENY.
+   */
+  const [verdict, setVerdict] = useState<boolean | null>(null);
 
   useEffect(() => {
     let alive = true;
+    const readSession = (present: boolean) => {
+      if (!alive) return;
+      setHasSession(present);
+      if (!present) {
+        setVerdict(false);
+        return;
+      }
+      // Re-ask on every session change — a different user may have signed in.
+      setVerdict(null);
+      supabase
+        .rpc("is_platform_admin")
+        .then(({ data }) => {
+          if (alive) setVerdict(data === true);
+        })
+        .catch(() => {
+          // A failed check is NOT a denial: denying on a transient network error would
+          // strand a legitimate operator on the old console, which is the failure we are
+          // here to fix. Fall back to whatever the context managed to resolve.
+          if (alive) setVerdict(null);
+        });
+    };
+
     supabase.auth
       .getSession()
-      .then(({ data }) => {
-        if (alive) setHasSession(!!data.session);
-      })
+      .then(({ data }) => readSession(!!data.session))
       .catch(() => {
-        // Fail toward the door, not toward a blank: an unreadable session is
-        // indistinguishable from signed-out for routing purposes, and the server
-        // still gates the data either way.
-        if (alive) setHasSession(false);
+        if (alive) {
+          setHasSession(false);
+          setVerdict(false);
+        }
       });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      if (alive) setHasSession(!!session);
-    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) =>
+      readSession(!!session),
+    );
     return () => {
       alive = false;
       sub.subscription.unsubscribe();
     };
   }, []);
 
-  // 1. Never decide on half-resolved state.
-  if (loading || hasSession === null) return <PageSkeleton />;
-
-  // 2. Signed out → the door, carrying where they were going.
-  if (!hasSession) {
+  // 1. Signed out is authoritative and cheap — send them to the door with where they were
+  //    going, before spending anything else.
+  if (hasSession === false) {
     const next = encodeURIComponent(location.pathname + location.search);
     return <Navigate to={`/operator/login?next=${next}`} replace />;
   }
 
-  // 3. Signed in, but not an operator → /admin re-checks auth and routes them
-  //    to whatever they ARE, rather than stranding them on a dead-end card.
-  if (!isPlatformStaff && !isPlatformOwner) return <Navigate to="/admin" replace />;
+  // 2. ALLOW as soon as anything says yes — our own RPC, or a context that has already
+  //    resolved this operator. This is what keeps a warm navigation from flashing.
+  if (verdict === true || isPlatformStaff || isPlatformOwner) return <>{children}</>;
 
-  return <>{children}</>;
+  // 3. Nothing has said yes yet. Wait — do NOT infer a denial from silence. This is the
+  //    whole point: the stale-false window after sign-in lives exactly here.
+  if (hasSession === null || verdict === null || loading) return <PageSkeleton />;
+
+  // 4. Signed in, and the server said no. A real denial: they are not an operator.
+  return <Navigate to="/admin" replace />;
 }
