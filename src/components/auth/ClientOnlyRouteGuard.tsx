@@ -19,7 +19,11 @@ const STAFF_ROLES = new Set([
 ]);
 
 /** Routes a pure-client account is forbidden from. They get bounced to /app. */
-const CLIENT_FORBIDDEN_PREFIXES = ["/admin", "/broker/app"];
+// `/operator` joins the list with the operator console mount (§65 R4). A client is already
+// blocked by RequireOperator, but this list is the defense-in-depth layer and leaving a newly
+// privileged prefix out of it is exactly the §37 producer-inventory gap that lets the two
+// drift apart. Caught by the §39 peer-gate.
+const CLIENT_FORBIDDEN_PREFIXES = ["/admin", "/broker/app", "/operator"];
 
 /**
  * Hard guard: a signed-in account whose only role is `client` (or no role at all
@@ -43,7 +47,7 @@ export function ClientOnlyRouteGuard() {
         .select("role")
         .eq("user_id", user.id);
       if (cancelled) return;
-      const list = (roles ?? []).map((r: any) => String(r.role));
+      const list = (roles ?? []).map((r) => String(r.role));
       const hasStaff = list.some((r) => STAFF_ROLES.has(r));
       setIsClientOnly(!hasStaff);
     })();
@@ -57,7 +61,7 @@ export function ClientOnlyRouteGuard() {
         .from("user_roles")
         .select("role")
         .eq("user_id", userId);
-      const list = (roles ?? []).map((r: any) => String(r.role));
+      const list = (roles ?? []).map((r) => String(r.role));
       setIsClientOnly(!list.some((r) => STAFF_ROLES.has(r)));
     };
 

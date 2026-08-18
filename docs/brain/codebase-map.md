@@ -49,6 +49,31 @@ Index (agent home) + `credit`, `funding`, `funding-journey`, `disputes`, `learn`
 Index (`BrokerOverview`), `clients`, `sessions`(+`/:relationshipId` `BrokerPaigeSession`), `team`,
 `commissions`, `mcc`, `settings`. Public broker apply at `/broker`.
 
+### §65 Platform-operator console (`/operator/*`, `OperatorEntry`→`RequireOperator`→`OperatorApp`)
+The tenant-LESS God-tier tree (mounted #543, 2026-08-18). `src/operator/OperatorEntry.tsx` dispatches
+three legs: `index` + `login` → `OperatorLogin` (the door — bare `/operator` must keep working, nothing
+in the product links to it), and `:section/*` → `OperatorApp` behind **ONE** `RequireOperator`, never a
+per-route guard. The guard reads `isPlatformStaff || isPlatformOwner` from `useTenantContext` (the staff
+flag comes from `is_platform_admin()` = §53's `is_platform_operator()`), gates `loading` FIRST and
+unconditionally, and reads its own session so signed-OUT → the door with `?next=` (validated by
+`src/lib/auth/operatorTarget.ts`) rather than a "Restricted area" card. `OperatorApp` is URL-driven off
+**`OPERATOR_BRANCHES`** in `tierBranches.ts` — 13 branches / 5 settings groups / **78** addressable tabs,
+`accountSegment=false` (no account in the path), settings nesting a THIRD level
+(`/operator/settings/team/roles`). Chrome is a LEFT RAIL + header w/ canonical-path readout + sub-tab strip, painted from
+**Claude Design's own palette** via the SCOPED `.operator-console` token block in index.css
+(owner ruling 2026-08-18: "if Claude Design made it, that's how it's supposed to be moving
+forward" — CD wins over pre-CD house conventions on a CD-designed surface). Scoped on the
+`.studio-surface` pattern so no other surface is repainted; zero hex at any call site.
+`--cd-gold` carries CD's gold on the active sub-tab underline + settings-active rail rows. §53: `revenue` + `comms`
+are owner-only at the ROUTE, not just hidden from nav; 7 MIXED branches await inner gates.
+**§13 — mounted ≠ built:** every one of the 78 surfaces is an honest "not built yet" placeholder.
+**§58:** ADDITIVE — `AdminLayout` / `/admin/platform/*` is untouched and still the live God console;
+`OperatorLogin`'s `GOD_CONSOLE` and `resolveLandingRoute` still point there (mount → verify → flip).
+`operatorTarget.ts` validates the guard's `?next=` deep link **segment-wise** — a prefix regex
+let `..` through and react-router normalized it out of the subtree (§39 peer-gate, #543).
+Tests: `src/operator/OperatorEntry.test.tsx`, `src/lib/auth/operatorTarget.test.ts`.
+§32.c drive: `scripts/live-drive/operator-console-drive.mjs` (unauthenticated half, 6/6).
+
 ### Agency operator (`/agency/*`, `AgencyLayout`, server-proven agency-manager gate)
 Index (`AgencyBoard`), `team` (`AgencyTeamPanel`), `paige-team`, `marketplace` (`AgencyMarketplace`).
 Small client surface by design — most agency management is server-side.

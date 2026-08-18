@@ -141,12 +141,125 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
   used ONLY by the operator settings branch. Five invariant tests guard the addressing contract.
 - ✅ **The Settings back-menu is specified:** Setup · Integrations · **Platform Team (Seats · Roles)** ·
   Platform Vault · Governance — this is the roles/permissions home the owner asked for, now addressable.
-- ❗ **§13 — authored ≠ built.** The registry is the ADDRESSING CONTRACT only. Most of the 78 tabs have no
-  surface, and **the console is NOT mounted** — `/operator/{section}` still falls through to the catch-all.
-  The live God console remains the real-route `/admin/platform/*` tree.
 - ❗ **§13 correction:** an earlier claim that `/operator` was a login-vs-console *collision* was WRONG —
   the pack has **zero** routes at bare `/operator` (verified by executing its registry). It is a prefix; the
   login keeps the root as an index leg.
+
+### §65 R4 slice 1b — the operator console is MOUNTED (2026-08-18, PR #543)
+
+- ✅ **All 78 addresses are live and navigable** at `/operator/{branch}/{subtab}` (and
+  `/operator/settings/{group}/{tab}`), resolved from `OPERATOR_BRANCHES`. This closes the "authored ≠
+  mounted" gap the 1a entry above recorded. Three new files: `src/operator/OperatorEntry.tsx` (3-leg
+  dispatcher — index + login + guarded console, peer to `AgencyEntry`/`BusinessEntry`),
+  `RequireOperator.tsx` (**ONE** guard above all 78 routes, not 78 copies), `OperatorApp.tsx` (the
+  URL-driven left-rail shell). `App.tsx`'s `/operator` exact route became a `/operator/*` splat.
+- ✅ **The guard reuses what already resolves** — `isPlatformStaff || isPlatformOwner` from
+  `useTenantContext`; the staff flag is populated from `is_platform_admin()`, semantically identical to
+  §53's `is_platform_operator()`. No new RPC, no second async hop, no fork of `AgencyLayout`'s waterfall
+  (§18). `loading` is gated FIRST and unconditionally — the "Restricted area" latch bug already shipped
+  once on `/admin/platform/*`, and at a subtree root its blast radius is all 78 routes at once.
+- ✅ **§53 gating is on the ROUTE, not only the nav.** `revenue` + `comms` are owner-only (their shipped
+  twins `MoneySpineAdmin` / `PlatformFleetCommunications` are both `<PlatformOwnerOnly>`) — a hidden tab
+  whose route stays open is not a gate. **7 MIXED branches** (fleet · paige · growth · analytics ·
+  provisioning · marketplace · settings/governance) carry owner-only tabs INSIDE an operator-level
+  section; those inner gates land WITH their surfaces rather than being guessed against a placeholder.
+- ✅ **NEW shared token `--rail` / `--rail-foreground`** (`index.css` + `tailwind.config.ts`). The rail is
+  `--primary` in light, but on dark `--primary` lifts to a vivid 56%-L indigo — a violet slab where the
+  design wants a quiet panel. Own token pair per theme; the dark value is lifted **well clear** of
+  `--background` (~1.45:1 as a large adjacent surface + an explicit `--border-strong` edge) because the
+  source design's own rail is the same colour as its dark page and **vanishes** — a real source defect we
+  do not reproduce (§29 perceptibility). §11 "add it to the layer," never an inline hex.
+- ✅ **Accessibility was AUTHORED, not ported.** The pack's entire chrome is `div + onClick` — zero
+  `button`, zero link, zero `role`, zero `aria-current`, zero focus-visible. Shipped as real `<Link>`s
+  with `aria-current`, real `<button>`s with `aria-expanded`/`aria-label`, and indigo focus rings
+  throughout. Two source AA failures fixed rather than copied (rail eyebrows 4.11:1 · route path 2.84:1).
+- ✅ **OWNER RULING 2026-08-18 — CLAUDE DESIGN IS THE SOURCE OF TRUTH.** *"If Claude Design made it,
+  that's how it's supposed to be moving forward. Whatever we had before CD is no longer valid. None of
+  it!"* An earlier pass on this slice substituted our pre-CD conventions for three of CD's calls and
+  flagged them OWNER-OWED; the ruling **reverses all three** and they shipped in the same PR:
+  CD's **gold** is back on the active sub-tab underline and the settings-active rail rows (CD's own two
+  treatments, which the earlier pass had unified on white), and **CD's warm palette** replaces our cool
+  indigo. Delivered as a **scoped `.operator-console` token block** in `index.css` — the pattern
+  `.studio-surface` already establishes — so CD's design lands exactly where CD designed it and **no
+  other surface, including owner-approved §28-frozen ones, is repainted as a side effect.** Zero hex at
+  any call site; the CD-vs-platform decision is made in exactly ONE place (the `operator-console` class).
+  **Verified in the BUILT bundle, not asserted:** `--background` → `rgb(252,250,248)` vs CD's `#FBF9F7`,
+  `--rail` → `rgb(25,18,48)` vs `#191231`, `--cd-gold` → `rgb(200,158,45)` vs `#C8A02E` — within 1–2 per
+  channel (HSL rounding, not a choice).
+- ❗ **TWO CD values not copied verbatim — recorded, not quietly changed (§13/§29).** CD's rail eyebrow
+  measures **4.11:1** and CD's dark block paints the page the SAME colour as the rail so the rail
+  **vanishes**. Those read as artifacts of the pack rather than design intent (the §29 "shipped, correct,
+  invisible" class); each keeps CD's hue and moves only far enough to be seen. CD's gold underline
+  measures **2.35:1** — raised once, ruled on, ships as designed.
+- ✅ **OWNER RULING 2026-08-18 — "I only want the backend to now connect to our new front end."** This
+  re-points the remaining console slices: they wire REAL backends **into** these CD surfaces, rather than
+  porting CD's look onto the old `/admin/platform/*` screens. `/admin/platform/*` stays redirect-alive
+  (§58) but is no longer the build target.
+- ❗ **§13 — mounted ≠ built.** The 78 surfaces are NOT implemented. Each renders an honest placeholder
+  saying so and naming the live console; **nothing fabricates data** — a placeholder never poses as an
+  empty dashboard reading "you have no tenants."
+- ❗ **§58 — ADDITIVE, nothing retired.** The design is a LEFT-RAIL shell; the live God console
+  (`AdminLayout`) is a TOP-BAR shell. `AdminLayout` is **untouched** and `/admin/platform/*` remains the
+  operator's working surface while `/operator/*` fills in per-surface. Standing checklist item answered
+  explicitly: **no previously-shipped, owner-approved capability is removed, hidden, or gated off.**
+- ❗ **SEQUENCING RED-LINE (held).** `OperatorLogin`'s `GOD_CONSOLE` and `resolveLandingRoute`'s operator
+  branch **still point at `/admin/platform`**. Flipping them before the console is verified would 404
+  both doors — the #538 lockout class. Order is **mount → verify → flip**; the flip is its own slice.
+- ✅ **Open-redirect-safe deep links.** `RequireOperator` sends a signed-out operator to the door carrying
+  `?next=`; `OperatorLogin` honours it via new `src/lib/auth/operatorTarget.ts` — same-origin, inside
+  `/operator/`, never protocol-relative, never backslash-smuggled, never the door itself. 8 unit tests,
+  mostly proving what it REFUSES. The `GOD_CONSOLE` default is unchanged.
+- **Gates:** tsc 0 · **325/325** tests (14 new: 6 routing, 8 redirect-allowlist) · `lint:views` +
+  `lint:definer-fns` + `lint:tier-features` clean · eslint 0 · `vite build` ✓.
+- ✅ **§39 PEER-GATE ran and returned ITERATE — every finding reproduced before fixing.** Two HIGH, both
+  real: **(H1) an open redirect inside the origin.** The `?next=` allowlist tested
+  `/^\/operator\/[^/\\]/`, which only inspects the character AFTER `/operator/` — and `.` passes. So
+  `/operator/../../book/evil-slug` was accepted and react-router **normalizes** it to `/book/evil-slug`:
+  a freshly-authenticated operator landed on a tenant-authored page, on the real domain, the instant
+  after typing their password. Fixed by decomposing into segments and rejecting `.` / `..` / empty; 6
+  regression tests, all for what it must REFUSE. **(H2) the `?next=` round-trip was broken for the very
+  tier the guard admits.** `RequireOperator` admits `is_platform_admin()` (platform_admin OR super_admin)
+  but the door gated honoring `next` on `is_platform_owner()` (**super_admin only**, deliberately
+  frozen) — so a platform_admin bounced off a bookmark, signed in, had `next` silently discarded, and
+  fell through `resolveLandingRoute` (which has **no** platform_admin branch) to a tenant surface. The
+  door now uses the guard's predicate; **this also closes the door half of the long-standing #192.**
+  Three MEDIUM also fixed: **12 of the 78 leaves had no link anywhere** (nothing rendered the settings
+  GROUPS while a code comment asserted the back-menu existed — CD's back-menu is now actually built);
+  `/operator//fleet` rendered **blank** (a doubled slash still matches the outer splat so App's NotFound
+  never fires — catch-all added); and the anti-loop check was case-sensitive while react-router is not.
+  Plus three cheap LOWs: the redirect-target invariant is now locked by tests, `/operator` was added to
+  `CLIENT_FORBIDDEN_PREFIXES` (a §37 producer-inventory drift), and an unknown sub-tab now redirects to
+  the canonical address instead of rendering a surface its own URL contradicts.
+- ✅ **§32.c PARTIAL DRIVE RAN — 10/10, real Chromium, real bundle.** §32.c's deferral is keyed to
+  LACKING browser capability, and this session had one (pre-provisioned Chromium + the repo's
+  Playwright), so the unauthenticated half was DRIVEN rather than deferred. New reusable script
+  `scripts/live-drive/operator-console-drive.mjs` (reuses the §18 helper's Chromium resolution)
+  serves the real `dist/` build and asserts, in a browser: bare `/operator` renders the login door
+  (**not blank** — the failure that would have shipped undetected, since nothing links to it) ·
+  `/operator/login` renders · signed-out `/operator/fleet` settles at
+  `/operator/login?next=%2Foperator%2Ffleet` · the 3-level `/operator/settings/team/roles` likewise ·
+  **no redirect loop** (3 mainframe navigations in 8s, settled) · `--rail` computes to
+  `rgb(21, 12, 49)` rather than transparent. **Zero page crashes.** Notably the guard decided
+  correctly even with Supabase unreachable — it does not hang on `loading`. **Four further
+  assertions measure the CD palette in BOTH themes** (added after the CD ruling, because the
+  `.dark .operator-console` block had shipped unverified — the §29 "correct in source, possibly
+  shadowed at runtime" class): the light↔dark flip is **21.6:1** on the console ground
+  (`rgb(252,250,248)` ↔ `rgb(12,7,18)`, so §23's "genuinely light / genuinely dark" is measured,
+  not assumed) · the `.dark` override provably REACHES the palette (a shadowed block would leave
+  `dark.rail === light.rail`) · rail ink clears AA on the rail in both (**11.31:1** light,
+  **9.52:1** dark) · the rail reads as a distinct PANEL (**17.23:1** light, **1.46:1** dark —
+  modest by nature on a ~5%L ground and leaning on the `--border-strong` edge, but well above
+  CD's own ~1.0 where rail and page are identical and the rail disappears; the threshold catches
+  a regression back toward that, it does not claim the dark rail is dramatic). **Recorded, NOT
+  asserted:** CD's gold measures **2.41:1** on the light ground (11.27:1 dark) — under the 3:1
+  non-text bar, and owner-ruled to ship as designed, so the script prints it as a NOTE rather
+  than failing the build over a decision already made.
+- ❗ **§32.c AUTHENTICATED HALF STILL OWED** (needs operator credentials, which this session has none
+  of; the Vercel preview is behind an SSO wall): the rail RENDER itself, the 78 placeholders behind
+  the guard, and the §25 taste pass. **No claim is made that the rail renders** — only that the
+  door, the guard, the addressing, and the palette (both themes) resolve for real. **Measuring a
+  token is not the same as seeing a layout**, and that distinction is the whole point of what is
+  still owed.
 
 
 ### Roles & permissions — R1 call-site inventory + R2a platform-seam fix (2026-08-18)
@@ -337,12 +450,21 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
-### Super Admin console import — open slices after #541 (2026-08-18)
+### Super Admin console import — open slices after #543 (2026-08-18)
 
-- ❌ **Mount the console behind ONE `is_platform_operator()` guard** (§53) at an `/operator/*` dispatcher,
-  peer to `AgencyEntry`/`BusinessEntry`. **SEQUENCING RED-LINE:** mount → verify → THEN flip
-  `OperatorLogin`'s console target and `resolveLandingRoute`'s operator branch. Flipping first sends the
-  operator to a 404 from BOTH doors — the #538 lockout class.
+- ✅ **DONE (#543) — the console is mounted** behind ONE guard at an `/operator/*` dispatcher, peer to
+  `AgencyEntry`/`BusinessEntry`. See Section 4 "§65 R4 slice 1b". All 78 addresses navigable; every
+  surface an honest placeholder.
+- ❌ **FLIP the landing targets — `OperatorLogin`'s `GOD_CONSOLE` and `resolveLandingRoute`'s operator
+  branch** (both still `/admin/platform`). **SEQUENCING RED-LINE, still binding:** mount → **verify** →
+  THEN flip. #543 did the mount; the flip waits on the §32.c live-drive, because flipping against an
+  unverified console sends the operator to a 404 from BOTH doors — the #538 lockout class.
+- ❌ **The 7 MIXED inner tier gates** (fleet · paige · growth · analytics · provisioning · marketplace ·
+  settings/governance) — owner-only tabs inside operator-level sections. Land WITH their surfaces.
+- ❌ **§32.c authenticated drive** — the unauthenticated half is proven (10/10, see Section 4,
+  including the CD palette in both themes); the rail RENDER and the placeholders behind the guard
+  need a session with operator credentials. Re-run
+  `scripts/live-drive/operator-console-drive.mjs` plus an authed walk + §25 taste pass.
 - ❌ **28 design tabs are genuinely net-new** (no shipped equivalent): fleet history/alert-rules/team-pulse/
   prospects · paige sandbox/research/memory · trust-compass escalations/dependencies · marketplace build/
   publishers · automations build · 6 analytics lenses · support escalations/response-policy · comms
