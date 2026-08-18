@@ -119,6 +119,9 @@ const HELP_PROMPTS = ["Something's not working", "Question about billing", "How 
 // the design's second group. `sub` drives the badge/plan variants; `brand` is the
 // resolved workspace identity (agency, own sub-account, or the account being acted
 // on) so the mark and name always speak for the workspace in view.
+// `planLine`/`bookLine` arrive TIER-CORRECT from the parent — the plan card makes no
+// tier decision of its own, and `bookLine` is optional (the sub path has no second
+// line, so the card renders the plan chip alone rather than a fabricated sentence).
 const Rail = ({ route, go, collapsed, setCollapsed, sub, brand, planLine, bookLine }) => {
   const w = collapsed ? 72 : 248;
   const av = AV(brand.color);
@@ -162,11 +165,9 @@ const Rail = ({ route, go, collapsed, setCollapsed, sub, brand, planLine, bookLi
       <div style={{ marginTop: "auto", paddingTop: 14, flex: "none" }}>
         {!collapsed && <div style={{ border: "1px solid var(--rail-line)", borderRadius: 11, padding: "12px 13px", marginBottom: 10, background: "var(--rail-2)" }}>
           <div className="row" style={{ gap: 7, color: "var(--gold-bright)", fontSize: 12.5, fontWeight: 600 }}><Ic.bolt size={13} />
-            <span className="trunc">{sub ? "Solo plan" : planLine}</span></div>
-          <div style={{ color: "var(--rail-text)", fontSize: 12, marginTop: 5, lineHeight: 1.5 }}>
-            {sub
-              ? "147 hours saved this month. One seat, six departments running."
-              : bookLine}</div>
+            <span className="trunc">{planLine}</span></div>
+          {bookLine && <div style={{ color: "var(--rail-text)", fontSize: 12, marginTop: 5, lineHeight: 1.5 }}>
+            {bookLine}</div>}
         </div>}
         <button onClick={() => setCollapsed(!collapsed)} className="row" style={{ width: "100%", justifyContent: "center", padding: 9, borderRadius: 10, color: "var(--rail-text)" }}>
           <span style={{ display: "flex", transform: collapsed ? "" : "rotate(180deg)", transition: ".2s" }}><Ic.chev size={15} /></span></button>
@@ -336,6 +337,12 @@ const AgencyApp = ({ mode = "agency" }) => {
     : null;
   const actingSyncing = isSubPrefixed && !actingConfirmed;
 
+  // `sub` = presenting as a sub-account (standalone subaccount mode, or agency acting
+  // into a sub). Drives the design's isSub nav/plan/label variants. Declared HERE —
+  // immediately after `acting`, its only non-prop dependency — so the tier-correct
+  // plan strings below can read it without a use-before-declare.
+  const sub = mode === "subaccount" || !!acting;
+
   const shellCtx = { isAgency, acting };
   const metrics = useAgencyMetrics(shellCtx);
   const roster = useAgencyRoster(shellCtx);
@@ -379,6 +386,21 @@ const AgencyApp = ({ mode = "agency" }) => {
   const bookLine = subCountReal == null
     ? "Your book, with ten departments running per sub-account."
     : subCountLabel + " sub-accounts on your book. Ten departments running per account.";
+  // §13/§51/§65 — a sub-account is NOT Solo. In sub/acting mode `metrics.identity` is
+  // CHILD-scoped (activeTenant IS the sub-account, per useAgencyMetrics), so its own
+  // real `plan_offer` is the truth here; the port hardcoded "Solo plan" straight past
+  // it. The fallback is the neutral, tier-TRUE "Sub-account" — never "Solo plan"
+  // (wrong tier) and never `planLabel`'s "Agency plan" default (wrong tier the other
+  // way); it asserts only what we actually know when no plan is on record.
+  const subPlanLabel = metrics.identity.plan || "Sub-account";
+  // Tier-correct strings resolved HERE so <Rail> renders what it's handed instead of
+  // branching on tier itself. §13: the sub card carries NO second line — the "147
+  // hours saved this month" sentence it used to render was fixture copy with no
+  // backend (and contradicted the agency line's ten departments), so it is STRIPPED,
+  // not replaced with another unsourced claim. A thinner card that is true beats a
+  // fuller one that isn't.
+  const railPlanLine = sub ? subPlanLabel : planLine;
+  const railBookLine = sub ? null : bookLine;
   // Provider chip is an AGENCY-context concept ("provided by {agency}"). In sub-mode
   // the parent-agency name isn't wired yet, so we hide the chip rather than show the
   // sub's own name as its "provider" (which would be wrong). Sub-mode real identity
@@ -578,9 +600,6 @@ const AgencyApp = ({ mode = "agency" }) => {
   // `acting` is real (§65 Option B2) — it would desync the URL from the session.
   const enterNew = () => { if (timer.current) clearInterval(timer.current); setProvisionOpen(false); setProvStep(1); go("command"); };
 
-  // `sub` = presenting as a sub-account (standalone subaccount mode, or agency acting
-  // into a sub). Drives the design's isSub nav/plan/label variants.
-  const sub = mode === "subaccount" || !!acting;
   // Resolved workspace identity for the rail mark. §65 R3a-i fix (owner live-drive
   // 2026-08-17) — standalone subaccount mode used to lock to the SUBS[0] fixture
   // ("Sarah's Coaching Practice") regardless of which real tenant was logged in;
@@ -644,7 +663,7 @@ const AgencyApp = ({ mode = "agency" }) => {
   return (
     <div className="paige-agency" data-theme={theme} style={{ height: "100vh" }}>
       <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-        <Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} sub={sub} brand={brand} planLine={planLine} bookLine={bookLine} />
+        <Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} sub={sub} brand={brand} planLine={railPlanLine} bookLine={railBookLine} />
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
           <TopBar theme={theme} setTheme={setTheme} route={route} isAgency={isAgency} acting={acting} brand={brand} sub={sub}
             operatorName={operatorName} providerLabel={providerLabel}
@@ -702,7 +721,7 @@ const AgencyApp = ({ mode = "agency" }) => {
                     {operatorEmail && <div className="trunc" style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 2 }}>{operatorEmail}</div>}
                     <div className="row" style={{ gap: 7, marginTop: 6 }}>
                       <span className="pill pill-v" style={{ height: 18 }}>Owner · Admin</span>
-                      <span className="trunc" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{sub ? "Solo plan" : planLabel}</span>
+                      <span className="trunc" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{sub ? subPlanLabel : planLabel}</span>
                     </div>
                   </div>
                 </div>
