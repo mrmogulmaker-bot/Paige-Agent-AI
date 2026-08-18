@@ -263,8 +263,21 @@ export const TIER_TREES: Record<RouteTierKey, TierTree> = {
   // §3/§61 — same agency shell + Enterprise customizations, distinct root/label.
   enterprise: { root: "/enterprise", branches: [...AGENCY_BRANCHES, ...ENTERPRISE_EXTRA] },
   solo: { root: "/solo", branches: SOLO_BRANCHES },
-  // §11c/§60 — Sub-account inherits the SOLO tree; only the root prefix differs.
-  sub_account: { root: "/business", branches: SOLO_BRANCHES },
+  // §65 R3c-i CORRECTION (2026-08-18, §13 honest): this used to point at
+  // SOLO_BRANCHES per the §11c/§60 doctrine ("sub-account inherits the Solo
+  // tree"), but sub_account renders LIVE via `AgencyApp mode="subaccount"`
+  // (Admin.tsx Gate B) — which shares AGENCY_BRANCHES' key set (screens:
+  // command/paige/compass/autos/fleet/calendar/support/growth/analytics/
+  // billing/market/vault/integrations/team/setup), NOT SoloApp.tsx's screens
+  // map (home/clients/auto/cal, no support/billing) that SOLO_BRANCHES was
+  // authored against. Pointing this at SOLO_BRANCHES would have produced dead
+  // routes/404s the moment branch-level URLs shipped — no prior regression,
+  // since sub_account never had branch-level URLs before this slice. The
+  // §11c/§60 doctrine (Solo ≡ Sub-account, one shared shell) is the TARGET
+  // once /business mounts SoloApp instead (owner-sequenced as a later slice,
+  // after Solo's own URL conversion) — until then this points at what the
+  // shell actually renders.
+  sub_account: { root: "/business", branches: AGENCY_BRANCHES },
 };
 
 /** The tree for a tier. */
