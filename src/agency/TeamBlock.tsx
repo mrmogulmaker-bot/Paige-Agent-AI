@@ -523,7 +523,17 @@ export default TeamBlock;
 // Status tokens (was TM_GREEN/AMBER/RED/BLUE hex — now theme-aware).
 const S_GREEN = TONE.green, S_AMBER = TONE.amber, S_RED = TONE.red, S_BLUE = TONE.blue;
 
-export const tmInit = n => n.split(" ").filter(w => /[A-Za-z]/.test(w[0])).slice(0, 2).map(w => w[0].toUpperCase()).join("");
+// §39 fix (peer-gate, §65 R3a-i) — real tenant names now route through this (agency
+// name, acting sub name, and the R3a-i standalone sub-account identity), not just the
+// curated fixture roster. The original `split(" ")` produced empty-string tokens on a
+// leading/double space; `w[0]` on an empty string is `undefined`, and
+// `/[A-Za-z]/.test(undefined)` coerces to the STRING "undefined" (which contains
+// letters) and passed the filter, so `.toUpperCase()` on `undefined` then threw —
+// crashing the Rail on any real name with irregular whitespace (a plausible
+// copy-paste artifact). `trim()` + splitting on `\s+` + an explicit length guard
+// closes it, and empty/unparseable input degrades to "" (no initials) rather than a
+// crash — never a fabricated fallback (§13).
+export const tmInit = n => n.trim().split(/\s+/).filter(w => w.length && /[A-Za-z]/.test(w[0])).slice(0, 2).map(w => w[0].toUpperCase()).join("");
 
 // loadColor / utilColor are imported from _shared (identical thresholds, token
 // return) — the design's tmLoadColor/tmUtilColor are those exact maps.

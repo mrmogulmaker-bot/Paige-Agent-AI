@@ -245,6 +245,10 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
   const vaultDue = String(sub ? 5 : AGENCY.vaultDue30);
   const vaultAction = String(sub ? 6 : AGENCY.vaultNeedAction);
 
+  // §65 R3a-i (§13 honesty fix, owner live-drive 2026-08-17) — no real autonomy-lane
+  // change-log backend exists yet (that's task #165, Trust Compass wiring), so this
+  // stays decorative demo content — now explicitly Preview-labeled (matching Trust
+  // Compass/Business Vault below) rather than presented as if it were real history.
   const audit = AUDIT.map(a => ({
     who: a.who, when: a.when, why: a.why,
     line: a.what + " · " + TIER_META[a.from].label + " → " + TIER_META[a.to].label,
@@ -341,8 +345,9 @@ const DashTab = ({ isAgency, acting, openAsk, enterSub }) => {
             )}
             {/* autonomy change-log — peek + foldout, "Change log →" opens the pop */}
             <div style={{ marginTop: 12, paddingTop: 11, borderTop: "1px solid var(--line-soft)" }}>
-              <div className="row" style={{ gap: 10 }}>
+              <div className="row" style={{ gap: 8 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600 }}>Recent changes</div>
+                <PreviewPill />
                 <button onClick={() => setAuditOpen(o => !o)} style={{ marginLeft: "auto", fontSize: 12, fontWeight: 600, color: "var(--warn)", flex: "none" }}>{auditOpen ? "Hide" : "Show"}</button>
               </div>
               {auditOpen ? (
