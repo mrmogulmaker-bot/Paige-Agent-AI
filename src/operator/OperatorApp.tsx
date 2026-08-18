@@ -14,6 +14,14 @@ import { useKnowledge } from "@/operator/data/useKnowledge";
 import OperatorPanel from "@/operator/surfaces/OperatorPanel";
 import { getPanelSpec } from "@/operator/surfaces/panelSpecs";
 import WorkspaceSurface from "@/operator/surfaces/WorkspaceSurface";
+import { MarketplaceStore, MarketplaceReview, IntegrationsGrid } from "@/operator/surfaces/MarketplaceSurfaces";
+import { CalendarMonth, CalendarWeek } from "@/operator/surfaces/CalendarSurfaces";
+import { ComposeSurface } from "@/operator/surfaces/ComposeSurface";
+import { SupportThread } from "@/operator/surfaces/SupportThread";
+import { PipelineHead, PipelineBoard, StageBoard } from "@/operator/surfaces/PipelineSurfaces";
+import { SocialGrid, SocialQueue } from "@/operator/surfaces/SocialSurfaces";
+import BufferDiagram from "@/operator/surfaces/BufferDiagram";
+import { AreaChart, Bench } from "@/operator/surfaces/AnalyticsSurfaces";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { cn } from "@/lib/utils";
@@ -533,6 +541,47 @@ function OperatorSurface({
         scope={isOwner ? "Platform · full" : "Platform · scoped"}
       />
     );
+
+  /**
+   * CD's BESPOKE surfaces — the tabs the pack builds as their own component rather than as a
+   * generic panel body. Each is keyed to the address its design belongs to, in the same one
+   * dispatch as everything else (§18). All of them are prop-driven and ship with no data, so
+   * each states what is not connected rather than rendering an invented board, thread or curve.
+   */
+  const bespoke = `${branchSlug}/${subSlug ?? ""}`;
+  switch (bespoke) {
+    case "marketplace/discover":    return <MarketplaceStore items={[]} />;
+    case "marketplace/submissions": return <MarketplaceReview submissions={[]} />;
+    case "settings/integrations":   return <IntegrationsGrid integrations={[]} />;
+    case "calendar/month":          return <CalendarMonth events={[]} />;
+    case "calendar/tasks":          return <CalendarWeek events={[]} />;
+    case "comms/outbound":          return <ComposeSurface />;
+    case "support/inbox":           return <SupportThread messages={[]} />;
+    case "fleet/prospects":
+      // CD stacks the stat strip above the board — the head reads the same pipeline the board
+      // draws, so they belong on one address, not two.
+      return (
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <PipelineHead sets={[]} filters={[]} categories={[]} />
+          <PipelineBoard stages={[]} />
+        </div>
+      );
+    case "provisioning/pipeline":   return <StageBoard lanes={[]} />;
+    case "growth/social":
+      // The grid is what exists; the queue is what is going out. Both are the same book of
+      // posts seen from two ends, which is why CD puts them on the one surface.
+      return (
+        <div className="flex min-h-0 flex-1 flex-col gap-3">
+          <SocialGrid posts={[]} />
+          <SocialQueue posts={[]} />
+        </div>
+      );
+    case "automations/runs":        return <BufferDiagram stages={[]} />;
+    case "analytics/brief":         return <AreaChart series={[]} />;
+    case "analytics/performance":   return <Bench rows={[]} />;
+    default:
+      break;
+  }
 
   /**
    * Every other addressable tab is one of CD's generic panels — the same layout driven by its

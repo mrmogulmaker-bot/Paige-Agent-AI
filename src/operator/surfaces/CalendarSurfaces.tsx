@@ -120,6 +120,10 @@ function parseIsoDate(s: string): { y: number; m: number; d: number } | null {
   const mo = Number(m[2]) - 1;
   const d = Number(m[3]);
   if (mo < 0 || mo > 11 || d < 1 || d > 31) return null;
+  // A day inside 1–31 is not yet a real day: 2026-02-31 passes the range check but
+  // `new Date("2026-02-31T00:00:00Z")` rolls over to 3 March, so the day rail would print a
+  // date from a DIFFERENT MONTH than the grid beside it. Refuse it instead (§13).
+  if (d > new Date(Date.UTC(y, mo + 1, 0)).getUTCDate()) return null;
   return { y, m: mo, d };
 }
 
@@ -153,10 +157,10 @@ export function CalendarMonth({
   loading = false,
   error = null,
 }: CalendarMonthProps) {
-  const anchor = useMemo(
-    () => parseIsoDate(anchorDate ?? todayIso()) ?? parseIsoDate(todayIso()),
-    [anchorDate],
-  );
+  // No `?? parseIsoDate(todayIso())` fallback: silently substituting today for a date the
+  // caller got wrong is the guess this surface documents that it refuses. An unparseable
+  // `anchorDate` falls through to the state plate below (§13).
+  const anchor = useMemo(() => parseIsoDate(anchorDate ?? todayIso()), [anchorDate]);
 
   /** Layers the operator has switched off. Local view state — it hides, it never deletes. */
   const [hidden, setHidden] = useState<readonly string[]>([]);
@@ -205,7 +209,12 @@ export function CalendarMonth({
 
   /** Pre-select the anchor's own day when it is inside the month it draws. */
   const anchorIso = anchor ? isoOf(anchor.y, anchor.m, anchor.d) : null;
-  const activeIso = selected ?? anchorIso;
+  // `selected` survives an `anchorDate` change, so a day picked in September would still be
+  // the rail's heading after the grid moved to October — the rail naming a day the grid does
+  // not draw. A selection outside the drawn month is dropped back to the anchor.
+  const monthPrefix = anchor ? `${anchor.y}-${String(anchor.m + 1).padStart(2, "0")}-` : null;
+  const activeIso =
+    selected && monthPrefix && selected.startsWith(monthPrefix) ? selected : anchorIso;
   const dayEvents = activeIso ? (byDate.get(activeIso) ?? []) : [];
   const maxChips = compact ? 1 : 2;
 
@@ -532,15 +541,24 @@ export function CalendarWeek({
       {!loading && !error && days.length > 0 && (
         <>
           {/* CD's ruler, offset to sit over the track it labels (see the file note). */}
-          <div className="mb-[5px] flex gap-2 pl-[74px] pr-[26px]" aria-hidden>
-            {ticks.map((h) => (
-              <span
-                key={h}
-                className="min-w-0 flex-1 font-mono text-[8.5px] tabular-nums text-muted-foreground"
-              >
-                {formatHour(h)}
-              </span>
-            ))}
+          <div className="mb-[5px] pl-[74px] pr-[26px]" aria-hidden>
+            {/*
+              Each label is placed at its OWN proportional position on the track, not as an
+              equal flex column. Evenly-spaced columns do not map to proportional time: across
+              a 6am–10pm window the "9p" column landed ~10 percentage points left of where a
+              9pm band actually renders, so the ruler mislabelled the bar beneath it.
+            */}
+            <div className="relative h-[11px]">
+              {ticks.map((h) => (
+                <span
+                  key={h}
+                  style={{ left: pct((((h - windowStartHour) * 60) / spanMin) * 100) }}
+                  className="absolute top-0 font-mono text-[8.5px] tabular-nums text-muted-foreground"
+                >
+                  {formatHour(h)}
+                </span>
+              ))}
+            </div>
           </div>
 
           <ul className="flex list-none flex-col gap-1 p-0">
@@ -564,7 +582,7 @@ export function CalendarWeek({
                   <span
                     aria-hidden
                     className={cn(
-                      "absolute top-px h-[13px] w-[13px] rounded-full bg-card shadow-sm transition-[left]",
+                      "absolute top-px h-[13px] w-[13px] rounded-full bg-card shadow-sm transition-[left] motion-reduce:transition-none",
                       d.enabled ? "left-[12px]" : "left-px",
                     )}
                   />
@@ -582,18 +600,26 @@ export function CalendarWeek({
                 <div className="relative h-[26px] min-w-0 flex-1 overflow-hidden rounded-[7px] border border-border bg-muted/50">
                   {d.bands.map((b) => {
                     const left = ((b.startMinutes - startMin) / spanMin) * 100;
-                    const width = ((b.endMinutes - b.startMinutes) / spanMin) * 100;
-                    const clampedLeft = Math.min(100, Math.max(0, left));
-                    const clampedWidth = Math.min(100 - clampedLeft, Math.max(0, width));
-                    const outside = left < 0 || left + width > 100;
+                    const right = ((b.endMinutes - startMin) / spanMin) * 100;
+                    // Clamp the band to its VISIBLE INTERSECTION with the window, not to the
+                    // window edge. Clamping the start alone kept the full width, so a 2–3am
+                    // band on a 6am–10pm ruler drew a solid bar over 6:00–6:45 — the surface
+                    // claiming the platform is bookable at an hour nobody set (§13).
+                    const visLeft = Math.min(100, Math.max(0, left));
+                    const visRight = Math.min(100, Math.max(0, right));
+                    const visWidth = visRight - visLeft;
+                    // Nothing of this band falls inside the window (or it ends before it
+                    // starts): draw nothing rather than a bar at the edge.
+                    if (visWidth <= 0) return null;
+                    const outside = left < 0 || right > 100;
                     const inner = (
                       <span className="block truncate whitespace-nowrap px-1 text-[8.5px] font-bold text-[hsl(var(--primary-foreground))]">
                         {b.label ?? ""}
                       </span>
                     );
                     const style = {
-                      left: pct(clampedLeft),
-                      width: pct(clampedWidth),
+                      left: pct(visLeft),
+                      width: pct(visWidth),
                     } as const;
                     const shell =
                       "absolute bottom-[3px] top-[3px] grid place-items-center overflow-hidden rounded-[5px] bg-[hsl(var(--primary))]";

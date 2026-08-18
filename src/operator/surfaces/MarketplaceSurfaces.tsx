@@ -266,7 +266,7 @@ export function MarketplaceStore({
                     <span
                       aria-hidden
                       className={cn(
-                        "block h-full bg-rail-foreground transition-[width]",
+                        "block h-full bg-rail-foreground transition-[width] motion-reduce:transition-none",
                         i <= idx ? "w-full" : "w-0",
                       )}
                     />
