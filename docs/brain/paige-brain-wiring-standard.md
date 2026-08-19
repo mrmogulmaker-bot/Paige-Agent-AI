@@ -127,7 +127,7 @@ Columns map to the layers in §2: **Context** = does she KNOW it at session open
 
 | Capability | Callable seam | Context (A) | Tool (D) | Second brain | Notes |
 |---|---|---|---|---|---|
-| **Systems Check** (operator) | ✅ `systems-check-run-operator`; `enqueue_fleet_systems_check()` (this PR) | ❌ | ❌ | ✅ `cd-pack-port-playbook.md` | **First tracked gap.** Verified 2026-08-19: no systems-check reference in `paige-mcp` **or** `paige-ai-chat`, and `owner-context.ts` briefs tenant counts + ARR but **not platform health**. So Paige cannot answer *"is the platform healthy?"* — even though the operator's own Fleet Console shows 1 red. Spec in §6. |
+| **Systems Check** (operator) | ✅ `systems-check-run-operator`; `enqueue_fleet_systems_check()` | ✅ `owner-context.ts` — "Platform health" line | ✅ `get_systems_check_status` (god-locked) | ✅ `cd-pack-port-playbook.md` | **First capability taken through the full standard** (was the first tracked gap; closed in the same PR). Both surfaces report **skips as their own axis** — a blocking check that never ran is reported UNASSESSED, never folded into a healthy ratio. |
 | Tenant counts by revenue class | ✅ `tenant_revenue_classification` | ✅ `owner-context.ts` | — | ✅ | Real read + honest fallback |
 | Real ARR | ✅ `platform_subscriptions` | ✅ `owner-context.ts` | — | ✅ | Stripe-backed only; comped ≠ revenue |
 | Owner identity / preferences | ✅ `paige_owner_memory` | ✅ `owner-context.ts` | — | ✅ | Config-as-data (§10/§45) |
@@ -138,21 +138,27 @@ Columns map to the layers in §2: **Context** = does she KNOW it at session open
 
 ---
 
-## 6. Next slice — make Systems Check callable (specified, NOT built in this PR)
+## 6. Systems Check — SHIPPED through the standard (the worked example)
 
-Deliberately **not** bolted into the Systems Check UI fire (§55 no-derailment: that fire's exit gate
-is a laptop-viewport page, and a new tool carries its own §9/§37 obligations). Specified here so it
-is a scoped slice, not a vague intention:
+Owner expanded the sub-tab-1 exit gate mid-fire: *"Systems Check state feeds into owner-context.ts
+briefing composer AND is registered as a paige-mcp tool (operator tier-scoped)… you should be able to
+open the ✦ slide-out from Systems Check tab, ask 'is the platform healthy?', and Paige answers with
+real state."* Both halves shipped in the same PR:
 
-- **`get_systems_check_status`** — latest run + per-category pass/fail/skip roll-up.
-  - Tier: **god** for operator scope (`tenant_id IS NULL`) → `MASTER_ONLY_TOOLS`.
-  - Tenant tiers read their OWN scope only, RLS-scoped to `current_user_tenant_id()`.
-  - Must report skips explicitly — the operator scan currently has **5 of 10 checks skipping**,
-    including a blocking cross-tenant canary that has never run. A tool that answers "4 passing"
-    without naming the skips repeats the exact §13 defect the UI port just fixed.
-- **`run_systems_check`** — fires the sweep. Operator: both halves. Tenant: own scope.
-  - Fire-and-forget on the fleet half → must return "started", never "swept".
-- **§37 producer inventory** required before either ships.
+- **Context (Layer A)** — `owner-context.ts` gained a "Platform health" line: last sweep, pass of
+  total, failing check ids, and the skipped count — plus a separate `UNASSESSED` line naming any
+  **blocking** check that could not run, with the explicit instruction to treat it as unknown rather
+  than healthy. Honest fallback on read failure, matching the tenant-count and ARR lines beside it.
+- **Tool (Layer D)** — `get_systems_check_status` in `paige-mcp`: `TOOL_SCOPE = platform.read` **and**
+  god-locked in `MASTER_ONLY_TOOLS`, because the handler reads operator-global rows with the
+  service-role client and has no in-handler tenant guard — the tier gate is what denies a tenant
+  caller (the lesson already encoded in that file, applied rather than re-learned). It returns
+  `could_not_run` and `unassessed_blocking` as **separate axes** from `passing`/`failing`, so no
+  consumer can mistake "not failing" for "passing".
+
+**Still open (specified, not built):** `run_systems_check` as a tool (fire the sweep from chat —
+must return "started", never "swept", on the fleet half), and the tenant-scope equivalents of both,
+RLS-scoped to `current_user_tenant_id()`. §37 producer inventory required before either ships.
 
 ---
 
