@@ -82,6 +82,23 @@ export function FleetOrbit({
   const [hot, setHot] = useState<{ id: string; name: string; tier: string; sx: number; sy: number } | null>(
     null,
   );
+  // §32 — the box size drives the canvas, not the other way round: a ResizeObserver on the
+  // CONTAINER (not `getBoundingClientRect()` re-measured inside the RAF loop) means the paint
+  // loop never has to guess whether layout has settled yet. `size` is null until the observer
+  // fires at least once; draw() bails honestly on that instead of silently reading a stale 0.
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const box = entries[0]?.contentRect;
+      if (!box) return;
+      setSize({ w: box.width, h: box.height });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const maxWeight = Math.max(1, ...nodes.map((n) => n.weight));
   const points = useMemo(
@@ -127,13 +144,19 @@ export function FleetOrbit({
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx || !palette) return;
-    const rect = canvas.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      // A canvas that can't hand back a 2D context is a real, visible-worthy failure, not a
+      // "try again next frame" case (§32 — never silently swallow a crash-prone call site).
+      console.error("FleetOrbit: canvas.getContext('2d') returned null");
+      setRenderError("The field's canvas context is unavailable in this browser.");
+      return;
+    }
+    if (!palette || !size || !size.w || !size.h) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const W = rect.width;
-    const H = rect.height;
+    const W = size.w;
+    const H = size.h;
     if (canvas.width !== Math.round(W * dpr)) {
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
@@ -232,12 +255,20 @@ export function FleetOrbit({
         ctx.stroke();
       }
     });
-  }, [points, palette, warningColor]);
+  }, [points, palette, warningColor, size]);
 
   useEffect(() => {
     let raf = 0;
     const loop = () => {
-      draw();
+      try {
+        draw();
+      } catch (e) {
+        // §32 — a crash inside the paint loop must degrade to something VISIBLE, never a
+        // silent blank canvas the next session has to guess at from scratch.
+        console.error("FleetOrbit: draw() threw", e);
+        setRenderError(e instanceof Error ? e.message : "The field could not be drawn.");
+        return; // stop the loop on a real crash rather than re-throwing every frame
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -281,17 +312,28 @@ export function FleetOrbit({
     // carries `min-h-0 flex-1`, and a zero-height canvas paints nothing (§32 — a green build
     // proves nothing about what actually renders; this was caught live, not in review).
     <div ref={containerRef} className="absolute inset-0">
-      <canvas
-        ref={canvasRef}
-        className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerLeave={onPointerLeave}
-        onClick={onClick}
-        role="img"
-        aria-label="The fleet, projected in three dimensions. Drag to orbit; click a tenant to open it."
-      />
+      {renderError ? (
+        // §32 — visible and honest beats a blank box: a real paint failure says so, with the
+        // actual message, rather than leaving the field looking merely "not populated yet."
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 px-6 text-center">
+          <div className="text-[12.5px] font-semibold text-[hsl(var(--rail-foreground))]">
+            The field could not render.
+          </div>
+          <div className="max-w-xs text-[11px] text-[hsl(var(--rail-muted))]">{renderError}</div>
+        </div>
+      ) : (
+        <canvas
+          ref={canvasRef}
+          className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerLeave={onPointerLeave}
+          onClick={onClick}
+          role="img"
+          aria-label="The fleet, projected in three dimensions. Drag to orbit; click a tenant to open it."
+        />
+      )}
       {hot && (
         <div
           className="pointer-events-none absolute z-[3] whitespace-nowrap rounded-[9px] border border-[hsl(255,42%,60%)]/50 bg-[hsl(var(--rail))]/90 px-2.5 py-1.5 shadow-lg"
