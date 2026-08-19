@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { PaigeReasoningStrip, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
+import { PaigeReasoningStrip, StepTimeline, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -20,8 +20,9 @@ import { extractEntityDiagram } from "@/lib/entityDiagram";
 import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { PaigeConfirmCard } from "@/components/chat/PaigeConfirmCard";
 import { usePlaybook } from "@/lib/playbook";
+import { cn } from "@/lib/utils";
 import type { QuickChip } from "@/components/paige/commandCenterTypes";
-import { usePaigeThreads } from "@/hooks/usePaigeThreads";
+import { usePaigeThreads, type PaigeThread } from "@/hooks/usePaigeThreads";
 import { useScopedUserId } from "@/hooks/useScopedUserId";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { ThreadRail } from "@/components/dashboard/paige/ThreadRail";
@@ -98,7 +99,45 @@ export interface PaigeAIChatProps {
    *  Threads are created/listed with lens='platform' + NULL tenant, so this works
    *  with no active tenant. Off by default — every tenant mount is unchanged. */
   platform?: boolean;
+  /**
+   * Replace the built-in `ThreadRail` with the caller's own, driven by the SAME
+   * live thread state (#546 follow-up). The operator console draws Claude Design's
+   * 236px rail; without this seam it had to mount its own empty list next to the
+   * real one, so the screen carried two "New chat" buttons and two chat lists
+   * (§18/§21). The rail is presentation — the threads, the selection and every
+   * mutation stay here, so nothing about history changes (§58).
+   */
+  renderRail?: (api: ChatRailApi) => React.ReactNode;
+  /** Rendered inside the conversation frame, above the thread — the caller's own
+   *  chat header. Distinct from `focusBanner`, which is the focused-customer strip. */
+  conversationHeader?: React.ReactNode;
+  /**
+   * Which chrome the conversation wears. `app` (default) is byte-for-byte today's
+   * surface for every existing mount. `operator` is Claude Design's platform desk:
+   * its warm right-aligned bubble, its framed composer with the tool row and the
+   * visible prompt chips, and its collapsible reasoning strip. The ENGINE is
+   * identical either way — streaming, voice, playback, attachments, artifacts,
+   * approvals and thread persistence are the same code (§58).
+   */
+  presentation?: "app" | "operator";
+  /** The line under the operator composer. Absent → no line (never invented). */
+  composerFootNote?: string;
 }
+
+/** Everything a caller-supplied history rail needs, and nothing it could corrupt. */
+export type ChatRailApi = {
+  threads: PaigeThread[];
+  isLoading: boolean;
+  activeThreadId: string | null;
+  streamingThreadId: string | null;
+  onSelect: (id: string) => void;
+  onNewChat: () => void;
+  onRename: (id: string, title: string) => void;
+  onArchive: (id: string) => void;
+  onDelete: (id: string) => void;
+  mobileOpen: boolean;
+  onMobileOpenChange: (open: boolean) => void;
+};
 
 const PaigeAIChatInner = ({
   hideHeader = false,
@@ -112,7 +151,13 @@ const PaigeAIChatInner = ({
   hideReasoningStrip = false,
   enableHistory = false,
   platform = false,
+  renderRail,
+  conversationHeader,
+  presentation = "app",
+  composerFootNote,
 }: PaigeAIChatProps) => {
+  /** Claude Design's operator chrome. Presentation only — never a second engine. */
+  const cd = presentation === "operator";
   // The tenant's authored persona names the assistant in the default header —
   // audience-broad, voice-compliant, never a hardcoded vertical (doctrine §2/§3).
   const playbook = usePlaybook();
@@ -176,6 +221,8 @@ const PaigeAIChatInner = ({
   const [streamingThreadId, setStreamingThreadId] = useState<string | null>(null);
   const [mobileRailOpen, setMobileRailOpen] = useState(false);
   const [historyHydrated, setHistoryHydrated] = useState(false);
+  // CD's reasoning strip is a disclosure, not an always-open list. Collapsed at rest.
+  const [traceOpen, setTraceOpen] = useState(false);
   const openingGreeting = greeting ?? "Hey, how can I help?";
 
   useEffect(() => {
@@ -535,24 +582,123 @@ const PaigeAIChatInner = ({
     return undefined;
   };
 
+  // CD's trace label, computed from the REAL streamed steps — how many of her
+  // departments actually worked this turn, never a written-in number (§13/§14).
+  const traceDepartments = new Set(steps.filter((st) => st.kind !== "thought").map((st) => st.group)).size;
+  const traceLabel =
+    steps.length === 0
+      ? `${persona.name || "Paige"} is getting started`
+      : traceDepartments > 0
+        ? `${traceDepartments} ${traceDepartments === 1 ? "department" : "departments"} worked on this`
+        : `${steps.length} ${steps.length === 1 ? "step" : "steps"} so far`;
+
+  // The composer's pieces, built once and arranged by presentation. Both chromes
+  // drive the SAME handlers — one engine, two frames (§18: no forked composer).
+  const composerTextarea = (
+    <Textarea
+      ref={inputRef}
+      value={input}
+      rows={1}
+      onChange={(e) => {
+        setInput(e.target.value);
+        setSlashActive(0);
+        const el = e.target; el.style.height = "auto";
+        el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+      }}
+      onKeyDown={(e) => {
+        // IME composition: don't hijack Enter/nav while composing (N3).
+        if (e.nativeEvent.isComposing) return;
+        // Slash palette open → arrows/enter/escape drive the menu.
+        if (slashOpen) {
+          if (e.key === "ArrowDown") { e.preventDefault(); setSlashActive((a) => (a + 1) % filteredCommands.length); return; }
+          if (e.key === "ArrowUp") { e.preventDefault(); setSlashActive((a) => (a - 1 + filteredCommands.length) % filteredCommands.length); return; }
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); pickCommand(filteredCommands[Math.min(slashActive, filteredCommands.length - 1)]); return; }
+          if (e.key === "Escape") { e.preventDefault(); setInput(""); return; }
+        }
+        // Enter sends; Shift+Enter inserts a newline (so long messages wrap).
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+      }}
+      placeholder={
+        cd
+          ? "Ask about the platform — the fleet, the rails, the machine"
+          : `Message ${persona.name || "Paige"} — type / for commands`
+      }
+      className={cn(
+        "max-h-40 resize-none",
+        cd
+          // Inside CD's frame the input carries no border of its own.
+          ? "min-h-[2.25rem] min-w-0 flex-1 border-0 bg-transparent px-0 py-0 text-[13px] leading-[1.5] shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+          : "min-h-[2.5rem] flex-1",
+      )}
+      disabled={isLoading}
+    />
+  );
+
+  /* Attach a document (#480) — ghost icon, never gold (Send owns the gold act, §11).
+     Guarded while a reply is streaming. */
+  const attachButton = (
+    <Button
+      onClick={openFilePicker}
+      variant="ghost"
+      size="icon"
+      aria-label="Attach a document"
+      disabled={isLoading}
+      title="Attach a PDF, image, or Word document"
+      className={cd ? "h-[27px] w-[27px] rounded-lg border border-border bg-card text-muted-foreground hover:bg-muted" : undefined}
+    >
+      {cd ? <span aria-hidden className="text-[11.5px] leading-none">＋</span> : <Paperclip className="w-4 h-4" />}
+    </Button>
+  );
+
+  /* Hold-to-dictate — neutral/indigo mic, never gold. Dictated words append into
+     the composer; the operator edits before sending. */
+  const micButton = (
+    <DictationMicButton
+      onText={(seg) => setInput((prev) => appendDictation(prev, seg))}
+      onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
+      disabled={isLoading}
+    />
+  );
+
   return (
     <div className={fill ? "w-full h-full" : `max-w-4xl mx-auto w-full ${hideHeader ? "h-full" : "h-[calc(100vh-4rem)]"}`}>
-      <div className={enableHistory ? "flex h-full min-h-0 gap-4 px-3 pt-3 md:px-4" : "flex flex-col h-full"}>
-        {enableHistory && (
-          <ThreadRail
-            threads={threadsApi.threads}
-            isLoading={threadsApi.isLoading}
-            activeThreadId={activeThreadId}
-            streamingThreadId={streamingThreadId}
-            onSelect={(id) => void selectThread(id)}
-            onNewChat={startNewChat}
-            onRename={threadsApi.renameThread}
-            onArchive={threadsApi.archiveThread}
-            onDelete={(id) => { if (id === activeThreadId) startNewChat(); void threadsApi.deleteThread(id); }}
-            mobileOpen={mobileRailOpen}
-            onMobileOpenChange={setMobileRailOpen}
-          />
-        )}
+      <div className={enableHistory ? (cd ? "flex h-full min-h-0 gap-3.5" : "flex h-full min-h-0 gap-4 px-3 pt-3 md:px-4") : "flex flex-col h-full"}>
+        {/* History rail. The caller may draw its own (the operator console draws
+            Claude Design's) — it gets the SAME live threads and the SAME handlers,
+            so rename/archive/delete/select/new-chat all keep working (§58). */}
+        {enableHistory &&
+          (renderRail
+            ? renderRail({
+                threads: threadsApi.threads,
+                isLoading: threadsApi.isLoading,
+                activeThreadId,
+                streamingThreadId,
+                onSelect: (id) => void selectThread(id),
+                onNewChat: startNewChat,
+                onRename: threadsApi.renameThread,
+                onArchive: threadsApi.archiveThread,
+                onDelete: (id) => {
+                  if (id === activeThreadId) startNewChat();
+                  void threadsApi.deleteThread(id);
+                },
+                mobileOpen: mobileRailOpen,
+                onMobileOpenChange: setMobileRailOpen,
+              })
+            : (
+              <ThreadRail
+                threads={threadsApi.threads}
+                isLoading={threadsApi.isLoading}
+                activeThreadId={activeThreadId}
+                streamingThreadId={streamingThreadId}
+                onSelect={(id) => void selectThread(id)}
+                onNewChat={startNewChat}
+                onRename={threadsApi.renameThread}
+                onArchive={threadsApi.archiveThread}
+                onDelete={(id) => { if (id === activeThreadId) startNewChat(); void threadsApi.deleteThread(id); }}
+                mobileOpen={mobileRailOpen}
+                onMobileOpenChange={setMobileRailOpen}
+              />
+            ))}
         <div
           className={enableHistory ? "flex flex-col h-full min-w-0 flex-1" : "contents"}
           onDragOver={handleDragOver}
@@ -571,7 +717,7 @@ const PaigeAIChatInner = ({
         )}
 
         {enableHistory && (
-          <div className="mb-3 flex items-center gap-2 md:hidden">
+          <div className={cn("mb-3 flex items-center gap-2", cd ? "lg:hidden" : "md:hidden")}>
             <Button variant="outline" size="sm" onClick={() => setMobileRailOpen(true)}>
               <PanelLeft className="mr-2 h-4 w-4" /> Chats
             </Button>
@@ -581,7 +727,14 @@ const PaigeAIChatInner = ({
           </div>
         )}
 
-        <Card className="relative flex-1 min-h-0 flex flex-col bg-card border-border shadow-card overflow-hidden">
+        <Card
+          className={cn(
+            "relative flex-1 min-h-0 flex flex-col bg-card border-border overflow-hidden",
+            // CD's conversation card: 14px radius, hairline border, no drop shadow —
+            // depth comes from the elevation stack around it, not a shadow (§22).
+            cd ? "rounded-[14px] shadow-none" : "shadow-card",
+          )}
+        >
           {/* Drop target overlay (#480) — tokened, theme-aware, motion-safe. Solid indigo frame
               (no dashed "upload-widget" tell, §25); gold stays reserved for the send act (§11/§23).
               Drag handlers live on the wrapper above so a drop on the header can't escape to the
@@ -594,28 +747,53 @@ const PaigeAIChatInner = ({
               </div>
             </div>
           )}
+          {conversationHeader}
           {focusBanner}
-          <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4">
+          <div
+            ref={scrollRef}
+            className={cn(
+              "flex-1 min-h-0 overflow-y-auto",
+              cd ? "px-4 py-3.5 space-y-4" : "p-6 space-y-4",
+            )}
+          >
             {messages.map((message, index) => (
               <div
                 key={message.id}
-                className={`flex gap-3 ${
-                  message.role === "user" ? "flex-row-reverse" : "flex-row"
-                }`}
+                className={cn(
+                  "flex min-w-0",
+                  cd ? "gap-[11px]" : "gap-3",
+                  message.role === "user" ? "flex-row-reverse" : "flex-row",
+                )}
               >
                 {message.role === "assistant" && (
                   <img
                     src={paigeAvatar}
                     alt={persona.name || "Paige"}
-                    className="w-10 h-10 rounded-full border-2 border-primary"
+                    className={cn(
+                      "rounded-full border-2 border-primary",
+                      cd ? "mt-px h-6 w-6 flex-none" : "w-10 h-10",
+                    )}
                   />
                 )}
                 <div
-                  className={`group relative max-w-[80%] rounded-lg p-4 ${
-                    message.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted/30 border border-border"
-                  }`}
+                  className={cn(
+                    "group relative",
+                    // CD's operator thread: the operator's own turn is the warm
+                    // right-aligned bubble (cream ground, hairline border, one square
+                    // corner); Paige's answer carries NO card at all — her avatar,
+                    // her name and the words, the way the pack draws it. The app
+                    // presentation is untouched for every tenant mount.
+                    cd
+                      ? message.role === "user"
+                        ? "max-w-[76%] min-w-0 rounded-[14px_14px_4px_14px] border border-border bg-muted px-[13px] py-2.5 text-[13.5px] leading-[1.6]"
+                        : "min-w-0 flex-1 text-[13.5px] leading-[1.66]"
+                      : cn(
+                          "max-w-[80%] rounded-lg p-4",
+                          message.role === "user"
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-muted/30 border border-border",
+                        ),
+                  )}
                 >
                   {message.role === "assistant" ? (() => {
                     const { before, diagram, after } = extractEntityDiagram(message.content);
@@ -718,7 +896,7 @@ const PaigeAIChatInner = ({
                 assistant bubbles (avatar gutter). The card renders only when the server streams a
                 compacting frame; this surface persists threads, so it can genuinely fold (§13). */}
             {(isLoading || compacting) && (
-              <div className="flex flex-col gap-2 pl-[52px]">
+              <div className={cn("flex flex-col gap-2", cd ? "pl-[35px]" : "pl-[52px]")}>
                 <PaigeThinkingIndicator
                   active={isLoading}
                   writing={writingPhase}
@@ -730,13 +908,54 @@ const PaigeAIChatInner = ({
             )}
           </div>
 
-          {!hideReasoningStrip && (isLoading || steps.length > 0) && (
+          {/* Her working. CD draws it as a collapsible strip with a right-aligned
+              meter; the app draws the persistent "on watch" strip. Same REAL steps
+              (`paige_step` frames) either way — CD's per-message trace has no backing
+              here, because the engine streams a trace per TURN and never persists it,
+              so the strip sits with the live turn instead of under an old answer, and
+              the meter reads "—" rather than a plausible latency (§13). */}
+          {!hideReasoningStrip && cd && (isLoading || steps.length > 0) && (
+            <div className="flex-none border-t border-border px-3.5 py-2">
+              <button
+                type="button"
+                aria-expanded={traceOpen}
+                onClick={() => setTraceOpen((o) => !o)}
+                className="flex w-full min-w-0 items-center gap-2 rounded-[9px] border border-border bg-muted/40 px-2.5 py-1.5 text-left transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span aria-hidden className="flex-none text-[10px] text-[hsl(var(--primary))]">
+                  {traceOpen ? "▾" : "▸"}
+                </span>
+                <span className="min-w-0 truncate text-[11px]">{traceLabel}</span>
+                <span
+                  title="Latency and token cost aren't reported back to this surface yet."
+                  className="ml-auto flex-none font-mono text-[9.5px] text-muted-foreground"
+                >
+                  —
+                </span>
+              </button>
+              {traceOpen && (
+                <div className="mt-1.5 border-l-2 border-[hsl(var(--primary)/0.35)] pl-[11px]">
+                  <StepTimeline steps={steps} loading={isLoading} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {!hideReasoningStrip && !cd && (isLoading || steps.length > 0) && (
             <div className="border-t border-border px-4 pt-3">
               <PaigeReasoningStrip steps={steps} loading={isLoading} personaName={persona.name} />
             </div>
           )}
 
-          <div className="border-t border-border p-4">
+          <div
+            className={cn(
+              cd
+                // CD's composer well: the whole footer sits on the raised ground and
+                // the input is a framed card inside it.
+                ? "flex-none border-t border-border bg-muted/40 px-3 pb-[11px] pt-[9px]"
+                : "border-t border-border p-4",
+            )}
+          >
             {/* Hidden picker — accepts ALL supported kinds (pdf/image/docx), not
                 pdf-only. Change resets its value in the hook so re-picking the same
                 file re-fires. */}
@@ -747,6 +966,25 @@ const PaigeAIChatInner = ({
               onChange={handleFileSelect}
               className="hidden"
             />
+            {/* CD's prompt chips. These are the SAME `chips` the slash palette already
+                serves — the operator console just shows them instead of making the
+                human know to type "/" first (§36). Clicking one writes the prompt into
+                the composer; nothing is sent without the operator pressing Send. */}
+            {cd && visibleChips.length > 0 && (
+              <div className="flex items-center gap-[7px] overflow-x-auto pb-2">
+                {visibleChips.map((c) => (
+                  <button
+                    key={c.label}
+                    type="button"
+                    onClick={() => handleChip(c)}
+                    disabled={isLoading}
+                    className="flex-none whitespace-nowrap rounded-full border border-border bg-card px-[11px] py-1.5 text-[11px] transition-colors hover:border-border-strong hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
             {/* Pending attachment chip — sits above the input, removable (§13). */}
             {attachedDoc && (
               <div className="mb-2">
@@ -758,9 +996,17 @@ const PaigeAIChatInner = ({
                 />
               </div>
             )}
-            {/* Composer + slash palette + inline voice — one relative row so the
-                palette anchors above the input and focus never leaves the Textarea. */}
-            <div className="relative flex items-end gap-2">
+            {/* Composer + slash palette + inline voice. The palette anchors above the
+                input in both chromes and focus never leaves the Textarea. */}
+            <div
+              className={cn(
+                "relative",
+                cd
+                  // CD's framed well: input on top, the tool row beneath it.
+                  ? "overflow-visible rounded-xl border border-border bg-card focus-within:border-border-strong"
+                  : "flex items-end gap-2",
+              )}
+            >
               <SlashCommandMenu
                 open={slashOpen}
                 items={filteredCommands}
@@ -768,64 +1014,78 @@ const PaigeAIChatInner = ({
                 onHover={setSlashActive}
                 onPick={pickCommand}
               />
-              <Textarea
-                ref={inputRef}
-                value={input}
-                rows={1}
-                onChange={(e) => {
-                  setInput(e.target.value);
-                  setSlashActive(0);
-                  const el = e.target; el.style.height = "auto";
-                  el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-                }}
-                onKeyDown={(e) => {
-                  // IME composition: don't hijack Enter/nav while composing (N3).
-                  if (e.nativeEvent.isComposing) return;
-                  // Slash palette open → arrows/enter/escape drive the menu.
-                  if (slashOpen) {
-                    if (e.key === "ArrowDown") { e.preventDefault(); setSlashActive((a) => (a + 1) % filteredCommands.length); return; }
-                    if (e.key === "ArrowUp") { e.preventDefault(); setSlashActive((a) => (a - 1 + filteredCommands.length) % filteredCommands.length); return; }
-                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); pickCommand(filteredCommands[Math.min(slashActive, filteredCommands.length - 1)]); return; }
-                    if (e.key === "Escape") { e.preventDefault(); setInput(""); return; }
-                  }
-                  // Enter sends; Shift+Enter inserts a newline (so long messages wrap).
-                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
-                }}
-                placeholder={`Message ${persona.name || "Paige"} — type / for commands`}
-                className="max-h-40 min-h-[2.5rem] flex-1 resize-none"
-                disabled={isLoading}
-              />
-              {/* Attach a document (#480) — ghost icon, never gold (Send owns the
-                  gold act, §11). Matches the Mic control. Guarded while a reply is
-                  streaming. */}
-              <Button
-                onClick={openFilePicker}
-                variant="ghost"
-                size="icon"
-                aria-label="Attach a document"
-                disabled={isLoading}
-                title="Attach a PDF, image, or Word document"
-              >
-                <Paperclip className="w-4 h-4" />
-              </Button>
-              {/* Hold-to-dictate — neutral/indigo mic, never gold (Send owns the
-                  gold act, §11). Dictated words append into the composer; the
-                  operator edits before sending. */}
-              <DictationMicButton
-                onText={(seg) => setInput((prev) => appendDictation(prev, seg))}
-                onError={(msg) => toast({ title: "Voice typing", description: msg, variant: "destructive" })}
-                disabled={isLoading}
-              />
-              <Button
-                onClick={() => handleSend()}
-                disabled={isLoading || (!input.trim() && !attachedDoc)}
-                variant="gold"
-                size="icon"
-                aria-label="Send message"
-              >
-                {isLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Send className="w-4 h-4" />}
-              </Button>
+              {cd ? (
+                <>
+                  <div className="flex min-w-0 items-start gap-2.5 px-3 pb-1 pt-2.5">
+                    <span aria-hidden className="mt-1 flex-none text-[12px] text-muted-foreground">✦</span>
+                    {composerTextarea}
+                  </div>
+                  <div className="flex min-w-0 items-center gap-1.5 px-2.5 pb-2 pt-1.5">
+                    {attachButton}
+                    {/* CD's other two tool keys. Neither has a seam behind it yet, so
+                        each is rendered in CD's shape and DISABLED, saying what it is
+                        waiting on — never a control that looks live and does nothing
+                        (§13). They light up when the seam lands, not before. */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled
+                      aria-label="Reference a tenant"
+                      title="Reference a tenant — not wired to the fleet record yet."
+                      className="h-[27px] w-[27px] rounded-lg border border-border bg-card text-muted-foreground"
+                    >
+                      <span aria-hidden className="text-[11.5px] leading-none">⌗</span>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled
+                      aria-label="Run a skill"
+                      title="Run a skill — the skill runner isn't callable from this composer yet."
+                      className="h-[27px] w-[27px] rounded-lg border border-border bg-card text-muted-foreground"
+                    >
+                      <span aria-hidden className="text-[11.5px] leading-none">⚡</span>
+                    </Button>
+                    <span className="ml-auto flex-none font-mono text-[9.5px] text-muted-foreground">
+                      ⌘↵ to send
+                    </span>
+                    {micButton}
+                    <Button
+                      onClick={() => handleSend()}
+                      disabled={isLoading || (!input.trim() && !attachedDoc)}
+                      variant="gold"
+                      size="sm"
+                      className="h-[29px] flex-none gap-1.5 rounded-[9px] px-3.5 text-[12px] font-semibold"
+                    >
+                      {isLoading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden />
+                      ) : (
+                        <span aria-hidden className="text-[10px] leading-none">↑</span>
+                      )}
+                      Send
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {composerTextarea}
+                  {attachButton}
+                  {micButton}
+                  <Button
+                    onClick={() => handleSend()}
+                    disabled={isLoading || (!input.trim() && !attachedDoc)}
+                    variant="gold"
+                    size="icon"
+                    aria-label="Send message"
+                  >
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Send className="w-4 h-4" />}
+                  </Button>
+                </>
+              )}
             </div>
+            {cd && composerFootNote && (
+              <div className="mt-[7px] text-[10px] text-muted-foreground">{composerFootNote}</div>
+            )}
           </div>
         </Card>
         </div>

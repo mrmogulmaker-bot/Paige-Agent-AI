@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+@keyframes tmFill { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes tmIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+</style>
+</helmet>
+
+<sc-if value="{{ isStats }}" hint-placeholder-val="{{ false }}">
+  <div style="display:grid;grid-template-columns:{{ statCols }};gap:10px;flex:none">
+    <sc-for list="{{ items }}" as="i" hint-placeholder-count="4">
+      <div title="{{ i.hover }}" style="border:1px solid #E7E3D9;border-radius:12px;background:#FFFFFF;padding:{{ statPad }};min-width:0">
+        <div style="font-size:9px;font-weight:600;letter-spacing:.13em;color:#8A8478;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.label }}</div>
+        <div style="font-size:{{ statSize }};font-weight:700;letter-spacing:-0.02em;margin-top:4px;color:{{ i.color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.value }}</div>
+        <sc-if value="{{ showStatNote }}" hint-placeholder-val="{{ true }}">
+          <div style="font-size:11px;color:#6E6A61;margin-top:3px;line-height:1.35">{{ i.note }}</div>
+        </sc-if>
+      </div>
+    </sc-for>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isRows }}" hint-placeholder-val="{{ false }}">
+  <div style="border:1px solid #E7E3D9;border-radius:13px;background:#FFFFFF;display:flex;flex-direction:column;min-width:0;flex:none">
+    <div title="{{ sub }}" style="padding:{{ headPad }}">
+      <div style="font-size:14px;font-weight:600">{{ title }}</div>
+      <sc-if value="{{ showSub }}" hint-placeholder-val="{{ true }}">
+        <div style="font-size:11.5px;color:#8A8478;margin-top:3px">{{ sub }}</div>
+      </sc-if>
+    </div>
+    <sc-for list="{{ list }}" as="r" hint-placeholder-count="5">
+      <div style="display:flex;align-items:center;gap:11px;padding:{{ rowPad }};border-top:1px solid #F3F0E8;min-width:0" style-hover="background:#FBFAF6">
+        <div style="width:26px;height:26px;border-radius:8px;background:{{ r.tint }};box-shadow:inset 0 0 0 2px {{ r.color }};color:{{ r.ink }};display:grid;place-items:center;font-size:10px;font-weight:700;flex:none">{{ r.initials }}</div>
+        <div style="min-width:96px;flex:1 1 auto;overflow:hidden">
+          <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</div>
+          <div style="font-size:11px;color:#6E6A61;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.line }}</div>
+        </div>
+        <div style="width:64px;height:5px;border-radius:3px;background:#EFEBE1;overflow:hidden;flex:none">
+          <div style="height:100%;width:{{ r.width }};background:{{ r.dot }};transform-origin:left;animation:{{ r.anim }}"></div>
+        </div>
+        <div style="text-align:right;flex:none;min-width:58px">
+          <div style="font-size:12.5px;font-weight:700">{{ r.value }}</div>
+          <div style="font-size:10px;color:#8A8478;margin-top:2px;white-space:nowrap">{{ r.meta }}</div>
+        </div>
+        <sc-if value="{{ r.tail }}" hint-placeholder-val="{{ false }}">
+          <span style="font-size:11.5px;font-weight:600;color:#8A6D1E;flex:none;white-space:nowrap">{{ r.tail }}</span>
+        </sc-if>
+      </div>
+    </sc-for>
+    <sc-if value="{{ more }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ openAll }}" style="display:flex;align-items:center;gap:8px;padding:9px 15px;border-top:1px solid #EFEBE1;font-size:12px;font-weight:600;color:#8A6D1E;cursor:pointer" style-hover="background:#FBFAF6">{{ more }}</div>
+    </sc-if>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isTable }}" hint-placeholder-val="{{ false }}">
+  <div style="border:1px solid #E7E3D9;border-radius:13px;background:#FFFFFF;min-width:0;flex:none;overflow:hidden">
+    <div style="padding:13px 15px 10px">
+      <div style="font-size:14.5px;font-weight:600">{{ title }}</div>
+      <div style="font-size:11.5px;color:#8A8478;margin-top:3px">{{ sub }}</div>
+    </div>
+    <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 15px;background:#FBFAF6;border-top:1px solid #F3F0E8;border-bottom:1px solid #F3F0E8">
+      <sc-for list="{{ head }}" as="h" hint-placeholder-count="6">
+        <div style="flex:{{ h.flex }};min-width:0;font-size:9px;font-weight:600;letter-spacing:.12em;color:#8A8478;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.label }}</div>
+      </sc-for>
+    </div>
+    <sc-for list="{{ rowsList }}" as="r" hint-placeholder-count="5">
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 15px;border-bottom:1px solid #F6F4EE;min-width:0" style-hover="background:#FBFAF6">
+        <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="6">
+          <div style="flex:{{ c.flex }};min-width:0;font-size:12px;font-weight:{{ c.weight }};color:{{ c.color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.text }}</div>
+        </sc-for>
+      </div>
+    </sc-for>
+    </sc-if>
+
+    <sc-if value="{{ narrow }}" hint-placeholder-val="{{ false }}">
+      <sc-for list="{{ recordList }}" as="r" hint-placeholder-count="5">
+        <div style="padding:8px 14px;border-top:1px solid #F3F0E8;min-width:0" style-hover="background:#FBFAF6">
+          <div style="display:flex;align-items:center;gap:9px;min-width:0">
+            <span style="font-size:12.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.head }}</span>
+            <sc-if value="{{ r.pill }}" hint-placeholder-val="{{ false }}">
+              <span style="margin-left:auto;padding:2px 9px;border-radius:20px;background:{{ r.pillBg }};color:{{ r.pillColor }};font-size:10.5px;font-weight:600;flex:none;white-space:nowrap">{{ r.pill }}</span>
+            </sc-if>
+          </div>
+          <div style="display:flex;gap:14px;margin-top:5px;min-width:0;overflow:hidden">
+            <sc-for list="{{ r.pairs }}" as="p" hint-placeholder-count="4">
+              <div title="{{ p.label }} {{ p.value }}" style="display:flex;align-items:baseline;gap:6px;min-width:0">
+                <span style="font-size:9px;font-weight:600;letter-spacing:.11em;color:#8A8478;flex:none">{{ p.label }}</span>
+                <span style="font-size:11.5px;color:#3E3A33;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.value }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-for>
+    </sc-if>
+    <sc-if value="{{ footShown }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:10px 15px;border-top:1px solid #EFEBE1;background:#FBFAF6;font-size:11.5px;line-height:1.55;color:#5D594F">{{ foot }}</div>
+    </sc-if>
+    <sc-if value="{{ more }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ openAll }}" style="display:flex;align-items:center;gap:8px;padding:9px 15px;border-top:1px solid #EFEBE1;font-size:12px;font-weight:600;color:#8A6D1E;cursor:pointer" style-hover="background:#FBFAF6">{{ more }}</div>
+    </sc-if>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isBars }}" hint-placeholder-val="{{ false }}">
+  <div style="border:1px solid #E7E3D9;border-radius:13px;background:#FFFFFF;padding:13px 15px;min-width:0;flex:none">
+    <div style="font-size:13.5px;font-weight:600">{{ title }}</div>
+    <div style="font-size:11.5px;color:#8A8478;margin-top:3px">{{ sub }}</div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:11px">
+      <sc-for list="{{ barRows }}" as="b" hint-placeholder-count="5">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:baseline;gap:9px;min-width:0">
+            <span style="font-size:11.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ b.label }}</span>
+            <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5D594F;flex:none;white-space:nowrap">{{ b.val }}</span>
+            <sc-if value="{{ b.hours }}" hint-placeholder-val="{{ false }}">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;color:{{ b.color }};flex:none;white-space:nowrap">{{ b.hours }}</span>
+            </sc-if>
+            <sc-if value="{{ b.tail }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:10px;color:#8A8478;flex:none;white-space:nowrap">{{ b.tail }}</span>
+            </sc-if>
+          </div>
+          <div style="height:6px;border-radius:3px;background:#EFEBE1;margin-top:5px;overflow:hidden">
+            <div style="height:100%;width:{{ b.width }};background:{{ b.color }};transform-origin:left;animation:{{ b.anim }}"></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ foot }}" hint-placeholder-val="{{ false }}">
+      <div style="margin-top:11px;padding-top:10px;border-top:1px solid #EFEBE1;font-size:11.5px;line-height:1.55;color:#5D594F">{{ foot }}</div>
+    </sc-if>
+    <sc-if value="{{ more }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ openAll }}" style="margin-top:9px;font-size:12px;font-weight:600;color:#8A6D1E;cursor:pointer">{{ more }}</div>
+    </sc-if>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isProfiles }}" hint-placeholder-val="{{ false }}">
+  <div style="border:1px solid #E7E3D9;border-radius:13px;background:#FFFFFF;min-width:0;flex:none">
+    <div style="display:flex;align-items:flex-start;gap:12px;padding:{{ headPad }}">
+      <div style="min-width:0">
+        <div style="font-size:14.5px;font-weight:600">{{ title }}</div>
+        <div style="font-size:11.5px;color:#8A8478;margin-top:3px">{{ sub }}</div>
+      </div>
+      <sc-if value="{{ showDirTools }}" hint-placeholder-val="{{ true }}">
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex:none">
+        <div style="display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:9px;border:1px solid #E2DED3;background:#FBFAF6;font-size:11.5px;color:#9A958A;white-space:nowrap"><span style="font-size:10px">⌕</span>Find someone</div>
+        <div style="padding:7px 12px;border-radius:9px;background:#1D1D26;color:#FFFDF8;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">+ Add member</div>
+      </div>
+      </sc-if>
+    </div>
+    <div style="display:grid;grid-template-columns:{{ profileCols }};gap:10px;padding:0 14px 13px">
+      <sc-for list="{{ list }}" as="p" hint-placeholder-count="4">
+        <div style="border:1px solid #EFEBE1;border-radius:12px;background:#FBFAF6;padding:{{ cardPad }};min-width:0" style-hover="border-color:#CFC9BB;background:#FFFFFF">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0">
+            <div style="position:relative;flex:none">
+              <div style="width:34px;height:34px;border-radius:50%;background:{{ p.tint }};box-shadow:inset 0 0 0 2px {{ p.color }};color:{{ p.ink }};display:grid;place-items:center;font-size:11.5px;font-weight:700">{{ p.initials }}</div>
+              <span style="position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-radius:50%;background:{{ p.dot }};border:2px solid #FBFAF6"></span>
+            </div>
+            <div style="min-width:0">
+              <div style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</div>
+              <div style="font-size:11.5px;color:#6E6A61;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.role }}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:9px;min-width:0;overflow:hidden">
+            <sc-for list="{{ p.badges }}" as="b" hint-placeholder-count="3">
+              <span style="padding:2px 8px;border-radius:20px;background:{{ b.bg }};color:{{ b.color }};font-size:10px;font-weight:600;white-space:nowrap;flex:none">{{ b.label }}</span>
+            </sc-for>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;margin-top:9px;min-width:0">
+            <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-size:10px;color:#B2ADA2;flex:none">✉</span><span style="font-size:11px;color:#5D594F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.mail }}</span></div>
+            <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-size:10px;color:#B2ADA2;flex:none">◕</span><span style="font-size:11px;color:#5D594F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.tz }}</span></div>
+          </div>
+          <sc-if value="{{ showProfileCta }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;align-items:center;gap:9px;margin-top:10px">
+            <div style="padding:6px 11px;border-radius:8px;border:1px solid #E2DED3;background:#FFFFFF;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">{{ p.cta }}</div>
+            <sc-if value="{{ p.photoNote }}" hint-placeholder-val="{{ false }}">
+              <span style="margin-left:auto;font-size:10.5px;color:#9A958A;flex:none">{{ p.photoNote }}</span>
+            </sc-if>
+          </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ more }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ openAll }}" style="display:flex;align-items:center;gap:8px;padding:9px 15px;border-top:1px solid #EFEBE1;font-size:12px;font-weight:600;color:#8A6D1E;cursor:pointer">{{ more }}</div>
+    </sc-if>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isRoledef }}" hint-placeholder-val="{{ false }}">
+  <div style="border:1px solid #E7E3D9;border-radius:13px;background:#FFFFFF;min-width:0;flex:none">
+    <div style="display:flex;align-items:flex-start;gap:12px;padding:{{ headPad }};border-bottom:1px solid #F3F0E8">
+      <div style="min-width:0">
+        <div style="font-size:15px;font-weight:600">{{ title }}</div>
+        <div style="font-size:11.5px;color:#8A8478;margin-top:3px">{{ sub }}</div>
+      </div>
+      <sc-if value="{{ adminBadge }}" hint-placeholder-val="{{ false }}">
+        <span style="margin-left:auto;padding:3px 10px;border-radius:20px;background:#EDEAFB;color:#4A3FA0;font-size:10.5px;font-weight:600;flex:none;white-space:nowrap">{{ adminBadge }}</span>
+      </sc-if>
+    </div>
+    <div style="padding:13px 15px">
+      <div style="display:flex;align-items:center;gap:11px;min-width:0">
+        <div style="width:28px;height:28px;border-radius:50%;background:#F1EEE5;color:#5D594F;display:grid;place-items:center;font-size:11px;font-weight:700;flex:none">{{ roleGlyph }}</div>
+        <div style="min-width:0">
+          <div style="font-size:14px;font-weight:600">{{ title }}</div>
+          <div style="font-size:11px;color:#8A8478;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ seatLine }}</div>
+        </div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex:none">
+          <div style="padding:6px 11px;border-radius:8px;border:1px solid #E2DED3;background:#FFFFFF;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ editCta }}</div>
+          <sc-if value="{{ inviteCta }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:6px 11px;border-radius:8px;background:#1D1D26;color:#FFFDF8;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap">{{ inviteCta }}</div>
+          </sc-if>
+        </div>
+      </div>
+      <sc-if value="{{ showRoleBody }}" hint-placeholder-val="{{ true }}">
+        <div style="font-size:12.5px;line-height:1.55;color:#3E3A33;margin-top:11px">{{ body }}</div>
+      </sc-if>
+      <div style="font-size:9px;font-weight:600;letter-spacing:.13em;color:#8A8478;margin-top:13px">RESPONSIBILITIES</div>
+      <div style="display:flex;flex-direction:column;gap:5px;margin-top:7px">
+        <sc-for list="{{ responsibilities }}" as="r" hint-placeholder-count="5">
+          <div style="display:flex;align-items:flex-start;gap:8px;min-width:0">
+            <span style="color:#2F7A57;font-size:11px;flex:none">✓</span>
+            <span style="font-size:12px;color:#3E3A33;line-height:1.45">{{ r }}</span>
+          </div>
+        </sc-for>
+      </div>
+      <sc-if value="{{ showFullRole }}" hint-placeholder-val="{{ true }}">
+      <div style="font-size:9px;font-weight:600;letter-spacing:.13em;color:#8A8478;margin-top:13px">DEPARTMENTS THEY CAN DIRECT</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:7px">
+        <sc-for list="{{ depts }}" as="d" hint-placeholder-count="1">
+          <span style="padding:4px 11px;border-radius:20px;background:#F1EEE5;color:#4A463E;font-size:11px;font-weight:500">{{ d }}</span>
+        </sc-for>
+      </div>
+      <div style="font-size:9px;font-weight:600;letter-spacing:.13em;color:#8A8478;margin-top:13px">WHAT THE ROLE UNLOCKS</div>
+      <div style="border:1px solid #EFEBE1;border-radius:11px;margin-top:7px;overflow:hidden">
+        <sc-for list="{{ unlocks }}" as="u" hint-placeholder-count="4">
+          <div style="display:flex;align-items:center;gap:9px;padding:8px 12px;border-bottom:1px solid #F6F4EE;min-width:0">
+            <span style="color:#2F7A57;font-size:11px;flex:none">✓</span>
+            <span style="font-size:12px;color:#3E3A33;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ u.label }}</span>
+            <span style="margin-left:auto;font-size:11.5px;font-weight:600;color:#2F7A57;flex:none">{{ u.val }}</span>
+          </div>
+        </sc-for>
+      </div>
+      </sc-if>
+      <sc-if value="{{ more }}" hint-placeholder-val="{{ false }}">
+        <div onClick="{{ openAll }}" style="margin-top:11px;font-size:12px;font-weight:600;color:#8A6D1E;cursor:pointer">{{ more }}</div>
+      </sc-if>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isInvites }}" hint-placeholder-val="{{ false }}">
+  <div style="border:1px solid #E7E3D9;border-radius:13px;background:#FFFFFF;padding:13px 15px;min-width:0;flex:none">
+    <div style="display:flex;align-items:flex-start;gap:10px">
+      <div style="min-width:0">
+        <div style="font-size:14.5px;font-weight:600">{{ title }}</div>
+        <div style="font-size:11.5px;color:#8A8478;margin-top:3px">{{ sub }}</div>
+      </div>
+      <sc-if value="{{ bigCta }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-left:auto;padding:6px 11px;border-radius:9px;border:1px solid #E2DED3;background:#FFFFFF;font-size:11px;font-weight:600;cursor:pointer;flex:none;white-space:nowrap">+ New role</div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ statValue }}" hint-placeholder-val="{{ false }}">
+      <div style="border:1px solid #EFEBE1;border-radius:12px;background:#FBFAF6;padding:12px 13px;margin-top:11px">
+        <div style="font-size:9px;font-weight:600;letter-spacing:.13em;color:#8A8478">{{ statLabel }}</div>
+        <div style="font-size:22px;font-weight:700;letter-spacing:-0.02em;margin-top:4px">{{ statValue }}</div>
+        <div style="height:5px;border-radius:3px;background:#EFEBE1;margin-top:9px;overflow:hidden">
+          <div style="height:100%;width:{{ statWidth }};background:{{ statColor }}"></div>
+        </div>
+        <div style="font-size:11px;line-height:1.5;color:#5D594F;margin-top:9px">{{ statNote }}</div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ hasRoleList }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;margin-top:9px">
+        <sc-for list="{{ roleList }}" as="r" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #F3F0E8;min-width:0;cursor:pointer" style-hover="background:#FBFAF6">
+            <div style="width:24px;height:24px;border-radius:50%;background:{{ r.tint }};box-shadow:inset 0 0 0 2px {{ r.color }};color:{{ r.ink }};display:grid;place-items:center;font-size:10px;font-weight:700;flex:none">{{ r.initials }}</div>
+            <div style="min-width:0;flex:1 1 auto">
+              <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.role }}</div>
+              <div style="font-size:11px;color:#6E6A61;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.who }}</div>
+            </div>
+            <sc-if value="{{ r.admin }}" hint-placeholder-val="{{ false }}">
+              <span style="padding:2px 8px;border-radius:20px;background:#EDEAFB;color:#4A3FA0;font-size:10px;font-weight:600;flex:none">{{ r.admin }}</span>
+            </sc-if>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8A8478;flex:none">{{ r.seats }}</span>
+            <span style="color:#B2ADA2;font-size:11px;flex:none">›</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ openTitle }}" hint-placeholder-val="{{ false }}">
+      <div style="font-size:9px;font-weight:600;letter-spacing:.13em;color:#8A8478;margin-top:12px">{{ openTitle }}</div>
+    </sc-if>
+    <div style="display:flex;flex-direction:column;gap:7px;margin-top:9px">
+      <sc-for list="{{ list }}" as="i" hint-placeholder-count="3">
+        <div style="display:flex;align-items:center;gap:10px;border:1px solid #EFEBE1;border-radius:11px;padding:9px 11px;min-width:0">
+          <div style="width:26px;height:26px;border-radius:50%;background:{{ i.tint }};box-shadow:inset 0 0 0 2px {{ i.color }};color:{{ i.ink }};display:grid;place-items:center;font-size:10px;font-weight:700;flex:none">{{ i.initials }}</div>
+          <div style="min-width:0;flex:1 1 auto">
+            <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.name }}</div>
+            <div style="font-size:10.5px;color:#6E6A61;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.state }}</div>
+          </div>
+          <div style="padding:6px 11px;border-radius:8px;border:1px solid #E2DED3;background:#FFFFFF;font-size:11px;font-weight:600;cursor:pointer;flex:none">{{ i.cta }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <sc-if value="{{ bigCta }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;padding:10px;border-radius:10px;background:#1D1D26;color:#FFFDF8;font-size:12.5px;font-weight:600;cursor:pointer">{{ bigCta }}</div>
+    </sc-if>
+    <sc-if value="{{ foot }}" hint-placeholder-val="{{ false }}">
+      <div style="font-size:11px;line-height:1.5;color:#6E6A61;margin-top:11px;padding-top:10px;border-top:1px solid #EFEBE1">{{ foot }}</div>
+    </sc-if>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isCapacity }}" hint-placeholder-val="{{ false }}">
+  <div style="border:1px solid #E7E3D9;border-radius:13px;background:#FFFFFF;padding:13px 15px;min-width:0;flex:none">
+    <div style="font-size:14.5px;font-weight:600">{{ title }}</div>
+    <div style="font-size:11.5px;color:#8A8478;margin-top:3px">{{ sub }}</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px">
+      <sc-for list="{{ list }}" as="c" hint-placeholder-count="4">
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:9px;min-width:0">
+            <div style="width:24px;height:24px;border-radius:50%;background:{{ c.tint }};box-shadow:inset 0 0 0 2px {{ c.color }};color:{{ c.ink }};display:grid;place-items:center;font-size:9.5px;font-weight:700;flex:none">{{ c.initials }}</div>
+            <span style="font-size:12px;font-weight:600;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</span>
+            <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;color:{{ c.tone }};flex:none;white-space:nowrap">{{ c.val }}</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8A8478;flex:none;white-space:nowrap">/ {{ c.max }}</span>
+          </div>
+          <div style="height:4px;border-radius:3px;background:#EFEBE1;margin-top:6px;overflow:hidden">
+            <div style="height:100%;width:{{ c.width }};background:{{ c.tone }}"></div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isFeed }}" hint-placeholder-val="{{ false }}">
+  <div style="border:1px solid #E7E3D9;border-radius:13px;background:#FFFFFF;min-width:0;flex:none">
+    <div title="{{ sub }}" style="padding:{{ headPad }}">
+      <div style="font-size:14px;font-weight:600">{{ title }}</div>
+      <sc-if value="{{ showSub }}" hint-placeholder-val="{{ true }}">
+        <div style="font-size:11.5px;color:#8A8478;margin-top:3px">{{ sub }}</div>
+      </sc-if>
+    </div>
+    <sc-for list="{{ list }}" as="a" hint-placeholder-count="5">
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 15px;border-top:1px solid #F3F0E8;min-width:0;animation:tmIn .18s ease both">
+        <span style="width:7px;height:7px;border-radius:50%;background:#7B6BE0;margin-top:5px;flex:none"></span>
+        <div style="min-width:0;flex:1 1 auto">
+          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;min-width:0">
+            <span style="padding:2px 8px;border-radius:20px;background:{{ a.badgeBg }};color:{{ a.badgeColor }};font-size:10.5px;font-weight:600;white-space:nowrap">{{ a.who }}</span>
+            <sc-if value="{{ a.tenant }}" hint-placeholder-val="{{ false }}">
+              <span style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:#6E6A61;white-space:nowrap"><span style="width:6px;height:6px;border-radius:2px;background:{{ a.color }}"></span>{{ a.tenant }}</span>
+            </sc-if>
+            <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#8A8478;flex:none;white-space:nowrap">{{ a.when }}</span>
+          </div>
+          <div style="font-size:12.5px;font-weight:600;margin-top:4px;line-height:1.35">{{ a.what }}</div>
+          <div style="font-size:11.5px;color:#5D594F;margin-top:3px;line-height:1.45">{{ a.note }}</div>
+        </div>
+      </div>
+    </sc-for>
+    <sc-if value="{{ more }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ openAll }}" style="display:flex;align-items:center;gap:8px;padding:9px 15px;border-top:1px solid #EFEBE1;font-size:12px;font-weight:600;color:#8A6D1E;cursor:pointer" style-hover="background:#FBFAF6">{{ more }}</div>
+    </sc-if>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isRead }}" hint-placeholder-val="{{ false }}">
+  <div style="border:1px solid #DFDAF7;border-radius:13px;background:#F9F8FE;padding:13px 15px;min-width:0;flex:none">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="color:#4A3FA0;font-size:12px">✦</span>
+      <div style="font-size:12.5px;font-weight:600;color:#3A3184">{{ title }}</div>
+    </div>
+    <div style="font-size:12.5px;line-height:1.6;color:#3E3A33;margin-top:8px">{{ body }}</div>
+    <div onClick="{{ askFn }}" style="display:inline-flex;align-items:center;gap:7px;margin-top:10px;padding:7px 13px;border-radius:9px;border:1px solid #D5CFF2;background:#FFFFFF;font-size:11.5px;font-weight:600;color:#3A3184;cursor:pointer" style-hover="background:#F4F2FE">Explore in Ask Paige →</div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ isNote }}" hint-placeholder-val="{{ false }}">
+  <div style="border:1px solid #E7E3D9;border-radius:13px;background:#FFFFFF;padding:13px 15px;min-width:0;flex:none">
+    <div style="font-size:13px;font-weight:600">{{ title }}</div>
+    <div style="font-size:12px;line-height:1.55;color:#5D594F;margin-top:7px">{{ body }}</div>
+    <sc-if value="{{ cta }}" hint-placeholder-val="{{ false }}">
+      <div style="display:inline-flex;align-items:center;gap:7px;margin-top:10px;padding:8px 14px;border-radius:9px;background:{{ ctaBg }};color:{{ ctaColor }};border:1px solid {{ ctaEdge }};font-size:12px;font-weight:600;cursor:pointer">{{ cta }}</div>
+    </sc-if>
+  </div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:640,&quot;height&quot;:220},&quot;block&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;TeamBlock&quot;},&quot;gold&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;linear-gradient(180deg,#DCC079,#C8A02E)&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;ask&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;() =&gt; void&quot;}}">
+const FLEX = { CLIENT: "1.6", ROLE: "1.2", OWNER: "1.1", "HRS/MO": ".7", "EFF. RATE": ".8", "SHE HANDLES": "1.5", LOAD: "1", SEATS: ".8", AUTONOMY: ".9", "SEALED RECORDS": "1.1", EXPORT: ".7", INVITE: ".7" };
+
+function AV(hex) {
+  const h = (hex || "#7C6CE0").replace("#", "");
+  const parse = s => [0, 2, 4].map(i => parseInt(s.slice(i, i + 2), 16));
+  const hexOf = a => "#" + a.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+  const lum = a => { const c = a.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a, b) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+  const INK = [36, 28, 5], WHITE = [255, 255, 255];
+  let plate = parse(h);
+  const useInk = ratio(plate, INK) >= ratio(plate, WHITE);
+  const ink = useInk ? INK : WHITE;
+  const toward = useInk ? WHITE : [10, 8, 14];
+  for (let i = 0; i < 14 && ratio(plate, ink) < 4.6; i++) plate = plate.map((v, k) => v + (toward[k] - v) * 0.12);
+  return { plate: hexOf(plate), ink: hexOf(ink) };
+}
+
+class Component extends DCLogic {
+  state = { mounted: false };
+  componentDidMount() { requestAnimationFrame(() => this.setState({ mounted: true })); }
+
+  renderVals() {
+    const b = this.props.block || {};
+    const t = b.type;
+    const reduced = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const anim = reduced ? "none" : "tmFill .5s cubic-bezier(.22,.8,.3,1) both";
+    const gold = this.props.gold || "linear-gradient(180deg,#DCC079,#C8A02E)";
+    const isGoldCta = !!b.cta && (/^✓/.test(b.cta) || /^\+/.test(b.cta) || /^Propose/.test(b.cta) || /^Send/.test(b.cta) || /^Draft/.test(b.cta) || /^Raise/.test(b.cta));
+
+    return {
+      isStats: t === "stats", isRows: t === "rows", isTable: t === "table",
+      isProfiles: t === "profiles", isRoledef: t === "roledef", isInvites: t === "invites", isCapacity: t === "capacity",
+      foot: b.foot,
+      profileCols: "repeat(2,minmax(0,1fr))",
+      cardPad: b.tight ? "10px 12px" : "12px 13px",
+      adminBadge: b.adminBadge, seatLine: b.seatLine, editCta: b.editCta, inviteCta: b.inviteCta,
+      roleGlyph: (b.title || "?")[0],
+      showFullRole: !b.slim,
+      showRoleBody: !b.tight,
+      showDirTools: !b.tight,
+      showProfileCta: !b.tight,
+      footShown: b.foot && !b.tight,
+      responsibilities: b.tight ? (b.responsibilities || []).slice(0, 1) : b.slim ? (b.responsibilities || []).slice(0, 2) : (b.responsibilities || []),
+      depts: b.depts || [],
+      unlocks: b.unlocks || [],
+      statLabel: b.statLabel, statValue: b.statValue, statNote: b.statNote,
+      statWidth: (b.pct == null ? 0 : b.pct) + "%",
+      statColor: (b.pct || 0) >= 60 ? "#2F7A57" : (b.pct || 0) >= 30 ? "#B5822A" : "#9F3A2A",
+      hasRoleList: !!(b.roleList && b.roleList.length),
+      roleList: (b.roleList || []).map(r => ({ ...r, tint: AV(r.color).plate, ink: AV(r.color).ink })),
+      openTitle: b.openTitle, bigCta: b.bigCta,
+      statCols: "repeat(4,minmax(0,1fr))",
+      statPad: b.compact ? "7px 10px" : "11px 13px",
+      statSize: b.compact ? "15.5px" : "19px",
+      headPad: b.compact ? "10px 14px 8px" : "13px 15px 10px",
+      rowPad: b.compact ? "7px 14px" : "9px 15px",
+      showSub: !b.compact,
+      showStatNote: !b.compact,
+      wide: !b.compact, narrow: !!b.compact,
+      recordList: (b.rows || []).map(r => {
+        const head = (b.head || []);
+        const cells = r.cells || [];
+        return {
+          head: cells[0],
+          pill: r.pill,
+          pillBg: r.tone ? r.tone + "1A" : "#F1EEE5",
+          pillColor: r.tone || "#5D594F",
+          pairs: cells.slice(1, cells.length - (r.pill ? 1 : 0)).map((c, i) => ({ label: head[i + 1], value: c }))
+        };
+      }),
+      isBars: t === "bars", isFeed: t === "feed", isRead: t === "read", isNote: t === "note",
+      title: b.title, sub: b.sub, body: b.body, cta: b.cta,
+      more: b.more, openAll: b.openAll || (() => {}),
+      askFn: this.props.ask || (() => {}),
+      ctaBg: isGoldCta ? gold : "#FFFFFF",
+      ctaColor: isGoldCta ? "#241C05" : "#5D594F",
+      ctaEdge: isGoldCta ? "transparent" : "#E2DED3",
+      items: (b.items || []).map(i => ({ label: i.label, value: i.value, note: i.note, hover: i.label + " · " + i.value + " · " + i.note, color: i.tone || "#1B1B1F" })),
+      list: t === "rows"
+        ? (b.list || []).map(r => ({ ...r, tint: AV(r.color).plate, ink: AV(r.color).ink, width: (r.pct == null ? 0 : r.pct) + "%", anim }))
+        : t === "profiles"
+          ? (b.list || []).map(p => ({
+              ...p, tint: AV(p.color).plate, ink: AV(p.color).ink,
+              photoNote: p.photo ? null : "No photo",
+              badges: (p.badges || []).map(x => ({
+                label: x.label,
+                bg: x.kind === "role" ? "#EDEAFB" : x.kind === "live" ? "#E6F1EA" : x.kind === "invited" ? "#FBF3DC" : "#F1EEE5",
+                color: x.kind === "role" ? "#4A3FA0" : x.kind === "live" ? "#2A6B4C" : x.kind === "invited" ? "#6E5514" : "#5D594F"
+              }))
+            }))
+          : t === "capacity"
+            ? (b.list || []).map(c => ({ ...c, tint: AV(c.color).plate, ink: AV(c.color).ink, width: (c.pct == null ? 0 : c.pct) + "%" }))
+            : t === "invites"
+              ? (b.list || []).map(i => ({ ...i, tint: AV(i.color).plate, ink: AV(i.color).ink }))
+              : (b.list || []),
+      head: (b.head || []).map(h => ({ label: h, flex: FLEX[h] || "1" })),
+      rowsList: (b.rows || []).map(r => ({
+        cells: (r.cells || []).map((c, i) => {
+          const key = (b.head || [])[i];
+          const last = i === (r.cells || []).length - 1;
+          return {
+            text: c, flex: FLEX[key] || "1",
+            weight: i === 0 ? "600" : last && r.tone ? "600" : "500",
+            color: last && r.tone ? r.tone : i === 0 ? "#1B1B1F" : "#5D594F"
+          };
+        })
+      })),
+      barRows: (b.rows || []).map(r => ({ label: r.label, val: r.val, tail: r.tail, color: r.color, width: r.pct + "%", anim }))
+    };
+  }
+}
+</script>
+</body>
+</html>

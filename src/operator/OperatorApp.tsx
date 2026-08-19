@@ -25,6 +25,7 @@ import { PaigeMark } from "@/components/brand/PaigeMark";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useIsPlatformOwner } from "@/operator/data/useIsPlatformOwner";
 import { useOperatorChrome } from "@/operator/data/useOperatorChrome";
+import { performSignOut } from "@/lib/auth/signOut";
 import { cn } from "@/lib/utils";
 
 /**
@@ -646,17 +647,16 @@ export default function OperatorApp() {
             >
               <span aria-hidden>{isDark ? "☀" : "☾"}</span>
             </button>
-            {/* The operator's own initials, from runtime auth metadata — never the repo (§45).
-                Presentational: the account menu behind it is not built, so it does not pretend
-                to be a button. */}
-            {initials && (
-              <span
-                title="Signed in as the platform operator"
-                className="grid h-8 w-8 flex-none place-items-center rounded-full border-2 border-cd-gold bg-rail text-[11.5px] font-semibold text-rail-foreground"
-              >
-                {initials}
-              </span>
-            )}
+            {/* The operator's own identity, from runtime auth metadata — never the repo (§45). */}
+            <AccountMenu
+              initials={initials}
+              fullName={chrome.fullName}
+              email={chrome.email}
+              roleLabel={chrome.roleLabel}
+              isOwner={isPlatformOwner}
+              isDark={isDark}
+              onToggleTheme={toggleTheme}
+            />
           </div>
         </header>
 
@@ -813,6 +813,123 @@ function OperatorSurface({
     );
 
   return <SurfacePlaceholder title={title} path={path} isOwner={isOwner} />;
+}
+
+/**
+ * CD's account menu (pack L260-311), ported to the letter with real data behind every row.
+ *
+ * Three of the pack's rows are DROPPED rather than faked: the "acting as" banner (there is no
+ * act-as concept at operator scope — that is an Agency capability, not this tier's), the
+ * SESSION/device line (no real device-fingerprint read exists), and the trailing seat COUNT
+ * on "Platform seats" (no roster hook exists yet — the row still works as real navigation, it
+ * just doesn't claim a number it hasn't read). Everything else — identity, role, theme, the two
+ * real links, sign out — is exactly what the pack draws, fed from `useOperatorChrome` and the
+ * real auth session rather than invented (§13/§28).
+ */
+function AccountMenu({
+  initials, fullName, email, roleLabel, isOwner, isDark, onToggleTheme,
+}: {
+  initials: string | null;
+  fullName: string | null | undefined;
+  email: string | null | undefined;
+  roleLabel: string | null;
+  isOwner: boolean;
+  isDark: boolean;
+  onToggleTheme: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  if (!initials) return null;
+
+  return (
+    <div className="relative flex-none">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Account"
+        className="grid h-8 w-8 flex-none place-items-center rounded-full border-2 border-cd-gold bg-rail text-[11.5px] font-semibold text-rail-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {initials}
+      </button>
+      {open && (
+        <>
+          {/* CD's full-viewport scrim, closing the menu on any outside click. */}
+          <div className="fixed inset-0 z-[69]" onClick={() => setOpen(false)} />
+          <div
+            role="menu"
+            className="absolute right-0 top-[42px] z-[70] flex w-[300px] flex-col overflow-hidden rounded-[13px] border border-border bg-card shadow-[0_24px_54px_hsl(var(--shadow-ink)/0.18)]"
+          >
+            <div className="flex flex-none items-center gap-[11px] border-b border-border/70 bg-muted/40 px-[15px] py-3.5">
+              <div className="grid h-[38px] w-[38px] flex-none place-items-center rounded-full bg-rail text-[13px] font-bold text-rail-foreground">
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-[13.5px] font-semibold text-foreground">
+                  {fullName ?? "—"}
+                </div>
+                <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
+                  {email ?? "—"}
+                </div>
+                <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
+                  <span className="flex-none rounded-full bg-[hsl(var(--primary)/0.12)] px-2.5 py-[2.5px] text-[10px] font-semibold text-[hsl(var(--primary))]">
+                    {roleLabel ?? "—"}
+                  </span>
+                  <span className="min-w-0 truncate text-[10.5px] text-muted-foreground">
+                    {isOwner ? "Platform · full" : "Platform · scoped"}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-1.5 py-[7px]">
+              <NavLink
+                to={leafPath("operator", "", "settings", "governance", "audit-log")}
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 rounded-lg px-[9px] py-[7px] text-[12px] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span aria-hidden className="flex-none text-[11px] text-[hsl(var(--success))]">✓</span>
+                <span>Audit log</span>
+                <span aria-hidden className="ml-auto flex-none text-[11px] text-muted-foreground">›</span>
+              </NavLink>
+              <button
+                type="button"
+                onClick={onToggleTheme}
+                className="flex w-full items-center gap-2.5 rounded-lg px-[9px] py-[7px] text-left text-[12px] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span aria-hidden className="flex-none text-[11px] text-muted-foreground">{isDark ? "☀" : "☾"}</span>
+                <span>Appearance</span>
+                <span className="ml-auto flex-none text-[11px] text-muted-foreground">{isDark ? "Dark" : "Light"}</span>
+              </button>
+              <NavLink
+                to={leafPath("operator", "", "settings", "team", "seats")}
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-2.5 rounded-lg px-[9px] py-[7px] text-[12px] text-foreground hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span aria-hidden className="flex-none text-[11px] text-muted-foreground">⛉</span>
+                <span>Platform seats</span>
+              </NavLink>
+            </div>
+            <button
+              type="button"
+              disabled={signingOut}
+              onClick={() => {
+                setSigningOut(true);
+                void performSignOut({ redirectTo: "/operator/login" });
+              }}
+              className="flex flex-none items-center gap-2.5 border-t border-border/70 bg-muted/40 px-[15px] py-[11px] text-left hover:bg-[hsl(var(--destructive)/0.08)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            >
+              <span aria-hidden className="flex-none text-[11px] text-[hsl(var(--destructive))]">⏻</span>
+              <span className="text-[12.5px] font-semibold text-[hsl(var(--destructive))]">
+                {signingOut ? "Signing out…" : "Sign out"}
+              </span>
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 /**
