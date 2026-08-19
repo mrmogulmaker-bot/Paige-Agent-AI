@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { PaigeReasoningStrip, StepTimeline, upsertStep, type PaigeStep } from "@/components/dashboard/PaigeStepTrace";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -125,6 +125,24 @@ export interface PaigeAIChatProps {
   presentation?: "app" | "operator";
   /** The line under the operator composer. Absent → no line (never invented). */
   composerFootNote?: string;
+  /**
+   * CONTROLLED thread selection. Omit (the default) and this component owns the
+   * selection exactly as it always has — every existing mount is unchanged.
+   *
+   * Pass it and the caller owns it, which is what lets the SAME conversation be
+   * open through two doors at once. The operator console mounts Paige twice — the
+   * Paige branch and the top-bar slide-out — and CD's own panel foot states the
+   * contract: "Same brain as the Paige tab — one thread, two doors." Without this
+   * seam the second mount keeps its own `activeThreadId`, so its first send calls
+   * `ensureThread` and forks a brand-new thread row (§18 one home — a fork is two
+   * homes for one conversation).
+   *
+   * `null` means "no thread yet"; `undefined` means "not controlled" — the two are
+   * deliberately different, so a controlled caller can express an empty selection.
+   */
+  activeThreadId?: string | null;
+  /** Fires whenever the selection moves (resume, pick, new chat, lazy create). */
+  onActiveThreadIdChange?: (id: string | null) => void;
 }
 
 /** Everything a caller-supplied history rail needs, and nothing it could corrupt. */
@@ -158,6 +176,8 @@ const PaigeAIChatInner = ({
   conversationHeader,
   presentation = "app",
   composerFootNote,
+  activeThreadId: controlledThreadId,
+  onActiveThreadIdChange,
 }: PaigeAIChatProps) => {
   /** Claude Design's operator chrome. Presentation only — never a second engine. */
   const cd = presentation === "operator";
@@ -220,7 +240,22 @@ const PaigeAIChatInner = ({
   const scopedUserId = useScopedUserId();
   const { activeTenantId } = useTenantContext();
   const threadsApi = usePaigeThreads({ callerUserId: scopedUserId, tenantId: activeTenantId, platform });
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  // Controlled/uncontrolled selection. `controlledThreadId === undefined` ⇒ this
+  // component owns it, which is every pre-existing mount (behavior unchanged).
+  const isThreadControlled = controlledThreadId !== undefined;
+  const [localThreadId, setLocalThreadId] = useState<string | null>(null);
+  const activeThreadId = isThreadControlled ? controlledThreadId : localThreadId;
+  // Which thread the CURRENT `messages` were hydrated from. Distinct from
+  // `activeThreadId`: a controlled parent can move the selection out from under us,
+  // and this is how the sync effect below notices it has to re-hydrate.
+  const hydratedFromRef = useRef<string | null>(null);
+  const setActiveThreadId = useCallback(
+    (id: string | null) => {
+      if (!isThreadControlled) setLocalThreadId(id);
+      onActiveThreadIdChange?.(id);
+    },
+    [isThreadControlled, onActiveThreadIdChange],
+  );
   const [streamingThreadId, setStreamingThreadId] = useState<string | null>(null);
   const [mobileRailOpen, setMobileRailOpen] = useState(false);
   const [historyHydrated, setHistoryHydrated] = useState(false);
@@ -279,11 +314,16 @@ const PaigeAIChatInner = ({
       });
 
   const selectThread = async (id: string) => {
-    if (id === activeThreadId || isLoading) return; // don't clobber a streaming reply
+    // Guard on what is actually HYDRATED, not on the selection. In controlled mode the
+    // parent has already moved `activeThreadId` to this id before we load it, so an
+    // `id === activeThreadId` guard would early-return and the transcript would never
+    // arrive. `isLoading` still protects a streaming reply from being clobbered.
+    if (id === hydratedFromRef.current || isLoading) return;
     try {
       const turns = await threadsApi.loadTurns(id);
       const hydrated = turnsToMessages(turns);
       setMessages(hydrated.length ? hydrated : [mkMsg({ role: "assistant", content: openingGreeting })]);
+      hydratedFromRef.current = id;
       setActiveThreadId(id);
       setSteps([]);
     } catch (e) {
@@ -294,6 +334,7 @@ const PaigeAIChatInner = ({
 
   const startNewChat = () => {
     if (isLoading) return; // let the current reply finish before switching context
+    hydratedFromRef.current = null;
     setActiveThreadId(null);
     setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
     setSteps([]);
@@ -306,11 +347,36 @@ const PaigeAIChatInner = ({
   // that empty pre-resolution render would strand the owner on a blank chat.
   useEffect(() => {
     if (!enableHistory || historyHydrated || !threadsApi.isFetched) return;
+    // A controlled parent that already knows the thread wins over "resume the newest":
+    // the other door has a selection, and guessing threads[0] here would fight it.
+    if (isThreadControlled && controlledThreadId) {
+      setHistoryHydrated(true);
+      return;
+    }
     const latest = threadsApi.threads[0];
     if (latest) void selectThread(latest.id);
     setHistoryHydrated(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads]);
+  }, [enableHistory, historyHydrated, threadsApi.isFetched, threadsApi.threads, isThreadControlled, controlledThreadId]);
+
+  // CONTROLLED SYNC — the other half of "one thread, two doors". When the parent moves
+  // the selection (the other door opened a thread, or created one on its first send),
+  // adopt it: load that thread's turns so both doors show the SAME transcript. Keyed on
+  // `hydratedFromRef`, not on `activeThreadId`, because our own writes already set both
+  // — without that guard this would re-load in a loop. Never interrupts a live reply.
+  useEffect(() => {
+    if (!enableHistory || !isThreadControlled || isLoading) return;
+    if (controlledThreadId === hydratedFromRef.current) return;
+    if (controlledThreadId) {
+      void selectThread(controlledThreadId);
+    } else {
+      // Parent cleared the selection (New chat in the other door) — reset to a fresh one.
+      hydratedFromRef.current = null;
+      setMessages([mkMsg({ role: "assistant", content: openingGreeting })]);
+      setSteps([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enableHistory, isThreadControlled, controlledThreadId, isLoading]);
 
   // One turn runner, reused by send + regenerate. `base` ends at the user turn to
   // answer; `rollback` is the list restored if the turn fails; `userText` seeds the
@@ -347,6 +413,9 @@ const PaigeAIChatInner = ({
         try {
           if (!threadId) {
             threadId = await threadsApi.ensureThread(userText);
+            // The transcript on screen IS this new thread's — mark it hydrated so the
+            // controlled-sync effect below doesn't immediately re-load and wipe it.
+            hydratedFromRef.current = threadId;
             setActiveThreadId(threadId);
           }
           setStreamingThreadId(threadId);

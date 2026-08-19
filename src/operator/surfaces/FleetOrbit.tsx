@@ -65,7 +65,11 @@ function resolveToken(cssVar: string): string {
 }
 
 function withAlpha(hslColor: string, alpha: number): string {
-  return hslColor.replace(/^hsl\(/, "hsla(").replace(/\)$/, `, ${alpha})`);
+  // `resolveToken` emits modern space-separated `hsl(H S% L%)`. Appending a comma-separated alpha
+  // (`hsla(H S% L%, A)`) mixes legacy and modern CSS Color 4 syntax, which browsers reject as an
+  // invalid color — the exact `addColorStop` throw a live screenshot caught (§32). The slash form
+  // (`hsl(H S% L% / A)`) is the one syntax valid for both comma-free and space-free color functions.
+  return hslColor.replace(/\)$/, ` / ${alpha})`);
 }
 
 export function FleetOrbit({

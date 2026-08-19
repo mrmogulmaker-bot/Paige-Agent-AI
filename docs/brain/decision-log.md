@@ -8,6 +8,36 @@ Sources this pass: GitHub MCP `list_pull_requests` (repo `mrmogulmaker-bot/paige
 
 ## Recent PRs (#375 → #543)
 
+- **OWNER DIRECTIVE — every capability wires back to BOTH brains (2026-08-19)** — verbatim: *"For each
+  one of these functions, we always wire back to the second brain… We need to make sure that we always
+  wire everything back to Paige Agent AI's primary brain. That way, she can always call on any one of
+  the departments or any particular URL that our platform has on a per-tier basis. For the God-level
+  tier, she should be able to call on every aspect of the platform that's feeding the brain."* ·
+  *"That way, as we grow, Paige becomes more aware of the entire platform."* · *"Basically, there would
+  be very few functions that Paige Agent AI's brain is not aware of."* Landed as
+  `docs/brain/paige-brain-wiring-standard.md` — the two brains distinguished, a 5-point checklist per
+  capability, the four real layers of her runtime brain, and a running coverage ledger. **Systems Check
+  is the first tracked gap** (verified: absent from `paige-mcp`, `paige-ai-chat` AND the §52 operator
+  briefing — she cannot answer "is the platform healthy?"); the tool spec is written but deliberately
+  NOT built inside the Systems Check UI fire (§55).
+- **OWNER DIRECTIVE — capture the tier-port pattern for reuse (2026-08-19)** — verbatim: *"We also will
+  need to recall this exact same info of how well we perfect this for all of the other tenant tiers…
+  Agency is not going to operate like a solo or a sub-account, nor like the enterprise, but they're
+  gonna be extremely close in scope."* Landed as `docs/brain/cd-pack-port-playbook.md`.
+- **OWNER RULINGS A/B/C — Systems Check sub-tab + operator chrome (2026-08-19).**
+  **(A) Slide-out Paige chat:** kill the floating orb; ✦ button top-right; panel slides from the RIGHT
+  **over** content (never pushes/shrinks); persistent thread that does **not** fork; applies to ALL
+  operator surfaces. Pack-confirmed: the ✦ sits BETWEEN the status pill and the moon (CD 263), the
+  panel is `min(430px,100%)` (CD 2285), and CD's own footer states the contract — *"Same brain as the
+  Paige tab — one thread, two doors."*
+  **(B) "Run full sweep" = Option 3, BOTH halves** from one button — operator scope AND all-tenant
+  sweeps. Implemented as a direct edge invoke (operator, returns a real summary) + a new
+  `enqueue_fleet_systems_check()` RPC (fleet, fire-and-forget → the UI says "started", never "swept").
+  **(C) Keep CD's 13 categories structurally; reconcile the numbers, §13 wins over pack copy.**
+  Resolved with live data, and neither offered fix was right: 10 checks DO run — `pass 4 + fail 1 = 5`,
+  so **five SKIP every hour**, including `operator_cross_tenant_canary` (**blocking**, never run — an
+  unassessed §9 cross-tenant blind spot). KPI now reads "4 of 10" + "5 could not run".
+
 - **OWNER RULING — Stage 2 revised order: Fleet Console → Paige → Trust Compass; Money Spine deferred
   (2026-08-19)** — verbatim: *"All of that money spine stuff, I don't care about none of that right
   now. We don't have any paying tenants. I don't care about the money spine right now. What I care

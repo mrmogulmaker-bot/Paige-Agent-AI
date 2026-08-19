@@ -174,6 +174,70 @@ async function buildPlatformStateBlock(admin: AdminClient): Promise<string> {
     lines.push("- Real ARR: not available right now (subscription read failed).");
   }
 
+  // Platform health — the latest OPERATOR-scope Systems Check sweep (tenant_id IS NULL).
+  // Owner directive 2026-08-19: every capability wires back to Paige's brain, so she opens the
+  // session already knowing whether the machine is running — not needing to be asked to look.
+  //
+  // §13 — SKIPS ARE NAMED, NEVER ABSORBED. The operator scan runs 10 checks but only ~5 are
+  // assessable; the rest skip for real reasons (a canary that has never run, two drift checks a
+  // Deno function structurally cannot perform, and two with no traffic yet). Reporting "4 passing"
+  // and dropping the skips would be the same flattering arithmetic the Systems Check UI was just
+  // fixed to stop — so the skipped count ships in the same sentence, and a BLOCKING skip is called
+  // out as unassessed rather than quietly folded in with the rest.
+  try {
+    const { data: runRows, error: runErr } = await admin
+      .from("paige_systems_check_run")
+      .select("id, started_at")
+      .is("tenant_id", null)
+      .order("started_at", { ascending: false })
+      .limit(1);
+    if (runErr) throw runErr;
+    const latest = (Array.isArray(runRows) ? runRows : [])[0] as { id: string; started_at: string } | undefined;
+
+    if (!latest) {
+      lines.push("- Platform health: no operator Systems Check sweep has been recorded yet.");
+    } else {
+      const { data: fRows, error: fErr } = await admin
+        .from("paige_systems_check_finding")
+        .select("check_id, status, severity_at_finding, resolved_at")
+        .eq("run_id", latest.id);
+      if (fErr) throw fErr;
+      const rows = (Array.isArray(fRows) ? fRows : []) as Array<{
+        check_id: string; status: string; severity_at_finding: string | null; resolved_at: string | null;
+      }>;
+
+      const pass = rows.filter((r) => r.status === "pass").length;
+      const skipped = rows.filter((r) => r.status === "skip");
+      const openFails = rows.filter((r) => r.status === "fail" && !r.resolved_at);
+      const blockingFails = openFails.filter((r) => (r.severity_at_finding ?? "low") === "blocking");
+      const blockingSkips = skipped.filter((r) => (r.severity_at_finding ?? "low") === "blocking");
+
+      const mins = Math.max(0, Math.round((Date.now() - new Date(latest.started_at).getTime()) / 60000));
+      const ago = mins < 60 ? `${mins}m ago` : `${Math.round(mins / 60)}h ago`;
+
+      const parts = [`${fmtInt(pass)} of ${fmtInt(rows.length)} checks passed`];
+      if (openFails.length > 0) {
+        parts.push(
+          `${fmtInt(openFails.length)} failing (${openFails.map((r) => r.check_id).join(", ")})`,
+        );
+      }
+      if (skipped.length > 0) parts.push(`${fmtInt(skipped.length)} could not run`);
+      lines.push(`- Platform health: last operator sweep ${ago} — ${parts.join("; ")}.`);
+
+      if (blockingSkips.length > 0) {
+        lines.push(
+          `  UNASSESSED (blocking checks that could not run — treat as unknown, never as healthy): ${blockingSkips.map((r) => r.check_id).join(", ")}.`,
+        );
+      }
+      if (blockingFails.length > 0) {
+        lines.push(`  BLOCKING failure(s) open right now: ${blockingFails.map((r) => r.check_id).join(", ")}.`);
+      }
+    }
+  } catch (e) {
+    console.warn("[owner-context] systems-check read failed:", (e as Error)?.message);
+    lines.push("- Platform health: not available right now (systems-check read failed).");
+  }
+
   return lines.join("\n");
 }
 

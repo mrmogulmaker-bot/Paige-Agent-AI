@@ -397,6 +397,89 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   no real reason; owner reversed it). Real classes today: Solo + Sub-account + Agency + Super-Admin operator.
   Rule: verify customer existence FIRST; defer only on real-customer risk.
 
+- **A shared component's LOCAL state forks the moment a second mount exists (2026-08-19).**
+  *Symptom:* the operator console mounts Paige twice (Paige branch + ✦ slide-out) and CD's own footer
+  promises *"Same brain as the Paige tab — one thread, two doors."* *Root cause:* `PaigeAIChat` held
+  `activeThreadId` in local state, so the second mount's first send called `ensureThread` and inserted
+  a **new thread row**. It LOOKED fine because navigating unmounts the tab and it re-resumes the newest
+  thread. *Rule:* before mounting a stateful shared component twice, make the shared selection a
+  CONTROLLED prop held above both mounts (`undefined` = uncontrolled and byte-identical for legacy
+  callers; `null` = no selection — the two must stay distinct). **And move the "already showing this"
+  early-return off the selection onto what is actually HYDRATED** — in controlled mode the parent has
+  already moved the selection before the load, so an `id === activeThreadId` guard bails and the
+  content never arrives. This recurs the instant any other tier gets a second Paige door.
+
+- **Correct code that renders NOTHING, silently (2026-08-19).** *Symptom:* the Fleet Console 3D field
+  drew zero nodes in production while `tsc` and `vite` were green; three sessions guessed at it.
+  *Root cause (the real one, after a zero-height red herring):* `withAlpha()` turned modern
+  space-separated `hsl(H S% L%)` into `hsla(H S% L%, A)` — mixing legacy and modern CSS colour syntax.
+  Browsers reject it, so **every** `addColorStop`/`fillStyle` threw or no-oped. Correct form is the
+  slash syntax `hsl(H S% L% / A)`. *Why it stayed hidden:* the error boundary rendered `null` with no
+  `console.error`. *Rule:* §32 — a green build proves types, never render. Crash-prone runtime logic
+  (canvas/WebGL/parsers/samplers) gets LOUD failure (`console.error` **and** a visible message) plus
+  event-driven sizing (`ResizeObserver`), never `getBoundingClientRect()` re-measured in a paint loop.
+  Making the failure visible turned a multi-session guess into a one-line fix.
+
+- **Two disagreeing numbers usually hide a real defect — don't "fix the copy" (2026-08-19).**
+  *Symptom:* Systems Check said *"10 checks"* in one place and *5* in another; both offered remedies
+  (wire 5 more / change the wording) were wrong. *Root cause:* ten checks DO run — `pass 4 + fail 1 = 5`,
+  so **five SKIP every hour**, including `operator_cross_tenant_canary`, a **blocking** check that has
+  never run (an unassessed §9 cross-tenant blind spot). A 4/5 ratio silently drops the skips and
+  flatters the surface. *Rule:* when two numbers disagree, **query the rows and find out why** before
+  changing either. Render `4 of 10` + *"5 could not run"*, and name each skip and its reason.
+
+- **Don't declare a capability missing off one narrow grep (2026-08-19).** *Symptom:* a first pass
+  grepped two edge functions for one keyword and reported Paige's brain as barely built. The owner
+  pushed back — *"can we do a search on her brain if you're not seeing it? We spent a little time
+  developing some form of a brain for her."* *Root cause:* the brain is FOUR layers under different
+  names (`owner-context.ts` §52 context · memory fabric + `paige_prompt_memory` · `paige-context-router`
+  for per-contact scope · `paige-mcp` tool registry), and none of them contain the searched keyword.
+  *Rule:* search by ARCHITECTURE (migrations, `_shared/`, edge-fn names) before concluding something
+  is unbuilt — and see `paige-brain-wiring-standard.md` §2, which now names all four layers so the next
+  session doesn't repeat the search. The narrow finding *was* right (Systems Check is unwired); the
+  characterisation of the surrounding system was not.
+
+- **The "Supabase Preview" check fails on a PRE-EXISTING bootstrap collision — NOT on your migration
+  (2026-08-19).** *Symptom:* any PR touching `supabase/**` gets a red **Supabase Preview** check:
+  `ERROR: relation "profiles" already exists (SQLSTATE 42P07) At statement: 7 — CREATE TABLE
+  public.profiles`. It reads like the PR's migration broke something. *Root cause:* the preview branch
+  replays the ENTIRE migration history from scratch, and **two of the oldest migrations both create
+  `public.profiles` unguarded** — `20250908112334_remote_bootstrap.sql:27` (`uuid_generate_v4()`, no UNIQUE) and
+  `20251009234919_3d7566f7-…sql:11` (`gen_random_uuid()`, `user_id` UNIQUE) — neither uses
+  `IF NOT EXISTS`. The replay builds the table from the first and dies on the second, roughly 200
+  migrations BEFORE anything a current PR adds. `At statement: 7` is the ZERO-INDEXED statement
+  *within that migration file* (seven `CREATE TYPE`s precede it), not the 7th statement of the run —
+  do not read it as "it failed almost immediately". Prod is unaffected because it applied these incrementally against its own `schema_migrations` ledger and
+  never replays. *Rule:* when this check goes red, **read the failing statement before assuming it is
+  yours.** If the SQL quoted is not in your diff, it is this. Verify with
+  `grep -rln -- "-- Create profiles table" supabase/migrations/`. The decisive proof on #554: pushing a
+  **markdown-only** commit reproduced the identical failure — a commit that touches no SQL at all cannot
+  break a migration. It is invisible on PRs with no `supabase/**` change (the integration skips them),
+  which is why it can look new.
+  **Standing risk (owner decision owed):** every future migration-carrying PR will show this red, which
+  trains everyone to ignore a check — the classic route to missing a real one. The fix is either
+  guarding those two bootstrap `CREATE TABLE`s or turning the preview integration off; editing historical
+  migrations is not a thing to do casually mid-fire.
+
+- **A CONFLICTED PR silently suppresses every `pull_request` workflow — that is NOT "Actions is broken"
+  (2026-08-19).** *Symptom:* PR #554 showed only Vercel + Supabase checks. No `ci`, no `lint`, no
+  `verify`, no `prove`. A stale plan note said "GitHub Actions has not run on this repo since
+  2026-08-18 21:10 UTC", and that got repeated to the owner **twice** as "an account-level Actions/
+  billing setting only you can fix." *Root cause:* GitHub runs `pull_request`-event workflows against
+  `refs/pull/<N>/merge`, which **does not exist while the PR has merge conflicts**. #554 was created
+  already conflicted (main had moved at 21:03 via the squash-merge of #553), so every commit pushed
+  to it produced zero Actions runs. The instant the conflict was resolved, all four jobs fired within
+  seconds. Actions had in fact been running all day — `ci.yml` alone had 8 successful runs that
+  afternoon (18:12, 18:29, 18:44, 18:56, 19:20, 19:23, 19:33, 21:03). *Rule:* **"no workflow runs on
+  this PR" is a symptom with two very different causes — check the PR's mergeability BEFORE concluding
+  anything about Actions health.** Verify with `list_workflow_runs` on the repo (does ANY branch have
+  recent runs?) rather than inferring repo-wide state from one PR's check list. And never escalate an
+  infrastructure claim to the owner off a plan-file note without re-verifying it — a stale "honest
+  limit" repeated confidently is indistinguishable from a fresh finding, and it burns the owner's time
+  on a non-problem. Related trap: `deploy-migrations.yml` only triggers on pushes to `main` that touch
+  `supabase/migrations/**`, so an idle run history for it is normal and is NOT evidence of a broken
+  pipeline either.
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same

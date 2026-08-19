@@ -146,6 +146,11 @@ const MASTER_ONLY_TOOLS = new Set<string>([
   "create_tenant",
   "suspend_tenant",
   "get_platform_metrics",
+  // Operator-scope platform health (tenant_id IS NULL rows). God-locked at the tier gate
+  // rather than relying on its platform.read scope alone — the same reasoning as the forge
+  // tools below: the handler reads operator-global rows with the service-role client and has
+  // no in-handler tenant guard, so the TIER gate is what must deny a tenant caller.
+  "get_systems_check_status",
   "broadcast_system_announcement",
   // Sub-agent forge = platform infra: approving a proposal can execute arbitrary
   // sub-agent code. These carry a platform.* SCOPE but were NOT god-locked at the
@@ -3840,6 +3845,67 @@ mcp.tool("update_tenant_features", {
   },
 });
 
+mcp.tool("get_systems_check_status", {
+  description:
+    "Master-admin only. Returns the latest OPERATOR-scope Systems Check sweep: how many checks passed, which are failing, and — critically — which COULD NOT RUN and why. Use this to answer \"is the platform healthy?\". A skipped check is NOT a passing check: a blocking check that has never run means that risk is UNASSESSED, and must be reported as unknown rather than folded into a healthy-looking ratio.",
+  inputSchema: z.object({}).optional() as any,
+  handler: async () => {
+    // Operator scope is the tenant_id IS NULL rows. This tool is god-locked
+    // (MASTER_ONLY_TOOLS) — a tenant caller never reaches it, and it never reads a
+    // tenant's own sweep. Tenant-scope Systems Check is its own future tool (§9/§51).
+    const { data: runRows, error: runErr } = await admin
+      .from("paige_systems_check_run")
+      .select("id, started_at, completed_at, check_count, pass_count, fail_count")
+      .is("tenant_id", null)
+      .order("started_at", { ascending: false })
+      .limit(1);
+    if (runErr) return err(runErr.message);
+
+    const run = (runRows ?? [])[0] as
+      | { id: string; started_at: string; completed_at: string | null; check_count: number | null; pass_count: number | null; fail_count: number | null }
+      | undefined;
+    // §13: a stated absence, never an invented "all clear".
+    if (!run) return ok({ swept: false, note: "No operator Systems Check sweep has been recorded yet." });
+
+    const { data: fRows, error: fErr } = await admin
+      .from("paige_systems_check_finding")
+      .select("check_id, status, severity_at_finding, resolved_at, paige_interpretation, evidence")
+      .eq("run_id", run.id);
+    if (fErr) return err(fErr.message);
+
+    type Row = {
+      check_id: string; status: string; severity_at_finding: string | null; resolved_at: string | null;
+      paige_interpretation: string | null; evidence: Record<string, unknown> | null;
+    };
+    const rows = (fRows ?? []) as Row[];
+    const shape = (r: Row) => ({
+      check: r.check_id,
+      severity: r.severity_at_finding,
+      why: r.paige_interpretation,
+      evidence: r.evidence,
+    });
+
+    const failing = rows.filter((r) => r.status === "fail" && !r.resolved_at);
+    const skipped = rows.filter((r) => r.status === "skip");
+
+    return ok({
+      swept: true,
+      swept_at: run.started_at,
+      completed: !!run.completed_at,
+      total_checks: rows.length,
+      passing: rows.filter((r) => r.status === "pass").length,
+      failing: failing.map(shape),
+      // Reported as its own axis so a consumer cannot mistake "not failing" for "passing".
+      could_not_run: skipped.map(shape),
+      unassessed_blocking: skipped
+        .filter((r) => (r.severity_at_finding ?? "low") === "blocking")
+        .map((r) => r.check_id),
+      note:
+        "A check in could_not_run is neither passing nor failing. Anything listed in unassessed_blocking is a blocking risk with NO current signal — report it as unknown, not as healthy.",
+    });
+  },
+});
+
 mcp.tool("get_platform_metrics", {
   description:
     "Master-admin only. Returns rolled-up platform health: tenant counts by status AND by revenue_class (paid/promotional/internal_test — the operator-internal #29 axis), total users, total contacts, BTF active clients, workflow runs in the last 7d, and pending approvals.",
@@ -4975,7 +5041,7 @@ const TOOL_SCOPE: Record<string, Scope> = {
   create_tenant: "platform.write",
   suspend_tenant: "platform.write",
   update_tenant_features: "platform.write",
-  get_platform_metrics: "platform.read",
+  get_platform_metrics: "platform.read", get_systems_check_status: "platform.read",
   broadcast_system_announcement: "platform.write",
   // Batch #5 — Tenant Admin + Comms (operator-tier inside own tenant)
   update_tenant_branding: "admin.write",
