@@ -27,7 +27,29 @@ describe("operator panel specs", () => {
    * So the bar is now CONTENT: no tab may fall back to the stand-in, and the KPI/block totals
    * are pinned. A port that quietly thins out fails here instead of in front of the owner.
    */
-  it("renders CD's real panel content — no tab falls back to the stand-in", () => {
+  /**
+   * The regression that got the first attempt rejected: every tab resolved a spec, every spec
+   * typechecked, every test passed — and all 78 rendered ONE empty "not connected" card,
+   * because the registry only ever emitted the stand-in. Counting KEYS proved the tree was
+   * addressed and proved nothing about what an operator sees. So the bar is CONTENT.
+   *
+   * (An earlier version of this test read `blocks[0].kind`, which does not exist — `kind` is on
+   * `body` — so it silently passed everything. The measurement was itself a false green. Hence
+   * the explicit `body.kind` below.)
+   */
+  const BESPOKE = new Set([
+    // These six never reach the panel registry: `OperatorSurface` dispatches each to its own
+    // CD component first, so their spec is unreachable. Listed by name so the exemption is a
+    // decision on the record rather than a hole a future stand-in could slip through.
+    "paige/chat", // WorkspaceSurface, hosting the live operator chat
+    "paige/knowledge", // KnowledgeSurface
+    "trust-compass/autonomy", // TrustCompass
+    "calendar/month", // CalendarMonth
+    "support/inbox", // SupportThread
+    "settings/integrations/connected", // IntegrationsGrid
+  ]);
+
+  it("renders CD's real panel content — no panel-rendered tab falls back to the stand-in", () => {
     const standIns: string[] = [];
     let kpis = 0;
     let blocks = 0;
@@ -38,7 +60,8 @@ describe("operator panel specs", () => {
         standIns.push(`${key} (no spec)`);
         continue;
       }
-      if (spec.blocks.length === 1 && spec.blocks[0].kind === "notWired") standIns.push(key);
+      const isStandIn = spec.blocks.length === 1 && spec.blocks[0].body.kind === "notWired";
+      if (isStandIn && !BESPOKE.has(key)) standIns.push(key);
       kpis += spec.kpis?.length ?? 0;
       blocks += spec.blocks.length;
     }
