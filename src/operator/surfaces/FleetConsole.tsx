@@ -296,38 +296,83 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
 
         {/* ── field view: the orbit ─────────────────────────────────── */}
         {view === "field" && (
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[13px] border-[1.5px] border-border bg-card shadow-sm">
-            <div className="flex-none px-4 pt-3.5">
-              <div className="text-[9px] font-semibold tracking-[0.15em] text-muted-foreground">
-                EVERY TENANT ON THE PLATFORM
-              </div>
-              <div className="mt-1 text-[15px] font-bold">The fleet, by weight</div>
-              <div className="mt-0.5 text-[11px] text-muted-foreground">
-                {loading ? "—" : rows.length} tenants · node size is team + clients · ringed nodes
-                need you
+          <div className="flex min-h-0 flex-1 flex-col">
+            {/* CD's field container is dark regardless of page theme — a canvas host, not a
+                themed panel — so it renders on the platform's own `--rail` token (the exact
+                dark indigo the pack hardcodes as #191231), never a raw hex. */}
+            <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-[15px] bg-[hsl(var(--rail))] shadow-[0_18px_40px_rgba(10,14,26,0.3)]">
+              {loading ? (
+                <div className="flex flex-1 items-center justify-center">
+                  <div className="h-40 w-40 animate-pulse rounded-full bg-white/10" />
+                </div>
+              ) : error ? (
+                <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
+                  <div>
+                    <div className="text-[13px] font-semibold text-[hsl(var(--rail-foreground))]">
+                      The fleet could not be read.
+                    </div>
+                    <div className="mx-auto mt-1 max-w-md text-[11.5px] text-[hsl(var(--rail-muted))]">
+                      {error}
+                    </div>
+                  </div>
+                </div>
+              ) : rows.length === 0 ? (
+                <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
+                  <div className="text-[13px] font-semibold text-[hsl(var(--rail-muted))]">
+                    {tenants.length === 0 ? "No tenants yet." : "Nothing matches that."}
+                  </div>
+                </div>
+              ) : (
+                <FleetOrbit
+                  nodes={orbitNodes}
+                  onSelect={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)}
+                />
+              )}
+              {/* CD's top scrim overlay: eyebrow/title/meta on the left, tier legend on the right. */}
+              <div
+                className="pointer-events-none absolute inset-x-0 top-0 flex items-start gap-3 px-4 pb-6 pt-3.5"
+                style={{
+                  background:
+                    "linear-gradient(180deg, hsl(var(--rail)/0.94) 0%, hsl(var(--rail)/0.94) 74%, hsl(var(--rail)/0.6) 88%, hsl(var(--rail)/0) 100%)",
+                }}
+              >
+                <div className="min-w-0">
+                  <div className="text-[9px] font-semibold tracking-[0.16em] text-[hsl(var(--rail-foreground))]/70">
+                    EVERY TENANT ON THE PLATFORM
+                  </div>
+                  <div className="mt-1 text-[15px] font-semibold text-[hsl(var(--rail-foreground))]">
+                    The fleet, by weight
+                  </div>
+                  <div className="mt-1 font-mono text-[10.5px] text-[hsl(var(--rail-foreground))]/70">
+                    {loading ? "—" : rows.length} tenants · node size is team + clients · ringed
+                    nodes need you
+                  </div>
+                </div>
+                <div className="ml-auto flex flex-none flex-col items-end gap-1">
+                  {(
+                    [
+                      ["Agency", "hsl(var(--primary))"],
+                      ["Solo", "hsl(var(--success))"],
+                      ["Enterprise", "hsl(var(--gold-dark))"],
+                      ["Sub-account", "hsl(var(--rail-muted))"],
+                      ["Needs you", "hsl(var(--warning))"],
+                    ] as const
+                  ).map(([label, color]) => (
+                    <div key={label} className="flex items-center gap-1.5">
+                      <span className="whitespace-nowrap text-[10px] text-[hsl(var(--rail-foreground))]/60">
+                        {label}
+                      </span>
+                      <span
+                        aria-hidden
+                        className="h-2 w-2 flex-none rounded-full"
+                        style={{ backgroundColor: color }}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-            {loading ? (
-              <div className="flex flex-1 items-center justify-center">
-                <div className="h-40 w-40 animate-pulse rounded-full bg-muted" />
-              </div>
-            ) : error ? (
-              <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
-                <div>
-                  <div className="text-[13px] font-semibold">The fleet could not be read.</div>
-                  <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">{error}</div>
-                </div>
-              </div>
-            ) : rows.length === 0 ? (
-              <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
-                <div className="text-[13px] font-semibold text-muted-foreground">
-                  {tenants.length === 0 ? "No tenants yet." : "Nothing matches that."}
-                </div>
-              </div>
-            ) : (
-              <FleetOrbit nodes={orbitNodes} onSelect={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)} />
-            )}
-            <div className="flex-none px-4 pb-3 text-center text-[10px] text-muted-foreground">
+            <div className="flex-none pb-1 pt-2 text-center text-[10px] text-muted-foreground">
               Drag to orbit · hover a node to name it · click to open the tenant
             </div>
           </div>
