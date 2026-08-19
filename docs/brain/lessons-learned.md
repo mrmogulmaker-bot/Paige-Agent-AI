@@ -461,6 +461,25 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   guarding those two bootstrap `CREATE TABLE`s or turning the preview integration off; editing historical
   migrations is not a thing to do casually mid-fire.
 
+- **A CONFLICTED PR silently suppresses every `pull_request` workflow — that is NOT "Actions is broken"
+  (2026-08-19).** *Symptom:* PR #554 showed only Vercel + Supabase checks. No `ci`, no `lint`, no
+  `verify`, no `prove`. A stale plan note said "GitHub Actions has not run on this repo since
+  2026-08-18 21:10 UTC", and that got repeated to the owner **twice** as "an account-level Actions/
+  billing setting only you can fix." *Root cause:* GitHub runs `pull_request`-event workflows against
+  `refs/pull/<N>/merge`, which **does not exist while the PR has merge conflicts**. #554 was created
+  already conflicted (main had moved at 21:03 via the squash-merge of #553), so every commit pushed
+  to it produced zero Actions runs. The instant the conflict was resolved, all four jobs fired within
+  seconds. Actions had in fact been running all day — `ci.yml` alone had 8 successful runs that
+  afternoon (18:12, 18:29, 18:44, 18:56, 19:20, 19:23, 19:33, 21:03). *Rule:* **"no workflow runs on
+  this PR" is a symptom with two very different causes — check the PR's mergeability BEFORE concluding
+  anything about Actions health.** Verify with `list_workflow_runs` on the repo (does ANY branch have
+  recent runs?) rather than inferring repo-wide state from one PR's check list. And never escalate an
+  infrastructure claim to the owner off a plan-file note without re-verifying it — a stale "honest
+  limit" repeated confidently is indistinguishable from a fresh finding, and it burns the owner's time
+  on a non-problem. Related trap: `deploy-migrations.yml` only triggers on pushes to `main` that touch
+  `supabase/migrations/**`, so an idle run history for it is normal and is NOT evidence of a broken
+  pipeline either.
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same
