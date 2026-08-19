@@ -82,6 +82,10 @@ export type OperatorChromeBadgeTone = "warn" | "risk" | "info";
 export type OperatorChrome = {
   /** Operator's first name from RUNTIME auth metadata. null = unknown, undefined = resolving. */
   firstName: string | null | undefined;
+  /** Operator's full name from RUNTIME auth metadata (same read as `firstName`). */
+  fullName: string | null | undefined;
+  /** Operator's sign-in email from the auth session. null = absent; undefined = resolving. */
+  email: string | null | undefined;
   /** Per-branch rail badge, keyed by branch SLUG. Only include a key you can substantiate. */
   badges: Record<string, { count: number; tone: OperatorChromeBadgeTone }>;
   /** Fleet totals for the rail footer. null when unread. */
@@ -117,6 +121,8 @@ function exactCount(res: { error: unknown; count: number | null }): number | nul
  */
 export function useOperatorChrome(enabled: boolean = true): OperatorChrome {
   const [firstName, setFirstName] = useState<string | null | undefined>(undefined);
+  const [fullName, setFullName] = useState<string | null | undefined>(undefined);
+  const [email, setEmail] = useState<string | null | undefined>(undefined);
   const [badges, setBadges] = useState<OperatorChrome["badges"]>(EMPTY_BADGES);
   const [tenantCount, setTenantCount] = useState<number | null>(null);
   const [subAccountCount, setSubAccountCount] = useState<number | null>(null);
@@ -143,6 +149,8 @@ export function useOperatorChrome(enabled: boolean = true): OperatorChrome {
         const rawName = auth?.user?.user_metadata?.full_name;
         const full = typeof rawName === "string" ? rawName.trim() : "";
         setFirstName(full.split(/\s+/)[0] || null);
+        setFullName(full || null);
+        setEmail(typeof auth?.user?.email === "string" ? auth.user.email : null);
 
         const [tenantsRes, subsRes, classRes, internalRes, internalSubsRes, snapRes, rolesRes] =
           await Promise.all([
@@ -315,6 +323,8 @@ export function useOperatorChrome(enabled: boolean = true): OperatorChrome {
 
   return {
     firstName,
+    fullName,
+    email,
     badges,
     tenantCount,
     subAccountCount,
