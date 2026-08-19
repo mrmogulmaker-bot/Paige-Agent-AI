@@ -109,8 +109,11 @@ export interface PaigeAIChatProps {
    */
   renderRail?: (api: ChatRailApi) => React.ReactNode;
   /** Rendered inside the conversation frame, above the thread — the caller's own
-   *  chat header. Distinct from `focusBanner`, which is the focused-customer strip. */
-  conversationHeader?: React.ReactNode;
+   *  chat header. Distinct from `focusBanner`, which is the focused-customer strip.
+   *  A function form receives the SAME `ChatRailApi` as `renderRail` — so a header
+   *  that draws its own "new thread" affordance (CD's pack does) calls the real
+   *  `onNewChat` instead of needing a second wiring path for one button (§18). */
+  conversationHeader?: React.ReactNode | ((api: ChatRailApi) => React.ReactNode);
   /**
    * Which chrome the conversation wears. `app` (default) is byte-for-byte today's
    * surface for every existing mount. `operator` is Claude Design's platform desk:
@@ -660,6 +663,27 @@ const PaigeAIChatInner = ({
     />
   );
 
+  // Built once and reused by BOTH the rail and the header — so a caller's header
+  // that draws its own "new thread" button (CD's pack does) and a caller's rail
+  // are always looking at the identical live state, never two copies that could
+  // drift (§18: one object, two render sites).
+  const railApi: ChatRailApi = {
+    threads: threadsApi.threads,
+    isLoading: threadsApi.isLoading,
+    activeThreadId,
+    streamingThreadId,
+    onSelect: (id) => void selectThread(id),
+    onNewChat: startNewChat,
+    onRename: threadsApi.renameThread,
+    onArchive: threadsApi.archiveThread,
+    onDelete: (id) => {
+      if (id === activeThreadId) startNewChat();
+      void threadsApi.deleteThread(id);
+    },
+    mobileOpen: mobileRailOpen,
+    onMobileOpenChange: setMobileRailOpen,
+  };
+
   return (
     <div className={fill ? "w-full h-full" : `max-w-4xl mx-auto w-full ${hideHeader ? "h-full" : "h-[calc(100vh-4rem)]"}`}>
       <div className={enableHistory ? (cd ? "flex h-full min-h-0 gap-3.5" : "flex h-full min-h-0 gap-4 px-3 pt-3 md:px-4") : "flex flex-col h-full"}>
@@ -668,35 +692,20 @@ const PaigeAIChatInner = ({
             so rename/archive/delete/select/new-chat all keep working (§58). */}
         {enableHistory &&
           (renderRail
-            ? renderRail({
-                threads: threadsApi.threads,
-                isLoading: threadsApi.isLoading,
-                activeThreadId,
-                streamingThreadId,
-                onSelect: (id) => void selectThread(id),
-                onNewChat: startNewChat,
-                onRename: threadsApi.renameThread,
-                onArchive: threadsApi.archiveThread,
-                onDelete: (id) => {
-                  if (id === activeThreadId) startNewChat();
-                  void threadsApi.deleteThread(id);
-                },
-                mobileOpen: mobileRailOpen,
-                onMobileOpenChange: setMobileRailOpen,
-              })
+            ? renderRail(railApi)
             : (
               <ThreadRail
-                threads={threadsApi.threads}
-                isLoading={threadsApi.isLoading}
-                activeThreadId={activeThreadId}
-                streamingThreadId={streamingThreadId}
-                onSelect={(id) => void selectThread(id)}
-                onNewChat={startNewChat}
-                onRename={threadsApi.renameThread}
-                onArchive={threadsApi.archiveThread}
-                onDelete={(id) => { if (id === activeThreadId) startNewChat(); void threadsApi.deleteThread(id); }}
-                mobileOpen={mobileRailOpen}
-                onMobileOpenChange={setMobileRailOpen}
+                threads={railApi.threads}
+                isLoading={railApi.isLoading}
+                activeThreadId={railApi.activeThreadId}
+                streamingThreadId={railApi.streamingThreadId}
+                onSelect={railApi.onSelect}
+                onNewChat={railApi.onNewChat}
+                onRename={railApi.onRename}
+                onArchive={railApi.onArchive}
+                onDelete={railApi.onDelete}
+                mobileOpen={railApi.mobileOpen}
+                onMobileOpenChange={railApi.onMobileOpenChange}
               />
             ))}
         <div
@@ -747,7 +756,7 @@ const PaigeAIChatInner = ({
               </div>
             </div>
           )}
-          {conversationHeader}
+          {typeof conversationHeader === "function" ? conversationHeader(railApi) : conversationHeader}
           {focusBanner}
           <div
             ref={scrollRef}
