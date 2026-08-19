@@ -397,6 +397,48 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   no real reason; owner reversed it). Real classes today: Solo + Sub-account + Agency + Super-Admin operator.
   Rule: verify customer existence FIRST; defer only on real-customer risk.
 
+- **A shared component's LOCAL state forks the moment a second mount exists (2026-08-19).**
+  *Symptom:* the operator console mounts Paige twice (Paige branch + ✦ slide-out) and CD's own footer
+  promises *"Same brain as the Paige tab — one thread, two doors."* *Root cause:* `PaigeAIChat` held
+  `activeThreadId` in local state, so the second mount's first send called `ensureThread` and inserted
+  a **new thread row**. It LOOKED fine because navigating unmounts the tab and it re-resumes the newest
+  thread. *Rule:* before mounting a stateful shared component twice, make the shared selection a
+  CONTROLLED prop held above both mounts (`undefined` = uncontrolled and byte-identical for legacy
+  callers; `null` = no selection — the two must stay distinct). **And move the "already showing this"
+  early-return off the selection onto what is actually HYDRATED** — in controlled mode the parent has
+  already moved the selection before the load, so an `id === activeThreadId` guard bails and the
+  content never arrives. This recurs the instant any other tier gets a second Paige door.
+
+- **Correct code that renders NOTHING, silently (2026-08-19).** *Symptom:* the Fleet Console 3D field
+  drew zero nodes in production while `tsc` and `vite` were green; three sessions guessed at it.
+  *Root cause (the real one, after a zero-height red herring):* `withAlpha()` turned modern
+  space-separated `hsl(H S% L%)` into `hsla(H S% L%, A)` — mixing legacy and modern CSS colour syntax.
+  Browsers reject it, so **every** `addColorStop`/`fillStyle` threw or no-oped. Correct form is the
+  slash syntax `hsl(H S% L% / A)`. *Why it stayed hidden:* the error boundary rendered `null` with no
+  `console.error`. *Rule:* §32 — a green build proves types, never render. Crash-prone runtime logic
+  (canvas/WebGL/parsers/samplers) gets LOUD failure (`console.error` **and** a visible message) plus
+  event-driven sizing (`ResizeObserver`), never `getBoundingClientRect()` re-measured in a paint loop.
+  Making the failure visible turned a multi-session guess into a one-line fix.
+
+- **Two disagreeing numbers usually hide a real defect — don't "fix the copy" (2026-08-19).**
+  *Symptom:* Systems Check said *"10 checks"* in one place and *5* in another; both offered remedies
+  (wire 5 more / change the wording) were wrong. *Root cause:* ten checks DO run — `pass 4 + fail 1 = 5`,
+  so **five SKIP every hour**, including `operator_cross_tenant_canary`, a **blocking** check that has
+  never run (an unassessed §9 cross-tenant blind spot). A 4/5 ratio silently drops the skips and
+  flatters the surface. *Rule:* when two numbers disagree, **query the rows and find out why** before
+  changing either. Render `4 of 10` + *"5 could not run"*, and name each skip and its reason.
+
+- **Don't declare a capability missing off one narrow grep (2026-08-19).** *Symptom:* a first pass
+  grepped two edge functions for one keyword and reported Paige's brain as barely built. The owner
+  pushed back — *"can we do a search on her brain if you're not seeing it? We spent a little time
+  developing some form of a brain for her."* *Root cause:* the brain is FOUR layers under different
+  names (`owner-context.ts` §52 context · memory fabric + `paige_prompt_memory` · `paige-context-router`
+  for per-contact scope · `paige-mcp` tool registry), and none of them contain the searched keyword.
+  *Rule:* search by ARCHITECTURE (migrations, `_shared/`, edge-fn names) before concluding something
+  is unbuilt — and see `paige-brain-wiring-standard.md` §2, which now names all four layers so the next
+  session doesn't repeat the search. The narrow finding *was* right (Systems Check is unwired); the
+  characterisation of the surrounding system was not.
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same
