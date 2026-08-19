@@ -15,8 +15,9 @@ import OperatorPanel from "@/operator/surfaces/OperatorPanel";
 import { bespokeSlots } from "@/operator/surfaces/bespokeSlots";
 import { getPanelSpec } from "@/operator/surfaces/panelSpecs";
 import { tabGlyph } from "@/operator/surfaces/tabGlyphs";
-import WorkspaceSurface from "@/operator/surfaces/WorkspaceSurface";
-import { PaigePlatformDesk } from "@/components/paige/PaigePlatformDesk";
+import { PaigeAIChat } from "@/components/dashboard/PaigeAIChat";
+import { OperatorChatRail } from "@/operator/surfaces/OperatorChatRail";
+import { PLATFORM_SCOPE_PROSE, PLATFORM_CHIPS, buildPlatformGreeting } from "@/components/paige/platformChatConfig";
 import { PipelineHead, PipelineBoard, StageBoard } from "@/operator/surfaces/PipelineSurfaces";
 import { SocialGrid, SocialQueue } from "@/operator/surfaces/SocialSurfaces";
 import BufferDiagram from "@/operator/surfaces/BufferDiagram";
@@ -722,6 +723,7 @@ export default function OperatorApp() {
             title={`${branch.label}${(isSettings ? leaf : sub) ? ` · ${(isSettings ? leaf : sub)!.label}` : ""}`}
             path={canonical}
             isOwner={isPlatformOwner}
+            firstName={chrome.firstName}
           />
         </main>
       </div>
@@ -738,10 +740,13 @@ export default function OperatorApp() {
  * make the others wait.
  */
 function OperatorSurface({
-  branchSlug, subSlug, leafSlug, title, path, isOwner,
+  branchSlug, subSlug, leafSlug, title, path, isOwner, firstName,
 }: {
   branchSlug: string; subSlug: string | null; leafSlug: string | null;
   title: string; path: string; isOwner: boolean;
+  /** Operator's first name from runtime auth (§45), passed down from the shell's
+   *  own chrome hook — never a second `getUser()` call (§18). undefined = resolving. */
+  firstName: string | null | undefined;
 }) {
   const isFleet = branchSlug === "fleet" && subSlug === "tenants";
   const isCompass = branchSlug === "trust-compass" && subSlug === "autonomy";
@@ -772,29 +777,72 @@ function OperatorSurface({
         error={knowledge.error}
       />
     );
-  if (isWorkspace)
+  if (isWorkspace) {
+    // §30 — the old defect: CD's rail + header were drawn as static chrome AROUND a
+    // second full mount (`PaigePlatformDesk`) that carried its OWN header and its OWN
+    // empty rail, so the screen showed two "New chat" buttons and two chat lists. The
+    // fix is one mount: `PaigeAIChat` IS the workspace surface here — CD's rail and
+    // header are its `renderRail`/`conversationHeader` seams, driven by the SAME live
+    // thread state the conversation itself uses, never a second copy (§18/§21).
+    //
+    // `firstName` is already resolved once by the shell's own chrome hook and passed
+    // down — holding here until it settles (rather than a second `getUser()` call)
+    // means the opening bubble is personalized on first paint, not a generic-then-swap
+    // flash.
+    if (firstName === undefined) {
+      return (
+        <div className="flex h-full items-center justify-center">
+          <PaigeMark className="h-10 w-10 animate-pulse opacity-70 motion-reduce:animate-none" />
+        </div>
+      );
+    }
     return (
-      /* CD's workspace chrome around the REAL operator chat.
-       *
-       * The platform already ships this conversation — `PaigePlatformDesk` mounts the live
-       * `PaigeAIChat` at platform scope with voice dictation, spoken playback, artifact cards
-       * and real thread history. CD's pack draws a thread and a composer of its own, but those
-       * are a PICTURE of a chat; shipping them here would have replaced a working capability
-       * with an illustration of it (§58) — which is exactly what the first pass did.
-       *
-       * So the rail, the header and the chrome are CD's, and the pane hosts the thing that
-       * actually works. The rail's own lists stay empty until the thread/project reads are
-       * wired to the same store the chat uses — an honest gap, not an invented one (§13).
-       */
-      <WorkspaceSurface
-        projects={[]}
-        recent={[]}
-        earlier={[]}
-        thread={[]}
-        scope={isOwner ? "Platform · full" : "Platform · scoped"}
-        chatSlot={<PaigePlatformDesk />}
+      <PaigeAIChat
+        hideHeader
+        fill
+        enableHistory
+        platform
+        presentation="operator"
+        greeting={buildPlatformGreeting(firstName)}
+        clientId={null}
+        clientContext={PLATFORM_SCOPE_PROSE}
+        chips={PLATFORM_CHIPS}
+        renderRail={(api) => <OperatorChatRail api={api} />}
+        conversationHeader={(api) => (
+          <div className="flex min-w-0 flex-none items-center gap-2.5 border-b border-border bg-muted/40 px-3.5 py-2.5">
+            <span
+              aria-hidden
+              className="grid h-[26px] w-[26px] flex-none place-items-center rounded-full bg-[hsl(var(--primary))] text-[11px] text-[hsl(var(--primary-foreground))]"
+            >
+              ✦
+            </span>
+            <div className="min-w-0">
+              <span className="truncate text-[13px] font-semibold">Paige</span>
+            </div>
+            <div className="ml-auto flex flex-none items-center gap-1.5">
+              {/* No live per-message model readback exists yet — honest absence, not a
+                  guessed model name (§13). Real once the router record is surfaced. */}
+              <span className="whitespace-nowrap rounded-full bg-muted px-[9px] py-[3px] text-[10px] font-semibold text-muted-foreground">
+                —
+              </span>
+              <span className="whitespace-nowrap rounded-full bg-[hsl(var(--primary)/0.12)] px-2.5 py-[3px] text-[10.5px] font-semibold text-[hsl(var(--primary))]">
+                {isOwner ? "Platform · full" : "Platform · scoped"}
+              </span>
+              <button
+                type="button"
+                onClick={api.onNewChat}
+                aria-label="New thread"
+                className="grid h-[26px] w-[26px] flex-none place-items-center rounded-lg border border-border bg-card text-[12px] text-muted-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <span aria-hidden>＋</span>
+              </button>
+            </div>
+          </div>
+        )}
+        composerFootNote="She acts inside the lanes you set. Anything red waits for you."
       />
     );
+  }
 
   /**
    * Every other addressable tab is one of CD's generic panels — the same layout driven by its

@@ -52,7 +52,7 @@ describe("operator panel specs", () => {
    * future stand-in could slip through.
    */
   const BESPOKE = new Set([
-    "paige/chat", // WorkspaceSurface, hosting the live operator chat
+    "paige/chat", // PaigeAIChat (presentation="operator"), CD's rail/header around the live chat
     "paige/knowledge", // KnowledgeSurface
     "trust-compass/autonomy", // TrustCompass
     "calendar/month", // slot → CalendarMonth
