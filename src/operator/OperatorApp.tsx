@@ -9,6 +9,7 @@ import { EmptyState, PageSkeleton } from "@/components/ui/page";
 import FleetConsole from "@/operator/surfaces/FleetConsole";
 import SystemsCheckSurface from "@/operator/surfaces/SystemsCheckSurface";
 import FleetHistorySurface from "@/operator/surfaces/FleetHistorySurface";
+import FleetTeamPulseSurface from "@/operator/surfaces/FleetTeamPulseSurface";
 import TrustCompass from "@/operator/surfaces/TrustCompass";
 import KnowledgeSurface from "@/operator/surfaces/KnowledgeSurface";
 import { useCompass } from "@/operator/data/useCompass";
@@ -753,6 +754,7 @@ function OperatorSurface({
   const isFleet = branchSlug === "fleet" && subSlug === "tenants";
   const isSystemsCheck = branchSlug === "fleet" && subSlug === "systems-check";
   const isHistory = branchSlug === "fleet" && subSlug === "history";
+  const isTeamPulse = branchSlug === "fleet" && subSlug === "team-pulse";
   const isCompass = branchSlug === "trust-compass" && subSlug === "autonomy";
   const isKnow = branchSlug === "paige" && subSlug === "knowledge";
   const isWorkspace = branchSlug === "paige" && subSlug === "chat";
@@ -765,6 +767,7 @@ function OperatorSurface({
   if (isFleet) return <FleetConsole canSeeRevenue={isOwner} />;
   if (isSystemsCheck) return <SystemsCheckSurface />;
   if (isHistory) return <FleetHistorySurface />;
+  if (isTeamPulse) return <FleetTeamPulseSurface />;
   if (isCompass)
     return (
       /* Read-only until the lane WRITE path lands: no `onCommit`, and the surface says so
