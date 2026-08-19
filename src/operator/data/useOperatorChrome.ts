@@ -13,19 +13,30 @@ import { supabase } from "@/integrations/supabase/client";
  * `badges`, and the chrome draws no badge. Never a `0` standing in for "we didn't read it",
  * never a plausible number. Every figure below traces to a row this hook actually read.
  *
+ * COUNTS ARE `count: "exact", head: true`, NEVER `rows.length` (§13). A PostgREST `select()`
+ * is capped by the project's `max-rows` setting, so counting by fetching the rows and taking
+ * `.length` reports the CAP as the total the moment the fleet outgrows it — a wrong number that
+ * looks completely plausible, which is the exact failure class above. An exact head-count is
+ * correct at any size and transfers no rows.
+ *
  * WHAT IS REAL HERE, AND WHAT IS DELIBERATELY MISSING:
  *   • `fleet` badge + `statusSummary` — REAL. `systems_check_snapshot('operator')` (the shipped
  *     RPC the Systems Check tile already reads, §18 one seam) returns the latest OPERATOR-scope
- *     scan run and its findings. Red/amber is the SAME mapping `SystemsCheckTile` uses, so the
+ *     scan run and its findings. Red/amber follows the mapping `SystemsCheckTile` uses, so the
  *     rail and the tile can never disagree: an open `fail` at `blocking` severity is red; every
- *     other open fail is amber, and so is an `error` — a check that FAILED TO RUN is a real
+ *     other open fail is amber, and so is an open `error` — a check that FAILED TO RUN is a real
  *     problem, not a benign neutral. A `skip` is "not yet assessable" and counts as neither.
  *   • `tenantCount` / `subAccountCount` — REAL, from `tenants`. A sub-account is a row with a
  *     non-null `parent_tenant_id` (§51). Nothing else is excluded; this is the whole fleet, so
  *     the footer matches what the Fleet Console lists rather than a differently-filtered total.
+ *     Both operator tiers genuinely read the whole table: SELECT on `tenants` is the OR of
+ *     "Platform staff read all tenants" (`is_platform_admin()`) and "Members read own tenant"
+ *     (`is_tenant_member(id) OR is_platform_owner()`), so super_admin and platform_admin each
+ *     clear one of the two.
  *   • `support` badge — REAL, from `support_tickets` (the platform support inbox: it has no
- *     tenant column, the operator IS the desk). Open = anything not `resolved`/`closed`, the
- *     same predicate `SupportAdmin` uses.
+ *     tenant column, the operator IS the desk), and read ONLY when this session holds
+ *     `super_admin`. See the §9/§53 note below — this gate is load-bearing, not a formality.
+ *     Open = anything not `resolved`/`closed`, the same predicate `SupportAdmin` uses.
  *   • `roleLabel` — REAL, from `user_roles` for THIS session's own uid ("Users can view own
  *     roles" is a self-read policy, so it works for every operator tier).
  *   • `provisioning` badge — ABSENT ON PURPOSE. `tenant_provisioning` still exists, but its only
@@ -40,15 +51,25 @@ import { supabase } from "@/integrations/supabase/client";
  *     so the banner can light up the day a real incident record exists; until then the console
  *     says nothing rather than dressing a support ticket up as an outage.
  *
- * §9/§53 — "NO ROWS" IS UNKNOWN, NOT ZERO. `support_tickets` staff-read is gated on
- * `is_platform_owner()`, which §53 freezes to `super_admin`: a scoped `platform_admin` reads
- * ZERO rows from it and cannot tell that apart from an empty inbox. `tenants` can be narrowed
- * the same way. So every count here is emitted only when it is POSITIVE — an unreadable seam and
- * a genuinely-empty one both render as no badge, which is the honest outcome for both, instead of
- * a confident "0" that would be a lie in one of the two cases. (The Systems Check RPC gates on
- * `is_platform_operator()`, so a platform_admin genuinely does see the operator lens there.)
- * `subAccountCount` is the one legitimate zero: it is a subset of tenant rows we actually read,
- * so it only reports 0 when the fleet itself was readable.
+ * §9/§53 — "NO ROWS" IS UNKNOWN, NOT ZERO, AND "SOME ROWS" IS NOT AUTOMATICALLY THE ANSWER.
+ * Two different hazards, and only the first is fixed by withholding zeros:
+ *   1. A seam we cannot read at all returns 0 rows and looks identical to a genuinely empty one.
+ *      So every count here is emitted only when it is POSITIVE — an unreadable seam and an empty
+ *      one both render as no badge, the honest outcome for both, instead of a confident "0".
+ *      `subAccountCount` is the one legitimate zero: it is a subset of a fleet we did read, so it
+ *      only reports 0 when the fleet itself was readable.
+ *   2. A seam we can PARTIALLY read returns a positive count of the WRONG rows, and withholding
+ *      zeros does nothing about it. `support_tickets` is exactly this. It carries TWO permissive
+ *      SELECT policies, which Postgres ORs together: "Staff view all tickets"
+ *      (`is_platform_owner()`, which §53 freezes to super_admin) AND "Users view own tickets"
+ *      (`auth.uid() = user_id`, which applies to EVERY authenticated session). A `platform_admin`
+ *      therefore does not read zero — they read their OWN filed tickets, and publishing that as
+ *      "the platform support inbox" is a worse lie than a zero would have been. So the support
+ *      read is gated on the session actually holding `super_admin`; for a platform_admin the key
+ *      is absent, which honestly says "this desk is not readable from here."
+ * (The Systems Check RPC gates on `is_platform_operator()`, so a platform_admin genuinely does
+ * see the operator lens there, and `tenants` is readable by both tiers — see above. Support is
+ * the one seam where the tiers diverge.)
  */
 export type OperatorChromeBadgeTone = "warn" | "risk" | "info";
 
@@ -78,6 +99,11 @@ type ScanFinding = {
 
 const EMPTY_BADGES: OperatorChrome["badges"] = {};
 
+/** An exact head-count that never returns a number we didn't actually get from the server. */
+function exactCount(res: { error: unknown; count: number | null }): number | null {
+  return res.error ? null : res.count;
+}
+
 /**
  * @param enabled Hold every read until the console is actually behind the operator gate. Defaults
  * to true because the only mount is inside that gate; the flag exists so a caller that resolves
@@ -102,25 +128,29 @@ export function useOperatorChrome(enabled: boolean = true): OperatorChrome {
         // Identity first, and published the moment it lands: the greeting is the first thing the
         // operator reads, and it comes from RUNTIME auth metadata — never the repo, never a
         // literal (§45). `undefined` → still resolving; `null` → no name on record, and the
-        // header falls back to its name-less opener rather than guessing one.
+        // header falls back to its name-less opener rather than guessing one. `full_name` is
+        // unvalidated user metadata, so anything that is not a string is treated as absent —
+        // String()-ing an object would greet the operator as "[object".
         const { data: auth } = await supabase.auth.getUser();
         if (!alive) return;
         const uid = auth?.user?.id ?? null;
-        const full = String(auth?.user?.user_metadata?.full_name ?? "").trim();
-        setFirstName(full.split(/\s+/)[0]?.trim() || null);
+        const rawName = auth?.user?.user_metadata?.full_name;
+        const full = typeof rawName === "string" ? rawName.trim() : "";
+        setFirstName(full.split(/\s+/)[0] || null);
 
-        const [tenantsRes, snapRes, ticketsRes, rolesRes] = await Promise.all([
-          supabase.from("tenants").select("id, parent_tenant_id"),
+        const [tenantsRes, subsRes, snapRes, rolesRes] = await Promise.all([
+          // Exact counts, no rows over the wire, immune to the project's max-rows cap.
+          supabase.from("tenants").select("id", { count: "exact", head: true }),
+          supabase
+            .from("tenants")
+            .select("id", { count: "exact", head: true })
+            .not("parent_tenant_id", "is", null),
           // The operator lens of the shipped Systems Check seam. Scope is the ONLY argument —
           // the RPC derives the caller in-body and gates operator scope on is_platform_operator()
           // (§59), so this passes no tenant id and can widen nothing. Not in the generated types
           // yet, hence the cast, matching `useSystemsCheck`'s convention.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           (supabase as any).rpc("systems_check_snapshot", { p_scope: "operator" }),
-          // Open = not resolved and not closed — the same predicate the shipped support admin
-          // uses, expressed as a NOT IN so a status we haven't seen yet still counts as open
-          // rather than silently vanishing from the operator's queue.
-          supabase.from("support_tickets").select("priority").not("status", "in", "(resolved,closed)"),
           uid ? supabase.from("user_roles").select("role").eq("user_id", uid) : Promise.resolve(null),
         ]);
 
@@ -128,22 +158,22 @@ export function useOperatorChrome(enabled: boolean = true): OperatorChrome {
 
         // ── Fleet totals ──────────────────────────────────────────────────────────────────
         // A failed read and an empty read are both "we don't know" for the total, so both leave
-        // the footer blank. Once we DO hold rows, the sub-account split is a real subset of them
+        // the footer blank. Once we DO hold a total, the sub-account split is a real subset of it
         // and may honestly be 0.
-        const tenantRows = tenantsRes.error ? null : (tenantsRes.data ?? null);
-        const haveFleet = !!tenantRows && tenantRows.length > 0;
-        setTenantCount(haveFleet ? tenantRows.length : null);
-        setSubAccountCount(
-          haveFleet ? tenantRows.filter((t) => t.parent_tenant_id !== null).length : null,
-        );
+        const total = exactCount(tenantsRes);
+        const subs = exactCount(subsRes);
+        const haveFleet = total !== null && total > 0;
+        setTenantCount(haveFleet ? total : null);
+        setSubAccountCount(haveFleet && subs !== null ? subs : null);
 
         // ── Role word ─────────────────────────────────────────────────────────────────────
         // Operator tiers only (§53). A session holding neither is not an operator, and printing
         // its tenant-level role in the platform footer would misdescribe who is standing there.
         const roleRows = (rolesRes?.error ? null : rolesRes?.data) ?? null;
         const roles = new Set((roleRows ?? []).map((r) => String(r.role)));
+        const isOwnerTier = roles.has("super_admin");
         setRoleLabel(
-          roles.has("super_admin") ? "super_admin" : roles.has("platform_admin") ? "platform_admin" : null,
+          isOwnerTier ? "super_admin" : roles.has("platform_admin") ? "platform_admin" : null,
         );
 
         // ── Systems Check → the fleet badge + the header pill ─────────────────────────────
@@ -151,11 +181,15 @@ export function useOperatorChrome(enabled: boolean = true): OperatorChrome {
           | { run?: { id: string } | null; findings?: ScanFinding[] | null }
           | null;
         const findings = (snap?.findings ?? []) as ScanFinding[];
-        const openFails = findings.filter((f) => f.status === "fail" && !f.resolved_at);
+        const open = findings.filter((f) => !f.resolved_at);
+        const openFails = open.filter((f) => f.status === "fail");
         const red = openFails.filter((f) => (f.severity_at_finding ?? "low") === "blocking").length;
         // An errored check failed to RUN. It is not a pass and not a deferral, so it rides with
-        // the amber column rather than disappearing (§13 — same call the tile makes).
-        const amber = openFails.length - red + findings.filter((f) => f.status === "error").length;
+        // the amber column rather than disappearing (§13 — the call the tile makes). Only the
+        // resolution flow writes `resolved_at`, and it only ever writes it on an open fail, so
+        // in practice this agrees with the tile's `errorCount` finding-for-finding; the guard is
+        // here so an errored check that someone DOES resolve stops being counted as current.
+        const amber = openFails.length - red + open.filter((f) => f.status === "error").length;
 
         const next: OperatorChrome["badges"] = {};
         if (red > 0) next.fleet = { count: red + amber, tone: "risk" };
@@ -180,21 +214,44 @@ export function useOperatorChrome(enabled: boolean = true): OperatorChrome {
         }
 
         // ── Platform support inbox ────────────────────────────────────────────────────────
-        const ticketRows = ticketsRes.error ? null : (ticketsRes.data ?? null);
-        if (ticketRows && ticketRows.length > 0) {
-          next.support = {
-            count: ticketRows.length,
-            tone: ticketRows.some((t) => t.priority === "urgent") ? "warn" : "info",
-          };
+        // super_admin ONLY. A platform_admin's read of this table returns their own filed
+        // tickets via the "Users view own tickets" policy, not the desk — see the §9/§53 note
+        // at the top. Absent beats a real count of the wrong rows.
+        if (isOwnerTier) {
+          const openFilter = "(resolved,closed)";
+          const [openRes, urgentRes] = await Promise.all([
+            supabase
+              .from("support_tickets")
+              .select("id", { count: "exact", head: true })
+              .not("status", "in", openFilter),
+            supabase
+              .from("support_tickets")
+              .select("id", { count: "exact", head: true })
+              .not("status", "in", openFilter)
+              .eq("priority", "urgent"),
+          ]);
+          if (!alive) return;
+          const openTickets = exactCount(openRes);
+          if (openTickets !== null && openTickets > 0) {
+            const urgent = exactCount(urgentRes);
+            next.support = {
+              count: openTickets,
+              tone: urgent !== null && urgent > 0 ? "warn" : "info",
+            };
+          }
         }
 
         setBadges(next);
       } catch {
         // A thrown read tells us nothing, so the chrome shows nothing — the badges/counts keep
         // their absent state rather than collapsing to zeros the operator would read as facts.
+        // `firstName` is the exception that has to be actively settled: `undefined` means "still
+        // resolving", and once we have stopped resolving that would leave the greeting spinning
+        // forever, so an unresolved name becomes an honest `null`.
         if (alive) {
           setBadges(EMPTY_BADGES);
           setStatusSummary(null);
+          setFirstName((prev) => (prev === undefined ? null : prev));
         }
       } finally {
         if (alive) setLoading(false);

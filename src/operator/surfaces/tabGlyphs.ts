@@ -3,12 +3,27 @@
  *
  * CD's pack renders every sub-tab label behind a small glyph ("◐ Systems Check · ◎ Tenants ·
  * ▤ History · ⚑ Alert rules · ◉ Team Pulse"), and without them our strip reads as a bare row of
- * words. The branch-level marks already live on `OPERATOR_BRANCHES[].glyph`
- * (src/lib/routing/tierBranches.ts); this file is the SECOND level — the tab strip — and nothing
- * else. It is pure static design data: no reads, no state, no fabricated content.
+ * words. It is pure static design data: no reads, no state, no tenant scope, no fabricated
+ * content — so there is nothing here for §9/§53 to isolate and no count that could silently
+ * become a zero.
+ *
+ * WHY THIS IS A SEPARATE FILE AND NOT A REGISTRY FIELD (§18 — stated, not glossed). The registry
+ * (src/lib/routing/tierBranches.ts) carries `Branch.glyph`, set on all 13 operator branches, AND
+ * `SubTab.glyph`, which is ALREADY POPULATED — but only on the five settings GROUPS (setup ◈ ·
+ * integrations ⚯ · team ◍ · vault ▣ · governance ⛉), because that is the settings BACK-MENU's
+ * rail mark, a different surface from this tab strip. So `SubTab.glyph` is spoken for, and the
+ * tab-strip mark is a genuinely distinct second dimension rather than a duplicate home. If the
+ * back-menu and the strip are ever unified, these 72 rows are what folds into `SubTab`, and this
+ * file should be deleted rather than left as a second source.
  *
  * WHERE IT COMES FROM (§13 — traceable, not invented). Extracted from the pack's own `TABS` map,
- * `Super Admin Shell.dc.html` line 4312, whose entries are `view: [[label, glyph, tabKey], …]`.
+ * `Super Admin Shell.dc.html` line 4312, whose entries are
+ * `view: [[label, glyph, tabKey, badge?], …]` — the fourth slot is an optional badge count and
+ * the pack's own renderer destructures only the first three (`.map(([label, icon, key]) => …)`,
+ * line 7817), so only `glyph` and `tabKey` are load-bearing here. Note the pack normalizes each
+ * array's FIRST entry to the tab key `"main"` (line 7822, `key === tabDefs[0][2] ? "main" : key`);
+ * the join below reads the RAW third element, which is why `growth/builders` carries ▦ while
+ * `growth/brand-kit` — our `main` — carries nothing.
  * Each entry is joined onto OUR route tree by the `key` fields on `OPERATOR_BRANCHES` — CD's
  * `view` IS our branch/settings-group `key`, and CD's `tabKey` IS our sub-tab `key` — so the
  * mapping is a join on shipped identifiers rather than a label-similarity guess. Cross-checked
@@ -158,9 +173,20 @@ export const TAB_GLYPH: Record<string, string> = {
  * rather than substituting a mark CD never authored (§13). Six of the 78 operator sub-tabs
  * legitimately return `undefined` — they are enumerated in the file header.
  *
- * The optional third argument addresses the settings tree's third level, whose route carries one
- * more segment (`/operator/settings/governance/audit-log`); every other branch is two segments
- * and passes two arguments.
+ * ARITY TRAP — read before calling from a shared loop. The optional third argument addresses the
+ * settings tree's third level, whose route carries one more segment
+ * (`/operator/settings/governance/audit-log`); every other branch is two segments and passes two
+ * arguments. Because the third argument is optional, a caller that renders BOTH shapes from one
+ * `strip.map(…)` — which the operator shell does — compiles fine while passing two arguments for
+ * a settings leaf, looks up `settings/{leaf}`, misses all 16 settings rows, and renders them as
+ * nothing. That is a §32 invisible failure, not a crash, so it is asserted rather than trusted:
+ * `tabGlyphs.test.ts` walks the real registry and locks BOTH the correct three-argument
+ * resolution and the fact that the two-argument form on a settings leaf returns `undefined`.
+ *
+ * The declared `string | undefined` is the truthful runtime contract, but this repo compiles with
+ * `strictNullChecks: false` (tsconfig.json), so the compiler will NOT stop
+ * `tabGlyph(a, b).trim()`. Guard the result at the call site; six sub-tabs legitimately return
+ * `undefined`.
  */
 export function tabGlyph(branchSlug: string, subSlug: string, leafSlug?: string): string | undefined {
   const path = leafSlug ? `${branchSlug}/${subSlug}/${leafSlug}` : `${branchSlug}/${subSlug}`;

@@ -278,10 +278,14 @@ export default function OperatorApp() {
     // simply not mentioned — never a zero standing in for an unknown (§13).
     const clauses: string[] = [];
     if (chrome.statusSummary) clauses.push(chrome.statusSummary);
-    const decisions = chrome.badges.provisioning?.count;
-    if (typeof decisions === "number" && decisions > 0) {
-      clauses.push(`${decisions} provisioning ${decisions === 1 ? "decision" : "decisions"}`);
+    const support = chrome.badges.support?.count;
+    if (typeof support === "number" && support > 0) {
+      clauses.push(`${support} open support ${support === 1 ? "ticket" : "tickets"}`);
     }
+    // CD's line ends with a provisioning tally. We do NOT carry one: the provisioning queue's
+    // writers were all removed, so `useOperatorChrome` documents that badge as permanently
+    // absent — and reading a key the hook can never emit is a clause that would silently never
+    // appear, which is worse than not writing it. When a real queue lands, it joins here.
     return clauses.length
       ? `${salutation} ${clauses.join(", ")}.`
       : `${salutation} Nothing is waiting on you.`;
@@ -662,6 +666,13 @@ export default function OperatorApp() {
                 ? leafPath("operator", "", branch.slug, sub!.slug, t.slug)
                 : subtabPath("operator", "", branch.slug, t.slug);
               const on = isSettings ? t.slug === leaf?.slug : t.slug === sub?.slug;
+              // ARITY MATTERS (§32 — a wrong-arity call fails SILENTLY, not loudly). On the
+              // settings branch `t` is a THIRD-level leaf, so its glyph is keyed
+              // `settings/{group}/{leaf}`; calling the two-argument form here would look up
+              // `settings/{leaf}`, miss every time, and quietly render 16 marks as nothing.
+              const glyph = isSettings
+                ? tabGlyph(branch.slug, sub!.slug, t.slug)
+                : tabGlyph(branch.slug, t.slug);
               return (
                 <NavLink
                   key={t.slug}
@@ -676,9 +687,9 @@ export default function OperatorApp() {
                 >
                   {/* CD marks each view before its name. Absent rather than substituted where
                       the pack gives none, so the strip never invents a symbol for a surface. */}
-                  {tabGlyph(branch.slug, t.slug) && (
+                  {glyph && (
                     <span aria-hidden className="flex-none text-[11.5px] opacity-70">
-                      {tabGlyph(branch.slug, t.slug)}
+                      {glyph}
                     </span>
                   )}
                   {t.label}

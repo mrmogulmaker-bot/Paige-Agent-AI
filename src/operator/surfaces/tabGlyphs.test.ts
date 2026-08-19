@@ -74,6 +74,47 @@ describe("TAB_GLYPH — CD's operator tab-strip marks", () => {
     expect(tabGlyph("settings", "setup", "api-mcp")).toBe("⚯");
   });
 
+  /**
+   * The arity trap, locked. `leafSlug` is optional, so the two-argument call on a THIRD-level
+   * settings leaf compiles and returns `undefined` — 16 marks that silently render as nothing
+   * (§32: shipped, correct, and invisible). These two tests walk the real registry so the
+   * correct shape is proven for every settings leaf and the wrong shape is proven wrong,
+   * rather than either being trusted.
+   */
+  it("every settings leaf that CD marks resolves via the THREE-argument call", () => {
+    const settings = OPERATOR_BRANCHES.find((b) => b.slug === "settings");
+    expect(settings, "operator tree lost its settings branch").toBeTruthy();
+
+    let resolved = 0;
+    for (const group of settings!.subtabs ?? []) {
+      for (const leaf of group.subtabs ?? []) {
+        const path = `settings/${group.slug}/${leaf.slug}`;
+        const viaThree = tabGlyph("settings", group.slug, leaf.slug);
+        expect(viaThree, `three-arg call disagrees with TAB_GLYPH at ${path}`).toBe(
+          TAB_GLYPH[path],
+        );
+        if (viaThree !== undefined) resolved += 1;
+      }
+    }
+    // Every settings row in the map, and nothing invented on top of it.
+    const mapped = Object.keys(TAB_GLYPH).filter((k) => k.startsWith("settings/")).length;
+    expect(resolved).toBe(mapped);
+    expect(resolved).toBe(16);
+  });
+
+  it("the TWO-argument call on a settings leaf misses — the trap this API can fall into", () => {
+    const settings = OPERATOR_BRANCHES.find((b) => b.slug === "settings");
+    for (const group of settings!.subtabs ?? []) {
+      for (const leaf of group.subtabs ?? []) {
+        expect(
+          tabGlyph("settings", leaf.slug),
+          `two-arg call on settings/${group.slug}/${leaf.slug} must NOT resolve — if this ` +
+            `starts passing, the key shape changed and OperatorApp's strip needs re-checking`,
+        ).toBeUndefined();
+      }
+    }
+  });
+
   it("tabGlyph() returns undefined rather than a substitute where CD has no mark", () => {
     expect(tabGlyph("fleet", "prospects")).toBeUndefined();
     expect(tabGlyph("comms", "sent-log")).toBeUndefined();
