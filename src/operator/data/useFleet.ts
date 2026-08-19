@@ -29,13 +29,52 @@ export type FleetTenant = {
 };
 
 /**
+ * The ONE revenue class that means "the platform runs this tenant for itself" (§18 one home).
+ * Every surface that scopes the fleet — the Fleet Console's row filter, the rail footer's exact
+ * head-counts — reads this constant, so the word can never drift between two spellings.
+ */
+export const INTERNAL_REVENUE_CLASS = "internal_test";
+
+/**
  * A tenant the platform runs for ITSELF — a fixture, a test account, a retired shell — rather
  * than a customer. It is a real row and the operator can still ask to see it, but counting it
  * as fleet would overstate the platform's own size on the operator's own console, which is the
  * §57 divergence (a surface asserting something the God-level record contradicts) in miniature.
  */
 export function isInternal(t: FleetTenant): boolean {
-  return t.revenueClass === "internal_test";
+  return t.revenueClass === INTERNAL_REVENUE_CLASS;
+}
+
+/**
+ * THE FLEET-SCOPE RULE, in one place (§18/§57), so "how many tenants are there" means exactly the
+ * same thing on the Fleet Console and on the rail footer of the same page.
+ *
+ * The Fleet Console applies it to ROWS (`tenants.filter(t => !isInternal(t))`, and only when
+ * `classificationVisible`); the operator chrome applies it to exact head-COUNTS, because a
+ * `rows.length` over a `select()` reports the project's max-rows cap as the total the moment the
+ * fleet outgrows it (§13). Two different mechanics, one predicate — hence this shared function
+ * rather than the same condition written twice.
+ *
+ * §9/§53 — WHEN THE CLASSIFICATION IS UNREADABLE, NOTHING IS FILTERED. `tenant_revenue_classification`
+ * is `is_platform_owner()`-only, so a scoped `platform_admin` reads ZERO rows, which is
+ * indistinguishable from "no tenant is internal". Filtering on an answer we never got would drop or
+ * keep the wrong rows, so the honest move is the UNFILTERED total — the same call `FleetConsole`
+ * makes, where the header additionally says out loud that fixtures are counted in. Both surfaces
+ * therefore agree at BOTH operator tiers.
+ *
+ * @returns null when we know we OUGHT to subtract but could not count what to subtract — an absent
+ * figure, never an over-reported one.
+ */
+export function netFleetCount(
+  total: number,
+  internal: number | null,
+  classificationVisible: boolean,
+): number | null {
+  if (!classificationVisible) return total;
+  if (internal === null) return null;
+  // Clamped: the total and the internal count are two round-trips, so a tenant deleted between
+  // them must never render as a negative fleet.
+  return Math.max(0, total - internal);
 }
 
 export type FleetData = {

@@ -12,12 +12,11 @@ import KnowledgeSurface from "@/operator/surfaces/KnowledgeSurface";
 import { useCompass } from "@/operator/data/useCompass";
 import { useKnowledge } from "@/operator/data/useKnowledge";
 import OperatorPanel from "@/operator/surfaces/OperatorPanel";
+import { bespokeSlots } from "@/operator/surfaces/bespokeSlots";
 import { getPanelSpec } from "@/operator/surfaces/panelSpecs";
+import { tabGlyph } from "@/operator/surfaces/tabGlyphs";
 import WorkspaceSurface from "@/operator/surfaces/WorkspaceSurface";
-import { MarketplaceStore, MarketplaceReview, IntegrationsGrid } from "@/operator/surfaces/MarketplaceSurfaces";
-import { CalendarMonth, CalendarWeek } from "@/operator/surfaces/CalendarSurfaces";
-import { ComposeSurface } from "@/operator/surfaces/ComposeSurface";
-import { SupportThread } from "@/operator/surfaces/SupportThread";
+import { PaigePlatformDesk } from "@/components/paige/PaigePlatformDesk";
 import { PipelineHead, PipelineBoard, StageBoard } from "@/operator/surfaces/PipelineSurfaces";
 import { SocialGrid, SocialQueue } from "@/operator/surfaces/SocialSurfaces";
 import BufferDiagram from "@/operator/surfaces/BufferDiagram";
@@ -25,6 +24,7 @@ import { AreaChart, Bench } from "@/operator/surfaces/AnalyticsSurfaces";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { useTenantContext } from "@/hooks/useTenantContext";
 import { useIsPlatformOwner } from "@/operator/data/useIsPlatformOwner";
+import { useOperatorChrome } from "@/operator/data/useOperatorChrome";
 import { cn } from "@/lib/utils";
 
 /**
@@ -141,9 +141,21 @@ function useRailDensity(rowCount: number) {
 
 /** One rail row. A real <Link> with aria-current — the pack's rows are div+onClick (§36/C5). */
 function RailRow({
-  to, label, active, collapsed, tone = "default",
+  to, label, glyph, badge, active, collapsed, tone = "default",
 }: {
   to: string; label: string; active: boolean; collapsed: boolean;
+  /**
+   * CD's count pill. Present ONLY when the platform can substantiate the number — an absent
+   * badge means "not measured", which is a different statement from a badge reading zero, and
+   * on an operator console the difference matters (§13).
+   */
+  badge?: { count: number; tone: "warn" | "risk" | "info" };
+  /**
+   * CD's per-branch mark. It is what makes the rail read as a console rather than a list of
+   * words, and it is the ONLY thing left when the rail collapses to 64px — so a branch without
+   * one falls back to the first letter of its label rather than to nothing.
+   */
+  glyph?: string;
   /** CD tints the SETTINGS menu's active row gold and the front menu's white. Both ship. */
   tone?: "default" | "gold";
 }) {
@@ -154,7 +166,7 @@ function RailRow({
       title={collapsed ? label : undefined}
       aria-label={collapsed ? label : undefined}
       className={cn(
-        "mx-2 flex items-center rounded-[9px] transition-colors",
+        "relative mx-2 flex items-center rounded-[9px] transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
         "focus-visible:ring-offset-rail",
         collapsed ? "justify-center px-1 py-1.5" : "gap-2.5 px-[11px] py-[var(--rail-row-pad)]",
@@ -169,11 +181,36 @@ function RailRow({
       )}
     >
       <span
-        className={cn("truncate leading-[1.35]", collapsed && "sr-only")}
+        aria-hidden
+        className={cn(
+          "flex-none text-center leading-none",
+          active ? "opacity-100" : "opacity-70",
+        )}
+        style={{ width: "14px", fontSize: "calc(var(--rail-font) + 1px)" }}
+      >
+        {glyph ?? label.charAt(0)}
+      </span>
+      <span
+        className={cn("min-w-0 flex-1 truncate leading-[1.35]", collapsed && "sr-only")}
         style={{ fontSize: "var(--rail-font)" }}
       >
         {label}
       </span>
+      {badge && (
+        <span
+          className={cn(
+            "flex-none rounded-full px-[7px] py-[1px] text-[10px] font-bold leading-[1.35]",
+            collapsed && "absolute right-1 top-1 px-[5px] text-[9px]",
+            badge.tone === "risk"
+              ? "bg-[hsl(var(--destructive)/0.18)] text-[hsl(var(--destructive))]"
+              : badge.tone === "warn"
+                ? "bg-[hsl(var(--warning)/0.2)] text-[hsl(var(--gold-dark))]"
+                : "bg-rail-foreground/12 text-rail-foreground/80",
+          )}
+        >
+          {badge.count}
+        </span>
+      )}
       {collapsed && <span aria-hidden className="text-[11px] font-semibold">{label.slice(0, 1)}</span>}
     </NavLink>
   );
@@ -192,10 +229,93 @@ export default function OperatorApp() {
    * operator's deep link. Only the server's answer is allowed to say no.
    */
   const ownerVerdict = useIsPlatformOwner();
-  const isPlatformOwner = ownerVerdict === true || contextOwner;
+  /**
+   * The SERVER's answer wins whenever it has one. `contextOwner` is only a fast path for the
+   * window before the RPC replies — it is a cache, and a cache must never overrule a live
+   * denial. `useIsPlatformOwner` returns `null` (not `false`) when the check could not be made,
+   * so a `false` here is a real "no" from `is_platform_owner()` and is honoured as one; an
+   * unanswered check falls back to the cache exactly as before.
+   */
+  const isPlatformOwner = ownerVerdict === null ? contextOwner : ownerVerdict;
   const ownerAnswered = ownerVerdict !== null || contextOwner;
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ fleet: true, business: true });
+
+  /**
+   * The live signal behind the chrome — the operator's name, the rail badges, the fleet totals.
+   * Every field is read from a real row or comes back absent; nothing here is a placeholder,
+   * because a phantom count on the operator's own console is the §57 failure in miniature.
+   */
+  const chrome = useOperatorChrome();
+
+  /**
+   * CD's header carries a theme toggle, and §23 is explicit that the flip must be unmistakable
+   * on every surface. We drive the app's own `dark` class so the console never invents a
+   * second theme mechanism (§18).
+   */
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
+  );
+  const toggleTheme = useCallback(() => {
+    const next = !document.documentElement.classList.contains("dark");
+    document.documentElement.classList.toggle("dark", next);
+    setIsDark(next);
+  }, []);
+
+  /** Initials for CD's avatar. Absent rather than a guessed glyph when the name is unknown. */
+  const initials = useMemo(() => {
+    const name = chrome.firstName;
+    return name ? name.charAt(0).toUpperCase() : null;
+  }, [chrome.firstName]);
+
+  /**
+   * CD's greeting: salutation, then what is actually waiting. Clauses are appended ONLY where a
+   * real count exists, so an operator never reads a tally the platform cannot substantiate — and
+   * with nothing waiting it says that, rather than printing a row of zeroes.
+   */
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    const partOfDay = hour < 12 ? "Morning" : hour < 18 ? "Afternoon" : "Evening";
+    const salutation = chrome.firstName ? `${partOfDay}, ${chrome.firstName}.` : `${partOfDay}.`;
+    if (chrome.loading) return salutation;
+    // Built from what the hook could actually substantiate. A signal it could not read is
+    // simply not mentioned — never a zero standing in for an unknown (§13).
+    const clauses: string[] = [];
+    if (chrome.statusSummary) clauses.push(chrome.statusSummary);
+    const support = chrome.badges.support?.count;
+    if (typeof support === "number" && support > 0) {
+      clauses.push(`${support} open support ${support === 1 ? "ticket" : "tickets"}`);
+    }
+    // CD's line ends with a provisioning tally. We do NOT carry one: the provisioning queue's
+    // writers were all removed, so `useOperatorChrome` documents that badge as permanently
+    // absent — and reading a key the hook can never emit is a clause that would silently never
+    // appear, which is worse than not writing it. When a real queue lands, it joins here.
+    // With nothing substantiated the line STOPS at the salutation. "Nothing is waiting on you"
+    // is a positive claim about the platform's state, and this hook cannot tell a genuine zero
+    // from a read that failed — `statusSummary` is null for both, and an unreadable support
+    // badge is simply absent. Printing the reassurance in the failure case would tell the
+    // operator everything is clear at the exact moment we have no idea (§13).
+    return clauses.length ? `${salutation} ${clauses.join(", ")}.` : salutation;
+  }, [chrome.firstName, chrome.loading, chrome.statusSummary, chrome.badges]);
+
+  /**
+   * CD's rail foot. Built from what the platform can actually count — the seat word and the two
+   * fleet totals — and each clause is dropped when its source is unreadable rather than printed
+   * as a zero. With nothing readable it is null and the strip is not rendered.
+   */
+  const railFoot = useMemo(() => {
+    const parts: string[] = [];
+    if (chrome.roleLabel) parts.push(chrome.roleLabel);
+    if (typeof chrome.tenantCount === "number") {
+      const tenants = `${chrome.tenantCount} ${chrome.tenantCount === 1 ? "tenant" : "tenants"}`;
+      parts.push(
+        typeof chrome.subAccountCount === "number"
+          ? `${tenants}, ${chrome.subAccountCount} sub-${chrome.subAccountCount === 1 ? "account" : "accounts"} beneath them`
+          : tenants,
+      );
+    }
+    return parts.length ? `${parts.join(" · ")}.` : null;
+  }, [chrome.roleLabel, chrome.tenantCount, chrome.subAccountCount]);
 
   const toggleGroup = useCallback(
     (key: string) => setOpenGroups((g) => ({ ...g, [key]: !g[key] })),
@@ -283,13 +403,43 @@ export default function OperatorApp() {
           <PaigeMark className="h-[30px] w-[30px] shrink-0" />
           {!collapsed && (
             <div className="min-w-0">
-              <div className="truncate text-[13px] font-semibold leading-tight">Paige Agent AI</div>
-              <div className="truncate text-[10.5px] leading-tight text-rail-foreground/60">
-                Platform operator
+              {/* CD's lockup: the name at weight, then AGENT set small and wide in gold. The
+                  tracking is what makes it read as a mark rather than two words. */}
+              <div className="flex items-baseline gap-[5px] whitespace-nowrap leading-[1.2]">
+                <span className="text-[15px] font-bold tracking-[-0.01em] text-rail-foreground">
+                  Paige
+                </span>
+                <span className="text-[10.5px] font-semibold tracking-[0.16em] text-cd-gold">
+                  AGENT
+                </span>
+              </div>
+              <div className="mt-[3px] truncate text-[10.5px] leading-tight text-rail-muted">
+                {isPlatformOwner ? "Platform operator · God tier" : "Platform operator · scoped"}
               </div>
             </div>
           )}
         </div>
+
+        {/* CD's context chip. It states, unambiguously and at all times, WHOSE data is on
+            screen — the thing an operator who can enter any tenant must never have to guess.
+            It is presentational until act-as is wired here: rendered without a menu rather
+            than with a menu that does nothing (§13). */}
+        {!collapsed && (
+          <div className="flex-none border-b border-rail-foreground/10 px-3 pb-[9px] pt-[11px]">
+            <div className="flex min-w-0 items-center gap-[9px] rounded-[10px] border border-rail-foreground/15 bg-rail-foreground/[0.05] px-2.5 py-2">
+              <span
+                aria-hidden
+                className="h-2 w-2 flex-none rounded-[2px] bg-cd-gold motion-safe:animate-pulse"
+              />
+              <span className="flex-none text-[8.5px] font-semibold tracking-[0.14em] text-rail-muted">
+                CONTEXT
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-rail-foreground">
+                Super Admin · platform
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Nav — CD's front menu, OR its settings back-menu when you have drilled in.
             The back-menu is not decoration: without it the five settings GROUPS have no link
@@ -322,6 +472,7 @@ export default function OperatorApp() {
                     key={g.slug}
                     to={subtabPath("operator", "", branch.slug, g.slug)}
                     label={g.label}
+                    glyph={g.glyph}
                     active={g.slug === sub?.slug}
                     collapsed={collapsed}
                     tone="gold"
@@ -349,6 +500,10 @@ export default function OperatorApp() {
                       <span className="text-[8.5px] font-semibold uppercase tracking-[0.16em] text-rail-muted">
                         {label}
                       </span>
+                      {/* CD sets the section's size in mono beside its name — how many surfaces
+                          live under this heading. A count of the rail itself, so it is always
+                          real. */}
+                      <span className="font-mono text-[8.5px] text-rail-muted">{items.length}</span>
                       <span className="font-mono text-[9.5px] text-rail-foreground/45">{items.length}</span>
                       <span className="ml-auto" aria-hidden>
                         {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
@@ -362,6 +517,8 @@ export default function OperatorApp() {
                           key={b.slug}
                           to={branchPath("operator", "", b.slug)}
                           label={b.label}
+                          glyph={b.glyph}
+                          badge={chrome.badges[b.slug]}
                           active={b.slug === branch.slug}
                           collapsed={collapsed}
                         />
@@ -405,10 +562,52 @@ export default function OperatorApp() {
         >
           {collapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
         </button>
+
+        {/* CD's rail foot — the operator's seat and the size of what sits under it. Every clause
+            is a real count or is omitted; with nothing readable the strip does not render at all,
+            because a footer asserting "0 tenants" would be a claim, not a blank. */}
+        {!collapsed && railFoot && (
+          <div className="flex-none border-t border-rail-foreground/10 px-3.5 pb-2 pt-[7px]">
+            <div title={railFoot} className="max-h-[27px] overflow-hidden text-[10px] leading-[1.35] text-rail-muted">
+              {railFoot}
+            </div>
+          </div>
+        )}
       </aside>
 
       {/* ── CONTENT COLUMN ────────────────────────────────────────────────── */}
       <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+        {/* CD's incident strip. It sits ABOVE the header because an open incident outranks
+            whatever surface you navigated to. It renders only when a real open incident row
+            exists — never as a dormant frame, which would train the operator to ignore it. */}
+        {chrome.incident && (
+          <div
+            role="status"
+            className="flex flex-none items-center gap-3 border-b border-[hsl(var(--destructive)/0.3)] border-l-[3px] border-l-[hsl(var(--destructive))] bg-[hsl(var(--destructive)/0.07)] px-5 py-2.5"
+          >
+            <span
+              aria-hidden
+              className="h-2 w-2 flex-none rounded-full bg-[hsl(var(--destructive))] motion-safe:animate-pulse"
+            />
+            <span className="flex-none text-[9px] font-semibold uppercase tracking-[0.14em] text-[hsl(var(--destructive))]">
+              Active incident
+            </span>
+            <span className="flex-none font-mono text-[10px] text-muted-foreground">
+              {chrome.incident.ref}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[12.5px] font-semibold text-foreground">
+              {chrome.incident.summary}
+            </span>
+            {chrome.incident.href && (
+              <NavLink
+                to={chrome.incident.href}
+                className="flex-none whitespace-nowrap text-[11.5px] font-semibold text-[hsl(var(--destructive))] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                Open →
+              </NavLink>
+            )}
+          </div>
+        )}
         <header className="flex flex-none items-center gap-3 border-b-[1.5px] border-border-strong bg-background px-5 py-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
@@ -424,15 +623,40 @@ export default function OperatorApp() {
                 {canonical}
               </code>
             </div>
-            <div className="mt-0.5 truncate text-[12.5px] text-foreground">
-              {isPlatformOwner ? "Platform operator · full control" : "Platform operator · scoped"}
-            </div>
+            {/* CD's greeting line. It opens with the operator by name and then says what is
+                actually waiting — the console leading with the state of the platform rather
+                than with a label for itself (§36/§52). Every clause is real or absent: with no
+                name it drops the salutation, and with nothing waiting it says so plainly rather
+                than inventing a tally. */}
+            <div className="mt-0.5 truncate text-[12.5px] text-foreground">{greeting}</div>
           </div>
           <div className="ml-auto flex flex-none items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11.5px] font-semibold text-muted-foreground">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />
-              Console preview
-            </span>
+            {chrome.statusSummary && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[11.5px] font-semibold text-foreground">
+                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--destructive))]" />
+                {chrome.statusSummary}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={isDark ? "Switch to the light theme" : "Switch to the dark theme"}
+              title={isDark ? "Light" : "Dark"}
+              className="grid h-8 w-8 flex-none place-items-center rounded-[9px] border border-border bg-card text-[14px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span aria-hidden>{isDark ? "☀" : "☾"}</span>
+            </button>
+            {/* The operator's own initials, from runtime auth metadata — never the repo (§45).
+                Presentational: the account menu behind it is not built, so it does not pretend
+                to be a button. */}
+            {initials && (
+              <span
+                title="Signed in as the platform operator"
+                className="grid h-8 w-8 flex-none place-items-center rounded-full border-2 border-cd-gold bg-rail text-[11.5px] font-semibold text-rail-foreground"
+              >
+                {initials}
+              </span>
+            )}
           </div>
         </header>
 
@@ -449,6 +673,13 @@ export default function OperatorApp() {
                 ? leafPath("operator", "", branch.slug, sub!.slug, t.slug)
                 : subtabPath("operator", "", branch.slug, t.slug);
               const on = isSettings ? t.slug === leaf?.slug : t.slug === sub?.slug;
+              // ARITY MATTERS (§32 — a wrong-arity call fails SILENTLY, not loudly). On the
+              // settings branch `t` is a THIRD-level leaf, so its glyph is keyed
+              // `settings/{group}/{leaf}`; calling the two-argument form here would look up
+              // `settings/{leaf}`, miss every time, and quietly render 16 marks as nothing.
+              const glyph = isSettings
+                ? tabGlyph(branch.slug, sub!.slug, t.slug)
+                : tabGlyph(branch.slug, t.slug);
               return (
                 <NavLink
                   key={t.slug}
@@ -458,8 +689,16 @@ export default function OperatorApp() {
                     "relative whitespace-nowrap py-[11px] text-[13.5px] transition-colors",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     on ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground",
+                    "inline-flex items-center gap-1.5",
                   )}
                 >
+                  {/* CD marks each view before its name. Absent rather than substituted where
+                      the pack gives none, so the strip never invents a symbol for a surface. */}
+                  {glyph && (
+                    <span aria-hidden className="flex-none text-[11.5px] opacity-70">
+                      {glyph}
+                    </span>
+                  )}
                   {t.label}
                   {/* CD's gold underline, as designed (owner ruling 2026-08-18). Its 2.35:1
                       against CD's own ground was raised once and ruled on; the label itself
@@ -535,65 +774,27 @@ function OperatorSurface({
     );
   if (isWorkspace)
     return (
-      /* CD's operator chat, with nothing put in Paige's mouth: no thread, no chat history and
-         no `onSend`, so the pane states that the chat seam is not connected and the composer
-         says it is disabled rather than swallowing what the operator typed. Only `scope` is
-         real — it is read from the session, not chosen as a label. Wiring the send + history
-         is its own slice; the live operator chat remains on the shipped console until then. */
+      /* CD's workspace chrome around the REAL operator chat.
+       *
+       * The platform already ships this conversation — `PaigePlatformDesk` mounts the live
+       * `PaigeAIChat` at platform scope with voice dictation, spoken playback, artifact cards
+       * and real thread history. CD's pack draws a thread and a composer of its own, but those
+       * are a PICTURE of a chat; shipping them here would have replaced a working capability
+       * with an illustration of it (§58) — which is exactly what the first pass did.
+       *
+       * So the rail, the header and the chrome are CD's, and the pane hosts the thing that
+       * actually works. The rail's own lists stay empty until the thread/project reads are
+       * wired to the same store the chat uses — an honest gap, not an invented one (§13).
+       */
       <WorkspaceSurface
         projects={[]}
         recent={[]}
         earlier={[]}
         thread={[]}
         scope={isOwner ? "Platform · full" : "Platform · scoped"}
+        chatSlot={<PaigePlatformDesk />}
       />
     );
-
-  /**
-   * CD's BESPOKE surfaces — the tabs the pack builds as their own component rather than as a
-   * generic panel body. Each is keyed to the address its design belongs to, in the same one
-   * dispatch as everything else (§18). All of them are prop-driven and ship with no data, so
-   * each states what is not connected rather than rendering an invented board, thread or curve.
-   */
-  // Keyed on the LEAF where one exists, so a settings tab cannot silently borrow its sibling's
-  // surface — `integrations/health` and `integrations/available` have their own copy and must
-  // reach it, not land on the connected-catalog grid wearing the wrong title.
-  const bespoke = leafSlug
-    ? `${branchSlug}/${subSlug ?? ""}/${leafSlug}`
-    : `${branchSlug}/${subSlug ?? ""}`;
-  switch (bespoke) {
-    case "marketplace/discover":    return <MarketplaceStore shelves={[]} />;
-    case "marketplace/submissions": return <MarketplaceReview submissions={[]} />;
-    case "settings/integrations/connected": return <IntegrationsGrid items={[]} />;
-    case "calendar/month":          return <CalendarMonth events={[]} />;
-    case "calendar/tasks":          return <CalendarWeek days={[]} />;
-    case "comms/outbound":          return <ComposeSurface subject={null} body={null} />;
-    case "support/inbox":           return <SupportThread clock={null} draft={null} />;
-    case "fleet/prospects":
-      // CD stacks the stat strip above the board — the head reads the same pipeline the board
-      // draws, so they belong on one address, not two.
-      return (
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <PipelineHead weighted={null} rawTotal={null} />
-          <PipelineBoard columns={[]} />
-        </div>
-      );
-    case "provisioning/pipeline":   return <StageBoard lanes={[]} />;
-    case "growth/social":
-      // The grid is what exists; the queue is what is going out. Both are the same book of
-      // posts seen from two ends, which is why CD puts them on the one surface.
-      return (
-        <div className="flex min-h-0 flex-1 flex-col gap-3">
-          <SocialGrid networks={[]} />
-          <SocialQueue posts={[]} />
-        </div>
-      );
-    case "automations/runs":        return <BufferDiagram />;
-    case "analytics/brief":         return <AreaChart series={[]} />;
-    case "analytics/performance":   return <Bench />;
-    default:
-      break;
-  }
 
   /**
    * Every other addressable tab is one of CD's generic panels — the same layout driven by its
@@ -602,7 +803,14 @@ function OperatorSurface({
    * to the tree without copy shows as an honest gap instead of a blank frame.
    */
   const spec = subSlug ? getPanelSpec(branchSlug, subSlug, leafSlug ?? undefined) : null;
-  if (spec) return <OperatorPanel spec={spec} bodyColumns={branchSlug === "analytics" ? 2 : 1} />;
+  if (spec)
+    return (
+      <OperatorPanel
+        spec={spec}
+        bodyColumns={branchSlug === "analytics" ? 2 : 1}
+        slots={bespokeSlots(branchSlug, subSlug, leafSlug)}
+      />
+    );
 
   return <SurfacePlaceholder title={title} path={path} isOwner={isOwner} />;
 }

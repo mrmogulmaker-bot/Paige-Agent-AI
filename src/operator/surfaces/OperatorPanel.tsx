@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -342,7 +343,8 @@ export interface PanelLaneItem {
 export interface PanelLane {
   id: string;
   label: string;
-  count?: string;
+  /** `null` is the honest unknown and renders "—", exactly like every other figure here. */
+  count?: string | null;
   tone?: PanelTone;
   items: PanelLaneItem[];
   note?: string;
@@ -427,6 +429,21 @@ export interface OperatorPanelProps {
   onSelectGroup?: (key: string) => void;
   /** CD lays the analytics body out as two columns; every other surface is one. */
   bodyColumns?: 1 | 2;
+  /**
+   * Real surfaces that stand in for a block's body, keyed by `PanelBlock.id`.
+   *
+   * A handful of CD's tabs are NOT the generic panel all the way down: Discover, Submissions,
+   * Month, Inbox, Outbound and Connected each draw a purpose-built surface inside the same page
+   * chrome. Those surfaces are built (`MarketplaceStore`, `MarketplaceReview`, `CalendarMonth`,
+   * `SupportThread`, `ComposeSurface`, `IntegrationsGrid`), so the registry keeps CD's eyebrow,
+   * title, anchor, KPIs, group chips and rail — everything the port already carries — and the
+   * one block that would otherwise say "not connected" hands its body to the real component
+   * instead (§18: one panel renderer, not a second dispatch beside it).
+   *
+   * A slot keyed to a block id the spec does not have is ignored, so a renamed block degrades
+   * to the spec's own honest body rather than silently dropping the surface.
+   */
+  slots?: Record<string, ReactNode>;
   className?: string;
 }
 
@@ -1629,10 +1646,12 @@ function Block({
   block,
   activeGroup,
   onSelectGroup,
+  slot,
 }: {
   block: PanelBlock;
   activeGroup?: string;
   onSelectGroup?: (k: string) => void;
+  slot?: ReactNode;
 }) {
   return (
     <section
@@ -1654,7 +1673,14 @@ function Block({
           {block.sub && <p className="mt-[3px] truncate text-[11.5px] text-muted-foreground">{block.sub}</p>}
         </header>
       )}
-      <Body body={block.body} activeGroup={activeGroup} onSelectGroup={onSelectGroup} />
+      {/* A slotted surface replaces the body and nothing else — the card, its header and its
+          foot are still CD's, so a real surface reads as part of the page rather than as a
+          panel bolted next to one. */}
+      {slot !== undefined && slot !== null ? (
+        <div className="min-w-0 px-[15px] pb-[15px] pt-1">{slot}</div>
+      ) : (
+        <Body body={block.body} activeGroup={activeGroup} onSelectGroup={onSelectGroup} />
+      )}
       {block.foot && (
         <footer className="border-t border-border/70 bg-muted/30 px-[15px] py-2.5 text-[11.5px] leading-[1.5] text-muted-foreground">
           {block.foot}
@@ -1717,6 +1743,7 @@ export default function OperatorPanel({
   activeGroup,
   onSelectGroup,
   bodyColumns = 1,
+  slots,
   className,
 }: OperatorPanelProps) {
   return (
@@ -1792,7 +1819,13 @@ export default function OperatorPanel({
           )}
         >
           {spec.blocks.map((b) => (
-            <Block key={b.id} block={b} activeGroup={activeGroup} onSelectGroup={onSelectGroup} />
+            <Block
+              key={b.id}
+              block={b}
+              activeGroup={activeGroup}
+              onSelectGroup={onSelectGroup}
+              slot={slots?.[b.id]}
+            />
           ))}
         </div>
       </div>

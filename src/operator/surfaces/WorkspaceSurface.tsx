@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -93,6 +93,18 @@ export type WorkspaceSurfaceProps = {
   onNewChat?: () => void;
   /** The one write. Absent → composer disabled, and it says why. */
   onSend?: (text: string) => void;
+  /**
+   * The LIVE conversation, mounted inside CD's chrome.
+   *
+   * The platform already ships a working operator chat — real threads, voice dictation, spoken
+   * playback, artifact cards, the whole seam. CD's pack draws its own thread and composer, but
+   * those are a DESIGN of a chat, not a chat. Rendering them here in place of the working one
+   * would replace a shipped capability with a picture of it (§58). So when a caller passes the
+   * real chat, CD's rail and header render exactly as designed and the pane hosts the live
+   * conversation instead of the drawn one — the design around the thing that works, not instead
+   * of it.
+   */
+  chatSlot?: ReactNode;
   /** Prompt suggestions. Absent → the chip row is not drawn (§13 — no invented prompts). */
   chips?: readonly string[];
   /** Which model tier answered, from the router record. Null → "—". */
@@ -123,7 +135,7 @@ function num(n: number | null | undefined): string {
 
 export default function WorkspaceSurface({
   projects, recent, earlier, thread,
-  activeChatId = null, onSelectChat, onNewChat, onSend,
+  activeChatId = null, onSelectChat, onNewChat, onSend, chatSlot,
   chips, model = null, modelNote = null, scope = null, status = null,
   streaming = null, loading = false, error = null,
 }: WorkspaceSurfaceProps) {
@@ -369,6 +381,13 @@ export default function WorkspaceSurface({
           </div>
         </div>
 
+        {/* The live conversation, when the caller mounted one. CD's rail and header stay exactly
+            as designed above; only the drawn thread and drawn composer step aside for the real
+            ones, which bring their own scrolling, their own composer, the mic and playback. */}
+        {chatSlot ? (
+          <div className="flex min-h-0 flex-1 flex-col">{chatSlot}</div>
+        ) : (
+        <>
         {/* thread */}
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 py-3.5">
           {loading && (
@@ -613,6 +632,8 @@ export default function WorkspaceSurface({
             She acts inside the lanes you set. Anything red waits for you.
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
