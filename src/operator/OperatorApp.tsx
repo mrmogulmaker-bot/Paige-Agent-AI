@@ -7,6 +7,7 @@ import {
 } from "@/lib/routing/tierBranches";
 import { EmptyState, PageSkeleton } from "@/components/ui/page";
 import FleetConsole from "@/operator/surfaces/FleetConsole";
+import SystemsCheckSurface from "@/operator/surfaces/SystemsCheckSurface";
 import TrustCompass from "@/operator/surfaces/TrustCompass";
 import KnowledgeSurface from "@/operator/surfaces/KnowledgeSurface";
 import { useCompass } from "@/operator/data/useCompass";
@@ -749,6 +750,7 @@ function OperatorSurface({
   firstName: string | null | undefined;
 }) {
   const isFleet = branchSlug === "fleet" && subSlug === "tenants";
+  const isSystemsCheck = branchSlug === "fleet" && subSlug === "systems-check";
   const isCompass = branchSlug === "trust-compass" && subSlug === "autonomy";
   const isKnow = branchSlug === "paige" && subSlug === "knowledge";
   const isWorkspace = branchSlug === "paige" && subSlug === "chat";
@@ -759,6 +761,7 @@ function OperatorSurface({
   const knowledge = useKnowledge(isKnow);
 
   if (isFleet) return <FleetConsole canSeeRevenue={isOwner} />;
+  if (isSystemsCheck) return <SystemsCheckSurface />;
   if (isCompass)
     return (
       /* Read-only until the lane WRITE path lands: no `onCommit`, and the surface says so
