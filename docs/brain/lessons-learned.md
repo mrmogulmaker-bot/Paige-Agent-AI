@@ -439,6 +439,24 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   session doesn't repeat the search. The narrow finding *was* right (Systems Check is unwired); the
   characterisation of the surrounding system was not.
 
+- **The "Supabase Preview" check fails on a PRE-EXISTING bootstrap collision — NOT on your migration
+  (2026-08-19).** *Symptom:* any PR touching `supabase/**` gets a red **Supabase Preview** check:
+  `ERROR: relation "profiles" already exists (SQLSTATE 42P07) At statement: 7 — CREATE TABLE
+  public.profiles`. It reads like the PR's migration broke something. *Root cause:* the preview branch
+  replays the ENTIRE migration history from scratch, and **two of the oldest migrations both create
+  `public.profiles` unguarded** — `20250908112334_remote_bootstrap.sql:27` and
+  `20251009234919_3d7566f7-…sql:11` (neither uses `IF NOT EXISTS`). The replay dies on the second one,
+  at statement 7 of the run — roughly 200 migrations BEFORE anything a current PR adds. Prod is
+  unaffected because it applied these incrementally against its own `schema_migrations` ledger and
+  never replays. *Rule:* when this check goes red, **read the failing statement before assuming it is
+  yours.** If the SQL quoted is not in your diff, it is this. Verify with
+  `grep -rln -- "-- Create profiles table" supabase/migrations/`. It is invisible on PRs with no
+  `supabase/**` change (the integration skips them), which is why it can look new.
+  **Standing risk (owner decision owed):** every future migration-carrying PR will show this red, which
+  trains everyone to ignore a check — the classic route to missing a real one. The fix is either
+  guarding those two bootstrap `CREATE TABLE`s or turning the preview integration off; editing historical
+  migrations is not a thing to do casually mid-fire.
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same
