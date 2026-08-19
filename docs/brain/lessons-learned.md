@@ -444,14 +444,18 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   `ERROR: relation "profiles" already exists (SQLSTATE 42P07) At statement: 7 — CREATE TABLE
   public.profiles`. It reads like the PR's migration broke something. *Root cause:* the preview branch
   replays the ENTIRE migration history from scratch, and **two of the oldest migrations both create
-  `public.profiles` unguarded** — `20250908112334_remote_bootstrap.sql:27` and
-  `20251009234919_3d7566f7-…sql:11` (neither uses `IF NOT EXISTS`). The replay dies on the second one,
-  at statement 7 of the run — roughly 200 migrations BEFORE anything a current PR adds. Prod is
-  unaffected because it applied these incrementally against its own `schema_migrations` ledger and
+  `public.profiles` unguarded** — `20250908112334_remote_bootstrap.sql:27` (`uuid_generate_v4()`, no UNIQUE) and
+  `20251009234919_3d7566f7-…sql:11` (`gen_random_uuid()`, `user_id` UNIQUE) — neither uses
+  `IF NOT EXISTS`. The replay builds the table from the first and dies on the second, roughly 200
+  migrations BEFORE anything a current PR adds. `At statement: 7` is the ZERO-INDEXED statement
+  *within that migration file* (seven `CREATE TYPE`s precede it), not the 7th statement of the run —
+  do not read it as "it failed almost immediately". Prod is unaffected because it applied these incrementally against its own `schema_migrations` ledger and
   never replays. *Rule:* when this check goes red, **read the failing statement before assuming it is
   yours.** If the SQL quoted is not in your diff, it is this. Verify with
-  `grep -rln -- "-- Create profiles table" supabase/migrations/`. It is invisible on PRs with no
-  `supabase/**` change (the integration skips them), which is why it can look new.
+  `grep -rln -- "-- Create profiles table" supabase/migrations/`. The decisive proof on #554: pushing a
+  **markdown-only** commit reproduced the identical failure — a commit that touches no SQL at all cannot
+  break a migration. It is invisible on PRs with no `supabase/**` change (the integration skips them),
+  which is why it can look new.
   **Standing risk (owner decision owed):** every future migration-carrying PR will show this red, which
   trains everyone to ignore a check — the classic route to missing a real one. The fix is either
   guarding those two bootstrap `CREATE TABLE`s or turning the preview integration off; editing historical
