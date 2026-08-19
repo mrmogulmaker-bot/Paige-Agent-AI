@@ -12,13 +12,10 @@ import { Button } from "@/components/ui/button";
  * not per route", and that is also how every other tier subtree already works here — so this
  * is one instance wrapping 78 routes, never 78 copies.
  *
- * WHICH PREDICATE. `isPlatformStaff` is populated from `is_platform_admin()`, which is
+ * WHICH PREDICATE. The operator predicate is `is_platform_admin()`, which is
  * `role = 'platform_admin' OR role = 'super_admin'` — semantically IDENTICAL to §53's
- * `is_platform_operator()`. So the correct operator predicate is ALREADY resolved in context:
- * no new RPC, no second async hop, no fork of the four-RPC waterfall `AgencyLayout` runs
- * (§18). We accept `isPlatformStaff || isPlatformOwner` because an owner is by definition
- * staff, and a partial resolution (owner flag committed before the staff flag) must never
- * flash a denial — the same reasoning `PlatformStaffOnly` carries in Admin.tsx.
+ * `is_platform_operator()`. The guard asks the SERVER for it directly (below) rather than
+ * inferring it from any client-side flag.
  *
  * WHY THE `loading` GATE IS UNCONDITIONAL AND FIRST. This exact bug has already shipped once:
  * `useTenantContext` records that a null `getUser()` on a cold hard-load used to latch
@@ -39,8 +36,43 @@ import { Button } from "@/components/ui/button";
  * server-side — RLS plus the `is_platform_operator()`-gated RPCs. This only decides what to
  * paint.
  */
+
+/**
+ * THE ONLY CACHE THIS GUARD HONOURS, AND IT IS KEYED TO THE PERSON IT WAS ISSUED FOR.
+ *
+ * The point of a cache here is to spare an already-verified operator a skeleton flash every
+ * time they navigate into the subtree — the guard remounts on each entry, and re-asking the
+ * server means a round-trip of blank. Worth having. But a grant is about a PERSON, so a cache
+ * that is not keyed to that person is not a cache, it is an unauthenticated allow: whoever is
+ * signed in when it is read gets whatever the last person earned.
+ *
+ * That is exactly what shipped before this: the guard treated `useTenantContext`'s
+ * `isPlatformStaff || isPlatformOwner` as an ALLOW while its own RPC was still in flight. Those
+ * flags are plain React state on a provider mounted at the app ROOT, which never unmounts, and
+ * they are refreshed on a SIGNED_IN by a BACKGROUND load that (correctly, for its own purpose)
+ * bails without committing on a transient failure. So between the instant a DIFFERENT user's
+ * session lands — a second sign-in in the same tab, a magic link, or the cross-tab broadcast
+ * that hands tab A the session someone just created in tab B — and the instant our RPC answers
+ * for them, the previous operator's `true` was still sitting there and admitted the new user to
+ * all 78 routes. Under a network partition (our three attempts exhaust AND the provider's
+ * background load bails, keeping the stale flags) that window did not close at all.
+ *
+ * So: the context flags no longer decide anything. The only thing that can pre-empt the
+ * round-trip is an answer THIS GUARD got from THE SERVER for THE SAME uid, held here at module
+ * scope so it survives the remounts it exists to smooth over — and discarded the moment the uid
+ * changes or the session ends. In-memory on purpose: a persisted cache would outlive the tab
+ * and hand the next person at this browser a grant they were never issued.
+ *
+ * A server answer always outranks it: the RPC re-runs on every subject change and its verdict
+ * overwrites this one, so a revoked role denies on the next entry rather than living here.
+ */
+let verifiedSubject: { uid: string; isOperator: boolean } | null = null;
+
 export default function RequireOperator({ children }: { children: React.ReactNode }) {
-  const { loading, isPlatformStaff, isPlatformOwner } = useTenantContext();
+  // Read for `loading` ONLY — the staff/owner flags are deliberately not consulted, per the
+  // note above. This still holds children back until the shared tenant scope has resolved
+  // once, which the console's chrome depends on.
+  const { loading } = useTenantContext();
   const location = useLocation();
   // null = still resolving; true/false = a real answer.
   const [hasSession, setHasSession] = useState<boolean | null>(null);
@@ -55,11 +87,11 @@ export default function RequireOperator({ children }: { children: React.ReactNod
    * isPlatformStaff:false}` latched, signs in, gets navigated here, and the guard reads those
    * stale falses as a real denial — bouncing them to `/admin`, the old console, on every
    * single login. That is the bug the owner hit, and no amount of gating on `loading` catches
-   * it, because `loading` is already false and never rises again.
+   * it, because `loading` is already false and never rises again. The same staleness in the
+   * other direction is the reason those flags cannot grant, either.
    *
    * So the guard asks the database directly rather than inferring from a cache it does not
-   * control. The context flags remain a fast ALLOW path (no flash for an already-resolved
-   * operator); only this RPC can produce a DENY.
+   * control, and pre-empts the wait only from its own subject-keyed answer above.
    */
   const [verdict, setVerdict] = useState<boolean | null>(null);
   /** Set when the check has been retried to exhaustion. Never a denial — an honest failure. */
@@ -77,7 +109,7 @@ export default function RequireOperator({ children }: { children: React.ReactNod
     /** Whose answer we currently hold, so a token refresh is not mistaken for a user swap. */
     let subject: string | null = null;
 
-    const ask = async (gen: number) => {
+    const ask = async (gen: number, uid: string) => {
       // NOTE THE SHAPE. `supabase.rpc()` is a thenable that RESOLVES with `{data, error}`; it
       // does not reject, so a `.catch()` here would never fire and a server-side failure would
       // arrive as `data: null` — which `data === true` reads as a DENY. That is precisely the
@@ -93,7 +125,11 @@ export default function RequireOperator({ children }: { children: React.ReactNod
           const { data, error } = await supabase.rpc("is_platform_admin");
           if (!alive || gen !== generation) return;
           if (!error) {
-            setVerdict(data === true);
+            const isOperator = data === true;
+            // Filed AGAINST THE UID it was issued for. `gen === generation` above proves that
+            // uid is still the one signed in, so this can never be stamped with the wrong name.
+            verifiedSubject = { uid, isOperator };
+            setVerdict(isOperator);
             return;
           }
         } catch {
@@ -111,6 +147,9 @@ export default function RequireOperator({ children }: { children: React.ReactNod
       if (!alive) return;
       setHasSession(!!userId);
       if (!userId) {
+        // SIGNED OUT. Burn the grant with the session that earned it — leaving it behind is
+        // how the next person to sign in at this browser inherits someone else's console.
+        verifiedSubject = null;
         subject = null;
         generation += 1;
         setVerdict(false);
@@ -123,9 +162,15 @@ export default function RequireOperator({ children }: { children: React.ReactNod
       if (userId === subject) return;
       subject = userId;
       const gen = (generation += 1);
-      setVerdict(null);
+      // A DIFFERENT person is signed in now. Anything remembered for someone else is dropped
+      // outright rather than merely ignored, so no later code path can reach it.
+      if (verifiedSubject && verifiedSubject.uid !== userId) verifiedSubject = null;
+      // Pre-empt the round-trip ONLY from a server answer this guard already got for THIS uid
+      // — never from a cached DENY (a role granted a moment ago must not be locked out by a
+      // stale no) and never from anyone else's grant.
+      setVerdict(verifiedSubject?.isOperator === true ? true : null);
       setUnverifiable(false);
-      void ask(gen);
+      void ask(gen, userId);
     };
 
     supabase.auth
@@ -133,6 +178,8 @@ export default function RequireOperator({ children }: { children: React.ReactNod
       .then(({ data }) => readSession(data.session?.user?.id ?? null))
       .catch(() => {
         if (alive) {
+          // We could not establish WHO this is, so nothing remembered about anyone may stand.
+          verifiedSubject = null;
           setHasSession(false);
           setVerdict(false);
         }
@@ -154,13 +201,11 @@ export default function RequireOperator({ children }: { children: React.ReactNod
     return <Navigate to={`/operator/login?next=${next}`} replace />;
   }
 
-  // 2. ALLOW as soon as anything says yes — our own RPC, or a context that has already
-  //    resolved this operator. This is what keeps a warm navigation from flashing.
-  //
-  //    `verdict !== false` guards the context path: the flags are a CACHE we do not control,
-  //    and after a user swap whose background revalidation failed they can still hold the
-  //    PREVIOUS operator's `true`. Our own explicit DENY must outrank a stale yes.
-  if (verdict === true || (verdict !== false && (isPlatformStaff || isPlatformOwner))) {
+  // 2. ALLOW only on a server answer that belongs to WHOEVER IS SIGNED IN NOW — either the
+  //    round-trip that just resolved, or the subject-keyed memo it seeded `verdict` from,
+  //    which is discarded the instant the uid changes. That is what keeps a warm navigation
+  //    from flashing without ever letting one person's grant admit another.
+  if (verdict === true) {
     return <>{children}</>;
   }
 

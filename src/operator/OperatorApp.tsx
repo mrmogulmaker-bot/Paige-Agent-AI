@@ -12,14 +12,11 @@ import KnowledgeSurface from "@/operator/surfaces/KnowledgeSurface";
 import { useCompass } from "@/operator/data/useCompass";
 import { useKnowledge } from "@/operator/data/useKnowledge";
 import OperatorPanel from "@/operator/surfaces/OperatorPanel";
+import { bespokeSlots } from "@/operator/surfaces/bespokeSlots";
 import { getPanelSpec } from "@/operator/surfaces/panelSpecs";
 import { tabGlyph } from "@/operator/surfaces/tabGlyphs";
 import WorkspaceSurface from "@/operator/surfaces/WorkspaceSurface";
 import { PaigePlatformDesk } from "@/components/paige/PaigePlatformDesk";
-import { MarketplaceStore, MarketplaceReview, IntegrationsGrid } from "@/operator/surfaces/MarketplaceSurfaces";
-import { CalendarMonth, CalendarWeek } from "@/operator/surfaces/CalendarSurfaces";
-import { ComposeSurface } from "@/operator/surfaces/ComposeSurface";
-import { SupportThread } from "@/operator/surfaces/SupportThread";
 import { PipelineHead, PipelineBoard, StageBoard } from "@/operator/surfaces/PipelineSurfaces";
 import { SocialGrid, SocialQueue } from "@/operator/surfaces/SocialSurfaces";
 import BufferDiagram from "@/operator/surfaces/BufferDiagram";
@@ -232,7 +229,14 @@ export default function OperatorApp() {
    * operator's deep link. Only the server's answer is allowed to say no.
    */
   const ownerVerdict = useIsPlatformOwner();
-  const isPlatformOwner = ownerVerdict === true || contextOwner;
+  /**
+   * The SERVER's answer wins whenever it has one. `contextOwner` is only a fast path for the
+   * window before the RPC replies — it is a cache, and a cache must never overrule a live
+   * denial. `useIsPlatformOwner` returns `null` (not `false`) when the check could not be made,
+   * so a `false` here is a real "no" from `is_platform_owner()` and is honoured as one; an
+   * unanswered check falls back to the cache exactly as before.
+   */
+  const isPlatformOwner = ownerVerdict === null ? contextOwner : ownerVerdict;
   const ownerAnswered = ownerVerdict !== null || contextOwner;
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ fleet: true, business: true });
@@ -286,9 +290,12 @@ export default function OperatorApp() {
     // writers were all removed, so `useOperatorChrome` documents that badge as permanently
     // absent — and reading a key the hook can never emit is a clause that would silently never
     // appear, which is worse than not writing it. When a real queue lands, it joins here.
-    return clauses.length
-      ? `${salutation} ${clauses.join(", ")}.`
-      : `${salutation} Nothing is waiting on you.`;
+    // With nothing substantiated the line STOPS at the salutation. "Nothing is waiting on you"
+    // is a positive claim about the platform's state, and this hook cannot tell a genuine zero
+    // from a read that failed — `statusSummary` is null for both, and an unreadable support
+    // badge is simply absent. Printing the reassurance in the failure case would tell the
+    // operator everything is clear at the exact moment we have no idea (§13).
+    return clauses.length ? `${salutation} ${clauses.join(", ")}.` : salutation;
   }, [chrome.firstName, chrome.loading, chrome.statusSummary, chrome.badges]);
 
   /**
@@ -796,7 +803,14 @@ function OperatorSurface({
    * to the tree without copy shows as an honest gap instead of a blank frame.
    */
   const spec = subSlug ? getPanelSpec(branchSlug, subSlug, leafSlug ?? undefined) : null;
-  if (spec) return <OperatorPanel spec={spec} bodyColumns={branchSlug === "analytics" ? 2 : 1} />;
+  if (spec)
+    return (
+      <OperatorPanel
+        spec={spec}
+        bodyColumns={branchSlug === "analytics" ? 2 : 1}
+        slots={bespokeSlots(branchSlug, subSlug, leafSlug)}
+      />
+    );
 
   return <SurfacePlaceholder title={title} path={path} isOwner={isOwner} />;
 }

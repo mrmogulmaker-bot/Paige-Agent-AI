@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { INTERNAL_REVENUE_CLASS, netFleetCount } from "@/operator/data/useFleet";
 
 /**
  * The live signal the operator console's CHROME reads — the rail badges, the rail footer, the
@@ -27,12 +28,17 @@ import { supabase } from "@/integrations/supabase/client";
  *     other open fail is amber, and so is an open `error` — a check that FAILED TO RUN is a real
  *     problem, not a benign neutral. A `skip` is "not yet assessable" and counts as neither.
  *   • `tenantCount` / `subAccountCount` — REAL, from `tenants`. A sub-account is a row with a
- *     non-null `parent_tenant_id` (§51). Nothing else is excluded; this is the whole fleet, so
- *     the footer matches what the Fleet Console lists rather than a differently-filtered total.
- *     Both operator tiers genuinely read the whole table: SELECT on `tenants` is the OR of
- *     "Platform staff read all tenants" (`is_platform_admin()`) and "Members read own tenant"
- *     (`is_tenant_member(id) OR is_platform_owner()`), so super_admin and platform_admin each
- *     clear one of the two.
+ *     non-null `parent_tenant_id` (§51). Both operator tiers genuinely read the whole table:
+ *     SELECT on `tenants` is the OR of "Platform staff read all tenants" (`is_platform_admin()`)
+ *     and "Members read own tenant" (`is_tenant_member(id) OR is_platform_owner()`), so
+ *     super_admin and platform_admin each clear one of the two.
+ *     THE FOOTER IS SCOPED THE SAME WAY THE FLEET CONSOLE IS (§57). The Fleet Console hides
+ *     tenants the platform runs for itself (`revenue_class = 'internal_test'`) and the footer sits
+ *     on the same page, so an unfiltered head-count here would print a LARGER fleet than the table
+ *     three inches away — two surfaces disagreeing about how many tenants exist. Both now apply
+ *     `netFleetCount` from `useFleet` (§18 one predicate): the internal rows are subtracted when
+ *     the classification is readable, and NOTHING is filtered when it is not. See that function
+ *     for why the unreadable case is unfiltered rather than blank.
  *   • `support` badge — REAL, from `support_tickets` (the platform support inbox: it has no
  *     tenant column, the operator IS the desk), and read ONLY when this session holds
  *     `super_admin`. See the §9/§53 note below — this gate is load-bearing, not a formality.
@@ -138,33 +144,77 @@ export function useOperatorChrome(enabled: boolean = true): OperatorChrome {
         const full = typeof rawName === "string" ? rawName.trim() : "";
         setFirstName(full.split(/\s+/)[0] || null);
 
-        const [tenantsRes, subsRes, snapRes, rolesRes] = await Promise.all([
-          // Exact counts, no rows over the wire, immune to the project's max-rows cap.
-          supabase.from("tenants").select("id", { count: "exact", head: true }),
-          supabase
-            .from("tenants")
-            .select("id", { count: "exact", head: true })
-            .not("parent_tenant_id", "is", null),
-          // The operator lens of the shipped Systems Check seam. Scope is the ONLY argument —
-          // the RPC derives the caller in-body and gates operator scope on is_platform_operator()
-          // (§59), so this passes no tenant id and can widen nothing. Not in the generated types
-          // yet, hence the cast, matching `useSystemsCheck`'s convention.
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (supabase as any).rpc("systems_check_snapshot", { p_scope: "operator" }),
-          uid ? supabase.from("user_roles").select("role").eq("user_id", uid) : Promise.resolve(null),
-        ]);
+        const [tenantsRes, subsRes, classRes, internalRes, internalSubsRes, snapRes, rolesRes] =
+          await Promise.all([
+            // Exact counts, no rows over the wire, immune to the project's max-rows cap.
+            supabase.from("tenants").select("id", { count: "exact", head: true }),
+            supabase
+              .from("tenants")
+              .select("id", { count: "exact", head: true })
+              .not("parent_tenant_id", "is", null),
+            // Is the operator-internal axis readable AT ALL by this session? One readable row proves
+            // it; zero proves nothing either way, which is exactly why the count cannot be filtered
+            // on a zero (§9/§53). This mirrors `useFleet`'s `classificationVisible` — same question,
+            // asked as a head-count instead of `rows.length` so the cap can never answer it.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            supabase.from("tenant_revenue_classification" as any)
+              .select("tenant_id", { count: "exact", head: true }),
+            // How many of them the platform runs for itself, and how many of THOSE are sub-accounts —
+            // the two figures the footer has to subtract so its "N tenants, M sub-accounts" stays
+            // internally coherent as well as agreeing with the Fleet Console. The sub-account variant
+            // needs the topology column, which lives on `tenants`, so it counts through an inner
+            // embed on the FK (`tenant_revenue_classification.tenant_id → tenants.id`, the only FK
+            // between the two tables, so the embed is unambiguous) — still a head-count, still no
+            // rows over the wire. If that embed ever fails to resolve, `exactCount` is null and
+            // `netFleetCount` returns null, so the footer simply drops its "M sub-accounts" clause
+            // rather than printing an unfiltered one next to a filtered total (§13).
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            supabase.from("tenant_revenue_classification" as any)
+              .select("tenant_id", { count: "exact", head: true })
+              .eq("revenue_class", INTERNAL_REVENUE_CLASS),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            supabase.from("tenant_revenue_classification" as any)
+              .select("tenant_id, tenants!inner(id)", { count: "exact", head: true })
+              .eq("revenue_class", INTERNAL_REVENUE_CLASS)
+              .not("tenants.parent_tenant_id", "is", null),
+            // The operator lens of the shipped Systems Check seam. Scope is the ONLY argument —
+            // the RPC derives the caller in-body and gates operator scope on is_platform_operator()
+            // (§59), so this passes no tenant id and can widen nothing. Not in the generated types
+            // yet, hence the cast, matching `useSystemsCheck`'s convention.
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (supabase as any).rpc("systems_check_snapshot", { p_scope: "operator" }),
+            uid ? supabase.from("user_roles").select("role").eq("user_id", uid) : Promise.resolve(null),
+          ]);
 
         if (!alive) return;
 
         // ── Fleet totals ──────────────────────────────────────────────────────────────────
-        // A failed read and an empty read are both "we don't know" for the total, so both leave
-        // the footer blank. Once we DO hold a total, the sub-account split is a real subset of it
-        // and may honestly be 0.
+        // Scoped through `netFleetCount`, the SAME predicate the Fleet Console filters its rows
+        // with (§18/§57) — so the footer and the table on the same page can never quote two
+        // different fleet sizes. A failed read and an empty read are both "we don't know" for the
+        // total, so both leave the footer blank. Once we DO hold a total, the sub-account split is
+        // a real subset of it and may honestly be 0.
+        //
+        // `classificationVisible` mirrors `useFleet` exactly: one readable classification row
+        // proves the operator-internal axis is legible to this session; zero rows — whether the
+        // read was denied, errored, or the table is genuinely empty — proves nothing, so we filter
+        // nothing and report the whole table, which is the Fleet Console's own behaviour at that
+        // tier. That keeps the two surfaces in agreement for super_admin AND platform_admin rather
+        // than only for the tier this was built on (§51).
+        const classificationVisible = (exactCount(classRes) ?? 0) > 0;
         const total = exactCount(tenantsRes);
         const subs = exactCount(subsRes);
-        const haveFleet = total !== null && total > 0;
-        setTenantCount(haveFleet ? total : null);
-        setSubAccountCount(haveFleet && subs !== null ? subs : null);
+        const netTotal =
+          total === null
+            ? null
+            : netFleetCount(total, exactCount(internalRes), classificationVisible);
+        const netSubs =
+          subs === null
+            ? null
+            : netFleetCount(subs, exactCount(internalSubsRes), classificationVisible);
+        const haveFleet = netTotal !== null && netTotal > 0;
+        setTenantCount(haveFleet ? netTotal : null);
+        setSubAccountCount(haveFleet && netSubs !== null ? netSubs : null);
 
         // ── Role word ─────────────────────────────────────────────────────────────────────
         // Operator tiers only (§53). A session holding neither is not an operator, and printing

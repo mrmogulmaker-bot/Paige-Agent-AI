@@ -37,16 +37,27 @@ describe("operator panel specs", () => {
    * `body` — so it silently passed everything. The measurement was itself a false green. Hence
    * the explicit `body.kind` below.)
    */
+  /**
+   * Tabs whose body is a purpose-built CD surface rather than a registry block. Their spec may
+   * legitimately be a stand-in, because an operator never sees it. Two different mechanisms:
+   *
+   *  • The first three return their own component from `OperatorSurface` BEFORE the registry
+   *    is consulted, so the spec is unreachable.
+   *  • The rest DO render the registry panel — CD's eyebrow, title, KPIs and rail all come from
+   *    it — and hand only the named block's body to a real surface via `bespokeSlots`. That
+   *    wiring is pinned by name in `bespokeSlots.test.tsx`, which also proves the stand-in's
+   *    words are genuinely gone from the render.
+   *
+   * Listed individually so each exemption is a decision on the record rather than a hole a
+   * future stand-in could slip through.
+   */
   const BESPOKE = new Set([
-    // These six never reach the panel registry: `OperatorSurface` dispatches each to its own
-    // CD component first, so their spec is unreachable. Listed by name so the exemption is a
-    // decision on the record rather than a hole a future stand-in could slip through.
     "paige/chat", // WorkspaceSurface, hosting the live operator chat
     "paige/knowledge", // KnowledgeSurface
     "trust-compass/autonomy", // TrustCompass
-    "calendar/month", // CalendarMonth
-    "support/inbox", // SupportThread
-    "settings/integrations/connected", // IntegrationsGrid
+    "calendar/month", // slot → CalendarMonth
+    "support/inbox", // slot → SupportThread
+    "settings/integrations/connected", // slot → IntegrationsGrid
   ]);
 
   it("renders CD's real panel content — no panel-rendered tab falls back to the stand-in", () => {
