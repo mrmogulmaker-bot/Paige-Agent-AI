@@ -272,7 +272,15 @@ export function FleetOrbit({
   };
 
   return (
-    <div ref={containerRef} className="relative min-h-0 flex-1">
+    // CD's own wrapper (`:host{position:relative;width:100%;height:100%}`) fills the dark box
+    // via absolute inset, not flex-stretch — its immediate parent is `position:relative` with a
+    // resolved size (Super Admin Shell.dc.html: `position:absolute;inset:0;overflow:hidden`
+    // around `<x-import component-from-global-scope="fleet-field">`). Matching that here rather
+    // than relying on flex-stretch removes a real render bug: a flex child's cross-axis stretch
+    // can resolve to zero height across some ancestor chains even when every intermediate div
+    // carries `min-h-0 flex-1`, and a zero-height canvas paints nothing (§32 — a green build
+    // proves nothing about what actually renders; this was caught live, not in review).
+    <div ref={containerRef} className="absolute inset-0">
       <canvas
         ref={canvasRef}
         className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
