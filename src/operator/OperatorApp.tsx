@@ -10,6 +10,7 @@ import FleetConsole from "@/operator/surfaces/FleetConsole";
 import SystemsCheckSurface from "@/operator/surfaces/SystemsCheckSurface";
 import FleetHistorySurface from "@/operator/surfaces/FleetHistorySurface";
 import FleetTeamPulseSurface from "@/operator/surfaces/FleetTeamPulseSurface";
+import OperatorPaigePanel from "@/operator/OperatorPaigePanel";
 import TrustCompass from "@/operator/surfaces/TrustCompass";
 import KnowledgeSurface from "@/operator/surfaces/KnowledgeSurface";
 import { useCompass } from "@/operator/data/useCompass";
@@ -245,6 +246,12 @@ export default function OperatorApp() {
   const ownerAnswered = ownerVerdict !== null || contextOwner;
   const [collapsed, setCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ fleet: true, business: true });
+  // "Ask Paige" (CD 2285) — persistent operator chrome, not a per-surface control.
+  const [paigePanelOpen, setPaigePanelOpen] = useState(false);
+  // The ONE thread both doors share. Held HERE, above both the slide-out and the Paige
+  // branch, so "same brain … one thread, two doors" is structural rather than a hope:
+  // whichever door moves the selection, the other adopts it (§18 one home).
+  const [paigeThreadId, setPaigeThreadId] = useState<string | null>(null);
 
   /**
    * The live signal behind the chrome — the operator's name, the rail badges, the fleet totals.
@@ -642,6 +649,19 @@ export default function OperatorApp() {
                 {chrome.statusSummary}
               </span>
             )}
+            {/* CD 263 — the ✦ side-chat toggle sits BETWEEN the status pill and the
+                theme toggle, in that authored order. Persistent chrome: it is on every
+                operator surface, on every tab (owner ruling A, 2026-08-19). */}
+            <button
+              type="button"
+              onClick={() => setPaigePanelOpen((v) => !v)}
+              aria-label={paigePanelOpen ? "Close the side chat" : "Ask her about this screen"}
+              aria-expanded={paigePanelOpen}
+              title={paigePanelOpen ? "Close the side chat" : "Ask her about this screen"}
+              className="grid h-8 w-8 flex-none place-items-center rounded-[9px] border border-border bg-card text-[13px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span aria-hidden>✦</span>
+            </button>
             <button
               type="button"
               onClick={toggleTheme}
@@ -727,9 +747,23 @@ export default function OperatorApp() {
             path={canonical}
             isOwner={isPlatformOwner}
             firstName={chrome.firstName}
+            paigeThreadId={paigeThreadId}
+            onPaigeThreadIdChange={setPaigeThreadId}
           />
         </main>
       </div>
+
+      {/* "Ask Paige" — overlays the surface, never pushes or shrinks it (owner ruling A).
+          Mounted at the SHELL, not inside <main>, so it is the same panel on every branch
+          and every sub-tab. `surfaceLabel` is CD's `where`: the sub-tab when there is one
+          (the pack's own example subtitle is "On Systems Check"), else the branch. */}
+      <OperatorPaigePanel
+        open={paigePanelOpen}
+        onOpenChange={setPaigePanelOpen}
+        surfaceLabel={(isSettings ? leaf?.label : sub?.label) ?? branch.label}
+        threadId={paigeThreadId}
+        onThreadIdChange={setPaigeThreadId}
+      />
     </div>
   );
 }
@@ -744,12 +778,16 @@ export default function OperatorApp() {
  */
 function OperatorSurface({
   branchSlug, subSlug, leafSlug, title, path, isOwner, firstName,
+  paigeThreadId, onPaigeThreadIdChange,
 }: {
   branchSlug: string; subSlug: string | null; leafSlug: string | null;
   title: string; path: string; isOwner: boolean;
   /** Operator's first name from runtime auth (§45), passed down from the shell's
    *  own chrome hook — never a second `getUser()` call (§18). undefined = resolving. */
   firstName: string | null | undefined;
+  /** The shell-held Paige selection, shared with the ✦ slide-out (one thread, two doors). */
+  paigeThreadId: string | null;
+  onPaigeThreadIdChange: (id: string | null) => void;
 }) {
   const isFleet = branchSlug === "fleet" && subSlug === "tenants";
   const isSystemsCheck = branchSlug === "fleet" && subSlug === "systems-check";
@@ -816,6 +854,11 @@ function OperatorSurface({
         clientId={null}
         clientContext={PLATFORM_SCOPE_PROSE}
         chips={PLATFORM_CHIPS}
+        /* The SAME selection the ✦ slide-out holds, so the two doors are two views of
+           one conversation. Without this, this mount keeps its own id and the panel's
+           first send forks a new thread (CD: "one thread, two doors"). */
+        activeThreadId={paigeThreadId}
+        onActiveThreadIdChange={onPaigeThreadIdChange}
         renderRail={(api) => <OperatorChatRail api={api} />}
         conversationHeader={(api) => (
           <div className="flex min-w-0 flex-none items-center gap-2.5 border-b border-border bg-muted/40 px-3.5 py-2.5">
