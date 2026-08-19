@@ -1,27 +1,36 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFleet, isInternal, type FleetTenant } from "@/operator/data/useFleet";
+import { FleetOrbit, type OrbitNode } from "@/operator/surfaces/FleetOrbit";
 import { cn } from "@/lib/utils";
 
 /**
- * Fleet Console — Claude Design's surface, on the real fleet.
+ * Fleet Console — Claude Design's `isFleet` block (Super Admin Shell.dc.html ~7826-7877), on
+ * the real fleet: the FLEET eyebrow + title row with the Field/Table view toggle and gold
+ * primary CTA, the four-tile KPI strip, the filter-chip + search row, the Field view's orbit
+ * visualization (`FleetOrbit`) or the Table view's tenant list, and the 296px right rail
+ * carrying "Needs you today".
  *
- * Ported from the CD pack's `isFleetConsole` block: the FLEET eyebrow + title row with its
- * view toggle and gold primary CTA, the KPI strip, the filter-chip + search row, the tenant
- * table (initials plate · name/owner · tier pill · figures · health dot · Enter), and the
- * 296px right rail carrying "needs attention" and Paige's read.
- *
- * §13 — WHAT IT SHOWS IS WHAT THE PLATFORM KNOWS. The pack ships mock rows with dollar MRR on
- * every tenant. We do not. The §57 anchor case was exactly that: a Fleet surface showing
- * $397/$149 against tenants with no paid subscription. So the money column renders the
- * revenue CLASS the platform actually records, and anything unsubstantiated is "—". Counts,
- * status and trial dates are real columns from real tables.
+ * §13 — WHAT IT SHOWS IS WHAT THE PLATFORM KNOWS. CD's pack ships mock rows with dollar MRR on
+ * every tenant, a "FLEET MRR" KPI, a per-row MRR column, and a synthesized "Her read" paragraph.
+ * None of that ships here. The §57 anchor case was exactly this class of defect — a Fleet
+ * surface showing $397/$149 against tenants with no paid subscription. Money Spine is a
+ * separately-scoped, deferred effort (owner ruling 2026-08-19: "I don't care about the money
+ * spine right now") — so every dollar figure below is an honest "—", not a stand-in, and CD's
+ * invented "Her read" narrative and named "Needs you today" scenarios (Ashford Wellness, Verde
+ * Landscaping, Ridgeline Collective) are dropped rather than ported — those are mock findings
+ * about tenants that do not exist here, and shipping them would put fabricated words in Paige's
+ * mouth (§13/§14). The label, the geometry and the interaction are CD's; the figures are ours.
  */
 
-const CLASS_LABEL: Record<string, string> = {
-  paid: "Paid",
-  promotional: "Promotional",
-  internal_test: "Internal",
+const TIER_LABEL_ORDER = ["Agency", "Solo", "Enterprise", "Sub-account"] as const;
+type TierLabel = (typeof TIER_LABEL_ORDER)[number];
+
+const TIER_PILL: Record<TierLabel, string> = {
+  Agency: "bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))]",
+  Solo: "bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]",
+  Enterprise: "bg-[hsl(var(--gold-dark)/0.14)] text-[hsl(var(--gold-dark))]",
+  "Sub-account": "bg-muted text-muted-foreground",
 };
 
 /** CD renders a coloured initials plate per tenant; derive it rather than store it. */
@@ -35,31 +44,29 @@ function initials(name: string): string {
 /**
  * Health is DERIVED from facts on the row — an active tenant with people and clients is
  * healthy, one with nobody in it is not. It is deliberately NOT a score we invent: every
- * input is a real column, and a tenant we cannot judge reads "unknown" rather than green.
+ * input is a real column, and CD's three-way pill (Healthy/Watch/At risk) is what this maps
+ * to — "risk" is CD's `t.risk` flag, "watch" is CD's amber middle state.
  */
-function health(t: FleetTenant): { label: string; tone: "ok" | "warn" | "risk" | "unknown" } {
-  if (t.status && t.status !== "active") return { label: t.status, tone: "risk" };
-  if (t.seats === 0) return { label: "No members", tone: "risk" };
-  if (t.customers === 0) return { label: "No clients yet", tone: "warn" };
-  return { label: "Active", tone: "ok" };
+function health(t: FleetTenant): { label: string; tone: "ok" | "warn" | "risk" } {
+  if (t.status && t.status !== "active") return { label: "At risk", tone: "risk" };
+  if (t.seats === 0) return { label: "At risk", tone: "risk" };
+  if (t.customers === 0) return { label: "Watch", tone: "warn" };
+  return { label: "Healthy", tone: "ok" };
 }
 
-const TONE_DOT: Record<string, string> = {
-  ok: "bg-[hsl(var(--success))]",
-  warn: "bg-[hsl(var(--warning))]",
-  risk: "bg-[hsl(var(--destructive))]",
-  unknown: "bg-muted-foreground/40",
+const HEALTH_PILL: Record<"ok" | "warn" | "risk", string> = {
+  ok: "bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]",
+  warn: "bg-[hsl(var(--warning)/0.16)] text-[hsl(var(--gold-dark))]",
+  risk: "bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]",
 };
 
-type Filter = "all" | "agency" | "attention" | "trial";
+type Filter = "All" | "Agency" | "Solo" | "Enterprise" | "At risk";
+const FILTERS: readonly Filter[] = ["All", "Agency", "Solo", "Enterprise", "At risk"];
 
 /**
  * The fleet is ordered by TOPOLOGY, not by creation date: each top-level tenant, then its own
- * sub-accounts directly beneath it. That is how the platform actually is (§51) and how the
- * operator thinks about it — an agency is not a peer of the accounts it owns, and a
- * sub-account read out of context next to unrelated tenants is exactly the seam confusion §51
- * exists to end. A child whose parent is filtered out still appears, at top level, so a search
- * can never silently swallow a tenant.
+ * sub-accounts directly beneath it (§51). A child whose parent is filtered out still appears,
+ * at top level, so a search can never silently swallow a tenant.
  */
 function byTopology(rows: readonly FleetTenant[]): FleetTenant[] {
   const present = new Set(rows.map((t) => t.id));
@@ -74,15 +81,19 @@ function byTopology(rows: readonly FleetTenant[]): FleetTenant[] {
   return roots.flatMap((r) => [r, ...(childrenOf.get(r.id) ?? [])]);
 }
 
-/** Manager tiers, per §51. Never a substring of the plan name — that is a label, not the tier. */
-function isAgency(t: FleetTenant): boolean {
-  return t.accountType === "agency" || t.accountType === "enterprise";
+/** CD's tier label (TIER_INK's four keys), derived from the real record — never a plan name. */
+function tierLabel(t: FleetTenant, isNested: boolean): TierLabel {
+  if (isNested) return "Sub-account";
+  if (t.accountType === "agency") return "Agency";
+  if (t.accountType === "enterprise") return "Enterprise";
+  return "Solo";
 }
 
-export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean }) {
+export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSeeRevenue: boolean }) {
   const navigate = useNavigate();
   const { tenants, classificationVisible, loading, error } = useFleet(true);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [view, setView] = useState<"field" | "table">("field");
+  const [filter, setFilter] = useState<Filter>("All");
   const [q, setQ] = useState("");
   /**
    * Platform fixtures and test accounts are hidden by default and revealed by a chip — never
@@ -109,49 +120,45 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
     [tenants, classificationVisible],
   );
 
+  /** Which fleet rows are nested (a sub-account whose parent is also in the fleet). */
+  const nestedIds = useMemo(() => {
+    const present = new Set(fleet.map((t) => t.id));
+    return new Set(fleet.filter((t) => t.parentTenantId && present.has(t.parentTenantId)).map((t) => t.id));
+  }, [fleet]);
+
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return byTopology(
       fleet.filter((t) => {
         if (needle && !`${t.name} ${t.slug ?? ""}`.toLowerCase().includes(needle)) return false;
-        if (filter === "attention") return health(t).tone !== "ok";
-        if (filter === "trial") return !!t.trialEndsAt;
-        if (filter === "agency") return isAgency(t);
-        return true;
+        if (filter === "At risk") return health(t).tone === "risk";
+        if (filter === "All") return true;
+        return tierLabel(t, nestedIds.has(t.id)) === filter;
       }),
     );
-  }, [fleet, filter, q]);
+  }, [fleet, filter, q, nestedIds]);
 
-  /** Which tenants are actually on screen — decides whether a child may be drawn as nested. */
   const rowIds = useMemo(() => new Set(rows.map((t) => t.id)), [rows]);
 
-  // Every KPI is a count of real rows. Nothing here is a projection or an estimate.
-  const kpis = useMemo(() => {
-    const attention = fleet.filter((t) => health(t).tone !== "ok").length;
-    const paid = fleet.filter((t) => t.revenueClass === "paid").length;
-    const people = fleet.reduce((n, t) => n + t.seats, 0);
-    const clients = fleet.reduce((n, t) => n + t.customers, 0);
-    return [
-      { label: "TENANTS", value: String(fleet.length), unit: "on the platform" },
-      { label: "NEEDS ATTENTION", value: String(attention), unit: attention === 1 ? "tenant" : "tenants" },
-      ...(canSeeRevenue
-        ? [{ label: "PAID", value: String(paid), unit: `of ${fleet.length}` }]
-        : []),
-      { label: "PEOPLE", value: String(people), unit: `${clients} clients` },
-    ];
-  }, [fleet, canSeeRevenue]);
+  // CD: subCount = TENANTS.reduce((a,t) => a + t.subs, 0) — real, the count of rows with a
+  // parent present in the fleet.
+  const subCount = useMemo(() => fleet.filter((t) => nestedIds.has(t.id)).length, [fleet, nestedIds]);
+  const atRiskTenants = useMemo(() => fleet.filter((t) => health(t).tone === "risk"), [fleet]);
 
-  const attention = useMemo(
-    () => fleet.filter((t) => health(t).tone !== "ok").slice(0, 4),
-    [fleet],
+  const attention = useMemo(() => atRiskTenants.slice(0, 4), [atRiskTenants]);
+
+  const orbitNodes: OrbitNode[] = useMemo(
+    () =>
+      rows.map((t) => ({
+        id: t.id,
+        name: t.name,
+        tier: tierLabel(t, nestedIds.has(t.id)),
+        // Real, non-financial weight — team + clients. Never a stand-in for revenue (§13).
+        weight: t.seats + t.customers,
+        needsYou: health(t).tone === "risk",
+      })),
+    [rows, nestedIds],
   );
-
-  const FILTERS: ReadonlyArray<{ key: Filter; label: string }> = [
-    { key: "all", label: `All (${fleet.length})` },
-    { key: "attention", label: "Needs attention" },
-    { key: "trial", label: "On trial" },
-    { key: "agency", label: "Agencies" },
-  ];
 
   return (
     <div className="flex min-h-0 flex-1 gap-3">
@@ -170,13 +177,30 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
                 ? "Reading the fleet…"
                 : error
                   ? "The fleet could not be read."
-                  : `${fleet.length} ${fleet.length === 1 ? "tenant" : "tenants"} on the platform.` +
+                  : "Every tenant on the platform, and the door into each one." +
                     (classificationVisible
                       ? ""
                       : " Platform fixtures cannot be told apart at your access level, so any are counted here.")}
             </div>
           </div>
           <div className="ml-auto flex min-w-0 flex-none items-center gap-2.5">
+            {/* CD's Field/Table view toggle. */}
+            <div className="flex flex-none items-center gap-0.5 rounded-[9px] border border-border bg-muted/50 p-0.5">
+              {(["field", "table"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setView(v)}
+                  aria-pressed={view === v}
+                  className={cn(
+                    "rounded-[7px] px-2.5 py-1 text-[11.5px] font-medium capitalize transition-colors",
+                    view === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+                  )}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               onClick={() => navigate("/operator/provisioning")}
@@ -187,9 +211,19 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
           </div>
         </div>
 
-        {/* ── KPI strip ─────────────────────────────────────────────── */}
+        {/* ── KPI strip (CD's flKpis) ───────────────────────────────── */}
         <div className="grid flex-none grid-cols-2 gap-2.5 lg:grid-cols-4">
-          {kpis.map((k) => (
+          {[
+            { label: "TENANTS", value: loading ? "—" : String(fleet.length), unit: `${loading ? "—" : subCount} sub-accounts beneath` },
+            // Money Spine deferred (owner ruling 2026-08-19) — no billing table read here.
+            // CD's unit asserts a growth rate ("up 6.2% on last month") we have not measured,
+            // so it is dropped rather than shown against an em dash (§13).
+            { label: "FLEET MRR", value: "—", unit: "not tracked yet" },
+            { label: "AT RISK", value: loading ? "—" : String(atRiskTenants.length), unit: atRiskTenants.length ? "needs a look" : "none flagged" },
+            // CD's provisioning-decision queue has no live writer (§18 — same honest gap
+            // `useOperatorChrome` already states for the rail badge), so this stays absent.
+            { label: "WAITING ON YOU", value: "—", unit: "not connected yet" },
+          ].map((k) => (
             <div
               key={k.label}
               className="min-w-0 rounded-xl border-[1.5px] border-border bg-card px-3.5 py-3 shadow-sm"
@@ -199,7 +233,7 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
               </div>
               <div className="mt-1 flex min-w-0 items-baseline gap-2">
                 <span className="whitespace-nowrap text-[24px] font-bold tabular-nums tracking-[-0.02em]">
-                  {loading ? "—" : k.value}
+                  {k.value}
                 </span>
                 <span className="truncate text-[10.5px] text-muted-foreground">{k.unit}</span>
               </div>
@@ -210,12 +244,12 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
         {/* ── filters + search ──────────────────────────────────────── */}
         <div className="flex flex-none flex-wrap items-center gap-2">
           {FILTERS.map((f) => {
-            const on = filter === f.key;
+            const on = filter === f;
             return (
               <button
-                key={f.key}
+                key={f}
                 type="button"
-                onClick={() => setFilter(f.key)}
+                onClick={() => setFilter(f)}
                 aria-pressed={on}
                 className={cn(
                   "whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors",
@@ -225,7 +259,7 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
                     : "border-border bg-card text-muted-foreground hover:text-foreground",
                 )}
               >
-                {f.label}
+                {f}
               </button>
             );
           })}
@@ -253,160 +287,169 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search tenants"
-              aria-label="Search tenants"
-              className="w-36 bg-transparent text-[11.5px] outline-none placeholder:text-muted-foreground"
+              placeholder="Search tenants, owners, domains"
+              aria-label="Search tenants, owners, domains"
+              className="w-44 bg-transparent text-[11.5px] outline-none placeholder:text-muted-foreground"
             />
           </div>
         </div>
 
-        {/* ── the fleet ─────────────────────────────────────────────── */}
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-card shadow-sm">
-          <div className="sticky top-0 z-[2] flex items-center gap-2.5 border-b border-border bg-muted/40 px-3.5 py-2">
-            <div className="min-w-0 flex-[2.1] text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">
-              TENANT
+        {/* ── field view: the orbit ─────────────────────────────────── */}
+        {view === "field" && (
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[13px] border-[1.5px] border-border bg-card shadow-sm">
+            <div className="flex-none px-4 pt-3.5">
+              <div className="text-[9px] font-semibold tracking-[0.15em] text-muted-foreground">
+                EVERY TENANT ON THE PLATFORM
+              </div>
+              <div className="mt-1 text-[15px] font-bold">The fleet, by weight</div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">
+                {loading ? "—" : rows.length} tenants · node size is team + clients · ringed nodes
+                need you
+              </div>
             </div>
-            <div className="min-w-0 flex-[0.9] text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">
-              PLAN
+            {loading ? (
+              <div className="flex flex-1 items-center justify-center">
+                <div className="h-40 w-40 animate-pulse rounded-full bg-muted" />
+              </div>
+            ) : error ? (
+              <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
+                <div>
+                  <div className="text-[13px] font-semibold">The fleet could not be read.</div>
+                  <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">{error}</div>
+                </div>
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
+                <div className="text-[13px] font-semibold text-muted-foreground">
+                  {tenants.length === 0 ? "No tenants yet." : "Nothing matches that."}
+                </div>
+              </div>
+            ) : (
+              <FleetOrbit nodes={orbitNodes} onSelect={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)} />
+            )}
+            <div className="flex-none px-4 pb-3 text-center text-[10px] text-muted-foreground">
+              Drag to orbit · hover a node to name it · click to open the tenant
             </div>
-            {canSeeRevenue && (
-              <div className="min-w-0 flex-[0.9] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">
-                REVENUE
+          </div>
+        )}
+
+        {/* ── table view ─────────────────────────────────────────────── */}
+        {view === "table" && (
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-card shadow-sm">
+            <div className="sticky top-0 z-[2] flex items-center gap-2.5 border-b border-border bg-muted/40 px-3.5 py-2">
+              <div className="min-w-0 flex-[2.1] text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">TENANT</div>
+              <div className="min-w-0 flex-[0.9] text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">TIER</div>
+              <div className="min-w-0 flex-[0.9] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">MRR</div>
+              <div className="min-w-0 flex-[0.8] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">BENEATH</div>
+              <div className="min-w-0 flex-1 text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">HEALTH</div>
+              <div className="min-w-0 flex-[0.9] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">LAST ACTIVE</div>
+              <div className="w-[76px] flex-none" />
+            </div>
+
+            {loading && (
+              <div className="space-y-px">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-2.5 border-b border-border/60 px-3.5 py-2.5">
+                    <div className="h-7 w-7 flex-none animate-pulse rounded-[9px] bg-muted" />
+                    <div className="h-3 w-40 animate-pulse rounded bg-muted" />
+                  </div>
+                ))}
               </div>
             )}
-            <div className="min-w-0 flex-[0.7] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">
-              PEOPLE
-            </div>
-            <div className="min-w-0 flex-[0.7] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">
-              CLIENTS
-            </div>
-            <div className="min-w-0 flex-1 text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">
-              HEALTH
-            </div>
-            <div className="w-[76px] flex-none" />
-          </div>
 
-          {loading && (
-            <div className="space-y-px">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-2.5 border-b border-border/60 px-3.5 py-2.5">
-                  <div className="h-7 w-7 flex-none animate-pulse rounded-[9px] bg-muted" />
-                  <div className="h-3 w-40 animate-pulse rounded bg-muted" />
+            {!loading && error && (
+              <div className="px-4 py-10 text-center">
+                <div className="text-[13px] font-semibold">The fleet could not be read.</div>
+                <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">{error}</div>
+              </div>
+            )}
+
+            {!loading && !error && rows.length === 0 && (
+              <div className="px-4 py-10 text-center">
+                <div className="text-[13px] font-semibold">
+                  {tenants.length === 0 ? "No tenants yet." : "Nothing matches that."}
                 </div>
-              ))}
-            </div>
-          )}
-
-          {!loading && error && (
-            <div className="px-4 py-10 text-center">
-              <div className="text-[13px] font-semibold">The fleet could not be read.</div>
-              <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">{error}</div>
-            </div>
-          )}
-
-          {!loading && !error && rows.length === 0 && (
-            <div className="px-4 py-10 text-center">
-              <div className="text-[13px] font-semibold">
-                {tenants.length === 0 ? "No tenants yet." : "Nothing matches that."}
+                <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">
+                  {tenants.length === 0
+                    ? "Provisioned tenants appear here as soon as they exist."
+                    : "Clear the filter or search to see the whole fleet."}
+                </div>
               </div>
-              <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">
-                {tenants.length === 0
-                  ? "Provisioned tenants appear here as soon as they exist."
-                  : "Clear the filter or search to see the whole fleet."}
-              </div>
-            </div>
-          )}
+            )}
 
-          {!loading &&
-            !error &&
-            rows.map((t) => {
-              const h = health(t);
-              // A row sits under its parent only when that parent is actually on screen —
-              // otherwise the indent would imply a hierarchy the operator cannot see.
-              const nested = !!t.parentTenantId && rowIds.has(t.parentTenantId);
-              return (
-                <div
-                  key={t.id}
-                  className="flex min-w-0 items-center gap-2.5 border-b border-border/60 px-3.5 py-2.5 transition-colors last:border-b-0 hover:bg-muted/40"
-                >
-                  <div className="flex min-w-0 flex-[2.1] items-center gap-2.5">
-                    {nested && (
-                      /* CD's ownership tick: a hairline elbow, so a sub-account reads as
-                         BELONGING to the agency above it rather than sitting beside it (§51). */
-                      <span
-                        aria-hidden
-                        className="ml-1 h-4 w-3 flex-none rounded-bl-[4px] border-b border-l border-border"
-                      />
-                    )}
-                    <span className="grid h-7 w-7 flex-none place-items-center rounded-[9px] bg-muted text-[10px] font-bold text-foreground/70">
-                      {initials(t.name)}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <span className="truncate text-[12.5px] font-semibold">{t.name}</span>
-                        {isInternal(t) && (
-                          <span className="flex-none whitespace-nowrap rounded-full border border-dashed border-border px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground">
-                            Internal
-                          </span>
-                        )}
-                      </div>
-                      <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">
-                        {t.slug ?? "—"}
-                        {nested ? " · sub-account" : isAgency(t) ? " · agency" : ""}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="min-w-0 flex-[0.9]">
-                    <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                      {t.planOffer ?? "—"}
-                    </span>
-                  </div>
-                  {canSeeRevenue && (
-                    <div className="min-w-0 flex-[0.9] whitespace-nowrap text-right text-[11.5px]">
-                      {t.revenueClass ? (
+            {!loading &&
+              !error &&
+              rows.map((t) => {
+                const h = health(t);
+                const nested = nestedIds.has(t.id);
+                const tier = tierLabel(t, nested);
+                const beneath = fleet.filter((x) => x.parentTenantId === t.id).length;
+                return (
+                  <div
+                    key={t.id}
+                    className="flex min-w-0 items-center gap-2.5 border-b border-border/60 px-3.5 py-2.5 transition-colors last:border-b-0 hover:bg-muted/40"
+                  >
+                    <div className="flex min-w-0 flex-[2.1] items-center gap-2.5">
+                      {nested && (
                         <span
-                          className={cn(
-                            t.revenueClass === "paid"
-                              ? "font-semibold text-foreground"
-                              : "text-muted-foreground",
-                          )}
-                        >
-                          {CLASS_LABEL[t.revenueClass] ?? t.revenueClass}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
+                          aria-hidden
+                          className="ml-1 h-4 w-3 flex-none rounded-bl-[4px] border-b border-l border-border"
+                        />
                       )}
+                      <span className="grid h-7 w-7 flex-none place-items-center rounded-[9px] bg-muted text-[10px] font-bold text-foreground/70">
+                        {initials(t.name)}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-[12.5px] font-semibold">{t.name}</span>
+                          {isInternal(t) && (
+                            <span className="flex-none whitespace-nowrap rounded-full border border-dashed border-border px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Internal
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">
+                          {t.slug ?? "—"}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                  <div className="min-w-0 flex-[0.7] text-right font-mono text-[11.5px] tabular-nums">
-                    {t.seats}
+                    <div className="min-w-0 flex-[0.9]">
+                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold", TIER_PILL[tier])}>
+                        {tier}
+                      </span>
+                    </div>
+                    {/* Money Spine deferred — no MRR read (§13). */}
+                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[11.5px] text-muted-foreground">—</div>
+                    <div className="min-w-0 flex-[0.8] text-right font-mono text-[11.5px] tabular-nums">
+                      {beneath || "—"}
+                    </div>
+                    <div className="flex min-w-0 flex-1 items-center justify-end">
+                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold", HEALTH_PILL[h.tone])}>
+                        {h.label}
+                      </span>
+                    </div>
+                    {/* No last-activity read wired yet — honest absence, never "today" (§13). */}
+                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[11px] text-muted-foreground">—</div>
+                    <div className="w-[76px] flex-none text-right">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/operator/fleet/tenants?tenant=${t.id}`)}
+                        className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        Enter →
+                      </button>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-[0.7] text-right font-mono text-[11.5px] tabular-nums">
-                    {t.customers}
-                  </div>
-                  <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-                    <span aria-hidden className={cn("h-[7px] w-[7px] flex-none rounded-full", TONE_DOT[h.tone])} />
-                    <span className="whitespace-nowrap text-[11px] text-muted-foreground">{h.label}</span>
-                  </div>
-                  <div className="w-[76px] flex-none text-right">
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/operator/fleet/tenants?tenant=${t.id}`)}
-                      className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      Open
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-        </div>
+                );
+              })}
+          </div>
+        )}
       </div>
 
-      {/* ── right rail ───────────────────────────────────────────────── */}
+      {/* ── right rail: "Needs you today" ───────────────────────────── */}
       <aside className="hidden w-[296px] flex-none flex-col gap-2.5 overflow-y-auto xl:flex">
         <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-card px-3.5 py-3 shadow-sm">
-          <div className="text-[13.5px] font-semibold">Needs attention</div>
+          <div className="text-[13.5px] font-semibold">Needs you today</div>
           <div className="mt-2.5 flex flex-col gap-2">
             {loading && <div className="h-12 animate-pulse rounded-[10px] bg-muted" />}
             {!loading && attention.length === 0 && (
@@ -415,21 +458,18 @@ export default function FleetConsole({ canSeeRevenue }: { canSeeRevenue: boolean
               </div>
             )}
             {!loading &&
-              attention.map((t) => {
-                const h = health(t);
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => navigate(`/operator/fleet/tenants?tenant=${t.id}`)}
-                    className="rounded-[10px] border border-border border-l-[3px] border-l-[hsl(var(--warning))] bg-muted/40 px-3 py-2.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <div className="text-[11.5px] leading-relaxed">
-                      <span className="font-semibold">{t.name}</span> — {h.label.toLowerCase()}.
-                    </div>
-                  </button>
-                );
-              })}
+              attention.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => navigate(`/operator/fleet/tenants?tenant=${t.id}`)}
+                  className="rounded-[10px] border border-border border-l-[3px] border-l-[hsl(var(--warning))] bg-muted/40 px-3 py-2.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <div className="text-[11.5px] leading-relaxed">
+                    <span className="font-semibold">{t.name}</span> — {health(t).label.toLowerCase()}.
+                  </div>
+                </button>
+              ))}
           </div>
         </div>
       </aside>
