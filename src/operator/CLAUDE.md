@@ -22,12 +22,21 @@ applies. If you believe the pack is wrong somewhere, **raise it and let the owne
 quietly improve it. This mirrors §28 (approved design is frozen): the pack is the approved design,
 and it is frozen the same way until he unlocks a specific piece of it.
 
+**The pack is the ONLY design reference — a screenshot never is.** Owner-ruled 2026-08-19:
+*"The Design Pack should have to be your only reference. I send screenshots to show what's live."*
+The pack says what a surface SHOULD be; a screenshot he sends says what it CURRENTLY IS, which is
+usually evidence something is wrong. Open the pack, compare, fix the delta — never "match the
+screenshot," because a screenshot of a broken surface is a picture of the bug, and building toward it
+cements the defect. (CD's own renders under `uploads/`/`screens/` are a fast correctness check, but
+where a render and the `.dc.html` disagree, the markup wins.)
+
 **The pack lives in the repo, not in a scratchpad.** `docs/design-references/cd-packs/super-admin-shell/`
 · the shell itself is `Super Admin Shell.dc.html` (~8,300 lines), with the pack's own backend notes
 (`*-notes.md`), route registry (`paige-routes.js`, `route-registry-notes.md`) and reference renders
 (`uploads/*.png`) beside it. It was committed on 2026-08-19 because until then it existed ONLY in an
 ephemeral session scratchpad — one container recycle from being lost, with the source of truth gone.
-Future packs (agency, sub-account) land as siblings under `cd-packs/`.
+The CRM agency-mode pack (`agency-mode-shell/`, 12,864 lines) covers agency AND sub-account in
+one shell and landed the same day; it governs those tiers exactly as this one governs the operator.
 
 ---
 

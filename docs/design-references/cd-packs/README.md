@@ -9,13 +9,37 @@ ephemeral session scratchpad, one container recycle away from taking the source 
 
 ## What's here
 
-| Pack | Directory | Shell file | Status |
+| Pack | Directory | Shell file | Covers |
 |---|---|---|---|
-| **Super Admin / platform operator** | `super-admin-shell/` | `Super Admin Shell.dc.html` (8,288 lines) | ✅ in repo, 2026-08-19 |
-| **Agency** | `agency-shell/` | — | ⬜ owner sending |
-| **Sub-account** | `sub-account-shell/` | — | ⬜ owner sending |
+| **Super Admin / platform operator** | `super-admin-shell/` | `Super Admin Shell.dc.html` (8,288 lines) | the operator console |
+| **CRM agency mode** | `agency-mode-shell/` | `Agency Shell.dc.html` (12,864 lines) | **agency AND sub-account** — one shell, both modes |
 
-The Agency and Sub-account ports are tracked as task #161.
+The agency pack also ships two component-level designs beside its shell — `Setup Card.dc.html`
+and `Team Block.dc.html` — plus `screens/` (CD's named renders: `an1`–`an3`, `compass`–`compass5`)
+and `screenshots/dark.png`. Those are part of the pack; build to them the same way.
+
+The agency + sub-account port is tracked as task #161.
+
+
+## The pack is the ONLY design reference
+
+**Owner-ruled 2026-08-19:** *"The Design Pack should have to be your only reference. I send
+screenshots to show what's live."*
+
+Those are two different jobs and they must never be confused:
+
+- **The pack says what a surface SHOULD be.** It is the only source for that. Not a screenshot, not
+  memory, not our route registry, not whatever the code already does.
+- **A screenshot the owner sends says what the surface CURRENTLY IS.** It is evidence of live state —
+  usually evidence something is wrong. It is never a design source, and it is never a target.
+
+So when the owner sends a render, the move is: open the pack for that surface, compare, and fix the
+delta. Never "match the screenshot" — a screenshot of a broken surface is a picture of the bug, and
+building toward it cements the defect.
+
+The same holds for CD's OWN renders (`uploads/`, `screens/`, `screenshots/`). Those are how the pack
+is meant to look, so they are a fast correctness check — especially for a session with no browser —
+but the `.dc.html` is the specification. When a render and the markup disagree, the markup wins.
 
 ## Adding a pack
 

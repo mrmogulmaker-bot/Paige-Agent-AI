@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="border:1px solid #E7E3D9;border-radius:14px;background:#FFFFFF;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden">
+  <div style="display:flex;align-items:flex-start;gap:12px;padding:{{ headPad }}">
+    <div style="min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;min-width:0">
+        <div title="{{ note }}" style="font-size:{{ titleSize }};font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ title }}</div>
+        <sc-if value="{{ sealedHead }}" hint-placeholder-val="{{ false }}">
+          <span title="Sealed record" style="color:#8A8478;font-size:11px;flex:none">⚿</span>
+        </sc-if>
+      </div>
+      <div style="font-size:{{ noteSize }};color:#8A8478;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ note }}</div>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:7px;flex:none">
+      <sc-for list="{{ actionList }}" as="a" hint-placeholder-count="2">
+        <div onClick="{{ a.onClick }}" style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:9px;border:1px solid #E2DED3;background:#FFFFFF;font-size:11.5px;font-weight:600;color:#3E3A33;cursor:pointer;white-space:nowrap" style-hover="background:#F5F2EA">
+          <sc-if value="{{ a.glyph }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:10px;color:#8A8478">{{ a.glyph }}</span>
+          </sc-if>{{ a.label }}
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:0;overflow:hidden;padding:{{ bodyPad }}">
+    <sc-if value="{{ isFields }}" hint-placeholder-val="{{ false }}">
+      <div style="display:grid;grid-template-columns:{{ fieldCols }};gap:12px 18px">
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="2">
+          <div style="min-width:0">
+            <div style="display:flex;align-items:center;gap:7px;min-width:0">
+              <sc-if value="{{ r.dot }}" hint-placeholder-val="{{ false }}">
+                <span style="width:7px;height:7px;border-radius:50%;background:{{ r.dot }};flex:none"></span>
+              </sc-if>
+              <div style="font-size:{{ r.labelSize }};font-weight:600;letter-spacing:{{ r.labelTrack }};color:{{ r.labelColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.label }}</div>
+              <sc-if value="{{ r.plain }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-left:auto;font-size:12.5px;color:#3E3A33;flex:none;white-space:nowrap">{{ r.value }}</div>
+              </sc-if>
+            </div>
+            <sc-if value="{{ r.stacked }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;align-items:center;gap:7px;margin-top:5px;min-width:0">
+                <sc-if value="{{ r.sealed }}" hint-placeholder-val="{{ false }}">
+                  <span style="color:#8A8478;font-size:11px;flex:none">⚿</span>
+                </sc-if>
+                <div style="font-size:13.5px;color:#1B1B1F;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.value }}</div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isChecks }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:{{ checkGap }}">
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="3">
+          <div style="display:flex;align-items:center;gap:9px;min-width:0">
+            <span style="color:#2F7A57;font-size:11.5px;flex:none">✓</span>
+            <span style="font-size:13px;color:#1B1B1F;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.label }}</span>
+            <span style="margin-left:auto;font-size:12px;color:#6E6A61;flex:none;white-space:nowrap">{{ r.val }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isList }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column">
+        <sc-for list="{{ rows }}" as="r" hint-placeholder-count="3">
+          <div onClick="{{ rowEdit }}" style="display:flex;align-items:center;gap:11px;padding:{{ rowPad }};border-top:1px solid #F3F0E8;min-width:0;cursor:pointer" style-hover="background:#FBFAF6">
+            <sc-if value="{{ r.glyph }}" hint-placeholder-val="{{ false }}">
+              <span style="width:26px;height:26px;border-radius:8px;background:#EDEAFB;color:#4A3FA0;display:grid;place-items:center;font-size:11px;flex:none">{{ r.glyph }}</span>
+            </sc-if>
+            <sc-if value="{{ r.initials }}" hint-placeholder-val="{{ false }}">
+              <span style="width:28px;height:28px;border-radius:50%;background:#EDEAFB;color:#4A3FA0;display:grid;place-items:center;font-size:10.5px;font-weight:700;flex:none">{{ r.initials }}</span>
+            </sc-if>
+            <sc-if value="{{ r.plainSealed }}" hint-placeholder-val="{{ false }}">
+              <span style="color:#8A8478;font-size:11px;flex:none">⚿</span>
+            </sc-if>
+            <sc-if value="{{ r.dot }}" hint-placeholder-val="{{ false }}">
+              <span style="width:7px;height:7px;border-radius:50%;background:{{ r.dot }};flex:none"></span>
+            </sc-if>
+            <div style="min-width:60px;flex:1 1 auto;overflow:hidden">
+              <div style="font-size:{{ r.labelSize }};font-weight:{{ r.labelWeight }};letter-spacing:{{ r.labelTrack }};color:{{ r.labelColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.label }}</div>
+              <sc-if value="{{ r.who }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:13px;font-weight:600;color:#1B1B1F;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.who }}</div>
+              </sc-if>
+            </div>
+            <sc-if value="{{ r.access }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12px;color:#6E6A61;flex:none;white-space:nowrap">{{ r.access }}</span>
+            </sc-if>
+            <sc-if value="{{ r.state }}" hint-placeholder-val="{{ false }}">
+              <span style="padding:3px 10px;border-radius:20px;background:{{ r.stateBg }};color:{{ r.stateColor }};font-size:11px;font-weight:600;flex:none;white-space:nowrap">{{ r.state }}</span>
+            </sc-if>
+            <sc-if value="{{ r.pill }}" hint-placeholder-val="{{ false }}">
+              <span style="padding:3px 10px;border-radius:20px;background:{{ r.pillBg }};color:{{ r.pillColor }};font-size:11px;font-weight:600;flex:none;white-space:nowrap">{{ r.pill }}</span>
+            </sc-if>
+            <sc-if value="{{ r.meta }}" hint-placeholder-val="{{ false }}">
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#8A8478;flex:none;white-space:nowrap">{{ r.meta }}</span>
+            </sc-if>
+            <sc-if value="{{ r.chev }}" hint-placeholder-val="{{ false }}">
+              <span style="color:#B2ADA2;font-size:12px;flex:none">›</span>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isPerson }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:14px;min-width:0">
+        <div style="width:{{ avatarSize }};height:{{ avatarSize }};border-radius:50%;background:#4A3FA0;color:#FFFFFF;display:grid;place-items:center;font-size:15px;font-weight:700;flex:none">{{ person.initials }}</div>
+        <div style="min-width:0">
+          <div style="font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ person.name }}</div>
+          <div style="font-size:13px;color:#5D594F;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ person.role }}</div>
+          <div style="font-size:13px;color:#5D594F;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ person.mail }}</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isTree }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <sc-for list="{{ treeRows }}" as="t" hint-placeholder-count="3">
+          <div style="margin-left:{{ t.indent }};display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid {{ t.edge }};border-radius:11px;background:{{ t.bg }};min-width:0">
+            <span style="width:26px;height:26px;border-radius:50%;background:{{ t.tint }};color:{{ t.color }};display:grid;place-items:center;font-size:10px;font-weight:700;flex:none">{{ t.initials }}</span>
+            <div style="min-width:0">
+              <div style="font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.name }}</div>
+              <div style="font-size:11px;color:#6E6A61;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.role }}</div>
+            </div>
+            <span style="margin-left:auto;padding:2px 9px;border-radius:20px;background:#F1EEE5;color:#4A463E;font-size:10.5px;font-weight:600;flex:none;white-space:nowrap">{{ t.tag }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ moreLabel }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ expand }}" style="padding:9px 16px;border-top:1px solid #EFEBE1;font-size:12px;font-weight:600;color:#8A6D1E;cursor:pointer" style-hover="background:#FBFAF6">{{ moreLabel }}</div>
+  </sc-if>
+  <sc-if value="{{ footShown }}" hint-placeholder-val="{{ false }}">
+    <div style="padding:10px 16px;border-top:1px solid #EFEBE1;background:#FBFAF6;font-size:11.5px;line-height:1.5;color:#5D594F">{{ foot }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:520,&quot;height&quot;:260},&quot;card&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;SetupCard&quot;}}">
+const CAP_LABEL = s => /^[A-Z0-9 /·&]+$/.test(s || "");
+
+class Component extends DCLogic {
+  renderVals() {
+    const c = this.props.card || {};
+    const cap = c.rowCap == null ? 99 : c.rowCap;
+    const all = c.rows || [];
+    const urgent = t => t === "#B5822A" || t === "#9F3A2A";
+    const ordered = cap < all.length
+      ? all.slice().sort((a, b) => (urgent(b.stateTone) || b.pill ? 1 : 0) - (urgent(a.stateTone) || a.pill ? 1 : 0))
+      : all;
+    const rows = ordered.slice(0, cap);
+    const trimmed = all.length > rows.length;
+    const expand = c.openExpand || (() => {});
+    const edit = c.openEdit || (() => {});
+    const acts = (c.actions || []).map(a => ({
+      label: a, glyph: a === "Expand" ? "⤢" : a === "Add" ? "＋" : a === "Edit" ? "✎" : a === "Roles" ? "⛉" : a === "Manage" ? "⚙" : null,
+      onClick: a === "Expand" ? expand : a === "Add" ? (() => edit("Add")) : (() => edit("Edit"))
+    }));
+    if (trimmed && c.compact) {
+      const already = acts.findIndex(a => a.label === "Expand");
+      const chip = { label: "All " + all.length, glyph: "⤢", onClick: expand };
+      if (already >= 0) acts[already] = chip; else acts.push(chip);
+    }
+
+    return {
+      title: c.title, note: c.note, foot: c.foot, footShown: c.foot && !c.compact, sealedHead: c.sealedHead,
+      actionList: acts, expand, rowEdit: () => edit("Edit"),
+      moreLabel: trimmed && !c.compact ? "View all " + all.length + " →" : null,
+      isFields: c.type === "fields", isChecks: c.type === "checks",
+      isList: c.type === "list", isPerson: c.type === "person", isTree: c.type === "tree",
+      fieldCols: c.compact && all.length > 2 ? "repeat(2,minmax(0,1fr))" : all.length > 2 ? "repeat(2,minmax(0,1fr))" : "repeat(2,minmax(0,1fr))",
+      person: c.person || {},
+      headPad: c.tighter ? "7px 13px 5px" : c.compact ? "10px 14px 8px" : "15px 16px 12px",
+      rowPad: c.tighter ? "3px 0" : c.compact ? "6px 0" : "10px 0",
+      noteSize: c.compact ? "11px" : "12px",
+      bodyPad: c.tighter ? "0 13px 6px" : c.compact ? "0 14px 10px" : "0 16px 14px",
+      avatarSize: c.compact ? "42px" : "52px",
+      checkGap: c.compact ? "6px" : "9px",
+      titleSize: c.compact ? "13.5px" : "15px",
+      rows: rows.map(r => ({
+        ...r,
+        plainSealed: r.sealed && !r.glyph && !r.initials ? true : false,
+        labelSize: CAP_LABEL(r.label) && !r.plain ? "9.5px" : r.who ? "9.5px" : "13px",
+        labelTrack: CAP_LABEL(r.label) || r.who ? ".13em" : "0",
+        labelColor: CAP_LABEL(r.label) || r.who ? "#8A8478" : "#1B1B1F",
+        labelWeight: r.who ? "600" : "500",
+        stacked: r.value != null && !r.plain,
+        stateBg: r.stateTone ? r.stateTone + "1A" : "#F1EEE5",
+        stateColor: r.stateTone || "#5D594F",
+        pillBg: r.pill === "Gap" ? "#FBF3DC" : "#FDF3E4",
+        pillColor: r.pill === "Gap" ? "#6E5514" : "#8A6D1E"
+      })),
+      treeRows: (c.compact ? (c.tree || []).slice(0, 2) : (c.tree || [])).map((t, i) => ({
+        ...t,
+        indent: (t.depth * 18) + "px",
+        bg: t.depth === 0 ? "#F1EEFC" : "#FFFFFF",
+        edge: t.depth === 0 ? "#DFDAF7" : "#EFEBE1",
+        tint: t.depth === 0 ? "#4A3FA0" : "#EDEAFB",
+        color: t.depth === 0 ? "#FFFFFF" : "#4A3FA0"
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>
