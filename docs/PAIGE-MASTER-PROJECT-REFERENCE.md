@@ -351,6 +351,71 @@ the S2 seeding target list. Complements §14 (executes vs reasons-from). Same IP
   that it typechecks, unit-tests, builds, and is reasoned from the real records.
 
 
+### §65 R4 Stage 2 — the Fleet Console sub-tabs, wired to real reads (2026-08-19/20)
+
+Owner-corrected order: **Systems Check ✓ → Tenants → History → Alert rules → Team Pulse.** Stage 1
+made all 78 tabs *render CD's structure*; Stage 2 replaces the placeholder values inside that
+structure with real, tenant-scoped reads, one sub-tab at a time.
+
+**Sub-tab 1 — Systems Check (PR #554, merged 2026-08-19).** The operator half of Pillar 1 given its
+own console surface: the pack-faithful tab above the fold, a category drill-in drawer carrying
+per-check evidence, "Run full sweep" across both the operator and fleet halves, skips reported as
+their own axis rather than folded into pass (§13), and the result fed into Paige's own briefing via
+`owner-context.ts` (§52). The god-locked `get_systems_check_status` MCP tool ships with it.
+**§32.a proven on prod; §32.c live-drive CONFIRMED by the owner** — "All is well!" across all four
+checks, with screenshots. This entry closes a §0 gap: the PR merged without its Section 4 line.
+
+**Sub-tab 2 — Tenants (PR #555).** The orbital field **rebuilt in React Three Fiber**, plus the
+directory, the attention cards and Paige's read.
+
+- **The renderer changed on an explicit owner ruling; CD's feel did not.** Claude Design ships this
+  field as `fleet-field.js`, a `<fleet-field>` custom element hand-projecting a fibonacci shell onto
+  a **2D canvas**. With that implementation on the table and named, the owner ruled it be rebuilt on
+  R3F following the landing page's proven `PaigeScene` — which is exactly the explicit,
+  names-the-thing instruction `src/operator/CLAUDE.md` requires before deviating from the pack. CD's
+  drift constants, drag sensitivities, tilt clamp, tier mapping and ringed-node rule are preserved
+  verbatim, and the ruling is recorded in both file headers so a later session does not "restore
+  fidelity" by reverting.
+- **Three real defects fixed:** the 2D field could resolve to zero height in a short column and
+  simply never appear; CD sizes nodes in absolute pixels unrelated to the card, so enlarging the card
+  never enlarged the node; and a WebGL throw rendered `null` with no signal at all (§32 — the
+  boundary now logs loudly AND shows a visible message).
+- **The pack's own duplication resolved (§18).** CD paints Tenants twice — `isFleetConsole` (L348)
+  and `P.console` (L6658) are both truthy for `tab==="console"` because the panel guard at L6544 does
+  not exclude it. One surface ships, with `isFleetConsole`'s geometry and `P.console`'s better-written
+  strings harvested into it.
+- **Two improvements PROPOSED and flagged, not slipped in**, per the owner's amendment that "the
+  source of truth is reaching the best that we can": placement seeds from a hash of `tenant_id`
+  rather than the array index (CD's index seeding reshuffles the whole field on every filter
+  keystroke), and shell distance encodes magnitude so weight reads as gravity.
+- **§13:** "Needs you today" reads real operator findings through the same `systems_check_snapshot`
+  RPC the rail badge already uses, and each card's prose is Paige's OWN stored `paige_interpretation`.
+  "Her read" is **templated over real values, not LLM-composed** — there is no operator-scope
+  narrative endpoint on the platform (all 248 edge functions enumerated; `owner-context.ts` is a
+  prompt composer consumed inside `paige-ai-chat`'s streaming path, not a callable), so the CTA hands
+  the question to Paige in the chat where she lives (§20/§21). MRR and PROVISIONING render `—`.
+- **§39 peer gate: two independent reads, both BLOCK, 29 findings.** The one that mattered most:
+  R3F attaches its DOM listeners to the **canvas**, a descendant of the drag wrapper, so
+  `setPointerCapture` there retargeted every event for that pointer and R3F's `onClick` never fired —
+  clicking a tenant node did nothing at all. Also caught: sRGB values handed to three.js as float
+  arrays route through the LINEAR working space, so Paige Gold `#EDB94A` painted as `#F7DD93` (the
+  smoke test now proves this in both directions); the rail computed its list over filtered rows while
+  its counts came from the whole fleet; **§63** — real production tenant UUIDs, one of them the
+  owner's own account, sat in the smoke fixture; and **§58** — the prior rail's at-risk-tenant doors
+  would have been deleted silently, so the card now carries both feeds.
+- **§66:** the surface ledger in `docs/doctrine/tier-matrix.md` was updated in the same commits, and
+  four of its rows were **narrowed** after the peer gate caught them claiming more than the code does
+  — a ledger row that overstates is worse than a missing one, because the next session reads it as
+  verified fact.
+- ❗ **§32.c live-drive OWED.** Nothing here has been rendered. A green build and a headless smoke
+  prove the maths does not throw and the colours do not mangle; neither says what appears on screen —
+  which is the exact failure mode this rebuild exists to fix.
+
+**Deliberately NOT folded in:** Paige at the orbit core (`paige-bot.glb`). A 6.5MB asset on the
+`useGLTF` path is one of the three operations that has thrown at load in this codebase before, so it
+gets its own slice with its own smoke test rather than a quiet addition (§32).
+
+
 ### Roles & permissions — R1 call-site inventory + R2a platform-seam fix (2026-08-18)
 
 - ✅ **R1 — every role call site classified** (`docs/audits/R1-role-call-site-inventory.md`).

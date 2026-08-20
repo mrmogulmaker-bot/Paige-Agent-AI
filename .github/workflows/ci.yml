@@ -136,3 +136,11 @@ jobs:
       - name: Test
         if: ${{ !cancelled() }}
         run: npm run test
+
+      # Headless runtime smoke on the crash-prone 3D field maths (§32). `npm run test` is vitest,
+      # which never picks up a bare .mjs, so without this step the smoke — including its guard that
+      # its own copied constants still match the component — was reachable only by a human choosing
+      # to type the command. A drift guard nothing runs is not a guard.
+      - name: Smoke — Fleet orbital field (runtime maths, colour space, constant drift)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:fleet-orbit

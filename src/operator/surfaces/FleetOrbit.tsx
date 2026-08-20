@@ -1,29 +1,46 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useReducedMotion } from "framer-motion";
+import { Canvas } from "@react-three/fiber";
+
+import { supportsWebGL } from "@/lib/webgl";
+
+import type { OrbitDrive } from "@/operator/surfaces/FleetOrbitScene";
 
 /**
- * FleetOrbit — a faithful port of Claude Design's `<fleet-field>` custom element
- * (`fleet-field.js`, loaded by the pack at `Super Admin Shell.dc.html:384` for the Fleet
- * Console's Field view). CD's own component is a real projected 3D field — a fibonacci-shell
- * point cloud, yaw/tilt rotation (auto-drifting, pointer-drag override), perspective
- * projection, glow, connective tissue between near neighbours, and a proximity hover
- * tooltip — not a flat ring. An owner render of the live pack (2026-08-19, "it rotates in
- * 3D") confirmed the gap against the SVG ring this replaces; this is a port of the pack's
- * own algorithm into a React/Canvas component, not a new design (§30/§28 — the pack's
- * geometry is frozen; only the vanilla-JS custom element becomes a typed component).
+ * FleetOrbit — the Fleet Console's Field view: every tenant on the platform, orbiting.
  *
- * §13 — CD's own component sizes a node by `t.mrr` and draws "{tier} · ${mrr}/mo" in the
- * hover tooltip. Money Spine is deferred (owner ruling 2026-08-19), so this component takes
- * a real, non-financial `weight` per node instead (team + clients, same figure FleetConsole
- * already computes) and the tooltip shows the tier alone — never a fabricated dollar figure.
+ * ── WHAT CHANGED, AND ON WHOSE AUTHORITY ───────────────────────────────────────────────────
+ * Claude Design implements this field as `fleet-field.js`, a `<fleet-field>` custom element
+ * that hand-projects a fibonacci shell onto a 2D canvas. This component WAS a faithful port
+ * of that. The owner ruled on 2026-08-19 — with CD's 2D implementation on the table and named
+ * — that the field be rebuilt on **React Three Fiber**, following the landing page's proven
+ * `PaigeScene`. Per `src/operator/CLAUDE.md`, a deviation from the pack requires exactly that:
+ * an explicit owner instruction naming the thing to change. It exists; this is it. Do not
+ * "restore pack fidelity" by reverting to the 2D canvas.
  *
- * §11/§23 — CD's TIER map is literal hex; a raw Canvas 2D context cannot read a CSS custom
- * property, so tier colors are resolved from the platform's own tokens via getComputedStyle
- * at draw time (re-resolved when the theme changes) rather than hardcoded here.
+ * CD's geometry and feel are preserved inside `FleetOrbitScene` (drift constants, drag
+ * sensitivities, tilt clamp, tier colours, ringed-node-needs-you). The renderer changed.
  *
- * §11/§22 — motion-safe: when the OS prefers reduced motion, auto-rotation starts off (the
- * pack's own manual toggle still works either way, matching CD's in-canvas "Motion on/off").
+ * ── THE THREE BUGS THIS FIXES ──────────────────────────────────────────────────────────────
+ * 1. EMPTY ON LOAD. The 2D version could not draw until a `ResizeObserver` had fired at least
+ *    once AND the flex chain had resolved a non-zero height; in a short column it resolved to
+ *    zero and the field simply never appeared. The canvas host here is `absolute inset-0`
+ *    inside a `relative` box — an explicitly-sized container, never a flex child — which is
+ *    the same technique `PaigeHome`/`StudioHeroScene` use for the two 3D surfaces that have
+ *    always rendered.
+ * 2. UNHOVERABLE NODES. CD sizes a node in absolute pixels (7–22px across) with no relation
+ *    to the card, so enlarging the card never enlarged the node. `FleetOrbitScene` converts a
+ *    requested PIXEL diameter into world units from the live viewport, so the sizes hold.
+ * 3. SILENT FAILURE. A WebGL throw used to render `null` with no signal. `SceneBoundary` logs
+ *    loudly and shows a visible message; a browser with no WebGL at all gets an honest line
+ *    instead of a black rectangle (§32 — never blank, never silent).
+ *
+ * §13 — CD sizes nodes by `t.mrr` and prints "{tier} · ${mrr}/mo" in its tooltip. Money Spine
+ * is deferred, so a node's weight is the real, non-financial team+clients figure and the
+ * tooltip names the tier only. No fabricated dollar figure, here or anywhere on this surface.
  */
+
+const FleetOrbitScene = lazy(() => import("@/operator/surfaces/FleetOrbitScene"));
 
 export type OrbitNode = {
   id: string;
@@ -34,326 +51,231 @@ export type OrbitNode = {
   needsYou: boolean;
 };
 
-const TIER_VAR: Record<OrbitNode["tier"], string> = {
-  Agency: "--primary",
-  Solo: "--success",
-  Enterprise: "--gold-dark",
-  "Sub-account": "--muted-foreground",
-};
-
-type Point3 = { x: number; y: number; z: number };
-
-function fibonacciShell(index: number, count: number): Point3 {
-  const k = (index + 0.5) / count;
-  const phi = Math.acos(1 - 2 * k);
-  const theta = Math.PI * (1 + Math.sqrt(5)) * index;
-  const shell = 0.62 + ((index * 37) % 100) / 260;
-  return {
-    x: Math.sin(phi) * Math.cos(theta) * shell,
-    y: Math.cos(phi) * shell * 0.82,
-    z: Math.sin(phi) * Math.sin(theta) * shell,
-  };
-}
-
-/** Resolve an `hsl(var(--x))` design token to a real `rgb(...)` string a canvas ctx can use. */
-function resolveToken(cssVar: string): string {
-  if (typeof window === "undefined") return "rgb(120,120,120)";
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(cssVar).trim();
-  if (!raw) return "rgb(120,120,120)";
-  // Tokens are stored as bare "H S% L%" triples, consumed elsewhere as hsl(var(--x)).
-  return `hsl(${raw})`;
-}
-
-function withAlpha(hslColor: string, alpha: number): string {
-  // `resolveToken` emits modern space-separated `hsl(H S% L%)`. Appending a comma-separated alpha
-  // (`hsla(H S% L%, A)`) mixes legacy and modern CSS Color 4 syntax, which browsers reject as an
-  // invalid color — the exact `addColorStop` throw a live screenshot caught (§32). The slash form
-  // (`hsl(H S% L% / A)`) is the one syntax valid for both comma-free and space-free color functions.
-  return hslColor.replace(/\)$/, ` / ${alpha})`);
+/**
+ * Degrade gracefully, but never silently — the same contract as the landing page's
+ * `SceneBoundary` and the Studio's. A blank field with nothing in the console is precisely the
+ * failure mode that cost us hours (§32); this one leaves a message on screen AND in the log.
+ */
+class SceneBoundary extends Component<
+  { children: ReactNode; onFail: (message: string) => void },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown, info: unknown) {
+    console.error("[FleetOrbit] the 3D field crashed — falling back to a visible message. Cause:", error, info);
+    this.props.onFail(error instanceof Error ? error.message : "The field could not be drawn.");
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
 }
 
 export function FleetOrbit({
   nodes,
   onSelect,
+  selectedId = null,
 }: {
   nodes: readonly OrbitNode[];
   onSelect: (id: string) => void;
+  selectedId?: string | null;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const prefersReducedMotion = useReducedMotion();
   const [motion, setMotion] = useState(!prefersReducedMotion);
-  const [hot, setHot] = useState<{ id: string; name: string; tier: string; sx: number; sy: number } | null>(
-    null,
-  );
-  // §32 — the box size drives the canvas, not the other way round: a ResizeObserver on the
-  // CONTAINER (not `getBoundingClientRect()` re-measured inside the RAF loop) means the paint
-  // loop never has to guess whether layout has settled yet. `size` is null until the observer
-  // fires at least once; draw() bails honestly on that instead of silently reading a stale 0.
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const [renderError, setRenderError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [hot, setHot] = useState<{ node: OrbitNode; x: number; y: number } | null>(null);
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Probed once, on the client, AFTER mount. Mounting a `<Canvas>` where there is no WebGL
+   * throws inside R3F's renderer construction — the boundary would catch it, but only after a
+   * flash of nothing. Asking first lets the honest message be the FIRST thing drawn.
+   */
+  const [webgl, setWebgl] = useState<boolean | null>(null);
+  useEffect(() => setWebgl(supportsWebGL()), []);
+
+  /**
+   * The per-frame drive. Deliberately a ref, not state: the scene mutates `yaw`/`tilt` 60×/s
+   * and a state write per frame would re-render the whole tab.
+   */
+  const drive = useRef<OrbitDrive>({ yaw: 0.4, tilt: -0.2, dragging: false, motion: !prefersReducedMotion });
+
+  // The OS preference is authoritative the moment it changes, in both directions.
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const box = entries[0]?.contentRect;
-      if (!box) return;
-      setSize({ w: box.width, h: box.height });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
+    setMotion(!prefersReducedMotion);
+  }, [prefersReducedMotion]);
+  useEffect(() => {
+    drive.current.motion = motion;
+  }, [motion]);
+
+  const dragFrom = useRef<{ x: number; y: number; yaw: number; tilt: number } | null>(null);
+  // State, not a ref: the cursor swap needs a re-render.
+  const [dragging, setDragging] = useState(false);
+  /** Tears down whatever the active drag attached to `window`. Null when no drag is in flight. */
+  const detach = useRef<(() => void) | null>(null);
+
+  /**
+   * Drag is driven by WINDOW listeners, deliberately — NOT `setPointerCapture` on this div.
+   *
+   * §39 peer-gate, verified against the installed `@react-three/fiber@8.18.0`: R3F attaches its
+   * DOM listeners to the CANVAS element, a descendant of this wrapper. Capturing the pointer here
+   * retargets every subsequent event for that pointerId to the wrapper, so `click` resolves to the
+   * nearest common ancestor of mousedown(canvas) and mouseup(wrapper) — the wrapper — and R3F's
+   * canvas-level `onClick` NEVER fires. That silently killed the Field view's one primary
+   * interaction: clicking a tenant node did nothing. It also fired `pointerleave` at the canvas on
+   * press, which R3F maps to cancelPointer, so the hover tooltip vanished the instant you clicked.
+   *
+   * Window listeners give the same "keep dragging outside the box" behaviour with none of the
+   * retargeting, and they are torn down on pointerup AND pointercancel.
+   */
+  const endDrag = useCallback(() => {
+    dragFrom.current = null;
+    drive.current.dragging = false;
+    setDragging(false);
+    detach.current?.();
+    detach.current = null;
   }, []);
 
-  const maxWeight = Math.max(1, ...nodes.map((n) => n.weight));
-  const points = useMemo(
-    () =>
-      nodes.map((n, i) => ({
-        ...n,
-        p: fibonacciShell(i, Math.max(1, nodes.length)),
-        r: 3.4 + Math.sqrt(n.weight / maxWeight) * 7.5,
-      })),
-    [nodes, maxWeight],
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // The Motion toggle lives INSIDE this wrapper (CD puts it in the field, bottom-right), so its
+      // press bubbles here. Without this guard, tapping it began a drag: the field lurched, and on
+      // touch the ensuing pointerup often resolved as a drag rather than a click, so the toggle
+      // needed two taps. Only start a drag on the field itself.
+      if ((e.target as HTMLElement).closest("button")) return;
+
+      dragFrom.current = { x: e.clientX, y: e.clientY, yaw: drive.current.yaw, tilt: drive.current.tilt };
+      drive.current.dragging = true;
+      setDragging(true);
+
+      // ATTACHED HERE, SYNCHRONOUSLY — deliberately not from a `useEffect` keyed on `dragging`.
+      //
+      // §39 peer-gate: React schedules passive effects on a MessageChannel task, and browsers
+      // prioritise input over normal tasks, so a fast click could deliver `pointerup` BEFORE the
+      // effect ran and attached the listener. Nothing else would have ended the drag — the wrapper's
+      // own pointerup/pointerleave handlers were removed when capture was — leaving
+      // `drive.current.dragging` true forever: auto-drift dead, cursor stuck on grabbing, and the
+      // Motion toggle unable to revive it. That is the exact permanent-stuck state `pointercancel`
+      // was added to prevent, reached by a different door. Attaching in the handler closes the
+      // window entirely, because the handler IS the pointerdown.
+      const move = (ev: PointerEvent) => {
+        const from = dragFrom.current;
+        if (!from) return;
+        // CD's own drag sensitivities and tilt clamp (fleet-field.js), preserved verbatim. Absolute
+        // from the press origin rather than incremental, so a dropped move frame self-corrects.
+        drive.current.yaw = from.yaw + (ev.clientX - from.x) * 0.006;
+        drive.current.tilt = Math.max(-0.9, Math.min(0.9, from.tilt + (ev.clientY - from.y) * 0.004));
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", endDrag);
+      // A browser-claimed gesture (any touch scroll) fires cancel, not up.
+      window.addEventListener("pointercancel", endDrag);
+      // And an alt-tab away mid-press fires NEITHER — the release happens off-document. Before the
+      // capture rework, pointerleave on the wrapper covered this; now blur does.
+      window.addEventListener("blur", endDrag);
+
+      detach.current = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", endDrag);
+        window.removeEventListener("pointercancel", endDrag);
+        window.removeEventListener("blur", endDrag);
+      };
+    },
+    [endDrag],
   );
 
-  // Tier colors resolved from tokens, re-resolved when the theme flips (§11/§23).
-  const [palette, setPalette] = useState<Record<OrbitNode["tier"], string> | null>(null);
-  const [warningColor, setWarningColor] = useState("hsl(38 92% 50%)");
-  useEffect(() => {
-    const resolve = () => {
-      setPalette({
-        Agency: resolveToken(TIER_VAR.Agency),
-        Solo: resolveToken(TIER_VAR.Solo),
-        Enterprise: resolveToken(TIER_VAR.Enterprise),
-        "Sub-account": resolveToken(TIER_VAR["Sub-account"]),
-      });
-      setWarningColor(resolveToken("--warning"));
-    };
-    resolve();
-    const mo = new MutationObserver(resolve);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme"] });
-    return () => mo.disconnect();
-  }, []);
+  // Unmounting mid-drag must not leave listeners on window holding this component alive.
+  useEffect(() => () => detach.current?.(), []);
 
-  const state = useRef({
-    yaw: 0.4,
-    tilt: -0.2,
-    t: 0,
-    drag: null as { x: number; y: number; yaw: number; tilt: number } | null,
-    mx: -1e4,
-    my: -1e4,
-    hotIndex: -1,
-  });
-  const motionRef = useRef(motion);
-  motionRef.current = motion;
-
-  const draw = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      // A canvas that can't hand back a 2D context is a real, visible-worthy failure, not a
-      // "try again next frame" case (§32 — never silently swallow a crash-prone call site).
-      console.error("FleetOrbit: canvas.getContext('2d') returned null");
-      setRenderError("The field's canvas context is unavailable in this browser.");
+  const handleHover = useCallback((node: OrbitNode | null, clientX: number, clientY: number) => {
+    if (!node) {
+      setHot(null);
       return;
     }
-    if (!palette || !size || !size.w || !size.h) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const W = size.w;
-    const H = size.h;
-    if (canvas.width !== Math.round(W * dpr)) {
-      canvas.width = Math.round(W * dpr);
-      canvas.height = Math.round(H * dpr);
+    const box = hostRef.current?.getBoundingClientRect();
+    setHot({ node, x: clientX - (box?.left ?? 0), y: clientY - (box?.top ?? 0) });
+  }, []);
+
+  const empty = nodes.length === 0;
+
+  const body = useMemo(() => {
+    if (empty) return null;
+    if (webgl === null) return null; // probing; one frame at most
+    if (webgl === false || failure) {
+      return (
+        <div className="absolute inset-0 grid place-items-center px-6 text-center">
+          <div>
+            <div className="text-[13px] font-semibold text-[hsl(var(--rail-foreground))]">
+              The field can’t be drawn in this browser.
+            </div>
+            <div className="mx-auto mt-1 max-w-sm text-[11.5px] text-[hsl(var(--rail-muted))]">
+              {failure ?? "This browser has no WebGL available."} Every tenant is still listed in Table view.
+            </div>
+          </div>
+        </div>
+      );
     }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-
-    const s = state.current;
-    if (motionRef.current) {
-      s.t += 1 / 40;
-      if (!s.drag) {
-        s.yaw += 0.0055;
-        s.tilt = -0.2 + Math.sin(s.t * 0.18) * 0.09;
-      }
-    }
-
-    const cx = W / 2;
-    const cy = H / 2;
-    const scale = Math.min(W, H) * 0.4;
-    const cyaw = Math.cos(s.yaw);
-    const syaw = Math.sin(s.yaw);
-    const ctilt = Math.cos(s.tilt);
-    const stilt = Math.sin(s.tilt);
-
-    const projected = points
-      .map((n, i) => {
-        const x1 = n.p.x * cyaw - n.p.z * syaw;
-        const z1 = n.p.x * syaw + n.p.z * cyaw;
-        const y2 = n.p.y * ctilt - z1 * stilt;
-        const z2 = n.p.y * stilt + z1 * ctilt;
-        const persp = 1 / (1 + z2 * 0.34);
-        return {
-          i,
-          n,
-          sx: cx + x1 * scale * persp,
-          sy: cy + y2 * scale * persp,
-          sz: z2,
-          rr: n.r * persp,
-          fade: Math.max(0.18, Math.min(1, 0.72 - z2 * 0.42)),
-        };
-      })
-      .sort((a, b) => b.sz - a.sz);
-
-    let hotIndex = -1;
-    let best = 1e9;
-    projected.forEach((p) => {
-      const d = Math.hypot(p.sx - s.mx, p.sy - s.my);
-      if (d < Math.max(14, p.rr + 8) && d < best) {
-        best = d;
-        hotIndex = p.i;
-      }
-    });
-    if (hotIndex !== s.hotIndex) {
-      s.hotIndex = hotIndex;
-      const hp = hotIndex >= 0 ? projected.find((p) => p.i === hotIndex) : null;
-      setHot(hp ? { id: hp.n.id, name: hp.n.name, tier: hp.n.tier, sx: hp.sx, sy: hp.sy } : null);
-    }
-
-    ctx.lineWidth = 1;
-    for (let a = 0; a < projected.length; a += 1) {
-      for (let b = a + 1; b < Math.min(projected.length, a + 4); b++) {
-        const d = Math.hypot(projected[a].sx - projected[b].sx, projected[a].sy - projected[b].sy);
-        if (d > scale * 0.52) continue;
-        const al = (1 - d / (scale * 0.52)) * 0.16 * Math.min(projected[a].fade, projected[b].fade);
-        ctx.strokeStyle = `rgba(150,178,224,${al.toFixed(3)})`;
-        ctx.beginPath();
-        ctx.moveTo(projected[a].sx, projected[a].sy);
-        ctx.lineTo(projected[b].sx, projected[b].sy);
-        ctx.stroke();
-      }
-    }
-
-    projected.forEach((p) => {
-      const hotNode = p.i === s.hotIndex;
-      const pulse = motionRef.current ? 1 + Math.sin(s.t * 1.5 + p.i * 7) * 0.05 : 1;
-      const r = p.rr * pulse * (hotNode ? 1.28 : 1);
-      const color = palette[p.n.tier];
-      const glow = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, r * 3.1);
-      glow.addColorStop(0, withAlpha(color, 0.34 * p.fade));
-      glow.addColorStop(1, withAlpha(color, 0));
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(p.sx, p.sy, r * 3.1, 0, 6.2832);
-      ctx.fill();
-
-      ctx.fillStyle = withAlpha(color, Math.min(1, p.fade + 0.18));
-      ctx.beginPath();
-      ctx.arc(p.sx, p.sy, r, 0, 6.2832);
-      ctx.fill();
-
-      if (p.n.needsYou) {
-        ctx.strokeStyle = withAlpha(warningColor, 0.85 * p.fade);
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.arc(p.sx, p.sy, r + 4.5, 0, 6.2832);
-        ctx.stroke();
-      }
-    });
-  }, [points, palette, warningColor, size]);
-
-  useEffect(() => {
-    let raf = 0;
-    const loop = () => {
-      try {
-        draw();
-      } catch (e) {
-        // §32 — a crash inside the paint loop must degrade to something VISIBLE, never a
-        // silent blank canvas the next session has to guess at from scratch.
-        console.error("FleetOrbit: draw() threw", e);
-        setRenderError(e instanceof Error ? e.message : "The field could not be drawn.");
-        return; // stop the loop on a real crash rather than re-throwing every frame
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [draw]);
-
-  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    state.current.drag = { x: e.clientX, y: e.clientY, yaw: state.current.yaw, tilt: state.current.tilt };
-  };
-  const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    state.current.mx = e.clientX - rect.left;
-    state.current.my = e.clientY - rect.top;
-    const d = state.current.drag;
-    if (d) {
-      state.current.yaw = d.yaw + (e.clientX - d.x) * 0.006;
-      state.current.tilt = Math.max(-0.9, Math.min(0.9, d.tilt + (e.clientY - d.y) * 0.004));
-    }
-  };
-  const onPointerUp = () => {
-    state.current.drag = null;
-  };
-  const onPointerLeave = () => {
-    state.current.mx = -1e4;
-    state.current.my = -1e4;
-  };
-  const onClick = () => {
-    if (state.current.hotIndex < 0) return;
-    const p = points[state.current.hotIndex];
-    if (p) onSelect(p.id);
-  };
+    return (
+      <SceneBoundary onFail={setFailure}>
+        <Suspense fallback={<div className="absolute inset-0" />}>
+          <Canvas
+            // Matches the proven landing/Studio canvases: capped DPR, no shadow maps, alpha on
+            // so the rail token behind shows through rather than a second opaque black.
+            dpr={[1, 1.75]}
+            camera={{ position: [0, 0.4, 7], fov: 42 }}
+            gl={{ alpha: true, antialias: true }}
+            style={{ width: "100%", height: "100%" }}
+          >
+            <FleetOrbitScene
+              nodes={nodes}
+              drive={drive}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              onHover={handleHover}
+            />
+          </Canvas>
+        </Suspense>
+      </SceneBoundary>
+    );
+  }, [empty, webgl, failure, nodes, selectedId, onSelect, handleHover]);
 
   return (
-    // CD's own wrapper (`:host{position:relative;width:100%;height:100%}`) fills the dark box
-    // via absolute inset, not flex-stretch — its immediate parent is `position:relative` with a
-    // resolved size (Super Admin Shell.dc.html: `position:absolute;inset:0;overflow:hidden`
-    // around `<x-import component-from-global-scope="fleet-field">`). Matching that here rather
-    // than relying on flex-stretch removes a real render bug: a flex child's cross-axis stretch
-    // can resolve to zero height across some ancestor chains even when every intermediate div
-    // carries `min-h-0 flex-1`, and a zero-height canvas paints nothing (§32 — a green build
-    // proves nothing about what actually renders; this was caught live, not in review).
-    <div ref={containerRef} className="absolute inset-0">
-      {renderError ? (
-        // §32 — visible and honest beats a blank box: a real paint failure says so, with the
-        // actual message, rather than leaving the field looking merely "not populated yet."
-        <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 px-6 text-center">
-          <div className="text-[12.5px] font-semibold text-[hsl(var(--rail-foreground))]">
-            The field could not render.
-          </div>
-          <div className="max-w-xs text-[11px] text-[hsl(var(--rail-muted))]">{renderError}</div>
-        </div>
-      ) : (
-        <canvas
-          ref={canvasRef}
-          className="h-full w-full cursor-grab touch-none active:cursor-grabbing"
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerLeave={onPointerLeave}
-          onClick={onClick}
-          role="img"
-          aria-label="The fleet, projected in three dimensions. Drag to orbit; click a tenant to open it."
-        />
-      )}
-      {hot && (
-        <div
-          className="pointer-events-none absolute z-[3] whitespace-nowrap rounded-[9px] border border-[hsl(255,42%,60%)]/50 bg-[hsl(var(--rail))]/90 px-2.5 py-1.5 shadow-lg"
-          style={{ left: Math.min(hot.sx + 14, (containerRef.current?.clientWidth ?? 320) - 140), top: hot.sy - 30 }}
-        >
-          <div className="text-[12px] font-semibold text-[hsl(var(--rail-foreground))]">{hot.name}</div>
-          <div className="mt-0.5 font-mono text-[10.5px] text-[hsl(var(--rail-muted))]">{hot.tier}</div>
-        </div>
-      )}
+    <div
+      ref={hostRef}
+      // `touch-none` restores touch-drag: R3F sets no touch-action on its canvas, and the old 2D
+      // implementation carried this class. Without it the browser claims the gesture for scrolling.
+      className="absolute inset-0 touch-none"
+      onPointerDown={onPointerDown}
+      onPointerLeave={() => setHot(null)}
+      style={{ cursor: dragging ? "grabbing" : "grab" }}
+    >
+      {body}
+
+      {/* CD's in-canvas motion toggle: bottom-right pill, same copy, same states. */}
       <button
         type="button"
         onClick={() => setMotion((v) => !v)}
-        className="absolute bottom-2.5 right-2.5 z-[3] whitespace-nowrap rounded-full border border-[hsl(var(--rail-foreground))]/25 bg-[hsl(var(--rail))]/60 px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wide text-[hsl(var(--rail-foreground))] transition-colors hover:bg-[hsl(var(--rail))]/80"
+        aria-pressed={motion}
+        className="absolute bottom-2.5 right-2.5 z-10 rounded-full border border-[hsl(var(--rail-foreground)/0.74)] bg-[hsl(var(--rail)/0.6)] px-2.5 py-[5px] text-[10.5px] font-semibold tracking-[0.04em] text-[hsl(var(--rail-foreground))] transition-colors hover:bg-[hsl(var(--rail)/0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        Motion {motion ? "on" : "off"}
+        {motion ? "Motion on" : "Motion off"}
       </button>
+
+      {hot && (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+12px)] whitespace-nowrap rounded-lg border border-[hsl(var(--rail-foreground)/0.2)] bg-[hsl(var(--rail)/0.94)] px-2.5 py-1.5 shadow-lg"
+          style={{ left: hot.x, top: hot.y }}
+        >
+          <div className="text-[11.5px] font-semibold text-[hsl(var(--rail-foreground))]">{hot.node.name}</div>
+          {/* Tier only — never a fabricated MRR (§13). */}
+          <div className="text-[10px] text-[hsl(var(--rail-muted))]">
+            {hot.node.tier}
+            {hot.node.needsYou ? " · needs you" : ""}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

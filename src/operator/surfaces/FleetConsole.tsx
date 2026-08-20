@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useFleet, isInternal, type FleetTenant } from "@/operator/data/useFleet";
 import { FleetOrbit, type OrbitNode } from "@/operator/surfaces/FleetOrbit";
+import { FleetTenantsRail, type RailTenant } from "@/operator/surfaces/FleetTenantsRail";
 import { cn } from "@/lib/utils";
 
 /**
@@ -91,6 +92,13 @@ function tierLabel(t: FleetTenant, isNested: boolean): TierLabel {
 
 export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSeeRevenue: boolean }) {
   const navigate = useNavigate();
+  /**
+   * Which tenant is open, read back off the URL rather than held in a second piece of state. The
+   * field's click and the directory's "Enter" both write `?tenant=`, so the URL is already the one
+   * home for this (§18) — mirroring it into local state would let the two disagree on a back/forward.
+   */
+  const [searchParams] = useSearchParams();
+  const selectedTenantId = searchParams.get("tenant");
   const { tenants, classificationVisible, loading, error } = useFleet(true);
   const [view, setView] = useState<"field" | "table">("field");
   const [filter, setFilter] = useState<Filter>("All");
@@ -138,14 +146,22 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
     );
   }, [fleet, filter, q, nestedIds]);
 
-  const rowIds = useMemo(() => new Set(rows.map((t) => t.id)), [rows]);
-
   // CD: subCount = TENANTS.reduce((a,t) => a + t.subs, 0) — real, the count of rows with a
   // parent present in the fleet.
   const subCount = useMemo(() => fleet.filter((t) => nestedIds.has(t.id)).length, [fleet, nestedIds]);
   const atRiskTenants = useMemo(() => fleet.filter((t) => health(t).tone === "risk"), [fleet]);
 
-  const attention = useMemo(() => atRiskTenants.slice(0, 4), [atRiskTenants]);
+  /** The directory's rows — the same derivation the table uses, computed once (§18). */
+  const railRows: RailTenant[] = useMemo(
+    () =>
+      rows.map((t) => ({
+        tenant: t,
+        tier: tierLabel(t, nestedIds.has(t.id)),
+        health: health(t),
+        beneath: fleet.filter((x) => x.parentTenantId === t.id).length,
+      })),
+    [rows, nestedIds, fleet],
+  );
 
   const orbitNodes: OrbitNode[] = useMemo(
     () =>
@@ -325,6 +341,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
               ) : (
                 <FleetOrbit
                   nodes={orbitNodes}
+                  selectedId={selectedTenantId}
                   onSelect={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)}
                 />
               )}
@@ -491,33 +508,17 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
         )}
       </div>
 
-      {/* ── right rail: "Needs you today" ───────────────────────────── */}
-      <aside className="hidden w-[296px] flex-none flex-col gap-2.5 overflow-y-auto xl:flex">
-        <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-card px-3.5 py-3 shadow-sm">
-          <div className="text-[13.5px] font-semibold">Needs you today</div>
-          <div className="mt-2.5 flex flex-col gap-2">
-            {loading && <div className="h-12 animate-pulse rounded-[10px] bg-muted" />}
-            {!loading && attention.length === 0 && (
-              <div className="text-[11.5px] leading-relaxed text-muted-foreground">
-                Nothing is flagged. Every tenant has members and at least one client.
-              </div>
-            )}
-            {!loading &&
-              attention.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => navigate(`/operator/fleet/tenants?tenant=${t.id}`)}
-                  className="rounded-[10px] border border-border border-l-[3px] border-l-[hsl(var(--warning))] bg-muted/40 px-3 py-2.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <div className="text-[11.5px] leading-relaxed">
-                    <span className="font-semibold">{t.name}</span> — {health(t).label.toLowerCase()}.
-                  </div>
-                </button>
-              ))}
-          </div>
-        </div>
-      </aside>
+      {/* ── right rail: what needs you, her read, and the directory ──── */}
+      <FleetTenantsRail
+        rows={railRows}
+        filtered={filter !== "All" || q.trim().length > 0}
+        loading={loading}
+        onOpenTenant={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)}
+        onProvision={() => navigate("/operator/provisioning")}
+        onAskPaige={() => navigate("/operator/paige")}
+        onOpenCheck={() => navigate("/operator/fleet/systems-check")}
+      />
+
     </div>
   );
 }

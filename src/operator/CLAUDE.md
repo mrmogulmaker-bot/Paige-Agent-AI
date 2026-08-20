@@ -22,6 +22,33 @@ applies. If you believe the pack is wrong somewhere, **raise it and let the owne
 quietly improve it. This mirrors §28 (approved design is frozen): the pack is the approved design,
 and it is frozen the same way until he unlocks a specific piece of it.
 
+### …but the goal is the BEST result, not frozen fidelity (owner, 2026-08-19)
+
+The lock above is about *who decides*, never about *settling*. The owner amended it in his own
+words: *"Claude Design's Design Pack, I think, should be one source of truth for sure when it comes
+to our design level, but if we can find ways to improve what they've done, I'm all for that. **The
+source of truth is reaching the best that we can.** … There are several things Claude Design could
+not pull off, but if we can pull it off in code, by all means suggest it to me. I'll run it back
+with Cowork, and we can absolutely go for it."*
+
+So the posture is **actively look for improvements and PROPOSE them** — not "never deviate," and
+equally not "improve it quietly." Concretely:
+
+- **Propose, don't ship.** Spot the improvement, name it, say what it costs, and let the owner rule.
+  A proposal costs a sentence; a silent deviation costs the trust the lock protects.
+- **The pack is a static design tool's output.** It cannot reach a database, run an LLM, or hold a
+  session. Wherever it draws a *fixture* because that was its only option — invented prose, a
+  hardcoded hex, an index-seeded layout — that is a place code can genuinely do better, and saying
+  so is the job, not a criticism of CD.
+- **The pack can contradict itself.** It is authored, not compiled. (Verified 2026-08-19: the Fleet
+  tab registry at L4319 lists five tabs but `P.pipe` defines a fully-designed sixth; and the Tenants
+  surface is painted TWICE — `isFleetConsole` at L348 and `P.console` at L6658 both render, because
+  the panel guard at L6544 does not exclude `console`.) When the pack disagrees with itself, pick
+  ONE home (§18), say which and why, and flag it.
+- **An accepted improvement gets written down where it was made** — a header comment naming the
+  owner ruling and the date, so a later session does not "restore pack fidelity" by reverting it.
+  The R3F field rebuild (`FleetOrbit.tsx` / `FleetOrbitScene.tsx`) is the worked example.
+
 **The pack is the ONLY design reference — a screenshot never is.** Owner-ruled 2026-08-19:
 *"The Design Pack should have to be your only reference. I send screenshots to show what's live."*
 The pack says what a surface SHOULD be; a screenshot he sends says what it CURRENTLY IS, which is
