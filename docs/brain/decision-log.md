@@ -265,6 +265,26 @@ gains a dated section (§BRAIN.3).*
   tier, Trust Compass ceiling-clamp, and Paige's central-brain recall — because a good ruling that is not
   tracked is a good ruling that vanishes. Architecture: `docs/architecture/platform-alerting-substrate.md`.
 
+- **2026-08-20 · Lovable bootstrap files — `IF NOT EXISTS` guards to unblock Supabase Preview (owner-ruled Path A).**
+  Added `IF NOT EXISTS` to the two Lovable-origin bootstrap `CREATE TABLE public.profiles` statements
+  (`20250908112334_remote_bootstrap.sql:27`, `20251009234919_*.sql:11`). Owner ruled Path A over Path B
+  (squash-history), which is deferred as its own slice.
+  **Gate answered before editing:** the Supabase migration tracker does NOT hash-verify already-applied
+  migrations against file content — proved on prod, not assumed. `supabase_migrations.schema_migrations`
+  has no hash/checksum column (`version, statements, name, created_by, idempotency_key, rollback`), and
+  more decisively BOTH target rows already diverge from their files: `20250908112334` stores a single
+  partial blob for a multi-statement file, and `20251009234919` stores literally
+  `-- marked applied out-of-band; live schema verified by drift audit 2026-07-14` (created_by
+  `ledger-reconciliation`). `db push` applied A1 cleanly the same day over those rows. If content were
+  verified, they would already be breaking every push. Prod `schema_migrations` needs no reconciliation.
+  **§13 correction:** the failure was earlier attributed to `20250908112334:27`. The live check-run text
+  (`gen_random_uuid()`, `dob_last4`, no `address_line1`) identifies it as **`20251009234919:11`**. Both
+  are guarded, so the fix covers it either way, but the earlier diagnosis named the wrong file.
+  **Known limitation, filed as #211:** the two files define DIFFERENT `profiles` shapes, and prod's live
+  table carries the 20251009 shape. Guarding both means a fresh replay keeps the 20250908 shape and
+  diverges from prod, so Preview may fail later on a migration expecting the newer columns. This change
+  removes the known blocker; it does not by itself prove Preview goes green.
+
 - **2026-08-20 · A2 evaluator — a fire is a row before it is a message, and one signal was a lie.**
   The sweep (`alerting-evaluate`, `pg_cron` every 5 min) evaluates active rules and **writes firings only**;
   delivery is A3 through `_shared/channel-adapters.ts`. Every firing lands `delivery_status='pending'`,
