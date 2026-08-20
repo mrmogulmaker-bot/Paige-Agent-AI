@@ -11,7 +11,9 @@
 // makes this possible: the module under test is imported directly, not mirrored, so there is no
 // copy to drift out of sync with the code that actually runs in prod.
 //
-// Run:  node --experimental-strip-types scripts/alerting-conditions-smoke.mts
+// Run:  node scripts/alerting-conditions-smoke.mts   (type stripping is default from Node 22.18;
+//       do NOT add --experimental-strip-types — Node 24 REMOVED that flag and errors on it, which
+//       is exactly how this step first failed in CI while passing locally on Node 22.)
 // Exit: 0 = the decision logic behaves; non-zero = a defect (fix before shipping).
 //
 // §13 HONEST — what this CANNOT verify (owed elsewhere): that the SIGNAL READERS return the right

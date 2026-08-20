@@ -22,7 +22,7 @@
     "preview": "vite preview",
     "smoke:skills-interpreter": "node --experimental-strip-types --import ./scripts/_register-forge-stub.mjs scripts/skills-interpreter-provenance-smoke.mjs",
     "smoke:fleet-orbit": "node scripts/fleet-orbit-smoke.mjs",
-    "smoke:alerting-conditions": "node --experimental-strip-types scripts/alerting-conditions-smoke.mts"
+    "smoke:alerting-conditions": "node scripts/alerting-conditions-smoke.mts"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",
