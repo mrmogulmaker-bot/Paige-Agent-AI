@@ -302,5 +302,11 @@ gains a dated section (§BRAIN.3).*
   `is_readable=false` with the reason and registers `llm.error_rate`, which the schema genuinely supports,
   as its own key. Quietly serving an error rate under a failover name would have been the
   two-numbers-one-label defect the §39 peer gate caught on the Fleet Tenants rail one slice earlier.
-  Headless proof: `npm run smoke:alerting-conditions` (wired into CI) — a wrong evaluation does not throw,
-  it silently fires or silently stays quiet, so the pure decision logic is exercised directly.
+  Headless proof: `src/__tests__/alerting-conditions.test.ts` (35 assertions, in the existing vitest run) —
+  a wrong evaluation does not throw, it silently fires or silently stays quiet, so the pure decision logic
+  is exercised directly. **§18 lesson worth keeping:** this first shipped as a standalone `.mts` script with
+  its own npm script and CI step, and broke CI twice — the job pins **Node 20**, which has no type stripping
+  and cannot load a `.ts`/`.mts` file at all. (My first fix blamed "Node 24 removed the flag"; the log said
+  `Node.js v20.20.2` — only the ACTIONS run on 24.) The repo already had a TS-capable headless runner in CI,
+  and three sibling tests already import edge-function `_shared` code the same way. The second path was
+  invented, not needed.
