@@ -253,14 +253,37 @@ export function FleetOrbit({
     >
       {body}
 
-      {/* CD's in-canvas motion toggle: bottom-right pill, same copy, same states. */}
+      {/* CD's in-canvas motion toggle: bottom-right pill, same copy, same states.
+       *
+       * It also has to SAY WHY it is off. A field that simply sits there is indistinguishable from
+       * a broken one — the owner reported "no rotation" on a build whose drift code was correct,
+       * and the toggle that reports the state was below the fold at the time. So when the OS is the
+       * reason, the control says so and offers the override, rather than leaving a static field and
+       * no explanation. (§13: report the actual cause; §11/§22: reduced motion is still honoured by
+       * default — this makes it visible and overridable, it does not ignore it.)
+       */}
       <button
         type="button"
         onClick={() => setMotion((v) => !v)}
         aria-pressed={motion}
-        className="absolute bottom-2.5 right-2.5 z-10 rounded-full border border-[hsl(var(--rail-foreground)/0.74)] bg-[hsl(var(--rail)/0.6)] px-2.5 py-[5px] text-[10.5px] font-semibold tracking-[0.04em] text-[hsl(var(--rail-foreground))] transition-colors hover:bg-[hsl(var(--rail)/0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        title={
+          motion
+            ? "The field is drifting. Click to hold it still."
+            : prefersReducedMotion
+              ? "Your system asks for reduced motion, so the field is held still. Click to run it anyway."
+              : "The field is held still. Click to let it drift."
+        }
+        className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 rounded-full border border-[hsl(var(--rail-foreground)/0.74)] bg-[hsl(var(--rail)/0.6)] px-2.5 py-[5px] text-[10.5px] font-semibold tracking-[0.04em] text-[hsl(var(--rail-foreground))] transition-colors hover:bg-[hsl(var(--rail)/0.85)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        {motion ? "Motion on" : "Motion off"}
+        <span
+          aria-hidden
+          className={
+            motion
+              ? "h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))]"
+              : "h-1.5 w-1.5 rounded-full bg-[hsl(var(--rail-foreground)/0.45)]"
+          }
+        />
+        {motion ? "Motion on" : prefersReducedMotion ? "Motion off · system" : "Motion off"}
       </button>
 
       {hot && (
