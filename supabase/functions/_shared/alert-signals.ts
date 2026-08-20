@@ -68,7 +68,7 @@ type Reader = (admin: SupabaseClient) => Promise<number | boolean>;
  * Internal/test tenants are excluded, matching the console's own "customer tenants" framing.
  */
 const readTenantsAtRisk: Reader = async (admin) => {
-  const [tenantRes, memberRes, { data: revenue }] = await Promise.all([
+  const [tenantRes, memberRes, revenueRes] = await Promise.all([
     admin.from("tenants").select("id, status", { count: "exact" }).range(0, PAGE_CAP - 1),
     admin
       .from("tenant_members")
@@ -78,6 +78,23 @@ const readTenantsAtRisk: Reader = async (admin) => {
     // deno-lint-ignore no-explicit-any
     (admin as any).from("tenant_revenue_classification").select("tenant_id, revenue_class"),
   ]);
+
+  // This read's error was previously destructured away, and the §32.a scan showed why that
+  // mattered: service_role had NO grant on this table, so it was failing permission-denied on
+  // every sweep. The empty result silently meant "no tenant is internal", so the platform's own
+  // fixtures counted as at-risk CUSTOMER tenants and the signal over-reported.
+  //
+  // That is precisely the failure this module's own header forbids — a reader that cannot produce
+  // a real number must report unreadable, never a plausible wrong one. An exclusion list that
+  // failed to load is not an empty exclusion list.
+  const { error: rErr } = revenueRes;
+  if (rErr) {
+    throw new Error(
+      `tenant_revenue_classification read failed: ${rErr.message} — cannot tell customer tenants ` +
+        `from internal fixtures, so an at-risk count would over-report`,
+    );
+  }
+  const revenue = revenueRes.data;
   const { data: tenants, error: tErr, count: tenantCount } = tenantRes;
   const { data: members, error: mErr, count: memberCount } = memberRes;
   if (tErr) throw new Error(`tenants read failed: ${tErr.message}`);
