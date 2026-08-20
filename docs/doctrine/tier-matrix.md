@@ -347,16 +347,30 @@ Shipped 2026-08-19 (PR #554). Owner live-drive passed on all four checks.
 | Motion toggle + OS reduced-motion honoured | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Loud, visible failure on WebGL absence/throw | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Table view: tier pill, health, `Enter →`, internal chip | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
-| Tier colours re-resolve on light/dark flip (§23) | — | N/A | N/A | N/A | N/A | 403 | 403 |
-| Tenants **directory** (mini-KPIs, per-row Enter, §53 audit foot) | — | N/A | N/A | N/A | N/A | 403 | 403 |
-| Rich "Needs you today" cards (prose + act buttons) | — | N/A | N/A | N/A | N/A | 403 | 403 |
-| Both "Her read" panels (real Paige-composed prose) | — | N/A | N/A | N/A | N/A | 403 | 403 |
+| Tier colours re-resolve on light/dark flip (§23) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Tenants **directory** (mini-KPIs, per-row Enter, §53 audit foot) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Rich "Needs you today" cards (real findings + Paige's own interpretation) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Both "Her read" panels (templated over real reads + chat CTA) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Morning brief carries amber + provisioning counts | — | N/A | N/A | N/A | N/A | 403 | 403 |
 | Paige at the orbit core (`paige-bot.glb`) | — | N/A | N/A | N/A | N/A | 403 | 403 |
 
-**Status: PARTIAL.** The field is rebuilt and live; the rows marked **—** are in flight in the same
-slice and this table updates as each lands. Honestly empty today, and stated as such rather than
-pre-ticked. `FLEET MRR` and per-row MRR render `—` ("not tracked yet") platform-wide because Money
+**Status: PARTIAL.** Two rows remain **—**: the morning-brief counts, and Paige at the orbit core
+(filed as its own follow-up, since a 6.5MB GLB on the crash-prone `useGLTF` path needs its own smoke
+test rather than a quiet fold-in). Everything else is live.
+
+**On the two "Her read" panels (§13, stated precisely).** These are **templated over real values**,
+not LLM-composed — because no operator-scope narrative endpoint exists on the platform (all 248 edge
+functions enumerated 2026-08-19; `owner-context.ts` is a system-prompt composer consumed only inside
+`paige-ai-chat`'s streaming path, not a callable). That is also exactly what CD does: its own `read`
+is `atRisk.length + " tenants are at risk. " + atRisk[0].name + …`, a sentence frame around live
+figures. Every number and name in the panel comes from the fleet read; only the frame is authored,
+and the gold CTA hands the actual synthesis to Paige in the chat (§20/§21).
+
+**On the attention cards (§51 caveat).** They read REAL operator findings (`tenant_id IS NULL`), and
+each card's prose is Paige's own stored `paige_interpretation` for that check. The fleet-wide
+*per-tenant* branch is gated on `is_platform_owner()` — **super_admin only** — and
+`systems_check_snapshot` has no all-tenants scope, so a `platform_admin` sees operator findings only.
+That is a real tier difference, recorded rather than papered over. `FLEET MRR` and per-row MRR render `—` ("not tracked yet") platform-wide because Money
 Spine is deferred by owner ruling — that is an intentional honest absence, not a gap to close here.
 
 **Post-Stage-2 tiers.** Agency / Enterprise / Solo / Sub-account read **N/A** because the owner

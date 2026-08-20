@@ -1,7 +1,8 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { Group, Mesh } from "three";
 
+import { onThemeChange, resolveTokenRgb, type Rgb } from "@/lib/tokenColor";
 import type { OrbitNode } from "@/operator/surfaces/FleetOrbit";
 
 /**
@@ -46,18 +47,30 @@ const NODE_MAX_PX = 68;
 const SHELL_INNER = 1.45;
 const SHELL_OUTER = 2.45;
 
-const TIER_RGB: Record<OrbitNode["tier"], [number, number, number]> = {
-  // Resolved to literals rather than tokens: a WebGL material takes a colour, not a CSS var.
-  // These mirror the platform's own indigo/green/gold/slate tier palette (§11) and CD's
-  // TIER map in fleet-field.js (Agency #7C6CE0, Solo #3F7F5C, Enterprise #B5822A, Sub #2F6B8F).
-  Agency: [0.486, 0.424, 0.878],
-  Solo: [0.247, 0.498, 0.361],
-  Enterprise: [0.71, 0.51, 0.165],
-  "Sub-account": [0.184, 0.42, 0.561],
+/**
+ * Tier → design token. NOT literal hex: the field follows the light/dark toggle like every other
+ * element on the surface (§23). CD's own `fleet-field.js` hardcodes hex because a 2D canvas cannot
+ * read a CSS variable; we can, so we do.
+ */
+const TIER_VAR: Record<OrbitNode["tier"], string> = {
+  Agency: "--primary",
+  Solo: "--success",
+  Enterprise: "--gold-dark",
+  "Sub-account": "--muted-foreground",
 };
 
-/** Gold — spent ONLY on the ring of a tenant that needs you (§11 gold-on-the-act). */
-const GOLD: [number, number, number] = [0.85, 0.68, 0.28];
+type Palette = Record<OrbitNode["tier"], Rgb> & { gold: Rgb };
+
+function readPalette(): Palette {
+  return {
+    Agency: resolveTokenRgb(TIER_VAR.Agency),
+    Solo: resolveTokenRgb(TIER_VAR.Solo),
+    Enterprise: resolveTokenRgb(TIER_VAR.Enterprise),
+    "Sub-account": resolveTokenRgb(TIER_VAR["Sub-account"]),
+    // Gold — spent ONLY on the ring of a tenant that needs you (§11 gold-on-the-act).
+    gold: resolveTokenRgb("--accent"),
+  };
+}
 
 /**
  * A stable angular seed per tenant.
@@ -125,19 +138,21 @@ function OrbitNodeMesh({
   placed,
   radius,
   selected,
+  palette,
   onSelect,
   onHover,
 }: {
   placed: Placed;
   radius: number;
   selected: boolean;
+  palette: Palette;
   onSelect: (id: string) => void;
   onHover: (n: OrbitNode | null, clientX: number, clientY: number) => void;
 }) {
   const ringRef = useRef<Mesh>(null);
   const { node, dir, shell } = placed;
   const pos: [number, number, number] = [dir[0] * shell, dir[1] * shell, dir[2] * shell];
-  const rgb = TIER_RGB[node.tier];
+  const rgb = palette[node.tier];
 
   // The ring breathes only on tenants that need you. Everything else is still.
   useFrame(({ clock }) => {
@@ -178,7 +193,7 @@ function OrbitNodeMesh({
         <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
           <torusGeometry args={[radius * 1.55, radius * 0.12, 8, 40]} />
           {/* Unlit so the ring reads at the same strength on the dark side of the field. */}
-          <meshBasicMaterial color={GOLD} transparent opacity={0.92} />
+          <meshBasicMaterial color={palette.gold} transparent opacity={0.92} />
         </mesh>
       )}
     </group>
@@ -200,6 +215,11 @@ export default function FleetOrbitScene({
 }) {
   const groupRef = useRef<Group>(null);
   const placed = useMemo(() => place(nodes), [nodes]);
+
+  // Re-read the palette whenever the theme flips, so the field is never the one element on the
+  // surface pinned to a single theme (§23).
+  const [palette, setPalette] = useState<Palette>(readPalette);
+  useEffect(() => onThemeChange(() => setPalette(readPalette())), []);
 
   /**
    * World units per CSS pixel at the focal plane. `viewport` is recomputed by R3F whenever the
@@ -255,6 +275,7 @@ export default function FleetOrbitScene({
             // requested PIXEL size while the group scale positions the shell.
             radius={radii[i] / shellScale}
             selected={p.node.id === selectedId}
+            palette={palette}
             onSelect={onSelect}
             onHover={onHover}
           />
