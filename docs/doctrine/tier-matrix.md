@@ -315,6 +315,55 @@ posture**, and **(d) permitted-RPC scoping**, each grounded in a named resolver 
 
 ---
 
+## Surface ledger — what actually SHIPPED, per tier (§66)
+
+**Bound by `CLAUDE.md` §66:** every merge that changes what shipped, what's gated, or which tiers see
+a surface updates this table **in the same commit as the code**. A row records what is **LIVE**, never
+what a commit intends to deliver — ticking a box because the slice "is going to" get there is the same
+class of lie as a fabricated metric (§13).
+
+Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
+
+### `/operator/fleet/systems-check` — Fleet Console sub-tab 1
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Systems Check tab (pack-faithful, above the fold) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Category drill-in drawer with per-check evidence | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| "Run full sweep" (operator + fleet halves) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Skips reported as their own axis (never folded into pass) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Fed into Paige's briefing (`owner-context.ts`) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| `get_systems_check_status` MCP tool (god-locked) | ✓ | — | — | — | — | — | — |
+
+Shipped 2026-08-19 (PR #554). Owner live-drive passed on all four checks.
+
+### `/operator/fleet/tenants` — Fleet Console sub-tab 2
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Orbital field rendered in **React Three Fiber** | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Renders every tenant on the default All filter | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Hash-seeded **stable** node placement (no reshuffle on filter) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Weight-encoded gravity (heavier tenants orbit closer) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Pixel-accurate node sizing (26–68px, survives resize) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Motion toggle + OS reduced-motion honoured | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Loud, visible failure on WebGL absence/throw | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Table view: tier pill, health, `Enter →`, internal chip | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Tier colours re-resolve on light/dark flip (§23) | — | N/A | N/A | N/A | N/A | 403 | 403 |
+| Tenants **directory** (mini-KPIs, per-row Enter, §53 audit foot) | — | N/A | N/A | N/A | N/A | 403 | 403 |
+| Rich "Needs you today" cards (prose + act buttons) | — | N/A | N/A | N/A | N/A | 403 | 403 |
+| Both "Her read" panels (real Paige-composed prose) | — | N/A | N/A | N/A | N/A | 403 | 403 |
+| Morning brief carries amber + provisioning counts | — | N/A | N/A | N/A | N/A | 403 | 403 |
+| Paige at the orbit core (`paige-bot.glb`) | — | N/A | N/A | N/A | N/A | 403 | 403 |
+
+**Status: PARTIAL.** The field is rebuilt and live; the rows marked **—** are in flight in the same
+slice and this table updates as each lands. Honestly empty today, and stated as such rather than
+pre-ticked. `FLEET MRR` and per-row MRR render `—` ("not tracked yet") platform-wide because Money
+Spine is deferred by owner ruling — that is an intentional honest absence, not a gap to close here.
+
+**Post-Stage-2 tiers.** Agency / Enterprise / Solo / Sub-account read **N/A** because the owner
+sequenced the operator tier to completion before any other shell opens. They are not "broken" and not
+"denied" — they have not been opened. Client and Anonymous are denied at the `RequireOperator` route
+gate and stay that way.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

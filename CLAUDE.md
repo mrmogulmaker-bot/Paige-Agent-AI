@@ -2355,3 +2355,58 @@ one route per tier), §60/§61 (tier feature framework — the name reads, the h
 (tenant isolation — the address is never the grant), §58 (anti-regression — old routes stay
 redirect-alive), §18 (one home — the taxonomy doc is the authoritative map),
 `docs/doctrine/route-and-url-taxonomy.md` (the full matrix + migration plan).
+
+## 66. The tier matrix updates in the SAME commit as the ship — not later.
+
+**Directive (owner: Antonio, 2026-08-19).** §0 binds master-doc updates in the same PR as the ship.
+§BRAIN.3 binds brain updates in the same commit. §66 extends that discipline to the **tier matrix**
+(`docs/doctrine/tier-matrix.md`, already the one home referenced by §51/§56/§61): every merge that
+changes **what shipped, what's gated, or which tiers see a surface** updates the tier matrix in the
+same commit as the code change — never a follow-up PR, never "when we get to it."
+
+Owner's framing (verbatim, 2026-08-19): *"We need to make sure that we are documenting our taxonomy
+and our matrix right along the way with everything that we're shipping."*
+
+**What §66 binds today:** `docs/doctrine/tier-matrix.md` — specifically its **Surface ledger**, which
+records per-surface, per-tier SHIPPED reality. Any additional taxonomy / implementation-status /
+business-requirements docs that a real surface survey later warrants get their **own tracked slice** —
+never authored under time pressure and never inferred (§13 stays load-bearing at the very moment the
+rule that exists to prevent §13 drift is being born). §66 auto-extends to bind them once they exist.
+
+**The test, every time:** *"Did this PR change what a tier sees, what's shipped, or what's gated — and
+if yes, does `docs/doctrine/tier-matrix.md` reflect the new reality in this same commit? Or did I let
+it drift and set the next session up to answer 'do we have X?' from stale docs?"* If the ledger still
+says PARTIAL/GAPPED on a surface that just shipped, that is §13 drift — the exact answer-from-memory
+failure this rule exists to end.
+
+**Ledger entries record what is LIVE, not what is planned.** A half-finished slice writes the half
+that is real and leaves the rest marked pending. Ticking a row because the commit "is going to"
+deliver it is the same lie as a fabricated metric.
+
+**Enforcement — three layers, all mandatory:**
+- **Self-check.** The Definition of Done adds one line — *matrix updated* — for any ship that touches
+  surface behaviour, tier visibility, or gating.
+- **§5 compliance officer** on any surface-ship confirms the ledger reflects shipped reality before a
+  SHIP verdict.
+- **§39 peer-gate standing checklist item:** *"Does this PR change shipped / gated / tier-visibility,
+  and if yes, did `docs/doctrine/tier-matrix.md` update in the same commit — or is reality already
+  drifting from the source of truth?"*
+
+**Anchoring case (2026-08-19).** The Fleet Console → Tenants slice (owner ruled a React Three Fiber
+rebuild of the field, sub-tab 2). Mid-build the owner noticed that even with §0 and §BRAIN.3 catching
+master-doc and brain updates, **no numbered section was catching the tier matrix** — so it had been
+drifting quietly whenever a slice shipped. §66 closes that hole, and this slice is its first
+application. **A §13 correction from the same session is part of the anchor:** the amendment's first
+draft bound three doctrine docs (`platform-surface-tier-matrix.md`, `-implementation-status.md`,
+`-business-requirements.md`) that do **not** exist on `main`, and assumed an SDLC §63/§64 collision
+that does not exist either (`main` has §63 Owner's-real-accounts, §64 Cloud-first, §65 Names, and zero
+SDLC sections). Grounding against `origin/main` caught both before they landed, and the rule was
+rewritten to bind the doc that actually exists. Recorded because a rule about not drifting from the
+source of truth nearly shipped by drifting from the source of truth.
+
+**Cross-references:** §0 (master doc first — the parent discipline), §BRAIN.3 (same-commit brain
+updates — the sibling), §13 (honest reporting — the reason, and the guard on how §66 itself was
+landed), §5 (compliance officer — the enforcer), §39 (peer-gate — the audit), §BRAIN.2 (answer from
+the source, never from memory — what stale docs break), §51/§56/§61 (the matrix's existing consumers).
+*Forward-reference:* an SDLC close-out phase is intended to carry this too; the SDLC section is not on
+`main` yet, so no §-number is asserted for it here.
