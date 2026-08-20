@@ -8,7 +8,7 @@ CREATE TYPE public.task_status AS ENUM ('pending', 'in_progress', 'completed', '
 CREATE TYPE public.account_type AS ENUM ('credit_card', 'auto_loan', 'mortgage', 'personal_loan', 'student_loan', 'collections');
 
 -- Create profiles table
-CREATE TABLE public.profiles (
+CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name TEXT,

@@ -408,3 +408,12 @@ project_id = "xygzykjyynhzqytbqnzu"
   # — super_admin OR platform_admin, §53). Never a tenant JWT, never a body identity (§588).
   [functions.systems-check-run-operator]
     verify_jwt = false
+
+  # Alerting evaluator (A2) — the 5-minute sweep that reads active rules, resolves the signals they
+  # depend on, and WRITES FIRINGS (delivery is A3, via _shared/channel-adapters.ts). verify_jwt=false
+  # so the pg_cron poster (which presents no Supabase JWT) can reach it; it fails closed in-function
+  # to EITHER an internal-caller gate (service-role bearer OR x-cron-token) OR an operator JWT
+  # (is_platform_operator() — super_admin OR platform_admin, §53) — reusing the SAME helpers as
+  # systems-check-run-operator (§18). Never a tenant JWT, never a body identity (§588).
+  [functions.alerting-evaluate]
+    verify_jwt = false

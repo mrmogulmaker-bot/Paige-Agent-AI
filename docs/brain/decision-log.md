@@ -264,3 +264,49 @@ gains a dated section (§BRAIN.3).*
   as tracked slices (#205–#210) BEFORE A1 merged — History, Chat, peek drawer, §16 departments + autonomy
   tier, Trust Compass ceiling-clamp, and Paige's central-brain recall — because a good ruling that is not
   tracked is a good ruling that vanishes. Architecture: `docs/architecture/platform-alerting-substrate.md`.
+
+- **2026-08-20 · Lovable bootstrap files — `IF NOT EXISTS` guards to unblock Supabase Preview (owner-ruled Path A).**
+  Added `IF NOT EXISTS` to the two Lovable-origin bootstrap `CREATE TABLE public.profiles` statements
+  (`20250908112334_remote_bootstrap.sql:27`, `20251009234919_*.sql:11`). Owner ruled Path A over Path B
+  (squash-history), which is deferred as its own slice.
+  **Gate answered before editing:** the Supabase migration tracker does NOT hash-verify already-applied
+  migrations against file content — proved on prod, not assumed. `supabase_migrations.schema_migrations`
+  has no hash/checksum column (`version, statements, name, created_by, idempotency_key, rollback`), and
+  more decisively BOTH target rows already diverge from their files: `20250908112334` stores a single
+  partial blob for a multi-statement file, and `20251009234919` stores literally
+  `-- marked applied out-of-band; live schema verified by drift audit 2026-07-14` (created_by
+  `ledger-reconciliation`). `db push` applied A1 cleanly the same day over those rows. If content were
+  verified, they would already be breaking every push. Prod `schema_migrations` needs no reconciliation.
+  **§13 correction:** the failure was earlier attributed to `20250908112334:27`. The live check-run text
+  (`gen_random_uuid()`, `dob_last4`, no `address_line1`) identifies it as **`20251009234919:11`**. Both
+  are guarded, so the fix covers it either way, but the earlier diagnosis named the wrong file.
+  **Known limitation, filed as #211:** the two files define DIFFERENT `profiles` shapes, and prod's live
+  table carries the 20251009 shape. Guarding both means a fresh replay keeps the 20250908 shape and
+  diverges from prod, so Preview may fail later on a migration expecting the newer columns. This change
+  removes the known blocker; it does not by itself prove Preview goes green.
+
+- **2026-08-20 · A2 evaluator — a fire is a row before it is a message, and one signal was a lie.**
+  The sweep (`alerting-evaluate`, `pg_cron` every 5 min) evaluates active rules and **writes firings only**;
+  delivery is A3 through `_shared/channel-adapters.ts`. Every firing lands `delivery_status='pending'`,
+  which is the literal truth until A3 exists — so "did it fire?" stays answerable even when delivery later
+  fails. Three decisions worth keeping: (1) **an unreadable signal evaluates to `undefined`, never `false`**
+  — a rule that depends on it is SKIPPED and `last_evaluated_at` is deliberately NOT advanced, so the
+  surface keeps saying "never evaluated" rather than implying a clean pass; (2) firing is **edge-triggered
+  per episode** via a new `condition_met_since` column — without it a rule re-fires every tick for as long
+  as the condition holds, which is how an alerting system teaches its operator to ignore it; (3) if the
+  firing INSERT fails, `last_fired_at` is **not** advanced — claiming a fire that did not record would put
+  a fabricated event in the evidence table's own bookkeeping.
+  **§13 correction:** A1 seeded `llm.failover_rate` as readable and the architecture note claimed L1
+  observability already backed it. Verified FALSE against the live schema — `paige_llm_trace` records no
+  failover marker (columns: `status`, `error_class`, `provider`, `model`, `tier`). A2 flips that signal to
+  `is_readable=false` with the reason and registers `llm.error_rate`, which the schema genuinely supports,
+  as its own key. Quietly serving an error rate under a failover name would have been the
+  two-numbers-one-label defect the §39 peer gate caught on the Fleet Tenants rail one slice earlier.
+  Headless proof: `src/__tests__/alerting-conditions.test.ts` (35 assertions, in the existing vitest run) —
+  a wrong evaluation does not throw, it silently fires or silently stays quiet, so the pure decision logic
+  is exercised directly. **§18 lesson worth keeping:** this first shipped as a standalone `.mts` script with
+  its own npm script and CI step, and broke CI twice — the job pins **Node 20**, which has no type stripping
+  and cannot load a `.ts`/`.mts` file at all. (My first fix blamed "Node 24 removed the flag"; the log said
+  `Node.js v20.20.2` — only the ACTIONS run on 24.) The repo already had a TS-capable headless runner in CI,
+  and three sibling tests already import edge-function `_shared` code the same way. The second path was
+  invented, not needed.

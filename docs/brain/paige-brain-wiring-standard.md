@@ -134,7 +134,7 @@ Columns map to the layers in §2: **Context** = does she KNOW it at session open
 | Sub-accounts | ✅ RPCs | ✅ `AGENCY_TOOLS` | ✅ `roles-permissions.md` | Agency tier |
 | Skills | ✅ `paige_skills` + interpreter | ✅ `list_skills` / `run_skill` | ✅ `paige-skills-inventory.md` | |
 | Marketplace | ✅ RPCs | ✅ `marketplace_*` | ✅ | |
-| **Platform alerting** (operator) | ⏳ tables only — `paige_alert_rule` / `_firing` / `_signal` (A1, 2026-08-20). No RPC, no evaluator yet (A2/A5) | ❌ **owed — A-Weave-6** | ❌ **owed — A-Weave-2** (`paige-mcp` rule CRUD) | ✅ `config-registry.md` + `decision-log.md` | **Deliberately incomplete, and the incompleteness is the point.** A1 ships the substrate; the owner ruled 2026-08-20 that it must NOT stay isolated, so the four ❌ above are FILED slices (#205–#210), not unknowns. Paige can neither read nor author a rule yet — do not claim otherwise. |
+| **Platform alerting** (operator) | ⏳ partial — tables `paige_alert_rule` / `_firing` / `_signal` (A1) **+ the evaluator** `alerting-evaluate`, cron `*/5` (A2, 2026-08-20). Still NO rule-authoring RPC and NO delivery (A3) | ❌ **owed — A-Weave-6** | ❌ **owed — A-Weave-2** (`paige-mcp` rule CRUD) | ✅ `config-registry.md` + `decision-log.md` | **Deliberately incomplete, and the incompleteness is the point.** A1 ships the substrate, A2 the sweep that evaluates it; the owner ruled 2026-08-20 that it must NOT stay isolated, so the ❌ above are FILED slices (#205–#210), not unknowns. **Paige still cannot author a rule, cannot recall a firing, and nothing is delivered anywhere** — do not claim otherwise. |
 | Analytics · Marketing · Calls/transcripts · Web pages | — | ❌ | — | Named by the owner as future reach; **not yet wired — do not claim otherwise.** |
 
 ---
