@@ -310,3 +310,46 @@ gains a dated section (§BRAIN.3).*
   `Node.js v20.20.2` — only the ACTIONS run on 24.) The repo already had a TS-capable headless runner in CI,
   and three sibling tests already import edge-function `_shared` code the same way. The second path was
   invented, not needed.
+
+### 2026-08-20 — Operator act-as is real and audited; the capability already existed, the audit did not (Slice 2, task #212)
+
+**What shipped.** `operator_enter_tenant(_tenant uuid)` / `operator_exit_tenant()` — SECURITY DEFINER,
+`auth.uid()`-keyed, gated on `is_platform_operator()` (§53), writing a `paige_audit_log` row in the SAME
+transaction as the scope change so "entered" and "recorded" cannot disagree. The Fleet Tenants directory's
+`Enter` button and the table's `Enter →` now perform that act-as; the directory ROW selects, matching CD's
+own descriptor ("Click one to open it. Entering is a separate, logged act.") which the surface had been
+rendering while both affordances did the same thing.
+
+**The finding that changed the build (§18).** The §18 survey was expected to confirm operator act-as was
+unbuilt. It found the opposite: act-as **already ships** through the header `TenantSwitcher` in
+`AdminLayout`, gated `isPlatformStaff`, writing `profiles.active_tenant_id` directly via
+`useTenantContext.switchTenant` — **with no audit row of any kind**. So the gap was never the capability;
+it was that an operator could enter any tenant on the platform and nothing recorded it, while the Fleet
+surface told them every session was recorded in Governance.
+
+Building the planned Fleet-only RPC path would therefore have created **two doors into a tenant with only
+one of them logged** — strictly worse than the original gap, because the audit trail would then look
+complete. `switchTenant` instead routes platform staff through the RPCs, so every operator act-as is
+audited whichever control drives it. Non-staff (the agency `enterSubaccount` path) keeps the direct write.
+
+**Why no membership is granted.** `agency_enter_subaccount` INSERTs a `tenant_members` row; correct for a
+parent agency that genuinely holds a seat, a §9 defect for the operator — they would silently join every
+tenant they opened, polluting rosters, inflating seat counts, and corrupting the operator's own fleet
+metrics (`fleet.tenants_at_risk` grades partly on zero active seats, so merely visiting a seatless tenant
+would "fix" its risk grade). Verified enabling fact: `current_user_tenant_id()` already honours
+`active_tenant_id` when `is_platform_admin(auth.uid())`, no membership required.
+
+**Naming trap worth remembering:** `is_platform_admin(_actor)` sounds like the delegated tier only, but its
+body matches `role IN ('platform_admin','super_admin')` — it is effectively `is_platform_operator()`. Read
+the body, not the name.
+
+**Exit restores tenant-less** (`active_tenant_id = NULL`), verified as the operator's real resting state on
+prod, deliberately unlike the agency exit which resolves to a primary agency. Known consequence recorded up
+front: §52's operator briefing is gated on a tenant-less persona, so it NO-OPs while acting as a tenant and
+returns on exit.
+
+**§32.b proof (prod, rolled back, 9/9):** grants (`anon_enter=f`, `authenticated=t`) · enter sets scope AND
+`current_user_tenant_id()` resolves to it · `members_before=0 members_after=0 delta=0` · enter audited ·
+exit restores NULL + audited · unknown tenant raises `tenant_not_found`/P0002 · a tenant-tier caller raises
+`operator_scope_forbidden`/42501 on BOTH functions. Cleanup confirmed: 0 functions, 0 audit rows, 0 scoped
+operators left behind. §32.a persisted-apply owed post-merge.

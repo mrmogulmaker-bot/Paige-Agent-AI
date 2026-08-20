@@ -1,5 +1,9 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
+
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { stashSwitchNotice } from "@/lib/agency/switchNotice";
 import { useFleet, isInternal, type FleetTenant } from "@/operator/data/useFleet";
 import { FleetOrbit, type OrbitNode } from "@/operator/surfaces/FleetOrbit";
 import { FleetTenantsRail, type RailTenant } from "@/operator/surfaces/FleetTenantsRail";
@@ -99,7 +103,39 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
    */
   const [searchParams] = useSearchParams();
   const selectedTenantId = searchParams.get("tenant");
+
   const { tenants, classificationVisible, loading, error } = useFleet(true);
+  const { switchTenant } = useTenantContext();
+
+  /**
+   * ACT AS a tenant — the "logged act" CD's directory copy promises, and the thing the rail's
+   * own foot ("Entering a tenant puts you in their shell with their data. Every session is
+   * recorded in Governance.") has been claiming since this surface shipped.
+   *
+   * It goes through `switchTenant`, the SAME control the header TenantSwitcher already drives,
+   * which for platform staff now routes to the audited `operator_enter_tenant` RPC. Deliberately
+   * NOT a second act-as path of its own: a Fleet-only route beside the existing switcher would
+   * mean two ways to enter a tenant with only one of them audited — an audit trail that looks
+   * complete while a quiet route stays open (§18).
+   *
+   * Then a HARD navigate, not a router push: every per-instance `useTenantContext` has to re-read
+   * the new scope from scratch, and a soft transition would leave half the shell pointed at the
+   * platform (the reason `switchNotice` exists at all).
+   */
+  const enterTenant = useCallback(
+    async (id: string) => {
+      const name = tenants.find((t) => t.id === id)?.name ?? "that tenant";
+      const ok = await switchTenant(id);
+      if (!ok) {
+        // Never pretend. A refused switch leaves scope exactly where it was.
+        toast.error(`Couldn't enter ${name}.`);
+        return;
+      }
+      stashSwitchNotice(`You're inside ${name}. Everything you do here is recorded.`);
+      window.location.assign("/admin");
+    },
+    [switchTenant, tenants],
+  );
   const [view, setView] = useState<"field" | "table">("field");
   const [filter, setFilter] = useState<Filter>("All");
   const [q, setQ] = useState("");
@@ -498,7 +534,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                     <div className="w-[76px] flex-none text-right">
                       <button
                         type="button"
-                        onClick={() => navigate(`/operator/fleet/tenants?tenant=${t.id}`)}
+                        onClick={() => void enterTenant(t.id)}
                         className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         Enter →
@@ -517,6 +553,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
         filtered={filter !== "All" || q.trim().length > 0}
         loading={loading}
         onOpenTenant={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)}
+        onEnterTenant={(id) => void enterTenant(id)}
         onProvision={() => navigate("/operator/provisioning")}
         onAskPaige={() => navigate("/operator/paige")}
         onOpenCheck={() => navigate("/operator/fleet/systems-check")}

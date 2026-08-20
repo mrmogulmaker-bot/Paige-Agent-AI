@@ -358,6 +358,35 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     const { data: auth } = await supabase.auth.getUser();
     const uid = auth.user?.id;
     if (!uid) return false;
+
+    // ── platform staff go through the AUDITED operator seam ───────────────────
+    // An operator switching into a tenant is an act-as: they are about to read and
+    // act on another company's data while holding no seat there. The Fleet console
+    // already promises the operator, in shipped copy, that "every session is recorded
+    // in Governance" — this is what makes that true (§13).
+    //
+    // It routes through the SAME control the operator already uses (this function,
+    // driven by TenantSwitcher) rather than adding a second act-as path beside it.
+    // Two paths would be worse than none: the audit trail would look complete while
+    // an unaudited route stayed open (§18 — one home per capability).
+    //
+    // The RPCs are auth.uid()-keyed and gated on is_platform_operator() server-side,
+    // so this branch is a convenience, never the authority — a non-operator who
+    // reached it would simply be refused (§9/§59).
+    if (isPlatformStaff) {
+      const { error: rpcError } = tenantId
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? await supabase.rpc("operator_enter_tenant" as any, { _tenant: tenantId })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        : await supabase.rpc("operator_exit_tenant" as any);
+      // Same failure contract as the direct write below: a refused or failed switch
+      // does NOT move client scope, so client and DB can never disagree (§9).
+      if (rpcError) return false;
+      setActiveTenantId(tenantId);
+      queryClient.invalidateQueries();
+      return true;
+    }
+
     // Persist FIRST so a rejected profile write can never leave browser scope and
     // DB-backed current_user_tenant_id() scope pointing at different tenants (§9).
     const { data: persisted, error } = await supabase
@@ -372,7 +401,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     // Scope changed for everything — a broad invalidate is correct here (§9).
     queryClient.invalidateQueries();
     return true;
-  }, [queryClient]);
+  }, [queryClient, isPlatformStaff]);
 
   const activeTenant = tenants.find((t) => t.id === activeTenantId) ?? null;
 

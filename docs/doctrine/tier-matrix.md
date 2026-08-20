@@ -347,8 +347,11 @@ Shipped 2026-08-19 (PR #554). Owner live-drive passed on all four checks.
 | Motion toggle + OS reduced-motion honoured | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Loud, visible failure on WebGL absence/throw | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Table view: tier pill, health, `Enter →`, internal chip | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| **`Enter` performs a real, audited act-as** (scope switches; row lands in `paige_audit_log`) | ✓ | N/A | N/A | N/A | N/A | 401 | 401 |
+| Act-as grants **no** `tenant_members` membership | ✓ | N/A | N/A | N/A | N/A | 401 | 401 |
+| Exit returns the operator to tenant-less (`active_tenant_id = NULL`) | ✓ | N/A | N/A | N/A | N/A | 401 | 401 |
 | Fixed sRGB tier palette on the pinned-dark field (§23) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
-| Tenants **directory** (mini-KPIs, per-row Enter, §53 audit foot) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Tenants **directory** (mini-KPIs, row selects, `Enter` acts-as, §53 audit foot) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | "Needs you today": real findings + Paige's interpretation | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | "Needs you today": at-risk tenant doors (kept from the prior rail, §58) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | "Her read" panel (templated over real reads + chat CTA) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
@@ -358,6 +361,34 @@ Shipped 2026-08-19 (PR #554). Owner live-drive passed on all four checks.
 **Status: PARTIAL.** Two rows remain **—**: the morning-brief counts, and Paige at the orbit core
 (filed as its own follow-up, since a 6.5MB GLB on the crash-prone `useGLTF` path needs its own smoke
 test rather than a quiet fold-in). Everything else is live.
+
+**The three act-as rows landed 2026-08-20 (Slice 2), and the §18 survey behind them changed the
+build.** The shipped CD copy — "Entering a tenant puts you in their shell with their data. Every
+session is recorded in Governance." — was false on both halves: `Enter` only wrote `?tenant=` into
+the URL (a selection inside the console), and nothing was recorded anywhere.
+
+The survey then found something more important than the missing wire: **operator act-as already
+shipped**, via the header `TenantSwitcher` in `AdminLayout`, gated `isPlatformStaff`, writing
+`profiles.active_tenant_id` directly through `useTenantContext.switchTenant` — **with no audit row**.
+So the capability was not missing; the *audit* was. Building a Fleet-only act-as beside it would have
+produced two doors into a tenant with only one of them logged — an audit trail that reads as complete
+while a quiet route stays open, which is worse than the original gap. `switchTenant` therefore routes
+platform staff through the new `operator_enter_tenant` / `operator_exit_tenant` RPCs, so **every**
+operator act-as is audited, whichever control drives it (§18 one home).
+
+**Why act-as grants no membership.** The sibling `agency_enter_subaccount` INSERTs a `tenant_members`
+row so RLS resolves inside the child — correct for a parent agency, which genuinely holds a seat. For
+the operator it would be a §9 defect: they would silently become a member of every tenant they ever
+opened, polluting that tenant's roster, inflating seat counts, and corrupting the operator's own fleet
+metrics — `fleet.tenants_at_risk` grades partly on zero active seats, so visiting a seatless tenant
+would quietly "fix" its risk grade by joining it. `current_user_tenant_id()` already honours
+`active_tenant_id` for `is_platform_admin(auth.uid())` with no membership, so pointing it is both
+sufficient and cleaner. Proved on prod: `members_before=0 members_after=0 delta=0`.
+
+**Client/Anonymous read 401, not 403, on the act-as rows.** 403 means a tier is denied a capability
+that exists for it; these fail earlier, at authentication — the RPCs raise `operator_scope_forbidden`
+(SQLSTATE 42501) for any non-operator caller, driven explicitly in the proof rather than inferred
+from the gate's text.
 
 **Four rows above are worded narrowly on purpose — the §39 peer-gate caught each of them claiming
 more than the code does.** A ledger row that overstates is worse than a missing one, because the next
