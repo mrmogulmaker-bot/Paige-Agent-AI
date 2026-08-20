@@ -13,6 +13,7 @@
 // Run:  node scripts/fleet-orbit-smoke.mjs
 // Exit: 0 = the runtime logic is sound; non-zero = the field would render wrong or blank.
 import * as THREE from "three";
+import { readFileSync } from "node:fs";
 
 let failures = 0;
 const fail = (msg) => {
@@ -21,13 +22,45 @@ const fail = (msg) => {
 };
 const ok = (msg) => console.log(`✓ ${msg}`);
 
-// ── the maths under test, mirrored from FleetOrbitScene/tokenColor ────────────────────────────
-// Kept in sync deliberately: these are pure functions, and duplicating them here is what lets the
-// smoke run without a bundler or a DOM. If the component's constants change, change them here too.
+// ── the maths under test, mirrored from FleetOrbitScene ───────────────────────────────────────
+// These pure functions are duplicated here on purpose: that is what lets the smoke run with no
+// bundler and no DOM, against plain Node.
+//
+// The danger with a copy is DRIFT — the component's constants change, this file keeps testing the
+// old ones, and the smoke goes green about maths nobody ships any more. "Remember to update both"
+// is exactly the kind of instruction that fails silently, so the constants are not entrusted to a
+// comment: they are PARSED back out of the component and compared, and a mismatch fails the run.
 const NODE_MIN_PX = 26;
 const NODE_MAX_PX = 68;
 const SHELL_INNER = 1.45;
 const SHELL_OUTER = 2.45;
+const SHELL_SPREAD = 2.6;
+
+{
+  const src = readFileSync(new URL("../src/operator/surfaces/FleetOrbitScene.tsx", import.meta.url), "utf8");
+  const num = (name) => {
+    const m = src.match(new RegExp(`const ${name}\\s*=\\s*(-?[0-9.]+)`));
+    return m ? Number(m[1]) : null;
+  };
+  // shellScale is an expression rather than a named constant, so pull its multiplier from the line.
+  const spread = src.match(/NODE_MAX_PX \/ 2\) \* fitPerPx \* (-?[0-9.]+)/);
+  const mirrored = {
+    NODE_MIN_PX: [NODE_MIN_PX, num("NODE_MIN_PX")],
+    NODE_MAX_PX: [NODE_MAX_PX, num("NODE_MAX_PX")],
+    SHELL_INNER: [SHELL_INNER, num("SHELL_INNER")],
+    SHELL_OUTER: [SHELL_OUTER, num("SHELL_OUTER")],
+    "shellScale spread": [SHELL_SPREAD, spread ? Number(spread[1]) : null],
+  };
+  const beforeSync = failures;
+  for (const [name, [here, there]] of Object.entries(mirrored)) {
+    if (there === null) {
+      fail(`could not find ${name} in FleetOrbitScene.tsx — this smoke can no longer prove it is in sync`);
+    } else if (here !== there) {
+      fail(`${name} drifted: this smoke tests ${here}, the component ships ${there}`);
+    }
+  }
+  if (failures === beforeSync) ok("sync: every mirrored constant matches the component it claims to test");
+}
 
 function hash01(id) {
   let h = 2166136261;
@@ -133,7 +166,7 @@ for (const canvasPx of [520, 640, 900]) {
 
   const minR = (NODE_MIN_PX / 2) * worldPerPx;
   const maxR = (NODE_MAX_PX / 2) * worldPerPx;
-  const shellScale = (NODE_MAX_PX / 2) * worldPerPx * 2.6;
+  const shellScale = (NODE_MAX_PX / 2) * worldPerPx * SHELL_SPREAD;
 
   for (const p of placed) {
     const worldRadius = minR + (maxR - minR) * p.magnitude;
@@ -160,7 +193,7 @@ try {
   const worldPerPx = viewportH / 640;
   const minR = (NODE_MIN_PX / 2) * worldPerPx;
   const maxR = (NODE_MAX_PX / 2) * worldPerPx;
-  const shellScale = (NODE_MAX_PX / 2) * worldPerPx * 2.6;
+  const shellScale = (NODE_MAX_PX / 2) * worldPerPx * SHELL_SPREAD;
 
   for (const p of placed) {
     const r = (minR + (maxR - minR) * p.magnitude) / shellScale;
