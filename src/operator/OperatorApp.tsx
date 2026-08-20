@@ -737,7 +737,12 @@ export default function OperatorApp() {
 
         {/* The shell never page-scrolls; the pane owns its scroll (the pack's root and <main>
             are both overflow:hidden for the same reason). */}
-        <main className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
+        {/* `flex flex-col` is load-bearing, not cosmetic. As a BLOCK, this element gave its child
+            no height to resolve against, so a surface asking for `flex-1 min-h-0` silently fell back
+            to content height and pushed the pane into scroll — the operator got a scrollbar on a
+            surface designed to fit the screen. As a flex column, a surface that wants to fill now
+            fills, and one that is naturally tall still scrolls here exactly as before. */}
+        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto px-5 py-6">
           {/* Real CD surfaces render here as each lands; anything not yet built says so. */}
           <OperatorSurface
             branchSlug={branch.slug}

@@ -177,7 +177,10 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
   );
 
   return (
-    <div className="flex min-h-0 flex-1 gap-3">
+    // `overflow-hidden` keeps the two columns from growing the row: whichever is taller scrolls
+    // inside itself rather than stretching the console past the pane (the scrollbar the owner
+    // reported came from the rail doing exactly that).
+    <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
       <div className="flex min-w-0 flex-1 flex-col gap-3">
         {/* ── title row ─────────────────────────────────────────────── */}
         <div className="flex flex-none flex-wrap items-start gap-3">

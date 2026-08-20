@@ -203,7 +203,10 @@ export function FleetTenantsRail({
   const read = useMemo(() => composeFleetRead(rows, unresolvedCount), [rows, unresolvedCount]);
 
   return (
-    <aside className="hidden w-[312px] flex-none flex-col gap-2.5 overflow-y-auto xl:flex">
+    // `min-h-0` is what makes `overflow-y-auto` actually bite. Without it a flex item's min-height
+    // is `auto` (its content), so the rail refused to shrink, stretched the row, and scrolled the
+    // whole pane instead of itself.
+    <aside className="hidden w-[312px] min-h-0 flex-none flex-col gap-2.5 overflow-y-auto xl:flex">
       {/* ── Needs you today (CD flAttnTitle) ──────────────────────────────── */}
       <RailCard className="px-3.5 py-3">
         <div className="text-[13.5px] font-semibold">Needs you today</div>
