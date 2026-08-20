@@ -394,7 +394,8 @@ directory, the attention cards and Paige's read.
   narrative endpoint on the platform (all 248 edge functions enumerated; `owner-context.ts` is a
   prompt composer consumed inside `paige-ai-chat`'s streaming path, not a callable), so the CTA hands
   the question to Paige in the chat where she lives (§20/§21). MRR and PROVISIONING render `—`.
-- **§39 peer gate: two independent reads, both BLOCK, 29 findings.** The one that mattered most:
+- **§39 peer gate: THREE independent reads across two rounds.** Round 1, on the build: two
+  readers, both **BLOCK**, 29 findings. The one that mattered most:
   R3F attaches its DOM listeners to the **canvas**, a descendant of the drag wrapper, so
   `setPointerCapture` there retargeted every event for that pointer and R3F's `onClick` never fired —
   clicking a tenant node did nothing at all. Also caught: sRGB values handed to three.js as float
@@ -407,6 +408,31 @@ directory, the attention cards and Paige's read.
   four of its rows were **narrowed** after the peer gate caught them claiming more than the code does
   — a ledger row that overstates is worse than a missing one, because the next session reads it as
   verified fact.
+- **Round 2 ran on the FIXES, and returned ITERATE — two blocking findings, both introduced by the
+  author while closing round 1.** Recorded in full because a SHIPPED log that lists only what round 1
+  caught would repeat, one paragraph later, the exact overstatement the row above was narrowed for.
+  (a) The "fit the field to the smaller dimension" change was a **provable no-op**: R3F derives
+  `viewport.width` as `height x (size.width/size.height)`, so `width/size.width` and
+  `height/size.height` are identically equal — the `Math.min` over them could never carry aspect, and
+  the measured delta across five canvas shapes was ~1e-19. Worse than the no-op, its comment claimed
+  to have fixed clipping that could not occur that way, while the clipping that DOES occur (vertical,
+  on a short field column, because the scale was a constant that ignored the box) went untouched and
+  documented as solved. The fit now derives from the world EXTENTS, and the smoke asserts every node
+  lands inside the frame across six canvas shapes — portrait, landscape, square and 4:1 both ways —
+  so the claim is backed by an executable check rather than a comment. (b) The rail's `subCount`
+  counted tenants that HAVE sub-accounts while its label reads "n sub-accounts beneath them", so one
+  agency with six children rendered "1 sub-accounts beneath them." directly beneath a header KPI
+  reading "6 sub-accounts beneath" — two numbers, one wording, one screen, no filter applied. It sums
+  the children now. Also from that read: the all-clear sentence asserted "every tenant has at least
+  one client" when `health()` grades a client-less tenant `warn` and therefore excludes it from the
+  very filter the sentence was derived from; the drag listeners were attached by a passive effect, so
+  a `pointerup` delivered before React flushed would have stranded the field mid-drag permanently;
+  and the constant-drift guard added in round 1 both failed OPEN on a comment quoting an old value
+  AND never ran, because `npm run test` is vitest and ignores a bare `.mjs` — it is a CI step now.
+- **The layering is the lesson, not the count.** Round 1's readers were confident and thorough and
+  still left work for round 2; round 2 found defects that CI, the tests, the smoke and the author's
+  own review had all passed. §39 says the peer gate is one layer and none of them is sufficient
+  alone — this slice is the worked example.
 - ❗ **§32.c live-drive OWED.** Nothing here has been rendered. A green build and a headless smoke
   prove the maths does not throw and the colours do not mangle; neither says what appears on screen —
   which is the exact failure mode this rebuild exists to fix.
