@@ -511,6 +511,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
       {/* ── right rail: what needs you, her read, and the directory ──── */}
       <FleetTenantsRail
         rows={railRows}
+        filtered={filter !== "All" || q.trim().length > 0}
         loading={loading}
         onOpenTenant={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)}
         onProvision={() => navigate("/operator/provisioning")}

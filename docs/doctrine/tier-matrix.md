@@ -343,7 +343,7 @@ Shipped 2026-08-19 (PR #554). Owner live-drive passed on all four checks.
 | Renders every CUSTOMER tenant on the default All filter | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Hash-seeded **stable** node placement (no reshuffle on filter) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Weight-encoded gravity (heavier tenants orbit closer) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
-| Node sizing specified in px and held through a resize | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Node sizing in px, and the field fits the box in both axes | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Motion toggle + OS reduced-motion honoured | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Loud, visible failure on WebGL absence/throw | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Table view: tier pill, health, `Enter →`, internal chip | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
@@ -366,11 +366,20 @@ session reads it as verified fact (§13/§66):
 - **"every CUSTOMER tenant"**, not "every tenant". Platform fixtures and test accounts are hidden by
   default (`showInternal` starts false) and revealed by a chip — never dropped (§58). The unqualified
   wording would have told a later session the field is a complete census when it is deliberately not.
-- **"specified in px and held through a resize"**, not "pixel-accurate 26–68px". The 26–68px band is
-  the size at the FOCAL PLANE. This is a perspective camera, so a node nearer the viewer draws larger
-  and one further draws smaller — measured across the shell the real on-screen spread is roughly
-  19–89px. What the rebuild actually guarantees is that the band is anchored in pixels and survives a
-  resize, which is the defect it was built to fix; claiming exact on-screen pixels was false.
+- **"in px, and the field fits the box"**, not "pixel-accurate 26–68px". The 26–68px band is the size
+  at the FOCAL PLANE. This is a perspective camera, so a node nearer the viewer draws larger and one
+  further draws smaller — across the shell the real on-screen spread is roughly 19–89px. Claiming
+  exact on-screen pixels was false.
+  **A second peer-gate pass then found the fit half of this row was false too, and it is worth
+  recording rather than quietly correcting.** The commit that narrowed this row also added a
+  `Math.min(viewport.width/size.width, viewport.height/size.height)` and a comment claiming it stopped
+  outer tenants clipping on a narrow box. Both were wrong: R3F derives `viewport.width` as
+  `height × (size.width/size.height)`, so those two ratios are ALWAYS equal — the min was a no-op to
+  within 1e-19 and world-per-pixel cannot carry aspect at all. The scale stayed a constant that
+  ignored the box, and the real clipping (vertical, on a short field column) was untouched. The fit is
+  now computed from the world EXTENTS (`min(viewport.width, viewport.height)`), and the smoke asserts
+  every node lands inside the frame across six canvas shapes — portrait, landscape, square and 4:1
+  both ways — so this row is now backed by an executable check rather than by a comment.
 - **"fixed sRGB tier palette"**, not "re-resolves on light/dark flip". It no longer does, by decision.
   The field container is pinned dark in BOTH themes, so pulling theme-flipping ink tokens made it
   worse — in light mode `--primary` resolves to a near-black that vanished against the dark ground.
@@ -378,7 +387,7 @@ session reads it as verified fact (§13/§66):
 - **one "Her read" panel, not two.** The rail rendered the same panel twice, in a file whose own
   header argues §18 one-home. The duplicate is gone.
 
-**On the two "Her read" panels (§13, stated precisely).** These are **templated over real values**,
+**On the "Her read" panel (§13, stated precisely).** It is **templated over real values**,
 not LLM-composed — because no operator-scope narrative endpoint exists on the platform (all 248 edge
 functions enumerated 2026-08-19; `owner-context.ts` is a system-prompt composer consumed only inside
 `paige-ai-chat`'s streaming path, not a callable). That is also exactly what CD does: its own `read`

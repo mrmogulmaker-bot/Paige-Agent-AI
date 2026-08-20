@@ -47,19 +47,33 @@ const SHELL_INNER = 1.45;
 const SHELL_OUTER = 2.45;
 
 /**
+ * How much of the shorter viewport dimension the outermost node is allowed to reach. The margin
+ * absorbs the perspective spread — a node on the near side of the shell projects larger than the
+ * flat algebra predicts, so fitting to exactly 1.0 would still clip the closest outer tenants.
+ */
+const SHELL_FIT = 0.9;
+
+/**
  * Tier → colour, as sRGB HEX STRINGS. Two deliberate decisions, both corrected by the §39
  * peer-gate after a first pass got them wrong in opposite directions:
  *
- * 1. FIXED, NOT THEME-FLIPPING. The field container is pinned dark in BOTH themes
+ * 1. FIXED, NOT THEME-FLIPPING. The field container is dark in BOTH themes
  *    (`bg-[hsl(var(--rail))]` in FleetConsole) — it is a canvas host, not a themed panel, exactly
- *    as CD designs it. Pulling theme-flipping ink tokens therefore made the field WORSE, not
- *    better: in light mode `--primary` resolves to a near-black (255 60% 12%) that is almost the
- *    same colour as the dark ground it is drawn on, so Agency nodes disappeared. A constant ground
- *    takes a constant palette. These are CD's own TIER_INK values from `fleet-field.js`.
+ *    as CD designs it. Pulling theme-flipping INK tokens made the field WORSE, not better: in light
+ *    mode `--primary` resolves to `255 60% 12%`, which is the SAME value light `--rail` resolves to,
+ *    so Agency nodes were drawn in the exact colour of the ground they sat on and disappeared.
+ *    These are CD's own TIER_INK values from `fleet-field.js`.
+ *
+ *    HONEST CAVEAT (§39/§13): the ground is dark in both themes but it is not the SAME dark —
+ *    `--rail` is `254 46% 13%` light-side and `254 38% 24%` dark-side, roughly 2x the luminance.
+ *    Against the lighter of the two, the base Solo and Sub-account hexes fall under 3:1 unlit. The
+ *    meshes ARE lit (ambient 0.85 + two directionals + emissive 0.28), so rendered contrast is
+ *    higher than the raw hex suggests — but by how much is not something a headless session can
+ *    measure, so it is named here rather than asserted away, and it is on the §32.c list.
  * 2. STRINGS, NOT FLOAT ARRAYS. Handing R3F a numeric array routes to `THREE.Color.set(r,g,b)` →
  *    `setRGB(..., workingColorSpace)` which is LinearSRGB — so sRGB values are stored as linear and
  *    then re-encoded on output, painting everything ~2× lighter. Paige Gold #EDB94A came out as
- *    pale cream #F7DE93. A string routes through `Color.setStyle`, which DOES convert sRGB→linear.
+ *    pale cream #F7DD93 (the smoke test prints the real value). A string routes through `Color.setStyle`, which DOES convert sRGB→linear.
  *    This is what the proven `PaigeScene` does (`PaigeScene.tsx:67-70` passes "#D4A752").
  */
 const TIER_HEX: Record<OrbitNode["tier"], string> = {
@@ -243,14 +257,20 @@ export default function FleetOrbitScene({
   const worldPerPx = useThree((s) => s.viewport.height / Math.max(1, s.size.height));
 
   /**
-   * Fit the shell to the SMALLER dimension. Scaling from height alone clipped outer tenants off
-   * the left and right edges whenever the field box was narrower than ~1.03:1 — invisible, with no
-   * indication anything was missing. CD's 2D implementation used `Math.min(W, H)` and fitted both
-   * by construction; this restores that property.
+   * The shorter of the two visible world dimensions — what the field actually has to fit inside.
+   *
+   * §39 peer-gate correction, and it is worth stating plainly because the previous comment here
+   * documented a fix that did not exist. That version computed `Math.min(viewport.width/size.width,
+   * viewport.height/size.height)` and claimed it stopped outer tenants clipping on a narrow box.
+   * Both of those were wrong. R3F derives the viewport as `h = 2·tan(fov/2)·distance` and
+   * `w = h·(size.width/size.height)`, so `w/size.width` and `h/size.height` are ALWAYS equal — the
+   * world-per-pixel ratio is isotropic and cannot carry aspect information. The `Math.min` was a
+   * no-op to within floating-point noise (measured delta ~1e-19), so the scale was byte-identical
+   * before and after, and no clipping was ever fixed.
+   *
+   * Aspect has to enter through the world EXTENTS instead, which is what this does.
    */
-  const fitPerPx = useThree((s) =>
-    Math.min(s.viewport.width / Math.max(1, s.size.width), s.viewport.height / Math.max(1, s.size.height)),
-  );
+  const fitExtent = useThree((s) => Math.min(s.viewport.width, s.viewport.height));
 
   const radii = useMemo(() => {
     const minR = (NODE_MIN_PX / 2) * worldPerPx;
@@ -259,10 +279,18 @@ export default function FleetOrbitScene({
   }, [placed, worldPerPx]);
 
   /**
-   * Shell distance is expressed in node-radius multiples so the whole field scales with the
-   * card instead of drifting out of frame on a short viewport.
+   * Fit the whole shell — outermost orbit PLUS that node's own radius — inside the shorter
+   * dimension. The old constant scale made the field a fixed ~460px blob whatever the box was, so a
+   * short field column clipped its outer tenants vertically with nothing on screen to say so.
+   *
+   * The floor keeps the scale positive on a box too small to fit the field at all: the result is a
+   * cramped field rather than an inverted or vanished one (§32 — degrade visibly, never to nothing).
    */
-  const shellScale = useMemo(() => (NODE_MAX_PX / 2) * fitPerPx * 2.6, [fitPerPx]);
+  const shellScale = useMemo(() => {
+    const maxR = (NODE_MAX_PX / 2) * worldPerPx;
+    const room = (fitExtent / 2) * SHELL_FIT - maxR;
+    return Math.max(maxR * 0.5, room / SHELL_OUTER);
+  }, [fitExtent, worldPerPx]);
 
   // CD's own drift + drag constants, preserved (see file header). React state is deliberately
   // NOT touched per frame — the drive ref is mutated by the shell's pointer handlers.

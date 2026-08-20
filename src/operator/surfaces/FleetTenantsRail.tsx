@@ -26,7 +26,7 @@ import { cn } from "@/lib/utils";
  * uses (§18: one read, not a second one). Each card's prose is Paige's OWN stored
  * `paige_interpretation` for that check; none of it is written here.
  *
- * The "Her read" panels are TEMPLATED over real values — which is exactly what CD does. Its own
+ * The "Her read" panel is TEMPLATED over real values — which is exactly what CD does. Its own
  * `read` is `atRisk.length + " tenants are at risk. " + atRisk[0].name + …`, a sentence frame
  * around live figures, not authored prose. Every number and name below comes from the fleet
  * read; only the frame is fixed. There is no operator-scope narrative endpoint on the platform
@@ -130,6 +130,7 @@ function HerRead({
 
 export function FleetTenantsRail({
   rows,
+  filtered,
   loading,
   onOpenTenant,
   onProvision,
@@ -137,6 +138,8 @@ export function FleetTenantsRail({
   onOpenCheck,
 }: {
   rows: readonly RailTenant[];
+  /** True when a search or tier chip is narrowing `rows` — the rail then speaks only for the view. */
+  filtered: boolean;
   loading: boolean;
   onOpenTenant: (id: string) => void;
   onProvision: () => void;
@@ -171,7 +174,11 @@ export function FleetTenantsRail({
    * card as a whole false. The fleet-wide totals still live in the header KPI strip, which is where
    * a fleet-wide number belongs; a panel describes what is in it.
    */
-  const subCount = useMemo(() => rows.filter((r) => r.beneath > 0).length, [rows]);
+  // SUM the children, don't COUNT the parents. `filter(r => r.beneath > 0).length` answers "how
+  // many tenants HAVE sub-accounts" while the label says "n sub-accounts beneath them" — so one
+  // agency with six children rendered "1 sub-accounts beneath them." directly under a header KPI
+  // reading "6 sub-accounts beneath", with no filter applied. Two numbers, one wording, one screen.
+  const subCount = useMemo(() => rows.reduce((a, r) => a + r.beneath, 0), [rows]);
   const atRiskCount = useMemo(() => rows.filter((r) => r.health.tone === "risk").length, [rows]);
 
   /**
@@ -185,6 +192,13 @@ export function FleetTenantsRail({
    * things that need the operator today, and neither is a subset of the other.
    */
   const atRiskRows = useMemo(() => rows.filter((r) => r.health.tone === "risk").slice(0, 4), [rows]);
+  /**
+   * Whether the all-clear may be spoken at all. `atRiskRows` is empty in three very different
+   * situations and only ONE of them is good news: nothing is wrong, the fleet has not loaded, or a
+   * filter is hiding everything. The card used to treat all three as "all clear" and print a
+   * platform-wide reassurance under a directory saying "Nothing matches that."
+   */
+  const speakingForWholeFleet = rows.length > 0 && !filtered;
 
   const read = useMemo(() => composeFleetRead(rows, unresolvedCount), [rows, unresolvedCount]);
 
@@ -202,8 +216,13 @@ export function FleetTenantsRail({
               a reassurance printed about data we had not seen (§13). */}
           {!checkLoading && !loading && attention.length === 0 && atRiskRows.length === 0 && (
             <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-              Nothing is failing on the platform, and every tenant has members and at least one
-              client. Findings from the hourly sweep appear here.
+              {/* Say only what was actually observed. "every tenant has at least one client" was
+                  false by construction: health() grades a client-less tenant `warn`, which never
+                  reaches atRiskRows, so the card asserted the one thing its own filter excluded.
+                  And a filtered view speaks for what is in view, never for the platform. */}
+              {speakingForWholeFleet
+                ? "Nothing is failing on the platform, and no tenant is at risk. Findings from the hourly sweep appear here."
+                : "Nothing is failing on the platform, and nothing in view is at risk. Findings from the hourly sweep appear here."}
             </p>
           )}
 

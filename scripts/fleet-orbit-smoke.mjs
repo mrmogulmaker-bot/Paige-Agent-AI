@@ -34,22 +34,25 @@ const NODE_MIN_PX = 26;
 const NODE_MAX_PX = 68;
 const SHELL_INNER = 1.45;
 const SHELL_OUTER = 2.45;
-const SHELL_SPREAD = 2.6;
+const SHELL_FIT = 0.9;
 
 {
   const src = readFileSync(new URL("../src/operator/surfaces/FleetOrbitScene.tsx", import.meta.url), "utf8");
+  // ANCHORED to the start of a line, and \b-terminated. Unanchored, `String.match` returns the
+  // FIRST hit anywhere in the file INCLUDING COMMENTS — and this component's docblocks routinely
+  // quote historical constants, so a line like "used to be `const NODE_MIN_PX = 26`" above a real
+  // `const NODE_MIN_PX = 40` made the guard read 26, compare 26 to 26, and PASS while the component
+  // shipped 40. A drift guard that silently stops guarding is worse than no guard at all.
   const num = (name) => {
-    const m = src.match(new RegExp(`const ${name}\\s*=\\s*(-?[0-9.]+)`));
+    const m = src.match(new RegExp(`^\\s*(?:export\\s+)?const ${name}\\b\\s*=\\s*(-?[0-9.]+)`, "m"));
     return m ? Number(m[1]) : null;
   };
-  // shellScale is an expression rather than a named constant, so pull its multiplier from the line.
-  const spread = src.match(/NODE_MAX_PX \/ 2\) \* fitPerPx \* (-?[0-9.]+)/);
   const mirrored = {
     NODE_MIN_PX: [NODE_MIN_PX, num("NODE_MIN_PX")],
     NODE_MAX_PX: [NODE_MAX_PX, num("NODE_MAX_PX")],
     SHELL_INNER: [SHELL_INNER, num("SHELL_INNER")],
     SHELL_OUTER: [SHELL_OUTER, num("SHELL_OUTER")],
-    "shellScale spread": [SHELL_SPREAD, spread ? Number(spread[1]) : null],
+    SHELL_FIT: [SHELL_FIT, num("SHELL_FIT")],
   };
   const beforeSync = failures;
   for (const [name, [here, there]] of Object.entries(mirrored)) {
@@ -157,31 +160,58 @@ else ok("placement: filtering removes nodes without moving the survivors");
 // zero shellScale (-> Infinity), or a magnitude that escaped [0,1]. Whether 26-68px actually reads
 // well is a question only the §32.c live-drive can answer.
 const beforeRadius = failures;
-for (const canvasPx of [520, 640, 900]) {
-  // At the focal plane, three's viewport.height = 2 * tan(fov/2) * cameraDistance.
-  const fov = 42;
-  const dist = 7;
-  const viewportH = 2 * Math.tan((fov * Math.PI) / 360) * dist;
-  const worldPerPx = viewportH / canvasPx;
+const FOV = 42;
+const CAM_DIST = 7;
+// Deliberately non-square, both ways round: the aspect-fit defect this section now guards was
+// invisible on a square canvas and the previous version only ever varied height.
+const CANVASES = [
+  [520, 900], [900, 520], [640, 640], [1200, 300], [300, 1200], [1440, 760],
+];
+
+for (const [cw, ch] of CANVASES) {
+  // R3F: viewport.height = 2*tan(fov/2)*distance, viewport.width = height * (cw/ch).
+  const vh = 2 * Math.tan((FOV * Math.PI) / 360) * CAM_DIST;
+  const vw = vh * (cw / ch);
+  const worldPerPx = vh / ch;
 
   const minR = (NODE_MIN_PX / 2) * worldPerPx;
   const maxR = (NODE_MAX_PX / 2) * worldPerPx;
-  const shellScale = (NODE_MAX_PX / 2) * worldPerPx * SHELL_SPREAD;
+  const fitExtent = Math.min(vw, vh);
+  const shellScale = Math.max(maxR * 0.5, ((fitExtent / 2) * SHELL_FIT - maxR) / SHELL_OUTER);
+
+  if (!(shellScale > 0) || !Number.isFinite(shellScale)) {
+    fail(`shellScale is ${shellScale} at ${cw}x${ch} — the field would collapse or invert`);
+    continue;
+  }
 
   for (const p of placed) {
     const worldRadius = minR + (maxR - minR) * p.magnitude;
     const geomRadius = worldRadius / shellScale; // what the component passes to the geometry
-    const effectiveWorld = geomRadius * shellScale; // group scale re-applies it
+    const effectiveWorld = geomRadius * shellScale; // the group scale re-applies it
     const px = (effectiveWorld / worldPerPx) * 2; // back to on-screen diameter
 
-    if (!Number.isFinite(px)) fail(`NaN diameter at ${canvasPx}px for ${p.node.id}`);
+    if (!Number.isFinite(px)) fail(`NaN diameter at ${cw}x${ch} for ${p.node.id}`);
     if (px < NODE_MIN_PX - 0.01 || px > NODE_MAX_PX + 0.01) {
-      fail(`node diameter ${px.toFixed(1)}px outside [${NODE_MIN_PX}, ${NODE_MAX_PX}] at canvas ${canvasPx}px`);
+      fail(`node diameter ${px.toFixed(1)}px outside [${NODE_MIN_PX}, ${NODE_MAX_PX}] at ${cw}x${ch}`);
+    }
+
+    // THE FIT ITSELF. The outermost orbit plus that node's own radius must sit inside the shorter
+    // world dimension — this is the assertion the previous version could not make, because its
+    // "fit" was a no-op and its scale was a constant that ignored the box entirely.
+    const reach = p.shell * shellScale + worldRadius;
+    if (reach > fitExtent / 2 + 1e-9) {
+      fail(
+        `${p.node.id} reaches ${reach.toFixed(3)} at ${cw}x${ch}, past the ` +
+          `${(fitExtent / 2).toFixed(3)} half-extent — it would be clipped off-screen`,
+      );
     }
   }
 }
 if (failures === beforeRadius) {
-  ok(`radius algebra: every node lands in [${NODE_MIN_PX}, ${NODE_MAX_PX}]px across 520/640/900px canvases`);
+  ok(
+    `sizing + fit: every node stays in [${NODE_MIN_PX}, ${NODE_MAX_PX}]px AND inside the frame ` +
+      `across ${CANVASES.length} canvas shapes (portrait, landscape, square, 4:1 both ways)`,
+  );
 }
 
 // ── 3. three.js accepts the geometry args and builds real vertices ────────────────────────────
@@ -193,7 +223,8 @@ try {
   const worldPerPx = viewportH / 640;
   const minR = (NODE_MIN_PX / 2) * worldPerPx;
   const maxR = (NODE_MAX_PX / 2) * worldPerPx;
-  const shellScale = (NODE_MAX_PX / 2) * worldPerPx * SHELL_SPREAD;
+  // 640x640 -> viewport.width === viewport.height, so the shorter extent is viewportH.
+  const shellScale = Math.max(maxR * 0.5, ((viewportH / 2) * SHELL_FIT - maxR) / SHELL_OUTER);
 
   for (const p of placed) {
     const r = (minR + (maxR - minR) * p.magnitude) / shellScale;

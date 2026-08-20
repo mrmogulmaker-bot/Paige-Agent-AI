@@ -111,8 +111,10 @@ export function FleetOrbit({
   }, [motion]);
 
   const dragFrom = useRef<{ x: number; y: number; yaw: number; tilt: number } | null>(null);
-  // State, not a ref: the cursor swap needs a re-render, and the window-listener effect keys on it.
+  // State, not a ref: the cursor swap needs a re-render.
   const [dragging, setDragging] = useState(false);
+  /** Tears down whatever the active drag attached to `window`. Null when no drag is in flight. */
+  const detach = useRef<(() => void) | null>(null);
 
   /**
    * Drag is driven by WINDOW listeners, deliberately — NOT `setPointerCapture` on this div.
@@ -128,44 +130,64 @@ export function FleetOrbit({
    * Window listeners give the same "keep dragging outside the box" behaviour with none of the
    * retargeting, and they are torn down on pointerup AND pointercancel.
    */
-  const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    // The Motion toggle lives INSIDE this wrapper (CD puts it in the field, bottom-right), so its
-    // press bubbles here. Without this guard, tapping it began a drag: the field lurched, and on
-    // touch the ensuing pointerup often resolved as a drag rather than a click, so the toggle
-    // needed two taps. Only start a drag on the field itself.
-    if ((e.target as HTMLElement).closest("button")) return;
-    dragFrom.current = { x: e.clientX, y: e.clientY, yaw: drive.current.yaw, tilt: drive.current.tilt };
-    drive.current.dragging = true;
-    setDragging(true);
-  }, []);
-
   const endDrag = useCallback(() => {
     dragFrom.current = null;
     drive.current.dragging = false;
     setDragging(false);
+    detach.current?.();
+    detach.current = null;
   }, []);
 
-  useEffect(() => {
-    if (!dragging) return;
-    const move = (e: PointerEvent) => {
-      const from = dragFrom.current;
-      if (!from) return;
-      // CD's own drag sensitivities and tilt clamp (fleet-field.js), preserved verbatim.
-      drive.current.yaw = from.yaw + (e.clientX - from.x) * 0.006;
-      drive.current.tilt = Math.max(-0.9, Math.min(0.9, from.tilt + (e.clientY - from.y) * 0.004));
-    };
-    // `pointercancel` MUST end the drag too. Without it a browser-claimed gesture (any touch
-    // scroll) leaves `dragging` true forever: the field stops auto-rotating and cannot be revived
-    // by the Motion toggle, and then yanks under a hovering cursor with no button held.
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", endDrag);
-    window.addEventListener("pointercancel", endDrag);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", endDrag);
-      window.removeEventListener("pointercancel", endDrag);
-    };
-  }, [dragging, endDrag]);
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      // The Motion toggle lives INSIDE this wrapper (CD puts it in the field, bottom-right), so its
+      // press bubbles here. Without this guard, tapping it began a drag: the field lurched, and on
+      // touch the ensuing pointerup often resolved as a drag rather than a click, so the toggle
+      // needed two taps. Only start a drag on the field itself.
+      if ((e.target as HTMLElement).closest("button")) return;
+
+      dragFrom.current = { x: e.clientX, y: e.clientY, yaw: drive.current.yaw, tilt: drive.current.tilt };
+      drive.current.dragging = true;
+      setDragging(true);
+
+      // ATTACHED HERE, SYNCHRONOUSLY — deliberately not from a `useEffect` keyed on `dragging`.
+      //
+      // §39 peer-gate: React schedules passive effects on a MessageChannel task, and browsers
+      // prioritise input over normal tasks, so a fast click could deliver `pointerup` BEFORE the
+      // effect ran and attached the listener. Nothing else would have ended the drag — the wrapper's
+      // own pointerup/pointerleave handlers were removed when capture was — leaving
+      // `drive.current.dragging` true forever: auto-drift dead, cursor stuck on grabbing, and the
+      // Motion toggle unable to revive it. That is the exact permanent-stuck state `pointercancel`
+      // was added to prevent, reached by a different door. Attaching in the handler closes the
+      // window entirely, because the handler IS the pointerdown.
+      const move = (ev: PointerEvent) => {
+        const from = dragFrom.current;
+        if (!from) return;
+        // CD's own drag sensitivities and tilt clamp (fleet-field.js), preserved verbatim. Absolute
+        // from the press origin rather than incremental, so a dropped move frame self-corrects.
+        drive.current.yaw = from.yaw + (ev.clientX - from.x) * 0.006;
+        drive.current.tilt = Math.max(-0.9, Math.min(0.9, from.tilt + (ev.clientY - from.y) * 0.004));
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", endDrag);
+      // A browser-claimed gesture (any touch scroll) fires cancel, not up.
+      window.addEventListener("pointercancel", endDrag);
+      // And an alt-tab away mid-press fires NEITHER — the release happens off-document. Before the
+      // capture rework, pointerleave on the wrapper covered this; now blur does.
+      window.addEventListener("blur", endDrag);
+
+      detach.current = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", endDrag);
+        window.removeEventListener("pointercancel", endDrag);
+        window.removeEventListener("blur", endDrag);
+      };
+    },
+    [endDrag],
+  );
+
+  // Unmounting mid-drag must not leave listeners on window holding this component alive.
+  useEffect(() => () => detach.current?.(), []);
 
   const handleHover = useCallback((node: OrbitNode | null, clientX: number, clientY: number) => {
     if (!node) {
