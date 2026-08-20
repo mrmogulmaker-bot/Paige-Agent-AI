@@ -82,7 +82,14 @@ export type Feature =
   // Parent-tier only.
   | "subaccount_management"
   // Operator only.
-  | "fleet_console";
+  | "fleet_console"
+  // Platform alerting — rules over platform SIGNALS, operator-scope. §61 EXCEPTION,
+  // same shape as `fleet_console`: God ONLY. A rule here watches the PLATFORM (failing
+  // checks, tenants at risk, LLM failover), which is the operator's book, not a
+  // tenant's. Tenant-tier alerting is a SEPARATE owner decision with its own §51 matrix
+  // row — assuming it now is exactly the §56 pre-build failure this helper exists to
+  // stop. Owner-ruled 2026-08-20 with the A1 green light.
+  | "platform_alerting";
 
 /** The resolved tier key. `enterprise` is the HYBRID tier (Solo ∪ Agency baselines). */
 export type TierKey = "god" | "agency" | "enterprise" | "sub_account" | "solo";
@@ -229,6 +236,7 @@ const GOD_FEATURES: ReadonlySet<Feature> = new Set<Feature>([
   ...UNIVERSAL,
   ...CREATION_SURFACES, // §35 dogfooding — operators use the creation tools too
   "fleet_console",
+  "platform_alerting", // operator-scope alert rules over platform signals (§61 exception, God-only)
   "skills", // §61/§35 — God dogfoods the skills engine (source of truth §57)
   // NOTE: NO tenant CRM cluster (people/pipeline/conversations) and NO
   // customer_portal_invite — God is the platform operator, not a tenant with a

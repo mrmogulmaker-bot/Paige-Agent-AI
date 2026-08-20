@@ -247,3 +247,20 @@ A recorded "not built" prevents the exact false-confidence the brain exists to k
 
 *Append newest at the top of the PR section when a PR merges; add a dated ruling row when CLAUDE.md
 gains a dated section (§BRAIN.3).*
+
+- **2026-08-20 · Platform alerting substrate — owner ruled FULL, and ruled it must not stay isolated.**
+  Chose the full substrate (own condition language over arbitrary platform signals, multi-channel delivery,
+  escalation) over three narrower options. **The §18 survey then changed the design materially:**
+  `_shared/channel-adapters.ts` already declares itself the single home for multi-channel delivery, and an
+  operator inbox, delivery preferences and action-bus escalation all already exist — so the build is **two
+  tables plus an evaluator wired into existing seams**, not the parallel notification stack a from-scratch
+  reading would have produced. Two sibling tables were examined and rejected as homes *with reasons*:
+  `stage_automation_rules` is FK-bound to pipelines/stages (structurally cannot express a platform-signal
+  condition) and `paige_sla_alert_log` is hardcoded to client SLA; both stay untouched (§58).
+  Condition language is a **validated JSONB triple**, deliberately not a parser, so Paige can author a rule
+  from chat without a schema change (§10). Scope is **operator-only** — `platform_alerting` is a documented
+  §61 exception in `getTierFeatureSet()`, same shape as `fleet_console`; tenant-tier alerting is a separate
+  decision and assuming it now would be the §56 pre-build failure. **Standing obligation:** six weaves filed
+  as tracked slices (#205–#210) BEFORE A1 merged — History, Chat, peek drawer, §16 departments + autonomy
+  tier, Trust Compass ceiling-clamp, and Paige's central-brain recall — because a good ruling that is not
+  tracked is a good ruling that vanishes. Architecture: `docs/architecture/platform-alerting-substrate.md`.

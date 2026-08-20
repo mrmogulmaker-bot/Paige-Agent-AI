@@ -427,7 +427,36 @@ to let `is_platform_operator()` see those rows (§18: nothing new to add). §32.
 | Firing history / acknowledgement | — | N/A | N/A | N/A | N/A | 403 | 403 |
 | "+ New rule" write path | — | N/A | N/A | N/A | N/A | 403 | 403 |
 
-**Status: GAPPED — the only Fleet sub-tab with no backend.** The pack's structure ships through the
+**Status: A1 SCHEMA SHIPPED (2026-08-20); the surface is still gapped.** The substrate's
+foundation is live — `paige_alert_signal` (catalogue, config-as-data), `paige_alert_rule` and
+`paige_alert_firing`, all three RLS-forced and gated on `is_platform_operator()` (§53 — the
+delegated operator tier, NOT the frozen `is_platform_owner()`). The **surface still reads
+nothing**: A2 (evaluator) and A4 (surface wiring) have not landed, so every KPI is still `null`
+and the block still says so. That is the row's honest state — schema existing is not the same as
+a tab that works, and this ledger does not tick a surface row for a table.
+
+| A1 capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Read the signal catalogue | ✓ | 403 | 403 | 403 | 403 | 403 | 403 |
+| Read / author / pause alert rules | ✓ | 403 | 403 | 403 | 403 | 403 | 403 |
+| Read + acknowledge firings | ✓ | 403 | 403 | 403 | 403 | 403 | 403 |
+| Hand-write a firing | — | 403 | 403 | 403 | 403 | 403 | 403 |
+
+**Every tenant tier is 403, not N/A — and that is a decision, not an omission.** A rule here
+watches the PLATFORM (failing checks, tenants at risk, LLM failover), which is the operator's
+book. Tenant-tier alerting is a separate owner decision with its own §51 row and §60 entry;
+assuming it now is the §56 pre-build failure the matrix exists to stop. `platform_alerting` is
+declared God-only in `getTierFeatureSet()` as a documented §61 exception, the same shape as
+`fleet_console`. **Proven, not asserted:** the §32.b rollback proof drove a tenant-tier
+(`authenticated`, non-operator) caller and confirmed 0 rules, 0 firings, 0 signals visible.
+
+**"Hand-write a firing" is — for God too.** Firings are written by the evaluator (service_role)
+only; an operator-authored firing would be a fabricated event in the one table whose entire job
+is recording what actually happened (§13).
+
+---
+
+**Original gap note, kept for the record:** The pack's structure ships through the
 generic panel with every KPI at `null` and the block stating "No alert rule is being read from the
 platform yet." That is the honest absence, not a stand-in — but it is an absence: there is no
 alert-rule table, no firing record, and no delivery path. Building it is a net-new capability with
