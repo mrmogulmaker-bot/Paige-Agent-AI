@@ -65,7 +65,7 @@ function initials(name: string): string {
  * Returns null when there is genuinely nothing to say yet — the panel then renders its honest
  * empty state rather than a sentence padded out to look substantial.
  */
-function composeFleetRead(rows: readonly RailTenant[], openFindings: number): string | null {
+export function composeFleetRead(rows: readonly RailTenant[], openFindings: number): string | null {
   if (!rows.length) return null;
   const atRisk = rows.filter((r) => r.health.tone === "risk");
   const watch = rows.filter((r) => r.health.tone === "warn");
