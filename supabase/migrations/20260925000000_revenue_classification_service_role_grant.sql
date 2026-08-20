@@ -1,0 +1,23 @@
+-- =============================================================================
+-- service_role SELECT on tenant_revenue_classification — the hotfix-#94 class again
+-- =============================================================================
+-- FOUND BY THE §32.a POST-MERGE SCAN on A2, not by any pre-merge check — and that is the
+-- point worth recording. A rollback proof runs as the table OWNER, so a missing service_role
+-- grant is structurally invisible to it; the A2 headless smoke exercises pure decision logic
+-- and never touches the database. Only asking prod "can service_role actually read this?"
+-- surfaced it. This is the second time this exact omission has shipped (hotfix #94 was the
+-- systems-check family).
+--
+-- WHAT IT BROKE. A2's `fleet.tenants_at_risk` reader excludes internal/test tenants by joining
+-- `tenant_revenue_classification`. Under service_role that read was returning permission-denied,
+-- so the classification map came back empty and the platform's OWN fixtures were being counted
+-- as at-risk customer tenants — a silently inflated risk number in the signal whose entire job
+-- is to be trusted. The companion code change stops that read failing silently; this grant makes
+-- it succeed.
+--
+-- NOT A DELIBERATE LOCKDOWN. `authenticated` already holds DELETE/INSERT/SELECT/UPDATE here;
+-- service_role simply has NO grant of any kind. A table deliberately hardened against the
+-- service role would have revoked the broader grant first. RLS still applies on top — this
+-- changes only the table-level privilege, and the #31 revenue-integrity trigger (gated on
+-- is_platform_owner()) continues to govern WRITES untouched. Read-only is what is added.
+GRANT SELECT ON public.tenant_revenue_classification TO service_role;

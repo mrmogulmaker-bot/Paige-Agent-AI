@@ -362,6 +362,20 @@ Values intentionally omitted.
   `EVAL_COST_CAP_USD`/`EVAL_MAX_CASES` (§34 L2 evals), `SLA_WATCHER_CRON_SECRET`,
   `COMMS_LEGACY_DUAL_WRITE`.
 
+### Operator act-as RPCs (Slice 2, 2026-08-20)
+
+- `public.operator_enter_tenant(uuid)` / `public.operator_exit_tenant()` — SECURITY DEFINER,
+  `SET search_path = public`, `EXECUTE` granted to `authenticated` only (REVOKEd from `PUBLIC`/`anon`).
+  The grant is NOT the guard (§59): each body re-enforces `is_platform_operator()` and RAISEs 42501
+  before any read or write.
+- They are the ONLY audited path that changes an operator's `profiles.active_tenant_id`. The header
+  `TenantSwitcher` and the Fleet Console `Enter` controls both reach them through
+  `useTenantContext.switchTenant`, which routes platform staff to the RPCs and everyone else to the
+  direct profile write.
+- Every enter/exit writes `paige_audit_log` with `action = 'operator.tenant.enter' | 'operator.tenant.exit'`
+  and `actor_role = 'platform_operator'`, in the same transaction as the scope change.
+- No secret or env var is involved.
+
 *(This is the inventory of integration **existence**, not an endorsement that each is configured/live.
 A name here proves the edge code references it; it does not prove the secret is set on prod.)*
 

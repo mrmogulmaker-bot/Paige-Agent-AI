@@ -133,6 +133,7 @@ export function FleetTenantsRail({
   filtered,
   loading,
   onOpenTenant,
+  onEnterTenant,
   onProvision,
   onAskPaige,
   onOpenCheck,
@@ -141,7 +142,14 @@ export function FleetTenantsRail({
   /** True when a search or tier chip is narrowing `rows` — the rail then speaks only for the view. */
   filtered: boolean;
   loading: boolean;
+  /** Select a tenant in the console — a read, nothing switches. */
   onOpenTenant: (id: string) => void;
+  /**
+   * ACT AS the tenant: switch platform scope into their shell, audited. CD's own descriptor
+   * separates these two — "Click one to open it. Entering is a separate, logged act." — so
+   * selecting and entering are deliberately different affordances, not the same click twice.
+   */
+  onEnterTenant: (id: string) => void;
   onProvision: () => void;
   onAskPaige: () => void;
   onOpenCheck: () => void;
@@ -339,19 +347,27 @@ export function FleetTenantsRail({
                 key={r.tenant.id}
                 className="flex min-w-0 items-center gap-2 border-t border-border/60 px-3.5 py-2 transition-colors hover:bg-muted/40"
               >
-                <span className="grid h-6 w-6 flex-none place-items-center rounded-[8px] bg-muted text-[9px] font-bold text-foreground/70">
-                  {initials(r.tenant.name)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[11.5px] font-semibold">{r.tenant.name}</div>
-                  <div className="truncate text-[10px] text-muted-foreground">
-                    {r.tier}
-                    {r.beneath ? ` · ${r.beneath} beneath` : ""} · {r.health.label.toLowerCase()}
-                  </div>
-                </div>
+                {/* The row body SELECTS — CD's "click one to open it". */}
                 <button
                   type="button"
                   onClick={() => onOpenTenant(r.tenant.id)}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="grid h-6 w-6 flex-none place-items-center rounded-[8px] bg-muted text-[9px] font-bold text-foreground/70">
+                    {initials(r.tenant.name)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[11.5px] font-semibold">{r.tenant.name}</div>
+                    <div className="truncate text-[10px] text-muted-foreground">
+                      {r.tier}
+                      {r.beneath ? ` · ${r.beneath} beneath` : ""} · {r.health.label.toLowerCase()}
+                    </div>
+                  </div>
+                </button>
+                {/* Enter is the LOGGED ACT — scope actually switches and a row lands in the audit. */}
+                <button
+                  type="button"
+                  onClick={() => onEnterTenant(r.tenant.id)}
                   className="flex-none rounded-lg border border-border bg-card px-2 py-1 text-[10.5px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Enter

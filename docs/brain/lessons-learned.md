@@ -484,3 +484,28 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same
 commit as the fix — a lesson only helps if the next session can find it.*
+
+## service_role grants are invisible to every pre-merge check we run (2026-08-20, second occurrence)
+
+**The class.** A `BEGIN..ROLLBACK` proof runs as the table OWNER. A headless smoke over pure logic
+never touches the database. So a missing `service_role` grant passes every pre-merge gate and only
+fails at runtime — where, if the calling code swallows the error, it fails *silently and plausibly*.
+
+**First occurrence:** hotfix #94, the `paige_systems_check_*` family — caught by a §32.c live drive.
+**Second occurrence:** A2's alerting evaluator, caught by the §32.a post-merge scan.
+`tenant_revenue_classification` had NO service_role grant at all (only `authenticated` and
+`postgres`), and `readTenantsAtRisk` destructured the error away — `{ data: revenue }` — so the
+permission denial produced an empty classification map, which read as "no tenant is internal", so
+the platform's own fixtures counted as at-risk CUSTOMER tenants. A silently inflated number in the
+signal whose whole job is to be trusted.
+
+**Why it is worth a lesson and not just a fix.** A2's own module header states the rule it broke:
+*a reader that cannot produce a real number returns unreadable, never 0*. The rule was written and
+then violated three functions below, because the failure arrived as an empty array rather than a
+thrown error. **An exclusion list that failed to load is not an empty exclusion list.**
+
+**Standing checks when adding an edge-function read of a table the function has not read before:**
+1. `select has_table_privilege('service_role','public.<table>','SELECT')` on prod — before merge, not after.
+2. Destructure and check `error` on EVERY supabase read. A `{ data }`-only destructure is the bug.
+3. Ask what the empty/default value MEANS downstream. An empty filter list that silently disables a
+   filter is the dangerous shape; a count that silently reads 0 is the same class.
