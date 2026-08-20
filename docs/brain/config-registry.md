@@ -39,6 +39,16 @@ Last full verification pass: **2026-08-09**.
 `platform_phone_numbers`, `platform_subscription_plans`, `platform_subscriptions`,
 `platform_usage_events`, `staff_calendar_settings`.
 
+**Platform alerting substrate** (A1, migration `20260922000000`, 2026-08-20 — ✅ §32.b rollback-proved on
+prod pre-merge; §32.a persisted-apply confirmed post-merge by `deploy-migrations.yml`):
+`paige_alert_signal` (signal catalogue, config-as-data), `paige_alert_rule`, `paige_alert_firing`.
+All three RLS **ENABLED + FORCED**, every policy gated on `is_platform_operator()` (§53 — the delegated
+operator tier, NOT the frozen `is_platform_owner()`). `service_role` holds ALL on each — granted up front
+because the systems-check family shipping WITHOUT them produced a runtime `permission denied` that the
+rollback proofs structurally could not catch (they run as owner, not service_role; hotfix #94).
+Five seeded signals; **`migrations.drift` ships `is_readable = false` on purpose** — an edge function
+cannot read git, so a rule bound to it must report "never evaluated", never a pass.
+
 **Core Supabase edge secret NAMES** (✅ grep `Deno.env.get`): `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`. Deploy auth uses the `SUPABASE_ACCESS_TOKEN` **repo secret** (per
 `supabase/functions/CLAUDE.md`; ⚠ presence not re-verified this session — CLAUDE.md asserts it is set).
