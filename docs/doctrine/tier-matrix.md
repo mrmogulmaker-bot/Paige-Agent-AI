@@ -407,6 +407,51 @@ sequenced the operator tier to completion before any other shell opens. They are
 "denied" — they have not been opened. Client and Anonymous are denied at the `RequireOperator` route
 gate and stay that way.
 
+
+### `/operator/fleet/history` — Fleet Console sub-tab 3
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Run history feed, newest first (pack `SC_HISTORY`) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Real operator-scope runs, not the pack's fixture rows | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| An incomplete run reads "still running", never a pass/fail it has not reached | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+
+**Status: LIVE.** `useSystemsCheckHistory` selects `paige_systems_check_run` at `tenant_id IS NULL`,
+capped at 100 — a plain PostgREST read, because the L3 operator-scope migration already widened RLS
+to let `is_platform_operator()` see those rows (§18: nothing new to add). §32.c live-drive owed.
+
+### `/operator/fleet/alert-rules` — Fleet Console sub-tab 4
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Pack structure — KPI ladder, Rules block, foot | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Any alert rule actually read from the platform | — | N/A | N/A | N/A | N/A | 403 | 403 |
+| Firing history / acknowledgement | — | N/A | N/A | N/A | N/A | 403 | 403 |
+| "+ New rule" write path | — | N/A | N/A | N/A | N/A | 403 | 403 |
+
+**Status: GAPPED — the only Fleet sub-tab with no backend.** The pack's structure ships through the
+generic panel with every KPI at `null` and the block stating "No alert rule is being read from the
+platform yet." That is the honest absence, not a stand-in — but it is an absence: there is no
+alert-rule table, no firing record, and no delivery path. Building it is a net-new capability with
+real design questions (what conditions can be expressed, what channels deliver, whether it consumes
+the existing Systems Check finding stream or its own), so it is an owner-scoped slice rather than a
+port.
+
+### `/operator/fleet/team-pulse` — Fleet Console sub-tab 5
+| Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Platform-seat roster (real `list_platform_staff()`) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| SEATS count | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Utilisation / hours booked / where operator time goes | — | N/A | N/A | N/A | N/A | 403 | 403 |
+
+**Status: PARTIAL, by construction.** The roster and seat count are real and reuse the existing
+Platform → Team RPC (§18). Utilisation, hours booked and "where operator time goes" render as an
+honest absence because **no activity-tracking substrate exists to measure them** — there is nothing
+to read, so there is nothing to wire, and a percentage here would be invented (§13). Closing these
+rows means building operator activity tracking first, which is its own decision.
+
+**Fleet Console, whole-branch status (recorded 2026-08-20).** Sub-tabs 1, 2, 3 and 5 carry real
+reads; sub-tab 4 (Alert rules) is the single remaining backend gap. This survey corrected a stale
+plan that had History queued as the next port — it had already shipped with a real feed, and
+rebuilding it would have been the §18 failure of building something that already exists.
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |
