@@ -40,7 +40,9 @@ Last full verification pass: **2026-08-09**.
 `platform_usage_events`, `staff_calendar_settings`.
 
 **Platform alerting substrate** (A1, migration `20260922000000`, 2026-08-20 — ✅ §32.b rollback-proved on
-prod pre-merge; §32.a persisted-apply confirmed post-merge by `deploy-migrations.yml`):
+prod pre-merge; ✅ §32.a persisted-apply CONFIRMED post-merge: `schema_migrations` carries
+`20260922000000`, all three tables exist on prod, all three report `relrowsecurity` AND
+`relforcerowsecurity`):
 `paige_alert_signal` (signal catalogue, config-as-data), `paige_alert_rule`, `paige_alert_firing`.
 All three RLS **ENABLED + FORCED**, every policy gated on `is_platform_operator()` (§53 — the delegated
 operator tier, NOT the frozen `is_platform_owner()`). `service_role` holds ALL on each — granted up front
@@ -48,6 +50,26 @@ because the systems-check family shipping WITHOUT them produced a runtime `permi
 rollback proofs structurally could not catch (they run as owner, not service_role; hotfix #94).
 Five seeded signals; **`migrations.drift` ships `is_readable = false` on purpose** — an edge function
 cannot read git, so a rule bound to it must report "never evaluated", never a pass.
+
+**Platform alerting evaluator** (A2, migration `20260923000000` + edge function `alerting-evaluate`,
+2026-08-20 — ✅ §32.b rollback-proved on prod pre-merge). Adds `paige_alert_rule.condition_met_since`
+(episode bookkeeping — what makes `for_minutes` meaningful and firing edge-triggered, at most once per
+episode) and a `pg_cron` job **`alerting-evaluate`** on `*/5 * * * *` that pokes the function via
+`net.http_post` with `public.cron_token_header()` — the SAME poke shape as the systems-check operator
+schedule (§18, one convention). The function is `verify_jwt = false` in `config.toml` so the cron poster
+can reach it, and fails closed in-function to an internal caller (service-role bearer OR `x-cron-token`)
+or an operator JWT (`is_platform_operator()`, §53).
+
+**A2 carries a §13 catalogue correction, recorded rather than quietly patched.** A1 seeded
+`llm.failover_rate` as readable; it is NOT — `paige_llm_trace` has no failover marker (its columns are
+`status`, `error_class`, `provider`, `model`, `tier`), verified against the live schema. A2 flips that
+signal to `is_readable = false` with the reason in its `notes`, and registers **`llm.error_rate`** —
+which the schema genuinely supports — as its own key. Pointing the existing key at an error rate would
+have shipped a number whose name says one thing and whose value means another.
+
+**A2 writes firings and does NOT deliver them.** Every firing lands `delivery_status = 'pending'`;
+delivery is A3 and routes through `_shared/channel-adapters.ts` (§18 — the existing single home for
+multi-channel delivery). A fire is not a delivery.
 
 **Core Supabase edge secret NAMES** (✅ grep `Deno.env.get`): `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`. Deploy auth uses the `SUPABASE_ACCESS_TOKEN` **repo secret** (per

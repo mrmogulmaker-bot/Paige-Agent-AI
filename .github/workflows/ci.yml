@@ -144,3 +144,11 @@ jobs:
       - name: Smoke — Fleet orbital field (runtime maths, colour space, constant drift)
         if: ${{ !cancelled() }}
         run: npm run smoke:fleet-orbit
+
+      # Same reason, different silent failure: a wrong alerting decision does not throw. It fires an
+      # alert that shouldn't have, or stays quiet when the platform is on fire, and the only thing
+      # watching is the thing that just broke. The module is pure, so this runs it directly — no
+      # mirrored copy to drift.
+      - name: Smoke — Alerting conditions (evaluation, unreadable-is-not-false, once-per-episode)
+        if: ${{ !cancelled() }}
+        run: npm run smoke:alerting-conditions

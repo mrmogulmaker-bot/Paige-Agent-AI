@@ -264,3 +264,23 @@ gains a dated section (§BRAIN.3).*
   as tracked slices (#205–#210) BEFORE A1 merged — History, Chat, peek drawer, §16 departments + autonomy
   tier, Trust Compass ceiling-clamp, and Paige's central-brain recall — because a good ruling that is not
   tracked is a good ruling that vanishes. Architecture: `docs/architecture/platform-alerting-substrate.md`.
+
+- **2026-08-20 · A2 evaluator — a fire is a row before it is a message, and one signal was a lie.**
+  The sweep (`alerting-evaluate`, `pg_cron` every 5 min) evaluates active rules and **writes firings only**;
+  delivery is A3 through `_shared/channel-adapters.ts`. Every firing lands `delivery_status='pending'`,
+  which is the literal truth until A3 exists — so "did it fire?" stays answerable even when delivery later
+  fails. Three decisions worth keeping: (1) **an unreadable signal evaluates to `undefined`, never `false`**
+  — a rule that depends on it is SKIPPED and `last_evaluated_at` is deliberately NOT advanced, so the
+  surface keeps saying "never evaluated" rather than implying a clean pass; (2) firing is **edge-triggered
+  per episode** via a new `condition_met_since` column — without it a rule re-fires every tick for as long
+  as the condition holds, which is how an alerting system teaches its operator to ignore it; (3) if the
+  firing INSERT fails, `last_fired_at` is **not** advanced — claiming a fire that did not record would put
+  a fabricated event in the evidence table's own bookkeeping.
+  **§13 correction:** A1 seeded `llm.failover_rate` as readable and the architecture note claimed L1
+  observability already backed it. Verified FALSE against the live schema — `paige_llm_trace` records no
+  failover marker (columns: `status`, `error_class`, `provider`, `model`, `tier`). A2 flips that signal to
+  `is_readable=false` with the reason and registers `llm.error_rate`, which the schema genuinely supports,
+  as its own key. Quietly serving an error rate under a failover name would have been the
+  two-numbers-one-label defect the §39 peer gate caught on the Fleet Tenants rail one slice earlier.
+  Headless proof: `npm run smoke:alerting-conditions` (wired into CI) — a wrong evaluation does not throw,
+  it silently fires or silently stays quiet, so the pure decision logic is exercised directly.

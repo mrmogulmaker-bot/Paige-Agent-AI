@@ -427,13 +427,15 @@ to let `is_platform_operator()` see those rows (§18: nothing new to add). §32.
 | Firing history / acknowledgement | — | N/A | N/A | N/A | N/A | 403 | 403 |
 | "+ New rule" write path | — | N/A | N/A | N/A | N/A | 403 | 403 |
 
-**Status: A1 SCHEMA SHIPPED (2026-08-20); the surface is still gapped.** The substrate's
-foundation is live — `paige_alert_signal` (catalogue, config-as-data), `paige_alert_rule` and
-`paige_alert_firing`, all three RLS-forced and gated on `is_platform_operator()` (§53 — the
-delegated operator tier, NOT the frozen `is_platform_owner()`). The **surface still reads
-nothing**: A2 (evaluator) and A4 (surface wiring) have not landed, so every KPI is still `null`
-and the block still says so. That is the row's honest state — schema existing is not the same as
-a tab that works, and this ledger does not tick a surface row for a table.
+**Status: A1 SCHEMA + A2 EVALUATOR SHIPPED (2026-08-20); the surface is still gapped.** The
+substrate's foundation is live — `paige_alert_signal` (catalogue, config-as-data),
+`paige_alert_rule` and `paige_alert_firing`, all three RLS-forced and gated on
+`is_platform_operator()` (§53 — the delegated operator tier, NOT the frozen
+`is_platform_owner()`) — and A2 added the sweep that actually evaluates them
+(`alerting-evaluate`, every 5 minutes via `pg_cron`, writing firings). The **surface still reads
+nothing**: A4 (surface wiring) has not landed, so every KPI on the tab is still `null` and the
+block still says so. That is the row's honest state — a working backend is not the same as a tab
+that works, and this ledger does not tick a surface row for a table or a cron job.
 
 | A1 capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
@@ -453,6 +455,36 @@ declared God-only in `getTierFeatureSet()` as a documented §61 exception, the s
 **"Hand-write a firing" is — for God too.** Firings are written by the evaluator (service_role)
 only; an operator-authored firing would be a fabricated event in the one table whose entire job
 is recording what actually happened (§13).
+
+| A2 capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Active rules are evaluated on a schedule (every 5 min) | ✓ | N/A | N/A | N/A | N/A | N/A | N/A |
+| A tripped rule writes a firing row (`delivery_status='pending'`) | ✓ | N/A | N/A | N/A | N/A | N/A | N/A |
+| Force a sweep by calling `alerting-evaluate` | ✓ | 401 | 401 | 401 | 401 | 401 | 401 |
+| A firing is DELIVERED anywhere | — | — | — | — | — | — | — |
+
+**The evaluation rows are N/A, not 403, for every tenant tier** — and the difference is
+deliberate. 403 means "this tier is denied a capability that exists"; N/A means the capability has
+no tenant-tier meaning at all. A scheduled sweep is not something a tier is denied; it is
+platform-scope work with no tenant analogue. The row that IS a denial — an ad-hoc call to the
+function — is **401**, not 403, because the gate fails closed at authentication: the function
+accepts an internal caller (service-role bearer or `x-cron-token`) or an operator JWT
+(`is_platform_operator()`), and everything else is rejected before any rule is read. Never a
+tenant JWT, never an identity from the request body (§588).
+
+**"A firing is DELIVERED anywhere" is — for EVERY tier, God included, and that is the point.**
+A2 writes firings and stops. Delivery is A3 and routes through `_shared/channel-adapters.ts`
+(§18 — the existing single home for multi-channel delivery, not a second stack invented here).
+Until A3 lands, every firing sits at `delivery_status='pending'`, which is the literal truth. A
+row that said ✓ here would be the exact "a fire is not a delivery" lie this table's own design
+exists to prevent (§13).
+
+**Two signals are honestly UNREADABLE and a rule bound to either reports "never evaluated",
+never a pass.** `migrations.drift` — an edge function cannot read git. `llm.failover_rate` — A1
+seeded it as readable in error; `paige_llm_trace` records no failover marker (verified against
+the live schema, not assumed), so A2 flips it to unreadable and registers `llm.error_rate`, which
+the schema genuinely supports, as its own key rather than quietly serving an error rate under a
+failover name.
 
 ---
 

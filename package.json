@@ -21,7 +21,8 @@
     "lint:skeleton": "node scripts/ci/skeleton-content-lint.mjs",
     "preview": "vite preview",
     "smoke:skills-interpreter": "node --experimental-strip-types --import ./scripts/_register-forge-stub.mjs scripts/skills-interpreter-provenance-smoke.mjs",
-    "smoke:fleet-orbit": "node scripts/fleet-orbit-smoke.mjs"
+    "smoke:fleet-orbit": "node scripts/fleet-orbit-smoke.mjs",
+    "smoke:alerting-conditions": "node --experimental-strip-types scripts/alerting-conditions-smoke.mts"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",
