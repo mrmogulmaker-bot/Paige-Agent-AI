@@ -194,9 +194,13 @@ export function FleetTenantsRail({
       <RailCard className="px-3.5 py-3">
         <div className="text-[13.5px] font-semibold">Needs you today</div>
         <div className="mt-2.5 flex flex-col gap-2">
-          {checkLoading && <div className="h-16 animate-pulse rounded-[10px] bg-muted" />}
+          {(checkLoading || loading) && <div className="h-16 animate-pulse rounded-[10px] bg-muted" />}
 
-          {!checkLoading && attention.length === 0 && atRiskRows.length === 0 && (
+          {/* Both feeds must have ANSWERED before this claims all-clear. Gating on `checkLoading`
+              alone asserted "every tenant has members and at least one client" while the fleet read
+              was still in flight and `atRiskRows` was empty only because nothing had arrived yet —
+              a reassurance printed about data we had not seen (§13). */}
+          {!checkLoading && !loading && attention.length === 0 && atRiskRows.length === 0 && (
             <p className="text-[11.5px] leading-relaxed text-muted-foreground">
               Nothing is failing on the platform, and every tenant has members and at least one
               client. Findings from the hourly sweep appear here.
