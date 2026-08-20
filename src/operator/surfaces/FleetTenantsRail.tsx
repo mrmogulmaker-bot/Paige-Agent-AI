@@ -41,7 +41,6 @@ export type RailTenant = {
   tier: string;
   health: { label: string; tone: "ok" | "warn" | "risk" };
   beneath: number;
-  isInternal: boolean;
 };
 
 const SEVERITY_EDGE: Record<string, string> = {
@@ -131,8 +130,6 @@ function HerRead({
 
 export function FleetTenantsRail({
   rows,
-  subCount,
-  atRiskCount,
   loading,
   onOpenTenant,
   onProvision,
@@ -140,8 +137,6 @@ export function FleetTenantsRail({
   onOpenCheck,
 }: {
   rows: readonly RailTenant[];
-  subCount: number;
-  atRiskCount: number;
   loading: boolean;
   onOpenTenant: (id: string) => void;
   onProvision: () => void;
@@ -166,6 +161,31 @@ export function FleetTenantsRail({
     [findings],
   );
 
+  /**
+   * Every figure in this rail is derived from the rows the rail is SHOWING.
+   *
+   * §39 peer-gate: these two counts used to arrive as props computed over the whole fleet while the
+   * list, the chip and the read were computed over the filtered rows. Filter to "At risk" and the
+   * rail said "3 tenants · 7 sub-accounts beneath them" above a list of three tenants with no
+   * sub-accounts in sight — three different scopes in one card, each individually true and the
+   * card as a whole false. The fleet-wide totals still live in the header KPI strip, which is where
+   * a fleet-wide number belongs; a panel describes what is in it.
+   */
+  const subCount = useMemo(() => rows.filter((r) => r.beneath > 0).length, [rows]);
+  const atRiskCount = useMemo(() => rows.filter((r) => r.health.tone === "risk").length, [rows]);
+
+  /**
+   * At-risk tenants, kept in "Needs you today" (§58).
+   *
+   * The rail that shipped before this one filled "Needs you today" with at-risk TENANTS — each a
+   * one-click door into that tenant. Replacing the card's feed with operator systems-check findings
+   * would have quietly deleted that: an owner-approved, shipped capability disappearing inside a
+   * PR nominally about porting the pack. So the card carries BOTH, which is also the more honest
+   * reading of its own label — a failing platform check and a tenant with nobody in it are both
+   * things that need the operator today, and neither is a subset of the other.
+   */
+  const atRiskRows = useMemo(() => rows.filter((r) => r.health.tone === "risk").slice(0, 4), [rows]);
+
   const read = useMemo(() => composeFleetRead(rows, unresolvedCount), [rows, unresolvedCount]);
 
   return (
@@ -176,9 +196,10 @@ export function FleetTenantsRail({
         <div className="mt-2.5 flex flex-col gap-2">
           {checkLoading && <div className="h-16 animate-pulse rounded-[10px] bg-muted" />}
 
-          {!checkLoading && attention.length === 0 && (
+          {!checkLoading && attention.length === 0 && atRiskRows.length === 0 && (
             <p className="text-[11.5px] leading-relaxed text-muted-foreground">
-              Nothing is failing on the platform right now. Findings from the hourly sweep appear here.
+              Nothing is failing on the platform, and every tenant has members and at least one
+              client. Findings from the hourly sweep appear here.
             </p>
           )}
 
@@ -207,6 +228,20 @@ export function FleetTenantsRail({
                 </button>
               </div>
             ))}
+
+          {atRiskRows.map((r) => (
+            <button
+              key={r.tenant.id}
+              type="button"
+              onClick={() => onOpenTenant(r.tenant.id)}
+              className="rounded-[10px] border border-l-[3px] border-border border-l-[hsl(var(--warning))] bg-muted/40 px-3 py-2.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <div className="text-[11.5px] leading-relaxed">
+                <span className="font-semibold">{r.tenant.name}</span> —{" "}
+                {r.health.label.toLowerCase()}.
+              </div>
+            </button>
+          ))}
         </div>
       </RailCard>
 
@@ -229,7 +264,7 @@ export function FleetTenantsRail({
           <button
             type="button"
             onClick={onProvision}
-            className="mt-2.5 rounded-lg border border-[hsl(var(--gold-dark)/0.4)] px-2.5 py-1 text-[11.5px] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-[hsl(var(--accent)/0.1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-2.5 rounded-lg border border-border bg-card px-2.5 py-1 text-[11.5px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             + Provision a tenant
           </button>
@@ -291,7 +326,7 @@ export function FleetTenantsRail({
                 <button
                   type="button"
                   onClick={() => onOpenTenant(r.tenant.id)}
-                  className="flex-none rounded-lg border border-border bg-card px-2 py-1 text-[10.5px] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex-none rounded-lg border border-border bg-card px-2 py-1 text-[10.5px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Enter
                 </button>
@@ -306,7 +341,6 @@ export function FleetTenantsRail({
         </div>
       </RailCard>
 
-      <HerRead body={read} onTakeToWorkspace={onAskPaige} />
     </aside>
   );
 }

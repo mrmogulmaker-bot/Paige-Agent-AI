@@ -24,7 +24,6 @@ function tenant(
     tier: "Solo",
     health: { label: tone === "risk" ? "At risk" : tone === "warn" ? "Watch" : "Healthy", tone },
     beneath,
-    isInternal: false,
   };
 }
 

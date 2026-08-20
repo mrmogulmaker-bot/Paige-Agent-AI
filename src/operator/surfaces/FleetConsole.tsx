@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useFleet, isInternal, type FleetTenant } from "@/operator/data/useFleet";
 import { FleetOrbit, type OrbitNode } from "@/operator/surfaces/FleetOrbit";
 import { FleetTenantsRail, type RailTenant } from "@/operator/surfaces/FleetTenantsRail";
@@ -92,6 +92,13 @@ function tierLabel(t: FleetTenant, isNested: boolean): TierLabel {
 
 export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSeeRevenue: boolean }) {
   const navigate = useNavigate();
+  /**
+   * Which tenant is open, read back off the URL rather than held in a second piece of state. The
+   * field's click and the directory's "Enter" both write `?tenant=`, so the URL is already the one
+   * home for this (§18) — mirroring it into local state would let the two disagree on a back/forward.
+   */
+  const [searchParams] = useSearchParams();
+  const selectedTenantId = searchParams.get("tenant");
   const { tenants, classificationVisible, loading, error } = useFleet(true);
   const [view, setView] = useState<"field" | "table">("field");
   const [filter, setFilter] = useState<Filter>("All");
@@ -139,8 +146,6 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
     );
   }, [fleet, filter, q, nestedIds]);
 
-  const rowIds = useMemo(() => new Set(rows.map((t) => t.id)), [rows]);
-
   // CD: subCount = TENANTS.reduce((a,t) => a + t.subs, 0) — real, the count of rows with a
   // parent present in the fleet.
   const subCount = useMemo(() => fleet.filter((t) => nestedIds.has(t.id)).length, [fleet, nestedIds]);
@@ -154,7 +159,6 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
         tier: tierLabel(t, nestedIds.has(t.id)),
         health: health(t),
         beneath: fleet.filter((x) => x.parentTenantId === t.id).length,
-        isInternal: isInternal(t),
       })),
     [rows, nestedIds, fleet],
   );
@@ -337,6 +341,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
               ) : (
                 <FleetOrbit
                   nodes={orbitNodes}
+                  selectedId={selectedTenantId}
                   onSelect={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)}
                 />
               )}
@@ -506,8 +511,6 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
       {/* ── right rail: what needs you, her read, and the directory ──── */}
       <FleetTenantsRail
         rows={railRows}
-        subCount={subCount}
-        atRiskCount={atRiskTenants.length}
         loading={loading}
         onOpenTenant={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)}
         onProvision={() => navigate("/operator/provisioning")}

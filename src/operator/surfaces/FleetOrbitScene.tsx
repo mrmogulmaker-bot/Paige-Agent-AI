@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import type { Group, Mesh } from "three";
 
-import { onThemeChange, resolveTokenRgb, type Rgb } from "@/lib/tokenColor";
 import type { OrbitNode } from "@/operator/surfaces/FleetOrbit";
 
 /**
@@ -48,29 +47,35 @@ const SHELL_INNER = 1.45;
 const SHELL_OUTER = 2.45;
 
 /**
- * Tier → design token. NOT literal hex: the field follows the light/dark toggle like every other
- * element on the surface (§23). CD's own `fleet-field.js` hardcodes hex because a 2D canvas cannot
- * read a CSS variable; we can, so we do.
+ * Tier → colour, as sRGB HEX STRINGS. Two deliberate decisions, both corrected by the §39
+ * peer-gate after a first pass got them wrong in opposite directions:
+ *
+ * 1. FIXED, NOT THEME-FLIPPING. The field container is pinned dark in BOTH themes
+ *    (`bg-[hsl(var(--rail))]` in FleetConsole) — it is a canvas host, not a themed panel, exactly
+ *    as CD designs it. Pulling theme-flipping ink tokens therefore made the field WORSE, not
+ *    better: in light mode `--primary` resolves to a near-black (255 60% 12%) that is almost the
+ *    same colour as the dark ground it is drawn on, so Agency nodes disappeared. A constant ground
+ *    takes a constant palette. These are CD's own TIER_INK values from `fleet-field.js`.
+ * 2. STRINGS, NOT FLOAT ARRAYS. Handing R3F a numeric array routes to `THREE.Color.set(r,g,b)` →
+ *    `setRGB(..., workingColorSpace)` which is LinearSRGB — so sRGB values are stored as linear and
+ *    then re-encoded on output, painting everything ~2× lighter. Paige Gold #EDB94A came out as
+ *    pale cream #F7DE93. A string routes through `Color.setStyle`, which DOES convert sRGB→linear.
+ *    This is what the proven `PaigeScene` does (`PaigeScene.tsx:67-70` passes "#D4A752").
  */
-const TIER_VAR: Record<OrbitNode["tier"], string> = {
-  Agency: "--primary",
-  Solo: "--success",
-  Enterprise: "--gold-dark",
-  "Sub-account": "--muted-foreground",
+const TIER_HEX: Record<OrbitNode["tier"], string> = {
+  Agency: "#7C6CE0",
+  Solo: "#3F7F5C",
+  Enterprise: "#B5822A",
+  "Sub-account": "#2F6B8F",
 };
 
-type Palette = Record<OrbitNode["tier"], Rgb> & { gold: Rgb };
-
-function readPalette(): Palette {
-  return {
-    Agency: resolveTokenRgb(TIER_VAR.Agency),
-    Solo: resolveTokenRgb(TIER_VAR.Solo),
-    Enterprise: resolveTokenRgb(TIER_VAR.Enterprise),
-    "Sub-account": resolveTokenRgb(TIER_VAR["Sub-account"]),
-    // Gold — spent ONLY on the ring of a tenant that needs you (§11 gold-on-the-act).
-    gold: resolveTokenRgb("--accent"),
-  };
-}
+/**
+ * The needs-you ring. `--warning` amber is the SEMANTIC token for "this needs attention", and it
+ * is what CD uses here. Gold is reserved for the primary ACT (§11) — a resting ring around every
+ * at-risk node is a state indicator, not an act, and spending gold on it was the peer-gate's
+ * gold-discipline finding.
+ */
+const NEEDS_YOU_HEX = "#E07860";
 
 /**
  * A stable angular seed per tenant.
@@ -138,26 +143,32 @@ function OrbitNodeMesh({
   placed,
   radius,
   selected,
-  palette,
+  drive,
   onSelect,
   onHover,
 }: {
   placed: Placed;
   radius: number;
   selected: boolean;
-  palette: Palette;
+  drive: React.MutableRefObject<OrbitDrive>;
   onSelect: (id: string) => void;
   onHover: (n: OrbitNode | null, clientX: number, clientY: number) => void;
 }) {
   const ringRef = useRef<Mesh>(null);
   const { node, dir, shell } = placed;
   const pos: [number, number, number] = [dir[0] * shell, dir[1] * shell, dir[2] * shell];
-  const rgb = palette[node.tier];
+  const hex = TIER_HEX[node.tier];
 
-  // The ring breathes only on tenants that need you. Everything else is still.
+  // The ring breathes only on tenants that need you — and ONLY while motion is on. The peer-gate
+  // caught this animating straight through both the "Motion off" toggle and OS reduced-motion,
+  // because it read `clock` and never `drive` (§11/§22: every effect writes its own fallback).
   useFrame(({ clock }) => {
     const r = ringRef.current;
     if (!r) return;
+    if (!drive.current.motion) {
+      r.scale.setScalar(1);
+      return;
+    }
     const pulse = 1 + Math.sin(clock.elapsedTime * 1.9 + placed.magnitude * 6) * 0.13;
     r.scale.setScalar(pulse);
   });
@@ -166,6 +177,13 @@ function OrbitNodeMesh({
     <group position={pos}>
       <mesh
         onPointerOver={(e) => {
+          e.stopPropagation();
+          onHover(node, e.nativeEvent.clientX, e.nativeEvent.clientY);
+        }}
+        // The tooltip is anchored to the POINTER, so it has to track it. Anchoring only on enter
+        // left the label stranded where the cursor first crossed the node — several node-widths
+        // away by the time you had read it, and pointing at nothing.
+        onPointerMove={(e) => {
           e.stopPropagation();
           onHover(node, e.nativeEvent.clientX, e.nativeEvent.clientY);
         }}
@@ -181,10 +199,10 @@ function OrbitNodeMesh({
         {/* detail=1 — low-poly by budget; a sphere this size never shows the facets. */}
         <icosahedronGeometry args={[radius, 1]} />
         <meshStandardMaterial
-          color={rgb}
+          color={hex}
           roughness={0.42}
           metalness={0.12}
-          emissive={rgb}
+          emissive={hex}
           emissiveIntensity={selected ? 0.85 : 0.28}
         />
       </mesh>
@@ -193,7 +211,7 @@ function OrbitNodeMesh({
         <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
           <torusGeometry args={[radius * 1.55, radius * 0.12, 8, 40]} />
           {/* Unlit so the ring reads at the same strength on the dark side of the field. */}
-          <meshBasicMaterial color={palette.gold} transparent opacity={0.92} />
+          <meshBasicMaterial color={NEEDS_YOU_HEX} transparent opacity={0.92} />
         </mesh>
       )}
     </group>
@@ -216,10 +234,6 @@ export default function FleetOrbitScene({
   const groupRef = useRef<Group>(null);
   const placed = useMemo(() => place(nodes), [nodes]);
 
-  // Re-read the palette whenever the theme flips, so the field is never the one element on the
-  // surface pinned to a single theme (§23).
-  const [palette, setPalette] = useState<Palette>(readPalette);
-  useEffect(() => onThemeChange(() => setPalette(readPalette())), []);
 
   /**
    * World units per CSS pixel at the focal plane. `viewport` is recomputed by R3F whenever the
@@ -227,6 +241,16 @@ export default function FleetOrbitScene({
    * whole point of the rebuild.
    */
   const worldPerPx = useThree((s) => s.viewport.height / Math.max(1, s.size.height));
+
+  /**
+   * Fit the shell to the SMALLER dimension. Scaling from height alone clipped outer tenants off
+   * the left and right edges whenever the field box was narrower than ~1.03:1 — invisible, with no
+   * indication anything was missing. CD's 2D implementation used `Math.min(W, H)` and fitted both
+   * by construction; this restores that property.
+   */
+  const fitPerPx = useThree((s) =>
+    Math.min(s.viewport.width / Math.max(1, s.size.width), s.viewport.height / Math.max(1, s.size.height)),
+  );
 
   const radii = useMemo(() => {
     const minR = (NODE_MIN_PX / 2) * worldPerPx;
@@ -238,7 +262,7 @@ export default function FleetOrbitScene({
    * Shell distance is expressed in node-radius multiples so the whole field scales with the
    * card instead of drifting out of frame on a short viewport.
    */
-  const shellScale = useMemo(() => (NODE_MAX_PX / 2) * worldPerPx * 2.6, [worldPerPx]);
+  const shellScale = useMemo(() => (NODE_MAX_PX / 2) * fitPerPx * 2.6, [fitPerPx]);
 
   // CD's own drift + drag constants, preserved (see file header). React state is deliberately
   // NOT touched per frame — the drive ref is mutated by the shell's pointer handlers.
@@ -275,7 +299,7 @@ export default function FleetOrbitScene({
             // requested PIXEL size while the group scale positions the shell.
             radius={radii[i] / shellScale}
             selected={p.node.id === selectedId}
-            palette={palette}
+            drive={drive}
             onSelect={onSelect}
             onHover={onHover}
           />

@@ -340,23 +340,43 @@ Shipped 2026-08-19 (PR #554). Owner live-drive passed on all four checks.
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
 | Orbital field rendered in **React Three Fiber** | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
-| Renders every tenant on the default All filter | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Renders every CUSTOMER tenant on the default All filter | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Hash-seeded **stable** node placement (no reshuffle on filter) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Weight-encoded gravity (heavier tenants orbit closer) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
-| Pixel-accurate node sizing (26–68px, survives resize) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Node sizing specified in px and held through a resize | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Motion toggle + OS reduced-motion honoured | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Loud, visible failure on WebGL absence/throw | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Table view: tier pill, health, `Enter →`, internal chip | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
-| Tier colours re-resolve on light/dark flip (§23) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Fixed sRGB tier palette on the pinned-dark field (§23) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Tenants **directory** (mini-KPIs, per-row Enter, §53 audit foot) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
-| Rich "Needs you today" cards (real findings + Paige's own interpretation) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
-| Both "Her read" panels (templated over real reads + chat CTA) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| "Needs you today": real findings + Paige's interpretation | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| "Needs you today": at-risk tenant doors (kept from the prior rail, §58) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| "Her read" panel (templated over real reads + chat CTA) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
 | Morning brief carries amber + provisioning counts | — | N/A | N/A | N/A | N/A | 403 | 403 |
 | Paige at the orbit core (`paige-bot.glb`) | — | N/A | N/A | N/A | N/A | 403 | 403 |
 
 **Status: PARTIAL.** Two rows remain **—**: the morning-brief counts, and Paige at the orbit core
 (filed as its own follow-up, since a 6.5MB GLB on the crash-prone `useGLTF` path needs its own smoke
 test rather than a quiet fold-in). Everything else is live.
+
+**Four rows above are worded narrowly on purpose — the §39 peer-gate caught each of them claiming
+more than the code does.** A ledger row that overstates is worse than a missing one, because the next
+session reads it as verified fact (§13/§66):
+
+- **"every CUSTOMER tenant"**, not "every tenant". Platform fixtures and test accounts are hidden by
+  default (`showInternal` starts false) and revealed by a chip — never dropped (§58). The unqualified
+  wording would have told a later session the field is a complete census when it is deliberately not.
+- **"specified in px and held through a resize"**, not "pixel-accurate 26–68px". The 26–68px band is
+  the size at the FOCAL PLANE. This is a perspective camera, so a node nearer the viewer draws larger
+  and one further draws smaller — measured across the shell the real on-screen spread is roughly
+  19–89px. What the rebuild actually guarantees is that the band is anchored in pixels and survives a
+  resize, which is the defect it was built to fix; claiming exact on-screen pixels was false.
+- **"fixed sRGB tier palette"**, not "re-resolves on light/dark flip". It no longer does, by decision.
+  The field container is pinned dark in BOTH themes, so pulling theme-flipping ink tokens made it
+  worse — in light mode `--primary` resolves to a near-black that vanished against the dark ground.
+  A constant ground takes a constant palette; §23 governs the surface, and this surface is one theme.
+- **one "Her read" panel, not two.** The rail rendered the same panel twice, in a file whose own
+  header argues §18 one-home. The duplicate is gone.
 
 **On the two "Her read" panels (§13, stated precisely).** These are **templated over real values**,
 not LLM-composed — because no operator-scope narrative endpoint exists on the platform (all 248 edge

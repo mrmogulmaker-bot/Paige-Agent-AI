@@ -38,15 +38,6 @@ function hash01(id) {
   return (h >>> 0) / 4294967296;
 }
 
-function hslToRgb(h, s, l) {
-  const sat = s / 100;
-  const lig = l / 100;
-  const k = (n) => (n + h / 30) % 12;
-  const a = sat * Math.min(lig, 1 - lig);
-  const f = (n) => lig - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-  return [f(0), f(8), f(4)];
-}
-
 function place(nodes) {
   const maxWeight = Math.max(1, ...nodes.map((n) => n.weight));
   return nodes.map((n) => {
@@ -65,17 +56,23 @@ function place(nodes) {
   });
 }
 
-// ── real-shaped input: the actual prod fleet shape (9 customer tenants, 6 of them sub-accounts) ──
+// ── real-SHAPED input, with SYNTHETIC ids (§63) ───────────────────────────────────────────────
+// The SHAPE is drawn from the real prod fleet — 9 customer tenants, 6 of them sub-accounts, two
+// carrying zero weight, one agency an order of magnitude heavier than everything else. The IDS are
+// invented. An earlier draft of this file pasted the real production tenant UUIDs in here, which is
+// exactly what §63 forbids: the owner's live accounts are never a fixture, an example or a default
+// target, not even in a test. Nothing under test depends on a UUID's value — `hash01` is total over
+// any string — so synthetic ids exercise identical code with none of the exposure.
 const NODES = [
-  { id: "7eaf8859-91b5-429a-92f1-b78c17eed38f", tier: "Solo", weight: 3, needsYou: false },
-  { id: "cc41dbf4-bfa9-4afd-b09a-a0f718fd1f58", tier: "Solo", weight: 1, needsYou: true },
-  { id: "29a7c77f-386a-4060-bf3e-e93de48f742e", tier: "Agency", weight: 42, needsYou: false },
-  { id: "0334408a-9578-481d-86ba-fbaa00a6b173", tier: "Sub-account", weight: 0, needsYou: true },
-  { id: "f22e625e-f9d0-4467-b298-76c848def329", tier: "Sub-account", weight: 2, needsYou: false },
-  { id: "e7f1b157-61df-4954-8096-b4b71009bad8", tier: "Sub-account", weight: 7, needsYou: false },
-  { id: "d8a0a880-1bed-43af-9b5d-e23c4db93106", tier: "Sub-account", weight: 18, needsYou: false },
-  { id: "bfb03385-4877-40b5-ad21-6d5681e095c5", tier: "Sub-account", weight: 1, needsYou: false },
-  { id: "3eca23f4-c37e-4155-9af9-d79edca5a088", tier: "Sub-account", weight: 0, needsYou: true },
+  { id: "fixture-tenant-01", tier: "Solo", weight: 3, needsYou: false },
+  { id: "fixture-tenant-02", tier: "Solo", weight: 1, needsYou: true },
+  { id: "fixture-tenant-03", tier: "Agency", weight: 42, needsYou: false },
+  { id: "fixture-tenant-04", tier: "Sub-account", weight: 0, needsYou: true },
+  { id: "fixture-tenant-05", tier: "Sub-account", weight: 2, needsYou: false },
+  { id: "fixture-tenant-06", tier: "Sub-account", weight: 7, needsYou: false },
+  { id: "fixture-tenant-07", tier: "Sub-account", weight: 18, needsYou: false },
+  { id: "fixture-tenant-08", tier: "Sub-account", weight: 1, needsYou: false },
+  { id: "fixture-tenant-09", tier: "Sub-account", weight: 0, needsYou: true },
 ];
 
 // ── 1. placement is finite and stable ─────────────────────────────────────────────────────────
@@ -187,30 +184,49 @@ try {
   fail(`geometry construction threw: ${e.message}`);
 }
 
-// ── 4. token → RGB conversion is correct, not just non-throwing ───────────────────────────────
-// A wrong conversion is worse than a throw: the field renders in silently wrong colours and no
-// test notices. Pin it against values whose answer is known.
-const rgbCases = [
-  { in: [0, 100, 50], want: [1, 0, 0], label: "pure red" },
-  { in: [120, 100, 50], want: [0, 1, 0], label: "pure green" },
-  { in: [240, 100, 50], want: [0, 0, 1], label: "pure blue" },
-  { in: [0, 0, 100], want: [1, 1, 1], label: "white" },
-  { in: [0, 0, 0], want: [0, 0, 0], label: "black" },
-  { in: [0, 0, 50], want: [0.5, 0.5, 0.5], label: "mid grey" },
-];
-let rgbOk = true;
-for (const c of rgbCases) {
-  const got = hslToRgb(...c.in);
-  if (got.some((v, i) => Math.abs(v - c.want[i]) > 1e-6)) {
-    fail(`hslToRgb(${c.in.join(" ")}) = [${got.map((v) => v.toFixed(3))}], expected ${c.label} [${c.want}]`);
-    rgbOk = false;
-  }
-  if (got.some((v) => v < 0 || v > 1 || !Number.isFinite(v))) {
-    fail(`hslToRgb(${c.in.join(" ")}) produced out-of-range channel: ${got}`);
-    rgbOk = false;
+// ── 4. colour reaches the GPU as the colour we asked for ─────────────────────────────────────
+// This is the §39 peer-gate finding, pinned. A wrong colour conversion is worse than a throw: the
+// field renders in silently wrong colours and nothing notices. three.js takes TWO different paths
+// depending on how you hand it a colour, and only one of them is right for sRGB values:
+//
+//   `new Color("#EDB94A")`        -> setStyle(...,   SRGBColorSpace) -> converts sRGB to linear ✓
+//   `new Color(0.929,0.725,0.290)` -> setRGB(..., workingColorSpace) -> LinearSRGB, NO conversion ✗
+//
+// The array path stores sRGB numbers as if they were already linear, and the renderer then encodes
+// them a second time on output — Paige Gold #EDB94A paints as pale cream. The component passes
+// STRINGS for exactly this reason; this asserts that choice rather than trusting the comment.
+const TIER_HEX = {
+  Agency: "#7C6CE0",
+  Solo: "#3F7F5C",
+  Enterprise: "#B5822A",
+  "Sub-account": "#2F6B8F",
+};
+const NEEDS_YOU_HEX = "#E07860";
+
+const beforeColour = failures;
+for (const [tier, hex] of [...Object.entries(TIER_HEX), ["needs-you ring", NEEDS_YOU_HEX]]) {
+  // getHexString() encodes back to sRGB, so a correct round-trip returns the literal we passed in.
+  const roundTrip = `#${new THREE.Color(hex).getHexString().toUpperCase()}`;
+  if (roundTrip !== hex.toUpperCase()) {
+    fail(`${tier}: "${hex}" round-tripped as ${roundTrip} — colour space is being mangled`);
   }
 }
-if (rgbOk) ok(`token colour: HSL→RGB correct on ${rgbCases.length} known values, all channels in 0..1`);
+if (failures === beforeColour) {
+  ok(`colour: all ${Object.keys(TIER_HEX).length + 1} palette entries survive the sRGB round-trip`);
+}
+
+// And prove the wrong path really is wrong, so this test fails loudly if someone "simplifies" the
+// palette back to float arrays. A regression that only shows up as "slightly pale" never gets found
+// by eye — it has to be caught here.
+{
+  const asFloats = [0xed / 255, 0xb9 / 255, 0x4a / 255];
+  const wrong = `#${new THREE.Color(...asFloats).getHexString().toUpperCase()}`;
+  if (wrong === "#EDB94A") {
+    fail("the float-array path no longer mangles sRGB — this guard is stale, re-derive it");
+  } else {
+    ok(`colour: the float-array path still mis-encodes (#EDB94A -> ${wrong}), so the guard is live`);
+  }
+}
 
 // ── 5. degenerate inputs must not explode ─────────────────────────────────────────────────────
 try {
