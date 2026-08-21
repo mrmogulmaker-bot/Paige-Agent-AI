@@ -1231,3 +1231,9 @@ memory-management, task-management.
 - ✅ `/tenant-redesign` retains the approved six-destination IA, Command Spine, contextual Workspace, five flows, shared conversation, agent orchestration, structured CRM, Trust Compass, responsive intent, and representative-only boundary while adding the authored PAIGE material, typography, intelligence-state, geometric agent, Sovereign authority, and Workspace materialization systems.
 - ✅ PR #560 findings are resolved: the prototype route is excluded from the global `FloatingChatbot`, and all destination transitions close Workspace/navigation and dismiss PAIGE on mobile without changing the approved product model.
 - ❗ The route remains a front-end design prototype. Voice, orchestration, persistence, approvals, delivery, integrations, CRM mutations, and all shown business activity remain mocked; no production backend capability is claimed.
+
+### Tenant redesign laptop-fit + spatial interaction (2026-08-21)
+
+- ✅ `/tenant-redesign` now fits a `100dvh` application shell with independent region scrolling, height-aware laptop density, folded/expanded/wide/focus PAIGE modes, docked/folded/floating/focus Workspace modes, and activity/trust/transcript/command slide-outs.
+- ✅ Representative interactions preserve the current flow, draft, Workspace object/mode, active work, and business context within the session. Floating work is viewport-constrained and has keyboard movement/size alternatives; mobile destination transitions retain the PR #560 fix.
+- ❗ This remains a front-end design prototype. Spatial UI state is functional; voice, orchestration, persistence, approval memory, delivery, CRM mutation, and integrations remain mocked.

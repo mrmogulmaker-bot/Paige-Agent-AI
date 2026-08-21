@@ -313,3 +313,85 @@ Opening work activates a single 300ms physically directed reveal: a champagne-to
 ### Remaining mocked functionality
 
 The prototype remains intentionally front-end-only. It does **not** record audio, transcribe speech, run orchestration, create or persist artifacts or versions, remember approval policies, send messages, mutate CRM records, connect sources, verify revenue, persist activity, or execute agent handoffs. Intelligence, work, record, Trust Compass, and delivery states are representative UI states. Controls that describe future scope selection or delivery remain visual contract surfaces until their production seams are connected.
+
+## 19. Laptop-fit and spatial surface system — PR #561
+
+This pass preserves the approved IA, brand elevation, conversation model, Workspace, five flows, agent orchestration, Trust Compass, and representative-only boundary. It changes how those surfaces occupy a finite viewport.
+
+### Viewport contract
+
+The prototype root is exactly `100dvh`, border-box, horizontally contained, and non-scrolling. Navigation, business canvas, conversation, Workspace body, and drawers own their scrolling independently through `min-height: 0` chains. The fixed mobile dock is excluded from the shell height rather than added to it. At heights below 800px and 730px, nonessential metadata folds before conversational type is reduced.
+
+### Surface modes
+
+| Surface | Mode | Behavior |
+|---|---|---|
+| PAIGE | Folded | 70px intelligence edge with mark, current state, work count, authority count, voice identity, and restore |
+| PAIGE | Expanded | Normal rail with transcript, current context, activity, compact Trust row, voice, and persistent composer |
+| PAIGE | Wide | 42vw reading plane with wider conversation and visible orchestration |
+| PAIGE | Full Focus | PAIGE occupies the primary environment; Escape returns to Expanded while draft, flow, voice state, and work remain |
+| Workspace | Docked | Participates at the business/PAIGE boundary; on compact laptops it replaces the center foreground rather than covering the entire shell |
+| Workspace | Folded | 44px object strip retaining type, title, version/status, and restore control |
+| Workspace | Floating | One viewport-constrained, draggable and resizable review surface with dock/focus recovery |
+| Workspace | Full Focus | Workspace occupies the primary working area while navigation and safe recovery remain available |
+| Activity / Trust / Transcript / Command | Slide-out | A single nonmodal layer with internal scrolling, safe Escape dismissal, and focus restoration |
+
+### Window-state model
+
+Prototype session state preserves `rail`, `workspaceOpen`, `workspaceMode`, current `flow`, conversation `draft`, active drawer, agent work, and Workspace object. Closing Workspace hides the surface but retains the flow/object. Folding retains an explicit status strip. Floating position and preset size are local front-end state only. Only one floating Workspace and one secondary slide-out can exist; opening another replaces the previous secondary surface.
+
+Floating movement is clamped to recovery gutters within the viewport. The drag handle supports pointer movement and arrow-key movement (`Shift` = 30px step; otherwise 10px). Smaller/Larger controls provide the sole, viewport-clamped resizing path for both pointer and keyboard users; uncontrolled native corner resizing is deliberately disabled. Dock, Fold, Pop out, Full Focus, and Close are individually labeled and have tooltips.
+
+### Spatial transitions
+
+- Fold/unfold: 180ms.
+- Drawer/slide-out: 220ms.
+- Dock/undock: 240ms.
+- Full Focus: 280ms.
+- Direct floating movement has no easing lag.
+- Workspace motion originates at its prior edge/position; it does not remount as an unrelated object.
+- Reduced motion collapses travel to a one-iteration 0.01ms state change while retaining opacity, labels, and geometry.
+
+### Responsive layout rules
+
+| Viewport | Composition |
+|---|---|
+| 1280×720 | 68px navigation, ≥300px business recovery area, 370px PAIGE; Workspace defaults floating or center-docked; compact height chrome |
+| 1366×768 | same laptop spatial contract; Workspace never uses a `100vw` width formula |
+| 1440×900 / 1536×864 | 72px navigation, 360–390px PAIGE, docked Workspace may replace center foreground with fold recovery |
+| 1920×1080 / 2560×1440 | authored wide gutters and capped content; Docked Workspace remains proportional |
+| 768×1024 / 390×844 | one primary surface above a 64px dock; PAIGE, Workspace, and slide-outs use full-height overlays ending above the dock |
+
+### Z-index hierarchy
+
+1. Business canvas — 2
+2. navigation/top context — 30–40
+3. Docked/Folded Workspace — 50–51
+4. PAIGE focus plane — 60–65
+5. Slide-out drawers — 68
+6. Floating Workspace — 72
+7. Workspace Full Focus — 76
+8. Mobile navigation/backdrop — 79–80
+9. Mobile dock — 90
+10. Skip link/focus recovery — 100
+
+### Keyboard and focus
+
+- `Escape`: restores floating/focus Workspace to Docked, then closes the active drawer, then Workspace, then mobile navigation, then PAIGE Wide/Full Focus.
+- `Ctrl/Cmd + K`: opens the command surface and focuses its input.
+- `Ctrl/Cmd + J`: opens PAIGE Wide.
+- Workspace controls and resize presets are keyboard buttons; the floating handle accepts arrow keys.
+- Opening surfaces remembers the invoking element; safe close restores focus. Drawers focus their close control. Mobile navigation focuses the first destination and restores the menu button when dismissed by its backdrop.
+- A dedicated polite live region announces mode, drawer, Workspace, and destination changes; document content itself is not a live region.
+
+### Representative demonstrations
+
+- Campaign and delivery flows materialize the proposal; it can Fold, Dock, Pop out, resize, and enter Full Focus.
+- Client Intelligence opens the structured record without replacing conversation; it can fold to its context strip and restore.
+- Agents Working opens ZION/KAVYN/OATHEN contributions; each expands in place and folds back to the activity count.
+- Trust Compass detail preserves rule, scope, agents, destination, and reversibility beside the affected artifact.
+- Live Voice can expose a transcript slide-out while active work and Workspace state remain intact; ending/restoring layout never claims microphone capture.
+
+### Production considerations and honest boundary
+
+All spatial state is React session state. Dragging, preset resize, fold/dock/popout/focus, drawers, draft preservation, shortcuts, and representative screen transitions are functional. Backend orchestration, microphone capture, transcription, artifact/version persistence, approval memory, delivery, CRM mutation, integrations, and cross-session layout persistence remain mocked. Production should use a focus-stack utility, ResizeObserver-based clamping, real tooltips, persisted user layout preferences, and audited action/approval seams rather than connecting directly to prototype fixtures.
