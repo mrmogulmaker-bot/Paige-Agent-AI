@@ -38,6 +38,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 // React SPA, so we use the framework-agnostic /react entry (NOT /next).
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { FloatingChatbot } from "./components/FloatingChatbot";
+import { shouldRenderFloatingChatbot } from "./lib/routing/floatingChatVisibility";
 import { MetaPixel } from "./components/seo/MetaPixel";
 import { TenantProvider } from "./hooks/useTenantContext";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
@@ -88,6 +89,8 @@ const AgencyEntry = lazyWithReload(() => import("./agency/AgencyEntry"));
 // "subaccount"), its own top-level address (/business/{account}), peer to
 // /agency and /admin.
 const BusinessEntry = lazyWithReload(() => import("./business/BusinessEntry"));
+// Tenant-account redesign prototype — local representative data only; no backend seams.
+const TenantRedesign = lazyWithReload(() => import("./prototype/TenantRedesign"));
 // Solo operator side (§65 R3d-i) — the SoloApp shell, its own top-level
 // address (/solo/{account}), peer to /business and /admin.
 const SoloEntry = lazyWithReload(() => import("./solo/SoloEntry"));
@@ -172,24 +175,14 @@ const PageSuspense = ({ children }: { children: React.ReactNode }) => (
   <React.Suspense fallback={<SuspenseFallback />}>{children}</React.Suspense>
 );
 
-// Keep the floating chat widget off the premium landing (homepage + preview).
-const CHATBOT_HIDDEN_ROUTES = ["/", "/premium"];
-// The Agency/Solo/Business shells (§65) already carry their OWN Paige entry point
-// (the TopBar "Ask Paige" launcher + a full Paige tab with Chat/Knowledge/Sub-Agents/
-// Actions/Skills) — a second floating chat bubble on top of that is a duplicate
-// surface for the same capability (§18 one home), not a second option. Hidden on
-// these shells; unaffected everywhere else (legacy /admin, marketing, etc.).
-//
-// `/operator` joins them (owner-ruled 2026-08-19): the operator console carries its own
-// Paige entry — the full Paige branch plus the top-bar slide-out — so the floating orb is
-// the same §18 duplicate here, and it overlays the console's own chrome. No trailing slash:
-// the operator shell's root IS `/operator`, so the prefix has to match the bare path too.
-const CHATBOT_HIDDEN_PREFIXES = ["/agency/", "/business/", "/solo/", "/operator"];
+// The support-style floating widget belongs only to technically separate public or
+// customer-facing properties. Every authenticated PAIGE-owned shell has its own
+// persistent workspace/edge/mobile entry; rendering the widget there creates a
+// second PAIGE. The pure policy is separately regression-tested for shell roots,
+// nested routes, and trailing slashes.
 const GatedChatbot = () => {
   const { pathname } = useLocation();
-  if (CHATBOT_HIDDEN_ROUTES.includes(pathname)) return null;
-  if (CHATBOT_HIDDEN_PREFIXES.some((p) => pathname.startsWith(p))) return null;
-  return <FloatingChatbot />;
+  return shouldRenderFloatingChatbot(pathname) ? <FloatingChatbot /> : null;
 };
 
 const AppInner = () => {
@@ -234,6 +227,7 @@ const App = () => (
             {/* §65 R4 — the operator subtree. The `index` leg inside OperatorEntry keeps bare
                 /operator as the login door (nothing in the product links to it, so a blank
                 root would ship undetected); `:section/*` is the console behind ONE guard. */}
+            <Route path="/tenant-redesign" element={<PageSuspense><TenantRedesign /></PageSuspense>} />
             <Route path="/operator/*" element={<PageSuspense><OperatorEntry /></PageSuspense>} />
             <Route path="/join-platform" element={<PageSuspense><JoinPlatform /></PageSuspense>} />
             <Route path="/book/:slug" element={<PageSuspense><BookingPage /></PageSuspense>} />
