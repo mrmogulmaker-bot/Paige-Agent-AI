@@ -1237,3 +1237,9 @@ memory-management, task-management.
 - ✅ `/tenant-redesign` now fits a `100dvh` application shell with independent region scrolling, height-aware laptop density, folded/expanded/wide/focus PAIGE modes, docked/folded/floating/focus Workspace modes, and activity/trust/transcript/command slide-outs.
 - ✅ Representative interactions preserve the current flow, draft, Workspace object/mode, active work, and business context within the session. Floating work is viewport-constrained and has keyboard movement/size alternatives; mobile destination transitions retain the PR #560 fix.
 - ❗ This remains a front-end design prototype. Spatial UI state is functional; voice, orchestration, persistence, approval memory, delivery, CRM mutation, and integrations remain mocked.
+
+### Repository-grounded account + PAIGE symbol prototype refinement (2026-08-21)
+
+- ✅ The `/tenant-redesign` state lab now demonstrates the existing Solo, sub-account, agency parent/entered sub-account, Super Admin/God, and client placement taxonomy without inventing a hierarchy. Business scope and CRM client context are separate; business changes clear prior tenant conversation/Workspace/agent/memory/Trust/draft state.
+- ✅ Shared `PaigeSymbol` adds typed Command, Sovereign, and provisional Artifact territories while preserving `PaigeMark` compatibility. The prototype demonstrates semantic state, dark/light, spectral/monochrome, and favicon forms; production call sites are classified in the existing handoff for incremental migration.
+- ❗ Account and symbol states remain representative. No React state or symbol authorizes cross-account access. Production requires `user_roles` / `tenant_members` / `agency_team_members` separation, server membership, RLS, real/effective actor logging, operator act-as, two-key break-glass, and append-only audit.

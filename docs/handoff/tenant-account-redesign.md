@@ -395,3 +395,70 @@ Floating movement is clamped to recovery gutters within the viewport. The drag h
 ### Production considerations and honest boundary
 
 All spatial state is React session state. Dragging, preset resize, fold/dock/popout/focus, drawers, draft preservation, shortcuts, and representative screen transitions are functional. Backend orchestration, microphone capture, transcription, artifact/version persistence, approval memory, delivery, CRM mutation, integrations, and cross-session layout persistence remain mocked. Production should use a focus-stack utility, ResizeObserver-based clamping, real tooltips, persisted user layout preferences, and audited action/approval seams rather than connecting directly to prototype fixtures.
+
+## 20. Repository-grounded account and PAIGE symbol refinement — PR #561
+
+This representative state lab is grounded in `agent-ui-placement-spec.md`, `roles-permissions.md`, and `role-taxonomy-and-matrix.md`. It does not introduce or authorize a new account hierarchy.
+
+### Account-state demonstrations
+
+| Repository account type | Representative behavior in this route |
+|---|---|
+| Solo tenant | One business scope; no product scope switcher; clients remain CRM records |
+| Sub-account | Independent tenant experience; parent is contextual text only; no siblings or cross-sub-account controls |
+| Agency parent | Defaults to Agency overview; lists only explicitly authorized representative sub-accounts; aggregate reads remain available; campaign/delivery actions are disabled until a sub-account is entered |
+| Agency entered scope | Persistent top-app and PAIGE `Viewing as [business] · All actions logged · Exit`; represented write confirmation names the business |
+| Super Admin/God | Distinct `PAIGE OPERATOR`, Platform/Fleet default, audited tenant entry, persistent Viewing-as, and disabled representative two-key/reason-code break-glass surface |
+| Client | Separate tenant-authored Customer Portal demonstration; no tenant nav, agency/platform scope controls, Trust rail, or product switcher |
+
+The account selector is visibly labeled **Representative account** and is a prototype state-lab control, not a production scope grant. Business-scope changes clear the previous tenant’s flow/conversation, Workspace, agent state, memory-equivalent UI, Trust drawer, draft, and approval/voice state. `PaigePanel` is keyed by account and business scope so local child state cannot survive a boundary change.
+
+**Business scope is not CRM context.** The PAIGE header shows each separately when relevant—for example `Business scope: Anderson Advisory` and `CRM context: Morgan Manufacturing`. Selecting a CRM client changes only the structured CRM Workspace. Selecting a business clears the prior tenant context before representative content appears.
+
+### Production authorization boundary
+
+The prototype never authorizes from a generic `admin` label. Production wiring must preserve the repository’s three distinct stores:
+
+- Global `user_roles` — platform Class A authority only; no `tenant_id`.
+- Tenant `tenant_members` — tenant roles and membership.
+- Agency `agency_team_members` — agency authority and `scoped_subaccounts` authorization.
+
+Cross-tenant authority must use server-proven `is_platform_operator()`; owner-integrity gates remain `is_platform_owner()`. Tenant authority requires the tenant match plus tenant membership. Agency scope requires agency membership and the authorized sub-account subset. Every production act-as requires RLS, real/effective actor logging, append-only audit, visible exit, and extra write confirmation. Symbols and React state communicate boundaries; they never prove permission.
+
+### Shared `PaigeSymbol` contract
+
+```tsx
+<PaigeSymbol territory="command" state="ready" size="md" treatment="spectral" />
+<PaigeSymbol territory="sovereign" state="ask-first" size="sm" treatment="monochrome" />
+<PaigeSymbol territory="artifact" state="materializing" size="md" treatment="spectral" />
+```
+
+The discriminated TypeScript API accepts `territory`, territory-valid `state`, explicit size (`favicon` through `xl`), `spectral|monochrome`, `auto|light|dark`, opt-in semantic animation, optional accessible `label`, and replaceable `className`. It uses per-instance gradient IDs, is decorative by default, simplifies at favicon size, preserves currentColor-based monochrome geometry for Sovereign/Artifact, and stops all motion under reduced-motion preferences. `PaigeMark` remains the backward-compatible orbital Command geometry and now accepts `label={null}` when nested to avoid duplicate accessible names.
+
+### Territory semantics
+
+- **Command:** corporate/product identity and PAIGE presence—Ready, Listening, Understanding, Speaking, Delegating, Working, Complete, Interrupted, Offline.
+- **Sovereign:** Trust Compass, governance, approval, autonomy, Viewing-as, audit, security boundaries—Autonomous, Ask First, Draft only, Restricted, Escalated, Approved, Declined.
+- **Artifact:** Workspace, Studio, materialized work, versions—Requested, Materializing, Ready, Reviewed, Approved, Delivered, Failed.
+
+Artifact uses asymmetric open material planes rather than a four-part/octagonal interlock. It remains **provisional** pending formal similarity screening and can be replaced behind `PaigeSymbol` without changing callers.
+
+### `PaigeMark` migration audit
+
+The repository audit found 43 rendered `PaigeMark` instances across 27 TSX files. Migration is intentionally incremental:
+
+- **Corporate/product identity:** AdminLayout, AgencyLayout, StudioLayout/TopBar, OperatorApp shell, Auth, GetStarted, Welcome, OwnerWelcome, JoinPlatform, OperatorLogin, Unsubscribe, selected PaigeHome/PageHeader/StudioHome headers.
+- **PAIGE presence/invocation:** AgentRail, PaigeConsole, PaigeCommandBar, PaigePlatformDesk, PaigeTeamDirectory, PaigeAttribution, and the tenant prototype Command Spine.
+- **Generation/materialization candidates:** StudioBuildingScreen, StudioShell, StudioHome generation, ArtifactPreview coalescing, Operator/PlatformDesk loading states.
+- **Portal branding fallback:** FloatingChatbot and BookingPage only after tenant logo/monogram resolution; tenant branding remains authoritative.
+- **Decorative legacy:** ArtifactPreview watermark and any optional hero decoration; these should become Artifact monochrome or be removed rather than inherit Command identity.
+
+No mass replacement was performed. The prototype migrates representative Command, Sovereign, and Artifact usages; existing production call sites retain `PaigeMark` until their semantics are reviewed.
+
+### Required visual matrix
+
+Settings contains a symbol state lab showing all three territories in dark spectral, light spectral, monochrome, and favicon-size forms. Command state follows folded/expanded/voice/working PAIGE state; Sovereign appears in compact Trust, approval, Viewing-as, and break-glass states; Artifact appears during Workspace materialization. State text remains visible and no symbol carries meaning through color or motion alone.
+
+### Honest functional boundary
+
+Account switching, context clearing, symbols, scope banners, read-only agency gating, disabled break-glass form, and state demonstrations are local prototype behavior. They do not query membership, authorize access, log an audit row, expose PII, change a tenant, remember approval, or perform a write. Production must connect these surfaces to server-authorized membership, RLS, real/effective actor seams, Trust Compass policy, and append-only auditing.
