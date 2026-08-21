@@ -77,7 +77,7 @@ On Home, the briefing is the opening state of PAIGE's Command Center. On busines
 
 1. **Morning Command:** Home → Review with PAIGE → reprioritized response → client or approval continuation.
 2. **Campaign Creation:** In-motion campaign → visible KAVYN/ZION/OATHEN dispatch → strategic choice while work continues → proposal workspace.
-3. **Client Intelligence:** Clients → Anderson → structured record beside PAIGE → commitment/risk/recommendation → staged follow-up.
+3. **Client Intelligence:** Clients → selected authenticated record → structured record beside PAIGE → commitment/risk/recommendation → staged follow-up.
 4. **Live Voice:** Voice toggle → listening state while proposal/image work remains visible → direction can change without canceling other work.
 5. **Trust and Delivery:** reviewed artifact → inline Ask First approval → review workspace → approve once / remember / decline states. Prototype confirmation explicitly says nothing was sent.
 
@@ -413,7 +413,7 @@ This representative state lab is grounded in `agent-ui-placement-spec.md`, `role
 
 The account selector is visibly labeled **Representative account** and is a prototype state-lab control, not a production scope grant. Business-scope changes clear the previous tenant’s flow/conversation, Workspace, agent state, memory-equivalent UI, Trust drawer, draft, and approval/voice state. `PaigePanel` is keyed by account and business scope so local child state cannot survive a boundary change.
 
-**Business scope is not CRM context.** The PAIGE header shows each separately when relevant—for example `Business scope: Anderson Advisory` and `CRM context: Morgan Manufacturing`. Selecting a CRM client changes only the structured CRM Workspace. Selecting a business clears the prior tenant context before representative content appears.
+**Business scope is not CRM context.** The PAIGE header shows each separately when relevant—for example `Business scope: [authorized tenant]` and `CRM context: [tenant-scoped client]`. Selecting a CRM client changes only the structured CRM Workspace. Selecting a business clears the prior tenant context before representative content appears.
 
 ### Production authorization boundary
 
@@ -498,3 +498,22 @@ No operational route was removed. Links in the prototype point to current canoni
 ### Remaining mocked or owed behavior
 
 The redesign route still makes no Supabase query, RPC, Realtime subscription, Storage request, Edge Function invocation, send, approval, tenant switch, workflow run, or artifact mutation. Pipeline drag/drop, deal values, Studio generation, source health, durable run evidence, client health, cross-surface recommendations, tenant switch authorization, and all shown PAIGE execution remain representative here. Their production seams and acceptance gates are enumerated in the recovery matrix; “planned / owed” and “live but incomplete” must remain visible until those gates pass.
+
+## 22. Live-data switcher correction (2026-08-21)
+
+The repository and production-access audit found that the prototype had embedded fictional business and CRM names in its account-state demonstration. Those names were useful layout fixtures but were not authenticated production facts and therefore do not belong in a tenant or client selector.
+
+The public `/tenant-redesign` route now embeds **zero tenant names and zero CRM records**. Solo/sub-account headers say that the current authorized name is withheld; the agency control remains in aggregate scope and states that live tenants require authentication; operator tenant entry is disabled until a server-authorized list exists; Clients and Pipeline render honest no-data states with links to the connected, protected surfaces.
+
+Production must populate the business switcher only from the existing authenticated scope seams:
+
+- solo/sub-account: the current server-resolved tenant only;
+- agency: `agency_list_my_subaccounts` / the authorized membership subset only;
+- operator: the audited platform tenant registry and act-as seam only;
+- CRM clients: tenant-scoped `clients` records under RLS, never mixed into the tenant selector.
+
+No build-time list, documentation example, prior chat fixture, or client-side generic `admin` assumption may seed the switcher. If Supabase is unavailable or the user has no authorized scopes, the correct UI is an empty/error state—not representative names.
+
+### Verification limitation
+
+This environment contains the production project ref and public publishable key, but no authenticated Supabase MCP connection, service-role credential, database URL, GitHub remote, or authenticated GitHub CLI session. Direct external access is blocked by the environment proxy. Consequently, no claim about the current production tenant/client names is made here. The safe correction is to remove unverified names and make the production seam authoritative when an authenticated environment runs the surface.

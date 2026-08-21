@@ -1250,3 +1250,9 @@ memory-management, task-management.
 - ✅ `docs/handoff/tenant-capability-recovery-matrix.md` is the checked-in evidence ledger; `docs/handoff/tenant-platform-route-map.md` is the integration route contract. Existing operational routes remain intact until component reuse, authorization, Trust behavior, redirects, and acceptance tests are verified.
 - ✅ The generic `FloatingChatbot` is suppressed on `/admin` as well as the newer authenticated shells, preventing a redundant support-style launcher inside tenant operation.
 - ❗ `/tenant-redesign` remains representative and front-end only. Its links expose current operational homes; it does not inherit their authorization or call their Supabase/Edge seams.
+
+### Tenant/client data-honesty correction (2026-08-21)
+
+- ✅ Unverified business and CRM names were removed from the public tenant redesign. The prototype now embeds no tenant list and no CRM rows; protected operational surfaces remain the only route to live records.
+- ✅ The switcher contract is server-authorized: current tenant for solo/sub-account, authorized agency subset for agency users, audited registry/act-as for operators, and tenant-scoped `clients` only inside CRM context.
+- ❗ Live production names were not asserted because this checkout has no authenticated GitHub remote or Supabase management/database session. An unavailable authority yields an empty state, never invented data.
