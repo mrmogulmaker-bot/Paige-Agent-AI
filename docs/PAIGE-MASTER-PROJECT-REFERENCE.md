@@ -1219,3 +1219,15 @@ memory-management, task-management.
 ---
 
 **End of master reference. This doc supersedes memory. Update it, don't outgrow it.**
+
+### Tenant account redesign prototype (2026-08-21)
+
+- ✅ A front-end-only, representative-data tenant experience prototype is available at `/tenant-redesign`. It demonstrates the six-destination IA (Home, Clients, Work, Studio, Insights, Settings), persistent PAIGE command spine, contextual artifact/CRM workspace, five connected design flows, concurrent work, voice state, and inline Trust Compass approval.
+- ✅ The implementation contract is `docs/handoff/tenant-account-redesign.md`; it contains the audit, alternatives, selected Command Spine direction, screen/component inventories, tokens, responsive/motion/state specifications, old→new navigation map, interaction contracts, agent/artifact/trust rules, exact system copy, mock/functional boundary, accessibility requirements, and exportable assets.
+- ❗ This is not a backend-connected tenant surface and is not evidence of live records, integrations, agent runs, approvals, sends, or deliveries. Its state is local and representative. Existing `/business/*`, `/solo/*`, and `/agency/*` routing is unchanged.
+
+### Tenant redesign visual elevation (2026-08-21)
+
+- ✅ `/tenant-redesign` retains the approved six-destination IA, Command Spine, contextual Workspace, five flows, shared conversation, agent orchestration, structured CRM, Trust Compass, responsive intent, and representative-only boundary while adding the authored PAIGE material, typography, intelligence-state, geometric agent, Sovereign authority, and Workspace materialization systems.
+- ✅ PR #560 findings are resolved: the prototype route is excluded from the global `FloatingChatbot`, and all destination transitions close Workspace/navigation and dismiss PAIGE on mobile without changing the approved product model.
+- ❗ The route remains a front-end design prototype. Voice, orchestration, persistence, approvals, delivery, integrations, CRM mutations, and all shown business activity remain mocked; no production backend capability is claimed.
