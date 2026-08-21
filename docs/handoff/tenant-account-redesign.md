@@ -555,3 +555,7 @@ The supplied production audit is evidence dated 2026-08-21, not prototype fixtur
 The portal evidence and design contract are checked in at [`two-way-client-portal-audit.md`](./two-way-client-portal-audit.md), with a 26-row lifecycle annex in the recovery matrix. Portal remains the external presentation of the same Clients relationship, thread, engagement, request, approval, booking, file and activity records—not a second CRM or inbox.
 
 The prototype now exposes persistent light and dark modes, system-preference initialization, accessible theme controls in the tenant shell and customer portal preview, and light/dark PAIGE mark treatment. The portal demonstration also names its client-visible audience and AI role. These are representative front-end states; no portal record, invitation, message, action, booking, upload or approval is created.
+
+### Portal prototype depth correction
+
+The client account `Portal` sub-view now demonstrates the staff-side audience boundary, client-visible preview contract, operational request/approval/progress/member surfaces, and the rule that preview is an audience projection rather than impersonation. The client portal preview now demonstrates all six portal destinations, structured work cards, explicit client audience, one open/closed PAIGE surface, AI/automation disclosure, and same-thread human handoff language. All data remains representative and actions remain inert.
