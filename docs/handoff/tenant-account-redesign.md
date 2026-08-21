@@ -531,3 +531,13 @@ Destination and sub-view navigation now remain inside the PAIGE shell and update
 Until a real operational component is adapted and mounted, one shared `ConnectedFallback` appears at the Canvas boundary with the exact labels `Migration bridge / temporary` and `Open connected version`. It opens the canonical route in the same tab. This is explicitly an incomplete migration state—not integration. The bridge must be removed atomically when the real component mounts and passes its matrix acceptance test.
 
 The route map defines Canvas, Split, Focus, Docked panel, and optional Pop-out behavior. Ordinary destination navigation never pops out, no iframe or nested legacy shell is allowed, and Studio must suppress the outer PAIGE rail because the Studio session itself is PAIGE.
+
+## 25. Vibe Studio production reconciliation and integrity gate (2026-08-21)
+
+The supplied GitHub/Supabase audit establishes that Studio is substantial live code with connected production substrate, but not a fully proven lifecycle and not mounted inside the tenant redesign. The detailed repository reconciliation is [`vibe-studio-integrity-audit.md`](./vibe-studio-integrity-audit.md); the recovery matrix now contains a 20-row Studio lifecycle annex.
+
+The public redesign no longer labels Studio entry views `Live and connected`. They display `Live but incomplete`, name the existing Studio component family, expose an integrity gate, and retain one temporary connected-version bridge. This distinguishes a connected substrate from completed redesign integration.
+
+Repository migrations describe a restrictive tenant wall and narrow owner/template/admin SELECT policies for `studio_sessions` and parent-session-scoped SELECT for `studio_artifact_versions`, with authenticated direct writes revoked. The supplied production audit reports additional permissive `ALL` policies that may widen reads. Because this environment cannot retrieve their exact live names/expressions, no guessed destructive migration was authored. A checked-in read-only catalog audit must identify exact drift before a CLI-generated remediation and authenticated multi-user proof.
+
+The real Studio mount is blocked on: policy composition, explicit collaboration scope, private deliverable/signed URL tests, Edge inventory reconciliation, tenant-switch invalidation, and the acceptance gates in the lifecycle annex. After those pass, `StudioLayout`, `StudioHome`, `StudioShell`, `VibeStudio`, and `StudioLibrary` should replace the representative composition atomically without adding the outer PAIGE rail to immersive sessions.

@@ -1268,3 +1268,9 @@ memory-management, task-management.
 - ✅ `/tenant-redesign` sub-views now select URL-addressable Canvas states inside the persistent six-destination/PAIGE shell; duplicate legacy bridge controls are removed.
 - ✅ Exactly one shared, same-tab `Migration bridge / temporary` fallback is allowed per unmounted connected surface and is registered in the recovery matrix.
 - ❗ Bridge-backed surfaces remain incomplete. A bridge disappears only when the named existing component is mounted without legacy chrome and passes its tier, Trust, deep-link, and acceptance tests.
+
+### Vibe Studio production reconciliation (2026-08-21)
+
+- ✅ Studio is classified as substantial live code plus connected substrate—not a concept and not a fully integrated lifecycle. The supplied audit reports 17 sessions, 4 versions, and zero Library/deliverable/critique rows.
+- ✅ `docs/handoff/vibe-studio-integrity-audit.md`, `scripts/audit-studio-rls.sql`, and the matrix's 20-row Studio annex establish the integrity-first proof and implementation gates.
+- ❗ The real Studio is not mounted in `/tenant-redesign`. Production reportedly contains widening permissive policy shapes not present in the repository's intended narrow session/version policy design; exact live policy proof and authenticated multi-user testing block broad mounting.

@@ -115,3 +115,14 @@ Boundary-aware matching prevents accidental suppression of unrelated public path
 | Pop-out is optional, not navigation default | Delivered in prototype contract | Only Workspace artifacts/records can be user-popped; destination tabs never create windows |
 | Studio never duplicates PAIGE | Delivered as contract | Must be verified when real `StudioLayout`/`VibeStudio` mounts |
 | Same-tab fallback with return path | Partial | Fallback is same-tab and singular; legacy destinations still need a consistent return-to-redesign affordance during migration |
+
+## Vibe Studio audit addendum (2026-08-21)
+
+The supplied production evidence upgrades Studio from “design concept” to **connected substrate**, but does not close the integration gap:
+
+- 17 sessions and 4 artifact versions were reported; Library, deliverable, and critique tables were reported at zero rows.
+- The real Studio family and numerous generation/publishing/learning seams exist in code.
+- Production policy composition reportedly differs from the repository's narrow intended session/version policies and must be reconciled before broad mounting.
+- Studio remains **Live but incomplete** in the redesign until authenticated security and all 12 lifecycle gates pass.
+
+Block A integrity now precedes the previously recommended Studio mount. `scripts/audit-studio-rls.sql` is the read-only proof; `vibe-studio-integrity-audit.md` defines actors and expected visibility; the matrix annex defines 20 capability/security/deep-link/acceptance rows. No empty table is treated as proof of a working user lifecycle.
