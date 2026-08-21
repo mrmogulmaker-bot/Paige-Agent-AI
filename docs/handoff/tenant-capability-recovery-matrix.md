@@ -74,3 +74,11 @@ Access labels describe client route gates only. Supabase RLS, tenant membership,
 ## Security invariant
 
 The matrix never grants access. Production integration must resolve global `user_roles`, tenant `tenant_members`, and agency `agency_team_members` independently; enforce RLS; and preserve real/effective actor logging for operator or agency act-as. A generic `admin` label is not an authorization model.
+
+## Temporary connected-version bridge register
+
+Every recovery-matrix row whose connected component is **not yet mounted** inside `/tenant-redesign` is represented by one shared `ConnectedFallback` control. It opens the row’s existing canonical route in the same tab and is explicitly labeled `Migration bridge / temporary`.
+
+- **Current status:** all Clients, Work, Studio, Insights, and Settings connected components remain bridge-backed in the public design route; the Pipeline and Studio compositions are designs, not mounted production components.
+- **Removal condition:** reuse/adapt the named component in the shell Canvas, suppress obsolete legacy chrome, preserve the durable destination/view URL and PAIGE context, pass the row’s tier/Trust/deep-link acceptance test, then remove that row’s bridge in the same commit.
+- **Prohibited:** duplicate links to the same legacy route, iframe embedding, default pop-out navigation, or describing a bridge-backed surface as integrated.

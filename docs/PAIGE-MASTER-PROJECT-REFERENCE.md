@@ -1262,3 +1262,9 @@ memory-management, task-management.
 - ✅ `docs/handoff/tenant-redesign-gap-audit.md` compares the full Capability Recovery handoff against actual code and classifies each requirement as delivered, partial, owed, or production-only.
 - ✅ Floating-chat suppression is centralized and regression-tested across `/tenant-redesign`, `/admin`, `/agency`, `/business`, `/solo`, `/operator`, and `/app` roots and descendants.
 - ❗ Honest completion state: Phase 1 substantially complete; Phase 2 partial; Phase 3 early; Phase 4 prototype-only; Phase 5 not started. Deep links and representative compositions are not connected component integration.
+
+### Connected-surface navigation contract (2026-08-21)
+
+- ✅ `/tenant-redesign` sub-views now select URL-addressable Canvas states inside the persistent six-destination/PAIGE shell; duplicate legacy bridge controls are removed.
+- ✅ Exactly one shared, same-tab `Migration bridge / temporary` fallback is allowed per unmounted connected surface and is registered in the recovery matrix.
+- ❗ Bridge-backed surfaces remain incomplete. A bridge disappears only when the named existing component is mounted without legacy chrome and passes its tier, Trust, deep-link, and acceptance tests.

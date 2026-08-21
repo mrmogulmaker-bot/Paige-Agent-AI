@@ -523,3 +523,11 @@ This environment contains the production project ref and public publishable key,
 The complete line-by-line comparison is checked in at [`tenant-redesign-gap-audit.md`](./tenant-redesign-gap-audit.md). Its conclusion is intentionally stricter than earlier summaries: Phase 1 is substantially complete; Phase 2 is partial; Phase 3 is early; Phase 4 is prototype-only; Phase 5 has not started. Canonical links and design compositions are not equivalent to mounting and verifying connected operational components.
 
 The prior global-chat suppression was incomplete. Exact matching missed `/tenant-redesign/`; trailing-slash prefixes missed bare `/agency`, `/business`, and `/solo`; `/app` remained eligible; and ad hoc `startsWith('/admin')` could suppress unrelated names. `shouldRenderFloatingChatbot` now owns one boundary-aware rule for PAIGE-owned shells, and its regression tests cover root, nested, trailing-slash, and near-prefix public paths.
+
+## 24. Connected-surface navigation decision (2026-08-21)
+
+Destination and sub-view navigation now remain inside the PAIGE shell and update durable `destination` / `view` query parameters. The top context acts as a breadcrumb, browser back/forward restores the selected design surface, and PAIGE remains present. Duplicate legacy-route buttons were removed.
+
+Until a real operational component is adapted and mounted, one shared `ConnectedFallback` appears at the Canvas boundary with the exact labels `Migration bridge / temporary` and `Open connected version`. It opens the canonical route in the same tab. This is explicitly an incomplete migration state—not integration. The bridge must be removed atomically when the real component mounts and passes its matrix acceptance test.
+
+The route map defines Canvas, Split, Focus, Docked panel, and optional Pop-out behavior. Ordinary destination navigation never pops out, no iframe or nested legacy shell is allowed, and Studio must suppress the outer PAIGE rail because the Studio session itself is PAIGE.

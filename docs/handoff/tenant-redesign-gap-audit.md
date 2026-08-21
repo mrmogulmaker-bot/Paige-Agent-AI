@@ -100,3 +100,18 @@ Boundary-aware matching prevents accidental suppression of unrelated public path
 5. **Mount Studio as an immersive route:** reuse the existing Studio family and suppress the persistent PAIGE rail inside the session.
 6. **Connect Insights and Settings:** reuse real data/components, retain source-state honesty, and reconcile Pipeline KPIs.
 7. **Run Phase 5:** tenant isolation, RLS, act-as audit, deep links, themes, viewport matrix, keyboard/focus, reduced motion, and every recovery-matrix acceptance test before retiring anything.
+
+## Connected-surface navigation addendum (2026-08-21)
+
+| New decision | Implementation status | Evidence / remaining work |
+|---|---|---|
+| Remove duplicate legacy bridge buttons | Delivered | All generic `Open current surface`, `Open connected surface`, and duplicate Clients links were removed; `ConnectedFallback` is the only bridge primitive |
+| Sub-view opens inside shell Canvas | Delivered for design state | The selected view remains inside the six-destination shell with PAIGE visible; connected production components are still owed |
+| Durable URL, refresh, back/forward | Delivered for prototype selection | `destination` and normalized `view` query parameters drive the active destination/view and breadcrumb |
+| Preserve tenant, breadcrumb, PAIGE | Delivered in prototype | Selection does not replace the shell or shared thread; authenticated tenant behavior remains production-only |
+| Reuse component without legacy chrome | Owed | Current fallback remains until each existing component is adapted/mounted |
+| No iframe / nested shell | Delivered | Prototype contains neither |
+| Canvas / Split / Focus / Docked panel | Partial | Canvas selection, PAIGE split, Workspace focus and docked modes exist; connected components must opt into the smallest appropriate set |
+| Pop-out is optional, not navigation default | Delivered in prototype contract | Only Workspace artifacts/records can be user-popped; destination tabs never create windows |
+| Studio never duplicates PAIGE | Delivered as contract | Must be verified when real `StudioLayout`/`VibeStudio` mounts |
+| Same-tab fallback with return path | Partial | Fallback is same-tab and singular; legacy destinations still need a consistent return-to-redesign affordance during migration |
