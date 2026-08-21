@@ -180,13 +180,15 @@ const CHATBOT_HIDDEN_ROUTES = ["/", "/premium", "/tenant-redesign"];
 // (the TopBar "Ask Paige" launcher + a full Paige tab with Chat/Knowledge/Sub-Agents/
 // Actions/Skills) — a second floating chat bubble on top of that is a duplicate
 // surface for the same capability (§18 one home), not a second option. Hidden on
-// these shells; unaffected everywhere else (legacy /admin, marketing, etc.).
+// these shells. `/admin` is also an authenticated tenant surface with its own PAIGE workspace;
+// the support-style floating launcher is therefore suppressed there as well. Marketing and
+// external customer properties remain technically separate.
 //
 // `/operator` joins them (owner-ruled 2026-08-19): the operator console carries its own
 // Paige entry — the full Paige branch plus the top-bar slide-out — so the floating orb is
 // the same §18 duplicate here, and it overlays the console's own chrome. No trailing slash:
 // the operator shell's root IS `/operator`, so the prefix has to match the bare path too.
-const CHATBOT_HIDDEN_PREFIXES = ["/agency/", "/business/", "/solo/", "/operator"];
+const CHATBOT_HIDDEN_PREFIXES = ["/admin", "/agency/", "/business/", "/solo/", "/operator"];
 const GatedChatbot = () => {
   const { pathname } = useLocation();
   if (CHATBOT_HIDDEN_ROUTES.includes(pathname)) return null;

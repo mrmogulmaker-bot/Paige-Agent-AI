@@ -1243,3 +1243,10 @@ memory-management, task-management.
 - ✅ The `/tenant-redesign` state lab now demonstrates the existing Solo, sub-account, agency parent/entered sub-account, Super Admin/God, and client placement taxonomy without inventing a hierarchy. Business scope and CRM client context are separate; business changes clear prior tenant conversation/Workspace/agent/memory/Trust/draft state.
 - ✅ Shared `PaigeSymbol` adds typed Command, Sovereign, and provisional Artifact territories while preserving `PaigeMark` compatibility. The prototype demonstrates semantic state, dark/light, spectral/monochrome, and favicon forms; production call sites are classified in the existing handoff for incremental migration.
 - ❗ Account and symbol states remain representative. No React state or symbol authorizes cross-account access. Production requires `user_roles` / `tenant_members` / `agency_team_members` separation, server membership, RLS, real/effective actor logging, operator act-as, two-key break-glass, and append-only audit.
+
+### Tenant capability recovery architecture (2026-08-21)
+
+- ✅ The tenant redesign now maps real repository capabilities into the approved six-destination shell through destination-specific secondary navigation, a first-class Pipeline composition, durable Work runs, the existing immersive Vibe Studio family, evidence-state Insights, and complete Settings groups.
+- ✅ `docs/handoff/tenant-capability-recovery-matrix.md` is the checked-in evidence ledger; `docs/handoff/tenant-platform-route-map.md` is the integration route contract. Existing operational routes remain intact until component reuse, authorization, Trust behavior, redirects, and acceptance tests are verified.
+- ✅ The generic `FloatingChatbot` is suppressed on `/admin` as well as the newer authenticated shells, preventing a redundant support-style launcher inside tenant operation.
+- ❗ `/tenant-redesign` remains representative and front-end only. Its links expose current operational homes; it does not inherit their authorization or call their Supabase/Edge seams.

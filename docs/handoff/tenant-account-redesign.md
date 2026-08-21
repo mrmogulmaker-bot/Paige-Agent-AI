@@ -462,3 +462,39 @@ Settings contains a symbol state lab showing all three territories in dark spect
 ### Honest functional boundary
 
 Account switching, context clearing, symbols, scope banners, read-only agency gating, disabled break-glass form, and state demonstrations are local prototype behavior. They do not query membership, authorize access, log an audit row, expose PII, change a tenant, remember approval, or perform a write. Production must connect these surfaces to server-authorized membership, RLS, real/effective actor seams, Trust Compass policy, and append-only auditing.
+
+## 21. Capability recovery and integration architecture (2026-08-21)
+
+The visual shell now exposes the full product depth through destination-specific secondary navigation rather than adding primary destinations. The checked-in [capability recovery matrix](./tenant-capability-recovery-matrix.md) is the evidence ledger: every row records the existing route/component/data seam, an honest build classification, new home, Trust requirement, deep-link policy, and acceptance test. The [route map](./tenant-platform-route-map.md) defines the target nesting without retiring current URLs.
+
+### Before / after
+
+- **Before:** Clients demonstrated a generic relationship list; Work, Studio, Insights, and Settings were shallow indexes with no visible connection to the current operational graph.
+- **After:** Clients exposes the nine approved CRM sub-views and a first-class pipeline board design linked to the real `PipelineAdmin`; Work exposes durable runs and approval authority; Studio previews the existing immersive `StudioLayout` / `StudioHome` / `StudioShell` / `VibeStudio` family; Insights labels connected, incomplete, and unverified evidence; Settings exposes the complete configuration taxonomy.
+- **Unchanged:** the six destinations, shared PAIGE conversation, Command Spine, spatial Workspace, five flows, account taxonomy, Trust Compass, responsive shell, and representative-data boundary.
+
+### Reuse contract
+
+Production integration reuses components rather than recreating them:
+
+| New home | Required reuse |
+|---|---|
+| Clients / Contacts | `ContactsAdmin`, `ContactDetail`, `ClientJourney` |
+| Clients / Conversations | `ClientsConversations` and its subordinate tab family |
+| Clients / Pipeline | `PipelineAdmin`, `DealDrawer`, `NewDealDialog`, `PipelineFromProgramDialog` |
+| Work | `PlanningAdmin`, `CalendarAdmin`, `WorkflowsList`, `WorkflowRuns`, `WorkflowRunDetail`, `ApprovalsInbox`, `ApprovalDetail` |
+| Studio | `StudioLayout`, `StudioHome`, `StudioLibrary`, `VibeStudio`, `StudioShell`; the session is PAIGE, so no second rail mounts |
+| Insights | `AnalyticsDashboard`; Sales/Forecast reads must reuse the Pipeline deal/stage scope |
+| Settings | existing `Setup*`, `IntegrationsHub`, `TeamHub`, `SubAgentsAdmin`, `SkillsHub`, Marketplace, knowledge, autonomy and billing components |
+
+### Deep-link and migration rule
+
+No operational route was removed. Links in the prototype point to current canonical routes and clearly state that an authorized tenant session is required. A route can move only after the same connected component is mounted in its new nested home, tenant/tier/Trust behavior passes the matrix test, old URL redirects are verified, and cached business/client/conversation/workspace/agent/memory/authority state is cleared on scope change.
+
+### Floating conversation boundary
+
+`GatedChatbot` now suppresses the generic floating chatbot throughout `/admin` in addition to the agency, business, solo, operator, and prototype shells. Authenticated tenant operation therefore has one PAIGE entry model: its owned workspace/rail/edge control. This does not delete `FloatingChatbot`; it remains available to technically separate properties where that support-style surface is appropriate.
+
+### Remaining mocked or owed behavior
+
+The redesign route still makes no Supabase query, RPC, Realtime subscription, Storage request, Edge Function invocation, send, approval, tenant switch, workflow run, or artifact mutation. Pipeline drag/drop, deal values, Studio generation, source health, durable run evidence, client health, cross-surface recommendations, tenant switch authorization, and all shown PAIGE execution remain representative here. Their production seams and acceptance gates are enumerated in the recovery matrix; “planned / owed” and “live but incomplete” must remain visible until those gates pass.
