@@ -1219,3 +1219,9 @@ memory-management, task-management.
 ---
 
 **End of master reference. This doc supersedes memory. Update it, don't outgrow it.**
+
+### Tenant account redesign prototype (2026-08-21)
+
+- ✅ A front-end-only, representative-data tenant experience prototype is available at `/tenant-redesign`. It demonstrates the six-destination IA (Home, Clients, Work, Studio, Insights, Settings), persistent PAIGE command spine, contextual artifact/CRM workspace, five connected design flows, concurrent work, voice state, and inline Trust Compass approval.
+- ✅ The implementation contract is `docs/handoff/tenant-account-redesign.md`; it contains the audit, alternatives, selected Command Spine direction, screen/component inventories, tokens, responsive/motion/state specifications, old→new navigation map, interaction contracts, agent/artifact/trust rules, exact system copy, mock/functional boundary, accessibility requirements, and exportable assets.
+- ❗ This is not a backend-connected tenant surface and is not evidence of live records, integrations, agent runs, approvals, sends, or deliveries. Its state is local and representative. Existing `/business/*`, `/solo/*`, and `/agency/*` routing is unchanged.
