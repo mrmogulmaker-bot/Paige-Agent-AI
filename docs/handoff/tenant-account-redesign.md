@@ -559,3 +559,14 @@ The prototype now exposes persistent light and dark modes, system-preference ini
 ### Portal prototype depth correction
 
 The client account `Portal` sub-view now demonstrates the staff-side audience boundary, client-visible preview contract, operational request/approval/progress/member surfaces, and the rule that preview is an audience projection rather than impersonation. The client portal preview now demonstrates all six portal destinations, structured work cards, explicit client audience, one open/closed PAIGE surface, AI/automation disclosure, and same-thread human handoff language. All data remains representative and actions remain inert.
+
+## 28. Illuminated Precision hero implementation (2026-08-21)
+
+The prototype now implements four interactive design-standard surfaces rather than generic capability placeholders:
+
+- **Insights / Signal Field:** ranked developments, selectable signals, time horizon, forecast-confidence honesty, provenance, evidence drawer, PAIGE discussion, and governed conversion to action.
+- **Insights / Data Health:** graph/list lineage modes, operational source states, selected dependencies, PII boundary, and “what breaks” interrogation. Connection and authorization remain in Settings / Data Sources.
+- **Studio / Creation Chamber:** coordinated brief, canvas, inspector, build/version/approval rail, desktop/tablet/mobile preview, conversational selection context, and full-canvas return. A defensive route fallback prevents an undefined capability lookup from blanking the shell.
+- **Work / Execution Theater:** compressed and expanded lineage, intent/plan/agent/review/delivery steps, autonomy/audience metadata, exception state, and PAIGE resolution while conversation remains available.
+
+The visual foundation now names atmosphere, recessed, working, active-instrument, and command depth tokens; stable status colors; chart grid/signal tokens; edge highlights; and fast/spatial/focus timing tokens. The laptop-height rule explicitly reduces Home top spacing below 800px so the greeting begins below the header at 1366×768. The extra desktop PAIGE header launcher was removed: the command spine is the entry surface, with only the approved centered mobile control remaining at small breakpoints.

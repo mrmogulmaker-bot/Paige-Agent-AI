@@ -8,7 +8,7 @@ This is the target design architecture over the **existing** operational route g
 | Clients | Overview, Accounts, Contacts, Conversations, Pipeline, Client journeys, Appointments, Files, Service history, Portal | `/admin/clients-hub`, `/admin/clients`, `/admin/contacts/:id`, `/admin/clients-hub/conversations`, `/admin/clients-hub/pipeline`, journey routes, `/admin/clients-hub/delivery` |
 | Work | Today, Tasks, Calendar, Projects, Workflows, Automations, Runs, Scheduled, Approvals | `/admin/planning`, delivery calendar, `/admin/setup/automations`, workflow detail/run routes, `/admin/approvals` |
 | Studio | Projects, Recent sessions, Starred, Templates, Library; immersive session | `/admin/studio?view=…`, `/admin/studio/library`, `/admin/studio/:sessionId`; reuse `StudioLayout`/`StudioHome`/`StudioShell`/`VibeStudio` |
-| Insights | Executive, Sales, Revenue, Marketing, Client health, Operations, Forecasts, Recommendations | `/admin/analytics`, same pipeline deal scope, subscription events; remaining unified views are owed and must label incomplete sources |
+| Insights | Executive, Sales, Revenue, Marketing, Client health, Operations, Forecasts, Recommendations, Data Health | `/admin/analytics`, same pipeline deal scope, subscription events; remaining unified views are owed and must label incomplete sources |
 | Settings | Business, Business Vault, Brand, Integrations, Team, Workforce, Capabilities, Marketplace, Skills, Playbooks, Knowledge/memory, Trust, Notifications, Models/routing, API/MCP, Billing | existing `/admin/setup/*`, `/admin/team`, `/admin/sub-agents`, `/admin/marketplace`, `/admin/skills`, knowledge, approval/autonomy, notifications and connector routes |
 
 ## Navigation contract

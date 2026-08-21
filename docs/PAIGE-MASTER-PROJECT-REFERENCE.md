@@ -1284,3 +1284,7 @@ The tenant redesign now separates Settings / Business Vault, Marketplace, and In
 `/tenant-redesign` now supports remembered light and dark modes and includes Portal as an incomplete Clients sub-view. The portal is defined as the external half of the shared client relationship—not a parallel CRM, inbox, or operator chat. A checked-in audit and 26-row matrix annex preserve the supplied production evidence and block “complete” status on identity, canonical conversation, shared work, tenant/account isolation and authenticated acceptance proof.
 
 The two-way portal design was subsequently deepened from a landing preview into coordinated staff/client surfaces: six client destinations, structured action cards, one PAIGE conversation state, explicit audiences, human handoff continuity, and a staff Portal view with privacy projections. No connectivity claim changed.
+
+### Illuminated Precision hero pass — 2026-08-21
+
+The tenant prototype now implements Signal Field, Living Lineage, Creation Chamber, and Execution Theater as interactive representative surfaces. Studio navigation is defensive against missing view lookups, laptop-height Home spacing is corrected, Data Health is an Insights observation surface, and the redundant desktop PAIGE header launcher is removed. Automated shell tests cover all six destinations, Studio rendering, and persistent theme switching. The browser screenshot/deployment limitation is recorded without fabricating evidence.
