@@ -5,7 +5,7 @@ This is the target design architecture over the **existing** operational route g
 | Primary destination | Target sub-views | Current canonical implementation homes |
 |---|---|---|
 | Home | Briefing, priorities, approvals/exceptions, active work, recommendations, calendar preview, pipeline/client/source signals | `/admin`; summaries deep-link to the canonical systems below |
-| Clients | Overview, Accounts, Contacts, Conversations, Pipeline, Client journeys, Appointments, Files, Service history | `/admin/clients-hub`, `/admin/clients`, `/admin/contacts/:id`, `/admin/clients-hub/conversations`, `/admin/clients-hub/pipeline`, journey routes, `/admin/clients-hub/delivery` |
+| Clients | Overview, Accounts, Contacts, Conversations, Pipeline, Client journeys, Appointments, Files, Service history, Portal | `/admin/clients-hub`, `/admin/clients`, `/admin/contacts/:id`, `/admin/clients-hub/conversations`, `/admin/clients-hub/pipeline`, journey routes, `/admin/clients-hub/delivery` |
 | Work | Today, Tasks, Calendar, Projects, Workflows, Automations, Runs, Scheduled, Approvals | `/admin/planning`, delivery calendar, `/admin/setup/automations`, workflow detail/run routes, `/admin/approvals` |
 | Studio | Projects, Recent sessions, Starred, Templates, Library; immersive session | `/admin/studio?view=…`, `/admin/studio/library`, `/admin/studio/:sessionId`; reuse `StudioLayout`/`StudioHome`/`StudioShell`/`VibeStudio` |
 | Insights | Executive, Sales, Revenue, Marketing, Client health, Operations, Forecasts, Recommendations | `/admin/analytics`, same pipeline deal scope, subscription events; remaining unified views are owed and must label incomplete sources |
@@ -42,3 +42,8 @@ No iframe, nested legacy application shell, automatic browser pop-out, or duplic
 - **Marketplace** is acquisition: discover, inspect manifest/permissions/cost, approve, purchase, install, and publisher review.
 - **Capabilities** is operation after installation: configure, authorize, monitor, update, disable, and uninstall.
 - **Studio** may originate a publisher package but does not own Marketplace review or distribution.
+
+
+## Client portal boundary
+
+Portal is a Clients sub-view on the business side and a six-item customer workspace (`Home`, `Conversation`, `Plan`, `Documents`, `Meetings`, `Account`) externally. Both presentations resolve the same relationship objects. Portal messaging must converge on canonical Conversations or a formal adapter; it cannot become a permanent second inbox.

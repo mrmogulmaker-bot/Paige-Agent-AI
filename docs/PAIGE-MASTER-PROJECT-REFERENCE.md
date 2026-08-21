@@ -1278,3 +1278,7 @@ memory-management, task-management.
 ### Business Vault and Marketplace truth pass — 2026-08-21
 
 The tenant redesign now separates Settings / Business Vault, Marketplace, and Installed Capabilities by lifecycle. Business Vault is a defined but mostly owed unified product over distributed sources; Marketplace has live catalog/install/economic substrate but incomplete verified lifecycle UX; Capabilities owns operation after installation. The checked-in audit and recovery-matrix annexes preserve supplied production evidence without embedding it as UI data. No secret table is treated as a tenant Vault, no Vault health score is fabricated, and `/tenant-redesign` remains front-end-only.
+
+### Two-way portal and dual-theme pass — 2026-08-21
+
+`/tenant-redesign` now supports remembered light and dark modes and includes Portal as an incomplete Clients sub-view. The portal is defined as the external half of the shared client relationship—not a parallel CRM, inbox, or operator chat. A checked-in audit and 26-row matrix annex preserve the supplied production evidence and block “complete” status on identity, canonical conversation, shared work, tenant/account isolation and authenticated acceptance proof.

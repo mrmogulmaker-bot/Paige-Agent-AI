@@ -158,3 +158,36 @@ The supplied production audit reports 1 vendor, 19 items, 15 versions, 5 install
 | Studio handoff | Substrate; E2E proof owed | “Prepare this Studio project for review.” | Tenant owner + Marketplace review | Lineage retained; private source not published |
 | Private distribution | Scope fields/migrations | Tenant/agency-private listing | Authorized scopes only; sibling isolation | Only permitted tenants/sub-accounts discover/install |
 | Public distribution | Publisher/review substrate | Public review queue | Operator approval; security and IP checks | Never publicly discoverable before approval |
+
+## Two-way client portal lifecycle annex
+
+Each row preserves one shared relationship system. `Client` and `staff` describe audiences, not authorization shortcuts.
+
+| # | Capability / seam and state | Client / staff audience | Trust lane | Security, deep link and acceptance evidence |
+|---:|---|---|---|---|
+| 1 | Brand/config resolution — `PortalGateway`, brand/config hooks; built substrate | Client branded shell / staff Portal Studio | Read | Tenant hostname/config server-resolved; fallback and contrast tested |
+| 2 | Invitation/acceptance — invite Edge; E2E owed | Invitee / authorized inviter | Ask First | Single-use expiry, tier and tenant binding; acceptance enters correct account |
+| 3 | Account membership — linked-client partial; organization model owed | Account member / CRM staff | Restricted | Dedicated role membership; individual actor + represented organization logged |
+| 4 | Portal Home — `AppShell`; partial | Next action/progress / preview | Read | Only account-authorized summaries; durable `/app` home |
+| 5 | Shared conversation — thread decision owed | Portal members / canonical Conversations | Lane per action | One thread/adapter, no copied inbox; channel continuity proven |
+| 6 | Internal boundary — composition owed | Never client / staff only | Restricted | Every composer names audience; internal/reasoning excluded from portal payload |
+| 7 | Customer PAIGE — `PaigeChat`, public-chat Edge; built seam | Disclosed AI / supervision | Portal autonomy | Portal knowledge only; one launcher; thread resumes |
+| 8 | Agent routing/disclosure — orchestration partial | Simplified contribution / full attribution | Governed | PAIGE remains owner; specialist identity and automation state disclosed appropriately |
+| 9 | Human handoff — incomplete | Same conversation / takeover controls | Escalated | Human joins without restart; SLA, actor and transcript continuity visible |
+| 10 | Program/engagement — program schema, 0 rows supplied | Plan / management | Read/change governed | Membership + enrollment scope; canonical engagement deep link |
+| 11 | Phase progress — phase state schema, 0 rows | Milestones/evidence / update | Stage change Ask First | Progress derives from shared state and identifies updater |
+| 12 | Action items — `ActionItems`, action bus 0 rows | Complete/respond / supervise | Server-mediated | Trusted RPC/Edge validation; idempotent response and recovery |
+| 13 | Document requests — schema 0 rows | Request card / create request | Ask First if sensitive | Account/document-category scope; request deep link and expiry |
+| 14 | Client upload — file seam, 0 rows | Upload / review | Autonomous acknowledge | Private path, signed URL, malware/type/size tests, resumable failure |
+| 15 | Shared files — `client_files`, 0 rows | Explicitly shared / permission owner | Share Ask First | Internal files never leak; revoke invalidates links |
+| 16 | Approval/decision — program approvals 0 rows | Decide / prepare and audit | Human decision | Consequence, scope and reversibility shown; immutable actor evidence |
+| 17 | Booking/reschedule — booking seams; portal use unproven | Slots/manage / calendar | Consequential changes Ask First | Tenant availability and account actor; no duplicate booking |
+| 18 | Meeting preparation/summary — partial | Shared prep/summary / internal prep | Draft/review | Internal notes excluded; approved summary links to meeting |
+| 19 | Deliverable review — workflow incomplete | Review/approve / deliver | Final delivery Ask First | Same artifact/version; download approval and receipt audited |
+| 20 | Notifications/preferences — notifications substrate | Own preferences / delivery health | User-controlled | Channel consent, dedupe and account-safe deep links |
+| 21 | Enterprise roles — owed | Owner/executive/contributor/finance/legal/viewer / access admin | Restricted | Engagement/document/entity restrictions and multi-account identity tested |
+| 22 | CRM portal preview — `PortalStudio`; partial | What client sees / staff preview | Read | Preview impersonates no client and excludes private/internal data |
+| 23 | Audit/activity — fragmented | Appropriate history / full authorized audit | Read restricted | Individual actor, organization, automation/human state and source recorded |
+| 24 | Tenant/account switch isolation — unproven | Current account only / authorized portfolio | Restricted | Clear branding, cache, draft, thread, signed URL and action state on switch |
+| 25 | Failure/retry/recovery — partial | Honest retry / evidence | Failed/blocked | Idempotency prevents duplicate message/upload/booking/approval |
+| 26 | Export/deletion/privacy — incomplete | Own authorized data / governed fulfillment | Ask First/restricted | Membership, retention, legal hold, export scope and deletion audit tested |

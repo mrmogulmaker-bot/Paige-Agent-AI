@@ -549,3 +549,9 @@ The detailed evidence and integration gates are checked in at [`business-vault-m
 Settings preserves three distinct homes: **Business Vault** for verified business facts and evidence, **Marketplace** for discovery/purchase/install, and **Capabilities** for operating installed items. The prototype now demonstrates this distinction without displaying production rows or pretending that a unified Vault exists. Vault health is explicitly `Not established`; internal secrets are never treated as user-visible Vault records; Marketplace is labeled `Live substrate · UX incomplete`; and Capabilities is labeled as an incomplete post-install lifecycle.
 
 The supplied production audit is evidence dated 2026-08-21, not prototype fixture data. Production integration must derive catalog visibility, memberships, manifests, price, tenant, permissions, and Trust state on the server. The prototype performs no query, purchase, install, score calculation, share, or secret retrieval.
+
+## 27. Two-way portal and theme reconciliation (2026-08-21)
+
+The portal evidence and design contract are checked in at [`two-way-client-portal-audit.md`](./two-way-client-portal-audit.md), with a 26-row lifecycle annex in the recovery matrix. Portal remains the external presentation of the same Clients relationship, thread, engagement, request, approval, booking, file and activity records—not a second CRM or inbox.
+
+The prototype now exposes persistent light and dark modes, system-preference initialization, accessible theme controls in the tenant shell and customer portal preview, and light/dark PAIGE mark treatment. The portal demonstration also names its client-visible audience and AI role. These are representative front-end states; no portal record, invitation, message, action, booking, upload or approval is created.
