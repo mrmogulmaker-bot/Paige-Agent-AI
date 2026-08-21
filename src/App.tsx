@@ -88,6 +88,8 @@ const AgencyEntry = lazyWithReload(() => import("./agency/AgencyEntry"));
 // "subaccount"), its own top-level address (/business/{account}), peer to
 // /agency and /admin.
 const BusinessEntry = lazyWithReload(() => import("./business/BusinessEntry"));
+// Tenant-account redesign prototype — local representative data only; no backend seams.
+const TenantRedesign = lazyWithReload(() => import("./prototype/TenantRedesign"));
 // Solo operator side (§65 R3d-i) — the SoloApp shell, its own top-level
 // address (/solo/{account}), peer to /business and /admin.
 const SoloEntry = lazyWithReload(() => import("./solo/SoloEntry"));
@@ -234,6 +236,7 @@ const App = () => (
             {/* §65 R4 — the operator subtree. The `index` leg inside OperatorEntry keeps bare
                 /operator as the login door (nothing in the product links to it, so a blank
                 root would ship undetected); `:section/*` is the console behind ONE guard. */}
+            <Route path="/tenant-redesign" element={<PageSuspense><TenantRedesign /></PageSuspense>} />
             <Route path="/operator/*" element={<PageSuspense><OperatorEntry /></PageSuspense>} />
             <Route path="/join-platform" element={<PageSuspense><JoinPlatform /></PageSuspense>} />
             <Route path="/book/:slug" element={<PageSuspense><BookingPage /></PageSuspense>} />
