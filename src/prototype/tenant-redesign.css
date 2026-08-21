@@ -22,6 +22,29 @@
 .tr-skip { position: fixed; top: -60px; left: 16px; z-index: 100; padding: 10px 14px; background: var(--ink); color: var(--env); text-decoration: none; }
 .tr-skip:focus { top: 16px; }
 
+/* Settings truth surfaces: definition, acquisition, then operation. */
+.tr-vault-design,.tr-market-design,.tr-capabilities-design { display:grid; gap:18px; min-width:0; }
+.tr-vault-design>header,.tr-market-design>header,.tr-capabilities-design>header { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
+.tr-vault-design>header { justify-content:flex-start; }
+.tr-vault-design h3,.tr-market-design h3,.tr-capabilities-design h3 { margin-top:5px; font-size:clamp(20px,2vw,30px); font-weight:520; letter-spacing:-.025em; }
+.tr-vault-health { display:grid; grid-template-columns:minmax(130px,.35fr) 1fr; gap:20px; padding:18px 0; border-block:1px solid var(--line); }
+.tr-vault-health span { display:grid; gap:5px; }
+.tr-vault-health small,.tr-vault-columns small,.tr-market-flow small,.tr-install-receipt small,.tr-capabilities-design small { color:var(--muted); }
+.tr-vault-health b { color:var(--warning); font:600 18px var(--font-display); }
+.tr-vault-columns { display:grid; grid-template-columns:1.2fr 1fr; gap:32px; }
+.tr-vault-columns section { display:grid; gap:7px; }
+.tr-vault-columns section>span { display:grid; grid-template-columns:8px 1fr auto; align-items:center; gap:9px; padding:8px 0; border-bottom:1px solid var(--line-soft); }
+.tr-vault-columns i { width:4px; height:4px; rotate:45deg; background:var(--champagne-deep); }
+.tr-secret-boundary,.tr-install-receipt { display:flex; align-items:center; gap:12px; padding:14px 16px; background:color-mix(in srgb,var(--surface-raised) 68%,transparent); border-left:1px solid var(--champagne-deep); }
+.tr-secret-boundary>span,.tr-install-receipt>span { display:grid; gap:3px; }
+.tr-market-flow { display:grid; grid-template-columns:repeat(4,minmax(100px,1fr)); border-block:1px solid var(--line); }
+.tr-market-flow>span { display:grid; gap:5px; padding:15px 12px; border-right:1px solid var(--line-soft); }
+.tr-market-flow i { color:var(--champagne-deep); font:10px var(--font-data); font-style:normal; }
+.tr-install-receipt button { margin-left:auto; }
+.tr-capabilities-design>div { display:grid; grid-template-columns:repeat(4,1fr); border-block:1px solid var(--line); }
+.tr-capabilities-design section { display:grid; gap:4px; padding:16px 12px; border-right:1px solid var(--line-soft); }
+@media(max-width:900px){.tr-vault-columns,.tr-vault-health{grid-template-columns:1fr}.tr-market-flow,.tr-capabilities-design>div{grid-template-columns:repeat(2,1fr)}}
+
 /* Navigation plane */
 .tr-nav { position: relative; z-index: 30; min-width: 0; padding: 22px 13px 16px; display: flex; flex-direction: column; background: var(--nav); border-right: 1px solid var(--line); box-shadow: inset -1px 0 rgba(0,0,0,.45); }
 .tr-nav::before { content:""; position:absolute; inset:0; pointer-events:none; opacity:.28; background: radial-gradient(70% 45% at 0 0,rgba(234,213,170,.07),transparent 70%); }

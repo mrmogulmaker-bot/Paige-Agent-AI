@@ -109,3 +109,52 @@ The supplied production counts are audit evidence dated 2026-08-21, not UI fixtu
 | 18 | Cross-capability attachment/handoff | Client/Conversation/Work/Growth integrations | Existing record IDs, messages, tasks, growth artifacts | Planned/incomplete orchestration | “Attach to client; send after approval.” | Destination-specific Trust | Both source artifact and target record tenant match; no IDOR | Studio source + target canonical link | Attach/send/schedule/publish without file copy; provenance and undoability shown |
 | 19 | Tenant-switch invalidation/isolation | `StudioLayout`, session hooks, tenant context | query/local/session caches; RLS/RPC scope | Not proven | Exit/clear current Studio context | Restricted boundary | Two tenants: no session, draft, transcript, scratchpad, signed URL, thumbnail or cache survives switch | Destination overview after switch | Safe view preserved only when valid; otherwise Studio Home; zero stale flash |
 | 20 | Failure/retry/recovery | Build states, generation helpers, publish error types | Edge/RPC errors; session/version state | Partial | Error card with evidence and Retry | Failed/Blocked/partial complete | Retry cannot change tenant/object; idempotency and cost cap enforced | Durable run/artifact ref | Failed generation/publish resumes without duplicate object/version/cost or lost conversation |
+
+## Business Vault lifecycle annex
+
+These rows define the owed unified experience. Existing source tables and legacy UI do not make the Vault connected.
+
+| Capability | Current seam / state | New surface and PAIGE action | Trust and tenant-security gate | Acceptance evidence |
+|---|---|---|---|---|
+| Overview and health | Solo/Agency Vault UI; model mostly owed | Settings / Vault overview — “What evidence is missing?” | Read; server tenant; score only verified completeness/freshness/expiration | No synthetic score; source and state visible |
+| Business identity | `businesses`; partial | Identity — “Confirm our legal name.” | Change Ask First; tenant admin | Fact links to evidence and verifier |
+| Entity/ownership graph | Distributed/owed | Ownership — “Prepare our entity structure.” | Restricted finance/legal roles | No cross-tenant entity or owner exposure |
+| Legal profile | `legal_documents`, `tenant_legal_profile`; sparse | Legal — “Which agreements expire next?” | Sensitive read; external use Ask First | Dates, source and access are audited |
+| Financial records | `business_financial_docs`; no supplied rows | Finance — “Prepare the lender checklist.” | Finance role; never reveal bank tokens | Private signed access; export approved |
+| Certifications/licenses | `business_certifications`; no supplied rows | Compliance — “What requires renewal?” | Change/share Ask First | Status derives from verified validity dates |
+| Domains/digital property | `tenant_email_domains`, presence tables; sparse | Digital property — “Show verification status.” | Domain changes Ask First | Ownership proof and connection state shown |
+| Document upload/versioning | `documents`, `client_files`; no unified Vault lifecycle | Evidence — “Attach this as supporting evidence.” | Upload scoped; malware/private-storage gate | One evidence object can support many facts |
+| Evidence verification | Model owed | Evidence detail — “Who verified this?” | Verifier role explicit | Verified/self-reported/connected/conflicting distinguishable |
+| Expiration/renewal | Model/automation owed | Home exception + Vault renewal | Task creation governed; filing Ask First | Durable reminder links to fact/evidence |
+| Sharing package | Owed | Data-room builder — “Prepare for the insurer.” | Explicit approval, expiry, revoke, watermark | Recipient/document access and downloads logged |
+| Access audit | Partial audit seams | Activity — “Who accessed this evidence?” | Admin/legal/finance scoped | View/download/share/export/PAIGE use visible |
+| PAIGE fact retrieval | Context seams fragmented | Shared conversation with citations | Least privilege; sensitivity respected | Response identifies fact source and confidence |
+| PAIGE external use | Owed orchestration | Inline Sovereign approval | Destination, scope, reversibility explicit | Nothing sent before owner approval |
+| Connection status | Internal secret tables; not Vault | Connections shows health/scope/last use/revoke | Raw secrets permanently server-side | UI/network payload never contains secret value |
+| Tenant-switch invalidation | Not proven | Clear Vault context on business change | Clear caches, URLs and signed links | No stale fact, preview, draft, link or download crosses tenants |
+
+## Marketplace lifecycle annex
+
+The supplied production audit reports 1 vendor, 19 items, 15 versions, 5 installs, 7 ledger events and 0 bundle links. Those counts establish substrate—not complete user-flow proof.
+
+| Capability | Current seam / state | New surface and PAIGE action | Trust and tenant-security gate | Acceptance evidence |
+|---|---|---|---|---|
+| Catalog browse/search/filter | `Marketplace`; catalog substrate live | Marketplace / Discover | Read; actual tier/role/tenant visibility | Authorized results only; empty/error honest |
+| Item detail | Marketplace item/version tables | Detail — “What outcome does this add?” | Read | Publisher, version, compatibility and state shown |
+| Tier/role visibility | Catalog policies/migrations | Eligibility explanation | Server-resolved memberships, never generic admin | Cross-role/tenant matrix passes |
+| Manifest inspection | Version install manifest | Plain-language impact | Read before approval | Technical manifest and explanation agree |
+| Pricing/checkout | checkout Edge + Stripe references | Purchase review | Ask First; tenant and payer explicit | Cancel/success/retry and amount verified server-side |
+| Trust approval | Approval seams | Sovereign install review | Most restrictive reasonable default | Data/action/autonomy scope explicit |
+| Install | `marketplace-install`; installs observed | Contained installation | Idempotent tenant-scoped write | Receipt, actor, version and grants recorded once |
+| Configure | Integration/capability seams; partial | Capabilities / Configure | Secret writes server-side | Connection scopes shown; secret values absent |
+| Safe test | Incomplete | Capability test run | Draft-only/no external side effect by default | Evidence and failure visible before activate |
+| Activate/disable | Install lifecycle partial | Capabilities status | Ask First for consequential activation | Runtime respects disabled state |
+| Update/rollback | Version substrate; UX incomplete | Updates | Manifest diff and permission expansion approval | Rollback restores compatible version/state |
+| Uninstall/dependency cleanup | cleanup migrations; lifecycle incomplete | Uninstall review | Destructive Ask First | Orphans/dependents disclosed; immutable receipt retained |
+| Receipts/ledger | ledger substrate with supplied rows | Purchases / Usage & cost | Finance/admin read | Gross, fees, net and payment refs reconcile |
+| Installed monitoring | Installs/activity seams; incomplete | Capabilities / Installed | Authorized tenant read | Health, last run, failures, cost, utilization and version visible |
+| Vendor onboarding | One vendor supplied; ecosystem early | Publisher console | Verified publisher/tenant | Payout and identity checks pass without data bleed |
+| Version review/publish/deprecate | Version/reviewer fields | Publisher lifecycle | Reviewer/operator boundary | Submission, notes, approval, publish and deprecate audited |
+| Studio handoff | Substrate; E2E proof owed | “Prepare this Studio project for review.” | Tenant owner + Marketplace review | Lineage retained; private source not published |
+| Private distribution | Scope fields/migrations | Tenant/agency-private listing | Authorized scopes only; sibling isolation | Only permitted tenants/sub-accounts discover/install |
+| Public distribution | Publisher/review substrate | Public review queue | Operator approval; security and IP checks | Never publicly discoverable before approval |

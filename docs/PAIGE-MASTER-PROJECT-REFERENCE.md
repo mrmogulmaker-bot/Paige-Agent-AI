@@ -1274,3 +1274,7 @@ memory-management, task-management.
 - ✅ Studio is classified as substantial live code plus connected substrate—not a concept and not a fully integrated lifecycle. The supplied audit reports 17 sessions, 4 versions, and zero Library/deliverable/critique rows.
 - ✅ `docs/handoff/vibe-studio-integrity-audit.md`, `scripts/audit-studio-rls.sql`, and the matrix's 20-row Studio annex establish the integrity-first proof and implementation gates.
 - ❗ The real Studio is not mounted in `/tenant-redesign`. Production reportedly contains widening permissive policy shapes not present in the repository's intended narrow session/version policy design; exact live policy proof and authenticated multi-user testing block broad mounting.
+
+### Business Vault and Marketplace truth pass — 2026-08-21
+
+The tenant redesign now separates Settings / Business Vault, Marketplace, and Installed Capabilities by lifecycle. Business Vault is a defined but mostly owed unified product over distributed sources; Marketplace has live catalog/install/economic substrate but incomplete verified lifecycle UX; Capabilities owns operation after installation. The checked-in audit and recovery-matrix annexes preserve supplied production evidence without embedding it as UI data. No secret table is treated as a tenant Vault, no Vault health score is fabricated, and `/tenant-redesign` remains front-end-only.

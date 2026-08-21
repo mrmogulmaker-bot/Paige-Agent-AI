@@ -126,3 +126,17 @@ The supplied production evidence upgrades Studio from “design concept” to **
 - Studio remains **Live but incomplete** in the redesign until authenticated security and all 12 lifecycle gates pass.
 
 Block A integrity now precedes the previously recommended Studio mount. `scripts/audit-studio-rls.sql` is the read-only proof; `vibe-studio-integrity-audit.md` defines actors and expected visibility; the matrix annex defines 20 capability/security/deep-link/acceptance rows. No empty table is treated as proof of a working user lifecycle.
+
+
+## Business Vault and Marketplace addendum (2026-08-21)
+
+| Requirement | Current status | Gap / gate |
+|---|---|---|
+| One Business Vault under Settings | Designed, front-end only | Define fact/evidence/access compatibility model; private storage and role tests |
+| Honest Vault health | Corrected | Remains `Not established` until verified completeness/freshness/expiration can be computed |
+| Secrets boundary | Corrected in design/handoff | Production payload and authorization tests still owed; raw values never enter UI |
+| Marketplace acquisition home | Live substrate; not mounted | Adapt real catalog and verify authenticated visibility/checkout/install |
+| Installed Capabilities home | Designed; lifecycle incomplete | Connect permission, cost, health, update, rollback, disable and uninstall states |
+| Studio → Marketplace | Planned | Versioned private package, review, operator approval and lineage proof owed |
+
+The prototype contains no catalog fixtures, install action, Vault score, business fact, secret value, or production row count. The supplied audit counts remain documentation evidence only.

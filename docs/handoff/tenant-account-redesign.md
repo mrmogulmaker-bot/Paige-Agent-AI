@@ -541,3 +541,11 @@ The public redesign no longer labels Studio entry views `Live and connected`. Th
 Repository migrations describe a restrictive tenant wall and narrow owner/template/admin SELECT policies for `studio_sessions` and parent-session-scoped SELECT for `studio_artifact_versions`, with authenticated direct writes revoked. The supplied production audit reports additional permissive `ALL` policies that may widen reads. Because this environment cannot retrieve their exact live names/expressions, no guessed destructive migration was authored. A checked-in read-only catalog audit must identify exact drift before a CLI-generated remediation and authenticated multi-user proof.
 
 The real Studio mount is blocked on: policy composition, explicit collaboration scope, private deliverable/signed URL tests, Edge inventory reconciliation, tenant-switch invalidation, and the acceptance gates in the lifecycle annex. After those pass, `StudioLayout`, `StudioHome`, `StudioShell`, `VibeStudio`, and `StudioLibrary` should replace the representative composition atomically without adding the outer PAIGE rail to immersive sessions.
+
+## 26. Business Vault, Marketplace, and Capabilities reconciliation (2026-08-21)
+
+The detailed evidence and integration gates are checked in at [`business-vault-marketplace-audit.md`](./business-vault-marketplace-audit.md). The recovery matrix now includes separate lifecycle annexes for both territories.
+
+Settings preserves three distinct homes: **Business Vault** for verified business facts and evidence, **Marketplace** for discovery/purchase/install, and **Capabilities** for operating installed items. The prototype now demonstrates this distinction without displaying production rows or pretending that a unified Vault exists. Vault health is explicitly `Not established`; internal secrets are never treated as user-visible Vault records; Marketplace is labeled `Live substrate · UX incomplete`; and Capabilities is labeled as an incomplete post-install lifecycle.
+
+The supplied production audit is evidence dated 2026-08-21, not prototype fixture data. Production integration must derive catalog visibility, memberships, manifests, price, tenant, permissions, and Trust state on the server. The prototype performs no query, purchase, install, score calculation, share, or secret retrieval.
