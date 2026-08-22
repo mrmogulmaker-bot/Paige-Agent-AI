@@ -38,6 +38,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 // React SPA, so we use the framework-agnostic /react entry (NOT /next).
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { FloatingChatbot } from "./components/FloatingChatbot";
+import { shouldRenderFloatingChatbot } from "./lib/routing/floatingChatVisibility";
 import { MetaPixel } from "./components/seo/MetaPixel";
 import { TenantProvider } from "./hooks/useTenantContext";
 import { SubscriptionProvider } from "./contexts/SubscriptionContext";
@@ -189,11 +190,14 @@ const CHATBOT_HIDDEN_ROUTES = ["/", "/premium", "/tenant-redesign"];
 // the same §18 duplicate here, and it overlays the console's own chrome. No trailing slash:
 // the operator shell's root IS `/operator`, so the prefix has to match the bare path too.
 const CHATBOT_HIDDEN_PREFIXES = ["/admin", "/agency/", "/business/", "/solo/", "/operator"];
+// The support-style floating widget belongs only to technically separate public or
+// customer-facing properties. Every authenticated PAIGE-owned shell has its own
+// persistent workspace/edge/mobile entry; rendering the widget there creates a
+// second PAIGE. The pure policy is separately regression-tested for shell roots,
+// nested routes, and trailing slashes.
 const GatedChatbot = () => {
   const { pathname } = useLocation();
-  if (CHATBOT_HIDDEN_ROUTES.includes(pathname)) return null;
-  if (CHATBOT_HIDDEN_PREFIXES.some((p) => pathname.startsWith(p))) return null;
-  return <FloatingChatbot />;
+  return shouldRenderFloatingChatbot(pathname) ? <FloatingChatbot /> : null;
 };
 
 const AppInner = () => {

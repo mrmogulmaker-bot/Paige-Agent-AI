@@ -517,3 +517,62 @@ No build-time list, documentation example, prior chat fixture, or client-side ge
 ### Verification limitation
 
 This environment contains the production project ref and public publishable key, but no authenticated Supabase MCP connection, service-role credential, database URL, GitHub remote, or authenticated GitHub CLI session. Direct external access is blocked by the environment proxy. Consequently, no claim about the current production tenant/client names is made here. The safe correction is to remove unverified names and make the production seam authoritative when an authenticated environment runs the surface.
+
+## 23. Requirement gap audit and corrected floating-chat invariant (2026-08-21)
+
+The complete line-by-line comparison is checked in at [`tenant-redesign-gap-audit.md`](./tenant-redesign-gap-audit.md). Its conclusion is intentionally stricter than earlier summaries: Phase 1 is substantially complete; Phase 2 is partial; Phase 3 is early; Phase 4 is prototype-only; Phase 5 has not started. Canonical links and design compositions are not equivalent to mounting and verifying connected operational components.
+
+The prior global-chat suppression was incomplete. Exact matching missed `/tenant-redesign/`; trailing-slash prefixes missed bare `/agency`, `/business`, and `/solo`; `/app` remained eligible; and ad hoc `startsWith('/admin')` could suppress unrelated names. `shouldRenderFloatingChatbot` now owns one boundary-aware rule for PAIGE-owned shells, and its regression tests cover root, nested, trailing-slash, and near-prefix public paths.
+
+## 24. Connected-surface navigation decision (2026-08-21)
+
+Destination and sub-view navigation now remain inside the PAIGE shell and update durable `destination` / `view` query parameters. The top context acts as a breadcrumb, browser back/forward restores the selected design surface, and PAIGE remains present. Duplicate legacy-route buttons were removed.
+
+Until a real operational component is adapted and mounted, one shared `ConnectedFallback` appears at the Canvas boundary with the exact labels `Migration bridge / temporary` and `Open connected version`. It opens the canonical route in the same tab. This is explicitly an incomplete migration state—not integration. The bridge must be removed atomically when the real component mounts and passes its matrix acceptance test.
+
+The route map defines Canvas, Split, Focus, Docked panel, and optional Pop-out behavior. Ordinary destination navigation never pops out, no iframe or nested legacy shell is allowed, and Studio must suppress the outer PAIGE rail because the Studio session itself is PAIGE.
+
+## 25. Vibe Studio production reconciliation and integrity gate (2026-08-21)
+
+The supplied GitHub/Supabase audit establishes that Studio is substantial live code with connected production substrate, but not a fully proven lifecycle and not mounted inside the tenant redesign. The detailed repository reconciliation is [`vibe-studio-integrity-audit.md`](./vibe-studio-integrity-audit.md); the recovery matrix now contains a 20-row Studio lifecycle annex.
+
+The public redesign no longer labels Studio entry views `Live and connected`. They display `Live but incomplete`, name the existing Studio component family, expose an integrity gate, and retain one temporary connected-version bridge. This distinguishes a connected substrate from completed redesign integration.
+
+Repository migrations describe a restrictive tenant wall and narrow owner/template/admin SELECT policies for `studio_sessions` and parent-session-scoped SELECT for `studio_artifact_versions`, with authenticated direct writes revoked. The supplied production audit reports additional permissive `ALL` policies that may widen reads. Because this environment cannot retrieve their exact live names/expressions, no guessed destructive migration was authored. A checked-in read-only catalog audit must identify exact drift before a CLI-generated remediation and authenticated multi-user proof.
+
+The real Studio mount is blocked on: policy composition, explicit collaboration scope, private deliverable/signed URL tests, Edge inventory reconciliation, tenant-switch invalidation, and the acceptance gates in the lifecycle annex. After those pass, `StudioLayout`, `StudioHome`, `StudioShell`, `VibeStudio`, and `StudioLibrary` should replace the representative composition atomically without adding the outer PAIGE rail to immersive sessions.
+
+## 26. Business Vault, Marketplace, and Capabilities reconciliation (2026-08-21)
+
+The detailed evidence and integration gates are checked in at [`business-vault-marketplace-audit.md`](./business-vault-marketplace-audit.md). The recovery matrix now includes separate lifecycle annexes for both territories.
+
+Settings preserves three distinct homes: **Business Vault** for verified business facts and evidence, **Marketplace** for discovery/purchase/install, and **Capabilities** for operating installed items. The prototype now demonstrates this distinction without displaying production rows or pretending that a unified Vault exists. Vault health is explicitly `Not established`; internal secrets are never treated as user-visible Vault records; Marketplace is labeled `Live substrate · UX incomplete`; and Capabilities is labeled as an incomplete post-install lifecycle.
+
+The supplied production audit is evidence dated 2026-08-21, not prototype fixture data. Production integration must derive catalog visibility, memberships, manifests, price, tenant, permissions, and Trust state on the server. The prototype performs no query, purchase, install, score calculation, share, or secret retrieval.
+
+## 27. Two-way portal and theme reconciliation (2026-08-21)
+
+The portal evidence and design contract are checked in at [`two-way-client-portal-audit.md`](./two-way-client-portal-audit.md), with a 26-row lifecycle annex in the recovery matrix. Portal remains the external presentation of the same Clients relationship, thread, engagement, request, approval, booking, file and activity records—not a second CRM or inbox.
+
+The prototype now exposes persistent light and dark modes, system-preference initialization, accessible theme controls in the tenant shell and customer portal preview, and light/dark PAIGE mark treatment. The portal demonstration also names its client-visible audience and AI role. These are representative front-end states; no portal record, invitation, message, action, booking, upload or approval is created.
+
+### Portal prototype depth correction
+
+The client account `Portal` sub-view now demonstrates the staff-side audience boundary, client-visible preview contract, operational request/approval/progress/member surfaces, and the rule that preview is an audience projection rather than impersonation. The client portal preview now demonstrates all six portal destinations, structured work cards, explicit client audience, one open/closed PAIGE surface, AI/automation disclosure, and same-thread human handoff language. All data remains representative and actions remain inert.
+
+## 28. Illuminated Precision hero implementation (2026-08-21)
+
+The prototype now implements four interactive design-standard surfaces rather than generic capability placeholders:
+
+- **Insights / Signal Field:** ranked developments, selectable signals, time horizon, forecast-confidence honesty, provenance, evidence drawer, PAIGE discussion, and governed conversion to action.
+- **Insights / Data Health:** graph/list lineage modes, operational source states, selected dependencies, PII boundary, and “what breaks” interrogation. Connection and authorization remain in Settings / Data Sources.
+- **Studio / Creation Chamber:** coordinated brief, canvas, inspector, build/version/approval rail, desktop/tablet/mobile preview, conversational selection context, and full-canvas return. A defensive route fallback prevents an undefined capability lookup from blanking the shell.
+- **Work / Execution Theater:** compressed and expanded lineage, intent/plan/agent/review/delivery steps, autonomy/audience metadata, exception state, and PAIGE resolution while conversation remains available.
+
+The visual foundation now names atmosphere, recessed, working, active-instrument, and command depth tokens; stable status colors; chart grid/signal tokens; edge highlights; and fast/spatial/focus timing tokens. The laptop-height rule explicitly reduces Home top spacing below 800px so the greeting begins below the header at 1366×768. The extra desktop PAIGE header launcher was removed: the command spine is the entry surface, with only the approved centered mobile control remaining at small breakpoints.
+
+## 29. Calendar, Conversations, and spatial workspace pass (2026-08-22)
+
+The repository reconciliation and implementation boundary are checked in at [`calendar-conversations-spatial-handoff.md`](./calendar-conversations-spatial-handoff.md). Work / Calendar and Clients / Conversations now provide authored instrument anatomy plus explicit lazy mounts of the canonical `CalendarAdmin` and `ClientsConversations` components. Tasks, scheduling, and appointments remain Calendar objects/views rather than new homes.
+
+The shell now persists expanded, compact, and canvas navigation modes; defaults PAIGE closed; restores navigation visibly and by keyboard; keeps the Command Mark, Trust, and Activity accessible; and supports same-application detached windows with a shared session identifier and synchronized theme/destination/view/navigation context. Authorization and execution remain server-governed.

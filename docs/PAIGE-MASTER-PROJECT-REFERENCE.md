@@ -1256,3 +1256,39 @@ memory-management, task-management.
 - ✅ Unverified business and CRM names were removed from the public tenant redesign. The prototype now embeds no tenant list and no CRM rows; protected operational surfaces remain the only route to live records.
 - ✅ The switcher contract is server-authorized: current tenant for solo/sub-account, authorized agency subset for agency users, audited registry/act-as for operators, and tenant-scoped `clients` only inside CRM context.
 - ❗ Live production names were not asserted because this checkout has no authenticated GitHub remote or Supabase management/database session. An unavailable authority yields an empty state, never invented data.
+
+### Tenant redesign requirement gap audit (2026-08-21)
+
+- ✅ `docs/handoff/tenant-redesign-gap-audit.md` compares the full Capability Recovery handoff against actual code and classifies each requirement as delivered, partial, owed, or production-only.
+- ✅ Floating-chat suppression is centralized and regression-tested across `/tenant-redesign`, `/admin`, `/agency`, `/business`, `/solo`, `/operator`, and `/app` roots and descendants.
+- ❗ Honest completion state: Phase 1 substantially complete; Phase 2 partial; Phase 3 early; Phase 4 prototype-only; Phase 5 not started. Deep links and representative compositions are not connected component integration.
+
+### Connected-surface navigation contract (2026-08-21)
+
+- ✅ `/tenant-redesign` sub-views now select URL-addressable Canvas states inside the persistent six-destination/PAIGE shell; duplicate legacy bridge controls are removed.
+- ✅ Exactly one shared, same-tab `Migration bridge / temporary` fallback is allowed per unmounted connected surface and is registered in the recovery matrix.
+- ❗ Bridge-backed surfaces remain incomplete. A bridge disappears only when the named existing component is mounted without legacy chrome and passes its tier, Trust, deep-link, and acceptance tests.
+
+### Vibe Studio production reconciliation (2026-08-21)
+
+- ✅ Studio is classified as substantial live code plus connected substrate—not a concept and not a fully integrated lifecycle. The supplied audit reports 17 sessions, 4 versions, and zero Library/deliverable/critique rows.
+- ✅ `docs/handoff/vibe-studio-integrity-audit.md`, `scripts/audit-studio-rls.sql`, and the matrix's 20-row Studio annex establish the integrity-first proof and implementation gates.
+- ❗ The real Studio is not mounted in `/tenant-redesign`. Production reportedly contains widening permissive policy shapes not present in the repository's intended narrow session/version policy design; exact live policy proof and authenticated multi-user testing block broad mounting.
+
+### Business Vault and Marketplace truth pass — 2026-08-21
+
+The tenant redesign now separates Settings / Business Vault, Marketplace, and Installed Capabilities by lifecycle. Business Vault is a defined but mostly owed unified product over distributed sources; Marketplace has live catalog/install/economic substrate but incomplete verified lifecycle UX; Capabilities owns operation after installation. The checked-in audit and recovery-matrix annexes preserve supplied production evidence without embedding it as UI data. No secret table is treated as a tenant Vault, no Vault health score is fabricated, and `/tenant-redesign` remains front-end-only.
+
+### Two-way portal and dual-theme pass — 2026-08-21
+
+`/tenant-redesign` now supports remembered light and dark modes and includes Portal as an incomplete Clients sub-view. The portal is defined as the external half of the shared client relationship—not a parallel CRM, inbox, or operator chat. A checked-in audit and 26-row matrix annex preserve the supplied production evidence and block “complete” status on identity, canonical conversation, shared work, tenant/account isolation and authenticated acceptance proof.
+
+The two-way portal design was subsequently deepened from a landing preview into coordinated staff/client surfaces: six client destinations, structured action cards, one PAIGE conversation state, explicit audiences, human handoff continuity, and a staff Portal view with privacy projections. No connectivity claim changed.
+
+### Illuminated Precision hero pass — 2026-08-21
+
+The tenant prototype now implements Signal Field, Living Lineage, Creation Chamber, and Execution Theater as interactive representative surfaces. Studio navigation is defensive against missing view lookups, laptop-height Home spacing is corrected, Data Health is an Insights observation surface, and the redundant desktop PAIGE header launcher is removed. Automated shell tests cover all six destinations, Studio rendering, and persistent theme switching. The browser screenshot/deployment limitation is recorded without fabricating evidence.
+
+### Calendar, Conversations, and spatial workspace pass — 2026-08-22
+
+The tenant prototype now exposes canonical Calendar and Conversations mounts alongside representative, data-honest instrument anatomy. Calendar is the single time/commitment home under Work; Conversations remains under Clients. The shell adds persisted expanded/compact/canvas navigation, PAIGE as an optional command drawer, and same-application detached workspace context synchronization without moving authorization into the browser.
