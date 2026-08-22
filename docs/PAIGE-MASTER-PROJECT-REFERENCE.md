@@ -1288,3 +1288,7 @@ The two-way portal design was subsequently deepened from a landing preview into 
 ### Illuminated Precision hero pass — 2026-08-21
 
 The tenant prototype now implements Signal Field, Living Lineage, Creation Chamber, and Execution Theater as interactive representative surfaces. Studio navigation is defensive against missing view lookups, laptop-height Home spacing is corrected, Data Health is an Insights observation surface, and the redundant desktop PAIGE header launcher is removed. Automated shell tests cover all six destinations, Studio rendering, and persistent theme switching. The browser screenshot/deployment limitation is recorded without fabricating evidence.
+
+### Calendar, Conversations, and spatial workspace pass — 2026-08-22
+
+The tenant prototype now exposes canonical Calendar and Conversations mounts alongside representative, data-honest instrument anatomy. Calendar is the single time/commitment home under Work; Conversations remains under Clients. The shell adds persisted expanded/compact/canvas navigation, PAIGE as an optional command drawer, and same-application detached workspace context synchronization without moving authorization into the browser.

@@ -570,3 +570,9 @@ The prototype now implements four interactive design-standard surfaces rather th
 - **Work / Execution Theater:** compressed and expanded lineage, intent/plan/agent/review/delivery steps, autonomy/audience metadata, exception state, and PAIGE resolution while conversation remains available.
 
 The visual foundation now names atmosphere, recessed, working, active-instrument, and command depth tokens; stable status colors; chart grid/signal tokens; edge highlights; and fast/spatial/focus timing tokens. The laptop-height rule explicitly reduces Home top spacing below 800px so the greeting begins below the header at 1366×768. The extra desktop PAIGE header launcher was removed: the command spine is the entry surface, with only the approved centered mobile control remaining at small breakpoints.
+
+## 29. Calendar, Conversations, and spatial workspace pass (2026-08-22)
+
+The repository reconciliation and implementation boundary are checked in at [`calendar-conversations-spatial-handoff.md`](./calendar-conversations-spatial-handoff.md). Work / Calendar and Clients / Conversations now provide authored instrument anatomy plus explicit lazy mounts of the canonical `CalendarAdmin` and `ClientsConversations` components. Tasks, scheduling, and appointments remain Calendar objects/views rather than new homes.
+
+The shell now persists expanded, compact, and canvas navigation modes; defaults PAIGE closed; restores navigation visibly and by keyboard; keeps the Command Mark, Trust, and Activity accessible; and supports same-application detached windows with a shared session identifier and synchronized theme/destination/view/navigation context. Authorization and execution remain server-governed.

@@ -42,3 +42,11 @@ Required captures remain **blocked in this execution environment** because the P
 - Data Health observes a designed lineage contract; it is not connected to live registry records here.
 - Browser-level pixel, console, overflow, focus-order, and screenshot proof must run in a browser-capable preview environment.
 - No preview deployment URL can be truthfully supplied from this checkout because it has no Git remote or deployment credentials.
+
+## Calendar / Conversations / spatial pass — 2026-08-22
+
+Automated shell coverage now additionally verifies authored Calendar rendering, the canonical `CalendarAdmin` mount affordance, detached Calendar URL creation, Conversations list/thread/relationship rendering, the canonical `ClientsConversations` mount affordance, expanded→compact→canvas rail transitions, visible canvas restore, persisted rail preference, and PAIGE open/close behavior. The targeted prototype plus floating-chat suite contains 27 passing tests.
+
+Static and component checks confirm Calendar day/week/month controls, task visibility, appointment/task inspectors, six Calendar internal views, honest connection states, Conversations draft/approval/conversion controls, and responsive layouts. The connected mounts intentionally defer live-data proof to authenticated RLS-backed execution.
+
+Detached windows share the same route and a generated `workspaceSession` identifier. `BroadcastChannel` synchronizes non-sensitive layout context (theme, destination, view, navigation mode); authenticated records, Trust authority, approvals, sends, and live updates remain server-authorized and are not copied into the channel.
