@@ -191,3 +191,49 @@ Every row retains the supplied audit evidence without treating row counts as UI 
 | 24 | Switch isolation | Portal account context | query/session caches, signed URLs, RLS | Unproven | Current authorized account | Authorized portfolio only | Restricted | Branding, draft, thread, file URL, notification and action clear | Safe overview | Zero stale flash or cross-account recovery state |
 | 25 | Failure/retry/recovery | All portal workspaces | Edge/RPC/storage error and idempotency seams | Partial | Honest retry/status | Evidence/recovery controls | Failed/blocked | Retry cannot change account/object or duplicate side effect | Durable object/run | Message/upload/booking/approval resumes exactly once |
 | 26 | Export/deletion/privacy | Account privacy; UI owed | export/deletion/retention seams | Incomplete | Own authorized data | Governed fulfillment | Ask First/restricted | Membership, retention, legal hold and account scope | Privacy request | Export scope explained; deletion/audit behavior proven |
+
+---
+
+## Backend seam verification (Claude Code, 2026-08-22)
+
+Requested ahead of Stage 4, which executes from this map. The matrix *asserts* a build state
+per surface; this pass checks whether the backend objects it names actually exist, so Stage 4
+does not discover a phantom address the hard way.
+
+**Method.** Every backticked identifier in the matrix's data-source column was extracted and
+classified against prod (`xygzykjyynhzqytbqnzu`) via `pg_class` / `pg_proc`, and every named
+edge function was checked against `supabase/functions/`.
+
+| Checked | Result |
+|---|---|
+| Named DB seams | **74 / 74 exist** — 44 tables, 28 functions, 2 views |
+| Named edge functions | **12 / 12 present** |
+| Genuine gaps | **none** |
+
+Verified present include `practice_dashboard_metrics`, `practice_attention_queue`,
+`get_tenant_journey_stages`, `set_journey_stage`, `plan_list` / `plan_set_reminder` /
+`plan_assign_task`, `list_tool_autonomy` / `set_tool_autonomy`, the six Studio artifact RPCs
+(`create_studio_session`, `save_artifact_version`, `restore_artifact_version`,
+`save_to_library`, `remove_from_library`, `touch_studio_session`), and both growth publish
+RPCs; edge functions `send-message`, `execute-approval`, `trigger-workflow`, `skill-runner`,
+`skill-forge`, `subagent-forge`, `content-draft`, `generate-image`, `cal-cancel-booking`,
+`meta-schedule-post`, `admin-list-users`, `subagent-email-composer`.
+
+**One apparent gap was a false positive in this audit, not a defect in the matrix.**
+`studio_documents` resolved to nothing as a DB object because it is a *migration filename*,
+which is exactly what row 13 says. The real file is
+`supabase/migrations/20260718080838_studio_documents.sql`. A later migration
+(`20260718221756`) cites it in a comment as `20260718070000_studio_documents.sql` — a stale
+timestamp in prose, nothing functional.
+
+### What this does NOT establish
+
+This verifies that the seams **exist**, not that the surfaces are **wired to them**. That
+`practice_dashboard_metrics` exists does not prove Home renders from it, that RLS scopes it
+correctly for the calling tier, or that it returns non-empty data for a real tenant.
+
+So the **Current build state** column — particularly every "Live and connected" — remains an
+assertion this pass did not confirm. Confirming per-surface connectivity means driving each
+surface against a real tenant, which is §32.c work and needs a browser-capable session or the
+owner. Treat the two as distinct when planning Stage 4: *the address exists* and *the road is
+connected* look identical in a matrix and behave very differently in a build.
