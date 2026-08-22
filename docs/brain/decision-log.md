@@ -344,6 +344,38 @@ gains a dated section (§BRAIN.3).*
   Codex cannot commit to this repo and the owner authorised proceeding, so both were a single adversarial
   pass by their author. Stated, not hidden.
 
+- **2026-08-22 · A5a authoring seam — one write path, and three things it refuses on purpose.**
+  `alerting-rule-write` is the ONLY thing allowed to decide whether an alert rule may be stored.
+  It calls the SAME `validateCondition` the evaluator runs (`_shared/alert-conditions.ts`), so a
+  rule can never be accepted in a shape the evaluator will later reject — and because that module
+  is Deno and cannot be imported by the browser, the authority is necessarily server-side rather
+  than duplicated into the form. **§18 seam decided BEFORE code:** A5 and A-Weave-2 (#206) both
+  nominally "let Paige author a rule"; grep showed `paige-mcp` has zero alerting tools, so the
+  answer is ONE seam with TWO callers — the form now, paige-mcp later — never two write paths.
+  **Three refusals, each a §13/§36 call rather than a missing feature:** (1) a condition bound to
+  an unreadable signal is rejected, because the evaluator SKIPS such rules and does not advance
+  `last_evaluated_at`, so the rule would sit in the list reporting "never evaluated" forever while
+  the operator believed something was watching; (2) any channel other than `in_app` is rejected —
+  verified that neither the evaluator nor the delivery leg reads `channels` at all, so accepting
+  `email` would turn a declaration into a promise, and external delivery is separately blocked on
+  the owner-owed address-book decision (§45/§63); (3) deleting a rule with recorded firings is
+  refused with a pause offered by name, because a firing is the record that something happened and
+  tidying a list is not worth destroying it (§58). Also: an edited condition clears
+  `condition_met_since`, or a rule could fire on sustained-for evidence gathered against a
+  condition it no longer has.
+  **A helper extended rather than changed:** the write needs the caller's uid for `created_by`,
+  which the boolean `isOperatorJwt` cannot supply. Added `operatorUserId` alongside it and made
+  `isOperatorJwt` a thin wrapper over it — one implementation of the §53 check, no existing
+  caller's signature touched (§18/§37).
+  **A false green I caught in my own proof (§39, worth keeping).** The first §32.b run asserted
+  "a non-operator sees 0 rules" — which passed, but prod has 0 rules anyway, so it was true for the
+  wrong reason and proved nothing. Re-ran it with a real row seeded first: owner sees 1,
+  non-operator `authenticated` sees 0, `anon` is refused outright. A proof that cannot fail is not
+  a proof. Totals: 36 headless assertions on the pure validator + 10 write-path checks + 3
+  re-run isolation checks, all against real prod inside a rollback.
+  **Owed:** the "+ New rule" button is still disabled — A5b wires the form to this seam. No
+  independent §39 peer read (Codex cannot commit here; owner authorised proceeding).
+
 ### 2026-08-20 — Operator act-as is real and audited; the capability already existed, the audit did not (Slice 2, task #212)
 
 **What shipped.** `operator_enter_tenant(_tenant uuid)` / `operator_exit_tenant()` — SECURITY DEFINER,

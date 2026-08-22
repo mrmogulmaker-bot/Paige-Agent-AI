@@ -99,17 +99,33 @@ export async function resolveTenantFromJwt(
  * operator boolean.
  */
 export async function isOperatorJwt(req: Request): Promise<boolean> {
+  return (await operatorUserId(req)) !== null;
+}
+
+/**
+ * The same §53 gate as `isOperatorJwt`, but returning WHO the verified operator is.
+ *
+ * A write needs the caller's identity for attribution (`created_by`), which the boolean form
+ * cannot supply. Added ALONGSIDE `isOperatorJwt` rather than by changing its signature, so no
+ * existing caller's contract moves (§18 one home, §37 no producer touched): `isOperatorJwt` is
+ * now a thin wrapper over this, so there is exactly one implementation of the check and the two
+ * can never disagree about who counts as an operator.
+ *
+ * Returns the uid ONLY for a verified operator; null for a missing/invalid JWT, an authz-check
+ * error, or a non-operator. Fail-closed, identically to the boolean form.
+ */
+export async function operatorUserId(req: Request): Promise<string | null> {
   const { url, anon } = env();
   const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) return false;
+  if (!authHeader?.startsWith("Bearer ")) return null;
 
   const caller = createClient(url, anon, { global: { headers: { Authorization: authHeader } } });
   const { data: userData, error: userErr } = await caller.auth.getUser();
-  if (userErr || !userData?.user) return false;
+  if (userErr || !userData?.user) return null;
 
   const { data: opFlag, error: opErr } = await caller.rpc("is_platform_operator");
-  if (opErr) return false;
-  return opFlag === true;
+  if (opErr) return null;
+  return opFlag === true ? userData.user.id : null;
 }
 
 /**

@@ -424,3 +424,12 @@ project_id = "xygzykjyynhzqytbqnzu"
   # (service-role bearer OR x-cron-token) OR an operator JWT (is_platform_operator(), §53).
   [functions.alerting-deliver]
     verify_jwt = false
+
+  # alerting-rule-write (A5) — the ONE authority on whether a rule may be stored. Called by the
+  # Fleet tab's authoring form (operator JWT) and, from A-Weave-2, by Paige via paige-mcp
+  # (service-role) — one seam, two callers, never two write paths (§18). verify_jwt=false so the
+  # headless service-role caller reaches it on the same terms as a browser; fails closed
+  # in-function to the SAME gates as the rest of the substrate — internal caller (service-role
+  # bearer OR x-cron-token) OR an operator JWT (is_platform_operator(), §53).
+  [functions.alerting-rule-write]
+    verify_jwt = false
