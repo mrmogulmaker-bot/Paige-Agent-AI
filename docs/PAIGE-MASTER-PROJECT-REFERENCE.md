@@ -1219,3 +1219,76 @@ memory-management, task-management.
 ---
 
 **End of master reference. This doc supersedes memory. Update it, don't outgrow it.**
+
+### Tenant account redesign prototype (2026-08-21)
+
+- ✅ A front-end-only, representative-data tenant experience prototype is available at `/tenant-redesign`. It demonstrates the six-destination IA (Home, Clients, Work, Studio, Insights, Settings), persistent PAIGE command spine, contextual artifact/CRM workspace, five connected design flows, concurrent work, voice state, and inline Trust Compass approval.
+- ✅ The implementation contract is `docs/handoff/tenant-account-redesign.md`; it contains the audit, alternatives, selected Command Spine direction, screen/component inventories, tokens, responsive/motion/state specifications, old→new navigation map, interaction contracts, agent/artifact/trust rules, exact system copy, mock/functional boundary, accessibility requirements, and exportable assets.
+- ❗ This is not a backend-connected tenant surface and is not evidence of live records, integrations, agent runs, approvals, sends, or deliveries. Its state is local and representative. Existing `/business/*`, `/solo/*`, and `/agency/*` routing is unchanged.
+
+### Tenant redesign visual elevation (2026-08-21)
+
+- ✅ `/tenant-redesign` retains the approved six-destination IA, Command Spine, contextual Workspace, five flows, shared conversation, agent orchestration, structured CRM, Trust Compass, responsive intent, and representative-only boundary while adding the authored PAIGE material, typography, intelligence-state, geometric agent, Sovereign authority, and Workspace materialization systems.
+- ✅ PR #560 findings are resolved: the prototype route is excluded from the global `FloatingChatbot`, and all destination transitions close Workspace/navigation and dismiss PAIGE on mobile without changing the approved product model.
+- ❗ The route remains a front-end design prototype. Voice, orchestration, persistence, approvals, delivery, integrations, CRM mutations, and all shown business activity remain mocked; no production backend capability is claimed.
+
+### Tenant redesign laptop-fit + spatial interaction (2026-08-21)
+
+- ✅ `/tenant-redesign` now fits a `100dvh` application shell with independent region scrolling, height-aware laptop density, folded/expanded/wide/focus PAIGE modes, docked/folded/floating/focus Workspace modes, and activity/trust/transcript/command slide-outs.
+- ✅ Representative interactions preserve the current flow, draft, Workspace object/mode, active work, and business context within the session. Floating work is viewport-constrained and has keyboard movement/size alternatives; mobile destination transitions retain the PR #560 fix.
+- ❗ This remains a front-end design prototype. Spatial UI state is functional; voice, orchestration, persistence, approval memory, delivery, CRM mutation, and integrations remain mocked.
+
+### Repository-grounded account + PAIGE symbol prototype refinement (2026-08-21)
+
+- ✅ The `/tenant-redesign` state lab now demonstrates the existing Solo, sub-account, agency parent/entered sub-account, Super Admin/God, and client placement taxonomy without inventing a hierarchy. Business scope and CRM client context are separate; business changes clear prior tenant conversation/Workspace/agent/memory/Trust/draft state.
+- ✅ Shared `PaigeSymbol` adds typed Command, Sovereign, and provisional Artifact territories while preserving `PaigeMark` compatibility. The prototype demonstrates semantic state, dark/light, spectral/monochrome, and favicon forms; production call sites are classified in the existing handoff for incremental migration.
+- ❗ Account and symbol states remain representative. No React state or symbol authorizes cross-account access. Production requires `user_roles` / `tenant_members` / `agency_team_members` separation, server membership, RLS, real/effective actor logging, operator act-as, two-key break-glass, and append-only audit.
+
+### Tenant capability recovery architecture (2026-08-21)
+
+- ✅ The tenant redesign now maps real repository capabilities into the approved six-destination shell through destination-specific secondary navigation, a first-class Pipeline composition, durable Work runs, the existing immersive Vibe Studio family, evidence-state Insights, and complete Settings groups.
+- ✅ `docs/handoff/tenant-capability-recovery-matrix.md` is the checked-in evidence ledger; `docs/handoff/tenant-platform-route-map.md` is the integration route contract. Existing operational routes remain intact until component reuse, authorization, Trust behavior, redirects, and acceptance tests are verified.
+- ✅ The generic `FloatingChatbot` is suppressed on `/admin` as well as the newer authenticated shells, preventing a redundant support-style launcher inside tenant operation.
+- ❗ `/tenant-redesign` remains representative and front-end only. Its links expose current operational homes; it does not inherit their authorization or call their Supabase/Edge seams.
+
+### Tenant/client data-honesty correction (2026-08-21)
+
+- ✅ Unverified business and CRM names were removed from the public tenant redesign. The prototype now embeds no tenant list and no CRM rows; protected operational surfaces remain the only route to live records.
+- ✅ The switcher contract is server-authorized: current tenant for solo/sub-account, authorized agency subset for agency users, audited registry/act-as for operators, and tenant-scoped `clients` only inside CRM context.
+- ❗ Live production names were not asserted because this checkout has no authenticated GitHub remote or Supabase management/database session. An unavailable authority yields an empty state, never invented data.
+
+### Tenant redesign requirement gap audit (2026-08-21)
+
+- ✅ `docs/handoff/tenant-redesign-gap-audit.md` compares the full Capability Recovery handoff against actual code and classifies each requirement as delivered, partial, owed, or production-only.
+- ✅ Floating-chat suppression is centralized and regression-tested across `/tenant-redesign`, `/admin`, `/agency`, `/business`, `/solo`, `/operator`, and `/app` roots and descendants.
+- ❗ Honest completion state: Phase 1 substantially complete; Phase 2 partial; Phase 3 early; Phase 4 prototype-only; Phase 5 not started. Deep links and representative compositions are not connected component integration.
+
+### Connected-surface navigation contract (2026-08-21)
+
+- ✅ `/tenant-redesign` sub-views now select URL-addressable Canvas states inside the persistent six-destination/PAIGE shell; duplicate legacy bridge controls are removed.
+- ✅ Exactly one shared, same-tab `Migration bridge / temporary` fallback is allowed per unmounted connected surface and is registered in the recovery matrix.
+- ❗ Bridge-backed surfaces remain incomplete. A bridge disappears only when the named existing component is mounted without legacy chrome and passes its tier, Trust, deep-link, and acceptance tests.
+
+### Vibe Studio production reconciliation (2026-08-21)
+
+- ✅ Studio is classified as substantial live code plus connected substrate—not a concept and not a fully integrated lifecycle. The supplied audit reports 17 sessions, 4 versions, and zero Library/deliverable/critique rows.
+- ✅ `docs/handoff/vibe-studio-integrity-audit.md`, `scripts/audit-studio-rls.sql`, and the matrix's 20-row Studio annex establish the integrity-first proof and implementation gates.
+- ❗ The real Studio is not mounted in `/tenant-redesign`. Production reportedly contains widening permissive policy shapes not present in the repository's intended narrow session/version policy design; exact live policy proof and authenticated multi-user testing block broad mounting.
+
+### Business Vault and Marketplace truth pass — 2026-08-21
+
+The tenant redesign now separates Settings / Business Vault, Marketplace, and Installed Capabilities by lifecycle. Business Vault is a defined but mostly owed unified product over distributed sources; Marketplace has live catalog/install/economic substrate but incomplete verified lifecycle UX; Capabilities owns operation after installation. The checked-in audit and recovery-matrix annexes preserve supplied production evidence without embedding it as UI data. No secret table is treated as a tenant Vault, no Vault health score is fabricated, and `/tenant-redesign` remains front-end-only.
+
+### Two-way portal and dual-theme pass — 2026-08-21
+
+`/tenant-redesign` now supports remembered light and dark modes and includes Portal as an incomplete Clients sub-view. The portal is defined as the external half of the shared client relationship—not a parallel CRM, inbox, or operator chat. A checked-in audit and 26-row matrix annex preserve the supplied production evidence and block “complete” status on identity, canonical conversation, shared work, tenant/account isolation and authenticated acceptance proof.
+
+The two-way portal design was subsequently deepened from a landing preview into coordinated staff/client surfaces: six client destinations, structured action cards, one PAIGE conversation state, explicit audiences, human handoff continuity, and a staff Portal view with privacy projections. No connectivity claim changed.
+
+### Illuminated Precision hero pass — 2026-08-21
+
+The tenant prototype now implements Signal Field, Living Lineage, Creation Chamber, and Execution Theater as interactive representative surfaces. Studio navigation is defensive against missing view lookups, laptop-height Home spacing is corrected, Data Health is an Insights observation surface, and the redundant desktop PAIGE header launcher is removed. Automated shell tests cover all six destinations, Studio rendering, and persistent theme switching. The browser screenshot/deployment limitation is recorded without fabricating evidence.
+
+### Calendar, Conversations, and spatial workspace pass — 2026-08-22
+
+The tenant prototype now exposes canonical Calendar and Conversations mounts alongside representative, data-honest instrument anatomy. Calendar is the single time/commitment home under Work; Conversations remains under Clients. The shell adds persisted expanded/compact/canvas navigation, PAIGE as an optional command drawer, and same-application detached workspace context synchronization without moving authorization into the browser.
