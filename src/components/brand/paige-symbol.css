@@ -1,0 +1,12 @@
+.paige-symbol{--ps-low:#b18b55;--ps-high:#f1d49b;--ps-cool:#a89bec;--ps-fill:rgba(241,212,155,.07);display:inline-grid;width:32px;height:32px;place-items:center;color:var(--ps-high);flex:none}
+.paige-symbol[data-size="favicon"]{width:16px;height:16px}.paige-symbol[data-size="xs"]{width:20px;height:20px}.paige-symbol[data-size="sm"]{width:24px;height:24px}.paige-symbol[data-size="lg"]{width:40px;height:40px}.paige-symbol[data-size="xl"]{width:56px;height:56px}
+.paige-symbol[data-treatment="monochrome"]{--ps-low:currentColor;--ps-high:currentColor;--ps-cool:currentColor;--ps-fill:transparent}
+.paige-symbol[data-treatment="monochrome"] .paige-symbol-command{filter:grayscale(1) contrast(1.4);opacity:.92}
+.paige-symbol[data-theme="light"]{--ps-low:#806038;--ps-high:#4b3820;--ps-cool:#61599a}.paige-symbol-command{width:100%;height:100%}
+.paige-symbol[data-size="favicon"] .ps-material-core,.paige-symbol[data-size="favicon"] .ps-plane-back,.paige-symbol[data-size="favicon"] .ps-sovereign>path:first-child{display:none}
+.paige-symbol[data-state="restricted"] .ps-boundary,.paige-symbol[data-state="failed"] .ps-plane-front,.paige-symbol[data-state="offline"]{opacity:.45}.paige-symbol[data-state="declined"] .ps-boundary,.paige-symbol[data-state="failed"] .ps-plane-front{stroke-dasharray:5 4}
+.paige-symbol[data-territory="command"][data-state="complete"] .paige-symbol-command{transform:scale(.94)}.paige-symbol[data-territory="command"][data-state="interrupted"] .paige-symbol-command{transform:rotate(-8deg);opacity:.7}.paige-symbol[data-territory="command"][data-state="offline"] .paige-symbol-command{filter:grayscale(1);opacity:.42}
+.paige-symbol[data-animated="true"][data-state="listening"] .paige-symbol-command,.paige-symbol[data-animated="true"][data-state="working"] .paige-symbol-command{animation:ps-command 1.4s ease-in-out infinite alternate}
+.paige-symbol[data-animated="true"][data-state="materializing"] .ps-plane-front{animation:ps-materialize .8s cubic-bezier(.22,1,.36,1) both}.paige-symbol[data-animated="true"] .ps-boundary{transform-origin:center;animation:ps-authority .55s ease-out both}
+@keyframes ps-command{to{transform:scale(.94);opacity:.72}}@keyframes ps-materialize{from{stroke-dasharray:90;stroke-dashoffset:90;opacity:.25}to{stroke-dashoffset:0;opacity:1}}@keyframes ps-authority{from{transform:scale(.9);opacity:.35}to{transform:none;opacity:1}}
+@media(prefers-reduced-motion:reduce){.paige-symbol,.paige-symbol *{animation:none!important;transition:none!important}}
