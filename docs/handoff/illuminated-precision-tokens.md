@@ -53,3 +53,16 @@ Implementation variables include `--atmosphere-blue`, `--nav-plum`, `--graphite-
 - `--surface-open`: a continuous working field used where layout previously received an unnecessary container.
 
 The implementation deliberately keeps focus outlines independent from this hierarchy: removing a passive perimeter never removes hover, focus, pressed, selected, or non-color state feedback.
+
+## Living Operational Field typography and material
+
+- `--type-workspace`: compact architectural identity for date periods and instrument titles.
+- `--type-object`: readable selected and temporal-object titles.
+- `--type-interface`: minimum sustained-work control and row text.
+- `--type-meta`: compact secondary evidence that remains legible at laptop scale.
+- `--type-data`: tabular time, status, authority, and execution evidence.
+- `--leading-interface`: shared operational line-height rather than one-off vertical sizing.
+- `--field-obsidian`, `--field-smoke`, `--field-warm`: distinguish infrastructure, routine work, and human/command temperature in dark mode.
+- `--field-mineral`, `--field-mineral-cool`, `--field-graphite`: independently composed light-mode field, plotting, and typography materials.
+
+Temporal primitives use semantic classes rather than interchangeable cards: `.appointment`, `.internal`, `.task`, `.blocked`, `.agent`, `.approval`, `.milestone`, `.followup`, and `.artifact`. Each retains a textual kind/state in the accessible name and inspector; shape and material reinforce rather than replace the label.
