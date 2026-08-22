@@ -43,3 +43,13 @@ Implementation variables include `--atmosphere-blue`, `--nav-plum`, `--graphite-
 - `--motion-spatial`: 220ms for drawer, rail, and inspector continuity.
 - `--motion-focus`: 380ms for full-canvas transitions.
 - Reduced motion collapses animation/transition duration while preserving all labels and final states.
+
+## Boundary hierarchy
+
+- `--boundary-implied`: spacing, alignment, type, and tonal shifts; no perimeter.
+- `--boundary-partial`: a single rule, rail, underline, or interrupted edge for passive structure.
+- `--boundary-material`: an inset tonal field for Calendar, transcripts, Studio, charts, lineage, and inspectors.
+- `--boundary-explicit`: the complete champagne/mineral perimeter reserved for selected, editable, approval, error, permission, and consequential objects.
+- `--surface-open`: a continuous working field used where layout previously received an unnecessary container.
+
+The implementation deliberately keeps focus outlines independent from this hierarchy: removing a passive perimeter never removes hover, focus, pressed, selected, or non-color state feedback.
