@@ -50,3 +50,11 @@ Automated shell coverage now additionally verifies authored Calendar rendering, 
 Static and component checks confirm Calendar day/week/month controls, task visibility, appointment/task inspectors, six Calendar internal views, honest connection states, Conversations draft/approval/conversion controls, and responsive layouts. The connected mounts intentionally defer live-data proof to authenticated RLS-backed execution.
 
 Detached windows share the same route and a generated `workspaceSession` identifier. `BroadcastChannel` synchronizes non-sensitive layout context (theme, destination, view, navigation mode); authenticated records, Trust authority, approvals, sends, and live updates remain server-authorized and are not copied into the channel.
+
+## Final density and material pass — 2026-08-22
+
+The global command bar is now 48px, the expanded rail is 188px, and the compact rail is 58px. Operational surfaces use a compact utility header and viewport-derived internal canvas heights rather than a second banner. The final semantic palette separates blue/aubergine atmosphere, ink-plum navigation, smoked-graphite workspace, cool recessed fields, neutral working surfaces, and warm selected/command material in both dark and mineral-white themes.
+
+The Home **View calendar** control now performs a direct capability transition to `Work / Calendar`; a regression assertion verifies that the Calendar instrument appears and that the Trust Compass drawer does not. The test count in this report must be read from the final command output rather than the earlier 27-test snapshot.
+
+Visual capture remains an explicit environment limitation, not a claimed pass: `npx playwright install chromium` was attempted on 2026-08-22 and every CDN request returned HTTP 403. A browser-capable CI or preview deployment must still capture the manifest above and inspect console, overflow, focus order, and all requested viewports before production acceptance.
