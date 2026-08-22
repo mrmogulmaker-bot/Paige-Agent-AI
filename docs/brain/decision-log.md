@@ -311,6 +311,39 @@ gains a dated section (§BRAIN.3).*
   and three sibling tests already import edge-function `_shared` code the same way. The second path was
   invented, not needed.
 
+- **2026-08-22 · A3 delivery + A4 surface — the alerting substrate is end-to-end, and two things it deliberately will not do.**
+  **A3** (`alerting-deliver`, PR #564, `pg_cron` at `2-59/5` so a firing delivers on the same cycle the
+  evaluator created it) drains pending firings into `paige_admin_notifications`. §18 correction worth
+  keeping: the architecture doc named BOTH `_shared/channel-adapters.ts` and `paige_admin_notifications`,
+  and inspecting the actual shapes settled it — channel-adapters is THREAD/CONTACT-shaped
+  (`ThreadContext`, `MessageParty`), built for tenant↔client messaging, and an operator alert is
+  tenant-less with no thread and no contact. `paige_admin_notifications` is the exact shape and already
+  had a live writer precedent (`enforce_subagent_doctrine_116`). channel-adapters becomes relevant only
+  for EXTERNAL delivery, a later leg. `delivery_status` moves to `delivered` ONLY after the row really
+  inserts; an `autonomy_lane='off'` rule is marked `skipped` with `delivered_at` left NULL, because 🔴
+  means human-briefed-only (§16) and auto-delivering it would quietly overrule the lane the operator set.
+  **A4** wires the Fleet sub-tab: `useAlerting.ts` (rules + signal catalogue + 6 counts) and
+  `describeCondition.ts` (16 tests) — the ONE home for rendering a stored condition, which A5's authoring
+  form reads from rather than forking. Every FIRING figure is an exact head-count, never `rows.length`
+  over an uncapped select (§199); rule-derived counts come from the fetched list, so the hook fetches
+  `RULE_LIMIT+1` and renders "—" instead of a wrong number when that list is incomplete.
+  **Two deliberate non-features.** "+ New rule" renders DISABLED and says why — a control that looks live
+  and silently discards work is worse than one visibly not ready (§13/§36). External delivery is not built
+  for ANY tier including God, because there is no operator address book: "who receives the 3am alert email"
+  is an owner-owed decision and must not be quietly hardcoded to the owner's address (§45/§63).
+  **A pre-condition that is now a habit, not a lesson:** the `service_role`/`authenticated` grant check ran
+  BEFORE any code was written. A rollback proof runs as table OWNER, so a missing grant is invisible to it
+  — that blind spot cost us twice (hotfix #94 `paige_systems_check_*`, #563 `tenant_revenue_classification`).
+  **The tsc ratchet then caught what neither the proof nor the peer read would have:** A1's three tables were
+  never added to the committed `src/integrations/supabase/types.ts`, so every column read was `ResultOne`.
+  Layered defences, none sufficient alone (§39).
+  §32.a proven on BOTH legs: `schema_migrations` carries `20260927000000`, `cron.job` 9 → 10, and
+  `net._http_response` id 135756 @ 17:52:00Z returned a real **200** with
+  `{"drained":0,"delivered":0,"failed":0,"skipped":0,"note":"no pending firings"}` — an actual HTTP
+  response, not a queued `net.http_post` (the A2 lesson). **No independent §39 peer read on either slice:**
+  Codex cannot commit to this repo and the owner authorised proceeding, so both were a single adversarial
+  pass by their author. Stated, not hidden.
+
 ### 2026-08-20 — Operator act-as is real and audited; the capability already existed, the audit did not (Slice 2, task #212)
 
 **What shipped.** `operator_enter_tenant(_tenant uuid)` / `operator_exit_tenant()` — SECURITY DEFINER,

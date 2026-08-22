@@ -10,6 +10,7 @@ import FleetConsole from "@/operator/surfaces/FleetConsole";
 import SystemsCheckSurface from "@/operator/surfaces/SystemsCheckSurface";
 import FleetHistorySurface from "@/operator/surfaces/FleetHistorySurface";
 import FleetTeamPulseSurface from "@/operator/surfaces/FleetTeamPulseSurface";
+import FleetAlertRulesSurface from "@/operator/surfaces/FleetAlertRulesSurface";
 import OperatorPaigePanel from "@/operator/OperatorPaigePanel";
 import TrustCompass from "@/operator/surfaces/TrustCompass";
 import KnowledgeSurface from "@/operator/surfaces/KnowledgeSurface";
@@ -798,6 +799,7 @@ function OperatorSurface({
   const isSystemsCheck = branchSlug === "fleet" && subSlug === "systems-check";
   const isHistory = branchSlug === "fleet" && subSlug === "history";
   const isTeamPulse = branchSlug === "fleet" && subSlug === "team-pulse";
+  const isAlertRules = branchSlug === "fleet" && subSlug === "alert-rules";
   const isCompass = branchSlug === "trust-compass" && subSlug === "autonomy";
   const isKnow = branchSlug === "paige" && subSlug === "knowledge";
   const isWorkspace = branchSlug === "paige" && subSlug === "chat";
@@ -811,6 +813,7 @@ function OperatorSurface({
   if (isSystemsCheck) return <SystemsCheckSurface />;
   if (isHistory) return <FleetHistorySurface />;
   if (isTeamPulse) return <FleetTeamPulseSurface />;
+  if (isAlertRules) return <FleetAlertRulesSurface />;
   if (isCompass)
     return (
       /* Read-only until the lane WRITE path lands: no `onCommit`, and the surface says so
