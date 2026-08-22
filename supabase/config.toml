@@ -417,3 +417,10 @@ project_id = "xygzykjyynhzqytbqnzu"
   # systems-check-run-operator (§18). Never a tenant JWT, never a body identity (§588).
   [functions.alerting-evaluate]
     verify_jwt = false
+
+  # Alerting delivery (A3) — drains pending paige_alert_firing rows and writes an operator
+  # notification for each. verify_jwt=false so the pg_cron poster (no Supabase JWT) can reach
+  # it; fails closed in-function to the SAME gates as alerting-evaluate — internal caller
+  # (service-role bearer OR x-cron-token) OR an operator JWT (is_platform_operator(), §53).
+  [functions.alerting-deliver]
+    verify_jwt = false
