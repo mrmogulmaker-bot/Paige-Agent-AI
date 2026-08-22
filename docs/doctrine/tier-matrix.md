@@ -489,6 +489,36 @@ happens to exist today.
 | Read + acknowledge firings | ✓ | 403 | 403 | 403 | 403 | 403 | 403 |
 | Hand-write a firing | — | 403 | 403 | 403 | 403 | 403 | 403 |
 
+| A5a capability (the WRITE SEAM) | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Create / edit / pause / delete a rule via `alerting-rule-write` | ✓ | 401 | 401 | 401 | 401 | 401 | 401 |
+| Author a rule bound to an UNREADABLE signal | — | 401 | 401 | 401 | 401 | 401 | 401 |
+| Declare a delivery channel that does not exist yet | — | 401 | 401 | 401 | 401 | 401 | 401 |
+| Delete a rule that has recorded firings | — | 401 | 401 | 401 | 401 | 401 | 401 |
+| "+ New rule" button on the Fleet tab | — | N/A | N/A | N/A | N/A | 403 | 403 |
+
+**The seam exists; the button does not yet.** A5a ships the server-side authority — one edge
+function that is the ONLY thing allowed to decide whether a rule may be stored — and A5b wires the
+form to it. The button row therefore stays `—`: this ledger does not tick a surface row for an
+endpoint, the same way it did not tick one for a table or a cron job. `paige-mcp` becomes a second
+caller of this same function in A-Weave-2 — tools, not a second write path (§18).
+
+**Three rows are `—` for God too, and each is a refusal rather than a gap.** A rule bound to a
+signal with no reader would sit in the operator's list reporting "never evaluated" forever while
+they believed something was watching — the same class of defect as a control that looks live and
+does nothing (§13/§36), so it is refused with the reason named. A channel other than `in_app` is
+refused because nothing sends on it: neither the evaluator nor the delivery leg reads `channels`
+at all today (verified — grep returns nothing), so accepting `email` would convert a declaration
+into a promise. Deleting a rule with firings is refused because a firing is the record that
+something actually happened, and destroying that history to tidy a list is not a trade this seam
+makes on its own (§13/§58) — pause is the reversible move and the refusal says so by name.
+
+**Validation is not duplicated into the browser, and that is the point.** The seam calls the SAME
+`validateCondition` the evaluator runs, so a rule cannot be accepted in a shape the evaluator will
+later reject. That module is Deno and cannot be imported by the form, which is precisely why the
+authority is server-side. If the signal catalogue itself cannot be read, the write is REFUSED
+(503) rather than allowed through unvalidated.
+
 **Every tenant tier is 403, not N/A — and that is a decision, not an omission.** A rule here
 watches the PLATFORM (failing checks, tenants at risk, LLM failover), which is the operator's
 book. Tenant-tier alerting is a separate owner decision with its own §51 row and §60 entry;
