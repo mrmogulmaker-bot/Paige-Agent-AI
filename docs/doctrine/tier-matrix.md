@@ -454,19 +454,33 @@ to let `is_platform_operator()` see those rows (§18: nothing new to add). §32.
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
 | Pack structure — KPI ladder, Rules block, foot | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
-| Any alert rule actually read from the platform | — | N/A | N/A | N/A | N/A | 403 | 403 |
-| Firing history / acknowledgement | — | N/A | N/A | N/A | N/A | 403 | 403 |
+| Any alert rule actually read from the platform | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Firing COUNTS (fired today · acknowledged · unacknowledged) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+| Firing HISTORY list (per-rule, "last N firings") | — | N/A | N/A | N/A | N/A | 403 | 403 |
+| Acknowledge a firing from the surface | — | N/A | N/A | N/A | N/A | 403 | 403 |
 | "+ New rule" write path | — | N/A | N/A | N/A | N/A | 403 | 403 |
 
-**Status: A1 SCHEMA + A2 EVALUATOR SHIPPED (2026-08-20); the surface is still gapped.** The
-substrate's foundation is live — `paige_alert_signal` (catalogue, config-as-data),
-`paige_alert_rule` and `paige_alert_firing`, all three RLS-forced and gated on
+**Status: A1 SCHEMA + A2 EVALUATOR + A3 DELIVERY + A4 SURFACE SHIPPED (2026-08-22); authoring
+is the remaining gap.** The substrate is live end to end — `paige_alert_signal` (catalogue,
+config-as-data), `paige_alert_rule` and `paige_alert_firing`, all three RLS-forced and gated on
 `is_platform_operator()` (§53 — the delegated operator tier, NOT the frozen
-`is_platform_owner()`) — and A2 added the sweep that actually evaluates them
-(`alerting-evaluate`, every 5 minutes via `pg_cron`, writing firings). The **surface still reads
-nothing**: A4 (surface wiring) has not landed, so every KPI on the tab is still `null` and the
-block still says so. That is the row's honest state — a working backend is not the same as a tab
-that works, and this ledger does not tick a surface row for a table or a cron job.
+`is_platform_owner()`); A2 added the sweep that evaluates them (`alerting-evaluate`, every 5
+minutes via `pg_cron`, writing firings); A3 added the delivery leg (`alerting-deliver`, offset to
+minute 2 of each 5 so a firing delivers on the same cycle it was created, writing a
+`paige_admin_notifications` row); and A4 wired the surface to all of it.
+
+**Four rows are ticked and three are deliberately not.** The tab now reads real rules, renders
+each rule's condition as a sentence, and shows four real KPIs — every FIRING figure an exact
+head-count, never `rows.length` over an uncapped select (§199). What it does NOT do: list
+individual firings (that is A-Weave-1), let an operator acknowledge one (RLS permits it; no
+control exists), or author a rule. **"+ New rule" renders DISABLED and says why** rather than as
+a live-looking control that silently discards the operator's work — the §13/§36 rule that a
+control which looks live and does nothing is worse than one that is visibly not ready yet.
+
+**Live state: 0 rules, 0 firings.** The tab renders its real empty state, and that is correct
+rather than a gap: the evaluator has nothing to check until A5 lets an operator author the first
+rule. A row here is ticked for what the surface CAN do with real data, not for how much data
+happens to exist today.
 
 | A1 capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
@@ -494,6 +508,24 @@ is recording what actually happened (§13).
 | Force a sweep by calling `alerting-evaluate` | ✓ | 401 | 401 | 401 | 401 | 401 | 401 |
 | A firing is DELIVERED anywhere | — | — | — | — | — | — | — |
 
+| A3 capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| A pending firing is DELIVERED to the operator inbox | ✓ | N/A | N/A | N/A | N/A | N/A | N/A |
+| A firing on an `autonomy_lane='off'` rule is SKIPPED, not delivered | ✓ | N/A | N/A | N/A | N/A | N/A | N/A |
+| External delivery (email / SMS to an operator) | — | — | — | — | — | — | — |
+| Force a drain by calling `alerting-deliver` | ✓ | 401 | 401 | 401 | 401 | 401 | 401 |
+
+**`delivery_status` moves to `delivered` ONLY after the notification row really inserts** — a
+fire is not a delivery (§13). A rule whose `autonomy_lane` is `off` is marked `skipped` with the
+reason recorded and `delivered_at` left NULL, because 🔴 means human-briefed-only (§16) and
+auto-delivering it would quietly overrule the lane the operator set. A firing whose rule has been
+deleted is marked `failed` with that stated, never dropped silently.
+
+**External delivery is `—` for EVERY tier, including God, and that is an owner-owed decision, not
+an oversight.** The platform models tenants and clients; it has no operator address book. "Who
+receives the 3am alert email" is a real choice and must not be quietly hardcoded to the owner's
+address (§45/§63). The in-app leg needs no such decision, so it shipped first.
+
 **The evaluation rows are N/A, not 403, for every tenant tier** — and the difference is
 deliberate. 403 means "this tier is denied a capability that exists"; N/A means the capability has
 no tenant-tier meaning at all. A scheduled sweep is not something a tier is denied; it is
@@ -506,9 +538,12 @@ tenant JWT, never an identity from the request body (§588).
 **"A firing is DELIVERED anywhere" is — for EVERY tier, God included, and that is the point.**
 A2 writes firings and stops. Delivery is A3 and routes through `_shared/channel-adapters.ts`
 (§18 — the existing single home for multi-channel delivery, not a second stack invented here).
-Until A3 lands, every firing sits at `delivery_status='pending'`, which is the literal truth. A
-row that said ✓ here would be the exact "a fire is not a delivery" lie this table's own design
-exists to prevent (§13).
+That was written while A3 was still pending, and while it was, every firing sat at
+`delivery_status='pending'` — which was the literal truth. **A3 has since landed
+(2026-08-22, PR #564)**; see the A3 table above for what delivery now does and does not
+cover. The note is kept because its reasoning still binds: a row that said ✓ before the
+delivery leg existed would have been the exact "a fire is not a delivery" lie this table's
+own design exists to prevent (§13).
 
 **Two signals are honestly UNREADABLE and a rule bound to either reports "never evaluated",
 never a pass.** `migrations.drift` — an edge function cannot read git. `llm.failover_rate` — A1
@@ -519,7 +554,8 @@ failover name.
 
 ---
 
-**Original gap note, kept for the record:** The pack's structure ships through the
+**Original gap note (written 2026-08-18, SUPERSEDED — kept for the record, §13 audit trail;
+every absence it describes has since been built by A1–A4):** The pack's structure ships through the
 generic panel with every KPI at `null` and the block stating "No alert rule is being read from the
 platform yet." That is the honest absence, not a stand-in — but it is an absence: there is no
 alert-rule table, no firing record, and no delivery path. Building it is a net-new capability with
@@ -541,7 +577,8 @@ to read, so there is nothing to wire, and a percentage here would be invented (�
 rows means building operator activity tracking first, which is its own decision.
 
 **Fleet Console, whole-branch status (recorded 2026-08-20).** Sub-tabs 1, 2, 3 and 5 carry real
-reads; sub-tab 4 (Alert rules) is the single remaining backend gap. This survey corrected a stale
+reads; sub-tab 4 (Alert rules) was the single remaining backend gap at the time of that survey
+and has since been closed by A1–A4 (2026-08-20 → 2026-08-22). This survey corrected a stale
 plan that had History queued as the next port — it had already shipped with a real feed, and
 rebuilding it would have been the §18 failure of building something that already exists.
 ## Known ambiguities and hazards (log, don't hide — §13)

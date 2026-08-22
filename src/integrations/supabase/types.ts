@@ -8869,6 +8869,153 @@ export type Database = {
           },
         ]
       }
+      paige_alert_firing: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          created_at: string
+          delivered_at: string | null
+          delivery_error: string | null
+          delivery_status: string
+          fired_at: string
+          id: string
+          metadata: Json
+          observed: Json
+          rule_id: string
+          scope_tenant_id: string | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          delivery_error?: string | null
+          delivery_status?: string
+          fired_at?: string
+          id?: string
+          metadata?: Json
+          observed?: Json
+          rule_id: string
+          scope_tenant_id?: string | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          delivery_error?: string | null
+          delivery_status?: string
+          fired_at?: string
+          id?: string
+          metadata?: Json
+          observed?: Json
+          rule_id?: string
+          scope_tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paige_alert_firing_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "paige_alert_rule"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "paige_alert_firing_scope_tenant_id_fkey"
+            columns: ["scope_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      paige_alert_rule: {
+        Row: {
+          autonomy_lane: string
+          channels: Json
+          condition: Json
+          condition_met_since: string | null
+          created_at: string
+          created_by: string | null
+          department: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          last_evaluated_at: string | null
+          last_fired_at: string | null
+          name: string
+          severity: string
+          updated_at: string
+        }
+        Insert: {
+          autonomy_lane?: string
+          channels?: Json
+          condition: Json
+          condition_met_since?: string | null
+          created_at?: string
+          created_by?: string | null
+          department?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          last_evaluated_at?: string | null
+          last_fired_at?: string | null
+          name: string
+          severity?: string
+          updated_at?: string
+        }
+        Update: {
+          autonomy_lane?: string
+          channels?: Json
+          condition?: Json
+          condition_met_since?: string | null
+          created_at?: string
+          created_by?: string | null
+          department?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          last_evaluated_at?: string | null
+          last_fired_at?: string | null
+          name?: string
+          severity?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      paige_alert_signal: {
+        Row: {
+          created_at: string
+          description: string
+          is_readable: boolean
+          key: string
+          label: string
+          notes: string | null
+          reader: string | null
+          value_kind: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          is_readable?: boolean
+          key: string
+          label: string
+          notes?: string | null
+          reader?: string | null
+          value_kind: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          is_readable?: boolean
+          key?: string
+          label?: string
+          notes?: string | null
+          reader?: string | null
+          value_kind?: string
+        }
+        Relationships: []
+      }
       paige_approval_comments: {
         Row: {
           approval_id: string
