@@ -86,6 +86,11 @@ jobs:
           echo "src_count=$(printf '%s' "$src" | grep -c . || true)" >> "$GITHUB_OUTPUT"
           printf '%s\n' "$src" | grep -E '.' > changed_src.txt || true
           echo "Changed src files:"; cat changed_src.txt || true
+          # Edge functions are a SEPARATE tree that tsc never sees (they are Deno, not Vite).
+          fns="$(echo "$all" | grep -E '^supabase/functions/.*\.ts$' || true)"
+          echo "fn_count=$(printf '%s' "$fns" | grep -c . || true)" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$fns" | grep -E '.' > changed_fns.txt || true
+          echo "Changed edge-function files:"; cat changed_fns.txt || true
 
       - name: tsc baseline may only shrink
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
@@ -123,6 +128,61 @@ jobs:
       - name: Gold-discipline (changed src)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt node scripts/gold-discipline-lint.mjs
+
+      # --- Edge functions: the gap this closes (task #142) ---------------------------------
+      # NOTHING compiled an edge function before it deployed. `tsc` covers src/ only (edge fns
+      # are Deno and are not in the Vite tsconfig); `prove` looks at migrations only; and
+      # Supabase Preview DOES have an Edge Functions task but it sits DOWNSTREAM of the
+      # migration replay, which fails on every PR (#211) — observed: Configurations ✅ →
+      # Migrations ❌ → Seeding ⏸️ → Edge Functions ⏸️, so it never runs. The first thing that
+      # compiled a function was the deploy itself, by which point it was live.
+      #
+      # SCOPE, stated honestly: this checks the functions THIS PR affects, not the ~249 already
+      # in the tree. It stops new breakage; it is not a retroactive audit of what is already
+      # deployed (that would be its own slice, and on this codebase almost certainly a ratchet
+      # in the shape of scripts/ci/tsc-ratchet.mjs).
+      #
+      # The affected set is computed by the SAME script the deploy uses
+      # (.github/scripts/edge-affected.py), which follows relative imports transitively — so a
+      # change to one _shared file checks every function that pulls it in. Reusing it means the
+      # set CI CHECKS and the set CI DEPLOYS can never drift apart (§18: one home).
+      - name: Resolve affected edge functions
+        id: affected_fns
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.fn_count != '0' }}
+        run: |
+          python3 .github/scripts/edge-affected.py < changed_fns.txt | tee affected_fns.txt
+          echo "count=$(grep -c . affected_fns.txt || true)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Deno
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '0' }}
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Deno check (affected edge functions)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.affected_fns.outputs.count != '0' }}
+        run: |
+          set -uo pipefail
+          failed=0
+          while read -r fn; do
+            [ -n "$fn" ] || continue
+            entry="supabase/functions/$fn/index.ts"
+            if [ ! -f "$entry" ]; then
+              # A function can be affected-by-import yet have no index.ts (deleted in this PR).
+              # Say so rather than silently counting it as checked.
+              echo "::notice::skipping $fn — no $entry (deleted or entry-less)"
+              continue
+            fi
+            echo "--- deno check $entry"
+            # Remote deps are fetched fresh; --no-lock because these functions have no committed
+            # deno.lock and a lockfile mismatch would fail for a reason unrelated to type safety.
+            deno check --no-lock "$entry" || failed=1
+          done < affected_fns.txt
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::deno check failed for at least one affected edge function (see above)."
+            exit 1
+          fi
+          echo "All affected edge functions type-check."
 
       # --- Whole-repo hard gates (PR + push). `!cancelled` so one run surfaces every failure. ----
       - name: Typecheck (ratchet — fails on NEW type errors only)
