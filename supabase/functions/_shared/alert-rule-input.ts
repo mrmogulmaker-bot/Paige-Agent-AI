@@ -75,7 +75,17 @@ export interface RuleInput {
   is_active?: unknown;
 }
 
-/** The shape that may be handed to the DB — every field already checked. */
+/**
+ * The shape that may be handed to the DB — every field already checked.
+ *
+ * CONTRACT TRAP, stated because the type alone does not say it: on a PARTIAL validation
+ * (`{ partial: true }`) the caller may omit `name` and `condition`, and this object then carries
+ * an empty `name` and an `undefined` `condition` — placeholders for "not supplied", NOT values to
+ * write. A partial caller MUST copy only the fields the caller actually sent (which is what
+ * `alerting-rule-write`'s update path does, keying off `field in supplied`). Spreading this whole
+ * object into an UPDATE would blank the rule's name and violate the NOT NULL on `condition`.
+ * On a full validation every field is real and spreading it is correct.
+ */
 export interface NormalizedRule {
   name: string;
   description: string | null;
