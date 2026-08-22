@@ -49,9 +49,7 @@ function allowedReturnOrigin(origin: string): string | null {
         host === "www.paigeagent.ai" ||
         host === "app.paigeagent.ai" ||
         host === "portal.mogulmakeracademy.com" ||
-        host.endsWith(".vercel.app") ||
-        host.endsWith(".lovable.app") ||
-        host.endsWith(".lovableproject.com")
+        host.endsWith(".vercel.app")
       );
     return allowed ? url.origin : null;
   } catch {
