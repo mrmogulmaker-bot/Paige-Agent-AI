@@ -176,6 +176,14 @@ That is more work than either shortcut. It is the work.
 
 ---
 
+## PACK-FIRST — `docs/design-references/PACK-FIRST.md`
+
+Before any UI work here, and again before any report that says something is missing: **the pack is
+CODE, not a spec.** Search it at least four ways and show the spellings. `PORT-SPEC-palette-and-six-
+surfaces.md` (99KB, line-cited) may answer it outright. Full rule in root `CLAUDE.md` §00.
+
+---
+
 ## BEFORE YOU TOUCH AN OPERATOR SURFACE
 
 1. **Open the pack's block for that exact surface.** Not memory, not a screenshot, not the route

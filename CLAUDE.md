@@ -37,6 +37,36 @@ frontend and everything visible in it. Claude Code owns the backend and everythi
   jurisdiction is correctness, honesty, security, tenant scope, and port fidelity. None of them
   has an opinion about the interface. **No agent debates UI.**
 
+### PACK-FIRST — read `docs/design-references/PACK-FIRST.md` before ANY UI work
+
+**Owner, 2026-08-23:** *"You keep seeming to want to ask Claude Design about specifics when they
+actually gave you the exact code to just simply copy and write in. I think you just keep forgetting
+to keep looping back to that code as the reference point."*
+
+**The pack is CODE, not a specification to interpret.** It is delivered markup, tokens, geometry and
+copy that already exist in the repo and can be copied. Treating it as a spec — reading it once,
+then reasoning from memory — is how CC keeps asking questions the pack already answered.
+
+**The gate, which fires on a WORD rather than on a judgement.** Before writing or thinking any of:
+
+> *"missing" · "not in the pack" · "PACK SILENT" · "owed from CD" · "ask CD" · "a design decision" ·
+> "a blocker" · "needs designing" · "not specified"*
+
+**STOP and search.** A real search is: **at least FOUR spellings** grepped against the `.dc.html`,
+plus the PORT-SPEC, plus the sibling files (`absence-copy.md`, `paige-ia.js`,
+`design-system-port.md`), plus READING the region of markup. One grep is not a search.
+
+**The evidence standard:** never *"the pack doesn't have X."* Always *"searched for a, b, c, d and
+read L1234–L1290 — not there."* An unfalsifiable claim of absence is indistinguishable from not
+having looked, which is what actually happened every time so far.
+
+**Anchoring cases, all 2026-08-23:** the command palette was about to be scoped as a design blocker
+— the pack carries 115 × `summon`, 24 × `palette`, 3 × `⌘K`. A sign-out glyph was reported "not in
+the pack" after ONE grep, in a brief that then told a subagent to escalate it. Both times the answer
+was already in the repo.
+
+**A capability drawn in the pack is never a blocker — it is a port that has not happened yet.**
+
 ### THE ONE THING CC MAY RAISE — incompatibility, in either direction
 
 **Owner ruling, 2026-08-23:** *"If the design itself needs to be modified in order for the backend
