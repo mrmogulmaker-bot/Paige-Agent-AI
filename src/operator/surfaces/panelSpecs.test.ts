@@ -60,6 +60,23 @@ describe("operator panel specs", () => {
     "settings/integrations/connected", // slot → IntegrationsGrid
   ]);
 
+  /**
+   * A third mechanism, and the strictest: a key the six-slot IA answers with a WHOLE surface, so
+   * the registry is never consulted for it at all and it carries NO spec — not even a stand-in.
+   *
+   * `fleet/systems-check` became one on 2026-08-23. Its spec had been transcribed from the
+   * RETIRED pack — "Thirteen categories, — checks. Is the machine running for everybody." — and
+   * that copy exists nowhere in v3; the thirteen-category taxonomy it named is not the vocabulary
+   * `paige_systems_check_registry.domain` uses either. The surface is now re-ported from v3, and
+   * the unreachable spec was deleted rather than left to be grepped back in (§30).
+   *
+   * A key here is exempt from BOTH the stand-in bar and the every-key-resolves bar, because
+   * "resolves a spec" is the wrong question for a key that has no panel.
+   */
+  const NO_PANEL = new Set([
+    "fleet/systems-check", // viewSources: bespoke SystemsCheckSurface — the whole view, not a slot
+  ]);
+
   it("renders CD's real panel content — no panel-rendered tab falls back to the stand-in", () => {
     const standIns: string[] = [];
     let kpis = 0;
@@ -68,7 +85,7 @@ describe("operator panel specs", () => {
       const [branch, sub, leaf] = key.split("/");
       const spec = getPanelSpec(branch, sub, leaf);
       if (!spec) {
-        standIns.push(`${key} (no spec)`);
+        if (!NO_PANEL.has(key)) standIns.push(`${key} (no spec)`);
         continue;
       }
       const isStandIn = spec.blocks.length === 1 && spec.blocks[0].body.kind === "notWired";
@@ -79,12 +96,20 @@ describe("operator panel specs", () => {
     expect(standIns).toEqual([]);
     // Pinned to what the port actually delivers. Raise these when a lot lands more of CD's
     // content; a DROP means someone thinned a panel and must say why.
-    expect(kpis).toBeGreaterThanOrEqual(196);
-    expect(blocks).toBeGreaterThanOrEqual(135);
+    //
+    // 2026-08-23, kpis 196 → 192 and blocks 135 → 133. The ratchet caught this and it is the
+    // legitimate case it exists to force an explanation for: `fleet/systems-check` was carrying
+    // a full spec — four KPIs, two blocks — transcribed from the RETIRED pack, on a key the
+    // six-slot IA answers with a whole bespoke surface. It could never render. Deleting it
+    // removes retired copy from the repo without removing anything an operator could see. Any
+    // FURTHER drop is a real thinning and still has to be justified here.
+    expect(kpis).toBeGreaterThanOrEqual(192);
+    expect(blocks).toBeGreaterThanOrEqual(133);
   });
 
   it("resolves a spec for every key, each with a title and at least one block", () => {
     for (const key of operatorPanelKeys()) {
+      if (NO_PANEL.has(key)) continue;
       const [branch, sub, leaf] = key.split("/");
       const spec = getPanelSpec(branch, sub, leaf);
       expect(spec, key).not.toBeNull();

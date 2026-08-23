@@ -166,13 +166,15 @@ button{font:inherit;color:inherit;cursor:pointer}
               <path d="M8 11.2v2.2" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"></path>
             </svg>
           </button>
-          <button onClick="{{ toggleSpine }}" title="Fold PAIGE · ⌘\" aria-label="Fold PAIGE" style="position:relative;width:34px;display:grid;place-items:center;border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);background:var(--pg-raised);box-shadow:var(--pg-lift-1);color:var(--pg-muted);transition:color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease" style-hover="color:var(--pg-gold-deep);border-color:var(--pg-line-strong);box-shadow:var(--pg-lift-2),inset 0 -2px 0 var(--pg-gold-deep);transform:translateY(-1px)" style-active="color:var(--pg-ink);box-shadow:var(--pg-inset);transform:translateY(0)">
-            <svg viewBox="0 0 16 16" style="width:15px;height:15px" aria-hidden="true">
-              <rect x="10.5" y="3.5" width="2.9" height="9" fill="currentColor" opacity=".13"></rect>
-              <path d="M2.6 3.5h10.8v9H2.6z M10.5 3.5v9" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"></path>
-              <path d="M5.6 6.2L7.5 8 5.6 9.8" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"></path>
-            </svg>
-          </button>
+          <sc-if value="{{ spineClosed }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ toggleSpine }}" title="Summon PAIGE · ⌘\" aria-label="Summon PAIGE" style="position:relative;width:34px;display:grid;place-items:center;border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);background:var(--pg-raised);box-shadow:var(--pg-lift-1);color:var(--pg-muted);transition:color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease" style-hover="color:var(--pg-gold-deep);border-color:var(--pg-line-strong);box-shadow:var(--pg-lift-2),inset 0 -2px 0 var(--pg-gold-deep);transform:translateY(-1px)" style-active="color:var(--pg-ink);box-shadow:var(--pg-inset);transform:translateY(0)">
+              <svg viewBox="0 0 16 16" style="width:15px;height:15px" aria-hidden="true">
+                <rect x="10.5" y="3.5" width="2.9" height="9" fill="currentColor" opacity=".13"></rect>
+                <path d="M2.6 3.5h10.8v9H2.6z M10.5 3.5v9" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"></path>
+                <path d="M7.6 6.2L5.7 8 7.6 9.8" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+            </button>
+          </sc-if>
         </div>
       </div>
 
@@ -11207,6 +11209,12 @@ class Component extends DCLogic {
       ...this.mindVals(),
       ...this.composerVals(),
       spineOpen:s.spine === 'expanded',
+      // The topbar's fold-in and the spine header's fold-in are the same act from two places.
+      // Both rendering at once put two identical controls on screen, so the topbar one shows
+      // only while she is away — where it reads as "summon her" rather than as a toggle, and
+      // its chevron points the way the panel travels. Closing her stays in her own header,
+      // beside the detach: put it away, or put it on another monitor.
+      spineClosed:s.spine !== 'expanded',
       spineEdgeStyle:{ position:'absolute', left:'-1px', top:0, bottom:0, width:'1px', background:'linear-gradient(180deg,transparent,var(--pg-gold-deep) 18%,var(--pg-violet) 55%,transparent 85%)', opacity:.6, animation:running && !reduce ? 'pg-edge 1.8s linear infinite' : 'none' },
       paigeStateLabel:s.spineDetached ? 'On its own monitor' : { rest:'Ready', focus:'Ready', listening:'Listening', understanding:'Working — keep talking', executed:'Complete' }[s.command],
       trustLine:tally[3]

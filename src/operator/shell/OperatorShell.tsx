@@ -388,26 +388,34 @@ function OperatorCanvas({
           mark={mark}
           onSummon={onSummon}
         />
-        {/* L167-L175 — the fold-spine control, the pack's own glyph. */}
-        <button
-          type="button"
-          onClick={onToggleSpine}
-          aria-label={spineOpen ? "Fold PAIGE away" : "Bring PAIGE back"}
-          aria-expanded={spineOpen}
-          title={spineOpen ? "Fold PAIGE · ⌘\\" : "Bring PAIGE back · ⌘\\"}
-          className={cn(
-            "relative grid h-[34px] w-[34px] flex-none place-items-center rounded-[var(--pg-r-chip)]",
-            "border border-[var(--pg-line)] bg-[var(--pg-raised)] text-[var(--pg-muted)] shadow-[var(--pg-lift-1)]",
-            "transition-colors hover:text-[var(--pg-gold-deep)] active:shadow-[var(--pg-inset)]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          )}
-        >
-          <svg viewBox="0 0 16 16" className="h-[15px] w-[15px] min-w-0" aria-hidden>
-            <rect x="10.5" y="3.5" width="2.9" height="9" fill="currentColor" opacity=".13" />
-            <path d="M2.6 3.5h10.8v9H2.6z M10.5 3.5v9" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
-            <path d="M5.6 6.2L7.5 8 5.6 9.8" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+        {/* L166-L177 (rev 11) — SUMMON PAIGE, and it exists ONLY while she is away.
+            The topbar control and the one in her own header are the same act from two places,
+            so both rendering at once put two identical controls on screen. Now the topbar one
+            shows only in the collapsed state, where it reads as "summon her" rather than as a
+            toggle, and its chevron points LEFT — the way the panel travels when it arrives.
+            Closing her stays in her own header beside the detach: put it away, or put it on
+            another monitor. `⌘\` still does both, so the keyboard path is unchanged. */}
+        {!spineOpen && (
+          <button
+            type="button"
+            onClick={onToggleSpine}
+            aria-label="Summon PAIGE"
+            aria-expanded={false}
+            title="Summon PAIGE · ⌘\\"
+            className={cn(
+              "relative grid h-[34px] w-[34px] flex-none place-items-center rounded-[var(--pg-r-chip)]",
+              "border border-[var(--pg-line)] bg-[var(--pg-raised)] text-[var(--pg-muted)] shadow-[var(--pg-lift-1)]",
+              "transition-colors hover:text-[var(--pg-gold-deep)] active:shadow-[var(--pg-inset)]",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+          >
+            <svg viewBox="0 0 16 16" className="h-[15px] w-[15px] min-w-0" aria-hidden>
+              <rect x="10.5" y="3.5" width="2.9" height="9" fill="currentColor" opacity=".13" />
+              <path d="M2.6 3.5h10.8v9H2.6z M10.5 3.5v9" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+              <path d="M7.6 6.2L5.7 8 7.6 9.8" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Row 2 — the surface. The ONLY scroller in this column. */}

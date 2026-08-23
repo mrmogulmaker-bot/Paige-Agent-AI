@@ -94,51 +94,16 @@ const SYSTEMS_CHECK_CATEGORIES = [
 ].map((c) => ({ ...c, count: null }));
 
 export const FLEET_SPECS: Record<string, OperatorPanelSpec> = {
-  /* ── Systems Check (CD 6769–6857, tabKey "main") ────────────────────────────────────── */
-  "fleet/systems-check": {
-    eyebrow: "PLATFORM",
-    title: "Systems Check",
-    // CD: "Thirteen categories, " + totalChecks + " checks. Is the machine running for
-    // everybody." The count is a swept figure; the CLAUSE is CD's sentence, so it stays and
-    // the figure becomes the em dash — the same substitution the chip and the OVERALL unit
-    // already ship ("— red · — amber"). Dropping the words would be paraphrase.
-    subtitle: "Thirteen categories, — checks. Is the machine running for everybody.",
-    anchor:
-      "Green means a check ran and passed. A category that has not been swept says so — it never " +
-      "reports green from an unqueried state.",
-    // CD: reds.length + " red · " + ambers.length + " amber", with `chipNote` "Last full sweep 2
-    // minutes ago. N of M checks passing." hung off it as the tooltip. Both are count phrases, so
-    // both carry with the figures em-dashed (sub-rule 1) rather than losing CD's slot entirely.
-    chip: { label: "— red · — amber", note: "Last full sweep —. — of — checks passing." },
-    // CD's `ctaFn` is `() => {}` — there is no sweep to run yet, so this renders disabled and
-    // says so rather than pretending to act.
-    primaryCta: { label: "Run full sweep" },
-    kpis: [
-      { label: "OVERALL", value: null, unit: "— red, — amber" },
-      { label: "CHECKS PASSING", value: null, unit: "swept —" },
-      // CD units "escalation webhook, 3 days" / "voice failover, no tenant saw it" name invented
-      // incidents, so both are dropped (sub-rule 2).
-      { label: "OPEN INCIDENT", value: null },
-      { label: "AUTO-MITIGATED", value: null },
-    ],
-    blocks: [
-      {
-        id: "categories",
-        title: "Categories",
-        sub: "Click any category for its systems and evidence.",
-        body: { kind: "checkGrid", categories: SYSTEMS_CHECK_CATEGORIES, columns: 3 },
-      },
-    ],
-    // CD's rail here is one `read` paragraph and three `signals`, all of them invented findings
-    // about a webhook, a migration drift and two secrets. None can ship (§13), and CD sets no
-    // `actionsTitle` on this tab, so there is no rail structure left to carry.
-  },
+  /* `fleet/systems-check` had a full spec here built from the RETIRED pack (`Super Admin
+     Shell.dc.html` 6769–6857): "Thirteen categories, — checks. Is the machine running for
+     everybody.", "Green means a check ran and passed…", and a KPI strip. Claude Design caught
+     those strings live; none of them exists in v3. The view is `bespoke: "SystemsCheckSurface"`
+     so this spec never rendered, and the surface is now re-ported from v3 — a run strip, a
+     composed brief, the registry's own seven domains, and a findings ledger. Deleted rather
+     than left in place to be grepped back in (§30).
 
-  /* ── Tenants (CD 6664–6692, `P.console`) ────────────────────────────────────────────────
-   * NOTE FOR THE INTEGRATOR: this route is already served by the bespoke `FleetConsole`
-   * component, which reads real tenants. This spec is the CD panel port for it; it is written
-   * because the lot asked for all six, and the integrator decides whether it is mounted at all.
-   * If `FleetConsole` keeps the route, this entry is reference, not shipped chrome. */
+     `SYSTEMS_CHECK_DOMAINS` above went with it: it was the thirteen-category taxonomy, and
+     `paige_systems_check_registry.domain` has never used those values. */
   "fleet/tenants": {
     eyebrow: "FLEET",
     title: "Tenants",

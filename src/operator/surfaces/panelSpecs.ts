@@ -83,13 +83,12 @@ interface PanelCopy {
  * default tab is keyed with its own slug from OPERATOR_BRANCHES, never an empty segment.
  */
 const COPY: Record<string, PanelCopy> = {
-  /* ── Fleet Console (CD 6781) ─────────────────────────────────────────── */
-  "fleet/systems-check": {
-    title: "Systems Check",
-    sub: "Thirteen categories of check. Is the machine running for everybody.",
-    anchor: "A check that has never failed is not the same as a check that is passing. Both are shown.",
-    cta: "Run full sweep",
-  },
+  /* `fleet/systems-check` had an entry here carrying the RETIRED pack's copy — "Thirteen
+     categories of check. Is the machine running for everybody." (`Super Admin Shell.dc.html`
+     L6781). The view is `bespoke: "SystemsCheckSurface"`, so the entry was unreachable, and the
+     surface itself is now re-ported from v3, where neither string exists and the taxonomy is the
+     registry's own seven domains rather than a thirteen that never matched it. Deleted rather
+     than left to be grepped back in (§30 — delete, do not cover). */
   "fleet/tenants": {
     title: "Tenants",
     sub: "Every tenant, their tier, health, and the way into each one.",
@@ -551,6 +550,16 @@ export function operatorPanelKeys(): string[] {
 }
 
 /**
+ * Keys the six-slot IA answers with a WHOLE surface, so the registry is never consulted for them
+ * and a missing spec is correct rather than a gap. This is not the same as a bespoke SLOT, which
+ * still renders the registry panel around a real body — these have no panel at all.
+ *
+ * `fleet/systems-check` joined the list on 2026-08-23, when its spec (transcribed from the
+ * RETIRED pack, "Thirteen categories…") was deleted along with the retired copy it carried.
+ */
+const NO_PANEL_KEYS = new Set(["fleet/systems-check"]);
+
+/**
  * Coverage check against OPERATOR_BRANCHES — the one home for the tree (§18). Returns the
  * addressable tabs with no spec and the specs that address nothing, so a branch added to the
  * registry without copy surfaces as a named gap instead of a blank panel. Used by tests and
@@ -560,7 +569,7 @@ export function assertPanelSpecCoverage(): { missing: string[]; orphaned: string
   const addressed = new Set(operatorPanelKeys());
   const specced = new Set(Object.keys(COPY));
   return {
-    missing: [...addressed].filter((k) => !specced.has(k)),
+    missing: [...addressed].filter((k) => !specced.has(k) && !NO_PANEL_KEYS.has(k)),
     orphaned: [...specced].filter((k) => !addressed.has(k)),
   };
 }

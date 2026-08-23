@@ -155,3 +155,28 @@ Not design decisions — the seam this surface needs:
    design that merges, so there is no endpoint to write.
 5. The five needs as an adapter interface, so GitLab and Bitbucket drop in without touching
    the surface.
+
+---
+
+## Also in this revision
+
+### The topbar fold-in is now state-aware
+Two identical fold-in controls were rendering at once — one at the end of the command-bar
+row, one in the spine header. Same act from two places, which is fine; both on screen at
+once is not.
+
+The topbar control now renders only while the spine is **collapsed** (`spineClosed`), where
+it reads as *summon her* rather than as a toggle. Its label changed to **Summon PAIGE** and
+its chevron mirrored to point the way the panel travels — it pointed right, which read as
+"push away" on a button that pulls her in.
+
+Closing her stays in her own header, beside the detach: **put it away, or put it on another
+monitor.** That pair reads better than a lone fold-in did. `⌘\` still toggles both ways, so
+the keyboard path is unchanged.
+
+Pop-out is untouched and stays.
+
+### Still owed from the design side
+The **sign-out glyph.** A right-chevron shipped as a placeholder; the pack draws no sign-out
+control, so the glyph is the design's to draw and it lands in a later rev. Do not replace it
+with something else in the meantime — leave the placeholder.
