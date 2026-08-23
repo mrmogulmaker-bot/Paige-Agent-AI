@@ -138,74 +138,205 @@ All colors MUST be HSL.
      much larger change and its own owner call, not something this slice does by side effect.
 
      Token-only: no call site carries a hex. Values are CD's, converted to HSL. */
-  .operator-console {
-    --background: 30 33% 98%;        /* #FBF9F7 — the warm ground */
-    --foreground: 240 7% 11%;        /* #1B1B1F */
-    --card: 48 38% 97%;              /* #FBFAF6 */
-    --card-foreground: 240 7% 11%;
-    --popover: 48 38% 97%;
-    --popover-foreground: 240 7% 11%;
-    --muted: 45 30% 92%;             /* #F1EEE5 — the recess step */
-    --muted-foreground: 42 6% 41%;   /* #6E6A61 — 5.3:1 on the ground, AA clear */
-    --border: 41 24% 82%;            /* #DCD5C6 — CD's warm hairline */
-    --border-strong: 41 24% 76%;
-    --input: 41 24% 82%;
+  /* ══ CD's design system, INSTALLED — not mapped onto another one ═══════════════════════
+     Ported 2026-08-23 from docs/design-references/cd-packs/super-admin-shell-v3/
+     docs/handoff/design-system-port.md, which lifts it verbatim from the pack.
 
-    /* CD's rail, and its ink. 10:1 — CD's own pairing, no adjustment needed. */
-    --rail: 254 46% 13%;             /* #191231 */
-    --rail-foreground: 255 42% 85%;  /* #CFC7E8 */
-    /* CD's rail eyebrow is #7C73A0, which measures 4.11:1 on the rail and misses AA at
-       8.5px uppercase. Same hue, lifted until it passes — CD's colour, legible. */
-    --rail-muted: 252 25% 66%;
+     WHAT WENT WRONG BEFORE, so it is not repeated: the console was built on the app's
+     shadcn tokens with CD's design mapped onto them. Our values therefore won every
+     disagreement, and the result was not the palette — the owner caught it live. The rule
+     from that correction: install the system; where an existing token is close, it is
+     still wrong.
 
-    /* CD spends gold on the active sub-tab underline and the settings-active rail row.
-       Per the ruling those are CD's calls, not ours, so they ship as designed. Recorded
-       honestly: CD's #C8A02E measures 2.35:1 against its own ground as a 2px underline —
-       raised once, ruled on, shipping as designed. */
-    --cd-gold: 44 63% 48%;           /* #C8A02E */
-    --cd-gold-ink: 44 69% 69%;       /* #E7C97A — gold ink on the dark rail */
+     BOTH THEMES ARE SEPARATELY AUTHORED. Champagne INVERTS role: dark gold is light on a
+     near-black ground (#ead5aa), light gold is a dark bronze on warm paper (#8b7049).
+     Neither is a filter of the other — deriving one from the other fails contrast in the
+     direction that matters, so nothing here is generated.
 
-    /* FOCUS RING — defined here because the global `--ring` (258 70% 50%) was validated at
-       7.7:1 on WHITE and never against this console's grounds. Measured on the rail it is
-       2.33:1 light / 1.78:1 dark, under the 3:1 non-text minimum, and the rail carries every
-       interactive control in the shell. Gold is the console's one high-contrast hue that
-       clears 3:1 on BOTH the rail and the canvas, and a focus ring is a transient state
-       marker rather than a resting treatment, so it does not spend the act budget.
-       The rail redefines it again below: one value cannot clear both a near-black rail and
-       a near-white canvas, so each ground gets the value that clears IT. */
-    --ring: 44 63% 34%;              /* #8B6F20 — 4.6:1 on the light canvas */
+     Depth comes from LAYERED ELEVATION, never from darkening:
+       env -> nav -> canvas -> spine -> workspace -> surface -> raised
+     `env` is the ground the shell is painted on; `raised` is the top. */
+  [data-pg] {
+    --pg-font-display: "Schibsted Grotesk", "Segoe UI Variable Display", "SF Pro Display", system-ui, sans-serif;
+    --pg-font-ui: "Schibsted Grotesk", "Segoe UI Variable Text", "SF Pro Text", system-ui, sans-serif;
+    --pg-font-editorial: "Gambetta", "Newsreader", "Iowan Old Style", Baskerville, serif;
+    --pg-font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+    font-synthesis-weight: none;
+    /* Why every table's figures align. Losing it reads as sloppy typesetting, not as a
+       missing token, which is exactly why it is easy to drop. */
+    font-variant-numeric: tabular-nums;
+
+    /* The console's face, set HERE rather than in tailwind.config. That config's `sans`
+       (Inter) and `display` (Bricolage Grotesque) are PLATFORM-WIDE — changing them would
+       repaint the landing page and every tenant shell, including owner-approved frozen
+       surfaces. Neither face appears in this pack and Inter is on its avoid list, so the
+       console overrides by inheritance on its own root and the rest of the platform is
+       untouched. Body is the pack's own `400 14px/1.55`, tracking -.002em. */
+    font-family: var(--pg-font-ui);
+    font-size: 14px;
+    line-height: 1.55;
+    letter-spacing: -0.002em;
+    color: var(--pg-ink);
   }
 
-  /* CD authored one theme. Its own dark block paints the page the SAME colour as the rail,
-     so the rail disappears — a defect in the pack, not a design intent (§29: shipped,
-     correct, and invisible). Dark keeps CD's hues and lifts only what has to move to stay
-     visible and legible. */
-  /* The rail is dark in BOTH themes, so one value clears it in both — and it must be set on
-     the rail itself, because the canvas value beside it is tuned for the opposite ground. */
-  .operator-console [data-operator-rail] {
-    --ring: 44 75% 72%;              /* 7.4:1 on the light rail, 6.1:1 on the dark rail */
+  /* `env` is the ground the shell is painted on — the bottom of the depth ladder. The pack
+     puts it on `body`; the console is a subtree, so it lands on the shell root instead. */
+  [data-pg][data-shell-root] { background: var(--pg-env); }
+
+  /* Tailwind's font utilities would beat inheritance, so they are re-pointed INSIDE the
+     console only. Outside it they keep their platform meaning. */
+  [data-pg] .font-sans { font-family: var(--pg-font-ui); }
+  [data-pg] .font-display { font-family: var(--pg-font-display); }
+  [data-pg] .font-mono { font-family: var(--pg-font-data); }
+  [data-pg] .font-serif { font-family: var(--pg-font-editorial); }
+
+  [data-pg="dark"] {
+    color-scheme: dark;
+    --pg-env: #08070b; --pg-nav: #0d0b11; --pg-canvas: #100e14; --pg-spine: #121017;
+    --pg-workspace: #16131a; --pg-surface: #19161e; --pg-raised: #211d27;
+    --pg-artifact: #e9e4da;
+    --pg-line-soft: rgba(244,237,222,.115); --pg-line: rgba(244,237,222,.195);
+    --pg-line-strong: rgba(244,237,222,.30); --pg-line-authority: rgba(234,213,170,.40);
+    --pg-ink: #f6f2ea; --pg-ink-2: #d6d0c9; --pg-muted: #aca69d; --pg-faint: #969089;
+    --pg-gold-core: #fff0cf; --pg-gold: #ead5aa; --pg-gold-deep: #c7a978;
+    --pg-gold-fill: #d4a752; --pg-gold-bloom: rgba(240,200,106,.28);
+    --pg-graphite: #2a2730; --pg-lift: rgba(255,255,255,.018);
+    --pg-violet: #9b8de0; --pg-positive: #8fd1ae; --pg-warning: #edc17f; --pg-negative: #eda093;
+    --pg-e1: inset 0 1px rgba(255,255,255,.025);
+    --pg-e2: 0 1px 2px rgba(0,0,0,.45);
+    --pg-e3: -20px 0 60px rgba(0,0,0,.22);
+    --pg-e4: 0 28px 70px rgba(0,0,0,.42);
+    --pg-rim: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.5);
+    --pg-lift-1: inset 0 1px 0 rgba(255,255,255,.055), 0 1px 1px rgba(0,0,0,.3), 0 4px 12px -4px rgba(0,0,0,.42);
+    --pg-lift-2: inset 0 1px 0 rgba(255,255,255,.07), 0 2px 4px rgba(0,0,0,.32), 0 16px 34px -12px rgba(0,0,0,.52);
+    --pg-lift-3: inset 0 1px 0 rgba(255,255,255,.085), 0 6px 12px rgba(0,0,0,.36), 0 36px 72px -20px rgba(0,0,0,.62);
+    --pg-inset: inset 0 1px 2px rgba(0,0,0,.42), inset 0 -1px 0 rgba(255,255,255,.035);
+    --pg-r-plate: 13px; --pg-r-chip: 9px; --pg-r-seal: 11px; --pg-r-pill: 999px;
+    --k-skill: #c7a978; --k-automation: #8fa9c4; --k-integration: #8fb9a4;
+    --k-template: #c2a3b8; --k-agent: #a99ad6;
   }
 
-  .dark .operator-console,
-  .operator-console.dark {
-    --background: 265 44% 5%;
-    --foreground: 0 0% 96%;
-    --card: 265 40% 8%;
-    --card-foreground: 0 0% 96%;
-    --popover: 265 40% 8%;
-    --popover-foreground: 0 0% 96%;
-    --muted: 265 30% 13%;
-    --muted-foreground: 265 15% 66%;
-    --border: 270 32% 17%;
-    --border-strong: 270 30% 26%;
-    --input: 270 32% 17%;
-    --rail: 254 38% 24%;             /* lifted clear of the page so the rail is SEEN */
-    --rail-foreground: 255 42% 88%;
-    --rail-muted: 252 30% 72%;
-    --cd-gold: 44 72% 62%;           /* CD's gold, lifted for the dark ground */
-    --cd-gold-ink: 44 75% 72%;
-    /* Same reasoning as the light block; on this canvas the ring has to be LIGHT to clear it. */
-    --ring: 44 75% 72%;              /* 8.9:1 on the dark canvas */
+  [data-pg="light"] {
+    color-scheme: light;
+    --pg-env: #e8e5df; --pg-nav: #f4f1eb; --pg-canvas: #fbf9f5; --pg-spine: #f1eee8;
+    --pg-workspace: #f7f4ee; --pg-surface: #f5f2ec; --pg-raised: #fffdf8;
+    --pg-artifact: #fffdf8;
+    --pg-line-soft: rgba(45,40,50,.105); --pg-line: rgba(45,40,50,.185);
+    --pg-line-strong: rgba(45,40,50,.28); --pg-line-authority: rgba(155,120,60,.44);
+    --pg-ink: #201e23; --pg-ink-2: #3d3941; --pg-muted: #67616b; --pg-faint: #6a646e;
+    --pg-gold-core: #6f5636; --pg-gold: #8b7049; --pg-gold-deep: #7a5c2e;
+    --pg-gold-fill: #c9a96a; --pg-gold-bloom: rgba(201,169,106,.30);
+    --pg-graphite: #b9b2a6; --pg-lift: rgba(45,40,50,.03);
+    --pg-violet: #655a96; --pg-positive: #327458; --pg-warning: #986322; --pg-negative: #a5483d;
+    --pg-e1: inset 0 1px rgba(255,255,255,.7);
+    --pg-e2: 0 1px 2px rgba(45,40,50,.10);
+    --pg-e3: -20px 0 60px rgba(45,40,50,.08);
+    --pg-e4: 0 24px 60px rgba(45,40,50,.16);
+    --pg-rim: inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(45,40,50,.07);
+    --pg-lift-1: inset 0 1px 0 rgba(255,255,255,.9), 0 1px 1px rgba(45,40,50,.055), 0 4px 10px -4px rgba(45,40,50,.12);
+    --pg-lift-2: inset 0 1px 0 rgba(255,255,255,.95), 0 2px 4px rgba(45,40,50,.07), 0 14px 30px -12px rgba(45,40,50,.17);
+    --pg-lift-3: inset 0 1px 0 #fff, 0 6px 12px rgba(45,40,50,.09), 0 32px 64px -20px rgba(45,40,50,.22);
+    --pg-inset: inset 0 1px 2px rgba(45,40,50,.1), inset 0 -1px 0 rgba(255,255,255,.85);
+    --pg-r-plate: 13px; --pg-r-chip: 9px; --pg-r-seal: 11px; --pg-r-pill: 999px;
+    --k-skill: #9a7638; --k-automation: #4d6f92; --k-integration: #3f7a5f;
+    --k-template: #8d5f7c; --k-agent: #6f5eb0;
+  }
+
+  /* A default OS scrollbar in either theme reads as a defect, so this is load-bearing. */
+  [data-pg] ::-webkit-scrollbar { width: 10px; height: 10px; }
+  [data-pg] ::-webkit-scrollbar-track { background: transparent; }
+  [data-pg] ::-webkit-scrollbar-thumb {
+    background: var(--pg-line-strong); border-radius: 999px;
+    border: 3px solid transparent; background-clip: content-box;
+  }
+  [data-pg] ::-webkit-scrollbar-thumb:hover { background: var(--pg-faint); background-clip: content-box; }
+  [data-pg] ::-webkit-scrollbar-corner { background: transparent; }
+
+  /* THE console's focus treatment. Not a --ring token: an earlier pass defined --ring
+     against white, which is how every control in the rail measured under 3:1. */
+  [data-pg] :focus-visible { outline: 2px solid var(--pg-gold-core); outline-offset: 3px; }
+
+  [data-pg] a { color: var(--pg-gold-core); text-decoration: none; }
+  [data-pg] a:hover { color: var(--pg-gold); }
+
+  /* The Command Mark. States are DERIVED FROM REAL ACTIVITY — dormant when idle, charged
+     when a command is staged, executed on completion. A mark pulsing at 1.1s while nothing
+     runs is the motion rule broken. */
+  [data-cm] { --cm-slash: var(--pg-gold-fill); --cm-orb: var(--pg-gold); --cm-pulse: 5.2s; }
+  [data-pg="dark"] [data-cm="dormant"] { --cm-slash: #8b7856; --cm-orb: #a08a62; }
+  [data-pg="light"] [data-cm="dormant"] { --cm-slash: #a5854f; --cm-orb: #8a6a3c; }
+  [data-cm="charged"] { --cm-slash: var(--pg-gold-fill); --cm-orb: var(--pg-gold-core); --cm-pulse: 1.7s; }
+  [data-cm="executed"] { --cm-slash: var(--pg-gold); --cm-orb: #fff6e2; --cm-pulse: 1.1s; }
+  [data-cm] circle { animation: pg-breathe var(--cm-pulse) cubic-bezier(.45,0,.55,1) infinite; }
+  [data-cm] polygon { animation: pg-warm var(--cm-pulse) cubic-bezier(.45,0,.55,1) infinite; }
+
+  /* ── COMPATIBILITY BRIDGE — temporary, and the direction matters ────────────────────
+     The 78 ported CD panel surfaces still use shadcn utility names (bg-card, text-muted-
+     foreground). Ripping those in one commit would leave every surface unstyled, so the
+     legacy names are DERIVED FROM the pg values above rather than the reverse. pg is the
+     source of truth; these are outputs.
+
+     This is still aliasing, which is the thing that caused the original defect — so it is
+     marked, not hidden. Each slice migrates its surfaces onto pg tokens directly and drops
+     the aliases it no longer needs; this block shrinks to nothing. HSL triplets are exact
+     conversions of the hex above (computed, not eyeballed) because Tailwind's shadcn layer
+     wraps them in hsl(). */
+  [data-pg="light"] {
+    --background: 40 43% 97%;        /* --pg-canvas #fbf9f5 */
+    --foreground: 264 8% 13%;        /* --pg-ink #201e23 */
+    --card: 40 31% 94%;              /* --pg-surface #f5f2ec */
+    --card-foreground: 264 8% 13%;
+    --popover: 43 100% 99%;          /* --pg-raised #fffdf8 */
+    --popover-foreground: 264 8% 13%;
+    --muted: 40 36% 95%;             /* --pg-workspace #f7f4ee */
+    --muted-foreground: 276 5% 40%;  /* --pg-muted #67616b */
+    --border: 40 16% 82%;            /* --pg-line on paper */
+    --border-strong: 38 12% 69%;     /* --pg-graphite #b9b2a6 */
+    --input: 40 16% 82%;
+    --primary: 251 25% 47%;          /* --pg-violet #655a96 */
+    --primary-foreground: 43 100% 99%;
+    --accent: 40 47% 60%;            /* --pg-gold-fill #c9a96a */
+    --accent-foreground: 264 8% 13%;
+    --success: 155 40% 33%;          /* --pg-positive */
+    --warning: 33 63% 36%;           /* --pg-warning */
+    --destructive: 6 46% 44%;        /* --pg-negative */
+    --destructive-foreground: 43 100% 99%;
+    --rail: 40 29% 94%;              /* --pg-nav #f4f1eb */
+    --rail-foreground: 264 8% 13%;
+    --rail-muted: 276 5% 41%;        /* --pg-faint */
+    --cd-gold: 40 47% 60%;
+    --cd-gold-ink: 34 35% 32%;       /* --pg-gold-core on paper */
+    --gold-dark: 33 63% 36%;
+    --ring: 34 35% 32%;              /* legacy consumers only; :focus-visible above rules */
+  }
+
+  [data-pg="dark"] {
+    --background: 260 18% 7%;        /* --pg-canvas #100e14 */
+    --foreground: 40 40% 94%;        /* --pg-ink #f6f2ea */
+    --card: 262 15% 10%;             /* --pg-surface #19161e */
+    --card-foreground: 40 40% 94%;
+    --popover: 264 15% 13%;          /* --pg-raised #211d27 */
+    --popover-foreground: 40 40% 94%;
+    --muted: 266 16% 9%;             /* --pg-workspace #16131a */
+    --muted-foreground: 36 8% 65%;   /* --pg-muted #aca69d */
+    --border: 260 10% 20%;           /* --pg-line on near-black */
+    --border-strong: 260 10% 30%;
+    --input: 260 10% 20%;
+    --primary: 250 57% 72%;          /* --pg-violet #9b8de0 */
+    --primary-foreground: 255 22% 4%;
+    --accent: 39 60% 58%;            /* --pg-gold-fill #d4a752 */
+    --accent-foreground: 255 22% 4%;
+    --success: 148 42% 69%;
+    --warning: 36 75% 71%;
+    --destructive: 9 71% 75%;
+    --destructive-foreground: 255 22% 4%;
+    --rail: 260 21% 5%;              /* --pg-nav #0d0b11 */
+    --rail-foreground: 40 40% 94%;
+    --rail-muted: 32 6% 56%;         /* --pg-faint */
+    --cd-gold: 39 60% 58%;
+    --cd-gold-ink: 41 100% 91%;      /* --pg-gold-core */
+    --gold-dark: 40 60% 79%;
+    --ring: 41 100% 91%;
   }
 
   .dark {
@@ -1570,5 +1701,56 @@ All colors MUST be HSL.
   html.paige-doc-printing [data-paige-doc-sheet] {
     position: absolute; left: 0; top: 0; width: 100%;
     border: none !important; box-shadow: none !important; border-radius: 0 !important;
+  }
+}
+
+/* ══ The console's motion vocabulary ══════════════════════════════════════════════════
+   From the pack's keyframe block, verbatim. Motion is for REAL ACTIVITY only:
+   pg-breathe / pg-warm drive the Command Mark from its actual state, pg-think while she
+   is working, pg-materialize when a surface is summoned. Nothing decorative loops.
+
+   These are scoped to nothing — they are @keyframes, which are global by nature — but they
+   are only referenced from [data-pg] / [data-cm] rules, so no other surface picks them up.
+
+   The reduced-motion guard is part of THIS port rather than a later pass: shipping the
+   animations without it is how motion reaches someone who asked the OS for none. */
+@keyframes pg-glow { 0%, 100% { opacity: .5 } 50% { opacity: .9 } }
+@keyframes pg-think { 0%, 80%, 100% { opacity: .22; transform: translateY(0) } 40% { opacity: 1; transform: translateY(-2px) } }
+@keyframes pg-caret { 0%, 49% { opacity: 1 } 50%, 100% { opacity: 0 } }
+@keyframes pg-reveal { from { opacity: 0; transform: translateY(3px) } to { opacity: 1; transform: none } }
+@keyframes pg-breathe {
+  0%, 100% { opacity: .72; filter: drop-shadow(0 0 .5px var(--pg-gold-bloom)) }
+  50% { opacity: 1; filter: drop-shadow(0 0 3.5px var(--pg-gold-bloom)) }
+}
+@keyframes pg-warm { 0%, 100% { opacity: .86 } 55% { opacity: 1 } }
+@keyframes pg-streak {
+  0% { opacity: 0; transform: translateX(12px) scaleX(.3) }
+  40% { opacity: .8 }
+  100% { opacity: 0; transform: translateX(-22px) scaleX(1.5) }
+}
+@keyframes pg-drop { from { opacity: 0; transform: translateY(-6px) } to { opacity: 1; transform: none } }
+@keyframes pg-pin { from { opacity: 0; transform: translateX(-8px) } to { opacity: 1; transform: none } }
+@keyframes pg-materialize {
+  from { opacity: 0; transform: translateX(18px); clip-path: inset(0 0 0 100%) }
+  to { opacity: 1; transform: none; clip-path: inset(0) }
+}
+@keyframes pg-roll { from { opacity: 0; transform: translateY(5px) } to { opacity: 1; transform: none } }
+@keyframes pg-sweep { 0% { transform: translateX(-110%) } 100% { transform: translateX(260%) } }
+@keyframes pg-mark-wait {
+  0%, 100% { opacity: .4; transform: rotate(45deg) scale(.84) }
+  50% { opacity: 1; transform: rotate(45deg) scale(1.1) }
+}
+@keyframes pg-mark-think { to { transform: rotate(405deg) } }
+@keyframes pg-edge {
+  0% { opacity: .3; transform: scaleY(.35); transform-origin: top }
+  50% { opacity: 1; transform: scaleY(1) }
+  100% { opacity: .3; transform: scaleY(.35); transform-origin: bottom }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-pg] *, [data-pg] *::before, [data-pg] *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
   }
 }

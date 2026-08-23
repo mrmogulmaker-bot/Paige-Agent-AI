@@ -19,7 +19,7 @@ import { useReducedMotion } from "framer-motion";
 import { OPERATOR_SLOTS } from "@/operator/ia/operatorIA";
 import { slotGlyph } from "@/operator/shell/slotGlyphs";
 import { slotPath } from "@/operator/shell/operatorAddress";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { CommandMark } from "@/operator/shell/CommandMark";
 import { cn } from "@/lib/utils";
 
 export type SlotRailProps = {
@@ -54,7 +54,10 @@ export default function SlotRail({
     >
       {/* Brand lockup. flex-none: it never competes with the list for height. */}
       <div className={cn("mb-4 flex min-w-0 flex-none items-center gap-3", compact && "justify-center")}>
-        <PaigeMark className="h-[26px] w-[26px] flex-none" />
+        {/* No `state` while nothing is running — the resting treatment is the honest
+            default, and a mark that pulses at charged speed on an idle console is the
+            motion rule broken. State gets wired when the command bar lands. */}
+        <CommandMark />
         {!compact && (
           <span className="flex min-w-0 flex-col">
             <b className="block truncate text-[11px] font-medium tracking-[0.4em] text-rail-foreground">

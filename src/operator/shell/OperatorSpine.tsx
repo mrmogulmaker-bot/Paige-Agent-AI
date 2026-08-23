@@ -13,7 +13,7 @@
  * here fabricates a conversation, a memory, or a face state (§13) — the chat engine, the thread
  * and the memory read are wiring, and wiring is a later round.
  */
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { CommandMark } from "@/operator/shell/CommandMark";
 
 export default function OperatorSpine() {
   return (
@@ -23,7 +23,7 @@ export default function OperatorSpine() {
       className="relative flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-border-strong bg-card"
     >
       <div className="flex min-h-[60px] min-w-0 flex-none items-center gap-3 border-b border-border px-4">
-        <PaigeMark className="h-[22px] w-[22px] flex-none" />
+        <CommandMark size={22} />
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium tracking-[0.4em] text-foreground">
           PAIGE
         </span>

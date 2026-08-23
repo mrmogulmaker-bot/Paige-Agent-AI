@@ -107,9 +107,13 @@ export default function OperatorShell() {
 
   return (
     <div
-      // `operator-console` scopes the console's palette to this subtree (index.css). Every colour
-      // below reads a token, so the class is the ONLY place that choice is made.
-      className="operator-console flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden bg-background text-foreground"
+      // `data-pg` is what scopes CD's installed design system to this subtree (index.css), and
+      // it carries the THEME rather than a class — the pack authors both themes separately,
+      // because champagne inverts role between them and neither is a filter of the other.
+      // `data-shell-root` paints `--pg-env`, the ground the depth ladder sits on.
+      data-pg={isDark ? "dark" : "light"}
+      data-shell-root
+      className="flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden"
     >
       <ScopeBand {...PLATFORM_SCOPE} />
 
