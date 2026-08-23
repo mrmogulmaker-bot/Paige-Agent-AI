@@ -29,12 +29,12 @@ difficulty — it was reporting on parts while never having looked at the whole.
 | `ROUTE-MAP.md` | 164 | **Generated from the pack.** All 45 builders with line ranges and addresses: 24 at a view, 7 summoned, 14 composed. Answers "where does this go" without a round trip. |
 | `main-audit-2026-08-23.md` | 166 | The main audit — byte-identical to the one already actioned. |
 
-**Two files in that bundle carry CD's uncorrected source and were NOT copied over**, because
-the repo's versions hold owner rulings the delivery predates: `CLAUDE-CODE-HANDOFF.md` rule 9
-(still `21/17/12.5/11` at source; ruled `11/13/16/21`) and `stage2-design-package.md` §§1–4
-(token block still present at source; ruled deleted). Per the standing-edit rule in
-`corrections-2026-08-23.md` rev 6, those are **locators for CD's source**, not patches to
-re-apply — and they will keep arriving until fixed there.
+**Both standing edits are CLOSED as of delivery 9 (2026-08-23).** They were locators for CD's
+source, not patches to re-apply, and CD fixed both there: `CLAUDE-CODE-HANDOFF.md` rule 9 now
+reads `11 / 13 / 16 / 21` with the stale line named as stale, and
+`tenant-redesign-stage2-design-package.md` (renamed from `stage2-design-package.md`) has every
+token table removed rather than corrected — including the warning note that had itself repeated
+the five bad hexes. Delivery 9's copies are what the repo now carries.
 
 
 | File | Bytes | Lines | Max line | What it is | Read |
@@ -45,7 +45,7 @@ re-apply — and they will keep arriving until fixed there.
 | `support.js` | 69,150 | 1,911 | 968 | The `dc-runtime` shim — generated, not design | ✅ 100% (characterised) |
 | `mind-brain.js` | 30,186 | 609 | 143 | The Mind substrate renderer | ✅ 100% |
 | `PORT-SPEC-palette-and-six-surfaces.md` | 99,111 | 1,392 | 835 | Line-cited port transcription, §§1–5 | ✅ 100% |
-| `stage2-design-package.md` | 38,766 | 723 | 312 | Stage 1/2 package — **superseded token set** | ✅ 100% |
+| `tenant-redesign-stage2-design-package.md` | 38,766 | 723 | 312 | Stage 1/2 package — **superseded token set** | ✅ 100% |
 | `github.md` | 31,632 | 344 | 630 | Provenance + rulings + design rulings | ✅ 100% |
 | `INSTALL-PLAN.md` | 18,056 | 243 | 602 | **The 18-round build plan + R1–R7** | ✅ 100% |
 | `pack-provenance.md` | 15,827 | 99 | 630 | Screen map + rulings | ✅ 100% |
@@ -453,9 +453,12 @@ added (11, 12, 13)"*).
 7. **Representative vs connected must stay labelled.** `— not on file` and `•••-••-••••` are
    different states.
 8. **Nothing pulses that is not really running.**
-9. **Four type sizes. 21 title · 17 figure · 12.5 row · 11 label.** Analytics is the only
-   reading surface at 30px. Three faces: Schibsted Grotesk · Gambetta · JetBrains Mono
-   (*"machine values only — never labels"*).
+9. **Four type sizes. 21 · 16 · 13 · 11.** *(Corrected at source in delivery 9; the earlier
+   `21/17/12.5/11` is stale — neither 17 nor 12.5 exists anywhere in v3.)* On a surface whose
+   subject is figures, the figures take 21 and the surface title drops to 16. Analytics is the
+   only reading surface at 30px. Three faces: Schibsted Grotesk (display *and* UI) · Gambetta ·
+   JetBrains Mono (*"machine values only — never labels"*). Bricolage Grotesque and Inter are
+   not in this design.
 10. **Both themes are first-class.** Verify AA against `--pg-env`, not `--pg-canvas`.
 11. **A state that can be derived is never chosen.** *"Do not ship a status picker beside the
     fields that determine the status."*
@@ -539,7 +542,7 @@ defect at CD's source, not a patch to re-apply here. Send the locator, do not re
    the correction is legible rather than silent. Matches `design-system-port.md` §2 and our
    `src/index.css`.
 
-2. ~~**`stage2-design-package.md` carries a SUPERSEDED token set.**~~ **RULED 2026-08-23 —
+2. ~~**`tenant-redesign-stage2-design-package.md` carries a SUPERSEDED token set.**~~ **RULED 2026-08-23 —
    DELETED.** Owner: *"a doc that's right about IA and wrong about colour is worse than a doc
    that's wrong throughout — nobody distrusts the parts that read correctly."* Its §§1–3 (the
    colour tables, the system-safe font stack, the `--pg-d1…-editorial` scale, the `--pg-s1…s10`
@@ -637,7 +640,7 @@ Transcribed, not re-verified in this pass.
   scrollbar-gutter:stable; padding: 2px 12px 22px 0` + `mask-image: linear-gradient(180deg,#000
   0,#000 calc(100% - 20px),transparent 100%)`; rail `flex:none; min-height:30px; border-top:1px
   solid var(--pg-line)`, one line only.
-- **Keyboard map** (`stage2-design-package.md` §7): `⌘K` command bar · `⌘⇧V` hold-to-talk ·
+- **Keyboard map** (`tenant-redesign-stage2-design-package.md` §7): `⌘K` command bar · `⌘⇧V` hold-to-talk ·
   `⌘\` spine · `⌘⌥\` rail · `⌘⇧O` pop out · `⌘⇧T` scope switcher · `⌘⇧X` exit scope · `⌘.`
   interrupt · `⌘⇧D` detach · `Esc` topmost slide-over · `⌘⇧L` Obsidian/Mineral · `1–5` rail
   destination · `?` shortcut sheet.
@@ -658,7 +661,7 @@ Transcribed, not re-verified in this pass.
 are now fixed at CD's source, so they should stop recurring — **verify on the next delivery
 rather than assuming**:
 
-1. The §50 pop-culture mark in `stage2-design-package.md` §9a (now *"the fictional operator-AI
+1. The §50 pop-culture mark in `tenant-redesign-stage2-design-package.md` §9a (now *"the fictional operator-AI
    archetype"*).
 2. Real-format identifiers in `paige-ia.js` — SSN `412-88-0396` → `000-00-0000`, both EINs →
    `00-0000000`, DOB `04/18/1979` → `00/00/0000`. Six values. The rule CD adopted: *"The class

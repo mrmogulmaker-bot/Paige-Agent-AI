@@ -197,9 +197,10 @@ what it contains, what it omits, what is ported — read that file.** It carries
 
 Two facts from it that change how a session starts:
 
-1. **`stage2-design-package.md` carries a SUPERSEDED token set.** Its colour tables, type
-   stacks and radii differ from the shipped `.dc.html`. Port tokens from
-   `design-system-port.md` or the shell itself — never from that file.
+1. **`tenant-redesign-stage2-design-package.md` no longer carries a token set — CD stripped it
+   at source (delivery 9, 2026-08-23), and the file was renamed at the same time.** §§1–3 are
+   now one line pointing at `design-system-port.md`; §4's behavioural timings stay because they
+   are spec, not a restatement. Port tokens from `design-system-port.md` or the shell itself.
 2. **`PAIGE Platform Operator - standalone.html` is the same design, compiled.** Proven by
    unpacking its blobs and diffing. Screenshot target only; never a source.
 

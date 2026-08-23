@@ -57,6 +57,7 @@
     offer: { title: 'New offering', deck: 'What you sell, as a record. A name and a price make it sellable; a channel makes it sold. Everything else is how it gets delivered.', foot: 'Nothing here charges anybody. The offering is what a campaign binds to and what a sale line points at \u2014 money movement is an adapter, configured in Sales.', rows: [] },
     campschema: { title: 'What you can change', deck: 'Campaigns, the catalogue and Sales all read from one schema. Rename what things are called, choose what a card shows, and keep your own categories and stages \u2014 the surfaces follow.', foot: 'Schema, not code. Every change here is per-tenant and reversible, and nothing about it is enforced by the shell \u2014 it is read on every render, so a rename lands the moment you type it.', rows: [] },
     segment: { title: 'Segment', deck: 'A segment is a rule read as words. Describe it and she writes the clauses, or add them one at a time \u2014 either way the rule is the same object, and the count is resolved when it is read.', foot: 'Clauses over the book resolve here against the records in People. Clauses over thread history, meetings and outbound have no substrate at operator scope, so a rule that uses one is saved and left unsized rather than guessed.', rows: [] },
+    codework: { title: 'She is writing', deck: 'The branch, the diff and the checks, while she works. Watching her is not a place — this opens over the work and retires when you close it.', foot: 'The review is the act. Merging is yours at every ceiling.' },
     finding: { title: 'Finding', deck: 'One at a time, worst severity first, then registry priority. The drafted fix is hers; the approval is yours.', foot: 'Approving records resolution=approved and resolved_at on the finding row. An operator finding is recorded directly \u2014 the tenant action bus is NOT NULL by construction, so operator findings cannot file there.', rows: [] },
     pipehealth: { title: 'Pipeline health', deck: 'What the board cannot show while you are working it: what has stalled, what advanced without its evidence, and what cannot be measured at all.', foot: 'Conversion, velocity and loss reasons all read from stage-change history. Nothing records a transition today, so they read \u2014 rather than a benchmark nobody measured. That history is the single largest thing this surface needs from Stage 3.', rows: [] },
     campstep: { title: 'Campaign step', deck: 'One step of a motion — what it says, when it goes, and whose word it needs. A step is its own act, so halting between steps stops what has not gone without retracting what has.', foot: 'Representative. The step body, its timing and its grant are design; the send itself would route through the existing seam. Nothing here is scheduled against a real recipient.', rows: [] },
@@ -1523,6 +1524,12 @@
       { name: 'Dropbox', kind: 'OAuth', state: 'planned', does: 'Read and file documents', note: '' },
       { name: 'DocuSign', kind: 'OAuth', state: 'planned', does: 'Send an agreement for signature', note: '' }
     ]},
+    { cat: 'Code and repositories', items: [
+      { name: 'GitHub', kind: 'App', state: 'planned', does: 'Where she writes code and opens reviews', note: 'An app install, not a token — so a commit is hers, not yours', blocks: 'Every repository she could reach' },
+      { name: 'GitLab', kind: 'App', state: 'planned', does: 'Same five needs, merge requests', note: '' },
+      { name: 'Bitbucket', kind: 'App', state: 'planned', does: 'Same five needs', note: '' },
+      { name: 'Self-hosted Git', kind: 'Key', state: 'planned', does: 'A branch pushed, and a report', note: 'No review surface of its own' }
+    ]},
     { cat: 'Social', items: [
       { name: 'LinkedIn', kind: 'OAuth', state: 'planned', does: 'Publish, and take DMs', note: '', blocks: 'Social publishing and DM threads' },
       { name: 'Meta', kind: 'OAuth', state: 'planned', does: 'Instagram and Facebook Pages', note: 'One grant, two surfaces', blocks: 'Two of the five social channels' },
@@ -1574,6 +1581,11 @@
       grant: 'Observe',
       does: ['Answers tool calls from an MCP client', 'Resolves tool scope from the caller\u2019s tier', 'Refuses an operator tool to a tenant caller'],
       tabs: ['Connection', 'Tools', 'Activity']
+    },
+    GitHub: {
+      pitch: 'Where her code lands. She branches, commits under her own identity and opens a review — and no ceiling on the compass lets her merge.',
+      auth: [['Auth', 'GitHub App install'], ['Identity', 'Commits attributable to PAIGE'], ['Scope', 'Per repository, revocable'], ['Grants', 'Contents · pull requests · checks']],
+      tabs: ['Connection', 'Repositories', 'Permissions', 'Activity']
     },
     Anthropic: {
       pitch: 'The model she thinks with. Routing and fallback are configured in Mind.',
@@ -2594,27 +2606,98 @@
     { k: 'Timezone', v: '\u2014', note: 'Read from the connected calendar', state: 'missing' }
   ];
 
+
+  // ── Code ───────────────────────────────────────────────────────────────────
+  // She writes code, and the code has to land somewhere. Owner ruling 2026-08-23:
+  // provider-agnostic on the same pattern as the processor — the interface is what a
+  // provider must satisfy, and GitHub is the first adapter rather than the interface.
+  //
+  // The fifth need is the design: MERGE IS NEVER HERS, at any level of the compass.
+  // Auto-send is unrepresentable in the schema; auto-merge is unrepresentable here, and
+  // for the same reason — the act that cannot be undone is the one that stays yours.
+  P.GIT = {
+    needs: [
+      { need: 'Read a tree', by: 'Adapter', note: 'Files, branches, history at a ref' },
+      { need: 'Write a branch', by: 'Adapter', note: 'Commit under her own identity, never yours' },
+      { need: 'Open a review', by: 'Adapter', note: 'A pull or merge request, with her reasoning in the body' },
+      { need: 'Read a check run', by: 'Adapter', note: 'So she can see her own work fail' },
+      { need: 'Merge to a protected branch', by: 'Never hers', note: 'No ceiling grants this. Yours at every level.' }
+    ],
+    // An App, not a token. The difference is attribution: under a personal token every
+    // commit reads as yours, and the audit trail names the wrong author. An install is
+    // also repo-scoped and revocable, which is what makes the Repositories layer real.
+    auth: [
+      ['Mechanism', 'Provider app install · not OAuth, not a personal token'],
+      ['Identity', 'Commits are attributable to PAIGE, never to a person'],
+      ['Scope', 'Per-repository, chosen at install and revocable per repo'],
+      ['Token life', 'Short-lived, minted per act, never stored at rest'],
+      ['Grants', 'Contents · pull requests · checks. Never admin, never settings.']
+    ],
+    adapters: [
+      { name: 'GitHub', state: 'first adapter', note: 'App install. The one we build against.' },
+      { name: 'GitLab', state: 'pluggable', note: 'Same five needs; merge request instead of pull request' },
+      { name: 'Bitbucket', state: 'pluggable', note: 'Same five needs' },
+      { name: 'Self-hosted Git', state: 'pluggable', note: 'No review surface of its own — she pushes a branch and reports' }
+    ]
+  };
+
+  // Four repos she can reach, each with its own ceiling. The ceiling DESCENDS as the blast
+  // radius grows: she is freest in the repo only she commits to, and most held in the one
+  // that runs the platform. Every ceiling here is clamped by the Trust Compass, so lowering
+  // the compass lowers all four and raising it raises none past what is set here.
+  P.REPOS = [
+    { id: 'r1', name: 'paige-agent-ai', kind: 'Platform', ceiling: 'Draft only',
+      branch: 'main', protected: 1, bound: 1,
+      what: 'The platform itself. She works on it alongside us.',
+      may: 'Writes on a branch. Opens nothing — you open the review.',
+      note: 'Lowest ceiling on the platform’s own code, deliberately.' },
+    { id: 'r2', name: 'tenant-products', kind: 'Tenant product', ceiling: 'Ask first',
+      branch: 'main', protected: 1, bound: 1,
+      what: 'What tenants sell. She builds against a tenant’s own offering.',
+      may: 'Branches, commits, opens the review, then waits for your word.',
+      note: 'Scoped to the acting tenant — never across tenants in one branch.' },
+    { id: 'r3', name: 'paige-scratch', kind: 'Hers', ceiling: 'Act and report',
+      branch: 'main', protected: 0, bound: 1,
+      what: 'Hers outright. Nobody else commits to it.',
+      may: 'Commits and pushes freely, and tells you what she did.',
+      note: 'No protected branch, because there is nothing here to protect from her.' },
+    { id: 'r4', name: '—', kind: 'Design', ceiling: 'Observe',
+      branch: '—', protected: 0, bound: 0,
+      what: 'Vibe Studio output — tokens, assets, exported surfaces.',
+      may: 'Nothing. No repo is bound.',
+      note: 'Owner ruling: Studio stays local for now. Listed so the gap is visible, not missing.' }
+  ];
+
   P.SANDBOX = {
     files: [
-      { name: 'drift_read.py', lang: 'Python', size: '1.4 kB', touched: '06:31',
+      { name: 'drift_read.py', lang: 'Python', size: '1.4 kB', touched: '06:31', repo: 'r3', at: 'main',
         note: 'Reads a tenant config and reports what it could not parse',
         body: 'def read_drift(tenant):\n    """Report what the config does not parse.\n\n    Returns findings, never a fix \u2014 repair is a separate grant.\n    """\n    cfg = fetch_config(tenant)\n    unread = [k for k, v in cfg.items() if not parses(v)]\n    if not unread:\n        return Finding.none()\n    return Finding(\n        kind="drift_unreadable",\n        keys=unread,\n        blocking=False,\n    )' },
-      { name: 'stalled_deals.sql', lang: 'SQL', size: '0.6 kB', touched: 'yesterday',
+      { name: 'stalled_deals.sql', lang: 'SQL', size: '0.6 kB', touched: 'yesterday', repo: 'r3', at: 'main',
         note: 'Deals past their stage target, by owner',
         body: 'select d.id, d.name, d.stage, d.owner,\n       age(now(), d.stage_entered_at) as in_stage\nfrom deals d\njoin stages s on s.key = d.stage\nwhere d.state = \'open\'\n  and age(now(), d.stage_entered_at) > s.target_interval\norder by in_stage desc;' },
-      { name: 'sweep_summary.md', lang: 'Markdown', size: '0.9 kB', touched: '06:34',
+      { name: 'sweep_summary.md', lang: 'Markdown', size: '0.9 kB', touched: '06:34', repo: 'r1', at: 'paige/brief-shape',
         note: 'The shape of the morning brief she writes',
         body: '# Overnight\n\n{{passing}} of {{total}} checks passed. {{failing}} failing, {{skipped}} could not run.\n\n## Held for you\n{{#each held}}\n- **{{name}}** \u2014 {{why}}\n{{/each}}\n\n## Acted alone\n{{#if acted}}{{acted}} acts, all recorded.{{else}}Nothing. At this ceiling she reports rather than fixes.{{/if}}' }
     ],
     runs: [
       { when: '\u2014', what: 'No run on record', state: 'No substrate', tone: 'var(--pg-negative)' }
     ],
+    // Reviews she has open. A PR is an act with a ceiling behind it, so the row carries the
+    // grant it was opened under — not just its state.
+    reviews: [
+      { repo: 'r1', title: 'Brief template: compose the prose from findings', at: 'paige/brief-shape',
+        state: 'Draft · not opened', under: 'Draft only', checks: '—', note: 'She wrote it. Opening the review is yours.' },
+      { repo: 'r3', title: 'drift_read: report unparsed keys instead of raising', at: 'main',
+        state: 'Pushed', under: 'Act and report', checks: '—', note: 'Her own repo. She pushed and told you.' }
+    ],
     limits: [
       ['Runtime', 'not provisioned'],
       ['Memory ceiling', 'not provisioned'],
       ['Wall clock', 'not provisioned'],
       ['Network egress', 'denied by default'],
-      ['Filesystem', 'scratch only, dropped at session end']
+      ['Filesystem', 'scratch only, dropped at session end'],
+      ['Repositories', '3 bound · merge withheld at every ceiling']
     ]
   };
 

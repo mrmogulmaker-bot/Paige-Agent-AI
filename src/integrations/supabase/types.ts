@@ -20448,6 +20448,11 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_platform_trust_compass: { Args: never; Returns: Json }
+      set_platform_trust_compass: {
+        Args: { _away?: string; _ceiling?: number; _domains?: Json }
+        Returns: Json
+      }
       list_tool_autonomy: {
         Args: { _tenant_id?: string }
         Returns: {

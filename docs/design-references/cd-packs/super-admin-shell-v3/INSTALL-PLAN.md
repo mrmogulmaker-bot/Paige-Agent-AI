@@ -27,7 +27,7 @@ network hard-blocked, and asserts CD's rule that **no surface may show a documen
 First full run: 64 captured, 0 failed, 0 scrollbars.
 
 **Two edits must be re-applied on every CD re-delivery** — rev 2 arrived with both undone, because
-CD regenerates from their own source: the §50 pop-culture mark in `stage2-design-package.md` §9a,
+CD regenerates from their own source: the §50 pop-culture mark in `tenant-redesign-stage2-design-package.md` §9a,
 and the real-format SSN/EINs in `paige-ia.js`.
 
 ## 1. What rev 2 changed

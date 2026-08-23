@@ -89,6 +89,31 @@ tree: 1c557a873e8b
 - Facial recognition is out of scope for Stage 3 — the asset store must not be built around
   faceprints. Logo-file or monogram only.
 
+## Read on main 2026-08-23T23:02Z (no write)
+Read `mrmogulmaker-bot/Paige-Agent-AI@main`, tree `534e2860`, to audit what shipped against
+the pack. No files copied in; findings written to `docs/handoff/main-audit-2026-08-23.md`.
+
+**Root cause found:** `viewSources.ts` maps the six-slot IA onto the retired console's 78 old
+addresses, and `SlotSurfaceBody.tsx` renders those through `OperatorPanel` + `panelSpecs` —
+so the shell is correct and **the content inside it is the dead console's panels.** ~370 KB of
+pack-ported surface reachable from nothing (tests, or `legacy/OperatorLegacyApp.tsx` only).
+CC's correction: 232 KB of that cites the pre-v3 pack and must be **stripped, not mounted**.
+General rule adopted: **check which pack a file cites before mounting it.**
+
+Delivered in response: `ROUTE-MAP.md` (generated from the pack — 46 builders, 24 views,
+8 summons, 14 chrome), `BUILD-ORDER.md` (Layers 0–6 with a 7-rule standing contract, a
+deviation table and an escalation format), and a standalone self-contained render of the pack
+so Playwright can drive the reference offline.
+
+### Owner ruling — Paige writes code (drawn in v3 this turn)
+All four repo kinds · Trust Compass per repo · Studio stays local · watched in all three
+places · provider-agnostic. `P.GIT` mirrors `P.PROCESSOR`: five needs, GitHub the first
+adapter. The fifth need is the design — **merge is never hers at any ceiling**, the same
+shape as auto-send being unrepresentable in the schema. `P.REPOS` gives four repos descending
+ceilings (Draft only on the platform repo → Act and report on hers). New builder
+`codeworkVals` + summon `codework`. Integrations gained a **Code and repositories** shelf;
+**integrations and connections are the same thing** — no Connections subtab.
+
 ## Owner ruling 2026-08-23 (restated, strengthened) — direction of accommodation
 
 **CC is designing the backend to the frontend design, not the other way around.** Nothing
@@ -318,6 +343,283 @@ Two design constraints this settles:
 **Open ruling now specified rather than open:** the Sales attribution question is no longer
 “needs research” — it needs a campaign reference on `tenant_orders` and one canonical click
 source. That is a schema ruling with a known shape.
+
+### WITHDRAWN — superseded by owner ruling (2026-08-23)
+**There is no legacy.** The current design is the legacy: palette, direction, functionality.
+The old console's *interface* is dead — not preserved, not addressable, not a migration
+target. What survives is **features, not surfaces**: every shipped capability is placed in
+the six-slot IA, and where its destination is unwired the absence copy names it. No agent
+debates UI; the pack is the only UI authority. CC abides by its own URL taxonomy and
+surfaces every feature. The ruling below is kept only as the record of what it replaced.
+
+### Legacy stays addressable — do not go dark (design ruling, 2026-08-23)
+Round 1 takes `/operator/*`, and `fleet` / `marketplace` are both slot ids and legacy
+branch ids, so the two consoles cannot share the prefix. **Keep legacy reachable. Nothing
+goes dark for a round.**
+
+This is the nine-orphans ruling again, at console scale, and the answer is the same
+mechanism: **what has no slot is reachable but not browsable.** Move the legacy console to
+its own prefix — `/operator/legacy/*` — which dissolves the id collision entirely, since
+the ambiguity only exists at a shared prefix. Register its entry points (Fleet Console,
+Systems Check, Trust Compass, Knowledge, the panel-spec tabs) in the command palette as
+pre-R3 destinations. §65's migration rule is satisfied and no operator loses a working
+surface mid-migration.
+
+Going dark would be the one regression this project cannot afford: a working console
+withdrawn to make a migration tidier. The migration accommodates the operator, not the
+reverse.
+
+### Round 1 verify findings — design rulings
+
+**The type ladder is three faces, and that is correct.** Bricolage Grotesque display,
+Inter body, JetBrains Mono for paths and figures. The builder's claim of two faces is the
+error; the measured three is the spec. The reject-list bar was *four sizes* and *no fifth
+face* — so the only real hit is the fifth size. Measured `[10, 11, 13, 16, 21]`: **drop the
+10.** It is below the readable floor regardless, and the ladder is 11 / 13 / 16 / 21.
+
+**The scope band must never assert.** Stating `tenant_id IS NULL` unconditionally, in the
+one strip whose entire job is to say whose data is being touched, while act-as is shipped
+and DB-persisted, is the assertion-mistaken-for-verification pattern landing in the worst
+possible place — and it fails in the dangerous direction. The band was drawn to **report**
+`active_tenant_id`, never to declare it. Wire it to the real value: a reloaded act-as
+session shows `act` tone and its `Acting as` line on load. Not a redesign; the band doing
+what it was specified to do.
+
+**Focus rings are a token gap, not a treatment question.** `--ring` validated against white
+and never redefined for the console gives 2.33:1 light / 1.78:1 dark against a 3:1 floor,
+on every interactive control in columns 1 and 2. Define `--ring` per theme against
+`--pg-env`; `--pg-gold-deep` already clears 3:1 in both and is the family the pack uses for
+the act border.
+
+**Gold text at 2.35:1 is a reject.** Gold is spent on the act. Not on text, not on borders
+outside the act, not as emphasis. Three new spends outside the budget come out.
+
+**Four slots rendering header + tab row + empty section is not acceptable.** An empty
+section is the "every test passed and every screen was blank" failure. Any slot whose views
+are not yet wired uses the absence treatment with honest copy — the same rule as Campaigns
+and Relationships, not a special case for slots that were expected to have destinations.
+Copy for those four is owed from the design side; ask and it is written.
+
+**Two harness gaps, both real:** `aaAgainstEnv` measures text only and cannot see a focus
+ring; `goldOnlyOnAct` inspects backgrounds only and cannot see gold text or borders. Found
+by reading rather than measuring, which is the peer gate earning its place.
+
+**And the green-over-untracked lesson:** a typecheck, test run and build that pass over an
+untracked file say nothing about the tree that was pushed. `git ls-tree HEAD` found it; no
+check did. Same class as the gitignore protecting one spelling of a path — a green result
+whose scope was narrower than it appeared.
+
+### The four gaps — destinations ruled (2026-08-23)
+CC placed 78 addressable leaves into 32 views and named four capabilities with nowhere to
+live. Rulings, no new slots:
+
+**Twilio numbers → Settings, its own view.** Not Integrations — that is a connection
+surface, and a number inventory with assignment and billing is not a connection. Settings
+is where **platform-owned inventory** lives: Vault holds obligations, Team holds seats,
+Numbers holds provisioned numbers. An eleventh view inside a slot, which is a view
+decision, not an IA change.
+
+**Paige operating the platform → Analytics · Autonomy for the record, a summoned surface
+for the live run.** Watching her run her team is not a place. The pack already models it:
+*a capability opens its own surface and retires when you close it*, and the execution strip
+plus a detachable window is how she runs and talks at once. Autonomy holds the standing
+read — what she has been allowed to do, what she did, what she escalated. The live run is
+summoned, never a slot. Settings · Capabilities stays what it is: the grant, not the
+watching.
+
+**Relationships · People and Segments → absence, as shipped.** No operator-scope substrate
+exists and the old console never had the branch. The honest absence is correct and needs no
+change.
+
+**Campaign attribution → already named** in the IA's own absence copy. Schema obligation,
+not a destination.
+
+### Surface debt — split by severity (2026-08-23)
+Ported feature surfaces measure 10 type sizes and carry sub-AA pairs (1.06:1 dark,
+1.52:1 / 2.75:1 light). The shell chrome is clean; the debt predates the ladder and
+contrast rulings.
+
+- **Contrast does not wait for its slice.** 1.06:1 is unreadable, not untidy. Fix on sight,
+  in the nearest commit.
+- **The ladder pays down per slice**, as CC proposed — each slice holds its surfaces to
+  11 / 13 / 16 / 21 as it lands, which avoids a separate sweep that would touch every file
+  at once.
+
+**Slice order agreed:** Fleet (3) → Settings (10) → Analytics (5) → Marketplace (4) →
+Campaigns (6) → Relationships (4). Fleet first is right: its bespoke surfaces already read
+live data, so it is the shortest path to one fully-real tab.
+
+### Two port gaps found by the broken contrast check (2026-08-23)
+CC's `aaAgainstEnv` fell through to a phantom white because `--pg-env` does not resolve in
+the operator console. The check was broken; the token is not. **Both are real gaps, and the
+check finding them is the most useful accident of the round.**
+
+**1. `--pg-env` exists in the pack and was never ported.** Dark `#08070b`, light
+`#e8e5df`, painted on `body` and on the shell root. It is the **bottom of the depth
+ladder**: env → nav → canvas → spine → workspace → surface → raised. Depth in this design
+comes from layered elevation, not from darkening — and with env missing, the stack has no
+ground to sit on. Its absence is not a measurement inconvenience; it means the elevation
+model is not ported. Define the full ladder, both themes, and measure against env because
+env is what the shell is actually painted on.
+
+**2. The typeface set is wrong, and this correction is mine.** I accepted CC's measured
+three faces as the spec. They are not. The pack loads **Schibsted Grotesk** (display *and*
+UI — one face doing both), **JetBrains Mono** (paths, figures), and a serif for editorial
+moments (Newsreader / Gambetta). The console measures **Bricolage Grotesque + Inter +
+JetBrains Mono**. Bricolage and Inter appear nowhere in the pack, and Inter is explicitly
+on the avoid list.
+
+So the earlier ruling — *“three faces is correct”* — was me validating a measurement
+instead of the specification, which is the direction-of-accommodation rule broken by its
+own author. Corrected: **Schibsted Grotesk replaces both Bricolage Grotesque and Inter.**
+Typography is the most visible surface of the design and the least acceptable place to
+diverge.
+
+### A control that supplies the thing under test is not a control (2026-08-23)
+The contrast fixture defined `--pg-env` itself, so the negative control went green and
+proved only that the check works on a page built to satisfy it. Fifth instance of the
+assertion family, and the sharpest statement of it yet. Corollary CC applied: when no
+opaque ground resolves, return **unverified** rather than substituting something arbitrary.
+
+### Frame reading — rulings (2026-08-23)
+Ordered by severity, not by ease.
+
+**1. Six bespoke surfaces gone dark, and no command palette. Both are blockers.**
+`bespokeSlots()` reachable only from the retired console means Calendar month, Platform
+hours, Marketplace submissions, Support inbox, Compose and the Integrations grid render a
+"not connected" plate — working surfaces withdrawn, which is the one regression already
+ruled out twice. And the six-slot IA **justified itself on the palette**: nine orphan
+branches were ruled into it, the legacy console's entry points were ruled into it, and
+capabilities are specified to summon from it. Without it the IA is not implemented, it is
+merely narrower. These outrank the ladder.
+
+**2. Depth does not read — the tokens are present and not spent.** 44/44 correct and about
+two visible steps. Elevation is not decoration; it is how this design separates regions
+without drawing boxes. Each region sits on its named token, not on a near neighbour:
+
+```
+ground/body   --pg-env        rail/nav      --pg-nav
+main canvas   --pg-canvas     spine         --pg-spine
+work area     --pg-workspace  cards/plates  --pg-surface
+raised/menus  --pg-raised     documents     --pg-artifact
+```
+
+Plus `--pg-rim` to seat a plate, `--pg-lift-1/2/3` to raise one, `--pg-inset` on press.
+A card on `--pg-canvas` with no rim and no lift is the flat reading — the values are
+right and nothing is spending them.
+
+**3. The spine is 416px of nothing — collapse it until she is in it.** The spine is Paige:
+conversation, execution strip, detach. With no Paige it is a quarter of the screen
+reserved for absence, which is the blank-section failure at the largest scale in the shell.
+Collapse to `0` until she is wired. A collapsed spine is honest; an empty one asserts a
+capability that is not there.
+
+**4. The shell does not collapse. Implement it:** spine → `0` first, then rail
+`216px → 72px`, band last (it thins, never disappears). At 640px, 556px of chrome around a
+sliver of workspace is not a layout.
+
+**5. The gold act routes to a 404.** `/operator/provisioning` is not a slot. The act is the
+one gold fill on the surface and it must land — provisioning a tenant belongs in **Fleet**.
+Point it at the slot, or remove the act until it lands. A gold affordance that 404s spends
+the design's scarcest signal on nothing.
+
+**6. Ladder judgement calls, both settled toward the data.** On a surface whose subject is
+figures, **the figures are the largest thing**: KPI figures take 21, and the surface title
+drops to 16. Titles do not need to be biggest — hierarchy comes from position and weight.
+And 13.5 → 13 distinguished by weight is correct; the pack separates block headers by
+weight and tracking, never by size. Ladder stays 11 / 13 / 16 / 21.
+
+**7. Systems Check at 9 sizes is out of Fleet's scope** — correct call, and it lands in the
+Settings slice with attribution. The grey orbit disc is a harness artifact
+(`canvas=false`); not a defect until it renders with canvas on.
+
+### Instances seven and eight — and the worst one yet (2026-08-23)
+`collapseOrder` asserted the *order* of a collapse it never confirmed happened. A shell
+that never collapses satisfies it vacuously — **a check named after the thing it does not
+verify.** `typeLadder` counted text inside `<script>`, `<style>` and `<title>`, reporting
+Inter, a withdrawn face, so its false positive was indistinguishable from the real
+regression it exists to catch.
+
+And frame 6: a hardcoded caption — `COLLAPSE: SPINE 0, RAIL 72` — burned into a render
+that visibly showed the opposite. That is the worst form found so far, because **a false
+caption on an image is indistinguishable from a measured one and the image is the
+evidence.** Deriving labels from `getComputedStyle` at capture time is the only safe shape.
+
+### Owner correction: three of the five are deferred, not retired (2026-08-23)
+**These attributes are to live inside the platform.** Fed from the outlets, landed in our
+own tables — not read through a vendor dashboard. The reason is Paige: she can only reason
+over what is in her knowledge base, so data sitting in Meta's or a provider's console is
+invisible to her and cannot be translated for a tenant owner. That makes each of these an
+**ingestion target**, not a chart feature. The panel is downstream of the ingestion, never
+the reason for it.
+
+Revised dispositions:
+
+| Panel | Was | Now |
+|---|---|---|
+| Ad spend · MER · CAC · LTV:CAC · channel table | retire | **deferred** — ingest from ad-platform integrations into platform tables; panel returns with the feed |
+| Uptime / incidents | retire gauge | **deferred** — ingest probe and incident records; the gauge returns when the source lands |
+| Email engagement (opens, acknowledgements) | reduce to delivery | **deferred** — ingest provider webhooks; ships as delivery health now, grows when engagement arrives |
+| Vault | absence | **unchanged** — own substrate, never a borrowed same-named table |
+| `platform_support` | drop the row | **unchanged** — the role does not exist; do not invent an enum value to match a drawing |
+
+The near-term build does not change: nothing renders a figure it cannot derive today, and the
+absence copy names what is missing. What changes is the **record** — these are roadmap with a
+named source, not designs withdrawn. Deferred and retired look identical in a shipped build
+and are opposite in intent, and a later session reading "retire" would delete the panel
+rather than wait for its feed.
+
+Design consequence: each deferred panel keeps its place in the IA and states its own source
+in absence copy — *what is missing, why, and where it will come from.* Naming the outlet is
+what makes the absence a plan instead of a hole.
+
+### Five §00 incompatibilities — ruled (2026-08-23)
+Panels drawn with no data that can fill them. One rule decides all five: **the honest form
+of a missing destination is nothing.** A panel that cannot be filled comes out; it does not
+get a placeholder, a borrowed table, or an invented column.
+
+**1. Ad spend / MER / CAC / LTV:CAC / the six-column channel table — retire the panel.**
+No ad-spend table exists because ad spend is not platform data; it lives in Meta and Google.
+Nothing is derivable, so nothing is shown. Integrations already maps 42 vendors — when an ad
+platform connects, the panel returns with a real source. Until then it is not a gap in the
+backend, it is a panel I drew for data we do not have.
+
+**2. The 99.0% uptime gauge — retire the gauge, keep the surface.** No probe or incident
+table, and uptime cannot be inferred from application logs without lying. But Health has
+real substance that *does* derive: error rates, job failures, edge-function errors. Analytics
+· Health keeps what derives and drops the gauge.
+
+**3. `email_send_log` → the panels report delivery, not engagement.** `failed / pending /
+sent` is a real metric and a smaller one than I drew. Rewrite the three panels to delivery
+health. Open and acknowledgement tracking is a provider capability; when it exists the panel
+grows. This is a genuine reduction in ambition and it is the honest one.
+
+**4. Vault → absence. Do not wire `business_vendors`.** It is the funding vertical's credit
+tracker and shares only a name. Borrowing a same-named table from another vertical is the
+worst version of this failure class: it would render plausibly and be wrong, which is
+undetectable from the surface. Vault is twenty legal obligations across six categories, it
+has no substrate, and it renders the absence.
+
+**5. `platform_support` — drop the row.** It is in the design taxonomy and not in the
+`app_role` enum, so the row is structurally always empty. Adding an enum value to satisfy a
+panel would be inventing an organisation to match a drawing. Team ships the roles that
+exist.
+
+### RPC wherever one exists (2026-08-23)
+52 of 59 operator tables gate on `is_platform_owner()` (super_admin only) while every
+`operator_*` RPC resolves `is_platform_admin()` (platform_admin OR super_admin). The same
+view wired through a table read returns **zero rows, indistinguishable from "no data"** for a
+platform_admin. That is the assertion pattern in the data layer — an empty surface asserting
+emptiness it never verified. RPC wherever one exists, and the permission test as either tier
+is owed before the tier reach is trusted.
+
+### Attribution — worse than recorded, and closable
+`utm_campaign` exists on `analytics_events` and `referral_clicks` only; no order, invoice or
+subscription carries a campaign, utm or referral code; and `analytics_events` has no
+`tenant_id`, so the click side is not tenant-resolvable either. CC's close — attribution on
+`tenant_orders` written at checkout plus tenant/session continuity on `analytics_events` —
+is accepted. One correction: it must be **typed columns, not a jsonb blob**, per the earlier
+ruling. A figure is only as derivable as the column under it.
 
 ## Rulings closed 2026-08-23
 - **Payment processor: agnostic.** The interface is the five needs; Stripe is the first adapter. Build the boundary now, expect the provider to change before GA.

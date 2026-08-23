@@ -50,9 +50,10 @@
  * not exist here yet, so each arrives as a region `content`. The chat face has a ported body
  * (`SpineConversation`) because its shape is fully determined by the transcript contract.
  */
-import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import type { ReactElement, ReactNode } from "react";
+import { cloneElement, isValidElement, useMemo, useState } from "react";
 import { useReducedMotion } from "framer-motion";
+import { usePlatformTrust } from "@/operator/data/usePlatformTrust";
 import type { CommandMarkState } from "@/operator/shell/CommandMark";
 import SpineHeader from "@/operator/shell/spine/SpineHeader";
 import SpineFaceStrip, { type SpineFaceDescriptor } from "@/operator/shell/spine/SpineFaceStrip";
@@ -132,6 +133,8 @@ export type OperatorSpineProps = {
   readonly onDetach?: () => void;
   readonly onFold?: () => void;
   readonly trust?: SpineTrust | null;
+  /** `openTrust` (L4620) — the shell's route to the full compass. The spine never navigates. */
+  readonly onOpenCompass?: () => void;
   /** `busy` — L10685–L10689. What is actually running, one line each. Empty → no strip. */
   readonly busy?: readonly string[];
   readonly onInterrupt?: () => void;
@@ -161,6 +164,7 @@ export default function OperatorSpine({
   onDetach,
   onFold,
   trust,
+  onOpenCompass,
   busy = [],
   onInterrupt,
   running = false,
@@ -179,6 +183,39 @@ export default function OperatorSpine({
 }: OperatorSpineProps) {
   const reduce = useReducedMotion();
   const shown = useMemo(() => regions.filter((region) => region.content !== null), [regions]);
+
+  /**
+   * THE COMPASS IS A REAL CONTROL, NOT A DRAWING OF ONE (owner, 2026-08-23: *"This is where the
+   * actual control of Trust Compass and everything lives inside of the chat."*).
+   *
+   * The rung and the tally come from `usePlatformTrust` — the stored `admin_app_settings`
+   * ceiling and the shipped `list_tool_autonomy()` catalogue. A caller may still hand `trust`
+   * in, and then it wins and the read does not run; that is the seam a detached window or a
+   * test uses. With no stored rung the hook returns `level: null`, `resolvedTrust` stays null,
+   * and both the header readout and the chat strip render nothing at all rather than a ceiling
+   * the platform is not holding (§13).
+   */
+  const live = usePlatformTrust(trust === undefined);
+
+  const resolvedTrust: SpineTrust | null =
+    trust !== undefined
+      ? trust
+      : live.level === null
+        ? null
+        : {
+            level: live.level,
+            tally: live.tally,
+            // Moving the ceiling is super_admin-only and the RPC refuses anyone below it, so a
+            // platform_admin's click is rejected server-side rather than silently ignored here.
+            onPick: (next) => {
+              void live.setLevel(next);
+            },
+            // `openTrust` (L4620). The spine does not navigate — routing is the shell's, and
+            // taking a router dependency here would break the detached window and every test
+            // that mounts the spine on its own. With no handler the pack's own `disabled`
+            // covers it, rather than a control that looks live and goes nowhere.
+            onOpenPanel: onOpenCompass,
+          };
 
   /** Face selection is chrome, so it works uncontrolled; a caller may take it over. */
   const [localFace, setLocalFace] = useState<SpineFaceId | null>(null);
@@ -200,7 +237,19 @@ export default function OperatorSpine({
     count: r.count ?? null,
   }));
 
-  const body = shown.find((r) => r.id === activeFace)?.content ?? null;
+  const rawBody = shown.find((r) => r.id === activeFace)?.content ?? null;
+  /**
+   * The chat face carries the compass strip, so it needs the read the header already has. The
+   * region contract holds a NODE, not a render function, so the built-in `SpineConversation` is
+   * cloned with the resolved trust — and only when the caller has not already set it on the
+   * node itself. Any other node a caller supplies is rendered untouched.
+   */
+  const body =
+    isValidElement(rawBody) && rawBody.type === SpineConversation
+      ? cloneElement(rawBody as ReactElement<{ trust?: SpineTrust | null }>, {
+          trust: (rawBody.props as { trust?: SpineTrust | null }).trust ?? resolvedTrust,
+        })
+      : rawBody;
   const composerText = composerValue ?? localText;
 
   /** `stripText` — L11157–L11159. One line, or the first plus how many more. */
@@ -234,7 +283,7 @@ export default function OperatorSpine({
         markState={markState}
         state={state}
         detached={detached}
-        trust={trust}
+        trust={resolvedTrust}
         onDetach={onDetach}
         onFold={onFold}
       />

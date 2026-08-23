@@ -3139,6 +3139,34 @@ button{font:inherit;color:inherit;cursor:pointer}
               </div>
             </sc-if>
 
+            <sc-if value="{{ showCodework }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:14px;display:flex;flex-direction:column;gap:14px">
+                <div style="min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px">
+                  <span style="min-width:0;color:var(--pg-ink-2);font:12px var(--pg-font-data);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ cwPath }}</span>
+                  <small style="flex:none;color:var(--pg-faint);font:11px var(--pg-font-data)">{{ cwFile }}</small>
+                </div>
+
+                <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 22px">
+                  <sc-for list="{{ cwTape }}" as="cw" hint-placeholder-count="4">
+                    <span style="display:flex;align-items:baseline;gap:6px">
+                      <b style="{{ cw.vStyle }}">{{ cw.v }}</b>
+                      <small style="color:var(--pg-faint);font-size:10.5px;white-space:nowrap">{{ cw.k }}</small>
+                    </span>
+                  </sc-for>
+                </div>
+
+                <div style="min-width:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:7px 16px;align-content:start">
+                  <sc-for list="{{ cwRows }}" as="cr" hint-placeholder-count="4">
+                    <small style="color:var(--pg-faint);font:10px var(--pg-font-ui);letter-spacing:.05em;text-transform:uppercase;white-space:nowrap">{{ cr.k }}</small>
+                    <small style="min-width:0;color:var(--pg-ink-2);font:11.5px/1.5 var(--pg-font-ui);text-wrap:pretty">{{ cr.v }}</small>
+                  </sc-for>
+                </div>
+
+                <p style="margin:0;padding:11px 13px;border:1px solid var(--pg-line-soft);border-radius:var(--pg-r-chip);background:var(--pg-surface);color:var(--pg-muted);font:11px/1.6 var(--pg-font-data);text-wrap:pretty">{{ cwDiff }}</p>
+                <small style="color:var(--pg-muted);font:italic 11.5px/1.55 var(--pg-font-editorial);text-wrap:pretty">{{ cwFoot }}</small>
+              </div>
+            </sc-if>
+
             <sc-if value="{{ showStudio }}" hint-placeholder-val="{{ false }}">
               <div style="margin-top:14px">
                 <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px">
@@ -3999,6 +4027,35 @@ button{font:inherit;color:inherit;cursor:pointer}
               <small style="color:var(--pg-faint);font:10px var(--pg-font-data);letter-spacing:.04em">{{ codeMeta }}</small>
               <small style="min-width:0;flex:1;color:var(--pg-muted);font:italic 11.5px var(--pg-font-editorial);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ codeNote }}</small>
             </div>
+
+            <div style="{{ repoStripStyle }}">
+              <span style="{{ repoPathStyle }}">{{ repoName }}</span>
+              <sc-if value="{{ onRepo }}" hint-placeholder-val="{{ true }}">
+                <span style="flex:none;color:var(--pg-faint);font:11px var(--pg-font-data)">⁄</span>
+                <span style="flex:none;white-space:nowrap;color:var(--pg-gold-deep);font:11px var(--pg-font-data)">{{ repoBranch }}</span>
+                <span style="{{ repoCeilStyle }}">{{ repoCeil }}</span>
+                <sc-if value="{{ repoProtected }}" hint-placeholder-val="{{ true }}">
+                  <span style="{{ repoProtStyle }}">protected · merge is yours</span>
+                </sc-if>
+              </sc-if>
+            </div>
+            <p style="flex:none;min-width:0;margin:0;padding:0 14px 10px;color:var(--pg-muted);font:11px/1.55 var(--pg-font-ui);text-wrap:pretty">{{ repoNote }}</p>
+
+            <sc-if value="{{ onRepo }}" hint-placeholder-val="{{ true }}">
+              <div style="flex:none;min-width:0;display:flex;flex-direction:column;gap:7px;margin:0 14px 11px;padding:10px 12px;border:1px solid var(--pg-line-soft);border-radius:var(--pg-r-chip);background:var(--pg-surface)">
+                <sc-for list="{{ codeReviews }}" as="rv" hint-placeholder-count="1">
+                  <div style="min-width:0;display:flex;flex-direction:column;gap:3px">
+                    <div style="min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px">
+                      <span style="min-width:0;flex:1;color:var(--pg-ink-2);font:500 11.5px var(--pg-font-ui);text-wrap:pretty">{{ rv.title }}</span>
+                      <small style="{{ rv.stateStyle }}">{{ rv.state }}</small>
+                    </div>
+                    <small style="color:var(--pg-faint);font:10px var(--pg-font-data);letter-spacing:.03em">{{ rv.at }} · under {{ rv.under }}</small>
+                    <small style="color:var(--pg-muted);font:italic 11px var(--pg-font-editorial);text-wrap:pretty">{{ rv.note }}</small>
+                  </div>
+                </sc-for>
+                <small style="color:var(--pg-faint);font:10.5px/1.5 var(--pg-font-ui);text-wrap:pretty">{{ mergeNote }}</small>
+              </div>
+            </sc-if>
 
             <div style="{{ editorStyle }}">
               <sc-if value="{{ readMode }}" hint-placeholder-val="{{ true }}">
@@ -7186,6 +7243,47 @@ class Component extends DCLogic {
     };
   }
 
+  // Watching her code is not a place. This opens over the work and retires on close — the
+  // same rule that keeps act-as, agent runs and Paige herself out of the rail. The one thing
+  // it deliberately cannot show is a merge control: the ladder has no level that grants it.
+  codeworkVals(on) {
+    if (!on) return { showCodework:false };
+    const IA = window.PAIGE_IA, s = this.state;
+    const files = IA.SANDBOX.files.concat(s.scratchFiles || []);
+    const active = files[Math.min(s.codeFile || 0, files.length - 1)] || files[0];
+    const repo = active && active.repo ? (IA.REPOS || []).find(r => r.id === active.repo) : null;
+    const ceil = repo ? this.clampGrant(repo.ceiling) : '—';
+    const revs = (IA.SANDBOX.reviews || []).filter(r => repo && r.repo === repo.id);
+    return {
+      showCodework:true,
+      cwPath:repo ? repo.name + ' ⁄ ' + (active.at || repo.branch) : 'No repository bound',
+      cwFile:active ? active.file || active.name : '—',
+      cwTape:[
+        { k:'Ceiling here', v:ceil },
+        { k:'Reviews open', v:String(revs.length) },
+        // Every one of these is honest: nothing runs, so nothing can be measured.
+        { k:'Checks', v:'—' },
+        { k:'Runtime', v:'—' }
+      ].map(t => ({ ...t, vStyle:{ color:t.v === '—' ? 'var(--pg-faint)' : 'var(--pg-ink)',
+        font:'400 15px var(--pg-font-data)', whiteSpace:'nowrap' } })),
+      cwRows:(repo ? [
+        ['Writes as', 'PAIGE · app identity, never a person’s credential'],
+        ['May', repo.may],
+        ['Branch', repo.protected ? 'Protected — she cannot write to it directly' : 'Unprotected — hers'],
+        ['Merge', 'Withheld at every ceiling. Yours.']
+      ] : [
+        ['Writes as', '—'],
+        ['May', 'Nothing — this file is scratch'],
+        ['Branch', '—'],
+        ['Merge', '—']
+      ]).map(r => ({ k:r[0], v:r[1] })),
+      cwDiff:'No diff is available. She has written the file; reading a tree needs the provider adapter, and no provider is connected.',
+      cwFoot:repo
+        ? 'Every act on this branch is recorded against her identity, not yours — which is the whole reason it is an app install and not a token.'
+        : 'Bind a repository in Settings · Integrations to give her work somewhere to land.'
+    };
+  }
+
   studioVals(on) {
     if (!on) return { showStudio:false };
     const IA = window.PAIGE_IA, s = this.state, ST = IA.STUDIO;
@@ -10182,8 +10280,44 @@ class Component extends DCLogic {
 
     const TOK = { cm:'var(--pg-faint)', st:'var(--pg-positive)', kw:'var(--pg-gold-deep)', '':'var(--pg-ink-2)' };
 
+    // Where this file lands. A file with no repo is scratch and says so; a bound file
+    // carries its repo's ceiling, clamped by the compass like every other capability.
+    // The act she is offered is derived from that ceiling — and merge is not on the ladder
+    // at any level, which is why no branch of this produces one.
+    const LADDER = ['Observe', 'Draft only', 'Ask first', 'Act and report', 'Autonomous'];
+    const repo = active.repo ? (IA.REPOS || []).find(r => r.id === active.repo) : null;
+    const rCeil = repo ? this.clampGrant(repo.ceiling) : null;
+    const at = repo ? LADDER.indexOf(rCeil) : -1;
+    const reviewAct = !repo ? null
+      : at >= 3 ? { label:'Push', title:'Commits and pushes to her own repository, then tells you' }
+      : at === 2 ? { label:'Open a review', title:'She opens it and waits — merging is yours' }
+      : at === 1 ? { label:'Open a review — yours', title:'At Draft only she writes the branch; you open the review' }
+      : { label:'Held at Observe', title:'She reads this repository and writes nothing to it' };
+
     return {
       onCode:true, noFiles:false,
+      onRepo:!!repo,
+      repoName:repo ? repo.name : 'Not in a repository',
+      repoBranch:repo ? (active.at || repo.branch) : '',
+      repoCeil:repo ? rCeil : '',
+      repoKind:repo ? repo.kind : '',
+      repoProtected:!!(repo && repo.protected),
+      repoNote:repo ? repo.may : 'Scratch only — this file is dropped at session end.',
+      repoStripStyle:{ flex:'none', minWidth:0, display:'flex', flexWrap:'wrap', alignItems:'center',
+        gap:'8px', padding:'0 14px 9px' },
+      repoPathStyle:{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+        color:repo ? 'var(--pg-ink-2)' : 'var(--pg-faint)', font:'11px var(--pg-font-data)' },
+      repoCeilStyle:{ flex:'none', whiteSpace:'nowrap', minHeight:'20px', display:'inline-flex',
+        alignItems:'center', padding:'0 8px', border:'1px solid var(--pg-line)',
+        borderRadius:'var(--pg-r-pill)', color:'var(--pg-gold-deep)',
+        font:'500 9.5px var(--pg-font-ui)', letterSpacing:'.05em', textTransform:'uppercase' },
+      repoProtStyle:{ flex:'none', whiteSpace:'nowrap', color:'var(--pg-faint)',
+        font:'9.5px var(--pg-font-ui)', letterSpacing:'.05em', textTransform:'uppercase' },
+      codeReviews:(IA.SANDBOX.reviews || []).filter(r => repo && r.repo === repo.id).map(r => ({
+        title:r.title, at:r.at, state:r.state, under:r.under, note:r.note,
+        stateStyle:{ flex:'none', whiteSpace:'nowrap', color:'var(--pg-faint)',
+          font:'500 9.5px var(--pg-font-ui)', letterSpacing:'.04em' } })),
+      mergeNote:'No ceiling grants a merge. That act is yours at every level.',
       codeFiles:files.map((f, i) => ({ name:f.name,
         pick:() => this.setState({ codeFile:i, editing:false }),
         wrapStyle:{ flex:'none', display:'inline-flex', alignItems:'center',
@@ -10254,6 +10388,9 @@ class Component extends DCLogic {
         { ...btn(canRun ? 'Run' : 'Run — held', canRun ? 'gold' : null),
           title:canRun ? 'Requests a runtime — ⌘↵' : 'The ceiling holds this',
           act:() => this.runCode(active.name, canRun) },
+        ...(reviewAct ? [{ ...btn(reviewAct.label), title:reviewAct.title,
+          act:() => this.setState({ summon:'codework', wsMode:'slide-over',
+            announcement:reviewAct.label + ' · ' + repo.name }) }] : []),
         ...(s.editing
           ? [{ ...btn(dirty ? 'Save' : 'Done'), title:'⌘S',
               act:() => this.saveCode(active.name) },
@@ -10966,6 +11103,7 @@ class Component extends DCLogic {
       ...this.alertVals(s.dest === 'settings' && viewName === 'Alerts'),
       ...this.postVals(s.summon === 'post'),
       ...this.studioVals(s.summon === 'studio'),
+      ...this.codeworkVals(s.summon === 'codework'),
       ...this.calSetVals(s.summon === 'calset'),
       // The tab row is raised above panels so a summon cannot trap you in a surface — but
       // that raise also floated the Studio door through an open panel, which reads as a

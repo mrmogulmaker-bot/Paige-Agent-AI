@@ -90,7 +90,7 @@ cannot be perceived is not done, exactly like a broken one. Check **perceptibili
 
 | Need | Source |
 |---|---|
-| Tokens, motion spec, state matrices, keyboard, a11y | `docs/design-references/cd-packs/super-admin-shell-v3/stage2-design-package.md` |
+| Tokens, motion spec, state matrices, keyboard, a11y | `docs/design-references/cd-packs/super-admin-shell-v3/tenant-redesign-stage2-design-package.md` |
 | The mark, wordmark, palette, motion sequence | `docs/brand/paige-brand-identity.md` |
 | Enumerated anti-patterns | `docs/design-references/CHEESY-TELLS.md` |
 | Design-critic brief + SHIP/ITERATE/BLOCK shape | `docs/design-references/DESIGN-CRITIC-PROMPT.md` |

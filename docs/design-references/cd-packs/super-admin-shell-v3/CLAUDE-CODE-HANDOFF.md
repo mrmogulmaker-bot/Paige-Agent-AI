@@ -94,14 +94,20 @@ Motion is reserved for real activity. The wire rests on substrate and animates
 only on actual work. The Mind's conduction is driven by real events. A decorative
 animation on a surface with no backend reads as live traffic and is a lie.
 
-### 9. Four type sizes. 11 label · 13 body · 16 lead · 21 title.
-**Corrected by owner ruling, 2026-08-23.** This rule previously read
-`21 title · 17 figure · 12.5 row · 11 label`; that is from an earlier draft, and
-**12.5 and 17 exist nowhere in v3**. `design-system-port.md` §2 states the shipped
-ladder — `11 / 13 / 16 / 21` — and what ships wins. Body is `400 14px/1.55`,
-tracking `-.002em`. Worked surfaces get the 21px compact banner; Analytics is the
-only reading surface at 30px. Three faces: Schibsted Grotesk (interface), Gambetta
-(her voice and editorial), JetBrains Mono (machine values only — never labels).
+### 9. Four type sizes. 21 · 16 · 13 · 11.
+Corrected 2026-08-23 — an earlier draft of this rule read `21 / 17 / 12.5 / 11`.
+Neither 17 nor 12.5 exists anywhere in v3, and that stale line was re-applied by
+CC twice before being fixed here at source. The ladder is **11 / 13 / 16 / 21**,
+body `400 14px/1.55`.
+
+On a surface whose subject is figures, **the figures take 21 and the surface
+title drops to 16** — a title does not need to be the biggest thing; hierarchy
+comes from position and weight. Block headers separate by weight and tracking,
+never by a fifth size. Analytics is the only reading surface at 30px.
+
+Three faces: **Schibsted Grotesk** (display *and* UI — one face doing both),
+Gambetta (her voice and editorial), JetBrains Mono (machine values only — never
+labels). Bricolage Grotesque and Inter are not in this design.
 
 ### 10. Both themes are first-class.
 §23. Obsidian and Mineral are separately authored, including the Mind's five

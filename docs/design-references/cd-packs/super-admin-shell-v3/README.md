@@ -23,7 +23,7 @@ landing page stays §28 approved-frozen.
 | `mind-brain.js` | The Mind substrate renderer. |
 | `support.js` | The `.dc.html` design-tool runtime shim. |
 | `CLAUDE-CODE-HANDOFF.md` | The ten-rule fidelity contract. Read this first. |
-| `stage2-design-package.md` | Tokens, motion, state matrices, keyboard, accessibility, IA rulings. |
+| `tenant-redesign-stage2-design-package.md` | Tokens, motion, state matrices, keyboard, accessibility, IA rulings. |
 | `pack-provenance.md` | What in this repo each surface was built from, plus defects CD found while reading it. |
 | `campaigns-catalog-sales-spec.md` | Catalog, Sales, the tenant schema, the segment builder, and the two patterns that now apply shell-wide. |
 
@@ -38,7 +38,7 @@ is committed on arrival.
 
 ## Two edits were made to the incoming files
 
-`stage2-design-package.md` §9a cited a third-party pop-culture mark as the owner's reference for
+`tenant-redesign-stage2-design-package.md` §9a cited a third-party pop-culture mark as the owner's reference for
 simultaneity. §50 prohibits active marks anywhere in the repo, including as an internal analog, so the
 sentence was reframed to describe the pattern ("the fictional operator-AI archetype") rather than name
 the mark. Nothing else was altered — the pack is otherwise byte-for-byte as delivered.
@@ -47,7 +47,7 @@ the mark. Nothing else was altered — the pack is otherwise byte-for-byte as de
 
 The pack is authored, not compiled, and its three text artifacts do not fully agree. Where they
 disagree, **`paige-ia.js` and the shell win** — the handoff calls `paige-ia.js` "the data contract."
-One confirmed case: `stage2-design-package.md` §9 tabulates Marketplace as `Week · Approvals · Runs`
+One confirmed case: `tenant-redesign-stage2-design-package.md` §9 tabulates Marketplace as `Week · Approvals · Runs`
 and Settings as `Capabilities · Governance · Team`, while `paige-ia.js` `P.DEST` ships Marketplace as
 `Storefront · Catalog · Submissions · Publishers` and Settings with ten views. The §9 table is stale.
 `pack-provenance.md` also still names the retired `Field` slot that `CLAUDE-CODE-HANDOFF.md` records

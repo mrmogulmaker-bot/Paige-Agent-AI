@@ -37,7 +37,7 @@
  * `/operator/*` they are NOT reachable. Wiring them into the slots is the next round's work.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { NavLink, Navigate, useParams, useSearchParams } from "react-router-dom";
+import { NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
 import { AgentPresenceProvider, useAgentPresence } from "@/components/ui/paige";
 import { OPERATOR_SLOTS } from "@/operator/ia/operatorIA";
@@ -123,6 +123,7 @@ export default function OperatorShell() {
 
 function OperatorShellBody() {
   const params = useParams();
+  const navigate = useNavigate();
   const address = resolveOperatorAddress(params.section, params["*"] ?? "");
   const [search] = useSearchParams();
 
@@ -309,7 +310,13 @@ function OperatorShellBody() {
 
         {/* Both collapse mechanisms, as the pack has them: the track goes to 0px AND the panel
             unmounts. Either alone is a visible defect. */}
-        {spineOpen && <OperatorSpine />}
+        {spineOpen && (
+          <OperatorSpine
+            /* `openTrust` (L4620). Routing is the shell's job — the spine takes a callback so it
+               stays mountable outside a router (the detached window, and every spine test). */
+            onOpenCompass={() => navigate("/operator/analytics/autonomy")}
+          />
+        )}
       </div>
     </div>
   );

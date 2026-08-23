@@ -11,9 +11,9 @@ dispatch table, read out.
 **How to use it.** Pick a row. Read `PAIGE Super Admin Shell v3.dc.html` at the line range.
 Port it. Mount it at the address in *Renders at*. No question needed at any step.
 
-- `45` builders total
+- `46` builders total
 - `24` render at a slot/view address
-- `7` render as a summoned surface (never a slot)
+- `8` render as a summoned surface (never a slot)
 - `14` compose on every render (chrome, spine, tour)
 
 ---
@@ -26,30 +26,30 @@ view, not a second address.
 
 | Builder | Pack lines | Renders at |
 |---|---|---|
-| `peopleVals` | 4795–5099 | relationships · People |
-| `campVals` | 5100–5240 | campaigns · Active |
-| `convoVals` | 5241–5555 | relationships · Conversations |
-| `catVals` | 5684–5788 | campaigns · Catalog |
-| `salesVals` | 5789–5903 | campaigns · Sales |
-| `segVals` | 6334–6447 | relationships · Segments |
-| `socialVals` | 7333–7469 | campaigns · Social |
-| `alertVals` | 7470–7525 | settings · Alerts |
-| `runsVals` | 7526–7601 | fleet · History |
-| `intVals` | 7928–8083 | settings · Integrations |
-| `platformVals` | 8084–8170 | settings · Platform |
-| `fleetVals` | 8171–8264 | fleet · Directory |
-| `autoVals` | 8484–8593 | settings · Automations |
-| `alertVals` | 8594–8698 | settings · Alerts |
-| `firstRunVals` | 8767–8814 | settings · Setup *(!s.setSeen)* |
-| `setupVals` | 8815–8991 | settings · Setup *(!!s.setSeen)* |
-| `teamFormVals` | 8992–9100 | settings · Team *(!!s.tmForm)* |
-| `teamVals` | 9101–9333 | settings · Team |
-| `catalogVals` | 9334–9439 | marketplace · Catalog |
-| `pubsVals` | 9440–9507 | marketplace · Publishers |
-| `subsVals` | 9508–9575 | marketplace · Submissions |
-| `vaultVals` | 9755–9844 | settings · Vault |
-| `capsVals` | 9845–9953 | settings · Capabilities |
-| `storeVals` | 9954–10155 | marketplace · Storefront |
+| `peopleVals` | 4852–5156 | relationships · People |
+| `campVals` | 5157–5297 | campaigns · Active |
+| `convoVals` | 5298–5612 | relationships · Conversations |
+| `catVals` | 5741–5845 | campaigns · Catalog |
+| `salesVals` | 5846–5960 | campaigns · Sales |
+| `segVals` | 6391–6504 | relationships · Segments |
+| `socialVals` | 7431–7567 | campaigns · Social |
+| `alertVals` | 7568–7623 | settings · Alerts |
+| `runsVals` | 7624–7699 | fleet · History |
+| `intVals` | 8026–8181 | settings · Integrations |
+| `platformVals` | 8182–8268 | settings · Platform |
+| `fleetVals` | 8269–8362 | fleet · Directory |
+| `autoVals` | 8582–8691 | settings · Automations |
+| `alertVals` | 8692–8796 | settings · Alerts |
+| `firstRunVals` | 8865–8912 | settings · Setup *(!s.setSeen)* |
+| `setupVals` | 8913–9089 | settings · Setup *(!!s.setSeen)* |
+| `teamFormVals` | 9090–9198 | settings · Team *(!!s.tmForm)* |
+| `teamVals` | 9199–9431 | settings · Team |
+| `catalogVals` | 9432–9537 | marketplace · Catalog |
+| `pubsVals` | 9538–9605 | marketplace · Publishers |
+| `subsVals` | 9606–9673 | marketplace · Submissions |
+| `vaultVals` | 9853–9942 | settings · Vault |
+| `capsVals` | 9943–10051 | settings · Capabilities |
+| `storeVals` | 10052–10253 | marketplace · Storefront |
 
 ---
 
@@ -61,13 +61,14 @@ one's title, deck and foot.
 
 | Builder | Pack lines | Renders at |
 |---|---|---|
-| `offerVals` | 5556–5683 | summon `offer` |
-| `schemaVals` | 5904–6150 | summon `campschema` |
-| `segBuildVals` | 6151–6333 | summon `segment` |
-| `calSetVals` | 6978–7188 | summon `calset` |
-| `studioVals` | 7189–7259 | summon `studio` |
-| `postVals` | 7260–7332 | summon `post` |
-| `buildVals` | 8265–8483 | summon `builder` |
+| `offerVals` | 5613–5740 | summon `offer` |
+| `schemaVals` | 5961–6207 | summon `campschema` |
+| `segBuildVals` | 6208–6390 | summon `segment` |
+| `calSetVals` | 7035–7248 | summon `calset` |
+| `codeworkVals` | 7249–7286 | summon `codework` |
+| `studioVals` | 7287–7357 | summon `studio` |
+| `postVals` | 7358–7430 | summon `post` |
+| `buildVals` | 8363–8581 | summon `builder` |
 
 ### `P.SUMMONS` entries
 
@@ -76,6 +77,7 @@ one's title, deck and foot.
 | `offer` | New offering |
 | `campschema` | What you can change |
 | `segment` | Segment |
+| `codework` | She is writing |
 | `finding` | Finding |
 | `pipehealth` | Pipeline health |
 | `campstep` | Campaign step |
@@ -110,20 +112,20 @@ Chrome, the spine, and the tour. Not addressable — always present, gated inter
 
 | Builder | Pack lines | Renders at |
 |---|---|---|
-| `wireVals` | 4545–4575 | composed on every render |
-| `trustVals` | 4576–4761 | composed on every render |
-| `findingVals` | 4762–4794 | composed on every render |
-| `chartVals` | 6448–6653 | `s.dest === 'analytics' ? viewName` |
-| `stageBuilderVals` | 6654–6731 | composed on every render |
-| `dealVals` | 6732–6977 | `dl, dlStage, stages` |
-| `intPanelVals` | 7602–7927 | composed on every render |
-| `tourVals` | 8699–8766 | composed on every render |
-| `reviewVals` | 9576–9655 | composed on every render |
-| `listingVals` | 9656–9754 | composed on every render |
-| `codeVals` | 10156–10287 | `face === 'code', ceilingHeld, btn` |
-| `mindVals` | 10288–10500 | composed on every render |
-| `composerVals` | 10501–10618 | composed on every render |
-| `renderVals` | 10619 | composed on every render |
+| `wireVals` | 4602–4632 | composed on every render |
+| `trustVals` | 4633–4818 | composed on every render |
+| `findingVals` | 4819–4851 | composed on every render |
+| `chartVals` | 6505–6710 | `s.dest === 'analytics' ? viewName` |
+| `stageBuilderVals` | 6711–6788 | composed on every render |
+| `dealVals` | 6789–7034 | `dl, dlStage, stages` |
+| `intPanelVals` | 7700–8025 | composed on every render |
+| `tourVals` | 8797–8864 | composed on every render |
+| `reviewVals` | 9674–9753 | composed on every render |
+| `listingVals` | 9754–9852 | composed on every render |
+| `codeVals` | 10254–10424 | `face === 'code', ceilingHeld, btn` |
+| `mindVals` | 10425–10637 | composed on every render |
+| `composerVals` | 10638–10755 | composed on every render |
+| `renderVals` | 10756 | composed on every render |
 
 ---
 
