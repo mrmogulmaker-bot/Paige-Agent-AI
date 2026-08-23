@@ -21,7 +21,11 @@ import {
   aaAgainstEnv, minWidthZero, noDocumentScrollbar, shellGrid, slotsInOrder,
 } from "./assertions.mjs";
 
-const ART = path.resolve("scripts/live-drive/artifacts/harness");
+// Resolve from THIS MODULE, never from cwd. A cwd-relative path wrote a nested
+// artifacts tree when the selftest ran from the fixtures directory, which escaped
+// .gitignore and got five PNGs committed. The output location of a tool must not
+// depend on where it happened to be invoked from.
+const ART = path.resolve(import.meta.dirname, "../artifacts/harness");
 const LABEL = "harness render · not live";
 
 function chromePath() {
