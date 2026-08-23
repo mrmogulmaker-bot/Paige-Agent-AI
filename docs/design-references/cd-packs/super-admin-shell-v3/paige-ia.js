@@ -66,7 +66,7 @@
     review: { title: 'Submission', deck: 'What they declared, what the auto-checks found, and the one decision that decides how far it reaches. A reviewer reads exactly what the buyer will see.', foot: 'Representative. The manifest, the requested scope and the auto-checks are real fields on a submission. What does not exist: a reviewer identity, an SLA clock, and a publisher account separate from a tenant \u2014 all three are Stage 3.', rows: [] },
     owed: { title: 'Needs you today', deck: 'Tasks, approvals and agent runs on one temporal surface. Every item belongs somewhere else \u2014 completing it here completes it there.', foot: 'The calendar owns no records. Nothing is read from a calendar source yet, so the treatments are the design and only the contents change when one connects.', rows: [
       { name: 'Authorize a tenant entry', detail: 'Two-key \u00b7 reason code required', status: 'Authority', tone: 'var(--pg-gold-deep)' },
-      { name: 'Acknowledge a firing', detail: 'delivery_status pending until A3', status: 'Attention', tone: 'var(--pg-warning)' },
+      { name: 'Acknowledge a firing', detail: 'Delivered 13:47 \u00b7 waiting on your word', status: 'Attention', tone: 'var(--pg-warning)' },
       { name: 'Protected focus', detail: '13:00\u201315:00 \u00b7 she holds outbound', status: 'Held', tone: 'var(--pg-violet)' },
       { name: 'Fleet sweep', detail: 'Runs 06:30 daily', status: 'Scheduled', tone: 'var(--pg-faint)' }
     ] },
@@ -133,7 +133,7 @@
       kpis: [
         { label: 'Live tenants', value: '8', note: '1 agency \u00b7 3 standalone \u00b7 4 sub-account' },
         { label: 'At risk', value: '2', note: 'Grade counts zero active seats' },
-        { label: 'Open value', value: '\u2014', note: 'Money Spine deferred', dim: true },
+        { label: 'Open value', value: '$0', note: 'operator_dashboard_metrics() \u00b7 no paying tenant yet' },
         { label: 'Internal', value: '4', note: 'Behind the chip, never dropped' }
       ],
       ledgerTitle: 'Directory', ledgerMeta: 'Enter performs an audited act-as',
@@ -154,7 +154,7 @@
             { name: 'Resolver integrity', detail: 'Both tenant resolvers, 6 checks', figure: '6 / 6', status: 'Pass', tone: 'var(--pg-positive)', action: 'Evidence \u2192' },
             { name: 'RLS posture', detail: 'Forced on every operator-scope table', figure: '11 / 11', status: 'Pass', tone: 'var(--pg-positive)', action: 'Evidence \u2192' },
             { name: 'Two tenants went quiet', detail: '7c11 and b204 \u00b7 no session in 9 days', figure: '2', status: 'Held for you', tone: 'var(--pg-gold-deep)', action: 'Review \u2192' },
-            { name: 'A firing was never delivered', detail: 'delivery_status pending \u00b7 no channel adapter', figure: '1', status: 'Held for you', tone: 'var(--pg-gold-deep)', action: 'Review \u2192' },
+            { name: 'A firing was delivered, not acknowledged', detail: 'alerting-deliver \u00b7 five-minute cron \u00b7 13:47', figure: '1', status: 'Held for you', tone: 'var(--pg-gold-deep)', action: 'Review \u2192' },
             { name: 'Migration drift', detail: 'An edge function cannot read git', figure: '\u2014', status: 'Unreadable', tone: 'var(--pg-faint)', action: 'Why \u2192' }
           ]
         },
@@ -205,7 +205,7 @@
           ledgerFoot: 'The calendar owns no records. Every item on it belongs to a person, a campaign or a tenant, and completing it here completes it there. Nothing is read from a calendar source yet \u2014 the treatments are the design, and when a source connects only the contents change.',
           rows: [
             { name: 'Authorize a tenant entry', detail: 'Two-key \u00b7 reason code required', figure: 'waiting', status: 'Authority', tone: 'var(--pg-gold-deep)', action: 'Review \u2192', auth: true },
-            { name: 'Acknowledge a firing', detail: 'delivery_status pending until A3', figure: '1', status: 'Attention', tone: 'var(--pg-warning)', action: 'Open \u2192' },
+            { name: 'Acknowledge a firing', detail: 'Delivered 13:47 by alerting-deliver', figure: '1', status: 'Attention', tone: 'var(--pg-warning)', action: 'Open \u2192' },
             { name: 'Protected focus', detail: '13:00\u201315:00 \u00b7 she holds outbound', figure: '2h', status: 'Held', tone: 'var(--pg-violet)', action: 'Open \u2192' },
             { name: 'Fleet sweep', detail: 'Runs 06:30 daily', figure: 'daily', status: 'Scheduled', tone: 'var(--pg-faint)', action: 'Open \u2192' }
           ]
@@ -257,7 +257,7 @@
       },
     },
     marketplace: {
-      kicker: 'What the platform sells', title: 'Marketplace', s: REP, market: true,
+      kicker: 'What the platform sells', title: 'Marketplace', s: PART, market: true,
       deck: 'Five kinds of thing ship here: a skill she can run, an automation, an integration, a template, or a whole agent. Every one declares the authority it needs before it installs \u2014 an install can never widen what she may do.',
       views: ['Storefront', 'Catalog', 'Submissions', 'Publishers'],
     },
@@ -269,7 +269,7 @@
         { label: 'Checks passing', value: '4', note: 'Of 5 categories' },
         { label: 'Skipped', value: '1', note: 'Its own axis, not a pass' },
         { label: 'LLM error rate', value: '0.4%', note: 'llm.error_rate' },
-        { label: 'Fleet MRR', value: '\u2014', note: 'Money Spine deferred', dim: true }
+        { label: 'Fleet MRR', value: '$0', note: 'L1 reads \u00b7 no paying tenant yet' }
       ],
       ledgerByView: {
         'Platform health': {
@@ -307,7 +307,7 @@
           { label: 'Platform tenant', value: '1', note: 'The operator\u2019s own record' },
           { label: 'Domains', value: '2', note: 'App and marketing' },
           { label: 'Brand sets', value: '1', note: 'Inherited by sub-accounts' },
-          { label: 'Platform billing', value: '\u2014', note: 'Money Spine deferred by ruling', dim: true }
+          { label: 'Platform billing', value: '$0', note: 'L1 reads \u00b7 no paying tenant yet' }
         ],
         Integrations: [
           { label: 'Connected', value: '4', note: 'Reading or writing today' },
@@ -356,7 +356,7 @@
             { name: 'Operator record', detail: 'The platform\u2019s own tenant row', figure: 'live', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' },
             { name: 'Brand', detail: 'Mark, wordmark, palette, resolved recursively', figure: '1 set', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' },
             { name: 'Domains', detail: 'App and marketing hosts', figure: '2', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' },
-            { name: 'Platform billing', detail: 'Money Spine deferred by owner ruling', figure: '\u2014', status: 'Deferred', tone: 'var(--pg-faint)', action: 'Why \u2192' },
+            { name: 'Platform billing', detail: 'operator_dashboard_metrics() reads MRR, ARR, dunning and ARPA', figure: '$0', status: 'Reads', tone: 'var(--pg-positive)', action: 'Open \u2192' },
             { name: 'Notifications', detail: 'What reaches the operator, and how', figure: '\u2014', status: 'Surface owed', tone: 'var(--pg-warning)', action: 'Open \u2192' }
           ]
         },
@@ -385,10 +385,10 @@
         }
       },
       ledgerTitle: 'Governance', ledgerMeta: 'Two-key on destructive ops',
-      ledgerFoot: 'The governance laws bind here rather than RLS: immutable audit, two-key on destructive operations, never-silent break-glass.',
+      ledgerFoot: 'The governance laws are meant to bind here rather than in RLS: immutable audit, two-key on destructive operations, never-silent break-glass. One of the three does not hold yet \u2014 append-only is a GRANT, not a constraint, and the read policy is inverted. CC owns this surface; it is named here rather than drawn as done.',
       rows: [
         { name: 'Trust Compass', trust: true, detail: 'Authority and autonomy, one home', figure: '@grants', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' },
-        { name: 'Audit log', detail: 'Append-only', figure: 'immutable', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' },
+        { name: 'Audit log', detail: 'Append-only by GRANT only \u2014 no constraint, no trigger. Operator rows are readable by tenant admins and largely not by platform_admin (task #218).', figure: 'unenforced', status: 'Attention', tone: 'var(--pg-warning)', action: 'Review \u2192' },
         { name: 'Break-glass', detail: 'Second key, reason code, actor log', figure: '\u2014', status: 'Unwired', tone: 'var(--pg-negative)', action: 'Why \u2192' },
         { name: 'Alert rules', detail: 'Configured in Alerts', figure: '7 rules', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' }
       ]
@@ -417,8 +417,8 @@
         evidence: '8 registry rows, 0 orphaned.', interpretation: 'The registry and the tenant table agree.' },
       { id: 'f4', check: 'operator_llm_error_rate', domain: 'data_product', priority: 60, status: 'pass', severity: 'medium',
         evidence: 'llm.error_rate 0.4% over the trailing window.', interpretation: 'Within range. No baseline exists to call it anomalous either way.' },
-      { id: 'f5', check: 'operator_alert_delivery', domain: 'comms_deliverability', priority: 1, status: 'fail', severity: 'blocking',
-        evidence: '1 firing at delivery_status=pending since 13:47. No channel adapter is configured.', interpretation: 'A rule fired and nobody was told. Every firing will sit at pending until the channel adapters land \u2014 a fire is not a delivery.', fix: 'Route firings through _shared/channel-adapters.ts and set delivery_status on acknowledgement.' },
+      { id: 'f5', check: 'operator_alert_delivery', domain: 'comms_deliverability', priority: 1, status: 'pass', severity: 'medium',
+        evidence: '1 firing delivered 13:47 by alerting-deliver on the five-minute cron. Nobody has acknowledged it.', interpretation: 'Delivery is not the gap any more \u2014 A3 ships and A4/A5a landed behind it. What is open is the acknowledgement, which is yours. Thannel adapters land \u2014 a fire is not a delivery.', fix: 'Route firings through _shared/channel-adapters.ts and set delivery_status on acknowledgement.' },
       { id: 'f6', check: 'operator_migration_drift', domain: 'infrastructure', priority: 70, status: 'skip', severity: 'medium',
         evidence: 'data_source=self_hosted_worker. A Deno edge function cannot read git tags.', interpretation: 'Deferred to the CI reader. This will read skip until that ships \u2014 it is not a pass.' },
       { id: 'f7', check: 'operator_edge_drift', domain: 'infrastructure', priority: 75, status: 'skip', severity: 'medium',
@@ -441,7 +441,7 @@
         data: [12,8,6,3,3,0,0,0], labels: ['0f3a','agency','e59d','b204','c771','7c11','a903','f240'] },
       { title: 'Risk grade', note: 'Of 8 live tenants', kind: 'stack',
         parts: [{ label: 'Nominal', value: 6, tone: 'var(--pg-positive)' }, { label: 'At risk', value: 2, tone: 'var(--pg-warning)' }] },
-      { title: 'Fleet MRR', note: 'Money Spine deferred by owner ruling', kind: 'none' }
+      { title: 'Fleet MRR', note: 'L1 reads \u00b7 flat at zero, because no tenant pays yet \u2014 a reading, not a gap', kind: 'none' }
     ],
     Relationships: [
       { title: 'Lifecycle', note: 'Representative \u2014 no relationship table exists', kind: 'funnel',
@@ -495,13 +495,18 @@
         data: [2,2,1,1,0,0,0], labels: ['CI','CI','no adapter','no baseline','','',''] },
       { title: 'LLM error rate', note: 'Twelve weeks \u00b7 percent', kind: 'line',
         data: [0.9,0.8,0.7,0.6,0.6,0.5,0.7,0.5,0.4,0.4,0.5,0.4] },
-      { title: 'Time to acknowledge', note: 'No firing has ever been delivered', kind: 'none' }
+      { title: 'Time to acknowledge', note: 'Delivery ships \u2014 nothing records an acknowledgement yet', kind: 'none' }
     ]
   };
 
 
-  // Conversations — grounded in src/agency/conversations.tsx and src/agency/fixtures.ts
-  // (CHANNELS, THREADS, CONV_CHANNEL_PERF). One console, every channel, Paige inside it.
+  // Conversations — the layout is grounded in src/agency/conversations.tsx and
+  // src/agency/fixtures.ts (CHANNELS, THREADS, CONV_CHANNEL_PERF), which is @ts-nocheck and
+  // fixture-driven. The operator-scope substrate is elsewhere and does exist:
+  // 20260812000000_operator_communications_store.sql, 20260816190000_operator_comms_parity.sql
+  // and 20260816191000_conversations_call_schema.sql, plus the live paige-operator-sms-inbound
+  // and paige-operator-sms-send functions. SMS reads and sends at operator scope; voice does
+  // not. One console, every channel, Paige inside it.
   P.CHANNELS = [
     { key: 'Email', glyph: 'M2 4.2h12v7.6H2z M2 4.2l6 4.4 6-4.4', substrate: 'Live' },
     { key: 'SMS', glyph: 'M2.4 3.4h11.2v7.4H7l-3.2 2.6v-2.6H2.4z', substrate: 'Live' },
@@ -580,7 +585,7 @@
       identity:[['Legal name','AUTHORIZED TENANT 0f3a'],['Primary contact','fixture B'],['Address','\u2014 not on file'],['Phone','+1 ··· ··· 0198'],['Email','b@fixture.invalid']],
       business:[['Entity type','LLC'],['Formation state','\u2014'],['EIN','00-0000000',1],['Tax classification','\u2014']],
       docs:[['Master agreement','signed 11 Mar'],['W-9','on file'],['Formation docs','\u2014 not uploaded']],
-      billing:[['Plan','Standalone'],['MRR','\u2014 Money Spine deferred'],['Method','card ending 4471',1],['Next invoice','\u2014']] },
+      billing:[['Plan','Standalone'],['MRR','$0 \u00b7 no paid plan yet'],['Method','card ending 4471',1],['Next invoice','\u2014']] },
     { id:'p2', kind:'Person', name:'fixture B', sub:'Owner \u00b7 AUTHORIZED TENANT 0f3a', life:'Client contact',
       owner:'You', touch:'2h', portal:'Active \u00b7 smart', vault:'Via company',
       identity:[['First name','fixture'],['Last name','B'],['Date of birth','04/18/1979',1],['Address','\u2014 not on file'],['Phone','+1 ··· ··· 0198'],['Email','b@fixture.invalid']],
@@ -598,7 +603,7 @@
       identity:[['Legal name','AUTHORIZED TENANT agency'],['Primary contact','\u2014'],['Address','\u2014 not on file'],['Phone','\u2014'],['Email','\u2014']],
       business:[['Entity type','\u2014'],['Formation state','\u2014'],['EIN','00-0000000',1],['Tax classification','\u2014']],
       docs:[['Master agreement','signed 2 Feb'],['Reseller addendum','signed 2 Feb']],
-      billing:[['Plan','Agency'],['MRR','\u2014 Money Spine deferred'],['Method','ACH ending 2038',1],['Next invoice','\u2014']] },
+      billing:[['Plan','Agency'],['MRR','$0 \u00b7 no paid plan yet'],['Method','ACH ending 2038',1],['Next invoice','\u2014']] },
     { id:'p5', kind:'Person', name:'fixture C', sub:'Reseller candidate', life:'Partner',
       owner:'\u2014', touch:'1d', portal:'Not invited', vault:'None',
       identity:[['First name','fixture'],['Last name','C'],['Date of birth','\u2014'],['Address','\u2014 not on file'],['Phone','+1 ··· ··· 0233'],['Email','c@fixture.invalid']],
@@ -610,7 +615,7 @@
       identity:[['Legal name','AUTHORIZED TENANT 7c11'],['Primary contact','\u2014'],['Address','\u2014 not on file'],['Phone','\u2014'],['Email','\u2014']],
       business:[['Entity type','\u2014'],['Formation state','\u2014'],['EIN','\u2014 not on file'],['Tax classification','\u2014']],
       docs:[['Master agreement','signed 19 Jun'],['W-9','\u2014 not uploaded']],
-      billing:[['Plan','Sub-account'],['MRR','\u2014 Money Spine deferred'],['Method','via parent'],['Next invoice','\u2014']] },
+      billing:[['Plan','Sub-account'],['MRR','$0 \u00b7 no paid plan yet'],['Method','via parent'],['Next invoice','\u2014']] },
     { id:'p7', kind:'Company', name:'DESIGN FIXTURE \u00b7 internal', sub:'Platform test account', life:'Internal',
       owner:'\u2014', touch:'\u2014', portal:'Not invited', vault:'None',
       identity:[['Legal name','DESIGN FIXTURE internal'],['Primary contact','\u2014'],['Address','\u2014'],['Phone','\u2014'],['Email','\u2014']],
@@ -1300,9 +1305,10 @@
   // Creating one is the first step \u2014 the rules, types and hosts are configured per calendar.
 
   // An alert is three things: a rule that fires, someone it reaches, and a channel it
-  // arrives on. Only the first exists today \u2014 A1 (schema) and A2 (the five-minute sweep)
-  // evaluate rules and write firings; A3 (delivery) has never been built, and there has
-  // never been a recipient model at all. That is why nothing arrives.
+  // arrives on. All three ship: A1 (schema) and A2 (the five-minute sweep) evaluate rules
+  // and write firings, and A3 delivers them \u2014 alerting-deliver, on its own five-minute
+  // cron, with A4 and A5a behind it. What is still owed is acknowledgement, which is a
+  // human act, not a seam.
 
   P.CAL_TYPES = [
     { id: 'personal', name: 'Personal', note: 'One person\u2019s time',
@@ -1491,7 +1497,7 @@
       { name: 'Custom MCP server', kind: 'MCP', state: 'planned', does: 'Bring a tool server of your own', note: '' }
     ]},
     { cat: 'Money', items: [
-      { name: 'Stripe', kind: 'Key', state: 'planned', does: 'Subscriptions and invoices', note: 'Money spine deferred by ruling', blocks: 'Every money figure on the platform' },
+      { name: 'Stripe', kind: 'Key', state: 'planned', does: 'Subscriptions and invoices', note: 'Operator metrics read (L1) and marketplace paid installs charge. Subscription billing is the part that is not wired.', blocks: 'Tenant subscription billing' },
       { name: 'Stripe Connect', kind: 'OAuth', state: 'planned', does: 'Pay marketplace publishers', note: '', blocks: 'The marketplace revenue split' },
       { name: 'QuickBooks', kind: 'OAuth', state: 'planned', does: 'Push invoices to the books', note: '' },
       { name: 'Xero', kind: 'OAuth', state: 'planned', does: 'Push invoices to the books', note: '' }
@@ -1712,7 +1718,7 @@
     { src:'Conversations', lobe:'recall', writes:'Every message, both directions', n:'31,400', state:'live', sample:'fixture B asked whether margin moves at volume' },
     { src:'Call transcripts', lobe:'recall', writes:'What was said, and who said it', n:'\u2014', state:'none', sample:'No voice substrate \u2014 nothing transcribed' },
     { src:'Calendar', lobe:'recall', writes:'Meetings, bookings, no-shows', n:'\u2014', state:'none', sample:'No calendar source connected' },
-    { src:'Audit log', lobe:'recall', writes:'Every act, append-only', n:'12,880', state:'live', sample:'Entered AUTHORIZED TENANT \u00b7 7c11 at 09:14' },
+    { src:'Audit log', lobe:'recall', writes:'Every act \u2014 append-only by GRANT, not by constraint', n:'12,880', state:'live', sample:'Entered AUTHORIZED TENANT \u00b7 7c11 at 09:14' },
     { src:'Systems check', lobe:'recall', writes:'Findings from each run', n:'3,840', state:'live', sample:'operator_alert_delivery failed four runs straight' },
     { src:'Documents', lobe:'knowledge', writes:'Uploads, agreements, filings', n:'4,210', state:'live', sample:'Reseller agreement, clause 7 \u2014 margin at volume' },
     { src:'The Vault', lobe:'knowledge', writes:'What a client keeps on their side', n:'2,970', state:'live', sample:'0f3a holds 8 items, 2 shared with us' },
@@ -1891,7 +1897,7 @@
     { name: 'The morning brief is written', cat: 'Analytics', live: true },
     { name: 'An integration connects', cat: 'External', live: true },
     { name: 'An integration goes dark', cat: 'External', live: true },
-    { name: 'An invoice is paid or fails', cat: 'External', live: false, why: 'Money spine deferred' },
+    { name: 'An invoice is paid or fails', cat: 'External', live: false, why: 'No subscription billing seam \u2014 metrics read, invoices do not' },
     { name: 'A portal invite is accepted', cat: 'External', live: false, why: 'No client-side session' },
     { name: 'A vault item is added', cat: 'External', live: true },
     { name: 'A tenant enters or exits scope', cat: 'Fleet', live: true },
@@ -1969,9 +1975,9 @@
     { name: 'Install from the marketplace', cat: 'Control', needs: 'Ask first', live: false, why: 'No install ledger' },
     { name: 'Read a metric', cat: 'Ask PAIGE', needs: 'Observe', live: true },
     { name: 'Write a brief', cat: 'Notify', needs: 'Act and report', live: true },
-    { name: 'Raise an alert', cat: 'Notify', needs: 'Autonomous', live: false, why: 'A3 routes delivery' },
+    { name: 'Raise an alert', cat: 'Notify', needs: 'Autonomous', live: true },
     { name: 'Call an integration', cat: 'Outside', needs: 'Ask first', live: true },
-    { name: 'Charge or invoice', cat: 'Outside', needs: 'Ask first', live: false, why: 'Money spine deferred' }
+    { name: 'Charge or invoice', cat: 'Outside', needs: 'Ask first', live: false, why: 'No subscription billing seam yet' }
   ];
 
   // Guards are the part most builders leave out, and the part that stops an automation
@@ -2150,9 +2156,9 @@
       left: 'Nothing.', act: '' },
     { id: 'al9', kind: 'needs', scope: 'Platform', title: 'Alert delivery is still undelivered',
       when: '13:47', sev: 'high',
-      what: 'Rules evaluate and fire. Nothing carries a firing to a person.',
-      did: 'Nothing she can do \u2014 there is no delivery seam to use.',
-      left: 'A3 has to route firings through the channel adapters. Until then every alert lives here only.',
+      what: 'Rules evaluate, fire, and are delivered on a five-minute cron.',
+      did: 'She raises one and it reaches you. Acknowledging it is still yours.',
+      left: 'An acknowledgement model: who cleared a firing, when, and on what grounds.',
       act: '' }
   ];
 

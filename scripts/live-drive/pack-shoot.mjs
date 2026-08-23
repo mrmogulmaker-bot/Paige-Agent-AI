@@ -97,8 +97,28 @@ for (const theme of THEMES) {
     if (!hit) return false; hit.click(); return true;
   }, re.source);
 
-  if (theme === 'light') await clickText(/Mineral/);
-  else await clickText(/Obsidian/).catch(() => {});
+  // Set the theme, then VERIFY it — do not trust the click. The toggle's label names the
+  // theme you would switch TO, so a naive click is a coin flip depending on the boot theme,
+  // and a mislabelled screenshot is worse than a missing one (it gets read as evidence).
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const now = await page.evaluate(() =>
+      document.querySelector('[data-pg]')?.getAttribute('data-pg') || null);
+    if (now === theme) break;
+    // Click the toggle regardless of its label. The label names the CURRENT theme, not the
+    // target, so matching on the target word inverts the switch — which is exactly how 64
+    // frames got mislabelled before this guard existed.
+    await page.evaluate(() => {
+      const b = [...document.querySelectorAll('button')]
+        .find((x) => /^(Mineral|Obsidian)$/.test(x.textContent.trim()));
+      if (b) b.click();
+    });
+    await page.waitForTimeout(SETTLE);
+  }
+  const applied = await page.evaluate(() =>
+    document.querySelector('[data-pg]')?.getAttribute('data-pg') || null);
+  if (applied !== theme) {
+    throw new Error(`theme "${theme}" requested but "${applied}" applied — refusing to mislabel ${THEMES.length * 32} frames`);
+  }
   await page.waitForTimeout(SETTLE);
   if (FOLD) {
     await page.evaluate(() => {

@@ -34,6 +34,13 @@ tree: 1c557a873e8b
 - Relationships gained a Conversations console (People · Conversations · Segments) built from the shipped console in `src/agency/conversations.tsx` + `src/agency/fixtures.ts`: channel filters, thread list, thread, and a person rail that is the same record People lists.
 - Follow-ups demoted from a subtab to an automation; Settings gained an Automations view holding eight automations, each running under an existing capability grant.
 
+### Corrected from CC's grounding pass (2026-08-23)
+- **Marketplace REP → PART.** Seven first-party authoring RPCs ship on prod over six tables, with an operator-gated catalog RPC carrying per-item revenue rollups and a paid-install money leg. Stripe Connect blocks payout, not authoring — so `marketplace/build` stays.
+- **Alert delivery ships** (`alerting-deliver` + `20260927000000_alerting_deliver.sql`, five-minute cron, A4/A5a behind it). Finding `f5` moved fail → pass and the Fleet counts followed it (5 passing, 0 failing) because they derive. What is open is acknowledgement, not delivery.
+- **Operator communications store credited** — `20260812000000`, `20260816190000`, `20260816191000` plus `paige-operator-sms-inbound` / `paige-operator-sms-send`. SMS reads and sends at operator scope; voice does not. The console's layout came from a `@ts-nocheck` fixture file, which is why the substrate went unnamed.
+- **"Money Spine deferred" → `$0`.** L1 ships; `operator_dashboard_metrics()` reads MRR, ARR, dunning and ARPA. The answer is zero because no tenant pays yet — a reading, not an absence. An em-dash meant "cannot read"; using it for "reads zero" was §13 backwards.
+- **Audit log corrected the other way** — the pack said `immutable · Live`; it is append-only by GRANT only, no constraint or trigger, and the read policy is inverted (tenant admins see operator rows, `platform_admin` mostly cannot). Named on the row as `unenforced · Attention`. CC task #218.
+
 ## Screen map
 | Screen | Built from |
 |---|---|
