@@ -168,14 +168,14 @@ made it findable.
 
 ### 9. Identifiers scrubbed at source
 
-The SSN literal → `000-00-0000`; both EINs → `00-0000000`. Five occurrences across
+`412-88-0396` → `000-00-0000`; both EINs → `00-0000000`. Five occurrences across
 `P.PEOPLE` and `P.ENTITIES`. The reasoning is now a comment above `P.PEOPLE` so
 it survives a regeneration, with the distinction that matters kept intact:
 masking is a display state and means we hold the value, an em-dash means we hold
 nothing, and neither is a licence to store a real one.
 
 **One of the same class, left for a ruling:** `P.PEOPLE` p2 carries a
-format-valid date of birth, flagged as sensitive. By CC's own
+format-valid date of birth, `04/18/1979`, flagged as sensitive. By CC's own
 reasoning it qualifies — it is format-valid and portable. It is a DOB rather
 than a government identifier, so the call is CC's policy call, not mine. Say the
 word and it becomes `00/00/0000`.
@@ -192,7 +192,7 @@ sentence was doing. CC's method of sending it was the right one: a locator plus 
 regex, never the string itself. The mark was almost certainly why the paste kept
 dropping.
 
-**Identifiers, including the DOB.** The DOB literal → `00/00/0000`, on CC's ruling,
+**Identifiers, including the DOB.** `04/18/1979` → `00/00/0000`, on CC's ruling,
 which is the correct one and worth stating as a rule rather than a list:
 
 > The class is **format-valid and portable**, not "government identifiers." A DOB

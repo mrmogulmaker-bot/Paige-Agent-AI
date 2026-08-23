@@ -49,39 +49,43 @@ describe("the operator IA mirrors the design pack", () => {
   });
 
   /**
-   * Absence copy is the DESIGN SIDE'S, lifted verbatim. So this asserts only what is ours to
-   * assert — that a slot with no destination actually carries copy, and that it is the copy we
-   * were given rather than something drifted or re-edited here.
+   * Absence copy is the DESIGN SIDE'S. This parses `absence-copy.md` from the pack rather than
+   * quoting it, which is the same contract shape as the slots test above — nothing here can drift
+   * from the source, because nothing here restates it.
    *
-   * It deliberately does NOT judge the words. An earlier version of this test required a minimum
-   * body length and banned "coming soon" — sensible constraints on a CC draft, and exactly the
-   * wrong thing to point at design's copy: it would fail a deliberately terse absence and make an
-   * implementation test the arbiter of how a surface reads. Copy is surface; the surface rules it.
-   *
-   * When `absence-copy.md` ships in the pack, replace the inline expectations below with a parse of
-   * that file — the same contract shape as the slots test above, which reads the pack rather than
-   * restating it. It is quoted here only because it arrived in review rather than as a delivery.
+   * It deliberately does NOT judge the words. An earlier version required a minimum body length and
+   * banned "coming soon" — reasonable constraints on a CC draft, and exactly the wrong thing to aim
+   * at design's copy: it would fail a deliberately terse absence and make an implementation test the
+   * arbiter of how a surface reads. Copy is surface; the surface rules it. What is ours to assert is
+   * only that the copy arrives unedited.
    */
-  it("every unbuilt slot carries the absence copy it was given, unedited", () => {
-    const GIVEN: Record<string, { title: string; body: string }> = {
-      relationships: {
-        title: "Drawn, not wired",
-        body: "People, Conversations, Segments and Calendar are specified and their contract is fixed. None of the four reads live data yet: the surfaces exist, the joins behind them do not. Nothing here is waiting on a decision — only on the wiring.",
-      },
-      campaigns: {
-        title: "Substrate exists · one seam missing",
-        body: "Catalog and Sales sit on tables that already ship — tenant_products, tenant_prices, tenant_orders — so this slot is a wiring job rather than a build. One seam is genuinely absent: an order cannot name a campaign. utm_campaign lives on analytics_events and referral_clicks, never on the order, so send → click → order does not join. Until it does, attribution is recorded by hand and Sales reads without it.",
-      },
-    };
+  it("every unbuilt slot carries the pack's absence copy, unedited", () => {
+    const doc = fs.readFileSync(
+      path.resolve(__dirname, "../../../docs/design-references/cd-packs/super-admin-shell-v3/absence-copy.md"),
+      "utf8",
+    );
+    // Sections are `## <Slot>`, with the title in backticks and the body as a blockquote.
+    const given = new Map<string, { title: string; body: string }>();
+    for (const m of doc.matchAll(/\n## (\w+)\n([\s\S]*?)(?=\n## |\n---\n## |$)/g)) {
+      const slot = m[1].toLowerCase();
+      const title = m[2].match(/\*\*absenceTitle\*\*\s*—\s*`([^`]+)`/)?.[1];
+      const quoted = [...m[2].matchAll(/^>\s?(.*)$/gm)].map((q) => q[1]).join(" ");
+      if (!title || !quoted.trim()) continue;
+      // The doc marks table names in backticks for readability; the surface renders plain text.
+      const body = quoted.replace(/`/g, "").replace(/\s+/g, " ").trim();
+      given.set(slot, { title, body });
+    }
+    expect(given.size, "parsed no absence sections — the doc's shape changed").toBeGreaterThan(0);
+
     for (const slot of OPERATOR_SLOTS) {
-      const given = GIVEN[slot.id];
-      if (!given) {
-        expect(slot.absence, `${slot.id} has an absence with no copy on record`).toBeUndefined();
+      const g = given.get(slot.id);
+      if (!g) {
+        expect(slot.absence, `${slot.id} has absence copy the pack does not define`).toBeUndefined();
         continue;
       }
       expect(slot.absence, `${slot.id} lost its absence`).toBeDefined();
-      expect(slot.absence!.title, `${slot.id} absence title edited`).toBe(given.title);
-      expect(slot.absence!.body, `${slot.id} absence body edited`).toBe(given.body);
+      expect(slot.absence!.title, `${slot.id} absence title edited`).toBe(g.title);
+      expect(slot.absence!.body.replace(/\s+/g, " ").trim(), `${slot.id} absence body edited`).toBe(g.body);
     }
   });
 
