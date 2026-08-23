@@ -23,6 +23,32 @@ import { useCompass } from "@/operator/data/useCompass";
 import { useKnowledge } from "@/operator/data/useKnowledge";
 import { useIsPlatformOwner } from "@/operator/data/useIsPlatformOwner";
 
+/**
+ * RULING F (Claude Design, 2026-08-23) — ELEVATION IS DISTANCE FROM `--pg-env`.
+ * `--pg-surface` sits ABOVE canvas in dark and BELOW it in light, so the role inverts between
+ * themes and a plate painted on it RECEDES in light. A plate that rises off the canvas — a card,
+ * a KPI tile, a control, a popover — paints `--pg-raised` in BOTH themes; `--pg-surface` is kept
+ * for regions that genuinely recede (a well, an inset strip, a sunken list).
+ *
+ * AND FILL ALONE CANNOT CARRY IT (Claude Design, 2026-08-23). In light, `--pg-raised` `#fffdf8`
+ * on `--pg-canvas` `#fbf9f5` is three units — correct, and invisible on its own. Separation on a
+ * raised plate is `--pg-rim` PLUS `--pg-lift-1`: the rim is a seated inset pair (a top highlight
+ * and a bottom shade, L21/L28) and the lift is the outer cast (L22/L29). Carrying the rim alone
+ * left only insets, which read as a plain outline against the 1.5px border — the "hairline
+ * outline" CD reported. Both tokens ship at the pack's own values; this is where they are spent.
+ * The pack pairs them exactly this way at L9420 and L9477: `var(--pg-rim), var(--pg-lift-N)`.
+ *
+ * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[var(--pg-rim)]`
+ * does NOT compile to a box-shadow. Tailwind 3 cannot type a bare `var()` and resolves the
+ * `shadow-` arbitrary value to `--tw-shadow-COLOUR`; the emitted rule is
+ * `{--tw-shadow-color: var(--pg-rim)}` (verified in the built CSS), which recolours a shadow
+ * that was never declared, so `getComputedStyle(...).boxShadow` came back `none` on every one
+ * of these plates in BOTH themes. All the separation on screen was the 1.5px border — which is
+ * exactly why it read as "a plain border." The `shadow:` data-type hint
+ * (`shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]`) is what makes Tailwind emit `box-shadow`,
+ * the same hint `text-[length:var(--pg-t-body)]` already uses throughout this console.
+ */
+
 const OperatorPanel = lazy(() => import("@/operator/surfaces/OperatorPanel"));
 const FleetConsole = lazy(() => import("@/operator/surfaces/FleetConsole"));
 const SystemsCheckSurface = lazy(() => import("@/operator/surfaces/SystemsCheckSurface"));
@@ -36,8 +62,8 @@ const KnowledgeSurface = lazy(() => import("@/operator/surfaces/KnowledgeSurface
 function Holding() {
   return (
     <div className="min-w-0 space-y-3" aria-busy="true">
-      <div className="h-4 w-40 animate-pulse rounded bg-muted" />
-      <div className="h-24 w-full animate-pulse rounded-[12px] bg-muted/60" />
+      <div className="h-4 w-40 animate-pulse rounded bg-[var(--pg-workspace)]" />
+      <div className="h-24 w-full animate-pulse rounded-[12px] bg-[color-mix(in_srgb,var(--pg-workspace)_60%,transparent)]" />
     </div>
   );
 }
@@ -100,7 +126,7 @@ function Absence({ slot }: { slot: OperatorSlot }) {
     slot.absence?.body ??
     "This view is specified and has a place in the console, but no surface behind it reads live data yet. It is listed here so it is visible rather than missing.";
   return (
-    <div className="min-w-0 max-w-[68ch] rounded-[12px] border border-border bg-card p-6">
+    <div className="min-w-0 max-w-[68ch] rounded-[12px] border border-border bg-[var(--pg-raised)] p-6 shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]">
       <h2 className="min-w-0 text-[13px] font-semibold text-foreground">{title}</h2>
       <p className="mt-2 min-w-0 text-[13px] leading-[1.6] text-muted-foreground">{body}</p>
     </div>

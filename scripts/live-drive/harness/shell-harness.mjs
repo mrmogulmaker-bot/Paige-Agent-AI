@@ -57,9 +57,22 @@ export async function runHarness({ url, slots, tracks = 3, theme = "dark", width
   const browser = await chromium.launch(exe ? { executablePath: exe } : {});
   try {
     const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: theme === "dark" ? "dark" : "light" });
-    // No network. The shell must render from local modules and mocked data; a request
-    // reaching out means something is not actually mocked.
-    await ctx.route("**://**", (r) => (r.request().url().startsWith("file://") ? r.continue() : r.abort()));
+    // No network REACHING OUT. The shell must render from local modules and mocked data; a
+    // request to a real host means something is not actually mocked.
+    //
+    // The origin allowance is what lets this frame a REAL render rather than only a fixture.
+    // The first version allowed file:// alone, which silently aborted every request to the dev
+    // server — so pointing the harness at a live localhost render produced a blank page, not an
+    // error. Same origin as the page under test is permitted; everything else is still aborted,
+    // so a stray fonts.googleapis.com or supabase call still fails loudly instead of quietly
+    // making the frame depend on the network.
+    const origin = (() => { try { return new URL(url).origin; } catch { return null; } })();
+    await ctx.route("**://**", (r) => {
+      const u = r.request().url();
+      if (u.startsWith("file://")) return r.continue();
+      if (origin && u.startsWith(origin)) return r.continue();
+      return r.abort();
+    });
     const page = await ctx.newPage();
     await page.goto(url, { waitUntil: "load" });
     await page.waitForTimeout(250);
@@ -113,6 +126,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const r = await runHarness({
     url: arg("url"), slots, tracks: Number(arg("tracks", "3")),
     theme: arg("theme", "dark"), name: arg("name", "shell"),
+    width: Number(arg("width", "1600")), height: Number(arg("height", "1000")),
   });
   console.log(JSON.stringify(r, null, 2));
   process.exit(r.ok ? 0 : 1);

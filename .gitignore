@@ -36,3 +36,8 @@ deno.lock
 
 # Rendered pack/app screenshots — regenerate with scripts/live-drive/pack-shoot.mjs
 scripts/live-drive/artifacts/
+
+# Harness scratch — one-off diagnostic scripts a render pass writes while it is running.
+# Not deliverables: the harness's real outputs are its assertions and its labelled frames,
+# and its frames already land in scripts/live-drive/artifacts/ above.
+scripts/live-drive/harness/tmp/

@@ -25,128 +25,42 @@ tenant prototype and the operator shell build against.
 Naming: `--pg-*`, global. The `--tr-*` set stays scoped to `.tr-app` until Stage 3 migrates
 the prototype; the values below are the ones both should converge on.
 
-## 1. Colour tokens
+## 1–3. Tokens, type and radii — REMOVED (owner ruling, 2026-08-23)
 
-Both columns are first-class. §23 binds — neither theme reads as lesser.
+**The values that lived here were superseded and are deleted rather than corrected.** Owner,
+verbatim: *"a doc that's right about IA and wrong about colour is worse than a doc that's wrong
+throughout — nobody distrusts the parts that read correctly."*
 
-### Ground and material
+What was here: a full Obsidian/Mineral colour table, a system-safe font stack declaring that
+*"nothing waits on a webfont"*, a `--pg-d1…--pg-editorial` type scale, a `--pg-s1…s10` space
+scale, a five-step elevation table, and a `--pg-r0/-r1/-r2/-chamfer/-facet` edge set. Every one
+of them disagreed with the shipped shell — different ink and line values, different gold, a font
+stack replaced by Schibsted Grotesk / Gambetta / JetBrains Mono, and radii replaced by
+`--pg-r-plate` 13 · `--pg-r-chip` 9 · `--pg-r-seal` 11 · `--pg-r-pill` 999. `--pg-e5`,
+`--pg-s1…s10` and the `--pg-t-*` motion tokens do not exist in the shell at all.
 
-| Token | Obsidian | Mineral |
-|---|---|---|
-| `--pg-env` | `#08070b` | `#e8e5df` |
-| `--pg-nav` | `#0d0b11` | `#f4f1eb` |
-| `--pg-canvas` | `#100e14` | `#fbf9f5` |
-| `--pg-spine` | `#121017` | `#f1eee8` |
-| `--pg-workspace` | `#16131a` | `#f7f4ee` |
-| `--pg-surface` | `#19161e` | `#f5f2ec` |
-| `--pg-raised` | `#211d27` | `#fffdf8` |
-| `--pg-artifact` | `#e9e4da` | `#fffdf8` |
+**The palette, the faces and the radii are `design-system-port.md`, and behind it the shipped
+`PAIGE Super Admin Shell v3.dc.html` L19–L45. Nothing else.**
 
-### Graphite typography — four steps only
+The rest of this document — the boundary model, component states, the Trust Compass scale,
+keyboard, accessibility, IA and the Stage 3 ledger — stands.
 
-| Token | Obsidian | Mineral |
-|---|---|---|
-| `--pg-ink` | `#f6f2ea` | `#201e23` |
-| `--pg-ink-2` | `#d4cfd7` | `#3d3941` |
-| `--pg-muted` | `#aaa4ae` | `#67616b` |
-| `--pg-faint` | `#938d98` | `#756f79` |
-
-### Champagne illumination — spent on the act
-
-| Token | Obsidian | Mineral |
-|---|---|---|
-| `--pg-gold-core` | `#fff0cf` | `#6f5636` |
-| `--pg-gold` | `#ead5aa` | `#8b7049` |
-| `--pg-gold-deep` | `#c7a978` | `#9b7848` |
-| `--pg-gold-fill` | `#d4a752` | `#c9a96a` |
-| `--pg-gold-bloom` | `rgba(240,200,106,.28)` | `rgba(201,169,106,.30)` |
-| `--pg-graphite` | `#2a2730` | `#b9b2a6` |
-
-Champagne inverts role between themes — a surface fill in Obsidian, an ink in Mineral.
-
-### Signal — state, never decoration
-
-| Token | Obsidian | Mineral |
-|---|---|---|
-| `--pg-violet` | `#9b8de0` | `#655a96` |
-| `--pg-positive` | `#8fd1ae` | `#327458` |
-| `--pg-warning` | `#edc17f` | `#986322` |
-| `--pg-negative` | `#eda093` | `#a5483d` |
-
-### Line — boundary levels 2–4
-
-| Token | Obsidian | Mineral |
-|---|---|---|
-| `--pg-line-soft` | `rgba(244,237,222,.075)` | `rgba(45,40,50,.07)` |
-| `--pg-line` | `rgba(244,237,222,.13)` | `rgba(45,40,50,.13)` |
-| `--pg-line-strong` | `rgba(244,237,222,.22)` | `rgba(45,40,50,.20)` |
-| `--pg-line-authority` | `rgba(234,213,170,.30)` | `rgba(155,120,60,.34)` |
-
-## 2. Type
-
-System-safe stacks only — the same four families already shipping in
-`tenant-redesign.css`, so nothing waits on a webfont.
-
-```
---pg-font-display: "Segoe UI Variable Display", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
---pg-font-ui:      "Segoe UI Variable Text", "SF Pro Text", system-ui, -apple-system, sans-serif;
---pg-font-editorial: "Iowan Old Style", Baskerville, "Times New Roman", serif;
---pg-font-data:    ui-monospace, "SFMono-Regular", Consolas, monospace;
-```
-
-| Token | Spec |
-|---|---|
-| `--pg-d1` | display · `clamp(36px,3.5vw,55px)` / .98 / −.052em / 430 |
-| `--pg-d2` | display · `clamp(28px,2.4vw,38px)` / 1.02 / −.040em / 480 |
-| `--pg-d3` | display · `clamp(20px,2vw,30px)` / 1.08 / −.028em / 520 |
-| `--pg-h1` | display · 17 / 1.35 / −.010em / 560 |
-| `--pg-h2` | display · 15 / 1.40 / 550 |
-| `--pg-body` | ui · 14 / 1.55 / 400 |
-| `--pg-body-s` | ui · 13 / 1.50 / 400 |
-| `--pg-micro` | ui · 11 / 1.45 / 400 |
-| `--pg-kicker` | ui · 10 / 1.20 / .17em / 600 caps |
-| `--pg-data` | mono · 11 / tabular-nums |
-| `--pg-editorial` | serif italic — quotation and the act only |
-
-## 3. Space, elevation, edges
-
-Space (4-base): `--pg-s1` 4 · `s2` 8 · `s3` 12 · `s4` 16 · `s5` 20 · `s6` 24 · `s7` 32 ·
-`s8` 40 · `s9` 56 · `s10` 72.
-
-| Elevation | Use |
-|---|---|
-| `--pg-e1` | Inset top light on any raised material |
-| `--pg-e2` | Rail and toolbar separation |
-| `--pg-e3` | Command spine against the canvas |
-| `--pg-e4` | Docked workspace, artifact sheet |
-| `--pg-e5` | Popped-out window — the only ringed elevation |
-
-| Edge | Use |
-|---|---|
-| `--pg-r0` (0) | Fields, rows, the operating field |
-| `--pg-r1` (2px) | Buttons, chips, inputs |
-| `--pg-r2` (3px) | Floating window only |
-| `--pg-chamfer` | L4 authority surfaces |
-| `--pg-facet` | Identity glyphs, monograms |
 
 ## 4. Motion
 
-| Token | Value |
-|---|---|
-| `--pg-t-instant` | 90ms |
-| `--pg-t-quick` | 140ms |
-| `--pg-t-base` | 200ms |
-| `--pg-t-considered` | 280ms |
-| `--pg-t-materialize` | 340ms |
-| `--pg-t-execute` | 520ms |
-| `--pg-e-out` | `cubic-bezier(.22,1,.36,1)` |
-| `--pg-e-authority` | `cubic-bezier(.16,1,.3,1)` |
+**Token names removed by owner ruling, 2026-08-23** — the same ruling that deleted §§1–3, extended
+here. `--pg-t-instant` · `-quick` · `-base` · `-considered` · `-materialize` · `-execute` ·
+`--pg-e-out` · `--pg-e-authority` **do not exist in the shell**, and eight token names that resolve
+to nothing are the same defect as the palette block. The timings below are real spec and stand;
+the **implementation is the shell's own keyframe set** (`PAIGE Super Admin Shell v3.dc.html`
+L46–L67 — `pg-materialize`, `pg-reveal`, `pg-drop`, `pg-roll`, `pg-breathe`, `pg-warm` and the
+rest), under the root `prefers-reduced-motion` kill.
 
 | Transition | Timing |
 |---|---|
-| Rail / surface | 200ms · `--pg-e-out`. Colour and background only; no layout easing on the rail |
+| Rail / surface | 200ms · `cubic-bezier(.22,1,.36,1)`. Colour and background only; no layout easing on the rail |
 | Workspace materialize | 340ms · `clip-path inset(0 0 0 100%) → inset(0)`, opacity 0→1, x +18px→0 |
-| Authority appear | 280ms · `--pg-e-authority`, scale .97→1, champagne edge draws last |
+| Authority appear | 280ms · `cubic-bezier(.16,1,.3,1)`, scale .97→1, champagne edge draws last |
 | Focus ring | 90ms · linear. Never eased — an animated focus ring reads as lag |
 
 Command Mark sequence: see the brand file.

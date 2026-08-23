@@ -10,10 +10,14 @@
  * Folder convention: react-dom/server, no RTL. `signOut` is mocked because importing it pulls in
  * the supabase client, which is not this test's subject.
  */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { OPERATOR_SLOTS } from "@/operator/ia/operatorIA";
+import { resolveOperatorAddress, viewPath } from "@/operator/shell/operatorAddress";
+import { SPINE_REGIONS, spineHasContent } from "@/operator/shell/OperatorSpine";
 
 vi.mock("@/lib/auth/signOut", () => ({ performSignOut: vi.fn() }));
 
@@ -37,11 +41,56 @@ describe("the operator shell renders the pack's geometry", () => {
     expect(slotOrder(at("/operator/fleet"))).toEqual(OPERATOR_SLOTS.map((s) => s.id));
   });
 
-  it("the grid container is findable and carries the pack's three tracks at rest", () => {
+  /**
+   * RULING C (Claude Design, 2026-08-23) — the spine's track is reserved on whether PAIGE has
+   * anything to show, never on a flag. "A collapsed spine is honest; an empty one asserts a
+   * capability that isn't there."
+   *
+   * So this asserts the CONTRACT, not one frozen string: the rail is the pack's 216px, the middle
+   * is floor-less, and the spine track agrees with `spineHasContent()`. It passes unchanged on the
+   * day PAIGE lands in the spine — and fails if the two ever disagree, which is the defect.
+   */
+  it("the rail and middle are the pack's, and the spine track agrees with what the spine holds", () => {
     const html = at("/operator/fleet");
     expect(html).toContain("data-shell-grid");
-    // 216px rail · a floor-less middle · a spine that may not fall below 340px.
-    expect(html).toMatch(/grid-template-columns:\s*216px minmax\(0,\s*1fr\) minmax\(340px,\s*26vw\)/);
+    const cols = /grid-template-columns:\s*([^;"]+)/.exec(html)?.[1];
+    expect(cols).toBeTruthy();
+    expect(cols).toMatch(/^216px minmax\(0,\s*1fr\)/);
+    expect(cols!.slice("216px minmax(0,1fr)".length).trim()).toBe(
+      spineHasContent() ? "minmax(340px,26vw)" : "0px",
+    );
+  });
+
+  it("an empty spine does not render — it is 0px AND unmounted, never a reserved hole", () => {
+    // Both halves of the collapse, together: the pack does both and either alone is a defect.
+    expect(SPINE_REGIONS.every((r) => r.content === null)).toBe(true);
+    expect(spineHasContent()).toBe(false);
+    expect(at("/operator/fleet")).not.toContain("data-operator-spine");
+  });
+
+  /**
+   * RULING D — the gold act must land. "A gold affordance that 404s spends the design's scarcest
+   * signal on nothing." RULING E — Paige is not a destination; that control was REMOVED.
+   *
+   * Asserted against the SOURCE because the previous address looked right and 404'd: an eye on the
+   * button proves nothing, and only `operatorAddress.ts` can say whether a link lands.
+   */
+  it("every operator address Fleet Console navigates to resolves to a real slot (Rulings D + E)", () => {
+    const src = readFileSync(resolve(process.cwd(), "src/operator/surfaces/FleetConsole.tsx"), "utf8");
+    const body = src.slice(src.indexOf("const PROVISION_AT"));
+
+    // Ruling E: she is the spine, not a place. No route to her, in code or in a literal.
+    expect(body).not.toContain("/operator/paige");
+    // Ruling D: the dead address is gone and the act is built off the IA, not typed as a literal.
+    expect(body).not.toContain("/operator/provisioning");
+    expect(body).toContain("navigate(PROVISION_AT)");
+
+    const provision = viewPath("fleet", "Directory");
+    const [, , section, view] = provision.split("/");
+    const address = resolveOperatorAddress(section, view);
+    expect(address.kind).toBe("resolved");
+    expect(address.kind === "resolved" && address.stale).toBe(false);
+    expect(address.kind === "resolved" && address.slot.id).toBe("fleet");
   });
 
   it("every view of the addressed slot is offered, by the design's own spelling", () => {

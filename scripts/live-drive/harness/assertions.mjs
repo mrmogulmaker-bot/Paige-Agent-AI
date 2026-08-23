@@ -209,10 +209,19 @@ export async function spineFloor(page, min = 340) {
 export async function typeLadder(page, maxSizes = 4, maxFaces = 3) {
   const found = await page.evaluate(() => {
     const sizes = new Set(), faces = new Set();
+    // SCRIPT/STYLE/TITLE hold text nodes and are never painted. Counting them reported a THIRD
+    // face — Inter, from the app's platform default — on a console that renders exactly two, and
+    // Inter is one of the two withdrawn faces, so the false positive was indistinguishable from
+    // the real regression this check exists to catch. `display:none` is checked too, because a
+    // collapsed panel's text is not on screen either. Found 2026-08-23 by chasing the phantom
+    // Inter to a <script> tag; the check had been over-reporting faces since it was written.
+    const NEVER_PAINTED = new Set(["SCRIPT", "STYLE", "TITLE", "HEAD", "META", "LINK", "NOSCRIPT", "TEMPLATE"]);
     for (const el of document.querySelectorAll("*")) {
+      if (NEVER_PAINTED.has(el.tagName)) continue;
       if (!el.textContent || !el.textContent.trim()) continue;
       if (!(el.childNodes.length && [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()))) continue;
       const cs = getComputedStyle(el);
+      if (cs.display === "none" || cs.visibility === "hidden") continue;
       sizes.add(Math.round(parseFloat(cs.fontSize) * 2) / 2);
       faces.add(cs.fontFamily.split(",")[0].replace(/["']/g, "").trim());
     }
@@ -316,6 +325,22 @@ export async function collapseOrder(page, widths = [1600, 1100, 820]) {
   }
 
   const problems = [];
+
+  // THE COLLAPSE MUST ACTUALLY HAPPEN. Everything below this only tests that transitions do not
+  // occur OUT OF ORDER — which a shell that never collapses at any width satisfies vacuously.
+  // That is not hypothetical: the real operator shell held rail=216 and spine=340 from 1600px
+  // all the way down to 640px, where the two chrome columns alone claim 556px of a 640px
+  // viewport, and this check reported GREEN the whole time. Named "collapseOrder", it was only
+  // ever checking the order of a collapse it never confirmed existed. Found 2026-08-23 by
+  // screenshotting the narrow width instead of trusting the pass.
+  const narrow = seen[seen.length - 1];
+  if (narrow.spine > 0) {
+    problems.push(`spine never collapsed — still ${narrow.spine}px at ${narrow.w}px (it collapses to 0 FIRST)`);
+  }
+  if (narrow.rail >= seen[0].rail) {
+    problems.push(`rail never compacted — still ${narrow.rail}px at ${narrow.w}px (216 → 72 is the second step)`);
+  }
+
   // The band must never disappear, at any width.
   for (const s of seen) {
     if (!s.bandVisible) problems.push(`band gone at ${s.w}px`);

@@ -26,14 +26,57 @@ import { cn } from "@/lib/utils";
  * uses (§18: one read, not a second one). Each card's prose is Paige's OWN stored
  * `paige_interpretation` for that check; none of it is written here.
  *
- * The "Her read" panel is TEMPLATED over real values — which is exactly what CD does. Its own
- * `read` is `atRisk.length + " tenants are at risk. " + atRisk[0].name + …`, a sentence frame
- * around live figures, not authored prose. Every number and name below comes from the fleet
- * read; only the frame is fixed. There is no operator-scope narrative endpoint on the platform
- * (all 248 edge functions enumerated; `owner-context.ts` is a system-prompt composer consumed
- * only inside `paige-ai-chat`'s streaming path, not a callable), so the gold CTA hands the
- * question to Paige in the chat — where she actually lives (§20/§21) — rather than inventing a
- * synthesis here.
+ * ── FINDING 2 (Claude Design, 2026-08-23) — THERE IS ONE RIGHT COLUMN AND IT IS THE SPINE ───
+ * CD: *"With the spine collapsed, FleetConsole renders its own right rail — 'Needs you today,'
+ * 'Her read,' 'FLEET Tenants.' 'Her read' is spine content. That's Paige speaking, sitting
+ * inside the surface because her actual home is collapsed. The design has one right column and
+ * it's the spine; a surface growing a second one is the shell fighting itself. Move Paige's read
+ * to the spine when she's wired, and let the rest be workspace content — not a column."*
+ *
+ * So two things changed here and BOTH are the ruling, not a preference:
+ * · **"Her read" no longer renders on this surface at all.** It is spine content. Until the
+ *   spine is wired it renders NOWHERE — an empty spine is honest (Ruling C, already shipped);
+ *   Paige speaking from inside the workspace because her home is collapsed is not. DO NOT
+ *   restore it here: when she is wired it returns in `OperatorSpine`, not in a surface.
+ * · **These blocks are workspace content, not a column.** The 312px `<aside>` is gone; what is
+ *   left flows in the console's own column at its full width.
+ *
+ * ── FINDING 3 — "Needs you today" MUST NOT RENDER AS AN EMPTY BOX ───────────────────────────
+ * CD: *"Blank card, no absence copy. Same failure as the empty sections, smaller."* Measured on
+ * the deployed markup: with the fleet read in flight the block rendered its plate, its title and
+ * a bare `h-16 animate-pulse` rectangle — a card with nothing in it.
+ *
+ * Absence copy is CD's to write, and this block has none. Searched, before saying so:
+ * `absence-copy.md` (which carries Relationships and Campaigns only), the PORT-SPEC, and the v3
+ * pack for `flAttn`, `Needs you`, `needs you`, `attention`, `awaiting`, `queue`, `at risk` —
+ * "Needs you today" appears in v3 exactly twice, both on the CALENDAR surface (L2553, the button
+ * that opens the `owed` summon; `SUMMONS.owed` `paige-ia.js` L67-L72). v3 draws no such block on
+ * Fleet. So NOTHING IS DRAFTED HERE: the block renders only when it has something real to show,
+ * and renders nothing at all otherwise. Its absence copy is owed from CD.
+ *
+ * ── RULING F (Claude Design, 2026-08-23) — ELEVATION IS DISTANCE FROM `--pg-env` ─────────────
+ * A plate that RISES off the canvas paints `--pg-raised` in BOTH themes; `--pg-surface` is for
+ * regions that RECEDE. Applied per element here: every `RailCard` plate, the four mini-KPI cells
+ * and the two controls ("+ Provision a tenant", "Enter") rise → `--pg-raised`. Nothing on this
+ * surface recedes, so nothing keeps `--pg-surface`.
+ *
+ * AND FILL ALONE CANNOT CARRY IT (Claude Design, 2026-08-23). In light, `--pg-raised` `#fffdf8`
+ * on `--pg-canvas` `#fbf9f5` is three units — correct, and invisible on its own. A raised plate
+ * separates by `--pg-rim` PLUS `--pg-lift-1`: the rim is the seated inset pair (L21/L28), the
+ * lift is the outer cast (L22/L29). The plates here carried the rim alone, which is insets only
+ * and reads as a plain outline beside the 1.5px border — the "hairline outline" CD reported. The
+ * pack's own pairing is `var(--pg-rim), var(--pg-lift-N)` (L9420, L9477). Applied to the
+ * `RailCard` plate and to the four mini-KPI cells, which carried no shadow at all.
+ *
+ * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[var(--pg-rim)]`
+ * does NOT compile to a box-shadow. Tailwind 3 cannot type a bare `var()` and resolves the
+ * `shadow-` arbitrary value to `--tw-shadow-COLOUR`; the emitted rule is
+ * `{--tw-shadow-color: var(--pg-rim)}` (verified in the built CSS), which recolours a shadow
+ * that was never declared, so `getComputedStyle(...).boxShadow` came back `none` on this plate
+ * in BOTH themes. All the separation on screen was the 1.5px border — which is exactly why it
+ * read as "a plain border." The `shadow:` data-type hint
+ * (`shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]`) is what makes Tailwind emit `box-shadow`,
+ * the same hint `text-[length:var(--pg-t-body)]` already uses throughout this console.
  */
 
 export type RailTenant = {
@@ -94,39 +137,32 @@ export function composeFleetRead(rows: readonly RailTenant[], openFindings: numb
 
 function RailCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex-none rounded-[13px] border-[1.5px] border-border bg-card shadow-sm", className)}>
+    <div className={cn("flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]", className)}>
       {children}
     </div>
   );
 }
 
-function HerRead({
-  body,
-  onTakeToWorkspace,
-}: {
-  body: string | null;
-  onTakeToWorkspace: () => void;
-}) {
-  return (
-    <RailCard className="px-3.5 py-3">
-      <div className="text-[11px] font-semibold tracking-[0.04em] text-[hsl(var(--primary))]">Her read</div>
-      {body ? (
-        <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">{body}</p>
-      ) : (
-        <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">
-          Nothing to read yet — no tenants are in view.
-        </p>
-      )}
-      <button
-        type="button"
-        onClick={onTakeToWorkspace}
-        className="mt-2.5 rounded-lg px-0 text-[11.5px] font-semibold text-[hsl(var(--gold-dark))] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        Take it to the workspace →
-      </button>
-    </RailCard>
-  );
-}
+/**
+ * RULING E (Claude Design, 2026-08-23) — PAIGE IS NOT A DESTINATION, and FINDING 2 (same day) —
+ * HER READ IS SPINE CONTENT.
+ *
+ * A `HerRead` card used to render here: a "Her read" title over a sentence composed from the
+ * fleet figures, under a "Take it to the workspace →" control that navigated to
+ * `/operator/paige`. The control went first — that address is not a slot, so it resolved
+ * `{kind:"unknown"}` and the shell rendered its 404 — and CD ruled it REMOVED rather than
+ * repointed: *"a control that opens an empty spine asserts a capability that isn't there."*
+ * The card itself goes now, for the reason in this file's header: the read is Paige speaking,
+ * her home is the spine, and a surface does not grow a second right column to host her.
+ *
+ * WHEN SHE IS WIRED it comes back IN THE SPINE (`OperatorSpine`), never here, and never as a
+ * URL. A later session finding itself re-adding a "Her read" block to a surface — or reaching
+ * for `/operator/paige` — is the signal she has been modelled as a place again; take it to CD.
+ *
+ * `composeFleetRead` above is left in place and exported: it is the sentence frame the spine
+ * will need, it is covered by `FleetTenantsRail.test.ts`, and deleting a tested pure function
+ * to move a panel would be throwing away the part that was right.
+ */
 
 export function FleetTenantsRail({
   rows,
@@ -135,7 +171,6 @@ export function FleetTenantsRail({
   onOpenTenant,
   onEnterTenant,
   onProvision,
-  onAskPaige,
   onOpenCheck,
 }: {
   rows: readonly RailTenant[];
@@ -151,7 +186,6 @@ export function FleetTenantsRail({
    */
   onEnterTenant: (id: string) => void;
   onProvision: () => void;
-  onAskPaige: () => void;
   onOpenCheck: () => void;
 }) {
   // The SAME operator read the chrome's rail badge uses — one home, not a second query (§18).
@@ -208,25 +242,33 @@ export function FleetTenantsRail({
    */
   const speakingForWholeFleet = rows.length > 0 && !filtered;
 
-  const read = useMemo(() => composeFleetRead(rows, unresolvedCount), [rows, unresolvedCount]);
+  /**
+   * FINDING 3 — the block renders ONLY when it has something to show.
+   *
+   * `answered` is both feeds having actually come back. Until then there is nothing true to put
+   * in the card, and the pulsing rectangle that used to stand in its place IS the empty box CD
+   * measured. With no absence copy authored for this block (see the file header), the honest
+   * treatment is no block — not a plate around a placeholder.
+   */
+  const answered = !checkLoading && !loading;
+  const hasItems = attention.length > 0 || atRiskRows.length > 0;
+  const showAttention = hasItems || answered;
 
   return (
-    // `min-h-0` is what makes `overflow-y-auto` actually bite. Without it a flex item's min-height
-    // is `auto` (its content), so the rail refused to shrink, stretched the row, and scrolled the
-    // whole pane instead of itself.
-    <aside className="hidden w-[312px] min-h-0 flex-none flex-col gap-2.5 overflow-y-auto xl:flex">
-      {/* ── Needs you today (CD flAttnTitle) ──────────────────────────────── */}
+    // FINDING 2 — workspace content, not a column. `min-w-0` because it now takes the console's
+    // own width, and a long finding name must never widen the surface (rule 4).
+    <section className="flex min-h-0 min-w-0 flex-col gap-2.5">
+      {/* ── Needs you today ───────────────────────────────────────────────── */}
+      {showAttention && (
       <RailCard className="px-3.5 py-3">
-        <div className="text-[13.5px] font-semibold">Needs you today</div>
+        <div className="text-[length:var(--pg-t-body)] font-semibold">Needs you today</div>
         <div className="mt-2.5 flex flex-col gap-2">
-          {(checkLoading || loading) && <div className="h-16 animate-pulse rounded-[10px] bg-muted" />}
-
           {/* Both feeds must have ANSWERED before this claims all-clear. Gating on `checkLoading`
               alone asserted "every tenant has members and at least one client" while the fleet read
               was still in flight and `atRiskRows` was empty only because nothing had arrived yet —
               a reassurance printed about data we had not seen (§13). */}
-          {!checkLoading && !loading && attention.length === 0 && atRiskRows.length === 0 && (
-            <p className="text-[11.5px] leading-relaxed text-muted-foreground">
+          {answered && !hasItems && (
+            <p className="text-[length:var(--pg-t-label)] leading-relaxed text-muted-foreground">
               {/* Say only what was actually observed. "every tenant has at least one client" was
                   false by construction: health() grades a client-less tenant `warn`, which never
                   reaches atRiskRows, so the card asserted the one thing its own filter excluded.
@@ -242,21 +284,21 @@ export function FleetTenantsRail({
               <div
                 key={f.id}
                 className={cn(
-                  "rounded-[10px] border border-l-[3px] border-border bg-muted/40 px-3 py-2.5",
+                  "rounded-[10px] border border-l-[3px] border-border bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)] px-3 py-2.5",
                   SEVERITY_EDGE[f.severity_at_finding ?? "low"] ?? SEVERITY_EDGE.low,
                 )}
               >
-                <div className="text-[11.5px] font-semibold leading-snug">{f.check_name ?? f.check_id}</div>
+                <div className="text-[length:var(--pg-t-label)] font-semibold leading-snug">{f.check_name ?? f.check_id}</div>
                 {/* Paige's OWN stored interpretation — not prose written in this file (§13). */}
                 {f.paige_interpretation && (
-                  <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+                  <p className="mt-1 text-[length:var(--pg-t-label)] leading-relaxed text-muted-foreground">
                     {f.paige_interpretation}
                   </p>
                 )}
                 <button
                   type="button"
                   onClick={onOpenCheck}
-                  className="mt-2 rounded-lg bg-cd-gold px-2.5 py-1 text-[11px] font-semibold text-[hsl(var(--accent-foreground))] transition-[filter] hover:brightness-[1.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="mt-2 rounded-lg bg-cd-gold px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold text-[hsl(var(--accent-foreground))] transition-[filter] hover:brightness-[1.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Open the check
                 </button>
@@ -268,9 +310,9 @@ export function FleetTenantsRail({
               key={r.tenant.id}
               type="button"
               onClick={() => onOpenTenant(r.tenant.id)}
-              className="rounded-[10px] border border-l-[3px] border-border border-l-[hsl(var(--warning))] bg-muted/40 px-3 py-2.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-[10px] border border-l-[3px] border-border border-l-[hsl(var(--warning))] bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
             >
-              <div className="text-[11.5px] leading-relaxed">
+              <div className="text-[length:var(--pg-t-label)] leading-relaxed">
                 <span className="font-semibold">{r.tenant.name}</span> —{" "}
                 {r.health.label.toLowerCase()}.
               </div>
@@ -278,27 +320,26 @@ export function FleetTenantsRail({
           ))}
         </div>
       </RailCard>
-
-      <HerRead body={read} onTakeToWorkspace={onAskPaige} />
+      )}
 
       {/* ── Tenants directory (CD P.console) ──────────────────────────────── */}
       <RailCard className="overflow-hidden">
         <div className="border-b border-border px-3.5 py-3">
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-semibold tracking-[0.15em] text-muted-foreground">FLEET</span>
-            <span className="text-[13.5px] font-semibold">Tenants</span>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+            <span className="min-w-0 text-[length:var(--pg-t-label)] font-semibold tracking-[0.15em] text-muted-foreground">FLEET</span>
+            <span className="min-w-0 text-[length:var(--pg-t-body)] font-semibold">Tenants</span>
+            <span className="min-w-0 rounded-full bg-[var(--pg-workspace)] px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground">
               {loading ? "—" : `${rows.length} tenants`}
             </span>
           </div>
           {/* CD chipNote, verbatim. */}
-          <div className="mt-1 text-[11px] text-muted-foreground">
+          <div className="mt-1 text-[length:var(--pg-t-label)] text-muted-foreground">
             {loading ? "—" : `${subCount} sub-accounts beneath them.`}
           </div>
           <button
             type="button"
             onClick={onProvision}
-            className="mt-2.5 rounded-lg border border-border bg-card px-2.5 py-1 text-[11.5px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-2.5 rounded-lg border border-border bg-[var(--pg-raised)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
           >
             + Provision a tenant
           </button>
@@ -312,17 +353,17 @@ export function FleetTenantsRail({
             { label: "AT RISK", value: loading ? "—" : String(atRiskCount) },
             { label: "PROVISIONING", value: "—" },
           ].map((k) => (
-            <div key={k.label} className="bg-card px-3 py-2">
-              <div className="truncate text-[8.5px] font-semibold tracking-[0.12em] text-muted-foreground">
+            <div key={k.label} className="min-w-0 bg-[var(--pg-raised)] px-3 py-2 shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]">
+              <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">
                 {k.label}
               </div>
-              <div className="mt-0.5 text-[15px] font-bold tabular-nums tracking-[-0.02em]">{k.value}</div>
+              <div className="mt-0.5 text-[length:var(--pg-t-lead)] font-bold tabular-nums tracking-[-0.02em]">{k.value}</div>
             </div>
           ))}
         </div>
 
         {/* CD's rows() descriptor, verbatim. */}
-        <div className="px-3.5 py-2 text-[11px] text-muted-foreground">
+        <div className="px-3.5 py-2 text-[length:var(--pg-t-label)] text-muted-foreground">
           Click one to open it. Entering is a separate, logged act.
         </div>
 
@@ -330,13 +371,13 @@ export function FleetTenantsRail({
           {loading &&
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center gap-2 border-t border-border/60 px-3.5 py-2">
-                <div className="h-6 w-6 flex-none animate-pulse rounded-[8px] bg-muted" />
-                <div className="h-3 w-32 animate-pulse rounded bg-muted" />
+                <div className="h-6 w-6 flex-none animate-pulse rounded-[8px] bg-[var(--pg-workspace)]" />
+                <div className="h-3 w-32 min-w-0 animate-pulse rounded bg-[var(--pg-workspace)]" />
               </div>
             ))}
 
           {!loading && rows.length === 0 && (
-            <div className="px-3.5 py-6 text-center text-[11.5px] text-muted-foreground">
+            <div className="px-3.5 py-6 text-center text-[length:var(--pg-t-label)] text-muted-foreground">
               Nothing matches that.
             </div>
           )}
@@ -345,7 +386,7 @@ export function FleetTenantsRail({
             rows.map((r) => (
               <div
                 key={r.tenant.id}
-                className="flex min-w-0 items-center gap-2 border-t border-border/60 px-3.5 py-2 transition-colors hover:bg-muted/40"
+                className="flex min-w-0 items-center gap-2 border-t border-border/60 px-3.5 py-2 transition-colors hover:bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)]"
               >
                 {/* The row body SELECTS — CD's "click one to open it". */}
                 <button
@@ -353,12 +394,12 @@ export function FleetTenantsRail({
                   onClick={() => onOpenTenant(r.tenant.id)}
                   className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <span className="grid h-6 w-6 flex-none place-items-center rounded-[8px] bg-muted text-[9px] font-bold text-foreground/70">
+                  <span className="grid h-6 w-6 flex-none place-items-center rounded-[8px] bg-[var(--pg-workspace)] text-[length:var(--pg-t-label)] font-bold text-foreground/70">
                     {initials(r.tenant.name)}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[11.5px] font-semibold">{r.tenant.name}</div>
-                    <div className="truncate text-[10px] text-muted-foreground">
+                    <div className="truncate text-[length:var(--pg-t-label)] font-semibold">{r.tenant.name}</div>
+                    <div className="truncate text-[length:var(--pg-t-label)] text-muted-foreground">
                       {r.tier}
                       {r.beneath ? ` · ${r.beneath} beneath` : ""} · {r.health.label.toLowerCase()}
                     </div>
@@ -368,7 +409,7 @@ export function FleetTenantsRail({
                 <button
                   type="button"
                   onClick={() => onEnterTenant(r.tenant.id)}
-                  className="flex-none rounded-lg border border-border bg-card px-2 py-1 text-[10.5px] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex-none rounded-lg border border-border bg-[var(--pg-raised)] px-2 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
                 >
                   Enter
                 </button>
@@ -377,12 +418,11 @@ export function FleetTenantsRail({
         </div>
 
         {/* §53 — load-bearing, not decoration. CD's foot, verbatim. */}
-        <div className="border-t border-border bg-muted/30 px-3.5 py-2.5 text-[10.5px] leading-relaxed text-muted-foreground">
+        <div className="border-t border-border bg-[color-mix(in_srgb,var(--pg-workspace)_30%,transparent)] px-3.5 py-2.5 text-[length:var(--pg-t-label)] leading-relaxed text-muted-foreground">
           Entering a tenant puts you in their shell with their data. Every session is recorded in
           Governance.
         </div>
       </RailCard>
-
-    </aside>
+    </section>
   );
 }

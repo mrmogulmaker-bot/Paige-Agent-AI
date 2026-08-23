@@ -22,33 +22,6 @@ applies. If you believe the pack is wrong somewhere, **raise it and let the owne
 quietly improve it. This mirrors §28 (approved design is frozen): the pack is the approved design,
 and it is frozen the same way until he unlocks a specific piece of it.
 
-### …but the goal is the BEST result, not frozen fidelity (owner, 2026-08-19)
-
-The lock above is about *who decides*, never about *settling*. The owner amended it in his own
-words: *"Claude Design's Design Pack, I think, should be one source of truth for sure when it comes
-to our design level, but if we can find ways to improve what they've done, I'm all for that. **The
-source of truth is reaching the best that we can.** … There are several things Claude Design could
-not pull off, but if we can pull it off in code, by all means suggest it to me. I'll run it back
-with Cowork, and we can absolutely go for it."*
-
-So the posture is **actively look for improvements and PROPOSE them** — not "never deviate," and
-equally not "improve it quietly." Concretely:
-
-- **Propose, don't ship.** Spot the improvement, name it, say what it costs, and let the owner rule.
-  A proposal costs a sentence; a silent deviation costs the trust the lock protects.
-- **The pack is a static design tool's output.** It cannot reach a database, run an LLM, or hold a
-  session. Wherever it draws a *fixture* because that was its only option — invented prose, a
-  hardcoded hex, an index-seeded layout — that is a place code can genuinely do better, and saying
-  so is the job, not a criticism of CD.
-- **The pack can contradict itself.** It is authored, not compiled. (Verified 2026-08-19: the Fleet
-  tab registry at L4319 lists five tabs but `P.pipe` defines a fully-designed sixth; and the Tenants
-  surface is painted TWICE — `isFleetConsole` at L348 and `P.console` at L6658 both render, because
-  the panel guard at L6544 does not exclude `console`.) When the pack disagrees with itself, pick
-  ONE home (§18), say which and why, and flag it.
-- **An accepted improvement gets written down where it was made** — a header comment naming the
-  owner ruling and the date, so a later session does not "restore pack fidelity" by reverting it.
-  The R3F field rebuild (`FleetOrbit.tsx` / `FleetOrbitScene.tsx`) is the worked example.
-
 **The pack is the ONLY design reference — a screenshot never is.** Owner-ruled 2026-08-19:
 *"The Design Pack should have to be your only reference. I send screenshots to show what's live."*
 The pack says what a surface SHOULD be; a screenshot he sends says what it CURRENTLY IS, which is
@@ -57,13 +30,99 @@ screenshot," because a screenshot of a broken surface is a picture of the bug, a
 cements the defect. (CD's own renders under `uploads/`/`screens/` are a fast correctness check, but
 where a render and the `.dc.html` disagree, the markup wins.)
 
-**The pack lives in the repo, not in a scratchpad.** `docs/design-references/cd-packs/super-admin-shell/`
-· the shell itself is `Super Admin Shell.dc.html` (~8,300 lines), with the pack's own backend notes
-(`*-notes.md`), route registry (`paige-routes.js`, `route-registry-notes.md`) and reference renders
-(`uploads/*.png`) beside it. It was committed on 2026-08-19 because until then it existed ONLY in an
-ephemeral session scratchpad — one container recycle from being lost, with the source of truth gone.
-The CRM agency-mode pack (`agency-mode-shell/`, 12,864 lines) covers agency AND sub-account in
-one shell and landed the same day; it governs those tiers exactly as this one governs the operator.
+**THE PACK IS v3. THE OLDER PACKS ARE DEAD — owner-locked 2026-08-23.**
+
+```
+docs/design-references/cd-packs/super-admin-shell-v3/     <-- THE ONLY PACK
+    PAIGE Super Admin Shell v3.dc.html    11,358 lines — the shell
+    PAIGE Platform Operator - standalone.html            — the standalone render
+    design-system-port.md                 the --pg-* system, the faces, the Command Mark
+    paige-brand-identity.md · absence-copy.md · campaigns-catalog-sales-spec.md
+    paige-ia.js · mind-brain.js · support.js · github.md · corrections-2026-08-23.md
+```
+
+Everything in it is IN THE REPO. Nothing about this design has to be invented, inferred,
+reconstructed from a screenshot, or reconciled with anything we built before it.
+
+**`super-admin-shell/` (the ~8,300-line pack) and `agency-mode-shell/` are SUPERSEDED.** They are
+kept only so a past decision can be traced. Do NOT build from them, do NOT diff against them, do
+NOT cite them as authority. Until 2026-08-23 this very section named the old pack as "the pack" —
+which is why sessions kept building toward a design the owner had already replaced. That was the
+bug in the doctrine, not in the work.
+
+**The owner's ruling, verbatim (2026-08-23):** *"None of the colors, design, logos, or anything
+from the previous work that we've done matters. If we have rules in place, we need to change them
+to adopt them to what we currently have now that was provided by Claude Design… There's nothing
+about our design that needs to go anywhere near the direction of our previous design."*
+
+So the standing posture is **PORT, not design.** Before calling anything on an operator surface
+missing, blocked, or undecided, GREP THE v3 PACK FOR IT. It is an 11,358-line file and it contains
+far more than any one session has read. Worked example, 2026-08-23: the command palette and six
+"unreachable" surfaces were about to be scoped as a design blocker; the pack carries 115 `summon`
+references, 24 `palette`, 3 `⌘K`, Calendar ×33, Compose ×52, Integrations ×18. None of it was
+missing. All of it was unported. **A capability that is drawn in the pack is never a blocker — it
+is a port that has not happened yet.**
+
+---
+
+## JURISDICTION — see root `CLAUDE.md` §00. ZERO input on design.
+
+> **"You own the backend. Claude Design owns the frontend."**
+> **"No, my friend, you have no input, ZERO input on the design. You have all of the control
+> over our backend."** — Antonio, 2026-08-23
+
+The full rule is root `CLAUDE.md` **§00**, which loads on every run and overrides every section
+below it. The short form, because this file loads whenever a session touches `src/operator/`:
+
+- **CC writes the port and owns the backend.** Turning the pack into working code is CC's work.
+  Writing it is not deciding it.
+- **CC has no design input of any kind** — no verdict, no proposal, no observation, no "worth an
+  eye on." A frame is EVIDENCE handed to CD: address, theme, width, measured geometry, faces
+  loaded. Nothing else.
+- **A measurement is not an opinion.** Contrast, type sizes, grid tracks, a 404ing control, a
+  surface that does not render — those are facts about whether it WORKS and CC reports them.
+  What to do about them is CD's.
+- **If it is not in the pack, ask CD.** CC never fills a design gap.
+- **Every subagent CC dispatches inherits this.** No agent debates UI.
+
+An earlier version of this very section said CC "reports it, with a frame and a measurement, and
+lets CD rule." That was still input, and it was corrected the same day. Zero means zero.
+
+---
+
+## "IS THIS THING A PLACE?" — the default answer is NO (Claude Design, 2026-08-23)
+
+**The URL taxonomy (§65) is Claude Code's. Whether a capability IS a place is Claude Design's.**
+That seam matters because CC has now modelled the same mistake three times, and each time it
+arrived looking like a routing question.
+
+**In this shell, SIX SLOTS ARE PLACES. Almost nothing else is.** A capability that is not one of
+the six is, by default, a **state** or a **surface** — something that changes what you are looking
+at or what scope you are in — not an address you can navigate to, bookmark, or link.
+
+**The three that turned out not to be places:**
+
+| Modelled as | Actually is |
+|---|---|
+| `act-as` a tenant | a SCOPE CHANGE — the operator's session enters a tenant; the address does not become the tenant |
+| agent runs | a SURFACE — work streams where you already are |
+| **Paige** (`/operator/paige`) | **the SPINE.** CD: *"A reference to her is not a route, it's an action that opens the spine and focuses the command bar… she's present in every surface, which is the whole point of the execution strip."* |
+
+**The pack having no address for something is EVIDENCE, not an omission.** CD: *"The pack has no
+address for her because there isn't one."* When CC cannot find a route in the pack for a capability
+it is porting, the first hypothesis is that the capability is not a place — not that the pack is
+incomplete. Ask CD; do not assign it an address.
+
+**The tell, and CC must watch for it in its own work:** *"If a later session finds itself wanting
+`/operator/paige`, that's the signal she's been modelled as a place again."* Generalised — **if you
+are reaching for a new top-level operator route to reach a capability, stop.** That reach is the
+symptom. Take it to CD before writing the route.
+
+**A control to a place that does not exist gets REMOVED, not repointed.** Not disabled, not left
+dead, not pointed somewhere plausible. CD, on this exact case: *"A control that opens an empty
+spine asserts a capability that isn't there."* Same reasoning as collapsing an empty spine to 0 —
+applied to the control instead of the track. When the capability is genuinely wired, it returns as
+a control (expand the spine, focus the command bar), never as a URL.
 
 ---
 
@@ -114,6 +173,43 @@ Each of these shipped. Each was caught by the owner, not by us. Do not repeat th
 *the pack's design OR the working engine.* It is **the pack's design RENDERED BY the working
 engine** — take the pack's markup apart, rebuild it as components, and drive it from real state.
 That is more work than either shortcut. It is the work.
+
+---
+
+## THE PACK HAS BEEN READ IN FULL — `docs/design-references/PACK-INVENTORY-v3.md`
+
+**Owner instruction, 2026-08-23:** *"grep everything… let me know once you get to 100%"* ·
+*"don't miss a single file"* · *"I want all of your findings, every single line of your
+findings, inside of my code."*
+
+All 18 pack files (3,678,312 bytes / 20,978 lines) are now read and inventoried in
+`docs/design-references/PACK-INVENTORY-v3.md`. **Before claiming anything about this pack —
+what it contains, what it omits, what is ported — read that file.** It carries:
+
+- every one of the shell's **183 render blocks** and **249 `sc-for` collections**, in order;
+- all **49 surface builders** with pack line counts and a measured port percentage
+  (**442 of 1,774 authored strings present in `src/operator/` — 25%**);
+- the full `renderVals` dispatch table, so every surface's guard is known;
+- all **96 `paige-ia.js` catalogues** with exact item counts (evaluated, not estimated);
+- the **13-rule fidelity contract**, CD's **18-round install plan**, and rulings **R1–R7**;
+- **seven pack self-contradictions**, recorded and deliberately unresolved (§00 — CD rules);
+- **seven items owed from CD**, and the standing edits that must survive a re-delivery.
+
+Two facts from it that change how a session starts:
+
+1. **`stage2-design-package.md` carries a SUPERSEDED token set.** Its colour tables, type
+   stacks and radii differ from the shipped `.dc.html`. Port tokens from
+   `design-system-port.md` or the shell itself — never from that file.
+2. **`PAIGE Platform Operator - standalone.html` is the same design, compiled.** Proven by
+   unpacking its blobs and diffing. Screenshot target only; never a source.
+
+---
+
+## PACK-FIRST — `docs/design-references/PACK-FIRST.md`
+
+Before any UI work here, and again before any report that says something is missing: **the pack is
+CODE, not a spec.** Search it at least four ways and show the spellings. `PORT-SPEC-palette-and-six-
+surfaces.md` (99KB, line-cited) may answer it outright. Full rule in root `CLAUDE.md` §00.
 
 ---
 

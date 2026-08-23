@@ -1,6 +1,15 @@
 #!/usr/bin/env node
 /**
- * baseline-guard — the tsc baseline (scripts/ci/tsc-baseline.txt) may only SHRINK.
+ * baseline-guard — every ratchet baseline may only SHRINK.
+ *
+ * Two baselines are guarded, and they have different shapes:
+ *   scripts/ci/tsc-baseline.txt    `<count>\t<signature>` per line — a multiset, checked per entry
+ *   scripts/ci/alias-baseline.txt  a single integer — the operator console's shadcn bridge
+ *
+ * A ratchet whose baseline can be edited upward is not a ratchet: the author whitelists the
+ * regression in the same PR that causes it. The alias baseline was added 2026-08-23 and its
+ * own doc comment claimed this protection before it existed — the claim is what made the gap
+ * findable, so it is corrected here rather than reworded there.
  *
  * The tsc-ratchet trusts the baseline: any error signature present in it is treated as
  * pre-existing and won't fail a PR. So a PR could whitelist a genuinely-new error by appending
@@ -16,7 +25,7 @@
  * Usage: BASE=<sha> node scripts/ci/baseline-guard.mjs
  */
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -66,6 +75,37 @@ if (grew.length) {
   console.error(`   Fix the type error instead of whitelisting it in ${REL}:`);
   for (const g of grew) console.error(`   ${g.from}→${g.to}  ${g.sig.slice(0, 140)}`);
   process.exit(1);
+}
+
+/**
+ * The alias baseline — a single integer, so a plain numeric comparison rather than a multiset.
+ * Absent at base means this PR introduces it, which is not a regression.
+ */
+const ALIAS_REL = "scripts/ci/alias-baseline.txt";
+const ALIAS_PATH = join(HERE, "alias-baseline.txt");
+let aliasBaseText = null;
+try {
+  aliasBaseText = execSync(`git show ${BASE}:${ALIAS_REL}`, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+} catch {
+  console.log(`baseline-guard: ${ALIAS_REL} does not exist at base ${BASE.slice(0, 12)} — this PR introduces it, skipping.`);
+}
+if (aliasBaseText !== null && existsSync(ALIAS_PATH)) {
+  const before = parseInt(aliasBaseText.trim(), 10);
+  const after = parseInt(readFileSync(ALIAS_PATH, "utf8").trim(), 10);
+  if (Number.isNaN(before) || Number.isNaN(after)) {
+    console.error(`❌ baseline-guard: ${ALIAS_REL} is not an integer on one side (base=${aliasBaseText.trim()}, head=${after}).`);
+    process.exit(1);
+  }
+  if (after > before) {
+    console.error(
+      `❌ baseline-guard: ${ALIAS_REL} GREW ${before} → ${after}.\n` +
+      `   The operator console's compatibility bridge only descends. Raising the number\n` +
+      `   whitelists the mapping that made the console render the wrong palette — read the\n` +
+      `   --pg-* token directly instead of adding a shadcn alias.`,
+    );
+    process.exit(1);
+  }
+  console.log(`baseline-guard: ${ALIAS_REL} ${before} → ${after} (ok).`);
 }
 
 console.log(`✅ baseline-guard: tsc baseline did not grow (base ${base.size} sigs → head ${head.size} sigs).`);

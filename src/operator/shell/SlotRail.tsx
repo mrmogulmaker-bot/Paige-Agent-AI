@@ -19,7 +19,7 @@ import { useReducedMotion } from "framer-motion";
 import { OPERATOR_SLOTS } from "@/operator/ia/operatorIA";
 import { slotGlyph } from "@/operator/shell/slotGlyphs";
 import { slotPath } from "@/operator/shell/operatorAddress";
-import { PaigeMark } from "@/components/brand/PaigeMark";
+import { CommandMark } from "@/operator/shell/CommandMark";
 import { cn } from "@/lib/utils";
 
 export type SlotRailProps = {
@@ -38,7 +38,8 @@ export default function SlotRail({
   const footRow = cn(
     "flex min-h-[40px] min-w-0 items-center gap-3 rounded-[9px] px-[11px] text-left",
     "text-rail-muted hover:text-rail-foreground",
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    // Ruling A — --pg-inset on press.
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]",
     compact && "justify-center px-0",
   );
 
@@ -48,13 +49,16 @@ export default function SlotRail({
       aria-label="Destinations"
       className={cn(
         "relative z-[3] flex min-h-0 min-w-0 flex-col overflow-hidden",
-        "border-r border-border-strong bg-rail text-rail-foreground",
+        "border-r border-border-strong bg-[var(--pg-nav)] text-rail-foreground",
         "px-[13px] pb-[14px] pt-[18px]",
       )}
     >
       {/* Brand lockup. flex-none: it never competes with the list for height. */}
       <div className={cn("mb-4 flex min-w-0 flex-none items-center gap-3", compact && "justify-center")}>
-        <PaigeMark className="h-[26px] w-[26px] flex-none" />
+        {/* No `state` while nothing is running — the resting treatment is the honest
+            default, and a mark that pulses at charged speed on an idle console is the
+            motion rule broken. State gets wired when the command bar lands. */}
+        <CommandMark />
         {!compact && (
           <span className="flex min-w-0 flex-col">
             <b className="block truncate text-[11px] font-medium tracking-[0.4em] text-rail-foreground">
@@ -131,9 +135,29 @@ export default function SlotRail({
         })}
       </div>
 
-      {/* Foot. `mt-auto` pins it; the list above it is what flexes. */}
+      {/**
+        * Foot. `mt-auto` pins it; the list above it is what flexes.
+        *
+        * FINDING 5 (Claude Design, 2026-08-23) — TWO ACTIONS, ONE SYMBOL. *"At 900 and 640 the
+        * rail's bottom two controls both render as > — Collapse rail and Sign out sharing a
+        * glyph."* Correct: both are the same rotated-border chevron primitive, differing only in
+        * rotation, and the labels are gone at compact width.
+        *
+        * THE PACK DRAWS NO SIGN-OUT CONTROL AT ALL. Searched `PAIGE Super Admin Shell v3.dc.html`
+        * for `sign`, `logout`, `log out`, `exit`, `leave`, `session`, `account`, `Sign out`,
+        * `identity`, `avatar`, `profile`, and READ the rail markup at L88-L124: the foot holds
+        * exactly two buttons, the theme toggle (L115-L118) and `Collapse rail` (L119-L122, glyph
+        * `railChevronStyle` L10743). `exit` hits only the band's `Exit ⌘⇧X` scope control (L81).
+        * PORT-SPEC and `absence-copy.md` carry nothing either. **A sign-out glyph is owed from CD.**
+        *
+        * Sign out itself STAYS (§58 — it is this console's only sign-out path). Until CD draws a
+        * glyph, nothing is invented: the two controls are told apart by name rather than by shape
+        * — each carries a distinct `aria-label` AND a `title`, so at compact width the action is
+        * named on hover and to a screen reader instead of being an unlabelled chevron.
+        */}
       <div className="mt-auto grid min-w-0 gap-px border-t border-rail-foreground/15 pt-3">
         <button type="button" onClick={onToggleTheme} className={footRow}
+          title={isDark ? "Switch to the light theme" : "Switch to the dark theme"}
           aria-label={isDark ? "Switch to the light theme" : "Switch to the dark theme"}>
           <i
             aria-hidden
@@ -143,6 +167,7 @@ export default function SlotRail({
         </button>
 
         <button type="button" onClick={onToggleCompact} className={footRow}
+          title={compact ? "Expand the rail" : "Collapse the rail"}
           aria-label={compact ? "Expand the rail" : "Collapse the rail"} aria-expanded={!compact}>
           <i
             aria-hidden
@@ -155,8 +180,9 @@ export default function SlotRail({
         </button>
 
         {/* §58 — the console's ONLY sign-out path. It came over from the shell this replaces
-            rather than being dropped with the chrome that happened to host it. */}
-        <button type="button" onClick={onSignOut} className={footRow} aria-label="Sign out">
+            rather than being dropped with the chrome that happened to host it. Its glyph is the
+            one thing here the pack does not draw — see the foot's note above. */}
+        <button type="button" onClick={onSignOut} className={footRow} title="Sign out" aria-label="Sign out">
           <i aria-hidden className="h-2.5 w-2.5 flex-none rotate-45 border-r border-t border-current" />
           {!compact && <span className="min-w-0 flex-1 truncate text-[13px]">Sign out</span>}
         </button>

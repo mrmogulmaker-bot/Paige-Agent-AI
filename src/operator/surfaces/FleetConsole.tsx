@@ -6,8 +6,56 @@ import { useTenantContext } from "@/hooks/useTenantContext";
 import { useFleet, isInternal, type FleetTenant } from "@/operator/data/useFleet";
 import { FleetOrbit, type OrbitNode } from "@/operator/surfaces/FleetOrbit";
 import { FleetTenantsRail, type RailTenant } from "@/operator/surfaces/FleetTenantsRail";
+import { viewPath } from "@/operator/shell/operatorAddress";
 import { cn } from "@/lib/utils";
 
+/**
+ * RULING D (Claude Design, 2026-08-23) — THE GOLD ACT MUST LAND.
+ * "`/operator/provisioning` isn't a slot — provisioning belongs in Fleet. Point it there or
+ * remove the act. A gold affordance that 404s spends the design's scarcest signal on nothing."
+ *
+ * Built through `viewPath()` off the IA rather than typed as a literal, which is what let the
+ * old address rot into a 404 unnoticed: a view that is renamed or removed in
+ * `operatorIA.ts` now breaks the build here instead of shipping a dead gold button.
+ * `OperatorShell.test.tsx` asserts this exact address resolves through `operatorAddress.ts`.
+ *
+ * RULING E (same day) — PAIGE IS NOT A DESTINATION, so there is no `/operator/paige` here and
+ * there must never be one again. "She's the spine. A reference to her is not a route, it's an
+ * action that opens the spine and focuses the command bar… The pack has no address for her
+ * because there isn't one." The rail's "Take it to the workspace" control was REMOVED with the
+ * route (not repointed, not disabled) because a control that opens an empty spine asserts a
+ * capability that isn't there. When PAIGE is genuinely wired into the spine this returns as a
+ * CONTROL that expands the spine and focuses the command bar — never as a URL. A later session
+ * finding itself reaching for `/operator/paige` is the signal she has been modelled as a place
+ * again; take it to CD instead of writing the route.
+ */
+const PROVISION_AT = viewPath("fleet", "Directory");
+
+/**
+ * RULING F (Claude Design, 2026-08-23) — ELEVATION IS DISTANCE FROM `--pg-env`.
+ * `--pg-surface` sits ABOVE canvas in dark and BELOW it in light, so the role inverts between
+ * themes and a plate painted on it RECEDES in light. A plate that rises off the canvas — a card,
+ * a KPI tile, a control, a popover — paints `--pg-raised` in BOTH themes; `--pg-surface` is kept
+ * for regions that genuinely recede (a well, an inset strip, a sunken list).
+ *
+ * AND FILL ALONE CANNOT CARRY IT (Claude Design, 2026-08-23). In light, `--pg-raised` `#fffdf8`
+ * on `--pg-canvas` `#fbf9f5` is three units — correct, and invisible on its own. Separation on a
+ * raised plate is `--pg-rim` PLUS `--pg-lift-1`: the rim is a seated inset pair (a top highlight
+ * and a bottom shade, L21/L28) and the lift is the outer cast (L22/L29). Carrying the rim alone
+ * left only insets, which read as a plain outline against the 1.5px border — the "hairline
+ * outline" CD reported. Both tokens ship at the pack's own values; this is where they are spent.
+ * The pack pairs them exactly this way at L9420 and L9477: `var(--pg-rim), var(--pg-lift-N)`.
+ *
+ * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[var(--pg-rim)]`
+ * does NOT compile to a box-shadow. Tailwind 3 cannot type a bare `var()` and resolves the
+ * `shadow-` arbitrary value to `--tw-shadow-COLOUR`; the emitted rule is
+ * `{--tw-shadow-color: var(--pg-rim)}` (verified in the built CSS), which recolours a shadow
+ * that was never declared, so `getComputedStyle(...).boxShadow` came back `none` on every one
+ * of these plates in BOTH themes. All the separation on screen was the 1.5px border — which is
+ * exactly why it read as "a plain border." The `shadow:` data-type hint
+ * (`shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]`) is what makes Tailwind emit `box-shadow`,
+ * the same hint `text-[length:var(--pg-t-body)]` already uses throughout this console.
+ */
 /**
  * Fleet Console — Claude Design's `isFleet` block (Super Admin Shell.dc.html ~7826-7877), on
  * the real fleet: the FLEET eyebrow + title row with the Field/Table view toggle and gold
@@ -34,7 +82,7 @@ const TIER_PILL: Record<TierLabel, string> = {
   Agency: "bg-[hsl(var(--primary)/0.12)] text-[hsl(var(--primary))]",
   Solo: "bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]",
   Enterprise: "bg-[hsl(var(--gold-dark)/0.14)] text-[hsl(var(--gold-dark))]",
-  "Sub-account": "bg-muted text-muted-foreground",
+  "Sub-account": "bg-[var(--pg-workspace)] text-muted-foreground",
 };
 
 /** CD renders a coloured initials plate per tenant; derive it rather than store it. */
@@ -229,21 +277,26 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
   );
 
   return (
-    // `overflow-hidden` keeps the two columns from growing the row: whichever is taller scrolls
-    // inside itself rather than stretching the console past the pane (the scrollbar the owner
-    // reported came from the rail doing exactly that).
-    <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
+    /**
+     * FINDING 2 (Claude Design, 2026-08-23) — ONE RIGHT COLUMN, AND IT IS THE SPINE.
+     * CD: *"a surface growing a second one is the shell fighting itself… let the rest be
+     * workspace content — not a column."* The two-column flex row that wrapped this surface and
+     * a 312px `<aside>` is gone; `FleetTenantsRail`'s remaining blocks now flow at the foot of
+     * this one column. Paige's read is not among them — it is spine content, and does not
+     * render on a surface (see `FleetTenantsRail`).
+     */
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+      <>
         {/* ── title row ─────────────────────────────────────────────── */}
         <div className="flex flex-none flex-wrap items-start gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
-              <span className="text-[9.5px] font-semibold tracking-[0.15em] text-muted-foreground">
+              <span className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.15em] text-muted-foreground">
                 FLEET
               </span>
-              <span className="text-[21px] font-bold tracking-[-0.02em]">Fleet Console</span>
+              <span className="text-[length:var(--pg-t-title)] font-bold tracking-[-0.02em]">Fleet Console</span>
             </div>
-            <div className="mt-1.5 text-[12.5px] text-muted-foreground">
+            <div className="mt-1.5 text-[length:var(--pg-t-body)] text-muted-foreground">
               {loading
                 ? "Reading the fleet…"
                 : error
@@ -256,7 +309,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
           </div>
           <div className="ml-auto flex min-w-0 flex-none items-center gap-2.5">
             {/* CD's Field/Table view toggle. */}
-            <div className="flex flex-none items-center gap-0.5 rounded-[9px] border border-border bg-muted/50 p-0.5">
+            <div className="flex flex-none items-center gap-0.5 rounded-[9px] border border-border bg-[color-mix(in_srgb,var(--pg-workspace)_50%,transparent)] p-0.5">
               {(["field", "table"] as const).map((v) => (
                 <button
                   key={v}
@@ -264,8 +317,8 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                   onClick={() => setView(v)}
                   aria-pressed={view === v}
                   className={cn(
-                    "rounded-[7px] px-2.5 py-1 text-[11.5px] font-medium capitalize transition-colors",
-                    view === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
+                    "rounded-[7px] px-2.5 py-1 text-[length:var(--pg-t-label)] font-medium capitalize transition-colors",
+                    view === v ? "bg-[var(--pg-raised)] text-foreground shadow-[var(--pg-rim)]" : "text-muted-foreground",
                   )}
                 >
                   {v}
@@ -274,8 +327,8 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
             </div>
             <button
               type="button"
-              onClick={() => navigate("/operator/provisioning")}
-              className="whitespace-nowrap rounded-[9px] bg-cd-gold px-3.5 py-2 text-[12.5px] font-semibold text-[hsl(var(--accent-foreground))] transition-[filter] hover:brightness-[1.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => navigate(PROVISION_AT)}
+              className="whitespace-nowrap rounded-[9px] bg-cd-gold px-3.5 py-2 text-[length:var(--pg-t-body)] font-semibold text-[hsl(var(--accent-foreground))] transition-[filter] hover:brightness-[1.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Provision a tenant
             </button>
@@ -297,16 +350,16 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
           ].map((k) => (
             <div
               key={k.label}
-              className="min-w-0 rounded-xl border-[1.5px] border-border bg-card px-3.5 py-3 shadow-sm"
+              className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-raised)] px-3.5 py-3 shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]"
             >
-              <div className="truncate text-[9px] font-semibold tracking-[0.13em] text-muted-foreground">
+              <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.13em] text-muted-foreground">
                 {k.label}
               </div>
               <div className="mt-1 flex min-w-0 items-baseline gap-2">
-                <span className="whitespace-nowrap text-[24px] font-bold tabular-nums tracking-[-0.02em]">
+                <span className="whitespace-nowrap text-[length:var(--pg-t-title)] font-bold tabular-nums tracking-[-0.02em]">
                   {k.value}
                 </span>
-                <span className="truncate text-[10.5px] text-muted-foreground">{k.unit}</span>
+                <span className="truncate text-[length:var(--pg-t-label)] text-muted-foreground">{k.unit}</span>
               </div>
             </div>
           ))}
@@ -323,11 +376,11 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                 onClick={() => setFilter(f)}
                 aria-pressed={on}
                 className={cn(
-                  "whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors",
+                  "whitespace-nowrap rounded-full border px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   on
-                    ? "border-border-strong bg-muted text-foreground"
-                    : "border-border bg-card text-muted-foreground hover:text-foreground",
+                    ? "border-border-strong bg-[var(--pg-workspace)] text-foreground"
+                    : "border-border bg-[var(--pg-raised)] text-muted-foreground hover:text-foreground",
                 )}
               >
                 {f}
@@ -342,25 +395,25 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
               onClick={() => setShowInternal((v) => !v)}
               aria-pressed={showInternal}
               className={cn(
-                "whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors",
+                "whitespace-nowrap rounded-full border px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 showInternal
-                  ? "border-border-strong bg-muted text-foreground"
-                  : "border-dashed border-border bg-card text-muted-foreground hover:text-foreground",
+                  ? "border-border-strong bg-[var(--pg-workspace)] text-foreground"
+                  : "border-dashed border-border bg-[var(--pg-raised)] text-muted-foreground hover:text-foreground",
               )}
               title="Platform fixtures and test accounts. Hidden from the fleet count so the console reports real tenants."
             >
               {showInternal ? "Hide" : "Show"} internal ({internalCount})
             </button>
           )}
-          <div className="ml-auto flex min-w-0 flex-none items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5">
-            <span aria-hidden className="flex-none text-[11px] text-muted-foreground">⌕</span>
+          <div className="ml-auto flex min-w-0 flex-none items-center gap-2 rounded-full border border-border bg-[var(--pg-surface)] px-3 py-1.5">
+            <span aria-hidden className="flex-none text-[length:var(--pg-t-label)] text-muted-foreground">⌕</span>
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search tenants, owners, domains"
               aria-label="Search tenants, owners, domains"
-              className="w-44 bg-transparent text-[11.5px] outline-none placeholder:text-muted-foreground"
+              className="w-44 bg-transparent text-[length:var(--pg-t-label)] outline-none placeholder:text-muted-foreground"
             />
           </div>
         </div>
@@ -371,7 +424,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
             {/* CD's field container is dark regardless of page theme — a canvas host, not a
                 themed panel — so it renders on the platform's own `--rail` token (the exact
                 dark indigo the pack hardcodes as #191231), never a raw hex. */}
-            <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-[15px] bg-[hsl(var(--rail))] shadow-[0_18px_40px_rgba(10,14,26,0.3)]">
+            <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-[15px] bg-[var(--pg-nav)] shadow-[var(--pg-lift-3)]">
               {loading ? (
                 <div className="flex flex-1 items-center justify-center">
                   <div className="h-40 w-40 animate-pulse rounded-full bg-white/10" />
@@ -379,17 +432,17 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
               ) : error ? (
                 <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
                   <div>
-                    <div className="text-[13px] font-semibold text-[hsl(var(--rail-foreground))]">
+                    <div className="text-[length:var(--pg-t-body)] font-semibold text-[hsl(var(--rail-foreground))]">
                       The fleet could not be read.
                     </div>
-                    <div className="mx-auto mt-1 max-w-md text-[11.5px] text-[hsl(var(--rail-muted))]">
+                    <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-[hsl(var(--rail-muted))]">
                       {error}
                     </div>
                   </div>
                 </div>
               ) : rows.length === 0 ? (
                 <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
-                  <div className="text-[13px] font-semibold text-[hsl(var(--rail-muted))]">
+                  <div className="text-[length:var(--pg-t-body)] font-semibold text-[hsl(var(--rail-muted))]">
                     {tenants.length === 0 ? "No tenants yet." : "Nothing matches that."}
                   </div>
                 </div>
@@ -409,13 +462,13 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                 }}
               >
                 <div className="min-w-0">
-                  <div className="text-[9px] font-semibold tracking-[0.16em] text-[hsl(var(--rail-foreground))]/70">
+                  <div className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.16em] text-[hsl(var(--rail-foreground))]/70">
                     EVERY TENANT ON THE PLATFORM
                   </div>
-                  <div className="mt-1 text-[15px] font-semibold text-[hsl(var(--rail-foreground))]">
+                  <div className="mt-1 text-[length:var(--pg-t-lead)] font-semibold text-[hsl(var(--rail-foreground))]">
                     The fleet, by weight
                   </div>
-                  <div className="mt-1 font-mono text-[10.5px] text-[hsl(var(--rail-foreground))]/70">
+                  <div className="mt-1 font-mono text-[length:var(--pg-t-label)] text-[hsl(var(--rail-foreground))]/70">
                     {loading ? "—" : rows.length} tenants · node size is team + clients · ringed
                     nodes need you
                   </div>
@@ -431,7 +484,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                     ] as const
                   ).map(([label, color]) => (
                     <div key={label} className="flex items-center gap-1.5">
-                      <span className="whitespace-nowrap text-[10px] text-[hsl(var(--rail-foreground))]/60">
+                      <span className="whitespace-nowrap text-[length:var(--pg-t-label)] text-[hsl(var(--rail-foreground))]/60">
                         {label}
                       </span>
                       <span
@@ -444,7 +497,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                 </div>
               </div>
             </div>
-            <div className="flex-none pb-1 pt-2 text-center text-[10px] text-muted-foreground">
+            <div className="flex-none pb-1 pt-2 text-center text-[length:var(--pg-t-label)] text-muted-foreground">
               Drag to orbit · hover a node to name it · click to open the tenant
             </div>
           </div>
@@ -452,14 +505,14 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
 
         {/* ── table view ─────────────────────────────────────────────── */}
         {view === "table" && (
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-card shadow-sm">
-            <div className="sticky top-0 z-[2] flex items-center gap-2.5 border-b border-border bg-muted/40 px-3.5 py-2">
-              <div className="min-w-0 flex-[2.1] text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">TENANT</div>
-              <div className="min-w-0 flex-[0.9] text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">TIER</div>
-              <div className="min-w-0 flex-[0.9] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">MRR</div>
-              <div className="min-w-0 flex-[0.8] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">BENEATH</div>
-              <div className="min-w-0 flex-1 text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">HEALTH</div>
-              <div className="min-w-0 flex-[0.9] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">LAST ACTIVE</div>
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]">
+            <div className="sticky top-0 z-[2] flex items-center gap-2.5 border-b border-border bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)] px-3.5 py-2">
+              <div className="min-w-0 flex-[2.1] text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">TENANT</div>
+              <div className="min-w-0 flex-[0.9] text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">TIER</div>
+              <div className="min-w-0 flex-[0.9] text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">MRR</div>
+              <div className="min-w-0 flex-[0.8] text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">BENEATH</div>
+              <div className="min-w-0 flex-1 text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">HEALTH</div>
+              <div className="min-w-0 flex-[0.9] text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">LAST ACTIVE</div>
               <div className="w-[76px] flex-none" />
             </div>
 
@@ -467,8 +520,8 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
               <div className="space-y-px">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <div key={i} className="flex items-center gap-2.5 border-b border-border/60 px-3.5 py-2.5">
-                    <div className="h-7 w-7 flex-none animate-pulse rounded-[9px] bg-muted" />
-                    <div className="h-3 w-40 animate-pulse rounded bg-muted" />
+                    <div className="h-7 w-7 flex-none animate-pulse rounded-[9px] bg-[var(--pg-workspace)]" />
+                    <div className="h-3 w-40 animate-pulse rounded bg-[var(--pg-workspace)]" />
                   </div>
                 ))}
               </div>
@@ -476,17 +529,17 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
 
             {!loading && error && (
               <div className="px-4 py-10 text-center">
-                <div className="text-[13px] font-semibold">The fleet could not be read.</div>
-                <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">{error}</div>
+                <div className="text-[length:var(--pg-t-body)] font-semibold">The fleet could not be read.</div>
+                <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-muted-foreground">{error}</div>
               </div>
             )}
 
             {!loading && !error && rows.length === 0 && (
               <div className="px-4 py-10 text-center">
-                <div className="text-[13px] font-semibold">
+                <div className="text-[length:var(--pg-t-body)] font-semibold">
                   {tenants.length === 0 ? "No tenants yet." : "Nothing matches that."}
                 </div>
-                <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">
+                <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-muted-foreground">
                   {tenants.length === 0
                     ? "Provisioned tenants appear here as soon as they exist."
                     : "Clear the filter or search to see the whole fleet."}
@@ -504,7 +557,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                 return (
                   <div
                     key={t.id}
-                    className="flex min-w-0 items-center gap-2.5 border-b border-border/60 px-3.5 py-2.5 transition-colors last:border-b-0 hover:bg-muted/40"
+                    className="flex min-w-0 items-center gap-2.5 border-b border-border/60 px-3.5 py-2.5 transition-colors last:border-b-0 hover:bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)]"
                   >
                     <div className="flex min-w-0 flex-[2.1] items-center gap-2.5">
                       {nested && (
@@ -513,45 +566,45 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                           className="ml-1 h-4 w-3 flex-none rounded-bl-[4px] border-b border-l border-border"
                         />
                       )}
-                      <span className="grid h-7 w-7 flex-none place-items-center rounded-[9px] bg-muted text-[10px] font-bold text-foreground/70">
+                      <span className="grid h-7 w-7 flex-none place-items-center rounded-[9px] bg-[var(--pg-workspace)] text-[length:var(--pg-t-label)] font-bold text-foreground/70">
                         {initials(t.name)}
                       </span>
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate text-[12.5px] font-semibold">{t.name}</span>
+                          <span className="truncate text-[length:var(--pg-t-body)] font-semibold">{t.name}</span>
                           {isInternal(t) && (
-                            <span className="flex-none whitespace-nowrap rounded-full border border-dashed border-border px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <span className="flex-none whitespace-nowrap rounded-full border border-dashed border-border px-1.5 py-px text-[length:var(--pg-t-label)] font-semibold uppercase tracking-wide text-muted-foreground">
                               Internal
                             </span>
                           )}
                         </div>
-                        <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">
+                        <div className="mt-0.5 truncate font-mono text-[length:var(--pg-t-label)] text-muted-foreground">
                           {t.slug ?? "—"}
                         </div>
                       </div>
                     </div>
                     <div className="min-w-0 flex-[0.9]">
-                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold", TIER_PILL[tier])}>
+                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold", TIER_PILL[tier])}>
                         {tier}
                       </span>
                     </div>
                     {/* Money Spine deferred — no MRR read (§13). */}
-                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[11.5px] text-muted-foreground">—</div>
-                    <div className="min-w-0 flex-[0.8] text-right font-mono text-[11.5px] tabular-nums">
+                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[length:var(--pg-t-label)] text-muted-foreground">—</div>
+                    <div className="min-w-0 flex-[0.8] text-right font-mono text-[length:var(--pg-t-label)] tabular-nums">
                       {beneath || "—"}
                     </div>
                     <div className="flex min-w-0 flex-1 items-center justify-end">
-                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold", HEALTH_PILL[h.tone])}>
+                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold", HEALTH_PILL[h.tone])}>
                         {h.label}
                       </span>
                     </div>
                     {/* No last-activity read wired yet — honest absence, never "today" (§13). */}
-                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[11px] text-muted-foreground">—</div>
+                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[length:var(--pg-t-label)] text-muted-foreground">—</div>
                     <div className="w-[76px] flex-none text-right">
                       <button
                         type="button"
                         onClick={() => void enterTenant(t.id)}
-                        className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="rounded-lg border border-border bg-[var(--pg-raised)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
                       >
                         Enter →
                       </button>
@@ -561,20 +614,18 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
               })}
           </div>
         )}
-      </div>
+      </>
 
-      {/* ── right rail: what needs you, her read, and the directory ──── */}
+      {/* ── what needs you, and the directory. WORKSPACE CONTENT (Finding 2), not a column. ── */}
       <FleetTenantsRail
         rows={railRows}
         filtered={filter !== "All" || q.trim().length > 0}
         loading={loading}
         onOpenTenant={(id) => navigate(`/operator/fleet/tenants?tenant=${id}`)}
         onEnterTenant={(id) => void enterTenant(id)}
-        onProvision={() => navigate("/operator/provisioning")}
-        onAskPaige={() => navigate("/operator/paige")}
+        onProvision={() => navigate(PROVISION_AT)}
         onOpenCheck={() => navigate("/operator/fleet/systems-check")}
       />
-
     </div>
   );
 }
