@@ -90,6 +90,42 @@ lets CD rule." That was still input, and it was corrected the same day. Zero mea
 
 ---
 
+## "IS THIS THING A PLACE?" — the default answer is NO (Claude Design, 2026-08-23)
+
+**The URL taxonomy (§65) is Claude Code's. Whether a capability IS a place is Claude Design's.**
+That seam matters because CC has now modelled the same mistake three times, and each time it
+arrived looking like a routing question.
+
+**In this shell, SIX SLOTS ARE PLACES. Almost nothing else is.** A capability that is not one of
+the six is, by default, a **state** or a **surface** — something that changes what you are looking
+at or what scope you are in — not an address you can navigate to, bookmark, or link.
+
+**The three that turned out not to be places:**
+
+| Modelled as | Actually is |
+|---|---|
+| `act-as` a tenant | a SCOPE CHANGE — the operator's session enters a tenant; the address does not become the tenant |
+| agent runs | a SURFACE — work streams where you already are |
+| **Paige** (`/operator/paige`) | **the SPINE.** CD: *"A reference to her is not a route, it's an action that opens the spine and focuses the command bar… she's present in every surface, which is the whole point of the execution strip."* |
+
+**The pack having no address for something is EVIDENCE, not an omission.** CD: *"The pack has no
+address for her because there isn't one."* When CC cannot find a route in the pack for a capability
+it is porting, the first hypothesis is that the capability is not a place — not that the pack is
+incomplete. Ask CD; do not assign it an address.
+
+**The tell, and CC must watch for it in its own work:** *"If a later session finds itself wanting
+`/operator/paige`, that's the signal she's been modelled as a place again."* Generalised — **if you
+are reaching for a new top-level operator route to reach a capability, stop.** That reach is the
+symptom. Take it to CD before writing the route.
+
+**A control to a place that does not exist gets REMOVED, not repointed.** Not disabled, not left
+dead, not pointed somewhere plausible. CD, on this exact case: *"A control that opens an empty
+spine asserts a capability that isn't there."* Same reasoning as collapsing an empty spine to 0 —
+applied to the control instead of the track. When the capability is genuinely wired, it returns as
+a control (expand the spine, focus the command bar), never as a URL.
+
+---
+
 ## THE ONE RULE THAT DECIDES EVERY CASE
 
 > **Structure is design. Values are data.**
