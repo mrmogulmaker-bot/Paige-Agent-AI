@@ -86,8 +86,18 @@ export const OPERATOR_SLOTS: readonly OperatorSlot[] = [
   {
     id: "settings",
     label: "Settings",
+    /**
+     * ELEVEN views, not ten. "Numbers" was added by owner ruling (2026-08-23) when the Twilio
+     * number inventory turned out to have no destination anywhere in the IA.
+     *
+     * It is deliberately NOT under Integrations: that is a CONNECTION surface, and an inventory
+     * of provisioned numbers with assignment and billing is not a connection. Settings is where
+     * platform-owned inventory lives — Vault holds obligations, Team holds seats, Numbers holds
+     * numbers. Adding a view inside an existing slot is a view decision; it is not an IA change
+     * and it does not touch the six-slot ruling.
+     */
     views: [
-      "Setup", "Platform", "Integrations", "Mind", "Automations",
+      "Setup", "Platform", "Integrations", "Numbers", "Mind", "Automations",
       "Alerts", "Capabilities", "Vault", "Governance", "Team",
     ],
   },

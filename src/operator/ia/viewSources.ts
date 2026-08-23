@@ -114,6 +114,13 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
     panels: ["settings/integrations/connected", "settings/integrations/health", "settings/integrations/available"],
     carries: ["settings/integrations/connected", "settings/integrations/health", "settings/integrations/available"],
   },
+  /**
+   * Owner ruling 2026-08-23. We provision and sell Twilio numbers to tenants and there was no
+   * destination for it — the gap that produced this view. No shipped operator surface answers it
+   * yet, so it renders the absence that NAMES the capability rather than a plausible-looking
+   * empty inventory. It carries no old address because the thirteen-branch console never had one.
+   */
+  "settings/numbers": { carries: [] },
   "settings/mind": {
     bespoke: "KnowledgeSurface",
     carries: ["paige/knowledge", "paige/memory", "paige/documents", "paige/playbooks", "paige/research", "paige/sandbox"],

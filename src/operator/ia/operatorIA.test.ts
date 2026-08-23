@@ -35,17 +35,51 @@ describe("the operator IA mirrors the design pack", () => {
     expect(OPERATOR_SLOTS.map((s) => s.id)).toEqual(pack.map((p) => p.id));
   });
 
-  it("carries the pack's views, verbatim, for every slot", () => {
+  /**
+   * ONE named divergence from the pack, and it is a RULING rather than drift.
+   *
+   * Owner ruled Settings · Numbers on 2026-08-23, after the Twilio number inventory turned out to
+   * have no destination anywhere in the IA. The pack is one revision behind that call; design
+   * folds it in at their next pass, and this entry disappears when they do.
+   *
+   * It is listed as an exact position rather than loosening the comparison, so the check still
+   * catches every OTHER drift — a blanket "views may differ" would make this test stop working
+   * the moment it was needed. If the pack gains Numbers and this list is not cleared, the
+   * duplicate-guard below fails, which is what stops the exception outliving the reason for it.
+   */
+  const RULED_ADDITIONS = [{ slot: "settings", view: "Numbers", index: 3 }] as const;
+
+  it("carries the pack's views, verbatim, apart from the ruled additions", () => {
     for (const p of pack) {
       const ours = OPERATOR_SLOTS.find((s) => s.id === p.id);
       expect(ours, `slot ${p.id} missing from our IA`).toBeDefined();
-      expect(ours!.views, `views drifted on ${p.id}`).toEqual(p.views);
+      const added = RULED_ADDITIONS.filter((a) => a.slot === p.id).map((a) => a.view);
+      const withoutRuled = ours!.views.filter((v) => !added.includes(v as never));
+      expect(withoutRuled, `views drifted on ${p.id}`).toEqual(p.views);
     }
   });
 
-  it("totals 32 views, derived rather than typed beside the list", () => {
-    expect(OPERATOR_VIEW_COUNT).toBe(pack.reduce((n, p) => n + p.views.length, 0));
-    expect(OPERATOR_VIEW_COUNT).toBe(32);
+  it("places each ruled addition where the ruling put it", () => {
+    for (const a of RULED_ADDITIONS) {
+      const ours = OPERATOR_SLOTS.find((s) => s.id === a.slot)!;
+      expect(ours.views[a.index], `${a.view} moved out of its ruled position`).toBe(a.view);
+    }
+  });
+
+  it("retires a ruled addition once the pack carries it", () => {
+    for (const a of RULED_ADDITIONS) {
+      const p = pack.find((x) => x.id === a.slot);
+      expect(
+        p?.views.includes(a.view),
+        `the pack now carries ${a.slot}/${a.view} — drop it from RULED_ADDITIONS`,
+      ).toBe(false);
+    }
+  });
+
+  it("totals the pack's views plus the ruled additions, derived rather than typed", () => {
+    const packTotal = pack.reduce((n, p) => n + p.views.length, 0);
+    expect(packTotal).toBe(32);
+    expect(OPERATOR_VIEW_COUNT).toBe(packTotal + RULED_ADDITIONS.length);
   });
 
   /**

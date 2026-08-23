@@ -97,38 +97,84 @@ export async function noDocumentScrollbar(page) {
 }
 
 /**
- * AA against `--pg-env` — the TIGHTEST ground, not `--pg-canvas`. Checking against the
- * easier background is how a surface passes contrast and still fails in the eye.
+ * AA against the ground each element is ACTUALLY PAINTED ON.
+ *
+ * CORRECTED 2026-08-23, and the correction matters more than the check. This measured every
+ * colour against `--pg-env` — a token that DOES NOT EXIST in the operator console. Reading a
+ * missing custom property yields the empty string, the old code fell through to
+ * `document.body.backgroundColor`, and in this shell that resolved to a near-white
+ * `rgb(245,245,245)` that nothing is painted on. So every number it produced against the real
+ * console was measured against a phantom ground: light-on-dark text scored 1.06:1 and was
+ * reported as an unreadable control, while genuinely low-contrast DARK text would have scored
+ * well against the same phantom white and passed.
+ *
+ * The fixtures hid it, because `low-contrast.html` defines `--pg-env` — so the negative control
+ * went green and proved only that the check works on a page built to satisfy it.
+ *
+ * Two rules follow, and they are the point:
+ *   1. Resolve the ground by WALKING UP from the element to the first opaque background, which
+ *      is what a human eye does. A token name is a guess about where the element sits.
+ *   2. If a ground cannot be established, return UNVERIFIED rather than falling back to
+ *      something arbitrary. A fallback that silently changes what is being measured produces
+ *      numbers, not findings.
  */
 export async function aaAgainstEnv(page, minRatio = 4.5) {
   return page.evaluate((min) => {
     const parse = (c) => {
-      const m = c.match(/rgba?\(([^)]+)\)/);
+      const m = String(c).match(/rgba?\(([^)]+)\)/);
       if (!m) return null;
-      const [r, g, b] = m[1].split(",").map((n) => parseFloat(n));
-      return [r, g, b];
+      const p = m[1].split(",").map((n) => parseFloat(n));
+      return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
     };
-    const lum = ([r, g, b]) => {
+    const lum = ({ r, g, b }) => {
       const f = (v) => {
         const s = v / 255;
         return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
       };
       return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
     };
-    const env = parse(
-      getComputedStyle(document.documentElement).getPropertyValue("--pg-env").trim() ||
-        getComputedStyle(document.body).backgroundColor,
-    );
-    if (!env) return { ok: false, detail: "--pg-env unresolvable" };
-    const le = lum(env);
+    /** The first ancestor that actually paints — transparent ancestors do not set the ground. */
+    const groundOf = (el) => {
+      for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+        const bg = parse(getComputedStyle(n).backgroundColor);
+        if (bg && bg.a > 0.9) return bg;
+      }
+      const body = parse(getComputedStyle(document.body).backgroundColor);
+      return body && body.a > 0.9 ? body : null;
+    };
+
     const bad = [];
-    for (const el of document.querySelectorAll("[data-contrast], p, span, a, button, h1, h2, h3")) {
-      if (!el.textContent || !el.textContent.trim()) continue;
-      const fg = parse(getComputedStyle(el).color);
+    let unresolved = 0;
+    for (const el of document.querySelectorAll("[data-contrast], p, span, a, button, h1, h2, h3, b, small, code")) {
+      const text = el.textContent && el.textContent.trim();
+      if (!text) continue;
+      // Only elements holding their OWN text: a wrapper inherits a colour it never paints.
+      if (!(el.childNodes.length && [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()))) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility === "hidden" || cs.display === "none" || parseFloat(cs.opacity) === 0) continue;
+      const fg = parse(cs.color);
+      const ground = groundOf(el);
       if (!fg) continue;
-      const lf = lum(fg);
-      const ratio = (Math.max(lf, le) + 0.05) / (Math.min(lf, le) + 0.05);
-      if (ratio < min) bad.push(`${el.tagName.toLowerCase()} ${ratio.toFixed(2)}:1`);
+      if (!ground) { unresolved++; continue; }
+      const lf = lum(fg), lg = lum(ground);
+      const ratio = (Math.max(lf, lg) + 0.05) / (Math.min(lf, lg) + 0.05);
+      // AA relaxes to 3:1 for large text (18.66px bold, or 24px), and an `aria-hidden` glyph is
+      // NOT text at all — it is out of the accessibility tree, so no reader ever announces it.
+      // It is still VISIBLE though, so it takes the 3:1 non-text bar rather than an exemption:
+      // exempting it outright would let a genuinely invisible decorative mark pass silently.
+      const px = parseFloat(cs.fontSize);
+      const large = px >= 24 || (px >= 18.66 && parseInt(cs.fontWeight, 10) >= 700);
+      const decorative = el.closest("[aria-hidden='true']") !== null;
+      if (ratio < (large || decorative ? 3 : min)) {
+        const asRgb = (c) => `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`;
+        bad.push(
+          `${el.tagName.toLowerCase()} "${text.slice(0, 18)}" ${ratio.toFixed(2)}:1 ` +
+            `— ${asRgb(fg)} on ${asRgb(ground)}`,
+        );
+      }
+    }
+    if (unresolved && !bad.length) {
+      return { ok: false, detail: `${unresolved} element(s) had no resolvable ground — unverified, not clean` };
     }
     return { ok: bad.length === 0, detail: bad.slice(0, 6).join("; ") || "none" };
   }, minRatio);
