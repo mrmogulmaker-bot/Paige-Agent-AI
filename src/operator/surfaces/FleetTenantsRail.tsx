@@ -94,7 +94,7 @@ export function composeFleetRead(rows: readonly RailTenant[], openFindings: numb
 
 function RailCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-sm", className)}>
+    <div className={cn("flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-[var(--pg-rim)]", className)}>
       {children}
     </div>
   );
@@ -268,7 +268,7 @@ export function FleetTenantsRail({
               key={r.tenant.id}
               type="button"
               onClick={() => onOpenTenant(r.tenant.id)}
-              className="rounded-[10px] border border-l-[3px] border-border border-l-[hsl(var(--warning))] bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-[10px] border border-l-[3px] border-border border-l-[hsl(var(--warning))] bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
             >
               <div className="text-[length:var(--pg-t-label)] leading-relaxed">
                 <span className="font-semibold">{r.tenant.name}</span> —{" "}
@@ -298,7 +298,7 @@ export function FleetTenantsRail({
           <button
             type="button"
             onClick={onProvision}
-            className="mt-2.5 rounded-lg border border-border bg-[var(--pg-surface)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-2.5 rounded-lg border border-border bg-[var(--pg-surface)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
           >
             + Provision a tenant
           </button>
@@ -368,7 +368,7 @@ export function FleetTenantsRail({
                 <button
                   type="button"
                   onClick={() => onEnterTenant(r.tenant.id)}
-                  className="flex-none rounded-lg border border-border bg-[var(--pg-surface)] px-2 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex-none rounded-lg border border-border bg-[var(--pg-surface)] px-2 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
                 >
                   Enter
                 </button>

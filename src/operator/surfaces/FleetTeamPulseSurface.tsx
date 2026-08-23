@@ -65,7 +65,7 @@ export default function FleetTeamPulseSurface() {
       {/* ── KPI strip ─────────────────────────────────────────────── */}
       <div className="grid flex-none grid-cols-2 gap-2.5 lg:grid-cols-4">
         {kpis.map((k) => (
-          <div key={k.label} className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-surface)] px-3.5 py-3 shadow-sm">
+          <div key={k.label} className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-surface)] px-3.5 py-3 shadow-[var(--pg-rim)]">
             <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.13em] text-muted-foreground">
               {k.label}
             </div>
@@ -78,7 +78,7 @@ export default function FleetTeamPulseSurface() {
       </div>
 
       {/* ── who is carrying the work ─────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-sm">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-[var(--pg-rim)]">
         <div className="border-b border-border px-3.5 py-3">
           <div className="text-[length:var(--pg-t-body)] font-semibold">Who is carrying the work</div>
           <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">Utilisation against a nominal week.</div>
@@ -133,7 +133,7 @@ export default function FleetTeamPulseSurface() {
       </div>
 
       {/* ── where operator time goes ─────────────────────────────── */}
-      <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] px-3.5 py-3 shadow-sm">
+      <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] px-3.5 py-3 shadow-[var(--pg-rim)]">
         <div className="text-[length:var(--pg-t-body)] font-semibold">Where operator time goes</div>
         <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">This week, by area.</div>
         <div className="mt-2.5 space-y-2">

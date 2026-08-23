@@ -69,7 +69,7 @@ export default function FleetHistorySurface() {
       </div>
 
       {/* ── the feed ─────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-sm">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-[var(--pg-rim)]">
         <div className="border-b border-border px-3.5 py-3">
           <div className="text-[length:var(--pg-t-body)] font-semibold">Check history</div>
           <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">Every sweep, every failure, every recovery.</div>
