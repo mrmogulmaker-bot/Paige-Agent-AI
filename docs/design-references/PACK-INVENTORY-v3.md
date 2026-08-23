@@ -20,7 +20,22 @@ difficulty — it was reporting on parts while never having looked at the whole.
 
 ## 0. Coverage — measured, not estimated
 
-18 files · 3,678,312 bytes · 20,978 lines. **All 18 read.**
+**21 files.** The original 18 (3,678,312 bytes · 20,978 lines) plus three delivered
+2026-08-23 in the roadmap bundle — all read.
+
+| Added 2026-08-23 | Lines | What it is |
+|---|---:|---|
+| `BUILD-ORDER.md` | 265 | **The layer plan, and the STANDING CONTRACT.** Seven rules, a deviation table, and the escalation format. Layers 0–6, each with a done-condition. |
+| `ROUTE-MAP.md` | 164 | **Generated from the pack.** All 45 builders with line ranges and addresses: 24 at a view, 7 summoned, 14 composed. Answers "where does this go" without a round trip. |
+| `main-audit-2026-08-23.md` | 166 | The main audit — byte-identical to the one already actioned. |
+
+**Two files in that bundle carry CD's uncorrected source and were NOT copied over**, because
+the repo's versions hold owner rulings the delivery predates: `CLAUDE-CODE-HANDOFF.md` rule 9
+(still `21/17/12.5/11` at source; ruled `11/13/16/21`) and `stage2-design-package.md` §§1–4
+(token block still present at source; ruled deleted). Per the standing-edit rule in
+`corrections-2026-08-23.md` rev 6, those are **locators for CD's source**, not patches to
+re-apply — and they will keep arriving until fixed there.
+
 
 | File | Bytes | Lines | Max line | What it is | Read |
 |---|---:|---:|---:|---|---|
