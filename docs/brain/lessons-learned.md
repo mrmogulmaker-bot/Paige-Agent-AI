@@ -523,6 +523,33 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   match. *Rule:* **a tool's output location must not depend on where it was invoked from**; resolve
   from `import.meta.dirname`. And read the staged file list before pushing, not after.
 
+- **A bug in its JURISDICTION, not in the mechanism (2026-08-23).** Four instances in one session,
+  and none was a broken mechanism — each was a competent mechanism pointed at something it did not
+  own. That is why they survive review: they read as correct, because they are, just about the
+  wrong subject.
+
+  | Instance | Correct about | Claimed authority over |
+  |---|---|---|
+  | Audit log labelled `immutable · Live` | that append-only was intended | a DB guarantee that was only a GRANT |
+  | Harness asserting slot geometry | the five properties worth checking | an IA it would have been *handed* rather than read |
+  | Test requiring absence body length + banning "coming soon" | constraints on a CC draft | how a **design-owned surface** reads |
+  | Design screen map: Catalog/Sales have "no repo substrate" | the surfaces and their contract | **the contents of a repo the design side cannot see** |
+
+  The pattern runs in BOTH directions — the fourth is a design artifact reaching into
+  implementation, the third an implementation test reaching into design. So the question is not
+  ownership-of-role, it is scope-of-claim.
+
+  **The question to ask of any new guard, test, label, or doc claim:** *what does this claim
+  authority over, and do we own that?* "Is it correct?" does not catch this class, because the
+  answer is usually yes.
+
+- **A one-sided negative control proves agreement, not derivation (2026-08-23).** A contract test
+  that reads a source and compares must be falsified from BOTH sides. Editing our copy and watching
+  it fail proves only that the two agree today. Editing **the source** and watching it fail is what
+  proves the test is reading the source rather than agreeing with itself — a test that had silently
+  stopped reading the file would pass the first control forever. Applies to every contract test:
+  the IA-vs-pack slots test, the absence-copy test, and any that follow.
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same
