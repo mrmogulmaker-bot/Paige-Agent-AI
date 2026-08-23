@@ -1,5 +1,9 @@
 # Operator console — backend wiring inventory
 
+> **⚠ Before acting on the ROUND TABLE section: read the OWNER OVERRIDE (2026-08-23).**
+> Claude Design's ruling to RETIRE five round-table items was reversed by the owner the same day.
+> Nothing is retired; every metric stays in scope, sequenced after the design load.
+
 **What this is.** For each of the 23 STRUCTURE-ONLY operator views, the DATA CONTRACT its ported
 CD spec asks for, the live backend that can answer it, and whether that backend exists. This is a
 backend document. It contains no design judgment and proposes no design change (root `CLAUDE.md`
@@ -1036,3 +1040,51 @@ Stated plainly so nothing here is read as more certain than it is (§13):
   read from `pg_policies` definitions, not from an executed permission test. A §51 per-tier smoke
   test on the first wired slice would prove them.
 - Row counts are a snapshot from 2026-08-23 and will drift.
+
+
+---
+
+## ⚠ OWNER OVERRIDE, 2026-08-23 — THE ROUND-TABLE ITEMS ARE **DEFERRED, NOT RETIRED**
+
+**Read this before acting on anything in the ROUND TABLE section below.**
+
+Claude Design reviewed the round-table items and ruled to **retire** five of them — retire the
+ad-spend/MER/CAC/LTV:CAC panel, retire the uptime gauge, rewrite three panels down to delivery-only,
+render Vault as absence, drop the `platform_support` row. **The owner then reversed that ruling the
+same day:**
+
+> *"You can ignore that last prompt that I just sent you in from Claude Design. All of those metrics
+> do need to live inside of the platform, so once we have the design loaded, we will address those a
+> little later."* — Antonio, 2026-08-23
+
+**So: nothing is retired. Every one of those metrics is IN SCOPE as future backend work.** The
+sequence is design-load first, then these. Do NOT delete a panel, drop a row, or reduce a spec's
+ambition on the strength of the retirement ruling — it is superseded.
+
+Recorded here because the retirement ruling is in the session transcript and reads as authoritative.
+A later session picking it up without this note would delete owner-wanted capability, which is the
+§58 failure this project has already had twice.
+
+**What each deferred item actually needs** (unchanged from the ROUND TABLE detail below, restated as
+work rather than as a gap):
+
+| item | what has to exist |
+|---|---|
+| ad spend · MER · CAC · LTV:CAC · channel table | an ad-spend source — Meta/Google connectors feeding a spend table. Integrations already maps 42 vendors; this is a connector + ingest, not an invention. |
+| uptime gauge (99.0% floor) | an uptime/probe/incident table with real probe results. Cannot be inferred from application logs. |
+| open rate / acknowledgement (3 panels) | provider engagement webhooks. `email_send_log.status` today has exactly three values — `failed`, `pending`, `sent`. |
+| `settings/vault` | its own table. **`business_vendors` is the funding vertical's credit tracker and shares only a name — wiring it is a §2 violation, and it would render plausibly while being wrong.** That specific prohibition survives the override; it was never about ambition. |
+| `settings/team` third role | `platform_support` added to the `app_role` enum, as a real org decision rather than to satisfy a drawing. |
+
+### Two items from that same message that are NOT retirements and DO stand
+
+Both are backend/engineering calls in Claude Code's own lane, so they are unaffected by the override:
+
+1. **RPC wherever one exists**, and the tier reach is not trusted until permission-tested AS each
+   tier. This inventory's policy conclusions are read from `pg_policies`, never permission-tested —
+   §7 says so. A table read returning zero rows for a `platform_admin` is indistinguishable from
+   "no data", so the surface asserts an emptiness it never verified. That test is owed.
+2. **Attribution uses TYPED COLUMNS, not a `jsonb` blob.** This corrects the proposal made earlier in
+   this document. A figure is only as derivable as the column under it; a blob defers the modelling
+   problem instead of solving it, and nothing can index or join it.
+
