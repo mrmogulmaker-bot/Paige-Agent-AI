@@ -307,3 +307,35 @@ So attribution exists in **fragments on the wrong tables**. Campaign-attributed 
 Analytics charts that need the same send-to-conversion history — stay dark until that seam is built.
 **Named in the Campaigns absence copy on purpose**, so it is met before wiring starts rather than
 discovered halfway through it.
+
+
+## 8. THE DIRECTION OF ACCOMMODATION (owner, 2026-08-23) — read before proposing any correction
+
+**Claude Code designs the backend to fit Claude Design's frontend. Not the other way around.**
+Nothing that was designed changes to accommodate the implementation. All accommodation happens on
+the backend side.
+
+**The test to apply to every correction CC sends:**
+
+| Correction is about… | Verdict |
+|---|---|
+| **What holds the record** — which table, which column, which join | CC's domain. Invisible to the surface. Fine. |
+| **What the surface looks like, where a capability lives, or how something reads** | **Not a correction — a redesign request. The answer is no.** If a table cannot serve the design, **the table changes.** |
+
+**The soft version is the one to watch for:** a wiring round hits friction and proposes a "small"
+surface change to make a join easier. That is the same request wearing work clothes. It goes back
+as no.
+
+Audited against this session: the two accepted corrections — a tier being a `tenant_prices` row
+rather than a nested array, and Sales being a derived read over `tenant_orders` — changed **nothing
+visible**. A tier stack renders a collection either way; every Sales figure still derives from lines
+and reads exactly as drawn. Both were beneath the surface. No geometry, copy, placement, or
+treatment was conceded.
+
+### The corollary CC must hold itself to: copy is design
+
+Absence body copy, empty-state wording, error text and rail labels are **surface**, not plumbing.
+Where CC authors any of it to unblock a round, it is a **draft pending the design side**, marked as
+such — never settled by default because it happened to ship first. Filling a designed mechanism
+(`hasAbsence`/`absenceTitle`/`absenceBody`) with CC-authored words is exactly the soft version of the
+accommodation this section forbids, arriving from the other direction.

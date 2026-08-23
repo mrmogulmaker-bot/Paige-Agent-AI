@@ -11,6 +11,15 @@
  * Sequences folded into Active; Follow-ups became an automation; Field became Marketplace with
  * Calendar moving to Relationships. **Do not add a slot without an owner ruling.**
  *
+ * DIRECTION OF ACCOMMODATION (owner, 2026-08-23). The backend is built to fit this design, never
+ * the reverse. A correction about which table, column or join holds a record is ours to make; a
+ * change to what the surface looks like, where a capability lives, or how something reads is a
+ * redesign request and the answer is no — if a table cannot serve the design, the table changes.
+ *
+ * COPY IS SURFACE, SO THE ABSENCE BODIES BELOW ARE CC DRAFTS, NOT SETTLED DESIGN. They exist to
+ * unblock this round and to carry a §13-honest account of what is missing and why. They are offered
+ * for the design side to rewrite, and should not become permanent merely because they shipped first.
+ *
  * SUB-TAB COUNT IS NOT SLOT PRESSURE. The thirteen-branch tree this replaces carried 83 sub-tabs.
  * That is not an argument for more slots — every homeless sub-tab is a view, a summoned surface, or
  * a mechanism that was never a place. Anything without a slot is reached through the command
