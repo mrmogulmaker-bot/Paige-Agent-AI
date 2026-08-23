@@ -92,10 +92,18 @@ describe("OperatorEntry — the /operator subtree routing contract", () => {
 });
 
 /**
- * Both of OperatorApp's redirects target OPERATOR_BRANCHES[0]. If that entry ever became
- * owner-only, a scoped platform_admin would be redirected to a section that redirects them
- * straight back — "Maximum update depth exceeded", from a one-line array reorder. The §39
- * peer-gate flagged that nothing locked this; now something does.
+ * A registry invariant, kept because the registry is still live.
+ *
+ * It was written when OperatorApp redirected an unknown or owner-denied section to
+ * OPERATOR_BRANCHES[0]: if that entry ever became owner-only, a scoped platform_admin would be
+ * redirected to a section that redirects them straight back — "Maximum update depth exceeded",
+ * from a one-line array reorder.
+ *
+ * The six-slot shell no longer redirects an unknown section anywhere (it renders a 404 that names
+ * the address), and the seventeen-branch shell that did is preserved unmounted at
+ * `legacy/OperatorLegacyApp.tsx`. OPERATOR_BRANCHES itself still ships — panelSpecs and tabGlyphs
+ * read it — so the invariant still guards something real, and it costs nothing to keep while the
+ * surfaces behind those branches are wired into the slots.
  */
 describe("operator redirect-target invariant", () => {
   it("the default branch is reachable by EVERY operator, not just the owner", () => {

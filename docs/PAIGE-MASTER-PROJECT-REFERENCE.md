@@ -630,6 +630,45 @@ Grouped:
 
 ## 5. Current focus + known gaps
 
+### GAP — Paige does not know her OWN design (task #219, owner-raised 2026-08-23)
+
+**Owner:** *"Paige should be aware of her own design."* · *"I just want to make sure that we, as a
+collective group, and then eventually Paige gets a lot smarter."*
+
+**Verified state, not assumed.** Paige can be steered AWAY from bad design
+(`_shared/cheesy-tells.ts`, the runtime mirror of `docs/design-references/CHEESY-TELLS.md`,
+substituted into every generation prompt) and can brief a design agent
+(`_shared/design-agent-prompt.ts`). She has **no runtime knowledge of her own system** — asked why
+gold is only on the act, or what the operator shell's geometry is, she answers from a model's general
+sense of nice UI. She guesses, confidently.
+
+**The source of truth now exists:** `docs/brain/design-system.md` (2026-08-23) — palette and the two
+separately-authored themes, gold-only-on-the-act, type ladder, layered depth, motion reserved for real
+activity, layout discipline, taste bar, and an index of every authoritative source. The runtime module
+mirrors THIS, exactly as `cheesy-tells.ts` mirrors its `.md`.
+
+**Tier ruling — OWNER-RULED 2026-08-23** ("Yes I agree with CD call on that"). Proposed by Claude
+Design, ruled by the owner the same day. Build against this. It needs no new mechanism:
+
+> Design rationale is platform internals. An **operator IS the platform**, so they get the full
+> corpus — why champagne inverts between themes, why gold is spent only on the act, why depth comes
+> from layered elevation. A **tenant is not the platform**, so the same question is answered about
+> **their** system: Settings → Platform already carries "Brand — mark, wordmark, palette, resolved
+> recursively" per tenant, inherited by sub-accounts. A client asking "why is this gold?" gets a real
+> answer about their own brand set resolved through their inheritance chain — not our internals in a
+> friendly voice. **Same function, two corpora, clamped by the grant she already has.**
+
+It fits the existing capability model rather than inventing a tier concept — the corpus selection is
+the grant she already holds, doing what it does everywhere else. The risk it closes: never ship one
+design block to every persona.
+
+**Sequenced AFTER the Super Admin v3 install rounds (#216)**, per the same owner message: *"keep
+finishing building out the design that Claude Design has us doing."* Queued deliberately, not dropped.
+Check **#159** (Paige self-knowledge — models, capabilities, cost, from live truth, tier-scoped) before
+building: same shape, same tier discipline, probably the same slice — do not create a second home for
+self-knowledge (§18).
+
+
 ### Super Admin console import — open slices after #543 (2026-08-18)
 
 - ✅ **DONE (#543) — the console is mounted** behind ONE guard at an `/operator/*` dispatcher, peer to

@@ -2,7 +2,22 @@ repo: mrmogulmaker-bot/Paige-Agent-AI
 branch: main
 
 ## Last sync
-date: 2026-08-23T04:05:00Z
+date: 2026-08-23T05:20:00Z
+commit: a3bdb7de
+pr: #570 (squash-merged to main)
+landed: design pack rev 6 · 18-round install plan · screenshot pipeline · manifest-aware pack verifier · one brain entry. Docs, design reference and dev tooling only — no product code, no schema, no edge functions.
+
+### Corrections applied at source (rev 3 → rev 6)
+- Rev 3: five honesty labels corrected — Marketplace REP→PART, alert delivery ships, operator communications store credited, Money Spine “deferred”→`$0` (a reading, not an absence), audit log `immutable·Live`→`unenforced·Attention`.
+- Rev 4: `P.SWEEP.run` typed twins deleted (timing only); the systems-check brief now composes its prose from findings. **A sentence containing a figure is a figure.**
+- Rev 5: the intermittent `sx` TypeError found and guarded — `mind-brain.js` pulse renderer read `proj[path[i0+1]]` on the last hop; identifiers scrubbed.
+- Rev 6: both standing edits fixed at source so they stop recurring — the §9a third-party mark rewritten as a described pattern, and the DOB scrubbed on CC's ruling that the class is **format-valid and portable**, not “government identifiers”.
+- Standing rule adopted: **any correction CC re-applies after a delivery is a defect in the pack, not a patch in the repo.** Two rounds of re-application is the signal; send a locator and it is fixed at source.
+
+### Owed at merge (recorded, not discharged)
+- The adversarial read of #570 was a self-review, not a §39 peer gate.
+- §32.c live-drive of our own surfaces is owed at every install round — no surface of the app itself has been rendered on that branch. Task #216.
+
 tree: 1c557a873e8b
 
 ### Updated in this project
@@ -54,7 +69,7 @@ tree: 1c557a873e8b
 | — Settings · Platform | `docs/doctrine/tier-matrix.md` §§56/60/61 (canonical six, standing default, owner-locked cells), `src/lib/tier/tierFeatures.ts` (TIER_FEATURE_BASELINE) |
 | — Campaigns · Vibe Studio door | `docs/architecture/CANONICAL-SYSTEM-ARCHITECTURE-2026-08-08.md` (Studio route map), `docs/doctrine/tier-matrix.md` §61 (studio tier lock), `docs/DONE.md` #408 (Growth hub absorbing Campaigns + Studio) |
 | — Relationships · Conversations | `src/agency/conversations.tsx`, `src/agency/fixtures.ts` (CHANNELS, THREADS, CONV_CHANNEL_PERF), `src/components/clients/ConversationsSubTabs.tsx` |
-| — Campaigns · Catalog + Sales | design-led; no repo substrate exists yet. Contract in `paige-ia.js` (`CATALOG`, `OFFER_KINDS`, `OFFER_STATES`, `SALES`, `SALES_STAGES`, `CLOSE_REASONS`, `SALES_TARGET`, `PROCESSOR`) |
+| — Campaigns · Catalog + Sales | **Corrected 2026-08-23:** not design-led. CC found real substrate — `tenant_products`, `tenant_prices`, `tenant_orders`, plus the platform subscription tables. Contract shapes in `paige-ia.js` (`CATALOG`, `OFFER_KINDS`, `OFFER_STATES`, `SALES`, `SALES_STAGES`, `CLOSE_REASONS`, `SALES_TARGET`, `PROCESSOR`) are the surface model; the tables are the record |
 | — Campaigns · Adjust (tenant schema) | design-led; `CAMP_SCHEMA` + `CARD_FACTS` in `paige-ia.js` — per-tenant JSON server-side |
 | — Relationships · Segments builder | `SEG_FIELDS` + `SEG_PHRASES` in `paige-ia.js`; predicates in the shell, since a predicate does not survive becoming SQL |
 | docs/handoff/campaigns-catalog-sales-spec.md | this turn's surfaces, written for CC |
@@ -73,6 +88,236 @@ tree: 1c557a873e8b
 - A deal points at the relationship, carrying `tenant_id` for direct RLS.
 - Facial recognition is out of scope for Stage 3 — the asset store must not be built around
   faceprints. Logo-file or monogram only.
+
+## Owner ruling 2026-08-23 (restated, strengthened) — direction of accommodation
+
+**CC is designing the backend to the frontend design, not the other way around.** Nothing
+that was designed changes to accommodate what ships. Every accommodation is made on the
+implementation side. Not open for debate, and not subject to being re-negotiated one
+surface at a time.
+
+The practical test, applied before accepting any correction from CC:
+
+- A correction about **what holds the record** — which table, which column, which join — is
+  legitimate and welcome. It is CC's domain and invisible to the surface.
+- A correction that would **change what the surface looks like, where a capability lives,
+  or how something reads** is not a correction. It is a request to redesign, and the answer
+  is no. If a table cannot serve the design, **the table changes.**
+
+Audit of this session against that test: the substrate corrections accepted — tiers as
+`tenant_prices` rows rather than a nested array, Sales as a derived read over
+`tenant_orders` rather than its own store — changed **nothing visible**. The tier stack
+renders a collection either way; every Sales figure still derives from lines and reads
+exactly as drawn. Both were corrections to the record beneath the surface, which is the
+permitted direction. No geometry, copy, placement or treatment was conceded, and none will
+be.
+
+## Owner ruling 2026-08-23 — R1 dissolved
+
+**Admin is never a URL. Admin is a role only.** There are not two live consoles, so
+there is nothing to choose between: there is one operator console, and `godMode` /
+admin is a **role and scope band inside it**, never a separate route. The `/admin`
+survey is moot; R1 no longer gates the 18 rounds.
+
+**The design is the source of truth, and function is wired behind it.** Where a
+capability landed in the pack is where it works. The Trust Compass is the worked
+example: its function is unchanged, but its design and its placement are the
+design's to own, so the existing implementation is re-imagined behind the surface
+rather than the surface being reshaped to fit the implementation. This is not open
+for debate — it restates the 2026-08-18 ruling (§65 R4 slice 1b) at the level of
+individual functions rather than whole surfaces.
+
+Consequence for CC: no round begins by asking whether the design can accommodate
+an existing shape. It begins by asking what wiring the designed shape requires.
+
+### R3's figure is stale — re-derive it, do not carry it
+CC corrected its own count: `/operator` is **13 branches / 83 sub-tabs** on current
+main (Settings alone carries 23), not the 17 / 78 the plan was written against. The
+§58 gap is therefore larger than the pack's R3 row states. `/admin` godMode is 4 hubs
+/ 20 tabs, 7 marked Soon — now context for what the one console contains, not
+evidence for a choice.
+
+**What that changes for the design, and what it does not.** The six slots and 32
+views hold: the count of shipped sub-tabs is a measure of what must find a home, not
+an argument for more slots. A sub-tab with no home under the new IA is one of three
+things — a view inside a slot, a summoned surface, or a mechanism that was never a
+place. R3 should classify all 83 into those three, and the residue after that is the
+only real gap. Sub-tab count is not slot pressure.
+
+## The Round 0 / Round 1 boundary (design ruling, 2026-08-23)
+
+### Act-as is a scope change, not a navigation
+`FleetConsole.tsx:135` does `window.location.assign("/admin")` with no exit anywhere
+in `src/operator/`. The missing exit is a symptom, not the defect: **admin is no longer
+a URL, so act-as is not a route at all.** It is the value of `active_tenant_id`, and the
+band above the shell reports it. Same class as the landing divergence — a mis-modelled
+thing, not a missing one.
+
+The pack already draws it. `P.SCOPES` carries three states:
+
+| Scope | Band reads |
+|---|---|
+| rest | `Platform scope · No tenant · operator surface · tenant_id IS NULL` |
+| read | aggregate read · no write |
+| act | `Acting as · AUTHORIZED TENANT · 0f3a · paige_audit_log · session open` |
+
+`cycleScope` and `exitScope` are `setState` mutations; neither navigates. `pushScope`
+broadcasts, so scope changes in every window — which is why detach works: **scope is
+broadcast, not routed.** `exitScope` announces `active_tenant_id returned to NULL`, and
+scope 0 is `tenant_id IS NULL`. The band is the exit.
+
+### The boundary, and why it is drawn here
+- **Round 0** — remove the one-way door. Act-as stops being `window.location.assign`
+  and becomes a scope mutation with no route change. A model correction: no pixel,
+  fully testable, which keeps Round 0 what it has been.
+- **Round 1** — the band lands with the shell, and the exit affordance lands with the
+  band, drawn from the pack.
+
+Building an exit control in Round 0 would mean **inventing** one that Round 1 then
+discards — the §30 layering failure in miniature, and the same call CC already made
+correctly when it moved the scope band out of Round 0. **Draw it once, from the pack.**
+
+General form: when a round needs a surface that a later round draws, the round does the
+model correction and waits for the surface. It does not build a fragment of the later
+round's geometry to hang something on.
+
+### A comment is an assertion (2026-08-23)
+Round 0's redundant `window.location.assign` survived four weeks because the comment
+defending it was stale: it said every per-instance `useTenantContext` had to re-read from
+scratch, but `useTenantContext` became a real provider on 2026-07-28. **The reload
+outlived its reason because a confident comment kept asserting it and nobody re-checked
+the claim.**
+
+Third instance of one failure class, now stated as a rule: *derive it or verify it, never
+assert it* — and **a comment is an assertion.** The first two were the audit log reading
+`immutable · Live` when append-only was a GRANT, and `pack-shoot` captioning frames with
+a theme it never read back.
+
+A comment that justifies a mechanism should name what it depends on, so the day the
+dependency changes the comment is falsifiable rather than merely old.
+
+### The interim act-as toast, and what retires it
+Removing the navigate made act-as silent — `stashSwitchNotice` writes to sessionStorage
+and is only read after a reload. CC added a transient success toast, marked interim in
+source with an instruction not to grow it into a bespoke exit. Correct handling.
+
+Its retirement condition, precisely, so Round 1 does not keep both: the toast is replaced
+by **the band's own tone change to `act` plus its `Acting as` line**, and by the shell's
+existing `aria-live` announcement region — which is what `exitScope` and `cycleScope`
+already write to (`Scope changed in every window`). The successor is not another toast.
+When the band lands, the toast goes; nothing about it should survive as a component.
+
+### Render harness: build it (design ruling, 2026-08-23)
+The operator console is auth-gated, this session holds no credentials, and Vite pins
+`host: "::"` in a sandbox with no IPv6. No amount of building Round 1 changes that, and
+CC surfacing the constraint before burning the round is the right order.
+
+**Build the harness.** All five diff criteria are properties of the chrome, not of data:
+slot order reads from the IA, the grid is computed style, `min-width: 0` is DOM-walkable,
+the scrollbar assertion already exists in pack-shoot, and AA contrast computes from
+resolved tokens. A harness makes every remaining round verifiable here rather than only at
+the end — the difference between catching a geometry defect in Round 1 and finding it in
+Round 12.
+
+Three conditions, each from a rule this collaboration already earned:
+
+1. **Mock the provider, never the contract.** Auth and data are mocked; `paige-ia.js` is
+   read as shipped. A harness that fixtures the IA cannot catch a slot-count regression —
+   it would assert the geometry it was handed.
+2. **Negative-control the harness itself.** Plant a five-slot rail, a child missing
+   `min-width: 0`, a document scrollbar, and a sub-AA pair. Each must turn it red. An
+   unfalsified harness is a surface asserting something it has not verified — the class
+   already hit three times (audit log, pack-shoot themes, the stale comment).
+3. **Label the frame, not the filename.** Burn “harness render · not live” into the image
+   itself. A filename is metadata and metadata is lost the moment the frame is pasted into
+   a conversation — which is precisely how pack-shoot's mislabelled themes travelled.
+
+§32.c stays owed. The harness proves geometry; it cannot prove the authenticated thing
+renders, and it must never be allowed to read as though it had.
+
+### The nine orphans are a palette problem, not a regression (2026-08-23)
+CC declared an interim cost: between Round 1 and R3, nine old branches stay reachable by
+URL but absent from the six-slot rail. Declaring it was right. Accepting it is not
+necessary — **the pack already draws the answer.**
+
+The command palette (⌘K) is the shell's designed route to anything without a rail slot:
+*“A capability opens its own surface and retires when you close it. None holds a place in
+the rail.”* Register the nine there and the interim stops being a discoverability
+regression and becomes the intended behaviour: **what has no slot is found by search, not
+by browsing.** No new UI — the palette exists, grouped, with per-row notes for stating
+that a destination is pre-R3.
+
+R3's triage then decides, per branch, whether each becomes a view in a slot, a summoned
+surface, or a mechanism that was never a place. Several will legitimately end as palette
+entries permanently, which is the pack's model rather than a compromise.
+
+**The two unbuilt slots** — campaigns and relationships have no destination yet. Use the
+pack's own absence treatment (`hasAbsence` / `absenceTitle` / `absenceBody`), not an
+invented empty state. Absence is already designed, and §13 governs its copy: what is
+missing, and why.
+
+### A screenshot is not a test (2026-08-23)
+Four of the harness's five defect fixtures render **byte-identical** frames: a missing
+`min-width: 0` with no long string to blow out, a sub-AA colour on small text, and content
+below the fold all look correct at viewport scale. The assertions are the evidence; the
+frame is only the record. A clean-looking frame proves nothing about the checks — which is
+why the harness burns its label in after measuring, and refuses to write a frame whose
+label is not verifiably on screen.
+
+Corollary recorded with it: **a tool's output path must not depend on where it was invoked
+from**, and a gitignore matching one spelling of a path protects a coincidence, not an
+artifact.
+
+### Catalog and Sales have substrate — a fifth under-statement (2026-08-23)
+The screen map said *“design-led; no repo substrate exists yet.”* CC found
+`tenant_products`, `tenant_prices`, `tenant_orders` and the platform subscription tables.
+Corrected. **Fifth instance of the design under-stating shipped work** — the failure class
+that invites rebuilding what exists, and one only CC can see.
+
+Two consequences for the design, both in CC's favour:
+
+1. **Tiers are rows, not a nested array.** `P.CATALOG[].tiers` is drawn as
+   `[name, price, period, what][]` inside an offering. Against `tenant_prices`, a tier is
+   a price row pointing at a product. The relational shape is the better one and the
+   surface does not change — the tier stack renders a collection either way. Build from
+   the tables; the array was a fixture convenience, never a model claim.
+2. **Sales is a derived read, not a second ledger.** CC is right, and it sharpens the rule
+   already on that surface: every figure is a sum over the lines, and now **the lines
+   themselves are `tenant_orders`**, not a parallel `P.SALES` record. A second ledger
+   beside the revenue-integrity chain would be rule 3 at table scale — a figure that
+   appears twice, computed once. `P.SALES` is the fixture that proves the arithmetic; it
+   is not the store.
+
+So Campaigns is a wiring round, not a build round — which is what the absence copy now
+says. The one thing the tables cannot supply is attribution: `camp` on a line is recorded
+by hand in the fixture and needs send-to-conversion history, the same missing join that
+dims two Analytics charts.
+
+### Attribution: fragments on the wrong tables (2026-08-23)
+Verified against `information_schema`, not summarised. `analytics_events` and
+`referral_clicks` both carry `utm_campaign` / `utm_source`; `email_send_log` carries
+`message_id` + `template_name`; `tenant_orders` carries a full order and **no campaign
+reference at all** — only a free-form `metadata jsonb`. No join runs send → click → order.
+
+**Fragments are worse than absence.** A wiring round finds `utm_campaign` on
+`analytics_events`, assumes the seam exists, and only discovers at the join that an order
+cannot name a campaign. Now in the Campaigns absence copy, which is what absence copy is
+for.
+
+Two design constraints this settles:
+
+1. **Attribution must not live in `metadata jsonb`.** It is the obvious shortcut and it
+   creates an untyped de-facto schema: a jsonb key cannot be constrained, cannot be
+   foreign-keyed, and a figure derived from one cannot be trusted the way the
+   revenue-integrity chain is trusted. Campaign attribution needs a real reference on the
+   order. This is rule 3's sibling — a figure is only as derivable as the column under it.
+2. **Two candidate click sources.** `analytics_events` and `referral_clicks` both carry
+   utm. The join must name one as canonical or reconcile them explicitly; picking
+   whichever is convenient at wiring time is how two revenue numbers get born.
+
+**Open ruling now specified rather than open:** the Sales attribution question is no longer
+“needs research” — it needs a campaign reference on `tenant_orders` and one canonical click
+source. That is a schema ruling with a known shape.
 
 ## Rulings closed 2026-08-23
 - **Payment processor: agnostic.** The interface is the five needs; Stripe is the first adapter. Build the boundary now, expect the provider to change before GA.

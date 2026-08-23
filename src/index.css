@@ -164,12 +164,28 @@ All colors MUST be HSL.
        raised once, ruled on, shipping as designed. */
     --cd-gold: 44 63% 48%;           /* #C8A02E */
     --cd-gold-ink: 44 69% 69%;       /* #E7C97A — gold ink on the dark rail */
+
+    /* FOCUS RING — defined here because the global `--ring` (258 70% 50%) was validated at
+       7.7:1 on WHITE and never against this console's grounds. Measured on the rail it is
+       2.33:1 light / 1.78:1 dark, under the 3:1 non-text minimum, and the rail carries every
+       interactive control in the shell. Gold is the console's one high-contrast hue that
+       clears 3:1 on BOTH the rail and the canvas, and a focus ring is a transient state
+       marker rather than a resting treatment, so it does not spend the act budget.
+       The rail redefines it again below: one value cannot clear both a near-black rail and
+       a near-white canvas, so each ground gets the value that clears IT. */
+    --ring: 44 63% 34%;              /* #8B6F20 — 4.6:1 on the light canvas */
   }
 
   /* CD authored one theme. Its own dark block paints the page the SAME colour as the rail,
      so the rail disappears — a defect in the pack, not a design intent (§29: shipped,
      correct, and invisible). Dark keeps CD's hues and lifts only what has to move to stay
      visible and legible. */
+  /* The rail is dark in BOTH themes, so one value clears it in both — and it must be set on
+     the rail itself, because the canvas value beside it is tuned for the opposite ground. */
+  .operator-console [data-operator-rail] {
+    --ring: 44 75% 72%;              /* 7.4:1 on the light rail, 6.1:1 on the dark rail */
+  }
+
   .dark .operator-console,
   .operator-console.dark {
     --background: 265 44% 5%;
@@ -188,6 +204,8 @@ All colors MUST be HSL.
     --rail-muted: 252 30% 72%;
     --cd-gold: 44 72% 62%;           /* CD's gold, lifted for the dark ground */
     --cd-gold-ink: 44 75% 72%;
+    /* Same reasoning as the light block; on this canvas the ring has to be LIGHT to clear it. */
+    --ring: 44 75% 72%;              /* 8.9:1 on the dark canvas */
   }
 
   .dark {

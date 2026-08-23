@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
 import { useTenantContext } from "@/hooks/useTenantContext";
-import { stashSwitchNotice } from "@/lib/agency/switchNotice";
 import { useFleet, isInternal, type FleetTenant } from "@/operator/data/useFleet";
 import { FleetOrbit, type OrbitNode } from "@/operator/surfaces/FleetOrbit";
 import { FleetTenantsRail, type RailTenant } from "@/operator/surfaces/FleetTenantsRail";
@@ -118,9 +117,27 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
    * mean two ways to enter a tenant with only one of them audited — an audit trail that looks
    * complete while a quiet route stays open (§18).
    *
-   * Then a HARD navigate, not a router push: every per-instance `useTenantContext` has to re-read
-   * the new scope from scratch, and a soft transition would leave half the shell pointed at the
-   * platform (the reason `switchNotice` exists at all).
+   * NOTHING NAVIGATES. Act-as is a SCOPE CHANGE, not a journey — `switchTenant` already runs the
+   * audited RPC, commits `activeTenantId` to the one shared provider, and invalidates every query,
+   * so all consumers re-read under the new scope synchronously. The old code followed that with
+   * `window.location.assign("/admin")`, which was the one-way door: no exit control existed on the
+   * far side, and the operator had left the console entirely.
+   *
+   * The comment that justified the hard navigate ("every PER-INSTANCE `useTenantContext` has to
+   * re-read") described the architecture as it was BEFORE 2026-07-28. `useTenantContext` became a
+   * real provider mounted once at the app root that day; the reload has been redundant since, and
+   * the stale comment is why nobody noticed. Verified against the provider, not assumed.
+   *
+   * The deeper correction: admin is not a URL, so act-as was never a navigation. The pack models
+   * it as three scope states on the band above the shell (`P.SCOPES` — rest / read / act), where
+   * scope is BROADCAST rather than routed, which is also why detach works across windows.
+   *
+   * INTERIM, Round 0 → Round 1: the band that reports "Acting as …" and carries the Exit control
+   * is drawn in the pack and built with the shell in Round 1. Until it lands, this toast is the
+   * only signal that scope moved — deliberately the same transient class as the failure toast
+   * below, NOT a stand-in for the band. Round 1 replaces it with the persistent band; do not grow
+   * it into a bespoke exit affordance in the meantime (§30 — the exit gets drawn once, from the
+   * pack, rather than invented here and discarded there).
    */
   const enterTenant = useCallback(
     async (id: string) => {
@@ -131,8 +148,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
         toast.error(`Couldn't enter ${name}.`);
         return;
       }
-      stashSwitchNotice(`You're inside ${name}. Everything you do here is recorded.`);
-      window.location.assign("/admin");
+      toast.success(`Acting as ${name}. Everything you do here is recorded.`);
     },
     [switchTenant, tenants],
   );

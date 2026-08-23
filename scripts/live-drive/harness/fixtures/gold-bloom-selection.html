@@ -1,0 +1,8 @@
+<!doctype html><meta charset=utf-8><link rel=stylesheet href="_shell.css"><style>
+[data-shell-grid]{grid-template-columns:216px minmax(0,1fr) minmax(340px,26vw)}
+/* THE LEGITIMATE SELECTION TREATMENT — same hue family as the act, at bloom weight.
+   A hue-range check fires here and gets switched off. An act-token check must not. */
+[data-slot=fleet][aria-current]{background:var(--pg-gold-bloom);box-shadow:inset 0 0 0 1px var(--pg-gold-deep)}
+/* THE ACT — opaque, and marked. */
+button[data-act]{background:var(--pg-gold-fill);border:1px solid var(--pg-gold-deep);color:rgb(20,18,12)}
+</style><div data-scope-band>Platform scope</div><div data-shell-grid><nav><a data-slot="fleet" aria-current="page">Fleet</a><a data-slot="relationships">Relationships</a><a data-slot="campaigns">Campaigns</a><a data-slot="marketplace">Marketplace</a><a data-slot="analytics">Analytics</a><a data-slot="settings">Settings</a></nav><main><p style="font-size:21px">a</p><button data-act>Approve</button></main><aside>spine</aside></div>

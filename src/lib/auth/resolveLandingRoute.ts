@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { GOD_CONSOLE } from "@/lib/auth/operatorTarget";
 
 // Pre-portal onboarding is now just two gates: welcome + agreement.
 // Anything beyond signing_agreement lands the client directly in /workspace,
@@ -200,12 +201,13 @@ export async function resolveLandingRoute(userId: string): Promise<string> {
     // `user_roles.select("role")`, so the row shape is exactly this.
     let roles = (rolesRes.data || []).map((r: { role: string }) => r.role);
 
-    // Platform operators (super_admin) ALWAYS land on the God console — never
+    // Platform operators (super_admin) ALWAYS land on the operator console — never
     // diverted to an agency side, even if they also own/admin an agency tenant.
-    // The platform operator and the agency operator are different §9 audiences;
-    // /admin renders the God console for platform staff (godMode).
+    // The platform operator and the agency operator are different §9 audiences.
+    // The door is GOD_CONSOLE, not a string restated here: a second copy is how the
+    // invite door drifted to a different destination for the same role.
     if (roles.includes("super_admin")) {
-      return "/operator/fleet/tenants";
+      return GOD_CONSOLE;
     }
     // Tenant/agency operators may prefer to land on their /agency side (#191);
     // a non-agency operator, or one who prefers 'last_account', falls to /admin.

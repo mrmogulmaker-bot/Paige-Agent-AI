@@ -1,0 +1,22 @@
+/* Shared fixture chrome for the reject-on-sight controls.
+   One home (§18): a fixture that re-typed the gold tokens would drift from the check it is
+   meant to control, and a drifted negative control proves nothing. Same for the band — every
+   geometry fixture carries one so collapseOrder is a REAL arm on every row rather than a
+   silent skip. (A filter that drops what it cannot parse is the defect pack-verify already
+   had once; it does not get to reappear here.)
+   Dark-theme values; the fixtures all render colorScheme:"dark". */
+:root{
+  --pg-env:rgb(12,12,16);
+  --pg-gold-core:#fff0cf;
+  --pg-gold:#ead5aa;
+  --pg-gold-deep:#c7a978;
+  --pg-gold-fill:#d4a752;
+  --pg-gold-bloom:rgba(240,200,106,.28);
+}
+html,body{margin:0;height:100%;background:var(--pg-env);color:rgb(235,235,240);font:13px system-ui}
+body{display:flex;flex-direction:column;overflow:hidden}
+[data-scope-band]{height:44px;flex:none;background:rgb(20,20,26)}
+[data-shell-grid]{flex:1;min-height:0;display:grid}
+[data-shell-grid]>*{min-width:0;min-height:0;overflow:hidden}
+nav{display:flex;flex-direction:column}
+nav>*{min-width:0;min-height:0}

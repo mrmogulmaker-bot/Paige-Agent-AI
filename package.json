@@ -16,13 +16,16 @@
     "ci:regression": "node scripts/ci/regression-lint.mjs",
     "lint:views": "node scripts/ci/view-security-invoker-lint.mjs",
     "verify:pack": "node scripts/live-drive/pack-verify.mjs",
+    "harness:selftest": "node scripts/live-drive/harness/selftest.mjs",
+    "harness:selftest-reject": "node scripts/live-drive/harness/selftest-reject.mjs",
     "lint:definer-fns": "node scripts/ci/definer-fn-lint.mjs",
     "lint:tier-features": "node scripts/ci/tier-feature-lint.mjs",
     "lint:tier-features:test": "node scripts/ci/tier-feature-lint.mjs --self-test",
     "lint:skeleton": "node scripts/ci/skeleton-content-lint.mjs",
     "preview": "vite preview",
     "smoke:skills-interpreter": "node --experimental-strip-types --import ./scripts/_register-forge-stub.mjs scripts/skills-interpreter-provenance-smoke.mjs",
-    "smoke:fleet-orbit": "node scripts/fleet-orbit-smoke.mjs"
+    "smoke:fleet-orbit": "node scripts/fleet-orbit-smoke.mjs",
+    "harness:serve": "vite --config scripts/live-drive/harness/mount/vite.config.ts"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",

@@ -285,7 +285,7 @@ export default function SystemsCheckSurface() {
       {/* ── anchor strip (CD's, verbatim) ──────────────────────────────── */}
       <div className="flex min-w-0 flex-none items-center gap-[9px] rounded-[10px] border border-[hsl(var(--primary)/0.28)] bg-[hsl(var(--primary)/0.05)] px-3 py-1.5">
         <span aria-hidden className="flex-none text-[11px] text-[hsl(var(--primary))]">⌖</span>
-        <span className="min-w-0 text-[11px] leading-[1.4] text-[hsl(var(--primary))]">
+        <span className="min-w-0 text-[11px] leading-[1.4] text-foreground">
           Green means a check ran and passed. A category that has not been swept says so — it never
           reports green from an unqueried state.
         </span>

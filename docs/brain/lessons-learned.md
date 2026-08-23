@@ -502,6 +502,54 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   our source at all. It was byte-identical once unpacked. **A measurement you do not understand the
   encoding of produces a number, not a finding** — unpack before you accuse.
 
+- **A screenshot is not a test — and a comment is an assertion (2026-08-23).** *Symptom:* three
+  separate things read as verified without having been verified — an audit log labelled
+  `immutable · Live` when append-only was only a GRANT; screenshot frames captioned with a theme the
+  tool never read back; a hard reload defended by a comment that had been false since 2026-07-28.
+  *Root cause:* in each case the confidence of the artifact is what stopped anyone re-checking it.
+  *Rules:* **derive it or verify it, never assert it** — and a comment justifying a mechanism should
+  **name what it depends on**, so the day the dependency changes the comment becomes falsifiable
+  rather than merely old. Second half, found while building the design harness: **four of five defect
+  fixtures render byte-identical** — a missing `min-width:0` with nothing to provoke it, a sub-AA
+  colour on small text, and content below the fold all look the same at viewport scale. So **the
+  assertions are the evidence; the frame is only the record.** Never review a clean-looking frame and
+  conclude the checks passed. A human eye catches geometry, proportion, rhythm, type and colour
+  relationships; it cannot catch an unprovoked min-width defect or 4.3:1 vs 4.5:1.
+
+- **A gitignore matching one spelling of a path protects a coincidence (2026-08-23).** *Symptom:*
+  five PNGs committed into a docs-and-tooling branch. *Root cause:* the harness resolved its artifact
+  directory from `cwd`, so running its selftest from a subdirectory wrote a nested
+  `scripts/live-drive/artifacts/` tree that the ignore rule — which names the real path — did not
+  match. *Rule:* **a tool's output location must not depend on where it was invoked from**; resolve
+  from `import.meta.dirname`. And read the staged file list before pushing, not after.
+
+- **A bug in its JURISDICTION, not in the mechanism (2026-08-23).** Four instances in one session,
+  and none was a broken mechanism — each was a competent mechanism pointed at something it did not
+  own. That is why they survive review: they read as correct, because they are, just about the
+  wrong subject.
+
+  | Instance | Correct about | Claimed authority over |
+  |---|---|---|
+  | Audit log labelled `immutable · Live` | that append-only was intended | a DB guarantee that was only a GRANT |
+  | Harness asserting slot geometry | the five properties worth checking | an IA it would have been *handed* rather than read |
+  | Test requiring absence body length + banning "coming soon" | constraints on a CC draft | how a **design-owned surface** reads |
+  | Design screen map: Catalog/Sales have "no repo substrate" | the surfaces and their contract | **the contents of a repo the design side cannot see** |
+
+  The pattern runs in BOTH directions — the fourth is a design artifact reaching into
+  implementation, the third an implementation test reaching into design. So the question is not
+  ownership-of-role, it is scope-of-claim.
+
+  **The question to ask of any new guard, test, label, or doc claim:** *what does this claim
+  authority over, and do we own that?* "Is it correct?" does not catch this class, because the
+  answer is usually yes.
+
+- **A one-sided negative control proves agreement, not derivation (2026-08-23).** A contract test
+  that reads a source and compares must be falsified from BOTH sides. Editing our copy and watching
+  it fail proves only that the two agree today. Editing **the source** and watching it fail is what
+  proves the test is reading the source rather than agreeing with itself — a test that had silently
+  stopped reading the file would pass the first control forever. Applies to every contract test:
+  the IA-vs-pack slots test, the absence-copy test, and any that follow.
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same
