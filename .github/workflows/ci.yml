@@ -135,6 +135,14 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:pg-tokens
 
+      # A ported surface is only ported if it was ported from v3. A handoff once counted 370KB of
+      # unmounted surface as one class and recommended mounting all of it; 232KB cited the pack
+      # ruled dead, so mounting it would have installed the retired design through the fix meant
+      # to remove it. This keeps those files stripped and catches the next one.
+      - name: Pack lineage (no unreachable dead-pack surfaces)
+        if: ${{ !cancelled() }}
+        run: npm run lint:pack-lineage
+
       - name: ESLint (changed src)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt ./node_modules/.bin/eslint

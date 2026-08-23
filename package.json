@@ -28,7 +28,8 @@
     "harness:serve": "vite --config scripts/live-drive/harness/mount/vite.config.ts",
     "lint:alias-ratchet": "node scripts/ci/alias-ratchet.mjs",
     "lint:pg-tokens": "node scripts/ci/pg-token-parity.mjs",
-    "dev-loop": "node scripts/live-drive/dev-loop.mjs"
+    "dev-loop": "node scripts/live-drive/dev-loop.mjs",
+    "lint:pack-lineage": "node scripts/ci/pack-lineage.mjs"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",
