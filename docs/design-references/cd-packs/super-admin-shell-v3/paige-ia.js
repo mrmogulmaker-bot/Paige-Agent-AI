@@ -54,6 +54,9 @@
   ];
 
   P.SUMMONS = {
+    offer: { title: 'New offering', deck: 'What you sell, as a record. A name and a price make it sellable; a channel makes it sold. Everything else is how it gets delivered.', foot: 'Nothing here charges anybody. The offering is what a campaign binds to and what a sale line points at \u2014 money movement is an adapter, configured in Sales.', rows: [] },
+    campschema: { title: 'What you can change', deck: 'Campaigns, the catalogue and Sales all read from one schema. Rename what things are called, choose what a card shows, and keep your own categories and stages \u2014 the surfaces follow.', foot: 'Schema, not code. Every change here is per-tenant and reversible, and nothing about it is enforced by the shell \u2014 it is read on every render, so a rename lands the moment you type it.', rows: [] },
+    segment: { title: 'Segment', deck: 'A segment is a rule read as words. Describe it and she writes the clauses, or add them one at a time \u2014 either way the rule is the same object, and the count is resolved when it is read.', foot: 'Clauses over the book resolve here against the records in People. Clauses over thread history, meetings and outbound have no substrate at operator scope, so a rule that uses one is saved and left unsized rather than guessed.', rows: [] },
     finding: { title: 'Finding', deck: 'One at a time, worst severity first, then registry priority. The drafted fix is hers; the approval is yours.', foot: 'Approving records resolution=approved and resolved_at on the finding row. An operator finding is recorded directly \u2014 the tenant action bus is NOT NULL by construction, so operator findings cannot file there.', rows: [] },
     pipehealth: { title: 'Pipeline health', deck: 'What the board cannot show while you are working it: what has stalled, what advanced without its evidence, and what cannot be measured at all.', foot: 'Conversion, velocity and loss reasons all read from stage-change history. Nothing records a transition today, so they read \u2014 rather than a benchmark nobody measured. That history is the single largest thing this surface needs from Stage 3.', rows: [] },
     campstep: { title: 'Campaign step', deck: 'One step of a motion — what it says, when it goes, and whose word it needs. A step is its own act, so halting between steps stops what has not gone without retracting what has.', foot: 'Representative. The step body, its timing and its grant are design; the send itself would route through the existing seam. Nothing here is scheduled against a real recipient.', rows: [] },
@@ -219,7 +222,7 @@
     campaigns: {
       kicker: 'Outbound \u2014 platform growth', title: 'Campaigns', s: PART,
       deck: 'How relationships move forward: the motions that move them and the pipeline they move through. A campaign\u2019s motion is its step rail \u2014 there is no separate sequence to keep, and a motion you want to reuse is a Template in the Marketplace.',
-      views: ['Active', 'Pipeline', 'Social', 'Performance'],
+      views: ['Active', 'Catalog', 'Sales', 'Pipeline', 'Social', 'Performance'],
       kpis: [
         { label: 'Active campaigns', value: '\u2014', note: 'Not read at operator scope', dim: true },
         { label: 'Motions running', value: '2', note: 'Representative' },
@@ -632,6 +635,84 @@
 
   // Segments — saved views of the People book. A rule is stored as readable clauses so
   // she can say it back, reason about it, and build one from a sentence.
+  // The clause vocabulary. Declarative on purpose: a clause is a field, an operator and a
+  // value, which is what a segment must become server-side. The predicates that resolve
+  // them against the book live in the shell, not here.
+  P.SEG_FIELDS = [
+    { id:'kind',  cat:'Who they are', label:'Record type',   verb:['is','is not'],   live:true,
+      values:[['person','a person'],['company','a company']] },
+    { id:'life',  cat:'Who they are', label:'Lifecycle',     verb:['is','is not'],   live:true,
+      values:[['client','a client'],['contact','a client contact'],['prospect','a prospect'],['partner','a partner']] },
+    { id:'owner', cat:'Who they are', label:'Owner',         verb:['is','is not'],   live:true,
+      values:[['you','owned by you'],['paige','owned by PAIGE'],['none','unowned']] },
+    { id:'touch', cat:'Activity',     label:'Last touch',    verb:['is','is not'],   live:true,
+      values:[['today','touched today'],['older','last touched over a day ago']] },
+    { id:'portal',cat:'Reach',        label:'Portal',        verb:['is','is not'],   live:true,
+      values:[['on','on the portal'],['off','not invited to the portal']] },
+    { id:'vault', cat:'Reach',        label:'Vault',         verb:['has','has no'],  live:true,
+      values:[['shared','vault items shared directly'],['company','vault access through their company']] },
+    { id:'ein',   cat:'Records',      label:'EIN',           verb:['has','has no'],  live:true,
+      values:[['on','an EIN on file']] },
+    { id:'agree', cat:'Records',      label:'Agreement',     verb:['has','has no'],  live:true,
+      values:[['on','a signed agreement']] },
+    { id:'thread30', cat:'Activity',  label:'Recent thread', verb:['has','has no'],  live:false,
+      why:'Thread history is not readable at operator scope \u2014 Stage 3',
+      values:[['on','a conversation in the last 30 days']] },
+    { id:'reply', cat:'Activity',     label:'Inbound reply', verb:['has','has no'],  live:false,
+      why:'Thread history is not readable at operator scope \u2014 Stage 3',
+      values:[['on','at least one inbound reply']] },
+    { id:'meeting', cat:'Activity',   label:'Meeting',       verb:['has','has no'],  live:false,
+      why:'No calendar source is connected \u2014 Stage 3',
+      values:[['on','a meeting on record']] },
+    { id:'outbound', cat:'Activity',  label:'Outbound',      verb:['has','has no'],  live:false,
+      why:'Outbound history is not recorded yet \u2014 Stage 3',
+      values:[['on','outbound on record']] }
+  ];
+
+  // What she listens for when a segment is described in words. neg marks a phrase that
+  // carries its own negation, so \u201cquiet\u201d becomes has no rather than has.
+  P.SEG_PHRASES = [
+    { say:'client', f:'life', v:'client' },
+    { say:'contact', f:'life', v:'contact' },
+    { say:'prospect', f:'life', v:'prospect' },
+    { say:'lead', f:'life', v:'prospect' },
+    { say:'partner', f:'life', v:'partner' },
+    { say:'reseller', f:'life', v:'partner' },
+    { say:'compan', f:'kind', v:'company' },
+    { say:'people', f:'kind', v:'person' },
+    { say:'person', f:'kind', v:'person' },
+    { say:'mine', f:'owner', v:'you' },
+    { say:'i own', f:'owner', v:'you' },
+    { say:'she owns', f:'owner', v:'paige' },
+    { say:'unowned', f:'owner', v:'none' },
+    { say:'nobody owns', f:'owner', v:'none' },
+    { say:'ein', f:'ein', v:'on' },
+    { say:'tax id', f:'ein', v:'on' },
+    { say:'agreement', f:'agree', v:'on' },
+    { say:'signed', f:'agree', v:'on' },
+    { say:'portal', f:'portal', v:'on' },
+    { say:'vault', f:'vault', v:'shared' },
+    { say:'quiet', f:'thread30', v:'on', neg:true },
+    { say:'gone quiet', f:'thread30', v:'on', neg:true },
+    { say:'thread', f:'thread30', v:'on' },
+    { say:'conversation', f:'thread30', v:'on' },
+    { say:'spoken', f:'thread30', v:'on' },
+    { say:'heard from', f:'thread30', v:'on' },
+    { say:'30 days', f:'thread30', v:'on' },
+    { say:'a month', f:'thread30', v:'on' },
+    { say:'replied', f:'reply', v:'on' },
+    { say:'reply', f:'reply', v:'on' },
+    { say:'answered', f:'reply', v:'on' },
+    { say:'met', f:'meeting', v:'on' },
+    { say:'meeting', f:'meeting', v:'on' },
+    { say:'booked', f:'meeting', v:'on' },
+    { say:'contacted', f:'outbound', v:'on' },
+    { say:'outbound', f:'outbound', v:'on' },
+    { say:'reached out', f:'outbound', v:'on' },
+    { say:'touched today', f:'touch', v:'today' },
+    { say:'today', f:'touch', v:'today' }
+  ];
+
   P.SEGMENTS = [
     { id:'s1', name:'Clients with no thread in 30 days', count:2, of:4, kind:'Clients',
       clauses:[['is','a client'],['has no','conversation in the last 30 days']],
@@ -686,8 +767,113 @@
     done:      { label: 'Done',      tone: 'var(--pg-faint)',    active: 0, note: 'Motion finished' }
   };
 
+  // ── What is actually being sold ───────────────────────────────────────────
+  // A campaign with no offer is a brand campaign, which is legitimate. A campaign with
+  // one is bound to a row here, and the binding is what lets Active show money.
+  P.OFFER_KINDS = {
+    product:  { label: 'Product',  glyph: 'M2.8 5.4 8 2.8l5.2 2.6v5.2L8 13.2l-5.2-2.6z M2.8 5.4 8 8l5.2-2.6 M8 8v5.2', note: 'Shipped as a thing' },
+    service:  { label: 'Service',  glyph: 'M5.2 4.6a2.8 2.8 0 1 0 5.6 0a2.8 2.8 0 1 0-5.6 0 M2.8 13.2c0-2.5 2.3-4 5.2-4s5.2 1.5 5.2 4', note: 'Delivered by people' },
+    retainer: { label: 'Retainer', glyph: 'M8 2.6a5.4 5.4 0 1 0 5.1 3.6 M13.4 2.6v3.6H9.8 M8 5.6V8l2 1.4', note: 'Recurring scope, not a fixed deliverable' },
+    license:  { label: 'License',  glyph: 'M4.4 7.2h7.2v6H4.4z M6.2 7.2V5a1.8 1.8 0 0 1 3.6 0v2.2', note: 'Access, not delivery' }
+  };
+  P.OFFER_CATEGORIES = ['Platform', 'Enablement', 'Advisory'];
+  P.OFFER_STATES = {
+    selling: { label: 'Selling', tone: 'var(--pg-positive)', note: 'On sale and reachable from at least one channel' },
+    quiet:   { label: 'Quiet',   tone: 'var(--pg-gold-deep)', note: 'Priced and ready, nothing sells it right now' },
+    draft:   { label: 'Draft',   tone: 'var(--pg-violet)',   note: 'Not sellable \u2014 price or fulfilment unfinished' },
+    retired: { label: 'Retired', tone: 'var(--pg-faint)',    note: 'Off sale. Existing terms stand' }
+  };
+  P.CATALOG = [
+    { id: 'o1', name: 'Standalone tenancy', kind: 'product', cat: 'Platform', state: 'selling',
+      price: 490, period: 'monthly', unit: 'per tenant',
+      pitch: 'One tenant, her included, on the operator substrate.',
+      tiers: [
+        ['Standalone', 490, 'monthly', '1 tenant \u00b7 12 seats'],
+        ['Agency', 1900, 'monthly', 'parent \u00b7 4 sub-tenants'],
+        ['Enterprise', null, 'quoted', 'unlimited seats, with an SLA']
+      ],
+      where: ['Marketplace storefront', 'Operator outreach', 'Reseller intent'],
+      fulfil: [['What', 'A provisioned tenant with her installed'], ['Who', 'PAIGE provisions, you countersign'], ['When', 'Same day as signature']] },
+    { id: 'o2', name: 'Reseller programme', kind: 'license', cat: 'Platform', state: 'selling',
+      price: 0, period: 'revenue share', unit: '20% of tenant billing',
+      pitch: 'They sell tenancies under their own brand and keep a cut.',
+      tiers: [['Reseller', 0, 'revenue share', '20% of what they bill']],
+      where: ['Reseller intent', 'Marketplace storefront'],
+      fulfil: [['What', 'A parent tenancy and a rate card'], ['Who', 'You approve every reseller by hand'], ['When', 'After a call']] },
+    { id: 'o3', name: 'Migration', kind: 'service', cat: 'Enablement', state: 'selling',
+      price: 2400, period: 'one-time', unit: 'per tenant',
+      pitch: 'Their book, their threads and their pipeline moved in without a gap.',
+      tiers: [['Standard', 2400, 'one-time', 'up to 5,000 records'], ['Large', 6800, 'one-time', 'no record ceiling']],
+      where: ['Operator outreach'],
+      fulfil: [['What', 'Records mapped, imported and reconciled'], ['Who', 'You, with her doing the mapping'], ['When', 'Two weeks from kickoff']] },
+    { id: 'o4', name: 'Fractional operator', kind: 'retainer', cat: 'Advisory', state: 'quiet',
+      price: 3500, period: 'monthly', unit: 'per month',
+      pitch: 'We run the platform with them until they can run it alone.',
+      tiers: [['Half', 3500, 'monthly', 'two days a week'], ['Full', 6500, 'monthly', 'four days a week']],
+      where: [],
+      fulfil: [['What', 'Standing operator hours and a weekly read'], ['Who', 'You'], ['When', 'Monthly, rolling']] },
+    { id: 'o5', name: 'Agent build', kind: 'service', cat: 'Enablement', state: 'draft',
+      price: null, period: 'quoted', unit: '\u2014 not priced',
+      pitch: 'A capability built to their process and installed on their tenant.',
+      tiers: [],
+      where: [],
+      fulfil: [['What', 'A scoped capability, reviewed before install'], ['Who', 'Her, under your grant'], ['When', '\u2014 no delivery record yet']] }
+  ];
+
+  // ── Sales ─────────────────────────────────────────────────────────────────
+  // Closed lines. Amounts are numbers so every figure on the surface is a sum, never
+  // a typed total. state: booked | refunded | pending
+  P.SALES_STAGES = ['Quoted', 'Verbal', 'Signed', 'Invoiced', 'Paid'];
+  P.CLOSE_REASONS = ['Won', 'Price', 'Timing', 'No decision', 'Lost to in-house'];
+  P.SALES_TARGET = { period: 'this quarter', target: 12000, note: 'Set by hand. Nothing enforces it \u2014 it is a line on a chart, not a gate.' };
+  P.SALES = [
+    { id: 'sl1', when: '4 Jul',  day: 4,  offer: 'o1', tier: 'Standalone', amount: 490,  state: 'booked',   stage: 'Paid',     camp: 'Operator outreach', who: 'AUTHORIZED TENANT \u00b7 0f3a' },
+    { id: 'sl2', when: '11 Jul', day: 11, offer: 'o3', tier: 'Standard',   amount: 2400, state: 'booked',   stage: 'Paid',     camp: 'Operator outreach', who: 'AUTHORIZED TENANT \u00b7 0f3a' },
+    { id: 'sl3', when: '2 Aug',  day: 33, offer: 'o1', tier: 'Agency',     amount: 1900, state: 'booked',   stage: 'Paid',     camp: 'Reseller intent',   who: 'AUTHORIZED TENANT \u00b7 agency' },
+    { id: 'sl4', when: '9 Aug',  day: 40, offer: 'o2', tier: 'Reseller',   amount: 0,    state: 'booked',   stage: 'Signed',   camp: 'Reseller intent',   who: 'PARTNER \u00b7 design fixture C' },
+    { id: 'sl5', when: '14 Aug', day: 45, offer: 'o1', tier: 'Standalone', amount: 490,  state: 'refunded', stage: 'Paid',     camp: '\u2014 direct',       who: 'PROSPECT \u00b7 design fixture A' },
+    { id: 'sl6', when: '19 Aug', day: 50, offer: 'o3', tier: 'Large',      amount: 6800, state: 'pending',  stage: 'Invoiced', camp: 'Operator outreach', who: 'AUTHORIZED TENANT \u00b7 b204' }
+  ];
+
+  // The processor seam. Agnostic by construction: the platform describes what it needs
+  // from a merchant provider, and an adapter satisfies it. Stripe is the first adapter,
+  // not the interface.
+  P.PROCESSOR = {
+    deck: 'Sales records are ours. Money movement is an adapter, so the provider can change without touching a single sale.',
+    needs: [
+      ['Charge once', 'One-time and quoted work', 'Adapter'],
+      ['Charge on a period', 'Monthly and annual billing', 'Adapter'],
+      ['Refund a charge', 'Reverses the line, keeps the record', 'Adapter'],
+      ['Report a payout', 'When our money actually lands', 'Adapter'],
+      ['Split a payment', 'Marketplace only \u2014 never tenant sales', 'Stripe Connect']
+    ],
+    adapters: [
+      { name: 'Stripe', state: 'Wired at operator scope', tone: 'var(--pg-positive)', note: 'The platform operator account. Connect is required only for the marketplace split, and that ruling is still open.' },
+      { name: 'Any other merchant provider', state: 'Pluggable', tone: 'var(--pg-gold-deep)', note: 'Satisfy the five needs above and the surface does not change. Planned before general availability.' }
+    ],
+    foot: 'No tenant sale is ever split. Revenue share exists in the marketplace and nowhere else.'
+  };
+
+  // ── The part a tenant owns ────────────────────────────────────────────────
+  // Everything here is schema, not code: a tenant renames it, reorders it, or turns it
+  // off, and the surfaces above read from the result.
+  P.CARD_FACTS = [
+    { id: 'step',   label: 'Step',    note: 'Position in the motion' },
+    { id: 'opened', label: 'Opened',  note: 'Opens, where a channel reports them' },
+    { id: 'reach',  label: 'Reached', note: 'How many the motion has touched' },
+    { id: 'grant',  label: 'PAIGE',   note: 'How much room she has on this campaign' },
+    { id: 'offer',  label: 'Sells',   note: 'The offer this campaign is bound to' },
+    { id: 'booked', label: 'Booked',  note: 'Money attributed to this campaign' }
+  ];
+  P.CAMP_SCHEMA = {
+    definition: 'Active = audience bound \u00b7 motion unfinished \u00b7 not halted',
+    facts: ['step', 'opened', 'reach', 'grant'],
+    density: 'full',
+    stageWord: 'Step'
+  };
+
   P.CAMPAIGNS = [
-    { id: 'c6', name: 'Reseller intent', kind: 'seo', state: 'running',
+    { id: 'c6', name: 'Reseller intent', kind: 'seo', state: 'running', offer: 'o2',
       channel: 'Published', segment: '\u2014 no audience, by definition', grant: 'Draft only',
       reach: null, replies: null, started: '4 weeks ago',
       steps: [
@@ -705,7 +891,7 @@
         { name: 'Republish the glossary', when: 'not started', state: 'pending', body: 'Link each term to its explainer once they are live.' }
       ] },
 
-    { id: 'c1', name: 'Operator outreach', kind: 'outbound', state: 'running',
+    { id: 'c1', name: 'Operator outreach', kind: 'outbound', state: 'running', offer: 'o1',
       channel: 'Email', segment: 'Never contacted', grant: 'Ask first',
       opened: 'day 6 of 11', reach: '\u2014',
       steps: [

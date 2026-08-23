@@ -1,6 +1,6 @@
 # PAIGE Super Admin — design handoff
 
-**From:** Claude Design · **To:** Claude Code · **Date:** 2026-08-23
+**From:** Claude Design · **To:** Claude Code · **Date:** 2026-08-23 (rev 2)
 **Source of truth for this console.** Owner ruling 2026-08-18, recorded in
 `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §65 R4 slice 1b:
 
@@ -16,6 +16,7 @@
 | `PAIGE Super Admin Shell v3.dc.html` | The shell. Opens in a browser, no build step. Six destinations, both themes, every surface interactive. |
 | `paige-ia.js` | Every catalogue the shell reads — destinations, views, roles, capabilities, obligations, automations, triggers, actions, integrations, setup steps, mind inputs. **This is the data contract.** |
 | `mind-brain.js` | The Mind substrate renderer (2,639 neurons, 5,215 synapses, saltatory conduction). |
+| `docs/handoff/campaigns-catalog-sales-spec.md` | **Read this second.** Catalog, Sales, the tenant schema, the segment builder, and the two patterns that now apply shell-wide (bottom rail, control chrome). |
 | `docs/handoff/tenant-redesign-stage2-design-package.md` | Tokens, motion spec, state matrices, keyboard, accessibility. |
 | `docs/brand/paige-brand-identity.md` | Command Mark geometry, palette, motion sequence. |
 | `github.md` | What in the repo each surface was built from, and the defects found while reading it. |
@@ -24,6 +25,24 @@ Open the `.dc.html` file directly. Everything works: drag the pipeline, orbit th
 brain, run the command bar, switch themes, fold the panes.
 
 ---
+
+## What changed since rev 1
+
+Four things landed after the six-slot shell was signed off. All are in the
+shell; the spec for each is in `campaigns-catalog-sales-spec.md`.
+
+1. **Campaigns is six views** — `Active · Catalog · Sales · Pipeline · Social ·
+   Performance`. Campaigns had no idea what was being sold; Catalog supplies
+   the offering, Sales supplies the lines, Active shows the join. **View
+   indices moved** — route by name.
+2. **A tenant schema.** The definition line, the word for a step, card density,
+   which facts a card carries, every campaign kind and state name, plus the
+   tenant's own categories, sales stages and close reasons. Read on every
+   render from per-tenant JSON, editable inline and from a single editor.
+3. **Relationships → Segments builds segments** — describe one in a sentence
+   and she writes the clauses, or add them one at a time. Clauses are
+   declarative because they become a `WHERE` clause.
+4. **`SUPER ADMIN` → `PLATFORM OPERATOR`**, in the wordmark and as a tier name.
 
 ## The fidelity contract
 
@@ -86,6 +105,24 @@ region hues, which have distinct light-mode values because a computed darkening
 desaturates. Contrast is AA in both — verify against `--pg-env`, the tightest
 ground, not `--pg-canvas`.
 
+### 11. A state that can be derived is never chosen.
+An offering's state is `no price → draft`, `priced with no channel → quiet`,
+`priced with a channel → selling` — computed on create and on read. A segment
+with a dead clause is unsized, not estimated. A campaign's effective grant is
+`min(own, ceiling)`. **Do not ship a status picker beside the fields that
+determine the status** — the two will disagree and the picker will win.
+
+### 12. A worked surface closes with a rail, not a clipped scroll region.
+`scrollbar-gutter: stable`, a 20px bottom mask landing on 22px of padding, and
+a one-line `flex: none` rail carrying a legend and a derived tally. Long-form
+footnotes stay inside the scroll region. A rail that can wrap eats the surface
+it is meant to close — this was hit and fixed during design.
+
+### 13. Customization may not invent data.
+The schema renames things, reorders them, and turns them off. Turning on a fact
+with no substrate shows an em-dash. §13 survives the customization layer, which
+is exactly where that kind of honesty usually gets dropped.
+
 ---
 
 ## How to check fidelity
@@ -128,11 +165,33 @@ marketplace payout (platform→publisher). Only the third waits on Stripe Connec
 
 ---
 
+## Rulings closed in this revision
+
+**Payment processor: agnostic.** `P.PROCESSOR` declares the interface as five
+needs a merchant provider must satisfy; Stripe is the first adapter, wired at
+operator scope, and the platform expects to move to another provider soon after
+general availability. Build the adapter boundary now.
+
+**No tenant sale is ever split.** Revenue share exists in the marketplace and
+nowhere else. `Split a payment` is the only need marked Stripe Connect. Do not
+build a split path into tenant billing.
+
+**A campaign's binding to an offering is optional.** Brand campaigns exist and
+must read as such — `— brand, sells nothing`, not a blank.
+
 ## Open owner rulings
 
-1. **Stripe Connect** blocks marketplace publisher payouts. Either the money
-   spine moves up the order, or the marketplace ships first-party-only.
+1. **Stripe Connect** still blocks marketplace publisher payouts — the one
+   place a split is legitimate. Either the money spine moves up the order, or
+   the marketplace ships first-party-only.
 2. **Sub-account credit wallet** — parent agency's, or their own? Changes the
    foreign key in Provisioning.
 3. **Ten capabilities, not eleven** — an earlier doc said eleven. Name the
    eleventh if one was intended.
+4. **Sales attribution.** A line carries the campaign it closed under, recorded
+   by hand. A real attribution needs send-to-conversion history, which is the
+   same missing join that dims two Analytics charts. Confirm whether Stage 3
+   records it.
+5. **Sales target.** Held per period as a hand-set number with nothing
+   enforcing it. Confirm whether it becomes a real object (per period, per
+   person, per offering) or stays a line on a chart.

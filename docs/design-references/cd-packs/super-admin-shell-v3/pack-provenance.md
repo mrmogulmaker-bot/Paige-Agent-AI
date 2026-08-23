@@ -2,10 +2,18 @@ repo: mrmogulmaker-bot/Paige-Agent-AI
 branch: main
 
 ## Last sync
-date: 2026-08-23T02:10:30Z
+date: 2026-08-23T04:05:00Z
 tree: 1c557a873e8b
 
 ### Updated in this project
+- **Campaigns is six views** — Active · Catalog · Sales · Pipeline · Social · Performance. Campaigns recorded activity but never money, because nothing on the platform recorded an offering. `P.CATALOG` supplies the object (kind, price, period, unit, tiers, channels, fulfilment), `P.SALES` supplies the lines, and a campaign's optional `offer` binding is the join that lets Active show `Sells` and `Booked`.
+- **Sales is entirely derived** — booked $4,790, refunded −$490, net $4,300, in flight $6,800, 36% of a $12,000 target, all summed from six lines. Tables by offering, by campaign, deals in flight read off `DEST.campaigns.board.deals`, and the tenant's close reasons.
+- **Processor seam is agnostic per owner ruling** — `P.PROCESSOR` declares five needs a merchant provider must satisfy; Stripe is the first adapter (wired at operator scope), any other provider is pluggable. `Split a payment` is the only need marked Stripe Connect, because no tenant sale is ever split.
+- **A tenant schema** (`P.CAMP_SCHEMA`, `P.CARD_FACTS`) — definition line, the word for a step, card density, which six facts a card carries, renames for all four campaign kinds and five states, and the tenant's own categories, sales stages and close reasons. Read on every render; inline `Adjust` doors on Active, Catalog and the Sales rail open one editor. A fact with no substrate still shows an em-dash.
+- **Relationships → Segments builds segments** — `P.SEG_FIELDS` (12 fields, 8 live) and `P.SEG_PHRASES` let a sentence become clauses with negation cues flipping polarity; a segment with a dead clause saves unsized rather than estimated, matching the `s4` fixture.
+- **New offering** creates one for real, with the state derived rather than picked: no price is a draft, priced with no channel is quiet, priced with a channel is selling.
+- Two patterns now shell-wide: the **bottom rail** (masked scroll tail into a one-line `flex:none` rail carrying a legend and a derived tally) and the **control chrome** (raised fill, `--pg-lift-1` rim, champagne hover underline with a 1px rise, `--pg-inset` press). Vibe Studio is the one violet-filled control and now stands down while a summon is open — the view-tab row's deliberate `z-index: 12` was floating it through panels.
+- `SUPER ADMIN` → **`PLATFORM OPERATOR`** in the wordmark and as a tier name in the Studio lock, the Mind's write attribution and the Team defaults.
 - Settings → **Capabilities rebuilt from the shipped autonomy substrate** — `tenant_tool_autonomy` + `resolve_tool_autonomy` + `list_tool_autonomy` (migrations 20260711200000, 20260711220000, 20260716171236). 27 tools in 10 categories on the real three modes (auto | confirm | off), not an invented scale; the five-level Trust Compass now reads as a ceiling over those three.
 - Surfaced the schema guardrails as UI: `send_via_approval ⇒ requires_approval` and `auto ⇒ executor IN (record_only, workflow)` make **auto-send unrepresentable**, so autopilot is struck through on the three tools that reach a person.
 - Settings gained **Vault** — the Business Vault (owner-locked Pillar 2), built from `docs/PAIGE-MASTER-PROJECT-REFERENCE.md` §2 and the §65 back-menu spec that names Platform Vault. 20 obligations in 6 groups, each carrying who it is owed to, its clock, its evidence, and an L1–L4 tier deciding whether she may handle it or a professional must.
@@ -39,6 +47,10 @@ tree: 1c557a873e8b
 | — Settings · Platform | `docs/doctrine/tier-matrix.md` §§56/60/61 (canonical six, standing default, owner-locked cells), `src/lib/tier/tierFeatures.ts` (TIER_FEATURE_BASELINE) |
 | — Campaigns · Vibe Studio door | `docs/architecture/CANONICAL-SYSTEM-ARCHITECTURE-2026-08-08.md` (Studio route map), `docs/doctrine/tier-matrix.md` §61 (studio tier lock), `docs/DONE.md` #408 (Growth hub absorbing Campaigns + Studio) |
 | — Relationships · Conversations | `src/agency/conversations.tsx`, `src/agency/fixtures.ts` (CHANNELS, THREADS, CONV_CHANNEL_PERF), `src/components/clients/ConversationsSubTabs.tsx` |
+| — Campaigns · Catalog + Sales | design-led; no repo substrate exists yet. Contract in `paige-ia.js` (`CATALOG`, `OFFER_KINDS`, `OFFER_STATES`, `SALES`, `SALES_STAGES`, `CLOSE_REASONS`, `SALES_TARGET`, `PROCESSOR`) |
+| — Campaigns · Adjust (tenant schema) | design-led; `CAMP_SCHEMA` + `CARD_FACTS` in `paige-ia.js` — per-tenant JSON server-side |
+| — Relationships · Segments builder | `SEG_FIELDS` + `SEG_PHRASES` in `paige-ia.js`; predicates in the shell, since a predicate does not survive becoming SQL |
+| docs/handoff/campaigns-catalog-sales-spec.md | this turn's surfaces, written for CC |
 | docs/handoff/tenant-redesign-stage2-design-package.md | the above, kept in sync each build turn |
 | docs/brand/paige-brand-identity.md | owner-supplied board; **held** for reconciliation with Cowork's doctrine layer (§18 one home) |
 
@@ -55,7 +67,15 @@ tree: 1c557a873e8b
 - Facial recognition is out of scope for Stage 3 — the asset store must not be built around
   faceprints. Logo-file or monogram only.
 
+## Rulings closed 2026-08-23
+- **Payment processor: agnostic.** The interface is the five needs; Stripe is the first adapter. Build the boundary now, expect the provider to change before GA.
+- **No tenant sale is ever split.** Revenue share exists in the marketplace and nowhere else.
+- **A campaign's offering binding is optional.** Brand campaigns exist and read as `— brand, sells nothing`.
+- **Tenant-adjustable schema, both inline and in one editor** — and it may rename, reorder and hide, but never invent a figure.
+
 ## Open rulings
+- **Sales attribution** is recorded on the line by hand. A real one needs send-to-conversion history — the same missing join that dims two Analytics charts.
+- **Sales target** is a hand-set number per period with nothing enforcing it. Confirm whether it becomes an object (per period, per person, per offering).
 - Six rail slots, not five (the two-books ruling created the sixth).
 - What a deal points at now Pipeline sits under Campaigns: tenant, relationship, or a nullable pair.
 - Sandbox / web search / browser have no substrate at all — palette stubs per owner ruling.
