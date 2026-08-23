@@ -15,6 +15,7 @@
  *             216px | minmax(0,1fr) | 0px                       ← spine collapsed
  *             transition: grid-template-columns 200ms cubic-bezier(.22,1,.36,1)
  *   canvas    grid-template-rows: 58px minmax(0,1fr)
+ *             grid-template-columns: minmax(320px,1fr) minmax(0,52%)  ← a summon in `split`
  *
  * RULE 4 IS SYSTEMATIC HERE, NOT SPOT-CHECKED. Every grid and flex child carries an explicit
  * `min-w-0` (and `min-h-0` wherever it is a vertical child), because the browser's `auto`
@@ -22,12 +23,10 @@
  * wide table and the track blows out at a width nobody tests. That defect landed six times
  * during design; the fix is a rule applied to every child, not to the ones that looked risky.
  *
- * ROUND 1 IS GEOMETRY. It wires no data. The canvas renders the slot's views as its own tab row
- * and, where the IA holds an ABSENCE, renders that absence verbatim; a slot without one renders
- * an empty region reserved for the surface that lands in a later round. Nothing here invents a
- * figure, a tenant name, or an empty-state paragraph (§13 — and `src/operator/CLAUDE.md`: the
- * pack's prose is design copy, and a stand-in paragraph where the pack draws a surface is not
- * the design).
+ * THE COMMAND ROW IS THE COMMAND BAR'S HOME (L128-L159). The 58px band carries the bar, its
+ * palette and the fold-spine control — the bar spans the row (`flex:1;min-width:0`, L129) and
+ * the palette is a dropdown anchored to it, never a centred modal. See `CommandBar` for the
+ * markup and `SummonedSurface` for what a palette row opens.
  *
  * §58 — WHAT THIS ROUND DOES NOT CARRY YET, said plainly rather than left to be discovered. The
  * seventeen-branch console's live surfaces (Fleet Console, Systems Check, History, Team Pulse,
@@ -37,13 +36,17 @@
  * `src/operator/legacy/OperatorLegacyApp.tsx` — nothing was deleted — but while this shell owns
  * `/operator/*` they are NOT reachable. Wiring them into the slots is the next round's work.
  */
-import { useCallback, useEffect, useState } from "react";
-import { NavLink, Navigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { NavLink, Navigate, useParams, useSearchParams } from "react-router-dom";
 import { useReducedMotion } from "framer-motion";
+import { AgentPresenceProvider, useAgentPresence } from "@/components/ui/paige";
 import { OPERATOR_SLOTS } from "@/operator/ia/operatorIA";
 import {
   canonicalPath, resolveOperatorAddress, slotPath, viewPath, type OperatorAddress,
 } from "@/operator/shell/operatorAddress";
+import CommandBar, { type CommandState } from "@/operator/shell/CommandBar";
+import SummonedSurface, { useCanvasWidth, type WsMode } from "@/operator/shell/SummonedSurface";
+import { isCapabilityId, type CapabilityId } from "@/operator/shell/commandPalette";
 import ScopeBand from "@/operator/shell/ScopeBand";
 import { PLATFORM_SCOPE } from "@/operator/shell/scopeStates";
 import SlotRail from "@/operator/shell/SlotRail";
@@ -88,9 +91,39 @@ function useMediaQuery(query: string): boolean {
   return matches;
 }
 
+/**
+ * ⌘K HAS EXACTLY ONE OWNER PLATFORM-WIDE, AND THIS IS NOT A SECOND ONE (§18).
+ *
+ * The owner is `AgentPresenceProvider` (`src/components/ui/paige/AgentPresenceContext.tsx`),
+ * whose effect is the only `keydown` listener on the platform that claims ⌘K. It was mounted
+ * solely in `AdminLayout`, a tree `/operator/*` never enters — so the operator console had no
+ * ⌘K at all, and the previous round deliberately left the shortcut unbound rather than register
+ * a rival listener here.
+ *
+ * The route taken: MOUNT THE EXISTING PROVIDER over the operator subtree and let its shared
+ * `launcherOpen` state drive the pack's palette. The keydown registration, the toggle semantics
+ * and the state all stay in the one shared home; what differs per shell is only WHAT the open
+ * state renders — `CommandLauncher` under `AdminLayout`, the pack's dropdown here. No second
+ * listener, no second palette implementation, no fork of the context.
+ *
+ * The alternative — lifting the launcher itself into a shared module — would have meant editing
+ * `src/components/ui/paige/**`, which is outside this change's file scope; it is also the larger
+ * change, since `CommandLauncher` is a Radix `CommandDialog` and the pack's palette is a
+ * dropdown anchored to the bar. Nothing here forecloses it: this shell reads the context, so a
+ * later lift changes where the state lives without touching the operator surfaces.
+ */
 export default function OperatorShell() {
+  return (
+    <AgentPresenceProvider launcherEnabled hasChatBody={false}>
+      <OperatorShellBody />
+    </AgentPresenceProvider>
+  );
+}
+
+function OperatorShellBody() {
   const params = useParams();
   const address = resolveOperatorAddress(params.section, params["*"] ?? "");
+  const [search] = useSearchParams();
 
   const reduce = useReducedMotion();
 
@@ -114,6 +147,78 @@ export default function OperatorShell() {
     () => typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
   );
 
+  // The palette's open state is the shared launcher state — see the note on this file's default
+  // export. `command` and `mark` are the bar's own presentation of it (`cmd` L10633, `markState`).
+  const { launcherOpen: paletteOpen, setLauncherOpen: setPaletteOpen } = useAgentPresence();
+  const [command, setCommand] = useState<CommandState>("rest");
+  const [mark, setMark] = useState<"dormant" | "charged">("dormant");
+
+  const [summon, setSummon] = useState<CapabilityId | null>(null);
+  const [wsMode, setWsMode] = useState<WsMode>("split");
+  const [detachBlocked, setDetachBlocked] = useState(false);
+
+  /**
+   * The two triggers set the bar differently, and the pack is explicit about it.
+   * `togglePalette` (L10725) returns `command`/`mark` to rest when it CLOSES; the ⌘K branch
+   * (L4352) sets `focus`/`charged` on BOTH halves of its toggle. The provider owns the keydown,
+   * so the two paths are told apart by which one ran: the bar's own click marks itself first.
+   */
+  const fromBar = useRef(false);
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) { mounted.current = true; return; }
+    if (fromBar.current) { fromBar.current = false; return; }
+    setCommand("focus");
+    setMark("charged");
+  }, [paletteOpen]);
+
+  const togglePalette = useCallback(() => {
+    fromBar.current = true;
+    setPaletteOpen(!paletteOpen);
+    setCommand(paletteOpen ? "rest" : "focus");
+    setMark(paletteOpen ? "dormant" : "charged");
+  }, [paletteOpen, setPaletteOpen]);
+
+  /** `openSummon` — L4414. Closes the palette and forces `split`. */
+  const openSummon = useCallback((id: CapabilityId) => {
+    setSummon(id);
+    fromBar.current = true;
+    setPaletteOpen(false);
+    setWsMode("split");
+    setCommand("rest");
+    setMark("dormant");
+  }, [setPaletteOpen]);
+
+  /** `closeSummon` — L4415. */
+  const closeSummon = useCallback(() => {
+    setSummon(null);
+    setWsMode("split");
+    setDetachBlocked(false);
+  }, []);
+
+  /** `detachSummon` — L4417-L4427. A real window, and the pack's own in-place fallback. */
+  const detachSummon = useCallback(() => {
+    if (wsMode === "detached") { setWsMode("split"); setDetachBlocked(false); return; }
+    const url = location.pathname + "?surface=" + encodeURIComponent(summon ?? "sweep");
+    let w: Window | null = null;
+    try { w = window.open(url, "paige-" + summon, "width=820,height=640"); } catch { w = null; }
+    setWsMode("detached");
+    setDetachBlocked(!w);
+  }, [wsMode, summon]);
+
+  /** Deep link — L4348-L4349. `?surface=<id>` opens that summon detached on load. */
+  useEffect(() => {
+    const id = search.get("surface");
+    if (!id || !isCapabilityId(id)) return;
+    setSummon(id);
+    setWsMode("detached");
+    setRailFolded(true);
+    setSpineRequested(false);
+    // Read once, on the address the shell mounted at; a later change of the query string is a
+    // navigation, not a re-open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** One theme mechanism for the whole app (§18) — the console never invents a second. */
   const toggleTheme = useCallback(() => {
     const next = !document.documentElement.classList.contains("dark");
@@ -122,10 +227,9 @@ export default function OperatorShell() {
   }, []);
 
   /**
-   * The pack's two shell shortcuts: ⌘\ folds the spine, ⌥⌘\ collapses the rail. Scoped to this
-   * shell's lifetime and deliberately NOT ⌘K — the command palette has exactly one owner
-   * platform-wide (`AgentPresenceContext`), and a second listener for it here would be the §18
-   * collision that guard exists to catch.
+   * The pack's two shell shortcuts: ⌘\ folds the spine, ⌥⌘\ collapses the rail (L4354). ⌘K is
+   * NOT here — it belongs to `AgentPresenceProvider`, which this shell now mounts, and a second
+   * listener for it would be the §18 collision that ownership exists to prevent.
    */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -184,6 +288,17 @@ export default function OperatorShell() {
           address={address}
           spineOpen={spineOpen}
           onToggleSpine={() => setSpineRequested((v) => !v)}
+          paletteOpen={paletteOpen}
+          onTogglePalette={togglePalette}
+          command={command}
+          mark={mark}
+          onSummon={openSummon}
+          summon={summon}
+          wsMode={wsMode}
+          onWsMode={setWsMode}
+          onDetach={detachSummon}
+          onCloseSummon={closeSummon}
+          detachBlocked={detachBlocked}
         />
 
         {/* Both collapse mechanisms, as the pack has them: the track goes to 0px AND the panel
@@ -197,41 +312,71 @@ export default function OperatorShell() {
 /** Column 2: a 58px command row over a scrolling surface region. */
 function OperatorCanvas({
   address, spineOpen, onToggleSpine,
+  paletteOpen, onTogglePalette, command, mark, onSummon,
+  summon, wsMode, onWsMode, onDetach, onCloseSummon, detachBlocked,
 }: {
   address: OperatorAddress;
   spineOpen: boolean;
   onToggleSpine: () => void;
+  paletteOpen: boolean;
+  onTogglePalette: () => void;
+  command: CommandState;
+  mark: "dormant" | "charged";
+  onSummon: (id: CapabilityId) => void;
+  summon: CapabilityId | null;
+  wsMode: WsMode;
+  onWsMode: (m: WsMode) => void;
+  onDetach: () => void;
+  onCloseSummon: () => void;
+  detachBlocked: boolean;
 }) {
+  const [canvasRef, canvasW] = useCanvasWidth<HTMLDivElement>();
+  const reduce = useReducedMotion();
+
+  // `canvasStyle` L11040 — a summon in `split` opens the second track; every other geometry
+  // floats over the one column.
+  const split = summon !== null && wsMode === "split";
+
   return (
-    <div className="relative grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[58px_minmax(0,1fr)] bg-[var(--pg-canvas)]">
-      {/* Row 1 — the command row. 58px exactly: the pack keeps this height, the canvas row track
-          and the slide-over's top offset equal, and they drift apart the moment one is guessed.
-          Its left half is the command bar's reserved space; the bar and its palette are a later
-          round, and an inert pill that looks like a control but answers nothing is a defect
-          (`src/operator/CLAUDE.md` — every control is real or honestly inert), so the space is
-          left empty rather than filled with a decoy. */}
-      <div className="col-span-full row-start-1 flex min-h-0 min-w-0 items-center gap-4 border-b border-border bg-[var(--pg-surface)] px-5 shadow-[var(--pg-rim)]">
-        <div className="min-w-0 flex-1" />
+    <div
+      ref={canvasRef}
+      className="relative grid min-h-0 min-w-0 grid-rows-[58px_minmax(0,1fr)] bg-[var(--pg-canvas)]"
+      style={{
+        gridTemplateColumns: split ? "minmax(320px,1fr) minmax(0,52%)" : "minmax(0,1fr)",
+        transition: reduce ? undefined : "grid-template-columns 240ms cubic-bezier(.22,1,.36,1)",
+      }}
+    >
+      {/* Row 1 — the command row. L128, verbatim: 58px, `--pg-spine`, a `--pg-line-soft` bottom
+          rule, `--pg-e1`, `padding:0 20px`, `gap:14px`, `z-index:6`. The 58px is load-bearing
+          three ways at once — this row track, the canvas grid row, and the slide-over's `top`
+          offset — and they drift apart the moment one is guessed. */}
+      <div className="relative z-[6] col-span-full row-start-1 flex min-h-0 min-w-0 items-center gap-[14px] border-b border-[var(--pg-line-soft)] bg-[var(--pg-spine)] px-5 shadow-[var(--pg-e1)]">
+        <CommandBar
+          open={paletteOpen}
+          onToggle={onTogglePalette}
+          command={command}
+          mark={mark}
+          onSummon={onSummon}
+        />
+        {/* L167-L175 — the fold-spine control, the pack's own glyph. */}
         <button
           type="button"
           onClick={onToggleSpine}
           aria-label={spineOpen ? "Fold PAIGE away" : "Bring PAIGE back"}
           aria-expanded={spineOpen}
-          title={spineOpen ? "Fold PAIGE away  ⌘\\" : "Bring PAIGE back  ⌘\\"}
+          title={spineOpen ? "Fold PAIGE · ⌘\\" : "Bring PAIGE back · ⌘\\"}
           className={cn(
-            "grid h-[34px] w-[34px] flex-none place-items-center rounded-[9px]",
-            "border border-border bg-[var(--pg-raised)] text-muted-foreground shadow-[var(--pg-rim)]",
-            "transition-colors hover:text-foreground active:shadow-[var(--pg-inset)]",
+            "relative grid h-[34px] w-[34px] flex-none place-items-center rounded-[var(--pg-r-chip)]",
+            "border border-[var(--pg-line)] bg-[var(--pg-raised)] text-[var(--pg-muted)] shadow-[var(--pg-lift-1)]",
+            "transition-colors hover:text-[var(--pg-gold-deep)] active:shadow-[var(--pg-inset)]",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           )}
         >
-          <i
-            aria-hidden
-            className={cn(
-              "h-3.5 w-3.5 rounded-[2px] border border-current",
-              spineOpen ? "border-r-[3px]" : "border-r",
-            )}
-          />
+          <svg viewBox="0 0 16 16" className="h-[15px] w-[15px]" aria-hidden>
+            <rect x="10.5" y="3.5" width="2.9" height="9" fill="currentColor" opacity=".13" />
+            <path d="M2.6 3.5h10.8v9H2.6z M10.5 3.5v9" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+            <path d="M5.6 6.2L7.5 8 5.6 9.8" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </button>
       </div>
 
@@ -245,6 +390,18 @@ function OperatorCanvas({
           )}
         </div>
       </main>
+
+      {summon && (
+        <SummonedSurface
+          id={summon}
+          mode={wsMode}
+          onMode={onWsMode}
+          onDetach={onDetach}
+          onClose={onCloseSummon}
+          detachBlocked={detachBlocked}
+          canvasW={canvasW}
+        />
+      )}
     </div>
   );
 }

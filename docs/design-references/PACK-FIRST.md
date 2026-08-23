@@ -67,6 +67,45 @@ which is what actually happened the first four times.
 
 ---
 
+## DERIVE BEFORE YOU ESCALATE — the second half of the gate
+
+Searching is not enough. The pack is a **system with internal logic**, not a list of answers to
+look up. Treating it as a lookup table produces a subtler version of the same failure: the search
+comes back empty on the literal question, and CC escalates something the pack's own rules already
+determine.
+
+**The split, and it decides who answers:**
+
+| | who answers | examples |
+|---|---|---|
+| **Derivable from the pack** | **CC derives it. No question.** | which token a region takes · geometry · type scale · state transitions · anything computable from values already on disk |
+| **A decision that does not exist yet** | **CD's** | copy that was never written · whether a capability is a place · where a control points once its destination is gone |
+
+**The anchoring case, 2026-08-23 — this is the one that named the rule.** CD reported light-mode
+depth reading as hairline outlines. CC replied that it could not be fixed without changing token
+values, which are pinned to the pack at 44/44 and CI-enforced, and therefore that it was a pack
+change and CD's call.
+
+**That was wrong, and nothing needed to change.** The answer was inside the pack's own stated
+rule — *elevation is distance from `--pg-env`* — and every value was already on disk. Computing
+relative luminance shows `--pg-surface` sits ABOVE canvas in dark (0.0065 vs 0.0025 from env) and
+BELOW it in light (0.1045 vs 0.1633). The role **inverts between themes**, so "plates on
+`--pg-surface`" is right in dark and backwards in light — a plate asked to recede. The fix was a
+spend correction: rising plates take `--pg-raised` in both themes. Zero values moved.
+
+CC had the numbers, had the rule, and escalated anyway.
+
+**The failure is not distrust of the design.** It is treating the pack as a SPECIFICATION that
+needs its author present to interpret, rather than as a SYSTEM that can be reasoned from. A spec
+has gaps you must ask about; a system you compute against. The cost is identical to distrust — it
+makes CD the router for something the repo already answered.
+
+**The test, before any escalation:** *"Is this derivable from what is already on disk — the pack's
+stated rules, its values, its markup — or does it require a decision nobody has made yet? If
+derivable, I derive it and do not ask."*
+
+---
+
 ## THE ANCHORING CASES — all real, all 2026-08-23, all the same shape
 
 | what happened | what was actually there |
