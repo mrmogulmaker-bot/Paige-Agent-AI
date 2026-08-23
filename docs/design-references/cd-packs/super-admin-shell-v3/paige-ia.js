@@ -584,6 +584,11 @@
   // the type column says which, and the detail is shared. Lifecycle, not location,
   // says whether they are a client: becoming one moves them into Fleet without
   // leaving this log.
+  // Every identifier here is deliberately format-invalid — 000-00-0000, 00-0000000.
+  // A format-valid fixture identifier is the one class we cannot carry: the risk is not
+  // the fixture, it is a later session porting one into a shipped surface because it
+  // looks real. Masking (•••-••-••••) is a display state and means we hold the value; an
+  // em-dash means we hold nothing. Neither is a licence to store a real one.
   P.PEOPLE = [
     { id:'p1', kind:'Company', name:'AUTHORIZED TENANT \u00b7 0f3a', sub:'Standalone \u00b7 12 seats', life:'Client',
       owner:'You', touch:'2h', portal:'Active \u00b7 smart', vault:'Shared \u00b7 8 items',
@@ -593,7 +598,7 @@
       billing:[['Plan','Standalone'],['MRR','$0 \u00b7 no paid plan yet'],['Method','card ending 4471',1],['Next invoice','\u2014']] },
     { id:'p2', kind:'Person', name:'fixture B', sub:'Owner \u00b7 AUTHORIZED TENANT 0f3a', life:'Client contact',
       owner:'You', touch:'2h', portal:'Active \u00b7 smart', vault:'Via company',
-      identity:[['First name','fixture'],['Last name','B'],['Date of birth','04/18/1979',1],['Address','\u2014 not on file'],['Phone','+1 ··· ··· 0198'],['Email','b@fixture.invalid']],
+      identity:[['First name','fixture'],['Last name','B'],['Date of birth','00/00/0000',1],['Address','\u2014 not on file'],['Phone','+1 ··· ··· 0198'],['Email','b@fixture.invalid']],
       business:[['Role','Owner'],['Company','AUTHORIZED TENANT 0f3a'],['SSN','000-00-0000',1]],
       docs:[['Signed agreement','11 Mar'],['ID verification','\u2014 not on file']],
       billing:[['Billed through','the company'],['Method','\u2014']] },

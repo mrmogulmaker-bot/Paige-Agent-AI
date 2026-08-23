@@ -139,3 +139,49 @@ when the applied theme is not the requested one.
 
 Same defect class as the audit log in rev 2 — **a surface asserting something it
 had not verified.** Derive it or verify it; never assert it.
+
+---
+
+## Rev 5
+
+### 8. The intermittent `sx` TypeError is real, and found
+
+`mind-brain.js`, the pulse renderer:
+
+```js
+const a = proj[pu.path[i0]], b = proj[pu.path[i0 + 1]];
+const x = a.sx + (b.sx - a.sx) * f;
+```
+
+When a pulse's node index walks onto the last hop of its path, `path[i0 + 1]`
+is `undefined`, `proj[undefined]` is `undefined`, and reading `.sx` throws. It
+needs the frame to land in the one tick between a pulse arriving and being
+retired, which is exactly why it read as intermittent and would not reproduce on
+a straight walk. Three throws in one light pass is the right order of magnitude.
+
+Guarded rather than reordered — the pulse is retired by its own lifecycle, not
+by the renderer, so the renderer's job is to skip a frame it cannot draw.
+
+CC's instinct was correct twice over: timing-dependent, and worth a glance
+rather than a hunt. Reporting it as seen-once rather than dismissing it is what
+made it findable.
+
+### 9. Identifiers scrubbed at source
+
+`412-88-0396` → `000-00-0000`; both EINs → `00-0000000`. Five occurrences across
+`P.PEOPLE` and `P.ENTITIES`. The reasoning is now a comment above `P.PEOPLE` so
+it survives a regeneration, with the distinction that matters kept intact:
+masking is a display state and means we hold the value, an em-dash means we hold
+nothing, and neither is a licence to store a real one.
+
+**One of the same class, left for a ruling:** `P.PEOPLE` p2 carries a
+format-valid date of birth, `04/18/1979`, flagged as sensitive. By CC's own
+reasoning it qualifies — it is format-valid and portable. It is a DOB rather
+than a government identifier, so the call is CC's policy call, not mine. Say the
+word and it becomes `00/00/0000`.
+
+### Still needed: the §50 strings
+
+The replacement text came through empty in the paste — both the *replace* and
+the *with* blocks. Send the two strings and the §9a mark gets fixed at source so
+it stops costing a re-application every round.
