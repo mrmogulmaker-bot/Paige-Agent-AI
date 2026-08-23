@@ -16,9 +16,15 @@
  * change to what the surface looks like, where a capability lives, or how something reads is a
  * redesign request and the answer is no — if a table cannot serve the design, the table changes.
  *
- * COPY IS SURFACE, SO THE ABSENCE BODIES BELOW ARE CC DRAFTS, NOT SETTLED DESIGN. They exist to
- * unblock this round and to carry a §13-honest account of what is missing and why. They are offered
- * for the design side to rewrite, and should not become permanent merely because they shipped first.
+ * COPY IS SURFACE. The absence copy below is the DESIGN SIDE'S, lifted verbatim from the pack's
+ * `docs/handoff/absence-copy.md` — it replaced a CC draft that was on its way to becoming settled
+ * design by having shipped first. Do not edit these strings here; they change at the source.
+ *
+ * Each does a specific job, worth knowing before anyone "tidies" them. Relationships distinguishes
+ * DRAWN from WIRED, because an operator seeing an empty slot assumes the question is still open —
+ * this says the decision is closed and only the seam is missing, so nobody re-opens it. Campaigns
+ * names the tables so the slot is not rebuilt from scratch, AND names the missing seam so nobody
+ * finds `utm_campaign` on `analytics_events`, assumes the join exists, and hits it at the join.
  *
  * SUB-TAB COUNT IS NOT SLOT PRESSURE. The thirteen-branch tree this replaces carried 83 sub-tabs.
  * That is not an argument for more slots — every homeless sub-tab is a view, a summoned surface, or
@@ -54,8 +60,8 @@ export const OPERATOR_SLOTS: readonly OperatorSlot[] = [
     label: "Relationships",
     views: ["People", "Conversations", "Calendar", "Segments"],
     absence: {
-      title: "Relationships is not built yet",
-      body: "The four views are specified — People, Conversations, Calendar, Segments — and none is wired. Contacts and conversations exist at tenant scope today; the platform-scope reads that would fill this are the work of a later round. Nothing here is hidden from you: there is nothing here yet.",
+      title: "Drawn, not wired",
+      body: "People, Conversations, Segments and Calendar are specified and their contract is fixed. None of the four reads live data yet: the surfaces exist, the joins behind them do not. Nothing here is waiting on a decision — only on the wiring.",
     },
   },
   {
@@ -63,8 +69,8 @@ export const OPERATOR_SLOTS: readonly OperatorSlot[] = [
     label: "Campaigns",
     views: ["Active", "Catalog", "Sales", "Pipeline", "Social", "Performance"],
     absence: {
-      title: "Campaigns is not built yet",
-      body: "Six views are specified. Catalog and Sales have real substrate already — tenant_products, tenant_prices, tenant_orders and the platform subscription tables all ship — so this is a wiring round, not a build from nothing. A pricing tier is a tenant_prices row pointing at a product, not a nested array on an offering. Sales is a derived read over those tables; a second ledger beside the revenue-integrity chain would drift silently for months. What the tables cannot supply is attribution: tenant_orders carries no campaign reference, utm capture exists only on analytics_events and referral_clicks, and no join runs send to click to order — so campaign-attributed revenue, and the two Analytics charts that need the same history, stay dark until that seam is built.",
+      title: "Substrate exists \u00b7 one seam missing",
+      body: "Catalog and Sales sit on tables that already ship — tenant_products, tenant_prices, tenant_orders — so this slot is a wiring job rather than a build. One seam is genuinely absent: an order cannot name a campaign. utm_campaign lives on analytics_events and referral_clicks, never on the order, so send → click → order does not join. Until it does, attribution is recorded by hand and Sales reads without it.",
     },
   },
   {

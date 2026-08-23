@@ -48,13 +48,40 @@ describe("the operator IA mirrors the design pack", () => {
     expect(OPERATOR_VIEW_COUNT).toBe(32);
   });
 
-  it("every unbuilt slot carries an absence, and every absence says what and why", () => {
-    for (const s of OPERATOR_SLOTS) {
-      if (!s.absence) continue;
-      expect(s.absence.title.length, `${s.id} absence title too thin`).toBeGreaterThan(10);
-      // §13: an absence explains. A bare "coming soon" is the thing this replaces.
-      expect(s.absence.body.length, `${s.id} absence body too thin`).toBeGreaterThan(80);
-      expect(s.absence.body).not.toMatch(/coming soon|under construction|stay tuned/i);
+  /**
+   * Absence copy is the DESIGN SIDE'S, lifted verbatim. So this asserts only what is ours to
+   * assert — that a slot with no destination actually carries copy, and that it is the copy we
+   * were given rather than something drifted or re-edited here.
+   *
+   * It deliberately does NOT judge the words. An earlier version of this test required a minimum
+   * body length and banned "coming soon" — sensible constraints on a CC draft, and exactly the
+   * wrong thing to point at design's copy: it would fail a deliberately terse absence and make an
+   * implementation test the arbiter of how a surface reads. Copy is surface; the surface rules it.
+   *
+   * When `absence-copy.md` ships in the pack, replace the inline expectations below with a parse of
+   * that file — the same contract shape as the slots test above, which reads the pack rather than
+   * restating it. It is quoted here only because it arrived in review rather than as a delivery.
+   */
+  it("every unbuilt slot carries the absence copy it was given, unedited", () => {
+    const GIVEN: Record<string, { title: string; body: string }> = {
+      relationships: {
+        title: "Drawn, not wired",
+        body: "People, Conversations, Segments and Calendar are specified and their contract is fixed. None of the four reads live data yet: the surfaces exist, the joins behind them do not. Nothing here is waiting on a decision — only on the wiring.",
+      },
+      campaigns: {
+        title: "Substrate exists · one seam missing",
+        body: "Catalog and Sales sit on tables that already ship — tenant_products, tenant_prices, tenant_orders — so this slot is a wiring job rather than a build. One seam is genuinely absent: an order cannot name a campaign. utm_campaign lives on analytics_events and referral_clicks, never on the order, so send → click → order does not join. Until it does, attribution is recorded by hand and Sales reads without it.",
+      },
+    };
+    for (const slot of OPERATOR_SLOTS) {
+      const given = GIVEN[slot.id];
+      if (!given) {
+        expect(slot.absence, `${slot.id} has an absence with no copy on record`).toBeUndefined();
+        continue;
+      }
+      expect(slot.absence, `${slot.id} lost its absence`).toBeDefined();
+      expect(slot.absence!.title, `${slot.id} absence title edited`).toBe(given.title);
+      expect(slot.absence!.body, `${slot.id} absence body edited`).toBe(given.body);
     }
   });
 
