@@ -19,8 +19,12 @@ import { useToast } from "@/hooks/use-toast";
 import { PaigeMark } from "@/components/brand/PaigeMark";
 import { PLATFORM } from "@/lib/platform/identity";
 import { resolveLandingRoute } from "@/lib/auth/resolveLandingRoute";
-
-const GOD_CONSOLE = "/admin/platform/tenants";
+// The operator door has ONE home (operatorTarget.ts). This page used to declare its own
+// GOD_CONSOLE pointing at /admin/platform/tenants, so a staffer arriving through the invite
+// door landed somewhere different from a staffer arriving through /auth — the same role, two
+// destinations. That only ever read as "two consoles"; there is one, and admin is a role and a
+// scope band inside it, never a URL. Import the constant instead of restating it.
+import { GOD_CONSOLE } from "@/lib/auth/operatorTarget";
 
 export default function JoinPlatform() {
   const navigate = useNavigate();

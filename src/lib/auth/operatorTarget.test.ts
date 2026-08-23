@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { GOD_CONSOLE, operatorTarget } from "./operatorTarget";
 
@@ -81,5 +83,50 @@ describe("operatorTarget", () => {
     expect(operatorTarget("?next=%2Foperator%2Ffleet%3Ftab%3Dalerts")).toBe(
       "/operator/fleet?tab=alerts",
     );
+  });
+});
+
+// Round 0 — one operator door.
+//
+// This does not test operatorTarget's logic; it tests that nothing else in the codebase
+// declares a SECOND operator landing destination. That is the defect this round fixed:
+// JoinPlatform.tsx carried its own `GOD_CONSOLE = "/admin/platform/tenants"`, so a staffer
+// arriving through the platform-invite door landed somewhere different from one arriving
+// through /auth — same role, two destinations. It read as "two consoles" for weeks. There is
+// one console; admin is a role and a scope band inside it, never a URL.
+//
+// A grep test rather than a behavioural one on purpose: the failure mode is a NEW file
+// restating the constant, which no amount of testing the existing callers would catch.
+describe("the operator door has exactly one home", () => {
+  const SRC = path.resolve(__dirname, "../..");
+
+  it("no module outside operatorTarget.ts declares its own operator landing constant", () => {
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!/\.tsx?$/.test(entry.name) || /\.test\.tsx?$/.test(entry.name)) continue;
+        if (full.endsWith(path.join("lib", "auth", "operatorTarget.ts"))) continue;
+        const text = fs.readFileSync(full, "utf8");
+        // A declaration, not a reference: `const NAME = "/operator/..."` or "/admin/platform/tenants".
+        const decl = /const\s+\w*(?:GOD_CONSOLE|OPERATOR_HOME|FLEET_HREF)\w*\s*[:=][^=]*?["'](\/(?:operator|admin)\/[^"']+)["']/g;
+        for (const m of text.matchAll(decl)) {
+          offenders.push(`${path.relative(SRC, full)} → ${m[1]}`);
+        }
+      }
+    };
+    walk(SRC);
+
+    // FLEET_HREF in the OLD console (OperatorCommandCenter) is in-console navigation inside a
+    // surface Round 1 strips wholesale, not a landing decision — allowed until then, listed
+    // explicitly so it cannot grow quietly.
+    const KNOWN = ["pages/admin/OperatorCommandCenter.tsx → /admin/platform/tenants"];
+    const unexpected = offenders.filter((o) => !KNOWN.includes(o));
+    expect(unexpected).toEqual([]);
+  });
+
+  it("GOD_CONSOLE points inside the operator subtree", () => {
+    expect(GOD_CONSOLE.startsWith("/operator/")).toBe(true);
   });
 });

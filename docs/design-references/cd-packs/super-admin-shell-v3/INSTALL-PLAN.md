@@ -138,11 +138,34 @@ This inverts the default instinct of every round below. Where a round's text sti
 | # | Question | Recommendation |
 |---|---|---|
 | **R2** | **§60 collision** — v3 gives the operator People/Pipeline/Conversations, which `tierFeatures.ts:236-247` explicitly denies God. | **New operator-scoped Features**, not the tenant bits. Borrowing them silently widens every tier check that reads them. |
-| **R3** | **19 shipped sub-tabs have no home** (§58). Worst: Platform Support (3) and Provisioning (2). | Retain those outside the six, or rule them dropped **explicitly** — today they'd vanish silently, since `OperatorApp.tsx:358` redirects unknown sections to Fleet rather than 404ing. |
+| **R3** | **Which shipped sub-tabs genuinely have no home** (§58) — see the classification rule below. The old "19" figure was derived from a stale branch count and must be re-derived. | **Classify all 83 first; rule only on the residue.** Whatever is left must be retained or dropped **explicitly** — today it would vanish silently, since `OperatorApp.tsx:358` redirects unknown sections to Fleet rather than 404ing. |
 | **R4** | **Trust Compass** — v3 is a 5-level ceiling; we ship a 3-value enum and no `autonomy_lanes` table. | Build the real substrate (#165). Until then render the dial **read-only with the reason** — a dial that appears to clamp and doesn't is the §13 failure. |
 | **R5** | **`PLATFORM OPERATOR` rename** — CD asks us to "rename it in the codebase's tier enum too, or record why not." | **Rename the label, not the role.** `super_admin` is a DB enum under RLS policies and CI guards; `is_platform_operator()` already means exactly what CD's tier name means. §65: the name maps to the mental model, the name is never the authority. Record the why-not. |
 | **R6** | **Sales: derived read, or hand-kept ledger?** (§2 above) | **Derived read.** A typed ledger beside the revenue-integrity chain is a second truth the DB was built to prevent. |
 | **R7** | **Does the operator need a one-time-services catalog at all** (migration, setup fees), or is L1 subscriptions the whole operator offering? | Ship L1-only first; add services when a real one is sold. Cheaper to add a table than to unpick a speculative one. |
+
+### R3 classification rule — sub-tab count is NOT slot pressure (owner, 2026-08-23)
+
+83 shipped sub-tabs against 6 slots and 32 views is **not** an argument for more slots. The six
+were ruled three times. Before R3 can be answered, every sub-tab with no obvious home is
+classified as exactly one of:
+
+1. **A view inside a slot** — it belongs, it just moves.
+2. **A summoned surface** — it opens and retires; it was never rail furniture.
+3. **A mechanism that was never a place** — Follow-ups became an automation, Sequences folded
+   into a step rail. These do not need a home because they are not destinations.
+
+**Only the residue after classification is a real gap**, and the expectation is that it is small.
+
+**Settings is the one to watch:** it carries 23 of the 83, and the pack already specifies ten
+Settings views — so most of that 23 should resolve as views or mechanisms rather than as
+anything missing. A large Settings residue is a signal the classification was done lazily, not
+that the design is short a slot.
+
+**Do not carry a pre-counted figure into this round.** The earlier "19 with no home" came from a
+branch count that was wrong (13 branches / 83 sub-tabs is the real tree, verified against
+`OPERATOR_BRANCHES` on `main` 2026-08-23 — not the 17/78 an earlier pass asserted). Re-derive
+from the tree, classify, then count what is left.
 
 ## 4. The 18 rounds
 
