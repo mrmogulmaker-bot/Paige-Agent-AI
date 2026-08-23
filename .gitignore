@@ -33,3 +33,6 @@ dist-ssr
 # authed-surface pixels); credentials are ENV-only and never written to disk. (scripts/live-drive)
 scripts/live-drive/artifacts/
 deno.lock
+
+# Rendered pack/app screenshots — regenerate with scripts/live-drive/pack-shoot.mjs
+scripts/live-drive/artifacts/
