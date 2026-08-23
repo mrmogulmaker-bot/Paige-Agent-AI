@@ -43,12 +43,25 @@ function unpack(html) {
 
 const html = fs.readFileSync(STANDALONE, 'utf8');
 const assets = unpack(html);
-const text = assets
-  .map((a) => a.bytes.toString('utf8'))
-  // Fonts decode to binary noise that trips every substring check.
-  .filter((t) => !/�/.test(t.slice(0, 64)));
+// Fonts decode to binary noise that trips every substring check, so they are
+// excluded — but by POSITIVE identification, never by "looked binary." A filter
+// that drops whatever it cannot parse produces a sweep over fewer assets than it
+// claims, and a silently-skipped asset reads exactly like a clean one. Anything
+// not recognised as a font is scanned, and the skip list is printed either way.
+const FONT_MAGIC = [
+  Buffer.from('wOFF'), Buffer.from('wOF2'), Buffer.from('OTTO'),
+  Buffer.from('ttcf'), Buffer.from('true'), Buffer.from([0x00, 0x01, 0x00, 0x00]),
+];
+const isFont = (b) => FONT_MAGIC.some((m) => b.subarray(0, 4).equals(m));
 
 const problems = [];
+const text = [];
+const skipped = [];
+for (const a of assets) {
+  if (isFont(a.bytes)) skipped.push(`${a.uuid.slice(0, 8)} font ${a.bytes.length}b`);
+  else text.push(a.bytes.toString('utf8'));
+}
+console.log(`     ${assets.length} assets — ${text.length} scanned as text, ${skipped.length} fonts skipped by magic-number: ${skipped.join(', ') || 'none'}`);
 
 for (const { file, head } of SOURCES) {
   const want = fs.readFileSync(path.join(PACK, file), 'utf8');
@@ -59,12 +72,13 @@ for (const { file, head } of SOURCES) {
   } else console.log(`ok   ${file} — bundled copy is byte-identical to source (${want.length} bytes)`);
 }
 
+// Report EVERY hit, not the first. One-at-a-time reporting turns a cluster into
+// a sequence of re-runs and invites calling it done after the first fix.
+const all = (t, re) => [...new Set(t.match(new RegExp(re.source, re.flags + 'g')) || [])];
 for (const t of text) {
-  const mark = t.match(MARKS);
-  if (mark) problems.push(`§50 mark ${JSON.stringify(mark[0])} in bundled content`);
+  for (const m of all(t, MARKS)) problems.push(`§50 mark ${JSON.stringify(m)} in bundled content`);
   for (const { re, what } of IDENTIFIERS) {
-    const hit = t.match(re);
-    if (hit) problems.push(`${what} identifier ${JSON.stringify(hit[0])} in bundled content`);
+    for (const m of all(t, re)) problems.push(`${what} identifier ${JSON.stringify(m)} in bundled content`);
   }
 }
 
