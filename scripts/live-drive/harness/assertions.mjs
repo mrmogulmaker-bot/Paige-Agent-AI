@@ -18,17 +18,34 @@ export async function slotsInOrder(page, expected) {
   };
 }
 
-export async function shellGrid(page, expectedCols) {
+/**
+ * The shell's three tracks.
+ *
+ * `getComputedStyle` RESOLVES a grid template to px — the authored `minmax(340px,26vw)` comes
+ * back as `416px` at 1600 — so an assertion written against the authored string can only ever
+ * fail. That is a jurisdiction error rather than a strictness one: the harness measures the
+ * rendered geometry and does not get to assert the source text it was never handed.
+ *
+ * Counting tracks alone was too weak in the other direction: a rail that drifted 216 → 300 kept
+ * three tracks and passed. So the rail is checked by VALUE against the pack's two legal widths,
+ * and the spine is left to `spineFloor`, which already owns the 340px floor.
+ */
+export async function shellGrid(page, expectedCols = 3, railWidths = [216, 72]) {
   const actual = await page.$eval("[data-shell-grid]", (e) =>
     getComputedStyle(e).gridTemplateColumns,
   ).catch(() => null);
   if (actual === null) return { ok: false, detail: "no [data-shell-grid] element" };
-  // Computed values resolve to px, so compare the TRACK COUNT and the fixed first track
-  // rather than the authored string — a resolved value never matches the authored one.
   const tracks = actual.split(/\s+/).filter(Boolean);
+  if (tracks.length !== expectedCols) {
+    return { ok: false, detail: `expected ${expectedCols} tracks — computed "${actual}" (${tracks.length})` };
+  }
+  const rail = parseFloat(tracks[0]);
+  const railOk = railWidths.some((w) => Math.abs(rail - w) < 1);
   return {
-    ok: tracks.length === expectedCols,
-    detail: `expected ${expectedCols} tracks — computed "${actual}" (${tracks.length})`,
+    ok: railOk,
+    detail: railOk
+      ? `${expectedCols} tracks, rail ${rail}px — "${actual}"`
+      : `rail resolved to ${rail}px, which is neither ${railWidths.join("px nor ")}px — "${actual}"`,
   };
 }
 
@@ -47,6 +64,13 @@ export async function minWidthZero(page) {
         const cs = getComputedStyle(child);
         const horizontal = /grid/.test(pd) || cs.flexDirection !== "column";
         const prop = horizontal ? cs.minWidth : cs.minHeight;
+        // A flex item with `flex-shrink: 0` is never squeezed, so `min-width: auto` on it cannot
+        // blow a track out — the property only bites on an item the layout tries to shrink.
+        // Flagging those anyway was 16 of 20 hits on the real shell (icons and fixed pills), and
+        // a check that is 80% noise is a check somebody switches off, after which it catches
+        // nothing. Grid items are still checked strictly: they DO shrink, and min-width:auto on
+        // a grid child is the classic blowout this exists to catch.
+        if (!/grid/.test(pd) && parseFloat(cs.flexShrink) === 0) continue;
         if (prop === "auto") {
           bad.push(
             `${child.tagName.toLowerCase()}${child.id ? "#" + child.id : ""}` +

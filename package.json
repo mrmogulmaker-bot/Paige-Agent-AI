@@ -24,7 +24,8 @@
     "lint:skeleton": "node scripts/ci/skeleton-content-lint.mjs",
     "preview": "vite preview",
     "smoke:skills-interpreter": "node --experimental-strip-types --import ./scripts/_register-forge-stub.mjs scripts/skills-interpreter-provenance-smoke.mjs",
-    "smoke:fleet-orbit": "node scripts/fleet-orbit-smoke.mjs"
+    "smoke:fleet-orbit": "node scripts/fleet-orbit-smoke.mjs",
+    "harness:serve": "vite --config scripts/live-drive/harness/mount/vite.config.ts"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",

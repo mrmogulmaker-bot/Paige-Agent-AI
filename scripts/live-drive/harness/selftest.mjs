@@ -7,6 +7,13 @@ const cases = [
   ["missing-minwidth.html", "minWidth",  "a child without min-width:0"],
   ["doc-scroll.html",       "scrollbar", "a document scrollbar"],
   ["low-contrast.html",     "contrast",  "a sub-AA pair against --pg-env"],
+  // Added 2026-08-23 after the first real-shell run. `grid` counted tracks only, so a rail that
+  // drifted off 216 kept three tracks and passed; `minWidth` flagged every flex child, which on
+  // the real shell was 16 hits of noise to 4 real ones. The second fixture carries BOTH a
+  // shrinkable text child (must fire) and a flex-none icon (must not) — without the icon it would
+  // prove the check still catches, but not that the narrowing is safe.
+  ["drifted-rail.html",     "grid",      "a 300px rail that still has three tracks"],
+  ["shrinkable-nomin.html", "minWidth",  "a shrinkable text child with no min-width:0"],
 ];
 let bad = 0;
 for (const [file, expect, desc] of cases) {
