@@ -92,6 +92,36 @@ is a port that has not happened yet.**
 
 ---
 
+## JURISDICTION — owner-locked 2026-08-23
+
+> **"You own the backend. Claude Design owns the frontend and all the wonderful visual
+> abilities that it provides for our end user."** — Antonio, 2026-08-23
+
+**Claude Design decides. Claude Code wires.** That is the whole rule, and it settles every
+argument this file has previously tried to settle case by case.
+
+- **CD's jurisdiction:** the frontend and every visual decision in it — layout, colour, depth,
+  motion, type, iconography, treatment, hierarchy, copy inside a surface, what a surface IS.
+  The pack is the ANSWER, never an input to a CC judgement.
+- **CC's jurisdiction:** the backend and everything under the paint — real reads and writes,
+  RPC/edge seams, tenant scoping and RLS (§9/§51/§53), the callable seam (§10), performance,
+  CI gates, and verification that what shipped actually runs (§32).
+- **CC still WRITES the port.** Someone has to turn a static pack into React wired to Supabase,
+  and that is CC's work. Writing it is not deciding it: structure comes over verbatim, values
+  come from a real backend or an honest absence, and nothing in between gets improvised.
+- **What CC does with a visual observation:** reports it, with a frame and a measurement, and
+  lets CD rule. It is never a finding to act on, a defect to fix, or a proposal to ship. The
+  same rule already took the design critic off code review — this is its other half.
+- **A verifier or compliance pass has NO visual jurisdiction either.** It checks contrast,
+  honesty (§13), tenant scope, and whether the port matches the pack. It does not have an
+  opinion about the interface. "No agent debates UI" (owner, 2026-08-23).
+
+**The test, every time:** *"Is this a decision about how it LOOKS or about how it WORKS? Looks
+is CD's — port what they drew and report what I see. Works is mine — and no one else is going
+to catch it."*
+
+---
+
 ## THE ONE RULE THAT DECIDES EVERY CASE
 
 > **Structure is design. Values are data.**
