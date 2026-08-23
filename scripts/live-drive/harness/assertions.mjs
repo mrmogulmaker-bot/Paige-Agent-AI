@@ -156,27 +156,113 @@ export async function typeLadder(page, maxSizes = 4, maxFaces = 3) {
 }
 
 /**
- * Gold is spent ONLY on the act. A gold FILL on a resting element — a selected rail slot, a border,
- * an icon — is a reject. Marked act surfaces opt in with data-act.
+ * Gold is spent ONLY on the act — tested against the ACT TOKENS by resolved value, never a hue range.
+ *
+ * A hue-range check false-positives on the legitimate selection treatment, and a check that cries
+ * wolf gets switched off, after which it catches nothing. The pack's real seam is OPACITY, not hue:
+ * the act is an opaque gradient of --pg-gold-core → --pg-gold 42% → --pg-gold-fill on a
+ * --pg-gold-deep border, while a selected rail slot carries --pg-gold-bloom, which is the SAME
+ * family at ~.28–.30 alpha, plus a ring. Same hue, different weight.
+ *
+ * (Recorded for the design side: there is no `--pg-champagne` token in the pack — the family is
+ * --pg-gold / -deep / -bloom / -core / -fill. The distinction asked for is real; its name is not.)
+ *
+ * So: resolve the act tokens from the live document and flag a background only when it MATCHES one
+ * of them at act weight. Anything at bloom alpha passes. Marked act surfaces opt out with data-act.
  */
-export async function goldOnlyOnAct(page) {
-  return page.evaluate(() => {
-    const goldish = (c) => {
-      const m = c.match(/rgba?\(([^)]+)\)/);
-      if (!m) return false;
-      const [r, g, b, a = "1"] = m[1].split(",").map((n) => parseFloat(n));
-      if (parseFloat(a) < 0.15) return false;
-      // warm, bright, and clearly not neutral
-      return r > 150 && g > 110 && b < 140 && r - b > 60 && r >= g;
+export async function goldOnlyOnAct(page, alphaFloor = 0.5) {
+  return page.evaluate(({ floor }) => {
+    const rgba = (c) => {
+      const m = String(c).match(/rgba?\(([^)]+)\)/);
+      if (!m) return null;
+      const p = m[1].split(",").map((n) => parseFloat(n));
+      return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
     };
+    const probe = document.createElement("span");
+    probe.style.display = "none";
+    document.body.appendChild(probe);
+    const resolve = (tok) => {
+      probe.style.color = "";
+      probe.style.color = `var(${tok})`;
+      const v = getComputedStyle(probe).color;
+      return v && v !== "rgba(0, 0, 0, 0)" ? rgba(v) : null;
+    };
+    // The act's own tokens. --pg-gold-bloom is deliberately NOT here: it is the selection treatment.
+    const act = ["--pg-gold-fill", "--pg-gold", "--pg-gold-core"].map(resolve).filter(Boolean);
+    probe.remove();
+    if (!act.length) {
+      return { ok: false, detail: "act gold tokens unresolvable — check cannot run, treat as unverified" };
+    }
+    const near = (c) => act.some((t) => Math.abs(c.r - t.r) <= 12 && Math.abs(c.g - t.g) <= 12 && Math.abs(c.b - t.b) <= 12);
+
     const bad = [];
     for (const el of document.querySelectorAll("*")) {
       if (el.closest("[data-act]") || el.closest("[data-harness-label]")) continue;
-      const cs = getComputedStyle(el);
-      if (goldish(cs.backgroundColor)) {
-        bad.push(`${el.tagName.toLowerCase()}${el.getAttribute("data-slot") ? `[${el.getAttribute("data-slot")}]` : ""} bg ${cs.backgroundColor}`);
-      }
+      const bg = rgba(getComputedStyle(el).backgroundColor);
+      if (!bg || bg.a < floor) continue; // bloom-weight passes by design
+      if (!near(bg)) continue;
+      const slot = el.getAttribute("data-slot");
+      bad.push(`${el.tagName.toLowerCase()}${slot ? `[${slot}]` : ""} bg ${getComputedStyle(el).backgroundColor}`);
     }
-    return { ok: bad.length === 0, detail: bad.slice(0, 6).join("; ") || "none" };
+    return {
+      ok: bad.length === 0,
+      detail: bad.slice(0, 6).join("; ") || `none (act tokens resolved: ${act.length}, alpha floor ${floor})`,
+    };
+  }, { floor: alphaFloor });
+}
+
+/**
+ * COLLAPSE ORDER, checked at three widths rather than a full sweep.
+ *
+ * The order is: the spine collapses to 0 FIRST, then the rail goes compact 216 → 72, and the band is
+ * the LAST thing to change — it thins but never disappears, because it is the thing that says what
+ * scope you are in. **If the band changes before the spine has fully collapsed, that is the defect.**
+ */
+export async function collapseOrder(page, widths = [1600, 1100, 820]) {
+  const read = async () => page.evaluate(() => {
+    const g = document.querySelector("[data-shell-grid]");
+    const band = document.querySelector("[data-scope-band]");
+    if (!g) return null;
+    const tracks = getComputedStyle(g).gridTemplateColumns.split(/\s+/).filter(Boolean).map(parseFloat);
+    const br = band?.getBoundingClientRect();
+    return {
+      rail: tracks[0],
+      spine: tracks[tracks.length - 1],
+      band: band ? Math.round(br.height) : null,
+      bandVisible: band ? br.height > 0 && getComputedStyle(band).display !== "none" : null,
+    };
   });
+
+  const seen = [];
+  for (const w of widths) {
+    await page.setViewportSize({ width: w, height: 1000 });
+    await page.waitForTimeout(320); // the grid transition is 200ms
+    const s = await read();
+    if (!s) return { ok: false, detail: "no [data-shell-grid]" };
+    seen.push({ w, ...s });
+  }
+  if (seen.some((s) => s.band === null)) {
+    return { ok: false, detail: "no [data-scope-band] — collapse order cannot be checked" };
+  }
+
+  const problems = [];
+  // The band must never disappear, at any width.
+  for (const s of seen) {
+    if (!s.bandVisible) problems.push(`band gone at ${s.w}px`);
+  }
+  // The band must not change height while the spine is still open.
+  for (let i = 1; i < seen.length; i++) {
+    const prev = seen[i - 1], cur = seen[i];
+    if (cur.band !== prev.band && prev.spine > 0) {
+      problems.push(`band changed ${prev.band}→${cur.band}px at ${cur.w}px while the spine was still ${prev.spine}px`);
+    }
+    // The rail must not go compact while the spine is still open.
+    if (cur.rail < prev.rail && prev.spine > 0) {
+      problems.push(`rail compacted ${prev.rail}→${cur.rail}px at ${cur.w}px while the spine was still ${prev.spine}px`);
+    }
+  }
+  return {
+    ok: problems.length === 0,
+    detail: problems.join("; ") || seen.map((s) => `${s.w}px rail=${s.rail} spine=${s.spine} band=${s.band}`).join(" | "),
+  };
 }

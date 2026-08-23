@@ -1,0 +1,7 @@
+<!doctype html><meta charset=utf-8><link rel=stylesheet href="_shell.css"><style>
+[data-shell-grid]{grid-template-columns:216px minmax(0,1fr) minmax(340px,26vw)}
+/* THE ORDER, correct: spine to 0 FIRST, then the rail compacts, and the band —
+   which never disappears — thins only once the spine is already gone. */
+@media (max-width:1200px){[data-shell-grid]{grid-template-columns:216px minmax(0,1fr) 0px}}
+@media (max-width:900px){[data-shell-grid]{grid-template-columns:72px minmax(0,1fr) 0px}[data-scope-band]{height:32px}}
+</style><div data-scope-band>Platform scope</div><div data-shell-grid><nav><a data-slot="fleet">Fleet</a><a data-slot="relationships">Relationships</a><a data-slot="campaigns">Campaigns</a><a data-slot="marketplace">Marketplace</a><a data-slot="analytics">Analytics</a><a data-slot="settings">Settings</a></nav><main>main</main><aside>spine</aside></div>

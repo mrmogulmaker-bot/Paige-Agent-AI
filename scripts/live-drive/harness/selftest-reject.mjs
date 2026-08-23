@@ -3,18 +3,24 @@
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
-import { spineFloor, typeLadder, goldOnlyOnAct } from "./assertions.mjs";
+import { spineFloor, typeLadder, goldOnlyOnAct, collapseOrder } from "./assertions.mjs";
 
 const base = process.env.PLAYWRIGHT_BROWSERS_PATH || "/opt/pw-browsers";
 const exe = fs.readdirSync(base).filter((d) => d.startsWith("chromium-"))
   .map((d) => path.join(base, d, "chrome-linux/chrome")).find((p) => fs.existsSync(p));
 const F = (n) => "file://" + path.resolve(import.meta.dirname, "fixtures", n);
 
+// A negative control only proves a check CAN fail. The bloom and collapse-clean rows are the
+// other half — they prove each check does NOT fire on the legitimate treatment. The owner's
+// reason for asking is exact: "a check that cries wolf gets disabled, and then it catches nothing."
 const cases = [
-  ["clean-geometry.html", null, "control — all three must pass"],
+  ["clean-geometry.html", null, "control — nothing fires on clean geometry"],
+  ["gold-bloom-selection.html", null, "control — a selected slot at bloom weight is NOT the act"],
+  ["collapse-clean.html", null, "control — spine, then rail, then band"],
   ["thin-spine.html", "spineFloor", "a 300px spine (floor is 340)"],
   ["five-type-sizes.html", "typeLadder", "a fifth type size"],
   ["gold-fill-resting.html", "goldOnlyOnAct", "gold fill on a resting rail slot"],
+  ["band-before-spine.html", "collapseOrder", "the band thins while the spine is still open"],
 ];
 
 const b = await chromium.launch(exe ? { executablePath: exe } : {});
@@ -26,6 +32,8 @@ for (const [file, expect, desc] of cases) {
     spineFloor: await spineFloor(p),
     typeLadder: await typeLadder(p),
     goldOnlyOnAct: await goldOnlyOnAct(p),
+    // collapseOrder resizes the viewport, so it runs LAST — the others read at 1600.
+    collapseOrder: await collapseOrder(p),
   };
   await p.close();
   const failed = Object.entries(r).filter(([, v]) => !v.ok).map(([k]) => k);
@@ -41,5 +49,5 @@ for (const [file, expect, desc] of cases) {
   }
 }
 await b.close();
-console.log(bad === 0 ? "\nall three new arms falsifiable" : `\n${bad} arm(s) misbehaved`);
+console.log(bad === 0 ? "\nall four arms falsifiable, and none fires on the legitimate treatment" : `\n${bad} arm(s) misbehaved`);
 process.exit(bad ? 1 : 0);

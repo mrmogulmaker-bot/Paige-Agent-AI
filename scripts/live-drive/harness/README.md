@@ -48,16 +48,43 @@ rather than reject. **Four are mechanical and live in the harness** rather than 
 | Rail order must be Fleet · Relationships · Campaigns · Marketplace · Analytics · Settings | `slotsInOrder` |
 | Spine never below 340px at any width | `spineFloor` |
 | Four type sizes, three faces — a fifth of either is a reject | `typeLadder` |
-| Gold fill on a resting element (a selected rail slot is champagne ring + bloom, **not** gold fill) | `goldOnlyOnAct` |
+| Gold on anything but the act (a selected rail slot carries bloom + a ring, **not** an act fill) | `goldOnlyOnAct` |
 | No document scrollbar, either theme | `noDocumentScrollbar` |
+| Collapse order: spine to 0, *then* the rail 216→72, and the band last — thinning, never gone | `collapseOrder` |
 
 **Three CANNOT be checked mechanically** and are named here so a green harness is never mistaken
 for a green taste pass — absence of a failure is absence of evidence, not evidence of absence:
 
 - **Depth from darkening rather than layered elevation.** Needs an eye against the pack.
 - **Motion on anything that is not real activity.** Requires knowing what is actually running.
-- **The gold *treatment* reading** — `goldOnlyOnAct` catches a gold FILL, but "champagne ring plus
-  bloom" versus something merely not-gold-filled is a taste call.
+- **The gold *treatment* reading** — `goldOnlyOnAct` proves a resting element does not carry the
+  act at act weight. Whether the selection reads as "bloom plus a ring" rather than merely
+  not-gold-filled is a taste call.
 
-`npm run harness:selftest-reject` runs their negative controls. The grid-collapse-before-the-band
-criterion needs a multi-width sweep and is **not yet implemented** — stated rather than implied.
+### Why these two are written against tokens and thresholds, not an eye
+
+Both were corrected by the owner before they ran, for the same reason: *"a check that cries wolf
+gets disabled, and then it catches nothing."*
+
+- **`goldOnlyOnAct` resolves the ACT TOKENS from the live document and compares against those** —
+  it does not match a hue range. The selection treatment is the SAME hue family as the act; the
+  seam between them is **opacity**, not colour (the act is an opaque `--pg-gold-core → --pg-gold →
+  --pg-gold-fill` gradient on a `--pg-gold-deep` border; a selected slot is `--pg-gold-bloom` at
+  ~.28 alpha plus a ring). A hue-range check fires on every selected slot. Elements that legitimately
+  carry the act opt out with `data-act`. If the act tokens cannot be resolved the check returns
+  **unverified rather than green** — it never passes vacuously.
+  *(Recorded for the design side: there is no `--pg-champagne` token in the pack. The distinction
+  asked for is real; that name for it is not.)*
+- **`collapseOrder` reads three widths and asserts thresholds**, so the sweep has numbers rather
+  than an eye: the band must never disappear, must not change height while the spine is still open,
+  and the rail must not compact while the spine is still open.
+
+`npm run harness:selftest-reject` runs seven rows: four fixtures that must turn exactly their own
+check red, and **three controls that must stay green**. Two of those controls exist specifically to
+prove the checks do not cry wolf — `gold-bloom-selection.html` (a selected slot at bloom weight
+beside a marked act button) and `collapse-clean.html` (the correct collapse order). A negative
+control only proves a check *can* fail; these prove it does not fire on the legitimate treatment.
+
+Every geometry fixture carries a `[data-scope-band]` so `collapseOrder` is a real arm on every row
+rather than a silent skip, and they all share `fixtures/_shell.css` — a fixture that re-typed the
+gold tokens would drift from the check it exists to control, and a drifted control proves nothing.

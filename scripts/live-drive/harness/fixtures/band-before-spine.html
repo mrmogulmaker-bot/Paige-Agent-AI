@@ -1,0 +1,6 @@
+<!doctype html><meta charset=utf-8><link rel=stylesheet href="_shell.css"><style>
+[data-shell-grid]{grid-template-columns:216px minmax(0,1fr) minmax(340px,26vw)}
+/* THE DEFECT: the band thins at 1200px, while the spine is still wide open.
+   The band is meant to be the LAST thing to change. */
+@media (max-width:1200px){[data-scope-band]{height:28px}}
+</style><div data-scope-band>Platform scope</div><div data-shell-grid><nav><a data-slot="fleet">Fleet</a><a data-slot="relationships">Relationships</a><a data-slot="campaigns">Campaigns</a><a data-slot="marketplace">Marketplace</a><a data-slot="analytics">Analytics</a><a data-slot="settings">Settings</a></nav><main>main</main><aside>spine</aside></div>
