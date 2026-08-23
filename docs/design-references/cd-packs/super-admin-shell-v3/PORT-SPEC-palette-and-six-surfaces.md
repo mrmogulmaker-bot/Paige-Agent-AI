@@ -972,7 +972,18 @@ those are the honest-absence shape, and they port as-is.
 
 ---
 
-# 3. Platform hours
+# 3. Platform hours — DOES NOT EXIST (owner ruling, 2026-08-23)
+
+**Withdrawn. Nothing to port.** Owner, verbatim: *"The pack is silent because I never drew it.
+`P.CALSET` quiet hours and the `P.HOSTS` rota are tenant-scoped scheduling, not a platform-hours
+surface."*
+
+This read as a gap because it came off the OLD console's branch list — a console ruled dead
+2026-08-22. **The mapping exercise should have retired it rather than carrying it forward as
+owed.** A branch that exists only in a replaced design is not a hole in the new one.
+
+The section below is kept as the record of the search that found nothing.
+
 
 ## PACK SILENT — ask CD
 
@@ -1365,7 +1376,19 @@ labels and the three decision notes; the five state tones and three check tones;
 
 ---
 
-# 5. Support inbox
+# 5. Support inbox — DOES NOT EXIST (owner ruling, 2026-08-23)
+
+**Withdrawn. Nothing to port.** Owner, verbatim: *"Conversations is a thread console over
+prospect and partner threads. There's no ticketing model in this design: no queue, no
+assignment, no SLA, no status. If support ticketing is ever wanted it's a new design, not a
+port."*
+
+Same origin as §3 — the old console's branch list, carried forward as owed when it should have
+been retired.
+
+The section below is kept as the record of the search that found nothing: `inbox` / `ticket` /
+`triage` across all four source files, 0/0/0 product surfaces.
+
 
 ## PACK SILENT — ask CD
 

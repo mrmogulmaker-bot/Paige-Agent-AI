@@ -48,22 +48,19 @@ keyboard, accessibility, IA and the Stage 3 ledger — stands.
 
 ## 4. Motion
 
-| Token | Value |
-|---|---|
-| `--pg-t-instant` | 90ms |
-| `--pg-t-quick` | 140ms |
-| `--pg-t-base` | 200ms |
-| `--pg-t-considered` | 280ms |
-| `--pg-t-materialize` | 340ms |
-| `--pg-t-execute` | 520ms |
-| `--pg-e-out` | `cubic-bezier(.22,1,.36,1)` |
-| `--pg-e-authority` | `cubic-bezier(.16,1,.3,1)` |
+**Token names removed by owner ruling, 2026-08-23** — the same ruling that deleted §§1–3, extended
+here. `--pg-t-instant` · `-quick` · `-base` · `-considered` · `-materialize` · `-execute` ·
+`--pg-e-out` · `--pg-e-authority` **do not exist in the shell**, and eight token names that resolve
+to nothing are the same defect as the palette block. The timings below are real spec and stand;
+the **implementation is the shell's own keyframe set** (`PAIGE Super Admin Shell v3.dc.html`
+L46–L67 — `pg-materialize`, `pg-reveal`, `pg-drop`, `pg-roll`, `pg-breathe`, `pg-warm` and the
+rest), under the root `prefers-reduced-motion` kill.
 
 | Transition | Timing |
 |---|---|
-| Rail / surface | 200ms · `--pg-e-out`. Colour and background only; no layout easing on the rail |
+| Rail / surface | 200ms · `cubic-bezier(.22,1,.36,1)`. Colour and background only; no layout easing on the rail |
 | Workspace materialize | 340ms · `clip-path inset(0 0 0 100%) → inset(0)`, opacity 0→1, x +18px→0 |
-| Authority appear | 280ms · `--pg-e-authority`, scale .97→1, champagne edge draws last |
+| Authority appear | 280ms · `cubic-bezier(.16,1,.3,1)`, scale .97→1, champagne edge draws last |
 | Focus ring | 90ms · linear. Never eased — an animated focus ring reads as lag |
 
 Command Mark sequence: see the brand file.

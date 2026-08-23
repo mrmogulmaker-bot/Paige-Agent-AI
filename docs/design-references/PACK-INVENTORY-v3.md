@@ -657,15 +657,46 @@ as a locator and it gets fixed at the source it regenerates from."*
 
 ## 10. Owed from CD — consolidated
 
-| # | Owed | Where recorded |
+**All seven are closed as of 2026-08-23. Nothing waits on the owner.**
+
+| # | Owed | Outcome |
 |---|---|---|
-| ~~1~~ | ~~PORT-SPEC §§6–11~~ — **RULED: will not be written; Contents struck** | PORT-SPEC header |
-| 2 | Platform hours — PACK SILENT | PORT-SPEC §3 |
-| 3 | Support inbox — does it exist in v3, and where | PORT-SPEC §5 |
-| ~~4~~ | ~~Which type ladder binds~~ — **RULED: 11 / 13 / 16 / 21** | §6.1 above |
-| ~~5~~ | ~~Whether stage2's token tables are superseded~~ — **RULED: deleted** | §6.2 above |
-| 6 | Absence copy for Fleet "Needs you today" — `absence-copy.md` covers only Relationships and Campaigns | `absence-copy.md` |
-| 7 | A sign-out glyph | no `sign`/`logout`/`exit`/`leave` glyph in `P.PLACES` or `P.CAPS` |
+| 1 | PORT-SPEC §§6–11 | **RULED: will not be written.** Contents struck, scope line added |
+| 2 | Platform hours | **RULED: does not exist.** Withdrawn — never drawn |
+| 3 | Support inbox | **RULED: does not exist.** Withdrawn — no ticketing model in this design |
+| 4 | Which type ladder binds | **RULED: 11 / 13 / 16 / 21.** Handoff rule 9 corrected |
+| 5 | stage2's token tables | **RULED: deleted**, and extended to §4's motion token names |
+| 6 | Fleet "Needs you today" absence copy | **WITHDRAWN BY CC — the gap did not exist.** Fleet is the one slot live end to end; its "Needs you today" is `P.SUMMONS.owed`, which ships four authored rows plus its own deck and foot. There is no absence to write |
+| 7 | A sign-out glyph | **RULED: draw it.** The one case where the pack's silence is an omission rather than an answer — see below |
+
+### The two that were never gaps, and why they read as gaps
+
+**Platform hours and Support inbox both came off the OLD console's branch list** — a console
+ruled dead 2026-08-22. Owner: *"They're features of a console I ruled dead, and the mapping
+exercise should have retired them rather than carrying them forward as owed."*
+
+That is a reusable test, and it is the inverse of the one PACK-FIRST already teaches. PACK-FIRST
+stops you calling something missing when it is in the pack. This stops the opposite error:
+**a branch that exists only in a replaced design is not a hole in the new one.** Before recording
+anything as owed, ask which design it is a feature of. If the answer is the dead one, retire it.
+
+### Ruling on #7 — sign-out is a place in the rail foot
+
+Owner, verbatim, 2026-08-23:
+
+> *"I'm ruling it a place in the rail foot, so draw it. You're right that the pack has no glyph
+> and that exitScope is a different act. But an operator with no way out of the console is a real
+> hole, and this is the one case where the pack's silence is an omission rather than an answer:
+> the shell was drawn as an always-open surface and never modelled a session ending."*
+>
+> *"So: rail foot, third control below Collapse rail, same treatment as its siblings —
+> `--pg-muted` label, no gold, no accent. Glyph is a door with an arrow leaving it, drawn to
+> match the rail's existing stroke weight. Not a summon, not a confirm dialog. It signs out."*
+
+This is the **only** net-new design element in the console that did not come from the pack, and
+it is owner-drawn, not CC-drawn. It is recorded here so a later session reading the pack and
+finding no sign-out control knows it is looking at an omission the owner closed — not at a
+control someone invented.
 
 Open **owner** rulings the pack lists (CD's, not ours to answer): Stripe Connect vs
 first-party-only marketplace · sub-account credit wallet parentage · whether an eleventh
