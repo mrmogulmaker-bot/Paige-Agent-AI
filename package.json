@@ -16,6 +16,7 @@
     "ci:regression": "node scripts/ci/regression-lint.mjs",
     "lint:views": "node scripts/ci/view-security-invoker-lint.mjs",
     "verify:pack": "node scripts/live-drive/pack-verify.mjs",
+    "harness:selftest": "node scripts/live-drive/harness/selftest.mjs",
     "lint:definer-fns": "node scripts/ci/definer-fn-lint.mjs",
     "lint:tier-features": "node scripts/ci/tier-feature-lint.mjs",
     "lint:tier-features:test": "node scripts/ci/tier-feature-lint.mjs --self-test",
