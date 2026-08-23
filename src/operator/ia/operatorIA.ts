@@ -55,7 +55,7 @@ export const OPERATOR_SLOTS: readonly OperatorSlot[] = [
     views: ["Active", "Catalog", "Sales", "Pipeline", "Social", "Performance"],
     absence: {
       title: "Campaigns is not built yet",
-      body: "Six views are specified. Catalog and Sales have real substrate already — tenant_products, tenant_prices, tenant_orders and the platform subscription tables all ship — so this slot is a wiring job, not a build from nothing. Sales in particular must be a derived read over that substrate, never a hand-kept ledger.",
+      body: "Six views are specified. Catalog and Sales have real substrate already — tenant_products, tenant_prices, tenant_orders and the platform subscription tables all ship — so this is a wiring round, not a build from nothing. A pricing tier is a tenant_prices row pointing at a product, not a nested array on an offering. Sales is a derived read over those tables; a second ledger beside the revenue-integrity chain would drift silently for months. What the tables cannot supply is attribution: tenant_orders carries no campaign reference, utm capture exists only on analytics_events and referral_clicks, and no join runs send to click to order — so campaign-attributed revenue, and the two Analytics charts that need the same history, stay dark until that seam is built.",
     },
   },
   {

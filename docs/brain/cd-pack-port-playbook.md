@@ -277,3 +277,33 @@ and are wrong.
 - **An unbuilt slot uses the pack's own absence treatment** (`hasAbsence` / `absenceTitle` /
   `absenceBody`), never an invented empty state. Absence is already designed, and §13 governs the
   copy: say what is missing and why.
+
+
+## 7. Campaigns is a WIRING round — and the one seam the tables cannot supply
+
+**Corrected 2026-08-23** (Claude Design's own §13 correction — the screen map had said Catalog and
+Sales were "design-led; no repo substrate exists yet"). Verified against prod, not inferred:
+
+- **A pricing tier is a `tenant_prices` row pointing at a product** — `product_id`, `unit_amount`,
+  `billing_interval` + `interval_count`, `nickname`, `sort_order`, `kind`, `installments_total`. The
+  pack's `P.CATALOG[].tiers` four-tuple was a **fixture convenience, never a model claim**. The
+  surface does not change — a tier stack renders a collection either way — so build from the tables.
+- **Sales is a DERIVED READ.** `P.SALES` is the fixture that proves the arithmetic, not the store;
+  the lines themselves are `tenant_orders`. A second ledger beside the revenue-integrity chain
+  (migration `20260815120000`, which enforces at the DB layer that a tenant may only rest at
+  `revenue_class='paid'` with three gates satisfied) is **rule 3 at table scale** — a figure that
+  appears twice, computed once. Worse than the UI version of the defect, because a duplicated table
+  **drifts silently for months**.
+
+**The gap, verified by querying `information_schema` rather than assuming:**
+
+| What exists | What does not |
+|---|---|
+| `analytics_events.utm_campaign` / `.utm_source` | `tenant_orders` has **no** campaign reference — only a free-form `metadata` jsonb |
+| `referral_clicks.utm_campaign` / `.utm_source` | `email_send_log` has `message_id` + `template_name` but **no** campaign id and no conversion link |
+| `tenant_orders` full order shape | **No join runs send → click → order** |
+
+So attribution exists in **fragments on the wrong tables**. Campaign-attributed revenue — and the two
+Analytics charts that need the same send-to-conversion history — stay dark until that seam is built.
+**Named in the Campaigns absence copy on purpose**, so it is met before wiring starts rather than
+discovered halfway through it.
