@@ -44,6 +44,7 @@ export default function SlotRail({
 
   return (
     <nav
+      data-operator-rail
       aria-label="Destinations"
       className={cn(
         "relative z-[3] flex min-h-0 min-w-0 flex-col overflow-hidden",
@@ -59,7 +60,7 @@ export default function SlotRail({
             <b className="block truncate text-[11px] font-medium tracking-[0.4em] text-rail-foreground">
               PAIGE
             </b>
-            <small className="mt-1 block truncate font-mono text-[10px] tracking-[0.08em] text-rail-muted">
+            <small className="mt-1 block truncate font-mono text-[11px] tracking-[0.08em] text-rail-muted">
               PLATFORM OPERATOR
             </small>
           </span>
@@ -107,7 +108,7 @@ export default function SlotRail({
                       className={cn(
                         "h-4 w-4 flex-none",
                         !reduce && "transition-colors duration-200",
-                        isActive ? "text-cd-gold-ink" : "text-current",
+                        "text-current",
                       )}
                     >
                       <path

@@ -50,12 +50,27 @@ describe("the operator shell renders the pack's geometry", () => {
     for (const view of settings.views) expect(html).toContain(`data-view="${view}"`);
   });
 
-  it("a slot with an absence renders the IA's absence copy, unedited", () => {
-    const html = at("/operator/campaigns");
-    const absence = OPERATOR_SLOTS.find((s) => s.id === "campaigns")!.absence!;
-    expect(html).toContain(absence.title.replace(/·/g, "·"));
-    // A distinctive clause is enough to prove it is the IA's body and not a paraphrase.
-    expect(html).toContain("an order cannot name a campaign");
+  /**
+   * Absence is per VIEW, not per slot. A slot can have a shipped feature behind one view and
+   * nothing behind the next — Relationships is exactly that: Conversations and Calendar carry
+   * real operator-scope surfaces, People and Segments carry none. Showing the slot's absence
+   * over a view that HAS a feature would hide shipped work; showing a feature's shape over a
+   * view that has none would be the blank screen. So each view answers for itself.
+   */
+  it("a view with no shipped source renders the IA's absence copy, unedited", () => {
+    const html = at("/operator/relationships/people");
+    const absence = OPERATOR_SLOTS.find((s) => s.id === "relationships")!.absence!;
+    expect(html).toContain(absence.title);
+    // A distinctive clause proves it is the IA's body rather than a paraphrase.
+    expect(html).toContain("only on the wiring");
+  });
+
+  it("a view WITH a shipped source renders the feature, not the absence", () => {
+    const html = at("/operator/relationships/calendar");
+    const absence = OPERATOR_SLOTS.find((s) => s.id === "relationships")!.absence!;
+    // Calendar's four panels ship. If the absence appeared here it would be hiding them —
+    // the regression this pair exists to catch, in the direction that loses work.
+    expect(html).not.toContain(absence.title);
   });
 
   it("an unknown section renders a 404 IN the shell — it does not redirect to Fleet", () => {

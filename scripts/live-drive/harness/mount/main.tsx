@@ -7,7 +7,9 @@
  * own vite config and its own root, is never imported by `src/`, and never reaches a production
  * bundle — so it cannot become an unauthenticated door into the console (§9).
  *
- * WHAT IT MOCKS: the ROUTER, and nothing else. The shell subtree imports no Supabase client and
+ * WHAT IT MOCKS: the ROUTER and the app's PROVIDERS, nothing else. The provider is here because
+ * the wired surfaces read it exactly as they do in the app — discovered by rendering, which threw
+ * `useTenantContext must be used within a <TenantProvider>` the moment real surfaces mounted. The shell subtree imports no Supabase client and
  * no auth context — `performSignOut` is reached only by a click — so the component under
  * measurement here is the shipped one, reading the shipped IA. That is the harness's own rule
  * (README, "mock the provider, never the contract"): a harness handed a fixtured slot list could
@@ -23,8 +25,13 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { TenantProvider } from "@/hooks/useTenantContext";
 import OperatorShell from "@/operator/shell/OperatorShell";
 import "@/index.css";
+
+/** Retries off: a harness waiting on backoff measures a skeleton, not the surface. */
+const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 const params = new URLSearchParams(window.location.search);
 const at = params.get("at") || "/operator/fleet";
@@ -34,6 +41,8 @@ document.documentElement.classList.toggle("dark", (params.get("theme") ?? "dark"
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
+    <QueryClientProvider client={qc}>
+    <TenantProvider>
     <MemoryRouter initialEntries={[at]}>
       <Routes>
         {/* Mirrors how OperatorEntry mounts the shell: a section segment plus a splat, so
@@ -43,5 +52,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="*" element={<OperatorShell />} />
       </Routes>
     </MemoryRouter>
+    </TenantProvider>
+    </QueryClientProvider>
   </StrictMode>,
 );

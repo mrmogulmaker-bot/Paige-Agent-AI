@@ -23,13 +23,13 @@ import type { ScopeState, ScopeTone } from "@/operator/shell/scopeStates";
 const GROUND: Record<ScopeTone, string> = {
   none: "bg-card border-border",
   read: "bg-muted border-border-strong",
-  act: "bg-muted border-cd-gold",
+  act: "bg-muted border-border-strong",
 };
 
 const KICKER: Record<ScopeTone, string> = {
   none: "text-muted-foreground",
   read: "text-foreground",
-  act: "text-cd-gold",
+  act: "text-foreground",
 };
 
 export type ScopeBandProps = Omit<ScopeState, "tone"> & { readonly tone?: ScopeTone };
@@ -52,7 +52,7 @@ export default function ScopeBand({ tone = "none", kicker, scope, audit }: Scope
       <b className="min-w-0 truncate text-[11px] font-medium tracking-[0.02em] text-foreground">
         {scope}
       </b>
-      <span className="min-w-0 flex-none truncate font-mono text-[10px] text-muted-foreground">
+      <span className="min-w-0 flex-none truncate font-mono text-[11px] text-muted-foreground">
         {audit}
       </span>
     </div>

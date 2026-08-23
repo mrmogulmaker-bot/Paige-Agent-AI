@@ -48,6 +48,7 @@ import ScopeBand from "@/operator/shell/ScopeBand";
 import { PLATFORM_SCOPE } from "@/operator/shell/scopeStates";
 import SlotRail from "@/operator/shell/SlotRail";
 import OperatorSpine from "@/operator/shell/OperatorSpine";
+import SlotSurfaceBody from "@/operator/shell/SlotSurfaceBody";
 import { performSignOut } from "@/lib/auth/signOut";
 import { cn } from "@/lib/utils";
 
@@ -205,7 +206,7 @@ function SlotSurface({ address }: { address: Extract<OperatorAddress, { kind: "r
         <h1 className="min-w-0 truncate text-[21px] font-medium leading-[1.1] tracking-[-0.022em] text-foreground">
           {slot.label}
         </h1>
-        <code className="hidden flex-none font-mono text-[10px] text-muted-foreground md:block">
+        <code className="hidden flex-none font-mono text-[11px] text-muted-foreground md:block">
           {canonicalPath(address)}
         </code>
       </header>
@@ -241,17 +242,12 @@ function SlotSurface({ address }: { address: Extract<OperatorAddress, { kind: "r
         </nav>
       )}
 
-      {/* The surface region. An absence renders the IA's own words, verbatim; everything else is
-          the shape the wired surface lands in. */}
-      <section data-surface-slot={slot.id} data-surface-view={view ?? undefined} className="min-w-0">
-        {slot.absence && (
-          <div className="min-w-0 max-w-[68ch] rounded-[12px] border border-border bg-card p-6">
-            <h2 className="min-w-0 text-[13px] font-semibold text-foreground">{slot.absence.title}</h2>
-            <p className="mt-2 min-w-0 text-[13px] leading-[1.6] text-muted-foreground">
-              {slot.absence.body}
-            </p>
-          </div>
-        )}
+      {/* The surface region. `SlotSurfaceBody` resolves the view to the feature that already
+          ships — a bespoke component, its ported CD panels, or the absence that names what is
+          missing. A header over an empty section is the blank-screen failure this console has
+          been rejected for twice; no path here renders nothing. */}
+      <section data-surface-slot={slot.id} data-surface-view={view ?? undefined} className="min-w-0 pt-1">
+        <SlotSurfaceBody slot={slot} view={view} />
       </section>
     </>
   );
@@ -280,7 +276,7 @@ function UnknownSection({ section }: { section: string }) {
           <li key={slot.id} className="min-w-0">
             <NavLink
               to={slotPath(slot.id)}
-              className="inline-block min-w-0 truncate text-[13px] text-foreground underline underline-offset-4 hover:text-cd-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-block min-w-0 truncate text-[13px] text-foreground underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {slot.label}
             </NavLink>
