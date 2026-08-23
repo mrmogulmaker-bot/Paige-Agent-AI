@@ -176,6 +176,35 @@ That is more work than either shortcut. It is the work.
 
 ---
 
+## THE PACK HAS BEEN READ IN FULL — `docs/design-references/PACK-INVENTORY-v3.md`
+
+**Owner instruction, 2026-08-23:** *"grep everything… let me know once you get to 100%"* ·
+*"don't miss a single file"* · *"I want all of your findings, every single line of your
+findings, inside of my code."*
+
+All 18 pack files (3,678,312 bytes / 20,978 lines) are now read and inventoried in
+`docs/design-references/PACK-INVENTORY-v3.md`. **Before claiming anything about this pack —
+what it contains, what it omits, what is ported — read that file.** It carries:
+
+- every one of the shell's **183 render blocks** and **249 `sc-for` collections**, in order;
+- all **49 surface builders** with pack line counts and a measured port percentage
+  (**442 of 1,774 authored strings present in `src/operator/` — 25%**);
+- the full `renderVals` dispatch table, so every surface's guard is known;
+- all **96 `paige-ia.js` catalogues** with exact item counts (evaluated, not estimated);
+- the **13-rule fidelity contract**, CD's **18-round install plan**, and rulings **R1–R7**;
+- **seven pack self-contradictions**, recorded and deliberately unresolved (§00 — CD rules);
+- **seven items owed from CD**, and the standing edits that must survive a re-delivery.
+
+Two facts from it that change how a session starts:
+
+1. **`stage2-design-package.md` carries a SUPERSEDED token set.** Its colour tables, type
+   stacks and radii differ from the shipped `.dc.html`. Port tokens from
+   `design-system-port.md` or the shell itself — never from that file.
+2. **`PAIGE Platform Operator - standalone.html` is the same design, compiled.** Proven by
+   unpacking its blobs and diffing. Screenshot target only; never a source.
+
+---
+
 ## PACK-FIRST — `docs/design-references/PACK-FIRST.md`
 
 Before any UI work here, and again before any report that says something is missing: **the pack is

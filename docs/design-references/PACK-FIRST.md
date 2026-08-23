@@ -176,3 +176,22 @@ way — or am I about to ask a question the pack already answered?"*
 `src/operator/CLAUDE.md` (the operator lock, and "is this thing a place?") · §13 (honest reporting —
 an unsearched "not found" is a false report) · §18 (one home) · §58 (never silently drop a shipped
 capability).
+
+---
+
+## THE WHOLE PACK IS INVENTORIED — read `PACK-INVENTORY-v3.md` before you claim absence
+
+The word-trigger gate in this file fires on *"missing"*, *"not in the pack"*, *"PACK SILENT"*. It does
+**not** fire on **silence** — and silence is how the Paige spine went unported for weeks. Nobody
+said it was missing; nobody looked. That hole is closed by a full read, not by a better trigger.
+
+`PACK-INVENTORY-v3.md` is the record of that read: all 18 files, 20,978 lines, the shell's 183
+render blocks, its 49 surface builders with measured port coverage, and all 96 `paige-ia.js`
+catalogues with exact counts. **A claim of absence that contradicts the inventory is wrong by
+construction.** A claim of absence the inventory does not cover means the inventory needs
+extending — say so and extend it, rather than asserting the gap.
+
+The measured baseline it establishes, so drift is visible: **442 of 1,774 authored pack strings
+present in `src/operator/` — 25%.** That number should only ever go up.
+
+---
