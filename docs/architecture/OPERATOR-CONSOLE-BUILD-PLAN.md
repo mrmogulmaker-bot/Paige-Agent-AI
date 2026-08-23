@@ -147,7 +147,23 @@ plausibly while being wrong. `platform_support` does not exist in the `app_role`
    `lint:views` · `lint:definer-fns` · `lint:tier-features` · `harness:selftest` ·
    `selftest-reject` · `vitest run src/operator`.
 4. **Render** — `frames.mjs`, geometry measured into the label, never captioned.
-5. **Frames to CD.** Evidence handed over, no reading attached (§00).
+5. **Frames to CD — STANDING, every slice, not on request.** Evidence handed over, no reading
+   attached (§00): address, theme, width, measured geometry, faces that actually loaded.
+
+   **Why this is standing rather than on-demand.** Two defects have now shipped that passed
+   every gate in the repo and needed an eye:
+
+   | | what was wrong | what was right |
+   |---|---|---|
+   | the port | correct token NAMES over OUR values | every name |
+   | the spend | correct token VALUES in the WRONG roles | every value |
+
+   Both are allocation failures, not content failures. tsc, eslint, the token-parity guard and
+   the render harness all pass on either one — parity checks that the values MATCH the pack, and
+   cannot check that a value is used where the pack uses it. A screenshot caught both.
+
+   So frames are not something CD asks for when suspicious; they are how a slice reports. A slice
+   without frames is not finished.
 6. **Commit + push.** §66: the tier matrix updates in the same commit when tier visibility changes.
 
 **§32.c stays owed throughout:** the harness renders locally against mocked auth. That is geometry,

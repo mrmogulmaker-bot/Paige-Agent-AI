@@ -97,6 +97,25 @@ looking hard enough before escalating.
 
 ---
 
+## THE TWO ALLOCATION DEFECTS — why a passing check is not a passing surface
+
+Both shipped. Both passed every gate. Both needed an eye.
+
+| | the defect | what was correct |
+|---|---|---|
+| **the port** | CD's design MAPPED ONTO our shadcn tokens — right names, OUR values | every token name |
+| **the spend** | tokens allocated to the wrong ROLE — `--pg-surface` on plates, which rises in dark and RECEDES in light | every token value |
+
+Neither is a content failure. `lint:pg-tokens` verifies values MATCH the pack; it structurally
+cannot verify a value is used WHERE the pack uses it. tsc, eslint and the render harness are all
+blind to both by construction.
+
+**Consequence for how a slice reports:** frames are STANDING, every slice. Not on request, not when
+someone is suspicious. A slice without frames is not finished. What goes with them is evidence only
+— address, theme, width, measured geometry, faces loaded — never a reading (§00).
+
+---
+
 ## THE LOOP — run it every time, not once per session
 
 Before each UI slice, and again before each report that says something is missing:

@@ -249,6 +249,26 @@ All colors MUST be HSL.
   }
 
   [data-pg="light"] {
+    /* DO NOT "FIX" --pg-artifact AND --pg-raised BEING THE SAME HEX IN LIGHT.
+       It is #fffdf8 for both here, and far apart in dark (#e9e4da vs #211d27). That is
+       correct, and Claude Design ruled on it 2026-08-23 precisely so a later session does not
+       separate them by inventing a value.
+
+       In LIGHT, paper and a raised surface are both the lightest thing on a warm ground — the
+       collision is honest, and paper being the brightest thing on paper is the one property
+       that must not break. In DARK they are opposites: --pg-artifact is a document on a
+       near-black shell, --pg-raised is a menu.
+
+       CONSEQUENCE, and it is a real rule rather than a caveat: in light, FILL CANNOT CARRY THE
+       PAPER/POPOVER DISTINCTION — elevation and edge must.
+           a document -> --pg-lift-2 + a hairline
+           a popover  -> --pg-lift-3
+       Same fill, different height. The pack already renders both that way, which is why the
+       identity never surfaced as a problem.
+
+       Changing either value breaks pg-token-parity (44/44 against the pack) AND breaks the
+       thing that is correct about it. Reach for elevation, never for a new hex. */
+
     color-scheme: light;
     --pg-env: #e8e5df; --pg-nav: #f4f1eb; --pg-canvas: #fbf9f5; --pg-spine: #f1eee8;
     --pg-workspace: #f7f4ee; --pg-surface: #f5f2ec; --pg-raised: #fffdf8;
