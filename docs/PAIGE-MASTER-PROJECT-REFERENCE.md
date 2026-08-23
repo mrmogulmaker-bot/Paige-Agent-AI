@@ -647,10 +647,20 @@ separately-authored themes, gold-only-on-the-act, type ladder, layered depth, mo
 activity, layout discipline, taste bar, and an index of every authoritative source. The runtime module
 mirrors THIS, exactly as `cheesy-tells.ts` mirrors its `.md`.
 
-**Owner-owed ruling BEFORE the build (§9/§51/§60):** what an OPERATOR may be told about the design
-system is not what a CLIENT may be told. An operator asking "why is gold only on the act?" is
-dogfooding; a client asking it is being shown our internals. Per-tier decision required — do not ship
-one block to every persona.
+**Tier ruling — RECOMMENDED by Claude Design 2026-08-23, still OWNER-OWED (they said "your call").
+Do not build against it as though it were ruled.** The recommendation, which needs no new mechanism:
+
+> Design rationale is platform internals. An **operator IS the platform**, so they get the full
+> corpus — why champagne inverts between themes, why gold is spent only on the act, why depth comes
+> from layered elevation. A **tenant is not the platform**, so the same question is answered about
+> **their** system: Settings → Platform already carries "Brand — mark, wordmark, palette, resolved
+> recursively" per tenant, inherited by sub-accounts. A client asking "why is this gold?" gets a real
+> answer about their own brand set resolved through their inheritance chain — not our internals in a
+> friendly voice. **Same function, two corpora, clamped by the grant she already has.**
+
+Strong recommendation and it fits the existing capability model rather than inventing a tier concept —
+but it is a recommendation until the owner rules. The underlying risk it addresses is unchanged: do
+not ship one design block to every persona.
 
 **Sequenced AFTER the Super Admin v3 install rounds (#216)**, per the same owner message: *"keep
 finishing building out the design that Claude Design has us doing."* Queued deliberately, not dropped.
