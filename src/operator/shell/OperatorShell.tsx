@@ -47,7 +47,7 @@ import {
 import ScopeBand from "@/operator/shell/ScopeBand";
 import { PLATFORM_SCOPE } from "@/operator/shell/scopeStates";
 import SlotRail from "@/operator/shell/SlotRail";
-import OperatorSpine from "@/operator/shell/OperatorSpine";
+import OperatorSpine, { spineHasContent } from "@/operator/shell/OperatorSpine";
 import SlotSurfaceBody from "@/operator/shell/SlotSurfaceBody";
 import { performSignOut } from "@/lib/auth/signOut";
 import { cn } from "@/lib/utils";
@@ -57,13 +57,59 @@ const RAIL_COMPACT = "72px";
 const SPINE_OPEN = "minmax(340px,26vw)";
 const SPINE_SHUT = "0px";
 
+/**
+ * RULING B (Claude Design, 2026-08-23) — THE COLLAPSE, IN ORDER.
+ * "556px of chrome around a sliver at 640 isn't a layout."
+ *
+ * The order is fixed: the SPINE goes to 0 FIRST, THEN the rail compacts 216 → 72, and the band
+ * is LAST — it thins and never disappears, because it is the thing that says what scope you are
+ * in. The reference implementation is the harness fixture `fixtures/_shell.css` (spine → 0 at
+ * ≤1200, rail → 72 + band thins at ≤900); these are the same two breakpoints.
+ *
+ * WHY `matchMedia` AND NOT A CSS MEDIA QUERY. The spine collapses two ways at once — the track
+ * goes to 0 AND the panel unmounts (see `OperatorSpine`) — and a stylesheet can close a track
+ * but cannot unmount React. Driving both from one boolean here keeps the two halves of the
+ * collapse from drifting apart, which is the defect the pack's own note warns about.
+ */
+const SPINE_COLLAPSE_AT = "(max-width: 1200px)";
+const RAIL_COMPACT_AT = "(max-width: 900px)";
+
+/** `matchMedia`, guarded: jsdom does not implement it and SSR has no window at all. */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mql = window.matchMedia(query);
+    const read = () => setMatches(mql.matches);
+    read();
+    mql.addEventListener("change", read);
+    return () => mql.removeEventListener("change", read);
+  }, [query]);
+  return matches;
+}
+
 export default function OperatorShell() {
   const params = useParams();
   const address = resolveOperatorAddress(params.section, params["*"] ?? "");
 
   const reduce = useReducedMotion();
-  const [railCompact, setRailCompact] = useState(false);
-  const [spineOpen, setSpineOpen] = useState(true);
+
+  // Ruling B — the viewport's own say in the collapse, read once and shared by the track, the
+  // spine's mount and the band's height so all three move in the ruled order.
+  const narrowForSpine = useMediaQuery(SPINE_COLLAPSE_AT);
+  const narrowForRail = useMediaQuery(RAIL_COMPACT_AT);
+
+  // Ruling C — the spine's track is reserved on whether PAIGE has anything to show, never on a
+  // flag. `spineHasContent()` reads the regions `OperatorSpine` actually renders.
+  const spineHasPaige = spineHasContent();
+
+  const [railFolded, setRailFolded] = useState(false);
+  // What the OPERATOR asked for. What is actually open is that AND a spine with content AND a
+  // viewport wide enough — so ⌘\ keeps working at every width and can never open an empty spine.
+  const [spineRequested, setSpineRequested] = useState(true);
+
+  const railCompact = railFolded || narrowForRail;
+  const spineOpen = spineHasPaige && spineRequested && !narrowForSpine;
   const [isDark, setIsDark] = useState(
     () => typeof document !== "undefined" && document.documentElement.classList.contains("dark"),
   );
@@ -85,8 +131,8 @@ export default function OperatorShell() {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey) || e.key !== "\\") return;
       e.preventDefault();
-      if (e.altKey) setRailCompact((v) => !v);
-      else setSpineOpen((v) => !v);
+      if (e.altKey) setRailFolded((v) => !v);
+      else setSpineRequested((v) => !v);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -115,7 +161,8 @@ export default function OperatorShell() {
       data-shell-root
       className="flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden"
     >
-      <ScopeBand {...PLATFORM_SCOPE} />
+      {/* Ruling B — the band is the LAST thing to change: it thins, it never goes. */}
+      <ScopeBand {...PLATFORM_SCOPE} compact={narrowForRail} />
 
       <div
         data-shell-grid
@@ -127,7 +174,7 @@ export default function OperatorShell() {
       >
         <SlotRail
           compact={railCompact}
-          onToggleCompact={() => setRailCompact((v) => !v)}
+          onToggleCompact={() => setRailFolded((v) => !v)}
           isDark={isDark}
           onToggleTheme={toggleTheme}
           onSignOut={() => void performSignOut({ redirectTo: "/operator/login" })}
@@ -136,7 +183,7 @@ export default function OperatorShell() {
         <OperatorCanvas
           address={address}
           spineOpen={spineOpen}
-          onToggleSpine={() => setSpineOpen((v) => !v)}
+          onToggleSpine={() => setSpineRequested((v) => !v)}
         />
 
         {/* Both collapse mechanisms, as the pack has them: the track goes to 0px AND the panel
@@ -156,14 +203,14 @@ function OperatorCanvas({
   onToggleSpine: () => void;
 }) {
   return (
-    <div className="relative grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[58px_minmax(0,1fr)] bg-background">
+    <div className="relative grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[58px_minmax(0,1fr)] bg-[var(--pg-canvas)]">
       {/* Row 1 — the command row. 58px exactly: the pack keeps this height, the canvas row track
           and the slide-over's top offset equal, and they drift apart the moment one is guessed.
           Its left half is the command bar's reserved space; the bar and its palette are a later
           round, and an inert pill that looks like a control but answers nothing is a defect
           (`src/operator/CLAUDE.md` — every control is real or honestly inert), so the space is
           left empty rather than filled with a decoy. */}
-      <div className="col-span-full row-start-1 flex min-h-0 min-w-0 items-center gap-4 border-b border-border bg-card px-5">
+      <div className="col-span-full row-start-1 flex min-h-0 min-w-0 items-center gap-4 border-b border-border bg-[var(--pg-surface)] px-5 shadow-[var(--pg-rim)]">
         <div className="min-w-0 flex-1" />
         <button
           type="button"
@@ -173,8 +220,8 @@ function OperatorCanvas({
           title={spineOpen ? "Fold PAIGE away  ⌘\\" : "Bring PAIGE back  ⌘\\"}
           className={cn(
             "grid h-[34px] w-[34px] flex-none place-items-center rounded-[9px]",
-            "border border-border bg-background text-muted-foreground",
-            "transition-colors hover:text-foreground",
+            "border border-border bg-[var(--pg-raised)] text-muted-foreground shadow-[var(--pg-rim)]",
+            "transition-colors hover:text-foreground active:shadow-[var(--pg-inset)]",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           )}
         >
@@ -189,7 +236,7 @@ function OperatorCanvas({
       </div>
 
       {/* Row 2 — the surface. The ONLY scroller in this column. */}
-      <main className="relative col-start-1 row-start-2 min-h-0 min-w-0 overflow-auto">
+      <main className="relative col-start-1 row-start-2 min-h-0 min-w-0 overflow-auto bg-[var(--pg-workspace)]">
         <div className="mx-auto w-[min(100%,1080px)] min-w-0 px-[clamp(24px,3vw,44px)] pb-[72px] pt-8">
           {address.kind === "unknown" ? (
             <UnknownSection section={address.section} />

@@ -58,7 +58,7 @@ const SHELL_FIT = 0.9;
  * peer-gate after a first pass got them wrong in opposite directions:
  *
  * 1. FIXED, NOT THEME-FLIPPING. The field container is dark in BOTH themes
- *    (`bg-[hsl(var(--rail))]` in FleetConsole) — it is a canvas host, not a themed panel, exactly
+ *    (`bg-[var(--pg-nav)]` in FleetConsole) — it is a canvas host, not a themed panel, exactly
  *    as CD designs it. Pulling theme-flipping INK tokens made the field WORSE, not better: in light
  *    mode `--primary` resolves to `255 60% 12%`, which is the SAME value light `--rail` resolves to,
  *    so Agency nodes were drawn in the exact colour of the ground they sat on and disappeared.

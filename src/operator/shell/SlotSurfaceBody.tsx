@@ -36,8 +36,8 @@ const KnowledgeSurface = lazy(() => import("@/operator/surfaces/KnowledgeSurface
 function Holding() {
   return (
     <div className="min-w-0 space-y-3" aria-busy="true">
-      <div className="h-4 w-40 animate-pulse rounded bg-muted" />
-      <div className="h-24 w-full animate-pulse rounded-[12px] bg-muted/60" />
+      <div className="h-4 w-40 animate-pulse rounded bg-[var(--pg-workspace)]" />
+      <div className="h-24 w-full animate-pulse rounded-[12px] bg-[color-mix(in_srgb,var(--pg-workspace)_60%,transparent)]" />
     </div>
   );
 }
@@ -100,7 +100,7 @@ function Absence({ slot }: { slot: OperatorSlot }) {
     slot.absence?.body ??
     "This view is specified and has a place in the console, but no surface behind it reads live data yet. It is listed here so it is visible rather than missing.";
   return (
-    <div className="min-w-0 max-w-[68ch] rounded-[12px] border border-border bg-card p-6">
+    <div className="min-w-0 max-w-[68ch] rounded-[12px] border border-border bg-[var(--pg-surface)] p-6">
       <h2 className="min-w-0 text-[13px] font-semibold text-foreground">{title}</h2>
       <p className="mt-2 min-w-0 text-[13px] leading-[1.6] text-muted-foreground">{body}</p>
     </div>

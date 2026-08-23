@@ -48,7 +48,7 @@ export default function SlotRail({
       aria-label="Destinations"
       className={cn(
         "relative z-[3] flex min-h-0 min-w-0 flex-col overflow-hidden",
-        "border-r border-border-strong bg-rail text-rail-foreground",
+        "border-r border-border-strong bg-[var(--pg-nav)] text-rail-foreground",
         "px-[13px] pb-[14px] pt-[18px]",
       )}
     >

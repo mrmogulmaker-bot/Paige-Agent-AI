@@ -25,14 +25,14 @@ const TONE_DOT: Record<"ok" | "warn" | "risk" | "unknown", string> = {
   ok: "bg-[hsl(var(--success))]",
   warn: "bg-[hsl(var(--warning))]",
   risk: "bg-[hsl(var(--destructive))]",
-  unknown: "bg-muted-foreground/40",
+  unknown: "bg-[color-mix(in_srgb,var(--pg-muted)_40%,transparent)]",
 };
 
 const TONE_PILL: Record<"ok" | "warn" | "risk" | "unknown", string> = {
   ok: "bg-[hsl(var(--success)/0.12)] text-[hsl(var(--success))]",
   warn: "bg-[hsl(var(--warning)/0.16)] text-[hsl(var(--gold-dark))]",
   risk: "bg-[hsl(var(--destructive)/0.1)] text-[hsl(var(--destructive))]",
-  unknown: "bg-muted text-muted-foreground",
+  unknown: "bg-[var(--pg-workspace)] text-muted-foreground",
 };
 
 function formatWhen(iso: string): string {
@@ -62,14 +62,14 @@ export default function FleetHistorySurface() {
           </div>
         </div>
         <div className="ml-auto flex-none">
-          <span className="whitespace-nowrap rounded-full border border-border bg-card px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium text-muted-foreground">
+          <span className="whitespace-nowrap rounded-full border border-border bg-[var(--pg-surface)] px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium text-muted-foreground">
             {loading ? "—" : runs.length} events
           </span>
         </div>
       </div>
 
       {/* ── the feed ─────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-card shadow-sm">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-sm">
         <div className="border-b border-border px-3.5 py-3">
           <div className="text-[length:var(--pg-t-body)] font-semibold">Check history</div>
           <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">Every sweep, every failure, every recovery.</div>
@@ -79,8 +79,8 @@ export default function FleetHistorySurface() {
           <div className="space-y-px">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex items-center gap-2.5 border-b border-border/60 px-4 py-3">
-                <div className="h-2.5 w-2.5 flex-none animate-pulse rounded-full bg-muted" />
-                <div className="h-3 w-64 animate-pulse rounded bg-muted" />
+                <div className="h-2.5 w-2.5 flex-none animate-pulse rounded-full bg-[var(--pg-workspace)]" />
+                <div className="h-3 w-64 animate-pulse rounded bg-[var(--pg-workspace)]" />
               </div>
             ))}
           </div>

@@ -94,19 +94,28 @@ export function composeFleetRead(rows: readonly RailTenant[], openFindings: numb
 
 function RailCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex-none rounded-[13px] border-[1.5px] border-border bg-card shadow-sm", className)}>
+    <div className={cn("flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-sm", className)}>
       {children}
     </div>
   );
 }
 
-function HerRead({
-  body,
-  onTakeToWorkspace,
-}: {
-  body: string | null;
-  onTakeToWorkspace: () => void;
-}) {
+/**
+ * RULING E (Claude Design, 2026-08-23) — PAIGE IS NOT A DESTINATION.
+ * "She's the spine. A reference to her is not a route, it's an action that opens the spine and
+ * focuses the command bar… The pack has no address for her because there isn't one."
+ *
+ * The "Take it to the workspace →" control that used to sit under this read navigated to
+ * `/operator/paige`, which is not a slot: `operatorAddress.ts` resolved it `{kind:"unknown"}` and
+ * the shell rendered its 404. CD ruled it REMOVED rather than repointed — "a control that opens
+ * an empty spine asserts a capability that isn't there", the same reasoning that collapses the
+ * empty spine to 0 (Ruling C), applied to the control instead of the track.
+ *
+ * WHEN PAIGE IS WIRED INTO THE SPINE this comes back as a CONTROL that expands the spine and
+ * focuses the command bar — NEVER as a URL. Do not "restore" it as a route: a later session
+ * reaching for `/operator/paige` is the signal she has been modelled as a place again.
+ */
+function HerRead({ body }: { body: string | null }) {
   return (
     <RailCard className="px-3.5 py-3">
       <div className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.04em] text-[hsl(var(--primary))]">Her read</div>
@@ -117,13 +126,6 @@ function HerRead({
           Nothing to read yet — no tenants are in view.
         </p>
       )}
-      <button
-        type="button"
-        onClick={onTakeToWorkspace}
-        className="mt-2.5 rounded-lg px-0 text-[length:var(--pg-t-label)] font-semibold text-[hsl(var(--gold-dark))] underline-offset-2 transition-colors hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        Take it to the workspace →
-      </button>
     </RailCard>
   );
 }
@@ -135,7 +137,6 @@ export function FleetTenantsRail({
   onOpenTenant,
   onEnterTenant,
   onProvision,
-  onAskPaige,
   onOpenCheck,
 }: {
   rows: readonly RailTenant[];
@@ -151,7 +152,6 @@ export function FleetTenantsRail({
    */
   onEnterTenant: (id: string) => void;
   onProvision: () => void;
-  onAskPaige: () => void;
   onOpenCheck: () => void;
 }) {
   // The SAME operator read the chrome's rail badge uses — one home, not a second query (§18).
@@ -219,7 +219,7 @@ export function FleetTenantsRail({
       <RailCard className="px-3.5 py-3">
         <div className="text-[length:var(--pg-t-body)] font-semibold">Needs you today</div>
         <div className="mt-2.5 flex flex-col gap-2">
-          {(checkLoading || loading) && <div className="h-16 animate-pulse rounded-[10px] bg-muted" />}
+          {(checkLoading || loading) && <div className="h-16 animate-pulse rounded-[10px] bg-[var(--pg-workspace)]" />}
 
           {/* Both feeds must have ANSWERED before this claims all-clear. Gating on `checkLoading`
               alone asserted "every tenant has members and at least one client" while the fleet read
@@ -242,7 +242,7 @@ export function FleetTenantsRail({
               <div
                 key={f.id}
                 className={cn(
-                  "rounded-[10px] border border-l-[3px] border-border bg-muted/40 px-3 py-2.5",
+                  "rounded-[10px] border border-l-[3px] border-border bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)] px-3 py-2.5",
                   SEVERITY_EDGE[f.severity_at_finding ?? "low"] ?? SEVERITY_EDGE.low,
                 )}
               >
@@ -268,7 +268,7 @@ export function FleetTenantsRail({
               key={r.tenant.id}
               type="button"
               onClick={() => onOpenTenant(r.tenant.id)}
-              className="rounded-[10px] border border-l-[3px] border-border border-l-[hsl(var(--warning))] bg-muted/40 px-3 py-2.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="rounded-[10px] border border-l-[3px] border-border border-l-[hsl(var(--warning))] bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <div className="text-[length:var(--pg-t-label)] leading-relaxed">
                 <span className="font-semibold">{r.tenant.name}</span> —{" "}
@@ -279,7 +279,7 @@ export function FleetTenantsRail({
         </div>
       </RailCard>
 
-      <HerRead body={read} onTakeToWorkspace={onAskPaige} />
+      <HerRead body={read} />
 
       {/* ── Tenants directory (CD P.console) ──────────────────────────────── */}
       <RailCard className="overflow-hidden">
@@ -287,7 +287,7 @@ export function FleetTenantsRail({
           <div className="flex items-center gap-2">
             <span className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.15em] text-muted-foreground">FLEET</span>
             <span className="text-[length:var(--pg-t-body)] font-semibold">Tenants</span>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground">
+            <span className="rounded-full bg-[var(--pg-workspace)] px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground">
               {loading ? "—" : `${rows.length} tenants`}
             </span>
           </div>
@@ -298,7 +298,7 @@ export function FleetTenantsRail({
           <button
             type="button"
             onClick={onProvision}
-            className="mt-2.5 rounded-lg border border-border bg-card px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-2.5 rounded-lg border border-border bg-[var(--pg-surface)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             + Provision a tenant
           </button>
@@ -312,7 +312,7 @@ export function FleetTenantsRail({
             { label: "AT RISK", value: loading ? "—" : String(atRiskCount) },
             { label: "PROVISIONING", value: "—" },
           ].map((k) => (
-            <div key={k.label} className="bg-card px-3 py-2">
+            <div key={k.label} className="bg-[var(--pg-surface)] px-3 py-2">
               <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">
                 {k.label}
               </div>
@@ -330,8 +330,8 @@ export function FleetTenantsRail({
           {loading &&
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center gap-2 border-t border-border/60 px-3.5 py-2">
-                <div className="h-6 w-6 flex-none animate-pulse rounded-[8px] bg-muted" />
-                <div className="h-3 w-32 animate-pulse rounded bg-muted" />
+                <div className="h-6 w-6 flex-none animate-pulse rounded-[8px] bg-[var(--pg-workspace)]" />
+                <div className="h-3 w-32 animate-pulse rounded bg-[var(--pg-workspace)]" />
               </div>
             ))}
 
@@ -345,7 +345,7 @@ export function FleetTenantsRail({
             rows.map((r) => (
               <div
                 key={r.tenant.id}
-                className="flex min-w-0 items-center gap-2 border-t border-border/60 px-3.5 py-2 transition-colors hover:bg-muted/40"
+                className="flex min-w-0 items-center gap-2 border-t border-border/60 px-3.5 py-2 transition-colors hover:bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)]"
               >
                 {/* The row body SELECTS — CD's "click one to open it". */}
                 <button
@@ -353,7 +353,7 @@ export function FleetTenantsRail({
                   onClick={() => onOpenTenant(r.tenant.id)}
                   className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <span className="grid h-6 w-6 flex-none place-items-center rounded-[8px] bg-muted text-[length:var(--pg-t-label)] font-bold text-foreground/70">
+                  <span className="grid h-6 w-6 flex-none place-items-center rounded-[8px] bg-[var(--pg-workspace)] text-[length:var(--pg-t-label)] font-bold text-foreground/70">
                     {initials(r.tenant.name)}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -368,7 +368,7 @@ export function FleetTenantsRail({
                 <button
                   type="button"
                   onClick={() => onEnterTenant(r.tenant.id)}
-                  className="flex-none rounded-lg border border-border bg-card px-2 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex-none rounded-lg border border-border bg-[var(--pg-surface)] px-2 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   Enter
                 </button>
@@ -377,7 +377,7 @@ export function FleetTenantsRail({
         </div>
 
         {/* §53 — load-bearing, not decoration. CD's foot, verbatim. */}
-        <div className="border-t border-border bg-muted/30 px-3.5 py-2.5 text-[length:var(--pg-t-label)] leading-relaxed text-muted-foreground">
+        <div className="border-t border-border bg-[color-mix(in_srgb,var(--pg-workspace)_30%,transparent)] px-3.5 py-2.5 text-[length:var(--pg-t-label)] leading-relaxed text-muted-foreground">
           Entering a tenant puts you in their shell with their data. Every session is recorded in
           Governance.
         </div>

@@ -20,10 +20,11 @@
 import { cn } from "@/lib/utils";
 import type { ScopeState, ScopeTone } from "@/operator/shell/scopeStates";
 
+/** Ruling A — each tone paints on its named token, never on a shadcn alias. */
 const GROUND: Record<ScopeTone, string> = {
-  none: "bg-card border-border",
-  read: "bg-muted border-border-strong",
-  act: "bg-muted border-border-strong",
+  none: "bg-[var(--pg-surface)] border-border",
+  read: "bg-[var(--pg-workspace)] border-border-strong",
+  act: "bg-[var(--pg-workspace)] border-border-strong",
 };
 
 const KICKER: Record<ScopeTone, string> = {
@@ -32,16 +33,27 @@ const KICKER: Record<ScopeTone, string> = {
   act: "text-foreground",
 };
 
-export type ScopeBandProps = Omit<ScopeState, "tone"> & { readonly tone?: ScopeTone };
+export type ScopeBandProps = Omit<ScopeState, "tone"> & {
+  readonly tone?: ScopeTone;
+  /**
+   * Ruling B — the band is the LAST thing the collapse touches. At the rail's breakpoint it
+   * THINS; it never disappears, because it is the thing that says what scope you are in. 32px is
+   * the thinned height in CD's own reference implementation of the order
+   * (`scripts/live-drive/harness/fixtures/_shell.css`); 36px is the pack's rest floor.
+   */
+  readonly compact?: boolean;
+};
 
-export default function ScopeBand({ tone = "none", kicker, scope, audit }: ScopeBandProps) {
+export default function ScopeBand({ tone = "none", kicker, scope, audit, compact = false }: ScopeBandProps) {
   return (
     <div
       data-scope-band={tone}
+      data-scope-band-compact={compact ? "" : undefined}
       className={cn(
         // min-h, never h: the pack's band is a floor so a wrapping scope line grows the strip
         // instead of clipping it. flex-none keeps it out of the shell's height budget.
-        "flex min-h-[36px] min-w-0 flex-none flex-wrap items-center gap-3 border-b px-4",
+        "flex min-w-0 flex-none flex-wrap items-center gap-3 border-b px-4",
+        compact ? "min-h-[32px]" : "min-h-[36px]",
         "transition-colors duration-200",
         GROUND[tone],
       )}

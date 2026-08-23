@@ -21,7 +21,7 @@ import { describeChannels, describeCondition } from "@/operator/data/describeCon
 const SEVERITY_CLASS: Record<string, string> = {
   urgent: "bg-destructive/12 text-destructive",
   warning: "bg-warning/15 text-warning-foreground",
-  info: "bg-muted text-muted-foreground",
+  info: "bg-[var(--pg-workspace)] text-muted-foreground",
 };
 
 /** §16 lanes, in the operator's words rather than the enum's. */
@@ -84,7 +84,7 @@ export default function FleetAlertRulesSurface() {
           <div className="flex items-center gap-2.5">
             <span className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.15em] text-muted-foreground">PLATFORM</span>
             <span className="text-[length:var(--pg-t-title)] font-bold tracking-[-0.02em]">Alert rules</span>
-            <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground">
+            <span className="whitespace-nowrap rounded-full bg-[var(--pg-workspace)] px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground">
               {loading ? "—" : num(activeCount)} active
             </span>
           </div>
@@ -98,7 +98,7 @@ export default function FleetAlertRulesSurface() {
           type="button"
           disabled
           title="Rule authoring is not wired yet — the write path lands with the authoring slice."
-          className="ml-auto flex-none cursor-not-allowed rounded-lg border-[1.5px] border-border bg-muted/50 px-3 py-1.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground"
+          className="ml-auto flex-none cursor-not-allowed rounded-lg border-[1.5px] border-border bg-[color-mix(in_srgb,var(--pg-workspace)_50%,transparent)] px-3 py-1.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground"
         >
           + New rule
         </button>
@@ -107,7 +107,7 @@ export default function FleetAlertRulesSurface() {
       {/* ── KPI strip ─────────────────────────────────────────────── */}
       <div className="grid flex-none grid-cols-2 gap-2.5 lg:grid-cols-4">
         {kpis.map((k) => (
-          <div key={k.label} className="min-w-0 rounded-xl border-[1.5px] border-border bg-card px-3.5 py-3 shadow-sm">
+          <div key={k.label} className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-surface)] px-3.5 py-3 shadow-sm">
             <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.13em] text-muted-foreground">
               {k.label}
             </div>
@@ -133,7 +133,7 @@ export default function FleetAlertRulesSurface() {
       )}
 
       {/* ── Rules ─────────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-card shadow-sm">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-sm">
         <div className="border-b border-border px-3.5 py-3">
           <div className="text-[length:var(--pg-t-body)] font-semibold">Rules</div>
           <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">
@@ -145,7 +145,7 @@ export default function FleetAlertRulesSurface() {
           <div className="space-y-px">
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="flex items-center gap-2.5 border-b border-border/60 px-4 py-3.5">
-                <div className="h-3 w-64 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-64 animate-pulse rounded bg-[var(--pg-workspace)]" />
               </div>
             ))}
           </div>
@@ -176,7 +176,7 @@ export default function FleetAlertRulesSurface() {
                     {r.severity}
                   </span>
                   {!r.isActive && (
-                    <span className="flex-none whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground">
+                    <span className="flex-none whitespace-nowrap rounded-full bg-[var(--pg-workspace)] px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground">
                       paused
                     </span>
                   )}
@@ -209,7 +209,7 @@ export default function FleetAlertRulesSurface() {
       </div>
 
       {/* ── What she can watch ────────────────────────────────────── */}
-      <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-card px-3.5 py-3 shadow-sm">
+      <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] px-3.5 py-3 shadow-sm">
         <div className="text-[length:var(--pg-t-body)] font-semibold">What she can watch</div>
         <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">
           The signals a rule can be written against. A signal with no reader reports “never
@@ -225,7 +225,7 @@ export default function FleetAlertRulesSurface() {
               title={s.notes ?? undefined}
               className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold ${
                 s.isReadable
-                  ? "bg-muted text-muted-foreground"
+                  ? "bg-[var(--pg-workspace)] text-muted-foreground"
                   : "bg-warning/12 text-warning-foreground line-through decoration-1"
               }`}
             >
