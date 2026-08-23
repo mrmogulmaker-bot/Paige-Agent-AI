@@ -128,6 +128,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:alias-ratchet
 
+      # The console's --pg-* values must MATCH Claude Design's pack, not resemble it. The console
+      # shipped once with the pack MAPPED ONTO our shadcn tokens — every name right, every value
+      # ours — and nothing in CI could see it. This compares values, both themes.
+      - name: Design-system parity (--pg-* values vs the CD pack)
+        if: ${{ !cancelled() }}
+        run: npm run lint:pg-tokens
+
       - name: ESLint (changed src)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt ./node_modules/.bin/eslint
