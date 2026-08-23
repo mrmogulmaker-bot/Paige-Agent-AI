@@ -53,10 +53,10 @@ export default function FleetTeamPulseSurface() {
       <div className="flex flex-none flex-wrap items-start gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
-            <span className="text-[9.5px] font-semibold tracking-[0.15em] text-muted-foreground">FLEET</span>
-            <span className="text-[21px] font-bold tracking-[-0.02em]">Team Pulse</span>
+            <span className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.15em] text-muted-foreground">FLEET</span>
+            <span className="text-[length:var(--pg-t-title)] font-bold tracking-[-0.02em]">Team Pulse</span>
           </div>
-          <div className="mt-1.5 text-[12.5px] text-muted-foreground">
+          <div className="mt-1.5 text-[length:var(--pg-t-body)] text-muted-foreground">
             Platform seats only — who is carrying the operator work, and who is idle.
           </div>
         </div>
@@ -66,13 +66,13 @@ export default function FleetTeamPulseSurface() {
       <div className="grid flex-none grid-cols-2 gap-2.5 lg:grid-cols-4">
         {kpis.map((k) => (
           <div key={k.label} className="min-w-0 rounded-xl border-[1.5px] border-border bg-card px-3.5 py-3 shadow-sm">
-            <div className="truncate text-[9px] font-semibold tracking-[0.13em] text-muted-foreground">
+            <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.13em] text-muted-foreground">
               {k.label}
             </div>
-            <div className="mt-1 whitespace-nowrap text-[24px] font-bold tabular-nums tracking-[-0.02em]">
+            <div className="mt-1 whitespace-nowrap text-[length:var(--pg-t-title)] font-bold tabular-nums tracking-[-0.02em]">
               {k.value}
             </div>
-            {k.unit && <div className="mt-0.5 truncate text-[10.5px] text-muted-foreground">{k.unit}</div>}
+            {k.unit && <div className="mt-0.5 truncate text-[length:var(--pg-t-label)] text-muted-foreground">{k.unit}</div>}
           </div>
         ))}
       </div>
@@ -80,8 +80,8 @@ export default function FleetTeamPulseSurface() {
       {/* ── who is carrying the work ─────────────────────────────── */}
       <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-card shadow-sm">
         <div className="border-b border-border px-3.5 py-3">
-          <div className="text-[13.5px] font-semibold">Who is carrying the work</div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">Utilisation against a nominal week.</div>
+          <div className="text-[length:var(--pg-t-body)] font-semibold">Who is carrying the work</div>
+          <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">Utilisation against a nominal week.</div>
         </div>
 
         {loading && (
@@ -97,13 +97,13 @@ export default function FleetTeamPulseSurface() {
 
         {!loading && error && (
           <div className="px-4 py-10 text-center">
-            <div className="text-[13px] font-semibold">The roster could not be read.</div>
-            <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">{error}</div>
+            <div className="text-[length:var(--pg-t-body)] font-semibold">The roster could not be read.</div>
+            <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-muted-foreground">{error}</div>
           </div>
         )}
 
         {!loading && !error && seats.length === 0 && (
-          <div className="px-4 py-10 text-center text-[13px] font-semibold text-muted-foreground">
+          <div className="px-4 py-10 text-center text-[length:var(--pg-t-body)] font-semibold text-muted-foreground">
             No platform seat is being read on this surface yet.
           </div>
         )}
@@ -117,14 +117,14 @@ export default function FleetTeamPulseSurface() {
                 key={s.userId}
                 className="flex min-w-0 items-center gap-2.5 border-b border-border/60 px-4 py-3 last:border-b-0"
               >
-                <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-muted text-[10.5px] font-semibold text-muted-foreground">
+                <div className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-muted text-[length:var(--pg-t-label)] font-semibold text-muted-foreground">
                   {initials(name)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] font-semibold leading-[1.35]">{name}</div>
-                  <div className="truncate text-[11px] text-muted-foreground">{ROLE_LABEL[s.role] ?? s.role}</div>
+                  <div className="truncate text-[length:var(--pg-t-body)] font-semibold leading-[1.35]">{name}</div>
+                  <div className="truncate text-[length:var(--pg-t-label)] text-muted-foreground">{ROLE_LABEL[s.role] ?? s.role}</div>
                 </div>
-                <span className="ml-auto flex-none whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                <span className="ml-auto flex-none whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground">
                   no data
                 </span>
               </div>
@@ -134,20 +134,20 @@ export default function FleetTeamPulseSurface() {
 
       {/* ── where operator time goes ─────────────────────────────── */}
       <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-card px-3.5 py-3 shadow-sm">
-        <div className="text-[13.5px] font-semibold">Where operator time goes</div>
-        <div className="mt-0.5 text-[11px] text-muted-foreground">This week, by area.</div>
+        <div className="text-[length:var(--pg-t-body)] font-semibold">Where operator time goes</div>
+        <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">This week, by area.</div>
         <div className="mt-2.5 space-y-2">
           {["Provisioning and rulings", "Fleet health", "Platform config", "Support triage", "Governance review"].map(
             (label) => (
               <div key={label} className="flex items-center gap-2.5">
-                <span className="w-40 flex-none truncate text-[11px] text-muted-foreground">{label}</span>
+                <span className="w-40 flex-none truncate text-[length:var(--pg-t-label)] text-muted-foreground">{label}</span>
                 <div className="h-1.5 flex-1 rounded-full bg-muted" />
-                <span className="w-8 flex-none text-right text-[10.5px] font-mono text-muted-foreground">—</span>
+                <span className="w-8 flex-none text-right text-[length:var(--pg-t-label)] font-mono text-muted-foreground">—</span>
               </div>
             ),
           )}
         </div>
-        <div className="mt-2.5 text-[10.5px] text-muted-foreground">
+        <div className="mt-2.5 text-[length:var(--pg-t-label)] text-muted-foreground">
           No time-tracking capability exists yet to measure this — the roster above is real; this
           breakdown is not.
         </div>

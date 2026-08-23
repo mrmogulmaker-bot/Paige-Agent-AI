@@ -324,7 +324,172 @@ class of lie as a fabricated metric (§13).
 
 Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **403** denied at the route gate.
 
-### `/operator/fleet/systems-check` — Fleet Console sub-tab 1
+### The operator console — `/operator/{slot}/{view}`, six slots × thirty-three views
+
+**§66 debt, paid LATE — recorded rather than backfilled quietly.** PR #571 (`24482d15`, *Operator
+console: six-slot shell + every shipped feature surfaced in it*) retired the five-sub-tab Fleet
+Console addresses this ledger described and replaced them with the six-slot IA. §66 binds that
+update to **PR #571's own commit**; it did not happen there, and this entry lands after the fact.
+The drift is the point of §66's anchoring value, so it is written down: between `24482d15` and this
+commit, this ledger named five addresses that no longer resolved. The five detailed sections below
+are the SAME evidence, re-addressed — nothing recorded there is discarded (§58).
+
+**The IA is thirty-three views, not the pack's thirty-two.** `operatorIA.ts`'s own module docblock
+(L2) still reads "six slots, thirty-two views" while `OPERATOR_VIEW_COUNT` (L107) derives **33** —
+32 from the pack plus Settings → Numbers, added by owner ruling 2026-08-23 (`operatorIA.ts:89–98`)
+and asserted as a ruled addition in `operatorIA.test.ts:81–82`. The count is right; the prose above
+it is stale.
+
+**The gate, stated once — it is identical for all thirty-three addresses.** `App.tsx:231` mounts
+`/operator/*` → `OperatorEntry`, which puts **one** `RequireOperator` above `:section/*`
+(`OperatorEntry.tsx:42–49`). That guard asks the server for `is_platform_admin()`
+(`RequireOperator.tsx:125`) — `super_admin OR platform_admin`, i.e. §53's `is_platform_operator()`
+set. A signed-out caller is sent to `/operator/login?next=` (`RequireOperator.tsx:199–202`); a
+signed-in non-operator is sent to `/admin` (`RequireOperator.tsx:236`). No per-view gate exists, so
+no view can differ. Because that is uniform, the tier grid is stated once here rather than repeated
+thirty-three times — the information is the same, the wall is not:
+
+| Any `/operator/{slot}/{view}` address | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
+|---|---|---|---|---|---|---|---|
+| Reaches the console at all | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
+
+Agency / Enterprise / Solo / Sub-account read **N/A** for the same reason as the sections below:
+the owner sequenced the operator tier to completion before any other shell opens, so they are not
+denied a capability that exists for them — the console is not their surface. Client and Anonymous
+are **403** at `RequireOperator`. A UI guard is not the boundary; RLS and the
+`is_platform_operator()`-gated RPCs are (`RequireOperator.tsx:35–37`).
+
+**Three states, and only one of them means "working".** This vocabulary is defined here and used in
+the State column below:
+
+- **wired** — a bespoke component that reads live data. The only state that means the surface does
+  its job. Seven views.
+- **structure-only** — Claude Design's ported panel structure renders (eyebrow, title, KPI ladder,
+  block cards, anchors, chips), and **no value behind it is read**. KPIs are `null` → `—`, row sets
+  are `[]` → the block's own empty line, some blocks carry CD's authored label rows. **Proven, not
+  assumed:** neither `panelSpecs.ts`, any file under `surfaces/specs/`, nor `OperatorPanel.tsx`
+  imports `supabase` or performs a fetch (grep returns nothing). Twenty-three views.
+- **absence** — the pack's designed absence treatment (`SlotSurfaceBody.tsx:96–107`), which names
+  what is missing. A deliberate state, neither shipped nor a gap. Three views.
+
+**An address that resolves is not a shipped surface.** `src/operator/CLAUDE.md` records the failure
+this rule comes from: 78 tabs each resolved a spec, everything typechecked, and every screen was
+blank. No row below is ticked for addressability.
+
+| Address | What renders | State | Evidence (file:line) |
+|---|---|---|---|
+| `/operator/fleet/systems-check` | `SystemsCheckSurface` | **wired** | `viewSources.ts:38` · `SlotSurfaceBody.tsx:58` · `SystemsCheckSurface.tsx:143` → `useSystemsCheck.ts:116` (`systems_check_snapshot`) |
+| `/operator/fleet/directory` | `FleetConsole` | **wired** | `viewSources.ts:39` · `SlotSurfaceBody.tsx:57` · `FleetConsole.tsx:106` → `useFleet.ts:113–123` (`tenants`, `tenant_members`, `clients`, `tenant_revenue_classification`) |
+| `/operator/fleet/history` | `FleetHistorySurface` | **wired** | `viewSources.ts:40–43` · `SlotSurfaceBody.tsx:59` · `FleetHistorySurface.tsx:49` → `useSystemsCheckHistory.ts:47` (`paige_systems_check_run`) |
+| `/operator/relationships/people` | absence — "Drawn, not wired" | **absence** | `viewSources.ts:48` (`carries: []`) · `operatorIA.ts:62–65` · `SlotSurfaceBody.tsx:93` |
+| `/operator/relationships/conversations` | 5 ported panels: `comms/outbound`, `comms/templates`, `comms/sent-log`, `support/inbox`, `support/escalations` | **structure-only** | `viewSources.ts:49–52` · `platformSpecs.ts:420, 469, 520, 303, 327` |
+| `/operator/relationships/calendar` | 4 ported panels: `calendar/month`, `booking-links`, `settings`, `tasks` | **structure-only** | `viewSources.ts:53–56` · `opsSpecs.ts:709, 748, 770, 881` |
+| `/operator/relationships/segments` | absence — "Drawn, not wired" | **absence** | `viewSources.ts:57` · `operatorIA.ts:62–65` |
+| `/operator/campaigns/active` | 3 ported panels: `growth/pages`, `growth/funnels`, `growth/forms` | **structure-only** | `viewSources.ts:60–63` · `opsSpecs.ts:443, 473, 491` |
+| `/operator/campaigns/catalog` | 2 ported panels: `revenue/plans`, `revenue/metering` | **structure-only** | `viewSources.ts:64–67` · `moneySpecs.ts:174, 218` |
+| `/operator/campaigns/sales` | 2 ported panels: `revenue/invoices`, `revenue/at-risk` | **structure-only** | `viewSources.ts:68–71` · `moneySpecs.ts:274, 304` |
+| `/operator/campaigns/pipeline` | 1 ported panel: `fleet/prospects` | **structure-only** | `viewSources.ts:72` · `fleetSpecs.ts:283` |
+| `/operator/campaigns/social` | 3 ported panels: `growth/social`, `growth/brand-kit`, `growth/assets` | **structure-only** | `viewSources.ts:73–76` · `opsSpecs.ts:408, 362, 521` |
+| `/operator/campaigns/performance` | 2 ported panels: `analytics/performance`, `analytics/marketing` | **structure-only** | `viewSources.ts:77–80` · `moneySpecs.ts:876, 748` |
+| `/operator/marketplace/storefront` | 1 ported panel: `marketplace/discover` | **structure-only** | `viewSources.ts:83` · `opsSpecs.ts:228` |
+| `/operator/marketplace/catalog` | 1 ported panel: `marketplace/build` | **structure-only** | `viewSources.ts:84` · `opsSpecs.ts:268` |
+| `/operator/marketplace/submissions` | 1 ported panel: `marketplace/submissions` | **structure-only** | `viewSources.ts:85` · `opsSpecs.ts:299` |
+| `/operator/marketplace/publishers` | 1 ported panel: `marketplace/publishers` | **structure-only** | `viewSources.ts:86` · `opsSpecs.ts:332` |
+| `/operator/analytics/fleet` | 3 ported panels: `analytics/brief`, `analytics/revenue`, `analytics/forecast` | **structure-only** | `viewSources.ts:89–92` · `moneySpecs.ts:355, 414, 832` |
+| `/operator/analytics/relationships` | 3 ported panels: `analytics/comms`, `analytics/support`, `analytics/retention` | **structure-only** | `viewSources.ts:93–96` · `moneySpecs.ts:802, 522, 586` |
+| `/operator/analytics/campaigns` | 1 ported panel: `analytics/product` | **structure-only** | `viewSources.ts:97` · `moneySpecs.ts:625` |
+| `/operator/analytics/autonomy` | `TrustCompass` (READ-ONLY — no `onCommit`) | **wired** | `viewSources.ts:98–101` · `SlotSurfaceBody.tsx:62–66` · `useCompass.ts:44–50` (`paige_departments`, `paige_action_kinds`) |
+| `/operator/analytics/platform-health` | `FleetTeamPulseSurface` | **wired** | `viewSources.ts:102` · `SlotSurfaceBody.tsx:61` · `FleetTeamPulseSurface.tsx:27` → `useTeamPulse.ts:39` (`list_platform_staff()`) |
+| `/operator/settings/setup` | 3 ported panels: `settings/setup/operator`, `brand-kit`, `model-router` | **structure-only** | `viewSources.ts:105–108` · `platformSpecs.ts:540, 595, 637` |
+| `/operator/settings/platform` | 2 ported panels: `settings/setup/feature-flags`, `api-mcp` | **structure-only** | `viewSources.ts:109–112` · `platformSpecs.ts:751, 769` |
+| `/operator/settings/integrations` | 3 ported panels: `connected`, `health`, `available` | **structure-only** | `viewSources.ts:113–116` · `platformSpecs.ts:793, 839, 863` |
+| `/operator/settings/numbers` | absence — the **generic** fallback copy | **absence** | `viewSources.ts:123` · `SlotSurfaceBody.tsx:98–101` (Settings declares no slot `absence`, `operatorIA.ts:87–103`) |
+| `/operator/settings/mind` | `KnowledgeSurface` | **wired** | `viewSources.ts:124–127` · `SlotSurfaceBody.tsx:67–69` · `useKnowledge.ts:85–90` (`knowledge_base`) |
+| `/operator/settings/automations` | 3 ported panels: `automations/library`, `runs`, `build` | **structure-only** | `viewSources.ts:128–131` · `opsSpecs.ts:586, 618, 657` |
+| `/operator/settings/alerts` | `FleetAlertRulesSurface` | **wired** | `viewSources.ts:132` · `SlotSurfaceBody.tsx:60` · `FleetAlertRulesSurface.tsx:51` → `useAlerting.ts:109–131` |
+| `/operator/settings/capabilities` | 1 ported panel: `settings/setup/capabilities` | **structure-only** | `viewSources.ts:133–136` · `platformSpecs.ts:691` |
+| `/operator/settings/vault` | 3 ported panels: `obligations`, `vendors`, `documents` | **structure-only** | `viewSources.ts:137–140` · `platformSpecs.ts:975, 995, 1017` |
+| `/operator/settings/governance` | 3 ported panels: `approvals`, `audit-log`, `security` | **structure-only** | `viewSources.ts:141–144` · `platformSpecs.ts:1036, 1052, 1072` |
+| `/operator/settings/team` | 2 ported panels: `settings/team/seats`, `roles` | **structure-only** | `viewSources.ts:145–148` · `platformSpecs.ts:907, 925` |
+
+**Seven wired · twenty-three structure-only · three absence.** The seven wired views are the five
+Fleet Console surfaces this ledger already documented (re-addressed below) plus Trust Compass and
+Knowledge — i.e. **PR #571 moved and re-housed the shipped work; it did not wire a new read.** No
+row above should be read as new capability.
+
+#### Findings from this survey — the code contradicting itself (§13, reported not smoothed over)
+
+These are recorded here because a ledger that only tallies states hides them. Each is read from
+source in this commit; none is fixed here (this PR touches only this file).
+
+1. **Six purpose-built surfaces are unreachable in the new shell.** `bespokeSlots()`
+   (`bespokeSlots.tsx:30`) hands a real body to six panels — `CalendarMonth` (calendar/month),
+   `CalendarWeek` (calendar/settings), `MarketplaceReview` (marketplace/submissions),
+   `SupportThread` (support/inbox), `ComposeSurface` (comms/outbound), `IntegrationsGrid`
+   (settings/integrations/connected). Its **only caller** is the retired console
+   (`legacy/OperatorLegacyApp.tsx:919`, `slots={bespokeSlots(...)}`); `SlotSurfaceBody.tsx:86`
+   renders `<OperatorPanel spec={spec} />` with **no `slots` prop**. Those six panel specs each
+   carry a `notWired` block precisely because the real body was slotted over it
+   (`opsSpecs.ts:736, 789, 809, 314` · `platformSpecs.ts:314, 447, 826`), so in the six-slot shell
+   the operator now sees a "not connected" plate where the legacy console rendered the built
+   surface. This is failure mode 2 in `src/operator/CLAUDE.md` — "components were imported and never
+   rendered" — recurring in the replacement shell, and a §58 regression against the legacy console.
+2. **The console has no Paige.** `RETIRED_ADDRESSES` retires `paige/chat` on the stated ground that
+   "the spine is Paige's home in this shell" (`viewSources.ts:159–162`), but `OperatorSpine.tsx:32–39`
+   renders two **empty** scroll regions and its own docblock says so: *"the chat engine, the thread
+   and the memory read are wiring, and wiring is a later round."* The legacy console mounted the real
+   panel (`OperatorLegacyApp.tsx:766`, `OperatorPaigePanel`), which is now mounted nowhere. So the
+   justification for the retirement is not true at runtime yet.
+3. **Three live dead links out of `FleetConsole`.** `FleetConsole.tsx:277` and `:573` navigate to
+   `/operator/provisioning`; `:574` navigates to `/operator/paige`. Neither is a slot, so
+   `resolveOperatorAddress` returns `{kind:"unknown"}` (`operatorAddress.ts:55`) and the operator
+   lands on the 404 (`OperatorShell.tsx:195, 268`, `UnknownSection`). "Provision a tenant" is a primary
+   act on a **wired** surface and it goes nowhere.
+4. **No command palette exists in this shell.** `operatorIA.ts:30–33` states that everything without
+   a slot "is reached through the command palette", and `OperatorShell.tsx:80–82` declines ⌘K
+   because "the command palette has exactly one owner platform-wide (`AgentPresenceContext`)". That
+   owner is mounted inside `AdminLayout.tsx:435` only; `/operator/*` mounts `OperatorEntry` directly
+   from `App.tsx:231` and never enters `AdminLayout`. So the escape hatch the IA relies on to justify
+   six slots is not reachable from the six-slot console.
+5. **`settings/numbers` renders the generic absence, not one naming the capability.**
+   `viewSources.ts:117–123` says it "renders the absence that NAMES the capability rather than a
+   plausible-looking empty inventory" — but absence copy is a **slot** property and Settings declares
+   none (`operatorIA.ts:87–103`), so `SlotSurfaceBody.tsx:98–101` prints the generic
+   "Not wired yet / This view is specified and has a place in the console…". Twilio number inventory
+   is never named on screen.
+6. **The Campaigns slot's absence copy can never render.** `operatorIA.ts:71–74` carries a carefully
+   written absence ("Substrate exists · one seam missing", naming the `utm_campaign` join gap), but
+   all six Campaigns views resolve ported panels, so `SlotSurfaceBody` returns before `Absence` in
+   every case (`SlotSurfaceBody.tsx:81–93`). It is dead at runtime.
+7. **Nine ported CD panels are carried by a view and composed into none of it.** `carries[]` records
+   the capability a view absorbed; for a **bespoke** view that is fine (the component replaces the
+   panel). For these there is neither: `growth/builders` (carried by campaigns/active),
+   `support/response-policy` (relationships/conversations), `paige/team` (settings/team),
+   `paige/skills` · `paige/sub-agents` · `paige/actions` (settings/capabilities),
+   `provisioning/pipeline` (fleet/directory), `provisioning/history` and
+   `settings/governance/act-as-history` (fleet/history). The last three are partly answered by the
+   bespoke surface, but the act-as history rendered by the legacy panel is not on the new History
+   surface (`FleetHistorySurface.tsx` reads `paige_systems_check_run` only) — so the §58 audit trail
+   `viewSources.test.ts` is meant to protect has a hole it does not catch, because coverage is
+   asserted against `carries[]`, not against what renders.
+
+**Verification honesty (§13/§32.c).** Every state and every finding above is read from source in
+this repo; **no render was driven and no screenshot was taken** — this session has no browser. So
+this ledger records what the code resolves to, which is exactly the class of claim that "the address
+resolves" cannot back. A §32.c live-drive of the deployed console by a capable session (Cowork /
+Chrome MCP) is **owed** for all thirty-three addresses, and the seven **wired** rows are the ones
+worth driving first.
+
+---
+
+**The five sections that follow are the SAME Fleet Console evidence, re-addressed.** Their tables and
+notes are unchanged; only the heading each sits under has moved, because PR #571 moved the surface.
+
+
+### `/operator/fleet/systems-check` — Fleet · Systems check
+
+*Address unchanged by PR #571; it was Fleet Console sub-tab 1.*
+
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
 | Systems Check tab (pack-faithful, above the fold) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
@@ -336,7 +501,10 @@ Legend: **✓** live · **—** not built · **N/A** tier not opened yet · **40
 
 Shipped 2026-08-19 (PR #554). Owner live-drive passed on all four checks.
 
-### `/operator/fleet/tenants` — Fleet Console sub-tab 2
+### `/operator/fleet/directory` — Fleet · Directory
+
+*Re-addressed by PR #571 (`24482d15`): was `/operator/fleet/tenants`, Fleet Console sub-tab 2. Same `FleetConsole` component, same reads (`viewSources.ts:39`).*
+
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
 | Orbital field rendered in **React Three Fiber** | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
@@ -439,7 +607,10 @@ sequenced the operator tier to completion before any other shell opens. They are
 gate and stay that way.
 
 
-### `/operator/fleet/history` — Fleet Console sub-tab 3
+### `/operator/fleet/history` — Fleet · History
+
+*Address unchanged by PR #571; it was Fleet Console sub-tab 3.*
+
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
 | Run history feed, newest first (pack `SC_HISTORY`) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
@@ -450,7 +621,10 @@ gate and stay that way.
 capped at 100 — a plain PostgREST read, because the L3 operator-scope migration already widened RLS
 to let `is_platform_operator()` see those rows (§18: nothing new to add). §32.c live-drive owed.
 
-### `/operator/fleet/alert-rules` — Fleet Console sub-tab 4
+### `/operator/settings/alerts` — Settings · Alerts
+
+*Re-addressed by PR #571 (`24482d15`): was `/operator/fleet/alert-rules`, Fleet Console sub-tab 4. Same `FleetAlertRulesSurface` (`viewSources.ts:132`) — the slot changed, the surface did not.*
+
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
 | Pack structure — KPI ladder, Rules block, foot | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
@@ -593,7 +767,10 @@ real design questions (what conditions can be expressed, what channels deliver, 
 the existing Systems Check finding stream or its own), so it is an owner-scoped slice rather than a
 port.
 
-### `/operator/fleet/team-pulse` — Fleet Console sub-tab 5
+### `/operator/analytics/platform-health` — Analytics · Platform health
+
+*Re-addressed by PR #571 (`24482d15`): was `/operator/fleet/team-pulse`, Fleet Console sub-tab 5. Same `FleetTeamPulseSurface` (`viewSources.ts:102`).*
+
 | Capability | God | Agency | Enterprise | Solo | Sub-account | Client | Anonymous |
 |---|---|---|---|---|---|---|---|
 | Platform-seat roster (real `list_platform_staff()`) | ✓ | N/A | N/A | N/A | N/A | 403 | 403 |
@@ -611,6 +788,13 @@ reads; sub-tab 4 (Alert rules) was the single remaining backend gap at the time 
 and has since been closed by A1–A4 (2026-08-20 → 2026-08-22). This survey corrected a stale
 plan that had History queued as the next port — it had already shipped with a real feed, and
 rebuilding it would have been the §18 failure of building something that already exists.
+
+**Superseded as an ADDRESS map by PR #571, kept as the record (§13).** The five sub-tabs above no
+longer exist as a branch: Systems check, Directory and History are the three Fleet slot views;
+Alert rules moved to Settings · Alerts; Team pulse moved to Analytics · Platform health. What each
+surface READS is unchanged — the shell around them moved, the reads did not. See the console table
+at the top of this ledger for where each one now answers.
+
 ## Known ambiguities and hazards (log, don't hide — §13)
 
 | Ref | Hazard | Where |

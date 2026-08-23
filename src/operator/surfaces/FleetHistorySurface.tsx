@@ -54,15 +54,15 @@ export default function FleetHistorySurface() {
       <div className="flex flex-none flex-wrap items-start gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5">
-            <span className="text-[9.5px] font-semibold tracking-[0.15em] text-muted-foreground">PLATFORM</span>
-            <span className="text-[21px] font-bold tracking-[-0.02em]">History</span>
+            <span className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.15em] text-muted-foreground">PLATFORM</span>
+            <span className="text-[length:var(--pg-t-title)] font-bold tracking-[-0.02em]">History</span>
           </div>
-          <div className="mt-1.5 text-[12.5px] text-muted-foreground">
+          <div className="mt-1.5 text-[length:var(--pg-t-body)] text-muted-foreground">
             Every check that has run, newest first, with what it found.
           </div>
         </div>
         <div className="ml-auto flex-none">
-          <span className="whitespace-nowrap rounded-full border border-border bg-card px-3 py-1.5 text-[11.5px] font-medium text-muted-foreground">
+          <span className="whitespace-nowrap rounded-full border border-border bg-card px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium text-muted-foreground">
             {loading ? "—" : runs.length} events
           </span>
         </div>
@@ -71,8 +71,8 @@ export default function FleetHistorySurface() {
       {/* ── the feed ─────────────────────────────────────────────── */}
       <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-card shadow-sm">
         <div className="border-b border-border px-3.5 py-3">
-          <div className="text-[13.5px] font-semibold">Check history</div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">Every sweep, every failure, every recovery.</div>
+          <div className="text-[length:var(--pg-t-body)] font-semibold">Check history</div>
+          <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">Every sweep, every failure, every recovery.</div>
         </div>
 
         {loading && (
@@ -88,13 +88,13 @@ export default function FleetHistorySurface() {
 
         {!loading && error && (
           <div className="px-4 py-10 text-center">
-            <div className="text-[13px] font-semibold">The history could not be read.</div>
-            <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">{error}</div>
+            <div className="text-[length:var(--pg-t-body)] font-semibold">The history could not be read.</div>
+            <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-muted-foreground">{error}</div>
           </div>
         )}
 
         {!loading && !error && runs.length === 0 && (
-          <div className="px-4 py-10 text-center text-[13px] font-semibold text-muted-foreground">
+          <div className="px-4 py-10 text-center text-[length:var(--pg-t-body)] font-semibold text-muted-foreground">
             No sweep has been recorded here yet.
           </div>
         )}
@@ -113,23 +113,23 @@ export default function FleetHistorySurface() {
                   <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <span
                       className={cn(
-                        "whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                        "whitespace-nowrap rounded-full px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold",
                         TONE_PILL[tone],
                       )}
                     >
                       {r.completedAt ? "Sweep" : "Running"}
                     </span>
-                    <span className="ml-auto flex-none whitespace-nowrap font-mono text-[10.5px] text-muted-foreground">
+                    <span className="ml-auto flex-none whitespace-nowrap font-mono text-[length:var(--pg-t-label)] text-muted-foreground">
                       {formatWhen(r.startedAt)}
                     </span>
                   </div>
-                  <div className="mt-1 text-[12.5px] font-semibold leading-[1.35]">
+                  <div className="mt-1 text-[length:var(--pg-t-body)] font-semibold leading-[1.35]">
                     {r.completedAt
                       ? `${r.passCount}/${r.checkCount} checks passed`
                       : `Sweeping ${r.checkCount || "—"} checks…`}
                   </div>
                   {r.failCount > 0 && (
-                    <div className="mt-[3px] text-[11px] leading-[1.45] text-muted-foreground">
+                    <div className="mt-[3px] text-[length:var(--pg-t-label)] leading-[1.45] text-muted-foreground">
                       {r.failCount} {r.failCount === 1 ? "finding" : "findings"} need a look.
                     </div>
                   )}
@@ -138,7 +138,7 @@ export default function FleetHistorySurface() {
             );
           })}
       </div>
-      <div className="flex-none text-[10.5px] text-muted-foreground">
+      <div className="flex-none text-[length:var(--pg-t-label)] text-muted-foreground">
         Retained indefinitely.
       </div>
     </div>

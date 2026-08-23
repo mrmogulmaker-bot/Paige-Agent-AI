@@ -161,6 +161,29 @@ All colors MUST be HSL.
     --pg-font-ui: "Schibsted Grotesk", "Segoe UI Variable Text", "SF Pro Text", system-ui, sans-serif;
     --pg-font-editorial: "Gambetta", "Newsreader", "Iowan Old Style", Baskerville, serif;
     --pg-font-data: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+    /* THE TYPE LADDER — four sizes, and only four. Owner ruling 2026-08-23, restated in
+       Claude Design's v8 port doc §2: `11 / 13 / 16 / 21`, body `400 14px/1.55`, tracking
+       -.002em — "drop the 10. It's below the readable floor anyway."
+
+       It lives HERE, beside the faces, because that is what makes it a ladder rather than a
+       convention: a change to the scale is these four lines, not a sweep of every call site.
+       Surfaces read them as `text-[length:var(--pg-t-body)]`; the `length:` hint is required,
+       or Tailwind cannot type the arbitrary value and emits no rule at all.
+
+       (That port doc is not in the repo — the pack directories carry v1/agency/v3, no v8 — so
+       the ruling above, not a file, is the authority these four values are held to.)
+
+       HONEST DISCREPANCY, recorded rather than quietly resolved (§13): CD's own v3 pack markup
+       does not hold this ladder — `PAIGE Super Admin Shell v3.dc.html` sets font sizes at
+       9.5 / 10 / 10.5 / 11 / 11.5 / 12 / 12.5px, so its floor is 9.5px, below the owner's
+       stated 11px readable floor. The owner's ruling wins; the pack's smaller steps are
+       collapsed onto `--pg-t-label`. If the pack is later re-ported, this note is why the
+       sizes will not match it line for line. */
+    --pg-t-label: 11px;   /* micro-labels, chips, column headers, units */
+    --pg-t-body:  13px;   /* the default reading size on a working surface */
+    --pg-t-lead:  16px;   /* section leads, emphasised figures */
+    --pg-t-title: 21px;   /* the surface title, one per view */
     font-synthesis-weight: none;
     /* Why every table's figures align. Losing it reads as sloppy typesetting, not as a
        missing token, which is exactly why it is easy to drop. */
@@ -189,6 +212,15 @@ All colors MUST be HSL.
   [data-pg] .font-display { font-family: var(--pg-font-display); }
   [data-pg] .font-mono { font-family: var(--pg-font-data); }
   [data-pg] .font-serif { font-family: var(--pg-font-editorial); }
+
+  /* Headings, too. The platform-wide `h1, h2, h3, .font-display` rule further down this file
+     names Bricolage Grotesque — the face the owner corrected OUT of this design on 2026-08-23
+     ("Bricolage Grotesque and Inter are not in this design. Schibsted Grotesk replaces both.")
+     Because that rule sets `font-family` on the element itself, the `.font-display` re-point
+     above never reaches an `<h1>`, and the console's page title rendered in Bricolage. This
+     re-points every heading level inside the console only. The platform-wide rule is left
+     alone deliberately: the landing page is §28 approved-frozen and shares it. */
+  [data-pg] :is(h1, h2, h3, h4, h5, h6) { font-family: var(--pg-font-display); }
 
   [data-pg="dark"] {
     color-scheme: dark;

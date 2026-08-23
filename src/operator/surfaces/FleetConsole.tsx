@@ -238,12 +238,12 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
         <div className="flex flex-none flex-wrap items-start gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2.5">
-              <span className="text-[9.5px] font-semibold tracking-[0.15em] text-muted-foreground">
+              <span className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.15em] text-muted-foreground">
                 FLEET
               </span>
-              <span className="text-[21px] font-bold tracking-[-0.02em]">Fleet Console</span>
+              <span className="text-[length:var(--pg-t-title)] font-bold tracking-[-0.02em]">Fleet Console</span>
             </div>
-            <div className="mt-1.5 text-[12.5px] text-muted-foreground">
+            <div className="mt-1.5 text-[length:var(--pg-t-body)] text-muted-foreground">
               {loading
                 ? "Reading the fleet…"
                 : error
@@ -264,7 +264,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                   onClick={() => setView(v)}
                   aria-pressed={view === v}
                   className={cn(
-                    "rounded-[7px] px-2.5 py-1 text-[11.5px] font-medium capitalize transition-colors",
+                    "rounded-[7px] px-2.5 py-1 text-[length:var(--pg-t-label)] font-medium capitalize transition-colors",
                     view === v ? "bg-card text-foreground shadow-sm" : "text-muted-foreground",
                   )}
                 >
@@ -275,7 +275,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
             <button
               type="button"
               onClick={() => navigate("/operator/provisioning")}
-              className="whitespace-nowrap rounded-[9px] bg-cd-gold px-3.5 py-2 text-[12.5px] font-semibold text-[hsl(var(--accent-foreground))] transition-[filter] hover:brightness-[1.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="whitespace-nowrap rounded-[9px] bg-cd-gold px-3.5 py-2 text-[length:var(--pg-t-body)] font-semibold text-[hsl(var(--accent-foreground))] transition-[filter] hover:brightness-[1.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               Provision a tenant
             </button>
@@ -299,14 +299,14 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
               key={k.label}
               className="min-w-0 rounded-xl border-[1.5px] border-border bg-card px-3.5 py-3 shadow-sm"
             >
-              <div className="truncate text-[9px] font-semibold tracking-[0.13em] text-muted-foreground">
+              <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.13em] text-muted-foreground">
                 {k.label}
               </div>
               <div className="mt-1 flex min-w-0 items-baseline gap-2">
-                <span className="whitespace-nowrap text-[24px] font-bold tabular-nums tracking-[-0.02em]">
+                <span className="whitespace-nowrap text-[length:var(--pg-t-title)] font-bold tabular-nums tracking-[-0.02em]">
                   {k.value}
                 </span>
-                <span className="truncate text-[10.5px] text-muted-foreground">{k.unit}</span>
+                <span className="truncate text-[length:var(--pg-t-label)] text-muted-foreground">{k.unit}</span>
               </div>
             </div>
           ))}
@@ -323,7 +323,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                 onClick={() => setFilter(f)}
                 aria-pressed={on}
                 className={cn(
-                  "whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors",
+                  "whitespace-nowrap rounded-full border px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   on
                     ? "border-border-strong bg-muted text-foreground"
@@ -342,7 +342,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
               onClick={() => setShowInternal((v) => !v)}
               aria-pressed={showInternal}
               className={cn(
-                "whitespace-nowrap rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors",
+                "whitespace-nowrap rounded-full border px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium transition-colors",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 showInternal
                   ? "border-border-strong bg-muted text-foreground"
@@ -354,13 +354,13 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
             </button>
           )}
           <div className="ml-auto flex min-w-0 flex-none items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5">
-            <span aria-hidden className="flex-none text-[11px] text-muted-foreground">⌕</span>
+            <span aria-hidden className="flex-none text-[length:var(--pg-t-label)] text-muted-foreground">⌕</span>
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search tenants, owners, domains"
               aria-label="Search tenants, owners, domains"
-              className="w-44 bg-transparent text-[11.5px] outline-none placeholder:text-muted-foreground"
+              className="w-44 bg-transparent text-[length:var(--pg-t-label)] outline-none placeholder:text-muted-foreground"
             />
           </div>
         </div>
@@ -379,17 +379,17 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
               ) : error ? (
                 <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
                   <div>
-                    <div className="text-[13px] font-semibold text-[hsl(var(--rail-foreground))]">
+                    <div className="text-[length:var(--pg-t-body)] font-semibold text-[hsl(var(--rail-foreground))]">
                       The fleet could not be read.
                     </div>
-                    <div className="mx-auto mt-1 max-w-md text-[11.5px] text-[hsl(var(--rail-muted))]">
+                    <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-[hsl(var(--rail-muted))]">
                       {error}
                     </div>
                   </div>
                 </div>
               ) : rows.length === 0 ? (
                 <div className="flex flex-1 items-center justify-center px-4 py-10 text-center">
-                  <div className="text-[13px] font-semibold text-[hsl(var(--rail-muted))]">
+                  <div className="text-[length:var(--pg-t-body)] font-semibold text-[hsl(var(--rail-muted))]">
                     {tenants.length === 0 ? "No tenants yet." : "Nothing matches that."}
                   </div>
                 </div>
@@ -409,13 +409,13 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                 }}
               >
                 <div className="min-w-0">
-                  <div className="text-[9px] font-semibold tracking-[0.16em] text-[hsl(var(--rail-foreground))]/70">
+                  <div className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.16em] text-[hsl(var(--rail-foreground))]/70">
                     EVERY TENANT ON THE PLATFORM
                   </div>
-                  <div className="mt-1 text-[15px] font-semibold text-[hsl(var(--rail-foreground))]">
+                  <div className="mt-1 text-[length:var(--pg-t-lead)] font-semibold text-[hsl(var(--rail-foreground))]">
                     The fleet, by weight
                   </div>
-                  <div className="mt-1 font-mono text-[10.5px] text-[hsl(var(--rail-foreground))]/70">
+                  <div className="mt-1 font-mono text-[length:var(--pg-t-label)] text-[hsl(var(--rail-foreground))]/70">
                     {loading ? "—" : rows.length} tenants · node size is team + clients · ringed
                     nodes need you
                   </div>
@@ -431,7 +431,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                     ] as const
                   ).map(([label, color]) => (
                     <div key={label} className="flex items-center gap-1.5">
-                      <span className="whitespace-nowrap text-[10px] text-[hsl(var(--rail-foreground))]/60">
+                      <span className="whitespace-nowrap text-[length:var(--pg-t-label)] text-[hsl(var(--rail-foreground))]/60">
                         {label}
                       </span>
                       <span
@@ -444,7 +444,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                 </div>
               </div>
             </div>
-            <div className="flex-none pb-1 pt-2 text-center text-[10px] text-muted-foreground">
+            <div className="flex-none pb-1 pt-2 text-center text-[length:var(--pg-t-label)] text-muted-foreground">
               Drag to orbit · hover a node to name it · click to open the tenant
             </div>
           </div>
@@ -454,12 +454,12 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
         {view === "table" && (
           <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-card shadow-sm">
             <div className="sticky top-0 z-[2] flex items-center gap-2.5 border-b border-border bg-muted/40 px-3.5 py-2">
-              <div className="min-w-0 flex-[2.1] text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">TENANT</div>
-              <div className="min-w-0 flex-[0.9] text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">TIER</div>
-              <div className="min-w-0 flex-[0.9] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">MRR</div>
-              <div className="min-w-0 flex-[0.8] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">BENEATH</div>
-              <div className="min-w-0 flex-1 text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">HEALTH</div>
-              <div className="min-w-0 flex-[0.9] text-right text-[9px] font-semibold tracking-[0.12em] text-muted-foreground">LAST ACTIVE</div>
+              <div className="min-w-0 flex-[2.1] text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">TENANT</div>
+              <div className="min-w-0 flex-[0.9] text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">TIER</div>
+              <div className="min-w-0 flex-[0.9] text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">MRR</div>
+              <div className="min-w-0 flex-[0.8] text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">BENEATH</div>
+              <div className="min-w-0 flex-1 text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">HEALTH</div>
+              <div className="min-w-0 flex-[0.9] text-right text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">LAST ACTIVE</div>
               <div className="w-[76px] flex-none" />
             </div>
 
@@ -476,17 +476,17 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
 
             {!loading && error && (
               <div className="px-4 py-10 text-center">
-                <div className="text-[13px] font-semibold">The fleet could not be read.</div>
-                <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">{error}</div>
+                <div className="text-[length:var(--pg-t-body)] font-semibold">The fleet could not be read.</div>
+                <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-muted-foreground">{error}</div>
               </div>
             )}
 
             {!loading && !error && rows.length === 0 && (
               <div className="px-4 py-10 text-center">
-                <div className="text-[13px] font-semibold">
+                <div className="text-[length:var(--pg-t-body)] font-semibold">
                   {tenants.length === 0 ? "No tenants yet." : "Nothing matches that."}
                 </div>
-                <div className="mx-auto mt-1 max-w-md text-[11.5px] text-muted-foreground">
+                <div className="mx-auto mt-1 max-w-md text-[length:var(--pg-t-label)] text-muted-foreground">
                   {tenants.length === 0
                     ? "Provisioned tenants appear here as soon as they exist."
                     : "Clear the filter or search to see the whole fleet."}
@@ -513,45 +513,45 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                           className="ml-1 h-4 w-3 flex-none rounded-bl-[4px] border-b border-l border-border"
                         />
                       )}
-                      <span className="grid h-7 w-7 flex-none place-items-center rounded-[9px] bg-muted text-[10px] font-bold text-foreground/70">
+                      <span className="grid h-7 w-7 flex-none place-items-center rounded-[9px] bg-muted text-[length:var(--pg-t-label)] font-bold text-foreground/70">
                         {initials(t.name)}
                       </span>
                       <div className="min-w-0">
                         <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate text-[12.5px] font-semibold">{t.name}</span>
+                          <span className="truncate text-[length:var(--pg-t-body)] font-semibold">{t.name}</span>
                           {isInternal(t) && (
-                            <span className="flex-none whitespace-nowrap rounded-full border border-dashed border-border px-1.5 py-px text-[9.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <span className="flex-none whitespace-nowrap rounded-full border border-dashed border-border px-1.5 py-px text-[length:var(--pg-t-label)] font-semibold uppercase tracking-wide text-muted-foreground">
                               Internal
                             </span>
                           )}
                         </div>
-                        <div className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">
+                        <div className="mt-0.5 truncate font-mono text-[length:var(--pg-t-label)] text-muted-foreground">
                           {t.slug ?? "—"}
                         </div>
                       </div>
                     </div>
                     <div className="min-w-0 flex-[0.9]">
-                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold", TIER_PILL[tier])}>
+                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold", TIER_PILL[tier])}>
                         {tier}
                       </span>
                     </div>
                     {/* Money Spine deferred — no MRR read (§13). */}
-                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[11.5px] text-muted-foreground">—</div>
-                    <div className="min-w-0 flex-[0.8] text-right font-mono text-[11.5px] tabular-nums">
+                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[length:var(--pg-t-label)] text-muted-foreground">—</div>
+                    <div className="min-w-0 flex-[0.8] text-right font-mono text-[length:var(--pg-t-label)] tabular-nums">
                       {beneath || "—"}
                     </div>
                     <div className="flex min-w-0 flex-1 items-center justify-end">
-                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-semibold", HEALTH_PILL[h.tone])}>
+                      <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold", HEALTH_PILL[h.tone])}>
                         {h.label}
                       </span>
                     </div>
                     {/* No last-activity read wired yet — honest absence, never "today" (§13). */}
-                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[11px] text-muted-foreground">—</div>
+                    <div className="min-w-0 flex-[0.9] text-right font-mono text-[length:var(--pg-t-label)] text-muted-foreground">—</div>
                     <div className="w-[76px] flex-none text-right">
                       <button
                         type="button"
                         onClick={() => void enterTenant(t.id)}
-                        className="rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="rounded-lg border border-border bg-card px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         Enter →
                       </button>
