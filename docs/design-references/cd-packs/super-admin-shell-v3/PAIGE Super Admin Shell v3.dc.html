@@ -96,7 +96,7 @@ button{font:inherit;color:inherit;cursor:pointer}
         </span>
         <span style="{{ wordmarkStyle }}">
           <b style="display:block;font:500 12px var(--pg-font-display);letter-spacing:.4em">PAIGE</b>
-          <small style="display:block;margin-top:4px;color:var(--pg-faint);font:10px var(--pg-font-data);letter-spacing:.08em">SUPER ADMIN</small>
+          <small style="display:block;margin-top:4px;color:var(--pg-faint);font:10px var(--pg-font-data);letter-spacing:.08em">PLATFORM OPERATOR</small>
         </span>
       </div>
 
@@ -157,9 +157,22 @@ button{font:inherit;color:inherit;cursor:pointer}
             </div>
           </sc-if>
         </div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <button onClick="{{ runVoice }}" title="Hold to talk · ⌘⇧V" style="width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--pg-line);background:transparent;color:var(--pg-muted)"><svg viewBox="0 0 16 16" style="width:15px;height:15px" aria-hidden="true"><path d="M8 2.6a1.9 1.9 0 0 1 1.9 1.9v3.2a1.9 1.9 0 0 1-3.8 0V4.5A1.9 1.9 0 0 1 8 2.6z M4.4 7.4a3.6 3.6 0 0 0 7.2 0 M8 11v2.4 M6.2 13.4h3.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
-          <button onClick="{{ toggleSpine }}" title="Fold PAIGE · ⌘\" style="width:34px;height:34px;display:grid;place-items:center;border:1px solid var(--pg-line);background:transparent;color:var(--pg-muted)"><svg viewBox="0 0 16 16" style="width:15px;height:15px" aria-hidden="true"><path d="M2.6 3.2h10.8v9.6H2.6z M10.2 3.2v9.6 M7.6 6.4L5.8 8l1.8 1.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+        <div style="display:flex;align-items:stretch;gap:6px;height:34px">
+          <button onClick="{{ runVoice }}" title="Hold to talk · ⌘⇧V" aria-label="Hold to talk" style="position:relative;width:34px;display:grid;place-items:center;border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);background:var(--pg-raised);box-shadow:var(--pg-lift-1);color:var(--pg-muted);transition:color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease" style-hover="color:var(--pg-gold-deep);border-color:var(--pg-line-strong);box-shadow:var(--pg-lift-2),inset 0 -2px 0 var(--pg-gold-deep);transform:translateY(-1px)" style-active="color:var(--pg-ink);box-shadow:var(--pg-inset);transform:translateY(0)">
+            <svg viewBox="0 0 16 16" style="width:15px;height:15px" aria-hidden="true">
+              <rect x="6.1" y="2.6" width="3.8" height="7" rx="1.9" fill="currentColor" opacity=".13"></rect>
+              <path d="M8 2.6a1.9 1.9 0 0 1 1.9 1.9v3.2a1.9 1.9 0 0 1-3.8 0V4.5A1.9 1.9 0 0 1 8 2.6z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"></path>
+              <path d="M4.4 7.5a3.6 3.6 0 0 0 7.2 0" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"></path>
+              <path d="M8 11.2v2.2" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round"></path>
+            </svg>
+          </button>
+          <button onClick="{{ toggleSpine }}" title="Fold PAIGE · ⌘\" aria-label="Fold PAIGE" style="position:relative;width:34px;display:grid;place-items:center;border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);background:var(--pg-raised);box-shadow:var(--pg-lift-1);color:var(--pg-muted);transition:color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease" style-hover="color:var(--pg-gold-deep);border-color:var(--pg-line-strong);box-shadow:var(--pg-lift-2),inset 0 -2px 0 var(--pg-gold-deep);transform:translateY(-1px)" style-active="color:var(--pg-ink);box-shadow:var(--pg-inset);transform:translateY(0)">
+            <svg viewBox="0 0 16 16" style="width:15px;height:15px" aria-hidden="true">
+              <rect x="10.5" y="3.5" width="2.9" height="9" fill="currentColor" opacity=".13"></rect>
+              <path d="M2.6 3.5h10.8v9H2.6z M10.5 3.5v9" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"></path>
+              <path d="M5.6 6.2L7.5 8 5.6 9.8" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -183,7 +196,7 @@ button{font:inherit;color:inherit;cursor:pointer}
               <button onClick="{{ v.go }}" style="{{ v.style }}">{{ v.label }}</button>
             </sc-for>
             <sc-if value="{{ showStudioDoor }}" hint-placeholder-val="{{ false }}">
-              <button onClick="{{ openStudio }}" style="{{ studioDoorStyle }}" title="Build sites, funnels and creative · ⌘⇧S">
+              <button onClick="{{ openStudio }}" style="{{ studioDoorStyle }}" style-hover="box-shadow:var(--pg-lift-2);transform:translateY(-1px);filter:brightness(1.06)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)" title="Build sites, funnels and creative · ⌘⇧S">
                 <i style="{{ studioMarkStyle }}"></i>Vibe Studio
                 <span style="{{ studioChevStyle }}"></span>
               </button>
@@ -282,8 +295,20 @@ button{font:inherit;color:inherit;cursor:pointer}
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-bottom:10px;border-bottom:1px solid var(--pg-line-soft)">
               <span style="color:var(--pg-muted);font-size:12.5px">A segment is a saved view of the book, kept as words she can read back.</span>
               <span style="flex:1;min-width:12px"></span>
-              <button onClick="{{ segAsk }}" style="{{ segAskStyle }}">Describe one to her</button>
-              <button onClick="{{ segNew }}" style="{{ segNewStyle }}">New segment</button>
+              <button onClick="{{ segAsk }}" style="{{ segAskStyle }}" style-hover="border-color:var(--pg-gold);box-shadow:var(--pg-lift-2),inset 0 -2px 0 var(--pg-gold-deep);transform:translateY(-1px)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)">
+                <svg viewBox="0 0 48 48" style="flex:none;width:13px;height:13px" aria-hidden="true">
+                  <polygon points="21,13.6 30.5,13.6 21,34.4 11.5,34.4" fill="currentColor"></polygon>
+                  <circle cx="34.5" cy="30.5" r="5.5" fill="currentColor"></circle>
+                </svg>
+                Describe one to her
+              </button>
+              <button onClick="{{ segNew }}" style="{{ segNewStyle }}" style-hover="border-color:var(--pg-line-strong);color:var(--pg-ink-2);box-shadow:var(--pg-lift-2),inset 0 -2px 0 var(--pg-line-strong);transform:translateY(-1px)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)">
+                <svg viewBox="0 0 16 16" style="flex:none;width:13px;height:13px" aria-hidden="true">
+                  <path d="M2.9 3.4h10.2l-3.9 4.5v4.1L6.8 10.6V7.9z" fill="currentColor" opacity=".13"></path>
+                  <path d="M2.9 3.4h10.2l-3.9 4.5v4.1L6.8 10.6V7.9z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"></path>
+                </svg>
+                New segment
+              </button>
             </div>
 
             <div style="{{ segGridStyle }}">
@@ -364,11 +389,11 @@ button{font:inherit;color:inherit;cursor:pointer}
                   <i style="{{ cf.dotStyle }}"></i>{{ cf.label }}<b style="{{ cf.nStyle }}">{{ cf.n }}</b>
                 </button>
               </sc-for>
-              <span style="flex:1"></span>
-              <span style="color:var(--pg-faint);font:11px var(--pg-font-ui)">{{ campDef }}</span>
+              <span style="flex:1;min-width:8px"></span>
+              <button onClick="{{ openSchema }}" style="{{ campAdjustStyle }}" style-hover="border-color:var(--pg-gold-deep);color:var(--pg-gold);box-shadow:var(--pg-lift-2);transform:translateY(-1px)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)" title="Rename it, choose what a card shows">Adjust</button>
             </div>
 
-            <div style="flex:1;min-height:0;overflow:auto;padding-top:2px">
+            <div style="flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;padding:2px 12px 22px 0;mask-image:linear-gradient(180deg,#000 0,#000 calc(100% - 20px),transparent 100%);-webkit-mask-image:linear-gradient(180deg,#000 0,#000 calc(100% - 20px),transparent 100%)">
               <sc-for list="{{ campaigns }}" as="cp" hint-placeholder-count="3">
                 <div style="{{ cp.cardStyle }}">
                   <div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center">
@@ -408,7 +433,181 @@ button{font:inherit;color:inherit;cursor:pointer}
                 </div>
               </sc-for>
 
-              <p style="margin:16px 0 4px;max-width:74ch;color:var(--pg-faint);font-size:11px;line-height:1.6">{{ campFoot }}</p>
+              <p style="margin:16px 0 2px;max-width:74ch;color:var(--pg-faint);font-size:11px;line-height:1.6;text-wrap:pretty">{{ campFoot }}</p>
+            </div>
+
+            <div style="flex:none;display:flex;align-items:center;gap:14px;min-height:30px;border-top:1px solid var(--pg-line)">
+              <small style="flex:1;min-width:0;color:var(--pg-faint);font:11px var(--pg-font-ui);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ campDef }}">{{ campDef }}</small>
+              <small style="flex:none;color:var(--pg-faint);font:10.5px var(--pg-font-data);white-space:nowrap">{{ campTally }}</small>
+            </div>
+          </div>
+
+
+          <div style="{{ catWrapStyle }}">
+            <div style="flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:5px 14px;padding-bottom:11px;border-bottom:1px solid var(--pg-line-soft)">
+              <sc-for list="{{ catFilters }}" as="cf2" hint-placeholder-count="4">
+                <button onClick="{{ cf2.pick }}" style="{{ cf2.style }}" title="{{ cf2.note }}">{{ cf2.label }}<b style="{{ cf2.nStyle }}">{{ cf2.n }}</b></button>
+              </sc-for>
+              <span style="flex:1;min-width:8px"></span>
+              <button onClick="{{ openSchema }}" style="{{ adjustStyle }}" style-hover="border-color:var(--pg-gold-deep);color:var(--pg-gold);box-shadow:var(--pg-lift-2);transform:translateY(-1px)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)" title="Rename kinds, states and categories">Adjust</button>
+              <button onClick="{{ catAdd }}" style="{{ catAddStyle }}" style-hover="border-color:var(--pg-gold-deep);color:var(--pg-gold);box-shadow:var(--pg-lift-2);transform:translateY(-1px)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)">New offering</button>
+            </div>
+
+            <div style="flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;padding:2px 12px 22px 0;mask-image:linear-gradient(180deg,#000 0,#000 calc(100% - 20px),transparent 100%);-webkit-mask-image:linear-gradient(180deg,#000 0,#000 calc(100% - 20px),transparent 100%)">
+              <sc-for list="{{ offers }}" as="of" hint-placeholder-count="3">
+                <div style="{{ of.cardStyle }}">
+                  <div style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center">
+                    <span style="{{ of.kindStyle }}" title="{{ of.kindNote }}">
+                      <svg viewBox="0 0 16 16" style="width:13px;height:13px" aria-hidden="true"><path d="{{ of.kindGlyph }}" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                    </span>
+                    <span style="display:flex;flex-direction:column;min-width:0">
+                      <b style="font:500 15px var(--pg-font-display);letter-spacing:-.008em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ of.name }}</b>
+                      <small style="margin-top:3px;color:var(--pg-muted);font-size:11.5px;text-wrap:pretty">{{ of.pitch }}</small>
+                    </span>
+                    <span style="{{ of.stateStyle }}" title="{{ of.stateNote }}"><i style="{{ of.stateDotStyle }}"></i>{{ of.stateLabel }}</span>
+                  </div>
+
+                  <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:5px 14px;margin-top:13px">
+                    <b style="{{ of.priceStyle }}">{{ of.price }}</b>
+                    <small style="color:var(--pg-faint);font:11px var(--pg-font-ui)">{{ of.terms }}</small>
+                  </div>
+
+                  <sc-if value="{{ of.hasTiers }}" hint-placeholder-val="{{ false }}">
+                    <div style="{{ of.tierWrapStyle }}">
+                      <sc-for list="{{ of.tiers }}" as="tr2" hint-placeholder-count="2">
+                        <div style="{{ tr2.style }}">
+                          <b style="min-width:0;font:500 11.5px var(--pg-font-ui);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ tr2.name }}</b>
+                          <small style="color:var(--pg-faint);font-size:10.5px;text-wrap:pretty">{{ tr2.what }}</small>
+                          <b style="{{ tr2.priceStyle }}">{{ tr2.price }}</b>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+
+                  <div style="display:grid;grid-template-columns:{{ of.cols }};gap:12px 22px;margin-top:14px;padding-top:11px;border-top:1px solid var(--pg-line-soft)">
+                    <span style="display:flex;flex-direction:column;min-width:0;gap:5px">
+                      <small style="color:var(--pg-faint);font:10.5px var(--pg-font-ui)">Where it sells</small>
+                      <span style="display:flex;flex-wrap:wrap;gap:5px">
+                        <sc-for list="{{ of.where }}" as="wh" hint-placeholder-count="2">
+                          <button onClick="{{ wh.go }}" style="{{ wh.style }}" style-hover="border-color:var(--pg-gold-deep);color:var(--pg-gold)">{{ wh.label }}</button>
+                        </sc-for>
+                      </span>
+                      <small style="{{ of.nowhereStyle }}">{{ of.nowhere }}</small>
+                    </span>
+                    <span style="display:flex;flex-direction:column;min-width:0;gap:5px">
+                      <small style="color:var(--pg-faint);font:10.5px var(--pg-font-ui)">Fulfilment</small>
+                      <sc-for list="{{ of.fulfil }}" as="fu" hint-placeholder-count="3">
+                        <span style="display:flex;align-items:baseline;gap:7px;min-width:0">
+                          <small style="flex:none;width:34px;color:var(--pg-faint);font:10px var(--pg-font-ui)">{{ fu.k }}</small>
+                          <small style="min-width:0;color:var(--pg-ink-2);font-size:11px;text-wrap:pretty">{{ fu.v }}</small>
+                        </span>
+                      </sc-for>
+                    </span>
+                  </div>
+
+                  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 20px;margin-top:13px;padding-top:11px;border-top:1px solid var(--pg-line-soft)">
+                    <sc-for list="{{ of.facts }}" as="ft2" hint-placeholder-count="3">
+                      <span style="display:flex;align-items:baseline;gap:6px">
+                        <small style="color:var(--pg-faint);font:10.5px var(--pg-font-ui)">{{ ft2.k }}</small>
+                        <b style="{{ ft2.style }}">{{ ft2.v }}</b>
+                      </span>
+                    </sc-for>
+                    <span style="flex:1"></span>
+                    <sc-for list="{{ of.acts }}" as="ac2" hint-placeholder-count="2">
+                      <button onClick="{{ ac2.act }}" style="{{ ac2.style }}" style-hover="border-color:var(--pg-gold-deep);color:var(--pg-gold)">{{ ac2.label }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-for>
+              <p style="margin:16px 0 2px;max-width:74ch;color:var(--pg-faint);font-size:11px;line-height:1.6;text-wrap:pretty">{{ catFoot }}</p>
+            </div>
+
+            <div style="flex:none;display:flex;align-items:center;gap:14px;min-height:30px;border-top:1px solid var(--pg-line)">
+              <small style="flex:1;min-width:0;color:var(--pg-faint);font:11px var(--pg-font-ui);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ catDef }}">{{ catDef }}</small>
+              <small style="flex:none;color:var(--pg-faint);font:10.5px var(--pg-font-data);white-space:nowrap">{{ catTally }}</small>
+            </div>
+          </div>
+
+          <div style="{{ salesWrapStyle }}">
+            <div style="flex:none;display:grid;grid-template-columns:{{ salesFigCols }};background:var(--pg-canvas);border-top:1px solid var(--pg-line-soft);border-bottom:1px solid var(--pg-line-soft)">
+              <sc-for list="{{ salesFigs }}" as="fg" hint-placeholder-count="4">
+                <span style="{{ fg.style }}">
+                  <small style="color:var(--pg-faint);font:10.5px var(--pg-font-ui)">{{ fg.k }}</small>
+                  <b style="{{ fg.vStyle }}">{{ fg.v }}</b>
+                  <small style="color:var(--pg-faint);font-size:10px;text-wrap:pretty">{{ fg.note }}</small>
+                </span>
+              </sc-for>
+            </div>
+
+            <div style="flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable;padding:14px 12px 22px 0;mask-image:linear-gradient(180deg,#000 0,#000 calc(100% - 20px),transparent 100%);-webkit-mask-image:linear-gradient(180deg,#000 0,#000 calc(100% - 20px),transparent 100%)">
+              <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px">
+                <small style="flex:none;white-space:nowrap;color:var(--pg-gold-deep);font:500 10.5px var(--pg-font-ui)">Against target</small>
+                <small style="color:var(--pg-faint);font-size:10.5px">{{ salesTargetNote }}</small>
+              </div>
+              <div style="{{ salesBarStyle }}"><i style="{{ salesBarFillStyle }}"></i><i style="{{ salesBarMarkStyle }}"></i></div>
+
+              <p style="margin-top:20px;color:var(--pg-faint);font-size:10.5px">What closed, and when</p>
+              <sc-for list="{{ salesLines }}" as="sl" hint-placeholder-count="4">
+                <div style="{{ sl.style }}">
+                  <small style="flex:none;width:44px;color:var(--pg-faint);font:10.5px var(--pg-font-data)">{{ sl.when }}</small>
+                  <i style="{{ sl.dotStyle }}"></i>
+                  <span style="display:flex;flex-direction:column;min-width:0;gap:2px">
+                    <b style="font:500 12px var(--pg-font-ui);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ sl.what }}</b>
+                    <small style="color:var(--pg-faint);font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ sl.sub }}</small>
+                  </span>
+                  <small style="{{ sl.stageStyle }}">{{ sl.stage }}</small>
+                  <b style="{{ sl.amountStyle }}">{{ sl.amount }}</b>
+                </div>
+              </sc-for>
+
+              <sc-for list="{{ salesTables }}" as="tb2" hint-placeholder-count="3">
+                <div style="margin-top:22px">
+                  <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;padding-bottom:7px;border-bottom:1px solid var(--pg-line)">
+                    <small style="color:var(--pg-gold-deep);font:500 10.5px var(--pg-font-ui)">{{ tb2.title }}</small>
+                    <small style="color:var(--pg-faint);font-size:10.5px;text-wrap:pretty">{{ tb2.note }}</small>
+                  </div>
+                  <sc-for list="{{ tb2.rows }}" as="rw" hint-placeholder-count="3">
+                    <div style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--pg-line-soft)">
+                      <b style="min-width:0;font:500 12px var(--pg-font-ui);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ rw.name }}</b>
+                      <small style="color:var(--pg-faint);font:10.5px var(--pg-font-data);white-space:nowrap">{{ rw.meta }}</small>
+                      <b style="{{ rw.style }}">{{ rw.v }}</b>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-for>
+
+              <div style="margin-top:24px;padding-top:14px;border-top:1px solid var(--pg-line)">
+                <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px">
+                  <b style="font:500 13px var(--pg-font-ui)">Money movement</b>
+                  <small style="color:var(--pg-faint);font-size:10.5px">the provider is an adapter, not the interface</small>
+                </div>
+                <p style="max-width:70ch;margin-top:7px;color:var(--pg-muted);font-size:12px;line-height:1.6;text-wrap:pretty">{{ procDeck }}</p>
+                <sc-for list="{{ procNeeds }}" as="pn" hint-placeholder-count="5">
+                  <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) auto;gap:12px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--pg-line-soft)">
+                    <b style="min-width:0;font:500 11.5px var(--pg-font-ui)">{{ pn.need }}</b>
+                    <small style="min-width:0;color:var(--pg-faint);font-size:10.5px;text-wrap:pretty">{{ pn.why }}</small>
+                    <small style="{{ pn.byStyle }}">{{ pn.by }}</small>
+                  </div>
+                </sc-for>
+                <sc-for list="{{ procAdapters }}" as="pa" hint-placeholder-count="2">
+                  <div style="{{ pa.style }}">
+                    <span style="display:flex;flex-wrap:wrap;align-items:baseline;gap:7px 10px">
+                      <b style="font:500 12px var(--pg-font-ui)">{{ pa.name }}</b>
+                      <small style="{{ pa.tagStyle }}">{{ pa.state }}</small>
+                    </span>
+                    <small style="display:block;margin-top:6px;max-width:66ch;color:var(--pg-muted);font-size:11px;line-height:1.55;text-wrap:pretty">{{ pa.note }}</small>
+                  </div>
+                </sc-for>
+                <p style="margin-top:12px;max-width:70ch;color:var(--pg-faint);font-size:11px;line-height:1.55;text-wrap:pretty">{{ procFoot }}</p>
+              </div>
+
+              <p style="margin:18px 0 2px;max-width:74ch;color:var(--pg-faint);font-size:11px;line-height:1.6;text-wrap:pretty">{{ salesFoot }}</p>
+            </div>
+
+            <div style="flex:none;display:flex;align-items:center;gap:14px;min-height:30px;border-top:1px solid var(--pg-line)">
+              <small style="flex:1;min-width:0;color:var(--pg-faint);font:11px var(--pg-font-ui);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ salesDef }}">{{ salesDef }}</small>
+              <button onClick="{{ openSchema }}" style="{{ salesAdjustStyle }}" style-hover="border-color:var(--pg-gold-deep);color:var(--pg-gold);box-shadow:var(--pg-lift-2);transform:translateY(-1px)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)" title="Sales stages and close reasons">Adjust</button>
+              <small style="flex:none;color:var(--pg-faint);font:10.5px var(--pg-font-data);white-space:nowrap">{{ salesTally }}</small>
             </div>
           </div>
 
@@ -2393,12 +2592,27 @@ button{font:inherit;color:inherit;cursor:pointer}
               <p style="color:var(--pg-gold-deep);font:500 11px var(--pg-font-ui);letter-spacing:.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ summonKicker }}</p>
               <h2 style="margin-top:5px;font:600 13px var(--pg-font-display);letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ summonTitle }}</h2>
             </div>
-            <div style="min-width:0;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:3px" role="group" aria-label="Workspace geometry">
+            <div style="min-width:0;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px" role="group" aria-label="Workspace geometry">
               <sc-for list="{{ wsModes }}" as="m" hint-placeholder-count="4">
-                <button onClick="{{ m.go }}" title="{{ m.label }}" aria-label="{{ m.label }}" style="{{ m.style }}">{{ m.glyph }}</button>
+                <button onClick="{{ m.go }}" title="{{ m.label }}" aria-label="{{ m.label }}" style="{{ m.style }}" style-hover="color:var(--pg-gold-deep);border-color:var(--pg-line-strong);box-shadow:var(--pg-lift-2),inset 0 -2px 0 var(--pg-gold-deep);transform:translateY(-1px)" style-active="color:var(--pg-ink);box-shadow:var(--pg-inset);transform:translateY(0)">
+                  <svg viewBox="0 0 16 16" style="width:14px;height:14px" aria-hidden="true">
+                    <path d="{{ m.fill }}" fill="currentColor" opacity=".14"></path>
+                    <path d="{{ m.frame }}" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round" stroke-linecap="round"></path>
+                    <path d="{{ m.accent }}" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linejoin="round" stroke-linecap="round"></path>
+                  </svg>
+                </button>
               </sc-for>
-              <button onClick="{{ pinSummon }}" title="Keep this in the rail" aria-label="Pin to rail" style="{{ summonCtlStyle }}">⌖</button>
-              <button onClick="{{ closeSummon }}" title="Retire" aria-label="Retire this surface" style="{{ summonCtlStyle }}">×</button>
+              <button onClick="{{ pinSummon }}" title="Keep this in the rail" aria-label="Pin to rail" style="position:relative;width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);background:var(--pg-raised);box-shadow:var(--pg-lift-1);color:var(--pg-muted);transition:color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease" style-hover="color:var(--pg-gold-deep);border-color:var(--pg-line-strong);box-shadow:var(--pg-lift-2),inset 0 -2px 0 var(--pg-gold-deep);transform:translateY(-1px)" style-active="color:var(--pg-ink);box-shadow:var(--pg-inset);transform:translateY(0)">
+                <svg viewBox="0 0 16 16" style="width:14px;height:14px" aria-hidden="true">
+                  <path d="M4.7 3h6.6v10.2L8 10.7l-3.3 2.5z" fill="currentColor" opacity=".14"></path>
+                  <path d="M4.7 3h6.6v10.2L8 10.7l-3.3 2.5z" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"></path>
+                </svg>
+              </button>
+              <button onClick="{{ closeSummon }}" title="Retire" aria-label="Retire this surface" style="position:relative;width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);background:var(--pg-raised);box-shadow:var(--pg-lift-1);color:var(--pg-muted);transition:color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease" style-hover="color:var(--pg-negative);border-color:var(--pg-negative);box-shadow:var(--pg-lift-2),inset 0 -2px 0 var(--pg-negative);transform:translateY(-1px)" style-active="color:var(--pg-ink);box-shadow:var(--pg-inset);transform:translateY(0)">
+                <svg viewBox="0 0 16 16" style="width:14px;height:14px" aria-hidden="true">
+                  <path d="M4.5 4.5l7 7 M11.5 4.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"></path>
+                </svg>
+              </button>
             </div>
           </header>
           <div style="flex:1;min-height:0;overflow:auto;padding:18px 16px 20px">
@@ -3288,6 +3502,209 @@ button{font:inherit;color:inherit;cursor:pointer}
               </div>
             </sc-if>
 
+            <sc-if value="{{ showOffer }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:16px">
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding-bottom:13px;border-bottom:1px solid var(--pg-line)">
+                  <input value="{{ nofName }}" onInput="{{ nofSetName }}" placeholder="Name it" style="{{ nofNameStyle }}" />
+                  <small style="{{ nofStateStyle }}">{{ nofState }}</small>
+                  <button onClick="{{ nofSave }}" style="{{ nofSaveStyle }}" style-hover="box-shadow:var(--pg-lift-2);transform:translateY(-1px)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)">Save the offering</button>
+                </div>
+
+                <sc-for list="{{ nofRows }}" as="nr" hint-placeholder-count="5">
+                  <div style="{{ nr.style }}">
+                    <small style="{{ nr.labelStyle }}" title="{{ nr.note }}">{{ nr.label }}</small>
+                    <sc-if value="{{ nr.isText }}" hint-placeholder-val="{{ true }}">
+                      <input value="{{ nr.value }}" onInput="{{ nr.type }}" placeholder="{{ nr.placeholder }}" style="{{ nr.inputStyle }}" />
+                    </sc-if>
+                    <sc-if value="{{ nr.isPicks }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:flex;flex-wrap:wrap;gap:5px;min-width:0">
+                        <sc-for list="{{ nr.picks }}" as="np" hint-placeholder-count="4">
+                          <button onClick="{{ np.pick }}" style="{{ np.style }}" title="{{ np.note }}">{{ np.label }}</button>
+                        </sc-for>
+                      </span>
+                    </sc-if>
+                    <sc-if value="{{ nr.isTiers }}" hint-placeholder-val="{{ false }}">
+                      <span style="display:flex;flex-direction:column;gap:5px;min-width:0">
+                        <sc-for list="{{ nr.tiers }}" as="nt" hint-placeholder-count="1">
+                          <span style="display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,.6fr) minmax(0,1.2fr) auto;gap:5px;min-width:0">
+                            <input value="{{ nt.name }}" onInput="{{ nt.typeName }}" placeholder="Tier" style="{{ nt.inputStyle }}" />
+                            <input value="{{ nt.price }}" onInput="{{ nt.typePrice }}" placeholder="Price" style="{{ nt.inputStyle }}" />
+                            <input value="{{ nt.what }}" onInput="{{ nt.typeWhat }}" placeholder="What it includes" style="{{ nt.inputStyle }}" />
+                            <button onClick="{{ nt.drop }}" title="Remove tier" aria-label="Remove tier" style="{{ nt.dropStyle }}" style-hover="color:var(--pg-negative);border-color:var(--pg-negative)">
+                              <svg viewBox="0 0 16 16" style="width:11px;height:11px" aria-hidden="true"><path d="M4.8 4.8l6.4 6.4 M11.2 4.8l-6.4 6.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg>
+                            </button>
+                          </span>
+                        </sc-for>
+                        <button onClick="{{ nr.add }}" style="{{ nr.addStyle }}" style-hover="border-color:var(--pg-gold-deep);color:var(--pg-gold)">+ Add a tier</button>
+                      </span>
+                    </sc-if>
+                  </div>
+                </sc-for>
+
+                <p style="max-width:66ch;margin-top:16px;color:var(--pg-faint);font-size:10.5px;line-height:1.55;text-wrap:pretty">{{ nofFoot }}</p>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ showSchema }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:16px">
+                <sc-for list="{{ schemaGroups }}" as="sg2" hint-placeholder-count="3">
+                  <div style="margin-bottom:20px">
+                    <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 12px;padding-bottom:8px;border-bottom:1px solid var(--pg-line)">
+                      <b style="color:var(--pg-gold-deep);font:500 11px var(--pg-font-ui)">{{ sg2.title }}</b>
+                      <small style="color:var(--pg-faint);font-size:10.5px;text-wrap:pretty">{{ sg2.note }}</small>
+                    </div>
+                    <sc-for list="{{ sg2.rows }}" as="sr" hint-placeholder-count="3">
+                      <div style="{{ sr.style }}">
+                        <small style="{{ sr.labelStyle }}" title="{{ sr.note }}">{{ sr.label }}</small>
+                        <sc-if value="{{ sr.isText }}" hint-placeholder-val="{{ true }}">
+                          <input value="{{ sr.value }}" onInput="{{ sr.type }}" placeholder="{{ sr.placeholder }}" style="{{ sr.inputStyle }}" />
+                        </sc-if>
+                        <sc-if value="{{ sr.isPicks }}" hint-placeholder-val="{{ false }}">
+                          <span style="display:flex;flex-wrap:wrap;gap:5px;min-width:0">
+                            <sc-for list="{{ sr.picks }}" as="pk" hint-placeholder-count="4">
+                              <button onClick="{{ pk.pick }}" style="{{ pk.style }}" title="{{ pk.note }}">{{ pk.label }}</button>
+                            </sc-for>
+                          </span>
+                        </sc-if>
+                        <sc-if value="{{ sr.isList }}" hint-placeholder-val="{{ false }}">
+                          <span style="display:flex;flex-direction:column;gap:5px;min-width:0">
+                            <sc-for list="{{ sr.items }}" as="li2" hint-placeholder-count="3">
+                              <span style="display:flex;align-items:center;gap:6px;min-width:0">
+                                <input value="{{ li2.value }}" onInput="{{ li2.type }}" style="{{ li2.inputStyle }}" />
+                                <button onClick="{{ li2.drop }}" title="Remove" aria-label="Remove" style="{{ li2.dropStyle }}" style-hover="color:var(--pg-negative);border-color:var(--pg-negative)">
+                                  <svg viewBox="0 0 16 16" style="width:11px;height:11px" aria-hidden="true"><path d="M4.8 4.8l6.4 6.4 M11.2 4.8l-6.4 6.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg>
+                                </button>
+                              </span>
+                            </sc-for>
+                            <button onClick="{{ sr.add }}" style="{{ sr.addStyle }}" style-hover="border-color:var(--pg-gold-deep);color:var(--pg-gold)">{{ sr.addLabel }}</button>
+                          </span>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-for>
+
+                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-top:12px;border-top:1px solid var(--pg-line)">
+                  <button onClick="{{ schemaReset }}" style="{{ schemaResetStyle }}" style-hover="border-color:var(--pg-negative);color:var(--pg-negative)">Back to the defaults</button>
+                  <span style="flex:1;min-width:8px"></span>
+                  <small style="color:var(--pg-faint);font-size:10.5px">{{ schemaState }}</small>
+                </div>
+                <p style="max-width:66ch;margin-top:14px;color:var(--pg-faint);font-size:10.5px;line-height:1.55;text-wrap:pretty">{{ schemaFoot }}</p>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ showSeg }}" hint-placeholder-val="{{ false }}">
+              <div style="{{ sgWrapStyle }}">
+                <div style="flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding-bottom:13px;border-bottom:1px solid var(--pg-line)">
+                  <input value="{{ sgName }}" onInput="{{ sgSetName }}" placeholder="Name this segment" style="{{ sgNameStyle }}" />
+                  <small style="{{ sgCountStyle }}">{{ sgCount }}</small>
+                  <button onClick="{{ sgSave }}" style="{{ sgSaveStyle }}" style-hover="box-shadow:var(--pg-lift-2);transform:translateY(-1px)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)">{{ sgSaveLabel }}</button>
+                </div>
+
+                <div style="flex:1;min-height:0;overflow:auto;padding:14px 0 8px">
+                  <sc-for list="{{ sgTurns }}" as="st" hint-placeholder-count="1">
+                    <div style="{{ st.wrapStyle }}">
+                      <span style="display:flex;align-items:center;gap:7px">
+                        <sc-if value="{{ st.isAgent }}" hint-placeholder-val="{{ true }}">
+                          <span style="{{ st.glyphStyle }}">
+                            <svg viewBox="0 0 48 48" style="width:11px;height:11px" aria-hidden="true">
+                              <polygon points="21,13.6 30.5,13.6 21,34.4 11.5,34.4" fill="currentColor"></polygon>
+                              <circle cx="34.5" cy="30.5" r="5.5" fill="currentColor"></circle>
+                            </svg>
+                          </span>
+                        </sc-if>
+                        <small style="{{ st.whoStyle }}">{{ st.who }}</small>
+                      </span>
+                      <p style="{{ st.bodyStyle }}">{{ st.body }}</p>
+                      <sc-if value="{{ st.hasChips }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:9px">
+                          <sc-for list="{{ st.chips }}" as="sh" hint-placeholder-count="3">
+                            <button onClick="{{ sh.pick }}" style="{{ sh.style }}" style-hover="border-color:var(--pg-gold-deep);color:var(--pg-gold)">{{ sh.label }}</button>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+
+                  <div style="{{ sgRuleHeadStyle }}">
+                    <small style="color:var(--pg-gold-deep);font:500 10.5px var(--pg-font-ui)">The rule</small>
+                    <small style="color:var(--pg-faint);font-size:10.5px">{{ sgRuleNote }}</small>
+                  </div>
+
+                  <sc-for list="{{ sgClauses }}" as="cl" hint-placeholder-count="2">
+                    <div style="{{ cl.style }}">
+                      <span style="{{ cl.verbStyle }}">{{ cl.verb }}</span>
+                      <b style="flex:1;min-width:0;font:500 12.5px var(--pg-font-ui);text-wrap:pretty">{{ cl.what }}</b>
+                      <small style="{{ cl.tagStyle }}">{{ cl.tag }}</small>
+                      <button onClick="{{ cl.flip }}" title="{{ cl.flipTitle }}" aria-label="{{ cl.flipTitle }}" style="{{ cl.ctlStyle }}" style-hover="color:var(--pg-gold-deep);border-color:var(--pg-line-strong)">
+                        <svg viewBox="0 0 16 16" style="width:12px;height:12px" aria-hidden="true"><path d="M3.4 6.2h9.2L10.1 3.7 M12.6 9.8H3.4l2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                      </button>
+                      <button onClick="{{ cl.drop }}" title="Remove this clause" aria-label="Remove this clause" style="{{ cl.ctlStyle }}" style-hover="color:var(--pg-negative);border-color:var(--pg-negative)">
+                        <svg viewBox="0 0 16 16" style="width:12px;height:12px" aria-hidden="true"><path d="M4.8 4.8l6.4 6.4 M11.2 4.8l-6.4 6.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg>
+                      </button>
+                    </div>
+                  </sc-for>
+
+                  <button onClick="{{ sgAddClause }}" style="{{ sgAddStyle }}" style-hover="border-color:var(--pg-gold-deep);color:var(--pg-gold);box-shadow:var(--pg-lift-2);transform:translateY(-1px)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)">+ Add a clause</button>
+
+                  <sc-if value="{{ sgPickOpen }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin-top:14px;padding-top:13px;border-top:1px solid var(--pg-line)">
+                      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+                        <small style="color:var(--pg-gold-deep);font:500 11px var(--pg-font-ui)">{{ sgPickTitle }}</small>
+                        <input value="{{ sgQuery }}" onInput="{{ sgSetQuery }}" placeholder="Search" style="{{ sgQueryStyle }}" />
+                        <button onClick="{{ sgPickClose }}" style="{{ sgBackStyle }}" style-hover="border-color:var(--pg-line-strong);color:var(--pg-ink-2)">Close</button>
+                      </div>
+                      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,238px),1fr));gap:1px;margin-top:12px;background:var(--pg-line-soft)">
+                        <sc-for list="{{ sgOptions }}" as="so" hint-placeholder-count="6">
+                          <button onClick="{{ so.pick }}" style="{{ so.style }}" style-hover="background:var(--pg-raised)">
+                            <span style="display:flex;flex-direction:column;min-width:0;gap:2px;text-align:left">
+                              <b style="font:500 11.5px var(--pg-font-ui);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ so.name }}</b>
+                              <small style="color:var(--pg-faint);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ so.sub }}</small>
+                            </span>
+                            <small style="{{ so.tagStyle }}">{{ so.tag }}</small>
+                          </button>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-if>
+
+                  <sc-if value="{{ sgHasMembers }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin-top:18px;padding-top:13px;border-top:1px solid var(--pg-line-soft)">
+                      <small style="color:var(--pg-faint);font-size:10.5px">{{ sgMembersHead }}</small>
+                      <sc-for list="{{ sgMembers }}" as="mb" hint-placeholder-count="2">
+                        <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--pg-line-soft)">
+                          <b style="min-width:0;font:500 12px var(--pg-font-data);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ mb.name }}</b>
+                          <small style="color:var(--pg-faint);font-size:10.5px;white-space:nowrap">{{ mb.sub }}</small>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-if>
+
+                  <div style="{{ sgUseWrapStyle }}">
+                    <sc-for list="{{ sgUses }}" as="su" hint-placeholder-count="2">
+                      <button onClick="{{ su.act }}" style="{{ su.style }}" style-hover="border-color:var(--pg-gold-deep);color:var(--pg-gold);box-shadow:var(--pg-lift-2);transform:translateY(-1px)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)">{{ su.label }}</button>
+                    </sc-for>
+                  </div>
+
+                  <p style="max-width:66ch;margin-top:16px;color:var(--pg-faint);font-size:10.5px;line-height:1.55">{{ sgFoot }}</p>
+                </div>
+
+                <div style="flex:none;padding-top:11px;border-top:1px solid var(--pg-line)">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span style="{{ sgAskGlyphStyle }}">
+                      <svg viewBox="0 0 48 48" style="width:15px;height:15px" aria-hidden="true">
+                        <polygon points="21,13.6 30.5,13.6 21,34.4 11.5,34.4" fill="currentColor"></polygon>
+                        <circle cx="34.5" cy="30.5" r="5.5" fill="currentColor"></circle>
+                      </svg>
+                    </span>
+                    <input value="{{ sgAsk }}" onInput="{{ sgSetAsk }}" onKeyDown="{{ sgAskKey }}" placeholder="Describe who should be in it…" style="{{ sgAskInputStyle }}" />
+                    <button onClick="{{ sgAskGo }}" style="{{ sgAskGoStyle }}" style-hover="box-shadow:var(--pg-lift-2);transform:translateY(-1px)" style-active="box-shadow:var(--pg-inset);transform:translateY(0)">Send</button>
+                  </div>
+                  <small style="display:block;margin-top:7px;color:var(--pg-faint);font-size:10px">{{ sgComposerHint }}</small>
+                </div>
+              </div>
+            </sc-if>
+
             <sc-if value="{{ showListing }}" hint-placeholder-val="{{ false }}">
               <div style="margin-top:14px">
                 <div style="display:flex;align-items:center;gap:11px">
@@ -3422,8 +3839,23 @@ button{font:inherit;color:inherit;cursor:pointer}
             </span>
             <span style="color:var(--pg-gold-deep);font:500 11px var(--pg-font-ui);white-space:nowrap">{{ trustName }}</span>
           </button>
-          <button onClick="{{ detachSpine }}" title="Conversation on its own monitor" aria-label="Detach conversation" style="width:30px;height:30px;flex:none;display:grid;place-items:center;border:1px solid var(--pg-line);background:transparent;color:var(--pg-muted)"><svg viewBox="0 0 16 16" style="width:14px;height:14px" aria-hidden="true"><path d="M9.2 2.8h4v4 M13.2 2.8L8.4 7.6 M11.4 9.4v3.8H2.8V4.6h3.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
-          <button onClick="{{ toggleSpine }}" title="Fold · ⌘\" style="width:30px;height:30px;flex:none;display:grid;place-items:center;border:1px solid var(--pg-line);background:transparent;color:var(--pg-muted)"><svg viewBox="0 0 16 16" style="width:14px;height:14px" aria-hidden="true"><path d="M2.6 3.2h10.8v9.6H2.6z M10.2 3.2v9.6 M5.4 6.4L7.2 8 5.4 9.6" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg></button>
+          <span style="flex:none;display:flex;align-items:stretch;gap:6px;height:30px">
+            <button onClick="{{ detachSpine }}" title="Conversation on its own monitor" aria-label="Detach conversation" style="position:relative;width:30px;display:grid;place-items:center;border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);background:var(--pg-raised);box-shadow:var(--pg-lift-1);color:var(--pg-muted);transition:color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease" style-hover="color:var(--pg-gold-deep);border-color:var(--pg-line-strong);box-shadow:var(--pg-lift-2),inset 0 -2px 0 var(--pg-gold-deep);transform:translateY(-1px)" style-active="color:var(--pg-ink);box-shadow:var(--pg-inset);transform:translateY(0)">
+              <svg viewBox="0 0 16 16" style="width:14px;height:14px" aria-hidden="true">
+                <path d="M11.1 9.5v3.9H2.6V4.9h3.9" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"></path>
+                <path d="M9.5 2.6h3.9v3.9" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"></path>
+                <path d="M13.4 2.6L8.1 7.9" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round"></path>
+              </svg>
+              <i style="{{ detachOnStyle }}"></i>
+            </button>
+            <button onClick="{{ toggleSpine }}" title="Fold · ⌘\" aria-label="Fold the conversation" style="position:relative;width:30px;display:grid;place-items:center;border:1px solid var(--pg-line);border-radius:var(--pg-r-chip);background:var(--pg-raised);box-shadow:var(--pg-lift-1);color:var(--pg-muted);transition:color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease" style-hover="color:var(--pg-gold-deep);border-color:var(--pg-line-strong);box-shadow:var(--pg-lift-2),inset 0 -2px 0 var(--pg-gold-deep);transform:translateY(-1px)" style-active="color:var(--pg-ink);box-shadow:var(--pg-inset);transform:translateY(0)">
+              <svg viewBox="0 0 16 16" style="width:14px;height:14px" aria-hidden="true">
+                <rect x="10.5" y="3.5" width="2.9" height="9" fill="currentColor" opacity=".13"></rect>
+                <path d="M2.6 3.5h10.8v9H2.6z M10.5 3.5v9" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linejoin="round"></path>
+                <path d="M5.6 6.2L7.5 8 5.6 9.8" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+            </button>
+          </span>
         </header>
 
         <div style="flex:none;display:flex;flex-wrap:wrap;gap:2px 14px;padding:9px 16px 8px;border-bottom:1px solid var(--pg-line-soft)">
@@ -3761,6 +4193,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;auto&quot;,&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;auto&quot;,&quot;tsType&quot;:&quot;\&quot;auto\&quot;|\&quot;dark\&quot;|\&quot;light\&quot;&quot;,&quot;section&quot;:&quot;Shell&quot;}}">
+const G_WS = {
+  split:      ['M8.6 4.1h4.8v7.8H8.6z',  'M2.6 3.5h10.8v9H2.6z M8.6 3.5v9', ''],
+  slideover:  ['M10 4.1h3.4v7.8H10z',    'M2.6 3.5h10.8v9H2.6z M10 3.5v9',  'M7.5 6.4L5.6 8l1.9 1.6'],
+  popout:     ['M6.2 3.2h7.2v7.2H6.2z',  'M6.2 3.2h7.2v7.2H6.2z M10.2 6.6v6.2H2.6V6.6z', ''],
+  detached:   ['',                        'M11.1 9.5v3.9H2.6V4.9h3.9 M9.5 2.6h3.9v3.9', 'M13.4 2.6L8.1 7.9']
+};
 class Component extends DCLogic {
   state = { theme:'dark', dest:'fleet', view:0, rail:'expanded', spine:'expanded', scope:0,
     mark:'dormant', command:'rest', palette:false, summon:null, wsMode:'split', peers:1, detachBlocked:false, spineDetached:false,
@@ -4228,7 +4666,8 @@ class Component extends DCLogic {
   // axes: passed is read against the TOTAL run, not against the checks that completed.
   systemsOverrides() {
     const IA = window.PAIGE_IA, S = IA.SWEEP, r = S.run;
-    const unrun = r.check_count - (r.pass_count + r.fail_count);
+    const tally = st => S.findings.filter(f => f.status === st).length;
+    const total = S.findings.length, unrun = tally('skip') + tally('error');
     const sev = { blocking:0, high:1, medium:2, low:3 };
     const ordered = S.findings.slice().sort((a, b) =>
       (sev[a.severity] - sev[b.severity]) || (a.priority - b.priority));
@@ -4246,7 +4685,7 @@ class Component extends DCLogic {
 
     const legend = [
       { key:'pass', label:'passing', n:S.findings.filter(f => f.status === 'pass').length, tone:TONE.pass,
-        note:'Passed, counted against the whole run of ' + r.check_count },
+        note:'Passed, counted against the whole run of ' + total },
       { key:'fail', label:'failing', n:S.findings.filter(f => f.status === 'fail').length, tone:TONE.fail,
         note:S.findings.filter(f => f.status === 'fail' && f.severity === 'blocking').length + ' blocking' },
       { key:'unrun', label:'could not run', n:unrun, tone:TONE.skip,
@@ -4660,7 +5099,7 @@ class Component extends DCLogic {
   // the step rail carries the one thing a table cannot show: position inside a motion.
   campVals(on) {
     if (!on) return { showCamp:false, campWrapStyle:{ display:'none' },
-      campDef:'', campFoot:'', campFilters:[], campaigns:[] };
+      campDef:'', campFoot:'', campTally:'', campFilters:[], campaigns:[], campAdjustStyle:{ display:'none' } };
     const IA = window.PAIGE_IA, s = this.state;
     const KIND = IA.CAMP_KINDS, ST = IA.CAMP_STATES;
     const all = IA.CAMPAIGNS;
@@ -4671,10 +5110,11 @@ class Component extends DCLogic {
     const counts = { active:all.filter(c => ST[c.state].active).length, all:all.length };
     Object.keys(ST).forEach(k => { counts[k] = all.filter(c => c.state === k).length; });
 
+    const sch = this.schema(), dense = sch.density === 'compact';
     const filters = [
       { key:'active', label:'Active', note:'Audience bound, motion unfinished, not halted' },
-      { key:'holding', label:'Holding', note:ST.holding.note, tone:ST.holding.tone },
-      { key:'halted', label:'Halted', note:ST.halted.note, tone:ST.halted.tone },
+      { key:'holding', label:this.stateLabel('holding'), note:ST.holding.note, tone:ST.holding.tone },
+      { key:'halted', label:this.stateLabel('halted'), note:ST.halted.note, tone:ST.halted.tone },
       { key:'all', label:'Everything', note:'Every campaign in every state' }
     ].map(f => ({ ...f, n:counts[f.key], pick:() => this.setState({ campFilter:f.key }),
       style:{ display:'inline-flex', alignItems:'center', gap:'7px', minHeight:'28px', padding:'0 2px',
@@ -4697,12 +5137,12 @@ class Component extends DCLogic {
       const cur = c.steps.findIndex(x => !x.done);
       return {
         name:c.name,
-        sub:kd.label + ' · ' + c.channel + ' · against ' + c.segment,
-        cardStyle:{ padding:'17px 0 16px', borderBottom:'1px solid var(--pg-line-soft)' },
+        sub:this.kindLabel(c.kind) + ' · ' + c.channel + ' · against ' + c.segment,
+        cardStyle:{ padding:(dense ? '12px 0 11px' : '17px 0 16px'), borderBottom:'1px solid var(--pg-line-soft)' },
         kindGlyph:kd.glyph, kindNote:kd.note,
         kindStyle:{ display:'grid', placeItems:'center', width:'30px', height:'30px',
           borderRadius:'50%', border:'1px solid var(--pg-line)', color:'var(--pg-muted)' },
-        stateLabel:st.label, stateNote:st.note,
+        stateLabel:this.stateLabel(c.state), stateNote:st.note,
         stateStyle:{ display:'inline-flex', alignItems:'center', gap:'7px', minHeight:'24px',
           padding:'0 11px', borderRadius:'999px', border:'1px solid var(--pg-line)',
           color:st.tone, font:'500 10.5px var(--pg-font-ui)', letterSpacing:'.02em' },
@@ -4710,19 +5150,28 @@ class Component extends DCLogic {
         // The rail is the graphic: delivered steps carry a solid line and a filled mark,
         // the current step is ringed, and what has not gone yet is dashed and hollow.
         railStyle:{ display:'grid', gridTemplateColumns:'repeat(' + c.steps.length + ',minmax(0,1fr))',
-          marginTop:'16px' },
+          marginTop:dense ? '10px' : '16px' },
         steps:c.steps.map((x, i) => {
           const isCur = i === cur, held = !!x.hold;
           const tone = x.done ? 'var(--pg-gold)' : held ? 'var(--pg-gold-deep)'
             : isCur ? 'var(--pg-gold-deep)' : 'var(--pg-line-strong)';
-          return { name:x.name, at:x.at,
+          return { name:x.name, at:x.at || x.when || '',
             title:x.name + ' · ' + x.at + (held ? ' · held for your word' : x.done ? ' · delivered' : ' · not sent'),
             open:() => this.setState({ summon:'campstep', wsMode:'slide-over',
               campStep:{ camp:c.name, ...x, i, n:c.steps.length, grant:c.grant } }),
-            style:{ position:'relative', display:'flex', flexDirection:'column', alignItems:'flex-start',
-              gap:'7px', padding:'12px 10px 2px 0', border:0, background:'transparent', textAlign:'left' },
-            lineStyle:{ position:'absolute', left:0, right:0, top:'12px', height:0,
-              borderTop:(x.done ? '1px solid ' : '1px dashed ') + tone },
+            // minWidth 0 is what keeps the rail inside the card: without it the track cannot
+            // shrink under a long step name, and the whole surface gains a horizontal scroll.
+            // The first mark is a rotated diamond with a ring: at the card edge its corner
+            // fell outside the scroll box and was shaved off. The head of the rail is inset
+            // by the mark's own half-diagonal, label and all, so the shape reads whole.
+            style:{ position:'relative', minWidth:0, display:'flex', flexDirection:'column',
+              alignItems:'flex-start', gap:'7px', border:0, background:'transparent',
+              textAlign:'left', padding:'12px 10px 2px ' + (i === 0 ? '7px' : '0') },
+            // The last step draws no line — its track has nothing to its right, so a line
+            // there is a wire running off the edge of the card.
+            lineStyle:{ position:'absolute', left:i === 0 ? '7px' : 0, right:0, top:'12px', height:0,
+              borderTop:i === c.steps.length - 1 ? 'none'
+                : (x.done ? '1px solid ' : '1px dashed ') + tone },
             markStyle:{ position:'relative', width:isCur ? '9px' : '7px', height:isCur ? '9px' : '7px',
               marginTop:isCur ? '-4.5px' : '-3.5px', rotate:'45deg',
               background:x.done || held ? tone : 'var(--pg-canvas)',
@@ -4731,14 +5180,22 @@ class Component extends DCLogic {
             nameStyle:{ marginTop:'4px', color:x.done ? 'var(--pg-ink-2)' : isCur ? 'var(--pg-ink)' : 'var(--pg-faint)',
               font:(isCur ? 500 : 400) + ' 12px var(--pg-font-ui)',
               overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'100%' },
-            atStyle:{ color:'var(--pg-faint)', font:'10px var(--pg-font-data)' } };
+            atStyle:{ display:dense ? 'none' : 'block', color:'var(--pg-faint)', font:'10px var(--pg-font-data)' } };
         }),
-        facts:[
-          { k:'Step', v:doneN + ' of ' + c.steps.length },
-          { k:'Opened', v:c.opened },
-          { k:'Reached', v:c.reach },
-          { k:'PAIGE', v:this.clampGrant(c.grant) }
-        ].map(f => ({ ...f, style:{ color:f.v === '—' ? 'var(--pg-faint)' : 'var(--pg-ink-2)',
+        // The fact set is schema, not layout: a tenant chooses which of these a card
+        // carries, and the two money facts only exist because a campaign can bind to an
+        // offering. A fact nobody records reads as an em-dash rather than a guess.
+        facts:sch.facts.map(id => {
+          const lines = (IA.SALES || []).filter(x => x.camp === c.name && x.state === 'booked');
+          const gross = lines.reduce((a, x) => a + x.amount, 0);
+          const offer = c.offer ? (IA.CATALOG || []).filter(o => o.id === c.offer)[0] : null;
+          const V = { step:doneN + ' of ' + c.steps.length, opened:c.opened, reach:c.reach,
+            grant:this.clampGrant(c.grant),
+            offer:offer ? offer.name : '— brand, sells nothing',
+            booked:gross ? this.money(gross) : '—' };
+          const fa = (IA.CARD_FACTS || []).filter(x => x.id === id)[0];
+          return { k:id === 'step' ? sch.stageWord : (fa ? fa.label : id), v:V[id] === undefined ? '—' : V[id] };
+        }).map(f => ({ ...f, style:{ color:String(f.v).indexOf('—') === 0 ? 'var(--pg-faint)' : 'var(--pg-ink-2)',
           font:'500 11.5px var(--pg-font-data)' } })),
         acts:(c.state === 'halted'
           ? [{ ...btn('Resume'), act:() => this.setState({ announcement:c.name + ' would resume at its next step. Delivered steps stand.' }) }]
@@ -4758,10 +5215,17 @@ class Component extends DCLogic {
         alignItems:'baseline', paddingBottom:'10px' },
       mainStyle:{ position:'relative', gridColumn:1, gridRow:2, minWidth:0, minHeight:0, overflow:'hidden' },
       pageStyle:{ width:'min(100%,1180px)', height:'100%', margin:'0 auto',
-        padding:'18px clamp(18px,2.4vw,34px) 16px', display:'flex', flexDirection:'column', minHeight:0 },
+        padding:'18px clamp(18px,2.4vw,34px) 10px', display:'flex', flexDirection:'column', minHeight:0 },
+      campAdjustStyle:{ flex:'none', whiteSpace:'nowrap', minHeight:'26px', padding:'0 10px',
+        borderRadius:'var(--pg-r-pill)', border:'1px solid var(--pg-line)', background:'var(--pg-raised)',
+        boxShadow:'var(--pg-lift-1)', color:'var(--pg-muted)', font:'11px var(--pg-font-ui)',
+        transition:'color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease' },
+      campTally:list.length === all.length
+        ? all.length + ' campaigns · all states'
+        : list.length + ' of ' + all.length + ' shown',
       campWrapStyle:{ flex:1, minWidth:0, minHeight:0, display:'flex', flexDirection:'column', marginTop:'14px' },
       campFilters:filters, campaigns,
-      campDef:'Active = audience bound · motion unfinished · not halted',
+      campDef:sch.definition,
       campFoot:'The step rail is the motion — a campaign holds no separate sequence, and a motion you want to run again is published as a Template in the Marketplace rather than saved here. Halting stops the next step and never retracts a step already delivered. Sends route through the existing seam, so a send would be real, but no campaign here is running against real recipients, and reach stays unread until the segment has a lifecycle field to count against.' };
   }
 
@@ -5054,6 +5518,817 @@ class Component extends DCLogic {
     };
   }
 
+  // ── Making one ────────────────────────────────────────────────────────────
+  // The state an offering lands in is derived, never chosen: no price is a draft, a price
+  // with nothing selling it is quiet, and a price with a channel is selling.
+  offerDraft() {
+    const IA = window.PAIGE_IA, d = this.state.nof || {};
+    return { name:d.name || '', kind:d.kind || 'product',
+      cat:d.cat || ((IA.OFFER_CATEGORIES || [])[0] || ''), pitch:d.pitch || '',
+      price:d.price === undefined ? '' : d.price, period:d.period || 'monthly',
+      unit:d.unit || '', where:d.where || [],
+      tiers:d.tiers || [], fulfil:d.fulfil || ['', '', ''] };
+  }
+  setOffer(patch) { this.setState(x => ({ nof:{ ...this.offerDraft(), ...patch } })); }
+  offerDerivedState(d) {
+    const priced = String(d.price).trim() !== '' || d.period === 'quoted';
+    return !priced ? 'draft' : (d.where.length ? 'selling' : 'quiet');
+  }
+  openOffer = () => this.setState({ summon:'offer', wsMode:'slide-over',
+    nof:{ name:'', kind:'product', where:[], tiers:[], fulfil:['', '', ''] },
+    announcement:'A name and a price make it sellable. A channel makes it sold.' });
+  saveOffer = () => {
+    const IA = window.PAIGE_IA, d = this.offerDraft(), name = d.name.trim();
+    if (!name) return this.setState({ announcement:'Name it first.' });
+    const num = v => { const n = Number(String(v).replace(/[^0-9.]/g, '')); return isNaN(n) || !String(v).trim() ? null : n; };
+    const st = this.offerDerivedState(d);
+    const o = { id:'ox' + Date.now(), name, kind:d.kind, cat:d.cat, state:st,
+      price:num(d.price), period:d.period, unit:d.unit.trim() || '\u2014 no unit stated',
+      pitch:d.pitch.trim() || 'No pitch written yet.',
+      tiers:d.tiers.filter(t => String(t[0]).trim()).map(t => [t[0], num(t[1]), d.period, t[2] || '\u2014']),
+      where:d.where.slice(),
+      fulfil:[['What', d.fulfil[0] || '\u2014 not stated'], ['Who', d.fulfil[1] || '\u2014 not stated'], ['When', d.fulfil[2] || '\u2014 not stated']] };
+    this.setState(x => ({ offAdded:[o].concat(x.offAdded || []), summon:null, wsMode:'split', nof:null,
+      dest:'campaigns', view:1,
+      announcement:'Saved. ' + name + ' is ' + (st === 'selling' ? 'on sale.'
+        : st === 'quiet' ? 'priced, but nothing sells it yet.' : 'a draft \u2014 it needs a price.') }));
+  };
+  offerVals(on) {
+    if (!on) return { showOffer:false, nofRows:[], nofName:'', nofState:'', nofFoot:'' };
+    const IA = window.PAIGE_IA, sch = this.schema(), d = this.offerDraft();
+    const st = IA.OFFER_STATES[this.offerDerivedState(d)];
+    const rowStyle = { display:'grid', gridTemplateColumns:'minmax(0,84px) minmax(0,1fr)',
+      gap:'10px 12px', alignItems:'start', padding:'9px 0', borderBottom:'1px solid var(--pg-line-soft)' };
+    const labelStyle = { minWidth:0, paddingTop:'6px', color:'var(--pg-faint)', font:'11px var(--pg-font-ui)' };
+    const inputStyle = { minWidth:0, minHeight:'30px', padding:'0 10px', borderRadius:'var(--pg-r-chip)',
+      border:'1px solid var(--pg-line)', background:'var(--pg-canvas)', color:'var(--pg-ink)',
+      font:'12px var(--pg-font-ui)' };
+    const pickStyle = isOn => ({ flex:'none', whiteSpace:'nowrap', minHeight:'26px', padding:'0 10px',
+      borderRadius:'var(--pg-r-pill)',
+      border:'1px solid ' + (isOn ? 'var(--pg-gold-deep)' : 'var(--pg-line)'),
+      background:isOn ? 'var(--pg-gold-bloom)' : 'var(--pg-raised)',
+      color:isOn ? 'var(--pg-gold)' : 'var(--pg-muted)',
+      font:(isOn ? 500 : 400) + ' 11px var(--pg-font-ui)' });
+    const dropStyle = { flex:'none', width:'24px', height:'30px', display:'grid', placeItems:'center',
+      borderRadius:'var(--pg-r-chip)', border:'1px solid var(--pg-line)', background:'transparent',
+      color:'var(--pg-faint)', transition:'color .16s ease, border-color .16s ease' };
+    const text = (label, note, value, set, ph) => ({ label, note, value, placeholder:ph || '',
+      isText:true, isPicks:false, isTiers:false, style:rowStyle, labelStyle, inputStyle,
+      type:e => set(e.target.value) });
+    const picks = (label, note, items) => ({ label, note, isText:false, isPicks:true, isTiers:false,
+      style:rowStyle, labelStyle, picks:items });
+
+    return {
+      showOffer:true,
+      nofName:d.name,
+      nofSetName:e => this.setOffer({ name:e.target.value }),
+      nofNameStyle:{ flex:'1 1 190px', minWidth:0, minHeight:'32px', padding:'0 11px',
+        borderRadius:'var(--pg-r-chip)', border:'1px solid var(--pg-line)', background:'var(--pg-canvas)',
+        color:'var(--pg-ink)', font:'500 12.5px var(--pg-font-ui)' },
+      nofState:'Will be ' + st.label.toLowerCase(),
+      nofStateStyle:{ flex:'none', padding:'3px 9px', borderRadius:'var(--pg-r-pill)',
+        border:'1px solid var(--pg-line)', color:st.tone, font:'500 10.5px var(--pg-font-ui)',
+        whiteSpace:'nowrap' },
+      nofSave:this.saveOffer,
+      nofSaveStyle:{ flex:'none', whiteSpace:'nowrap', minHeight:'32px', padding:'0 14px',
+        borderRadius:'var(--pg-r-chip)',
+        border:'1px solid ' + (d.name.trim() ? 'var(--pg-gold)' : 'var(--pg-line)'),
+        background:d.name.trim() ? 'var(--pg-gold)' : 'var(--pg-raised)',
+        boxShadow:'var(--pg-lift-1)', color:d.name.trim() ? '#17120c' : 'var(--pg-faint)',
+        font:(d.name.trim() ? 600 : 400) + ' 12px var(--pg-font-ui)',
+        transition:'box-shadow .16s ease, transform .16s ease' },
+
+      nofRows:[
+        picks('Kind', 'What kind of thing it is', Object.keys(IA.OFFER_KINDS).map(k => ({
+          label:IA.OFFER_KINDS[k].label, note:IA.OFFER_KINDS[k].note,
+          style:pickStyle(d.kind === k), pick:() => this.setOffer({ kind:k }) }))),
+        picks('Category', 'Your own categories \u2014 edit them in Adjust', sch.cats.map(c => ({
+          label:c, note:'Your category', style:pickStyle(d.cat === c),
+          pick:() => this.setOffer({ cat:c }) }))),
+        text('Pitch', 'One sentence, in their language', d.pitch,
+          v => this.setOffer({ pitch:v }), 'What they get, in a line'),
+        text('Price', 'Leave it empty and it saves as a draft', d.price,
+          v => this.setOffer({ price:v }), 'e.g. 490'),
+        picks('Period', 'How often it is charged', ['one-time', 'monthly', 'annual', 'quoted', 'revenue share'].map(p => ({
+          label:p, note:'', style:pickStyle(d.period === p), pick:() => this.setOffer({ period:p }) }))),
+        text('Unit', 'What the price is per', d.unit,
+          v => this.setOffer({ unit:v }), 'per tenant, per seat, per month'),
+        { label:'Tiers', note:'Optional \u2014 one offering, several price points',
+          isText:false, isPicks:false, isTiers:true, style:rowStyle, labelStyle,
+          add:() => this.setOffer({ tiers:d.tiers.concat([['', '', '']]) }),
+          addStyle:{ alignSelf:'flex-start', minHeight:'26px', padding:'0 10px',
+            borderRadius:'var(--pg-r-chip)', border:'1px dashed var(--pg-line-strong)',
+            background:'transparent', color:'var(--pg-muted)', font:'500 11px var(--pg-font-ui)',
+            transition:'color .16s ease, border-color .16s ease' },
+          tiers:d.tiers.map((t, i) => {
+            const set = (j, v) => this.setOffer({ tiers:d.tiers.map((x, k) => k === i ? x.map((y, m) => m === j ? v : y) : x) });
+            return { name:t[0], price:t[1], what:t[2], inputStyle, dropStyle,
+              typeName:e => set(0, e.target.value),
+              typePrice:e => set(1, e.target.value),
+              typeWhat:e => set(2, e.target.value),
+              drop:() => this.setOffer({ tiers:d.tiers.filter((_, k) => k !== i) }) };
+          }) },
+        picks('Sells on', 'A channel is what turns priced into selling',
+          IA.CAMPAIGNS.map(c => c.name).concat(['Marketplace storefront']).map(w => {
+            const isOn = d.where.indexOf(w) >= 0;
+            return { label:w, note:isOn ? 'Selling here' : 'Not selling here', style:pickStyle(isOn),
+              pick:() => this.setOffer({ where:isOn ? d.where.filter(x => x !== w) : d.where.concat([w]) }) };
+          })),
+        text('Delivers', 'What they actually receive', d.fulfil[0],
+          v => this.setOffer({ fulfil:[v, d.fulfil[1], d.fulfil[2]] }), 'A provisioned tenant'),
+        text('By whom', 'Who does the work', d.fulfil[1],
+          v => this.setOffer({ fulfil:[d.fulfil[0], v, d.fulfil[2]] }), 'You, PAIGE, or both'),
+        text('By when', 'The timeline you are promising', d.fulfil[2],
+          v => this.setOffer({ fulfil:[d.fulfil[0], d.fulfil[1], v] }), 'Same day as signature')
+      ],
+      nofFoot:'The state is derived, not chosen: no price is a draft, a price with no channel is quiet, and a price with a channel is selling. Tiers with no name are dropped on save.'
+    };
+  }
+
+  // ── The schema a tenant owns ──────────────────────────────────────────────
+  // Campaigns, the catalogue and Sales all read from here. Overrides live in state, so a
+  // rename is visible on the next render and nothing is compiled in.
+  schema() {
+    const IA = window.PAIGE_IA, base = (IA && IA.CAMP_SCHEMA) || {}, o = this.state.schema || {};
+    return {
+      definition:o.definition !== undefined ? o.definition : (base.definition || ''),
+      facts:o.facts || base.facts || ['step'],
+      density:o.density || base.density || 'full',
+      stageWord:o.stageWord !== undefined ? o.stageWord : (base.stageWord || 'Step'),
+      kindLabel:o.kindLabel || {}, stateLabel:o.stateLabel || {},
+      cats:o.cats || ((IA && IA.OFFER_CATEGORIES) || []).slice(),
+      stages:o.stages || ((IA && IA.SALES_STAGES) || []).slice(),
+      reasons:o.reasons || ((IA && IA.CLOSE_REASONS) || []).slice(),
+      touched:!!Object.keys(o).length
+    };
+  }
+  setSchema(patch) { this.setState(x => ({ schema:{ ...(x.schema || {}), ...patch } })); }
+  kindLabel(k) {
+    const IA = window.PAIGE_IA, sch = this.schema();
+    return sch.kindLabel[k] || ((IA.CAMP_KINDS[k] && IA.CAMP_KINDS[k].label) || k);
+  }
+  stateLabel(k) {
+    const IA = window.PAIGE_IA, sch = this.schema();
+    return sch.stateLabel[k] || ((IA.CAMP_STATES[k] && IA.CAMP_STATES[k].label) || k);
+  }
+  money(n) { return (n === null || n === undefined) ? '\u2014' : '$' + Number(n).toLocaleString('en-US'); }
+  offerState(o) { return (this.state.offState || {})[o.id] || o.state; }
+  soldFor(pred) {
+    const IA = window.PAIGE_IA;
+    return ((IA && IA.SALES) || []).filter(pred);
+  }
+
+  // ── Catalog ───────────────────────────────────────────────────────────────
+  // What is actually being sold. A campaign binds to a row here, which is the join that
+  // lets a motion show money instead of only activity.
+  catVals(on) {
+    if (!on) return { showCat:false, catWrapStyle:{ display:'none' }, catFilters:[], offers:[],
+      catDef:'', catFoot:'', catTally:'' };
+    const IA = window.PAIGE_IA, s = this.state, sch = this.schema();
+    const KIND = IA.OFFER_KINDS, ST = IA.OFFER_STATES;
+    const all = (s.offAdded || []).concat(IA.CATALOG);
+    const cat = s.catFilter || 'all';
+    const list = cat === 'all' ? all : all.filter(o => o.cat === cat);
+    const wide = (s.canvasW || 900) >= 700;
+
+    const chip = () => ({ flex:'none', whiteSpace:'nowrap', minHeight:'26px', padding:'0 9px',
+      borderRadius:'var(--pg-r-pill)', border:'1px solid var(--pg-line)', background:'var(--pg-raised)',
+      color:'var(--pg-muted)', font:'11px var(--pg-font-ui)',
+      transition:'color .16s ease, border-color .16s ease' });
+
+    return {
+      showCat:true, showLedger:false, showKpis:false, showTape:false, tape:[], hasAbsence:false,
+      surfaceDeck:'',
+      headerStyle:{ display:'grid', gridTemplateColumns:'minmax(0,1fr) auto', gap:'24px',
+        alignItems:'baseline', paddingBottom:'10px' },
+      mainStyle:{ position:'relative', gridColumn:1, gridRow:2, minWidth:0, minHeight:0, overflow:'hidden' },
+      pageStyle:{ width:'min(100%,1180px)', height:'100%', margin:'0 auto',
+        padding:'18px clamp(18px,2.4vw,34px) 10px', display:'flex', flexDirection:'column', minHeight:0 },
+      catWrapStyle:{ flex:1, minWidth:0, minHeight:0, display:'flex', flexDirection:'column', marginTop:'14px' },
+      catFilters:[{ key:'all', label:'Everything' }].concat(sch.cats.map(c => ({ key:c, label:c })))
+        .map(fl => ({ label:fl.label,
+          n:fl.key === 'all' ? all.length : all.filter(o => o.cat === fl.key).length,
+          note:fl.key === 'all' ? 'Every offering in every state' : 'Your category',
+          pick:() => this.setState({ catFilter:fl.key }),
+          style:{ display:'inline-flex', alignItems:'center', gap:'7px', minHeight:'28px', padding:'0 2px',
+            border:0, background:'transparent',
+            color:cat === fl.key ? 'var(--pg-ink)' : 'var(--pg-muted)',
+            font:(cat === fl.key ? 500 : 400) + ' 12.5px var(--pg-font-ui)',
+            boxShadow:cat === fl.key ? 'inset 0 -1px 0 var(--pg-gold)' : 'none' },
+          nStyle:{ color:'var(--pg-faint)', font:'400 10.5px var(--pg-font-data)' } })),
+      adjustStyle:{ ...chip(), minHeight:'28px', boxShadow:'var(--pg-lift-1)',
+        transition:'color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease' },
+      catAdd:this.openOffer,
+      catAddStyle:{ ...chip(), minHeight:'28px', border:'1px solid var(--pg-line-authority)',
+        background:'var(--pg-gold-bloom)', color:'var(--pg-gold)', boxShadow:'var(--pg-lift-1)',
+        font:'500 11px var(--pg-font-ui)',
+        transition:'color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease' },
+
+      offers:list.map(o => {
+        const kd = KIND[o.kind], st = ST[this.offerState(o)];
+        const lines = this.soldFor(x => x.offer === o.id && x.state === 'booked');
+        const gross = lines.reduce((a, x) => a + x.amount, 0);
+        const bound = IA.CAMPAIGNS.filter(c => c.offer === o.id);
+        return {
+          name:o.name, pitch:o.pitch,
+          cardStyle:{ padding:'17px 0 16px', borderBottom:'1px solid var(--pg-line-soft)' },
+          kindGlyph:kd.glyph, kindNote:kd.label + ' \u2014 ' + kd.note,
+          kindStyle:{ display:'grid', placeItems:'center', width:'30px', height:'30px',
+            borderRadius:'var(--pg-r-pill)', border:'1px solid var(--pg-line)', color:'var(--pg-gold-deep)' },
+          stateLabel:st.label, stateNote:st.note,
+          stateStyle:{ display:'inline-flex', alignItems:'center', gap:'6px', flex:'none',
+            whiteSpace:'nowrap', minHeight:'24px', padding:'0 9px', borderRadius:'var(--pg-r-pill)',
+            border:'1px solid var(--pg-line)', color:st.tone, font:'500 11px var(--pg-font-ui)' },
+          stateDotStyle:{ width:'5px', height:'5px', rotate:'45deg', background:st.tone },
+          price:o.price === null ? 'Quoted' : o.price === 0 ? 'Revenue share' : this.money(o.price),
+          priceStyle:{ font:'400 20px var(--pg-font-display)', letterSpacing:'-.01em',
+            color:o.price === null ? 'var(--pg-faint)' : 'var(--pg-ink)' },
+          terms:o.period + ' \u00b7 ' + o.unit,
+          hasTiers:!!(o.tiers && o.tiers.length > 1),
+          tierWrapStyle:{ display:'flex', flexDirection:'column', gap:'1px', marginTop:'11px',
+            background:'var(--pg-line-soft)' },
+          tiers:(o.tiers || []).map(t => ({ name:t[0], what:t[3],
+            price:t[1] === null ? 'Quoted' : t[1] === 0 ? '\u2014' : this.money(t[1]) + ' / ' + t[2].replace('monthly', 'mo').replace('one-time', 'once'),
+            style:{ display:'grid', gridTemplateColumns:'minmax(0,.8fr) minmax(0,1.4fr) auto', gap:'12px',
+              alignItems:'baseline', padding:'8px 11px', background:'var(--pg-raised)' },
+            priceStyle:{ color:'var(--pg-ink-2)', font:'500 11.5px var(--pg-font-data)', whiteSpace:'nowrap' } })),
+          cols:wide ? 'minmax(0,1fr) minmax(0,1fr)' : 'minmax(0,1fr)',
+          where:(o.where || []).map(w => ({ label:w,
+            go:() => this.setState({ view:0, campFilter:'all', announcement:w + ' \u2014 opened in Active' }),
+            style:{ ...chip(), minHeight:'24px', font:'10.5px var(--pg-font-ui)' } })),
+          nowhere:(o.where || []).length ? '' : 'Nothing sells it right now',
+          nowhereStyle:{ display:(o.where || []).length ? 'none' : 'block',
+            color:'var(--pg-warning)', font:'10.5px var(--pg-font-ui)' },
+          fulfil:(o.fulfil || []).map(x => ({ k:x[0], v:x[1] })),
+          facts:[
+            { k:'Booked', v:gross ? this.money(gross) : '\u2014' },
+            { k:'Sold', v:lines.length ? lines.length + (lines.length === 1 ? ' line' : ' lines') : '\u2014' },
+            { k:'Campaigns', v:bound.length ? String(bound.length) : '\u2014' }
+          ].map(x => ({ ...x, style:{ color:x.v === '\u2014' ? 'var(--pg-faint)' : 'var(--pg-ink-2)',
+            font:'500 11.5px var(--pg-font-data)' } })),
+          acts:[
+            { label:this.offerState(o) === 'retired' ? 'Put back on sale' : 'Take off sale',
+              act:() => this.setState(x => ({ offState:{ ...(x.offState || {}),
+                [o.id]:this.offerState(o) === 'retired' ? o.state : 'retired' },
+                announcement:this.offerState(o) === 'retired'
+                  ? o.name + ' is on sale again.'
+                  : o.name + ' is off sale. Existing terms stand.' })) },
+            { label:'Sell it in a campaign',
+              act:() => this.setState({ view:0, announcement:'Bind a campaign to ' + o.name + ' and Active shows what it books.' }) }
+          ].map(a => ({ ...a, style:{ ...chip() } }))
+        };
+      }),
+      catDef:'An offering is what a campaign binds to \u00b7 price, tiers and fulfilment travel together',
+      catTally:list.length === all.length ? all.length + ' offerings' : list.length + ' of ' + all.length + ' shown',
+      catFoot:'Prices, tiers and fulfilment are records here and nowhere else, so a campaign never carries its own price. Money movement is an adapter \u2014 see Sales. Nothing on this surface charges anybody.'
+    };
+  }
+
+  // ── Sales ─────────────────────────────────────────────────────────────────
+  // Every figure is a sum over the lines. Nothing on this surface is typed.
+  salesVals(on) {
+    if (!on) return { showSales:false, salesWrapStyle:{ display:'none' }, salesFigs:[], salesLines:[],
+      salesTables:[], procNeeds:[], procAdapters:[], salesDef:'', salesTally:'', salesFoot:'',
+      procDeck:'', procFoot:'', salesTargetNote:'', salesFigCols:'minmax(0,1fr)' };
+    const IA = window.PAIGE_IA, s = this.state, sch = this.schema();
+    const lines = IA.SALES, board = ((IA.DEST.campaigns || {}).board || { stages:[], deals:[] });
+    const sum = pred => lines.filter(pred).reduce((a, x) => a + x.amount, 0);
+    const booked = sum(x => x.state === 'booked'), refunded = sum(x => x.state === 'refunded');
+    const pending = sum(x => x.state === 'pending'), net = booked - refunded;
+    const target = IA.SALES_TARGET.target, pct = Math.max(0, Math.min(100, Math.round(net / target * 100)));
+    const cw = s.canvasW || 900;
+    const nameOf = id => (IA.CATALOG.filter(o => o.id === id)[0] || { name:id }).name;
+
+    const figs = [
+      { k:'Booked', v:this.money(booked), note:IA.SALES_TARGET.period, tone:'var(--pg-ink)' },
+      { k:'Refunded', v:refunded ? '\u2212' + this.money(refunded) : this.money(0), note:'reverses the line, keeps the record', tone:refunded ? 'var(--pg-negative)' : 'var(--pg-faint)' },
+      { k:'Net', v:this.money(net), note:'booked less refunds', tone:'var(--pg-gold)' },
+      { k:'In flight', v:this.money(pending), note:'invoiced, not landed', tone:'var(--pg-warning)' },
+      { k:'Against target', v:pct + '%', note:'of ' + this.money(target), tone:'var(--pg-ink-2)' }
+    ];
+
+    const byOffer = IA.CATALOG.map(o => {
+      const ls = lines.filter(x => x.offer === o.id && x.state === 'booked');
+      return { name:o.name, meta:ls.length ? ls.length + ' \u00d7' : '\u2014',
+        v:ls.length ? this.money(ls.reduce((a, x) => a + x.amount, 0)) : '\u2014' };
+    });
+    const camps = {};
+    lines.filter(x => x.state === 'booked').forEach(x => { camps[x.camp] = (camps[x.camp] || 0) + x.amount; });
+    const byCamp = Object.keys(camps).map(k => ({ name:k,
+      meta:lines.filter(x => x.camp === k && x.state === 'booked').length + ' \u00d7',
+      v:this.money(camps[k]) }));
+
+    const stageTone = st => st === 'Paid' ? 'var(--pg-positive)'
+      : st === 'Invoiced' ? 'var(--pg-warning)' : 'var(--pg-gold-deep)';
+
+    return {
+      showSales:true, showLedger:false, showKpis:false, showTape:false, tape:[], hasAbsence:false,
+      surfaceDeck:'',
+      headerStyle:{ display:'grid', gridTemplateColumns:'minmax(0,1fr) auto', gap:'24px',
+        alignItems:'baseline', paddingBottom:'10px' },
+      mainStyle:{ position:'relative', gridColumn:1, gridRow:2, minWidth:0, minHeight:0, overflow:'hidden' },
+      pageStyle:{ width:'min(100%,1180px)', height:'100%', margin:'0 auto',
+        padding:'18px clamp(18px,2.4vw,34px) 10px', display:'flex', flexDirection:'column', minHeight:0 },
+      salesWrapStyle:{ flex:1, minWidth:0, minHeight:0, display:'flex', flexDirection:'column', marginTop:'14px' },
+      salesFigCols:cw >= 900 ? 'repeat(5,minmax(0,1fr))' : cw >= 620 ? 'repeat(3,minmax(0,1fr))' : 'repeat(2,minmax(0,1fr))',
+      salesFigs:figs.map(x => ({ ...x,
+        style:{ display:'flex', flexDirection:'column', gap:'4px', minWidth:0, padding:'11px 13px',
+          background:'var(--pg-canvas)',
+          boxShadow:'inset -1px 0 0 var(--pg-line-soft), inset 0 -1px 0 var(--pg-line-soft)' },
+        vStyle:{ color:x.tone, font:'400 21px var(--pg-font-display)', letterSpacing:'-.012em',
+          fontVariantNumeric:'tabular-nums' } })),
+      salesTargetNote:IA.SALES_TARGET.note,
+      salesBarStyle:{ position:'relative', height:'7px', marginTop:'9px',
+        borderRadius:'var(--pg-r-pill)', background:'var(--pg-line-soft)', overflow:'hidden' },
+      salesBarFillStyle:{ position:'absolute', inset:'0 auto 0 0', width:pct + '%',
+        borderRadius:'var(--pg-r-pill)', background:'var(--pg-gold-fill)' },
+      salesBarMarkStyle:{ position:'absolute', top:0, bottom:0, left:'100%', width:'1px',
+        background:'var(--pg-line-strong)' },
+
+      salesLines:lines.slice().sort((a, b) => b.day - a.day).map(x => ({
+        when:x.when, what:nameOf(x.offer) + ' \u00b7 ' + x.tier,
+        sub:x.who + ' \u00b7 ' + (x.camp === '\u2014 direct' ? 'no campaign' : x.camp),
+        stage:x.state === 'refunded' ? 'Refunded' : x.stage,
+        amount:(x.state === 'refunded' ? '\u2212' : '') + (x.amount ? this.money(x.amount) : '\u2014'),
+        style:{ display:'flex', alignItems:'center', gap:'11px', minWidth:0, padding:'9px 0',
+          borderBottom:'1px solid var(--pg-line-soft)',
+          opacity:x.state === 'refunded' ? .72 : 1 },
+        dotStyle:{ flex:'none', width:'7px', height:'7px', rotate:'45deg',
+          background:x.state === 'booked' ? 'var(--pg-gold)' : x.state === 'pending' ? 'var(--pg-canvas)' : 'var(--pg-negative)',
+          border:'1px solid ' + (x.state === 'pending' ? 'var(--pg-gold-deep)' : 'transparent') },
+        stageStyle:{ flex:'none', padding:'2px 8px', borderRadius:'var(--pg-r-pill)',
+          border:'1px solid var(--pg-line)',
+          color:x.state === 'refunded' ? 'var(--pg-negative)' : stageTone(x.stage),
+          font:'500 10px var(--pg-font-ui)', whiteSpace:'nowrap' },
+        amountStyle:{ flex:'none', minWidth:'62px', textAlign:'right',
+          color:x.state === 'refunded' ? 'var(--pg-negative)' : 'var(--pg-ink)',
+          font:'500 12.5px var(--pg-font-data)', fontVariantNumeric:'tabular-nums' }
+      })),
+
+      salesTables:[
+        { title:'By offering', note:'booked lines only \u00b7 summed from the catalogue', rows:byOffer },
+        { title:'By campaign', note:'attribution is the campaign the line was closed under', rows:byCamp },
+        { title:'Deals in flight', note:'read from the pipeline board \u2014 amounts need the money spine', 
+          rows:(board.deals || []).map(d => ({ name:d.name,
+            meta:(board.stages[d.stage] || { name:'\u2014' }).name + ' \u00b7 ' + d.age + 'd',
+            v:d.amount === null ? '\u2014' : this.money(d.amount) })) },
+        { title:'Close reasons', note:'your vocabulary \u2014 edit it in Adjust',
+          rows:sch.reasons.map(r => ({ name:r, meta:'\u2014', v:'\u2014' })) }
+      ].map(t => ({ ...t, rows:t.rows.map(r => ({ ...r,
+        style:{ color:r.v === '\u2014' ? 'var(--pg-faint)' : 'var(--pg-ink)',
+          font:'500 12px var(--pg-font-data)', fontVariantNumeric:'tabular-nums', whiteSpace:'nowrap' } })) })),
+
+      procDeck:IA.PROCESSOR.deck, procFoot:IA.PROCESSOR.foot,
+      procNeeds:IA.PROCESSOR.needs.map(n => ({ need:n[0], why:n[1], by:n[2],
+        byStyle:{ flex:'none', padding:'2px 8px', borderRadius:'var(--pg-r-pill)',
+          border:'1px solid ' + (n[2] === 'Adapter' ? 'var(--pg-line)' : 'var(--pg-line-authority)'),
+          color:n[2] === 'Adapter' ? 'var(--pg-muted)' : 'var(--pg-gold)',
+          font:'500 10px var(--pg-font-ui)', whiteSpace:'nowrap' } })),
+      procAdapters:IA.PROCESSOR.adapters.map(a => ({ name:a.name, state:a.state, note:a.note,
+        style:{ marginTop:'11px', padding:'11px 13px', borderRadius:'var(--pg-r-chip)',
+          border:'1px solid var(--pg-line)', background:'var(--pg-raised)', boxShadow:'var(--pg-lift-1)' },
+        tagStyle:{ padding:'2px 8px', borderRadius:'var(--pg-r-pill)',
+          border:'1px solid ' + a.tone, color:a.tone, font:'500 10px var(--pg-font-ui)' } })),
+
+      salesAdjustStyle:{ flex:'none', whiteSpace:'nowrap', minHeight:'24px', padding:'0 9px',
+        borderRadius:'var(--pg-r-pill)', border:'1px solid var(--pg-line)', background:'var(--pg-raised)',
+        color:'var(--pg-muted)', font:'10.5px var(--pg-font-ui)',
+        transition:'color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease' },
+      salesDef:'A sale is a line: an offering, a tier, an amount, and the campaign it closed under',
+      salesTally:lines.length + ' lines \u00b7 ' + this.money(net) + ' net',
+      salesFoot:'Every figure above is summed from the lines, so nothing here is a typed total. What is missing is the join between a send and a close: attribution is recorded on the line by hand today, and a real one needs send-to-conversion history. No tenant sale is ever split.'
+    };
+  }
+
+  // ── The editor for all of it ───────────────────────────────────────────────
+  schemaVals(on) {
+    if (!on) return { showSchema:false, schemaGroups:[], schemaFoot:'', schemaState:'' };
+    const IA = window.PAIGE_IA, sch = this.schema();
+    const rowStyle = { display:'grid', gridTemplateColumns:'minmax(0,88px) minmax(0,1fr)',
+      gap:'10px 12px', alignItems:'start', padding:'9px 0', borderBottom:'1px solid var(--pg-line-soft)' };
+    const labelStyle = { minWidth:0, paddingTop:'6px', color:'var(--pg-faint)', font:'11px var(--pg-font-ui)' };
+    const inputStyle = { minWidth:0, minHeight:'30px', padding:'0 10px', borderRadius:'var(--pg-r-chip)',
+      border:'1px solid var(--pg-line)', background:'var(--pg-canvas)', color:'var(--pg-ink)',
+      font:'12px var(--pg-font-ui)' };
+    const pickStyle = on2 => ({ flex:'none', whiteSpace:'nowrap', minHeight:'26px', padding:'0 10px',
+      borderRadius:'var(--pg-r-pill)',
+      border:'1px solid ' + (on2 ? 'var(--pg-gold-deep)' : 'var(--pg-line)'),
+      background:on2 ? 'var(--pg-gold-bloom)' : 'var(--pg-raised)',
+      color:on2 ? 'var(--pg-gold)' : 'var(--pg-muted)',
+      font:(on2 ? 500 : 400) + ' 11px var(--pg-font-ui)' });
+    const dropStyle = { flex:'none', width:'24px', height:'28px', display:'grid', placeItems:'center',
+      borderRadius:'var(--pg-r-chip)', border:'1px solid var(--pg-line)', background:'transparent',
+      color:'var(--pg-faint)', transition:'color .16s ease, border-color .16s ease' };
+    const addStyle = { alignSelf:'flex-start', minHeight:'26px', padding:'0 10px',
+      borderRadius:'var(--pg-r-chip)', border:'1px dashed var(--pg-line-strong)',
+      background:'transparent', color:'var(--pg-muted)', font:'500 11px var(--pg-font-ui)',
+      transition:'color .16s ease, border-color .16s ease' };
+
+    const text = (label, note, value, set, placeholder) => ({ label, note, value, placeholder:placeholder || '',
+      isText:true, isPicks:false, isList:false, style:rowStyle, labelStyle, inputStyle,
+      type:e => set(e.target.value) });
+    const picks = (label, note, items) => ({ label, note, isText:false, isPicks:true, isList:false,
+      style:rowStyle, labelStyle, picks:items });
+    const list = (label, note, items, set, addLabel) => ({ label, note, isText:false, isPicks:false, isList:true,
+      style:rowStyle, labelStyle, addLabel:addLabel || '+ Add',
+      add:() => set(items.concat([''])),
+      items:items.map((v, i) => ({ value:v, inputStyle:{ ...inputStyle, flex:1 }, dropStyle,
+        type:e => set(items.map((x, j) => j === i ? e.target.value : x)),
+        drop:() => set(items.filter((_, j) => j !== i)) })) });
+
+    return {
+      showSchema:true,
+      schemaGroups:[
+        { title:'How it reads', note:'the words on the surface, in your language',
+          rows:[
+            text('Definition', 'The line under the Active filters', sch.definition,
+              v => this.setSchema({ definition:v }), 'Active = \u2026'),
+            text('Stage word', 'What you call a position in a motion', sch.stageWord,
+              v => this.setSchema({ stageWord:v }), 'Step'),
+            picks('Density', 'How much a campaign card shows',
+              ['full', 'compact'].map(d => ({ label:d === 'full' ? 'Full' : 'Compact',
+                note:d === 'full' ? 'Rail, facts and every label' : 'Tighter rows, no step timing',
+                style:pickStyle(sch.density === d), pick:() => this.setSchema({ density:d }) })))
+          ] },
+        { title:'What a card shows', note:'turn a fact on and every campaign shows it',
+          rows:[
+            picks('Facts', 'Bound offerings and money only appear if you ask for them',
+              (IA.CARD_FACTS || []).map(fa => {
+                const isOn = sch.facts.indexOf(fa.id) >= 0;
+                return { label:fa.label, note:fa.note, style:pickStyle(isOn),
+                  pick:() => this.setSchema({ facts:isOn
+                    ? sch.facts.filter(x => x !== fa.id)
+                    : sch.facts.concat([fa.id]) }) };
+              }))
+          ] },
+        { title:'Campaign kinds', note:'rename any of them \u2014 the glyph and the meaning stay',
+          rows:Object.keys(IA.CAMP_KINDS).map(k =>
+            text(IA.CAMP_KINDS[k].label, IA.CAMP_KINDS[k].note, this.kindLabel(k),
+              v => this.setSchema({ kindLabel:{ ...sch.kindLabel, [k]:v } }), IA.CAMP_KINDS[k].label)) },
+        { title:'Campaign states', note:'Active holds whichever of them count as active',
+          rows:Object.keys(IA.CAMP_STATES).map(k =>
+            text(IA.CAMP_STATES[k].label, IA.CAMP_STATES[k].note, this.stateLabel(k),
+              v => this.setSchema({ stateLabel:{ ...sch.stateLabel, [k]:v } }), IA.CAMP_STATES[k].label)) },
+        { title:'Your own vocabulary', note:'categories in the catalogue, stages and reasons in Sales',
+          rows:[
+            list('Categories', 'Filters on the catalogue', sch.cats, v => this.setSchema({ cats:v }), '+ Add a category'),
+            list('Sales stages', 'Where a line sits on its way to paid', sch.stages, v => this.setSchema({ stages:v }), '+ Add a stage'),
+            list('Close reasons', 'Why a deal ended the way it did', sch.reasons, v => this.setSchema({ reasons:v }), '+ Add a reason')
+          ] }
+      ],
+      schemaReset:() => this.setState({ schema:{}, announcement:'Back to the platform defaults.' }),
+      schemaResetStyle:{ minHeight:'28px', padding:'0 11px', borderRadius:'var(--pg-r-chip)',
+        border:'1px solid var(--pg-line)', background:'var(--pg-raised)', color:'var(--pg-muted)',
+        font:'11.5px var(--pg-font-ui)', transition:'color .16s ease, border-color .16s ease' },
+      schemaState:sch.touched ? 'Adjusted for this tenant' : 'Platform defaults',
+      schemaFoot:'Read on every render, so a rename lands as you type. This is per-tenant schema \u2014 what it cannot do is invent a fact nobody records: turning on a fact with no substrate shows an em-dash, not a guess.'
+    };
+  }
+
+  // ── Segments, built ───────────────────────────────────────────────────────
+  // A segment is a rule, so building one is writing clauses. Two doors reach this same
+  // surface: describe it in words and she writes them, or add them one at a time. The
+  // count is resolved against the book on every render, and a clause with no substrate
+  // withholds the count rather than guessing it.
+  segField(id) {
+    const IA = window.PAIGE_IA;
+    return ((IA && IA.SEG_FIELDS) || []).filter(x => x.id === id)[0] || null;
+  }
+  segValue(fld, vid) { return (fld ? fld.values : []).filter(x => x[0] === vid)[0] || null; }
+  segPair(c) {
+    const fl = this.segField(c.f), v = this.segValue(fl, c.v);
+    if (!fl) return ['', ''];
+    const verb = fl.verb[c.neg ? 1 : 0];
+    // has no takes the bare noun: the fixtures read has no EIN on file, never has no an
+    // EIN on file. The article belongs to the positive form only.
+    const ph = String(v ? v[1] : c.v);
+    return [verb, verb === 'has no' ? ph.replace(/^(a|an) /, '') : ph];
+  }
+  // A rule read back as a title. The fixtures are named this way — subject first, then
+  // what they do or do not have — so a segment she names sits beside them without looking
+  // machine-written.
+  segAutoName(cl) {
+    if (!cl.length) return '';
+    const LIFE = { client:'Clients', contact:'Client contacts', prospect:'Prospects', partner:'Partners' };
+    const KIND = { person:'People', company:'Companies' };
+    const life = cl.filter(c => c.f === 'life' && !c.neg)[0];
+    const kind = cl.filter(c => c.f === 'kind' && !c.neg)[0];
+    const lead = life ? LIFE[life.v] : kind ? KIND[kind.v] : 'Records';
+    const rest = cl.filter(c => c !== life && c !== kind);
+    const parts = rest.map(c => {
+      const fl = this.segField(c.f), v = this.segValue(fl, c.v);
+      const ph = String(v ? v[1] : c.v).replace(/^(a|an|the) /, '');
+      return fl && fl.verb[0] === 'has'
+        ? (c.neg ? 'with no ' : 'with ') + ph
+        : (c.neg ? 'not ' : '') + ph;
+    });
+    return parts.length ? lead + ' ' + parts.join(' and ') : lead;
+  }
+  segSentence(cl) { return cl.map(c => this.segPair(c).join(' ')).join(', and '); }
+
+  // The predicates. They live here rather than in the contract because the contract has
+  // to survive becoming a WHERE clause, and a predicate does not travel.
+  segTest(p, fid, vid) {
+    const rows = [].concat(p.identity || [], p.business || [], p.docs || [], p.billing || []);
+    const filled = r => !!(r && r[1] && String(r[1]).indexOf('\u2014') !== 0);
+    const row = re => rows.filter(r => re.test(r[0]))[0];
+    switch (fid + ':' + vid) {
+      case 'kind:person':    return p.kind === 'Person';
+      case 'kind:company':   return p.kind === 'Company';
+      case 'life:client':    return p.life === 'Client';
+      case 'life:contact':   return p.life === 'Client contact';
+      case 'life:prospect':  return p.life === 'Prospect';
+      case 'life:partner':   return p.life === 'Partner';
+      case 'owner:you':      return p.owner === 'You';
+      case 'owner:paige':    return p.owner === 'PAIGE';
+      case 'owner:none':     return p.owner !== 'You' && p.owner !== 'PAIGE';
+      case 'touch:today':    return /(m|h)$/.test(String(p.touch || ''));
+      case 'touch:older':    return !/(m|h)$/.test(String(p.touch || ''));
+      case 'portal:on':      return /^Active/.test(String(p.portal || ''));
+      case 'portal:off':     return !/^Active/.test(String(p.portal || ''));
+      case 'vault:shared':   return /^Shared/.test(String(p.vault || ''));
+      case 'vault:company':  return /^Via/.test(String(p.vault || ''));
+      case 'ein:on':         return filled(row(/^EIN$/i));
+      case 'agree:on':       return !!(p.docs || []).filter(r => /agreement/i.test(r[0]) && filled(r)).length;
+    }
+    return null;
+  }
+  segResolve(cl) {
+    const IA = window.PAIGE_IA, book = (IA && IA.PEOPLE) || [];
+    const dead = [];
+    cl.forEach(c => {
+      const fl = this.segField(c.f);
+      if (fl && !fl.live && !dead.filter(d => d.id === fl.id).length) dead.push({ id:fl.id, label:fl.label, why:fl.why });
+    });
+    if (!cl.length || dead.length) return { sizable:false, count:null, of:book.length, members:[], dead };
+    const members = book.filter(p => cl.every(c => {
+      const hit = this.segTest(p, c.f, c.v);
+      return c.neg ? hit === false : hit === true;
+    }));
+    return { sizable:true, count:members.length, of:book.length, members, dead };
+  }
+  // She hears a sentence and writes clauses. Phrase carries its own polarity; a negation
+  // cue within a dozen characters ahead of the phrase flips it.
+  segParse(text) {
+    const IA = window.PAIGE_IA, t = ' ' + String(text).toLowerCase().replace(/[^a-z0-9' ]/g, ' ') + ' ';
+    const CUE = /\b(no|not|never|without|missing|lacks?|lacking|havent|hasnt|yet)\b[a-z' ]{0,12}$/;
+    const out = [];
+    ((IA && IA.SEG_PHRASES) || []).forEach(ph => {
+      const i = t.indexOf(ph.say);
+      if (i < 0 || out.filter(c => c.f === ph.f).length) return;
+      const neg = !!ph.neg !== CUE.test(t.slice(Math.max(0, i - 26), i));
+      out.push({ f:ph.f, v:ph.v, neg:!!neg });
+    });
+    return out;
+  }
+  segMerge(cl, add) {
+    const kept = cl.filter(c => !add.filter(a => a.f === c.f).length);
+    return kept.concat(add);
+  }
+  segAskGo = () => { const t = String(this.state.sgAsk || '').trim(); if (t) this.segHear(t); };
+  segHear = text => {
+    const s = this.state, prior = s.sgTurns || [];
+    const found = this.segParse(text);
+    if (!found.length) {
+      this.setState({ sgAsk:'',
+        sgTurns:prior.concat([{ body:text }, { agent:1,
+          body:'Nothing in the book matches that yet. What I can read: who they are, who owns them, what is on file, whether they are on the portal, and how recently anything happened. Say it in those terms and I will write the clauses.' }]) });
+      return;
+    }
+    const draft = this.segMerge(s.sgDraft || [], found);
+    const r = this.segResolve(draft);
+    let body = 'Reading that as: ' + this.segSentence(draft) + '.';
+    if (r.dead.length) body += ' ' + r.dead.map(d => d.label + ' \u2014 ' + d.why).join('. ')
+      + '. I keep the clause so the rule reads right, and leave the segment unsized.';
+    else body += ' Every clause resolves against the book, so it sizes now: ' + r.count + ' of ' + r.of + '.';
+    this.setState({ sgDraft:draft, sgAsk:'',
+      sgName:s.sgNamed ? s.sgName : this.segAutoName(draft),
+      sgTurns:prior.concat([{ body:text }, { agent:1, body,
+        chips:['Only the ones you own', 'Drop the last clause', 'Save it'] }]) });
+  };
+  segChip = label => {
+    const s = this.state;
+    if (label === 'Only the ones you own') {
+      const draft = this.segMerge(s.sgDraft || [], [{ f:'owner', v:'you', neg:false }]);
+      const r = this.segResolve(draft);
+      this.setState({ sgDraft:draft, sgName:s.sgNamed ? s.sgName : this.segAutoName(draft),
+        sgTurns:(s.sgTurns || []).concat([{ body:label }, { agent:1,
+        body:'Narrowed to the ones you own. ' + (r.sizable ? r.count + ' of ' + r.of + ' now.' : 'Still unsized \u2014 one clause has nothing to read.') }]) });
+      return;
+    }
+    if (label === 'Drop the last clause') {
+      const draft = (s.sgDraft || []).slice(0, -1);
+      this.setState({ sgDraft:draft, sgName:s.sgNamed ? s.sgName : this.segAutoName(draft),
+        sgTurns:(s.sgTurns || []).concat([{ body:label }, { agent:1,
+        body:draft.length ? 'Dropped. The rule is now: ' + this.segSentence(draft) + '.' : 'Dropped. Nothing left in the rule \u2014 an empty segment is the whole book, so add one before saving.' }]) });
+      return;
+    }
+    if (label === 'Save it') { this.segSave(); return; }
+    this.segHear(label);
+  };
+  segSave = () => {
+    const s = this.state, cl = s.sgDraft || [], name = String(s.sgName || '').trim();
+    if (!cl.length) return this.setState({ announcement:'Add a clause first \u2014 a segment with no rule is the whole book.' });
+    if (!name) return this.setState({ announcement:'Name it and it saves.' });
+    const r = this.segResolve(cl);
+    const lifeC = cl.filter(c => c.f === 'life')[0], kindC = cl.filter(c => c.f === 'kind')[0];
+    const kindOf = lifeC ? { client:'Clients', contact:'Contacts', prospect:'Prospects', partner:'Partners' }[lifeC.v]
+      : kindC ? { person:'People', company:'Companies' }[kindC.v] : 'All';
+    const seg = { id:'sx' + Date.now(), name, kind:kindOf,
+      count:r.sizable ? r.count : null, of:r.sizable ? r.of : null,
+      clauses:cl.map(c => this.segPair(c)),
+      why:r.sizable
+        ? 'Built here. Every clause resolves against the book, so it recomputes on read.'
+        : 'Built here, and left unsized: one of its clauses has no substrate to read.',
+      used:[['Campaign', '\u2014 not in use'], ['Automation', '\u2014 not in use']],
+      members:r.members.map(p => [p.name, p.sub]),
+      live:r.sizable, computed:r.sizable ? 'recomputed on read' : (r.dead[0] ? r.dead[0].why : 'unsized') };
+    this.setState(x => ({ segAdded:[seg].concat(x.segAdded || []), seg:seg.id,
+      summon:null, wsMode:'split', sgDraft:[], sgName:'', sgTurns:null, sgPick:null,
+      announcement:'Saved. ' + seg.name + (r.sizable ? ' holds ' + r.count + ' of ' + r.of + ' today.' : ' is saved unsized.') }));
+  };
+
+  segBuildVals(on) {
+    if (!on) return { showSeg:false, sgWrapStyle:{ display:'none' }, sgTurns:[], sgClauses:[],
+      sgOptions:[], sgMembers:[], sgUses:[], sgName:'', sgCount:'', sgAsk:'', sgQuery:'',
+      sgPickOpen:false, sgHasMembers:false, sgFoot:'', sgRuleNote:'', sgMembersHead:'',
+      sgSaveLabel:'', sgComposerHint:'', sgPickTitle:'' };
+    const IA = window.PAIGE_IA, s = this.state;
+    const cl = s.sgDraft || [];
+    const r = this.segResolve(cl);
+    const turns = s.sgTurns || [];
+    const quiet = { flex:'none', whiteSpace:'nowrap', minHeight:'28px', padding:'0 11px',
+      borderRadius:'var(--pg-r-chip)', border:'1px solid var(--pg-line)', background:'var(--pg-raised)',
+      boxShadow:'var(--pg-lift-1)', color:'var(--pg-muted)', font:'11.5px var(--pg-font-ui)',
+      transition:'color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease' };
+
+    return {
+      showSeg:true,
+      sgWrapStyle:{ display:'flex', flexDirection:'column', minHeight:0, height:'100%', marginTop:'14px' },
+      sgName:s.sgName || '',
+      sgSetName:e => this.setState({ sgName:e.target.value, sgNamed:true }),
+      sgNameStyle:{ flex:'1 1 190px', minWidth:0, minHeight:'32px', padding:'0 11px',
+        borderRadius:'var(--pg-r-chip)', border:'1px solid var(--pg-line)', background:'var(--pg-canvas)',
+        color:'var(--pg-ink)', font:'500 12.5px var(--pg-font-ui)' },
+      sgCount:!cl.length ? 'no rule yet'
+        : r.sizable ? r.count + ' of ' + r.of + ' in the book' : 'unsized',
+      sgCountStyle:{ flex:'none', padding:'3px 9px', borderRadius:'var(--pg-r-pill)',
+        border:'1px solid ' + (r.sizable ? 'var(--pg-line-authority)' : 'var(--pg-line)'),
+        background:r.sizable ? 'var(--pg-gold-bloom)' : 'transparent',
+        color:r.sizable ? 'var(--pg-gold)' : 'var(--pg-faint)',
+        font:'500 10.5px var(--pg-font-ui)', whiteSpace:'nowrap' },
+      sgSave:this.segSave,
+      sgSaveLabel:'Save the segment',
+      sgSaveStyle:{ flex:'none', whiteSpace:'nowrap', minHeight:'32px', padding:'0 14px',
+        borderRadius:'var(--pg-r-chip)',
+        border:'1px solid ' + (cl.length ? 'var(--pg-gold)' : 'var(--pg-line)'),
+        background:cl.length ? 'var(--pg-gold)' : 'var(--pg-raised)',
+        boxShadow:'var(--pg-lift-1)',
+        color:cl.length ? '#17120c' : 'var(--pg-faint)',
+        font:(cl.length ? 600 : 400) + ' 12px var(--pg-font-ui)',
+        transition:'box-shadow .16s ease, transform .16s ease' },
+
+      sgTurns:turns.map(t => ({
+        isAgent:!!t.agent,
+        who:t.agent ? 'PAIGE' : 'You',
+        body:t.body,
+        wrapStyle:{ maxWidth:'62ch', marginBottom:'14px', paddingLeft:t.agent ? 0 : '13px',
+          boxShadow:t.agent ? 'none' : 'inset 1px 0 0 var(--pg-line)' },
+        glyphStyle:{ display:'inline-grid', placeItems:'center', width:'17px', height:'17px',
+          borderRadius:'var(--pg-r-seal)', border:'1px solid var(--pg-line-authority)',
+          background:'var(--pg-gold-bloom)', color:'var(--pg-gold)' },
+        whoStyle:{ color:t.agent ? 'var(--pg-gold-deep)' : 'var(--pg-faint)',
+          font:'500 10px var(--pg-font-ui)', letterSpacing:'.08em' },
+        bodyStyle:{ marginTop:'6px', color:t.agent ? 'var(--pg-ink)' : 'var(--pg-ink-2)',
+          font:(t.agent ? '400 14px/1.6 var(--pg-font-editorial)' : '400 12.5px/1.6 var(--pg-font-ui)'),
+          textWrap:'pretty' },
+        hasChips:!!(t.chips && t.chips.length),
+        chips:(t.chips || []).map(c => ({ label:c, pick:() => this.segChip(c),
+          style:{ ...quiet, minHeight:'26px', font:'11px var(--pg-font-ui)' } }))
+      })),
+
+      sgRuleHeadStyle:{ display:cl.length ? 'flex' : 'none', alignItems:'baseline', gap:'10px',
+        margin:'4px 0 10px', paddingTop:'13px', borderTop:'1px solid var(--pg-line)' },
+      sgRuleNote:cl.length === 1 ? 'one clause' : cl.length + ' clauses, all of which must hold',
+
+      sgClauses:cl.map((c, i) => {
+        const fl = this.segField(c.f), pair = this.segPair(c), dead = fl && !fl.live;
+        return {
+          verb:pair[0], what:pair[1],
+          tag:dead ? 'no substrate' : 'reads',
+          style:{ display:'flex', alignItems:'center', gap:'9px', minWidth:0, marginBottom:'6px',
+            padding:'9px 11px', borderRadius:'var(--pg-r-chip)',
+            border:'1px solid ' + (dead ? 'var(--pg-line)' : 'var(--pg-line-strong)'),
+            background:'var(--pg-raised)', boxShadow:'var(--pg-lift-1)' },
+          verbStyle:{ flex:'none', padding:'2px 7px', borderRadius:'var(--pg-r-pill)',
+            border:'1px solid var(--pg-line-authority)', color:'var(--pg-gold-deep)',
+            font:'500 10px var(--pg-font-ui)', whiteSpace:'nowrap' },
+          tagStyle:{ flex:'none', color:dead ? 'var(--pg-warning)' : 'var(--pg-faint)',
+            font:'10px var(--pg-font-ui)', whiteSpace:'nowrap' },
+          flipTitle:'Invert this clause',
+          flip:() => this.setState(x => {
+            const d = (x.sgDraft || []).map((y, j) => j === i ? { ...y, neg:!y.neg } : y);
+            return { sgDraft:d, sgName:x.sgNamed ? x.sgName : this.segAutoName(d) };
+          }),
+          drop:() => this.setState(x => {
+            const d = (x.sgDraft || []).filter((_, j) => j !== i);
+            return { sgDraft:d, sgName:x.sgNamed ? x.sgName : this.segAutoName(d) };
+          }),
+          ctlStyle:{ flex:'none', width:'22px', height:'22px', display:'grid', placeItems:'center',
+            borderRadius:'var(--pg-r-chip)', border:'1px solid var(--pg-line)',
+            background:'transparent', color:'var(--pg-faint)',
+            transition:'color .16s ease, border-color .16s ease' }
+        };
+      }),
+
+      sgAddClause:() => this.setState({ sgPick:'field', sgQuery:'' }),
+      sgAddStyle:{ marginTop:cl.length ? '4px' : '0', minHeight:'30px', padding:'0 12px',
+        borderRadius:'var(--pg-r-chip)', border:'1px dashed var(--pg-line-strong)',
+        background:'var(--pg-raised)', boxShadow:'var(--pg-lift-1)', color:'var(--pg-muted)',
+        font:'500 11.5px var(--pg-font-ui)',
+        transition:'color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease' },
+
+      sgPickOpen:!!s.sgPick,
+      sgPickTitle:s.sgPick === 'field' ? 'What to filter on' : 'Which way',
+      sgPickClose:() => this.setState({ sgPick:null, sgQuery:'' }),
+      sgQuery:s.sgQuery || '',
+      sgSetQuery:e => this.setState({ sgQuery:e.target.value }),
+      sgQueryStyle:{ flex:'1 1 130px', minWidth:0, minHeight:'28px', padding:'0 10px',
+        borderRadius:'var(--pg-r-chip)', border:'1px solid var(--pg-line)',
+        background:'var(--pg-canvas)', color:'var(--pg-ink)', font:'11.5px var(--pg-font-ui)' },
+      sgBackStyle:{ ...quiet, minHeight:'28px' },
+      sgOptions:(() => {
+        const q = String(s.sgQuery || '').toLowerCase();
+        const optStyle = dead => ({ display:'flex', alignItems:'center', gap:'10px', minWidth:0,
+          padding:'9px 11px', border:0, background:'var(--pg-canvas)', textAlign:'left',
+          color:dead ? 'var(--pg-muted)' : 'var(--pg-ink)', transition:'background .14s ease' });
+        const tagStyle = dead => ({ flex:'none', marginLeft:'auto',
+          color:dead ? 'var(--pg-warning)' : 'var(--pg-faint)', font:'9.5px var(--pg-font-ui)',
+          whiteSpace:'nowrap' });
+        if (s.sgPick === 'field') {
+          return ((IA && IA.SEG_FIELDS) || [])
+            .filter(fl => !q || (fl.label + ' ' + fl.cat + ' ' + fl.values.map(v => v[1]).join(' ')).toLowerCase().indexOf(q) >= 0)
+            .map(fl => ({ name:fl.label, sub:fl.cat, tag:fl.live ? 'reads' : 'no substrate',
+              style:optStyle(!fl.live), tagStyle:tagStyle(!fl.live),
+              pick:() => this.setState({ sgPick:{ f:fl.id }, sgQuery:'' }) }));
+        }
+        const fl = this.segField(s.sgPick && s.sgPick.f);
+        if (!fl) return [];
+        const rows = [];
+        fl.values.forEach(v => [0, 1].forEach(n => rows.push({
+          name:fl.verb[n] + ' ' + v[1],
+          sub:fl.live ? fl.cat : fl.why,
+          tag:fl.live ? 'reads' : 'no substrate',
+          style:optStyle(!fl.live), tagStyle:tagStyle(!fl.live),
+          pick:() => this.setState(x => {
+            const d = this.segMerge(x.sgDraft || [], [{ f:fl.id, v:v[0], neg:!!n }]);
+            return { sgDraft:d, sgName:x.sgNamed ? x.sgName : this.segAutoName(d), sgPick:null, sgQuery:'' };
+          })
+        })));
+        return rows.filter(o => !q || o.name.toLowerCase().indexOf(q) >= 0);
+      })(),
+
+      sgHasMembers:r.sizable && !!r.members.length,
+      sgMembersHead:'In it right now \u2014 resolved against the book on this read',
+      sgMembers:r.members.map(p => ({ name:p.name, sub:p.sub })),
+
+      sgUseWrapStyle:{ display:cl.length ? 'flex' : 'none', flexWrap:'wrap', gap:'6px',
+        marginTop:'16px', paddingTop:'13px', borderTop:'1px solid var(--pg-line-soft)' },
+      sgUses:[
+        { label:'Use in a campaign', style:{ ...quiet, minHeight:'30px' },
+          act:() => this.setState({ dest:'campaigns', view:0, summon:null,
+            announcement:'Handed to Campaigns as an audience. Save it first if you want it to persist.' }) },
+        { label:'Hand to an automation', style:{ ...quiet, minHeight:'30px' },
+          act:() => this.setState({ dest:'settings', view:2, summon:null,
+            announcement:'Available to automations as an audience.' }) },
+        { label:'Open the book', style:{ ...quiet, minHeight:'30px' },
+          act:() => this.setState({ dest:'relationships', view:0, summon:null,
+            announcement:'People, filtered the way this rule reads.' }) }
+      ],
+
+      sgFoot:r.dead.length
+        ? 'Clauses over the book resolve here. ' + r.dead.map(d => d.label + ' does not: ' + d.why).join('. ')
+          + '. The rule still saves \u2014 it is stored as words, so it reads correctly the day the substrate lands.'
+        : 'Membership is resolved when the rule is read, not stored as a list, so a record that stops matching leaves on its own. Counts are computed over the records in the book.',
+
+      sgAsk:s.sgAsk || '',
+      sgSetAsk:e => this.setState({ sgAsk:e.target.value }),
+      sgAskKey:e => { if (e.key === 'Enter') this.segAskGo(); },
+      sgAskGo:this.segAskGo,
+      sgAskGlyphStyle:{ flex:'none', display:'grid', placeItems:'center', width:'26px', height:'26px',
+        borderRadius:'var(--pg-r-seal)', border:'1px solid var(--pg-line-authority)',
+        background:'var(--pg-gold-bloom)', color:'var(--pg-gold)' },
+      sgAskInputStyle:{ flex:1, minWidth:0, minHeight:'34px', padding:'0 12px',
+        borderRadius:'var(--pg-r-chip)', border:'1px solid var(--pg-line)',
+        background:'var(--pg-canvas)', color:'var(--pg-ink)', font:'12.5px var(--pg-font-ui)' },
+      sgAskGoStyle:{ flex:'none', minHeight:'34px', padding:'0 14px',
+        borderRadius:'var(--pg-r-chip)', border:'1px solid var(--pg-gold)',
+        background:'var(--pg-gold)', boxShadow:'var(--pg-lift-1)', color:'#17120c',
+        font:'600 12px var(--pg-font-ui)', transition:'box-shadow .16s ease, transform .16s ease' },
+      sgComposerHint:'She writes clauses from what you say, and names anything she cannot read.'
+    };
+  }
+
   // Segments live beside the book they describe. A deal is an event in a motion and belongs
   // to the motion; a segment is a description of the book and has no lifecycle of its own.
   segVals(on) {
@@ -5061,7 +6336,7 @@ class Component extends DCLogic {
       segMembers:[], segUsed:[], segActs:[], segName:'', segCount:'', segWhy:'', segRule:'',
       segFoot:'', segUnsized:false, segUnsizedWhy:'', segBack:false };
     const IA = window.PAIGE_IA, s = this.state;
-    const list = IA.SEGMENTS;
+    const list = (s.segAdded || []).concat(IA.SEGMENTS);
     const active = list.filter(x => x.id === (s.seg || 's1'))[0] || list[0];
     const cw = s.canvasW || 900;
     const wide = cw >= 720;
@@ -5141,18 +6416,31 @@ class Component extends DCLogic {
 
       segActs:[
         { ...act('Open in People'), act:() => this.setState({ view:0, announcement:'People filtered to ' + active.name }) },
-        { ...act('Use in a campaign'), act:() => this.setState({ dest:'campaigns', view:2, announcement:active.name + ' handed to Campaigns as an audience' }) },
+        { ...act('Use in a campaign'), act:() => this.setState({ dest:'campaigns', view:0, announcement:active.name + ' handed to Campaigns as an audience' }) },
         { ...act('Give it to an automation'), act:() => this.setState({ dest:'settings', view:2, announcement:active.name + ' is available to automations' }) },
         { ...act('Recompute', 'gold'), act:() => this.setState({ announcement:active.live ? 'Recomputed on read — the count is current.' : 'Cannot recompute: ' + active.computed }) }
       ],
-      segAsk:() => this.setState({ announcement:'Describe the segment in words and she writes the clauses.' }),
-      segAskStyle:{ flex:'none', whiteSpace:'nowrap', minHeight:'30px', padding:'0 12px',
+      segAsk:() => this.setState({ summon:'segment', wsMode:'slide-over',
+        sgDraft:[], sgName:'', sgNamed:false, sgAsk:'', sgPick:null, sgQuery:'',
+        sgTurns:[{ agent:1, body:'Describe it \u2014 who should be in it, and what they must or must not have done. I write the clauses, and I say plainly if one of them has nothing to read yet.',
+          chips:['Clients I have not spoken to in a month', 'Prospects who replied but never met', 'Companies missing an EIN'] }],
+        announcement:'Describe it and she writes the clauses.' }),
+      segAskStyle:{ flex:'none', display:'inline-flex', alignItems:'center', gap:'7px',
+        whiteSpace:'nowrap', minHeight:'31px', padding:'0 13px',
         border:'1px solid var(--pg-line-authority)', borderRadius:'var(--pg-r-chip)',
-        background:'transparent', color:'var(--pg-gold)', font:'500 11.5px var(--pg-font-ui)' },
-      segNew:() => this.setState({ announcement:'A new segment starts as a filter on People.' }),
-      segNewStyle:{ flex:'none', whiteSpace:'nowrap', minHeight:'30px', padding:'0 12px',
+        background:'var(--pg-gold-bloom)', boxShadow:'var(--pg-lift-1)',
+        color:'var(--pg-gold)', font:'500 11.5px var(--pg-font-ui)',
+        transition:'border-color .16s ease, box-shadow .16s ease, transform .16s ease' },
+      segNew:() => this.setState({ summon:'segment', wsMode:'slide-over',
+        sgDraft:[], sgName:'', sgNamed:false, sgAsk:'', sgPick:'field', sgQuery:'',
+        sgTurns:[{ agent:1, body:'Clause by clause, then. Pick what to filter on below \u2014 or say what you are after and I will write them for you.' }],
+        announcement:'New segment \u2014 add the first clause.' }),
+      segNewStyle:{ flex:'none', display:'inline-flex', alignItems:'center', gap:'7px',
+        whiteSpace:'nowrap', minHeight:'31px', padding:'0 13px',
         border:'1px solid var(--pg-line)', borderRadius:'var(--pg-r-chip)',
-        background:'transparent', color:'var(--pg-muted)', font:'11.5px var(--pg-font-ui)' },
+        background:'var(--pg-raised)', boxShadow:'var(--pg-lift-1)',
+        color:'var(--pg-muted)', font:'11.5px var(--pg-font-ui)',
+        transition:'color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease' },
       segFoot:'A segment is a rule, not a saved list — membership is resolved when it is read, so a record that stops matching leaves on its own. Counts are computed over the records in the book; nothing here is read from a live database.'
     };
   }
@@ -5932,7 +7220,7 @@ class Component extends DCLogic {
           font:'10px var(--pg-font-data)', whiteSpace:'nowrap' },
         chevStyle:{ flex:'none', width:'6px', height:'6px', borderRight:'1px solid var(--pg-gold-deep)',
           borderBottom:'1px solid var(--pg-gold-deep)', transform:'rotate(-45deg)' } })),
-      stRouteNote:'The Studio is a nested sub-app with its own persistent rail \u2014 one session at a time, no artifact-type tabs. Owner-locked tier: Solo, Sub-account, Enterprise and Super Admin. Agency is excluded entirely, with no resell.',
+      stRouteNote:'The Studio is a nested sub-app with its own persistent rail \u2014 one session at a time, no artifact-type tabs. Owner-locked tier: Solo, Sub-account, Enterprise and Platform Operator. Agency is excluded entirely, with no resell.',
 
       stArtifacts:ST.sessions.map(a => {
         const on2 = s.artifact === a.id;
@@ -6012,7 +7300,7 @@ class Component extends DCLogic {
         ? [['reach', '—'], ['clicks', '—'], ['spend', '—']]
         : [['impressions', '—'], ['engagements', '—'], ['replies', '—']]
       ).map(m => ({ k:m[0], v:m[1] })),
-      poGoPerf:() => this.setState({ summon:null, dest:'campaigns', view:3,
+      poGoPerf:() => this.setState({ summon:null, dest:'campaigns', view:5,
         announcement:'Post performance is read in Performance.' }),
       poGoPerfStyle:{ marginLeft:'auto', flex:'none', whiteSpace:'nowrap', minHeight:'26px',
         padding:'0 2px', border:0, background:'transparent', color:'var(--pg-faint)',
@@ -6607,7 +7895,7 @@ class Component extends DCLogic {
         const el = this.brainEl;
         // A written memory is a neuron added, not just a flash: the substrate thickens.
         const n = el && el.grow ? el.grow(li, t, 'You · ' + L[li].name) : null;
-        this.setState({ mindWrote:[{ lobe:L[li].id, text:t, by:'You', tier:'Super Admin' }, ...wrote],
+        this.setState({ mindWrote:[{ lobe:L[li].id, text:t, by:'You', tier:'Platform Operator' }, ...wrote],
           mindWrite:'', mindFace:'field', mindGrown:(s.mindGrown || 0) + 1,
           announcement:'Written into ' + L[li].name + '. One neuron added — ' + (n || '') + ' now.' });
       },
@@ -6863,7 +8151,7 @@ class Component extends DCLogic {
           return { mark:map[2], title:t.label + ' \u2014 ' + map[0],
             style:{ color:map[1], font:'11px var(--pg-font-ui)' } };
         }) })),
-      tfFoot:'The standing default is: Super Admin yes, Solo yes, Sub-account yes, Agency resells rather than uses, Enterprise does both. Every row above that departs from it is an owner-locked exception — Campaigns and Studio exclude Agency entirely with no resell, and the client portal invite excludes Super Admin because we hold no consumer client book of our own.',
+      tfFoot:'The standing default is: Platform Operator yes, Solo yes, Sub-account yes, Agency resells rather than uses, Enterprise does both. Every row above that departs from it is an owner-locked exception — Campaigns and Studio exclude Agency entirely with no resell, and the client portal invite excludes Super Admin because we hold no consumer client book of our own.',
 
       ptSwatches:P.swatches.map(s => ({ name:s[0], use:s[2],
         chipStyle:{ flex:'none', width:'15px', height:'15px', rotate:'45deg', background:s[1],
@@ -9431,6 +10719,7 @@ class Component extends DCLogic {
       toggleRail:this.toggleRail, toggleSpine:this.toggleSpine, runVoice:this.runVoice,
       runCommand:this.runCommand, interrupt:this.interrupt, closeSummon:this.closeSummon,
       detachSummon:this.detachSummon, detachSpine:this.detachSpine, pinSummon:this.pinSummon,
+      detachOnStyle:{ position:'absolute', left:'3px', right:'3px', bottom:0, height:'2px', borderRadius:'0 0 var(--pg-r-chip) var(--pg-r-chip)', background:'var(--pg-gold-fill)', display:s.spineDetached ? 'block' : 'none' },
       closeAuthority:() => this.setState({ authority:false }),
       confirmAuthority:() => this.setState({ authority:false, scope:2, announcement:'Entered scope. Recorded.' }),
       togglePalette:() => this.setState(x => ({ palette:!x.palette, command:x.palette ? 'rest' : 'focus', mark:x.palette ? 'dormant' : 'charged' })),
@@ -9593,9 +10882,36 @@ class Component extends DCLogic {
         });
       })(),
       showBrief:s.dest === 'fleet' && viewName === 'Systems check',
-      briefWhen:'Overnight \u00b7 ran 06:30, completed 06:34',
-      briefLine:'An alert fired and nobody was told. Four of ten checks passed, and five could not run at all.',
-      briefSub:'The failing check is blocking: a firing has sat at pending since 13:47 with no channel adapter to deliver it. Of the five that did not run, two are deferred to the CI reader, two had nothing to test against, and one runner threw.',
+      briefWhen:'Overnight \u00b7 ran ' + IA.SWEEP.run.started_at + ', completed ' + IA.SWEEP.run.completed_at,
+      // Rule 3 reaches the prose too. The brief used to be authored English beside a
+      // derived ladder, so a corrected finding left the two disagreeing on the same screen.
+      ...(() => {
+        const S2 = IA.SWEEP, W = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+        const w = k => W[k] === undefined ? String(k) : W[k];
+        const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+        const n = st => S2.findings.filter(x => x.status === st).length;
+        const pass = n('pass'), fail = n('fail'), skip = n('skip'), err = n('error');
+        const total = S2.findings.length, unrun = skip + err;
+        const blocking = S2.findings.filter(x => x.status === 'fail' && x.severity === 'blocking');
+        const sev = { blocking:0, high:1, medium:2, low:3 };
+        const lead = S2.findings.filter(x => x.status !== 'pass')
+          .sort((a, b) => (sev[a.severity] - sev[b.severity]) || (a.priority - b.priority))[0];
+        return {
+          briefLine:(fail
+            ? cap(w(fail)) + ' check' + (fail === 1 ? '' : 's') + ' failed'
+              + (blocking.length ? ', ' + w(blocking.length) + ' of them blocking. ' : '. ')
+            : 'Nothing failed. ')
+            + cap(w(pass)) + ' of ' + w(total) + ' passed'
+            + (unrun ? ', and ' + w(unrun) + ' could not run at all.' : '.'),
+          briefSub:(lead ? lead.interpretation + ' ' : '')
+            + (unrun
+              ? 'Of the ' + w(unrun) + ' that did not run, '
+                + (skip ? w(skip) + ' were skipped' : '')
+                + (err ? (skip ? ' and ' : '') + w(err) + ' errored' : '')
+                + ' — each reported on its own axis, never as a pass.'
+              : '')
+        };
+      })(),
       sweepStarted:!!s.sweepStarted,
       sweepStartedText:'Sweep started \u2014 both halves. The operator half runs directly; the fleet half is enqueued and reports when it lands.',
       runSweep:() => this.setState({ sweepStarted:true, announcement:'Sweep started' }),
@@ -9636,6 +10952,7 @@ class Component extends DCLogic {
       showField:s.dest === 'relationships' && viewName === 'Calendar',
       ...this.storeVals(s.dest === 'marketplace' && viewName === 'Storefront'),
       ...this.buildVals(s.summon === 'builder'),
+      ...this.segBuildVals(s.summon === 'segment'),
       ...this.autoVals(s.dest === 'settings' && viewName === 'Automations'),
       ...(s.dest === 'settings' && viewName === 'Automations'
         ? { showLedger:false, showKpis:false, showTape:false, tape:[], surfaceDeck:'',
@@ -9650,14 +10967,22 @@ class Component extends DCLogic {
       ...this.postVals(s.summon === 'post'),
       ...this.studioVals(s.summon === 'studio'),
       ...this.calSetVals(s.summon === 'calset'),
-      showStudioDoor:s.dest === 'campaigns',
+      // The tab row is raised above panels so a summon cannot trap you in a surface — but
+      // that raise also floated the Studio door through an open panel, which reads as a
+      // rendering fault. The tabs are the way out; the door is not, so it stands down while
+      // anything is summoned.
+      showStudioDoor:s.dest === 'campaigns' && !s.summon && !s.authority,
       openStudio:() => this.setState({ summon:'studio', wsMode:'pop-out', artifact:null,
         announcement:'Vibe Studio. Build here, deploy here, wire it to the pipeline and the channels.' }),
-      studioDoorStyle:{ display:'inline-flex', alignItems:'center', gap:'7px', marginLeft:'auto',
-        flex:'none', whiteSpace:'nowrap', minHeight:'28px', padding:'0 11px 0 9px',
-        borderRadius:'var(--pg-r-pill)', border:'1px solid var(--pg-gold-deep)',
-        background:'transparent', color:'var(--pg-gold-deep)', font:'600 11.5px var(--pg-font-ui)' },
-      studioMarkStyle:{ flex:'none', width:'6px', height:'6px', rotate:'45deg', background:'var(--pg-gold)' },
+      studioDoorStyle:{ display:'inline-flex', alignItems:'center', gap:'8px', marginLeft:'auto',
+        flex:'none', whiteSpace:'nowrap', minHeight:'30px', padding:'0 13px 0 10px',
+        borderRadius:'var(--pg-r-pill)', border:'1px solid var(--pg-violet)',
+        background:'var(--pg-violet)', boxShadow:'var(--pg-lift-1)',
+        color:s.theme === 'dark' ? '#17131f' : '#fbf9f5', font:'600 11.5px var(--pg-font-ui)',
+        transition:'box-shadow .16s ease, transform .16s ease, filter .16s ease' },
+      studioMarkStyle:{ flex:'none', width:'7px', height:'7px', rotate:'45deg',
+        background:s.theme === 'dark' ? '#2a2135' : '#fbf9f5',
+        boxShadow:'0 0 0 2px ' + (s.theme === 'dark' ? 'rgba(23,19,31,.35)' : 'rgba(251,249,245,.3)') },
       studioChevStyle:{ flex:'none', width:'5px', height:'5px', borderRight:'1px solid currentColor',
         borderBottom:'1px solid currentColor', transform:'rotate(-45deg)', opacity:.75 },
       fieldDays:[{ day:'Mon', date:'18' },{ day:'Tue', date:'19' },{ day:'Wed', date:'20' },{ day:'Thu', date:'21' },{ day:'Fri', date:'22' }],
@@ -9678,13 +11003,13 @@ class Component extends DCLogic {
       // Below the floor it collapses to one control that cycles, so nothing is lost and
       // pin and close always stay inside the panel where the mouse can reach them.
       wsModes:((s.canvasW || 900) < 520
-        ? [{ id:'cycle', label:'Next geometry — ' + (['Slide-over','Pop-out','Detach','Split'][['split','slideover','popout','detached'].indexOf(String(s.wsMode).replace('-','')) + 1] || 'Slide-over'), glyph:'⧉' }]
+        ? [{ id:'cycle', label:'Next geometry — ' + (['Slide-over','Pop-out','Detach','Split'][['split','slideover','popout','detached'].indexOf(String(s.wsMode).replace('-','')) + 1] || 'Slide-over'), glyph:G_WS.popout }]
         : [
-        { id:'split', label:'Split', glyph:'▥' },
-        { id:'slideover', label:'Slide-over', glyph:'▤' },
-        { id:'popout', label:'Pop-out', glyph:'⧉' },
-        { id:'detached', label:'Detach', glyph:'⇱' }
-      ]).map(m => ({ label:m.label, glyph:m.glyph,
+        { id:'split', label:'Split', glyph:G_WS.split },
+        { id:'slideover', label:'Slide-over', glyph:G_WS.slideover },
+        { id:'popout', label:'Pop-out', glyph:G_WS.popout },
+        { id:'detached', label:'Detach', glyph:G_WS.detached }
+      ]).map(m => ({ label:m.label, fill:m.glyph[0], frame:m.glyph[1], accent:m.glyph[2],
         go:m.id === 'detached' ? this.detachSummon
           : m.id === 'cycle' ? (() => {
               const order = ['split', 'slideover', 'popout', 'detached'];
@@ -9692,7 +11017,12 @@ class Component extends DCLogic {
               return next === 'detached' ? this.detachSummon() : this.setWsMode(next);
             })
           : (() => this.setWsMode(m.id)),
-        style:{ width:'30px', height:'30px', display:'grid', placeItems:'center', border:'1px solid ' + (s.wsMode === m.id ? 'var(--pg-gold-deep)' : 'var(--pg-line)'), background:s.wsMode === m.id ? 'var(--pg-lift)' : 'transparent', color:s.wsMode === m.id ? 'var(--pg-gold)' : 'var(--pg-muted)', font:'12px var(--pg-font-data)' } })),
+        style:{ position:'relative', width:'30px', height:'30px', display:'grid', placeItems:'center', borderRadius:'var(--pg-r-chip)',
+          border:'1px solid ' + (s.wsMode === m.id ? 'var(--pg-gold-deep)' : 'var(--pg-line)'),
+          background:s.wsMode === m.id ? 'var(--pg-gold-bloom)' : 'var(--pg-raised)',
+          boxShadow:s.wsMode === m.id ? 'var(--pg-lift-2), inset 0 -2px 0 var(--pg-gold-deep)' : 'var(--pg-lift-1)',
+          color:s.wsMode === m.id ? 'var(--pg-gold)' : 'var(--pg-muted)',
+          transition:'color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease' } })),
       detachBlocked:s.detachBlocked,
       // sm is the one guarded read of the summon catalogue.
       summonTitle:sm ? sm.title : '',
@@ -9731,7 +11061,7 @@ class Component extends DCLogic {
         display:'grid', gap:(s.canvasW || 900) < 520 ? '9px' : '12px',
         gridTemplateColumns:(s.canvasW || 900) < 520 ? 'minmax(0,1fr)' : 'minmax(0,1fr) minmax(0,auto)',
         alignItems:'center', borderBottom:'1px solid var(--pg-line)' },
-      summonCtlStyle:{ width:'30px', height:'30px', display:'grid', placeItems:'center', border:'1px solid var(--pg-line)', background:'transparent', color:'var(--pg-muted)', font:'12px var(--pg-font-data)' },
+      summonCtlStyleLegacy:{ width:'30px', height:'30px', display:'grid', placeItems:'center', border:'1px solid var(--pg-line)', background:'transparent', color:'var(--pg-muted)', font:'12px var(--pg-font-data)' },
 
       authorityOpen:s.authority,
       actBtnStyle:{ ...actBtn, minHeight:'38px', padding:'0 17px' },
@@ -9837,6 +11167,12 @@ class Component extends DCLogic {
       ...this.segVals(s.dest === 'relationships' && viewName === 'Segments'),
       ...this.peopleVals(s.dest === 'relationships' && viewName === 'People'),
       ...this.campVals(s.dest === 'campaigns' && viewName === 'Active'),
+      ...this.catVals(s.dest === 'campaigns' && viewName === 'Catalog'),
+      ...this.salesVals(s.dest === 'campaigns' && viewName === 'Sales'),
+      ...this.schemaVals(s.summon === 'campschema'),
+      ...this.offerVals(s.summon === 'offer'),
+      openSchema:() => this.setState({ summon:'campschema', wsMode:'slide-over',
+        announcement:'Rename it, choose what a card shows, keep your own categories.' }),
       ...this.socialVals(s.dest === 'campaigns' && viewName === 'Social'),
       ...this.mindVals2(s.dest === 'settings' && viewName === 'Mind'),
       // The Mind is the substrate itself: no banner, no ledger, no deck. It fills the

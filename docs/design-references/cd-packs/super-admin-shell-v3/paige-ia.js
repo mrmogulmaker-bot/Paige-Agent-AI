@@ -54,6 +54,9 @@
   ];
 
   P.SUMMONS = {
+    offer: { title: 'New offering', deck: 'What you sell, as a record. A name and a price make it sellable; a channel makes it sold. Everything else is how it gets delivered.', foot: 'Nothing here charges anybody. The offering is what a campaign binds to and what a sale line points at \u2014 money movement is an adapter, configured in Sales.', rows: [] },
+    campschema: { title: 'What you can change', deck: 'Campaigns, the catalogue and Sales all read from one schema. Rename what things are called, choose what a card shows, and keep your own categories and stages \u2014 the surfaces follow.', foot: 'Schema, not code. Every change here is per-tenant and reversible, and nothing about it is enforced by the shell \u2014 it is read on every render, so a rename lands the moment you type it.', rows: [] },
+    segment: { title: 'Segment', deck: 'A segment is a rule read as words. Describe it and she writes the clauses, or add them one at a time \u2014 either way the rule is the same object, and the count is resolved when it is read.', foot: 'Clauses over the book resolve here against the records in People. Clauses over thread history, meetings and outbound have no substrate at operator scope, so a rule that uses one is saved and left unsized rather than guessed.', rows: [] },
     finding: { title: 'Finding', deck: 'One at a time, worst severity first, then registry priority. The drafted fix is hers; the approval is yours.', foot: 'Approving records resolution=approved and resolved_at on the finding row. An operator finding is recorded directly \u2014 the tenant action bus is NOT NULL by construction, so operator findings cannot file there.', rows: [] },
     pipehealth: { title: 'Pipeline health', deck: 'What the board cannot show while you are working it: what has stalled, what advanced without its evidence, and what cannot be measured at all.', foot: 'Conversion, velocity and loss reasons all read from stage-change history. Nothing records a transition today, so they read \u2014 rather than a benchmark nobody measured. That history is the single largest thing this surface needs from Stage 3.', rows: [] },
     campstep: { title: 'Campaign step', deck: 'One step of a motion — what it says, when it goes, and whose word it needs. A step is its own act, so halting between steps stops what has not gone without retracting what has.', foot: 'Representative. The step body, its timing and its grant are design; the send itself would route through the existing seam. Nothing here is scheduled against a real recipient.', rows: [] },
@@ -63,7 +66,7 @@
     review: { title: 'Submission', deck: 'What they declared, what the auto-checks found, and the one decision that decides how far it reaches. A reviewer reads exactly what the buyer will see.', foot: 'Representative. The manifest, the requested scope and the auto-checks are real fields on a submission. What does not exist: a reviewer identity, an SLA clock, and a publisher account separate from a tenant \u2014 all three are Stage 3.', rows: [] },
     owed: { title: 'Needs you today', deck: 'Tasks, approvals and agent runs on one temporal surface. Every item belongs somewhere else \u2014 completing it here completes it there.', foot: 'The calendar owns no records. Nothing is read from a calendar source yet, so the treatments are the design and only the contents change when one connects.', rows: [
       { name: 'Authorize a tenant entry', detail: 'Two-key \u00b7 reason code required', status: 'Authority', tone: 'var(--pg-gold-deep)' },
-      { name: 'Acknowledge a firing', detail: 'delivery_status pending until A3', status: 'Attention', tone: 'var(--pg-warning)' },
+      { name: 'Acknowledge a firing', detail: 'Delivered 13:47 \u00b7 waiting on your word', status: 'Attention', tone: 'var(--pg-warning)' },
       { name: 'Protected focus', detail: '13:00\u201315:00 \u00b7 she holds outbound', status: 'Held', tone: 'var(--pg-violet)' },
       { name: 'Fleet sweep', detail: 'Runs 06:30 daily', status: 'Scheduled', tone: 'var(--pg-faint)' }
     ] },
@@ -130,7 +133,7 @@
       kpis: [
         { label: 'Live tenants', value: '8', note: '1 agency \u00b7 3 standalone \u00b7 4 sub-account' },
         { label: 'At risk', value: '2', note: 'Grade counts zero active seats' },
-        { label: 'Open value', value: '\u2014', note: 'Money Spine deferred', dim: true },
+        { label: 'Open value', value: '$0', note: 'operator_dashboard_metrics() \u00b7 no paying tenant yet' },
         { label: 'Internal', value: '4', note: 'Behind the chip, never dropped' }
       ],
       ledgerTitle: 'Directory', ledgerMeta: 'Enter performs an audited act-as',
@@ -151,7 +154,7 @@
             { name: 'Resolver integrity', detail: 'Both tenant resolvers, 6 checks', figure: '6 / 6', status: 'Pass', tone: 'var(--pg-positive)', action: 'Evidence \u2192' },
             { name: 'RLS posture', detail: 'Forced on every operator-scope table', figure: '11 / 11', status: 'Pass', tone: 'var(--pg-positive)', action: 'Evidence \u2192' },
             { name: 'Two tenants went quiet', detail: '7c11 and b204 \u00b7 no session in 9 days', figure: '2', status: 'Held for you', tone: 'var(--pg-gold-deep)', action: 'Review \u2192' },
-            { name: 'A firing was never delivered', detail: 'delivery_status pending \u00b7 no channel adapter', figure: '1', status: 'Held for you', tone: 'var(--pg-gold-deep)', action: 'Review \u2192' },
+            { name: 'A firing was delivered, not acknowledged', detail: 'alerting-deliver \u00b7 five-minute cron \u00b7 13:47', figure: '1', status: 'Held for you', tone: 'var(--pg-gold-deep)', action: 'Review \u2192' },
             { name: 'Migration drift', detail: 'An edge function cannot read git', figure: '\u2014', status: 'Unreadable', tone: 'var(--pg-faint)', action: 'Why \u2192' }
           ]
         },
@@ -202,7 +205,7 @@
           ledgerFoot: 'The calendar owns no records. Every item on it belongs to a person, a campaign or a tenant, and completing it here completes it there. Nothing is read from a calendar source yet \u2014 the treatments are the design, and when a source connects only the contents change.',
           rows: [
             { name: 'Authorize a tenant entry', detail: 'Two-key \u00b7 reason code required', figure: 'waiting', status: 'Authority', tone: 'var(--pg-gold-deep)', action: 'Review \u2192', auth: true },
-            { name: 'Acknowledge a firing', detail: 'delivery_status pending until A3', figure: '1', status: 'Attention', tone: 'var(--pg-warning)', action: 'Open \u2192' },
+            { name: 'Acknowledge a firing', detail: 'Delivered 13:47 by alerting-deliver', figure: '1', status: 'Attention', tone: 'var(--pg-warning)', action: 'Open \u2192' },
             { name: 'Protected focus', detail: '13:00\u201315:00 \u00b7 she holds outbound', figure: '2h', status: 'Held', tone: 'var(--pg-violet)', action: 'Open \u2192' },
             { name: 'Fleet sweep', detail: 'Runs 06:30 daily', figure: 'daily', status: 'Scheduled', tone: 'var(--pg-faint)', action: 'Open \u2192' }
           ]
@@ -219,7 +222,7 @@
     campaigns: {
       kicker: 'Outbound \u2014 platform growth', title: 'Campaigns', s: PART,
       deck: 'How relationships move forward: the motions that move them and the pipeline they move through. A campaign\u2019s motion is its step rail \u2014 there is no separate sequence to keep, and a motion you want to reuse is a Template in the Marketplace.',
-      views: ['Active', 'Pipeline', 'Social', 'Performance'],
+      views: ['Active', 'Catalog', 'Sales', 'Pipeline', 'Social', 'Performance'],
       kpis: [
         { label: 'Active campaigns', value: '\u2014', note: 'Not read at operator scope', dim: true },
         { label: 'Motions running', value: '2', note: 'Representative' },
@@ -254,7 +257,7 @@
       },
     },
     marketplace: {
-      kicker: 'What the platform sells', title: 'Marketplace', s: REP, market: true,
+      kicker: 'What the platform sells', title: 'Marketplace', s: PART, market: true,
       deck: 'Five kinds of thing ship here: a skill she can run, an automation, an integration, a template, or a whole agent. Every one declares the authority it needs before it installs \u2014 an install can never widen what she may do.',
       views: ['Storefront', 'Catalog', 'Submissions', 'Publishers'],
     },
@@ -266,7 +269,7 @@
         { label: 'Checks passing', value: '4', note: 'Of 5 categories' },
         { label: 'Skipped', value: '1', note: 'Its own axis, not a pass' },
         { label: 'LLM error rate', value: '0.4%', note: 'llm.error_rate' },
-        { label: 'Fleet MRR', value: '\u2014', note: 'Money Spine deferred', dim: true }
+        { label: 'Fleet MRR', value: '$0', note: 'L1 reads \u00b7 no paying tenant yet' }
       ],
       ledgerByView: {
         'Platform health': {
@@ -304,7 +307,7 @@
           { label: 'Platform tenant', value: '1', note: 'The operator\u2019s own record' },
           { label: 'Domains', value: '2', note: 'App and marketing' },
           { label: 'Brand sets', value: '1', note: 'Inherited by sub-accounts' },
-          { label: 'Platform billing', value: '\u2014', note: 'Money Spine deferred by ruling', dim: true }
+          { label: 'Platform billing', value: '$0', note: 'L1 reads \u00b7 no paying tenant yet' }
         ],
         Integrations: [
           { label: 'Connected', value: '4', note: 'Reading or writing today' },
@@ -353,7 +356,7 @@
             { name: 'Operator record', detail: 'The platform\u2019s own tenant row', figure: 'live', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' },
             { name: 'Brand', detail: 'Mark, wordmark, palette, resolved recursively', figure: '1 set', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' },
             { name: 'Domains', detail: 'App and marketing hosts', figure: '2', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' },
-            { name: 'Platform billing', detail: 'Money Spine deferred by owner ruling', figure: '\u2014', status: 'Deferred', tone: 'var(--pg-faint)', action: 'Why \u2192' },
+            { name: 'Platform billing', detail: 'operator_dashboard_metrics() reads MRR, ARR, dunning and ARPA', figure: '$0', status: 'Reads', tone: 'var(--pg-positive)', action: 'Open \u2192' },
             { name: 'Notifications', detail: 'What reaches the operator, and how', figure: '\u2014', status: 'Surface owed', tone: 'var(--pg-warning)', action: 'Open \u2192' }
           ]
         },
@@ -382,20 +385,25 @@
         }
       },
       ledgerTitle: 'Governance', ledgerMeta: 'Two-key on destructive ops',
-      ledgerFoot: 'The governance laws bind here rather than RLS: immutable audit, two-key on destructive operations, never-silent break-glass.',
+      ledgerFoot: 'The governance laws are meant to bind here rather than in RLS: immutable audit, two-key on destructive operations, never-silent break-glass. One of the three does not hold yet \u2014 append-only is a GRANT, not a constraint, and the read policy is inverted. CC owns this surface; it is named here rather than drawn as done.',
       rows: [
         { name: 'Trust Compass', trust: true, detail: 'Authority and autonomy, one home', figure: '@grants', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' },
-        { name: 'Audit log', detail: 'Append-only', figure: 'immutable', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' },
+        { name: 'Audit log', detail: 'Append-only by GRANT only \u2014 no constraint, no trigger. Operator rows are readable by tenant admins and largely not by platform_admin (task #218).', figure: 'unenforced', status: 'Attention', tone: 'var(--pg-warning)', action: 'Review \u2192' },
         { name: 'Break-glass', detail: 'Second key, reason code, actor log', figure: '\u2014', status: 'Unwired', tone: 'var(--pg-negative)', action: 'Why \u2192' },
         { name: 'Alert rules', detail: 'Configured in Alerts', figure: '7 rules', status: 'Live', tone: 'var(--pg-positive)', action: 'Open \u2192' }
       ]
     }
   };
 
-  // Systems check — shape from the L1/L3 DDL. Counts derive from the run, never asserted.
-  // Statuses: pass · fail · skip · error. An error is never degraded to a pass.
+  // Systems check — shape from the L1/L3 DDL. Statuses: pass · fail · skip · error.
+  // An error is never degraded to a pass.
+  //
+  // The run carries timing only. check_count, pass_count and fail_count used to live here
+  // and were typed twins of the findings array — when f5 moved fail → pass the ladder
+  // followed and these did not, so one screen carried two answers. Every count, and the
+  // brief's prose, now composes from findings.
   P.SWEEP = {
-    run: { started_at: '06:30', completed_at: '06:34', check_count: 10, pass_count: 4, fail_count: 1 },
+    run: { started_at: '06:30', completed_at: '06:34' },
     domains: [
       { id: 'infrastructure', label: 'Infrastructure' },
       { id: 'marketing', label: 'Marketing' },
@@ -414,8 +422,8 @@
         evidence: '8 registry rows, 0 orphaned.', interpretation: 'The registry and the tenant table agree.' },
       { id: 'f4', check: 'operator_llm_error_rate', domain: 'data_product', priority: 60, status: 'pass', severity: 'medium',
         evidence: 'llm.error_rate 0.4% over the trailing window.', interpretation: 'Within range. No baseline exists to call it anomalous either way.' },
-      { id: 'f5', check: 'operator_alert_delivery', domain: 'comms_deliverability', priority: 1, status: 'fail', severity: 'blocking',
-        evidence: '1 firing at delivery_status=pending since 13:47. No channel adapter is configured.', interpretation: 'A rule fired and nobody was told. Every firing will sit at pending until the channel adapters land \u2014 a fire is not a delivery.', fix: 'Route firings through _shared/channel-adapters.ts and set delivery_status on acknowledgement.' },
+      { id: 'f5', check: 'operator_alert_delivery', domain: 'comms_deliverability', priority: 1, status: 'pass', severity: 'medium',
+        evidence: '1 firing delivered 13:47 by alerting-deliver on the five-minute cron. Nobody has acknowledged it.', interpretation: 'Delivery is not the gap any more \u2014 A3 ships on a five-minute cron with A4 and A5a behind it. What is open is the acknowledgement, and that is yours: a delivered firing nobody has cleared still reads as unfinished work.', fix: 'Record an acknowledgement \u2014 who cleared the firing, when, and on what grounds. Routing through channel-adapters.ts already ships.' },
       { id: 'f6', check: 'operator_migration_drift', domain: 'infrastructure', priority: 70, status: 'skip', severity: 'medium',
         evidence: 'data_source=self_hosted_worker. A Deno edge function cannot read git tags.', interpretation: 'Deferred to the CI reader. This will read skip until that ships \u2014 it is not a pass.' },
       { id: 'f7', check: 'operator_edge_drift', domain: 'infrastructure', priority: 75, status: 'skip', severity: 'medium',
@@ -438,7 +446,7 @@
         data: [12,8,6,3,3,0,0,0], labels: ['0f3a','agency','e59d','b204','c771','7c11','a903','f240'] },
       { title: 'Risk grade', note: 'Of 8 live tenants', kind: 'stack',
         parts: [{ label: 'Nominal', value: 6, tone: 'var(--pg-positive)' }, { label: 'At risk', value: 2, tone: 'var(--pg-warning)' }] },
-      { title: 'Fleet MRR', note: 'Money Spine deferred by owner ruling', kind: 'none' }
+      { title: 'Fleet MRR', note: 'L1 reads \u00b7 flat at zero, because no tenant pays yet \u2014 a reading, not a gap', kind: 'none' }
     ],
     Relationships: [
       { title: 'Lifecycle', note: 'Representative \u2014 no relationship table exists', kind: 'funnel',
@@ -492,13 +500,18 @@
         data: [2,2,1,1,0,0,0], labels: ['CI','CI','no adapter','no baseline','','',''] },
       { title: 'LLM error rate', note: 'Twelve weeks \u00b7 percent', kind: 'line',
         data: [0.9,0.8,0.7,0.6,0.6,0.5,0.7,0.5,0.4,0.4,0.5,0.4] },
-      { title: 'Time to acknowledge', note: 'No firing has ever been delivered', kind: 'none' }
+      { title: 'Time to acknowledge', note: 'Delivery ships \u2014 nothing records an acknowledgement yet', kind: 'none' }
     ]
   };
 
 
-  // Conversations — grounded in src/agency/conversations.tsx and src/agency/fixtures.ts
-  // (CHANNELS, THREADS, CONV_CHANNEL_PERF). One console, every channel, Paige inside it.
+  // Conversations — the layout is grounded in src/agency/conversations.tsx and
+  // src/agency/fixtures.ts (CHANNELS, THREADS, CONV_CHANNEL_PERF), which is @ts-nocheck and
+  // fixture-driven. The operator-scope substrate is elsewhere and does exist:
+  // 20260812000000_operator_communications_store.sql, 20260816190000_operator_comms_parity.sql
+  // and 20260816191000_conversations_call_schema.sql, plus the live paige-operator-sms-inbound
+  // and paige-operator-sms-send functions. SMS reads and sends at operator scope; voice does
+  // not. One console, every channel, Paige inside it.
   P.CHANNELS = [
     { key: 'Email', glyph: 'M2 4.2h12v7.6H2z M2 4.2l6 4.4 6-4.4', substrate: 'Live' },
     { key: 'SMS', glyph: 'M2.4 3.4h11.2v7.4H7l-3.2 2.6v-2.6H2.4z', substrate: 'Live' },
@@ -571,16 +584,21 @@
   // the type column says which, and the detail is shared. Lifecycle, not location,
   // says whether they are a client: becoming one moves them into Fleet without
   // leaving this log.
+  // Every identifier here is deliberately format-invalid — 000-00-0000, 00-0000000.
+  // A format-valid fixture identifier is the one class we cannot carry: the risk is not
+  // the fixture, it is a later session porting one into a shipped surface because it
+  // looks real. Masking (•••-••-••••) is a display state and means we hold the value; an
+  // em-dash means we hold nothing. Neither is a licence to store a real one.
   P.PEOPLE = [
     { id:'p1', kind:'Company', name:'AUTHORIZED TENANT \u00b7 0f3a', sub:'Standalone \u00b7 12 seats', life:'Client',
       owner:'You', touch:'2h', portal:'Active \u00b7 smart', vault:'Shared \u00b7 8 items',
       identity:[['Legal name','AUTHORIZED TENANT 0f3a'],['Primary contact','fixture B'],['Address','\u2014 not on file'],['Phone','+1 ··· ··· 0198'],['Email','b@fixture.invalid']],
       business:[['Entity type','LLC'],['Formation state','\u2014'],['EIN','00-0000000',1],['Tax classification','\u2014']],
       docs:[['Master agreement','signed 11 Mar'],['W-9','on file'],['Formation docs','\u2014 not uploaded']],
-      billing:[['Plan','Standalone'],['MRR','\u2014 Money Spine deferred'],['Method','card ending 4471',1],['Next invoice','\u2014']] },
+      billing:[['Plan','Standalone'],['MRR','$0 \u00b7 no paid plan yet'],['Method','card ending 4471',1],['Next invoice','\u2014']] },
     { id:'p2', kind:'Person', name:'fixture B', sub:'Owner \u00b7 AUTHORIZED TENANT 0f3a', life:'Client contact',
       owner:'You', touch:'2h', portal:'Active \u00b7 smart', vault:'Via company',
-      identity:[['First name','fixture'],['Last name','B'],['Date of birth','04/18/1979',1],['Address','\u2014 not on file'],['Phone','+1 ··· ··· 0198'],['Email','b@fixture.invalid']],
+      identity:[['First name','fixture'],['Last name','B'],['Date of birth','00/00/0000',1],['Address','\u2014 not on file'],['Phone','+1 ··· ··· 0198'],['Email','b@fixture.invalid']],
       business:[['Role','Owner'],['Company','AUTHORIZED TENANT 0f3a'],['SSN','000-00-0000',1]],
       docs:[['Signed agreement','11 Mar'],['ID verification','\u2014 not on file']],
       billing:[['Billed through','the company'],['Method','\u2014']] },
@@ -595,7 +613,7 @@
       identity:[['Legal name','AUTHORIZED TENANT agency'],['Primary contact','\u2014'],['Address','\u2014 not on file'],['Phone','\u2014'],['Email','\u2014']],
       business:[['Entity type','\u2014'],['Formation state','\u2014'],['EIN','00-0000000',1],['Tax classification','\u2014']],
       docs:[['Master agreement','signed 2 Feb'],['Reseller addendum','signed 2 Feb']],
-      billing:[['Plan','Agency'],['MRR','\u2014 Money Spine deferred'],['Method','ACH ending 2038',1],['Next invoice','\u2014']] },
+      billing:[['Plan','Agency'],['MRR','$0 \u00b7 no paid plan yet'],['Method','ACH ending 2038',1],['Next invoice','\u2014']] },
     { id:'p5', kind:'Person', name:'fixture C', sub:'Reseller candidate', life:'Partner',
       owner:'\u2014', touch:'1d', portal:'Not invited', vault:'None',
       identity:[['First name','fixture'],['Last name','C'],['Date of birth','\u2014'],['Address','\u2014 not on file'],['Phone','+1 ··· ··· 0233'],['Email','c@fixture.invalid']],
@@ -607,7 +625,7 @@
       identity:[['Legal name','AUTHORIZED TENANT 7c11'],['Primary contact','\u2014'],['Address','\u2014 not on file'],['Phone','\u2014'],['Email','\u2014']],
       business:[['Entity type','\u2014'],['Formation state','\u2014'],['EIN','\u2014 not on file'],['Tax classification','\u2014']],
       docs:[['Master agreement','signed 19 Jun'],['W-9','\u2014 not uploaded']],
-      billing:[['Plan','Sub-account'],['MRR','\u2014 Money Spine deferred'],['Method','via parent'],['Next invoice','\u2014']] },
+      billing:[['Plan','Sub-account'],['MRR','$0 \u00b7 no paid plan yet'],['Method','via parent'],['Next invoice','\u2014']] },
     { id:'p7', kind:'Company', name:'DESIGN FIXTURE \u00b7 internal', sub:'Platform test account', life:'Internal',
       owner:'\u2014', touch:'\u2014', portal:'Not invited', vault:'None',
       identity:[['Legal name','DESIGN FIXTURE internal'],['Primary contact','\u2014'],['Address','\u2014'],['Phone','\u2014'],['Email','\u2014']],
@@ -632,6 +650,84 @@
 
   // Segments — saved views of the People book. A rule is stored as readable clauses so
   // she can say it back, reason about it, and build one from a sentence.
+  // The clause vocabulary. Declarative on purpose: a clause is a field, an operator and a
+  // value, which is what a segment must become server-side. The predicates that resolve
+  // them against the book live in the shell, not here.
+  P.SEG_FIELDS = [
+    { id:'kind',  cat:'Who they are', label:'Record type',   verb:['is','is not'],   live:true,
+      values:[['person','a person'],['company','a company']] },
+    { id:'life',  cat:'Who they are', label:'Lifecycle',     verb:['is','is not'],   live:true,
+      values:[['client','a client'],['contact','a client contact'],['prospect','a prospect'],['partner','a partner']] },
+    { id:'owner', cat:'Who they are', label:'Owner',         verb:['is','is not'],   live:true,
+      values:[['you','owned by you'],['paige','owned by PAIGE'],['none','unowned']] },
+    { id:'touch', cat:'Activity',     label:'Last touch',    verb:['is','is not'],   live:true,
+      values:[['today','touched today'],['older','last touched over a day ago']] },
+    { id:'portal',cat:'Reach',        label:'Portal',        verb:['is','is not'],   live:true,
+      values:[['on','on the portal'],['off','not invited to the portal']] },
+    { id:'vault', cat:'Reach',        label:'Vault',         verb:['has','has no'],  live:true,
+      values:[['shared','vault items shared directly'],['company','vault access through their company']] },
+    { id:'ein',   cat:'Records',      label:'EIN',           verb:['has','has no'],  live:true,
+      values:[['on','an EIN on file']] },
+    { id:'agree', cat:'Records',      label:'Agreement',     verb:['has','has no'],  live:true,
+      values:[['on','a signed agreement']] },
+    { id:'thread30', cat:'Activity',  label:'Recent thread', verb:['has','has no'],  live:false,
+      why:'Thread history is not readable at operator scope \u2014 Stage 3',
+      values:[['on','a conversation in the last 30 days']] },
+    { id:'reply', cat:'Activity',     label:'Inbound reply', verb:['has','has no'],  live:false,
+      why:'Thread history is not readable at operator scope \u2014 Stage 3',
+      values:[['on','at least one inbound reply']] },
+    { id:'meeting', cat:'Activity',   label:'Meeting',       verb:['has','has no'],  live:false,
+      why:'No calendar source is connected \u2014 Stage 3',
+      values:[['on','a meeting on record']] },
+    { id:'outbound', cat:'Activity',  label:'Outbound',      verb:['has','has no'],  live:false,
+      why:'Outbound history is not recorded yet \u2014 Stage 3',
+      values:[['on','outbound on record']] }
+  ];
+
+  // What she listens for when a segment is described in words. neg marks a phrase that
+  // carries its own negation, so \u201cquiet\u201d becomes has no rather than has.
+  P.SEG_PHRASES = [
+    { say:'client', f:'life', v:'client' },
+    { say:'contact', f:'life', v:'contact' },
+    { say:'prospect', f:'life', v:'prospect' },
+    { say:'lead', f:'life', v:'prospect' },
+    { say:'partner', f:'life', v:'partner' },
+    { say:'reseller', f:'life', v:'partner' },
+    { say:'compan', f:'kind', v:'company' },
+    { say:'people', f:'kind', v:'person' },
+    { say:'person', f:'kind', v:'person' },
+    { say:'mine', f:'owner', v:'you' },
+    { say:'i own', f:'owner', v:'you' },
+    { say:'she owns', f:'owner', v:'paige' },
+    { say:'unowned', f:'owner', v:'none' },
+    { say:'nobody owns', f:'owner', v:'none' },
+    { say:'ein', f:'ein', v:'on' },
+    { say:'tax id', f:'ein', v:'on' },
+    { say:'agreement', f:'agree', v:'on' },
+    { say:'signed', f:'agree', v:'on' },
+    { say:'portal', f:'portal', v:'on' },
+    { say:'vault', f:'vault', v:'shared' },
+    { say:'quiet', f:'thread30', v:'on', neg:true },
+    { say:'gone quiet', f:'thread30', v:'on', neg:true },
+    { say:'thread', f:'thread30', v:'on' },
+    { say:'conversation', f:'thread30', v:'on' },
+    { say:'spoken', f:'thread30', v:'on' },
+    { say:'heard from', f:'thread30', v:'on' },
+    { say:'30 days', f:'thread30', v:'on' },
+    { say:'a month', f:'thread30', v:'on' },
+    { say:'replied', f:'reply', v:'on' },
+    { say:'reply', f:'reply', v:'on' },
+    { say:'answered', f:'reply', v:'on' },
+    { say:'met', f:'meeting', v:'on' },
+    { say:'meeting', f:'meeting', v:'on' },
+    { say:'booked', f:'meeting', v:'on' },
+    { say:'contacted', f:'outbound', v:'on' },
+    { say:'outbound', f:'outbound', v:'on' },
+    { say:'reached out', f:'outbound', v:'on' },
+    { say:'touched today', f:'touch', v:'today' },
+    { say:'today', f:'touch', v:'today' }
+  ];
+
   P.SEGMENTS = [
     { id:'s1', name:'Clients with no thread in 30 days', count:2, of:4, kind:'Clients',
       clauses:[['is','a client'],['has no','conversation in the last 30 days']],
@@ -686,8 +782,113 @@
     done:      { label: 'Done',      tone: 'var(--pg-faint)',    active: 0, note: 'Motion finished' }
   };
 
+  // ── What is actually being sold ───────────────────────────────────────────
+  // A campaign with no offer is a brand campaign, which is legitimate. A campaign with
+  // one is bound to a row here, and the binding is what lets Active show money.
+  P.OFFER_KINDS = {
+    product:  { label: 'Product',  glyph: 'M2.8 5.4 8 2.8l5.2 2.6v5.2L8 13.2l-5.2-2.6z M2.8 5.4 8 8l5.2-2.6 M8 8v5.2', note: 'Shipped as a thing' },
+    service:  { label: 'Service',  glyph: 'M5.2 4.6a2.8 2.8 0 1 0 5.6 0a2.8 2.8 0 1 0-5.6 0 M2.8 13.2c0-2.5 2.3-4 5.2-4s5.2 1.5 5.2 4', note: 'Delivered by people' },
+    retainer: { label: 'Retainer', glyph: 'M8 2.6a5.4 5.4 0 1 0 5.1 3.6 M13.4 2.6v3.6H9.8 M8 5.6V8l2 1.4', note: 'Recurring scope, not a fixed deliverable' },
+    license:  { label: 'License',  glyph: 'M4.4 7.2h7.2v6H4.4z M6.2 7.2V5a1.8 1.8 0 0 1 3.6 0v2.2', note: 'Access, not delivery' }
+  };
+  P.OFFER_CATEGORIES = ['Platform', 'Enablement', 'Advisory'];
+  P.OFFER_STATES = {
+    selling: { label: 'Selling', tone: 'var(--pg-positive)', note: 'On sale and reachable from at least one channel' },
+    quiet:   { label: 'Quiet',   tone: 'var(--pg-gold-deep)', note: 'Priced and ready, nothing sells it right now' },
+    draft:   { label: 'Draft',   tone: 'var(--pg-violet)',   note: 'Not sellable \u2014 price or fulfilment unfinished' },
+    retired: { label: 'Retired', tone: 'var(--pg-faint)',    note: 'Off sale. Existing terms stand' }
+  };
+  P.CATALOG = [
+    { id: 'o1', name: 'Standalone tenancy', kind: 'product', cat: 'Platform', state: 'selling',
+      price: 490, period: 'monthly', unit: 'per tenant',
+      pitch: 'One tenant, her included, on the operator substrate.',
+      tiers: [
+        ['Standalone', 490, 'monthly', '1 tenant \u00b7 12 seats'],
+        ['Agency', 1900, 'monthly', 'parent \u00b7 4 sub-tenants'],
+        ['Enterprise', null, 'quoted', 'unlimited seats, with an SLA']
+      ],
+      where: ['Marketplace storefront', 'Operator outreach', 'Reseller intent'],
+      fulfil: [['What', 'A provisioned tenant with her installed'], ['Who', 'PAIGE provisions, you countersign'], ['When', 'Same day as signature']] },
+    { id: 'o2', name: 'Reseller programme', kind: 'license', cat: 'Platform', state: 'selling',
+      price: 0, period: 'revenue share', unit: '20% of tenant billing',
+      pitch: 'They sell tenancies under their own brand and keep a cut.',
+      tiers: [['Reseller', 0, 'revenue share', '20% of what they bill']],
+      where: ['Reseller intent', 'Marketplace storefront'],
+      fulfil: [['What', 'A parent tenancy and a rate card'], ['Who', 'You approve every reseller by hand'], ['When', 'After a call']] },
+    { id: 'o3', name: 'Migration', kind: 'service', cat: 'Enablement', state: 'selling',
+      price: 2400, period: 'one-time', unit: 'per tenant',
+      pitch: 'Their book, their threads and their pipeline moved in without a gap.',
+      tiers: [['Standard', 2400, 'one-time', 'up to 5,000 records'], ['Large', 6800, 'one-time', 'no record ceiling']],
+      where: ['Operator outreach'],
+      fulfil: [['What', 'Records mapped, imported and reconciled'], ['Who', 'You, with her doing the mapping'], ['When', 'Two weeks from kickoff']] },
+    { id: 'o4', name: 'Fractional operator', kind: 'retainer', cat: 'Advisory', state: 'quiet',
+      price: 3500, period: 'monthly', unit: 'per month',
+      pitch: 'We run the platform with them until they can run it alone.',
+      tiers: [['Half', 3500, 'monthly', 'two days a week'], ['Full', 6500, 'monthly', 'four days a week']],
+      where: [],
+      fulfil: [['What', 'Standing operator hours and a weekly read'], ['Who', 'You'], ['When', 'Monthly, rolling']] },
+    { id: 'o5', name: 'Agent build', kind: 'service', cat: 'Enablement', state: 'draft',
+      price: null, period: 'quoted', unit: '\u2014 not priced',
+      pitch: 'A capability built to their process and installed on their tenant.',
+      tiers: [],
+      where: [],
+      fulfil: [['What', 'A scoped capability, reviewed before install'], ['Who', 'Her, under your grant'], ['When', '\u2014 no delivery record yet']] }
+  ];
+
+  // ── Sales ─────────────────────────────────────────────────────────────────
+  // Closed lines. Amounts are numbers so every figure on the surface is a sum, never
+  // a typed total. state: booked | refunded | pending
+  P.SALES_STAGES = ['Quoted', 'Verbal', 'Signed', 'Invoiced', 'Paid'];
+  P.CLOSE_REASONS = ['Won', 'Price', 'Timing', 'No decision', 'Lost to in-house'];
+  P.SALES_TARGET = { period: 'this quarter', target: 12000, note: 'Set by hand. Nothing enforces it \u2014 it is a line on a chart, not a gate.' };
+  P.SALES = [
+    { id: 'sl1', when: '4 Jul',  day: 4,  offer: 'o1', tier: 'Standalone', amount: 490,  state: 'booked',   stage: 'Paid',     camp: 'Operator outreach', who: 'AUTHORIZED TENANT \u00b7 0f3a' },
+    { id: 'sl2', when: '11 Jul', day: 11, offer: 'o3', tier: 'Standard',   amount: 2400, state: 'booked',   stage: 'Paid',     camp: 'Operator outreach', who: 'AUTHORIZED TENANT \u00b7 0f3a' },
+    { id: 'sl3', when: '2 Aug',  day: 33, offer: 'o1', tier: 'Agency',     amount: 1900, state: 'booked',   stage: 'Paid',     camp: 'Reseller intent',   who: 'AUTHORIZED TENANT \u00b7 agency' },
+    { id: 'sl4', when: '9 Aug',  day: 40, offer: 'o2', tier: 'Reseller',   amount: 0,    state: 'booked',   stage: 'Signed',   camp: 'Reseller intent',   who: 'PARTNER \u00b7 design fixture C' },
+    { id: 'sl5', when: '14 Aug', day: 45, offer: 'o1', tier: 'Standalone', amount: 490,  state: 'refunded', stage: 'Paid',     camp: '\u2014 direct',       who: 'PROSPECT \u00b7 design fixture A' },
+    { id: 'sl6', when: '19 Aug', day: 50, offer: 'o3', tier: 'Large',      amount: 6800, state: 'pending',  stage: 'Invoiced', camp: 'Operator outreach', who: 'AUTHORIZED TENANT \u00b7 b204' }
+  ];
+
+  // The processor seam. Agnostic by construction: the platform describes what it needs
+  // from a merchant provider, and an adapter satisfies it. Stripe is the first adapter,
+  // not the interface.
+  P.PROCESSOR = {
+    deck: 'Sales records are ours. Money movement is an adapter, so the provider can change without touching a single sale.',
+    needs: [
+      ['Charge once', 'One-time and quoted work', 'Adapter'],
+      ['Charge on a period', 'Monthly and annual billing', 'Adapter'],
+      ['Refund a charge', 'Reverses the line, keeps the record', 'Adapter'],
+      ['Report a payout', 'When our money actually lands', 'Adapter'],
+      ['Split a payment', 'Marketplace only \u2014 never tenant sales', 'Stripe Connect']
+    ],
+    adapters: [
+      { name: 'Stripe', state: 'Wired at operator scope', tone: 'var(--pg-positive)', note: 'The platform operator account. Connect is required only for the marketplace split, and that ruling is still open.' },
+      { name: 'Any other merchant provider', state: 'Pluggable', tone: 'var(--pg-gold-deep)', note: 'Satisfy the five needs above and the surface does not change. Planned before general availability.' }
+    ],
+    foot: 'No tenant sale is ever split. Revenue share exists in the marketplace and nowhere else.'
+  };
+
+  // ── The part a tenant owns ────────────────────────────────────────────────
+  // Everything here is schema, not code: a tenant renames it, reorders it, or turns it
+  // off, and the surfaces above read from the result.
+  P.CARD_FACTS = [
+    { id: 'step',   label: 'Step',    note: 'Position in the motion' },
+    { id: 'opened', label: 'Opened',  note: 'Opens, where a channel reports them' },
+    { id: 'reach',  label: 'Reached', note: 'How many the motion has touched' },
+    { id: 'grant',  label: 'PAIGE',   note: 'How much room she has on this campaign' },
+    { id: 'offer',  label: 'Sells',   note: 'The offer this campaign is bound to' },
+    { id: 'booked', label: 'Booked',  note: 'Money attributed to this campaign' }
+  ];
+  P.CAMP_SCHEMA = {
+    definition: 'Active = audience bound \u00b7 motion unfinished \u00b7 not halted',
+    facts: ['step', 'opened', 'reach', 'grant'],
+    density: 'full',
+    stageWord: 'Step'
+  };
+
   P.CAMPAIGNS = [
-    { id: 'c6', name: 'Reseller intent', kind: 'seo', state: 'running',
+    { id: 'c6', name: 'Reseller intent', kind: 'seo', state: 'running', offer: 'o2',
       channel: 'Published', segment: '\u2014 no audience, by definition', grant: 'Draft only',
       reach: null, replies: null, started: '4 weeks ago',
       steps: [
@@ -705,7 +906,7 @@
         { name: 'Republish the glossary', when: 'not started', state: 'pending', body: 'Link each term to its explainer once they are live.' }
       ] },
 
-    { id: 'c1', name: 'Operator outreach', kind: 'outbound', state: 'running',
+    { id: 'c1', name: 'Operator outreach', kind: 'outbound', state: 'running', offer: 'o1',
       channel: 'Email', segment: 'Never contacted', grant: 'Ask first',
       opened: 'day 6 of 11', reach: '\u2014',
       steps: [
@@ -1114,9 +1315,10 @@
   // Creating one is the first step \u2014 the rules, types and hosts are configured per calendar.
 
   // An alert is three things: a rule that fires, someone it reaches, and a channel it
-  // arrives on. Only the first exists today \u2014 A1 (schema) and A2 (the five-minute sweep)
-  // evaluate rules and write firings; A3 (delivery) has never been built, and there has
-  // never been a recipient model at all. That is why nothing arrives.
+  // arrives on. All three ship: A1 (schema) and A2 (the five-minute sweep) evaluate rules
+  // and write firings, and A3 delivers them \u2014 alerting-deliver, on its own five-minute
+  // cron, with A4 and A5a behind it. What is still owed is acknowledgement, which is a
+  // human act, not a seam.
 
   P.CAL_TYPES = [
     { id: 'personal', name: 'Personal', note: 'One person\u2019s time',
@@ -1305,7 +1507,7 @@
       { name: 'Custom MCP server', kind: 'MCP', state: 'planned', does: 'Bring a tool server of your own', note: '' }
     ]},
     { cat: 'Money', items: [
-      { name: 'Stripe', kind: 'Key', state: 'planned', does: 'Subscriptions and invoices', note: 'Money spine deferred by ruling', blocks: 'Every money figure on the platform' },
+      { name: 'Stripe', kind: 'Key', state: 'planned', does: 'Subscriptions and invoices', note: 'Operator metrics read (L1) and marketplace paid installs charge. Subscription billing is the part that is not wired.', blocks: 'Tenant subscription billing' },
       { name: 'Stripe Connect', kind: 'OAuth', state: 'planned', does: 'Pay marketplace publishers', note: '', blocks: 'The marketplace revenue split' },
       { name: 'QuickBooks', kind: 'OAuth', state: 'planned', does: 'Push invoices to the books', note: '' },
       { name: 'Xero', kind: 'OAuth', state: 'planned', does: 'Push invoices to the books', note: '' }
@@ -1526,7 +1728,7 @@
     { src:'Conversations', lobe:'recall', writes:'Every message, both directions', n:'31,400', state:'live', sample:'fixture B asked whether margin moves at volume' },
     { src:'Call transcripts', lobe:'recall', writes:'What was said, and who said it', n:'\u2014', state:'none', sample:'No voice substrate \u2014 nothing transcribed' },
     { src:'Calendar', lobe:'recall', writes:'Meetings, bookings, no-shows', n:'\u2014', state:'none', sample:'No calendar source connected' },
-    { src:'Audit log', lobe:'recall', writes:'Every act, append-only', n:'12,880', state:'live', sample:'Entered AUTHORIZED TENANT \u00b7 7c11 at 09:14' },
+    { src:'Audit log', lobe:'recall', writes:'Every act \u2014 append-only by GRANT, not by constraint', n:'12,880', state:'live', sample:'Entered AUTHORIZED TENANT \u00b7 7c11 at 09:14' },
     { src:'Systems check', lobe:'recall', writes:'Findings from each run', n:'3,840', state:'live', sample:'operator_alert_delivery failed four runs straight' },
     { src:'Documents', lobe:'knowledge', writes:'Uploads, agreements, filings', n:'4,210', state:'live', sample:'Reseller agreement, clause 7 \u2014 margin at volume' },
     { src:'The Vault', lobe:'knowledge', writes:'What a client keeps on their side', n:'2,970', state:'live', sample:'0f3a holds 8 items, 2 shared with us' },
@@ -1705,7 +1907,7 @@
     { name: 'The morning brief is written', cat: 'Analytics', live: true },
     { name: 'An integration connects', cat: 'External', live: true },
     { name: 'An integration goes dark', cat: 'External', live: true },
-    { name: 'An invoice is paid or fails', cat: 'External', live: false, why: 'Money spine deferred' },
+    { name: 'An invoice is paid or fails', cat: 'External', live: false, why: 'No subscription billing seam \u2014 metrics read, invoices do not' },
     { name: 'A portal invite is accepted', cat: 'External', live: false, why: 'No client-side session' },
     { name: 'A vault item is added', cat: 'External', live: true },
     { name: 'A tenant enters or exits scope', cat: 'Fleet', live: true },
@@ -1783,9 +1985,9 @@
     { name: 'Install from the marketplace', cat: 'Control', needs: 'Ask first', live: false, why: 'No install ledger' },
     { name: 'Read a metric', cat: 'Ask PAIGE', needs: 'Observe', live: true },
     { name: 'Write a brief', cat: 'Notify', needs: 'Act and report', live: true },
-    { name: 'Raise an alert', cat: 'Notify', needs: 'Autonomous', live: false, why: 'A3 routes delivery' },
+    { name: 'Raise an alert', cat: 'Notify', needs: 'Autonomous', live: true },
     { name: 'Call an integration', cat: 'Outside', needs: 'Ask first', live: true },
-    { name: 'Charge or invoice', cat: 'Outside', needs: 'Ask first', live: false, why: 'Money spine deferred' }
+    { name: 'Charge or invoice', cat: 'Outside', needs: 'Ask first', live: false, why: 'No subscription billing seam yet' }
   ];
 
   // Guards are the part most builders leave out, and the part that stops an automation
@@ -1964,9 +2166,9 @@
       left: 'Nothing.', act: '' },
     { id: 'al9', kind: 'needs', scope: 'Platform', title: 'Alert delivery is still undelivered',
       when: '13:47', sev: 'high',
-      what: 'Rules evaluate and fire. Nothing carries a firing to a person.',
-      did: 'Nothing she can do \u2014 there is no delivery seam to use.',
-      left: 'A3 has to route firings through the channel adapters. Until then every alert lives here only.',
+      what: 'Rules evaluate, fire, and are delivered on a five-minute cron.',
+      did: 'She raises one and it reaches you. Acknowledging it is still yours.',
+      left: 'An acknowledgement model: who cleared a firing, when, and on what grounds.',
       act: '' }
   ];
 

@@ -580,6 +580,12 @@
         const i0 = Math.min(pu.node, pu.path.length - 2);
         const f = pu.dwell > 0 ? 0 : pu.phase;
         const a = proj[pu.path[i0]], b = proj[pu.path[i0 + 1]];
+        // A pulse whose node index has walked onto the last hop has no next node to
+        // interpolate toward. Rare and timing-dependent — it needs the frame to land in
+        // the one tick between arrival and retirement — which is why it read as
+        // intermittent rather than deterministic. Guarded rather than reordered: the
+        // pulse is retired by its own lifecycle, not by the renderer.
+        if (!a || !b) return;
         const x = a.sx + (b.sx - a.sx) * f, y = a.sy + (b.sy - a.sy) * f;
         // All-or-nothing: full amplitude the whole way, fading only near the path's end.
         const fade = Math.min(1, (pu.path.length - 1 - pu.node) * 0.9);
