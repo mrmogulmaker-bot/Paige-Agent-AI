@@ -395,10 +395,15 @@
     }
   };
 
-  // Systems check — shape from the L1/L3 DDL. Counts derive from the run, never asserted.
-  // Statuses: pass · fail · skip · error. An error is never degraded to a pass.
+  // Systems check — shape from the L1/L3 DDL. Statuses: pass · fail · skip · error.
+  // An error is never degraded to a pass.
+  //
+  // The run carries timing only. check_count, pass_count and fail_count used to live here
+  // and were typed twins of the findings array — when f5 moved fail → pass the ladder
+  // followed and these did not, so one screen carried two answers. Every count, and the
+  // brief's prose, now composes from findings.
   P.SWEEP = {
-    run: { started_at: '06:30', completed_at: '06:34', check_count: 10, pass_count: 4, fail_count: 1 },
+    run: { started_at: '06:30', completed_at: '06:34' },
     domains: [
       { id: 'infrastructure', label: 'Infrastructure' },
       { id: 'marketing', label: 'Marketing' },
@@ -418,7 +423,7 @@
       { id: 'f4', check: 'operator_llm_error_rate', domain: 'data_product', priority: 60, status: 'pass', severity: 'medium',
         evidence: 'llm.error_rate 0.4% over the trailing window.', interpretation: 'Within range. No baseline exists to call it anomalous either way.' },
       { id: 'f5', check: 'operator_alert_delivery', domain: 'comms_deliverability', priority: 1, status: 'pass', severity: 'medium',
-        evidence: '1 firing delivered 13:47 by alerting-deliver on the five-minute cron. Nobody has acknowledged it.', interpretation: 'Delivery is not the gap any more \u2014 A3 ships and A4/A5a landed behind it. What is open is the acknowledgement, which is yours. Thannel adapters land \u2014 a fire is not a delivery.', fix: 'Route firings through _shared/channel-adapters.ts and set delivery_status on acknowledgement.' },
+        evidence: '1 firing delivered 13:47 by alerting-deliver on the five-minute cron. Nobody has acknowledged it.', interpretation: 'Delivery is not the gap any more \u2014 A3 ships on a five-minute cron with A4 and A5a behind it. What is open is the acknowledgement, and that is yours: a delivered firing nobody has cleared still reads as unfinished work.', fix: 'Record an acknowledgement \u2014 who cleared the firing, when, and on what grounds. Routing through channel-adapters.ts already ships.' },
       { id: 'f6', check: 'operator_migration_drift', domain: 'infrastructure', priority: 70, status: 'skip', severity: 'medium',
         evidence: 'data_source=self_hosted_worker. A Deno edge function cannot read git tags.', interpretation: 'Deferred to the CI reader. This will read skip until that ships \u2014 it is not a pass.' },
       { id: 'f7', check: 'operator_edge_drift', domain: 'infrastructure', priority: 75, status: 'skip', severity: 'medium',

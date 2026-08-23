@@ -86,3 +86,56 @@ It needs to run both ways. **A design that under-states shipped substrate is a
 defect of the same class as a fabricated figure**, and only CC can see it. Send
 these as you find them; they get corrected in the contract, which propagates to
 every surface that reads it.
+
+---
+
+## Rev 4 — two defects CC found in rev 3
+
+### 6. `P.SWEEP.run` carried typed twins of its own findings
+
+`run.check_count: 10`, `pass_count: 4`, `fail_count: 1` sat beside a findings
+array the ladder derives from. When `f5` moved fail → pass the ladder followed
+and the run object did not, so one screen said `0 failing` in the ladder and
+"The failing check is blocking" in the prose beneath it.
+
+CC's diagnosis is exact and it is **rule 3's own failure mode** — a figure that
+appears twice, derived in one place and typed in the other. Worse than a wrong
+number, because the derived half moving is what exposes the typed half.
+
+Fixed at the root rather than by retyping:
+
+- `run` now carries **timing only**. Every count composes from `findings`.
+- The brief's prose composes too — `briefLine` and `briefSub` were authored
+  English beside a derived ladder. They now read the findings for pass / fail /
+  blocking / skip / error, spell small numbers as words, and take the lead
+  sentence from the worst non-passing finding's own `interpretation`.
+- `briefWhen` reads `run.started_at` / `run.completed_at` instead of repeating
+  them as text.
+
+The shell now says "Nothing failed. Five of ten passed, and five could not run
+at all." — composed, so the next corrected finding moves the prose with the
+ladder.
+
+**Rule 3 extends to prose.** A sentence containing a figure is a figure. That is
+the generalisation worth carrying into every remaining surface.
+
+### 7. A botched string replacement in `f5`
+
+The interpretation read "…which is yours. Thannel adapters land — a fire is not
+a delivery." — the tail of the old sentence survived the edit, and the `fix:`
+field still described routing through `channel-adapters.ts`, which is the half
+that already shipped. Both rewritten: the fix now asks for an acknowledgement
+record, and says routing ships.
+
+CC was right not to patch these locally. The contract is regenerated here, so a
+local edit dies on the next delivery. Keep sending them.
+
+### And one of CC's own, worth recording
+
+`pack-shoot` mislabelled every frame in its first two runs: the theme toggle's
+label names the *current* theme, not the target, so matching on the target word
+inverted the switch. It now reads `data-pg` back and refuses to write a frame
+when the applied theme is not the requested one.
+
+Same defect class as the audit log in rev 2 — **a surface asserting something it
+had not verified.** Derive it or verify it; never assert it.

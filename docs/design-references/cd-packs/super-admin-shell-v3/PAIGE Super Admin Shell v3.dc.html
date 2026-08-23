@@ -4666,7 +4666,8 @@ class Component extends DCLogic {
   // axes: passed is read against the TOTAL run, not against the checks that completed.
   systemsOverrides() {
     const IA = window.PAIGE_IA, S = IA.SWEEP, r = S.run;
-    const unrun = r.check_count - (r.pass_count + r.fail_count);
+    const tally = st => S.findings.filter(f => f.status === st).length;
+    const total = S.findings.length, unrun = tally('skip') + tally('error');
     const sev = { blocking:0, high:1, medium:2, low:3 };
     const ordered = S.findings.slice().sort((a, b) =>
       (sev[a.severity] - sev[b.severity]) || (a.priority - b.priority));
@@ -4684,7 +4685,7 @@ class Component extends DCLogic {
 
     const legend = [
       { key:'pass', label:'passing', n:S.findings.filter(f => f.status === 'pass').length, tone:TONE.pass,
-        note:'Passed, counted against the whole run of ' + r.check_count },
+        note:'Passed, counted against the whole run of ' + total },
       { key:'fail', label:'failing', n:S.findings.filter(f => f.status === 'fail').length, tone:TONE.fail,
         note:S.findings.filter(f => f.status === 'fail' && f.severity === 'blocking').length + ' blocking' },
       { key:'unrun', label:'could not run', n:unrun, tone:TONE.skip,
@@ -10881,9 +10882,36 @@ class Component extends DCLogic {
         });
       })(),
       showBrief:s.dest === 'fleet' && viewName === 'Systems check',
-      briefWhen:'Overnight \u00b7 ran 06:30, completed 06:34',
-      briefLine:'An alert fired and nobody was told. Four of ten checks passed, and five could not run at all.',
-      briefSub:'The failing check is blocking: a firing has sat at pending since 13:47 with no channel adapter to deliver it. Of the five that did not run, two are deferred to the CI reader, two had nothing to test against, and one runner threw.',
+      briefWhen:'Overnight \u00b7 ran ' + IA.SWEEP.run.started_at + ', completed ' + IA.SWEEP.run.completed_at,
+      // Rule 3 reaches the prose too. The brief used to be authored English beside a
+      // derived ladder, so a corrected finding left the two disagreeing on the same screen.
+      ...(() => {
+        const S2 = IA.SWEEP, W = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+        const w = k => W[k] === undefined ? String(k) : W[k];
+        const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+        const n = st => S2.findings.filter(x => x.status === st).length;
+        const pass = n('pass'), fail = n('fail'), skip = n('skip'), err = n('error');
+        const total = S2.findings.length, unrun = skip + err;
+        const blocking = S2.findings.filter(x => x.status === 'fail' && x.severity === 'blocking');
+        const sev = { blocking:0, high:1, medium:2, low:3 };
+        const lead = S2.findings.filter(x => x.status !== 'pass')
+          .sort((a, b) => (sev[a.severity] - sev[b.severity]) || (a.priority - b.priority))[0];
+        return {
+          briefLine:(fail
+            ? cap(w(fail)) + ' check' + (fail === 1 ? '' : 's') + ' failed'
+              + (blocking.length ? ', ' + w(blocking.length) + ' of them blocking. ' : '. ')
+            : 'Nothing failed. ')
+            + cap(w(pass)) + ' of ' + w(total) + ' passed'
+            + (unrun ? ', and ' + w(unrun) + ' could not run at all.' : '.'),
+          briefSub:(lead ? lead.interpretation + ' ' : '')
+            + (unrun
+              ? 'Of the ' + w(unrun) + ' that did not run, '
+                + (skip ? w(skip) + ' were skipped' : '')
+                + (err ? (skip ? ' and ' : '') + w(err) + ' errored' : '')
+                + ' — each reported on its own axis, never as a pass.'
+              : '')
+        };
+      })(),
       sweepStarted:!!s.sweepStarted,
       sweepStartedText:'Sweep started \u2014 both halves. The operator half runs directly; the fleet half is enqueued and reports when it lands.',
       runSweep:() => this.setState({ sweepStarted:true, announcement:'Sweep started' }),
