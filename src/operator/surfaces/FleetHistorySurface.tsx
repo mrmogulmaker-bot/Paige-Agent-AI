@@ -2,6 +2,14 @@ import { useSystemsCheckHistory } from "@/operator/data/useSystemsCheckHistory";
 import { cn } from "@/lib/utils";
 
 /**
+ * RULING F (Claude Design, 2026-08-23) — ELEVATION IS DISTANCE FROM `--pg-env`.
+ * `--pg-surface` sits ABOVE canvas in dark and BELOW it in light, so the role inverts between
+ * themes and a plate painted on it RECEDES in light. A plate that rises off the canvas — a card,
+ * a KPI tile, a control, a popover — paints `--pg-raised` in BOTH themes; `--pg-surface` is kept
+ * for regions that genuinely recede (a well, an inset strip, a sunken list).
+ */
+
+/**
  * Fleet Console — History (CD's `SC_HISTORY`, `Super Admin Shell.dc.html` 6769-6857,
  * ported structurally in `fleetSpecs.ts`'s `fleet/history` entry). "Every check that has
  * run, newest first, with what it found."
@@ -62,14 +70,14 @@ export default function FleetHistorySurface() {
           </div>
         </div>
         <div className="ml-auto flex-none">
-          <span className="whitespace-nowrap rounded-full border border-border bg-[var(--pg-surface)] px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium text-muted-foreground">
+          <span className="whitespace-nowrap rounded-full border border-border bg-[var(--pg-raised)] px-3 py-1.5 text-[length:var(--pg-t-label)] font-medium text-muted-foreground">
             {loading ? "—" : runs.length} events
           </span>
         </div>
       </div>
 
       {/* ── the feed ─────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-[var(--pg-rim)]">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[var(--pg-rim)]">
         <div className="border-b border-border px-3.5 py-3">
           <div className="text-[length:var(--pg-t-body)] font-semibold">Check history</div>
           <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">Every sweep, every failure, every recovery.</div>

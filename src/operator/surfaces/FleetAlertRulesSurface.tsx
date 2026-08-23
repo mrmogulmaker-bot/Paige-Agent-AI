@@ -3,6 +3,14 @@ import { useAlerting } from "@/operator/data/useAlerting";
 import { describeChannels, describeCondition } from "@/operator/data/describeCondition";
 
 /**
+ * RULING F (Claude Design, 2026-08-23) — ELEVATION IS DISTANCE FROM `--pg-env`.
+ * `--pg-surface` sits ABOVE canvas in dark and BELOW it in light, so the role inverts between
+ * themes and a plate painted on it RECEDES in light. A plate that rises off the canvas — a card,
+ * a KPI tile, a control, a popover — paints `--pg-raised` in BOTH themes; `--pg-surface` is kept
+ * for regions that genuinely recede (a well, an inset strip, a sunken list).
+ */
+
+/**
  * Fleet Console — Alert rules (CD 6769–6857, ported structurally in `fleetSpecs.ts`'s
  * `fleet/alert-rules` entry). "What she tells you about, how, and whether it has ever fired."
  *
@@ -107,7 +115,7 @@ export default function FleetAlertRulesSurface() {
       {/* ── KPI strip ─────────────────────────────────────────────── */}
       <div className="grid flex-none grid-cols-2 gap-2.5 lg:grid-cols-4">
         {kpis.map((k) => (
-          <div key={k.label} className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-surface)] px-3.5 py-3 shadow-[var(--pg-rim)]">
+          <div key={k.label} className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-raised)] px-3.5 py-3 shadow-[var(--pg-rim)]">
             <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.13em] text-muted-foreground">
               {k.label}
             </div>
@@ -133,7 +141,7 @@ export default function FleetAlertRulesSurface() {
       )}
 
       {/* ── Rules ─────────────────────────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-[var(--pg-rim)]">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[var(--pg-rim)]">
         <div className="border-b border-border px-3.5 py-3">
           <div className="text-[length:var(--pg-t-body)] font-semibold">Rules</div>
           <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">
@@ -209,7 +217,7 @@ export default function FleetAlertRulesSurface() {
       </div>
 
       {/* ── What she can watch ────────────────────────────────────── */}
-      <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] px-3.5 py-3 shadow-[var(--pg-rim)]">
+      <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] px-3.5 py-3 shadow-[var(--pg-rim)]">
         <div className="text-[length:var(--pg-t-body)] font-semibold">What she can watch</div>
         <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">
           The signals a rule can be written against. A signal with no reader reports “never

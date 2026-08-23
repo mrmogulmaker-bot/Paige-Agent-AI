@@ -20,12 +20,11 @@
  *   (L4315-L4328) and cross-window scope sync is not ported; carrying the parameter would assert
  *   a sync that does not run.
  */
-import { useEffect, useRef, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import { SUMMONS, type CapabilityId } from "@/operator/shell/commandPalette";
 
 export type WsMode = "split" | "slideover" | "popout" | "detached";
-export const WS_ORDER: readonly WsMode[] = ["split", "slideover", "popout", "detached"];
+const WS_ORDER: readonly WsMode[] = ["split", "slideover", "popout", "detached"];
 
 /** `G_WS` — L4196-L4201. `[fill, frame, accent]` per mode. */
 const G_WS: Record<WsMode, readonly [string, string, string]> = {
@@ -310,26 +309,4 @@ export default function SummonedSurface({
       </div>
     </section>
   );
-}
-
-/**
- * The canvas's measured width, which the pack carries as `s.canvasW` and reads at 520 and 700.
- * `ResizeObserver` is guarded: jsdom does not implement it, and a shell that throws in a test
- * environment is a worse defect than an unmeasured breakpoint.
- */
-export function useCanvasWidth<T extends HTMLElement>(): [React.RefObject<T>, number] {
-  const ref = useRef<T>(null);
-  const [w, setW] = useState(900);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    setW(el.getBoundingClientRect().width || 900);
-    if (typeof ResizeObserver !== "function") return;
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) setW(e.contentRect.width || 900);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return [ref, w];
 }

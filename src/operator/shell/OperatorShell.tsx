@@ -45,7 +45,8 @@ import {
   canonicalPath, resolveOperatorAddress, slotPath, viewPath, type OperatorAddress,
 } from "@/operator/shell/operatorAddress";
 import CommandBar, { type CommandState } from "@/operator/shell/CommandBar";
-import SummonedSurface, { useCanvasWidth, type WsMode } from "@/operator/shell/SummonedSurface";
+import SummonedSurface, { type WsMode } from "@/operator/shell/SummonedSurface";
+import { useCanvasWidth } from "@/operator/shell/useCanvasWidth";
 import { isCapabilityId, type CapabilityId } from "@/operator/shell/commandPalette";
 import ScopeBand from "@/operator/shell/ScopeBand";
 import { PLATFORM_SCOPE } from "@/operator/shell/scopeStates";

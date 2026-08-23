@@ -32,6 +32,13 @@ import { cn } from "@/lib/utils";
 const PROVISION_AT = viewPath("fleet", "Directory");
 
 /**
+ * RULING F (Claude Design, 2026-08-23) — ELEVATION IS DISTANCE FROM `--pg-env`.
+ * `--pg-surface` sits ABOVE canvas in dark and BELOW it in light, so the role inverts between
+ * themes and a plate painted on it RECEDES in light. A plate that rises off the canvas — a card,
+ * a KPI tile, a control, a popover — paints `--pg-raised` in BOTH themes; `--pg-surface` is kept
+ * for regions that genuinely recede (a well, an inset strip, a sunken list).
+ */
+/**
  * Fleet Console — Claude Design's `isFleet` block (Super Admin Shell.dc.html ~7826-7877), on
  * the real fleet: the FLEET eyebrow + title row with the Field/Table view toggle and gold
  * primary CTA, the four-tile KPI strip, the filter-chip + search row, the Field view's orbit
@@ -252,11 +259,16 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
   );
 
   return (
-    // `overflow-hidden` keeps the two columns from growing the row: whichever is taller scrolls
-    // inside itself rather than stretching the console past the pane (the scrollbar the owner
-    // reported came from the rail doing exactly that).
-    <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
+    /**
+     * FINDING 2 (Claude Design, 2026-08-23) — ONE RIGHT COLUMN, AND IT IS THE SPINE.
+     * CD: *"a surface growing a second one is the shell fighting itself… let the rest be
+     * workspace content — not a column."* The two-column flex row that wrapped this surface and
+     * a 312px `<aside>` is gone; `FleetTenantsRail`'s remaining blocks now flow at the foot of
+     * this one column. Paige's read is not among them — it is spine content, and does not
+     * render on a surface (see `FleetTenantsRail`).
+     */
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+      <>
         {/* ── title row ─────────────────────────────────────────────── */}
         <div className="flex flex-none flex-wrap items-start gap-3">
           <div className="min-w-0">
@@ -288,7 +300,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                   aria-pressed={view === v}
                   className={cn(
                     "rounded-[7px] px-2.5 py-1 text-[length:var(--pg-t-label)] font-medium capitalize transition-colors",
-                    view === v ? "bg-[var(--pg-surface)] text-foreground shadow-[var(--pg-rim)]" : "text-muted-foreground",
+                    view === v ? "bg-[var(--pg-raised)] text-foreground shadow-[var(--pg-rim)]" : "text-muted-foreground",
                   )}
                 >
                   {v}
@@ -320,7 +332,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
           ].map((k) => (
             <div
               key={k.label}
-              className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-surface)] px-3.5 py-3 shadow-[var(--pg-rim)]"
+              className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-raised)] px-3.5 py-3 shadow-[var(--pg-rim)]"
             >
               <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.13em] text-muted-foreground">
                 {k.label}
@@ -350,7 +362,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   on
                     ? "border-border-strong bg-[var(--pg-workspace)] text-foreground"
-                    : "border-border bg-[var(--pg-surface)] text-muted-foreground hover:text-foreground",
+                    : "border-border bg-[var(--pg-raised)] text-muted-foreground hover:text-foreground",
                 )}
               >
                 {f}
@@ -369,7 +381,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 showInternal
                   ? "border-border-strong bg-[var(--pg-workspace)] text-foreground"
-                  : "border-dashed border-border bg-[var(--pg-surface)] text-muted-foreground hover:text-foreground",
+                  : "border-dashed border-border bg-[var(--pg-raised)] text-muted-foreground hover:text-foreground",
               )}
               title="Platform fixtures and test accounts. Hidden from the fleet count so the console reports real tenants."
             >
@@ -475,7 +487,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
 
         {/* ── table view ─────────────────────────────────────────────── */}
         {view === "table" && (
-          <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-[var(--pg-rim)]">
+          <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[var(--pg-rim)]">
             <div className="sticky top-0 z-[2] flex items-center gap-2.5 border-b border-border bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)] px-3.5 py-2">
               <div className="min-w-0 flex-[2.1] text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">TENANT</div>
               <div className="min-w-0 flex-[0.9] text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">TIER</div>
@@ -574,7 +586,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                       <button
                         type="button"
                         onClick={() => void enterTenant(t.id)}
-                        className="rounded-lg border border-border bg-[var(--pg-surface)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
+                        className="rounded-lg border border-border bg-[var(--pg-raised)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
                       >
                         Enter →
                       </button>
@@ -584,9 +596,9 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
               })}
           </div>
         )}
-      </div>
+      </>
 
-      {/* ── right rail: what needs you, her read, and the directory ──── */}
+      {/* ── what needs you, and the directory. WORKSPACE CONTENT (Finding 2), not a column. ── */}
       <FleetTenantsRail
         rows={railRows}
         filtered={filter !== "All" || q.trim().length > 0}
@@ -596,7 +608,6 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
         onProvision={() => navigate(PROVISION_AT)}
         onOpenCheck={() => navigate("/operator/fleet/systems-check")}
       />
-
     </div>
   );
 }

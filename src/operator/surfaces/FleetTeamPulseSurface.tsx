@@ -2,6 +2,14 @@ import { useMemo } from "react";
 import { useTeamPulse } from "@/operator/data/useTeamPulse";
 
 /**
+ * RULING F (Claude Design, 2026-08-23) — ELEVATION IS DISTANCE FROM `--pg-env`.
+ * `--pg-surface` sits ABOVE canvas in dark and BELOW it in light, so the role inverts between
+ * themes and a plate painted on it RECEDES in light. A plate that rises off the canvas — a card,
+ * a KPI tile, a control, a popover — paints `--pg-raised` in BOTH themes; `--pg-surface` is kept
+ * for regions that genuinely recede (a well, an inset strip, a sunken list).
+ */
+
+/**
  * Fleet Console — Team Pulse (CD's `P.pulse`, `Super Admin Shell.dc.html` 6593-6621, ported
  * structurally in `fleetSpecs.ts`'s `fleet/team-pulse` entry). "Platform seats only — who is
  * carrying the operator work, and who is idle."
@@ -65,7 +73,7 @@ export default function FleetTeamPulseSurface() {
       {/* ── KPI strip ─────────────────────────────────────────────── */}
       <div className="grid flex-none grid-cols-2 gap-2.5 lg:grid-cols-4">
         {kpis.map((k) => (
-          <div key={k.label} className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-surface)] px-3.5 py-3 shadow-[var(--pg-rim)]">
+          <div key={k.label} className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-raised)] px-3.5 py-3 shadow-[var(--pg-rim)]">
             <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.13em] text-muted-foreground">
               {k.label}
             </div>
@@ -78,7 +86,7 @@ export default function FleetTeamPulseSurface() {
       </div>
 
       {/* ── who is carrying the work ─────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-[var(--pg-rim)]">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[var(--pg-rim)]">
         <div className="border-b border-border px-3.5 py-3">
           <div className="text-[length:var(--pg-t-body)] font-semibold">Who is carrying the work</div>
           <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">Utilisation against a nominal week.</div>
@@ -133,7 +141,7 @@ export default function FleetTeamPulseSurface() {
       </div>
 
       {/* ── where operator time goes ─────────────────────────────── */}
-      <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] px-3.5 py-3 shadow-[var(--pg-rim)]">
+      <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] px-3.5 py-3 shadow-[var(--pg-rim)]">
         <div className="text-[length:var(--pg-t-body)] font-semibold">Where operator time goes</div>
         <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">This week, by area.</div>
         <div className="mt-2.5 space-y-2">

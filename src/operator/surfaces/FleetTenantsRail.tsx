@@ -26,14 +26,39 @@ import { cn } from "@/lib/utils";
  * uses (§18: one read, not a second one). Each card's prose is Paige's OWN stored
  * `paige_interpretation` for that check; none of it is written here.
  *
- * The "Her read" panel is TEMPLATED over real values — which is exactly what CD does. Its own
- * `read` is `atRisk.length + " tenants are at risk. " + atRisk[0].name + …`, a sentence frame
- * around live figures, not authored prose. Every number and name below comes from the fleet
- * read; only the frame is fixed. There is no operator-scope narrative endpoint on the platform
- * (all 248 edge functions enumerated; `owner-context.ts` is a system-prompt composer consumed
- * only inside `paige-ai-chat`'s streaming path, not a callable), so the gold CTA hands the
- * question to Paige in the chat — where she actually lives (§20/§21) — rather than inventing a
- * synthesis here.
+ * ── FINDING 2 (Claude Design, 2026-08-23) — THERE IS ONE RIGHT COLUMN AND IT IS THE SPINE ───
+ * CD: *"With the spine collapsed, FleetConsole renders its own right rail — 'Needs you today,'
+ * 'Her read,' 'FLEET Tenants.' 'Her read' is spine content. That's Paige speaking, sitting
+ * inside the surface because her actual home is collapsed. The design has one right column and
+ * it's the spine; a surface growing a second one is the shell fighting itself. Move Paige's read
+ * to the spine when she's wired, and let the rest be workspace content — not a column."*
+ *
+ * So two things changed here and BOTH are the ruling, not a preference:
+ * · **"Her read" no longer renders on this surface at all.** It is spine content. Until the
+ *   spine is wired it renders NOWHERE — an empty spine is honest (Ruling C, already shipped);
+ *   Paige speaking from inside the workspace because her home is collapsed is not. DO NOT
+ *   restore it here: when she is wired it returns in `OperatorSpine`, not in a surface.
+ * · **These blocks are workspace content, not a column.** The 312px `<aside>` is gone; what is
+ *   left flows in the console's own column at its full width.
+ *
+ * ── FINDING 3 — "Needs you today" MUST NOT RENDER AS AN EMPTY BOX ───────────────────────────
+ * CD: *"Blank card, no absence copy. Same failure as the empty sections, smaller."* Measured on
+ * the deployed markup: with the fleet read in flight the block rendered its plate, its title and
+ * a bare `h-16 animate-pulse` rectangle — a card with nothing in it.
+ *
+ * Absence copy is CD's to write, and this block has none. Searched, before saying so:
+ * `absence-copy.md` (which carries Relationships and Campaigns only), the PORT-SPEC, and the v3
+ * pack for `flAttn`, `Needs you`, `needs you`, `attention`, `awaiting`, `queue`, `at risk` —
+ * "Needs you today" appears in v3 exactly twice, both on the CALENDAR surface (L2553, the button
+ * that opens the `owed` summon; `SUMMONS.owed` `paige-ia.js` L67-L72). v3 draws no such block on
+ * Fleet. So NOTHING IS DRAFTED HERE: the block renders only when it has something real to show,
+ * and renders nothing at all otherwise. Its absence copy is owed from CD.
+ *
+ * ── RULING F (Claude Design, 2026-08-23) — ELEVATION IS DISTANCE FROM `--pg-env` ─────────────
+ * A plate that RISES off the canvas paints `--pg-raised` in BOTH themes; `--pg-surface` is for
+ * regions that RECEDE. Applied per element here: every `RailCard` plate, the four mini-KPI cells
+ * and the two controls ("+ Provision a tenant", "Enter") rise → `--pg-raised`. Nothing on this
+ * surface recedes, so nothing keeps `--pg-surface`.
  */
 
 export type RailTenant = {
@@ -94,41 +119,32 @@ export function composeFleetRead(rows: readonly RailTenant[], openFindings: numb
 
 function RailCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-surface)] shadow-[var(--pg-rim)]", className)}>
+    <div className={cn("flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[var(--pg-rim)]", className)}>
       {children}
     </div>
   );
 }
 
 /**
- * RULING E (Claude Design, 2026-08-23) — PAIGE IS NOT A DESTINATION.
- * "She's the spine. A reference to her is not a route, it's an action that opens the spine and
- * focuses the command bar… The pack has no address for her because there isn't one."
+ * RULING E (Claude Design, 2026-08-23) — PAIGE IS NOT A DESTINATION, and FINDING 2 (same day) —
+ * HER READ IS SPINE CONTENT.
  *
- * The "Take it to the workspace →" control that used to sit under this read navigated to
- * `/operator/paige`, which is not a slot: `operatorAddress.ts` resolved it `{kind:"unknown"}` and
- * the shell rendered its 404. CD ruled it REMOVED rather than repointed — "a control that opens
- * an empty spine asserts a capability that isn't there", the same reasoning that collapses the
- * empty spine to 0 (Ruling C), applied to the control instead of the track.
+ * A `HerRead` card used to render here: a "Her read" title over a sentence composed from the
+ * fleet figures, under a "Take it to the workspace →" control that navigated to
+ * `/operator/paige`. The control went first — that address is not a slot, so it resolved
+ * `{kind:"unknown"}` and the shell rendered its 404 — and CD ruled it REMOVED rather than
+ * repointed: *"a control that opens an empty spine asserts a capability that isn't there."*
+ * The card itself goes now, for the reason in this file's header: the read is Paige speaking,
+ * her home is the spine, and a surface does not grow a second right column to host her.
  *
- * WHEN PAIGE IS WIRED INTO THE SPINE this comes back as a CONTROL that expands the spine and
- * focuses the command bar — NEVER as a URL. Do not "restore" it as a route: a later session
- * reaching for `/operator/paige` is the signal she has been modelled as a place again.
+ * WHEN SHE IS WIRED it comes back IN THE SPINE (`OperatorSpine`), never here, and never as a
+ * URL. A later session finding itself re-adding a "Her read" block to a surface — or reaching
+ * for `/operator/paige` — is the signal she has been modelled as a place again; take it to CD.
+ *
+ * `composeFleetRead` above is left in place and exported: it is the sentence frame the spine
+ * will need, it is covered by `FleetTenantsRail.test.ts`, and deleting a tested pure function
+ * to move a panel would be throwing away the part that was right.
  */
-function HerRead({ body }: { body: string | null }) {
-  return (
-    <RailCard className="px-3.5 py-3">
-      <div className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.04em] text-[hsl(var(--primary))]">Her read</div>
-      {body ? (
-        <p className="mt-1.5 text-[length:var(--pg-t-label)] leading-relaxed text-muted-foreground">{body}</p>
-      ) : (
-        <p className="mt-1.5 text-[length:var(--pg-t-label)] leading-relaxed text-muted-foreground">
-          Nothing to read yet — no tenants are in view.
-        </p>
-      )}
-    </RailCard>
-  );
-}
 
 export function FleetTenantsRail({
   rows,
@@ -208,24 +224,32 @@ export function FleetTenantsRail({
    */
   const speakingForWholeFleet = rows.length > 0 && !filtered;
 
-  const read = useMemo(() => composeFleetRead(rows, unresolvedCount), [rows, unresolvedCount]);
+  /**
+   * FINDING 3 — the block renders ONLY when it has something to show.
+   *
+   * `answered` is both feeds having actually come back. Until then there is nothing true to put
+   * in the card, and the pulsing rectangle that used to stand in its place IS the empty box CD
+   * measured. With no absence copy authored for this block (see the file header), the honest
+   * treatment is no block — not a plate around a placeholder.
+   */
+  const answered = !checkLoading && !loading;
+  const hasItems = attention.length > 0 || atRiskRows.length > 0;
+  const showAttention = hasItems || answered;
 
   return (
-    // `min-h-0` is what makes `overflow-y-auto` actually bite. Without it a flex item's min-height
-    // is `auto` (its content), so the rail refused to shrink, stretched the row, and scrolled the
-    // whole pane instead of itself.
-    <aside className="hidden w-[312px] min-h-0 flex-none flex-col gap-2.5 overflow-y-auto xl:flex">
-      {/* ── Needs you today (CD flAttnTitle) ──────────────────────────────── */}
+    // FINDING 2 — workspace content, not a column. `min-w-0` because it now takes the console's
+    // own width, and a long finding name must never widen the surface (rule 4).
+    <section className="flex min-w-0 flex-col gap-2.5">
+      {/* ── Needs you today ───────────────────────────────────────────────── */}
+      {showAttention && (
       <RailCard className="px-3.5 py-3">
         <div className="text-[length:var(--pg-t-body)] font-semibold">Needs you today</div>
         <div className="mt-2.5 flex flex-col gap-2">
-          {(checkLoading || loading) && <div className="h-16 animate-pulse rounded-[10px] bg-[var(--pg-workspace)]" />}
-
           {/* Both feeds must have ANSWERED before this claims all-clear. Gating on `checkLoading`
               alone asserted "every tenant has members and at least one client" while the fleet read
               was still in flight and `atRiskRows` was empty only because nothing had arrived yet —
               a reassurance printed about data we had not seen (§13). */}
-          {!checkLoading && !loading && attention.length === 0 && atRiskRows.length === 0 && (
+          {answered && !hasItems && (
             <p className="text-[length:var(--pg-t-label)] leading-relaxed text-muted-foreground">
               {/* Say only what was actually observed. "every tenant has at least one client" was
                   false by construction: health() grades a client-less tenant `warn`, which never
@@ -278,8 +302,7 @@ export function FleetTenantsRail({
           ))}
         </div>
       </RailCard>
-
-      <HerRead body={read} />
+      )}
 
       {/* ── Tenants directory (CD P.console) ──────────────────────────────── */}
       <RailCard className="overflow-hidden">
@@ -298,7 +321,7 @@ export function FleetTenantsRail({
           <button
             type="button"
             onClick={onProvision}
-            className="mt-2.5 rounded-lg border border-border bg-[var(--pg-surface)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
+            className="mt-2.5 rounded-lg border border-border bg-[var(--pg-raised)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
           >
             + Provision a tenant
           </button>
@@ -312,7 +335,7 @@ export function FleetTenantsRail({
             { label: "AT RISK", value: loading ? "—" : String(atRiskCount) },
             { label: "PROVISIONING", value: "—" },
           ].map((k) => (
-            <div key={k.label} className="bg-[var(--pg-surface)] px-3 py-2">
+            <div key={k.label} className="bg-[var(--pg-raised)] px-3 py-2">
               <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">
                 {k.label}
               </div>
@@ -368,7 +391,7 @@ export function FleetTenantsRail({
                 <button
                   type="button"
                   onClick={() => onEnterTenant(r.tenant.id)}
-                  className="flex-none rounded-lg border border-border bg-[var(--pg-surface)] px-2 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
+                  className="flex-none rounded-lg border border-border bg-[var(--pg-raised)] px-2 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
                 >
                   Enter
                 </button>
@@ -382,7 +405,6 @@ export function FleetTenantsRail({
           Governance.
         </div>
       </RailCard>
-
-    </aside>
+    </section>
   );
 }

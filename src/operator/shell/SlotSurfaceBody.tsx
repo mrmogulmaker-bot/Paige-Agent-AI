@@ -23,6 +23,14 @@ import { useCompass } from "@/operator/data/useCompass";
 import { useKnowledge } from "@/operator/data/useKnowledge";
 import { useIsPlatformOwner } from "@/operator/data/useIsPlatformOwner";
 
+/**
+ * RULING F (Claude Design, 2026-08-23) — ELEVATION IS DISTANCE FROM `--pg-env`.
+ * `--pg-surface` sits ABOVE canvas in dark and BELOW it in light, so the role inverts between
+ * themes and a plate painted on it RECEDES in light. A plate that rises off the canvas — a card,
+ * a KPI tile, a control, a popover — paints `--pg-raised` in BOTH themes; `--pg-surface` is kept
+ * for regions that genuinely recede (a well, an inset strip, a sunken list).
+ */
+
 const OperatorPanel = lazy(() => import("@/operator/surfaces/OperatorPanel"));
 const FleetConsole = lazy(() => import("@/operator/surfaces/FleetConsole"));
 const SystemsCheckSurface = lazy(() => import("@/operator/surfaces/SystemsCheckSurface"));
@@ -100,7 +108,7 @@ function Absence({ slot }: { slot: OperatorSlot }) {
     slot.absence?.body ??
     "This view is specified and has a place in the console, but no surface behind it reads live data yet. It is listed here so it is visible rather than missing.";
   return (
-    <div className="min-w-0 max-w-[68ch] rounded-[12px] border border-border bg-[var(--pg-surface)] p-6">
+    <div className="min-w-0 max-w-[68ch] rounded-[12px] border border-border bg-[var(--pg-raised)] p-6">
       <h2 className="min-w-0 text-[13px] font-semibold text-foreground">{title}</h2>
       <p className="mt-2 min-w-0 text-[13px] leading-[1.6] text-muted-foreground">{body}</p>
     </div>
