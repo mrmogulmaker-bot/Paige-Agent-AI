@@ -57,13 +57,38 @@ screenshot," because a screenshot of a broken surface is a picture of the bug, a
 cements the defect. (CD's own renders under `uploads/`/`screens/` are a fast correctness check, but
 where a render and the `.dc.html` disagree, the markup wins.)
 
-**The pack lives in the repo, not in a scratchpad.** `docs/design-references/cd-packs/super-admin-shell/`
-· the shell itself is `Super Admin Shell.dc.html` (~8,300 lines), with the pack's own backend notes
-(`*-notes.md`), route registry (`paige-routes.js`, `route-registry-notes.md`) and reference renders
-(`uploads/*.png`) beside it. It was committed on 2026-08-19 because until then it existed ONLY in an
-ephemeral session scratchpad — one container recycle from being lost, with the source of truth gone.
-The CRM agency-mode pack (`agency-mode-shell/`, 12,864 lines) covers agency AND sub-account in
-one shell and landed the same day; it governs those tiers exactly as this one governs the operator.
+**THE PACK IS v3. THE OLDER PACKS ARE DEAD — owner-locked 2026-08-23.**
+
+```
+docs/design-references/cd-packs/super-admin-shell-v3/     <-- THE ONLY PACK
+    PAIGE Super Admin Shell v3.dc.html    11,358 lines — the shell
+    PAIGE Platform Operator - standalone.html            — the standalone render
+    design-system-port.md                 the --pg-* system, the faces, the Command Mark
+    paige-brand-identity.md · absence-copy.md · campaigns-catalog-sales-spec.md
+    paige-ia.js · mind-brain.js · support.js · github.md · corrections-2026-08-23.md
+```
+
+Everything in it is IN THE REPO. Nothing about this design has to be invented, inferred,
+reconstructed from a screenshot, or reconciled with anything we built before it.
+
+**`super-admin-shell/` (the ~8,300-line pack) and `agency-mode-shell/` are SUPERSEDED.** They are
+kept only so a past decision can be traced. Do NOT build from them, do NOT diff against them, do
+NOT cite them as authority. Until 2026-08-23 this very section named the old pack as "the pack" —
+which is why sessions kept building toward a design the owner had already replaced. That was the
+bug in the doctrine, not in the work.
+
+**The owner's ruling, verbatim (2026-08-23):** *"None of the colors, design, logos, or anything
+from the previous work that we've done matters. If we have rules in place, we need to change them
+to adopt them to what we currently have now that was provided by Claude Design… There's nothing
+about our design that needs to go anywhere near the direction of our previous design."*
+
+So the standing posture is **PORT, not design.** Before calling anything on an operator surface
+missing, blocked, or undecided, GREP THE v3 PACK FOR IT. It is an 11,358-line file and it contains
+far more than any one session has read. Worked example, 2026-08-23: the command palette and six
+"unreachable" surfaces were about to be scoped as a design blocker; the pack carries 115 `summon`
+references, 24 `palette`, 3 `⌘K`, Calendar ×33, Compose ×52, Integrations ×18. None of it was
+missing. All of it was unported. **A capability that is drawn in the pack is never a blocker — it
+is a port that has not happened yet.**
 
 ---
 
