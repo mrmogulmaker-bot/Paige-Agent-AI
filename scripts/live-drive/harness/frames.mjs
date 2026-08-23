@@ -50,7 +50,7 @@ function chromePath() {
     .map((d) => path.join(base, d, "chrome-linux/chrome")).find((p) => fs.existsSync(p));
 }
 
-async function frame(browser, { at, theme, width, height = 1000, name, note }) {
+async function frame(browser, { at, theme, width, height = 1000, name, note, press }) {
   const ctx = await browser.newContext({ viewport: { width, height }, colorScheme: theme });
   const origin = new URL(BASE).origin;
   await ctx.route("**://**", (r) => {
@@ -65,6 +65,9 @@ async function frame(browser, { at, theme, width, height = 1000, name, note }) {
   await page.goto(`${BASE}/?at=${encodeURIComponent(at)}&theme=${theme}`, { waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(600);
+  // `press` drives a real interaction before capture — the command palette is only visible in
+  // its open state, and a frame of the closed bar cannot show what landed in the row.
+  if (press) { await page.keyboard.press(press); await page.waitForTimeout(450); }
 
   // Which faces ACTUALLY painted. Asked of the browser, never inferred from the <link> tags —
   // a stylesheet can 200 and the face still not be applied to a single element.
@@ -168,6 +171,8 @@ const plan = [
   // frame is taken where the shell actually collapses, and 900 is kept to show it does not.
   { name: "8-collapse-dark-820",       at: "/operator/fleet/directory",     theme: "dark",  width: 820 },
   { name: "9-collapse-dark-640",       at: "/operator/fleet/directory",     theme: "dark",  width: 640 },
+  { name: "10-palette-open-dark",      at: "/operator/fleet/directory",     theme: "dark",  width: 1600, press: "Meta+k", note: "palette open" },
+  { name: "11-palette-open-light",     at: "/operator/fleet/directory",     theme: "light", width: 1600, press: "Meta+k", note: "palette open" },
 ];
 const out = [];
 for (const p of plan) out.push(await frame(browser, p));
