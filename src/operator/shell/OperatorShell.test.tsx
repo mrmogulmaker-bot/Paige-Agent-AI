@@ -61,11 +61,17 @@ describe("the operator shell renders the pack's geometry", () => {
     );
   });
 
-  it("an empty spine does not render — it is 0px AND unmounted, never a reserved hole", () => {
-    // Both halves of the collapse, together: the pack does both and either alone is a defect.
-    expect(SPINE_REGIONS.every((r) => r.content === null)).toBe(true);
-    expect(spineHasContent()).toBe(false);
-    expect(at("/operator/fleet")).not.toContain("data-operator-spine");
+  it("the spine opens now Chat is wired — track reserved AND mounted, both halves", () => {
+    /**
+     * This asserted the collapse until 2026-08-23, when `SpineConversation` was mounted as the
+     * Chat face. The rule it was protecting is unchanged and still tested in
+     * `spine/OperatorSpine.test.tsx`: a spine with no content renders nothing. What changed is
+     * that the spine HAS content, so both halves must now fire the other way — a reserved track
+     * with nothing in it and a mounted spine on a 0px track are each still a defect.
+     */
+    expect(spineHasContent()).toBe(true);
+    expect(SPINE_REGIONS.find((r) => r.id === "chat")?.content).not.toBeNull();
+    expect(at("/operator/fleet")).toContain("data-operator-spine");
   });
 
   /**

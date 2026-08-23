@@ -213,6 +213,43 @@ surfaces.md` (99KB, line-cited) may answer it outright. Full rule in root `CLAUD
 
 ---
 
+## DRIVE IT. `npm run dev-loop` — every pass, not every other pass.
+
+**Owner, 2026-08-23:** *"You're going to always need this tool, my friend. You're going to always
+have to keep looping back and forth because if not, then you're just strictly working from memory,
+and that never works out too well."*
+
+```
+npm run dev-loop                                        both sides, dark, 1600
+node scripts/live-drive/dev-loop.mjs --at /operator/settings --theme light --w 900
+node scripts/live-drive/dev-loop.mjs --ref-only         CD's reference alone
+```
+
+It shoots **CD's reference and our build side by side**, same viewport, same theme, and prints
+measured geometry: grid tracks, rail width, spine width, which faces are showing, whether a
+document scrollbar appeared, and any page errors. Ours needs `npm run dev` on 127.0.0.1:5199;
+the reference needs nothing — `PAIGE Platform Operator - standalone.html` drives from `file://`
+with every script and font inlined, offline, in any sandbox. CD: *"it's a compiled artifact, so
+never edit it. When the pack changes I rebuild it and re-deliver."*
+
+**Why this is a rule and not a convenience.** Every defect this console has been rejected for
+passed `tsc`, `eslint` and the whole suite first: 78 tabs rendering one empty card; six purpose-
+built surfaces imported and never rendered; four v3 ports reachable only from their own tests; a
+spine collapsed to 0 with all its chrome built. **A green suite and a working screen are different
+claims** (§32), and only one of them is what the owner opens.
+
+- **A change to an operator surface is not done until it has been driven.** Not "should be" —
+  is not.
+- **The reference is the other half.** Shooting only ours proves it renders, never that it renders
+  what CD drew. Two frames, one command, and the geometry line at the bottom does the compare.
+- **It measures; it does not judge (§00).** Tracks, widths, faces, errors, whether a surface
+  rendered at all — facts about whether it WORKS. How it LOOKS is CD's, and the tool has no
+  opinion. Hand over the frame and the numbers, nothing else.
+- **Frames land in `scripts/live-drive/artifacts/`**, which is gitignored. They are evidence for
+  a conversation, not a committed artifact.
+
+---
+
 ## BEFORE YOU TOUCH AN OPERATOR SURFACE
 
 1. **Open the pack's block for that exact surface.** Not memory, not a screenshot, not the route

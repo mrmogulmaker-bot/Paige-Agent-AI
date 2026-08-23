@@ -49,13 +49,29 @@ const spineSources = () =>
     .map(({ file, text }) => ({ file, text: stripComments(text) }));
 
 describe("the spine collapses rather than pretending (Ruling C)", () => {
-  it("ships with every region unwired, so spineHasContent() is false", () => {
-    expect(SPINE_REGIONS.every((r) => r.content === null)).toBe(true);
-    expect(spineHasContent()).toBe(false);
+  /**
+   * These two asserted the SHIPPED STATE — every region null — which was true until Chat was
+   * ported. That is a snapshot, not a rule, and a snapshot test fails the day the thing it
+   * describes gets built. Rewritten to assert the RULE, which is what Ruling C actually says:
+   * a region with no content does not appear, and a spine with nothing does not render.
+   */
+  it("ships with Chat wired and the other four still dark", () => {
+    const byId = Object.fromEntries(SPINE_REGIONS.map((r) => [r.id, r.content]));
+    expect(byId.chat).not.toBeNull();
+    for (const id of ["memory", "team", "sandbox", "code"]) expect(byId[id]).toBeNull();
+    expect(spineHasContent()).toBe(true);
   });
 
-  it("renders NOTHING with no real read — not a chrome-only shell", () => {
-    expect(renderToStaticMarkup(<OperatorSpine />)).toBe("");
+  it("shows a face ONLY for a wired region — the four dark ones are not tabs", () => {
+    const html = renderToStaticMarkup(<OperatorSpine />);
+    expect(html).toContain("Chat");
+    for (const label of ["Memory", "Team", "Skills", "Code"]) expect(html).not.toContain(label);
+  });
+
+  it("renders NOTHING when every region is dark — the rule, not the snapshot", () => {
+    const dark: readonly SpineRegion[] = SPINE_REGIONS.map((r) => ({ ...r, content: null }));
+    expect(spineHasContent(dark)).toBe(false);
+    expect(renderToStaticMarkup(<OperatorSpine regions={dark} />)).toBe("");
   });
 
   it("opens the moment one region carries a node, with no second edit", () => {

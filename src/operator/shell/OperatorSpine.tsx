@@ -67,6 +67,7 @@ import type {
 } from "@/operator/shell/spine/spineContract";
 
 export type { SpineFaceId } from "@/operator/shell/spine/spineContract";
+import SpineConversation from "@/operator/shell/spine/SpineConversation";
 export { default as SpineConversation } from "@/operator/shell/spine/SpineConversation";
 
 /** The pack's five faces are the spine's regions (L10365–L10372). */
@@ -85,13 +86,26 @@ export type SpineRegion = {
 };
 
 /**
- * The spine's regions, in the pack's order. Every `content` is `null` because no read behind
- * any of the five exists yet — the chat engine, the memory read, the agent roster, the skill
- * registry and the sandbox are all wiring, and wiring is a later round. The labels and notes
- * ARE the pack's, verbatim; the counts are not, because they are computed from fixtures.
+ * The spine's regions, in the pack's order. The labels and notes ARE the pack's, verbatim.
+ *
+ * CHAT IS OPEN AS OF 2026-08-23. Her conversation face is ported (`SpineConversation`), so its
+ * `content` is a node and `spineHasContent()` turns true on its own — the shell opens the third
+ * track with no flag to flip, exactly as the gate was built to do.
+ *
+ * Chat is CORRECT with no thread behind it. `SpineConversation` renders her resting state: the
+ * Trust Compass line computed from the ceiling, the presence dot on the pack's own `showPresence`
+ * rule, and the empty transcript. There is nothing fabricated in it — a turn appears when a turn
+ * exists. So the face is real now and gets truer as the engine lands, which is the opposite of a
+ * placeholder.
+ *
+ * THE OTHER FOUR STAY `null`, and that is the collapse rule doing its job at face scale rather
+ * than track scale. CD: *"A collapsed spine is honest; an empty one asserts a capability that
+ * isn't there."* Memory · Team · Skills · Code have their pack builders — `mindVals` L10288,
+ * `codeVals` L10156, plus the agent and skill rosters — and none is ported, so none appears in
+ * the face strip. Each becomes a tab the day its builder lands, and not before.
  */
 export const SPINE_REGIONS: readonly SpineRegion[] = [
-  { id: "chat", label: "Chat", note: "What she is saying and doing", content: null },
+  { id: "chat", label: "Chat", note: "What she is saying and doing", content: <SpineConversation /> },
   { id: "memory", label: "Memory", note: "What she holds about you and the work", content: null },
   { id: "team", label: "Team", note: "Who works for her", content: null },
   { id: "sandbox", label: "Skills", note: "What she can do", content: null },

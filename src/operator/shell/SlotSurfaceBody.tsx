@@ -14,7 +14,7 @@
  * `enabled` flag, the shape `useFleet`/`useCompass` already use — an inactive surface costs
  * nothing, and no early return can change how many hooks ran.
  */
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useCallback, useState } from "react";
 import type { OperatorSlot } from "@/operator/ia/operatorIA";
 import { viewSlug } from "@/operator/ia/operatorIA";
 import { viewSource } from "@/operator/ia/viewSources";
@@ -58,6 +58,48 @@ const FleetTeamPulseSurface = lazy(() => import("@/operator/surfaces/FleetTeamPu
 const TrustCompass = lazy(() => import("@/operator/surfaces/TrustCompass"));
 const KnowledgeSurface = lazy(() => import("@/operator/surfaces/KnowledgeSurface"));
 
+/**
+ * THE FOUR v3 SURFACES THAT WERE PORTED AND NEVER MOUNTED (Claude Design audit, 2026-08-23).
+ *
+ * *"~370 KB of ported pack surface that never reaches a screen… That is a dispatch problem, not
+ * a port problem — most of it is one file away from being on screen."* Correct about the
+ * dispatch. The size is the part worth re-measuring, and it changes what may be mounted.
+ *
+ * **Only FOUR of the unmounted files are ports of THIS pack.** Every surface under `surfaces/`
+ * was checked for which pack it cites, allowing for a citation wrapped across comment lines:
+ *
+ *   v3 (`PAIGE Super Admin Shell v3.dc.html`) ..... 93 KB — the four below
+ *   SUPERSEDED (`Super Admin Shell.dc.html`) ..... 232 KB — MarketplaceSurfaces ·
+ *       CalendarSurfaces · PipelineSurfaces · SettingsSurfaces · AnalyticsSurfaces ·
+ *       SocialSurfaces · ComposeSurface · SupportThread · OperatorChatRail
+ *
+ * The 232 KB is a port of the pack the owner ruled dead on 2026-08-22. `SettingsSurfaces.tsx`
+ * names its source in its own header — *"Claude Design's five settings surfaces, on CD's one
+ * panel layout (Super Admin Shell.dc.html)"* — and cites L5024 / L6382 / L6857 / L6334 / L4968,
+ * which in v3 land on a deal-notes foot, a mark style and `segVals`. Different document.
+ *
+ * **Mounting those would inject the retired design into the new shell** — the exact failure the
+ * redesign exists to end, arriving through the fix for it. They are not mounted here. They are
+ * §30 strip candidates, and that is its own slice with its own evidence.
+ */
+const CalendarWeekField = lazy(() =>
+  import("@/operator/surfaces/CalendarFieldSurface").then((m) => ({ default: m.CalendarWeekField })));
+const SubmissionsQueue = lazy(() =>
+  import("@/operator/surfaces/MarketplaceSubmissionsSurface").then((m) => ({ default: m.SubmissionsQueue })));
+const IntegrationsSurface = lazy(() => import("@/operator/surfaces/IntegrationsSurface"));
+
+/**
+ * `ComposeOutbound` is the FOURTH v3 port and is deliberately NOT mounted here — reported, not
+ * dropped. It is the composer out of `convoVals` (v3 L5241-L5470), and `convoVals` is a 315-line
+ * three-pane console: channel filters, the thread list, the thread, and the person rail that is
+ * the same record People lists. The composer is one pane of it.
+ *
+ * Mounting it alone at `relationships/conversations` would put a v3 composer on screen with no
+ * threads to compose against — trading the retired console's panels for a fragment, which is not
+ * obviously the better trade and is a question about what renders where. So Conversations keeps
+ * its current panels until `convoVals` is ported, and that port is the slice that mounts this.
+ */
+
 /** A crafted hold, not a bare "Loading…" — the surfaces below are code-split. */
 function Holding() {
   return (
@@ -77,9 +119,30 @@ export default function SlotSurfaceBody({ slot, view }: { slot: OperatorSlot; vi
   const compass = useCompass(bespoke === "TrustCompass");
   const knowledge = useKnowledge(bespoke === "KnowledgeSurface");
 
+  /**
+   * The pack's `announcement` channel, as the polite live region stage2 §8 specifies: *"Scope
+   * changes, act completion and interruption announce through one polite live region."* It sits
+   * here rather than in the shell only because the shell has no announcements of its own yet —
+   * when `cycleScope` / `exitScope` land theirs, this moves up and there is ONE (§18).
+   */
+  const [said, setSaid] = useState("");
+  const announce = useCallback((m: string) => setSaid(m), []);
+
+  /**
+   * A contextual summon has no body ported yet — `openSummon` on the shell takes a `CapabilityId`,
+   * which is the ten palette verbs, not the pack's twenty-eight summons. So a control that opens
+   * one cannot open anything today, and §13 forbids a control that silently does nothing: it says
+   * what it needs instead. When the summon bodies land this becomes `onSummon(id)` and the
+   * announcement goes with it.
+   */
+  const summonNotWired = useCallback((what: string) => () => {
+    setSaid(what + " is drawn in the pack and its panel is not ported yet. Nothing opened.");
+  }, []);
+
   if (bespoke) {
     return (
       <Suspense fallback={<Holding />}>
+        <p aria-live="polite" className="sr-only">{said}</p>
         {bespoke === "FleetConsole" && <FleetConsole canSeeRevenue={isOwner === true} />}
         {bespoke === "SystemsCheckSurface" && <SystemsCheckSurface />}
         {bespoke === "FleetHistorySurface" && <FleetHistorySurface />}
@@ -92,6 +155,28 @@ export default function SlotSurfaceBody({ slot, view }: { slot: OperatorSlot; vi
         )}
         {bespoke === "KnowledgeSurface" && (
           <KnowledgeSurface domains={knowledge.domains} loading={knowledge.loading} error={knowledge.error} />
+        )}
+
+        {/* The four v3 ports, mounted. Each takes `null` where a read belongs and renders the
+            pack's own absence for it — which is what they were built to do, so they are correct
+            on screen before a single hook exists. Wiring each read is its own slice. */}
+        {bespoke === "CalendarWeekField" && (
+          <CalendarWeekField
+            days={null}
+            events={null}
+            onOpenCalSet={summonNotWired("Calendar settings")}
+            onAnnounce={announce}
+          />
+        )}
+        {bespoke === "SubmissionsQueue" && (
+          <SubmissionsQueue
+            submissions={null}
+            onOpen={summonNotWired("The submission")}
+            onAnnounce={announce}
+          />
+        )}
+        {bespoke === "IntegrationsSurface" && (
+          <IntegrationsSurface onOpen={() => summonNotWired("The vendor panel")()} />
         )}
       </Suspense>
     );

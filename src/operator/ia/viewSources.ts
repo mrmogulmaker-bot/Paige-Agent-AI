@@ -51,7 +51,8 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
     carries: ["comms/outbound", "comms/templates", "comms/sent-log", "support/inbox", "support/escalations", "support/response-policy"],
   },
   "relationships/calendar": {
-    panels: ["calendar/month", "calendar/booking-links", "calendar/settings", "calendar/tasks"],
+    // The pack's own field (v3 L2547-L2581 / L11204-L11232), ported as CalendarWeekField.
+    bespoke: "CalendarWeekField",
     carries: ["calendar/month", "calendar/booking-links", "calendar/settings", "calendar/tasks"],
   },
   "relationships/segments": { carries: [] },
@@ -82,7 +83,11 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
   // ── Marketplace ────────────────────────────────────────────────────────────────────────────
   "marketplace/storefront": { panels: ["marketplace/discover"], carries: ["marketplace/discover"] },
   "marketplace/catalog": { panels: ["marketplace/build"], carries: ["marketplace/build"] },
-  "marketplace/submissions": { panels: ["marketplace/submissions"], carries: ["marketplace/submissions"] },
+  "marketplace/submissions": {
+    // v3 L2281-L2326 + subsVals L9506-L9572, ported as SubmissionsQueue.
+    bespoke: "SubmissionsQueue",
+    carries: ["marketplace/submissions"],
+  },
   "marketplace/publishers": { panels: ["marketplace/publishers"], carries: ["marketplace/publishers"] },
 
   // ── Analytics ──────────────────────────────────────────────────────────────────────────────
@@ -111,7 +116,8 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
     carries: ["settings/setup/feature-flags", "settings/setup/api-mcp"],
   },
   "settings/integrations": {
-    panels: ["settings/integrations/connected", "settings/integrations/health", "settings/integrations/available"],
+    // v3 intVals L7928-L8082 over the L1473-L1538 catalogue, ported as IntegrationsSurface.
+    bespoke: "IntegrationsSurface",
     carries: ["settings/integrations/connected", "settings/integrations/health", "settings/integrations/available"],
   },
   /**
