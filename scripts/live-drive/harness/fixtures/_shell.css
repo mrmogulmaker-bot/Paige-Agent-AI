@@ -20,3 +20,16 @@ body{display:flex;flex-direction:column;overflow:hidden}
 [data-shell-grid]>*{min-width:0;min-height:0;overflow:hidden}
 nav{display:flex;flex-direction:column}
 nav>*{min-width:0;min-height:0}
+
+/* The correct collapse, shared — added 2026-08-23 when `collapseOrder` grew the half it was
+   missing (it checked the ORDER of a collapse it never confirmed happened). Every geometry
+   fixture now collapses correctly by default, so a fixture isolating some OTHER check does not
+   trip this arm; only a fixture that deliberately deviates does.
+
+   `body [data-shell-grid]` rather than `[data-shell-grid]`: each fixture declares its own base
+   grid-template-columns in a LATER inline <style>, and at equal specificity the later rule wins.
+   The extra element bumps specificity so the shared collapse holds without every fixture having
+   to re-type it — which is the §18 reason this file exists at all. */
+@media (max-width:1200px){ body [data-shell-grid]{ grid-template-columns:216px minmax(0,1fr) 0px } }
+@media (max-width:900px) { body [data-shell-grid]{ grid-template-columns:72px minmax(0,1fr) 0px }
+                           body [data-scope-band]{ height:32px } }
