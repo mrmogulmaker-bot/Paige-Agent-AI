@@ -168,20 +168,43 @@ made it findable.
 
 ### 9. Identifiers scrubbed at source
 
-`412-88-0396` → `000-00-0000`; both EINs → `00-0000000`. Five occurrences across
+The SSN literal → `000-00-0000`; both EINs → `00-0000000`. Five occurrences across
 `P.PEOPLE` and `P.ENTITIES`. The reasoning is now a comment above `P.PEOPLE` so
 it survives a regeneration, with the distinction that matters kept intact:
 masking is a display state and means we hold the value, an em-dash means we hold
 nothing, and neither is a licence to store a real one.
 
 **One of the same class, left for a ruling:** `P.PEOPLE` p2 carries a
-format-valid date of birth, `04/18/1979`, flagged as sensitive. By CC's own
+format-valid date of birth, flagged as sensitive. By CC's own
 reasoning it qualifies — it is format-valid and portable. It is a DOB rather
 than a government identifier, so the call is CC's policy call, not mine. Say the
 word and it becomes `00/00/0000`.
 
-### Still needed: the §50 strings
+### 10. Both standing edits applied at source — they stop recurring now
 
-The replacement text came through empty in the paste — both the *replace* and
-the *with* blocks. Send the two strings and the §9a mark gets fixed at source so
-it stops costing a re-application every round.
+CC has re-applied these three times. They are now part of what gets regenerated,
+so they cannot come undone.
+
+**§50 · `tenant-redesign-stage2-design-package.md` §9a.** The line named an
+active third-party mark as an internal analog. Rewritten to describe the pattern
+instead — *the fictional operator-AI archetype* — which preserves everything the
+sentence was doing. CC's method of sending it was the right one: a locator plus a
+regex, never the string itself. The mark was almost certainly why the paste kept
+dropping.
+
+**Identifiers, including the DOB.** The DOB literal → `00/00/0000`, on CC's ruling,
+which is the correct one and worth stating as a rule rather than a list:
+
+> The class is **format-valid and portable**, not "government identifiers." A DOB
+> has exactly the property that matters — it looks entirely at home in a
+> business-verification or identity flow, so a later session ports it into a
+> shipped surface without a second thought.
+
+Applying a stated rule to only part of its class is itself the defect. Six
+values scrubbed in total.
+
+### The standing-edit rule, generalised
+
+Any correction CC has to re-apply after a delivery is **a defect in the pack, not
+a patch in the repo.** Two rounds of re-application is the signal. Send it as a
+locator and it gets fixed at the source it regenerates from.
