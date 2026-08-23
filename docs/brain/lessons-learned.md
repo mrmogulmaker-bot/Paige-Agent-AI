@@ -480,6 +480,28 @@ Three sections ratified by the owner (drafted PROPOSED overnight in #449, locked
   `supabase/migrations/**`, so an idle run history for it is normal and is NOT evidence of a broken
   pipeline either.
 
+- **A check that has never failed is an untested branch, not evidence — negative-control every guard
+  (2026-08-23).** *Symptom:* the Super Admin design pack's compiled `standalone.html` had been swept for
+  §50 marks and format-valid identifiers on every delivery, always clean. *Root cause:* the standalone
+  stores its payload as a **gzip+base64 `__bundler/manifest`**, so a plaintext `grep` across the file was
+  reading compressed bytes. It could not have found a mark if one were there — the sweep was structurally
+  incapable of failing, and its green was pure noise. The same session produced a second instance of the
+  identical class: the screenshot tool selected the theme toggle by matching its label, but the label names
+  the **current** theme rather than the target, so 64 frames were captured and captioned with inverted
+  themes before anyone noticed. Both passed. Both proved nothing. *Rule:* **before trusting a guard's
+  green, make it go red on purpose.** Every checker gets a negative control — feed it the thing it is
+  supposed to catch and confirm it fails. For anything that inspects a compiled, bundled, minified or
+  compressed artifact, **unpack first and assert the unpacked content matches its source**; a substring
+  search over an opaque blob is not a check. For anything that sets state before observing (a theme, a
+  route, a feature flag), **read the state back and refuse to record a result you cannot confirm** rather
+  than assuming the setter worked. `scripts/live-drive/pack-verify.mjs` (`npm run verify:pack`) is the
+  worked example: it gunzips the manifest, asserts each bundled asset is byte-identical to its source file,
+  then sweeps the decompressed text — and both arms are negative-controlled in the commit that added them.
+  *Second-order trap from the same investigation:* plaintext-matching source literals against that opaque
+  blob scored 2/40, which nearly became a confident report that the vendor's artifact was not a build of
+  our source at all. It was byte-identical once unpacked. **A measurement you do not understand the
+  encoding of produces a number, not a finding** — unpack before you accuse.
+
 ---
 
 *When a new class of mistake costs real time, add it here (symptom → root cause → rule) in the same
