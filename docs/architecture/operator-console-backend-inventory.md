@@ -1,8 +1,10 @@
 # Operator console — backend wiring inventory
 
-> **⚠ Before acting on the ROUND TABLE section: read the OWNER OVERRIDE (2026-08-23).**
-> Claude Design's ruling to RETIRE five round-table items was reversed by the owner the same day.
-> Nothing is retired; every metric stays in scope, sequenced after the design load.
+> **⚠ Before acting on the ROUND TABLE section: read the ruling above it (2026-08-23).**
+> THREE items are DEFERRED (ad spend · uptime · email engagement) and are **ingestion targets** —
+> the data must land in OUR tables because Paige can only reason over what she can read. TWO are
+> UNCHANGED (Vault needs its own substrate, never a borrowed table; `platform_support` does not
+> exist). Nothing is retired. Deferred and retired look identical shipped and are opposite in intent.
 
 **What this is.** For each of the 23 STRUCTURE-ONLY operator views, the DATA CONTRACT its ported
 CD spec asks for, the live backend that can answer it, and whether that backend exists. This is a
