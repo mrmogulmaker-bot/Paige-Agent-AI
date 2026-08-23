@@ -38,6 +38,26 @@ screen** (negative-controlled: a zero-height label is refused).
 Exit 1 if any check fails. Artifacts land in `scripts/live-drive/artifacts/harness/`
 (gitignored). `npm run harness:selftest` runs the negative controls.
 
+### Serving a real render locally — the dev server DOES work here
+
+Corrected 2026-08-23. An earlier pass concluded local rendering was impossible in this
+sandbox because `npx vite` dies with `EAFNOSUPPORT: address family not supported :::8080`.
+That diagnosis stopped one step short: the failure is **only** `vite.config.ts` hardcoding
+`host: "::"`, and there is no IPv6 stack here. A CLI flag overrides it —
+
+    npx vite --host 127.0.0.1 --port 5199
+
+— and Playwright then loads the app at `http://127.0.0.1:5199/` with a 200 and **zero page
+errors** (verified, not assumed). Two notes for whoever picks this up: pass `--noproxy '*'`
+to `curl` when probing, since `HTTPS_PROXY` is set and the proxy does not forward loopback;
+and the sandbox reaps backgrounded servers, so a server started in one shell will not
+survive into the next (exit 144 is that reaping, not a crash).
+
+What this changes: the harness can point at a **real render**, not only fixtures. What it
+does NOT change: the console is auth-gated, so a real console render still needs a dev-only
+mount entry rather than a login, and **§32.c remains owed** to a session that can drive the
+DEPLOYED surface. A local render is not a deployed one.
+
 ## The reject-on-sight list (owner, 2026-08-23)
 
 Seven things rejected on sight when frames arrive; everything else is a judgement call to argue
