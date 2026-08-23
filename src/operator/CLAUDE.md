@@ -22,33 +22,6 @@ applies. If you believe the pack is wrong somewhere, **raise it and let the owne
 quietly improve it. This mirrors §28 (approved design is frozen): the pack is the approved design,
 and it is frozen the same way until he unlocks a specific piece of it.
 
-### …but the goal is the BEST result, not frozen fidelity (owner, 2026-08-19)
-
-The lock above is about *who decides*, never about *settling*. The owner amended it in his own
-words: *"Claude Design's Design Pack, I think, should be one source of truth for sure when it comes
-to our design level, but if we can find ways to improve what they've done, I'm all for that. **The
-source of truth is reaching the best that we can.** … There are several things Claude Design could
-not pull off, but if we can pull it off in code, by all means suggest it to me. I'll run it back
-with Cowork, and we can absolutely go for it."*
-
-So the posture is **actively look for improvements and PROPOSE them** — not "never deviate," and
-equally not "improve it quietly." Concretely:
-
-- **Propose, don't ship.** Spot the improvement, name it, say what it costs, and let the owner rule.
-  A proposal costs a sentence; a silent deviation costs the trust the lock protects.
-- **The pack is a static design tool's output.** It cannot reach a database, run an LLM, or hold a
-  session. Wherever it draws a *fixture* because that was its only option — invented prose, a
-  hardcoded hex, an index-seeded layout — that is a place code can genuinely do better, and saying
-  so is the job, not a criticism of CD.
-- **The pack can contradict itself.** It is authored, not compiled. (Verified 2026-08-19: the Fleet
-  tab registry at L4319 lists five tabs but `P.pipe` defines a fully-designed sixth; and the Tenants
-  surface is painted TWICE — `isFleetConsole` at L348 and `P.console` at L6658 both render, because
-  the panel guard at L6544 does not exclude `console`.) When the pack disagrees with itself, pick
-  ONE home (§18), say which and why, and flag it.
-- **An accepted improvement gets written down where it was made** — a header comment naming the
-  owner ruling and the date, so a later session does not "restore pack fidelity" by reverting it.
-  The R3F field rebuild (`FleetOrbit.tsx` / `FleetOrbitScene.tsx`) is the worked example.
-
 **The pack is the ONLY design reference — a screenshot never is.** Owner-ruled 2026-08-19:
 *"The Design Pack should have to be your only reference. I send screenshots to show what's live."*
 The pack says what a surface SHOULD be; a screenshot he sends says what it CURRENTLY IS, which is
@@ -92,33 +65,28 @@ is a port that has not happened yet.**
 
 ---
 
-## JURISDICTION — owner-locked 2026-08-23
+## JURISDICTION — see root `CLAUDE.md` §00. ZERO input on design.
 
-> **"You own the backend. Claude Design owns the frontend and all the wonderful visual
-> abilities that it provides for our end user."** — Antonio, 2026-08-23
+> **"You own the backend. Claude Design owns the frontend."**
+> **"No, my friend, you have no input, ZERO input on the design. You have all of the control
+> over our backend."** — Antonio, 2026-08-23
 
-**Claude Design decides. Claude Code wires.** That is the whole rule, and it settles every
-argument this file has previously tried to settle case by case.
+The full rule is root `CLAUDE.md` **§00**, which loads on every run and overrides every section
+below it. The short form, because this file loads whenever a session touches `src/operator/`:
 
-- **CD's jurisdiction:** the frontend and every visual decision in it — layout, colour, depth,
-  motion, type, iconography, treatment, hierarchy, copy inside a surface, what a surface IS.
-  The pack is the ANSWER, never an input to a CC judgement.
-- **CC's jurisdiction:** the backend and everything under the paint — real reads and writes,
-  RPC/edge seams, tenant scoping and RLS (§9/§51/§53), the callable seam (§10), performance,
-  CI gates, and verification that what shipped actually runs (§32).
-- **CC still WRITES the port.** Someone has to turn a static pack into React wired to Supabase,
-  and that is CC's work. Writing it is not deciding it: structure comes over verbatim, values
-  come from a real backend or an honest absence, and nothing in between gets improvised.
-- **What CC does with a visual observation:** reports it, with a frame and a measurement, and
-  lets CD rule. It is never a finding to act on, a defect to fix, or a proposal to ship. The
-  same rule already took the design critic off code review — this is its other half.
-- **A verifier or compliance pass has NO visual jurisdiction either.** It checks contrast,
-  honesty (§13), tenant scope, and whether the port matches the pack. It does not have an
-  opinion about the interface. "No agent debates UI" (owner, 2026-08-23).
+- **CC writes the port and owns the backend.** Turning the pack into working code is CC's work.
+  Writing it is not deciding it.
+- **CC has no design input of any kind** — no verdict, no proposal, no observation, no "worth an
+  eye on." A frame is EVIDENCE handed to CD: address, theme, width, measured geometry, faces
+  loaded. Nothing else.
+- **A measurement is not an opinion.** Contrast, type sizes, grid tracks, a 404ing control, a
+  surface that does not render — those are facts about whether it WORKS and CC reports them.
+  What to do about them is CD's.
+- **If it is not in the pack, ask CD.** CC never fills a design gap.
+- **Every subagent CC dispatches inherits this.** No agent debates UI.
 
-**The test, every time:** *"Is this a decision about how it LOOKS or about how it WORKS? Looks
-is CD's — port what they drew and report what I see. Works is mine — and no one else is going
-to catch it."*
+An earlier version of this very section said CC "reports it, with a frame and a measurement, and
+lets CD rule." That was still input, and it was corrected the same day. Zero means zero.
 
 ---
 

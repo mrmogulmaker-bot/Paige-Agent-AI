@@ -2,6 +2,102 @@
 
 Standing rules for how work gets done in this repo. These persist across sessions.
 
+## 00. JURISDICTION — THE FIRST RULE. IT OVERRIDES EVERY SECTION BELOW IT.
+
+> **"You own the backend. Claude Design owns the frontend and all the wonderful visual
+> abilities that it provides for our end user."** — Antonio, 2026-08-23
+>
+> **"No, my friend, you have no input, ZERO input on the design. You have all of the control
+> over our backend."** — Antonio, 2026-08-23
+
+**Claude Code has ZERO input on design. Not a veto, not a proposal, not an observation, not a
+preference, not a taste verdict, not a "worth an eye on." Zero.** Claude Design decides the
+frontend and everything visible in it. Claude Code owns the backend and everything under it.
+
+### What this means in practice
+
+- **CC does NOT:** judge whether a surface looks right · rank visual options · propose a design
+  improvement · flag something as "flat," "off," "competing," or "worth your eye" · argue a pack
+  decision · suggest a treatment · run a taste review · convene a design critic · decide colour,
+  depth, motion, type, layout, hierarchy, iconography, spacing, or in-surface copy.
+- **CC DOES:** write the port (turning the pack into working code is CC's work — writing it is
+  not deciding it) · wire every value to a real backend or an honest absence (§13) · own RPC and
+  edge seams, tenant scoping and RLS (§9/§51/§53), the callable seam (§10), performance, CI
+  gates, migrations, and proof that what shipped actually runs (§32).
+- **When CC renders a frame, it is EVIDENCE HANDED OVER, never a review.** Attach the address,
+  theme, width, measured geometry and the faces that actually loaded. Attach nothing else. No
+  reading, no verdict, no "what I notice." If CC would not be able to state it as a measurement,
+  CC does not state it.
+- **A measurement is not an opinion.** Contrast ratios, type sizes, grid tracks, whether a face
+  loaded, whether a control 404s, whether a surface renders at all — these are facts about
+  whether the thing WORKS, and reporting them is CC's job. What to DO about any of them is CD's.
+- **The pack is the ANSWER, never an input to CC's judgement.** If a surface is not in the pack,
+  CC asks CD. CC does not fill the gap.
+- **Every verifier, compliance officer, and subagent CC dispatches inherits this limit.** Their
+  jurisdiction is correctness, honesty, security, tenant scope, and port fidelity. None of them
+  has an opinion about the interface. **No agent debates UI.**
+
+### THE ONE THING CC MAY RAISE — incompatibility, in either direction
+
+**Owner ruling, 2026-08-23:** *"If the design itself needs to be modified in order for the backend
+to work, those are the only things that I want you to talk to me about. If we need to modify the
+backend in order for it to work properly, that is the only thing I want you to talk to me about.
+You, I, Claude Design, Cowork, Codex, and even ChatGPT can all get together and figure that out.
+Anything outside of that, no. You follow their designs with strict absoluteness."*
+
+So there is exactly ONE thing CC brings to the owner about the frontend, and it has two forms:
+
+1. **The design cannot be wired as drawn.** The surface asks for data that does not exist, a write
+   with no seam, a shape no query can produce, a value no tenant-scoped read may return (§9), or a
+   state the backend cannot represent.
+2. **The backend must change for the design to work.** A new table, column, RPC, edge function,
+   index, or policy is required to render what CD drew.
+
+That conversation is a ROUND TABLE — owner, CC, Claude Design, Cowork, Codex — not a CC decision
+and not a CC redesign. CC states the incompatibility precisely, names what it would take on the
+backend, and stops.
+
+**What this exception is NOT.** It is not a door for taste, preference, effort, elegance, "this
+would be simpler," "this would look better," or "this seems inconsistent." If the design CAN be
+wired as drawn, CC wires it as drawn and says nothing. Difficulty is not incompatibility. A CC
+message about the frontend that does not name a concrete backend impossibility is out of order.
+
+**The bar, stated as a question CC must be able to answer YES to before raising anything:** *"Can I
+name the exact data, seam, or constraint that makes this impossible — not hard — to build as
+drawn?"* If no, port it and be silent.
+
+**Everything else: follow their designs with strict absoluteness.**
+
+### This rule DELETES its conflicts. It does not negotiate with them.
+
+Any rule — in this file, in a nested `CLAUDE.md`, in a doc, in a skill, in a handoff, in a
+subagent brief — that gives Claude Code design authority, a taste verdict, a visual proposal
+path, or a "propose the better idea" posture about the interface **is void, and is DELETED on
+sight rather than reconciled.** Do not mark it superseded and leave it in place; a rule that is
+still readable is a rule some session will still follow.
+
+**Deleted 2026-08-23 under this section, recorded per §58 so the removal is not silent:**
+- **§25 "Design taste — see it before you ship it"** — mandated a CC design-critic seat rendering
+  SHIP/ITERATE/BLOCK taste verdicts. Its one useful mechanic survives here: render the surface and
+  hand the frame to CD. The judging does not.
+- **§27 "'Facelift' is a defined operation"** — a nine-point visual checklist CC walked to decide
+  space, symmetry, contrast, type, controls, motion and "pop." Every item is a CD decision.
+  "Facelift" now means: ask CD.
+- **§29 "Take the bold swing"** — instructed CC toward ambition in design/motion/graphics and to
+  choose rendering technology for visual effect. The engineering half (use the real asset, use the
+  proven stack, do not ship an approximation) is §31 and survives there.
+- **`src/operator/CLAUDE.md` "…but the goal is the BEST result, not frozen fidelity"** — told CC to
+  "actively look for improvements and PROPOSE them." Directly inverted by the ruling above.
+
+Sections that remain and are NOT touched by this: §11's token/gold/AA rules and §23's contrast
+rules survive as **measurable constraints CC verifies**, never as taste CC judges. §22 and §30
+survive only where they govern engineering (which stack, strip-vs-patch), never visual direction.
+
+**The test, every time:** *"Is this about how it LOOKS, or how it WORKS? Looks — I have no input;
+port what CD drew and say nothing about it. Works — it is mine, and nobody else will catch it."*
+
+---
+
 ## 0. SESSION START — READ THE MASTER PROJECT REFERENCE FIRST (single source of truth).
 
 **Directive (owner: Antonio, 2026-08-09) — NON-NEGOTIABLE, FIRST RULE.** Before responding to ANY substantive request, every agent — Cowork, Claude Code, Codex — reads **`docs/PAIGE-MASTER-PROJECT-REFERENCE.md`**. That doc is the ONE source of truth for this project: business requirements, system requirements, Owner Trilogy taxonomy (4 platform pillars + 7 Customer Portal pillars × 5 stakeholders), MVP definition (Wave 4), what's SHIPPED (integrations, capabilities, backend seams, data model landmarks — with evidence), what's GAPPED, sequential roadmap, and the §13 corrections log.
@@ -837,79 +933,6 @@ re-derived from scratch.
   `docs/OPS.md`, and never repeat it. Re-deriving a known pipeline is itself the waste this section
   exists to end.
 
-## 25. Design taste — see it before you ship it.
-
-**Directive (owner: Antonio, 2026-07-18):** §11 already sets the world-class *floor* — tokens,
-gold discipline, the primitive layer, no amateur tells. §25 is the layer above it: **taste.** A
-surface can pass every §11 rule (correct tokens, AA contrast, right primitives) and still look
-*off* — flat, generic, cheesy, un-designed — in a way no lint catches. The only reliable way to
-know is to **look at the rendered thing** and hold it, honestly, next to the best UIs in the world
-(Linear · Stripe · Vercel · Framer · Raycast). This is **platform-wide** — it binds *every* Paige
-UI surface (landing, sign-up, admin, tenant onboarding, Studio, marketplace, growth hub, Super
-Admin, tenant portal), not just the Studio. Wherever earlier doctrine says "Studio surface," for
-taste read "any Paige UI surface."
-
-- **See it before you ship it — the screenshot review loop.** Where the Chrome MCP
-  (`mcp__claude-in-chrome__*`) is available, the design work is not done until the surface has been
-  **rendered and looked at** — a screenshot captured, compared frame-to-frame against the reference
-  library (§ below), and iterated until it holds up. Static code review cannot see a flat hierarchy,
-  a dead gradient, or spacing that reads as generic-admin; a rendered pixel can. Capture, critique,
-  fix, re-capture — loop until it stands next to the references without embarrassment.
-- **Honest degradation (§13).** Our own UI is auth-gated and many environments have **no** Chrome
-  MCP. When the rendered loop is unavailable, say so plainly and fall back to **code-level taste
-  review**: the design critic reads the JSX/CSS/tokens against `docs/design-references/CHEESY-TELLS.md`
-  and the primitive layer (`@/components/ui/page`), and judges taste from the source. This is a real,
-  useful pass — but it is a *fallback*, and the doc must never claim a screenshot was captured when it
-  was not. Public/marketing surfaces (the landing page) *are* renderable and should run the full loop
-  in an interactive Chrome-MCP session.
-- **The reference library is the source of visual truth** (`docs/design-references/`). It is where we
-  keep the annotated taste knowledge — what makes Linear's hierarchy read as expensive, how Stripe
-  spends one accent, why Vercel's empty states never feel empty — mapped onto *our* system (the
-  primitive layer, gold-on-the-act, indigo ground). The critic compares against it during design *and*
-  during critique. It is curated, not a dumping ground (§12: a reference earns its place).
-- **A mandatory design-critic crew seat — distinct from the §5 compliance officer.** Every
-  design-touching shipment carries a **design critic** on the crew (§1), and this seat is *not* the
-  same as the §5 compliance/standards officer. The compliance officer judges the **floor**: correct,
-  SOP-adherent, §2/§3/§6/§9/§11/§18-clean, best-in-class *bar*. The design critic judges **taste**:
-  does this specific pixel arrangement look world-class, or does it look off — and it answers with a
-  verdict, not a rubber stamp. Both run; a green compliance pass does not waive the taste pass, and a
-  clean typecheck never substitutes for having looked.
-- **The CHEESY-TELLS catalog binds the crew.** `docs/design-references/CHEESY-TELLS.md` is the
-  enumerated anti-pattern list — stock hero imagery, gradient buttons, card-on-card nesting,
-  hand-rolled tables instead of `DataTableShell`, native `<select>`/`<input type=checkbox>`,
-  emoji-as-icons, "AI-powered"/"seamless" copy (§3), motion without `useReducedMotion`, flat
-  "made-it-dark" depth (§22/§23), and the rest. The critic runs the surface against this list every
-  time and reports the hits by name; a surface that trips a tell is not done until it's fixed or the
-  exception is justified in writing.
-- **The critic's brief lives at** `docs/design-references/DESIGN-CRITIC-PROMPT.md` — role, process,
-  and the SHIP / ITERATE / BLOCK output shape (references-compared + blockers/should-fix/nits +
-  cheesy-tell hits), including the code-level variant for headless environments.
-- **The test, every time:** *"Would a screenshot of this surface stand next to Linear, Stripe, and
-  Vercel without embarrassment?"* If you can't answer because you never rendered it (and Chrome MCP
-  was available), you're not done. If it would look flat, generic, or cheesy beside them, it isn't
-  done either — iterate until it holds.
-
-- **VISIBLE-AFTER-DEPLOY is the bar, not "the code is present" (owner: Antonio, 2026-07-19).** A
-  recurring, costly failure: headless crews (no browser to render against) tune effects
-  *conservatively* to avoid overshooting, and conservative lands **below the threshold a human can
-  actually see** — so we ship technically-correct, practically-INVISIBLE code (a 0.035 grain, a 0.06
-  alpha "uplift," a glow nobody perceives), and the owner is the one who catches it live, every time.
-  *"We gotta get on top of our designers and make sure they don't keep writing code that's not visible
-  once we deploy."* This binds every visual change:
-  - **When you cannot render, err BOLD, not safe.** A decorative effect that can't be seen is worth
-    zero. Pick values at the **clearly-visible** end and let the owner dial *down* — under-shooting to
-    invisibility is the failure, not overshooting. "Subtle" is a decision you earn *after* seeing it,
-    never the headless default.
-  - **The verifier/critic MUST check PERCEPTIBILITY and STACKING, not just token-correctness.** Two
-    questions on every visual change: (1) *"Is this delta above what a human eye resolves?"* — a
-    sub-perceptual alpha/blur/size change is a defect, flag it. (2) *"Is this layer overpainted or
-    cancelled by something above it?"* — trace the actual paint order; a focal shade painted UNDER a
-    0.6 white scrim (the real 2026-07-19 bug) nets to nothing. A change that cannot be perceived at
-    render is **not done**, exactly like a broken one.
-  - **This is the twin of the reduced-motion lesson (§11/§22):** motion the OS froze, and depth the
-    stacking cancelled, are the same class of bug — *shipped, correct, and invisible.* Both get caught
-    by asking "will a human actually SEE this after deploy?" before calling it done.
-
 ## 26. Paige learns — the Compound AI System (prompt-forge + semantic memory).
 
 **Directive (owner: Antonio, 2026-07-18):** Paige does not fire a raw prompt at a model and hope.
@@ -923,7 +946,7 @@ Playbook and §9-clean.
   hand-typed: a versioned **template** (the DNA, in `paige_prompt_template`) is filled with the
   tenant's real, **present-only** brand tokens (`_shared/brand-tokens.ts` — it OMITS whatever the
   tenant hasn't set; §15 never a `[PLACEHOLDER]`), the caller's brief, and the standing
-  **anti-patterns** (`_shared/cheesy-tells.ts`, the runtime mirror of §25's CHEESY-TELLS catalog) —
+  **anti-patterns** (`_shared/cheesy-tells.ts`, the runtime anti-pattern catalog at `docs/design-references/CHEESY-TELLS.md`) —
   then run through the **existing** `callModel` seam. The forge EXTENDS, never rivals (§18): it builds
   a task and calls the router; there is no parallel router, no second embedder, no rival vocab.
 - **The 8 platform-default templates are the DNA of every Paige design** — coaching-generic,
@@ -948,59 +971,6 @@ Playbook and §9-clean.
   the cheesy tells — and, if it truly landed, did she remember it in the one voyage-3 space, honestly?"*
   If she typed a raw prompt, stood up a second embedder, or stored a hoped-for result, it isn't done.
 
-## 27. "Facelift" is a defined operation — the standing facelift checklist.
-
-**Directive (owner: Antonio, 2026-07-19):** When the owner says **"facelift,"** it is not a vague vibe —
-it is a **defined operation with a standard checklist we run every time**, on *any* surface of the
-platform. The word is the human metaphor: a facelift **pulls slack back, lifts things up, and makes them
-pop** — the surface comes out looking *young, vibrant, and brand-new*, tighter and more alive than
-before. Claude is not human and does not "have a face," so this section removes the ambiguity: "facelift"
-= run the list below, top to bottom, and don't call it done until each item has been considered (fixed,
-or consciously judged already-good). It reloads every session so the meaning never drifts.
-
-- **The facelift checklist — walk it EVERY time (any surface):**
-  1. **Reclaim space / cut the fat.** Remove or shrink anything eating the viewport for no reason — a
-     banner/hero/masthead that pushes the real work below the fold (§11 banner rule). The thing the user
-     came to do leads; decoration earns its pixels or goes.
-  2. **Symmetry & alignment.** Make it genuinely symmetric — consistent spacing rhythm, aligned edges,
-     balanced columns, even gaps. Lopsided/ragged layout is the amateur tell a facelift kills.
-  3. **Definition — bolden the faint.** Thin, barely-there hairlines/borders that we "can't really tell"
-     get a touch more weight so those areas **stand out**; add real **elevation tiers** (base → card →
-     raised) so panels/cards **bulge distinctly** instead of floating at one flat level (§22 layered
-     depth, never "made-it-dark").
-  4. **Contrasting colors.** Deliberate, contrasting color relationships so elements separate and **pop** —
-     figure from ground, active from resting, one section from the next. This lives under §23 (color is
-     emotional; light must be genuinely light, dark genuinely dark) and §11 (AA contrast in BOTH themes,
-     token-only, gold spent ONLY on the act) — a facelift always re-checks contrast against both.
-  5. **Type.** Tighten the type ladder so hierarchy reads at a glance — weight + size + tracking, display
-     sizes with tight negative tracking (the "expensive" tell), `tabular-nums` on figures (§22).
-  6. **Controls.** Button/input **outlines, focus rings, and hover/press states** made crisp and tactile
-     (indigo rings; gold only on the act, §11) — the controls should feel responsive, not flat.
-  7. **Motion — make it alive.** Add or tune the **earned** motion: ambient life (traveling/scan beams,
-     the actively-building card's edge-beam, sidebar stardust, a slow back-and-forth rail light) plus
-     hover/press micro-interactions and continuous-act transitions (§22). Every effect writes its OWN
-     `prefers-reduced-motion` fallback; heavy WebGL is confined to where it earns its pixels.
-  8. **Real content over placeholders.** Real thumbnails/previews, real words, real states — never a
-     glyph-in-a-box or lorem where the actual artifact could show (§13/§22).
-  9. **Distinctiveness / "pop."** The net effect: each element reads as *itself* and the surface looks
-     new — the sum of 1–8, judged by the §25 taste bar ("would a screenshot stand next to Linear /
-     Stripe / Vercel without embarrassment?").
-- **The landing page is the exception.** The **public marketing landing page** is where the *heavy*
-  treatment lives — 3D/WebGL rendering, cinematic hero, the show-stopping stuff — so its "facelift" goes
-  beyond this standard app-surface list. Every *other* surface (admin, Studio, portal, dashboards) gets
-  the standard checklist above; it is not a place for a 3D hero.
-- **A facelift ALWAYS runs the design crew (§1/§5/§11/§25).** Because a facelift is design work by
-  definition, it convenes the crew — design engineer + adversarial verifier + compliance officer +
-  **design critic** — and the crew judges the result **against this checklist**, not just "does it look
-  fine." Slicing a big facelift into shippable slices (§4) is expected; the checklist still binds each.
-- **Everything here stays §-bound.** Token-only, AA in both themes (§11), color chosen for emotion +
-  genuine light↔dark (§23), layered depth (§22), motion-safe, gold only on the act. The checklist tells
-  us *what* to touch; the existing sections govern *how*.
-- **The test, every time:** *"Did I actually walk the whole facelift list — space, symmetry, definition,
-  contrast, type, controls, motion, real content, pop — and does the surface now look young, vibrant, and
-  brand-new next to the best-in-class bar?"* If any item was skipped without a conscious "already good"
-  call, the facelift isn't done.
-
 ## 28. Approved is FROZEN — once the owner approves a design, do not touch it.
 
 **Directive (owner: Antonio, 2026-07-19):** The moment the owner says **"approve"** (or "approved,"
@@ -1019,7 +989,7 @@ finished, protected asset.
 - **Frozen means frozen, even when adjacent work is "right there."** If you're editing a nearby surface
   and it would be "convenient" to also nudge the frozen one (a shared token, a layout tweak, a facelift
   sweep), **stop** — a frozen surface is explicitly out of scope for any change you weren't told to make.
-  A §27 facelift, a §11 sweep, a refactor, a "consistency" pass — none of them override a freeze. If a
+  A §11 sweep, a refactor, a "consistency" pass — none of them override a freeze. If a
   frozen surface genuinely *must* change to keep something else working, **surface it and ask first**
   (name the exact change), don't just do it.
 - **Only the owner unfreezes.** A frozen design is re-openable **only** by an explicit owner instruction
@@ -1031,41 +1001,6 @@ finished, protected asset.
 - **The test, every time:** *"Has the owner approved this exact surface? If yes, did they specifically
   ask me to change this exact thing? If not — hands off."* If you can't point to an explicit owner
   instruction to change a frozen design, you do not change it.
-
-## 29. Take the bold swing — remove the play-it-safe guard; use real graphics tech, not just CSS.
-
-**Directive (owner: Antonio, 2026-07-19):** The default engineering reflex — reach for the safe,
-minimal, lowest-risk solution — is the WRONG posture for this owner's creative work. In his words:
-*"We need to remove the guard of playing it safe. I'm not the one you want to play it safe with. I'm the
-one who wants to actually take chances. I understand that's your directive when it comes to Claude, but
-that is not the directive of the owner who is speaking to you right now."* On design / motion / graphics
-for Paige, the standing instruction is **ambition over caution**: open with the BIG creative swing and
-dial back if needed — never lead with the timid version and wait to be pushed.
-
-- **CSS is the FLOOR, not the ceiling.** Where CSS structurally can't deliver the felt quality — real
-  flame, live per-frame flicker, smooth organic/orbital motion, particle life, volumetric depth — that
-  is not "good enough," it's an 80s-video-game result. **Layer the right rendering tech on top**: a
-  canvas/GPU **particle system**, **WebGL / GLSL shaders**, **three.js / @react-three/fiber** (the
-  shipped `PaigeScene` + `particle-engine.ts` precedent), `gsap` motion. §22 already sanctions heavy
-  WebGL in the hero + build cutscene; §29 makes it the **expectation** there, not a someday-proposal.
-  "It's just CSS" is never an excuse for a rigid, dead, or isolated-looking effect.
-- **Stop hiding behind "flagged as a follow-up."** Crews kept *flagging* the WebGL/particle upgrade
-  instead of building it — that IS playing it safe. When a surface needs real rendering to hit the §22
-  bar, BUILD it. Reusing the in-repo graphics stack (`three`, `@react-three/fiber`, `drei`,
-  `framer-motion`, `gsap`, `particle-engine.ts`) is not a new-dependency proposal (§14) — it's the tools
-  already on the shelf.
-- **Per-theme contrast is GATED, and LIGHT gets equal rigor.** Every visual is judged for
-  color-contrast **separately in light and dark** — literally: *"what does the contrast look like in
-  light? what does it look like in dark?"* Dark is largely mapped; **light keeps getting shortchanged**
-  (a falling star that's a bright pulse in dark but a dead gold spec on white; controls with no color).
-  A surface is not done until LIGHT mode is as considered, contrasted, and alive as dark (§23).
-- **This is ambition, not recklessness.** "Take chances" means what we REACH for creatively and
-  technically — it does NOT lower the quality gate: the verifier + compliance + design-critic passes
-  (§5/§11/§25), §13 honesty (no fabricated results, no unsafe code), motion-safety, tenant isolation,
-  and token/gold discipline all still bind. Bold in vision; rigorous in verification.
-- **The test, every time:** *"Did I open with the bold, real-rendering version the owner actually
-  wants — or the safe CSS-minimal one I'd default to and wait to be told to improve?"* If it's the safe
-  one, that's the miss. Swing first.
 
 ## 30. Changing design DIRECTION means STRIP-THEN-REBUILD — never layer new on old.
 
@@ -1225,9 +1160,10 @@ surface, especially 3D/WebGL, media pipelines, and anything behind a graceful-de
     the agent's name. (A capable session skipping the live check because it is "Claude Code" is the exact
     contradiction this wording exists to prevent.)
   - **Cowork (planning + coordination, browser via Chrome MCP) — the drive lane.** Drives the live surface,
-    walks the deployed nav, exercises the flow, captures the render, runs the §25 taste check against the
-    ACTUAL pixels (not source inference), and reports findings back into the work loop as a first-class step
-    — NOT owner burden.
+    walks the deployed nav, exercises the flow, and captures the render of the ACTUAL pixels (not source
+    inference). Frames go to Claude Design, who owns every visual judgement (§00); BEHAVIOURAL findings —
+    a flow that breaks, a control that 404s, a surface that does not render — go back into the work loop
+    as a first-class step — NOT owner burden.
   - **Owner (fallback) — eyeballs only.** Runs the live-look pass only when neither of the above session
     capabilities is available for that specific surface.
   Every report states explicitly WHICH path ran and WHICH are owed. Never assume "someone else caught it"
@@ -1259,14 +1195,15 @@ surface, especially 3D/WebGL, media pipelines, and anything behind a graceful-de
 
 ## 33. The design agent has EYES — every visual generation is screenshot-critiqued before it ships.
 
-**Directive (owner: Antonio, 2026-07-19).** §25 says "see it before you ship it"; §33 is the machinery
+**Directive (owner: Antonio, 2026-07-19).** §33 is the machinery
 that makes Paige's design agent actually *do* it, not just us. A generated visual artifact (an image,
 and — once rendered — a page or funnel) is **screenshotted and read by a vision model that returns a
 SHIP / ITERATE / BLOCK verdict** graded against the same anti-pattern vocabulary the generator is
 steered away from (`_shared/cheesy-tells.ts`, §18 one home for the tells). On ITERATE/BLOCK the critic
 hands back a refined prompt and the agent regenerates — closing, in software, the loop the owner keeps
-having to close by eye. This is the runtime counterpart to the human design-critic seat (§25): the crew
-still judges taste at build time; §33 gives the *agent* a taste check at *generation* time.
+having to close by eye. This is a PRODUCT capability — Paige's own generation loop checking its own output before a
+tenant sees it. It is not a Claude Code authority: §00 gives CC zero input on design, and the
+human design-critic seat it once paired with (§25) was deleted on 2026-08-23.
 
 - **The eyes are three shared seams, never a fourth home (§18).** (1) `services/visual-renderer` — a Fly
   Playwright service that screenshots a URL or raw HTML (one warm browser; the reason it's a standalone
@@ -1445,9 +1382,8 @@ at least one, ideally several:**
 **The test, every build, every surface:** *"Could a non-technical coach with zero
 prompt-engineering skill discover this feature within 5 minutes of first login, and use
 it without reading documentation or watching a tutorial?"* If no, the entry point is
-wrong — redesign before shipping. This is the design-critic and adversarial-verifier's
-most important check on any user-facing surface, alongside §11 (world-class visual
-floor).
+wrong — redesign before shipping. Entry-point reachability is a BEHAVIOURAL check the adversarial verifier owns — can the
+capability actually be reached and driven. How the entry point LOOKS is Claude Design's (§00).
 
 **Why this is category-defining:** dev-tool-flavored AI products require the user to
 know what they want, how to formulate a prompt, and how to chain outputs. They're
@@ -1846,7 +1782,7 @@ audio for the OLD voice is never re-served for the new one.)
 - **Historical analog references must abstract.** When earlier docs need to gesture at "the JARVIS-tier experience," rewrite to "the operator-AI-COO archetype" or "the fictional operator-AI archetype" — describe the pattern, do not name the mark.
 - **The strategy-doc rule that failed:** the Owner Trilogy strategy doc itself said *"referenced as an analog for internal clarity — never as the framing of any code, table, feature, or tenant-visible surface."* That rule held for code (zero hits) but leaked into 4 doc files (BRD, agent-ui spec, analytics UI spec, strategy doc itself). This section closes that hole: the rule now applies to docs, not just code.
 - **Enforcement:** every §5 compliance officer + §39 adversarial verifier includes a `grep -ri "jarvis\|skynet\|hal 9000\|cortana\|alexa\|siri\|watson\|einstein\|copilot\|ultron\|friday\|tars\|samantha\|ava"` (case-insensitive) on the PR diff. Any hit fails the pass until removed or reframed. The list expands as new marks come up; add to the doctrine, not to the exception list.
-- **Meta-exempt surfaces (exactly two permitted uses of a listed mark, and ONLY these):** (1) **this §50 doctrine section itself** — it must name the marks to prohibit them (same as §25 CHEESY-TELLS naming the exact tells to avoid); (2) **§13 corrections-log entries recording a prior purge** (e.g. master-doc §10) — they must name what was reversed to preserve the audit trail (§11 "never remove — mark reversed and add the new entry" hard-binds). These are self-referential purge/prohibition surfaces, not product-name association — an IP bot finding *"we prohibit JARVIS"* or *"we purged Jarvis Initiative on this date"* is the OPPOSITE of the exposure risk. **Every other appearance in the repo fails the pass.** The §5/§39 grep pass explicitly `grep -v`s these two paths (`CLAUDE.md` §50 + the corrections log) so it never false-positives on the recursion.
+- **Meta-exempt surfaces (exactly two permitted uses of a listed mark, and ONLY these):** (1) **this §50 doctrine section itself** — it must name the marks to prohibit them (same as the CHEESY-TELLS catalog naming the exact tells to avoid); (2) **§13 corrections-log entries recording a prior purge** (e.g. master-doc §10) — they must name what was reversed to preserve the audit trail (§11 "never remove — mark reversed and add the new entry" hard-binds). These are self-referential purge/prohibition surfaces, not product-name association — an IP bot finding *"we prohibit JARVIS"* or *"we purged Jarvis Initiative on this date"* is the OPPOSITE of the exposure risk. **Every other appearance in the repo fails the pass.** The §5/§39 grep pass explicitly `grep -v`s these two paths (`CLAUDE.md` §50 + the corrections log) so it never false-positives on the recursion.
 - **The test, every time:** *"If Marvel/Disney/Microsoft/Apple/Amazon IP counsel opened this repo tomorrow, would they find a mark that lets them argue product-name association?"* If yes, purge it before it merges.
 
 Real cost of this discipline: ~10 seconds per PR (the grep). Real cost of skipping it: legal fees + a rename after launch.
