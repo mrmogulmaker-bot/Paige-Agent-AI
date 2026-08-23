@@ -109,7 +109,7 @@ export default function CommandBar({
           data-cm={mark}
           style={{ flex: "none", display: "inline-grid", placeItems: "center", width: 22, height: 22 }}
         >
-          <svg viewBox="0 0 48 48" style={{ width: 22, height: 22, overflow: "visible" }} aria-hidden>
+          <svg viewBox="0 0 48 48" style={{ width: 22, height: 22, minWidth: 0, overflow: "visible" }} aria-hidden>
             <g style={{ opacity: 0 }}>
               <polygon
                 points="21.5,15.5 29.5,15.5 21.7,32.5 13.7,32.5"

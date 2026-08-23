@@ -165,9 +165,14 @@ function OperatorShellBody() {
    * so the two paths are told apart by which one ran: the bar's own click marks itself first.
    */
   const fromBar = useRef(false);
-  const mounted = useRef(false);
+  // Compared against the PREVIOUS value rather than a mounted-yet flag: StrictMode re-runs this
+  // effect on a remount with `paletteOpen` unchanged, and a mounted-flag guard let that re-run
+  // through — which put the bar in `focus` on a console nobody had touched. Found by driving it,
+  // not by reading it (§32).
+  const lastOpen = useRef(paletteOpen);
   useEffect(() => {
-    if (!mounted.current) { mounted.current = true; return; }
+    if (lastOpen.current === paletteOpen) return;
+    lastOpen.current = paletteOpen;
     if (fromBar.current) { fromBar.current = false; return; }
     setCommand("focus");
     setMark("charged");
@@ -373,7 +378,7 @@ function OperatorCanvas({
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           )}
         >
-          <svg viewBox="0 0 16 16" className="h-[15px] w-[15px]" aria-hidden>
+          <svg viewBox="0 0 16 16" className="h-[15px] w-[15px] min-w-0" aria-hidden>
             <rect x="10.5" y="3.5" width="2.9" height="9" fill="currentColor" opacity=".13" />
             <path d="M2.6 3.5h10.8v9H2.6z M10.5 3.5v9" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
             <path d="M5.6 6.2L7.5 8 5.6 9.8" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />

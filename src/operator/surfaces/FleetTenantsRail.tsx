@@ -239,7 +239,7 @@ export function FleetTenantsRail({
   return (
     // FINDING 2 — workspace content, not a column. `min-w-0` because it now takes the console's
     // own width, and a long finding name must never widen the surface (rule 4).
-    <section className="flex min-w-0 flex-col gap-2.5">
+    <section className="flex min-h-0 min-w-0 flex-col gap-2.5">
       {/* ── Needs you today ───────────────────────────────────────────────── */}
       {showAttention && (
       <RailCard className="px-3.5 py-3">
@@ -308,9 +308,9 @@ export function FleetTenantsRail({
       <RailCard className="overflow-hidden">
         <div className="border-b border-border px-3.5 py-3">
           <div className="flex items-center gap-2">
-            <span className="text-[length:var(--pg-t-label)] font-semibold tracking-[0.15em] text-muted-foreground">FLEET</span>
-            <span className="text-[length:var(--pg-t-body)] font-semibold">Tenants</span>
-            <span className="rounded-full bg-[var(--pg-workspace)] px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground">
+            <span className="min-w-0 text-[length:var(--pg-t-label)] font-semibold tracking-[0.15em] text-muted-foreground">FLEET</span>
+            <span className="min-w-0 text-[length:var(--pg-t-body)] font-semibold">Tenants</span>
+            <span className="min-w-0 rounded-full bg-[var(--pg-workspace)] px-2 py-0.5 text-[length:var(--pg-t-label)] font-semibold text-muted-foreground">
               {loading ? "—" : `${rows.length} tenants`}
             </span>
           </div>
@@ -335,7 +335,7 @@ export function FleetTenantsRail({
             { label: "AT RISK", value: loading ? "—" : String(atRiskCount) },
             { label: "PROVISIONING", value: "—" },
           ].map((k) => (
-            <div key={k.label} className="bg-[var(--pg-raised)] px-3 py-2">
+            <div key={k.label} className="min-w-0 bg-[var(--pg-raised)] px-3 py-2">
               <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">
                 {k.label}
               </div>
@@ -354,7 +354,7 @@ export function FleetTenantsRail({
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center gap-2 border-t border-border/60 px-3.5 py-2">
                 <div className="h-6 w-6 flex-none animate-pulse rounded-[8px] bg-[var(--pg-workspace)]" />
-                <div className="h-3 w-32 animate-pulse rounded bg-[var(--pg-workspace)]" />
+                <div className="h-3 w-32 min-w-0 animate-pulse rounded bg-[var(--pg-workspace)]" />
               </div>
             ))}
 

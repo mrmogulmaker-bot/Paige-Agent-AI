@@ -39,7 +39,8 @@ const WS_LABEL: Record<WsMode, string> = {
 };
 
 const CHIP =
-  "relative grid h-[30px] w-[30px] place-items-center rounded-[var(--pg-r-chip)] " +
+  // `flex-none`: the chips are a fixed 30px and must never be squeezed by the header row.
+  "relative grid h-[30px] w-[30px] flex-none place-items-center rounded-[var(--pg-r-chip)] " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function shellStyle(mode: WsMode, canvasW: number, reduce: boolean): React.CSSProperties {
@@ -180,7 +181,7 @@ export default function SummonedSurface({
                     : "color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease",
                 }}
               >
-                <svg viewBox="0 0 16 16" style={{ width: 14, height: 14 }} aria-hidden>
+                <svg viewBox="0 0 16 16" style={{ width: 14, height: 14, minWidth: 0 }} aria-hidden>
                   <path d={fill} fill="currentColor" opacity=".14" />
                   <path d={frame} fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" strokeLinecap="round" />
                   <path d={accent} fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinejoin="round" strokeLinecap="round" />
@@ -203,7 +204,7 @@ export default function SummonedSurface({
                 : "color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease",
             }}
           >
-            <svg viewBox="0 0 16 16" style={{ width: 14, height: 14 }} aria-hidden>
+            <svg viewBox="0 0 16 16" style={{ width: 14, height: 14, minWidth: 0 }} aria-hidden>
               <path d="M4.5 4.5l7 7 M11.5 4.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" />
             </svg>
           </button>
@@ -293,8 +294,8 @@ export default function SummonedSurface({
               </span>
               <span
                 style={{
-                  color: sr.tone, font: "600 9.5px var(--pg-font-ui)", letterSpacing: ".07em",
-                  textTransform: "uppercase", whiteSpace: "nowrap",
+                  minWidth: 0, color: sr.tone, font: "600 9.5px var(--pg-font-ui)",
+                  letterSpacing: ".07em", textTransform: "uppercase", whiteSpace: "nowrap",
                 }}
               >
                 {sr.status}
