@@ -353,10 +353,27 @@ function OperatorCanvas({
       }}
     >
       {/* Row 1 — the command row. L128, verbatim: 58px, `--pg-spine`, a `--pg-line-soft` bottom
-          rule, `--pg-e1`, `padding:0 20px`, `gap:14px`, `z-index:6`. The 58px is load-bearing
-          three ways at once — this row track, the canvas grid row, and the slide-over's `top`
-          offset — and they drift apart the moment one is guessed. */}
-      <div className="relative z-[6] col-span-full row-start-1 flex min-h-0 min-w-0 items-center gap-[14px] border-b border-[var(--pg-line-soft)] bg-[var(--pg-spine)] px-5 shadow-[var(--pg-e1)]">
+          rule, `--pg-e1`, `padding:0 20px`, `gap:14px`. The 58px is load-bearing three ways at
+          once — this row track, the canvas grid row, and the slide-over's `top` offset — and they
+          drift apart the moment one is guessed.
+
+          THE ONE VALUE THAT IS NOT THE PACK'S, AND WHY. The pack sets this row `z-index:6`
+          (L128) and the palette it hosts `z-index:8` (L142), while `viewRowStyle` sets the
+          sub-tab row `z-index:12` (L10803) with the comment "Raised above any summoned panel."
+          Those two cannot both hold: this row carries `z-index`, so it opens a stacking context
+          and the palette's 8 is CLAMPED inside it — an OPAQUE `--pg-raised` dropdown at 6 that
+          the view row paints straight over at 12. MEASURED, before this change:
+          `elementFromPoint` at the centre of the "Run a sequence" row returned
+          `<nav class="relative z-[12] …">`, not the palette button, in both themes, while the
+          palette's own computed background was `rgb(33,29,39)` / `rgb(255,253,248)` at
+          `opacity: 1`. It was never transparency; it was paint order.
+
+          Claude Design ruled the conflict (2026-08-23): "nothing behind a summoned layer should
+          be readable through it" — the summoned layer sits ABOVE the view row. The pack's own
+          ladder is row(6) < summoned(8) < view row(12); it is preserved and shifted over the
+          view row: this row 13, `SummonedSurface` 14. The palette keeps the pack's `z-index:8`
+          inside this row, because raising it alone could never have escaped a context 6 sets. */}
+      <div className="relative z-[13] col-span-full row-start-1 flex min-h-0 min-w-0 items-center gap-[14px] border-b border-[var(--pg-line-soft)] bg-[var(--pg-spine)] px-5 shadow-[var(--pg-e1)]">
         <CommandBar
           open={paletteOpen}
           onToggle={onTogglePalette}
@@ -425,9 +442,13 @@ function SlotSurface({ address }: { address: Extract<OperatorAddress, { kind: "r
         </code>
       </header>
 
-      {/* The view row. `z-12` is the pack's own call and it is load-bearing: the row that gets
-          you OUT of a surface must sit above anything a surface summons over it. It scrolls
-          sideways within itself and never widens the column (min-w-0 + overflow-x). */}
+      {/* The view row. `z-12` is the pack's own value (`viewRowStyle` L10803) and it stays. What
+          changed is what sits above it: the pack's comment there claims the row is "Raised above
+          any summoned panel," which contradicts the palette (L142) and the summoned surface
+          (L11005-L11064) being drawn opaque over the canvas. CD resolved it the other way — a
+          summoned layer is read through by nothing — so the command row (13) and
+          `SummonedSurface` (14) now clear this 12. It scrolls sideways within itself and never
+          widens the column (min-w-0 + overflow-x). */}
       {slot.views.length > 0 && (
         <nav
           aria-label={`${slot.label} views`}

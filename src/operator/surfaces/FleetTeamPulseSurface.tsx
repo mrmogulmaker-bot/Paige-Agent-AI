@@ -7,6 +7,24 @@ import { useTeamPulse } from "@/operator/data/useTeamPulse";
  * themes and a plate painted on it RECEDES in light. A plate that rises off the canvas — a card,
  * a KPI tile, a control, a popover — paints `--pg-raised` in BOTH themes; `--pg-surface` is kept
  * for regions that genuinely recede (a well, an inset strip, a sunken list).
+ *
+ * AND FILL ALONE CANNOT CARRY IT (Claude Design, 2026-08-23). In light, `--pg-raised` `#fffdf8`
+ * on `--pg-canvas` `#fbf9f5` is three units — correct, and invisible on its own. Separation on a
+ * raised plate is `--pg-rim` PLUS `--pg-lift-1`: the rim is a seated inset pair (a top highlight
+ * and a bottom shade, L21/L28) and the lift is the outer cast (L22/L29). Carrying the rim alone
+ * left only insets, which read as a plain outline against the 1.5px border — the "hairline
+ * outline" CD reported. Both tokens ship at the pack's own values; this is where they are spent.
+ * The pack pairs them exactly this way at L9420 and L9477: `var(--pg-rim), var(--pg-lift-N)`.
+ *
+ * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[var(--pg-rim)]`
+ * does NOT compile to a box-shadow. Tailwind 3 cannot type a bare `var()` and resolves the
+ * `shadow-` arbitrary value to `--tw-shadow-COLOUR`; the emitted rule is
+ * `{--tw-shadow-color: var(--pg-rim)}` (verified in the built CSS), which recolours a shadow
+ * that was never declared, so `getComputedStyle(...).boxShadow` came back `none` on every one
+ * of these plates in BOTH themes. All the separation on screen was the 1.5px border — which is
+ * exactly why it read as "a plain border." The `shadow:` data-type hint
+ * (`shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]`) is what makes Tailwind emit `box-shadow`,
+ * the same hint `text-[length:var(--pg-t-body)]` already uses throughout this console.
  */
 
 /**
@@ -73,7 +91,7 @@ export default function FleetTeamPulseSurface() {
       {/* ── KPI strip ─────────────────────────────────────────────── */}
       <div className="grid flex-none grid-cols-2 gap-2.5 lg:grid-cols-4">
         {kpis.map((k) => (
-          <div key={k.label} className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-raised)] px-3.5 py-3 shadow-[var(--pg-rim)]">
+          <div key={k.label} className="min-w-0 rounded-xl border-[1.5px] border-border bg-[var(--pg-raised)] px-3.5 py-3 shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]">
             <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.13em] text-muted-foreground">
               {k.label}
             </div>
@@ -86,7 +104,7 @@ export default function FleetTeamPulseSurface() {
       </div>
 
       {/* ── who is carrying the work ─────────────────────────────── */}
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[var(--pg-rim)]">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]">
         <div className="border-b border-border px-3.5 py-3">
           <div className="text-[length:var(--pg-t-body)] font-semibold">Who is carrying the work</div>
           <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">Utilisation against a nominal week.</div>
@@ -141,7 +159,7 @@ export default function FleetTeamPulseSurface() {
       </div>
 
       {/* ── where operator time goes ─────────────────────────────── */}
-      <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] px-3.5 py-3 shadow-[var(--pg-rim)]">
+      <div className="flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] px-3.5 py-3 shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]">
         <div className="text-[length:var(--pg-t-body)] font-semibold">Where operator time goes</div>
         <div className="mt-0.5 text-[length:var(--pg-t-label)] text-muted-foreground">This week, by area.</div>
         <div className="mt-2.5 space-y-2">

@@ -59,6 +59,24 @@ import { cn } from "@/lib/utils";
  * regions that RECEDE. Applied per element here: every `RailCard` plate, the four mini-KPI cells
  * and the two controls ("+ Provision a tenant", "Enter") rise → `--pg-raised`. Nothing on this
  * surface recedes, so nothing keeps `--pg-surface`.
+ *
+ * AND FILL ALONE CANNOT CARRY IT (Claude Design, 2026-08-23). In light, `--pg-raised` `#fffdf8`
+ * on `--pg-canvas` `#fbf9f5` is three units — correct, and invisible on its own. A raised plate
+ * separates by `--pg-rim` PLUS `--pg-lift-1`: the rim is the seated inset pair (L21/L28), the
+ * lift is the outer cast (L22/L29). The plates here carried the rim alone, which is insets only
+ * and reads as a plain outline beside the 1.5px border — the "hairline outline" CD reported. The
+ * pack's own pairing is `var(--pg-rim), var(--pg-lift-N)` (L9420, L9477). Applied to the
+ * `RailCard` plate and to the four mini-KPI cells, which carried no shadow at all.
+ *
+ * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[var(--pg-rim)]`
+ * does NOT compile to a box-shadow. Tailwind 3 cannot type a bare `var()` and resolves the
+ * `shadow-` arbitrary value to `--tw-shadow-COLOUR`; the emitted rule is
+ * `{--tw-shadow-color: var(--pg-rim)}` (verified in the built CSS), which recolours a shadow
+ * that was never declared, so `getComputedStyle(...).boxShadow` came back `none` on this plate
+ * in BOTH themes. All the separation on screen was the 1.5px border — which is exactly why it
+ * read as "a plain border." The `shadow:` data-type hint
+ * (`shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]`) is what makes Tailwind emit `box-shadow`,
+ * the same hint `text-[length:var(--pg-t-body)]` already uses throughout this console.
  */
 
 export type RailTenant = {
@@ -119,7 +137,7 @@ export function composeFleetRead(rows: readonly RailTenant[], openFindings: numb
 
 function RailCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[var(--pg-rim)]", className)}>
+    <div className={cn("flex-none rounded-[13px] border-[1.5px] border-border bg-[var(--pg-raised)] shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]", className)}>
       {children}
     </div>
   );
@@ -335,7 +353,7 @@ export function FleetTenantsRail({
             { label: "AT RISK", value: loading ? "—" : String(atRiskCount) },
             { label: "PROVISIONING", value: "—" },
           ].map((k) => (
-            <div key={k.label} className="min-w-0 bg-[var(--pg-raised)] px-3 py-2">
+            <div key={k.label} className="min-w-0 bg-[var(--pg-raised)] px-3 py-2 shadow-[shadow:var(--pg-rim),var(--pg-lift-1)]">
               <div className="truncate text-[length:var(--pg-t-label)] font-semibold tracking-[0.12em] text-muted-foreground">
                 {k.label}
               </div>

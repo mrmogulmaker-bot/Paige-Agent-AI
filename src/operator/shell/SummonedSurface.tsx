@@ -34,6 +34,26 @@ const G_WS: Record<WsMode, readonly [string, string, string]> = {
   detached: ["", "M11.1 9.5v3.9H2.6V4.9h3.9 M9.5 2.6h3.9v3.9", "M13.4 2.6L8.1 7.9"],
 };
 
+/**
+ * The z-index the three FLOATING geometries paint at, and the one value here that is not the
+ * pack's own 8 (L11005-L11064).
+ *
+ * The pack contradicts itself: a summoned panel is `z-index:8`, while `viewRowStyle` (L10803) is
+ * `z-index:12` with the comment "Raised above any summoned panel." Both cannot hold — at 8 the
+ * sub-tab row paints over the panel's header, and the Retire chip stops being clickable.
+ * MEASURED, before this change, `detached` at 1600 in both themes: `elementFromPoint` at the
+ * chip's own centre returned `<nav aria-label="Fleet views" class="relative z-[12] …">`, not the
+ * chip.
+ *
+ * Claude Design ruled it (2026-08-23): "nothing behind a summoned layer should be readable
+ * through it." The pack's ladder — command row 6 < summoned 8 < view row 12 — is preserved and
+ * lifted over the view row, so the row is 13 (`OperatorShell`) and this is 14.
+ *
+ * `split` is deliberately absent: it is the canvas's SECOND GRID COLUMN, never over the surface,
+ * so it carries no z-index in the pack and none here.
+ */
+const SUMMON_Z = 14;
+
 const WS_LABEL: Record<WsMode, string> = {
   split: "Split", slideover: "Slide-over", popout: "Pop-out", detached: "Detach",
 };
@@ -50,12 +70,13 @@ function shellStyle(mode: WsMode, canvasW: number, reduce: boolean): React.CSSPr
       return {
         position: "relative", gridColumn: 2, gridRow: 2, minWidth: 0, minHeight: 0,
         display: "flex", flexDirection: "column", background: "var(--pg-workspace)",
-        borderLeft: "1px solid var(--pg-line-strong)", boxShadow: "var(--pg-e4)", overflow: "hidden",
+        borderLeft: "1px solid var(--pg-line-strong)",
+        boxShadow: "var(--pg-rim), var(--pg-e4)", overflow: "hidden",
         animation: reduce ? "none" : "pg-materialize 340ms cubic-bezier(.22,1,.36,1) both",
       };
     case "slideover":
       return {
-        position: "absolute", zIndex: 8, right: 0, bottom: 0,
+        position: "absolute", zIndex: SUMMON_Z, right: 0, bottom: 0,
         width: narrow ? "100%" : "clamp(320px,44%,400px)",
         left: narrow ? 0 : "auto",
         top: narrow ? "auto" : "58px",
@@ -63,27 +84,29 @@ function shellStyle(mode: WsMode, canvasW: number, reduce: boolean): React.CSSPr
         borderTop: narrow ? "1px solid var(--pg-line-strong)" : 0,
         display: "flex", flexDirection: "column", background: "var(--pg-workspace)",
         borderLeft: "1px solid var(--pg-line-strong)",
-        boxShadow: "-28px 0 70px rgba(0,0,0,.34)", overflow: "hidden",
+        boxShadow: "var(--pg-rim), -28px 0 70px rgba(0,0,0,.34)", overflow: "hidden",
         animation: reduce ? "none" : "pg-materialize 240ms cubic-bezier(.22,1,.36,1) both",
       };
     case "popout":
       return {
-        position: "absolute", zIndex: 8, left: "14%", top: "16%",
+        position: "absolute", zIndex: SUMMON_Z, left: "14%", top: "16%",
         width: "clamp(340px,56%,640px)", maxWidth: "calc(100% - 32px)",
         height: "clamp(300px,62%,560px)",
         display: "flex", flexDirection: "column", background: "var(--pg-workspace)",
         border: "1px solid var(--pg-line-authority)", borderRadius: "3px",
-        boxShadow: "0 28px 90px rgba(0,0,0,.55), 0 0 0 1px var(--pg-gold-bloom)", overflow: "hidden",
+        boxShadow: "var(--pg-rim), 0 28px 90px rgba(0,0,0,.55), 0 0 0 1px var(--pg-gold-bloom)",
+        overflow: "hidden",
         animation: reduce ? "none" : "pg-drop 200ms cubic-bezier(.22,1,.36,1) both",
       };
     case "detached":
       return {
-        position: "absolute", zIndex: 8, left: "10%", top: "12%",
+        position: "absolute", zIndex: SUMMON_Z, left: "10%", top: "12%",
         width: "clamp(360px,60%,680px)", maxWidth: "calc(100% - 32px)",
         height: "clamp(320px,68%,620px)",
         display: "flex", flexDirection: "column", background: "var(--pg-workspace)",
         border: "1px solid var(--pg-violet)", borderRadius: "3px",
-        boxShadow: "0 28px 90px rgba(0,0,0,.55), 0 0 0 1px rgba(155,141,224,.25)", overflow: "hidden",
+        boxShadow: "var(--pg-rim), 0 28px 90px rgba(0,0,0,.55), 0 0 0 1px rgba(155,141,224,.25)",
+        overflow: "hidden",
         animation: reduce ? "none" : "pg-drop 200ms cubic-bezier(.22,1,.36,1) both",
       };
   }

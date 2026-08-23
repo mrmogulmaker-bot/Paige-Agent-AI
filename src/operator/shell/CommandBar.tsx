@@ -9,8 +9,18 @@
  *
  * THE PALETTE IS A DROPDOWN UNDER THE BAR, NOT A CENTRED MODAL (§1.4): the bar is
  * `position:relative;flex:1;min-width:0` (L129) and the list anchors `left:0;right:0;
- * top:calc(100% + 7px)` to it, square-cornered, `--pg-raised` on `--pg-line-strong` at
- * `--pg-e4`.
+ * top:calc(100% + 7px)` to it, square-cornered, `--pg-raised` on `--pg-line-strong`.
+ *
+ * WHY IT PAINTED THROUGH, AND WHERE THE FIX ACTUALLY LIVES. This dropdown was reported as
+ * transparent — the sub-tab row and its underline reading straight across "Run a sequence" in
+ * both themes. It was not transparency. Measured on the harness render at 1600, the dropdown's
+ * computed background was `rgb(33,29,39)` in dark and `rgb(255,253,248)` in light at
+ * `opacity: 1` — fully opaque `--pg-raised` — and `elementFromPoint` at a row's centre returned
+ * `<nav class="relative z-[12] …">`. The pack's `z-index:8` here (L142) is CLAMPED inside the
+ * command row's own `z-index:6` stacking context (L128), so the view row's 12 (L10803) painted
+ * over the whole row. Raising this number could never have fixed it; the row had to clear 12,
+ * and it now does (`OperatorShell`, z 13). The pack's 8 stays because it is still correct
+ * WITHIN the row.
  *
  * TWO STATES, WHICH IS WHAT THE PACK DRAWS (§1.6). Closed and open. There is no text input, no
  * query state, no filter, no no-results node and no selected-row treatment anywhere in
@@ -151,7 +161,13 @@ export default function CommandBar({
             position: "absolute", zIndex: 8, left: 0, right: 0, top: "calc(100% + 7px)",
             maxHeight: "min(60vh,470px)", overflow: "auto",
             background: "var(--pg-raised)", border: "1px solid var(--pg-line-strong)",
-            boxShadow: "var(--pg-e4)",
+            // `--pg-lift-3` rather than the pack's `--pg-e4` (L143): CD named `--pg-lift-3` for
+            // menus (2026-08-23), and `--pg-rim` leads it because a raised plate separates by
+            // its seated rim plus a lift, not by fill — `#fffdf8` on `#fbf9f5` is three units.
+            // Both tokens ship at the pack's own values (L21-L24 dark, L28-L31 light); this is
+            // where they are spent, not what they are. The pack pairs them exactly this way at
+            // L9420 and L9477 (`var(--pg-rim), var(--pg-lift-N)`).
+            boxShadow: "var(--pg-rim), var(--pg-lift-3)",
             animation: reduce ? "none" : "pg-drop 140ms cubic-bezier(.22,1,.36,1) both",
           }}
         >
