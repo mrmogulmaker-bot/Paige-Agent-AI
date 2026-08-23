@@ -195,3 +195,15 @@ The measured baseline it establishes, so drift is visible: **442 of 1,774 author
 present in `src/operator/` — 25%.** That number should only ever go up.
 
 ---
+
+## NO DOCUMENT GETS TO ENUMERATE THE PACK (owner ruling, 2026-08-23)
+
+*"PACK-INVENTORY-v3.md is the index because it's generated from the file and lists everything,
+including what's unported. Every other doc is a note on a part."*
+
+A partial transcription that advertises completeness is the exact mechanism that hid the Paige
+spine: `PORT-SPEC` listed eleven sections, wrote five, and every session that opened it read a
+table of contents as a map of the pack. **A doc covering part of the pack says so at the top,
+in its first screenful, and never lists what it does not contain.** If you find yourself writing
+a Contents that promises sections you are not writing in the same pass, delete the promise
+rather than the work.

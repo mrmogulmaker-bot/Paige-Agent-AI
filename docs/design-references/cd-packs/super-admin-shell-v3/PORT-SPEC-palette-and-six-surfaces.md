@@ -1,5 +1,16 @@
 # PORT SPEC — Command palette (⌘K / summon) and six unported surfaces
 
+> **SCOPE — owner ruling, 2026-08-23. This covers the palette and six surfaces ONLY.
+> Everything else, read the pack.** This document does not enumerate v3 and must never be
+> read as if it did. The index of the whole pack — every file, every render block, every
+> catalogue, and what is unported — is `docs/design-references/PACK-INVENTORY-v3.md`,
+> generated from the files themselves. Owner, verbatim: *"a partial transcription that
+> advertises completeness is the exact mechanism that hid the spine."*
+>
+> Its Contents once listed eleven sections; five were ever written. The phantom six are
+> struck below rather than filled in — the pack is the source, and a second partial
+> transcription would repeat the failure at greater length.
+
 > **What this document is.** A transcription of what Claude Design already drew, taken from
 > **`docs/design-references/cd-packs/super-admin-shell-v3/PAIGE Super Admin Shell v3.dc.html`
 > (11,358 lines)** and the two scripts that file loads in its `<helmet>` —
@@ -29,12 +40,13 @@
 3. [Platform hours](#3-platform-hours)
 4. [Marketplace submissions](#4-marketplace-submissions)
 5. [Support inbox](#5-support-inbox)
-6. [Compose — outbound comms](#6-compose--outbound-comms)
-7. [Integrations grid](#7-integrations-grid)
-8. [Collapse breakpoints](#8-collapse-breakpoints)
-9. [PACK SILENT — ask CD (consolidated)](#9-pack-silent--ask-cd-consolidated)
-10. [Pack self-contradictions (reported, not resolved)](#10-pack-self-contradictions-reported-not-resolved)
-11. [Fixture counts](#11-fixture-counts)
+
+**That is the whole document.** Six further sections were once listed here — Compose,
+Integrations grid, Collapse breakpoints, a consolidated PACK SILENT, pack self-contradictions
+and fixture counts. They were never written, and by owner ruling they will not be: read the
+pack for those surfaces, and `PACK-INVENTORY-v3.md` for the index. (§5's prose still refers to
+"the Relationships → Conversations console (§6)" — that reference is to a section that does not
+exist; the console is in the pack.)
 
 ---
 

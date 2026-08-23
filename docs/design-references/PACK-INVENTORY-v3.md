@@ -510,36 +510,52 @@ CONSTRAINT TRIGGER that a tenant may only rest at `revenue_class='paid'` when th
 
 ---
 
-## 6. Pack self-contradictions — recorded, NOT resolved (§00: CD's to rule)
+## 6. Pack self-contradictions — three RULED by the owner 2026-08-23, four open
 
-1. **The type ladder disagrees with itself.**
-   `CLAUDE-CODE-HANDOFF.md` rule 9: *"Four type sizes. **21 title · 17 figure · 12.5 row · 11
-   label**"* + Analytics at 30px.
-   `design-system-port.md` §2: *"Ladder: **11 / 13 / 16 / 21**."*
-   Our `src/index.css` ships 11/13/16/21 as `--pg-t-label|body|lead|title`, matching
-   `design-system-port.md` and the owner's 2026-08-23 ruling. **Both pack statements are on
-   record; CD rules which binds.**
+Rulings 1, 2 and 5 below are closed and applied to the pack files in the same commit as this
+line. **Because CD regenerates the pack wholesale, all three are standing edits** in the sense
+of `corrections-2026-08-23.md` rev 6: if any of them comes back on the next delivery, that is a
+defect at CD's source, not a patch to re-apply here. Send the locator, do not re-edit.
 
-2. **`stage2-design-package.md` carries a SUPERSEDED token set.** Its §1 tables differ from the
-   shipped `.dc.html` in at least: `--pg-ink-2` dark (`#d4cfd7` vs `#d6d0c9`), `--pg-muted` dark
-   (`#aaa4ae` vs `#aca69d`), `--pg-faint` both themes, `--pg-gold-deep` light (`#9b7848` vs
-   `#7a5c2e`), and **every `--pg-line-*` alpha**. Its §2 declares *"System-safe stacks only — so
-   nothing waits on a webfont"*, superseded by Schibsted Grotesk / Gambetta / JetBrains Mono.
-   Its §3 radii (`--pg-r0` 0 / `-r1` 2px / `-r2` 3px) are superseded by `--pg-r-plate` 13 /
-   `-chip` 9 / `-seal` 11 / `-pill` 999. Its `--pg-e5`, `--pg-s1…s10`, `--pg-t-*` and
-   `--pg-e-out` / `--pg-e-authority` **do not exist in the shell at all.**
-   README flags only the §9 nav table as stale. **The token tables are stale too and are not
-   flagged.** Anyone porting from this file gets the wrong palette.
+1. ~~**The type ladder disagrees with itself.**~~ **RULED 2026-08-23 — ladder is
+   `11 / 13 / 16 / 21`.** Owner: *"Handoff rule 9's 21/17/12.5/11 is from an earlier draft;
+   12.5 and 17 exist nowhere in v3. What ships wins, and what ships is what I ruled."*
+   `CLAUDE-CODE-HANDOFF.md` rule 9 corrected in place, with the superseded values quoted so
+   the correction is legible rather than silent. Matches `design-system-port.md` §2 and our
+   `src/index.css`.
+
+2. ~~**`stage2-design-package.md` carries a SUPERSEDED token set.**~~ **RULED 2026-08-23 —
+   DELETED.** Owner: *"a doc that's right about IA and wrong about colour is worse than a doc
+   that's wrong throughout — nobody distrusts the parts that read correctly."* Its §§1–3 (the
+   colour tables, the system-safe font stack, the `--pg-d1…-editorial` scale, the `--pg-s1…s10`
+   space scale, the five-step elevation table and the `--pg-r0/-r1/-r2/-chamfer/-facet` edge
+   set) are removed and replaced by one pointer at `design-system-port.md`. What they said, for
+   the record: `--pg-ink-2` dark `#d4cfd7` vs the shell's `#d6d0c9`; `--pg-muted` dark `#aaa4ae`
+   vs `#aca69d`; `--pg-gold-deep` light `#9b7848` vs `#7a5c2e`; every `--pg-line-*` alpha; and
+   `--pg-e5` / `--pg-s1…s10` / `--pg-t-*` / `--pg-e-out` / `--pg-e-authority`, none of which
+   exist in the shell.
+   **NOT cut, and flagged rather than second-guessed:** §4 Motion still names `--pg-t-instant`,
+   `--pg-t-quick`, `--pg-t-base`, `--pg-t-considered`, `--pg-t-materialize`, `--pg-t-execute`,
+   `--pg-e-out` and `--pg-e-authority` — **none of which exist in the shell either.** The ruling
+   named the token block, the type stacks and the radii; it did not name motion, and its
+   behavioural table (rail 200ms · workspace materialize 340ms clip-path · authority appear
+   280ms · focus ring 90ms never eased) is real spec that maps onto the shell's keyframes.
+   Left standing, owner's call.
 
 3. **README says the `.dc.html` is 10,022 lines.** It is 11,358.
 
 4. **README calls the pack "rev 2"; `github.md` records corrections through "rev 6".**
 
-5. **`PORT-SPEC` promises 11 sections; 5 exist.** Its own Contents lists §6 Compose · §7
-   Integrations grid · §8 Collapse breakpoints · §9 PACK SILENT consolidated · §10 Pack
-   self-contradictions · §11 Fixture counts. The body ends after §5, and §6 is referenced from
-   inside §5's prose (*"the Relationships → Conversations console (§6)"*) — so it was planned,
-   not written. **§§6–11 are owed.**
+5. ~~**`PORT-SPEC` promises 11 sections; 5 exist.**~~ **RULED 2026-08-23 — Contents struck,
+   §§6–11 will NOT be written.** Owner: *"The pack is the source; a partial transcription that
+   advertises completeness is the exact mechanism that hid the spine."* The phantom six are cut
+   from its Contents and a scope line added at the top: this covers the palette and six surfaces
+   only — everything else, read the pack.
+
+   **The general rule this establishes:** *no document gets to enumerate the pack.*
+   `PACK-INVENTORY-v3.md` is the index because it is generated from the files and lists
+   everything, including what is unported. **Every other doc is a note on a part**, and must say
+   so at the top.
 
 6. **Two surfaces are marked PACK SILENT by the PORT-SPEC itself:** §3 Platform hours and §5
    Support inbox. For Support the spec searched `inbox`/`ticket`/`triage` across all four
@@ -643,11 +659,11 @@ as a locator and it gets fixed at the source it regenerates from."*
 
 | # | Owed | Where recorded |
 |---|---|---|
-| 1 | PORT-SPEC §§6–11 (Compose · Integrations grid · Collapse breakpoints · PACK SILENT consolidated · Self-contradictions · Fixture counts) | PORT-SPEC Contents vs. body |
+| ~~1~~ | ~~PORT-SPEC §§6–11~~ — **RULED: will not be written; Contents struck** | PORT-SPEC header |
 | 2 | Platform hours — PACK SILENT | PORT-SPEC §3 |
 | 3 | Support inbox — does it exist in v3, and where | PORT-SPEC §5 |
-| 4 | Which type ladder binds — handoff rule 9 or design-system-port §2 | §6.1 above |
-| 5 | Whether `stage2-design-package.md`'s token tables are superseded (they differ from the shell) | §6.2 above |
+| ~~4~~ | ~~Which type ladder binds~~ — **RULED: 11 / 13 / 16 / 21** | §6.1 above |
+| ~~5~~ | ~~Whether stage2's token tables are superseded~~ — **RULED: deleted** | §6.2 above |
 | 6 | Absence copy for Fleet "Needs you today" — `absence-copy.md` covers only Relationships and Campaigns | `absence-copy.md` |
 | 7 | A sign-out glyph | no `sign`/`logout`/`exit`/`leave` glyph in `P.PLACES` or `P.CAPS` |
 
