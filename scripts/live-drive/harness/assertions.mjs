@@ -109,3 +109,74 @@ export async function aaAgainstEnv(page, minRatio = 4.5) {
     return { ok: bad.length === 0, detail: bad.slice(0, 6).join("; ") || "none" };
   }, minRatio);
 }
+
+// ── The owner's reject-on-sight list, made mechanical where it can be ──────────────────────
+// Stated 2026-08-23: seven things rejected on sight when frames arrive; everything else is a
+// judgement call to argue rather than reject. Four are measurable and belong here rather than in
+// an eye. Three are NOT mechanically checkable and are named in the report so nobody mistakes a
+// green harness for a green taste pass:
+//   · depth from darkening rather than layered elevation — needs an eye against the pack
+//   · motion on anything that is not real activity — needs to know what is actually running
+//   · gold-as-treatment nuance (a selected rail slot is champagne ring + bloom, NOT gold fill) —
+//     partially covered by goldOnlyOnAct below, but the "ring + bloom" reading is a taste call
+// Absence of a failure here is absence of evidence for those three, not evidence of absence.
+
+/** The spine must never render below 340px at any width. */
+export async function spineFloor(page, min = 340) {
+  const w = await page.$eval("[data-shell-grid]", (e) => {
+    const tracks = getComputedStyle(e).gridTemplateColumns.split(/\s+/).filter(Boolean);
+    return tracks.length ? parseFloat(tracks[tracks.length - 1]) : NaN;
+  }).catch(() => NaN);
+  if (Number.isNaN(w)) return { ok: false, detail: "could not read the spine track" };
+  // A collapsed spine is 0 by design; a spine that is present must clear the floor.
+  return {
+    ok: w === 0 || w >= min,
+    detail: `spine track ${w}px (floor ${min}px; 0 = deliberately collapsed)`,
+  };
+}
+
+/** Four type sizes, three faces. A fifth of either is a reject. */
+export async function typeLadder(page, maxSizes = 4, maxFaces = 3) {
+  const found = await page.evaluate(() => {
+    const sizes = new Set(), faces = new Set();
+    for (const el of document.querySelectorAll("*")) {
+      if (!el.textContent || !el.textContent.trim()) continue;
+      if (!(el.childNodes.length && [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()))) continue;
+      const cs = getComputedStyle(el);
+      sizes.add(Math.round(parseFloat(cs.fontSize) * 2) / 2);
+      faces.add(cs.fontFamily.split(",")[0].replace(/["']/g, "").trim());
+    }
+    return { sizes: [...sizes].sort((a, b) => a - b), faces: [...faces].sort() };
+  });
+  const ok = found.sizes.length <= maxSizes && found.faces.length <= maxFaces;
+  return {
+    ok,
+    detail: `${found.sizes.length} sizes [${found.sizes.join(", ")}] · ${found.faces.length} faces [${found.faces.join(", ")}]`,
+  };
+}
+
+/**
+ * Gold is spent ONLY on the act. A gold FILL on a resting element — a selected rail slot, a border,
+ * an icon — is a reject. Marked act surfaces opt in with data-act.
+ */
+export async function goldOnlyOnAct(page) {
+  return page.evaluate(() => {
+    const goldish = (c) => {
+      const m = c.match(/rgba?\(([^)]+)\)/);
+      if (!m) return false;
+      const [r, g, b, a = "1"] = m[1].split(",").map((n) => parseFloat(n));
+      if (parseFloat(a) < 0.15) return false;
+      // warm, bright, and clearly not neutral
+      return r > 150 && g > 110 && b < 140 && r - b > 60 && r >= g;
+    };
+    const bad = [];
+    for (const el of document.querySelectorAll("*")) {
+      if (el.closest("[data-act]") || el.closest("[data-harness-label]")) continue;
+      const cs = getComputedStyle(el);
+      if (goldish(cs.backgroundColor)) {
+        bad.push(`${el.tagName.toLowerCase()}${el.getAttribute("data-slot") ? `[${el.getAttribute("data-slot")}]` : ""} bg ${cs.backgroundColor}`);
+      }
+    }
+    return { ok: bad.length === 0, detail: bad.slice(0, 6).join("; ") || "none" };
+  });
+}
