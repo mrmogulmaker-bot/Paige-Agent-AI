@@ -418,3 +418,42 @@ returns on exit.
 exit restores NULL + audited · unknown tenant raises `tenant_not_found`/P0002 · a tenant-tier caller raises
 `operator_scope_forbidden`/42501 on BOTH functions. Cleanup confirmed: 0 functions, 0 audit rows, 0 scoped
 operators left behind. §32.a persisted-apply owed post-merge.
+
+
+---
+
+## Super Admin v3 install — rulings (owner + Claude Design, 2026-08-23)
+
+**R1 DISSOLVED, not answered.** "Which console survives, `/operator` or `/admin`?" was malformed.
+**`admin` is never a URL.** There is ONE operator console; godMode/admin is a **role and scope band
+inside it**. Consequence: the divergent landing constants (`resolveLandingRoute.ts` →
+`/operator/fleet/tenants` vs `JoinPlatform.tsx` → `/admin/platform/tenants`) are a **bug with two
+answers**, not a fork — reconciled in Round 0 by importing the one `GOD_CONSOLE` from
+`operatorTarget.ts`. Do not re-open R1 as an unanswered question.
+
+**Design is source of truth at the FUNCTION level.** The 2026-08-18 ruling ("if Claude Design made
+it, that's how it's supposed to be") previously read as whole surfaces; it now reads one level down,
+to individual functions. Trust Compass is the worked example — same function, but where it lands and
+how it reads belong to the design, and the implementation is re-imagined behind that surface.
+**A round never begins by asking whether the design can accommodate an existing shape; it begins by
+asking what wiring the designed shape requires.**
+
+**Round-boundary rule.** When a round needs a surface a later round draws, do the **model
+correction** and wait for the surface. Never build a fragment of the later round's geometry to hang
+something on. (Applied twice: the scope band, then the act-as exit control.)
+
+**Act-as is a scope change, not a navigation.** `switchTenant` already IS the mutation — audited RPC
+→ `activeTenantId` on the one shared provider → `invalidateQueries`. The `window.location.assign`
+on top was redundant and was the one-way door. Its defending comment described **per-instance**
+`useTenantContext`, an architecture replaced 2026-07-28; the reload outlived its reason by four weeks
+because the comment kept asserting it.
+
+**Slotless capabilities reach the command palette, not a 7th slot.** Sub-tab count is NOT slot
+pressure. Every homeless sub-tab is a view, a summoned surface, or a mechanism that was never a place.
+Anything without a rail slot is found by **search, not browsing** — several capabilities legitimately
+END as permanent palette entries. Unbuilt slots use the pack's **absence treatment**
+(`hasAbsence`/`absenceTitle`/`absenceBody`), never an invented empty state.
+
+**Verification posture.** Auth-gated surfaces are checked by `scripts/live-drive/harness/`
+(geometry, mocked provider, real IA). **§32.c is NOT discharged by it** — the harness proves
+geometry, never that the authenticated console renders. See `cd-pack-port-playbook.md` §5–6.

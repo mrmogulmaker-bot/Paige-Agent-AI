@@ -195,3 +195,85 @@ detail surface. Never fabricate the id/timeline, and don't build two competing d
 
 **Sources verified 2026-08-19** against prod (`xygzykjyynhzqytbqnzu`): registry domain counts, the
 latest operator run (`check_count 10, pass 4, fail 1`), and per-finding skip reasons.
+
+---
+
+## 5. Verifying design fidelity — the harness (added 2026-08-23, Super Admin v3 install)
+
+**The problem this solves.** Every operator surface is auth-gated. A headless CI/remote session
+has no credentials and no reach to prod, so it cannot render the real console — which historically
+meant design fidelity was checked by reading JSX and hoping, with the owner catching the misses
+live. That is the burden §5/§32.c say is ours, not his.
+
+**`scripts/live-drive/harness/`** renders our chrome with **auth and data mocked** and measures the
+five properties the design is diffed against:
+
+| Check | What it catches |
+|---|---|
+| `slotsInOrder` | a slot added, dropped, or reordered |
+| `shellGrid` | wrong track count / geometry drift |
+| `minWidthZero` | a grid/flex child left at `min-width:auto` — the defect that hit **six times** in design |
+| `noDocumentScrollbar` | any surface that stopped fitting its viewport |
+| `aaAgainstEnv` | sub-AA text — measured against `--pg-env`, the TIGHTEST ground, never `--pg-canvas` |
+
+Run: `node scripts/live-drive/harness/shell-harness.mjs --url <url>` · self-test:
+`npm run harness:selftest`.
+
+### The three rules the harness must keep (owner-set, 2026-08-23)
+
+1. **Mock the provider, never the contract.** The IA is read as shipped. A harness handed a
+   fixtured slot list can only assert the geometry it was given — it could never catch a
+   slot-count regression, which is one of the five things it exists to catch.
+2. **Negative-control every arm.** A fixture per defect, each turning exactly its own check red,
+   plus a clean control that passes all five. A fixture that trips two checks is a muddy control
+   and cannot tell you which check works — the first contrast fixture did exactly that and was
+   isolated.
+3. **Label the frame, not the filename.** `harness render · not live` is burned into the image.
+   Metadata is lost the instant a frame is pasted into a conversation — which is precisely how
+   mislabelled theme frames travelled once already. The label is injected only AFTER measurement,
+   and the harness **refuses to write a frame whose label is not verifiably on screen.**
+
+### Two things that are counter-intuitive and cost time if unknown
+
+- **A screenshot is not a test.** Four of the five defect fixtures render **byte-identical**. A
+  missing `min-width:0` with no long string to provoke it, a sub-AA colour on small text, and
+  content below the fold all look the same at viewport scale. **The assertions are the evidence;
+  the frame is only the record.** Never review a clean-looking frame and conclude the checks passed.
+- **What the eye can and cannot do.** A human reviewer catches geometry, proportion, rhythm, type
+  and colour *relationships*. A human cannot see an unprovoked `min-width` defect or tell 4.3:1
+  from 4.5:1. Those belong to the assertions, and the assertions win over the eye.
+
+**§32.c is NOT discharged by this.** The harness proves geometry. It cannot prove the
+authenticated console renders. Any report that lets a harness pass read as a live drive is the
+same false-green class as a sweep over compressed bytes.
+
+## 6. Standing model rules for the operator console (owner/CD, 2026-08-23)
+
+These are *model* facts, not preferences. Getting them wrong produces surfaces that look right
+and are wrong.
+
+- **`admin` is never a URL.** There is ONE operator console; godMode/admin is a **role and a scope
+  band inside it**. Any question shaped "which console wins?" is malformed.
+- **Act-as is a scope change, not a navigation.** `P.SCOPES` = rest / read / act, mutated by
+  `cycleScope`/`exitScope` (both `setState`, never routing). The decisive proof is `exitScope`'s own
+  announcement: *"active_tenant_id returned to NULL"* — scope 0 IS `tenant_id IS NULL`, so act-as is
+  the value of one column. Scope is **broadcast, not routed**, which is why it lands in every
+  detached window; a route-based act-as structurally cannot do that.
+- **The design is source of truth at the FUNCTION level, not just the surface level.** A round never
+  begins by asking whether the design can accommodate an existing shape. It begins by asking **what
+  wiring the designed shape requires.** (Trust Compass is the worked example: same function, but
+  where it lands and how it reads belong to the design.)
+- **Round boundaries:** when a round needs a surface a later round draws, do the **model correction**
+  and wait for the surface. Never build a fragment of the later round's geometry to hang something on.
+- **Sub-tab count is not slot pressure.** 83 shipped sub-tabs against 6 slots and 32 views is not an
+  argument for a 7th slot. Every homeless sub-tab is a **view**, a **summoned surface**, or a
+  **mechanism that was never a place** (Follow-ups became an automation; Sequences folded into a step
+  rail). Only the residue after that triage is a real gap.
+- **Anything without a rail slot is reached through the command palette**, not through an added slot
+  and not by leaving it undiscoverable: *"a capability opens its own surface and retires when you
+  close it. None holds a place in the rail."* Palette entries carry per-row notes, which is where a
+  pre-triage destination belongs. Several capabilities legitimately END as permanent palette
+  entries — that is the model, not a compromise.
+- **An unbuilt slot uses the pack's own absence treatment** (`hasAbsence` / `absenceTitle` /
+  `absenceBody`), never an invented empty state. Absence is already designed, and §13 governs the
+  copy: say what is missing and why.
