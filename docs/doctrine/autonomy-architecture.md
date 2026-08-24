@@ -227,3 +227,95 @@ comment about tags — and the halves overlap (*Deal won* / *A deal is won*, *Bo
 booking is made*, *Deal lost* / *A deal is lost*, *Campaign halted* / *A campaign is halted*). The
 80 count above is the raw row count and is therefore an upper bound on distinct triggers. Reported;
 not reconciled here (§00 — CD rules on its own catalogue).
+
+---
+
+# 8. Full auto, and what it costs — the metering question
+
+**Owner ruling, 2026-08-24:** *"Yes we should have the ability to go full auto. We do need to check
+out how that metering would work out on each Tier along side of this. It's gonna matter from us
+being billed and how we bill our tenants."*
+
+## 8.1 Full auto, as shipped
+
+The daily posture may now RAISE, not only lower. **The direction decides the authority:**
+
+| | who may | default | max |
+|---|---|---|---|
+| **lower** (posture ≤ ceiling) | `is_platform_operator()` — super_admin OR platform_admin | 24h | 168h |
+| **raise** (posture > ceiling) | `is_platform_owner()` — super_admin only | **4h** | **24h** |
+
+Restraining her is a safety act and a delegated operator may do it without God tier. Widening what
+she may do is an authority act, and §53 freezes that class at super_admin whether it lasts an hour
+or forever. A raise is shorter because an unattended full-auto window is the most expensive and
+least reversible state the platform has.
+
+**A temporary raise is SAFER than the alternative it replaces.** Full auto was already reachable —
+move the ceiling to 4 — and that is worse, because a ceiling is permanent. "Set it to 4 for the
+afternoon" becomes 4 forever until somebody remembers. A raising posture expires by itself, is
+audited as its own action (`platform.trust_posture.raised`), and carries `above_ceiling` on the
+record so a reader can say *"she is running above your standing ceiling until 18:00"* rather than
+just showing a number.
+
+## 8.2 What full auto costs today — measured, not estimated
+
+Queried on prod, 2026-08-24:
+
+| | |
+|---|---:|
+| LLM calls traced (`paige_llm_trace`) | **639** |
+| Estimated cost of those calls | **$1.38** |
+| Rows ever written to `platform_metered_events` | **0** |
+| Rows in `platform_usage_events` | 86 — TTS/STT only, no LLM |
+
+**Paige's token spend is observable and is not billable.** `paige_llm_trace` records it per call,
+per tenant, with `cost_estimate_usd` and a `cost_basis` — and its own column comment is careful to
+say ESTIMATE, never a bill. Nothing carries it into either billing table. `platform_metered_events`
+has the right columns for this — `wholesale_cost_usd`, `tenant_billing_method`,
+`tenant_retail_charge_usd`, `provider` — and has never been written to by anything.
+
+**No plan carries an AI allowance.** `platform_subscription_plans` has `included_seats` and
+`included_contacts`. There is no included-usage column, no token allowance, no spend cap, and no
+per-tier autonomy entitlement anywhere in the schema.
+
+## 8.3 Why autonomy changes the arithmetic
+
+Unit cost does not change with autonomy. **Volume does, and the rate limiter disappears.**
+
+At `confirm`, a human is in the loop on every act, so the human IS the throttle — 639 calls and
+$1.38 is what supervised use looks like. At `auto`, the throttle is gone: a process fires on its
+trigger, Paige's sub-agents fan out (§14), and nothing between the trigger and the spend asks a
+person anything. That is the point of the feature and it is also the exposure.
+
+Two directions of exposure, and they are not symmetric:
+
+1. **What we get billed.** Provider spend is ours whatever the tenant pays. Uncapped autonomy on a
+   tenant we bill a flat subscription is a margin hole that scales with how much they trust her.
+   §17 already names the mitigation — *"the Model Router is the margin"* — and the router exists;
+   what does not exist is a budget it answers to.
+2. **What we bill them.** §38's boundary is untouched by any of this: metered AI is Paige's OWN
+   rail (Engine-2 usage, L1/L3), tenant→client money is not ours. So this is billable revenue we
+   are simply not collecting, not a boundary question.
+
+## 8.4 What has to exist, in order
+
+Named as work rather than decided here — several of these need an owner ruling on price and
+policy, not an engineering choice.
+
+- **M1 · Carry the trace into the meter.** `paige_llm_trace` → `platform_metered_events` with
+  `wholesale_cost_usd` from the real basis. One writer, at the router seam, so every provider and
+  every caller is covered by construction rather than per-call-site. This is the prerequisite for
+  everything below and needs no pricing decision.
+- **M2 · A per-tier allowance on the plan.** `platform_subscription_plans` gains an included-usage
+  column and the tiers get a number. **Owner ruling needed:** what each tier includes.
+- **M3 · A budget the autonomy layer answers to.** A tenant-scoped spend budget, read by the same
+  clamp that reads the ceiling, so `effective` can be forced down when the budget is exhausted —
+  autonomy and affordability resolved in ONE place rather than two systems disagreeing.
+- **M4 · Full auto asks what it will cost.** A raising posture should state the burn rate it is
+  about to unlock before it is confirmed. The trace already has the history to project it.
+- **M5 · Overage: bill, throttle, or stop.** **Owner ruling needed**, and it differs per tier —
+  an Agency reselling to sub-accounts is a different answer from a Solo tenant.
+
+**The honest state until M1 lands:** full auto is available and its cost is visible only after the
+fact, in a trace nobody is billed for. That is acceptable at 639 calls and $1.38 with no paying
+tenants on it. It is not acceptable at launch, and M1 is small.

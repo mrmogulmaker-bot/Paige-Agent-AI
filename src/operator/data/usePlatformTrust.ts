@@ -50,9 +50,16 @@ const GRANT_OF_MODE: Record<string, 0 | 1 | 2> = { auto: 0, confirm: 1, off: 2 }
 /**
  * `posture` — the DAILY MODE (owner ruling 2026-08-24, pointing at Claude Code's own mode sheet:
  * *"It acts as a daily in the Chat the same way these features are set here for you."*). A rung
- * set for a few hours that ALWAYS expires, and that can only ever sit at or BELOW the ceiling.
- * `active` is resolved server-side against `now()`, so a lapsed posture reports itself lapsed
- * rather than disappearing — the chat can say it ran out instead of quietly showing the ceiling.
+ * set for a few hours that ALWAYS expires. `active` is resolved server-side against `now()`, so a
+ * lapsed posture reports itself lapsed rather than disappearing — the chat can say it ran out
+ * instead of quietly showing the ceiling again.
+ *
+ * IT MAY RAISE AS WELL AS LOWER (owner ruling, same day: *"Yes we should have the ability to go
+ * full auto."*). The direction decides the authority, not the rung: lowering is any platform
+ * operator, raising is super_admin only. A raise is also shorter — 4h by default, 24h maximum —
+ * because an unattended full-auto window is the most expensive state the platform has. Both
+ * still expire, which is what makes a temporary raise safer than moving the ceiling to 4 and
+ * forgetting.
  */
 export type TrustPosture = {
   readonly level: SpineTrustLevel;
@@ -60,6 +67,8 @@ export type TrustPosture = {
   readonly until: string;
   readonly reason: string | null;
   readonly active: boolean;
+  /** True while she is running ABOVE the standing ceiling — worth saying out loud, not deriving. */
+  readonly aboveCeiling: boolean;
 };
 
 export type PlatformTrust = {
@@ -71,7 +80,9 @@ export type PlatformTrust = {
   /**
    * What actually binds Paige RIGHT NOW: the posture while one is live, otherwise the ceiling.
    * **Every clamp reads this, never `level`.** Reading the ceiling would ignore a brake the
-   * operator has pulled for the day, which is the one direction a governance read must not err in.
+   * operator pulled for the day AND ignore a full-auto window they opened — the read must not err
+   * in either direction, and since the posture may now sit either side of the ceiling, the server
+   * returns the answer rather than the client deriving it from two numbers.
    */
   effective: SpineTrustLevel | null;
   posture: TrustPosture | null;
@@ -86,10 +97,11 @@ export type PlatformTrust = {
   /** Moves the ceiling. Rejected server-side for anyone below super_admin (§53). */
   setLevel: (next: SpineTrustLevel) => Promise<void>;
   /**
-   * Sets the daily posture. Wider than `setLevel` on purpose — `is_platform_operator()`, because
-   * a posture can only ever restrain her, so a delegated operator may pull the brake without
-   * holding God tier. Resolves an error string when the server refused (asking above the ceiling
-   * is refused by design), and null on success.
+   * Sets the daily posture. The SERVER decides who may, by direction: lowering is any platform
+   * operator (a brake needs no God tier), raising above the ceiling is super_admin only and is
+   * audited as its own action. `hours` may be omitted — the server defaults it by direction, 24h
+   * for a lowering and 4h for a raise. Resolves the server's own message when refused, and null
+   * on success; the control does not move on a refusal.
    */
   setPosture: (level: SpineTrustLevel, hours?: number, reason?: string) => Promise<string | null>;
   clearPosture: () => Promise<void>;
@@ -138,7 +150,11 @@ type CompassRead = {
   effective?: number;
   away?: string;
   domains?: Record<string, number>;
-  posture?: { level?: number; until?: string; reason?: string | null; active?: boolean } | null;
+  above_ceiling?: boolean;
+  posture?: {
+    level?: number; until?: string; reason?: string | null;
+    active?: boolean; above_ceiling?: boolean;
+  } | null;
 };
 
 /** A rung, or null. Anything outside 0..4 is not coerced — it is refused (§13). */
@@ -149,7 +165,13 @@ function rung(v: unknown): SpineTrustLevel | null {
 function readPosture(p: CompassRead["posture"]): TrustPosture | null {
   const level = rung(p?.level);
   if (!p || level === null || !p.until) return null;
-  return { level, until: p.until, reason: p.reason ?? null, active: p.active === true };
+  return {
+    level,
+    until: p.until,
+    reason: p.reason ?? null,
+    active: p.active === true,
+    aboveCeiling: p.above_ceiling === true,
+  };
 }
 
 function useTrustRead(enabled: boolean): PlatformTrust {
@@ -250,10 +272,12 @@ function useTrustRead(enabled: boolean): PlatformTrust {
   }, [applyCompass]);
 
   const setPosture = useCallback(
-    async (next: SpineTrustLevel, hours = 24, reason?: string) => {
+    async (next: SpineTrustLevel, hours?: number, reason?: string) => {
       const { data, error: rpcError } = await untypedRpc()("set_trust_posture", {
         _level: next,
-        _hours: hours,
+        // Omitted rather than defaulted here, so the SERVER picks by direction — a client default
+        // of 24 would silently ask for a 24h full-auto window the server then refuses.
+        ...(hours === undefined ? {} : { _hours: hours }),
         _reason: reason ?? null,
       });
       if (rpcError) {

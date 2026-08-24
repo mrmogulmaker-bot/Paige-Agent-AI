@@ -2353,10 +2353,22 @@ task will they allow Paige, her other Agents etc to manage on their own."*
 - **The tenant ASKS and Paige builds it (§10/§15).** A tenant describes the process in chat; Paige
   composes the trigger, conditions and acts and files it — born at the floor, never above her own
   ceiling, the same rule her sub-agents are spun up under.
+- **FULL AUTO EXISTS, AND THE DIRECTION DECIDES THE AUTHORITY (owner ruling, same day).** The
+  daily posture may RAISE above the ceiling, not only lower — because a temporary raise that
+  expires is safer than permanently moving the ceiling and forgetting. Lowering is any platform
+  operator (a brake needs no God tier); RAISING is super_admin only, defaults to 4 hours, caps at
+  24, and is audited as its own action. Both always expire.
+- **AUTONOMY IS A COST DECISION AS WELL AS A TRUST ONE.** At `confirm` the human is the throttle;
+  at `auto` there is none. Measured 2026-08-24: 639 LLM calls traced, $1.38 estimated, and **zero
+  rows ever written to `platform_metered_events`** — her spend is observable and not billable, and
+  no plan carries an AI allowance. Any autonomy work that widens what runs unattended states its
+  metering consequence; the sequence is §8 of the architecture doc, and M1 (carry the trace into
+  the meter) is the prerequisite for all of it.
 - **The test, every time:** *"Is this autonomy decision one a business owner would actually
   recognise — a repeatable process they can name — or am I asking them to grant a tool? And does
-  the grant still pass through the floor and the ceiling before anything runs?"* If it is a tool in
-  front of a human, or the grant skips a clamp, it is not §67-clean.
+  the grant still pass through the floor and the ceiling before anything runs — and do I know what
+  it costs when nobody is watching?"* If it is a tool in front of a human, or the grant skips a
+  clamp, or it spends unmetered, it is not §67-clean.
 
 **Cross-references:** §16 (the `auto | confirm | off` lanes a grant is expressed in — unchanged),
 §8 (the action bus this extends rather than forks), §36 (intuitiveness — the reason the unit is a
