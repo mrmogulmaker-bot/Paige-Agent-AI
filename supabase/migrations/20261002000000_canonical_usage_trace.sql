@@ -642,11 +642,26 @@ COMMENT ON FUNCTION public.meter_llm_trace() IS
 -- backfill, so every trace that already existed is permanently uncosted. Without this bound the
 -- detectors below would be born reporting 213 rows on prod and would be crying wolf from their
 -- first query — a detector whose "expected empty" is never empty teaches everyone to ignore it.
-CREATE OR REPLACE FUNCTION public.llm_meter_bridge_active_from() RETURNS timestamptz
-LANGUAGE sql IMMUTABLE
-SET search_path TO ''
-AS $$ SELECT TIMESTAMPTZ '2026-08-24T00:00:00Z' $$;
+-- The marker is RECORDED, not guessed. An earlier draft hardcoded a date literal and the proof
+-- immediately caught why that is wrong: any real trace written between midnight and the moment the
+-- migration lands falls inside the window with no ledger row, so the detector opens reporting
+-- failures that are not failures. `now()` at apply time is the only value that is exactly right,
+-- and it is self-recording — a re-apply cannot silently move it, because the INSERT is guarded.
+CREATE TABLE IF NOT EXISTS public.paige_llm_meter_bridge (
+  singleton   boolean     PRIMARY KEY DEFAULT true CHECK (singleton),
+  active_from timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO public.paige_llm_meter_bridge (singleton) VALUES (true) ON CONFLICT (singleton) DO NOTHING;
 
+CREATE OR REPLACE FUNCTION public.llm_meter_bridge_active_from() RETURNS timestamptz
+LANGUAGE sql STABLE
+SET search_path TO ''
+AS $$ SELECT active_from FROM public.paige_llm_meter_bridge WHERE singleton $$;
+
+COMMENT ON TABLE public.paige_llm_meter_bridge IS
+  'One row, recording the instant the meter bridge began covering new traces. Exists so the '
+  'detectors have an exact boundary instead of a hardcoded date that is wrong by however long '
+  'passed between midnight and the migration landing.';
 COMMENT ON FUNCTION public.llm_meter_bridge_active_from() IS
   'The instant the meter bridge began covering new traces. Rows older than this were never eligible '
   '(the trigger is AFTER INSERT and nothing was backfilled), so the detectors exclude them rather '
@@ -851,12 +866,17 @@ GRANT EXECUTE ON FUNCTION public.llm_meter_bridge_active_from()                 
 
 -- Tables: SELECT to authenticated is what lets the operator-read RLS policy fire at all; the policy,
 -- not the grant, is what restricts it to operators. anon gets nothing.
-REVOKE ALL ON TABLE public.paige_model_pricing    FROM PUBLIC, anon;
-REVOKE ALL ON TABLE public.paige_llm_cost_ledger  FROM PUBLIC, anon;
-GRANT SELECT ON TABLE public.paige_model_pricing   TO authenticated;
-GRANT SELECT ON TABLE public.paige_llm_cost_ledger TO authenticated;
-GRANT ALL    ON TABLE public.paige_model_pricing   TO service_role;
-GRANT ALL    ON TABLE public.paige_llm_cost_ledger TO service_role;
+REVOKE ALL ON TABLE public.paige_model_pricing     FROM PUBLIC, anon;
+REVOKE ALL ON TABLE public.paige_llm_cost_ledger   FROM PUBLIC, anon;
+REVOKE ALL ON TABLE public.paige_llm_meter_bridge  FROM PUBLIC, anon;
+GRANT SELECT ON TABLE public.paige_model_pricing    TO authenticated;
+GRANT SELECT ON TABLE public.paige_llm_cost_ledger  TO authenticated;
+-- The activation instant is not sensitive and the invoker detectors read it through the function,
+-- so authenticated needs SELECT here or those views return nothing for anyone.
+GRANT SELECT ON TABLE public.paige_llm_meter_bridge TO authenticated;
+GRANT ALL    ON TABLE public.paige_model_pricing    TO service_role;
+GRANT ALL    ON TABLE public.paige_llm_cost_ledger  TO service_role;
+GRANT ALL    ON TABLE public.paige_llm_meter_bridge TO service_role;
 
 -- Views: security_invoker decides WHOSE RLS applies; it does not waive the SELECT privilege on the
 -- view itself. Without these grants every reconciliation surface is unreadable.
