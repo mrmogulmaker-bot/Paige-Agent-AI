@@ -414,11 +414,31 @@ CREATE TABLE IF NOT EXISTS public.paige_llm_cost_ledger (
   billable_units        jsonb       NOT NULL DEFAULT '{}'::jsonb,
   wholesale_cost_usd    numeric(18,10),   -- NULL = price unknown. Never defaulted to 0.
   cost_is_estimate      boolean     NOT NULL DEFAULT true,
+  -- [C1-precedence] WHERE the number came from, recorded rather than inferred. Without this a
+  -- legacy router estimate and an authoritative registry price are indistinguishable once written,
+  -- and a reader summing the column cannot tell which rate they are adding up.
+  --   'actual'                 — provider/invoice-confirmed cost.
+  --   'registry'               — priced by estimate_llm_cost_usd() from paige_model_pricing, the
+  --                              versioned rates this migration declares authoritative.
+  --   'legacy_router_estimate' — the pre-existing paige_llm_trace.cost_estimate_usd, written by
+  --                              model-router.ts at ITS OWN rates. Used ONLY when the registry
+  --                              cannot price the row (model_provider/model/pricing_version absent
+  --                              or unpriced). Never relabelled as 'registry' to avoid a NULL.
+  --   NULL                     — no cost figure at all; wholesale_cost_usd is NULL too.
+  cost_source           text,
   currency              text        NOT NULL DEFAULT 'USD',
   created_at            timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT paige_llm_cost_ledger_trace_unique UNIQUE (trace_id),
   CONSTRAINT paige_llm_cost_ledger_scope_allowed CHECK (scope IN ('tenant','platform','unattributed')),
   -- The two states cannot blur: a tenant row must name its tenant, and a tenant-less row must not.
+  CONSTRAINT paige_llm_cost_ledger_cost_source_allowed CHECK (
+    cost_source IS NULL OR cost_source IN ('actual','registry','legacy_router_estimate')),
+  -- Provenance and figure travel together: a priced row must say where the price came from, and an
+  -- unpriced row must not claim a source. This is what stops a future writer from quietly
+  -- back-filling a cost without declaring its rate basis.
+  CONSTRAINT paige_llm_cost_ledger_cost_source_matches_cost CHECK (
+    (wholesale_cost_usd IS NULL AND cost_source IS NULL)
+    OR (wholesale_cost_usd IS NOT NULL AND cost_source IS NOT NULL)),
   CONSTRAINT paige_llm_cost_ledger_scope_matches_tenant CHECK (
     (scope = 'tenant' AND tenant_id IS NOT NULL)
     OR (scope IN ('platform','unattributed') AND tenant_id IS NULL))
@@ -536,7 +556,7 @@ GRANT  ALL    ON TABLE public.platform_metered_events TO service_role;
 -- would return zero rows for every tenant by design. Scope is enforced IN-BODY by the predicate
 -- below (§59: the grant is never the guard), and the projection carries no money column at all.
 -- security-invoker-exempt: tenant usage projection over an operator-only base table; scope enforced in-body, no cost column projected
-CREATE VIEW public.v_tenant_metered_usage
+CREATE OR REPLACE VIEW public.v_tenant_metered_usage
 WITH (security_invoker = off) AS
 SELECT
   m.id,
@@ -606,6 +626,8 @@ DECLARE
   _billable_tokens bigint;
   _cost            numeric;
   _cost_is_est     boolean;
+  _cost_source     text;
+  _registry_cost   numeric;
   _scope           text;
   _classes         jsonb;
 BEGIN
@@ -632,16 +654,43 @@ BEGIN
               ELSE 'unattributed'
             END;
 
-  -- An invoice-confirmed cost wins over an estimate. NULL stays NULL — an unpriced call must never
-  -- become a confident zero ([C7]).
+  -- ── COST PRECEDENCE ([C1], owner ruling 2026-08-24) ───────────────────────────────────────
+  -- An earlier draft of this function put NEW.cost_estimate_usd AHEAD of the registry estimator.
+  -- That was wrong, and wrong in the direction that costs money to believe: cost_estimate_usd is
+  -- written by _shared/model-router.ts at ITS OWN legacy Anthropic rates ($3/$15 per MTok), so
+  -- every Anthropic row would have been banked at ~50% above the $2/$10 rates THIS MIGRATION
+  -- seeds and declares authoritative. The ledger would have contradicted its own price table,
+  -- with no column able to tell you which rate any given row used.
+  --
+  -- The order is now: invoice > authoritative registry > legacy estimate, and each branch RECORDS
+  -- which one it took. The legacy branch is a deliberate, labelled fallback, never a silent one —
+  -- the owner's rule is that a legacy figure must stay visibly distinguishable rather than be
+  -- relabelled as registry-priced merely to avoid a NULL.
+  --
+  -- Why the legacy branch still exists at all: estimate_llm_cost_usd() returns NULL unless
+  -- model_provider AND model AND pricing_version are all present and matched in paige_model_pricing.
+  -- Today's DEPLOYED writer sets none of model_provider/pricing_version, so for every row written
+  -- before the edge-function half of this PR ships, the registry CANNOT price the call. Dropping
+  -- the legacy value there would discard the only cost signal those rows have; keeping it unlabelled
+  -- would launder a legacy rate as an authoritative one. Labelling it is the honest third option.
+  _registry_cost := public.estimate_llm_cost_usd(
+    NEW.model_provider, NEW.model, NEW.pricing_version,
+    COALESCE(NEW.tokens_in_uncached, NEW.tokens_in), NEW.tokens_cache_read,
+    NEW.tokens_cache_write_5m, NEW.tokens_cache_write_1h, NEW.tokens_out);
+
+  IF NEW.cost_actual_usd IS NOT NULL THEN
+    _cost := NEW.cost_actual_usd;      _cost_source := 'actual';
+  ELSIF _registry_cost IS NOT NULL THEN
+    _cost := _registry_cost;           _cost_source := 'registry';
+  ELSIF NEW.cost_estimate_usd IS NOT NULL THEN
+    _cost := NEW.cost_estimate_usd;    _cost_source := 'legacy_router_estimate';
+  ELSE
+    -- Unpriced, and it says so. NULL never becomes a confident zero ([C7]).
+    _cost := NULL;                     _cost_source := NULL;
+  END IF;
+
+  -- 'estimate' means "not an invoice-confirmed figure" — true for BOTH estimate sources.
   _cost_is_est := NEW.cost_actual_usd IS NULL;
-  _cost := COALESCE(
-    NEW.cost_actual_usd,
-    NEW.cost_estimate_usd,
-    public.estimate_llm_cost_usd(
-      NEW.model_provider, NEW.model, NEW.pricing_version,
-      COALESCE(NEW.tokens_in_uncached, NEW.tokens_in), NEW.tokens_cache_read,
-      NEW.tokens_cache_write_5m, NEW.tokens_cache_write_1h, NEW.tokens_out));
 
   -- ── (1) THE COST LEDGER — every scope, operator-only, money lives here and only here.
   INSERT INTO public.paige_llm_cost_ledger (
@@ -650,7 +699,7 @@ BEGIN
     capability, job_kind, tier, status, request_id, attempt, is_retry, is_fallback,
     tokens_in_uncached, tokens_cache_read, tokens_cache_write_5m, tokens_cache_write_1h,
     tokens_out, tokens_reasoning, billable_tokens_total, billable_units,
-    wholesale_cost_usd, cost_is_estimate
+    wholesale_cost_usd, cost_is_estimate, cost_source
   ) VALUES (
     NEW.id, NEW.created_at, _scope, NEW.tenant_id,
     NEW.model_provider, NEW.model, NEW.gateway_provider,
@@ -661,7 +710,7 @@ BEGIN
     NEW.tokens_cache_write_5m, NEW.tokens_cache_write_1h,
     NEW.tokens_out, NEW.tokens_reasoning, _billable_tokens,
     COALESCE(NEW.billable_units, '{}'::jsonb),
-    _cost, _cost_is_est
+    _cost, _cost_is_est, _cost_source
   )
   ON CONFLICT (trace_id) DO NOTHING;
 
@@ -915,6 +964,11 @@ SELECT
   c.tokens_reasoning,     -- diagnostic subset of tokens_out; never billed
   c.billable_units,
   c.wholesale_cost_usd,
+  -- [C1-precedence] Which rate basis produced wholesale_cost_usd: 'actual' | 'registry' |
+  -- 'legacy_router_estimate'. Surfaced so an operator summing this view can SEE that a subtotal
+  -- mixes authoritative registry prices with legacy router estimates, instead of having to know.
+  c.cost_source,
+  (c.cost_source = 'legacy_router_estimate') AS cost_is_legacy_rate,
   (c.wholesale_cost_usd IS NOT NULL) AS cost_known,
   c.cost_is_estimate,
   c.model, c.model_provider, c.gateway_provider, c.billing_provider, c.pricing_version,
@@ -947,6 +1001,14 @@ SELECT
   count(*)                                                                  AS calls,
   count(*) FILTER (WHERE c.wholesale_cost_usd IS NULL)                       AS calls_price_unknown,
   sum(c.wholesale_cost_usd) FILTER (WHERE c.wholesale_cost_usd IS NOT NULL)  AS known_cost_usd,
+  -- [C1-precedence] known_cost_usd can MIX rate bases: an authoritative registry price and a legacy
+  -- router estimate at different rates add up to a number that is not wrong so much as unlabelled.
+  -- These three make the mix visible in the same row as the total, on the same principle as
+  -- calls_price_unknown — a subtotal must carry the caveat that qualifies it, not leave it to a
+  -- reader who would have to already know to go looking.
+  count(*) FILTER (WHERE c.cost_source = 'registry')                          AS calls_priced_registry,
+  count(*) FILTER (WHERE c.cost_source = 'legacy_router_estimate')            AS calls_priced_legacy_rate,
+  sum(c.wholesale_cost_usd) FILTER (WHERE c.cost_source = 'legacy_router_estimate') AS legacy_rate_cost_usd,
   sum(c.billable_tokens_total)                                              AS informational_total_tokens
 FROM public.paige_llm_cost_ledger c
 GROUP BY 1, 2;
@@ -956,7 +1018,9 @@ COMMENT ON VIEW public.v_llm_spend_rollup IS
   'rows whose price is known and calls_price_unknown counts the rest, so a total can never quietly '
   'understate spend by treating an absent price as zero. Read the two together or not at all. '
   'Operator-scoped by the ledger''s RLS — this is the operator COGS surface, and the reason '
-  'platform_metered_events no longer carries a price.';
+  'platform_metered_events no longer carries a price. calls_priced_legacy_rate and '
+  'legacy_rate_cost_usd expose how much of known_cost_usd came from the pre-registry router '
+  'estimate rather than the authoritative rate table — a total that mixes rate bases must say so.';
 
 -- ─── INVOICE RECONCILIATION ──────────────────────────────────────────────────────────────────
 -- When a provider invoice later confirms a real cost, updating the trace propagates to the ledger.

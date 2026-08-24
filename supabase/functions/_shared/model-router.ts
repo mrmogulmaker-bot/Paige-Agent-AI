@@ -23,6 +23,7 @@
 
 import {
   chatCompletionCompat,
+  normalizeClaudeUsage,
   type ClaudeTier,
   CLAUDE_REASONING,
   CLAUDE_CLASSIFICATION,
@@ -200,12 +201,31 @@ export async function routedChatCompletion(jobKind: JobKind, body: OpenAIStyleBo
       task_id: trace?.task_id ?? null,
       agent_id: trace?.agent_id ?? null,
       parent_trace_id: trace?.parent_trace_id ?? null,
+      // [C6] This entry point accepts a TraceCtx, so it must carry the declared scope through.
+      // It enumerates fields rather than spreading, so before this line a caller doing exactly what
+      // TraceCtx documents — passing scope:"platform" — had the declaration dropped here and its
+      // spend classified 'unattributed'. The writer validates the value; this only forwards it.
+      scope: trace?.scope,
       provider,
       model: resp?.model ?? null,
       job_kind: trace?.job_kind ?? jobKind,
       modality: "text",
       tier: route.tier,
       status,
+      // Cache classes through the SAME normalizer the Anthropic paths use (§18 one home), so this
+      // entry point cannot capture a class the others drop or vice versa. chatCompletionCompat
+      // carries Anthropic's native cache keys out on its OpenAI-shaped `usage`, so on the Claude
+      // route they arrive here; on the featherless route they are simply absent and the normalizer
+      // yields NULL for each — "not reported", never a manufactured zero.
+      ...normalizeClaudeUsage({
+        input_tokens: usage.prompt_tokens ?? undefined,
+        output_tokens: usage.completion_tokens ?? undefined,
+        cache_read_input_tokens: usage.cache_read_input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        cache_creation: usage.cache_creation,
+      }),
+      // Explicit after the spread: on an ERROR emit there is no usage at all, and these must stay
+      // whatever the (null) extraction produced rather than being silently re-derived.
       tokens_in: tokensIn,
       tokens_out: tokensOut,
       latency_ms: Date.now() - started,

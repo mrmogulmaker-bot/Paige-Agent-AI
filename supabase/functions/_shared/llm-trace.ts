@@ -131,8 +131,17 @@ export function toExcerpt(value: unknown): { text: string | null; truncated: boo
   return { text: scrubbed.slice(0, EXCERPT_CAP) + "…[truncated]", truncated: true, len: origLen };
 }
 
-/** Only these scalar keys survive into metadata — never a raw opts/headers object (S0/S6). */
-const METADATA_ALLOWLIST = ["caller_function", "actor_role", "retry_of", "attempt", "capped", "low_confidence", "scope"] as const;
+/**
+ * Only these scalar keys survive into metadata — never a raw opts/headers object (S0/S6).
+ *
+ * `scope` is deliberately ABSENT. It was briefly listed here on an UNMERGED, NEVER-DEPLOYED branch
+ * commit, which was the wrong shape twice over: it made the [C6] declaration look wired when nothing
+ * populated it, and it would have let any caller self-declare platform scope through ordinary
+ * metadata and shift its spend off the unattributed ledger. Both were caught in review before the
+ * branch was merged or deployed — no released build ever carried this path. The stored marker is
+ * now written ONLY from the validated top-level TraceRow.scope, below.
+ */
+const METADATA_ALLOWLIST = ["caller_function", "actor_role", "retry_of", "attempt", "capped", "low_confidence"] as const;
 function safeMetadata(meta: Record<string, unknown> | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (!meta) return out;
@@ -206,6 +215,22 @@ export interface TraceRow {
   deliverable_id?: string | null;
   doctrine_gate_hits?: unknown;
   metadata?: Record<string, unknown>;
+  /**
+   * DECLARED SCOPE for a call with no tenant — the [C6] seam, mirrored from TraceCtx so it survives
+   * the hop from the caller's context into the written row.
+   *
+   * This exists as a TOP-LEVEL field, and is deliberately NOT reachable through `metadata`. The
+   * trigger classifies a tenant-less trace as 'platform' on the strength of metadata.scope, and
+   * `metadata` is caller-supplied — so if an ordinary caller could put scope there, any call site
+   * could declare itself platform-scoped and move its own spend off the unattributed ledger. The
+   * allowlist above therefore drops `scope` from caller metadata, and the ONLY way the stored
+   * marker appears is the validated assignment in traceLLMCall.
+   *
+   * Set "platform" ONLY where the call genuinely has no tenant by design. Absent stays absent:
+   * the ledger records 'unattributed' and the call site shows up in v_llm_unattributed_spend to be
+   * repaired, rather than being silently banked as internal burn.
+   */
+  scope?: "platform";
 }
 
 /**
@@ -275,7 +300,15 @@ export function traceLLMCall(row: TraceRow): void {
     deliverable_id: row.deliverable_id ?? null,
     doctrine_gate_hits: row.doctrine_gate_hits ?? null,
     router_version: ROUTER_VERSION,
-    metadata: safeMetadata(row.metadata),
+    // [C6] The declared-scope marker the meter trigger reads (NEW.metadata->>'scope'). Sourced ONLY
+    // from the validated top-level field: caller metadata cannot reach this key (see the allowlist
+    // above), and any value other than the literal "platform" leaves it unset, so an absent or
+    // malformed declaration degrades to 'unattributed' rather than being inferred into 'platform'.
+    // Tenant attribution is unaffected — the trigger checks tenant_id FIRST, so a trace with a real
+    // tenant is classified 'tenant' whatever this says.
+    metadata: row.scope === "platform"
+      ? { ...safeMetadata(row.metadata), scope: "platform" }
+      : safeMetadata(row.metadata),
   };
 
   const write = async () => {

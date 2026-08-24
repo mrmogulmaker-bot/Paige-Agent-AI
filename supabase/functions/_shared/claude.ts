@@ -649,8 +649,26 @@ export async function gatewayCompat(
       job_kind: trace?.job_kind ?? "chat",
       modality: "text",
       status: "success",
-      tokens_in: usage.prompt_tokens ?? null,
-      tokens_out: usage.completion_tokens ?? null,
+      // Cache classes travel through the SAME normalizer as callClaude and the streaming path, so a
+      // class cannot be captured on one Anthropic path and silently dropped on another. Before this,
+      // chatCompletionCompat carried cache_read/cache_creation out in its OpenAI-shaped `usage`
+      // (above) and this trace then read only prompt_tokens/completion_tokens — so every buffered
+      // gateway call wrote NULL cache columns even when Anthropic reported values, and
+      // llm_trace_billable_tokens() omitted those classes from BOTH quantity and cost.
+      // The OpenAI-shaped names are mapped back onto the Anthropic-shaped input the normalizer
+      // takes; the cache keys already carry their native names.
+      ...normalizeClaudeUsage({
+        input_tokens: usage.prompt_tokens ?? undefined,
+        output_tokens: usage.completion_tokens ?? undefined,
+        cache_read_input_tokens: usage.cache_read_input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        cache_creation: usage.cache_creation,
+      }),
+      // Identity, so the versioned registry can price this row at all: estimate_llm_cost_usd()
+      // returns NULL unless model_provider is present. Every sibling Anthropic trace site already
+      // sets these two; this one did not.
+      model_provider: "anthropic",
+      billing_provider: "anthropic",
       latency_ms: Date.now() - started,
       input: parsed.messages,
       output: data?.choices?.[0]?.message?.content ?? null,

@@ -94,6 +94,13 @@ DECLARE
   _t4 uuid := 'd0000000-0000-0000-0000-0000000000f4';  -- reasoning
   _t5 uuid := 'd0000000-0000-0000-0000-0000000000f5';  -- no-reasoning twin
   _t6 uuid := 'd0000000-0000-0000-0000-0000000000f6';  -- SECOND tenant, for the cross-tenant check
+  -- Own id, deliberately NOT _t6. These two fixtures collided on 2026-08-24: the unpriced probe
+  -- hardcoded …f6 as a literal, _t6 was added later for FAIL_4b_CROSS and reused the same value,
+  -- and the second INSERT died on paige_llm_trace_pkey (23505) — aborting the transaction before
+  -- DO block 2 ran at all, so five assertions could never be reached. Worse than the crash: had the
+  -- PK allowed it, the follow-up SELECT below would have read _t6's row and FAIL_UNPRICED would
+  -- have been asserting against the wrong trace entirely.
+  _t7 uuid := 'd0000000-0000-0000-0000-0000000000f7';  -- unpriced-model probe
 BEGIN
   -- ══ 1. VERIFIED PLATFORM SCOPE ════════════════════════════════════════════
   -- No tenant, and the call site DECLARED scope:'platform' in its trace metadata.
@@ -311,10 +318,10 @@ BEGIN
     (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
      tokens_in_uncached,tokens_out)
   VALUES
-    ('d0000000-0000-0000-0000-0000000000f6',_tenant,'groq','meta','groq','llama-3.3-70b-versatile',
+    (_t7,_tenant,'groq','meta','groq','llama-3.3-70b-versatile',
      '2026-08-24','chat','success',3000,300);
   SELECT wholesale_cost_usd INTO _cost FROM public.paige_llm_cost_ledger
-   WHERE trace_id='d0000000-0000-0000-0000-0000000000f6';
+   WHERE trace_id=_t7;
   IF _cost IS NOT NULL THEN
     RAISE EXCEPTION 'FAIL_UNPRICED: an unpriced model produced cost % instead of NULL',_cost; END IF;
 
@@ -516,6 +523,187 @@ END $t$;
 
 DROP TRIGGER __lm_force_ledger_failure_trg ON public.paige_llm_cost_ledger;
 DROP FUNCTION public.__lm_force_ledger_failure();
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- CORRECTIVE PASS, owner ruling 2026-08-24. Three findings whose fix lives in SQL.
+--   FINDING 1  cost precedence: invoice > authoritative registry > legacy estimate, with provenance.
+--   FINDING 2  migration retry safety after a partial, non-transactional apply.
+--   FINDING 3  the trigger's scope classification (the TS half is scripts/metering-corrective-smoke.mjs).
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+DO $t$
+DECLARE
+  _tenant   uuid := 'd0000000-0000-0000-0000-000000001111';
+  _n        int;
+  _cost     numeric;
+  _src      text;
+  _est      boolean;
+  _scope    text;
+  _blocked  boolean;
+  _p1 uuid := 'd0000000-0000-0000-0000-0000000000a1';  -- actual wins
+  _p2 uuid := 'd0000000-0000-0000-0000-0000000000a2';  -- registry beats legacy
+  _p3 uuid := 'd0000000-0000-0000-0000-0000000000a3';  -- legacy fallback
+  _p4 uuid := 'd0000000-0000-0000-0000-0000000000a4';  -- nothing priced at all
+  _s1 uuid := 'd0000000-0000-0000-0000-0000000000b1';  -- declared platform
+  _s2 uuid := 'd0000000-0000-0000-0000-0000000000b2';  -- undeclared, tenant-less
+  _s3 uuid := 'd0000000-0000-0000-0000-0000000000b3';  -- tenant + a platform declaration
+BEGIN
+  -- ══ FINDING 1 — COST PRECEDENCE ═══════════════════════════════════════════════════════════
+  -- 1a. AN INVOICE-CONFIRMED COST WINS over both estimates, and is not labelled an estimate.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_cache_read,tokens_out,cost_estimate_usd,cost_actual_usd)
+  VALUES (_p1,_tenant,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat',
+          'success',12000,4000,1000,0.500000,0.990000);
+  SELECT wholesale_cost_usd, cost_source, cost_is_estimate INTO _cost,_src,_est
+    FROM public.paige_llm_cost_ledger WHERE trace_id=_p1;
+  IF round(_cost,6) <> 0.990000 THEN
+    RAISE EXCEPTION 'FAIL_C1_ACTUAL: invoiced cost did not win — got % (expected 0.990000)',_cost; END IF;
+  IF _src IS DISTINCT FROM 'actual' THEN
+    RAISE EXCEPTION 'FAIL_C1_ACTUAL_SRC: provenance % (expected actual)',_src; END IF;
+  IF _est IS NOT FALSE THEN
+    RAISE EXCEPTION 'FAIL_C1_ACTUAL_EST: an invoiced cost was flagged an estimate'; END IF;
+
+  -- 1b. THE HEADLINE REGRESSION TEST. The registry must beat the legacy router estimate.
+  --     Identical token split to the _t3 fixture → 0.034800 at the official Sonnet 5 rates
+  --     (12000*2.00 + 4000*0.20 + 1000*10.00, per MTok). cost_estimate_usd is deliberately set to
+  --     0.052200 — exactly what the LEGACY $3/$15 rates produce for this same call — so if the old
+  --     COALESCE order ever returns, this assertion reports the stale number by name rather than
+  --     failing on some arbitrary mismatch.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_cache_read,tokens_out,cost_estimate_usd)
+  VALUES (_p2,_tenant,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat',
+          'success',12000,4000,1000,0.052200);
+  SELECT wholesale_cost_usd, cost_source INTO _cost,_src
+    FROM public.paige_llm_cost_ledger WHERE trace_id=_p2;
+  IF round(_cost,6) = 0.052200 THEN
+    RAISE EXCEPTION 'FAIL_C1_STALE_WINS: the LEGACY $3/$15 estimate (0.052200) overrode the '
+                    'authoritative registry price — the ledger is contradicting its own rate table'; END IF;
+  IF round(_cost,6) <> 0.034800 THEN
+    RAISE EXCEPTION 'FAIL_C1_REGISTRY: % (expected 0.034800 from paige_model_pricing)',_cost; END IF;
+  IF _src IS DISTINCT FROM 'registry' THEN
+    RAISE EXCEPTION 'FAIL_C1_REGISTRY_SRC: provenance % (expected registry)',_src; END IF;
+
+  -- 1c. THE LEGACY FALLBACK IS USED ONLY WHEN THE REGISTRY CANNOT PRICE THE ROW, and it says so.
+  --     pricing_version NULL → estimate_llm_cost_usd() returns NULL by its own guard, which is
+  --     exactly the shape every row written by today's DEPLOYED writer has.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out,cost_estimate_usd)
+  VALUES (_p3,_tenant,'anthropic','anthropic','anthropic','claude-sonnet-5',NULL,'chat',
+          'success',1000,100,0.004500);
+  SELECT wholesale_cost_usd, cost_source INTO _cost,_src
+    FROM public.paige_llm_cost_ledger WHERE trace_id=_p3;
+  IF round(_cost,6) <> 0.004500 THEN
+    RAISE EXCEPTION 'FAIL_C1_LEGACY: % (expected the legacy 0.004500 when the registry cannot price)',_cost; END IF;
+  -- 1d. ...AND IT REMAINS IDENTIFIABLE. This is the owner's explicit rule: never relabel a legacy
+  --     figure as registry-priced merely to avoid a NULL.
+  IF _src IS DISTINCT FROM 'legacy_router_estimate' THEN
+    RAISE EXCEPTION 'FAIL_C1_LEGACY_SRC: a legacy estimate was labelled % — it must stay '
+                    'distinguishable from an authoritative registry price',_src; END IF;
+  -- ...and it is visible where sums happen, not only on the row.
+  SELECT calls_priced_legacy_rate INTO _n FROM public.v_llm_spend_rollup
+   WHERE ledger='tenant' AND day=date_trunc('day',(SELECT occurred_at FROM public.paige_llm_cost_ledger WHERE trace_id=_p3));
+  IF COALESCE(_n,0) < 1 THEN
+    RAISE EXCEPTION 'FAIL_C1_LEGACY_ROLLUP: the spend rollup does not disclose that its total '
+                    'includes a legacy-rate row'; END IF;
+
+  -- 1e. NOTHING PRICEABLE AT ALL → NULL cost AND NULL provenance, never a confident zero, and the
+  --     pairing constraint holds (a priced row must name its source; an unpriced row must not).
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out)
+  VALUES (_p4,_tenant,'groq','meta','groq','llama-3.3-70b-versatile',NULL,'chat','success',500,50);
+  SELECT wholesale_cost_usd, cost_source INTO _cost,_src
+    FROM public.paige_llm_cost_ledger WHERE trace_id=_p4;
+  IF _cost IS NOT NULL OR _src IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL_C1_UNPRICED: unpriced row got cost=% source=% (both must be NULL)',_cost,_src; END IF;
+
+  -- ══ FINDING 3 — THE TRIGGER'S SCOPE CLASSIFICATION ════════════════════════════════════════
+  -- 3a. A DECLARED platform call, with no tenant, is recorded as platform.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out,metadata)
+  VALUES (_s1,NULL,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat',
+          'success',100,10,'{"scope":"platform"}'::jsonb);
+  SELECT scope INTO _scope FROM public.paige_llm_cost_ledger WHERE trace_id=_s1;
+  IF _scope IS DISTINCT FROM 'platform' THEN
+    RAISE EXCEPTION 'FAIL_C3_PLATFORM: declared platform call recorded as %',_scope; END IF;
+
+  -- 3b. NO tenant and NO declaration stays UNATTRIBUTED — never inferred into platform. This is the
+  --     owner's boundary 2: the two tenant-less states must not blur into one.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out)
+  VALUES (_s2,NULL,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat','success',100,10);
+  SELECT scope INTO _scope FROM public.paige_llm_cost_ledger WHERE trace_id=_s2;
+  IF _scope IS DISTINCT FROM 'unattributed' THEN
+    RAISE EXCEPTION 'FAIL_C3_UNATTRIBUTED: an undeclared tenant-less call was recorded as % — '
+                    'missing attribution must never be banked as internal burn',_scope; END IF;
+
+  -- 3c. TENANT ATTRIBUTION CANNOT BE OVERRIDDEN. Even carrying a platform declaration, a trace with
+  --     a real tenant classifies as 'tenant' — otherwise a call site could move billable tenant
+  --     usage onto the platform's own ledger and off the tenant's bill.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out,metadata)
+  VALUES (_s3,_tenant,'anthropic','anthropic','anthropic','claude-sonnet-5','2026-08-24','chat',
+          'success',100,10,'{"scope":"platform"}'::jsonb);
+  SELECT scope INTO _scope FROM public.paige_llm_cost_ledger WHERE trace_id=_s3;
+  IF _scope IS DISTINCT FROM 'tenant' THEN
+    RAISE EXCEPTION 'FAIL_C3_TENANT_WINS: a tenant-attributed call was reclassified as % by a '
+                    'scope declaration',_scope; END IF;
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE idempotency_key='llm_trace:'||_s3::text;
+  IF _n<>1 THEN
+    RAISE EXCEPTION 'FAIL_C3_TENANT_BILLED: tenant usage event count % (expected 1) — a platform '
+                    'declaration must not suppress the tenant''s own usage row',_n; END IF;
+
+  -- ══ FINDING 2 — PARTIAL-APPLY / RETRY SAFETY ══════════════════════════════════════════════
+  -- deploy-migrations.yml states plainly (its own §13 caveat block) that `supabase db push` does NOT
+  -- wrap a migration file in a transaction: DDL auto-commits, so if statement N throws, 1..N-1 stay
+  -- committed while the file is NOT recorded in schema_migrations — and the next run re-executes the
+  -- WHOLE file from statement 1. Every object-creating statement must therefore survive a second
+  -- execution. Every object in this migration already exists at this point in the proof, so
+  -- re-running the retry-sensitive statements here reproduces exactly that second pass.
+  BEGIN
+    EXECUTE $x$
+      CREATE OR REPLACE VIEW public.v_tenant_metered_usage
+      WITH (security_invoker = off) AS
+      SELECT m.id, m.tenant_id, m.end_customer_user_id, m.end_customer_contact_id,
+             m.service_category, m.event_type, m.quantity,
+             m.metadata -> 'token_classes'       AS token_classes,
+             m.metadata ->> 'quantity_semantics' AS quantity_semantics,
+             m.occurred_at
+        FROM public.platform_metered_events m
+       WHERE m.tenant_id IS NOT NULL
+         AND (m.tenant_id = public.current_user_tenant_id()
+              OR public.is_platform_owner(auth.uid()))
+    $x$;
+    EXECUTE 'CREATE TABLE IF NOT EXISTS public.paige_llm_meter_bridge (singleton boolean PRIMARY KEY DEFAULT true)';
+    EXECUTE 'ALTER TABLE public.platform_metered_events ALTER COLUMN wholesale_cost_usd DROP NOT NULL';
+    EXECUTE 'ALTER TABLE public.platform_metered_events DROP CONSTRAINT IF EXISTS pme_ai_inference_has_no_price';
+    EXECUTE 'ALTER TABLE public.platform_metered_events ADD CONSTRAINT pme_ai_inference_has_no_price '
+            'CHECK (service_category <> ''ai_inference'' OR wholesale_cost_usd IS NULL)';
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_llm_cost_ledger_time ON public.paige_llm_cost_ledger (occurred_at DESC)';
+    EXECUTE 'INSERT INTO public.paige_llm_meter_bridge (singleton) VALUES (true) ON CONFLICT (singleton) DO NOTHING';
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL_C2_RETRY: re-running a retry-sensitive statement raised %  (%) — a '
+                    'partial apply would wedge every later migration on this file',SQLERRM,SQLSTATE;
+  END;
+
+  -- ...and the retry probe is NOT vacuous: the pre-fix form of that view DOES raise on a second
+  -- execution. If this negative control ever stops raising, the probe above has stopped proving
+  -- anything and must be re-examined rather than trusted.
+  _blocked := false;
+  BEGIN
+    EXECUTE 'CREATE VIEW public.v_tenant_metered_usage AS SELECT 1 AS x';
+  EXCEPTION WHEN duplicate_table OR duplicate_object THEN _blocked := true;
+  END;
+  IF NOT _blocked THEN
+    RAISE EXCEPTION 'FAIL_C2_CONTROL: a bare CREATE VIEW over an existing view did NOT raise, so '
+                    'the retry probe above cannot distinguish retry-safe DDL from retry-fatal DDL'; END IF;
+END $t$;
 
 SELECT 'LLM_METERING_BRIDGE_PROVEN' AS proof;
 ROLLBACK;
