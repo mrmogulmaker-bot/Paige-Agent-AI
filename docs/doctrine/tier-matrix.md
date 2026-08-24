@@ -457,11 +457,22 @@ source in this commit; none is fixed here (this PR touches only this file).
    L10427), so the strip draws **Chat · Memory · Team · Skills · Code**.
    **State: `ported`** — each renders CD's structure and its own stated absence; none reads yet.
    Driven in Chromium, both themes, every face clicked: `ported-surfaces-drive.mjs`.
-   **Honest remainder:** the Code face is materially thinner than CD's frame — `codeVals` (L10256)
-   draws file tabs with dirty marks, a repo strip with its ceiling pill, review cards, a tokenized
-   line-numbered editor, a run log and a limits row. What ships is the file line, the scratch
-   buffer and the ceiling's read/write arm. Porting `codeVals` in full is the next slice, and it is
-   named here rather than left to be discovered.
+   **The Code face's remainder CLOSED the same day (Layer 5b).** It was recorded here as
+   materially thinner than CD's frame — and `codeVals` (L10256–L10424) is now ported whole: the
+   tab strip with dirty marks and close controls, the meta line, the repo strip with its ceiling
+   pill and protected mark, the review block and its merge note, the tokenized line-numbered
+   editor and its plain edit buffer, the output block with its run log, the ceiling-derived act
+   row and the limits drawer.
+   **State: `ported`, with one part genuinely `wired`** — the scratch buffer is real session
+   state (create · edit · dirty mark · save · revert · close), and the Trust Compass rung it
+   answers to is the live `usePlatformTrust` read, so `held`, the review act and the foot's grant
+   are decided by the platform's actual autonomy record. Driven in Chromium end to end:
+   `ported-surfaces-drive.mjs`, "Code face · scratch buffer round trip".
+   **What is still absent, and honestly so:** no repository binding exists — the GitHub provider
+   is `planned` (`paige-writes-code.md` §5) — so the repo strip renders its unbound arm and the
+   review block does not render at all, which is the pack's OWN `onRepo` conditional rather than a
+   stand-in. No runtime is provisioned at any tier, so `Run` requests one, is refused, and the
+   refusal lands on the record. Merge is absent at every rung by design, not gated.
 3. **Three live dead links out of `FleetConsole`.** `FleetConsole.tsx:277` and `:573` navigate to
    `/operator/provisioning`; `:574` navigates to `/operator/paige`. Neither is a slot, so
    `resolveOperatorAddress` returns `{kind:"unknown"}` (`operatorAddress.ts:55`) and the operator

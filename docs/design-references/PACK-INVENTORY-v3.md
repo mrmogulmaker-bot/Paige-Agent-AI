@@ -528,7 +528,7 @@ CONSTRAINT TRIGGER that a tenant may only rest at `revenue_class='paid'` when th
 
 ---
 
-## 6. Pack self-contradictions — three RULED by the owner 2026-08-23, six open
+## 6. Pack self-contradictions — three RULED by the owner 2026-08-23, seven open
 
 Rulings 1, 2 and 5 below are closed and applied to the pack files in the same commit as this
 line. **Because CD regenerates the pack wholesale, all three are standing edits** in the sense
@@ -611,6 +611,19 @@ defect at CD's source, not a patch to re-apply here. Send the locator, do not re
    so the surface has no authored copy for its most frequent empty case. **Owed from CD.** No
    copy was invented for it in the port (§00); the result line counts honestly and the authored
    `storeFoot` says what does not exist.
+
+10. **Two `mindVals` keys are computed and rendered nowhere.** *(Found 2026-08-24, porting
+    `codeVals`.)* `scratchBody` (L10583, both ceiling arms authored in full) and `sandboxActs`
+    (L10589, three buttons including a gold `Teach her a skill`) are built in `mindVals` and have
+    **exactly one hit each across all 11,358 lines — their own assignment.** No `sc-for`, no
+    `sc-if`, no interpolation consumes either. Compare `codeActs` and `codeLimits`, computed in
+    the same return and both rendered at L4100/L4109.
+    **Why this cost us something rather than being trivia:** Layer 5 drew `scratchBody` on the
+    Code face because it reads like code and sits beside the code keys — and the pack draws a
+    tokenized editor there instead. So an unrendered key became a shipped surface for one
+    afternoon. The constants stay exported in `spineFaceContract.ts` (they are CD's words), and
+    nothing renders them. **Owed from CD:** whether these are cut keys, or a Skills-face block
+    that lost its markup. Not resolved here (§00).
 
 ---
 

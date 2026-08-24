@@ -310,6 +310,104 @@ for (const theme of ["dark", "light"]) {
   await page.close();
 }
 
+/**
+ * THE SCRATCH BUFFER, DRIVEN — the one part of the Code face that a jsdom test structurally
+ * cannot reach. `SpineCode.test.tsx` says so itself: this repo has no RTL, its spine tests render
+ * with `react-dom/server`, and a static render can prove the shape but never that `+` creates a
+ * file, that typing marks the tab dirty, that Revert drops the buffer, or that × closes it. Those
+ * are the whole capability on that face, so they are asserted here, in a browser, or nowhere.
+ *
+ * The RUN path is deliberately NOT driven. It is a 700ms timer ending in a refusal, and asserting
+ * a refusal arrives on schedule would be timing the honest failure rather than the feature.
+ */
+{
+  const page = await browser.newPage();
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const errs = [];
+  page.on("pageerror", (e) => {
+    const t = String(e?.message ?? e);
+    if (!isBackendNoise(t)) errs.push(t);
+  });
+  await page.goto(`${BASE}/?at=/operator/fleet/systems-check&theme=dark`, {
+    waitUntil: "networkidle",
+  });
+  await page.waitForTimeout(600);
+  await page.click('[data-spine-face="code"]');
+  await page.waitForTimeout(250);
+
+  const problems = [];
+  const region = '[data-spine-region="code"]';
+
+  const before = await page.textContent(region);
+  if (!before.includes("No file open")) {
+    problems.push("the face did not open on its no-file arm");
+  }
+
+  await page.click(`${region} button[aria-label="New scratch file"]`);
+  await page.waitForTimeout(250);
+  const created = await page.evaluate((sel) => {
+    const root = document.querySelector(sel);
+    return {
+      text: (root?.textContent || "").replace(/\s+/g, " ").trim(),
+      editing: !!root?.querySelector('textarea[aria-label="Edit code"]'),
+      tabs: root?.querySelectorAll('button[aria-label^="Close "]').length ?? 0,
+    };
+  }, region);
+  if (!created.text.includes("scratch_1.py")) problems.push("`+` created no file");
+  // `newScratch` sets `editing:true` — she opens the buffer for you, it is not a read-only add.
+  if (!created.editing) problems.push("the new file did not open in the edit buffer");
+  if (created.tabs !== 1) problems.push(`expected one tab, saw ${created.tabs}`);
+
+  await page.fill(`${region} textarea[aria-label="Edit code"]`, "def f():\n    return 1\n");
+  await page.waitForTimeout(200);
+  const dirty = await page.evaluate((sel) => {
+    const meta = (document.querySelector(sel)?.textContent || "");
+    const mark = document.querySelector(`${sel} button i`);
+    return {
+      unsaved: meta.includes("unsaved"),
+      gold: mark ? getComputedStyle(mark).backgroundColor : "",
+    };
+  }, region);
+  if (!dirty.unsaved) problems.push("typing did not mark the file unsaved");
+  if (!dirty.gold || dirty.gold === "rgba(0, 0, 0, 0)") {
+    problems.push("the tab's dirty diamond stayed transparent while the buffer was dirty");
+  }
+
+  // Revert drops the buffer and returns to the tokenized read view.
+  await page.click(`${region} button:has-text("Revert")`);
+  await page.waitForTimeout(250);
+  const reverted = await page.evaluate((sel) => {
+    const root = document.querySelector(sel);
+    return {
+      editing: !!root?.querySelector('textarea[aria-label="Edit code"]'),
+      text: (root?.textContent || "").replace(/\s+/g, " ").trim(),
+      // The read view is a line-numbered grid; the seed file is two lines.
+      numbered: (root?.textContent || "").includes("Empty scratch file"),
+    };
+  }, region);
+  if (reverted.editing) problems.push("Revert left the edit buffer open");
+  if (reverted.text.includes("unsaved")) problems.push("Revert left the file marked unsaved");
+  if (!reverted.numbered) problems.push("the read view did not render the file's body");
+
+  await page.click(`${region} button[aria-label="Close scratch_1.py"]`);
+  await page.waitForTimeout(250);
+  const closed = await page.textContent(region);
+  if (!closed.includes("Every file was closed")) {
+    problems.push("closing the last file did not return the closed-everything foot");
+  }
+  if (errs.length) problems.push(`page error: ${errs[0]}`);
+
+  const tag = "spine · Code face · scratch buffer round trip";
+  rows.push({ tag, ok: problems.length === 0 });
+  if (problems.length) {
+    fails.push(`${tag}\n      ${problems.join("\n      ")}`);
+    console.log(`FAIL  ${tag}\n      ${problems.join("\n      ")}`);
+  } else {
+    console.log(`pass  ${tag}  (create · edit · dirty · revert · close)`);
+  }
+  await page.close();
+}
+
 await browser.close();
 
 console.log(

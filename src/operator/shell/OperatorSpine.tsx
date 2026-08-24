@@ -45,10 +45,12 @@
  * and every callback come in as props and go back out. If a later round finds itself writing
  * that logic in this file, the seam has been crossed.
  *
- * THE FACE BODIES OTHER THAN CHAT ARE THE CALLER'S NODE. Memory (L3868–L3901), Team
- * (L3904–L3938), Skills (L3941–L3983) and Code (L3986–L4062) each read a registry that does
- * not exist here yet, so each arrives as a region `content`. The chat face has a ported body
- * (`SpineConversation`) because its shape is fully determined by the transcript contract.
+ * ALL FIVE FACES CARRY A BODY AS OF 2026-08-24 (Layer 5, and 5b for Code). Memory
+ * (L3868–L3901), Team (L3904–L3938), Skills (L3941–L3983) and Code (L4015–L4120) are ported in
+ * `spine/faces/SpineFaces.tsx`; each takes its rows as props, ships with none, and renders its
+ * own stated absence. The paragraph above this one used to say they arrive as the caller's node
+ * and that none was ported — true when written, false the moment Layer 5 landed, and left
+ * readable it would send the next session looking for a registry that is now right here.
  */
 import type { ReactElement, ReactNode } from "react";
 import { cloneElement, isValidElement, useMemo, useState } from "react";
@@ -105,11 +107,11 @@ export type SpineRegion = {
  * exists. So the face is real now and gets truer as the engine lands, which is the opposite of a
  * placeholder.
  *
- * THE OTHER FOUR STAY `null`, and that is the collapse rule doing its job at face scale rather
- * than track scale. CD: *"A collapsed spine is honest; an empty one asserts a capability that
- * isn't there."* Memory · Team · Skills · Code have their pack builders — `mindVals` L10288,
- * `codeVals` L10156, plus the agent and skill rosters — and none is ported, so none appears in
- * the face strip. Each becomes a tab the day its builder lands, and not before.
+ * THE OTHER FOUR OPENED 2026-08-24, on the same rule rather than in spite of it. CD: *"A
+ * collapsed spine is honest; an empty one asserts a capability that isn't there."* That is the
+ * collapse rule at face scale — a face appears when it has a body, not before — and the four
+ * now have theirs (`mindVals` L10427 · `codeVals` L10256). The gate never moved; what changed
+ * is that there is something behind each tab.
  */
 export const SPINE_REGIONS: readonly SpineRegion[] = [
   { id: "chat", label: "Chat", note: "What she is saying and doing", content: <SpineConversation /> },
@@ -271,7 +273,33 @@ export default function OperatorSpine({
       ? cloneElement(rawBody as ReactElement<{ trust?: SpineTrust | null }>, {
           trust: (rawBody.props as { trust?: SpineTrust | null }).trust ?? resolvedTrust,
         })
-      : rawBody;
+      : /**
+         * THE CODE FACE ANSWERS TO THE SAME CEILING, for the same reason and by the same route.
+         * `codeVals` takes `held` from the compass (L10582) and derives the review act, the
+         * `Run — held` label and the foot's grant from it — so a Code face with no rung would
+         * report a gate the platform is not holding. It reads the resolved rung here rather
+         * than calling `usePlatformTrust` itself: one read per spine, not one per face (§18).
+         *
+         * `onAskHer` is the pack's own `spineFace:'chat'` (L10412) — the act moves her to the
+         * composer, which is where writing code is asked for. `onDetach` is the header's
+         * handler, so the two Detach controls are one act from two places rather than two.
+         */
+        isValidElement(rawBody) && rawBody.type === SpineCode
+        ? cloneElement(
+            rawBody as ReactElement<{
+              ceiling?: number | null;
+              onAskHer?: () => void;
+              onDetach?: () => void;
+            }>,
+            {
+              ceiling: (rawBody.props as { ceiling?: number | null }).ceiling ?? resolvedTrust?.level ?? null,
+              onAskHer:
+                (rawBody.props as { onAskHer?: () => void }).onAskHer ??
+                (() => (onFace ? onFace("chat") : setLocalFace("chat"))),
+              onDetach: (rawBody.props as { onDetach?: () => void }).onDetach ?? onDetach,
+            },
+          )
+        : rawBody;
   const composerText = composerValue ?? localText;
 
   /** `stripText` — L11157–L11159. One line, or the first plus how many more. */
