@@ -18,6 +18,23 @@
 -- ============================================================================
 BEGIN;
 
+-- ── DO NOT DEGRADE PRODUCTION WHILE PROVING SOMETHING ───────────────────────
+-- This proof applies the migration's DDL, and its first act is an ALTER TABLE that needs
+-- ACCESS EXCLUSIVE on public.paige_llm_trace — a live table that takes production inserts.
+-- Without a lock_timeout the statement QUEUES behind any concurrent reader, and a QUEUED
+-- AccessExclusive request blocks every NEW reader that arrives behind it. So a verification run
+-- can take out reads on a production table while proving nothing at all.
+--
+-- Observed on 2026-08-24, measured from pg_locks/pg_stat_activity rather than assumed: a
+-- Supabase-internal introspection session (Supavisor, dumpFunc) sat idle-in-transaction holding
+-- AccessShare for 2m08s; this proof waited 1m35s without executing a single statement, an
+-- unrelated reader piled up behind it, and the client gave up at 60s. Nothing ran and nothing
+-- was proven — but production readers paid for it.
+--
+-- Fail FAST and LOUDLY instead. A lock wait is an environment condition, not a test result, and
+-- it must never be mistaken for either a pass or a failure of the thing under test.
+SET LOCAL lock_timeout = '4s';
+
 -- ── FIXTURES ────────────────────────────────────────────────────────────────
 -- §63: synthetic accounts only. No real business account is ever used as a fixture.
 INSERT INTO auth.users(id,aud,role,email) VALUES
@@ -25,7 +42,12 @@ INSERT INTO auth.users(id,aud,role,email) VALUES
  ('d0000000-0000-0000-0000-00000000000b','authenticated','authenticated','lm-tenantuser@x.invalid');
 
 INSERT INTO public.tenants(id,slug,name,status,account_type,account_number_prefix,account_number,features) VALUES
- ('d0000000-0000-0000-0000-000000001111','lm-t1','LM Fixture Tenant','active','standalone','LM1',999999101,'{}'::jsonb);
+ ('d0000000-0000-0000-0000-000000001111','lm-t1','LM Fixture Tenant','active','standalone','LM1',999999101,'{}'::jsonb),
+ -- A SECOND tenant exists solely so the cross-tenant assertion in 4b can actually FAIL. With only
+ -- one fixture tenant, "the view leaked no other tenant's rows" is true because no other tenant HAS
+ -- rows — a vacuous pass. v_tenant_metered_usage is security_invoker = off, so its WHERE clause is
+ -- the only thing between these two tenants; that deserves a test that can fail.
+ ('d0000000-0000-0000-0000-000000002222','lm-t2','LM Fixture Tenant Two','active','standalone','LM2',999999102,'{}'::jsonb);
 
 -- ORDER MATTERS, and both facts below were found by RUNNING this proof, not assumed:
 --   (a) inserting into auth.users fires a trigger that auto-provisions a profiles row, so setting
@@ -71,6 +93,7 @@ DECLARE
   _t3 uuid := 'd0000000-0000-0000-0000-0000000000f3';  -- tenant
   _t4 uuid := 'd0000000-0000-0000-0000-0000000000f4';  -- reasoning
   _t5 uuid := 'd0000000-0000-0000-0000-0000000000f5';  -- no-reasoning twin
+  _t6 uuid := 'd0000000-0000-0000-0000-0000000000f6';  -- SECOND tenant, for the cross-tenant check
 BEGIN
   -- ══ 1. VERIFIED PLATFORM SCOPE ════════════════════════════════════════════
   -- No tenant, and the call site DECLARED scope:'platform' in its trace metadata.
@@ -153,10 +176,14 @@ BEGIN
 
   -- ...and it carries NO PRICE. This is the boundary-3 assertion: usage is tenant-visible, our
   -- buy rate is not, in any form a rate can be recovered from.
+  -- [5b] NULL, not 0. The owner ruled the placeholder zero out: a comment cannot stop a SUM, and
+  -- the operator's own COGS tile keyed its availability on row count, so a zero would have printed
+  -- $0.00 as real. `IS NOT NULL` is the assertion — `<> 0` would PASS on a NULL and prove nothing.
   SELECT wholesale_cost_usd INTO _cost FROM public.platform_metered_events
    WHERE idempotency_key='llm_trace:'||_t3::text;
-  IF _cost <> 0 THEN
-    RAISE EXCEPTION 'FAIL_3_LEAK: tenant-visible row carries wholesale cost % — buy rate derivable',_cost; END IF;
+  IF _cost IS NOT NULL THEN
+    RAISE EXCEPTION 'FAIL_3_LEAK: tenant-metered row carries wholesale cost % — must be NULL, '
+                    'never a price and never a placeholder zero',_cost; END IF;
   SELECT count(*) INTO _n FROM public.platform_metered_events
    WHERE idempotency_key='llm_trace:'||_t3::text
      AND (jsonb_exists(metadata,'wholesale_cost_usd_exact') OR jsonb_exists(metadata,'cost_known')
@@ -164,11 +191,30 @@ BEGIN
   IF _n<>0 THEN
     RAISE EXCEPTION 'FAIL_3_LEAK_META: tenant-visible metadata carries a price or pricing_version'; END IF;
 
-  -- the detectors agree with the trigger: nothing outstanding
+  -- The detectors agree with the trigger: nothing outstanding.
+  -- READ THESE AS THE OPERATOR, deliberately. [5b] gave both detectors an is_platform_operator()
+  -- gate so a tenant gets an empty answer instead of a confidently wrong one — which means that
+  -- without assuming the operator role here, both of these would return 0 rows for the trivial
+  -- reason that the caller is not an operator, and would pass while proving nothing. An assertion
+  -- that survives the feature being deleted is not an assertion.
+  PERFORM set_config('role','authenticated',true);
+  PERFORM set_config('request.jwt.claims','{"sub":"d0000000-0000-0000-0000-00000000000a","role":"authenticated"}',true);
+
   SELECT count(*) INTO _n FROM public.v_llm_trace_uncosted;
   IF _n<>0 THEN RAISE EXCEPTION 'FAIL_3_UNCOSTED: % billable trace(s) reached no cost row',_n; END IF;
   SELECT count(*) INTO _n FROM public.v_llm_trace_unmetered;
   IF _n<>0 THEN RAISE EXCEPTION 'FAIL_3_UNMETERED: % tenant trace(s) reached no usage event',_n; END IF;
+
+  -- ...and the gate itself is real: the SAME query as a tenant must come back empty, not wrong.
+  PERFORM set_config('request.jwt.claims','{"sub":"d0000000-0000-0000-0000-00000000000b","role":"authenticated"}',true);
+  SELECT count(*) INTO _n FROM public.v_llm_trace_unmetered;
+  IF _n<>0 THEN
+    RAISE EXCEPTION 'FAIL_3_DETECTOR_GATE: a tenant saw % row(s) in v_llm_trace_unmetered — with '
+                    'platform_metered_events operator-only, every one of them is a false '
+                    '"unmetered" verdict about their own traffic',_n; END IF;
+
+  PERFORM set_config('role','postgres',true);
+  PERFORM set_config('request.jwt.claims','',true);
 
   -- ══ 7. REASONING NON-DUPLICATION ══════════════════════════════════════════
   -- Two identical calls; one also reports 900 reasoning tokens (a SUBSET of its 1200 output).
@@ -185,6 +231,23 @@ BEGIN
   VALUES
     (_t5,_tenant,'anthropic','anthropic','anthropic','claude-haiku-4-5','2026-08-24','chat','success',
      5000,1200,NULL);
+
+  -- A metered row belonging to the OTHER tenant. Its only job is to give 4b's cross-tenant
+  -- assertion something it could actually find if v_tenant_metered_usage's predicate were wrong.
+  INSERT INTO public.paige_llm_trace
+    (id,tenant_id,provider,model_provider,billing_provider,model,pricing_version,job_kind,status,
+     tokens_in_uncached,tokens_out)
+  VALUES
+    (_t6,'d0000000-0000-0000-0000-000000002222','anthropic','anthropic','anthropic',
+     'claude-haiku-4-5','2026-08-24','chat','success',1000,500);
+
+  -- Prove the fixture landed, so a silent insert failure cannot make 4b's cross-tenant check pass
+  -- for the wrong reason — the exact trap that made the operator tests vacuous earlier in this file.
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE tenant_id='d0000000-0000-0000-0000-000000002222';
+  IF _n<>1 THEN
+    RAISE EXCEPTION 'FAIL_FIXTURE_T2: second tenant has % metered row(s), expected exactly 1 — '
+                    'the cross-tenant assertion in 4b would be vacuous',_n; END IF;
 
   SELECT a.billable_tokens_total - b.billable_tokens_total INTO _qty
     FROM public.paige_llm_cost_ledger a, public.paige_llm_cost_ledger b
@@ -272,15 +335,38 @@ BEGIN
   IF NOT _blocked THEN
     RAISE EXCEPTION 'FAIL_4b_ESTIMATOR: tenant user could execute the estimator (got %)',_c; END IF;
 
-  -- ...but their OWN usage IS visible, and priceless. Usage yes, buy rate no.
-  SELECT count(*) INTO _n FROM public.platform_metered_events
+  -- [5b] THE RAW COST-BEARING SHAPE IS NO LONGER TENANT-READABLE AT ALL. This assertion is the
+  -- INVERSE of what it used to be: it previously required a tenant to see its own raw rows, which
+  -- is exactly the behaviour the owner ruled out. RLS returns zero rows; the SELECT grant stays,
+  -- because the operator is the same Postgres role and a grant-level revoke would blind them too.
+  SELECT count(*) INTO _n FROM public.platform_metered_events;
+  IF _n<>0 THEN
+    RAISE EXCEPTION 'FAIL_4b_RAW: tenant read % row(s) of the raw cost-bearing table (expected 0)',_n; END IF;
+
+  -- ...and usage is STILL visible, through the priceless projection. Usage yes, buy rate no.
+  SELECT count(*) INTO _n FROM public.v_tenant_metered_usage
    WHERE service_category='ai_inference' AND tenant_id='d0000000-0000-0000-0000-000000001111';
-  IF _n<1 THEN RAISE EXCEPTION 'FAIL_4b_USAGE: tenant cannot see its own usage at all'; END IF;
-  SELECT count(*) INTO _n FROM public.platform_metered_events
-   WHERE service_category='ai_inference'
-     AND tenant_id='d0000000-0000-0000-0000-000000001111'
-     AND wholesale_cost_usd <> 0;
-  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_4b_LEAK: % tenant-visible row(s) carry a non-zero buy price',_n; END IF;
+  IF _n<1 THEN
+    RAISE EXCEPTION 'FAIL_4b_USAGE: tenant cannot see its own usage through v_tenant_metered_usage'; END IF;
+
+  -- The projection's SHAPE is the contract, so assert the shape, not just the values. A future
+  -- CREATE OR REPLACE that adds a cost column would pass every value-based check ever written.
+  SELECT count(*) INTO _n FROM information_schema.columns
+   WHERE table_schema='public' AND table_name='v_tenant_metered_usage'
+     AND (column_name ILIKE '%cost%' OR column_name ILIKE '%charge%' OR column_name ILIKE '%price%'
+          OR column_name ILIKE '%retail%' OR column_name ILIKE '%wholesale%');
+  IF _n<>0 THEN
+    RAISE EXCEPTION 'FAIL_4b_SHAPE: v_tenant_metered_usage exposes % money-shaped column(s)',_n; END IF;
+
+  -- CROSS-TENANT ISOLATION THROUGH A DEFINER VIEW. The view is security_invoker = off, so it runs
+  -- as the owner and bypasses RLS entirely — its WHERE clause is the ONLY thing between one tenant
+  -- and another. That makes this the single most important assertion about it, and the lint cannot
+  -- provide it: view-security-invoker-lint checks that an exemption marker EXISTS, never that the
+  -- predicate is still correct. Tenant _t3's row must not be visible to this other tenant's user.
+  SELECT count(*) INTO _n FROM public.v_tenant_metered_usage
+   WHERE tenant_id <> 'd0000000-0000-0000-0000-000000001111';
+  IF _n<>0 THEN
+    RAISE EXCEPTION 'FAIL_4b_CROSS: v_tenant_metered_usage leaked % row(s) of ANOTHER tenant',_n; END IF;
 
   -- ── 4c. THE ACTIVATION MARKER IS OPERATOR-ONLY (owner correction 2026-08-24). It shipped in
   --        `public` with RLS off and a blanket SELECT to authenticated. A tenant now sees nothing.
@@ -324,6 +410,16 @@ BEGIN
   -- discriminates by operator status rather than denying everyone (which would also have passed 4c).
   SELECT count(*) INTO _n FROM public.paige_llm_meter_bridge;
   IF _n<1 THEN RAISE EXCEPTION 'FAIL_5a_BRIDGE: operator cannot read the activation marker'; END IF;
+
+  -- [5b] And the operator STILL reads the raw cost-bearing table, which is the constraint that
+  -- shaped the whole fix: the operator and every tenant share the Postgres role `authenticated`,
+  -- so this had to be done by narrowing the POLICY. A grant-level or column-level revoke would
+  -- have blinded the operator's own COGS read (useOperatorPlatformMetrics.ts) along with tenants.
+  -- 4b proved the tenant gets 0 rows; this proves the same grant still serves the operator.
+  SELECT count(*) INTO _n FROM public.platform_metered_events;
+  IF _n<1 THEN
+    RAISE EXCEPTION 'FAIL_5a_RAW: operator cannot read platform_metered_events — the policy '
+                    'narrowing blinded the operator COGS surface, not just tenants'; END IF;
 
   PERFORM set_config('role','postgres',true);
 

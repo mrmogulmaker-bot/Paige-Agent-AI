@@ -456,6 +456,120 @@ CREATE POLICY paige_llm_cost_ledger_service_write ON public.paige_llm_cost_ledge
   FOR ALL TO service_role
   USING (true) WITH CHECK (true);
 
+-- ─── [5b] THE TENANT-VISIBLE SURFACE CARRIES NO PRICE AT ALL ────────────────────────────────
+--
+-- OWNER CORRECTION 2026-08-24, verbatim: "Do not expose wholesale_cost_usd = 0 to tenants as a
+-- placeholder. A comment or metadata flag does not stop downstream sums from treating it as a real
+-- zero. Tenant access must go through a safe usage surface that omits wholesale-cost fields
+-- entirely." He was right, and a consumer audit found the mechanism is worse than a corrupted sum:
+--
+--   src/hooks/analytics/useOperatorPlatformMetrics.ts sums this column fleet-wide (:122) and sets
+--   `wholesaleAvailable: meteredRows.length > 0` (:129) — availability keyed on ROW COUNT, never on
+--   whether a cost is present. PlatformFinancialsSection.tsx renders `wholesaleAvailable ? $x : "—"`
+--   (:69) and, only while NOT available, an EmptyState promising "No fabricated margin is shown
+--   until then" (:74-79). So a zero-cost row would have printed $0.00 as a real fleet-wide COGS
+--   figure AND deleted the honesty guard in the same motion. On the God-tier surface (§57).
+--
+-- The audit (verified on prod, not inferred) also established the blast radius: the table holds 0
+-- rows of ANY category; no view, matview, rule, publication, cron job, inbound FK, edge function,
+-- script or GitHub Action reads it; the ONLY application reader is the operator hook above, and it
+-- rides the is_platform_owner branch of the policy, not the tenant branch.
+
+-- (1) THE PLACEHOLDER ZERO IS DELETED, NOT HIDDEN. Dropping the DEFAULT is the load-bearing half:
+--     an omitting writer must get NULL ("not recorded here"), never a confident 0. Safe today —
+--     0 rows, and none of the three CHECK constraints references this column.
+ALTER TABLE public.platform_metered_events
+  ALTER COLUMN wholesale_cost_usd DROP NOT NULL,
+  ALTER COLUMN wholesale_cost_usd DROP DEFAULT;
+
+COMMENT ON COLUMN public.platform_metered_events.wholesale_cost_usd IS
+  'Buy-side cost, operator-only. NULL means NOT RECORDED HERE — never "free". For '
+  'service_category = ''ai_inference'' the authoritative figure lives in paige_llm_cost_ledger, '
+  'keyed by the same trace; read it through v_llm_spend_rollup. Any SUM of this column must '
+  'report its NULL count beside the total (v_llm_spend_rollup shows the pattern).';
+
+-- (2) THE TWO LEDGERS CAN NEVER OVERLAP — enforced by Postgres, not by a test nobody runs.
+--     Without this, the next person to build the gross-margin surface reasonably sums BOTH
+--     paige_llm_cost_ledger and this column and gets double the COGS, with each number individually
+--     correct and no test failing. That is the §57 divergence class arriving through addition.
+ALTER TABLE public.platform_metered_events
+  DROP CONSTRAINT IF EXISTS pme_ai_inference_has_no_price;
+ALTER TABLE public.platform_metered_events
+  ADD CONSTRAINT pme_ai_inference_has_no_price
+  CHECK (service_category <> 'ai_inference' OR wholesale_cost_usd IS NULL);
+
+-- (3) THE RAW COST-BEARING SHAPE BECOMES OPERATOR-ONLY.
+--     The dropped policy was `USING ((tenant_id = current_user_tenant_id()) OR is_platform_owner(...))`.
+--     NOTE, and this is the hardest constraint on the whole reshape: the operator connects as the
+--     Postgres role `authenticated` — there is no separate operator DB role. So a blanket
+--     `REVOKE SELECT ... FROM authenticated`, or a column-level REVOKE on wholesale_cost_usd, would
+--     break the operator's own COGS read. Narrowing the POLICY is the only move that separates them.
+DROP POLICY IF EXISTS "tenants read own metered events" ON public.platform_metered_events;
+
+-- An explicit read policy, even though the pre-existing FOR ALL operator policy already covers
+-- SELECT: it states the intent, so a future edit of the ALL policy cannot silently kill the
+-- operator COGS read. is_platform_owner here is deliberate parity with the policy just dropped.
+DROP POLICY IF EXISTS "platform owners read metered events" ON public.platform_metered_events;
+CREATE POLICY "platform owners read metered events"
+  ON public.platform_metered_events
+  FOR SELECT TO authenticated
+  USING (public.is_platform_owner(auth.uid()));
+
+-- anon holds full CRUD on this table today, inert ONLY because no policy names it. Policy absence
+-- is not a guard. Revoke outright, and drop the write grants authenticated never uses — every
+-- writer is service_role or the trigger. REFERENCES and TRIGGER go too; a partial revoke that
+-- leaves them is the kind of "cleaned up" that isn't.
+REVOKE ALL ON TABLE public.platform_metered_events FROM PUBLIC, anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER
+  ON TABLE public.platform_metered_events FROM authenticated;
+GRANT  SELECT ON TABLE public.platform_metered_events TO authenticated;  -- RLS restricts it, not this grant
+GRANT  ALL    ON TABLE public.platform_metered_events TO service_role;
+
+-- (4) THE TENANT-SAFE SURFACE. What is ABSENT is the contract, so it is listed:
+--   wholesale_cost_usd, tenant_retail_charge_usd — the money facts. Never projected.
+--   metadata (raw jsonb) — an unbounded future leak; a later writer adding a cost key would be
+--                          exposed silently. The token classes are re-projected explicitly instead.
+--   provider, model, capability — not a rate by division, but a rate by LOOKUP: model identity plus
+--                          token counts plus a public price list recovers our buy rate closely.
+--   layer, subject_type, idempotency_key, reconciliation_id — internal taxonomy and join keys.
+-- security_invoker is OFF deliberately: the base table is now operator-only, so an invoker view
+-- would return zero rows for every tenant by design. Scope is enforced IN-BODY by the predicate
+-- below (§59: the grant is never the guard), and the projection carries no money column at all.
+-- security-invoker-exempt: tenant usage projection over an operator-only base table; scope enforced in-body, no cost column projected
+CREATE VIEW public.v_tenant_metered_usage
+WITH (security_invoker = off) AS
+SELECT
+  m.id,
+  m.tenant_id,
+  m.end_customer_user_id,
+  m.end_customer_contact_id,
+  m.service_category,                                    -- WHAT was consumed ('ai_inference' | 'sms' | …)
+  m.event_type,
+  m.quantity,                                            -- informational total units; never rate-multiplied
+  m.metadata -> 'token_classes'        AS token_classes,  -- per-class counts, no money
+  m.metadata ->> 'quantity_semantics'  AS quantity_semantics,
+  m.occurred_at
+FROM public.platform_metered_events m
+WHERE m.tenant_id IS NOT NULL
+  AND (
+        m.tenant_id = public.current_user_tenant_id()
+        OR public.is_platform_owner(auth.uid())
+      );
+
+COMMENT ON VIEW public.v_tenant_metered_usage IS
+  'The ONLY tenant-readable projection of platform_metered_events. Carries usage quantities and '
+  'nothing priced: no wholesale cost, no retail charge, no raw metadata, no provider or model. A '
+  'tenant can see WHAT it consumed and cannot recover what it cost us THROUGH THIS VIEW. That '
+  'scoping is deliberate and must not be widened into a claim about the platform: '
+  'paige_llm_trace.cost_estimate_usd is separately tenant-readable today under '
+  'paige_llm_trace_tenant_read, and closing that is a sequenced follow-up requiring its own §37 '
+  'inventory of every tenant-side reader (ReasoningPanel / §34 L1 / L7). Because security_invoker '
+  'is off, the WHERE clause above is the ONLY thing separating one tenant from another — adding a '
+  'column or loosening that predicate is a security change, not a display change.';
+
+REVOKE ALL  ON public.v_tenant_metered_usage FROM PUBLIC, anon;
+GRANT SELECT ON public.v_tenant_metered_usage TO authenticated, service_role;
+
 -- ─── STEP 2 · THE METER BRIDGE ───────────────────────────────────────────────────────────────
 --
 -- [C2] FAIL-CLOSED = TRANSACTIONAL CONSISTENCY BETWEEN TRACE AND LEDGER. IT IS NOT BILLING
@@ -577,12 +691,17 @@ BEGIN
     COALESCE(NEW.job_kind, 'llm_call'),
     COALESCE(NEW.billing_provider, NEW.model_provider, NEW.provider),
     _billable_tokens,
-    -- ZERO, AND NOT BECAUSE THE CALL WAS FREE. The column is NOT NULL on a shared, tenant-readable
-    -- table, so it cannot hold "recorded elsewhere". The real figure is in paige_llm_cost_ledger,
-    -- keyed by the same trace. metadata.cost_recorded_in says so on every row, so nobody reads this
-    -- 0 as a price. No consumer regresses: platform_metered_events holds zero ai_inference rows
-    -- today, so no existing COGS total loses a number it was already getting.
-    0,
+    -- NULL = NOT RECORDED HERE. Never 0, which would read as "this call was free".
+    -- [5b, owner correction 2026-08-24] This was a literal 0, defended by a comment and a
+    -- metadata flag. The owner's ruling — "a comment or metadata flag does not stop downstream
+    -- sums from treating it as a real zero" — is demonstrably right, and the consumer audit found
+    -- the exact mechanism: useOperatorPlatformMetrics.ts sums this column fleet-wide and keys its
+    -- availability flag on ROW COUNT, not on cost presence. A zero-cost row would have flipped the
+    -- operator's "Metered COGS" tile from an honest em dash to an asserted $0.00 AND removed the
+    -- EmptyState that promises "No fabricated margin is shown until then". The column is now
+    -- nullable with no default precisely so this row does not have to claim a price at all.
+    -- The authoritative figure for this trace is in paige_llm_cost_ledger, keyed by the same id.
+    NULL,
     NULL,                       -- retail is a pricing decision, not a cost fact. Deliberately unset.
     'L3_tenant_passthrough',
     'tenant',
@@ -712,7 +831,13 @@ SELECT t.id AS trace_id, t.tenant_id, t.created_at, t.model, t.model_provider, t
        t.billable_units
   FROM public.paige_llm_trace t
   LEFT JOIN public.paige_llm_cost_ledger c ON c.trace_id = t.id
- WHERE t.created_at >= public.llm_meter_bridge_active_from()
+ -- [5b] OPERATOR-ONLY, and this is a CORRECTNESS gate, not just an access one. The view is
+ -- security_invoker, paige_llm_trace HAS a tenant-read policy, and paige_llm_cost_ledger's RLS is
+ -- operator-only — so WITHOUT this line a tenant reading it sees 100% of their own billable traces
+ -- reported as "uncosted", because the ledger side of the LEFT JOIN is invisible to them. That is
+ -- not an error a caller can notice; it is a confident wrong answer. Empty beats wrong.
+ WHERE public.is_platform_operator()
+   AND t.created_at >= public.llm_meter_bridge_active_from()
    AND c.id IS NULL
    AND public.llm_trace_is_billable(
          t.tokens_in, t.tokens_in_uncached, t.tokens_cache_read,
@@ -733,7 +858,11 @@ SELECT t.id AS trace_id, t.tenant_id, t.created_at, t.model, t.status,
   FROM public.paige_llm_trace t
   LEFT JOIN public.platform_metered_events m
          ON m.idempotency_key = 'llm_trace:' || t.id::text
- WHERE t.tenant_id IS NOT NULL
+ -- [5b] Same gate, same reason, and here the revoke above makes it mandatory: platform_metered_events
+ -- is now operator-only, so a tenant reading this view would see EVERY one of their own traces
+ -- reported as "unmetered" — the metered side of the join simply invisible to them. Empty beats wrong.
+ WHERE public.is_platform_operator()
+   AND t.tenant_id IS NOT NULL
    AND t.created_at >= public.llm_meter_bridge_active_from()
    AND m.id IS NULL
    AND public.llm_trace_is_billable(
