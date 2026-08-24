@@ -22,9 +22,12 @@
 --     ignores the cache fields.
 --     → tokens_cache_read / tokens_cache_write_5m / tokens_cache_write_1h now exist to receive them.
 --
---  3. CACHING IS NEVER REQUESTED. `grep -rn cache_control supabase/functions/` returns nothing, so
---     today every request is a full-price read. That is the BASELINE these columns must prove before
---     Phase 4 changes anything — a cache-hit column that reads 0 is a measurement, not a defect.
+--  3. CACHING IS NEVER REQUESTED. `grep -rn cache_control supabase/functions/` returns exactly ONE
+--     hit, and it is the prose comment in `_shared/claude.ts` recording this same baseline — zero
+--     request bodies set the field. So today every request is a full-price read. That is the
+--     BASELINE these columns must prove before Phase 4 changes anything — a cache-hit column that
+--     reads 0 is a measurement, not a defect. (Re-run the grep before trusting this line: the
+--     moment a real `cache_control` appears the count rises above one and the baseline is stale.)
 --
 --  4. `tokens_in` IS AMBIGUOUS BY CONSTRUCTION. It receives Anthropic's `usage.input_tokens`, which
 --     means TOTAL input while caching is off and UNCACHED input the moment caching is switched on —
