@@ -30,6 +30,7 @@
     "lint:pg-tokens": "node scripts/ci/pg-token-parity.mjs",
     "dev-loop": "node scripts/live-drive/dev-loop.mjs",
     "lint:pack-lineage": "node scripts/ci/pack-lineage.mjs",
+    "pack:keys": "node scripts/pack/key-xref.mjs",
     "lint:shadow-vars": "node scripts/ci/shadow-var-lint.mjs",
     "lint:operator-reach": "node scripts/ci/operator-reachability.mjs"
   },

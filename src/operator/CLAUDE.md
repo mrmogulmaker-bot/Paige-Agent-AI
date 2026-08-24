@@ -214,6 +214,36 @@ surfaces.md` (99KB, line-cited) may answer it outright. Full rule in root `CLAUD
 
 ---
 
+## CROSS-REFERENCE IT FIRST. `npm run pack:keys <builder>` — before you port anything.
+
+Reading a builder tells you what the pack **computes**. It does not tell you what the pack
+**draws**, and those are not the same set. Porting Layer 5 I read `mindVals`, found `scratchBody`
+— two fully authored ceiling arms sitting right beside the code keys — and drew it on the Code
+face. The pack draws a tokenized editor there. `scratchBody` is rendered at NO site in the 11,358
+lines, and neither is `sandboxActs`. An unrendered key became a shipped surface for an afternoon.
+
+```
+npm run pack:keys codeVals              which of its keys the markup actually renders
+npm run pack:keys setupVals --verbose   every key, rendered or not
+npm run pack:keys -- --all              every builder, dead keys only
+npm run pack:keys -- --orphans          markup keys NO builder produces
+```
+
+- **DEAD** = computed, drawn nowhere. Do not port it. It is a QUESTION for CD — a cut key, or a
+  block that lost its markup — and never a licence to invent the surface it looks like it wants.
+- **ORPHAN** = drawn, produced by nothing. It renders as empty. Owed from CD; never filled with
+  invented copy (§00). The pass finds exactly `emptyLine`/`storeEmpty` — pack finding #9, which
+  had been found by hand.
+- **0 of N rendered** = almost certainly a HELPER whose return another builder consumes, not a
+  dead surface. `kindMark` is the example.
+- **Duplicate declarations are reported.** `alertVals` is declared twice and BUILD-ORDER says port
+  the SECOND; `componentDidUpdate` is declared twice, which is finding #11 — the first is dead
+  code, so the artifact never sticks the chat to its newest turn even though its own comment says
+  it must.
+
+`src/operator/packKeyXref.test.ts` pins the tool against both hand-found findings, and against
+every false-positive class it had while being written. **Run it before a port, not after.**
+
 ## DRIVE IT. `npm run dev-loop` — every pass, not every other pass.
 
 **Owner, 2026-08-23:** *"You're going to always need this tool, my friend. You're going to always

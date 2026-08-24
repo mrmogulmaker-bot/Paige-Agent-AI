@@ -528,7 +528,7 @@ CONSTRAINT TRIGGER that a tenant may only rest at `revenue_class='paid'` when th
 
 ---
 
-## 6. Pack self-contradictions — three RULED by the owner 2026-08-23, seven open
+## 6. Pack self-contradictions — three RULED by the owner 2026-08-23, eight open
 
 Rulings 1, 2 and 5 below are closed and applied to the pack files in the same commit as this
 line. **Because CD regenerates the pack wholesale, all three are standing edits** in the sense
@@ -624,6 +624,19 @@ defect at CD's source, not a patch to re-apply here. Send the locator, do not re
     afternoon. The constants stay exported in `spineFaceContract.ts` (they are CD's words), and
     nothing renders them. **Owed from CD:** whether these are cut keys, or a Skills-face block
     that lost its markup. Not resolved here (§00).
+
+11. **`componentDidUpdate` is declared TWICE on the same class, so the first one never runs.**
+    *(Found 2026-08-24 by `npm run pack:keys`, which reports duplicate declarations.)* L4301 sticks
+    the transcript to its newest turn when the chat signature changes (`stickChat()`); L4343 is
+    `componentDidUpdate() { this.syncBrain(); }`. In JavaScript the second class member wins
+    outright, so **`stickChat()` is dead code in the shipped artifact** and the standalone render
+    does not auto-scroll the conversation.
+    **This is a behaviour fact, not a design opinion (§00), and it changes what "port the pack"
+    means here:** the pack's INTENT is explicit in its own markup comment — *"the newest turn must
+    own the scroll bottom"* — and its artifact does not do it. Our `SpineConversation` already
+    implements the intent (`el.scrollTop = el.scrollHeight`, with the live-turn offset case), so
+    the port is correct and the reference is the thing that is wrong. Reported to CD; nothing
+    changed here. **Do not "fix" our chat face to match the artifact's behaviour.**
 
 ---
 
