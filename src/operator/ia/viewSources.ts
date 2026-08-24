@@ -185,8 +185,13 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
     carries: ["automations/library", "automations/runs", "automations/build"],
   },
   "settings/alerts": { bespoke: "FleetAlertRulesSurface", carries: ["fleet/alert-rules"] },
+  /**
+   * v3 `capsVals` L9945–L10052, ported as `CapabilitiesSurface` — and WIRED, which no other
+   * Layer 3d surface is. `list_tool_autonomy()` / `set_tool_autonomy()` both ship, so the tools,
+   * their modes, the four counts and the write are real rather than waiting for Layer 6.
+   */
   "settings/capabilities": {
-    panels: ["settings/setup/capabilities"],
+    bespoke: "CapabilitiesSurface",
     carries: ["settings/setup/capabilities", "paige/skills", "paige/sub-agents", "paige/actions"],
   },
   /**

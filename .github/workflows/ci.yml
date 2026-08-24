@@ -163,6 +163,17 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:shadow-vars
 
+      # Every tool the runtime GOVERNS must be one the operator can SEE. `MUTATING_TOOLS` in
+      # paige-ai-chat gates 46 tools; `list_tool_autonomy()` — the catalogue the Capabilities
+      # surface renders — carries 23. The other 23 are governed invisibly: they cannot be flipped
+      # to autopilot and cannot be turned OFF, including a permanent workflow delete. It is drift
+      # from a migration that re-declared the catalogue from a stale copy, and it is a RATCHET
+      # here rather than a wall: the known 23 are the baseline, and the guard fails when the gap
+      # grows or when a fixed one is left in the baseline.
+      - name: Governed tools are visible in the autonomy catalogue
+        if: ${{ !cancelled() }}
+        run: npm run lint:tool-catalogue
+
       - name: ESLint (changed src)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt ./node_modules/.bin/eslint

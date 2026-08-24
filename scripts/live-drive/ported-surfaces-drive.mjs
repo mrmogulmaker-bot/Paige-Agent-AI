@@ -91,6 +91,17 @@ const ADDRESSES = [
       "Everything else",
     ],
   },
+  {
+    /**
+     * Capabilities is WIRED, and the harness has no real Supabase — so what this address proves
+     * is the FAILURE arm, which is the one that matters most on a governance surface. A read that
+     * fails must say it failed; rendering an empty catalogue would read as "she can do nothing",
+     * and on a page about what Paige is allowed to do that is the more dangerous of the two lies.
+     */
+    at: "/operator/settings/capabilities",
+    floor: 120,
+    must: ["it is an unread one"],
+  },
   // Already wired
   { at: "/operator/fleet/systems-check", floor: 300, must: [] },
   { at: "/operator/fleet/directory", floor: 100, must: [] },

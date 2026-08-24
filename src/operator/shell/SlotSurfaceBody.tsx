@@ -67,6 +67,7 @@ const ConversationsSurface = lazy(
 const SegmentsSurface = lazy(() => import("@/operator/surfaces/relationships/SegmentsSurface"));
 const StorefrontSurface = lazy(() => import("@/operator/surfaces/marketplace/StorefrontSurface"));
 const SetupSurface = lazy(() => import("@/operator/surfaces/settings/SetupSurface"));
+const CapabilitiesSurface = lazy(() => import("@/operator/surfaces/settings/CapabilitiesSurface"));
 const MarketCatalogSurface = lazy(
   () => import("@/operator/surfaces/marketplace/MarketCatalogSurface"),
 );
@@ -213,6 +214,7 @@ export default function SlotSurfaceBody({ slot, view }: { slot: OperatorSlot; vi
             assert a governance rung nobody set. */}
         {bespoke === "StorefrontSurface" && <StorefrontSurface onAnnounce={announce} />}
         {bespoke === "SetupSurface" && <SetupSurface onAnnounce={announce} />}
+        {bespoke === "CapabilitiesSurface" && <CapabilitiesSurface onAnnounce={announce} />}
         {bespoke === "MarketCatalogSurface" && <MarketCatalogSurface />}
         {bespoke === "PublishersSurface" && <PublishersSurface />}
 

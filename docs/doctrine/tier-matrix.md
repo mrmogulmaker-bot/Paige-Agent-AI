@@ -422,7 +422,7 @@ blank. No row below is ticked for addressability.
 | `/operator/settings/mind` | `KnowledgeSurface` | **wired** | `viewSources.ts:124–127` · `SlotSurfaceBody.tsx:67–69` · `useKnowledge.ts:85–90` (`knowledge_base`) |
 | `/operator/settings/automations` | 3 ported panels: `automations/library`, `runs`, `build` | **structure-only** | `viewSources.ts:128–131` · `opsSpecs.ts:586, 618, 657` |
 | `/operator/settings/alerts` | `FleetAlertRulesSurface` | **wired** | `viewSources.ts:132` · `SlotSurfaceBody.tsx:60` · `FleetAlertRulesSurface.tsx:51` → `useAlerting.ts:109–131` |
-| `/operator/settings/capabilities` | 1 ported panel: `settings/setup/capabilities` | **structure-only** | `viewSources.ts:133–136` · `platformSpecs.ts:691` |
+| `/operator/settings/capabilities` | **`capsVals` ported AND WIRED (Layer 3d)** — the real `list_tool_autonomy()` catalogue, its four counts as filters, per-tool `Autopilot / Ask first / Off` writing through `set_tool_autonomy()`, the Trust Compass clamp applied at render, and the schema's no-autopilot rule shown struck through rather than hidden. | **`wired`** | `surfaces/settings/CapabilitiesSurface.tsx` · `data/useToolAutonomy.ts` · driven: `ported-surfaces-drive.mjs` |
 | `/operator/settings/vault` | 3 ported panels: `obligations`, `vendors`, `documents` | **structure-only** | `viewSources.ts:137–140` · `platformSpecs.ts:975, 995, 1017` |
 | `/operator/settings/governance` | 3 ported panels: `approvals`, `audit-log`, `security` | **structure-only** | `viewSources.ts:141–144` · `platformSpecs.ts:1036, 1052, 1072` |
 | `/operator/settings/team` | 2 ported panels: `settings/team/seats`, `roles` | **structure-only** | `viewSources.ts:145–148` · `platformSpecs.ts:907, 925` |
@@ -468,6 +468,15 @@ source in this commit; none is fixed here (this PR touches only this file).
    answers to is the live `usePlatformTrust` read, so `held`, the review act and the foot's grant
    are decided by the platform's actual autonomy record. Driven in Chromium end to end:
    `ported-surfaces-drive.mjs`, "Code face · scratch buffer round trip".
+   **Capabilities (Layer 3d, 2026-08-24) is the first `wired` surface in this layer**, because it
+   did not have to wait for Layer 6: `list_tool_autonomy()` and `set_tool_autonomy()` both ship,
+   and CD drew against them by name. Tools, modes, counts and the write are real.
+   **What it reports that nothing else did:** 23 of the 46 tools the runtime gates are missing
+   from that catalogue, so they are governed invisibly — the operator cannot turn them off,
+   including a permanent workflow delete. CD's foot said four; the ledger said five; the measured
+   number is 23, and the surface states the measured one. `lint:tool-catalogue` holds it from
+   growing until the catalogue is completed (task #217).
+
    **Setup (Layer 3d, 2026-08-24) is `ported` on the same terms.** The catalogue, the per-step
    forms and the geometry are CD's, verbatim. What does NOT come over is every step's `state` —
    `P.SETUP` marks twelve of them `done`, which is an assertion about what THIS operator has
