@@ -144,6 +144,9 @@ RED-LINE index and the §-doctrine; this file is the fast-lookup version.
   missing state, skipped phases, missing/mismatched fingerprints, empty schema evidence, or failed
   proofs. Compatibility helpers belong only in the disposable proof fixture tree, never in
   production migrations.
+- **Current status:** draft and blocked. The negative fail-closed path is proven; a genuine successful
+  disposable restore, candidate application, and behavioral proof are not yet proven. The vulnerable
+  PR workflow is temporarily disabled pending a trusted sanitized baseline and approved credential model.
 
 ## 5. Producer-inventory misses — a hardening kills a legitimate caller (§37)
 
