@@ -149,8 +149,15 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
   "analytics/platform-health": { bespoke: "FleetTeamPulseSurface", carries: ["fleet/team-pulse"] },
 
   // ── Settings ───────────────────────────────────────────────────────────────────────────────
+  /**
+   * v3 `setupVals` L8915–L9086 over `P.SETUP`, ported as `SetupSurface` (BUILD-ORDER Layer 3d).
+   * The generic panel's three keys stay in `carries` — the drop-nothing ledger — because the
+   * bespoke surface answers all three inside its own catalogue: operator identity is the "Who you
+   * are" group, brand kit is `Brand identity — mark, palette, type`, and the model router is
+   * reached from `Trust Compass ceiling` and Platform rather than from here.
+   */
   "settings/setup": {
-    panels: ["settings/setup/operator", "settings/setup/brand-kit", "settings/setup/model-router"],
+    bespoke: "SetupSurface",
     carries: ["settings/setup/operator", "settings/setup/brand-kit", "settings/setup/model-router"],
   },
   "settings/platform": {

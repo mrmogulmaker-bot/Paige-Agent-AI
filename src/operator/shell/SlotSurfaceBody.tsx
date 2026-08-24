@@ -66,6 +66,7 @@ const ConversationsSurface = lazy(
 );
 const SegmentsSurface = lazy(() => import("@/operator/surfaces/relationships/SegmentsSurface"));
 const StorefrontSurface = lazy(() => import("@/operator/surfaces/marketplace/StorefrontSurface"));
+const SetupSurface = lazy(() => import("@/operator/surfaces/settings/SetupSurface"));
 const MarketCatalogSurface = lazy(
   () => import("@/operator/surfaces/marketplace/MarketCatalogSurface"),
 );
@@ -211,6 +212,7 @@ export default function SlotSurfaceBody({ slot, view }: { slot: OperatorSlot; vi
             defaults that ceiling to 2, and inheriting a demo default would have the console
             assert a governance rung nobody set. */}
         {bespoke === "StorefrontSurface" && <StorefrontSurface onAnnounce={announce} />}
+        {bespoke === "SetupSurface" && <SetupSurface onAnnounce={announce} />}
         {bespoke === "MarketCatalogSurface" && <MarketCatalogSurface />}
         {bespoke === "PublishersSurface" && <PublishersSurface />}
 

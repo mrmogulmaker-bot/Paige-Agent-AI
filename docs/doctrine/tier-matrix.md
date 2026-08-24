@@ -415,7 +415,7 @@ blank. No row below is ticked for addressability.
 | `/operator/analytics/campaigns` | 1 ported panel: `analytics/product` | **structure-only** | `viewSources.ts:97` · `moneySpecs.ts:625` |
 | `/operator/analytics/autonomy` | `TrustCompass` (READ-ONLY — no `onCommit`) | **wired** | `viewSources.ts:98–101` · `SlotSurfaceBody.tsx:62–66` · `useCompass.ts:44–50` (`paige_departments`, `paige_action_kinds`) |
 | `/operator/analytics/platform-health` | `FleetTeamPulseSurface` | **wired** | `viewSources.ts:102` · `SlotSurfaceBody.tsx:61` · `FleetTeamPulseSurface.tsx:27` → `useTeamPulse.ts:39` (`list_platform_staff()`) |
-| `/operator/settings/setup` | 3 ported panels: `settings/setup/operator`, `brand-kit`, `model-router` | **structure-only** | `viewSources.ts:105–108` · `platformSpecs.ts:540, 595, 637` |
+| `/operator/settings/setup` | **`SetupVals` ported whole (Layer 3d)** — 29-step catalogue in 7 groups, the current step with its fields/picks/drop, the ceiling-aware act row, `Lands in …` destinations, and the grouped rail. The §38 money boundary is carried verbatim in CD's own words. | **`ported`** | `viewSources.ts` · `surfaces/settings/setupContract.ts` · `SetupSurface.tsx` · driven: `ported-surfaces-drive.mjs` |
 | `/operator/settings/platform` | 2 ported panels: `settings/setup/feature-flags`, `api-mcp` | **structure-only** | `viewSources.ts:109–112` · `platformSpecs.ts:751, 769` |
 | `/operator/settings/integrations` | 3 ported panels: `connected`, `health`, `available` | **structure-only** | `viewSources.ts:113–116` · `platformSpecs.ts:793, 839, 863` |
 | `/operator/settings/numbers` | absence — the **generic** fallback copy | **absence** | `viewSources.ts:123` · `SlotSurfaceBody.tsx:98–101` (Settings declares no slot `absence`, `operatorIA.ts:87–103`) |
@@ -468,6 +468,16 @@ source in this commit; none is fixed here (this PR touches only this file).
    answers to is the live `usePlatformTrust` read, so `held`, the review act and the foot's grant
    are decided by the platform's actual autonomy record. Driven in Chromium end to end:
    `ported-surfaces-drive.mjs`, "Code face · scratch buffer round trip".
+   **Setup (Layer 3d, 2026-08-24) is `ported` on the same terms.** The catalogue, the per-step
+   forms and the geometry are CD's, verbatim. What does NOT come over is every step's `state` —
+   `P.SETUP` marks twelve of them `done`, which is an assertion about what THIS operator has
+   finished — so the bar sits at zero, `—% set up` and `— done · — left · —  waiting` render in
+   CD's own sentences, and no step shows a green tick it cannot prove. Three `why` lines that
+   quote a live figure (the current rung, eight running automations, four alerts needing you) are
+   dropped for the same reason and named in the contract. Every write is `disabled` until a seam
+   exists, because `setupVals`'s acts claim persistence ("saved", "It lands in the Vault") and a
+   control that says that over local state is the §36 defect. Layer 6 turns all of it on.
+
    **What is still absent, and honestly so:** no repository binding exists — the GitHub provider
    is `planned` (`paige-writes-code.md` §5) — so the repo strip renders its unbound arm and the
    review block does not render at all, which is the pack's OWN `onRepo` conditional rather than a

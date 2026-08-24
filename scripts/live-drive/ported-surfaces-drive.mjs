@@ -76,6 +76,21 @@ const ADDRESSES = [
   { at: "/operator/marketplace/catalog", floor: 300, must: ["held below grant", "your ceiling, not their code"] },
   { at: "/operator/marketplace/submissions", floor: 200, must: [] },
   { at: "/operator/marketplace/publishers", floor: 300, must: ["Verified agency", "widest reach"] },
+  // Layer 3d — Settings
+  {
+    at: "/operator/settings/setup",
+    floor: 600,
+    must: [
+      // The §38 money line is step-dependent — it renders when that step is SELECTED — so it is
+      // asserted by clicking to it further down rather than here. Asserting it on arrival was the
+      // first version of this entry and it failed correctly: the drive was wrong, not the surface.
+      // The absence arms: no state read, so every figure is an em-dash inside CD's sentence.
+      "—% set up",
+      "— done · — left · — waiting on something we have not built",
+      "Nothing left for her",
+      "Everything else",
+    ],
+  },
   // Already wired
   { at: "/operator/fleet/systems-check", floor: 300, must: [] },
   { at: "/operator/fleet/directory", floor: 100, must: [] },
@@ -404,6 +419,63 @@ for (const theme of ["dark", "light"]) {
     console.log(`FAIL  ${tag}\n      ${problems.join("\n      ")}`);
   } else {
     console.log(`pass  ${tag}  (create · edit · dirty · revert · close)`);
+  }
+  await page.close();
+}
+
+/**
+ * THE §38 LINE, REACHED THE WAY AN OPERATOR REACHES IT. `P.SETUP`'s Money group carries the money
+ * boundary in CD's own words — *"we are never the merchant of record between you and your
+ * client"* — on one step, so it renders when that step is selected and not before. It is the one
+ * string on this surface that is doctrine rather than decoration, so it gets a real click-through
+ * rather than a page-load assertion that would only prove the surface mounted.
+ */
+{
+  const page = await browser.newPage();
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const errs = [];
+  page.on("pageerror", (e) => {
+    const t = String(e?.message ?? e);
+    if (!isBackendNoise(t)) errs.push(t);
+  });
+  await page.goto(`${BASE}/?at=/operator/settings/setup&theme=dark`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(600);
+
+  const problems = [];
+  const slot = "[data-surface-slot]";
+
+  const onArrival = await page.textContent(slot);
+  if (onArrival.includes("never the merchant of record")) {
+    problems.push("the money line renders before its step is selected — it belongs to that step");
+  }
+
+  await page.click(`${slot} button:has-text("What your clients pay you")`);
+  await page.waitForTimeout(250);
+  const onMoney = (await page.textContent(slot)).replace(/\s+/g, " ");
+  for (const line of [
+    "Yours. Bring your own",
+    "never the merchant of record between you and your client",
+    "Lands in Settings",
+    "Integrations",
+  ]) {
+    if (!onMoney.includes(line)) problems.push(`money step is missing: "${line}"`);
+  }
+
+  // A step CD marks as hers offers her act; one that is yours does not.
+  await page.click(`${slot} button:has-text("Vendors and suppliers")`);
+  await page.waitForTimeout(250);
+  const onHers = await page.textContent(slot);
+  if (!onHers.includes("she can do this")) problems.push("a PAIGE step did not say she can do it");
+  if (!onHers.includes("Let her do it")) problems.push("a PAIGE step did not offer her act");
+  if (errs.length) problems.push(`page error: ${errs[0]}`);
+
+  const tag = "settings · Setup · the money boundary, reached by its step";
+  rows.push({ tag, ok: problems.length === 0 });
+  if (problems.length) {
+    fails.push(`${tag}\n      ${problems.join("\n      ")}`);
+    console.log(`FAIL  ${tag}\n      ${problems.join("\n      ")}`);
+  } else {
+    console.log(`pass  ${tag}  (§38 line renders on its step, and not before)`);
   }
   await page.close();
 }
