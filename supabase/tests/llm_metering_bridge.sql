@@ -163,16 +163,51 @@ BEGIN
    WHERE idempotency_key='llm_trace:'||_t3::text;
   IF _n<>1 THEN RAISE EXCEPTION 'FAIL_3_EVENTS: % usage events (expected exactly 1)',_n; END IF;
 
-  -- ...idempotent: re-firing the same key adds nothing.
+  -- ...idempotent: re-firing the same key adds nothing. quantity=999999 is the marker the assertion
+  -- keys on; the price is deliberately NULL because [5b]'s CHECK now forbids a priced ai_inference
+  -- row, and ON CONFLICT cannot rescue it — DO NOTHING absorbs unique/exclusion violations only,
+  -- and a CHECK is raised BEFORE conflict arbitration is ever reached. This fixture carried 999 and
+  -- was legal under the old schema; the new constraint caught it on the first live encounter,
+  -- which is the constraint working. The idempotency test itself is unchanged.
   INSERT INTO public.platform_metered_events
     (tenant_id,service_category,event_type,provider,quantity,wholesale_cost_usd,
      layer,subject_type,subject_id,idempotency_key)
-  VALUES (_tenant,'ai_inference','llm_call','anthropic',999999,999,
+  VALUES (_tenant,'ai_inference','llm_call','anthropic',999999,NULL,
           'L3_tenant_passthrough','tenant',_tenant,'llm_trace:'||_t3::text)
   ON CONFLICT (idempotency_key) DO NOTHING;
   SELECT count(*) INTO _n FROM public.platform_metered_events
    WHERE idempotency_key='llm_trace:'||_t3::text AND quantity=999999;
   IF _n<>0 THEN RAISE EXCEPTION 'FAIL_3_IDEMPOTENT: a replayed key overwrote the metered event'; END IF;
+
+  -- And prove the constraint DELIBERATELY, rather than leaving it as something a fixture tripped
+  -- over by accident. This is the structural guarantee that the two ledgers can never both carry a
+  -- price for the same trace — the double-counted-COGS failure mode, where each number is
+  -- individually correct and no test fails. A comment cannot enforce that; Postgres can.
+  _blocked := false;
+  BEGIN
+    INSERT INTO public.platform_metered_events
+      (tenant_id,service_category,event_type,provider,quantity,wholesale_cost_usd,
+       layer,subject_type,subject_id,idempotency_key)
+    VALUES (_tenant,'ai_inference','llm_call','anthropic',1,0.5,
+            'L3_tenant_passthrough','tenant',_tenant,'lm-check-probe:'||_t3::text);
+  EXCEPTION WHEN check_violation THEN _blocked := true;
+  END;
+  IF NOT _blocked THEN
+    RAISE EXCEPTION 'FAIL_3_CHECK: a priced ai_inference row was accepted — pme_ai_inference_has_no_price '
+                    'is not enforcing, so LLM cost could be double-counted across both ledgers'; END IF;
+
+  -- ...and the SAME constraint must NOT block a non-LLM pass-through row, which legitimately
+  -- carries a real recorded cost. A guard that blocks everything would also have passed the check above.
+  INSERT INTO public.platform_metered_events
+    (tenant_id,service_category,event_type,provider,quantity,wholesale_cost_usd,
+     layer,subject_type,subject_id,idempotency_key)
+  VALUES (_tenant,'sms','outbound','twilio',1,0.0079,
+          'L3_tenant_passthrough','tenant',_tenant,'lm-sms-probe:'||_t3::text);
+  SELECT count(*) INTO _n FROM public.platform_metered_events
+   WHERE idempotency_key='lm-sms-probe:'||_t3::text AND wholesale_cost_usd = 0.0079;
+  IF _n<>1 THEN
+    RAISE EXCEPTION 'FAIL_3_CHECK_OVERREACH: the ai_inference price guard also blocked a priced '
+                    'non-LLM pass-through row (got % row(s), expected 1)',_n; END IF;
 
   -- ...and it carries NO PRICE. This is the boundary-3 assertion: usage is tenant-visible, our
   -- buy rate is not, in any form a rate can be recovered from.
