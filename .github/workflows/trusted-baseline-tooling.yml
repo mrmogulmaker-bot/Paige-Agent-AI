@@ -1,0 +1,36 @@
+# Offline contract tests only. This workflow never contacts Supabase, never consumes
+# secrets, and never generates a production-derived baseline. Operational generation
+# requires a separately approved future workflow and protected environment.
+name: trusted-baseline-tooling
+
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/trusted-baseline/**"
+      - ".github/scripts/fixtures/trusted-baseline/**"
+      - ".github/migration-baseline/public-safety-policy.json"
+      - ".github/workflows/trusted-baseline-tooling.yml"
+      - "docs/security/TRUSTED_MIGRATION_BASELINE_CONTRACT.md"
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contract:
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v4.4.0 — immutable tag resolution verified 2026-08-24.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # actions/setup-node v4.4.0 — immutable tag resolution verified 2026-08-24.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          # Node.js 24.19.0 LTS (Krypton), official release 2026-08-03.
+          node-version: "24.19.0"
+      - name: Syntax
+        run: |
+          node --check .github/scripts/trusted-baseline/contract.mjs
+          node --check .github/scripts/trusted-baseline/sanitize.mjs
+          node --check .github/scripts/trusted-baseline/verify.mjs
+          node --check .github/scripts/trusted-baseline/trusted-baseline.test.mjs
+      - name: Synthetic and adversarial contract tests
+        run: node --test .github/scripts/trusted-baseline/trusted-baseline.test.mjs
