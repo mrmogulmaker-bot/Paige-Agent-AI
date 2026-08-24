@@ -2322,6 +2322,47 @@ one route per tier), §60/§61 (tier feature framework — the name reads, the h
 redirect-alive), §18 (one home — the taxonomy doc is the authoritative map),
 `docs/doctrine/route-and-url-taxonomy.md` (the full matrix + migration plan).
 
+## 67. Autonomy is granted to a PROCESS, not to a tool.
+
+> **OWNER-RULED 2026-08-24.** Substance ruled; the authoritative statement, the arithmetic, the
+> trigger audit and the build sequence live in `docs/doctrine/autonomy-architecture.md` (the §18
+> one home). This section is the CLAUDE.md pointer, and it binds now.
+
+**Directive (owner: Antonio, 2026-08-24):** *"The Trust Compass should be something that Paige can
+call on and assign to workflows and automations not tools by themselves… Everything must be
+interwoven. So we have to decide once say a campaign or emails checks or conversations or follow
+ups, or calendar slot is booked. The Human user should be able to decide how much of the repeatable
+task will they allow Paige, her other Agents etc to manage on their own."*
+
+- **The unit of a human's autonomy decision is a REPEATABLE PROCESS** — a trigger, its conditions,
+  and the ordered chain of acts it runs — never an atomic tool. A tool key is not a thing a business
+  owner reasons about; "when a lead fills in my form, run this" is. Governing at tool level is the
+  dev-tool pattern §36 exists to keep out of this product.
+- **THREE LAYERS, and they compose rather than compete.** Ceiling (Trust Compass, the account) →
+  Grant (the process, set once by the human) → Floor (the capability, a safety net). Effective
+  autonomy is `min(grant, most-restrictive act's floor, ceiling)`, and a process whose TRIGGER has
+  no substrate is dark whatever the arithmetic says. That is CD's `autoVals` arithmetic and it is
+  not to be re-derived — re-deriving it is re-deciding it.
+- **The per-tool floor STAYS (§58).** It is demoted from front door to safety net, never removed:
+  Paige also acts from chat, from a skill and from a sub-agent, and those paths carry no process,
+  so deleting the tool gate would leave the commonest path ungoverned. It is also what makes a
+  whole-chain grant safe to give.
+- **A process spans domains by design.** Forms, contacts, pipelines, products/services, sales,
+  campaigns, calendar, analytics — one process may start in any and reach any. A trigger or act
+  that cannot cross that seam is the bug.
+- **The tenant ASKS and Paige builds it (§10/§15).** A tenant describes the process in chat; Paige
+  composes the trigger, conditions and acts and files it — born at the floor, never above her own
+  ceiling, the same rule her sub-agents are spun up under.
+- **The test, every time:** *"Is this autonomy decision one a business owner would actually
+  recognise — a repeatable process they can name — or am I asking them to grant a tool? And does
+  the grant still pass through the floor and the ceiling before anything runs?"* If it is a tool in
+  front of a human, or the grant skips a clamp, it is not §67-clean.
+
+**Cross-references:** §16 (the `auto | confirm | off` lanes a grant is expressed in — unchanged),
+§8 (the action bus this extends rather than forks), §36 (intuitiveness — the reason the unit is a
+process), §10 (Paige-callable), §51 (delegation divides authority, never widens it), §58 (the floor
+is demoted, not deleted), §13 (a dark trigger says so rather than never firing in silence).
+
 ## 66. The tier matrix updates in the SAME commit as the ship — not later.
 
 **Directive (owner: Antonio, 2026-08-19).** §0 binds master-doc updates in the same PR as the ship.

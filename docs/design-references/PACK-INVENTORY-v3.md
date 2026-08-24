@@ -528,7 +528,7 @@ CONSTRAINT TRIGGER that a tenant may only rest at `revenue_class='paid'` when th
 
 ---
 
-## 6. Pack self-contradictions — three RULED by the owner 2026-08-23, eight open
+## 6. Pack self-contradictions — three RULED by the owner 2026-08-23, nine open
 
 Rulings 1, 2 and 5 below are closed and applied to the pack files in the same commit as this
 line. **Because CD regenerates the pack wholesale, all three are standing edits** in the sense
@@ -637,6 +637,20 @@ defect at CD's source, not a patch to re-apply here. Send the locator, do not re
     implements the intent (`el.scrollTop = el.scrollHeight`, with the live-turn offset case), so
     the port is correct and the reference is the thing that is wrong. Reported to CD; nothing
     changed here. **Do not "fix" our chat face to match the artifact's behaviour.**
+
+
+12. **`P.TRIGGERS` is one array declared in two differently-shaped halves, and they overlap.**
+    *(Found 2026-08-24 while grounding the owner's autonomy ruling.)* The first half uses lowercase
+    `cat` values (`record`, `pipeline`, `convo`, `calendar`, `campaign`, `fleet`, `schedule`,
+    `agent`, `external`, `manual`); the second, introduced by a comment about tags being "the
+    connective tissue", uses capitalised ones (`Records`, `Pipeline`, `Conversations`, …) and grew
+    well past tags. Several triggers appear in both: *Deal won* / *A deal is won*, *Deal lost* /
+    *A deal is lost*, *Booking made* / *A booking is made*, *Campaign halted* / *A campaign is
+    halted*. The raw row count is **80 (51 live, 29 dark)**, which is therefore an UPPER BOUND on
+    distinct triggers rather than a count of them.
+    Recorded, not reconciled (§00). It matters to the port because slice C of
+    `docs/doctrine/autonomy-architecture.md` turns this catalogue into rows, and a duplicate
+    trigger would become two rows a tenant could pick between with no way to tell them apart.
 
 ---
 
