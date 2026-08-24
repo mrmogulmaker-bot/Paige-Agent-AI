@@ -66,7 +66,6 @@ DECLARE
   _qty      numeric;
   _price    numeric;
   _blocked  boolean;
-  _ts       timestamptz;
   _t1 uuid := 'd0000000-0000-0000-0000-0000000000f1';  -- platform
   _t2 uuid := 'd0000000-0000-0000-0000-0000000000f2';  -- unattributed
   _t3 uuid := 'd0000000-0000-0000-0000-0000000000f3';  -- tenant
@@ -227,7 +226,7 @@ END $t$;
 -- ══ 4/5. ACCESS CONTROL — anon · tenant user · operator · service_role ═══════
 -- Split into its own DO block so a role switch can never leak into the behavioural asserts above.
 DO $t$
-DECLARE _n int; _blocked boolean; _c numeric;
+DECLARE _n int; _blocked boolean; _c numeric; _ts timestamptz;
 BEGIN
   -- ── 4a. ANON: no grant on the registry, no grant on the estimator.
   PERFORM set_config('role','anon',true);
