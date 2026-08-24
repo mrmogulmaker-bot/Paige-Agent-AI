@@ -133,11 +133,23 @@ export default function SpineHeader({
         >
           PAIGE
         </b>
-        {detached || state ? (
-          <small className="mt-[3px] truncate text-[length:var(--pg-t-label)] text-[var(--pg-faint)]">
-            {detached ? "On its own monitor" : STATE_LABEL[state as SpineCommandState]}
-          </small>
-        ) : null}
+        {/**
+          * THE STATUS LINE ALWAYS RENDERS, and that is the pack's behaviour rather than a choice
+          * made here. `paigeStateLabel` (L11219) is a lookup with no empty arm — a resting
+          * command reads "Ready" — so the lockup is TWO lines at every moment, exactly the way
+          * the rail's is (PAIGE over PLATFORM OPERATOR, L99).
+          *
+          * It was rendering as ONE line live. The condition was `detached || state`, and the
+          * shell passes no `state`, so the whole line was skipped and the spine's lockup sat a
+          * head shorter than the rail's. Owner, 2026-08-24, pointing at the rail: *"Can we get
+          * this on the right level as well."*
+          *
+          * "Ready" as the fallback is the pack's own value for `rest`, not invented copy: an
+          * unstated command IS the resting one, and saying so is more honest than saying nothing.
+          */}
+        <small className="mt-[3px] truncate text-[length:var(--pg-t-label)] text-[var(--pg-faint)]">
+          {detached ? "On its own monitor" : STATE_LABEL[(state ?? "rest") as SpineCommandState]}
+        </small>
       </span>
 
       {/* the ceiling readout · L3834–L3841 */}

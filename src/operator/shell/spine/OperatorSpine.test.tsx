@@ -50,20 +50,25 @@ const spineSources = () =>
 
 describe("the spine collapses rather than pretending (Ruling C)", () => {
   /**
-   * These two asserted the SHIPPED STATE — every region null — which was true until Chat was
-   * ported. That is a snapshot, not a rule, and a snapshot test fails the day the thing it
-   * describes gets built. Rewritten to assert the RULE, which is what Ruling C actually says:
-   * a region with no content does not appear, and a spine with nothing does not render.
+   * These two asserted the SHIPPED STATE — first every region null, then Chat wired and four
+   * dark. Both readings were true when written and both were snapshots, which is why each one
+   * failed the day the thing it described got built. The four dark regions were given bodies on
+   * 2026-08-24 on the owner's frames ("this is what we want it to look like": Chat · Memory 5 ·
+   * Team 5 · Skills 4/7 · Code 3). The RULE they were reaching for survives underneath, and is
+   * now asserted against an explicitly-dark fixture rather than against today's wiring: a region
+   * with no content draws no control, and a spine with nothing renders nothing.
    */
-  it("ships with Chat wired and the other four still dark", () => {
+  it("ships all five faces carrying a body, per the owner's 2026-08-24 frames", () => {
     const byId = Object.fromEntries(SPINE_REGIONS.map((r) => [r.id, r.content]));
-    expect(byId.chat).not.toBeNull();
-    for (const id of ["memory", "team", "sandbox", "code"]) expect(byId[id]).toBeNull();
+    for (const id of ["chat", "memory", "team", "sandbox", "code"]) {
+      expect(byId[id]).not.toBeNull();
+    }
     expect(spineHasContent()).toBe(true);
   });
 
-  it("shows a face ONLY for a wired region — the four dark ones are not tabs", () => {
-    const html = renderToStaticMarkup(<OperatorSpine />);
+  it("shows a face ONLY for a wired region — a dark one is not a tab", () => {
+    const onlyChat = SPINE_REGIONS.map((r) => (r.id === "chat" ? r : { ...r, content: null }));
+    const html = renderToStaticMarkup(<OperatorSpine regions={onlyChat} />);
     expect(html).toContain("Chat");
     for (const label of ["Memory", "Team", "Skills", "Code"]) expect(html).not.toContain(label);
   });
@@ -130,13 +135,21 @@ describe("the chrome the pack draws", () => {
   });
 
   it("draws one control per wired face, in the pack's order", () => {
-    expect([...html.matchAll(/data-spine-face="([^"]+)"/g)].map((m) => m[1])).toEqual(["chat"]);
+    // All five carry a body since 2026-08-24, so the strip carries all five, in the pack's order.
+    expect([...html.matchAll(/data-spine-face="([^"]+)"/g)].map((m) => m[1])).toEqual([
+      "chat",
+      "memory",
+      "team",
+      "sandbox",
+      "code",
+    ]);
     expect(html).toContain("Chat");
 
+    // The rule underneath the wiring: a region emptied out drops off the strip entirely.
     const twoWired = SPINE_REGIONS.map((r) =>
       r.id === "chat" ? { ...r, content: <SpineConversation /> }
       : r.id === "team" ? { ...r, content: <div>a real roster</div>, count: "5" }
-      : r,
+      : { ...r, content: null },
     );
     const both = renderToStaticMarkup(<OperatorSpine regions={twoWired} />);
     expect([...both.matchAll(/data-spine-face="([^"]+)"/g)].map((m) => m[1])).toEqual(["chat", "team"]);
@@ -177,11 +190,20 @@ describe("absence is the pack's own conditional, never a stand-in", () => {
       <OperatorSpine regions={SPINE_REGIONS.map((r) => (r.id === "chat" ? { ...r, content } : r))} />,
     );
 
-  it("omits the state line, the trust meter and the tally when nothing is read", () => {
+  it("omits the trust meter and the tally when nothing is read", () => {
     const html = bare(<SpineConversation />);
-    expect(html).not.toContain("Ready");
     expect(html).not.toContain("Trust Compass");
     expect(html).not.toContain("autonomous ·");
+  });
+
+  /**
+   * The state line used to be part of that absence — omitted along with the meter and the tally
+   * whenever nothing was read. The owner's 2026-08-24 frames carry `PAIGE / Ready` under the
+   * mark with no conversation on screen, matching the rail's `PAIGE / PLATFORM OPERATOR` lockup.
+   * So it is chrome, not a read: it names the command state, which is always known.
+   */
+  it("still carries the lockup's state line when nothing is read", () => {
+    expect(bare(<SpineConversation />)).toContain("Ready");
   });
 
   it("renders an em-dash rather than the pack's invented 3s default for an untimed trace", () => {

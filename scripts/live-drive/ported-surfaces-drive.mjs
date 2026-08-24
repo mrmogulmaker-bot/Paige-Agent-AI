@@ -251,6 +251,65 @@ for (const spec of list) {
   await page.close();
 }
 
+/**
+ * THE FIVE SPINE FACES — BUILD-ORDER Layer 5. Owner, 2026-08-24, sending CD's reference frames:
+ * *"This is what we want it to look like."* The strip had drawn ONE face because `OperatorSpine`
+ * hides a region whose body is null, and only Chat had one. So this clicks every face and asserts
+ * each renders a body, in both themes.
+ *
+ * CHAT IS EXEMPT FROM THE CONTENT FLOOR, and the reason is worth stating rather than hiding in a
+ * number: its body is the Trust Compass strip over the transcript, and in this harness there is
+ * no stored rung and no turn — so an EMPTY chat face is the correct render, not a broken one. It
+ * is asserted to mount and to throw nothing; asserting text on it would be asserting fixtures.
+ */
+for (const theme of ["dark", "light"]) {
+  const page = await browser.newPage();
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const errs = [];
+  page.on("pageerror", (e) => {
+    const t = String(e?.message ?? e);
+    if (!isBackendNoise(t)) errs.push(t);
+  });
+  await page.goto(`${BASE}/?at=/operator/fleet/systems-check&theme=${theme}`, {
+    waitUntil: "networkidle",
+  });
+  await page.waitForTimeout(600);
+
+  const faces = await page.$$eval("[data-spine-face]", (els) =>
+    els.map((e) => e.getAttribute("data-spine-face")),
+  );
+  const problems = [];
+  if (faces.length !== 5) problems.push(`the strip drew ${faces.length} face(s), expected 5`);
+
+  for (const f of faces) {
+    await page.click(`[data-spine-face="${f}"]`);
+    await page.waitForTimeout(250);
+    const r = await page.evaluate(() => {
+      const region = document.querySelector("[data-spine-region]");
+      const de = document.documentElement;
+      return {
+        id: region?.getAttribute("data-spine-region") ?? null,
+        chars: (region?.textContent || "").replace(/\s+/g, " ").trim().length,
+        hScroll: de.scrollWidth - de.clientWidth,
+      };
+    });
+    if (r.id !== f) problems.push(`clicked ${f} and the region is ${r.id}`);
+    if (f !== "chat" && r.chars < 60) problems.push(`${f} rendered only ${r.chars} chars`);
+    if (r.hScroll > 0) problems.push(`${f} scrolls the document by ${r.hScroll}px`);
+  }
+  if (errs.length) problems.push(`page error: ${errs[0]}`);
+
+  const tag = `spine faces · ${theme} · all five`;
+  rows.push({ tag, ok: problems.length === 0 });
+  if (problems.length) {
+    fails.push(`${tag}\n      ${problems.join("\n      ")}`);
+    console.log(`FAIL  ${tag}\n      ${problems.join("\n      ")}`);
+  } else {
+    console.log(`pass  ${tag}  (${faces.join(" · ")})`);
+  }
+  await page.close();
+}
+
 await browser.close();
 
 console.log(

@@ -449,12 +449,19 @@ source in this commit; none is fixed here (this PR touches only this file).
    the operator now sees a "not connected" plate where the legacy console rendered the built
    surface. This is failure mode 2 in `src/operator/CLAUDE.md` — "components were imported and never
    rendered" — recurring in the replacement shell, and a §58 regression against the legacy console.
-2. **The console has no Paige.** `RETIRED_ADDRESSES` retires `paige/chat` on the stated ground that
-   "the spine is Paige's home in this shell" (`viewSources.ts:159–162`), but `OperatorSpine.tsx:32–39`
-   renders two **empty** scroll regions and its own docblock says so: *"the chat engine, the thread
-   and the memory read are wiring, and wiring is a later round."* The legacy console mounted the real
-   panel (`OperatorLegacyApp.tsx:766`, `OperatorPaigePanel`), which is now mounted nowhere. So the
-   justification for the retirement is not true at runtime yet.
+2. ~~**The console has no Paige.**~~ **CLOSED 2026-08-24 — the spine draws all five faces.**
+   `RETIRED_ADDRESSES` retires `paige/chat` on the ground that "the spine is Paige's home in this
+   shell" (`viewSources.ts`), and that justification is now true at runtime. It was recorded here
+   when the spine rendered two empty scroll regions; Chat landed as `SpineConversation`, and
+   BUILD-ORDER Layer 5 gave the other four bodies (`spine/faces/SpineFaces.tsx` ← v3 `mindVals`
+   L10427), so the strip draws **Chat · Memory · Team · Skills · Code**.
+   **State: `ported`** — each renders CD's structure and its own stated absence; none reads yet.
+   Driven in Chromium, both themes, every face clicked: `ported-surfaces-drive.mjs`.
+   **Honest remainder:** the Code face is materially thinner than CD's frame — `codeVals` (L10256)
+   draws file tabs with dirty marks, a repo strip with its ceiling pill, review cards, a tokenized
+   line-numbered editor, a run log and a limits row. What ships is the file line, the scratch
+   buffer and the ceiling's read/write arm. Porting `codeVals` in full is the next slice, and it is
+   named here rather than left to be discovered.
 3. **Three live dead links out of `FleetConsole`.** `FleetConsole.tsx:277` and `:573` navigate to
    `/operator/provisioning`; `:574` navigates to `/operator/paige`. Neither is a slot, so
    `resolveOperatorAddress` returns `{kind:"unknown"}` (`operatorAddress.ts:55`) and the operator

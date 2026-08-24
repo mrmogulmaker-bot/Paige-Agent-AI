@@ -58,6 +58,12 @@ import type { CommandMarkState } from "@/operator/shell/CommandMark";
 import SpineHeader from "@/operator/shell/spine/SpineHeader";
 import SpineFaceStrip, { type SpineFaceDescriptor } from "@/operator/shell/spine/SpineFaceStrip";
 import SpineComposer from "@/operator/shell/spine/SpineComposer";
+import {
+  SpineCode,
+  SpineMemory,
+  SpineSkills,
+  SpineTeam,
+} from "@/operator/shell/spine/faces/SpineFaces";
 import type {
   SpineCommandState,
   SpineDirective,
@@ -107,10 +113,26 @@ export type SpineRegion = {
  */
 export const SPINE_REGIONS: readonly SpineRegion[] = [
   { id: "chat", label: "Chat", note: "What she is saying and doing", content: <SpineConversation /> },
-  { id: "memory", label: "Memory", note: "What she holds about you and the work", content: null },
-  { id: "team", label: "Team", note: "Who works for her", content: null },
-  { id: "sandbox", label: "Skills", note: "What she can do", content: null },
-  { id: "code", label: "Code", note: "Where she writes it", content: null },
+  /**
+   * THE OTHER FOUR OPENED 2026-08-24 — BUILD-ORDER Layer 5. Owner, sending CD's five reference
+   * frames: *"This is what we want it to look like."*
+   *
+   * They were never missing; they were INVISIBLE. `shown` below filters this registry to regions
+   * with a non-null `content`, and only Chat had one, so the strip drew a single face while these
+   * four sat here addressable and unreachable. That filter is the right rule — a face whose body
+   * is a blank pane is worse than no face — so the fix was to give them bodies, not to loosen the
+   * gate. Each renders the pack's structure and its own stated absence; none takes a row it has
+   * not been handed (`spineFaceContract.ts` records what is and is not a fixture here).
+   */
+  {
+    id: "memory",
+    label: "Memory",
+    note: "What she holds about you and the work",
+    content: <SpineMemory />,
+  },
+  { id: "team", label: "Team", note: "Who works for her", content: <SpineTeam /> },
+  { id: "sandbox", label: "Skills", note: "What she can do", content: <SpineSkills /> },
+  { id: "code", label: "Code", note: "Where she writes it", content: <SpineCode /> },
 ];
 
 /**
