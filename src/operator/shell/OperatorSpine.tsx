@@ -227,7 +227,19 @@ export default function OperatorSpine({
       : live.level === null
         ? null
         : {
-            level: live.level,
+            // §68 — the rung DISPLAYED is the rung IN FORCE (`effective`), never the stored
+            // ceiling. Reading `level` here was a real §13 defect, visible on the live console
+            // 2026-08-24: the header said "Act and report" (the ceiling, rung 3) directly above a
+            // tally reading "0 autonomous · 0 ask first · 23 draft only" — which is rung-1
+            // behaviour — because the label came from the ceiling and the tally from `effective`.
+            // A readout that claims authority the platform is not holding is the same class of
+            // untruth as a fabricated metric.
+            //
+            // What is NOT rendered yet: the GAP. `live.requested` and `live.cappedBy` say the rung
+            // was asked for at 3 and capped to 1 by attestation or proof, and nothing draws that
+            // — how a capped rung is shown is CD's (§00), tracked as task #220. Until then this
+            // shows the truth without the explanation, which is the honest half to ship first.
+            level: live.effective ?? live.level,
             tally: live.tally,
             // Moving the ceiling is super_admin-only and the RPC refuses anyone below it, so a
             // platform_admin's click is rejected server-side rather than silently ignored here.
