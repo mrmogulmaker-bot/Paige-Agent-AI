@@ -528,7 +528,7 @@ CONSTRAINT TRIGGER that a tenant may only rest at `revenue_class='paid'` when th
 
 ---
 
-## 6. Pack self-contradictions — three RULED by the owner 2026-08-23, four open
+## 6. Pack self-contradictions — three RULED by the owner 2026-08-23, six open
 
 Rulings 1, 2 and 5 below are closed and applied to the pack files in the same commit as this
 line. **Because CD regenerates the pack wholesale, all three are standing edits** in the sense
@@ -581,6 +581,36 @@ defect at CD's source, not a patch to re-apply here. Send the locator, do not re
 
 7. **`pack-provenance.md` still names the retired `Field` slot** and the stage2 icon table maps
    `Field → LayoutGrid`. `CLAUDE-CODE-HANDOFF.md` records Field became **Marketplace**.
+
+8. **The grant-vs-ceiling scale disagrees with itself between two surface groups.** *(Found
+   2026-08-24 porting Layer 3c; not previously recorded.)* Both the Marketplace and Campaigns
+   compare a requested grant against `ceiling()` — a rung index 0–4, L4517 — and they map a grant
+   NAME onto that scale two different ways:
+
+   |             | Observe | Draft only | Ask first | Act and report | Autonomous |
+   |---|---|---|---|---|---|
+   | Marketplace | 0 | 1 | 2 | 3 | 4 | ← `RANK` index (L10057, L9437)
+   | Campaigns   | 1 | 1 | 2 | 2 | 4 | ← `clampGrant` weight (L5295)
+
+   Consequence at the default ceiling of 2: a listing needing **"Act and report"** reads **above
+   the ceiling** in the Marketplace, while a campaign with the same grant reads **at** it and
+   runs. "Observe" differs too (rung 0 vs weight 1), though nothing is below a ceiling of 0 in
+   practice. Both are internally consistent and both wire as drawn, so this is not a §00
+   incompatibility — it is the same class as 3/4/6/7 above.
+
+   **Ported verbatim per surface, deliberately not reconciled.** `listingContract.aboveCeiling`
+   keeps the RANK; `campaignContract.clampGrant` keeps the WEIGHT. Each cites the other in a
+   comment so a later session cannot "fix" one into the other without meeting this entry. **Owed
+   from CD:** which scale is the platform's, or whether the two genuinely mean different things.
+
+9. **The Storefront's empty state is bound but never supplied.** *(Found 2026-08-24, same pass.)*
+   The markup renders `{{ emptyLine }}` inside `<sc-if value="{{ storeEmpty }}">` at L2541–L2543.
+   Grepping all 11,358 lines for `emptyLine` and `storeEmpty` returns **exactly those two markup
+   references and nothing else** — neither `storeVals` (L10054) nor `storeValsUnused` (L10198)
+   produces either key. A search that matches nothing is the commonest state a storefront is in,
+   so the surface has no authored copy for its most frequent empty case. **Owed from CD.** No
+   copy was invented for it in the port (§00); the result line counts honestly and the authored
+   `storeFoot` says what does not exist.
 
 ---
 

@@ -65,6 +65,11 @@ const ConversationsSurface = lazy(
   () => import("@/operator/surfaces/relationships/ConversationsSurface"),
 );
 const SegmentsSurface = lazy(() => import("@/operator/surfaces/relationships/SegmentsSurface"));
+const StorefrontSurface = lazy(() => import("@/operator/surfaces/marketplace/StorefrontSurface"));
+const MarketCatalogSurface = lazy(
+  () => import("@/operator/surfaces/marketplace/MarketCatalogSurface"),
+);
+const PublishersSurface = lazy(() => import("@/operator/surfaces/marketplace/PublishersSurface"));
 
 /**
  * THE FOUR v3 SURFACES THAT WERE PORTED AND NEVER MOUNTED (Claude Design audit, 2026-08-23).
@@ -193,6 +198,21 @@ export default function SlotSurfaceBody({ slot, view }: { slot: OperatorSlot; vi
         {bespoke === "PeopleSurface" && <PeopleSurface onAnnounce={announce} />}
         {bespoke === "ConversationsSurface" && <ConversationsSurface onAnnounce={announce} />}
         {bespoke === "SegmentsSurface" && <SegmentsSurface />}
+
+        {/* THE MARKETPLACE GROUP · BUILD-ORDER Layer 3c. Submissions already shipped as
+            `SubmissionsQueue`; these are the other three views of the same slot, and they read
+            the same five kinds and four publisher classes out of `marketplaceVocabulary.ts`,
+            which is why that module was written as a shared home before any of them existed.
+
+            None takes rows. What IS already real on all three is the ceiling arithmetic: a
+            listing's requested grant is ranked against the platform's stored Trust Compass rung,
+            so nothing can read "Installed" when the platform would not let it act. With no rung
+            stored, every state reads plainly and the capped figure is an em-dash — the pack
+            defaults that ceiling to 2, and inheriting a demo default would have the console
+            assert a governance rung nobody set. */}
+        {bespoke === "StorefrontSurface" && <StorefrontSurface onAnnounce={announce} />}
+        {bespoke === "MarketCatalogSurface" && <MarketCatalogSurface />}
+        {bespoke === "PublishersSurface" && <PublishersSurface />}
 
         {/* The four v3 ports, mounted. Each takes `null` where a read belongs and renders the
             pack's own absence for it — which is what they were built to do, so they are correct

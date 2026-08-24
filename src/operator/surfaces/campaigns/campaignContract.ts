@@ -190,6 +190,20 @@ export const DEFAULT_CAMPAIGN_SCHEMA: CampaignSchema = {
 };
 
 /**
+ * ⚠ THE SCALE HERE DISAGREES WITH THE MARKETPLACE'S, AND THAT IS THE PACK'S DISAGREEMENT, NOT A
+ * BUG TO FIX HERE. Both compare a grant against the same 0–4 Trust Compass rung; they map the
+ * grant NAME onto it differently:
+ *
+ *              Observe   Draft only   Ask first   Act and report   Autonomous
+ *   this file      1          1           2             2               4      (WEIGHT, v3 L5295)
+ *   marketplace    0          1           2             3               4      (RANK,   v3 L10057)
+ *
+ * So "Act and report" reads AT a ceiling of 2 here and ABOVE it in the Marketplace. Recorded as
+ * `PACK-INVENTORY-v3.md` §6 contradiction #8 and owed from CD. Do not reconcile one into the
+ * other: each surface is ported verbatim until CD rules which scale is the platform's.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────────────────────
+ *
  * `clampGrant` — L5300–L5305, and CD's comment is the reason it lives in the shared contract:
  *
  *   *"Any named grant answers to the ceiling on the SAME scale capabilities use: the label

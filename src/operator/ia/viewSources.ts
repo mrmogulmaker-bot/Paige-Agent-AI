@@ -114,14 +114,23 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
   },
 
   // ── Marketplace ────────────────────────────────────────────────────────────────────────────
-  "marketplace/storefront": { panels: ["marketplace/discover"], carries: ["marketplace/discover"] },
-  "marketplace/catalog": { panels: ["marketplace/build"], carries: ["marketplace/build"] },
+  /**
+   * BUILD-ORDER Layer 3c — `storeVals` (10054) · `catalogVals` (9434) · `pubsVals` (9540).
+   * Submissions already shipped as `SubmissionsQueue`; these are the other three views of the
+   * same slot, reading the same vocabulary out of `marketplaceVocabulary.ts` (§18).
+   *
+   * Each replaces ONE ported spec off the retired pack — `marketplace/discover`,
+   * `marketplace/build`, `marketplace/publishers` — which rendered a generic panel and read
+   * nothing. Their keys stay in `carries`.
+   */
+  "marketplace/storefront": { bespoke: "StorefrontSurface", carries: ["marketplace/discover"] },
+  "marketplace/catalog": { bespoke: "MarketCatalogSurface", carries: ["marketplace/build"] },
   "marketplace/submissions": {
     // v3 L2281-L2326 + subsVals L9506-L9572, ported as SubmissionsQueue.
     bespoke: "SubmissionsQueue",
     carries: ["marketplace/submissions"],
   },
-  "marketplace/publishers": { panels: ["marketplace/publishers"], carries: ["marketplace/publishers"] },
+  "marketplace/publishers": { bespoke: "PublishersSurface", carries: ["marketplace/publishers"] },
 
   // ── Analytics ──────────────────────────────────────────────────────────────────────────────
   "analytics/fleet": {
