@@ -1,0 +1,33 @@
+# Offline contract tests only. This workflow never contacts Supabase, never consumes
+# secrets, and never generates a production-derived baseline. Operational generation
+# requires a separately approved future workflow and protected environment.
+name: trusted-baseline-tooling
+
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/trusted-baseline/**"
+      - ".github/scripts/fixtures/trusted-baseline/**"
+      - ".github/migration-baseline/public-safety-policy.json"
+      - ".github/workflows/trusted-baseline-tooling.yml"
+      - "docs/security/TRUSTED_MIGRATION_BASELINE_CONTRACT.md"
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Syntax
+        run: |
+          node --check .github/scripts/trusted-baseline/contract.mjs
+          node --check .github/scripts/trusted-baseline/sanitize.mjs
+          node --check .github/scripts/trusted-baseline/verify.mjs
+          node --check .github/scripts/trusted-baseline/trusted-baseline.test.mjs
+      - name: Synthetic and adversarial contract tests
+        run: node --test .github/scripts/trusted-baseline/trusted-baseline.test.mjs
