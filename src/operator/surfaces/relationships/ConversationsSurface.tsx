@@ -136,7 +136,7 @@ export default function ConversationsSurface({
         {/* ── the threads ─────────────────────────────────────────────────────────────────── */}
         <div
           className={cn(
-            "min-h-0 min-w-0 flex-col bg-[var(--pg-spine)] shadow-[inset_-1px_0_0_var(--pg-line-strong)] md:flex",
+            "min-h-0 min-w-0 flex-col bg-[var(--pg-spine)] shadow-[shadow:inset_-1px_0_0_var(--pg-line-strong)] md:flex",
             solo === "list" ? "flex" : "hidden",
           )}
         >
@@ -241,7 +241,7 @@ export default function ConversationsSurface({
         {/* ── the conversation ────────────────────────────────────────────────────────────── */}
         <div
           className={cn(
-            "min-h-0 min-w-0 flex-col bg-[var(--pg-canvas)] shadow-[inset_-1px_0_0_var(--pg-line-strong)] md:flex",
+            "min-h-0 min-w-0 flex-col bg-[var(--pg-canvas)] shadow-[shadow:inset_-1px_0_0_var(--pg-line-strong)] md:flex",
             solo === "convo" ? "flex" : "hidden",
           )}
         >
@@ -463,7 +463,7 @@ function FilterGlyph({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         glyph ? "h-[26px] w-[26px]" : "px-[7px]",
         on
-          ? "bg-[var(--pg-lift)] font-semibold text-foreground shadow-[inset_0_0_0_1px_var(--pg-line)]"
+          ? "bg-[var(--pg-lift)] font-semibold text-foreground shadow-[shadow:inset_0_0_0_1px_var(--pg-line)]"
           : "bg-transparent font-normal text-[var(--pg-faint)]",
       )}
     >

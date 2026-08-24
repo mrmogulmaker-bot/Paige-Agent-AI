@@ -115,7 +115,7 @@ export function AgentRail({
       // never covers the top bar's controls) — the top offset is what clears it, not z.
       className={cn(
         "fixed right-0 z-30 hidden flex-col overflow-hidden md:flex",
-        "border-l border-border bg-card text-card-foreground shadow-[-8px_0_24px_-16px_hsl(var(--foreground)/0.25)]",
+        "border-l border-border bg-card text-card-foreground shadow-[shadow:-8px_0_24px_-16px_hsl(var(--foreground)/0.25)]",
         className,
       )}
       initial={presenceInitial}

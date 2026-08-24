@@ -272,7 +272,7 @@ function SubmissionRow({
       className={
         "text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
         (reduce ? "" : "motion-safe:hover:-translate-y-[2px] ") +
-        "hover:shadow-[var(--pg-rim),var(--pg-lift-2)]"
+        "hover:shadow-[shadow:var(--pg-rim),var(--pg-lift-2)]"
       }
       style={{
         display: "flex", flexDirection: "column", gap: 10, minWidth: 0, minHeight: 88,

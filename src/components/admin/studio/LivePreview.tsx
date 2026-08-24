@@ -348,7 +348,7 @@ export function LivePreview({
   // gets the biggest float (a tight contact shadow + a wide soft drop + a 1px top light-lip),
   // cast in fixed shadow-ink so it reads the same over the dark well in either theme.
   const floatShadow =
-    "shadow-[0_2px_4px_hsl(var(--studio-ink)/0.4),0_24px_60px_-20px_hsl(var(--studio-ink)/0.65),inset_0_1px_0_hsl(var(--foreground)/0.06)]";
+    "shadow-[shadow:0_2px_4px_hsl(var(--studio-ink)/0.4),0_24px_60px_-20px_hsl(var(--studio-ink)/0.65),inset_0_1px_0_hsl(var(--foreground)/0.06)]";
 
   return (
     // Cap + center the pane on desktop so the artifact reads as a real site (which maxes out its

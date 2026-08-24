@@ -282,7 +282,7 @@ export function StudioTopBar({
           // its indigo bg-primary fill reads as a thumb sitting in the well. Inset uses the
           // shared --shadow-ink token (dark ink in both themes). Active stays indigo, never gold.
           <div
-            className="flex items-center gap-0.5 rounded-full bg-muted/60 p-0.5 shadow-[inset_0_1px_1px_hsl(var(--shadow-ink)/0.08)]"
+            className="flex items-center gap-0.5 rounded-full bg-muted/60 p-0.5 shadow-[shadow:inset_0_1px_1px_hsl(var(--shadow-ink)/0.08)]"
             role="group"
             aria-label="Preview device"
           >

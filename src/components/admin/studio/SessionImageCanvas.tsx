@@ -174,7 +174,7 @@ export function SessionImageCanvas({
   //    main stage swaps between. Prev/next hug the letterbox edges so they never cover the subject.
   const stageImage = (
     <div className="relative flex max-h-full max-w-full items-center justify-center">
-      <figure className="relative max-h-full max-w-full overflow-hidden rounded-xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-card shadow-[0_24px_60px_-24px_hsl(var(--studio-ink)/0.7)]">
+      <figure className="relative max-h-full max-w-full overflow-hidden rounded-xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-card shadow-[shadow:0_24px_60px_-24px_hsl(var(--studio-ink)/0.7)]">
         <img
           src={displayUrl}
           alt={current.title || "Generated image"}

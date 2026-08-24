@@ -150,7 +150,7 @@ export default function PeopleSurface({
                 "inline-flex min-h-[28px] flex-none items-center gap-1.5 whitespace-nowrap border-0 bg-transparent px-0.5 text-[11.5px]",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 on
-                  ? "font-semibold text-foreground shadow-[inset_0_-1px_0_var(--pg-gold)]"
+                  ? "font-semibold text-foreground shadow-[shadow:inset_0_-1px_0_var(--pg-gold)]"
                   : "font-normal text-[var(--pg-muted)]",
               )}
             >
@@ -183,7 +183,7 @@ export default function PeopleSurface({
         {/* the list */}
         <div
           className={cn(
-            "min-h-0 min-w-0 flex-col lg:flex lg:shadow-[inset_-1px_0_0_var(--pg-line-soft)]",
+            "min-h-0 min-w-0 flex-col lg:flex lg:shadow-[shadow:inset_-1px_0_0_var(--pg-line-soft)]",
             solo === "list" ? "flex" : "hidden",
           )}
         >
@@ -335,7 +335,7 @@ export default function PeopleSurface({
                           "min-h-[24px] flex-none whitespace-nowrap border-0 bg-transparent px-[7px] text-[10.5px]",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                           on
-                            ? "font-semibold text-foreground shadow-[inset_0_-1px_0_var(--pg-gold)]"
+                            ? "font-semibold text-foreground shadow-[shadow:inset_0_-1px_0_var(--pg-gold)]"
                             : "font-normal text-[var(--pg-faint)]",
                         )}
                       >

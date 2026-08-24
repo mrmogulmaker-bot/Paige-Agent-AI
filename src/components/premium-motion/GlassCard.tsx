@@ -23,7 +23,7 @@ export function GlassCard({ children, className, interactive = false, onClick }:
   const base = cn(
     // Layered glass: translucent card fill + hairline border + blur + soft ring.
     "relative rounded-2xl border border-border/70 bg-card/60 backdrop-blur-xl",
-    "shadow-[0_1px_0_0_hsl(var(--border)/0.6)_inset,0_20px_40px_-24px_hsl(var(--primary)/0.35)]",
+    "shadow-[shadow:0_1px_0_0_hsl(var(--border)/0.6)_inset,0_20px_40px_-24px_hsl(var(--primary)/0.35)]",
     interactive && "cursor-pointer",
     className,
   );

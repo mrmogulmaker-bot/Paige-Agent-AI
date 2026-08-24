@@ -461,7 +461,7 @@ function usePaginatedBlocks(blocks: StudioDocBlock[], measureRef: RefObject<HTML
 /** The paper-sheet styling, shared by the on-screen page, the single-sheet path, and the print tree,
  *  so every surface reads as the same document (§22 layered depth — border + soft shadow, never flat). */
 const SHEET_CLS =
-  "space-y-8 rounded-2xl border border-[hsl(var(--border))] bg-card shadow-[0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)]";
+  "space-y-8 rounded-2xl border border-[hsl(var(--border))] bg-card shadow-[shadow:0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)]";
 
 /** A single page's blocks, drawn on the paper sheet. Memoized: the rail renders one of these per page
  *  (scaled) and re-render churn on a 40-page doc would jank (a tracked virtualization fast-follow). */
@@ -683,7 +683,7 @@ export function DocumentPreview({ document, className }: { document: StudioDocum
             // data-paige-doc-sheet and prints directly). Layered depth via border + soft shadow (§22).
             <article
               data-paige-doc-sheet
-              className="space-y-8 rounded-2xl border border-[hsl(var(--border))] bg-card px-6 py-8 shadow-[0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)] md:px-12 md:py-12"
+              className="space-y-8 rounded-2xl border border-[hsl(var(--border))] bg-card px-6 py-8 shadow-[shadow:0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)] md:px-12 md:py-12"
             >
               {blocks.map((b, i) => <Block key={i} block={b} allBlocks={blocks} />)}
             </article>

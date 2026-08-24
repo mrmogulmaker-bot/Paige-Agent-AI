@@ -67,13 +67,13 @@ function miniBarStyle(i: number, level: SpineTrustLevel): React.CSSProperties {
 const CONTROL_CLASS =
   "relative grid w-[30px] place-items-center rounded-[var(--pg-r-chip)] border " +
   "border-[var(--pg-line)] bg-[var(--pg-raised)] text-[var(--pg-muted)] " +
-  "shadow-[var(--pg-lift-1)] transition-[color,border-color,box-shadow,transform] duration-150 " +
+  "shadow-[shadow:var(--pg-lift-1)] transition-[color,border-color,box-shadow,transform] duration-150 " +
   "hover:-translate-y-px hover:border-[var(--pg-line-strong)] hover:text-[var(--pg-gold-deep)] " +
-  "hover:shadow-[var(--pg-lift-2),inset_0_-2px_0_var(--pg-gold-deep)] " +
-  "active:translate-y-0 active:text-[var(--pg-ink)] active:shadow-[var(--pg-inset)] " +
+  "hover:shadow-[shadow:var(--pg-lift-2),inset_0_-2px_0_var(--pg-gold-deep)] " +
+  "active:translate-y-0 active:text-[var(--pg-ink)] active:shadow-[shadow:var(--pg-inset)] " +
   "disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 " +
   "disabled:hover:border-[var(--pg-line)] disabled:hover:text-[var(--pg-muted)] " +
-  "disabled:hover:shadow-[var(--pg-lift-1)]";
+  "disabled:hover:shadow-[shadow:var(--pg-lift-1)]";
 
 export type SpineHeaderProps = {
   /** Drives `data-cm` — colour and pulse period. Unset falls back to the resting treatment. */

@@ -603,7 +603,7 @@ function SplitStage({
           reads as the deliverable-to-be on the canvas, not a loose shimmer. */}
       <div
         className={cn(
-          "relative hidden aspect-[4/3] w-full overflow-hidden rounded-2xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-[hsl(var(--card)/0.55)] shadow-[0_24px_60px_-28px_hsl(var(--foreground)/0.4)] backdrop-blur-sm md:block",
+          "relative hidden aspect-[4/3] w-full overflow-hidden rounded-2xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-[hsl(var(--card)/0.55)] shadow-[shadow:0_24px_60px_-28px_hsl(var(--foreground)/0.4)] backdrop-blur-sm md:block",
           !reduce && GP_FADE_RISE,
         )}
         aria-hidden

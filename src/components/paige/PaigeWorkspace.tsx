@@ -201,7 +201,7 @@ function WorkspaceBody({ tenantName }: { tenantName: string }) {
             <PanelRightOpen className="h-4 w-4" />
           </button>
         ) : (
-          <aside className="flex w-[360px] lg:w-[380px] shrink-0 flex-col border-l bg-primary/[0.055] shadow-[inset_1px_0_0_hsl(var(--border))]">
+          <aside className="flex w-[360px] lg:w-[380px] shrink-0 flex-col border-l bg-primary/[0.055] shadow-[shadow:inset_1px_0_0_hsl(var(--border))]">
             {/* One scroll column — reasoning cockpit, customer selector, and the Live
                 desk all flow and share the height instead of the feed being crushed
                 into a sliver. Customize Paige is pinned to the floor, always reachable. */}

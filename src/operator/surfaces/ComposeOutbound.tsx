@@ -293,7 +293,7 @@ export default function ComposeOutbound({
           <div
             role="listbox"
             aria-label="Send as"
-            className="absolute bottom-[calc(100%+6px)] left-0 z-[9] min-w-[232px] overflow-hidden rounded-[var(--pg-r-plate)] border border-[var(--pg-line-strong)] bg-[var(--pg-raised)] shadow-[var(--pg-e4)]"
+            className="absolute bottom-[calc(100%+6px)] left-0 z-[9] min-w-[232px] overflow-hidden rounded-[var(--pg-r-plate)] border border-[var(--pg-line-strong)] bg-[var(--pg-raised)] shadow-[shadow:var(--pg-e4)]"
           >
             {channels.map((c) => {
               const on = c.key === sendKey;
@@ -334,7 +334,7 @@ export default function ComposeOutbound({
 
         {/* ── snippets · pack L864–L874 ─────────────────────────────────── */}
         {snipOpen && snippets.length > 0 && (
-          <div className="absolute bottom-[calc(100%+6px)] left-0 z-[9] max-h-[220px] w-[264px] overflow-auto rounded-[var(--pg-r-plate)] border border-[var(--pg-line-strong)] bg-[var(--pg-raised)] shadow-[var(--pg-e4)]">
+          <div className="absolute bottom-[calc(100%+6px)] left-0 z-[9] max-h-[220px] w-[264px] overflow-auto rounded-[var(--pg-r-plate)] border border-[var(--pg-line-strong)] bg-[var(--pg-raised)] shadow-[shadow:var(--pg-e4)]">
             {snippets.map((s) => (
               <button
                 key={s.k}

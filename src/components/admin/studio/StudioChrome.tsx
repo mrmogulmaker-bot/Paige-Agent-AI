@@ -86,7 +86,7 @@ export function StudioSplit({
           // reflows to fill as the rail retracts — it needs no transition of its own.
           immersive
             ? "overflow-hidden max-lg:hidden lg:w-0 lg:border-r-0"
-            : "lg:w-[380px] lg:border-r lg:border-[hsl(var(--studio-chrome-border)/0.5)] lg:shadow-[4px_0_16px_-12px_hsl(var(--shadow-ink)/0.16)]",
+            : "lg:w-[380px] lg:border-r lg:border-[hsl(var(--studio-chrome-border)/0.5)] lg:shadow-[shadow:4px_0_16px_-12px_hsl(var(--shadow-ink)/0.16)]",
         )}
       >
         {railBare ? (
@@ -107,7 +107,7 @@ export function StudioSplit({
           // The pinned composer dock lifts a step above the rail (its own --studio-dock tone, a
           // notch lighter + more saturated than the rail) so the primary input reads RAISED —
           // the Lovable/v0 lit dock, not a gray shelf. Indigo tint, never gold (§11).
-          <div className="shrink-0 border-t border-[hsl(var(--studio-chrome-border)/0.5)] bg-[hsl(var(--studio-dock))] px-4 py-3 shadow-[0_-6px_16px_-10px_hsl(var(--shadow-ink)/0.18)]">
+          <div className="shrink-0 border-t border-[hsl(var(--studio-chrome-border)/0.5)] bg-[hsl(var(--studio-dock))] px-4 py-3 shadow-[shadow:0_-6px_16px_-10px_hsl(var(--shadow-ink)/0.18)]">
             {railFooter}
           </div>
         )}
@@ -122,7 +122,7 @@ export function StudioSplit({
           cast in fixed shadow-ink. Roomier padding (p-6 → md:p-10) so the artifact breathes and
           reads as a hero on a surface, not a full-bleed fill jammed to the edges (§11). */}
       <div className={cn(
-        "studio-drafting-grid min-w-0 flex-1 p-6 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.04),inset_0_18px_50px_-24px_hsl(var(--studio-ink)/0.7)] md:p-10 lg:min-h-0 lg:overflow-y-auto",
+        "studio-drafting-grid min-w-0 flex-1 p-6 shadow-[shadow:inset_0_1px_0_hsl(var(--foreground)/0.04),inset_0_18px_50px_-24px_hsl(var(--studio-ink)/0.7)] md:p-10 lg:min-h-0 lg:overflow-y-auto",
         // Chat surface on mobile: cap the preview so the conversation (below it) leads the screen.
         canvasFirstOnMobile && "max-lg:h-[42vh] max-lg:shrink-0 max-lg:overflow-y-auto",
       )}>

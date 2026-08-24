@@ -470,7 +470,7 @@ function ListingTile({
       type="button"
       onClick={onOpen && (() => onOpen(listing))}
       disabled={!onOpen}
-      className="flex min-w-0 flex-col gap-[9px] rounded-[var(--pg-r-plate)] border-0 bg-[var(--pg-canvas)] px-3.5 py-[13px] text-left shadow-[inset_0_0_0_1px_var(--pg-line-soft)] disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="flex min-w-0 flex-col gap-[9px] rounded-[var(--pg-r-plate)] border-0 bg-[var(--pg-canvas)] px-3.5 py-[13px] text-left shadow-[shadow:inset_0_0_0_1px_var(--pg-line-soft)] disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="flex min-w-0 items-center gap-2.5">
         <span

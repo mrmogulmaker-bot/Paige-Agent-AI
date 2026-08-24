@@ -39,7 +39,7 @@ export default function SlotRail({
     "flex min-h-[40px] min-w-0 items-center gap-3 rounded-[9px] px-[11px] text-left",
     "text-rail-muted hover:text-rail-foreground",
     // Ruling A — --pg-inset on press.
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]",
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[shadow:var(--pg-inset)]",
     compact && "justify-center px-0",
   );
 

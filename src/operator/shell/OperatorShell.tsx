@@ -324,6 +324,23 @@ function OperatorShellBody() {
             /* `openTrust` (L4620). Routing is the shell's job — the spine takes a callback so it
                stays mountable outside a router (the detached window, and every spine test). */
             onOpenCompass={() => navigate("/operator/analytics/autonomy")}
+            /**
+             * THE FOLD, WIRED. Owner, live, 2026-08-24: *"I cannot fold Paige's chat in."*
+             *
+             * He was right and the cause was here: the spine header draws both window controls
+             * and each is `disabled={!handler}`, so with no `onFold` passed the control rendered
+             * permanently dead. The state it needed has existed the whole time —
+             * `setSpineRequested` is the same setter the topbar's Summon PAIGE button drives —
+             * so the console could OPEN the spine and had no way to shut it. A one-way door.
+             *
+             * Measured, not assumed: a Chromium render of this shell reported
+             * `disabled: true` on `[aria-label="Fold the conversation"]`.
+             *
+             * `onDetach` stays unpassed and the control stays honestly disabled: a second window
+             * needs the multi-window seams that are their own scope (task #215), and a control
+             * that looks live and silently does nothing is the defect this console is judged on.
+             */
+            onFold={() => setSpineRequested(false)}
           />
         )}
       </div>
@@ -389,7 +406,7 @@ function OperatorCanvas({
           ladder is row(6) < summoned(8) < view row(12); it is preserved and shifted over the
           view row: this row 13, `SummonedSurface` 14. The palette keeps the pack's `z-index:8`
           inside this row, because raising it alone could never have escaped a context 6 sets. */}
-      <div className="relative z-[13] col-span-full row-start-1 flex min-h-0 min-w-0 items-center gap-[14px] border-b border-[var(--pg-line-soft)] bg-[var(--pg-spine)] px-5 shadow-[var(--pg-e1)]">
+      <div className="relative z-[13] col-span-full row-start-1 flex min-h-0 min-w-0 items-center gap-[14px] border-b border-[var(--pg-line-soft)] bg-[var(--pg-spine)] px-5 shadow-[shadow:var(--pg-e1)]">
         <CommandBar
           open={paletteOpen}
           onToggle={onTogglePalette}
@@ -413,8 +430,8 @@ function OperatorCanvas({
             title="Summon PAIGE · ⌘\\"
             className={cn(
               "relative grid h-[34px] w-[34px] flex-none place-items-center rounded-[var(--pg-r-chip)]",
-              "border border-[var(--pg-line)] bg-[var(--pg-raised)] text-[var(--pg-muted)] shadow-[var(--pg-lift-1)]",
-              "transition-colors hover:text-[var(--pg-gold-deep)] active:shadow-[var(--pg-inset)]",
+              "border border-[var(--pg-line)] bg-[var(--pg-raised)] text-[var(--pg-muted)] shadow-[shadow:var(--pg-lift-1)]",
+              "transition-colors hover:text-[var(--pg-gold-deep)] active:shadow-[shadow:var(--pg-inset)]",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             )}
           >

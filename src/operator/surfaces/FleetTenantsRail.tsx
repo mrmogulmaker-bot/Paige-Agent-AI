@@ -68,7 +68,7 @@ import { cn } from "@/lib/utils";
  * pack's own pairing is `var(--pg-rim), var(--pg-lift-N)` (L9420, L9477). Applied to the
  * `RailCard` plate and to the four mini-KPI cells, which carried no shadow at all.
  *
- * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[var(--pg-rim)]`
+ * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[shadow:var(--pg-rim)]`
  * does NOT compile to a box-shadow. Tailwind 3 cannot type a bare `var()` and resolves the
  * `shadow-` arbitrary value to `--tw-shadow-COLOUR`; the emitted rule is
  * `{--tw-shadow-color: var(--pg-rim)}` (verified in the built CSS), which recolours a shadow
@@ -310,7 +310,7 @@ export function FleetTenantsRail({
               key={r.tenant.id}
               type="button"
               onClick={() => onOpenTenant(r.tenant.id)}
-              className="rounded-[10px] border border-l-[3px] border-border border-l-[hsl(var(--warning))] bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
+              className="rounded-[10px] border border-l-[3px] border-border border-l-[hsl(var(--warning))] bg-[color-mix(in_srgb,var(--pg-workspace)_40%,transparent)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[shadow:var(--pg-inset)]"
             >
               <div className="text-[length:var(--pg-t-label)] leading-relaxed">
                 <span className="font-semibold">{r.tenant.name}</span> —{" "}
@@ -339,7 +339,7 @@ export function FleetTenantsRail({
           <button
             type="button"
             onClick={onProvision}
-            className="mt-2.5 rounded-lg border border-border bg-[var(--pg-raised)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
+            className="mt-2.5 rounded-lg border border-border bg-[var(--pg-raised)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[shadow:var(--pg-inset)]"
           >
             + Provision a tenant
           </button>
@@ -409,7 +409,7 @@ export function FleetTenantsRail({
                 <button
                   type="button"
                   onClick={() => onEnterTenant(r.tenant.id)}
-                  className="flex-none rounded-lg border border-border bg-[var(--pg-raised)] px-2 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
+                  className="flex-none rounded-lg border border-border bg-[var(--pg-raised)] px-2 py-1 text-[length:var(--pg-t-label)] font-semibold transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[shadow:var(--pg-inset)]"
                 >
                   Enter
                 </button>

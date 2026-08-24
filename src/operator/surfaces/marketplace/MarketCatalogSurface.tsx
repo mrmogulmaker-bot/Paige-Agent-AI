@@ -103,7 +103,7 @@ export default function MarketCatalogSurface({
               className={cn(
                 "flex min-h-[34px] min-w-0 items-center gap-[9px] border-0 bg-transparent px-0.5",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                on ? "text-foreground shadow-[inset_0_-1px_0_var(--pg-gold)]" : "text-[var(--pg-muted)]",
+                on ? "text-foreground shadow-[shadow:inset_0_-1px_0_var(--pg-gold)]" : "text-[var(--pg-muted)]",
                 n ? "opacity-100" : "opacity-50",
               )}
             >

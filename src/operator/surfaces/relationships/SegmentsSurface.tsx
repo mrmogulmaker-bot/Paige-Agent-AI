@@ -127,7 +127,7 @@ export default function SegmentsSurface({
         {/* the list */}
         <div
           className={cn(
-            "min-h-0 min-w-0 flex-col lg:flex lg:pr-3.5 lg:shadow-[inset_-1px_0_0_var(--pg-line-soft)]",
+            "min-h-0 min-w-0 flex-col lg:flex lg:pr-3.5 lg:shadow-[shadow:inset_-1px_0_0_var(--pg-line-soft)]",
             solo === "list" ? "flex" : "hidden",
           )}
         >

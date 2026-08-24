@@ -153,7 +153,7 @@ export default function KnowledgeSurface({
       <div className="flex min-h-0 flex-1 gap-3.5">
         {/* ── the field ─────────────────────────────────────────────────── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="relative min-h-[340px] flex-1 overflow-hidden rounded-[15px] bg-rail shadow-[0_16px_36px_hsl(var(--shadow-ink)/0.3)]">
+          <div className="relative min-h-[340px] flex-1 overflow-hidden rounded-[15px] bg-rail shadow-[shadow:0_16px_36px_hsl(var(--shadow-ink)/0.3)]">
             {/*
               NEURAL-FIELD SLOT — CD's `platform-brain.js` mounts here. Deliberately not ported
               in this pass; nothing decorative stands in for it (§13).

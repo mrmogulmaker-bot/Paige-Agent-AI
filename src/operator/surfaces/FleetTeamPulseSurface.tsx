@@ -16,7 +16,7 @@ import { useTeamPulse } from "@/operator/data/useTeamPulse";
  * outline" CD reported. Both tokens ship at the pack's own values; this is where they are spent.
  * The pack pairs them exactly this way at L9420 and L9477: `var(--pg-rim), var(--pg-lift-N)`.
  *
- * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[var(--pg-rim)]`
+ * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[shadow:var(--pg-rim)]`
  * does NOT compile to a box-shadow. Tailwind 3 cannot type a bare `var()` and resolves the
  * `shadow-` arbitrary value to `--tw-shadow-COLOUR`; the emitted rule is
  * `{--tw-shadow-color: var(--pg-rim)}` (verified in the built CSS), which recolours a shadow

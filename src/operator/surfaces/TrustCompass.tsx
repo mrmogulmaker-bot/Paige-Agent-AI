@@ -194,7 +194,7 @@ export default function TrustCompass({
       <div className="flex min-h-0 flex-1 gap-3.5">
         {/* ── the console ───────────────────────────────────────────────── */}
         <div
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[15px] bg-rail px-4 py-3.5 text-rail-foreground shadow-[0_16px_36px_hsl(var(--shadow-ink)/0.32)]"
+          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-[15px] bg-rail px-4 py-3.5 text-rail-foreground shadow-[shadow:0_16px_36px_hsl(var(--shadow-ink)/0.32)]"
           // CD's panel is a two-stop gradient (#111A2C → #191231). The second stop IS --rail,
           // so the first is expressed as a token-built wash over it rather than a pasted hex.
           style={{
@@ -341,7 +341,7 @@ export default function TrustCompass({
                       {/* the seat the dial sits in */}
                       <span
                         aria-hidden
-                        className="absolute -inset-[3px] rounded-full shadow-[0_6px_14px_hsl(var(--shadow-ink)/0.5)]"
+                        className="absolute -inset-[3px] rounded-full shadow-[shadow:0_6px_14px_hsl(var(--shadow-ink)/0.5)]"
                         style={{
                           background:
                             "radial-gradient(circle at 50% 0%, hsl(var(--rail-foreground) / 0.16), hsl(var(--rail-foreground) / 0.03) 58%)",
@@ -365,7 +365,7 @@ export default function TrustCompass({
                       {/* the cap, and the pointer that reads the lane */}
                       <span
                         aria-hidden
-                        className="absolute inset-[7px] grid place-items-center rounded-full shadow-[inset_0_1px_2px_hsl(var(--rail-foreground)/0.2),inset_0_-2px_4px_hsl(var(--shadow-ink)/0.5),0_5px_12px_hsl(var(--shadow-ink)/0.45)]"
+                        className="absolute inset-[7px] grid place-items-center rounded-full shadow-[shadow:inset_0_1px_2px_hsl(var(--rail-foreground)/0.2),inset_0_-2px_4px_hsl(var(--shadow-ink)/0.5),0_5px_12px_hsl(var(--shadow-ink)/0.45)]"
                         style={{
                           background:
                             "radial-gradient(circle at 34% 26%, hsl(var(--rail-foreground) / 0.18), hsl(var(--rail) / 0.98) 74%)",

@@ -112,7 +112,7 @@ export interface ArtifactPreviewProps {
 /** The paper-sheet styling (mirrors DocumentPreview's SHEET_CLS — border + soft ink shadow, layered
  *  depth, never flat) so a promoted copy sheet reads as the same premium deliverable (§22). */
 const SHEET_CLS =
-  "rounded-2xl border border-[hsl(var(--border))] bg-card shadow-[0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)]";
+  "rounded-2xl border border-[hsl(var(--border))] bg-card shadow-[shadow:0_24px_60px_-28px_hsl(var(--studio-ink,var(--foreground))/0.5)]";
 
 /** A stable 32-bit hash (FNV-1a) of the seed — the deterministic key for a project's own branded
  *  cover, so an artifact-less project still reads as ITS distinct field, not one shared gray box. */

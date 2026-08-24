@@ -331,9 +331,9 @@ export function PromptComposer({
             // (the neutral gray the owner called out inside a running session). Same de-gray token
             // family as the frame/rail/masthead so the whole session reads as one indigo room.
             "rounded-3xl border border-[hsl(var(--studio-chrome-border)/0.6)] bg-[hsl(var(--studio-dock))]",
-            "shadow-[0_1px_0_0_hsl(0_0%_100%/0.06)_inset,0_10px_30px_-14px_hsl(var(--shadow-ink)/0.55)]",
+            "shadow-[shadow:0_1px_0_0_hsl(0_0%_100%/0.06)_inset,0_10px_30px_-14px_hsl(var(--shadow-ink)/0.55)]",
             "hover:border-[hsl(var(--studio-chrome-border)/0.85)]",
-            "focus-within:border-[hsl(var(--ring))] focus-within:shadow-[0_0_0_3px_hsl(var(--ring)/0.16),0_1px_0_0_hsl(0_0%_100%/0.08)_inset,0_14px_36px_-14px_hsl(var(--shadow-ink)/0.6)]",
+            "focus-within:border-[hsl(var(--ring))] focus-within:shadow-[shadow:0_0_0_3px_hsl(var(--ring)/0.16),0_1px_0_0_hsl(0_0%_100%/0.08)_inset,0_14px_36px_-14px_hsl(var(--shadow-ink)/0.6)]",
           ],
           // BARE (HOME hero): the dock sits inside the glass card. §311 (a): NO inner outline — the
           // glass-card's single refined hairline rim is the ONE frame, so this draws none of its own
@@ -355,8 +355,8 @@ export function PromptComposer({
           !framed && [
             "rounded-2xl border border-[hsl(var(--studio-glass-border)/0.7)] bg-[hsl(var(--studio-input))]",
             "supports-[backdrop-filter]:bg-[hsl(var(--studio-input)/0.72)] supports-[backdrop-filter]:backdrop-blur-[20px] supports-[backdrop-filter]:backdrop-saturate-[1.4]",
-            "shadow-[inset_0_1px_0_hsl(0_0%_100%/0.6),0_1px_2px_hsl(var(--studio-ink)/0.06),0_18px_44px_-16px_hsl(var(--shadow-ink)/0.22)]",
-            "focus-within:border-[hsl(var(--studio-glass-border)/0.95)] focus-within:shadow-[inset_0_1px_0_hsl(0_0%_100%/0.6),0_1px_2px_hsl(var(--studio-ink)/0.06),0_18px_44px_-16px_hsl(var(--shadow-ink)/0.22),0_0_0_3px_hsl(var(--ring)/0.32)]",
+            "shadow-[shadow:inset_0_1px_0_hsl(0_0%_100%/0.6),0_1px_2px_hsl(var(--studio-ink)/0.06),0_18px_44px_-16px_hsl(var(--shadow-ink)/0.22)]",
+            "focus-within:border-[hsl(var(--studio-glass-border)/0.95)] focus-within:shadow-[shadow:inset_0_1px_0_hsl(0_0%_100%/0.6),0_1px_2px_hsl(var(--studio-ink)/0.06),0_18px_44px_-16px_hsl(var(--shadow-ink)/0.22),0_0_0_3px_hsl(var(--ring)/0.32)]",
           ],
         )}
       >

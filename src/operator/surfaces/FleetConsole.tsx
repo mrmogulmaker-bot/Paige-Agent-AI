@@ -46,7 +46,7 @@ const PROVISION_AT = viewPath("fleet", "Directory");
  * outline" CD reported. Both tokens ship at the pack's own values; this is where they are spent.
  * The pack pairs them exactly this way at L9420 and L9477: `var(--pg-rim), var(--pg-lift-N)`.
  *
- * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[var(--pg-rim)]`
+ * AND WHY THE RIM WAS NOT PAINTING AT ALL — measured, not inferred. `shadow-[shadow:var(--pg-rim)]`
  * does NOT compile to a box-shadow. Tailwind 3 cannot type a bare `var()` and resolves the
  * `shadow-` arbitrary value to `--tw-shadow-COLOUR`; the emitted rule is
  * `{--tw-shadow-color: var(--pg-rim)}` (verified in the built CSS), which recolours a shadow
@@ -318,7 +318,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                   aria-pressed={view === v}
                   className={cn(
                     "rounded-[7px] px-2.5 py-1 text-[length:var(--pg-t-label)] font-medium capitalize transition-colors",
-                    view === v ? "bg-[var(--pg-raised)] text-foreground shadow-[var(--pg-rim)]" : "text-muted-foreground",
+                    view === v ? "bg-[var(--pg-raised)] text-foreground shadow-[shadow:var(--pg-rim)]" : "text-muted-foreground",
                   )}
                 >
                   {v}
@@ -424,7 +424,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
             {/* CD's field container is dark regardless of page theme — a canvas host, not a
                 themed panel — so it renders on the platform's own `--rail` token (the exact
                 dark indigo the pack hardcodes as #191231), never a raw hex. */}
-            <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-[15px] bg-[var(--pg-nav)] shadow-[var(--pg-lift-3)]">
+            <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-[15px] bg-[var(--pg-nav)] shadow-[shadow:var(--pg-lift-3)]">
               {loading ? (
                 <div className="flex flex-1 items-center justify-center">
                   <div className="h-40 w-40 animate-pulse rounded-full bg-white/10" />
@@ -604,7 +604,7 @@ export default function FleetConsole({ canSeeRevenue: _canSeeRevenue }: { canSee
                       <button
                         type="button"
                         onClick={() => void enterTenant(t.id)}
-                        className="rounded-lg border border-border bg-[var(--pg-raised)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[var(--pg-inset)]"
+                        className="rounded-lg border border-border bg-[var(--pg-raised)] px-2.5 py-1 text-[length:var(--pg-t-label)] font-semibold text-[hsl(var(--gold-dark))] transition-colors hover:bg-[var(--pg-workspace)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-[shadow:var(--pg-inset)]"
                       >
                         Enter →
                       </button>

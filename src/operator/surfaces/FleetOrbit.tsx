@@ -288,7 +288,7 @@ export function FleetOrbit({
 
       {hot && (
         <div
-          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+12px)] whitespace-nowrap rounded-lg border border-[hsl(var(--rail-foreground)/0.2)] bg-[color-mix(in_srgb,var(--pg-nav)_94%,transparent)] px-2.5 py-1.5 shadow-[var(--pg-lift-2)]"
+          className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-[calc(100%+12px)] whitespace-nowrap rounded-lg border border-[hsl(var(--rail-foreground)/0.2)] bg-[color-mix(in_srgb,var(--pg-nav)_94%,transparent)] px-2.5 py-1.5 shadow-[shadow:var(--pg-lift-2)]"
           style={{ left: hot.x, top: hot.y }}
         >
           <div className="text-[11.5px] font-semibold text-[hsl(var(--rail-foreground))]">{hot.node.name}</div>

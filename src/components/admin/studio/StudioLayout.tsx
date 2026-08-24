@@ -279,7 +279,7 @@ export default function StudioLayout() {
             ? "w-0 overflow-hidden border-r-0 bg-[hsl(var(--studio-rail-bg))]"
             : cn(
                 "border-r border-[hsl(var(--studio-glass-border)/0.6)]",
-                "bg-[hsl(var(--studio-rail-bg))] shadow-[4px_0_16px_-12px_hsl(var(--shadow-ink)/0.18)]",
+                "bg-[hsl(var(--studio-rail-bg))] shadow-[shadow:4px_0_16px_-12px_hsl(var(--shadow-ink)/0.18)]",
                 collapsed ? "w-[64px]" : "w-[248px]",
               ),
         )}

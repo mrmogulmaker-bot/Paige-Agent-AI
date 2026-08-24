@@ -153,7 +153,7 @@ export default function SpineComposer({
       {pickerOpen && sigil ? (
         <div
           data-spine-picker={sigil}
-          className="absolute bottom-full left-[14px] right-[14px] z-[6] mb-1.5 max-h-[232px] overflow-auto rounded-[var(--pg-r-plate)] bg-[var(--pg-raised)] shadow-[var(--pg-lift-2)] outline outline-1 outline-[var(--pg-line-strong)]"
+          className="absolute bottom-full left-[14px] right-[14px] z-[6] mb-1.5 max-h-[232px] overflow-auto rounded-[var(--pg-r-plate)] bg-[var(--pg-raised)] shadow-[shadow:var(--pg-lift-2)] outline outline-1 outline-[var(--pg-line-strong)]"
         >
           <p className="px-[13px] pb-[7px] pt-[9px] text-[length:var(--pg-t-label)] text-[var(--pg-faint)]">
             {PICKER_TITLE[sigil]}
