@@ -3,6 +3,10 @@
 // and raises an admin notification on regression.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+// §68: this probe is the safety loop that gates Paige's autonomy rungs, so it must not be
+// drivable by anyone who can reach the URL. Reuses the ONE cron/service gate (§18) rather than
+// growing a second copy of the security logic.
+import { isAuthorizedInternalCaller, adminClient } from "../_shared/systems-check-http.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
@@ -111,6 +115,16 @@ async function runProbe(p: typeof PROBES[number]): Promise<ProbeResult> {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Fail closed. An unauthenticated caller could otherwise drive unbounded service-role writes
+  // into security_canary_runs — and, now that §68 reads this table to decide what Paige may do
+  // unwatched, could manufacture the evidence that grants authority.
+  if (!(await isAuthorizedInternalCaller(req, adminClient()))) {
+    return new Response(JSON.stringify({ error: "forbidden" }), {
+      status: 403,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
   const results = await Promise.all(PROBES.map(runProbe));

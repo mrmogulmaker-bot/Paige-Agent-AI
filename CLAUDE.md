@@ -2375,6 +2375,50 @@ task will they allow Paige, her other Agents etc to manage on their own."*
 process), §10 (Paige-callable), §51 (delegation divides authority, never widens it), §58 (the floor
 is demoted, not deleted), §13 (a dark trigger says so rather than never firing in silence).
 
+## 68. No authority is permanent — a rung is held only while it is re-attested AND provably safe.
+
+> **OWNER-RULED 2026-08-24.** Substance ruled; the arithmetic, the windows, and the check
+> enumeration live in `docs/doctrine/autonomy-architecture.md` §9 (the §18 one home). This section
+> is the CLAUDE.md pointer, and it binds now.
+
+**Directive (owner: Antonio, 2026-08-24):** *"No authority should be permanent. With certain levels
+of automation and autonomy there has to be security loops, checking for bugs making sure that they
+are working. That's also with systems checks for."*
+
+- **§67 grants autonomy to a process. §68 says the grant decays.** The session posture already
+  expired; the CEILING did not, and a ceiling set once in March is not evidence the platform is
+  safe in August. Two independent conditions now hold a rung up, and **both** must hold:
+  **ATTESTATION** — a human re-affirmed it recently enough — and **PROOF** — the checks that
+  prove the platform's isolation invariants are PASSING on their most recent run.
+- **The window SHORTENS as the rung rises.** Rungs 0–1 never expire, because nothing acts unread.
+  Expiry begins exactly where unread action begins: 30 days at rung 2, 14 at rung 3, 7 at full
+  auto. The more Paige may do unwatched, the more often someone must say so.
+- **`pass` is the only affirmative state.** A check that failed, skipped, errored, or never ran has
+  not proven anything. Absence of proof is never proof — and this deliberately avoids parsing
+  runner-authored reason strings, which drift.
+- **Gate on ISOLATION, never on performance.** Whether Paige can act across a tenant boundary, and
+  whether RLS still covers the tables, decide authority. A slow query is an alert. Revoking
+  authority over a latency number is a false alarm, and false alarms train an operator to ignore
+  the mechanism.
+- **Degrade to Draft, never to Observe, and never silently.** A lapse steps DOWN to the highest
+  rung whose conditions still hold — proof for rung 2 but not rung 3 grants rung 2 — and the read
+  publishes `requested`, `effective` and `capped_by` together. **A clamp nobody can see is
+  indistinguishable from a bug.**
+- **A safety loop that does not run is the failure this section exists to catch.** The anchoring
+  case is exact: the cross-tenant leak canary was registered blocking, had a correct runner, and
+  had NEVER run — the edge function was never deployed, never scheduled, never gated, while the
+  check honestly reported `canary_never_run` 342 times into an empty room. **Conditioning authority
+  on a loop obliges you to make the loop real in the same change.**
+- **The test, every time:** *"Is this authority standing on a human attestation that is still in
+  date, and on safety loops that actually RAN and actually PASSED — or is it standing on a decision
+  nobody has revisited and a check nobody noticed was dead?"* If either, it is not §68-clean.
+
+**Cross-references:** §67 (autonomy attaches to a process — this is its decay law), §16 (the lanes
+a grant is expressed in), §53 (renewing authority carries the same authority as granting it —
+super_admin), §57 (the read is the source of truth; surfaces derive the clamp, they do not
+re-compute it), §32 (a registered check is not a running one), §13 (the clamp reports its reason),
+§58 (the floor and the rung both survive; only the permanence is removed).
+
 ## 66. The tier matrix updates in the SAME commit as the ship — not later.
 
 **Directive (owner: Antonio, 2026-08-19).** §0 binds master-doc updates in the same PR as the ship.

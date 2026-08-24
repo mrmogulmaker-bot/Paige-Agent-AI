@@ -319,3 +319,111 @@ policy, not an engineering choice.
 **The honest state until M1 lands:** full auto is available and its cost is visible only after the
 fact, in a trace nobody is billed for. That is acceptable at 639 calls and $1.38 with no paying
 tenants on it. It is not acceptable at launch, and M1 is small.
+
+---
+
+## 9. No authority is permanent (§68)
+
+> **Owner ruling, 2026-08-24:** *"No authority should be permanent. With certain levels of
+> automation and autonomy there has to be security loops, checking for bugs making sure that they
+> are working. That's also with systems checks for."*
+
+§8 shipped full auto and left one thing permanent: the ceiling. The posture expires; the ceiling
+did not. This section is the correction, and it is the authoritative home for the arithmetic.
+
+### 9.1 Two conditions, both required
+
+A rung is held only while **both** hold. They are independent and they fail differently.
+
+| | Condition | Fails when | Fixed by |
+|---|---|---|---|
+| **Attestation** | a human re-affirmed this rung recently enough | nobody has looked in the window | `attest_platform_trust()` (super_admin) |
+| **Proof** | the isolation-invariant checks are PASSING on their latest run | a check failed, skipped, errored, or never ran | fixing the platform, or fixing the loop |
+
+### 9.2 The windows
+
+Rungs 0–1 never expire — nothing acts unread, so there is nothing to time out. Expiry begins
+exactly where unread action begins, and shortens as the rung rises.
+
+| Rung | Window | Required proof |
+|---|---|---|
+| 0 Observe · 1 Draft | none | none |
+| 2 Act on the small things | 30 days | cross-tenant leak canary |
+| 3 Act and report | 14 days | canary + RLS coverage |
+| 4 Full auto | 7 days | canary + RLS coverage |
+
+### 9.3 The step-down
+
+`effective` is the highest rung `r ≤ requested` whose window is satisfied **and** whose required
+checks are all `pass`. Requirements are monotonic, so the walk is well-defined.
+
+It steps DOWN, it does not collapse. Proof for rung 2 but not rung 3 grants **rung 2** — dropping
+such a platform to Draft would be a punishment, not a safety measure. It never falls below 1:
+Observe would strand work silently, which is a worse failure than acting under review.
+
+`requested`, `effective` and `capped_by` are published together. **A clamp nobody can see is
+indistinguishable from a bug** — the operator can always read the rung they set, the rung in force,
+and which condition separated them.
+
+### 9.4 Why `pass` is the only affirmative state
+
+The runners emit `pass | fail | skip | error`, and the skip *reasons* do not cleanly separate
+"nothing to measure" from "this loop never ran" — measured across 342 historical skips,
+`no_llm_activity` (nothing happened) and `canary_never_run` (the loop is dead) both carry
+`needs_config` NULL. Parsing runner-authored free text would be brittle and would drift.
+
+So §68 asks the only stable question: **did this check affirmatively prove the invariant on its
+latest run?** Everything else — including a check that has never produced a finding at all — is the
+absence of proof, and absence of proof is not proof.
+
+### 9.5 Isolation gates authority; performance does not
+
+Deliberately **not** a gate: `operator_db_health`. It was failing at the time of writing on
+`longest_active_seconds: 437.9`. A slow query is a performance signal, not a safety invariant —
+revoking Paige's authority over one would be a false alarm, and false alarms train an operator to
+ignore the mechanism. Performance belongs to alerting (§204).
+
+What gates authority is whether Paige can act **across a tenant boundary**, and whether **RLS still
+covers the tables**. Those are the invariants whose failure makes unwatched action dangerous.
+
+### 9.6 The anchoring case — a blocking check that had never run
+
+Measured on prod, 2026-08-24, while designing this section:
+
+- `operator_cross_tenant_canary` is registered **blocking**, has a correct runner, and reads
+  `security_canary_runs`.
+- `security_canary_runs` has **zero rows, ever**.
+- There was **no cron job** for `security-canary-probe`.
+- The edge function **was not deployed at all** — 198 functions live, this one absent.
+- It also had **no auth gate**: any caller who knew the URL could drive service-role writes.
+- The check reported `skip / canary_never_run` **342 times** and nobody was listening.
+
+So the platform's cross-tenant leak canary had never run once in the platform's life, while a
+blocking check faithfully said so into an empty room. This is the exact failure §68 exists to
+catch, and it is why the fix ships in the same change as the rule:
+
+**Conditioning authority on a safety loop obliges you to make that loop real in the same change.**
+Otherwise the clamp just pins the platform at Draft forever and the mechanism gets disabled by the
+first person it inconveniences.
+
+### 9.7 Ordering hazard, stated plainly
+
+The migration and the edge-function deploy land on the same merge but not the same instant. Between
+the migration applying and the function deploying, the canary cannot run, so `effective` reads **1
+(Draft)** with `capped_by: "proof"`. That window is minutes and it is self-healing: the probe runs
+at :20, the operator check reads it at :00, and the rung returns to 3 on its own.
+
+Nothing breaks in that window — Paige drafts and a human approves, which is the designed degrade,
+not an outage.
+
+### 9.8 What is owed
+
+- **A surface for it.** The hook publishes `requested` / `cappedBy` / `authority`; Claude Design
+  owns how a capped rung and an expiring attestation are shown. Until CD draws it, the data is
+  available and unrendered — say so rather than implying the operator can see it.
+- **Paige's hands on it.** `attest_platform_trust`, like `set_trust_posture` before it, has no tool
+  exposed to her in chat. She cannot yet be asked to re-attest, or to report that authority is
+  about to lapse.
+- **Tenant-scope §68.** This is the PLATFORM ceiling. Whether a tenant's own grants decay the same
+  way — and against which checks, since tenant Systems Check findings accumulate unresolved — is an
+  open question and an owner ruling, not an inference.

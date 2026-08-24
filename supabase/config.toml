@@ -433,3 +433,12 @@ project_id = "xygzykjyynhzqytbqnzu"
   # bearer OR x-cron-token) OR an operator JWT (is_platform_operator(), §53).
   [functions.alerting-rule-write]
     verify_jwt = false
+
+  # security-canary-probe (§68) — the cross-tenant leak canary. It probes growth_forms/growth_pages
+  # AS AN ANONYMOUS CALLER and logs the result; §68 then reads that log to decide what Paige may do
+  # unwatched, so the probe is now load-bearing rather than diagnostic. verify_jwt=false so the
+  # pg_cron poster (no Supabase JWT) reaches it; fails closed in-function to the SAME internal-caller
+  # gate as the rest of the cron substrate (service-role bearer OR x-cron-token). It was previously
+  # UNSCHEDULED and UNGATED — never invoked once, and open to anyone who knew the URL.
+  [functions.security-canary-probe]
+    verify_jwt = false

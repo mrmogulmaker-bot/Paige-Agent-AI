@@ -71,6 +71,26 @@ export type TrustPosture = {
   readonly aboveCeiling: boolean;
 };
 
+/**
+ * §68 — why the rung in force is not the rung that was set.
+ *
+ * A clamp nobody can see is indistinguishable from a bug, so the server publishes the reason
+ * alongside the number: how old the human attestation is, when it lapses, which safety loops this
+ * rung requires, and what those loops last reported. `capped_by` names which of the two conditions
+ * did the capping when they differ.
+ */
+export type TrustAuthority = {
+  /** When a human last re-affirmed the ceiling. Null means never — which caps at Draft. */
+  readonly attestedAt: string | null;
+  /** How long this rung stands on one attestation; null at rungs 0-1, which never expire. */
+  readonly window: string | null;
+  readonly expiresAt: string | null;
+  /** The checks this rung requires PASSING. Empty at rungs 0-1. */
+  readonly requiredProof: readonly string[];
+  /** Latest status per required check. `pass` is the only affirmative value. */
+  readonly proof: Record<string, { status: string; at: string | null; fresh: boolean; reason: string | null }>;
+};
+
 export type PlatformTrust = {
   /**
    * The CEILING — the stored maximum, and what the strip's picker edits. Null when the platform
@@ -85,6 +105,15 @@ export type PlatformTrust = {
    * returns the answer rather than the client deriving it from two numbers.
    */
   effective: SpineTrustLevel | null;
+  /**
+   * §68 — the rung that was ASKED for, before attestation age and the safety loops clamped it.
+   * Equal to `effective` when nothing capped it. Published so a surface can show the gap rather
+   * than leaving an operator to wonder why the rung they set is not the rung in force.
+   */
+  requested: SpineTrustLevel | null;
+  /** `attestation` | `proof` | null — which condition capped the rung, when one did. */
+  cappedBy: "attestation" | "proof" | null;
+  authority: TrustAuthority | null;
   posture: TrustPosture | null;
   /** Autonomous · ask first · draft only · held. Null until the catalogue read succeeds. */
   tally: readonly [number, number, number, number] | null;
@@ -151,6 +180,15 @@ type CompassRead = {
   away?: string;
   domains?: Record<string, number>;
   above_ceiling?: boolean;
+  requested?: number;
+  capped_by?: string | null;
+  authority?: {
+    attested_at?: string | null;
+    window?: string | null;
+    expires_at?: string | null;
+    required_proof?: string[] | null;
+    proof?: Record<string, { status?: string; at?: string | null; fresh?: boolean; reason?: string | null }> | null;
+  } | null;
   posture?: {
     level?: number; until?: string; reason?: string | null;
     active?: boolean; above_ceiling?: boolean;
@@ -174,9 +212,38 @@ function readPosture(p: CompassRead["posture"]): TrustPosture | null {
   };
 }
 
+/**
+ * A missing `authority` block means the deployed function predates §68 — report null rather than
+ * synthesising an attestation that was never made (§13). A surface reading null shows nothing
+ * about expiry, which is honest; showing "attested just now" would not be.
+ */
+function readAuthority(a: CompassRead["authority"]): TrustAuthority | null {
+  if (!a) return null;
+  return {
+    attestedAt: a.attested_at ?? null,
+    window: a.window ?? null,
+    expiresAt: a.expires_at ?? null,
+    requiredProof: a.required_proof ?? [],
+    proof: Object.fromEntries(
+      Object.entries(a.proof ?? {}).map(([k, v]) => [
+        k,
+        {
+          status: String(v?.status ?? "never_run"),
+          at: v?.at ?? null,
+          fresh: v?.fresh === true,
+          reason: v?.reason ?? null,
+        },
+      ]),
+    ),
+  };
+}
+
 function useTrustRead(enabled: boolean): PlatformTrust {
   const [level, setLevelState] = useState<SpineTrustLevel | null>(null);
   const [effective, setEffective] = useState<SpineTrustLevel | null>(null);
+  const [requested, setRequested] = useState<SpineTrustLevel | null>(null);
+  const [cappedBy, setCappedBy] = useState<"attestation" | "proof" | null>(null);
+  const [authority, setAuthority] = useState<TrustAuthority | null>(null);
   const [posture, setPostureState] = useState<TrustPosture | null>(null);
   const [away, setAway] = useState<string | null>(null);
   const [domains, setDomains] = useState<Record<string, number>>({});
@@ -208,6 +275,9 @@ function useTrustRead(enabled: boolean): PlatformTrust {
       if (compass.error) {
         setError(compass.error.message);
         setLevelState(null);
+        setRequested(null);
+        setCappedBy(null);
+        setAuthority(null);
       } else {
         const v = compass.data as CompassRead | null;
         const ceiling = rung(v?.ceiling);
@@ -216,6 +286,12 @@ function useTrustRead(enabled: boolean): PlatformTrust {
         // re-decides which one binds. It falls back to the ceiling only when the server did not
         // send one — an older function version — rather than inventing an answer (§13).
         setEffective(rung(v?.effective) ?? ceiling);
+        // §68. On a pre-§68 function `requested` is absent, and the honest reading is that
+        // nothing was clamped — effective IS what was asked for — so it mirrors, and `cappedBy`
+        // stays null rather than implying a cap the server never applied.
+        setRequested(rung(v?.requested) ?? rung(v?.effective) ?? ceiling);
+        setCappedBy(v?.capped_by === "attestation" || v?.capped_by === "proof" ? v.capped_by : null);
+        setAuthority(readAuthority(v?.authority));
         setPostureState(readPosture(v?.posture));
         setAway(v?.away ?? null);
         setDomains(v?.domains ?? {});
@@ -308,6 +384,9 @@ function useTrustRead(enabled: boolean): PlatformTrust {
   return {
     level,
     effective,
+    requested,
+    cappedBy,
+    authority,
     posture,
     // The tally reports what is IN FORCE, so it counts against `effective` — a tally computed
     // against the ceiling would tell the operator more is autonomous than actually is.
@@ -370,6 +449,9 @@ export function usePlatformTrust(_enabled: boolean = true): PlatformTrust {
       // outside the provider is inert rather than crashing the surface around it.
       level: null,
       effective: null,
+      requested: null,
+      cappedBy: null,
+      authority: null,
       posture: null,
       tally: null,
       away: null,
