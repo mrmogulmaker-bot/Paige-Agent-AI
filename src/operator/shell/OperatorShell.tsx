@@ -38,6 +38,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { NavLink, Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { PlatformTrustProvider } from "@/operator/data/usePlatformTrust";
 import { useReducedMotion } from "framer-motion";
 import { AgentPresenceProvider, useAgentPresence } from "@/components/ui/paige";
 import { OPERATOR_SLOTS } from "@/operator/ia/operatorIA";
@@ -116,7 +117,15 @@ function useMediaQuery(query: string): boolean {
 export default function OperatorShell() {
   return (
     <AgentPresenceProvider launcherEnabled hasChatBody={false}>
-      <OperatorShellBody />
+      {/* ONE read of the Trust Compass ceiling for the whole console (§18). It sits here, above
+          both the spine and the surface region, because those two are exactly what drifted:
+          each held its own copy, the operator moved the rung from the spine, and Systems Check
+          went on rendering the ceiling it had read at mount — two governance ceilings asserted
+          on one screen. With one source they cannot disagree, and a move from anywhere updates
+          everywhere. */}
+      <PlatformTrustProvider>
+        <OperatorShellBody />
+      </PlatformTrustProvider>
     </AgentPresenceProvider>
   );
 }

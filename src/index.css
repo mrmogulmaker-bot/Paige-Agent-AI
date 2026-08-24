@@ -185,9 +185,27 @@ All colors MUST be HSL.
     --pg-t-lead:  16px;   /* section leads, emphasised figures */
     --pg-t-title: 21px;   /* the surface title, one per view */
     font-synthesis-weight: none;
-    /* Why every table's figures align. Losing it reads as sloppy typesetting, not as a
-       missing token, which is exactly why it is easy to drop. */
-    font-variant-numeric: tabular-nums;
+
+    /* TABULAR FIGURES ARE **NOT** SET HERE, and the reason is the most visible defect this
+       console has shipped.
+       -----------------------------------------------------------------------------------
+       This rule used to read `font-variant-numeric: tabular-nums` on the console ROOT, so it
+       inherited into every element — including all prose. In Schibsted Grotesk, as in most
+       grotesks, the tabular set gives the COMMA and the PERIOD a full digit-width advance so
+       that `1,234.56` aligns down a column. In a sentence that renders as a visible gap in
+       front of every comma and every period:
+
+           One check failed , one of them blocking . Five of ten passed .
+
+       It reached every string on every surface, authored or composed, and the DOM text was
+       clean throughout — which is why a `textContent` assertion passed while the screen was
+       obviously wrong, and why reading the source found nothing. The tell that separates it
+       from a join bug: the gap appears before `,` and `.` and NEVER before `·`, because the
+       middle dot is not in the numeric set.
+
+       Tabular figures are still wanted — a table whose figures do not align reads as sloppy
+       typesetting. They just belong on FIGURES, which is what `.tabular-nums` below does, and
+       what the surfaces already ask for at every figure site. */
 
     /* The console's face, set HERE rather than in tailwind.config. That config's `sans`
        (Inter) and `display` (Bricolage Grotesque) are PLATFORM-WIDE — changing them would
@@ -740,6 +758,9 @@ All colors MUST be HSL.
     font-optical-sizing: auto;
   }
   /* Line up digits in tables/metrics */
+  /* The one home for tabular figures (see the note on the console root). Every figure site
+     in the ports opts in explicitly; the data face is monospace, so its digits already align
+     and its punctuation keeps its own width. */
   .tabular-nums, [class*="tabular"] { font-variant-numeric: tabular-nums; }
 
   body {

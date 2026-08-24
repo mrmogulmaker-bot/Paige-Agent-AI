@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { SpineTrustLevel } from "@/operator/shell/spine/spineContract";
 
@@ -80,7 +81,7 @@ export function tallyGrants(
   return out;
 }
 
-export function usePlatformTrust(enabled: boolean): PlatformTrust {
+function useTrustRead(enabled: boolean): PlatformTrust {
   const [level, setLevelState] = useState<SpineTrustLevel | null>(null);
   const [away, setAway] = useState<string | null>(null);
   const [domains, setDomains] = useState<Record<string, number>>({});
@@ -170,4 +171,57 @@ export function usePlatformTrust(enabled: boolean): PlatformTrust {
     error,
     setLevel,
   };
+}
+
+/**
+ * ─── ONE HOME FOR THE CEILING (§18) ──────────────────────────────────────────────────────────
+ *
+ * The defect this exists to make impossible, caught on the live console 2026-08-24: the spine
+ * header read **Act and report** while Systems Check, on the same screen, read **Ask first**.
+ * Two ceilings, one platform.
+ *
+ * Both were DERIVED — neither was a typed literal — which is what made it look impossible from
+ * the source. The mechanism is duplication of a different kind: each consumer called the hook
+ * and got its OWN `useState` copy of the value, fetched once at ITS mount. The operator moved
+ * the rung from the spine strip (the stored row went to 3 at 00:30), the spine updated its own
+ * copy, and every other consumer went on rendering the value it had read earlier. The screen
+ * then asserted two different governance ceilings at once, and the stale one was the more
+ * dangerous — it under-reports what she may do.
+ *
+ * That is the same principle rule 3 applies to prose, applied to STATE: a value that can be
+ * derived is never held twice. So the read happens ONCE, in a provider at the shell root, and
+ * every consumer reads that one copy. A `setLevel` from anywhere updates all of them because
+ * there is only one.
+ *
+ * `useTrustRead` above is the fetching implementation and is no longer exported — calling it
+ * directly would recreate the exact duplication this replaces.
+ */
+const PlatformTrustContext = createContext<PlatformTrust | null>(null);
+
+export function PlatformTrustProvider({ children }: { children: ReactNode }) {
+  const value = useTrustRead(true);
+  return createElement(PlatformTrustContext.Provider, { value }, children);
+}
+
+/**
+ * The ceiling, read from the one shared source.
+ *
+ * Outside the provider it returns the honest unwired shape rather than throwing: a component
+ * rendered in isolation (a test, a detached window) then draws no meter, which is the same
+ * thing it draws when the platform holds no rung. A thrown error would turn a missing provider
+ * into a blank surface, and this console has shipped enough of those.
+ */
+export function usePlatformTrust(_enabled: boolean = true): PlatformTrust {
+  const ctx = useContext(PlatformTrustContext);
+  return (
+    ctx ?? {
+      level: null,
+      tally: null,
+      away: null,
+      domains: {},
+      loading: false,
+      error: null,
+      setLevel: async () => {},
+    }
+  );
 }

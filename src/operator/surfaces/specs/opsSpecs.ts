@@ -242,8 +242,10 @@ export const OPS_SPECS: Record<string, OperatorPanelSpec> = {
     blocks: [
       {
         id: "featured",
-        // CD's own block title and sub on the store surface.
-        title: "Discover",
+        // The block's own title was "Discover" — the same word the surface title already says,
+        // one line above it, so the screen introduced itself twice. The surface owns the name;
+        // the block keeps only the line that adds something.
+        title: "Featured",
         sub: "What the fleet is installing.",
         body: {
           kind: "notWired",

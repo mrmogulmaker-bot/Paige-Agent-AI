@@ -663,8 +663,13 @@ function FieldsBody({ fields, columns = 2 }: { fields: PanelField[]; columns?: n
         const inner = (
           <>
             {f.dot && <Dot tone={f.dot} />}
+            {/* A FIELD IS AN INVITATION; A FIGURE IS A READING. An em-dash means "this figure
+                has no source" — correct on a KPI, wrong inside something shaped like an input,
+                where it reads as content the operator has to delete before typing. So a field
+                with no value renders EMPTY. `figure()` still governs every real figure on this
+                panel; it just does not govern the inside of a text field. */}
             <span className={cn("min-w-0 truncate text-[12.5px]", f.locked ? "text-muted-foreground" : "text-foreground")}>
-              {figure(f.value)}
+              {f.value ?? ""}
             </span>
             {f.caret && !f.locked && (
               <span aria-hidden className="ml-auto flex-none text-[10px] text-muted-foreground">▾</span>

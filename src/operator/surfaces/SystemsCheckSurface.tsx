@@ -458,10 +458,14 @@ export default function SystemsCheckSurface() {
       <div className="mb-[30px] flex-none">
         <div className="grid grid-cols-1 items-start gap-7 border-b border-border pb-5 sm:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
-            <p className="text-[11.5px] font-medium text-[hsl(var(--gold-dark))]">
-              {run ? `Ran ${clock(run.started_at)}, completed ${clock(run.completed_at)}` : "No sweep on record"}
-            </p>
-            <p className="mt-3 max-w-[54ch] text-[19px] leading-[1.5] text-foreground [text-wrap:pretty]">
+            {/* v3 opens this brief with a gold eyebrow, `briefWhen` (L258 / L11024), reading
+                "Overnight \u00b7 ran HH:MM, completed HH:MM". Two of its three parts are already on
+                the run tape above (L405, the pack's own `runWhen`), and the third — the word
+                "Overnight" — is what makes the pack's version a different sentence rather than a
+                repeat. Our sweep is hourly, so we cannot truthfully write it, and without it the
+                eyebrow is the tape again in a second voice. Owner-reported, 2026-08-24: the timing
+                "renders twice". The timing keeps one home (§18) and that home is the tape. */}
+            <p className="max-w-[54ch] text-[19px] leading-[1.5] text-foreground [text-wrap:pretty]">
               {loading ? "Reading the last sweep…" : brief.briefLine}
             </p>
             {brief.briefSub && (
@@ -529,9 +533,21 @@ export default function SystemsCheckSurface() {
         </div>
 
         {/* ── DOMAIN TILES · v3 L279–L290 ─────────────────────────────────────────────────── */}
+        {/* v3 draws the hairlines between these tiles by painting the LINE COLOUR on the grid
+            container and letting a 1px gap show it through (L281: `gap:1px;background:
+            var(--pg-line-soft)`). That reads as one plate wherever a row is short: `auto-fit`
+            collapses a wholly empty TRACK, never an empty CELL, so seven tiles across four
+            columns leave one cell with no tile in it and the container colour fills it — the
+            grey rectangle the owner reported on 2026-08-24.
+
+            Same hairlines, drawn on the cells instead of bled through them: each tile carries
+            its own top and left line, and the grid is offset a pixel up and left inside a
+            clipping wrapper so the outermost of those lines fall outside it. Lines land only
+            between real tiles, and a cell that holds no tile paints nothing at all. */}
+        <div className="mt-5 overflow-hidden">
         <div
-          className="mt-5 grid gap-px"
-          style={{ gridTemplateColumns: "repeat(auto-fit,minmax(158px,1fr))", background: "hsl(var(--border))" }}
+          className="-ml-px -mt-px grid"
+          style={{ gridTemplateColumns: "repeat(auto-fit,minmax(158px,1fr))" }}
         >
           {tiles.map((t) => (
             <button
@@ -539,7 +555,7 @@ export default function SystemsCheckSurface() {
               type="button"
               disabled={t.count === 0}
               onClick={() => setOpenDomain(t.id)}
-              className="min-w-0 bg-background px-3.5 pb-[15px] pt-3.5 text-left text-foreground disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="min-w-0 border-l border-t border-border bg-background px-3.5 pb-[15px] pt-3.5 text-left text-foreground disabled:cursor-default focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             >
               <span className="flex items-center gap-2">
                 <i
@@ -562,6 +578,7 @@ export default function SystemsCheckSurface() {
               <span className="mt-1 block text-[10.5px] text-muted-foreground">{t.detail}</span>
             </button>
           ))}
+        </div>
         </div>
       </div>
 
