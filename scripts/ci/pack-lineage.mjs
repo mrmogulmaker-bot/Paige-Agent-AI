@@ -45,8 +45,22 @@ const ENTRIES = ["src/operator/OperatorEntry.tsx", "src/App.tsx"];
  */
 const STALE_CITATION_BUT_LIVE = new Set([
   "FleetConsole.tsx", "FleetHistorySurface.tsx", "FleetTeamPulseSurface.tsx",
-  "FleetTenantsRail.tsx", "KnowledgeSurface.tsx", "SystemsCheckSurface.tsx",
+  "FleetTenantsRail.tsx", "KnowledgeSurface.tsx",
   "TrustCompass.tsx", "OperatorPanel.tsx", "panelSpecs.ts",
+
+  /**
+   * ADDED 2026-08-24, and they are not new drift — the walk above was FLAT until this commit, so
+   * every file in a subdirectory was invisible to the guard. These five are `panelSpecs.ts`'s own
+   * content, split across files: the retired console's 78 leaves, transcribed from
+   * `Super Admin Shell.dc.html` and reachable through the panel registry. They were mounted the
+   * whole time; the check simply never looked in `specs/`.
+   *
+   * They leave as BUILD-ORDER Layer 2 proceeds — a view at a time, as its v3 builder lands and its
+   * `panels:` key is replaced. Three are already gone that way (`fleet/systems-check`,
+   * `campaigns/catalog`, `campaigns/sales`). This list shrinks; it must not grow.
+   */
+  "specs/fleetSpecs.ts", "specs/moneySpecs.ts", "specs/opsSpecs.ts",
+  "specs/paigeSpecs.ts", "specs/platformSpecs.ts",
 ]);
 
 /** Resolve an import specifier the way Vite's `@/` alias does. */
@@ -91,14 +105,31 @@ function citedPack(file) {
   return "none";
 }
 
-const live = reachable();
-const rows = fs.readdirSync(SURFACES)
-  .filter((f) => /\.tsx?$/.test(f) && !/\.test\./.test(f))
-  .sort()
-  .map((f) => {
-    const p = path.join(SURFACES, f);
-    return { f, pack: citedPack(p), live: live.has(p), kb: Math.round(fs.statSync(p).size / 1024) };
+/**
+ * RECURSIVE, and it has to be. This walk was flat until 2026-08-24, which meant a surface in a
+ * subdirectory was invisible to the guard — it could cite the retired pack, or be reachable from
+ * nothing, and the check would pass by never having looked at it. The Campaigns money spine
+ * (`surfaces/campaigns/`) was the first group ported into one, and it landed as three files the
+ * flat read skipped entirely. A guard that silently declines to inspect a file is worse than no
+ * guard, because it reports a clean result.
+ */
+function walk(dir) {
+  return fs.readdirSync(dir).flatMap((name) => {
+    const p = path.join(dir, name);
+    if (fs.statSync(p).isDirectory()) return walk(p);
+    return /\.tsx?$/.test(name) && !/\.test\./.test(name) ? [p] : [];
   });
+}
+
+const live = reachable();
+const rows = walk(SURFACES)
+  .sort()
+  .map((p) => ({
+    f: path.relative(SURFACES, p),
+    pack: citedPack(p),
+    live: live.has(p),
+    kb: Math.round(fs.statSync(p).size / 1024),
+  }));
 
 const orphaned = rows.filter((r) => !r.live && r.pack === "dead");
 const staleLive = rows.filter((r) => r.live && r.pack === "dead");

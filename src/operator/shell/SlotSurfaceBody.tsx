@@ -57,6 +57,9 @@ const FleetAlertRulesSurface = lazy(() => import("@/operator/surfaces/FleetAlert
 const FleetTeamPulseSurface = lazy(() => import("@/operator/surfaces/FleetTeamPulseSurface"));
 const TrustCompass = lazy(() => import("@/operator/surfaces/TrustCompass"));
 const KnowledgeSurface = lazy(() => import("@/operator/surfaces/KnowledgeSurface"));
+const CampaignsActive = lazy(() => import("@/operator/surfaces/campaigns/CampaignsActive"));
+const CatalogSurface = lazy(() => import("@/operator/surfaces/campaigns/CatalogSurface"));
+const SalesSurface = lazy(() => import("@/operator/surfaces/campaigns/SalesSurface"));
 
 /**
  * THE FOUR v3 SURFACES THAT WERE PORTED AND NEVER MOUNTED (Claude Design audit, 2026-08-23).
@@ -156,6 +159,22 @@ export default function SlotSurfaceBody({ slot, view }: { slot: OperatorSlot; vi
         {bespoke === "KnowledgeSurface" && (
           <KnowledgeSurface domains={knowledge.domains} loading={knowledge.loading} error={knowledge.error} />
         )}
+
+        {/* THE CAMPAIGNS MONEY SPINE · BUILD-ORDER Layer 3b, ported as ONE group because they
+            share one contract: Active's `Sells`/`Booked` is the join from a campaign to a
+            catalogue row, and Sales sums the lines that join produces. Porting them apart would
+            have meant reading that contract three times and drifting.
+
+            Each takes NO rows. Structure before data — the shape ports, every figure with no
+            read behind it renders an em-dash, and the slot's authored absence says what is
+            missing and why. Layer 6 hands them real rows and nothing about the render changes.
+
+            The one figure that is already real is the campaign grant: `clampGrant` runs it
+            through the SAME scale the Trust Compass ceiling uses, so a campaign can never read
+            a grant the platform's rung does not permit. */}
+        {bespoke === "CampaignsActive" && <CampaignsActive />}
+        {bespoke === "CatalogSurface" && <CatalogSurface />}
+        {bespoke === "SalesSurface" && <SalesSurface />}
 
         {/* The four v3 ports, mounted. Each takes `null` where a read belongs and renders the
             pack's own absence for it — which is what they were built to do, so they are correct

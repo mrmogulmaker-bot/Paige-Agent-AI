@@ -58,16 +58,35 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
   "relationships/segments": { carries: [] },
 
   // ── Campaigns ──────────────────────────────────────────────────────────────────────────────
+  /**
+   * `campVals` (5159). The old keys were the Growth branch's page/funnel/form builders — a
+   * different capability entirely, standing in for the campaign motion because the old tree had
+   * nothing else under this address. They stay in `carries` so the builders are not lost track
+   * of; they simply never belonged on Active.
+   */
   "campaigns/active": {
-    panels: ["growth/pages", "growth/funnels", "growth/forms"],
+    bespoke: "CampaignsActive",
     carries: ["growth/pages", "growth/funnels", "growth/forms", "growth/builders"],
   },
+  /**
+   * BUILD-ORDER Layer 2's second and third priorities, closed by the Layer 3b port.
+   *
+   * Both views were rendering the RETIRED console's billing panels — `revenue/plans` and
+   * `revenue/metering` standing where the catalogue belongs, `revenue/invoices` and
+   * `revenue/at-risk` standing where Sales does. Those panels describe platform billing, which
+   * is a different product from a tenant's own offerings and closed lines, so the views read
+   * plausibly and were about the wrong thing.
+   *
+   * They are replaced by their v3 builders, not merely removed: `catVals` (5743) and `salesVals`
+   * (5848). `carries` keeps naming the old keys — it is the drop-nothing ledger, and what it
+   * records is that these views ABSORBED that content, not that they still render it.
+   */
   "campaigns/catalog": {
-    panels: ["revenue/plans", "revenue/metering"],
+    bespoke: "CatalogSurface",
     carries: ["revenue/plans", "revenue/metering"],
   },
   "campaigns/sales": {
-    panels: ["revenue/invoices", "revenue/at-risk"],
+    bespoke: "SalesSurface",
     carries: ["revenue/invoices", "revenue/at-risk"],
   },
   "campaigns/pipeline": { panels: ["fleet/prospects"], carries: ["fleet/prospects"] },
