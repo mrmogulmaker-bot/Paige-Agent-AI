@@ -8,8 +8,8 @@
 //
 // VERDICT (§13 honest):
 //   • A regression in the recent window (last 25h) → 'fail' (a real cross-tenant/column leak was detected).
-//   • Recent runs exist, none regressed, and none ERRORED → 'pass'.
-//   • Any probe errored in the window → 'skip' (unproven — a probe that could not run is not a pass).
+//   • Recent runs exist and the LATEST result of every probe passed → 'pass'.
+//   • A probe's latest result errored → 'skip' (unproven — a probe that could not run is not a pass).
 //   • No runs in the recent window (canary stale) OR none ever → 'skip' (needs the canary to run; NOT a
 //     fabricated pass).
 // §32 fail-loud: a db error throws → status:'error'.
@@ -49,8 +49,17 @@ export const run: CheckRunner = async (ctx, _row) => {
       };
     }
 
-    const regressions = recent.filter((r) => r.status === "regression");
-    const errored = recent.filter((r) => r.status === "error");
+    // Judge the LATEST result per probe, not every result in the window — the same principle §68
+    // applies to checks. `recent` is already ordered newest-first, so the first row seen for a
+    // probe_name is its current state. Without this, one errored probe would hold the platform
+    // down for the full 25h even after the probe was fixed and had passed repeatedly since, which
+    // punishes the repair rather than the fault.
+    const latestByProbe = new Map<string, typeof recent[number]>();
+    for (const r of recent) if (!latestByProbe.has(r.probe_name)) latestByProbe.set(r.probe_name, r);
+    const current = [...latestByProbe.values()];
+
+    const regressions = current.filter((r) => r.status === "regression");
+    const errored = current.filter((r) => r.status === "error");
 
     // A probe that ERRORED proved nothing. Counting only regressions made an all-error run read
     // as 'pass' — which is exactly what happened: the growth_pages probe named a column that does
@@ -62,6 +71,7 @@ export const run: CheckRunner = async (ctx, _row) => {
         status: "fail",
         evidence: {
           runs_last_25h: recent.length,
+          probes_judged: current.length,
           regressions: regressions.map((r) => ({ target: r.target, leaked_columns: r.leaked_columns })),
         },
         interpretation:
@@ -76,6 +86,7 @@ export const run: CheckRunner = async (ctx, _row) => {
         status: "skip",
         evidence: {
           runs_last_25h: recent.length,
+          probes_judged: current.length,
           reason: "probe_errored",
           errored: errored.map((r) => ({ target: r.target, probe_name: r.probe_name })),
         },
@@ -88,7 +99,7 @@ export const run: CheckRunner = async (ctx, _row) => {
 
     return {
       status: "pass",
-      evidence: { runs_last_25h: recent.length, regressions: [] },
+      evidence: { runs_last_25h: recent.length, probes_judged: current.length, regressions: [] },
       interpretation:
         `Cross-tenant leak canary is clean — ${recent.length} probe result(s) in the last 25h, ` +
         `zero regressions and zero probe errors.`,

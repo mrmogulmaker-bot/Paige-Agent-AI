@@ -458,3 +458,19 @@ gets HTTP 200 and zero rows, because there are no active growth forms to return.
 by absence of data, not by proven column stripping. It is a weaker signal than it looks, and it
 will strengthen on its own once real forms exist. Redesigning the probe to assert against a known
 seeded row is a separate slice — recorded here rather than quietly relied upon.
+
+### 9.10 Judge the latest result, not the window — inside the runner too
+
+Running the fixed loop end-to-end caught an inconsistency in my own work. §68 judges a CHECK by its
+latest run rather than its accumulated backlog — that was the whole reason the design does not read
+the 551 open findings. But the canary runner still judged *every probe result in the 25h window*,
+so a probe that errored once and had since been fixed and passed repeatedly would hold the platform
+at Draft for a full day.
+
+That punishes the repair rather than the fault. The runner now takes the **latest result per
+`probe_name`** and judges those: any current regression → `fail`, any current error → `skip`, all
+current results passing → `pass`. Same principle, now applied at both levels.
+
+Observed on live data, which is how it was found: the check correctly returned
+`skip / probe_errored` with `runs_last_25h: 4` — refusing to call it clean while a stale errored
+result from before the column fix sat in the window. Correct verdict, wrong horizon.
