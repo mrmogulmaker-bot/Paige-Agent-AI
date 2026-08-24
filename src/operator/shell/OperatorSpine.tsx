@@ -73,6 +73,7 @@ import type {
   SpinePickerItem,
   SpineSigil,
   SpineTrust,
+  SpineTurn,
 } from "@/operator/shell/spine/spineContract";
 
 export type { SpineFaceId } from "@/operator/shell/spine/spineContract";
@@ -171,6 +172,12 @@ export type OperatorSpineProps = {
   readonly onStakeDirective?: (sigil: SpineSigil, item: SpinePickerItem) => void;
   readonly onResolvePicker?: (sigil: SpineSigil) => readonly SpinePickerItem[];
   readonly onSend?: (text: string, directives: readonly SpineDirective[]) => void;
+  /**
+   * Her thread. Supplied by the caller from real messages — the spine still stores nothing and
+   * calls no model (§18); it only hands these to the chat face, exactly as it hands it the rung.
+   * With none, `SpineConversation` renders its resting state, which is correct and not empty.
+   */
+  readonly turns?: readonly SpineTurn[];
   readonly readOnly?: boolean;
   readonly listening?: boolean;
   readonly onVoice?: () => void;
@@ -199,6 +206,7 @@ export default function OperatorSpine({
   onStakeDirective,
   onResolvePicker,
   onSend,
+  turns,
   readOnly = false,
   listening = false,
   onVoice,
@@ -282,9 +290,14 @@ export default function OperatorSpine({
    */
   const body =
     isValidElement(rawBody) && rawBody.type === SpineConversation
-      ? cloneElement(rawBody as ReactElement<{ trust?: SpineTrust | null }>, {
-          trust: (rawBody.props as { trust?: SpineTrust | null }).trust ?? resolvedTrust,
-        })
+      ? cloneElement(
+          rawBody as ReactElement<{ trust?: SpineTrust | null; turns?: readonly SpineTurn[] }>,
+          {
+            trust: (rawBody.props as { trust?: SpineTrust | null }).trust ?? resolvedTrust,
+            // Same rule as the rung: a node the caller built with its own turns keeps them.
+            turns: (rawBody.props as { turns?: readonly SpineTurn[] }).turns ?? turns,
+          },
+        )
       : /**
          * THE CODE FACE ANSWERS TO THE SAME CEILING, for the same reason and by the same route.
          * `codeVals` takes `held` from the compass (L10582) and derives the review act, the

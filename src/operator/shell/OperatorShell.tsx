@@ -53,6 +53,7 @@ import ScopeBand from "@/operator/shell/ScopeBand";
 import { PLATFORM_SCOPE } from "@/operator/shell/scopeStates";
 import SlotRail from "@/operator/shell/SlotRail";
 import OperatorSpine, { spineHasContent } from "@/operator/shell/OperatorSpine";
+import { useOperatorChat } from "@/operator/data/useOperatorChat";
 import SlotSurfaceBody from "@/operator/shell/SlotSurfaceBody";
 import { performSignOut } from "@/lib/auth/signOut";
 import { cn } from "@/lib/utils";
@@ -137,6 +138,20 @@ function OperatorShellBody() {
   const [search] = useSearchParams();
 
   const reduce = useReducedMotion();
+
+  /**
+   * HER CHAT, CONNECTED. Found 2026-08-24 from the owner's CD side-by-side: the spine is a fully
+   * ported chat surface with nothing behind it. `OperatorSpine` deliberately owns no engine (§18
+   * — the platform already has one) and takes `transcript`/`onSend` as props; nothing in the
+   * operator console ever passed them, so the composer looked live and did nothing — the exact
+   * §13/§36 dead end the doctrine names.
+   *
+   * The hook is the CALLER, not a second engine: it POSTs the deployed `paige-ai-chat` seam with
+   * the operator's own JWT, and §52's operator briefing is composed SERVER-side off that verified
+   * token — so she opens already knowing who she is talking to, with no client-supplied identity
+   * to forge (§588).
+   */
+  const chat = useOperatorChat();
 
   // Ruling B — the viewport's own say in the collapse, read once and shared by the track, the
   // spine's mount and the band's height so all three move in the ruled order.
@@ -324,6 +339,8 @@ function OperatorShellBody() {
             /* `openTrust` (L4620). Routing is the shell's job — the spine takes a callback so it
                stays mountable outside a router (the detached window, and every spine test). */
             onOpenCompass={() => navigate("/operator/analytics/autonomy")}
+            turns={chat.transcript}
+            onSend={chat.send}
             /**
              * THE FOLD, WIRED. Owner, live, 2026-08-24: *"I cannot fold Paige's chat in."*
              *
