@@ -1,7 +1,13 @@
--- ─── STEP 1 — THE CANONICAL USAGE TRACE ──────────────────────────────────────────────────────
+-- ─── STEPS 1+2 — THE CANONICAL USAGE TRACE AND THE METER BRIDGE ──────────────────────────────
 --
 -- Owner brief, 2026-08-24: "Measure and persist complete provider usage." Instrumentation FIRST;
 -- no prompt optimization, no routing change, no budget enforcement until the baseline is proven.
+--
+-- CORRECTIVE PASS, owner brief 2026-08-24 (second): this file was rewritten in place rather than
+-- patched by a follow-up migration, because it has never been applied anywhere — prod's
+-- schema_migrations tops out at 20261001000000 and the branch is a draft PR. Editing the unapplied
+-- file keeps a from-scratch replay correct; stacking a fix on top would leave the wrong version in
+-- the chain forever. Every correction below is marked [C1]..[C8] against that brief.
 --
 -- WHAT THE AUDIT FOUND, and what each column here answers (every claim verified against source):
 --
@@ -37,32 +43,30 @@
 --
 --  5. RETRIES AND TOOL-LOOP ITERATIONS ARE NOT SEPARATE ROWS. parent_trace_id is populated on
 --     0 of 640 live rows. The router traces a provider error, a Claude fallback and a success from
---     the same call (model-router.ts L873/887/911/921/999) but nothing links them as attempts of one
---     logical request.
+--     the same call but nothing links them as attempts of one logical request.
 --     → request_id groups the attempts of one logical request; attempt numbers them; is_retry and
 --       is_fallback say which kind. parent_trace_id is left alone.
 --
---  6. THE COST FIGURE ALREADY DECLARES ITS OWN LIMITS. Every costed row carries
---     cost_basis = 'list price, in+out tokens, excl caching/thinking/tool round-trips, 2026-07'.
---     It is an ESTIMATE at list price and it says so.
---     → cost_actual_usd is a SEPARATE column that stays NULL until a provider invoice reconciles it.
---       An estimate is never written into it. pricing_version records which price list produced the
---       estimate, so a repriced model does not silently rewrite history.
---
--- NOT CHANGED BY THIS MIGRATION: no column is dropped, renamed or retyped; no row is rewritten. It
--- is additive only, so rollback is a DROP of the added objects and nothing is lost.
+--  6. [C5] ATTRIBUTION IS MISSING ON MOST NULL-TENANT ROWS — AND THAT IS NOT THE SAME AS PLATFORM
+--     SCOPE. An earlier draft of this file asserted "217 of 640 live rows are platform-scope
+--     (operator console, system jobs)". That was WRONG and is corrected here (§13). Verified against
+--     prod: only 27 of the 217 carry ANY threaded trace context (26 paige-ai-chat operator-persona,
+--     1 research-scout). The other 190 are NULL because the CALLER NEVER THREADED A TraceCtx — e.g.
+--     generate-outreach-draft/index.ts resolves a real tenant at :59, uses it at :61, then calls
+--     gatewayCompat at :131 with only two arguments. `tenant_id IS NULL` in this table means
+--     "attribution missing", not "no tenant existed".
+--     → The bridge therefore does NOT treat a null tenant as platform spend. It classifies:
+--       a null-tenant trace that carried caller context is 'platform'; one that carried none is
+--       'unattributed'. Both are recorded (cost control, [C6]); neither is billed to anyone.
+--       Fixing the 190 call sites is edge-function work tracked separately — this schema makes the
+--       gap VISIBLE instead of silently dropping it.
 
--- ── 1a. Identity, separated ──────────────────────────────────────────────────────────────────
+-- ─── STEP 1 · IDENTITY ───────────────────────────────────────────────────────────────────────
 ALTER TABLE public.paige_llm_trace
-  -- The host we sent the HTTP request TO. Null when we called a vendor directly.
   ADD COLUMN IF NOT EXISTS gateway_provider text,
-  -- Who actually ran the model. This is the one that decides which price list applies.
   ADD COLUMN IF NOT EXISTS model_provider text,
-  -- Who invoices us for it. Usually the gateway when there is one, else the model provider.
   ADD COLUMN IF NOT EXISTS billing_provider text,
-  -- The capability/lane this call served, distinct from job_kind (what) and tier (how strong).
   ADD COLUMN IF NOT EXISTS capability text,
-  -- Which price list produced cost_estimate_usd. Never infer a price without one.
   ADD COLUMN IF NOT EXISTS pricing_version text;
 
 COMMENT ON COLUMN public.paige_llm_trace.provider IS
@@ -75,12 +79,14 @@ COMMENT ON COLUMN public.paige_llm_trace.model_provider IS
   'Who ran the model (anthropic, openai, google, meta...). Decides which price list applies.';
 COMMENT ON COLUMN public.paige_llm_trace.billing_provider IS
   'Who invoices us. The gateway when one is in front, otherwise the model provider.';
+COMMENT ON COLUMN public.paige_llm_trace.pricing_version IS
+  'The paige_model_pricing version that priced this row. NOTE (§13): nothing in the repo SETS this '
+  'field yet, so the estimator returns NULL for every current call. That is a known, tracked gap — '
+  'the registry is inert until a producer threads it, and an inert estimator is honest, not silent.';
 
--- ── 1b. Correlation ──────────────────────────────────────────────────────────────────────────
+-- ─── STEP 1 · CORRELATION ────────────────────────────────────────────────────────────────────
 ALTER TABLE public.paige_llm_trace
-  -- One logical request. Every attempt (retry, fallback) of that request shares it.
   ADD COLUMN IF NOT EXISTS request_id uuid,
-  -- The provider's OWN id for the call — the only key a provider invoice can be matched on.
   ADD COLUMN IF NOT EXISTS provider_request_id text,
   ADD COLUMN IF NOT EXISTS user_id uuid,
   ADD COLUMN IF NOT EXISTS run_id uuid,
@@ -95,29 +101,33 @@ COMMENT ON COLUMN public.paige_llm_trace.provider_request_id IS
 COMMENT ON COLUMN public.paige_llm_trace.user_id IS
   'Server-derived acting user, when one applies. NEVER accepted from a request body.';
 
--- ── 1c. Complete token accounting ────────────────────────────────────────────────────────────
--- NULL means "the provider did not report it". 0 means "the provider reported zero". Those are
--- different facts and the schema keeps them different — a defaulted 0 would manufacture evidence
--- of a cache hit rate we have not measured.
+-- ─── STEP 1 · USAGE ──────────────────────────────────────────────────────────────────────────
 ALTER TABLE public.paige_llm_trace
   ADD COLUMN IF NOT EXISTS tokens_in_uncached integer,
   ADD COLUMN IF NOT EXISTS tokens_cache_read integer,
   ADD COLUMN IF NOT EXISTS tokens_cache_write_5m integer,
   ADD COLUMN IF NOT EXISTS tokens_cache_write_1h integer,
   ADD COLUMN IF NOT EXISTS tokens_reasoning integer,
-  -- Non-token provider charges: tool invocations, web search, audio seconds, image counts.
-  -- Shape is {unit: quantity}; the pricing registry decides what each unit costs.
   ADD COLUMN IF NOT EXISTS billable_units jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 COMMENT ON COLUMN public.paige_llm_trace.tokens_in IS
   'LEGACY. Receives Anthropic usage.input_tokens, which means TOTAL input while caching is off and '
   'UNCACHED input once it is on — the same column changing meaning. Frozen; read tokens_in_uncached.';
 COMMENT ON COLUMN public.paige_llm_trace.tokens_cache_read IS
-  'Cache-read input tokens, billed at a fraction of the uncached rate. NULL = not reported by the '
-  'provider; 0 = reported as zero. As of this migration cache_control is requested nowhere in '
-  'supabase/functions, so 0 here is the expected BASELINE, not a fault.';
+  'Cache-read input tokens, billed at 0.1x the uncached rate. NULL = not reported by the provider; '
+  '0 = reported as zero. As of this migration no request body sets cache_control, so 0 here is the '
+  'expected BASELINE, not a fault.';
+COMMENT ON COLUMN public.paige_llm_trace.tokens_reasoning IS
+  '[C7] INFORMATIONAL ONLY — NOT a separate billable class and never added to the billable total. '
+  'Every provider that reports a reasoning/thinking count reports it as a SUBSET of the output '
+  'count (Anthropic bills thinking as output tokens; OpenAI nests reasoning_tokens inside '
+  'completion_tokens_details). Summing it alongside tokens_out would double-charge the same tokens. '
+  'An earlier draft of this migration did exactly that; corrected here.';
+COMMENT ON COLUMN public.paige_llm_trace.billable_units IS
+  'Non-token provider charges as {unit: quantity} — web searches, image generations, audio seconds, '
+  '3D generations, container-hours. Priced separately from tokens; NOT yet priced by the estimator.';
 
--- ── 1d. Attempt accounting ───────────────────────────────────────────────────────────────────
+-- ─── STEP 1 · ATTEMPTS ───────────────────────────────────────────────────────────────────────
 ALTER TABLE public.paige_llm_trace
   ADD COLUMN IF NOT EXISTS attempt smallint NOT NULL DEFAULT 1,
   ADD COLUMN IF NOT EXISTS is_retry boolean NOT NULL DEFAULT false,
@@ -127,19 +137,21 @@ COMMENT ON COLUMN public.paige_llm_trace.attempt IS
   '1-based attempt number within request_id. Every attempt that reached a provider is billable '
   'whether or not it succeeded — a failed attempt that consumed tokens still costs money.';
 
--- ── 1e. Estimated vs actual, kept apart ──────────────────────────────────────────────────────
+-- ─── STEP 1 · COST ───────────────────────────────────────────────────────────────────────────
 ALTER TABLE public.paige_llm_trace
-  ADD COLUMN IF NOT EXISTS cost_actual_usd numeric(12,6),
+  ADD COLUMN IF NOT EXISTS cost_actual_usd numeric(18,10),
   ADD COLUMN IF NOT EXISTS currency text NOT NULL DEFAULT 'USD',
   ADD COLUMN IF NOT EXISTS reconciled_at timestamptz;
 
 COMMENT ON COLUMN public.paige_llm_trace.cost_estimate_usd IS
   'ESTIMATE from the versioned pricing registry (see pricing_version + cost_basis). Never an invoice.';
 COMMENT ON COLUMN public.paige_llm_trace.cost_actual_usd IS
-  'Invoice-CONFIRMED cost. Stays NULL until a provider invoice is reconciled against '
-  'provider_request_id. An estimate must never be written here.';
+  '[C7] Invoice-CONFIRMED cost. numeric(18,10), NOT (12,6): a single cache-read component can be '
+  'well below a micro-dollar (200 cache-read tokens at $0.10/MTok is $0.00002), and a scale that '
+  'rounds it to zero would manufacture the exact trustworthy-looking zero this brief forbids. '
+  'Stays NULL until a provider invoice is reconciled against provider_request_id. An estimate must '
+  'never be written here.';
 
--- ── 1f. Indexes for the rollups this exists to serve ─────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_llm_trace_request ON public.paige_llm_trace (request_id)
   WHERE request_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_llm_trace_tenant_time ON public.paige_llm_trace (tenant_id, created_at DESC)
@@ -147,181 +159,413 @@ CREATE INDEX IF NOT EXISTS idx_llm_trace_tenant_time ON public.paige_llm_trace (
 CREATE INDEX IF NOT EXISTS idx_llm_trace_provider_request ON public.paige_llm_trace (provider_request_id)
   WHERE provider_request_id IS NOT NULL;
 
--- ─── THE VERSIONED PRICING REGISTRY ──────────────────────────────────────────────────────────
+-- ─── [C3] ONE SHARED ELIGIBILITY DEFINITION ──────────────────────────────────────────────────
 --
--- Brief: "Use a versioned pricing registry. Do not scatter current model prices through
--- application code." Today the only pricing statement in the system is the cost_basis STRING
--- stamped on each row — it records the basis but not the numbers, so no historical row can be
--- re-derived or audited. Prices change; a row costed in July must keep its July price.
+-- Brief: "Create one shared eligibility function or expression so the trigger and detector cannot
+-- drift." Previously the trigger summed six token classes while the detector view checked only two
+-- (uncached input + output) — so a trace that consumed ONLY cache reads was billable to the trigger
+-- and invisible to the detector. Both now call these.
 --
--- Rows are data, not code: a repricing is an INSERT of a new pricing_version, never an UPDATE of
--- an existing one. Traces pin the version that priced them, so history never silently moves.
+-- IMMUTABLE and STRICT-free so they can be used in an index predicate later if needed.
+
+CREATE OR REPLACE FUNCTION public.llm_trace_billable_tokens(
+  _tokens_in            integer,
+  _tokens_in_uncached   integer,
+  _cache_read           integer,
+  _cache_write_5m       integer,
+  _cache_write_1h       integer,
+  _tokens_out           integer
+) RETURNS bigint
+LANGUAGE sql IMMUTABLE
+SET search_path TO ''
+AS $$
+  -- tokens_reasoning is deliberately ABSENT: it is a subset of _tokens_out, never an addend ([C7]).
+  SELECT COALESCE(_tokens_in_uncached, _tokens_in, 0)::bigint
+       + COALESCE(_cache_read, 0)
+       + COALESCE(_cache_write_5m, 0)
+       + COALESCE(_cache_write_1h, 0)
+       + COALESCE(_tokens_out, 0);
+$$;
+
+COMMENT ON FUNCTION public.llm_trace_billable_tokens(integer,integer,integer,integer,integer,integer) IS
+  'The ONE definition of how many provider-billable tokens a trace consumed. Called by both '
+  'meter_llm_trace() and the unmetered detector so the two can never disagree about what is '
+  'eligible. Excludes reasoning tokens by design — they are a subset of output, not a class.';
+
+CREATE OR REPLACE FUNCTION public.llm_trace_is_billable(
+  _tokens_in            integer,
+  _tokens_in_uncached   integer,
+  _cache_read           integer,
+  _cache_write_5m       integer,
+  _cache_write_1h       integer,
+  _tokens_out           integer,
+  _billable_units       jsonb
+) RETURNS boolean
+LANGUAGE sql IMMUTABLE
+SET search_path TO ''
+AS $$
+  SELECT public.llm_trace_billable_tokens(
+           _tokens_in, _tokens_in_uncached, _cache_read, _cache_write_5m, _cache_write_1h, _tokens_out
+         ) > 0
+      OR COALESCE(_billable_units, '{}'::jsonb) <> '{}'::jsonb;
+$$;
+
+COMMENT ON FUNCTION public.llm_trace_is_billable(integer,integer,integer,integer,integer,integer,jsonb) IS
+  'Eligibility, shared by the trigger and the detector. A trace is eligible when it consumed any '
+  'billable token class OR carries a non-empty billable_units object (searches, images, audio).';
+
+-- ─── [C1] THE VERSIONED PRICING REGISTRY ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.paige_model_pricing (
   id                       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   pricing_version          text        NOT NULL,
   model_provider           text        NOT NULL,
   model                    text        NOT NULL,
-  -- All rates are per MILLION tokens, in `currency`. NULL = this provider does not charge for it,
-  -- or we do not have a verified published rate. NULL is never treated as free (see the estimator).
   input_per_mtok           numeric(12,6),
   cache_read_per_mtok      numeric(12,6),
   cache_write_5m_per_mtok  numeric(12,6),
   cache_write_1h_per_mtok  numeric(12,6),
   output_per_mtok          numeric(12,6),
-  reasoning_per_mtok       numeric(12,6),
   currency                 text        NOT NULL DEFAULT 'USD',
   effective_from           timestamptz NOT NULL,
   effective_to             timestamptz,
-  -- Where the number came from, so a price can be challenged without re-deriving it from memory.
-  source                   text        NOT NULL,
+  source_url               text        NOT NULL,
+  verified_on              date        NOT NULL,
   notes                    text,
   created_at               timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT paige_model_pricing_unique UNIQUE (pricing_version, model_provider, model)
 );
 
 COMMENT ON TABLE public.paige_model_pricing IS
-  'Versioned price list. A repricing INSERTs a new pricing_version; it never UPDATEs an existing '
-  'row, because traces pin the version that priced them and history must not move under them.';
+  'Versioned price list — Paige''s WHOLESALE buy rates. A repricing INSERTs a new pricing_version; '
+  'it never UPDATEs an existing row, because traces pin the version that priced them and history '
+  'must not move under them. Operator-read only: a tenant seeing the platform''s buy rate is a '
+  'commercial leak, not a feature (§9).';
+COMMENT ON COLUMN public.paige_model_pricing.source_url IS
+  '[C1] The exact official page these rates were read from. Required, not nullable — a price with '
+  'no citable source is a guess.';
+COMMENT ON COLUMN public.paige_model_pricing.verified_on IS
+  '[C1] The date a human/agent actually opened source_url and confirmed these numbers. Distinct '
+  'from effective_from, which is when the vendor says the price applies.';
+-- NOTE: there is deliberately no reasoning_per_mtok column. Reasoning is billed as output by every
+-- provider we route to; a separate rate column would invite the double-count corrected in [C7].
 
 ALTER TABLE public.paige_model_pricing ENABLE ROW LEVEL SECURITY;
--- Operator-readable, service-writable. Not tenant-facing: these are OUR wholesale costs, and a
--- tenant seeing the platform's buy rate is a commercial leak, not a feature (§9).
+
+-- [C4] Policies use the `TO <role>` form the brief asks for, not `auth.role() = '...'`.
 DROP POLICY IF EXISTS paige_model_pricing_operator_read ON public.paige_model_pricing;
 CREATE POLICY paige_model_pricing_operator_read ON public.paige_model_pricing
-  FOR SELECT USING (public.is_platform_operator());
+  FOR SELECT TO authenticated
+  USING (public.is_platform_operator());
+
 DROP POLICY IF EXISTS paige_model_pricing_service_write ON public.paige_model_pricing;
 CREATE POLICY paige_model_pricing_service_write ON public.paige_model_pricing
-  FOR ALL USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
+  FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
 
--- Seed: the two model families actually observed in live traces (claude-sonnet-5 on 141 calls,
--- claude-haiku-4-5 on 260). Rates are the PUBLISHED list prices verified against the Claude API
--- reference; cache multipliers are the documented ~0.1x read / ~1.25x write on the input rate.
+-- [C1] Rates read from https://platform.claude.com/docs/en/about-claude/pricing on 2026-08-24.
+-- The previous seed carried Sonnet 5 at $3 in / $15 out. That was doubly wrong: it recorded a price
+-- increase that the vendor has since CANCELLED. The official page states verbatim: "The $2/$10 per
+-- million input/output token pricing for Claude Sonnet 5, announced at launch as introductory
+-- pricing through August 31, 2026, is now the standard price. The previously scheduled increase to
+-- $3/$15 per million input/output tokens on September 1, 2026 will not occur."
 --
--- HONEST GAP (§13): the 1-hour cache-write rate is deliberately NULL. A 1h TTL exists in the API,
--- but this session did not verify its published multiplier, and a guessed price is worse than an
--- absent one — the estimator below refuses to price a row whose rate is missing rather than
--- quietly costing it at zero.
+-- HONEST NOTE on effective_from: the same $2/$10 rates were in force earlier as introductory
+-- pricing, but the page does not state the launch date, so effective_from records the date this
+-- registry verified them rather than inventing an earlier one. Nothing is backfilled, so no
+-- historical row is mispriced by that choice.
+--
+-- The 1-hour rates are no longer NULL. They follow the published multipliers exactly
+-- (5m write = 1.25x base, 1h write = 2x base, cache read = 0.1x base), which the seeded numbers
+-- satisfy for both models — a cheap arithmetic check on any future reseed.
 INSERT INTO public.paige_model_pricing
-  (pricing_version, model_provider, model, input_per_mtok, cache_read_per_mtok,
-   cache_write_5m_per_mtok, cache_write_1h_per_mtok, output_per_mtok, reasoning_per_mtok,
-   effective_from, source, notes)
+  (pricing_version, model_provider, model,
+   input_per_mtok, cache_read_per_mtok, cache_write_5m_per_mtok, cache_write_1h_per_mtok, output_per_mtok,
+   effective_from, source_url, verified_on, notes)
 VALUES
-  ('2026-08', 'anthropic', 'claude-sonnet-5',  3.00, 0.30, 3.75, NULL, 15.00, 15.00,
-   '2026-08-01', 'Anthropic published list price',
-   'Intro pricing of $2.00 in / $10.00 out ran through 2026-08-31; standard rate recorded here. '
-   'Reasoning billed as output.'),
-  ('2026-08', 'anthropic', 'claude-haiku-4-5', 1.00, 0.10, 1.25, NULL,  5.00,  5.00,
-   '2026-08-01', 'Anthropic published list price', 'Reasoning billed as output.'),
-  ('2026-08', 'anthropic', 'claude-haiku-4-5-20251001', 1.00, 0.10, 1.25, NULL, 5.00, 5.00,
-   '2026-08-01', 'Anthropic published list price',
-   'Dated snapshot of claude-haiku-4-5 seen in live traces; same rates.')
+  ('2026-08-24', 'anthropic', 'claude-sonnet-5',
+   2.000000, 0.200000, 2.500000, 4.000000, 10.000000,
+   '2026-08-24T00:00:00Z', 'https://platform.claude.com/docs/en/about-claude/pricing', '2026-08-24',
+   'Standard rate. Vendor cancelled the scheduled 2026-09-01 increase to $3/$15. Thinking tokens are billed as output.'),
+  ('2026-08-24', 'anthropic', 'claude-haiku-4-5',
+   1.000000, 0.100000, 1.250000, 2.000000, 5.000000,
+   '2026-08-24T00:00:00Z', 'https://platform.claude.com/docs/en/about-claude/pricing', '2026-08-24',
+   'Standard rate. Thinking tokens are billed as output.'),
+  ('2026-08-24', 'anthropic', 'claude-haiku-4-5-20251001',
+   1.000000, 0.100000, 1.250000, 2.000000, 5.000000,
+   '2026-08-24T00:00:00Z', 'https://platform.claude.com/docs/en/about-claude/pricing', '2026-08-24',
+   'Dated snapshot of claude-haiku-4-5 seen in live traces; identical rates.')
 ON CONFLICT (pricing_version, model_provider, model) DO NOTHING;
 
--- ─── THE ESTIMATOR ───────────────────────────────────────────────────────────────────────────
+-- KNOWN, DELIBERATE GAPS in this registry (§13 — stated so no reader assumes coverage):
+--   · Only the anthropic models seen in live traces are priced. groq / featherless / openai /
+--     gemini / replicate / ideogram / meshy / elevenlabs have NO rows, so the estimator returns
+--     NULL for them — visibly unpriced, never a zero.
+--   · Pricing MODIFIERS are not modelled: the Batch API 50% discount, the 1.1x data-residency
+--     multiplier for inference_geo='us', and fast-mode premium pricing. None is used by the router
+--     today; each would need its own column or version before it is.
+--   · billable_units (web searches at $10/1k, image generations, audio seconds) are not priced.
+
+-- ─── [C1][C4] THE ESTIMATOR ──────────────────────────────────────────────────────────────────
 --
--- Prices a trace from the registry. Returns NULL — never 0 — when the model has no price row or a
--- needed rate is missing. A missing price must read as "unpriced", because a 0 is indistinguishable
--- from "free" on every downstream sum, and that is exactly how ~$42-57 of spend came to be
--- represented as $1.38.
+-- [C4] SECURITY INVOKER, not DEFINER. The previous version was SECURITY DEFINER with no in-body
+-- caller check and the migration carried no GRANT/REVOKE at all, so it inherited Postgres's default
+-- PUBLIC EXECUTE — verified live to be anon-callable — and bypassed RLS to read the wholesale buy
+-- rates this very file locks down. As INVOKER it reads paige_model_pricing under the caller's own
+-- RLS, so a tenant gets no rows and NULL back. It still works inside the meter trigger because that
+-- trigger runs as a role that can read the registry. Belt and braces: EXECUTE is revoked from
+-- PUBLIC/anon/authenticated below and granted only to service_role.
 CREATE OR REPLACE FUNCTION public.estimate_llm_cost_usd(
   _model_provider text, _model text, _pricing_version text,
-  _in_uncached int, _cache_read int, _cache_write_5m int, _cache_write_1h int,
-  _out int, _reasoning int
+  _in_uncached int, _cache_read int, _cache_write_5m int, _cache_write_1h int, _out int
 ) RETURNS numeric
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path TO 'public'
+LANGUAGE plpgsql STABLE SECURITY INVOKER
+SET search_path TO ''
 AS $$
 DECLARE p public.paige_model_pricing%ROWTYPE; total numeric := 0;
 BEGIN
   IF _model_provider IS NULL OR _model IS NULL OR _pricing_version IS NULL THEN RETURN NULL; END IF;
-
   SELECT * INTO p FROM public.paige_model_pricing
    WHERE pricing_version = _pricing_version AND model_provider = _model_provider AND model = _model;
   IF NOT FOUND THEN RETURN NULL; END IF;   -- unpriced, and says so
-
-  -- Each component is priced only if BOTH a quantity and a rate exist. A quantity with no rate
-  -- makes the whole estimate NULL rather than silently under-counting that component.
-  IF COALESCE(_in_uncached,0)   > 0 THEN
+  IF COALESCE(_in_uncached,0)    > 0 THEN
     IF p.input_per_mtok IS NULL THEN RETURN NULL; END IF;
     total := total + (_in_uncached::numeric / 1000000) * p.input_per_mtok; END IF;
-  IF COALESCE(_cache_read,0)    > 0 THEN
+  IF COALESCE(_cache_read,0)     > 0 THEN
     IF p.cache_read_per_mtok IS NULL THEN RETURN NULL; END IF;
     total := total + (_cache_read::numeric / 1000000) * p.cache_read_per_mtok; END IF;
   IF COALESCE(_cache_write_5m,0) > 0 THEN
     IF p.cache_write_5m_per_mtok IS NULL THEN RETURN NULL; END IF;
     total := total + (_cache_write_5m::numeric / 1000000) * p.cache_write_5m_per_mtok; END IF;
   IF COALESCE(_cache_write_1h,0) > 0 THEN
-    IF p.cache_write_1h_per_mtok IS NULL THEN RETURN NULL; END IF;  -- deliberately unseeded
+    IF p.cache_write_1h_per_mtok IS NULL THEN RETURN NULL; END IF;
     total := total + (_cache_write_1h::numeric / 1000000) * p.cache_write_1h_per_mtok; END IF;
-  IF COALESCE(_out,0)           > 0 THEN
+  IF COALESCE(_out,0)            > 0 THEN
     IF p.output_per_mtok IS NULL THEN RETURN NULL; END IF;
     total := total + (_out::numeric / 1000000) * p.output_per_mtok; END IF;
-  IF COALESCE(_reasoning,0)     > 0 THEN
-    IF p.reasoning_per_mtok IS NULL THEN RETURN NULL; END IF;
-    total := total + (_reasoning::numeric / 1000000) * p.reasoning_per_mtok; END IF;
-
-  RETURN round(total, 6);
+  -- 10dp, matching cost_actual_usd. Rounding to 6 would flatten a sub-micro-dollar cache-read
+  -- component to zero and defeat the cost_known flag ([C7]).
+  RETURN round(total, 10);
 END; $$;
 
-COMMENT ON FUNCTION public.estimate_llm_cost_usd(text,text,text,int,int,int,int,int,int) IS
-  'Prices one trace from paige_model_pricing. Returns NULL (never 0) for an unpriced model or a '
-  'missing rate — an unpriced call must not read as a free one.';
+COMMENT ON FUNCTION public.estimate_llm_cost_usd(text,text,text,int,int,int,int,int) IS
+  'Prices one trace from paige_model_pricing. Returns NULL (never 0) for an unpriced model, an '
+  'unknown pricing_version, or a missing rate — an unpriced call must not read as a free one. '
+  'Reasoning tokens are not a parameter: they are billed as output ([C7]).';
 
--- ─── STEP 2 — THE TENANT-SCOPED METERING LEDGER BRIDGE ───────────────────────────────────────
+
+-- ─── [C3][C6] THE COST LEDGER — OPERATOR-ONLY, ONE HOME FOR EVERY SCOPE ──────────────────────
 --
--- Brief: "Connect the trace to tenant-scoped platform_metered_events."
+-- Owner boundary 3, 2026-08-24: "Wholesale cost must not remain in a tenant-readable row. Separate
+-- operator-only cost accounting from tenant-visible usage/credits."
 --
--- WHY A TRIGGER RATHER THAN AN APPLICATION WRITE. The trace insert is DETACHED and best-effort by
--- design (llm-trace.ts fires it through EdgeRuntime.waitUntil and swallows failures, so tracing can
--- never add latency to or break a generation). That is right for observability and wrong for
--- billing: a second, independent best-effort write would drop meter events silently. Making the
--- meter a trigger on the trace INSERT means the two are ATOMIC — if the trace row lands, its meter
--- event lands in the same transaction. There is no window in which usage exists unmetered.
+-- So the split is now explicit and total:
+--   · platform_metered_events  → TENANT-VISIBLE USAGE. Quantity and the per-class token breakdown.
+--                                NO wholesale price, NO exact cost, NO rate-derivable field.
+--   · paige_llm_cost_ledger    → OPERATOR-ONLY COST. Every call, every scope, with the money on it.
 --
--- IDEMPOTENCY IS STRUCTURAL. idempotency_key = 'llm_trace:' || trace.id, and
--- platform_metered_events.idempotency_key already carries a UNIQUE constraint. A replayed insert
--- collides and does nothing. No retry can double-charge, and the guarantee is enforced by the
--- database rather than by application discipline.
+-- That closes the derivability hole an earlier draft of this file left open: it locked the price
+-- LIST to operators and then wrote the derived per-call price onto platform_metered_events, which
+-- is GRANT SELECT TO authenticated and tenant-readable by its own RLS — so wholesale ÷ tokens gave
+-- any tenant our buy rate, per model. Locking the list and publishing the quotient is not a posture.
 --
--- TENANT IDENTITY IS SERVER-DERIVED. tenant_id is copied from the trace row, which is written only
--- by the service role (RLS policy paige_llm_trace_service) and passed cleanTenantId(). No browser
--- value reaches this path, and nothing here reads a request body.
+-- Why one ledger and not two (§18): cost is one concept. A tenant call, a platform call and an
+-- unattributed call differ in WHO it is attributable to, not in what a dollar is. Splitting by scope
+-- would give two places to look for the same number and two places for it to drift.
 --
--- WHICH TRACES QUALIFY, and why each exclusion is deliberate:
---   • tenant_id IS NULL  → NO event. 217 of 640 live rows are platform-scope (operator console,
---     system jobs). They are real internal cost but there is no tenant to bill, and the ledger's own
---     CHECK (pme_layer_matches_subject) requires tenant_id NOT NULL. Inventing a tenant to satisfy
---     the constraint would be a fabricated charge. Platform-scope cost is tracked in the trace and
---     reported separately.
---   • zero consumption → NO event. A needs_config row, or a request rejected before it reached the
---     provider, consumed nothing. The 3 live 'google/*' rows are exactly this: stale gateway model
---     slugs that Anthropic rejected with a 400 in ~200ms, zero tokens, zero cost.
---   • a FAILED call that DID consume tokens → EVENT. The provider bills for it, so we record it.
+-- wholesale_cost_usd is NULLABLE here on purpose. platform_metered_events declares its cost column
+-- NOT NULL DEFAULT 0, which turns "we do not know this price" into a confident zero the moment
+-- anyone SUMs it. This ledger keeps unknown as NULL so a total is computed over known rows and
+-- reported beside a count of unknown ones, never blended ([C7]).
+CREATE TABLE IF NOT EXISTS public.paige_llm_cost_ledger (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  trace_id              uuid        NOT NULL,
+  occurred_at           timestamptz NOT NULL,
+  -- [C6] Owner boundary 2: tenant_id IS NULL is exactly TWO explicit states, and neither is guessed.
+  --   'tenant'       — a real tenant is attributable; this cost is passthrough-billable.
+  --   'platform'     — VERIFIED platform/system scope. Set ONLY when the call site DECLARED it by
+  --                    threading scope:'platform' in the trace context. Never inferred.
+  --   'unattributed' — no tenant and no declaration. We do not know whose call this was. It is
+  --                    recorded so it is countable and fixable, and it is NEVER reported as
+  --                    platform usage or charged to anyone.
+  scope                 text        NOT NULL,
+  tenant_id             uuid,             -- set iff scope = 'tenant'. Soft ref, no FK: an
+                                          -- observability-derived cost row must not be lost because
+                                          -- its tenant row was deleted.
+  model_provider        text,
+  model                 text,
+  gateway_provider      text,
+  billing_provider      text,
+  pricing_version       text,
+  capability            text,
+  job_kind              text,
+  tier                  text,
+  status                text,
+  request_id            uuid,
+  attempt               smallint,
+  is_retry              boolean,
+  is_fallback           boolean,
+  tokens_in_uncached    integer,
+  tokens_cache_read     integer,
+  tokens_cache_write_5m integer,
+  tokens_cache_write_1h integer,
+  tokens_out            integer,
+  tokens_reasoning      integer,     -- [C4-boundary] diagnostic only; NOT in billable_tokens_total
+  billable_tokens_total bigint      NOT NULL,
+  billable_units        jsonb       NOT NULL DEFAULT '{}'::jsonb,
+  wholesale_cost_usd    numeric(18,10),   -- NULL = price unknown. Never defaulted to 0.
+  cost_is_estimate      boolean     NOT NULL DEFAULT true,
+  currency              text        NOT NULL DEFAULT 'USD',
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT paige_llm_cost_ledger_trace_unique UNIQUE (trace_id),
+  CONSTRAINT paige_llm_cost_ledger_scope_allowed CHECK (scope IN ('tenant','platform','unattributed')),
+  -- The two states cannot blur: a tenant row must name its tenant, and a tenant-less row must not.
+  CONSTRAINT paige_llm_cost_ledger_scope_matches_tenant CHECK (
+    (scope = 'tenant' AND tenant_id IS NOT NULL)
+    OR (scope IN ('platform','unattributed') AND tenant_id IS NULL))
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_cost_ledger_time   ON public.paige_llm_cost_ledger (occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_cost_ledger_scope  ON public.paige_llm_cost_ledger (scope, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_cost_ledger_tenant ON public.paige_llm_cost_ledger (tenant_id, occurred_at DESC)
+  WHERE tenant_id IS NOT NULL;
+
+COMMENT ON TABLE public.paige_llm_cost_ledger IS
+  '[C6] Paige''s WHOLESALE cost per model call — every scope, one home, OPERATOR-ONLY. Deliberately '
+  'separate from platform_metered_events, which is tenant-readable and therefore carries usage but '
+  'never a price: publishing per-call wholesale cost beside a token count hands any tenant our buy '
+  'rate by division.';
+COMMENT ON COLUMN public.paige_llm_cost_ledger.scope IS
+  '''tenant'' = attributable and passthrough-billable. ''platform'' = VERIFIED platform/system scope, '
+  'set only when the call site declared scope:''platform''. ''unattributed'' = no tenant and no '
+  'declaration — provenance unknown. As of this migration essentially every tenant-less trace on '
+  'prod lands as unattributed, because 190 of 217 are calls whose caller simply never threaded a '
+  'context. Never report unattributed rows as platform spend.';
+COMMENT ON COLUMN public.paige_llm_cost_ledger.wholesale_cost_usd IS
+  '[C7] NULL means the price is UNKNOWN (unpriced model, or pricing_version not threaded). Never '
+  'defaulted to 0, so a SUM cannot silently understate spend. Report a total beside a count of NULLs.';
+
+ALTER TABLE public.paige_llm_cost_ledger ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS paige_llm_cost_ledger_operator_read ON public.paige_llm_cost_ledger;
+CREATE POLICY paige_llm_cost_ledger_operator_read ON public.paige_llm_cost_ledger
+  FOR SELECT TO authenticated
+  USING (public.is_platform_operator());
+
+DROP POLICY IF EXISTS paige_llm_cost_ledger_service_write ON public.paige_llm_cost_ledger;
+CREATE POLICY paige_llm_cost_ledger_service_write ON public.paige_llm_cost_ledger
+  FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+-- ─── STEP 2 · THE METER BRIDGE ───────────────────────────────────────────────────────────────
+--
+-- [C2] FAIL-CLOSED = TRANSACTIONAL CONSISTENCY BETWEEN TRACE AND LEDGER. IT IS NOT BILLING
+-- DURABILITY, AND THIS COMMENT MUST NOT BE READ AS CLAIMING IT IS.
+--
+-- The previous version ended in `EXCEPTION WHEN OTHERS THEN RAISE WARNING ...; RETURN NEW;`. That
+-- let a trace COMMIT while its meter event did not, and then called itself atomic. It was not.
+--
+-- Removing that handler buys exactly one property, stated precisely: a trace and its ledger rows now
+-- commit together or not at all, so the database can never hold a trace whose usage was never
+-- costed. That is consistency BETWEEN THE RECORDS.
+--
+-- WHAT IT DOES NOT BUY, and the reason budget enforcement and autonomy widening stay blocked:
+-- the caller does not await this write. traceLLMCall() fires the insert through
+-- EdgeRuntime.waitUntil with its own try/catch and never rethrows (llm-trace.ts:270-289). So on a
+-- failure here BOTH records disappear while the model call already happened and the user's
+-- generation already succeeded. Provider spend occurred and nothing recorded it. Failing closed
+-- makes that loss CONSISTENT and LOUD (the caller's catch logs; the trace count flatlines, which is
+-- trivially alertable) — but the usage is still gone. Guaranteed capture needs a durable outbox or
+-- an equivalent mechanism that survives isolate teardown, and until that exists no budget ceiling
+-- built on this data is enforceable. That is a prerequisite for Step 5, not an optional polish.
+--
+-- [C4] SECURITY INVOKER, not DEFINER. The only role that can INSERT into paige_llm_trace is
+-- service_role (policy in 20260719150000), which also holds INSERT on both destinations, so
+-- elevation buys nothing and a DEFINER trigger would silently write as postgres. COUPLING TO WATCH:
+-- if a future migration grants another role INSERT on paige_llm_trace, that role must also be
+-- granted INSERT on platform_metered_events and paige_llm_cost_ledger, or its traces will fail
+-- closed. Loud by design; named here so it is diagnosed in seconds rather than hours.
 CREATE OR REPLACE FUNCTION public.meter_llm_trace() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+LANGUAGE plpgsql SECURITY INVOKER
+SET search_path TO ''
 AS $$
 DECLARE
   _billable_tokens bigint;
-  _cost numeric;
-  _cost_is_estimate boolean;
+  _cost            numeric;
+  _cost_is_est     boolean;
+  _scope           text;
+  _classes         jsonb;
 BEGIN
-  IF NEW.tenant_id IS NULL THEN RETURN NEW; END IF;
+  _billable_tokens := public.llm_trace_billable_tokens(
+    NEW.tokens_in, NEW.tokens_in_uncached, NEW.tokens_cache_read,
+    NEW.tokens_cache_write_5m, NEW.tokens_cache_write_1h, NEW.tokens_out);
 
-  _billable_tokens :=
-      COALESCE(NEW.tokens_in_uncached, NEW.tokens_in, 0)
-    + COALESCE(NEW.tokens_cache_read, 0)
-    + COALESCE(NEW.tokens_cache_write_5m, 0)
-    + COALESCE(NEW.tokens_cache_write_1h, 0)
-    + COALESCE(NEW.tokens_out, 0)
-    + COALESCE(NEW.tokens_reasoning, 0);
-
-  IF _billable_tokens = 0 AND COALESCE(NEW.billable_units, '{}'::jsonb) = '{}'::jsonb THEN
-    RETURN NEW;
+  IF NOT public.llm_trace_is_billable(
+       NEW.tokens_in, NEW.tokens_in_uncached, NEW.tokens_cache_read,
+       NEW.tokens_cache_write_5m, NEW.tokens_cache_write_1h, NEW.tokens_out,
+       NEW.billable_units) THEN
+    RETURN NEW;   -- consumed nothing billable. Same predicate the detectors use ([C3]).
   END IF;
 
-  -- An actual reconciled cost wins over an estimate; the distinction is carried into metadata so a
-  -- reader can never mistake one for the other.
-  _cost_is_estimate := NEW.cost_actual_usd IS NULL;
-  _cost := COALESCE(NEW.cost_actual_usd, NEW.cost_estimate_usd);
+  -- [C6] Owner boundary 2 — the scope is DECIDED, never guessed.
+  --   A tenant is present            → 'tenant'.
+  --   No tenant, caller DECLARED it  → 'platform'  (metadata.scope = 'platform', set server-side).
+  --   No tenant, no declaration      → 'unattributed'.
+  -- Inferring 'platform' from the mere presence of some correlation id would relabel a dropped
+  -- attribution as internal burn, which is precisely the silent misclassification to avoid.
+  _scope := CASE
+              WHEN NEW.tenant_id IS NOT NULL THEN 'tenant'
+              WHEN COALESCE(NEW.metadata->>'scope', '') = 'platform' THEN 'platform'
+              ELSE 'unattributed'
+            END;
+
+  -- An invoice-confirmed cost wins over an estimate. NULL stays NULL — an unpriced call must never
+  -- become a confident zero ([C7]).
+  _cost_is_est := NEW.cost_actual_usd IS NULL;
+  _cost := COALESCE(
+    NEW.cost_actual_usd,
+    NEW.cost_estimate_usd,
+    public.estimate_llm_cost_usd(
+      NEW.model_provider, NEW.model, NEW.pricing_version,
+      COALESCE(NEW.tokens_in_uncached, NEW.tokens_in), NEW.tokens_cache_read,
+      NEW.tokens_cache_write_5m, NEW.tokens_cache_write_1h, NEW.tokens_out));
+
+  -- ── (1) THE COST LEDGER — every scope, operator-only, money lives here and only here.
+  INSERT INTO public.paige_llm_cost_ledger (
+    trace_id, occurred_at, scope, tenant_id,
+    model_provider, model, gateway_provider, billing_provider, pricing_version,
+    capability, job_kind, tier, status, request_id, attempt, is_retry, is_fallback,
+    tokens_in_uncached, tokens_cache_read, tokens_cache_write_5m, tokens_cache_write_1h,
+    tokens_out, tokens_reasoning, billable_tokens_total, billable_units,
+    wholesale_cost_usd, cost_is_estimate
+  ) VALUES (
+    NEW.id, NEW.created_at, _scope, NEW.tenant_id,
+    NEW.model_provider, NEW.model, NEW.gateway_provider,
+    COALESCE(NEW.billing_provider, NEW.model_provider, NEW.provider), NEW.pricing_version,
+    NEW.capability, NEW.job_kind, NEW.tier, NEW.status,
+    NEW.request_id, NEW.attempt, NEW.is_retry, NEW.is_fallback,
+    COALESCE(NEW.tokens_in_uncached, NEW.tokens_in), NEW.tokens_cache_read,
+    NEW.tokens_cache_write_5m, NEW.tokens_cache_write_1h,
+    NEW.tokens_out, NEW.tokens_reasoning, _billable_tokens,
+    COALESCE(NEW.billable_units, '{}'::jsonb),
+    _cost, _cost_is_est
+  )
+  ON CONFLICT (trace_id) DO NOTHING;
+
+  -- ── (2) TENANT-VISIBLE USAGE — only when there is a tenant, and deliberately PRICELESS.
+  IF NEW.tenant_id IS NULL THEN
+    RETURN NEW;   -- nobody to show usage to; the ledger row above is the whole record.
+  END IF;
+
+  -- [C7] The per-class breakdown. Tenants may see WHAT they consumed. They may not see what it cost
+  -- us, in any form a rate can be recovered from.
+  _classes := jsonb_strip_nulls(jsonb_build_object(
+    'tokens_in_uncached',    COALESCE(NEW.tokens_in_uncached, NEW.tokens_in),
+    'tokens_cache_read',     NEW.tokens_cache_read,
+    'tokens_cache_write_5m', NEW.tokens_cache_write_5m,
+    'tokens_cache_write_1h', NEW.tokens_cache_write_1h,
+    'tokens_out',            NEW.tokens_out,
+    'tokens_reasoning',      NEW.tokens_reasoning,   -- diagnostic; not billed, not summed
+    'billable_units',        NULLIF(NEW.billable_units, '{}'::jsonb)));
 
   INSERT INTO public.platform_metered_events (
     tenant_id, service_category, event_type, provider, quantity,
@@ -331,12 +575,14 @@ BEGIN
     NEW.tenant_id,
     'ai_inference',
     COALESCE(NEW.job_kind, 'llm_call'),
-    -- The BILLING provider, not the legacy slug: this column feeds invoice reconciliation.
     COALESCE(NEW.billing_provider, NEW.model_provider, NEW.provider),
     _billable_tokens,
-    -- NOT NULL DEFAULT 0 on the column, so an unpriced call records 0 here. metadata.cost_known
-    -- says whether that 0 is a real zero or an absent price — the sum alone must not be trusted.
-    COALESCE(_cost, 0),
+    -- ZERO, AND NOT BECAUSE THE CALL WAS FREE. The column is NOT NULL on a shared, tenant-readable
+    -- table, so it cannot hold "recorded elsewhere". The real figure is in paige_llm_cost_ledger,
+    -- keyed by the same trace. metadata.cost_recorded_in says so on every row, so nobody reads this
+    -- 0 as a price. No consumer regresses: platform_metered_events holds zero ai_inference rows
+    -- today, so no existing COGS total loses a number it was already getting.
+    0,
     NULL,                       -- retail is a pricing decision, not a cost fact. Deliberately unset.
     'L3_tenant_passthrough',
     'tenant',
@@ -344,45 +590,29 @@ BEGIN
     'llm_trace:' || NEW.id::text,
     NEW.created_at,
     jsonb_strip_nulls(jsonb_build_object(
-      'trace_id',             NEW.id,
-      'request_id',           NEW.request_id,
-      'provider_request_id',  NEW.provider_request_id,
-      'attempt',              NEW.attempt,
-      'is_retry',             NEW.is_retry,
-      'is_fallback',          NEW.is_fallback,
-      'status',               NEW.status,
-      'gateway_provider',     NEW.gateway_provider,
-      'model_provider',       NEW.model_provider,
-      'model',                NEW.model,
-      'pricing_version',      NEW.pricing_version,
-      'capability',           NEW.capability,
-      'tier',                 NEW.tier,
-      'tokens_in_uncached',   COALESCE(NEW.tokens_in_uncached, NEW.tokens_in),
-      'tokens_cache_read',    NEW.tokens_cache_read,
-      'tokens_cache_write_5m',NEW.tokens_cache_write_5m,
-      'tokens_cache_write_1h',NEW.tokens_cache_write_1h,
-      'tokens_out',           NEW.tokens_out,
-      'tokens_reasoning',     NEW.tokens_reasoning,
-      'billable_units',       NULLIF(NEW.billable_units, '{}'::jsonb),
-      'cost_is_estimate',     _cost_is_estimate,
-      'cost_known',           _cost IS NOT NULL,
-      'cost_basis',           NEW.cost_basis,
-      'run_id',               NEW.run_id,
-      'workflow_id',          NEW.workflow_id,
-      'conversation_id',      NEW.conversation_id,
-      'task_id',              NEW.task_id,
-      'agent_id',             NEW.agent_id
+      'trace_id',            NEW.id,
+      'request_id',          NEW.request_id,
+      'provider_request_id', NEW.provider_request_id,
+      'attempt',             NEW.attempt,
+      'is_retry',            NEW.is_retry,
+      'is_fallback',         NEW.is_fallback,
+      'status',              NEW.status,
+      'model',               NEW.model,
+      'capability',          NEW.capability,
+      'token_classes',       _classes,
+      'quantity_semantics',  'informational_total_tokens',
+      'cost_recorded_in',    'paige_llm_cost_ledger',
+      'run_id',              NEW.run_id,
+      'workflow_id',         NEW.workflow_id,
+      'conversation_id',     NEW.conversation_id,
+      'task_id',             NEW.task_id,
+      'agent_id',            NEW.agent_id
     ))
   )
   ON CONFLICT (idempotency_key) DO NOTHING;
 
   RETURN NEW;
-EXCEPTION WHEN OTHERS THEN
-  -- A metering failure must not destroy the observability row (the trace insert is the only record
-  -- that the call happened at all). Warn loudly and continue; the unmetered row is then VISIBLE in
-  -- v_llm_trace_unmetered below, so the gap is detectable rather than silent (§32).
-  RAISE WARNING 'meter_llm_trace failed for trace %: %', NEW.id, SQLERRM;
-  RETURN NEW;
+  -- NO EXCEPTION HANDLER, deliberately — see the [C2] note above.
 END; $$;
 
 DROP TRIGGER IF EXISTS trg_meter_llm_trace ON public.paige_llm_trace;
@@ -391,97 +621,191 @@ CREATE TRIGGER trg_meter_llm_trace
   FOR EACH ROW EXECUTE FUNCTION public.meter_llm_trace();
 
 COMMENT ON FUNCTION public.meter_llm_trace() IS
-  'Step 2 bridge: one durable platform_metered_events row per billable trace, atomic with the trace '
-  'insert. Idempotent via UNIQUE idempotency_key. Skips platform-scope (tenant_id NULL) and '
-  'zero-consumption rows. Never writes a retail charge — that is a pricing decision, not a cost.';
+  'Step 2 bridge. Every billable trace produces exactly one paige_llm_cost_ledger row (operator-only, '
+  'carries the money) and, when a tenant is attributable, exactly one platform_metered_events row '
+  '(tenant-visible, carries usage and NO price). Scope is decided, never inferred: tenant / verified '
+  'platform (declared via metadata.scope) / unattributed. Idempotent on both sides. Fails CLOSED — '
+  'no exception handler, so a ledger failure rolls the trace back with it. That is transactional '
+  'consistency, NOT billing durability: the caller does not await this write ([C2]).';
 
 -- ─── RECONCILIATION SURFACES ─────────────────────────────────────────────────────────────────
 --
--- Brief: "Auditable reconciliation from raw provider usage to tenant-facing usage." Two views, both
--- security_invoker so RLS applies to the reader (#116 — a security_definer view here would leak
--- every tenant's spend to any caller).
+-- All views are security_invoker so RLS applies to the reader (#116 — a security_definer view here
+-- would hand every tenant's usage to any caller). All are GRANTed at the foot of this file:
+-- security_invoker changes WHOSE RLS applies, it never waives the need to hold SELECT on the view.
+--
+-- NOTE ON EXPOSURE: three of the four read paige_llm_cost_ledger, whose RLS is operator-only, so a
+-- tenant selecting from them gets zero rows rather than a filtered price. That is the intended
+-- shape — a tenant-safe usage surface is platform_metered_events itself, which carries no price.
 
--- Every trace that SHOULD have produced a meter event and did not. On a healthy system this is
--- empty. It is the detector that keeps the trigger's EXCEPTION handler from hiding a failure.
-CREATE OR REPLACE VIEW public.v_llm_trace_unmetered
+-- [C3] The activation marker. The meter trigger is AFTER INSERT and this migration performs no
+-- backfill, so every trace that already existed is permanently uncosted. Without this bound the
+-- detectors below would be born reporting 213 rows on prod and would be crying wolf from their
+-- first query — a detector whose "expected empty" is never empty teaches everyone to ignore it.
+CREATE OR REPLACE FUNCTION public.llm_meter_bridge_active_from() RETURNS timestamptz
+LANGUAGE sql IMMUTABLE
+SET search_path TO ''
+AS $$ SELECT TIMESTAMPTZ '2026-08-24T00:00:00Z' $$;
+
+COMMENT ON FUNCTION public.llm_meter_bridge_active_from() IS
+  'The instant the meter bridge began covering new traces. Rows older than this were never eligible '
+  '(the trigger is AFTER INSERT and nothing was backfilled), so the detectors exclude them rather '
+  'than reporting a permanent backlog as a live failure.';
+
+-- DETECTOR 1 — every billable trace must have a cost-ledger row, whatever its scope.
+-- [C3] The eligibility predicate is llm_trace_is_billable() — the SAME function the trigger calls.
+-- The previous version hand-rolled `uncached + out > 0`, which missed a trace that consumed only
+-- cache reads or only billable_units: billable to the trigger, invisible to the detector.
+CREATE OR REPLACE VIEW public.v_llm_trace_uncosted
 WITH (security_invoker = on) AS
 SELECT t.id AS trace_id, t.tenant_id, t.created_at, t.model, t.model_provider, t.status,
-       COALESCE(t.tokens_in_uncached, t.tokens_in, 0) + COALESCE(t.tokens_out, 0) AS tokens_seen
+       public.llm_trace_billable_tokens(
+         t.tokens_in, t.tokens_in_uncached, t.tokens_cache_read,
+         t.tokens_cache_write_5m, t.tokens_cache_write_1h, t.tokens_out) AS billable_tokens,
+       t.billable_units
+  FROM public.paige_llm_trace t
+  LEFT JOIN public.paige_llm_cost_ledger c ON c.trace_id = t.id
+ WHERE t.created_at >= public.llm_meter_bridge_active_from()
+   AND c.id IS NULL
+   AND public.llm_trace_is_billable(
+         t.tokens_in, t.tokens_in_uncached, t.tokens_cache_read,
+         t.tokens_cache_write_5m, t.tokens_cache_write_1h, t.tokens_out, t.billable_units);
+
+COMMENT ON VIEW public.v_llm_trace_uncosted IS
+  'Traces that consumed billable provider resources on or after bridge activation and reached no '
+  'cost-ledger row. Expected to be EMPTY. Shares llm_trace_is_billable() with the trigger so the '
+  'two can never disagree about eligibility ([C3]).';
+
+-- DETECTOR 2 — every billable TENANT trace must also have its tenant-visible usage event.
+CREATE OR REPLACE VIEW public.v_llm_trace_unmetered
+WITH (security_invoker = on) AS
+SELECT t.id AS trace_id, t.tenant_id, t.created_at, t.model, t.status,
+       public.llm_trace_billable_tokens(
+         t.tokens_in, t.tokens_in_uncached, t.tokens_cache_read,
+         t.tokens_cache_write_5m, t.tokens_cache_write_1h, t.tokens_out) AS billable_tokens
   FROM public.paige_llm_trace t
   LEFT JOIN public.platform_metered_events m
          ON m.idempotency_key = 'llm_trace:' || t.id::text
  WHERE t.tenant_id IS NOT NULL
+   AND t.created_at >= public.llm_meter_bridge_active_from()
    AND m.id IS NULL
-   AND (COALESCE(t.tokens_in_uncached, t.tokens_in, 0) + COALESCE(t.tokens_out, 0)) > 0;
+   AND public.llm_trace_is_billable(
+         t.tokens_in, t.tokens_in_uncached, t.tokens_cache_read,
+         t.tokens_cache_write_5m, t.tokens_cache_write_1h, t.tokens_out, t.billable_units);
 
 COMMENT ON VIEW public.v_llm_trace_unmetered IS
-  'Traces that consumed provider resources for a tenant but produced no metered event. Expected to '
-  'be EMPTY. Non-empty means the bridge failed and usage is going unbilled — the gap this view '
-  'exists to make visible rather than silent.';
+  'Tenant-scoped billable traces with no tenant-visible usage event. Expected to be EMPTY.';
 
--- The paired view: each meter event beside the trace that produced it, with the estimate/actual
--- distinction preserved rather than flattened.
+-- DETECTOR 3 — [C6] owner boundary 2: "Add an alert/reconciliation category for any future
+-- unattributed provider call." Every row here is a call site that spent real money and did not say
+-- on whose behalf. Expected to trend to zero as the identified callers are repaired; it is a
+-- WORKLIST, not a health check, and it is deliberately separate from the two detectors above so a
+-- known attribution backlog can never mask a live bridge failure.
+CREATE OR REPLACE VIEW public.v_llm_unattributed_spend
+WITH (security_invoker = on) AS
+SELECT date_trunc('day', c.occurred_at)                      AS day,
+       c.job_kind,
+       c.model,
+       c.model_provider,
+       count(*)                                              AS calls,
+       sum(c.billable_tokens_total)                          AS billable_tokens,
+       count(*) FILTER (WHERE c.wholesale_cost_usd IS NULL)   AS calls_price_unknown,
+       sum(c.wholesale_cost_usd) FILTER (WHERE c.wholesale_cost_usd IS NOT NULL) AS known_cost_usd
+  FROM public.paige_llm_cost_ledger c
+ WHERE c.scope = 'unattributed'
+ GROUP BY 1, 2, 3, 4;
+
+COMMENT ON VIEW public.v_llm_unattributed_spend IS
+  '[C6] Provider spend with no tenant and no declared platform scope — calls whose attribution was '
+  'dropped at the call site. Alert on any non-zero day. NOT platform usage: do not fold these into '
+  'a platform-burn figure, and do not charge them to a tenant. Each row is a caller to repair.';
+
+-- Each cost row beside the trace that produced it and the tenant-visible event it generated, with
+-- the estimate/actual and known/unknown distinctions preserved as columns rather than flattened.
 CREATE OR REPLACE VIEW public.v_llm_usage_reconciliation
 WITH (security_invoker = on) AS
 SELECT
-  m.id                AS meter_event_id,
-  m.idempotency_key,
-  m.tenant_id,
-  m.occurred_at,
-  m.quantity          AS billable_tokens,
-  m.wholesale_cost_usd,
-  m.tenant_retail_charge_usd,
-  (m.metadata->>'cost_is_estimate')::boolean AS cost_is_estimate,
-  (m.metadata->>'cost_known')::boolean       AS cost_known,
-  m.metadata->>'model'                       AS model,
-  m.metadata->>'model_provider'              AS model_provider,
-  m.metadata->>'gateway_provider'            AS gateway_provider,
-  m.provider                                 AS billing_provider,
-  m.metadata->>'pricing_version'             AS pricing_version,
-  (m.metadata->>'attempt')::int              AS attempt,
-  (m.metadata->>'is_retry')::boolean         AS is_retry,
-  (m.metadata->>'is_fallback')::boolean      AS is_fallback,
-  m.metadata->>'status'                      AS call_status,
-  (m.metadata->>'request_id')::uuid          AS request_id,
-  m.metadata->>'provider_request_id'         AS provider_request_id,
-  t.id                                       AS trace_id,
+  c.id                  AS cost_row_id,
+  c.trace_id,
+  c.scope,
+  c.tenant_id,
+  c.occurred_at,
+  -- [C7] NAMED FOR WHAT IT IS. billable_tokens_total sums differently-priced classes, so it is an
+  -- informational total and must never have a single rate applied to it. The authoritative figures
+  -- are the per-class columns and wholesale_cost_usd (already summed at the right rates).
+  c.billable_tokens_total AS informational_total_tokens,
+  c.tokens_in_uncached, c.tokens_cache_read, c.tokens_cache_write_5m, c.tokens_cache_write_1h,
+  c.tokens_out,
+  c.tokens_reasoning,     -- diagnostic subset of tokens_out; never billed
+  c.billable_units,
+  c.wholesale_cost_usd,
+  (c.wholesale_cost_usd IS NOT NULL) AS cost_known,
+  c.cost_is_estimate,
+  c.model, c.model_provider, c.gateway_provider, c.billing_provider, c.pricing_version,
+  c.capability, c.job_kind, c.tier, c.status AS call_status,
+  c.request_id, c.attempt, c.is_retry, c.is_fallback,
+  t.provider_request_id,
   t.cost_estimate_usd,
   t.cost_actual_usd,
-  t.reconciled_at
-FROM public.platform_metered_events m
-LEFT JOIN public.paige_llm_trace t
-       ON t.id = NULLIF(m.metadata->>'trace_id', '')::uuid
-WHERE m.service_category = 'ai_inference';
+  t.reconciled_at,
+  m.id                  AS meter_event_id,
+  m.idempotency_key
+FROM public.paige_llm_cost_ledger c
+LEFT JOIN public.paige_llm_trace t ON t.id = c.trace_id
+LEFT JOIN public.platform_metered_events m
+       ON m.idempotency_key = 'llm_trace:' || c.trace_id::text;
 
 COMMENT ON VIEW public.v_llm_usage_reconciliation IS
-  'Meter event beside the trace that produced it. cost_is_estimate / cost_known are surfaced as '
-  'first-class columns so no reader can mistake a list-price estimate — or an absent price — for an '
-  'invoice-confirmed amount.';
+  'Cost row beside its trace and its tenant-visible usage event. informational_total_tokens is named '
+  'so no reader applies one rate to a sum of differently-priced classes; the per-class columns and '
+  'wholesale_cost_usd are authoritative. cost_known and cost_is_estimate are first-class so an '
+  'absent price is never read as an invoice-confirmed zero ([C7]). Operator-scoped by the ledger''s '
+  'own RLS.';
+
+-- [C7] The one safe way to total spend: known and unknown reported side by side, never blended.
+CREATE OR REPLACE VIEW public.v_llm_spend_rollup
+WITH (security_invoker = on) AS
+SELECT
+  c.scope                                                                   AS ledger,
+  date_trunc('day', c.occurred_at)                                          AS day,
+  count(*)                                                                  AS calls,
+  count(*) FILTER (WHERE c.wholesale_cost_usd IS NULL)                       AS calls_price_unknown,
+  sum(c.wholesale_cost_usd) FILTER (WHERE c.wholesale_cost_usd IS NOT NULL)  AS known_cost_usd,
+  sum(c.billable_tokens_total)                                              AS informational_total_tokens
+FROM public.paige_llm_cost_ledger c
+GROUP BY 1, 2;
+
+COMMENT ON VIEW public.v_llm_spend_rollup IS
+  '[C7] Daily wholesale spend by scope — tenant, platform, unattributed. known_cost_usd sums ONLY '
+  'rows whose price is known and calls_price_unknown counts the rest, so a total can never quietly '
+  'understate spend by treating an absent price as zero. Read the two together or not at all. '
+  'Operator-scoped by the ledger''s RLS — this is the operator COGS surface, and the reason '
+  'platform_metered_events no longer carries a price.';
 
 -- ─── INVOICE RECONCILIATION ──────────────────────────────────────────────────────────────────
 -- When a provider invoice later confirms a real cost, updating the trace propagates to the ledger.
 -- Only cost_actual_usd flows through; an estimate never overwrites a confirmed figure, and the
--- event's identity and quantity are immutable.
+-- row's identity and quantities are immutable. Nothing propagates to platform_metered_events — that
+-- row carries no price to correct ([C3-boundary]).
+--
+-- [C2] Also fails closed, and for the same reason: a reconciliation that silently failed to land
+-- would leave the ledger asserting an estimate while the trace claims a confirmed figure — two
+-- records disagreeing about money, with a warning nobody reads as the only sign of it.
 CREATE OR REPLACE FUNCTION public.reconcile_llm_trace_cost() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public'
+LANGUAGE plpgsql SECURITY INVOKER
+SET search_path TO ''
 AS $$
 BEGIN
-  IF NEW.cost_actual_usd IS NOT NULL
-     AND NEW.cost_actual_usd IS DISTINCT FROM OLD.cost_actual_usd
-     AND NEW.tenant_id IS NOT NULL THEN
-    UPDATE public.platform_metered_events
-       SET wholesale_cost_usd = NEW.cost_actual_usd,
-           metadata = metadata || jsonb_build_object(
-             'cost_is_estimate', false,
-             'cost_known', true,
-             'reconciled_at', COALESCE(NEW.reconciled_at, now()),
-             'estimate_was', NEW.cost_estimate_usd
-           )
-     WHERE idempotency_key = 'llm_trace:' || NEW.id::text;
+  IF NEW.cost_actual_usd IS NULL
+     OR NEW.cost_actual_usd IS NOT DISTINCT FROM OLD.cost_actual_usd THEN
+    RETURN NEW;
   END IF;
-  RETURN NEW;
-EXCEPTION WHEN OTHERS THEN
-  RAISE WARNING 'reconcile_llm_trace_cost failed for trace %: %', NEW.id, SQLERRM;
+
+  UPDATE public.paige_llm_cost_ledger
+     SET wholesale_cost_usd = NEW.cost_actual_usd,
+         cost_is_estimate   = false
+   WHERE trace_id = NEW.id;
+
   RETURN NEW;
 END; $$;
 
@@ -491,5 +815,67 @@ CREATE TRIGGER trg_reconcile_llm_trace_cost
   FOR EACH ROW EXECUTE FUNCTION public.reconcile_llm_trace_cost();
 
 COMMENT ON FUNCTION public.reconcile_llm_trace_cost() IS
-  'Propagates an invoice-confirmed cost onto its meter event, preserving the prior estimate in '
-  'metadata.estimate_was. Quantity and identity are never rewritten.';
+  'Propagates an invoice-confirmed cost onto its cost-ledger row and flips cost_is_estimate false. '
+  'Quantities and identity are never rewritten. Fails closed ([C2]).';
+
+-- ─── [C4] PRIVILEGES ─────────────────────────────────────────────────────────────────────────
+--
+-- The previous version of this migration contained ZERO GRANT and ZERO REVOKE statements. Two real
+-- consequences, both verified live rather than theorised:
+--   · estimate_llm_cost_usd inherited Postgres's default PUBLIC EXECUTE and was anon-callable, and
+--     as SECURITY DEFINER it read the wholesale price list this file exists to protect.
+--   · paige_model_pricing and the views got RLS/security_invoker but no table privilege, so the
+--     operator-read policy could never fire — the surfaces were unreachable by the very role they
+--     were written for.
+-- Note for whoever tunes the CI guard: scripts/ci/definer-fn-lint.mjs only flags an EXPLICIT
+-- `GRANT EXECUTE ... TO anon|public`, so a migration that writes no GRANT at all passes the lint
+-- while still carrying the default PUBLIC grant. Writing nothing is not the safe default.
+
+-- Functions: nothing here is a public API. Revoke the default, then grant only real callers.
+REVOKE ALL ON FUNCTION public.estimate_llm_cost_usd(text,text,text,int,int,int,int,int) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.meter_llm_trace()                                          FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.reconcile_llm_trace_cost()                                 FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.llm_meter_bridge_active_from()                             FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.llm_trace_billable_tokens(integer,integer,integer,integer,integer,integer)      FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.llm_trace_is_billable(integer,integer,integer,integer,integer,integer,jsonb)    FROM PUBLIC, anon;
+
+GRANT EXECUTE ON FUNCTION public.estimate_llm_cost_usd(text,text,text,int,int,int,int,int) TO service_role;
+GRANT EXECUTE ON FUNCTION public.meter_llm_trace()                                          TO service_role;
+GRANT EXECUTE ON FUNCTION public.reconcile_llm_trace_cost()                                 TO service_role;
+-- The eligibility helpers and the activation marker are pure arithmetic over values the caller
+-- already passes in — they read no table and leak nothing — and the invoker views call them, so
+-- authenticated needs EXECUTE for those views to be readable at all.
+GRANT EXECUTE ON FUNCTION public.llm_trace_billable_tokens(integer,integer,integer,integer,integer,integer)   TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.llm_trace_is_billable(integer,integer,integer,integer,integer,integer,jsonb) TO authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.llm_meter_bridge_active_from()                                                TO authenticated, service_role;
+
+-- Tables: SELECT to authenticated is what lets the operator-read RLS policy fire at all; the policy,
+-- not the grant, is what restricts it to operators. anon gets nothing.
+REVOKE ALL ON TABLE public.paige_model_pricing    FROM PUBLIC, anon;
+REVOKE ALL ON TABLE public.paige_llm_cost_ledger  FROM PUBLIC, anon;
+GRANT SELECT ON TABLE public.paige_model_pricing   TO authenticated;
+GRANT SELECT ON TABLE public.paige_llm_cost_ledger TO authenticated;
+GRANT ALL    ON TABLE public.paige_model_pricing   TO service_role;
+GRANT ALL    ON TABLE public.paige_llm_cost_ledger TO service_role;
+
+-- Views: security_invoker decides WHOSE RLS applies; it does not waive the SELECT privilege on the
+-- view itself. Without these grants every reconciliation surface is unreadable.
+REVOKE ALL ON public.v_llm_trace_uncosted        FROM PUBLIC, anon;
+REVOKE ALL ON public.v_llm_trace_unmetered       FROM PUBLIC, anon;
+REVOKE ALL ON public.v_llm_unattributed_spend    FROM PUBLIC, anon;
+REVOKE ALL ON public.v_llm_usage_reconciliation  FROM PUBLIC, anon;
+REVOKE ALL ON public.v_llm_spend_rollup          FROM PUBLIC, anon;
+GRANT SELECT ON public.v_llm_trace_uncosted       TO authenticated, service_role;
+GRANT SELECT ON public.v_llm_trace_unmetered      TO authenticated, service_role;
+GRANT SELECT ON public.v_llm_unattributed_spend   TO authenticated, service_role;
+GRANT SELECT ON public.v_llm_usage_reconciliation TO authenticated, service_role;
+GRANT SELECT ON public.v_llm_spend_rollup         TO authenticated, service_role;
+
+-- ─── OWED FOLLOW-UP, NAMED SO IT IS NOT LOST (§13/§58) ───────────────────────────────────────
+-- src/hooks/analytics/useOperatorPlatformMetrics.ts sums platform_metered_events.wholesale_cost_usd
+-- fleet-wide as operator COGS. That column is now deliberately 0 for ai_inference rows, so once LLM
+-- rows start flowing the operator COGS surface must be repointed at v_llm_spend_rollup or it will
+-- under-report. NOTHING REGRESSES TODAY — platform_metered_events holds zero ai_inference rows, so
+-- that sum is not currently receiving any LLM cost to lose. The frontend change is deliberately not
+-- made here: it is operator-surface UI, which this branch is scoped out of, and Codex holds a
+-- parallel operator UI branch. Sequence it before the bridge starts writing in earnest.

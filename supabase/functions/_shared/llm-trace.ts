@@ -44,6 +44,17 @@ export interface TraceCtx {
    *  itemization, DISTINCT from tenant_id (the persona-context attribution). Soft ref, coerced to null
    *  if non-uuid. Optional: a site that doesn't set it writes null (default), never a fabricated id. */
   working_context_tenant_id?: string | null;
+  /**
+   * DECLARED SCOPE for a call with no tenant. Owner boundary, 2026-08-24: a tenant-less trace is
+   * either VERIFIED platform/system work or MISSING ATTRIBUTION, and the difference must not be
+   * guessed. Set "platform" ONLY where the call genuinely has no tenant by design — an operator-
+   * scope chat turn, a cron sweep, a systems check. Leaving it unset is the honest default: the
+   * cost ledger then records the call as `unattributed` and it shows up in v_llm_unattributed_spend
+   * as a call site to repair, rather than being silently banked as internal burn.
+   *
+   * This must be decided SERVER-SIDE. It is never read from a request body.
+   */
+  scope?: "platform";
 }
 
 /** Provenance stamp — bump when the estimator/scrubber/schema changes so a reader knows what produced a row. */
@@ -121,7 +132,7 @@ export function toExcerpt(value: unknown): { text: string | null; truncated: boo
 }
 
 /** Only these scalar keys survive into metadata — never a raw opts/headers object (S0/S6). */
-const METADATA_ALLOWLIST = ["caller_function", "actor_role", "retry_of", "attempt", "capped", "low_confidence"] as const;
+const METADATA_ALLOWLIST = ["caller_function", "actor_role", "retry_of", "attempt", "capped", "low_confidence", "scope"] as const;
 function safeMetadata(meta: Record<string, unknown> | undefined): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (!meta) return out;
