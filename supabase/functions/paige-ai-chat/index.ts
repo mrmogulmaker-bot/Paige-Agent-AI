@@ -836,7 +836,14 @@ JSON:`;
             attachedDocument,
           );
         } catch (e) {
-          console.warn("[Paige] general extraction failed:", e);
+          // §13/§32: extraction is an enhancement — a failure must never break the
+          // turn — but it must never disappear either. The helper itself returns an
+          // honest null for every expected absence (no readable content, a failed
+          // model call, nothing found), so reaching this catch means something
+          // genuinely unexpected threw. Log it at error level, named, so it shows up
+          // in the function logs instead of blending into routine warnings.
+          extractionProposal = null;
+          console.error("[Paige] general extraction threw unexpectedly:", e);
         }
 
         // #322 — durably store a general PDF in the SAME private bucket the credit path uses
@@ -1336,7 +1343,16 @@ ${buildStudioWhereYouAre(name, tenant)}`.trim()
     let tenantDomainContext = "";
     if (personaCtx.tenant_id) {
       try {
-        const { data: identity, error: identityError } = await admin.rpc(
+        // §9: read this through the CALLER'S JWT-scoped client, never the service-role one.
+        // `admin` is not in scope here at all (the only `const admin` in this handler is declared
+        // far below, inside the CRM-operator tool branch), so this threw a ReferenceError on every
+        // turn and the tenant's domain identity silently never reached the prompt.
+        // resolve_tenant_domain_identity is SECURITY DEFINER and SELF-SCOPING: for an authenticated
+        // caller it derives the tenant from auth.uid() -> current_user_tenant_id() and IGNORES
+        // p_tenant_id entirely (only a service_role caller may pass a tenant). Reading it through
+        // `supabaseClient` therefore makes a cross-tenant read structurally impossible — the
+        // argument below cannot steer the answer, it only satisfies the function signature.
+        const { data: identity, error: identityError } = await supabaseClient.rpc(
           "resolve_tenant_domain_identity",
           { p_tenant_id: personaCtx.tenant_id },
         );
@@ -7374,7 +7390,13 @@ Ask only what's relevant, act on the yes's, and file the ones that need doing on
             // (kb-ingest-doc returns 200 + ok:false when the embedder is down; a doc
             // with 0 vectors is not searchable, so it is NOT a real save).
             const kbOk = kbResp.ok && kbData?.ok !== false && kbData?.error == null && kbData?.chunk_count !== 0;
-            result = kbOk
+            // §13: DECLARE the binding. The only `result` in this handler is the CRM-operator
+            // `let result` (declared inside the try that opens at the `crm_*` branch and closes
+            // long before this branch), so a bare `result =` here is an assignment to an
+            // undeclared identifier — a ReferenceError under ESM implicit strict mode, swallowed
+            // by this branch's own catch. Paige then reported "it did NOT save" on every save,
+            // including the ones kb-ingest-doc had genuinely completed.
+            const result = kbOk
               ? { success: true, ...kbData, note: "Saved to the knowledge base and embedded — it's searchable now. Tell the operator it's stored; never mention internal table/function names." }
               : { success: false, ...kbData, note: "It did NOT save — the entry couldn't be embedded/stored (the knowledge service may be down). Tell the operator plainly that it did not save and you'll retry once it's back. Do NOT say it's saved or 'in memory'." };
             toolResults.push({ tool_call_id: tc.id, role: "tool", content: JSON.stringify(result) });
@@ -8173,6 +8195,207 @@ async function runDocumentReadCheck(base64: string) {
   console.log(`Read-check raw response length: ${rawContent.length}`);
   const content = cleanJsonResponse(rawContent);
   return JSON.parse(content);
+}
+
+// ── General-document field extraction ────────────────────────────────────────
+// The general-document path calls this and emits its result as the shipped
+// `data: { extraction_proposal }` SSE event, which the client renders as an
+// ExtractionProposalCard the person confirms field-by-field before anything is
+// written. The function was CALLED but never DEFINED, so every general-document
+// turn threw a ReferenceError that the call site's catch turned into a warning:
+// no proposal was ever produced, and nothing on the surface said why.
+//
+// §13 — the hard rule for this helper: it NEVER fabricates. A field is emitted
+// only when the model reports reading it off the document. No usable content, a
+// failed call, unparseable output, or nothing found all resolve to `null` (an
+// honest absence), and the call site simply emits no proposal — exactly what the
+// existing `extractionProposal.fields?.length > 0` emit guard already expects.
+//
+// §2 — the catalog below is coaching-generic business/profile identity only. It
+// carries no credit, funding or lender fields, and no sensitive PII (SSN, date of
+// birth): those are never auto-proposed off an uploaded document.
+//
+// Every key here is a canonical `field_path` in paige-write-back's ALLOWED_FIELDS
+// (ExtractionField.key IS the field_path). Anything the model returns that is not
+// in this catalog is dropped rather than forwarded — a path outside the whitelist
+// would be rejected downstream as "Field not in whitelist".
+const GENERAL_DOC_FIELD_CATALOG: Record<string, { label: string; kind: "text" | "date" }> = {
+  "foundation.legal_name": { label: "Business Legal Name", kind: "text" },
+  "foundation.dba": { label: "Business DBA", kind: "text" },
+  "foundation.entity_type": { label: "Entity Type", kind: "text" },
+  "foundation.state_of_formation": { label: "State of Formation", kind: "text" },
+  "foundation.formation_date": { label: "Formation Date", kind: "date" },
+  "foundation.ein": { label: "Business EIN", kind: "text" },
+  "foundation.naics": { label: "NAICS Code", kind: "text" },
+  "foundation.registered_agent_name": { label: "Registered Agent", kind: "text" },
+  "foundation.registered_agent_address": { label: "Registered Agent Address", kind: "text" },
+  "foundation.registered_agent_state": { label: "Registered Agent State", kind: "text" },
+  "foundation.street_address": { label: "Business Street Address", kind: "text" },
+  "foundation.city": { label: "Business City", kind: "text" },
+  "foundation.state": { label: "Business State", kind: "text" },
+  "foundation.zip": { label: "Business ZIP", kind: "text" },
+  "foundation.business_phone": { label: "Business Phone", kind: "text" },
+  "foundation.business_email": { label: "Business Email", kind: "text" },
+  "foundation.bank_name": { label: "Bank Name", kind: "text" },
+  "public_presence.website_url": { label: "Website", kind: "text" },
+  "profile.full_name": { label: "Your Full Name", kind: "text" },
+  "profile.address": { label: "Your Address", kind: "text" },
+  "profile.city": { label: "Your City", kind: "text" },
+  "profile.state": { label: "Your State", kind: "text" },
+  "profile.postal_code": { label: "Your ZIP", kind: "text" },
+  "profile.phone": { label: "Your Phone", kind: "text" },
+};
+
+const GENERAL_DOC_MAX_FIELDS = 20;
+
+// Values a model returns when it did NOT actually find the field. Emitting any of
+// these would put a fabricated row in front of the person with a checkbox already
+// ticked, which is the precise failure §13/§15 forbid.
+const GENERAL_DOC_NON_ANSWERS = new Set([
+  "", "-", "--", "n/a", "na", "none", "null", "undefined", "unknown", "not stated",
+  "not provided", "not found", "not listed", "not applicable", "not specified", "tbd",
+]);
+
+function generalDocFieldValue(key: string, raw: unknown): string | null {
+  const def = GENERAL_DOC_FIELD_CATALOG[key];
+  if (!def) return null;
+  if (raw == null || typeof raw === "object") return null;
+  const value = String(raw).trim().replace(/\s+/g, " ");
+  if (GENERAL_DOC_NON_ANSWERS.has(value.toLowerCase())) return null;
+  // A bracketed token is a template placeholder, never a read value (§15).
+  if (/^[[<{].*[\]>}]$/.test(value)) return null;
+  if (value.length > 300) return null;
+  if (def.kind === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  return value;
+}
+
+export async function runGeneralDocumentExtraction(
+  doc: { base64?: string; mimeType?: string; kind?: string; fileName?: string; textContent?: string } | null | undefined,
+  complete: typeof gatewayCompat = gatewayCompat,
+): Promise<{ id: string; source: "document"; documentType?: string; intro?: string; fields: Array<{ key: string; label: string; value: string; displayValue?: string }> } | null> {
+  if (!doc) return null;
+  const docKind = doc.kind
+    || (doc.mimeType === "application/pdf" ? "pdf" : doc.mimeType?.startsWith("image/") ? "image" : "docx");
+
+  // Build the content the model actually reads. A PDF/image travels as its own
+  // bytes; a DOCX travels as the text the client already extracted. Anything else
+  // has no readable content on the server, and we say so instead of guessing.
+  type ExtractionContentBlock =
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } };
+  const content: ExtractionContentBlock[] = [{
+    type: "text",
+    text: "Read this uploaded document and report only the identity fields you can actually see on it.",
+  }];
+  if ((docKind === "pdf" || docKind === "image") && doc.base64) {
+    content.push({
+      type: "image_url",
+      image_url: { url: `data:${doc.mimeType || (docKind === "pdf" ? "application/pdf" : "image/png")};base64,${doc.base64}` },
+    });
+  } else if (doc.textContent && doc.textContent.trim()) {
+    content.push({
+      type: "text",
+      text: `=== DOCUMENT TEXT (${doc.fileName || "document"}) ===\n${doc.textContent.slice(0, 80_000)}\n=== END DOCUMENT ===`,
+    });
+  } else {
+    console.warn(
+      `[Paige] general extraction skipped — no readable content (kind=${docKind}, hasBase64=${!!doc.base64}, hasText=${!!doc.textContent})`,
+    );
+    return null;
+  }
+
+  const catalogLines = Object.entries(GENERAL_DOC_FIELD_CATALOG)
+    .map(([key, def]) => `- ${key} (${def.label})${def.kind === "date" ? " — YYYY-MM-DD" : ""}`)
+    .join("\n");
+
+  const systemPrompt = `You extract business and personal identity fields from an uploaded document.
+
+Return ONLY this JSON:
+{"document_type":"<short human name for the document, e.g. IRS EIN Letter>","fields":{"<field key>":"<value exactly as it appears>"}}
+
+Allowed field keys — use these EXACT keys and no others:
+${catalogLines}
+
+Rules:
+- Include a key ONLY if the value is printed on the document and you can read it. Omit every key you cannot read. An omitted key is the correct answer.
+- Never infer, complete, normalise from memory, or guess a value. Copy what is printed.
+- Never emit a placeholder such as "unknown", "N/A", "not stated", or bracketed text.
+- Dates use YYYY-MM-DD. If the printed date cannot be expressed that way, omit the field.
+- If the document carries none of these fields, return {"document_type":"<short name>","fields":{}}.`;
+
+  // gatewayCompat returns a Response-SHAPED object, not a real Response (it wraps the
+  // provider call so the trace/router seam stays one home). Type off the seam itself so a
+  // change there is caught here rather than papered over with a cast.
+  let response: Awaited<ReturnType<typeof gatewayCompat>>;
+  try {
+    response = await complete("anthropic", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content },
+        ],
+      }),
+    });
+  } catch (err) {
+    console.error("[Paige] general extraction call failed:", err);
+    return null;
+  }
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    console.error(`[Paige] general extraction API failed: status=${response.status} body=${body.slice(0, 500)}`);
+    return null;
+  }
+
+  let parsed: { document_type?: unknown; fields?: unknown } | null = null;
+  try {
+    const data = await response.json();
+    parsed = JSON.parse(cleanJsonResponse(data.choices?.[0]?.message?.content || ""));
+  } catch (err) {
+    console.error("[Paige] general extraction returned unparseable output:", err);
+    return null;
+  }
+
+  const rawFields = parsed?.fields;
+  if (!rawFields || typeof rawFields !== "object" || Array.isArray(rawFields)) {
+    console.warn("[Paige] general extraction produced no fields object — emitting no proposal");
+    return null;
+  }
+
+  const fields: Array<{ key: string; label: string; value: string; displayValue?: string }> = [];
+  const dropped: string[] = [];
+  for (const [key, raw] of Object.entries(rawFields)) {
+    if (fields.length >= GENERAL_DOC_MAX_FIELDS) break;
+    if (!GENERAL_DOC_FIELD_CATALOG[key]) { dropped.push(key); continue; }
+    const value = generalDocFieldValue(key, raw);
+    if (value == null) { dropped.push(key); continue; }
+    fields.push({ key, label: GENERAL_DOC_FIELD_CATALOG[key].label, value, displayValue: value });
+  }
+  if (dropped.length) {
+    console.warn(`[Paige] general extraction dropped ${dropped.length} field(s) outside the catalog or without a real value: ${dropped.join(", ")}`);
+  }
+  if (fields.length === 0) {
+    console.log("[Paige] general extraction found no confirmable fields — emitting no proposal");
+    return null;
+  }
+
+  const documentType = typeof parsed?.document_type === "string" && parsed.document_type.trim()
+    ? parsed.document_type.trim().slice(0, 80)
+    : undefined;
+
+  return {
+    id: crypto.randomUUID(),
+    source: "document",
+    documentType,
+    intro: documentType
+      ? `I pulled these off your ${documentType}. Tick what you want me to keep.`
+      : "I pulled these off your document. Tick what you want me to keep.",
+    fields,
+  };
 }
 
 function cleanJsonResponse(content: string) {
