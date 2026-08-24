@@ -359,18 +359,33 @@ denied a capability that exists for them — the console is not their surface. C
 are **403** at `RequireOperator`. A UI guard is not the boundary; RLS and the
 `is_platform_operator()`-gated RPCs are (`RequireOperator.tsx:35–37`).
 
-**Three states, and only one of them means "working".** This vocabulary is defined here and used in
-the State column below:
+**Four states, and only one of them means "working".** This vocabulary is defined here and used in
+the State column below. `ported` was added on 2026-08-24 when BUILD-ORDER Layer 3 began producing
+surfaces that are neither a generic spec panel nor reading anything — three states could not say
+what those are, and forcing them into `structure-only` would have understated real, behaving code
+while forcing them into `wired` would have claimed a read that does not exist.
 
 - **wired** — a bespoke component that reads live data. The only state that means the surface does
-  its job. Seven views.
+  its job.
 - **structure-only** — Claude Design's ported panel structure renders (eyebrow, title, KPI ladder,
   block cards, anchors, chips), and **no value behind it is read**. KPIs are `null` → `—`, row sets
   are `[]` → the block's own empty line, some blocks carry CD's authored label rows. **Proven, not
   assumed:** neither `panelSpecs.ts`, any file under `surfaces/specs/`, nor `OperatorPanel.tsx`
-  imports `supabase` or performs a fetch (grep returns nothing). Twenty-three views.
+  imports `supabase` or performs a fetch (grep returns nothing).
+- **ported** — a BESPOKE v3 surface renders its own geometry and interaction (filters, folds,
+  tabs, selection, composer), takes its rows as a prop, and ships with none. This is BUILD-ORDER's
+  **structure before data** state and it is the finished Layer 3 result, not a half-measure: the
+  shape is CD's, every figure with no read behind it is an em-dash or an honest count, and the
+  slot's authored absence says what is missing. It differs from **structure-only** in that the
+  surface is real code with real behaviour rather than a generic panel driven by a spec, and from
+  **wired** in that no hook reads yet. Layer 6 turns `ported` into `wired` by handing each one its
+  rows; nothing about the render changes.
 - **absence** — the pack's designed absence treatment (`SlotSurfaceBody.tsx:96–107`), which names
-  what is missing. A deliberate state, neither shipped nor a gap. Three views.
+  what is missing. A deliberate state, neither shipped nor a gap.
+
+**Per-state counts are deliberately not written here.** They were, and they went stale the first
+time a slice moved a row without re-tallying — a number in prose that nothing recomputes is the
+same class of claim §66 exists to stop. Count the State column.
 
 **An address that resolves is not a shipped surface.** `src/operator/CLAUDE.md` records the failure
 this rule comes from: 78 tabs each resolved a spec, everything typechecked, and every screen was
@@ -381,13 +396,13 @@ blank. No row below is ticked for addressability.
 | `/operator/fleet/systems-check` | `SystemsCheckSurface` | **wired** | `viewSources.ts:38` · `SlotSurfaceBody.tsx:58` · `SystemsCheckSurface.tsx:143` → `useSystemsCheck.ts:116` (`systems_check_snapshot`) |
 | `/operator/fleet/directory` | `FleetConsole` | **wired** | `viewSources.ts:39` · `SlotSurfaceBody.tsx:57` · `FleetConsole.tsx:106` → `useFleet.ts:113–123` (`tenants`, `tenant_members`, `clients`, `tenant_revenue_classification`) |
 | `/operator/fleet/history` | `FleetHistorySurface` | **wired** | `viewSources.ts:40–43` · `SlotSurfaceBody.tsx:59` · `FleetHistorySurface.tsx:49` → `useSystemsCheckHistory.ts:47` (`paige_systems_check_run`) |
-| `/operator/relationships/people` | absence — "Drawn, not wired" | **absence** | `viewSources.ts:48` (`carries: []`) · `operatorIA.ts:62–65` · `SlotSurfaceBody.tsx:93` |
-| `/operator/relationships/conversations` | 5 ported panels: `comms/outbound`, `comms/templates`, `comms/sent-log`, `support/inbox`, `support/escalations` | **structure-only** | `viewSources.ts:49–52` · `platformSpecs.ts:420, 469, 520, 303, 327` |
+| `/operator/relationships/people` | `PeopleSurface` — the book: chip row, list/record fold, ten faces, field rows with source · mask · proposal | **ported** | `viewSources.ts` (`bespoke: "PeopleSurface"`) · `SlotSurfaceBody.tsx` · `PeopleSurface.tsx` ← v3 `peopleVals` L4854 |
+| `/operator/relationships/conversations` | `ConversationsSurface` — the three-pane console (threads · thread · person) with `ComposeOutbound` at its foot | **ported** | `viewSources.ts` (`bespoke: "ConversationsSurface"`) · `SlotSurfaceBody.tsx` · `ConversationsSurface.tsx` ← v3 `convoVals` L5300. Replaces 5 panels ported off the RETIRED pack, which read nothing (§58: specs, not capabilities) |
 | `/operator/relationships/calendar` | 4 ported panels: `calendar/month`, `booking-links`, `settings`, `tasks` | **structure-only** | `viewSources.ts:53–56` · `opsSpecs.ts:709, 748, 770, 881` |
-| `/operator/relationships/segments` | absence — "Drawn, not wired" | **absence** | `viewSources.ts:57` · `operatorIA.ts:62–65` |
-| `/operator/campaigns/active` | 3 ported panels: `growth/pages`, `growth/funnels`, `growth/forms` | **structure-only** | `viewSources.ts:60–63` · `opsSpecs.ts:443, 473, 491` |
-| `/operator/campaigns/catalog` | 2 ported panels: `revenue/plans`, `revenue/metering` | **structure-only** | `viewSources.ts:64–67` · `moneySpecs.ts:174, 218` |
-| `/operator/campaigns/sales` | 2 ported panels: `revenue/invoices`, `revenue/at-risk` | **structure-only** | `viewSources.ts:68–71` · `moneySpecs.ts:274, 304` |
+| `/operator/relationships/segments` | `SegmentsSurface` — the rule said back as words, who it admits, where it is used | **ported** | `viewSources.ts` (`bespoke: "SegmentsSurface"`) · `SlotSurfaceBody.tsx` · `SegmentsSurface.tsx` ← v3 `segVals` L6393 |
+| `/operator/campaigns/active` | `CampaignsActive` — state filters, one card per campaign, the step rail | **ported** | `viewSources.ts` (`bespoke: "CampaignsActive"`) · `SlotSurfaceBody.tsx` · `CampaignsActive.tsx` ← v3 `campVals` L5159 |
+| `/operator/campaigns/catalog` | `CatalogSurface` — the offerings, their derived state, and what sells them | **ported** | `viewSources.ts` (`bespoke: "CatalogSurface"`) · `SlotSurfaceBody.tsx` · `CatalogSurface.tsx` ← v3 `catVals` |
+| `/operator/campaigns/sales` | `SalesSurface` — every figure a sum over the lines, nothing stored | **ported** | `viewSources.ts` (`bespoke: "SalesSurface"`) · `SlotSurfaceBody.tsx` · `SalesSurface.tsx` ← v3 `salesVals` |
 | `/operator/campaigns/pipeline` | 1 ported panel: `fleet/prospects` | **structure-only** | `viewSources.ts:72` · `fleetSpecs.ts:283` |
 | `/operator/campaigns/social` | 3 ported panels: `growth/social`, `growth/brand-kit`, `growth/assets` | **structure-only** | `viewSources.ts:73–76` · `opsSpecs.ts:408, 362, 521` |
 | `/operator/campaigns/performance` | 2 ported panels: `analytics/performance`, `analytics/marketing` | **structure-only** | `viewSources.ts:77–80` · `moneySpecs.ts:876, 748` |

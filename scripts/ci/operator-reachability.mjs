@@ -24,13 +24,6 @@ const ENTRY = "src/operator/OperatorEntry.tsx";
 /** Modules that are legitimately reached by something other than the operator entry. */
 const EXEMPT = new Map([
   [
-    "src/operator/surfaces/ComposeOutbound.tsx",
-    "Deliberate, and CD's own sequencing: the composer's home is the thread pane's FOOT in " +
-      "`convoVals` (BUILD-ORDER Layer 3a). Mounting it anywhere else now would ship it twice and " +
-      "then have to un-ship one — the exact duplicate-place error the audit flagged. Remove this " +
-      "line when Conversations lands.",
-  ],
-  [
     "src/operator/data/useOperatorChrome.ts",
     "Real reads with no consumer YET, held for Layer 6. It computes rail badges, fleet totals, a " +
       "role label and a status summary — and v3's rail foot draws exactly two controls (theme, " +

@@ -43,11 +43,25 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
   },
 
   // ── Relationships ──────────────────────────────────────────────────────────────────────────
-  // People and Segments have no operator-scope substrate: the old tree had no such branch, and
-  // inventing one would be the fabrication this console is judged on. They stay absent by name.
-  "relationships/people": { carries: [] },
+  /**
+   * BUILD-ORDER Layer 3a — `peopleVals` (4854) · `convoVals` (5300) · `segVals` (6393), ported
+   * as ONE group because they share one contract (see `relationshipsContract.ts`).
+   *
+   * People and Segments previously carried nothing at all, on the reasoning that the old tree
+   * had no such branch and inventing one would be fabrication. Half of that still holds — the
+   * DATA is not invented, and all three surfaces ship with no rows — but the SHAPE was never
+   * ours to withhold: CD drew it, `absence-copy.md` authors the slot's absence in so many words
+   * (*"the surfaces exist, the joins behind them do not"*), and BUILD-ORDER's structure-before-
+   * data rule makes porting it the finished Layer 3 state rather than a jump ahead of the data.
+   *
+   * Conversations traded five PORTED SPECS off the RETIRED pack — they rendered `OperatorPanel`
+   * with stand-in figures and read nothing — for the console those specs were standing in for.
+   * The real operator comms capability (task #22's Twilio seam) is at its own address and is
+   * untouched (§58). Their keys stay in `carries`.
+   */
+  "relationships/people": { bespoke: "PeopleSurface", carries: [] },
   "relationships/conversations": {
-    panels: ["comms/outbound", "comms/templates", "comms/sent-log", "support/inbox", "support/escalations"],
+    bespoke: "ConversationsSurface",
     carries: ["comms/outbound", "comms/templates", "comms/sent-log", "support/inbox", "support/escalations", "support/response-policy"],
   },
   "relationships/calendar": {
@@ -55,7 +69,7 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
     bespoke: "CalendarWeekField",
     carries: ["calendar/month", "calendar/booking-links", "calendar/settings", "calendar/tasks"],
   },
-  "relationships/segments": { carries: [] },
+  "relationships/segments": { bespoke: "SegmentsSurface", carries: [] },
 
   // ── Campaigns ──────────────────────────────────────────────────────────────────────────────
   /**

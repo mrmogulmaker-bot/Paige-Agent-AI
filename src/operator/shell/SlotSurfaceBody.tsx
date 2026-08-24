@@ -60,6 +60,11 @@ const KnowledgeSurface = lazy(() => import("@/operator/surfaces/KnowledgeSurface
 const CampaignsActive = lazy(() => import("@/operator/surfaces/campaigns/CampaignsActive"));
 const CatalogSurface = lazy(() => import("@/operator/surfaces/campaigns/CatalogSurface"));
 const SalesSurface = lazy(() => import("@/operator/surfaces/campaigns/SalesSurface"));
+const PeopleSurface = lazy(() => import("@/operator/surfaces/relationships/PeopleSurface"));
+const ConversationsSurface = lazy(
+  () => import("@/operator/surfaces/relationships/ConversationsSurface"),
+);
+const SegmentsSurface = lazy(() => import("@/operator/surfaces/relationships/SegmentsSurface"));
 
 /**
  * THE FOUR v3 SURFACES THAT WERE PORTED AND NEVER MOUNTED (Claude Design audit, 2026-08-23).
@@ -175,6 +180,19 @@ export default function SlotSurfaceBody({ slot, view }: { slot: OperatorSlot; vi
         {bespoke === "CampaignsActive" && <CampaignsActive />}
         {bespoke === "CatalogSurface" && <CatalogSurface />}
         {bespoke === "SalesSurface" && <SalesSurface />}
+
+        {/* THE RELATIONSHIPS GROUP · BUILD-ORDER Layer 3a, ported as ONE group for the same
+            reason as the money spine: they share a contract. A thread points at a person, a
+            segment is a rule over the People book, and each surface's acts open the other two.
+
+            Each takes NO rows — structure before data — and each renders the slot's own authored
+            absence in place of a table that would otherwise read as a bug. Conversations is also
+            the slice that finally mounts `ComposeOutbound`: it was ported ahead of its host and
+            has been sitting behind a reachability exemption ever since, because a composer with
+            no threads to compose against is a fragment. It has its host now. */}
+        {bespoke === "PeopleSurface" && <PeopleSurface onAnnounce={announce} />}
+        {bespoke === "ConversationsSurface" && <ConversationsSurface onAnnounce={announce} />}
+        {bespoke === "SegmentsSurface" && <SegmentsSurface />}
 
         {/* The four v3 ports, mounted. Each takes `null` where a read belongs and renders the
             pack's own absence for it — which is what they were built to do, so they are correct

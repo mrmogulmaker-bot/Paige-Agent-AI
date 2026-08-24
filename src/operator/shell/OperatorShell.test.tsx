@@ -106,25 +106,33 @@ describe("the operator shell renders the pack's geometry", () => {
   });
 
   /**
-   * Absence is per VIEW, not per slot. A slot can have a shipped feature behind one view and
-   * nothing behind the next — Relationships is exactly that: Conversations and Calendar carry
-   * real operator-scope surfaces, People and Segments carry none. Showing the slot's absence
-   * over a view that HAS a feature would hide shipped work; showing a feature's shape over a
-   * view that has none would be the blank screen. So each view answers for itself.
+   * Absence is per VIEW, not per slot. A slot can have a shipped surface behind one view and
+   * nothing behind the next; showing the slot's absence over a view that HAS one would hide
+   * shipped work, and showing a shape over a view that has none would be the blank screen. So
+   * each view answers for itself.
+   *
+   * This used to point at `relationships/people`, which carried nothing at all. BUILD-ORDER
+   * Layer 3a ported People, Conversations and Segments, so that address now resolves a surface
+   * and the assertion moved to a view that is still genuinely sourceless. The absence copy did
+   * not stop mattering — each of the three renders it INSIDE the surface when no row is read,
+   * which is asserted in `relationships.v3.test.tsx` where the component can be awaited. Here
+   * the shell renders synchronously and a lazy surface is still its Suspense hold.
    */
   it("a view with no shipped source renders the IA's absence copy, unedited", () => {
-    const html = at("/operator/relationships/people");
-    const absence = OPERATOR_SLOTS.find((s) => s.id === "relationships")!.absence!;
-    expect(html).toContain(absence.title);
-    // A distinctive clause proves it is the IA's body rather than a paraphrase.
-    expect(html).toContain("only on the wiring");
+    const html = at("/operator/settings/numbers");
+    const settings = OPERATOR_SLOTS.find((s) => s.id === "settings")!;
+    // Settings carries no slot-level absence, so this is the honest general form — which is
+    // the branch that would otherwise go untested entirely.
+    expect(settings.absence).toBeUndefined();
+    expect(html).toContain("Not wired yet");
+    expect(html).toContain("no surface behind it reads live data yet");
   });
 
   it("a view WITH a shipped source renders the feature, not the absence", () => {
     const html = at("/operator/relationships/calendar");
     const absence = OPERATOR_SLOTS.find((s) => s.id === "relationships")!.absence!;
-    // Calendar's four panels ship. If the absence appeared here it would be hiding them —
-    // the regression this pair exists to catch, in the direction that loses work.
+    // Calendar's field ships. If the absence appeared here it would be hiding it — the
+    // regression this pair exists to catch, in the direction that loses work.
     expect(html).not.toContain(absence.title);
   });
 
