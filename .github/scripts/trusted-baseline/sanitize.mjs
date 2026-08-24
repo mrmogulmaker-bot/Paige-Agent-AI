@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import {
   ARTIFACT_KIND,
   CONTRACT_VERSION,
+  GENERATOR_IMPLEMENTATION_PATH,
+  GENERATOR_WORKFLOW_PATH,
   MAX_RETENTION_MS,
   POLICY_PATH,
   POSTGRES_IMAGE,
@@ -11,6 +13,7 @@ import {
   POSTGRES_SERVER_VERSION_NUM,
   PUBLIC_SAFETY_ASSERTIONS,
   REPOSITORY,
+  SANITIZER_TOOLING_PATH,
   SOURCE_REF,
   assertCommitSha,
   assertSha256,
@@ -250,9 +253,26 @@ export function sanitizeSql(input, policyInput) {
   return { schema, commentsRemoved, statementCount: output.length };
 }
 
-export function buildBaselineArtifact({ sql, policy, sourceCommit, migrationsTreeOid, generatedAt, expiresAt }) {
+export function buildBaselineArtifact({
+  sql,
+  policy,
+  sourceCommit,
+  migrationsTreeOid,
+  sanitizerToolingTreeOid,
+  generatorWorkflowBlobOid,
+  generatorImplementationTreeOid,
+  generatedAt,
+  expiresAt,
+}) {
   assertCommitSha(sourceCommit, "sourceCommit");
   assertTreeOid(migrationsTreeOid, "migrationsTreeOid");
+  assertTreeOid(sanitizerToolingTreeOid, "sanitizerToolingTreeOid");
+  for (const [value, label] of [
+    [generatorWorkflowBlobOid, "generatorWorkflowBlobOid"],
+    [generatorImplementationTreeOid, "generatorImplementationTreeOid"],
+  ]) {
+    if (value !== null) assertTreeOid(value, label);
+  }
   const generatedMs = parseTimestamp(generatedAt, "generatedAt");
   const expiresMs = parseTimestamp(expiresAt, "expiresAt");
   if (expiresMs <= generatedMs) throw new Error("expiresAt must be after generatedAt");
@@ -283,6 +303,18 @@ export function buildBaselineArtifact({ sql, policy, sourceCommit, migrationsTre
       commentsRemoved: result.commentsRemoved,
       statementCount: result.statementCount,
     },
+    securityTooling: {
+      sanitizer: {
+        path: SANITIZER_TOOLING_PATH,
+        treeOid: sanitizerToolingTreeOid,
+      },
+      generator: {
+        workflowPath: GENERATOR_WORKFLOW_PATH,
+        workflowBlobOid: generatorWorkflowBlobOid,
+        implementationPath: GENERATOR_IMPLEMENTATION_PATH,
+        implementationTreeOid: generatorImplementationTreeOid,
+      },
+    },
     publicSafety: {
       safeForPublicDisclosure: true,
       assertions: [...PUBLIC_SAFETY_ASSERTIONS],
@@ -310,15 +342,27 @@ function parseArgs(argv) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  for (const required of ["input", "policy", "output", "source-commit", "migrations-tree-oid", "generated-at", "expires-at"]) {
+  for (const required of [
+    "input", "policy", "output", "source-commit", "migrations-tree-oid", "sanitizer-tooling-tree-oid",
+    "generator-workflow-blob-oid", "generator-implementation-tree-oid", "generated-at", "expires-at",
+  ]) {
     if (!args[required]) throw new Error(`--${required} is required`);
   }
+  const optionalOid = (name) => {
+    const value = args[name];
+    if (value === "absent") return null;
+    assertTreeOid(value, name);
+    return value;
+  };
   const [sql, policyText] = await Promise.all([readFile(args.input, "utf8"), readFile(args.policy, "utf8")]);
   const artifact = buildBaselineArtifact({
     sql,
     policy: JSON.parse(policyText),
     sourceCommit: args["source-commit"],
     migrationsTreeOid: args["migrations-tree-oid"],
+    sanitizerToolingTreeOid: args["sanitizer-tooling-tree-oid"],
+    generatorWorkflowBlobOid: optionalOid("generator-workflow-blob-oid"),
+    generatorImplementationTreeOid: optionalOid("generator-implementation-tree-oid"),
     generatedAt: args["generated-at"],
     expiresAt: args["expires-at"],
   });

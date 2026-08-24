@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import {
   ARTIFACT_KIND,
   CONTRACT_VERSION,
+  GENERATOR_IMPLEMENTATION_PATH,
+  GENERATOR_WORKFLOW_PATH,
   MAX_RETENTION_MS,
   POLICY_PATH,
   POSTGRES_IMAGE,
@@ -13,9 +15,11 @@ import {
   PREDICATE_TYPE,
   PUBLIC_SAFETY_ASSERTIONS,
   REPOSITORY,
+  SANITIZER_TOOLING_PATH,
   SIGNER_WORKFLOW,
   SOURCE_REF,
   assertCommitSha,
+  assertDisposableDatabaseEnvironment,
   assertNoProductionCredentialEnvironment,
   assertPlainObject,
   assertSha256,
@@ -41,7 +45,7 @@ export function validateArtifactShape(artifact, { now = Date.now() } = {}) {
 
   const manifest = artifact.manifest;
   assertPlainObject(manifest, "manifest");
-  assertExactKeys(manifest, ["contractVersion", "kind", "generatedAt", "expiresAt", "source", "postgres", "sanitizer", "publicSafety", "schema"], "manifest");
+  assertExactKeys(manifest, ["contractVersion", "kind", "generatedAt", "expiresAt", "source", "postgres", "sanitizer", "securityTooling", "publicSafety", "schema"], "manifest");
   if (manifest.contractVersion !== CONTRACT_VERSION) throw new Error(`manifest.contractVersion must equal ${CONTRACT_VERSION}`);
   if (manifest.kind !== ARTIFACT_KIND) throw new Error(`manifest.kind must equal ${ARTIFACT_KIND}`);
 
@@ -74,6 +78,25 @@ export function validateArtifactShape(artifact, { now = Date.now() } = {}) {
   if (!Number.isSafeInteger(manifest.sanitizer.commentsRemoved) || manifest.sanitizer.commentsRemoved < 0) throw new Error("commentsRemoved must be a non-negative integer");
   if (!Number.isSafeInteger(manifest.sanitizer.statementCount) || manifest.sanitizer.statementCount < 1) throw new Error("statementCount must be a positive integer");
 
+  assertPlainObject(manifest.securityTooling, "manifest.securityTooling");
+  assertExactKeys(manifest.securityTooling, ["sanitizer", "generator"], "manifest.securityTooling");
+  assertPlainObject(manifest.securityTooling.sanitizer, "manifest.securityTooling.sanitizer");
+  assertExactKeys(manifest.securityTooling.sanitizer, ["path", "treeOid"], "manifest.securityTooling.sanitizer");
+  if (manifest.securityTooling.sanitizer.path !== SANITIZER_TOOLING_PATH) throw new Error(`sanitizer tooling path must be ${SANITIZER_TOOLING_PATH}`);
+  assertTreeOid(manifest.securityTooling.sanitizer.treeOid, "manifest.securityTooling.sanitizer.treeOid");
+
+  assertPlainObject(manifest.securityTooling.generator, "manifest.securityTooling.generator");
+  assertExactKeys(
+    manifest.securityTooling.generator,
+    ["workflowPath", "workflowBlobOid", "implementationPath", "implementationTreeOid"],
+    "manifest.securityTooling.generator",
+  );
+  const generator = manifest.securityTooling.generator;
+  if (generator.workflowPath !== GENERATOR_WORKFLOW_PATH) throw new Error(`generator workflow path must be ${GENERATOR_WORKFLOW_PATH}`);
+  if (generator.implementationPath !== GENERATOR_IMPLEMENTATION_PATH) throw new Error(`generator implementation path must be ${GENERATOR_IMPLEMENTATION_PATH}`);
+  if (generator.workflowBlobOid !== null) assertTreeOid(generator.workflowBlobOid, "manifest.securityTooling.generator.workflowBlobOid");
+  if (generator.implementationTreeOid !== null) assertTreeOid(generator.implementationTreeOid, "manifest.securityTooling.generator.implementationTreeOid");
+
   assertPlainObject(manifest.publicSafety, "manifest.publicSafety");
   assertExactKeys(manifest.publicSafety, ["safeForPublicDisclosure", "assertions"], "manifest.publicSafety");
   if (manifest.publicSafety.safeForPublicDisclosure !== true) throw new Error("baseline is not declared safe for public disclosure");
@@ -95,6 +118,19 @@ function defaultGitRunner(args, cwd) {
   return spawnSync("git", args, { cwd, encoding: "utf8", windowsHide: true });
 }
 
+function verifyObjectBinding({ gitRunner, repoRoot, commit, path, expectedOid, label }) {
+  if (expectedOid === null) {
+    const absence = gitRunner(["ls-tree", "--full-tree", commit, "--", path], repoRoot);
+    if (absence.status !== 0) throw new Error(`cannot prove ${label} is absent: ${(absence.stderr || "").trim()}`);
+    if (absence.stdout.trim()) throw new Error(`baseline is stale: ${label} was absent at generation but now exists`);
+    return null;
+  }
+  const result = gitRunner(["rev-parse", `${commit}:${path}`], repoRoot);
+  if (result.status !== 0) throw new Error(`cannot resolve ${label}: ${(result.stderr || "").trim()}`);
+  if (result.stdout.trim() !== expectedOid) throw new Error(`baseline is stale: ${label} implementation differs from manifest`);
+  return expectedOid;
+}
+
 export function verifyBaseMainCompatibility(manifest, baseMainSha, { repoRoot = process.cwd(), gitRunner = defaultGitRunner } = {}) {
   assertCommitSha(baseMainSha, "baseMainSha");
   const ancestor = gitRunner(["merge-base", "--is-ancestor", manifest.source.commit, baseMainSha], repoRoot);
@@ -110,6 +146,28 @@ export function verifyBaseMainCompatibility(manifest, baseMainSha, { repoRoot = 
     throw new Error("baseline is stale: supabase/migrations changed between generation and PR base main");
   }
 
+  const bindings = [
+    {
+      path: manifest.securityTooling.sanitizer.path,
+      expectedOid: manifest.securityTooling.sanitizer.treeOid,
+      label: "sanitizer tooling tree",
+    },
+    {
+      path: manifest.securityTooling.generator.workflowPath,
+      expectedOid: manifest.securityTooling.generator.workflowBlobOid,
+      label: "generator workflow",
+    },
+    {
+      path: manifest.securityTooling.generator.implementationPath,
+      expectedOid: manifest.securityTooling.generator.implementationTreeOid,
+      label: "generator implementation tree",
+    },
+  ];
+  for (const binding of bindings) {
+    verifyObjectBinding({ gitRunner, repoRoot, commit: manifest.source.commit, ...binding, label: `source ${binding.label}` });
+    verifyObjectBinding({ gitRunner, repoRoot, commit: baseMainSha, ...binding, label: `base-main ${binding.label}` });
+  }
+
   for (const [label, commit] of [["source", manifest.source.commit], ["base-main", baseMainSha]]) {
     const policyResult = gitRunner(["show", `${commit}:${POLICY_PATH}`], repoRoot);
     if (policyResult.status !== 0) throw new Error(`cannot resolve ${label} public-safety policy: ${(policyResult.stderr || "").trim()}`);
@@ -119,7 +177,14 @@ export function verifyBaseMainCompatibility(manifest, baseMainSha, { repoRoot = 
       throw new Error(`baseline is stale or substituted: ${label} public-safety policy digest does not match manifest`);
     }
   }
-  return { sourceCommit: manifest.source.commit, baseMainSha, migrationsTreeOid: manifest.source.migrationsTreeOid };
+  return {
+    sourceCommit: manifest.source.commit,
+    baseMainSha,
+    migrationsTreeOid: manifest.source.migrationsTreeOid,
+    sanitizerToolingTreeOid: manifest.securityTooling.sanitizer.treeOid,
+    generatorWorkflowBlobOid: manifest.securityTooling.generator.workflowBlobOid,
+    generatorImplementationTreeOid: manifest.securityTooling.generator.implementationTreeOid,
+  };
 }
 
 export function buildAttestationVerificationArgs(artifactPath, manifest) {
@@ -146,6 +211,7 @@ function defaultAttestationVerifier(artifactPath, manifest) {
 
 export async function verifyBaselineArtifact({ artifactPath, baseMainSha, repoRoot = process.cwd(), now = Date.now(), env = process.env, gitRunner, attestationVerifier = defaultAttestationVerifier }) {
   assertNoProductionCredentialEnvironment(env);
+  assertDisposableDatabaseEnvironment(env);
   const text = await readFile(artifactPath, "utf8");
   let artifact;
   try { artifact = JSON.parse(text); } catch { throw new Error("baseline artifact is not valid JSON"); }
@@ -159,6 +225,9 @@ export async function verifyBaselineArtifact({ artifactPath, baseMainSha, repoRo
     sourceCommit: manifest.source.commit,
     baseMainSha: compatibility.baseMainSha,
     migrationsTreeOid: compatibility.migrationsTreeOid,
+    sanitizerToolingTreeOid: compatibility.sanitizerToolingTreeOid,
+    generatorWorkflowBlobOid: compatibility.generatorWorkflowBlobOid,
+    generatorImplementationTreeOid: compatibility.generatorImplementationTreeOid,
     expiresAt: manifest.expiresAt,
     verifiedAttestations: attestations.length,
   };

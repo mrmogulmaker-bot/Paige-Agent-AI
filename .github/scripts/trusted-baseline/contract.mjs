@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
 
-export const CONTRACT_VERSION = 1;
+export const CONTRACT_VERSION = 2;
 export const ARTIFACT_KIND = "paige.trusted-migration-baseline";
 export const REPOSITORY = "mrmogulmaker-bot/Paige-Agent-AI";
 export const SOURCE_REF = "refs/heads/main";
 export const POLICY_PATH = ".github/migration-baseline/public-safety-policy.json";
-export const SIGNER_WORKFLOW = `${REPOSITORY}/.github/workflows/generate-trusted-migration-baseline.yml`;
+export const SANITIZER_TOOLING_PATH = ".github/scripts/trusted-baseline";
+export const GENERATOR_WORKFLOW_PATH = ".github/workflows/generate-trusted-migration-baseline.yml";
+export const GENERATOR_IMPLEMENTATION_PATH = ".github/scripts/trusted-baseline-generator";
+export const SIGNER_WORKFLOW = `${REPOSITORY}/${GENERATOR_WORKFLOW_PATH}`;
 export const PREDICATE_TYPE = "https://slsa.dev/provenance/v1";
 export const MAX_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
 export const POSTGRES_IMAGE = "supabase/postgres:17.6.1.021@sha256:80f75ea6bfeaa18ffa0d5ede501b46ecd40f1f7b9c98e1fdc9e5c22cfe25c9b7";
@@ -26,13 +29,39 @@ export const PUBLIC_SAFETY_ASSERTIONS = Object.freeze([
 
 export const PRODUCTION_CREDENTIAL_ENV_NAMES = Object.freeze([
   "SUPABASE_ACCESS_TOKEN",
+  "SUPABASE_TOKEN",
+  "SUPA_TOKEN",
+  "SUPA_ACCESS_TOKEN",
+  "SB_ACCESS_TOKEN",
+  "SUPABASE_PAT",
   "SUPABASE_DB_PASSWORD",
+  "SUPABASE_DB_URL",
+  "SUPABASE_DATABASE_URL",
+  "SUPABASE_POOLER_URL",
+  "SUPABASE_CONNECTION_STRING",
+  "SUPABASE_SERVICE_ROLE_KEY",
+  "SUPABASE_SECRET_KEY",
+  "SUPABASE_SECRET_KEYS",
   "SUPABASE_PROJECT_ID",
+  "SUPABASE_PROJECT_REF",
   "DATABASE_URL",
+  "DIRECT_URL",
   "POSTGRES_URL",
   "POSTGRES_PRISMA_URL",
   "POSTGRES_URL_NON_POOLING",
 ]);
+
+export const DISPOSABLE_DATABASE_ENV_NAMES = Object.freeze([
+  "PAIGE_DISPOSABLE_DATABASE_URL",
+  "PGHOST",
+  "PGPORT",
+  "PGUSER",
+  "PGPASSWORD",
+  "PGDATABASE",
+  "POSTGRES_PASSWORD",
+]);
+
+const LOCAL_DATABASE_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 export function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -66,7 +95,7 @@ export function assertCommitSha(value, label) {
 
 export function assertTreeOid(value, label) {
   if (typeof value !== "string" || !/^[a-f0-9]{40,64}$/.test(value)) {
-    throw new Error(`${label} must be a full git tree object ID`);
+    throw new Error(`${label} must be a full git object ID`);
   }
 }
 
@@ -83,6 +112,31 @@ export function assertNoProductionCredentialEnvironment(env = process.env) {
   const present = PRODUCTION_CREDENTIAL_ENV_NAMES.filter((name) => Object.hasOwn(env, name));
   if (present.length > 0) {
     throw new Error(`trusted-baseline verification refuses production credential environment variables: ${present.join(", ")}`);
+  }
+}
+
+function assertLocalDatabaseHost(host, label) {
+  if (!LOCAL_DATABASE_HOSTS.has(host)) {
+    throw new Error(`${label} must target an explicitly local disposable database host`);
+  }
+}
+
+export function assertDisposableDatabaseEnvironment(env = process.env) {
+  const urlValue = env.PAIGE_DISPOSABLE_DATABASE_URL;
+  if (urlValue !== undefined) {
+    let parsed;
+    try { parsed = new URL(urlValue); } catch { throw new Error("PAIGE_DISPOSABLE_DATABASE_URL must be a valid URL"); }
+    if (!/^postgres(?:ql)?:$/.test(parsed.protocol)) {
+      throw new Error("PAIGE_DISPOSABLE_DATABASE_URL must use postgres:// or postgresql://");
+    }
+    assertLocalDatabaseHost(parsed.hostname, "PAIGE_DISPOSABLE_DATABASE_URL");
+  }
+
+  const pgNamesPresent = ["PGHOST", "PGPORT", "PGUSER", "PGPASSWORD", "PGDATABASE", "POSTGRES_PASSWORD"]
+    .filter((name) => Object.hasOwn(env, name));
+  if (pgNamesPresent.length > 0) {
+    if (!env.PGHOST) throw new Error(`local PostgreSQL variables require PGHOST: ${pgNamesPresent.join(", ")}`);
+    assertLocalDatabaseHost(env.PGHOST, "PGHOST");
   }
 }
 

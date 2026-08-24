@@ -19,10 +19,13 @@ jobs:
   offline-contract:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # actions/checkout v4.4.0 — immutable tag resolution verified 2026-08-24.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # actions/setup-node v4.4.0 — immutable tag resolution verified 2026-08-24.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: "24"
+          # Node.js 24.19.0 LTS (Krypton), official release 2026-08-03.
+          node-version: "24.19.0"
       - name: Syntax
         run: |
           node --check .github/scripts/trusted-baseline/contract.mjs
