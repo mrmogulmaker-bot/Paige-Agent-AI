@@ -634,9 +634,12 @@ COMMENT ON FUNCTION public.meter_llm_trace() IS
 -- would hand every tenant's usage to any caller). All are GRANTed at the foot of this file:
 -- security_invoker changes WHOSE RLS applies, it never waives the need to hold SELECT on the view.
 --
--- NOTE ON EXPOSURE: three of the four read paige_llm_cost_ledger, whose RLS is operator-only, so a
--- tenant selecting from them gets zero rows rather than a filtered price. That is the intended
--- shape — a tenant-safe usage surface is platform_metered_events itself, which carries no price.
+-- NOTE ON EXPOSURE: this file creates FIVE views, and FOUR of the five read paige_llm_cost_ledger,
+-- whose RLS is operator-only, so a tenant selecting from them gets zero rows rather than a filtered
+-- price. The exception is v_llm_trace_unmetered, which reads platform_metered_events instead.
+-- (This comment previously said "three of the four", which was wrong on BOTH counts — corrected
+-- 2026-08-24 after the owner caught the view count. Counted, not remembered: the five CREATE OR
+-- REPLACE VIEW statements below, and a per-view check of which reference the ledger.)
 
 -- [C3] The activation marker. The meter trigger is AFTER INSERT and this migration performs no
 -- backfill, so every trace that already existed is permanently uncosted. Without this bound the
@@ -653,8 +656,37 @@ CREATE TABLE IF NOT EXISTS public.paige_llm_meter_bridge (
 );
 INSERT INTO public.paige_llm_meter_bridge (singleton) VALUES (true) ON CONFLICT (singleton) DO NOTHING;
 
+-- [C4 / owner correction 2026-08-24] This table shipped in `public` with NO row-level security and a
+-- blanket SELECT grant to `authenticated`, on the stated reasoning that an activation instant "is not
+-- sensitive". That reasoning was wrong on principle, and the owner caught it: a tenant-readable table
+-- sitting in `public` with RLS off is a standing exception somebody has to keep re-justifying, and
+-- BOTH sibling tables in this same file already carry RLS. It now matches them exactly — operators
+-- read, service writes, tenants get zero rows. The SELECT grant is retained deliberately: the POLICY,
+-- not the absence of a grant, is what restricts this, which is the same shape used above.
+ALTER TABLE public.paige_llm_meter_bridge ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS paige_llm_meter_bridge_operator_read ON public.paige_llm_meter_bridge;
+CREATE POLICY paige_llm_meter_bridge_operator_read ON public.paige_llm_meter_bridge
+  FOR SELECT TO authenticated
+  USING (public.is_platform_operator());
+
+DROP POLICY IF EXISTS paige_llm_meter_bridge_service_write ON public.paige_llm_meter_bridge;
+CREATE POLICY paige_llm_meter_bridge_service_write ON public.paige_llm_meter_bridge
+  FOR ALL TO service_role
+  USING (true) WITH CHECK (true);
+
+-- SECURITY DEFINER, deliberately — and this is the ONLY definer function in this migration.
+-- Enabling RLS immediately above would otherwise BREAK the two detector views: they are
+-- security_invoker, they call this function inside their WHERE clause, and a non-operator caller
+-- would now read zero rows from the single-row table. The function would return NULL, the predicate
+-- `created_at >= NULL` would go NULL, and the views would quietly return nothing instead of erroring
+-- — a silent wrong answer, which is worse than a loud failure. Definer keeps the boundary correct
+-- for every caller while the table itself stays operator-only.
+-- Safe by the §59 class-A test: it takes NO PARAMETERS (there is no id to tamper with, so no IDOR
+-- surface can exist), it returns exactly one non-sensitive scalar and can return nothing else, and
+-- search_path is pinned empty with the object fully qualified.
 CREATE OR REPLACE FUNCTION public.llm_meter_bridge_active_from() RETURNS timestamptz
-LANGUAGE sql STABLE
+LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path TO ''
 AS $$ SELECT active_from FROM public.paige_llm_meter_bridge WHERE singleton $$;
 
@@ -857,9 +889,11 @@ REVOKE ALL ON FUNCTION public.llm_trace_is_billable(integer,integer,integer,inte
 GRANT EXECUTE ON FUNCTION public.estimate_llm_cost_usd(text,text,text,int,int,int,int,int) TO service_role;
 GRANT EXECUTE ON FUNCTION public.meter_llm_trace()                                          TO service_role;
 GRANT EXECUTE ON FUNCTION public.reconcile_llm_trace_cost()                                 TO service_role;
--- The eligibility helpers and the activation marker are pure arithmetic over values the caller
--- already passes in — they read no table and leak nothing — and the invoker views call them, so
--- authenticated needs EXECUTE for those views to be readable at all.
+-- The two eligibility helpers are pure arithmetic over values the caller already passes in — they
+-- read no table and leak nothing. The activation marker is DIFFERENT and this comment used to lump
+-- it in with them, which was simply untrue: it reads public.paige_llm_meter_bridge. It is now
+-- SECURITY DEFINER over an operator-only table, justified at its definition. All three are called by
+-- the invoker views, so authenticated needs EXECUTE for those views to be readable at all.
 GRANT EXECUTE ON FUNCTION public.llm_trace_billable_tokens(integer,integer,integer,integer,integer,integer)   TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.llm_trace_is_billable(integer,integer,integer,integer,integer,integer,jsonb) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.llm_meter_bridge_active_from()                                                TO authenticated, service_role;
@@ -871,8 +905,10 @@ REVOKE ALL ON TABLE public.paige_llm_cost_ledger   FROM PUBLIC, anon;
 REVOKE ALL ON TABLE public.paige_llm_meter_bridge  FROM PUBLIC, anon;
 GRANT SELECT ON TABLE public.paige_model_pricing    TO authenticated;
 GRANT SELECT ON TABLE public.paige_llm_cost_ledger  TO authenticated;
--- The activation instant is not sensitive and the invoker detectors read it through the function,
--- so authenticated needs SELECT here or those views return nothing for anyone.
+-- The bridge marker now carries RLS with an operator-only read policy, exactly like the two tables
+-- above. This grant does NOT make it tenant-readable — the policy decides that, and a tenant gets
+-- zero rows. (The detector views no longer depend on this grant at all: they read the instant
+-- through the SECURITY DEFINER accessor, which is why enabling RLS here does not break them.)
 GRANT SELECT ON TABLE public.paige_llm_meter_bridge TO authenticated;
 GRANT ALL    ON TABLE public.paige_model_pricing    TO service_role;
 GRANT ALL    ON TABLE public.paige_llm_cost_ledger  TO service_role;

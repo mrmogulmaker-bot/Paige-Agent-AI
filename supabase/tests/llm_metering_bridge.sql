@@ -66,6 +66,7 @@ DECLARE
   _qty      numeric;
   _price    numeric;
   _blocked  boolean;
+  _ts       timestamptz;
   _t1 uuid := 'd0000000-0000-0000-0000-0000000000f1';  -- platform
   _t2 uuid := 'd0000000-0000-0000-0000-0000000000f2';  -- unattributed
   _t3 uuid := 'd0000000-0000-0000-0000-0000000000f3';  -- tenant
@@ -282,6 +283,29 @@ BEGIN
      AND wholesale_cost_usd <> 0;
   IF _n<>0 THEN RAISE EXCEPTION 'FAIL_4b_LEAK: % tenant-visible row(s) carry a non-zero buy price',_n; END IF;
 
+  -- ── 4c. THE ACTIVATION MARKER IS OPERATOR-ONLY (owner correction 2026-08-24). It shipped in
+  --        `public` with RLS off and a blanket SELECT to authenticated. A tenant now sees nothing.
+  SELECT count(*) INTO _n FROM public.paige_llm_meter_bridge;
+  IF _n<>0 THEN RAISE EXCEPTION 'FAIL_4c_BRIDGE: tenant user read % bridge row(s) (expected 0)',_n; END IF;
+
+  -- ...and this is the REGRESSION that enabling RLS could have caused. The two detector views are
+  -- security_invoker and call the accessor in their WHERE clause. If the accessor returned NULL for
+  -- a non-operator, `created_at >= NULL` would go NULL, both views would return zero rows for every
+  -- tenant caller, and that reads as "nothing is broken" — a false all-clear rather than an error.
+  -- SECURITY DEFINER on the accessor is what prevents it, and this asserts it rather than trusting it.
+  SELECT public.llm_meter_bridge_active_from() INTO _ts;
+  IF _ts IS NULL THEN
+    RAISE EXCEPTION 'FAIL_4c_BRIDGE_FN: RLS on paige_llm_meter_bridge broke the boundary accessor for '
+                    'a non-operator caller — the detectors would silently report all-clear'; END IF;
+
+  -- The detector views must still EXECUTE for this caller. Zero rows is a fine answer; an error is not.
+  BEGIN
+    SELECT count(*) INTO _n FROM public.v_llm_trace_uncosted;
+    SELECT count(*) INTO _n FROM public.v_llm_trace_unmetered;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE EXCEPTION 'FAIL_4c_DETECTORS: a detector view raised % for a tenant caller', SQLERRM;
+  END;
+
   PERFORM set_config('role','postgres',true);
 
   -- ── 5a. OPERATOR: same grant, RLS opens, the price list and the ledger are readable.
@@ -296,6 +320,11 @@ BEGIN
 
   SELECT count(*) INTO _n FROM public.v_llm_spend_rollup;
   IF _n<1 THEN RAISE EXCEPTION 'FAIL_5a_ROLLUP: operator cannot read the spend rollup'; END IF;
+
+  -- The operator DOES see the activation marker the tenant could not — proving the new policy
+  -- discriminates by operator status rather than denying everyone (which would also have passed 4c).
+  SELECT count(*) INTO _n FROM public.paige_llm_meter_bridge;
+  IF _n<1 THEN RAISE EXCEPTION 'FAIL_5a_BRIDGE: operator cannot read the activation marker'; END IF;
 
   PERFORM set_config('role','postgres',true);
 
