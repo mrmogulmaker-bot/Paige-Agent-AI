@@ -29,7 +29,8 @@
     "lint:alias-ratchet": "node scripts/ci/alias-ratchet.mjs",
     "lint:pg-tokens": "node scripts/ci/pg-token-parity.mjs",
     "dev-loop": "node scripts/live-drive/dev-loop.mjs",
-    "lint:pack-lineage": "node scripts/ci/pack-lineage.mjs"
+    "lint:pack-lineage": "node scripts/ci/pack-lineage.mjs",
+    "lint:operator-reach": "node scripts/ci/operator-reachability.mjs"
   },
   "dependencies": {
     "@vercel/speed-insights": "^1.0.0",

@@ -225,6 +225,23 @@ Standing constraints, already ruled:
 
 ---
 
+## The reference is now deployed
+
+The design runs at **`paige-design.vercel.app`** — a separate private repo
+(`mrmogulmaker-bot/paige-design`), one self-contained `index.html`, no build step. Owner
+deployed it directly.
+
+**It is a reference, not a branch. Nothing about it merges anywhere.** Do not import that
+repo, do not pull its `index.html` into `src/`, and do not treat its Vercel project as
+related to `paige-agent-ai`. It exists so a human can open the intended design beside the
+build in two tabs.
+
+For machine comparison keep using the **standalone file** the pack ships
+(`PAIGE Platform Operator - standalone.html`), driven from `file://`. That is what
+`dev-loop` already does and it does not depend on network access or on deployment
+protection — the deployed copy is behind a password by design, since the fixtures carry
+tenant names and revenue figures.
+
 ## The cadence
 
 Every layer ends the same way: **driven, both themes, two widths, frames sent.** A change to
@@ -263,3 +280,21 @@ twenty-three. It gets drawn in v3, the route map regenerates, and it lands in a 
 
 Everything in Layers 1–6 is transcription plus a dispatch line. There is no layer in this
 file that requires a decision.
+
+---
+
+## Finish it out
+
+Owner instruction: **carry Layers 1–6 to completion and merge to main.** No further rulings
+are pending on the design side — every question this build raised has been answered, drawn in
+v3, or explicitly withdrawn. `ROUTE-MAP.md` is the index; the pack is the source; the
+standing contract at the top of this file governs.
+
+Two things only, and neither blocks a layer:
+
+1. **The sign-out glyph** is owed from the design side. The placeholder chevron stays until
+   it lands — do not substitute anything for it.
+2. **If a capability has no builder in `ROUTE-MAP.md`**, send the four-line escalation and
+   keep going on the rest of the layer.
+
+Everything else: build it.

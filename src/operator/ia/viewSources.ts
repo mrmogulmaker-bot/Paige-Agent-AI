@@ -140,8 +140,24 @@ export const VIEW_SOURCES: Readonly<Record<string, ViewSource>> = {
     panels: ["settings/setup/capabilities"],
     carries: ["settings/setup/capabilities", "paige/skills", "paige/sub-agents", "paige/actions"],
   },
+  /**
+   * BUILD-ORDER Layer 2, first priority: `settings/vault/vendors` is REMOVED from what this view
+   * RENDERS, and stays in `carries`.
+   *
+   * The ruling: **Vault must not read `business_vendors`.** That table is the funding vertical's
+   * credit tracker, which happens to share a word with the platform Vault. The old panel key was
+   * how it came back in through the side door — and the failure mode is the dangerous one: it
+   * renders plausibly and is wrong, so nothing about the screen says the operator is looking at
+   * another product's data.
+   *
+   * §58: this removes a panel that shipped. It is called out rather than dropped quietly, and
+   * the capability is not lost — `carries` is the drop-nothing ledger and still names it, so the
+   * v3 port (`vaultVals` 9755, Layer 3d) knows what this view owes. Obligations and Documents
+   * keep rendering in the meantime; a view that shows two correct panels is honest, and one that
+   * shows a third from the wrong product is not.
+   */
   "settings/vault": {
-    panels: ["settings/vault/obligations", "settings/vault/vendors", "settings/vault/documents"],
+    panels: ["settings/vault/obligations", "settings/vault/documents"],
     carries: ["settings/vault/obligations", "settings/vault/vendors", "settings/vault/documents"],
   },
   "settings/governance": {

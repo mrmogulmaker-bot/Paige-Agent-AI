@@ -143,6 +143,15 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:pack-lineage
 
+      # BUILD-ORDER Layer 1's done-condition, as a gate rather than a habit: every module under
+      # src/operator/ must be reachable from OperatorEntry. The main audit found ~370KB of correct
+      # porting that no live path imported and only its own tests pinned — so the suite was green
+      # and none of it was on a screen. A test rendering a component is not the console rendering
+      # it. An orphan is mounted, deleted, or exempted with a written reason.
+      - name: Operator reachability (no orphaned surfaces)
+        if: ${{ !cancelled() }}
+        run: npm run lint:operator-reach
+
       - name: ESLint (changed src)
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.changed.outputs.src_count != '0' }}
         run: xargs -r -a changed_src.txt ./node_modules/.bin/eslint
