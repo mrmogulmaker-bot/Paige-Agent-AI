@@ -30,7 +30,11 @@ const PROBES: Array<{
   {
     name: "growth_pages_internal_columns",
     table: "growth_pages",
-    restrictedCols: ["tenant_id", "entry_page_id"],
+    // `entry_page_id` was named here and does not exist on growth_pages — every run of this probe
+    // returned 42703 (undefined_column), so this half of the canary had never actually probed
+    // anything. Replaced with columns that DO exist and that anon must never read: the owning
+    // tenant, the author, and the unpublished draft body.
+    restrictedCols: ["tenant_id", "created_by", "draft_blocks_json"],
     filter: "status=eq.published",
   },
 ];

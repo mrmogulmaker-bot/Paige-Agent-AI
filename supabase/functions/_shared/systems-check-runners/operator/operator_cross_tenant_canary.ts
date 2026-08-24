@@ -8,7 +8,8 @@
 //
 // VERDICT (§13 honest):
 //   • A regression in the recent window (last 25h) → 'fail' (a real cross-tenant/column leak was detected).
-//   • Recent runs exist and none regressed → 'pass'.
+//   • Recent runs exist, none regressed, and none ERRORED → 'pass'.
+//   • Any probe errored in the window → 'skip' (unproven — a probe that could not run is not a pass).
 //   • No runs in the recent window (canary stale) OR none ever → 'skip' (needs the canary to run; NOT a
 //     fabricated pass).
 // §32 fail-loud: a db error throws → status:'error'.
@@ -49,16 +50,48 @@ export const run: CheckRunner = async (ctx, _row) => {
     }
 
     const regressions = recent.filter((r) => r.status === "regression");
-    const pass = regressions.length === 0;
+    const errored = recent.filter((r) => r.status === "error");
+
+    // A probe that ERRORED proved nothing. Counting only regressions made an all-error run read
+    // as 'pass' — which is exactly what happened: the growth_pages probe named a column that does
+    // not exist and returned 42703 on every run, so half this canary was dead while the check
+    // would have reported clean. Since §68 now reads this verdict to decide what Paige may do
+    // unwatched, a vacuous pass would GRANT authority on the strength of a broken probe.
+    if (regressions.length > 0) {
+      return {
+        status: "fail",
+        evidence: {
+          runs_last_25h: recent.length,
+          regressions: regressions.map((r) => ({ target: r.target, leaked_columns: r.leaked_columns })),
+        },
+        interpretation:
+          `Cross-tenant leak canary detected ${regressions.length} regression(s): ` +
+          `${regressions.map((r) => r.target).join(", ")}. An anonymous caller was able to read ` +
+          `restricted columns — treat as P0.`,
+      };
+    }
+
+    if (errored.length > 0) {
+      return {
+        status: "skip",
+        evidence: {
+          runs_last_25h: recent.length,
+          reason: "probe_errored",
+          errored: errored.map((r) => ({ target: r.target, probe_name: r.probe_name })),
+        },
+        interpretation:
+          `The canary ran but ${errored.length} probe(s) errored (${errored.map((r) => r.target).join(", ")}), ` +
+          `so cross-tenant leak health is UNPROVEN for those targets. This is not a pass — a probe that ` +
+          `could not run proves nothing. Fix the probe, do not read this as clean.`,
+      };
+    }
+
     return {
-      status: pass ? "pass" : "fail",
-      evidence: {
-        runs_last_25h: recent.length,
-        regressions: regressions.map((r) => ({ target: r.target, leaked_columns: r.leaked_columns })),
-      },
-      interpretation: pass
-        ? `Cross-tenant leak canary is clean — ${recent.length} probe result(s) in the last 25h, zero regressions.`
-        : `Cross-tenant leak canary detected ${regressions.length} regression(s): ${regressions.map((r) => r.target).join(", ")}. An anonymous caller was able to read restricted columns — treat as P0.`,
+      status: "pass",
+      evidence: { runs_last_25h: recent.length, regressions: [] },
+      interpretation:
+        `Cross-tenant leak canary is clean — ${recent.length} probe result(s) in the last 25h, ` +
+        `zero regressions and zero probe errors.`,
     };
   } catch (e) {
     return errorResult(e, runnerKey);

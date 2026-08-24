@@ -427,3 +427,34 @@ not an outage.
 - **Tenant-scope §68.** This is the PLATFORM ceiling. Whether a tenant's own grants decay the same
   way — and against which checks, since tenant Systems Check findings accumulate unresolved — is an
   open question and an owner ruling, not an inference.
+
+### 9.9 A second defect, found by running the loop rather than reading it
+
+Firing the newly-scheduled probe immediately (rather than waiting for `:20`) returned HTTP 200 —
+the gate accepted the cron token, the row was written — and exposed a defect the code review had
+not:
+
+- `growth_forms_internal_columns` → **pass**
+- `growth_pages_internal_columns` → **error**, PostgREST `42703 undefined_column`
+
+The probe named `entry_page_id` on `growth_pages`. That column does not exist. So even once the
+probe was deployed and scheduled, **half of it could never probe anything.**
+
+Worse was what the runner did with that. It computed `pass = regressions.length === 0`, and an
+errored probe is not a regression — so a run in which **every probe errored** would have been
+reported as `pass`. Under §68 that verdict now grants autonomy. A vacuous pass would have handed
+Paige unwatched authority on the strength of a probe that never ran.
+
+Both are fixed: the column list now names columns that exist (`tenant_id`, `created_by`,
+`draft_blocks_json` — the owning tenant, the author, and the unpublished draft body), and the
+runner returns `skip / probe_errored` when any probe errored, never `pass`.
+
+**The general lesson, and the reason §68 insists on running the loop:** a check can be registered,
+correct-looking, and completely dead. Reading the runner would not have found either defect —
+only firing it did.
+
+**Open caveat (§13).** The `growth_forms` probe currently passes with an empty result set: anon
+gets HTTP 200 and zero rows, because there are no active growth forms to return. That is a pass
+by absence of data, not by proven column stripping. It is a weaker signal than it looks, and it
+will strengthen on its own once real forms exist. Redesigning the probe to assert against a known
+seeded row is a separate slice — recorded here rather than quietly relied upon.
