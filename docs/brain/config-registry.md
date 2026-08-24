@@ -273,7 +273,7 @@ Ivanna) and `ELEVENLABS_VOICE_ID` (only for the `elevenlabs.ts` legacy path). #4
 | `deploy-migrations.yml` | push (to `main`) | `supabase db push` → `migration list` verify → moves `db-live` tag (§32 persisted-apply) |
 | `deploy-edge-functions.yml` | push (to `main`) | Deploys only changed functions (follows `_shared` imports via `.github/scripts/edge-affected.py`); moves `edge-live` tag (§24) |
 | `migration-lint.yml` | pull_request | Migration shape lint (§208/§213) |
-| `premerge-migration-proof.yml` | pull_request | Pre-merge `BEGIN..ROLLBACK` migration proof (§32.a) |
+| `premerge-migration-proof.yml` | pull_request | Fail-closed disposable restore → every ordered PR migration fingerprint/application → post-schema evidence → mandatory changed SQL behavioral proof; any missing/inconclusive phase is red (§32) |
 | `security-audit.yml` ("Security Audit") | pull_request + push | Security audit gate |
 
 **RLS anon/cross-tenant-reach drift guards (npm scripts wired into `ci.yml`):**

@@ -1175,6 +1175,16 @@ surface, especially 3D/WebGL, media pipelines, and anything behind a graceful-de
   non-empty diff = migrations ahead of prod) to confirm zero drift. The burden of catching a migration that merged-but-never-applied is OURS, not the owner's —
   'the SQL ran in a rollback' is exactly the false-green this section exists to kill, the schema twin of
   'it compiled but didn't render.'
+- **Every migration PR carries a changed behavioral SQL proof (owner-directed infrastructure rule,
+  2026-08-24).** One PR may contain **one or more** new migration files; the premerge gate sorts every
+  candidate deterministically by its 14-digit version/name, rejects zero candidates, duplicate versions,
+  or paths outside `supabase/migrations/`, fingerprints and applies each file exactly once, and records
+  every applied fingerprint in the final evidence. The same PR MUST add or modify at least one
+  `supabase/tests/**/*.sql` proof that asserts the expected post-migration schema and behavior. A clean
+  restore or successful DDL application alone is not behavioral proof. Missing changed proof, skipped
+  candidate, incomplete evidence, or any inconclusive phase is a failing (non-green) result. Disposable
+  compatibility helpers live only under `.github/scripts/fixtures/migration-proof/`; they never enter
+  `supabase/migrations/` and never run against a linked or production database.
 - **Capability-conditional post-deploy scan for AUTH-GATED surfaces (owner: Antonio, 2026-07-28).** The
   honest "auth-gated → can't drive headless → owner's live look owed" degrade is now conditional on the
   running session's capability, not a blanket excuse. For any auth-gated surface, the post-deploy scan MUST
