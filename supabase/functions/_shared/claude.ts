@@ -153,8 +153,57 @@ export interface ClaudeResult {
   text: string;                 // concatenated text blocks ("" if none)
   toolUses: ClaudeToolUse[];    // tool_use blocks ([] if none)
   stopReason: string | null;
-  usage: { input_tokens?: number; output_tokens?: number } | null;
+  /**
+   * The provider's usage object, WIDENED to carry what Anthropic actually returns.
+   *
+   * Until 2026-08-24 this was `{input_tokens, output_tokens}` and the two cache fields Anthropic
+   * ships alongside them were dropped on the floor at the mapping below — so cache reads (billed at
+   * a fraction of the uncached rate) and cache writes (billed at a premium) were invisible to every
+   * cost figure the platform produced.
+   */
+  usage: ClaudeUsage | null;
   raw: unknown;
+}
+
+/** Anthropic's `usage` object as returned. Optional throughout: absent ≠ zero. */
+export interface ClaudeUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  /** Input served from cache. Billed far below the uncached rate. */
+  cache_read_input_tokens?: number;
+  /** Input written INTO the cache. Billed above the uncached rate, once. */
+  cache_creation_input_tokens?: number;
+  /** Per-TTL write breakdown when the provider reports it (5-minute vs 1-hour). */
+  cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number };
+}
+
+/**
+ * THE ONE PLACE provider usage becomes trace fields (§18). Every Anthropic call site — buffered,
+ * streamed, and the OpenAI-shaped shim — normalizes here, so a field can never be captured on one
+ * path and silently dropped on another.
+ *
+ * NULL vs 0 is load-bearing and preserved exactly: `undefined` from the provider stays NULL ("not
+ * reported"), a reported 0 stays 0 ("reported as zero"). Defaulting absent to 0 would manufacture
+ * evidence of a cache hit rate nobody has measured.
+ *
+ * HONEST BASELINE: `cache_control` is requested nowhere in supabase/functions as of this change, so
+ * these fields are expected to read 0 on every current call. That zero IS the baseline measurement
+ * Phase 4 will be judged against — it is not a defect and must not be "fixed" by inventing a value.
+ */
+export function normalizeClaudeUsage(u: ClaudeUsage | null | undefined) {
+  const cw = u?.cache_creation;
+  // Anthropic reports the split only when it has one; otherwise the whole write total is the
+  // 5-minute (default TTL) bucket. Attributing an unsplit total to 1h would misprice it.
+  const write5m = cw?.ephemeral_5m_input_tokens ?? u?.cache_creation_input_tokens;
+  const write1h = cw?.ephemeral_1h_input_tokens;
+  return {
+    tokens_in: u?.input_tokens ?? null,
+    tokens_in_uncached: u?.input_tokens ?? null,
+    tokens_out: u?.output_tokens ?? null,
+    tokens_cache_read: u?.cache_read_input_tokens ?? null,
+    tokens_cache_write_5m: write5m ?? null,
+    tokens_cache_write_1h: write1h ?? null,
+  };
 }
 
 function apiKey(): string {
@@ -211,8 +260,11 @@ export async function callClaude(opts: ClaudeCallOpts): Promise<ClaudeResult> {
         job_kind: opts.trace.job_kind ?? "text",
         modality: "text",
         status: "success",
-        tokens_in: data?.usage?.input_tokens ?? null,
-        tokens_out: data?.usage?.output_tokens ?? null,
+        ...normalizeClaudeUsage(data?.usage),
+        // Identity, separated (the trace's `provider` column stays the legacy slug for back-compat).
+        model_provider: "anthropic",
+        billing_provider: "anthropic",
+        provider_request_id: (data as { id?: string } | null)?.id ?? null,
         latency_ms: Date.now() - t0,
         input: opts.messages,
         output: text,
@@ -359,8 +411,17 @@ export async function chatCompletionCompat(body: OpenAIStyleBody, tierOverride?:
         ...(tool_calls.length ? { tool_calls } : {}),
       },
     }],
+    // The OpenAI shape downstream parsers expect, PLUS the Anthropic-native fields carried through
+    // rather than dropped. Before 2026-08-24 this line was the exact point at which cache-read and
+    // cache-write token counts left the system.
     usage: result.usage
-      ? { prompt_tokens: result.usage.input_tokens, completion_tokens: result.usage.output_tokens }
+      ? {
+          prompt_tokens: result.usage.input_tokens,
+          completion_tokens: result.usage.output_tokens,
+          cache_read_input_tokens: result.usage.cache_read_input_tokens,
+          cache_creation_input_tokens: result.usage.cache_creation_input_tokens,
+          cache_creation: result.usage.cache_creation,
+        }
       : undefined,
   };
 }
@@ -464,6 +525,11 @@ async function streamAnthropicAsOpenAI(
       // input_tokens on message_start and cumulative output_tokens on message_delta).
       let inTok: number | null = null;
       let outTok: number | null = null;
+      // The same cache fields the buffered path captures. Anthropic ships them on message_start
+      // beside input_tokens; capturing them only on the buffered path would mean a streamed turn
+      // and a buffered turn priced differently for identical work.
+      let streamUsage: ClaudeUsage | null = null;
+      let providerMsgId: string | null = null;
       let outText = "";
       let streamErrored = false;
       send(controller, { choices: [{ index: 0, delta: { role: "assistant" }, finish_reason: null }] });
@@ -483,6 +549,8 @@ async function streamAnthropicAsOpenAI(
             try { ev = JSON.parse(js); } catch { continue; }
             if (ev.type === "message_start") {
               inTok = ev.message?.usage?.input_tokens ?? inTok;
+              streamUsage = { ...(streamUsage ?? {}), ...(ev.message?.usage ?? {}) };
+              providerMsgId = ev.message?.id ?? providerMsgId;
             } else if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
               toolIndex++;
               blockToTool.set(ev.index, toolIndex);
@@ -509,6 +577,9 @@ async function streamAnthropicAsOpenAI(
             } else if (ev.type === "message_delta") {
               if (ev.delta?.stop_reason) stopReason = ev.delta.stop_reason;
               if (ev.usage?.output_tokens != null) outTok = ev.usage.output_tokens; // cumulative final count
+              // message_delta carries the FINAL usage; merge it over the message_start snapshot so
+              // output_tokens is the settled figure rather than the opening estimate.
+              if (ev.usage) streamUsage = { ...(streamUsage ?? {}), ...ev.usage };
             } else if (ev.type === "message_stop") {
               send(controller, { choices: [{ index: 0, delta: {}, finish_reason: stopReason === "tool_use" ? "tool_calls" : "stop" }] });
             }
@@ -530,8 +601,16 @@ async function streamAnthropicAsOpenAI(
             job_kind: trace.job_kind ?? "chat",
             modality: "text",
             status: streamErrored ? "error" : "success",
-            tokens_in: inTok,
-            tokens_out: outTok,
+            // Normalized through the SAME helper as the buffered path, so the two cannot drift.
+            // The explicit inTok/outTok fallbacks keep the previously-captured values if a provider
+            // ever omits usage from message_start — a narrower row, never a wrong one.
+            ...normalizeClaudeUsage(streamUsage),
+            tokens_in: streamUsage?.input_tokens ?? inTok,
+            tokens_in_uncached: streamUsage?.input_tokens ?? inTok,
+            tokens_out: streamUsage?.output_tokens ?? outTok,
+            model_provider: "anthropic",
+            billing_provider: "anthropic",
+            provider_request_id: providerMsgId,
             latency_ms: Date.now() - streamStarted,
             input: (reqBody as { messages?: unknown }).messages,
             output: outText,

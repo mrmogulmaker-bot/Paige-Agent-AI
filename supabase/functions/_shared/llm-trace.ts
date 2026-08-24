@@ -75,15 +75,20 @@ const SECRET_PATTERNS: RegExp[] = [
 // well-formed uuid to null so a malformed/empty id (e.g. "" ?? null keeps "") can't throw a 22P02 cast
 // error into the (swallowed) insert. NULL = platform/system row — invisible to every tenant per RLS (§9).
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export function cleanTenantId(t: string | null | undefined): string | null {
-  if (typeof t !== "string") return null;
-  const s = t.trim();
+export function cleanUuid(v: string | null | undefined, field: string): string | null {
+  if (typeof v !== "string") return null;
+  const s = v.trim();
   if (!s) return null;
   if (UUID_RE.test(s)) return s;
-  // Loud, never silent (§32): a non-empty non-uuid tenant_id is a caller bug worth seeing, but the trace
-  // still persists (as a platform/null row) rather than being dropped by the swallowing catch.
-  console.warn("paige_llm_trace: non-uuid tenant_id coerced to null:", s.slice(0, 40));
+  // Loud, never silent (§32): a non-empty non-uuid id is a caller bug worth seeing, but the trace
+  // still persists (with that field null) rather than being dropped by the swallowing catch.
+  console.warn(`paige_llm_trace: non-uuid ${field} coerced to null:`, s.slice(0, 40));
   return null;
+}
+
+/** Tenant-specific wrapper, kept as the named export existing callers import. */
+export function cleanTenantId(t: string | null | undefined): string | null {
+  return cleanUuid(t, "tenant_id");
 }
 
 /** Redact known credential shapes. input/output keep their PII (that's the trace's job) but shed secrets. */
@@ -146,6 +151,39 @@ export interface TraceRow {
   status: "success" | "error" | "needs_config";
   tokens_in?: number | null;
   tokens_out?: number | null;
+  /**
+   * ─── CANONICAL USAGE (2026-08-24) ──────────────────────────────────────────────────────────
+   * NULL means the provider did not report the field; 0 means it reported zero. The writer below
+   * preserves that distinction rather than coalescing to 0, because a defaulted 0 is
+   * indistinguishable from a real one on every downstream sum — the same failure that let list-price
+   * estimates omitting caching read as the platform's whole spend.
+   */
+  tokens_in_uncached?: number | null;
+  tokens_cache_read?: number | null;
+  tokens_cache_write_5m?: number | null;
+  tokens_cache_write_1h?: number | null;
+  tokens_reasoning?: number | null;
+  /** Non-token provider charges as {unit: quantity} — tool calls, searches, audio seconds. */
+  billable_units?: Record<string, number> | null;
+
+  /** Identity, separated. `provider` above remains the LEGACY router slug and is unchanged. */
+  gateway_provider?: string | null;
+  model_provider?: string | null;
+  billing_provider?: string | null;
+  capability?: string | null;
+  pricing_version?: string | null;
+
+  /** Correlation. request_id groups every ATTEMPT of one logical request. */
+  request_id?: string | null;
+  provider_request_id?: string | null;
+  user_id?: string | null;
+  run_id?: string | null;
+  workflow_id?: string | null;
+  conversation_id?: string | null;
+  attempt?: number | null;
+  is_retry?: boolean | null;
+  is_fallback?: boolean | null;
+
   latency_ms?: number | null;
   cost_estimate_usd?: number | null;
   /** Raw input payload — scrubbed + truncated here, never stored raw. */
@@ -187,6 +225,31 @@ export function traceLLMCall(row: TraceRow): void {
     // NULL, never 0, when the provider didn't report — null cost/tokens ≠ zero (S4).
     tokens_in: row.tokens_in ?? null,
     tokens_out: row.tokens_out ?? null,
+    // Canonical usage. `?? null` throughout — an absent field must not become a reported zero.
+    tokens_in_uncached: row.tokens_in_uncached ?? null,
+    tokens_cache_read: row.tokens_cache_read ?? null,
+    tokens_cache_write_5m: row.tokens_cache_write_5m ?? null,
+    tokens_cache_write_1h: row.tokens_cache_write_1h ?? null,
+    tokens_reasoning: row.tokens_reasoning ?? null,
+    // Column is NOT NULL DEFAULT '{}' — an empty object is the honest "no non-token charges".
+    billable_units: row.billable_units ?? {},
+    gateway_provider: row.gateway_provider ?? null,
+    model_provider: row.model_provider ?? null,
+    billing_provider: row.billing_provider ?? null,
+    capability: row.capability ?? null,
+    pricing_version: row.pricing_version ?? null,
+    // Correlation ids reuse the same uuid coercion as tenant_id: a malformed id degrades to null
+    // rather than throwing a 22P02 into the (swallowed) insert and losing the whole row.
+    request_id: cleanUuid(row.request_id, "request_id"),
+    provider_request_id: row.provider_request_id ?? null,
+    user_id: cleanUuid(row.user_id, "user_id"),
+    run_id: cleanUuid(row.run_id, "run_id"),
+    workflow_id: cleanUuid(row.workflow_id, "workflow_id"),
+    conversation_id: cleanUuid(row.conversation_id, "conversation_id"),
+    // Defaults match the column defaults, so an un-threaded call site still writes a valid attempt.
+    attempt: row.attempt ?? 1,
+    is_retry: row.is_retry ?? false,
+    is_fallback: row.is_fallback ?? false,
     latency_ms: row.latency_ms ?? null,
     cost_estimate_usd: row.cost_estimate_usd ?? null,
     cost_basis: row.cost_estimate_usd == null ? null : COST_BASIS,
