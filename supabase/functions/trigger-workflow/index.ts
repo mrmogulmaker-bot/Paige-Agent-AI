@@ -14,6 +14,14 @@ const jsonRes = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+// ── Fail-closed activation gate (readiness requirement 9) ─────────────────
+// No budget/cost control and no Trust Compass consult exists on the workflow
+// execution path. Until both do, this entry point refuses to dispatch. §58:
+// a deliberate, called-out block on a previously ungated path — it removes no
+// working behaviour (paige_workflow_runs has never held a row) and must be
+// lifted only through the activation contract, never by flipping this alone.
+const EXECUTION_ENABLED = (Deno.env.get("WORKFLOW_EXECUTION_ENABLED") ?? "").toLowerCase() === "true";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -29,14 +37,37 @@ Deno.serve(async (req) => {
   const { data: { user } } = await userClient.auth.getUser();
   if (!user) return jsonRes({ error: "unauthorized" }, 401);
 
-  const { data: isAdmin } = await admin.rpc("has_role", { _user_id: user.id, _role: "admin" });
-  const { data: isCoach } = await admin.rpc("has_role", { _user_id: user.id, _role: "coach" });
+  // §9/§53/§59 — SERVER-DERIVED tenant. `user_roles` has no tenant_id, so
+  // has_role(uid,'admin') is PLATFORM-WIDE: migration 20260919000000 recorded
+  // that 'global admin' is approximately "every tenant owner". A role check
+  // alone therefore authorises nothing about WHICH workflow may be triggered.
+  // The caller's tenant is resolved server-side and used to scope the lookup
+  // below; it is never taken from the request body.
+  const [{ data: isAdmin }, { data: isCoach }, { data: callerTenantId }, { data: isOperator }] =
+    await Promise.all([
+      admin.rpc("has_role", { _user_id: user.id, _role: "admin" }),
+      admin.rpc("has_role", { _user_id: user.id, _role: "coach" }),
+      userClient.rpc("current_user_tenant_id"),
+      userClient.rpc("is_platform_operator"),
+    ]);
   if (!isAdmin && !isCoach) return jsonRes({ error: "forbidden" }, 403);
 
   let body: { registry_key: string; payload?: Record<string, unknown> };
   try { body = await req.json(); } catch { return jsonRes({ error: "invalid_json" }, 400); }
   if (!body?.registry_key) return jsonRes({ error: "missing_registry_key" }, 400);
 
+  // §9 — THE TENANT SCOPE. Previously this looked the registry row up by `key`
+  // alone, through the RLS-BYPASSING service-role client, so any tenant's admin
+  // or coach could trigger ANY tenant's workflow by knowing its key. The row's
+  // tenant_id was even read further down (for the rail) while never being used
+  // as a filter.
+  //
+  // Registry rows come in two kinds, and they have different authorities:
+  //   - tenant-scoped (tenant_id = X)  → only a caller whose server-derived
+  //     tenant is X may trigger it.
+  //   - platform-scoped (tenant_id IS NULL) → operator authority only
+  //     (is_platform_operator), NEVER a tenant-level app_role. All 23 shipped
+  //     registry rows are platform-scoped, so this is the live path.
   const { data: registry, error: regErr } = await admin
     .from("paige_workflow_registry")
     .select("*")
@@ -44,6 +75,24 @@ Deno.serve(async (req) => {
     .eq("is_active", true)
     .maybeSingle();
   if (regErr || !registry) return jsonRes({ error: "workflow_not_found" }, 404);
+
+  const registryTenantId = (registry as { tenant_id?: string | null }).tenant_id ?? null;
+  const authorised = registryTenantId === null
+    ? isOperator === true
+    : Boolean(callerTenantId) && registryTenantId === callerTenantId;
+  if (!authorised) {
+    // Same shape as a genuine miss: a caller must not be able to probe which
+    // workflow keys exist in other tenants by reading the error apart.
+    return jsonRes({ error: "workflow_not_found" }, 404);
+  }
+
+  if (!EXECUTION_ENABLED) {
+    return jsonRes({
+      error: "workflow_execution_disabled",
+      message: "Workflow execution is gated off. Nothing was queued or dispatched.",
+      missing_contracts: ["budget_or_cost_control", "trust_compass_autonomy_consult"],
+    }, 503);
+  }
 
   const payload = body.payload ?? {};
 
@@ -68,11 +117,22 @@ Deno.serve(async (req) => {
   if (registry.provider === "direct_edge_function" && !registry.direct_function_name) {
     return jsonRes({ error: "direct_function_name_missing" }, 409);
   }
+  // Requirement 14 — re-entrancy bound. A registry row naming a workflow entry
+  // point as its direct target would recurse without limit; nothing in the run
+  // record carries a depth counter, so refuse structurally.
+  if (
+    registry.provider === "direct_edge_function" &&
+    ["trigger-workflow", "dispatch-queued-workflow-runs"].includes(String(registry.direct_function_name))
+  ) {
+    return jsonRes({ error: "re_entrant_target_refused" }, 409);
+  }
 
   const { data: run, error: runErr } = await admin
     .from("paige_workflow_runs")
     .insert({
       registry_id: registry.id,
+      // The run inherits the REGISTRY's tenant, server-derived — never a body value.
+      tenant_id: registryTenantId,
       triggered_by_user_id: user.id,
       payload,
       status: "queued",
@@ -170,7 +230,11 @@ Deno.serve(async (req) => {
     errorText = (e as Error).message.slice(0, 500);
   }
 
-  await admin
+  // §13/requirement 15 — this write is what makes the run record TRUE. If it
+  // fails, the caller must not be told the run reached `newStatus`: the row is
+  // still whatever it was, and reporting otherwise is the silent-success failure
+  // this readiness pass exists to remove.
+  const { error: finalErr } = await admin
     .from("paige_workflow_runs")
     .update({
       status: newStatus,
@@ -180,6 +244,15 @@ Deno.serve(async (req) => {
       completed_at: newStatus === "running" ? null : new Date().toISOString(),
     })
     .eq("id", run.id);
+  if (finalErr) {
+    return jsonRes({
+      run_id: run.id,
+      status: "unknown",
+      error: `run_status_write_failed: ${finalErr.message}`,
+      dispatch_outcome: newStatus,
+      dispatch_error: errorText,
+    }, 500);
+  }
 
   // Rail (owner_ops) — file automation.fired/.completed for the run's client, if one
   // resolves. Best-effort + non-blocking (§13): a rail failure can't affect the run.
