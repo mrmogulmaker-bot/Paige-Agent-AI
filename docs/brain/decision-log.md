@@ -457,30 +457,3 @@ END as permanent palette entries. Unbuilt slots use the pack's **absence treatme
 **Verification posture.** Auth-gated surfaces are checked by `scripts/live-drive/harness/`
 (geometry, mocked provider, real IA). **§32.c is NOT discharged by it** — the harness proves
 geometry, never that the authenticated console renders. See `cd-pack-port-playbook.md` §5–6.
-
-## 2026-08-25 — Flow by Flow skills installed, bound by an adapter
-
-**Both skills installed at owner direction**, v2.0.1 MIT, committed under `.claude/skills/`
-(`flow-by-flow` + `flow-prototype`) so they survive the ephemeral remote containers a personal
-`~/.claude/skills/` install does not. Markdown only — no scripts, dependencies, or production access;
-copies verified `diff -r`-identical to the uploaded package. Codex installed the same pair personally
-the same day. `.gitignore` gained `!.claude/skills/`, mirroring the existing `!.claude/commands/`.
-
-**The adapter is the load-bearing part** (`docs/doctrine/flow-by-flow-adapter.md`). Two of the skill's
-instructions would otherwise walk straight into doctrine:
-
-1. **`flow-by-flow` rule 5 tells the builder to prototype and decide interaction architecture before
-   production UI.** For Claude Code that is void — §00 gives CC zero input on design, and the
-   2026-08-24 ownership ruling puts frontend implementation with Codex. The approval gate resolves to
-   the committed CD pack; a gap in the pack is a question for Claude Design, never a prototype CC
-   builds to answer it. `flow-prototype` stays installed and stays valid for the frontend lane.
-2. **The skill names `PROJECT_BIBLE.md`, a foundation pack, and three verification manifests.** None
-   are created here (§18). They map onto `docs/PAIGE-MASTER-PROJECT-REFERENCE.md`, the existing CI gate
-   set, `scripts/live-drive/`, and §32.a/§32.c/§39 — which already answer the same questions and are
-   the ones the owner's process depends on.
-
-The skill's own conflict order puts the repository constitution above itself, so this is the skill
-being applied as written, not overridden. What it genuinely adds: affected-flow discovery before code,
-regression impact mapping as a named deliverable, and proof separated into automated / static /
-runtime / unverified. Proportionality is explicit — Quick work stays quick; Deep-depth ceremony on a
-one-line correction is a misuse, not a virtue.

@@ -106,7 +106,6 @@ YES + RESELL** (hybrid). Deviations need an owner ruling + a code comment; match
 | `docs/doctrine/paige-unified-comms-substrate-2026-07-29.md` | §49 unified comms substrate spec | Comms/messaging/channel work |
 | `docs/doctrine/L8-memory-fabric-workstream.md` | L8 owner-memory fabric scope brief | Memory-layer / `paige_owner_memory` work |
 | `docs/doctrine/wave5-phase1-phase2-sequencing.md` | Wave 5 phase-1-then-2 sequencing standard | Planning Wave 5 |
-| `docs/doctrine/flow-by-flow-adapter.md` | The `flow-by-flow` / `flow-prototype` skills (`.claude/skills/`) bound to our constitution — §00 makes `flow-prototype` NOT a CC design path; the skill's manifests map onto our existing §32/§39 proof homes, no new files | Before invoking either skill; any "should I build a prototype?" moment |
 | `docs/paige-master-implementation-order.md` | Master implementation order | Cross-wave sequencing |
 | `docs/paige-roadmap-action-bus.md` | Action-bus era feature roadmap (§8) | Action-bus / cross-team coordination work |
 | `docs/paige-n8n-orchestrator-brain-doctrine.md` | Paige→n8n orchestrator authoring doctrine | Authoring n8n workflows via Paige |
