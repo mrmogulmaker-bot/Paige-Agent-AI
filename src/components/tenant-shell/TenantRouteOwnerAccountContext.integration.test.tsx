@@ -377,6 +377,18 @@ describe("tenant route owners preserve the newest authenticated account context"
     expect(container.querySelector("[data-current-path]")?.getAttribute("data-current-path")).toBe(
       "/agency/700001/sub/700002/command-center",
     );
+    expect(
+      Array.from(container.querySelectorAll('nav[aria-label="Tenant workspace"] a')).map((link) =>
+        link.getAttribute("href"),
+      ),
+    ).toEqual([
+      "/agency/700001/sub/700002/command-center",
+      "/agency/700001/sub/700002/clients",
+      "/agency/700001/sub/700002/calendar",
+      "/agency/700001/sub/700002/growth",
+      "/agency/700001/sub/700002/analytics",
+      "/agency/700001/sub/700002/setup",
+    ]);
 
     await resolveLoad(0, loadResult(parent.id, [parent]));
     expect(container.querySelector("[data-provider-tenant-id]")?.getAttribute("data-provider-tenant-id")).toBe(child.id);
