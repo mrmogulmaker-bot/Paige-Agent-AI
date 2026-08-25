@@ -55,8 +55,18 @@ export function useSubtabRoute(
   // Inline mount (sub-account Gate B / defensive inline agency): behave like useState.
   if (!account) return [localKey, setLocalKey];
 
-  // URL-driven: splat = "{branch}/{subtab}/…" → [1] is the sub-tab segment.
-  const subSlug = (params["*"] || "").split("/")[1] || null;
+  const splatParts = (params["*"] || "").split("/");
+  // Agency act-as keeps the authenticated child in the address:
+  // `sub/{childAccount}/{branch}/{subtab}`. This parses routing only; AgencyApp
+  // separately resolves and authorizes the active account before this screen mounts.
+  const agencyActAs =
+    tier === "agency" &&
+    splatParts[0] === "sub" &&
+    /^\d+$/.test(splatParts[1] || "");
+  const branchIndex = agencyActAs ? 2 : 0;
+  const subSlug = splatParts[branchIndex] === branchSlug
+    ? splatParts[branchIndex + 1] || null
+    : null;
   const activeKey = subSlug
     ? subtabBySlug(tier, branchSlug, subSlug)?.key ?? defaultKey
     : defaultKey;
@@ -64,7 +74,11 @@ export function useSubtabRoute(
   const setKey = (key: string) => {
     const slug = subtabByKey(tier, branchSlug, key)?.slug ?? null;
     if (slug) {
-      navigate(subtabPath(tier, account, branchSlug, slug));
+      navigate(
+        agencyActAs
+          ? `/agency/${account}/sub/${splatParts[1]}/${branchSlug}/${slug}`
+          : subtabPath(tier, account, branchSlug, slug),
+      );
       return;
     }
     // Key not in the registry → don't route to a dead URL. But be LOUD about it
