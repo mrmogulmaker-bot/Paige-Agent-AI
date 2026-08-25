@@ -179,9 +179,9 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(SOLO_BRANCHES.filter((b) => b.subtabs).length).toBe(11);
   });
 
-  it("verified Solo counts + first-is-default per the live-screen audit (53 total)", () => {
+  it("verified Solo counts + first-is-default per the live-screen audit (55 total)", () => {
     const count = (slug: string) => branchBySlug("solo", slug)?.subtabs?.length ?? 0;
-    expect(count("command-center")).toBe(2);
+    expect(count("command-center")).toBe(4);
     expect(count("paige")).toBe(6);
     expect(count("automations")).toBe(3);
     expect(count("clients")).toBe(5);
@@ -193,7 +193,7 @@ describe("Solo sub-tab tree (§65 3-level, solo screens verified 2026-08-18)", (
     expect(count("team")).toBe(6);
     expect(count("setup")).toBe(5);
     const total = SOLO_BRANCHES.reduce((n, b) => n + (b.subtabs?.length ?? 0), 0);
-    expect(total).toBe(53);
+    expect(total).toBe(55);
     // first sub-tab is the screen's default (bare branch renders it).
     expect(defaultSubtabSlug("solo", "command-center")).toBe("overview");
     expect(defaultSubtabSlug("solo", "paige")).toBe("chat");
@@ -365,7 +365,9 @@ describe("Solo sub-tab registry ↔ screen source contract (§39 #1)", () => {
     it(`${branch.slug}: registry keys match the rendered strip, in order`, () => {
       const file = SCREEN_FOR_BRANCH[branch.slug];
       expect(file, `no screen mapped for solo branch ${branch.slug}`).toBeTruthy();
-      expect(screenKeys(file, branch.slug)).toEqual(branch.subtabs!.map((s) => s.key));
+      expect(screenKeys(file, branch.slug)).toEqual(
+        branch.subtabs!.filter((subtab) => !subtab.hidden).map((subtab) => subtab.key),
+      );
     });
   }
 
