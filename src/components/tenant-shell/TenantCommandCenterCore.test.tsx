@@ -17,6 +17,7 @@ describe("tenant Command Center core workspace", () => {
     act(() => root.render(
       <MemoryRouter initialEntries={["/solo/1971670/command-center"]}>
         <TenantCommandCenterCore
+          accountContext={{ accountName: "First Sterling Capital", accountType: "standalone" }}
           openPaige={openPaige}
           data={{
             greeting: { name: "Antonio", dateLabel: "Tuesday, August 25", summary: "You're all caught up." },
@@ -39,6 +40,9 @@ describe("tenant Command Center core workspace", () => {
     ));
 
     expect(host.textContent).toContain("Active clients");
+    expect(host.querySelector("[data-tenant-account-name]")?.textContent).toBe("First Sterling Capital");
+    expect(host.querySelector("[data-tenant-account-tier]")?.textContent).toBe("Solo");
+    expect(host.textContent).not.toContain("Your business");
     expect(host.textContent).toContain("Connected read");
     expect(host.textContent).toContain("Net revenue retention");
     expect(host.textContent).toContain("No connected read yet");
@@ -68,6 +72,60 @@ describe("tenant Command Center core workspace", () => {
     expect(agency).not.toContain('["pipe", "Prospect Pipeline"');
     expect(agency).toMatch(/<SystemsCheckTile scope="tenant"\s*\/>/);
     expect(solo).toMatch(/<SystemsCheckTile scope="tenant"\s*\/>/);
+  });
+
+  it("propagates one authenticated account context from each route owner into the shared core", () => {
+    const agencyOwner = source("src/agency/AgencyApp.tsx");
+    const agencyAdapter = source("src/agency/CommandCenter.tsx");
+    const soloOwner = source("src/solo/SoloApp.tsx");
+    const soloAdapter = source("src/solo/CommandCenter.tsx");
+
+    expect(soloOwner).toContain("resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id})");
+    expect(soloOwner).toContain("<CommandHub accountContext={accountContext}");
+    expect(soloOwner).toContain("accountName={accountContext.accountName}");
+    expect(soloAdapter).toContain("<SoloCommandCenterCore accountContext={accountContext}");
+    expect(soloOwner).not.toContain("Your business");
+
+    expect(agencyOwner).toContain("const accountContext = resolveTenantAccountContext(");
+    expect(agencyOwner).toContain("<CommandCenter accountContext={accountContext}");
+    expect(agencyOwner).toContain("accountName={accountContext.accountName}");
+    expect(agencyAdapter).toContain("<AgencyCommandCenterCore accountContext={accountContext}");
+    expect(agencyOwner).not.toContain("Your business");
+  });
+
+  it.each([
+    ["standalone", "Solo"],
+    ["sub_account", "Business"],
+    ["agency", "Agency"],
+    ["enterprise", "Enterprise"],
+  ])("renders the shared %s account context as %s in the live DOM", (accountType, label) => {
+    const host = document.createElement("div");
+    const root = createRoot(host);
+
+    act(() => root.render(
+      <MemoryRouter initialEntries={["/solo/42/command-center"]}>
+        <TenantCommandCenterCore
+          accountContext={{ accountName: "Supplied account", accountType }}
+          openPaige={vi.fn()}
+          data={{
+            greeting: { name: "Owner", dateLabel: "Today", summary: "No queued work." },
+            metrics: [],
+            approvals: [],
+            attentionState: "UNAVAILABLE",
+            departments: [],
+            departmentState: "UNAVAILABLE",
+            loading: false,
+            approve: vi.fn(),
+            decline: vi.fn(),
+            refresh: vi.fn(),
+          }}
+        />
+      </MemoryRouter>,
+    ));
+
+    expect(host.querySelector("[data-tenant-account-name]")?.textContent).toBe("Supplied account");
+    expect(host.querySelector("[data-tenant-account-tier]")?.textContent).toBe(label);
+    act(() => root.unmount());
   });
 
   it("uses independent workspace scroll regions without document-level sizing", () => {
