@@ -1,5 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import SoloApp from "@/solo/SoloApp";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { PageSkeleton } from "@/components/ui/page";
 
 /**
  * SoloEntry — the `/solo/*` dispatcher (§65 R3d-i).
@@ -20,6 +22,8 @@ import SoloApp from "@/solo/SoloApp";
  * the caller's real tenant.
  */
 export default function SoloEntry() {
+  const { accountContextLoading } = useTenantContext();
+  if (accountContextLoading) return <PageSkeleton />;
   return (
     <Routes>
       <Route path=":account/*" element={<SoloApp />} />
