@@ -95,8 +95,8 @@ describe("tenant Command Center core workspace", () => {
 
   it.each([
     ["standalone", "Solo"],
-    ["sub_account", "Business"],
-    ["agency", "Agency"],
+    ["sub_account", "Sub-account"],
+    ["agency", "Agency Parent"],
     ["enterprise", "Enterprise"],
   ])("renders the shared %s account context as %s in the live DOM", (accountType, label) => {
     const host = document.createElement("div");

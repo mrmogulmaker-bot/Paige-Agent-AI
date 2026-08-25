@@ -22,8 +22,8 @@ describe("tenant Command Center shell routing", () => {
 
   it.each([
     ["standalone", "Solo"],
-    ["sub_account", "Business"],
-    ["agency", "Agency"],
+    ["sub_account", "Sub-account"],
+    ["agency", "Agency Parent"],
     ["enterprise", "Enterprise"],
   ])("renders the internal %s account type as %s", (accountType, label) => {
     expect(tenantAccountTypeLabel(accountType)).toBe(label);
@@ -42,8 +42,8 @@ describe("tenant Command Center shell routing", () => {
 
   it.each([
     ["standalone", "Solo"],
-    ["sub_account", "Business"],
-    ["agency", "Agency"],
+    ["sub_account", "Sub-account"],
+    ["agency", "Agency Parent"],
     ["enterprise", "Enterprise"],
   ])("resolves the shared %s account context as %s", (accountType, accountTypeLabel) => {
     expect(resolveTenantAccountContext({ accountName: "Supplied account", accountType })).toEqual({
@@ -64,7 +64,7 @@ describe("tenant Command Center shell routing", () => {
     },
   );
 
-  it("classifies a parented legacy standalone tenant as Business", () => {
+  it("classifies a parented legacy standalone tenant as Sub-account", () => {
     expect(resolveTenantAccountContext({
       accountName: "Supplied child account",
       accountType: "standalone",
@@ -72,7 +72,7 @@ describe("tenant Command Center shell routing", () => {
     })).toEqual({
       accountName: "Supplied child account",
       accountType: "sub_account",
-      accountTypeLabel: "Business",
+      accountTypeLabel: "Sub-account",
     });
   });
 
