@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   TENANT_SHELL_DESTINATIONS,
+  resolveTenantAccountContext,
   resolveTenantShellDestination,
   tenantAccountTypeLabel,
   tenantShellDestinationsForPath,
@@ -26,6 +27,69 @@ describe("tenant Command Center shell routing", () => {
     ["enterprise", "Enterprise"],
   ])("renders the internal %s account type as %s", (accountType, label) => {
     expect(tenantAccountTypeLabel(accountType)).toBe(label);
+  });
+
+  it("preserves a supplied authenticated account name instead of asserting a generic business", () => {
+    expect(resolveTenantAccountContext({
+      accountName: "First Sterling Capital",
+      accountType: "standalone",
+    })).toEqual({
+      accountName: "First Sterling Capital",
+      accountType: "standalone",
+      accountTypeLabel: "Solo",
+    });
+  });
+
+  it.each([
+    ["standalone", "Solo"],
+    ["sub_account", "Business"],
+    ["agency", "Agency"],
+    ["enterprise", "Enterprise"],
+  ])("resolves the shared %s account context as %s", (accountType, accountTypeLabel) => {
+    expect(resolveTenantAccountContext({ accountName: "Supplied account", accountType })).toEqual({
+      accountName: "Supplied account",
+      accountType,
+      accountTypeLabel,
+    });
+  });
+
+  it.each([undefined, null, "", "   "])(
+    "uses an honest neutral fallback for missing optional account name %s",
+    (accountName) => {
+      expect(resolveTenantAccountContext({ accountName, accountType: null })).toEqual({
+        accountName: "Your workspace",
+        accountType: null,
+        accountTypeLabel: "Account",
+      });
+    },
+  );
+
+  it("classifies a parented legacy standalone tenant as Business", () => {
+    expect(resolveTenantAccountContext({
+      accountName: "Supplied child account",
+      accountType: "standalone",
+      parentTenantId: "authenticated-parent-id",
+    })).toEqual({
+      accountName: "Supplied child account",
+      accountType: "sub_account",
+      accountTypeLabel: "Business",
+    });
+  });
+
+  it("does not relabel a top-level standalone tenant from route mode alone", () => {
+    expect(resolveTenantAccountContext({
+      accountName: "Supplied solo account",
+      accountType: "standalone",
+      parentTenantId: null,
+    }).accountTypeLabel).toBe("Solo");
+  });
+
+  it("keeps a missing Business-route tenant neutral instead of inferring identity from the URL", () => {
+    expect(resolveTenantAccountContext(null)).toEqual({
+      accountName: "Your workspace",
+      accountType: null,
+      accountTypeLabel: "Account",
+    });
   });
 
   it("keeps Delivery with Clients while Calendar owns tasks and scheduling routes", () => {

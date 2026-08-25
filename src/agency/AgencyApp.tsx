@@ -60,6 +60,7 @@ import VaultHub from "./vault";
 import SetupScreen from "./setup";
 import IntegrationsHub from "./integrations";
 import { TenantCommandCenterShell } from "@/components/tenant-shell/TenantCommandCenterShell";
+import { resolveTenantAccountContext } from "@/components/tenant-shell/tenantShellRoutes";
 import { AgentPresenceProvider, useAgentPresence } from "@/components/ui/paige";
 import { VoiceDeviceProvider } from "@/lib/voice/VoiceDeviceProvider";
 import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
@@ -640,7 +641,14 @@ const AgencyAppContent = ({ mode = "agency" }) => {
   // swatch keyed on the tenant id (§13 — never a fabricated color, just a stable
   // decorative one) via the SAME swatchFor() the roster/switcher already use (§18).
   // Agency mode is unaffected — it still shows the agency mark unless acting into a sub.
-  const ownName = activeTenant?.name || "Your business";
+  const accountContext = resolveTenantAccountContext(
+    isAgency
+      ? acting
+        ? { accountName: acting.name, accountType: activeTenant?.account_type, parentTenantId: activeTenant?.parent_tenant_id }
+        : { accountName: ownAgencyTenant?.name, accountType: ownAgencyTenant?.account_type }
+      : { accountName: activeTenant?.name, accountType: activeTenant?.account_type, parentTenantId: activeTenant?.parent_tenant_id },
+  );
+  const ownName = accountContext.accountName;
   const brand = isAgency
     ? (acting ? { name: acting.name, initials: tmInit(acting.name), color: acting.color, isAgency: true, acting: true }
       : { name: agencyName, initials: tmInit(agencyName), color: "#C8A02E", isAgency: true, acting: false })
@@ -652,7 +660,7 @@ const AgencyAppContent = ({ mode = "agency" }) => {
   // GrowthHub owns its full lifecycle (opens VibeStudio inline from its own studioOpen
   // state). Every top-nav route now resolves to a real screen; Stub is the fallback.
   const screens = {
-    command: <CommandCenter isAgency={isAgency} acting={acting} openAsk={openAsk} enterSub={enterSubaccount} />,
+    command: <CommandCenter accountContext={accountContext} isAgency={isAgency} acting={acting} openAsk={openAsk} enterSub={enterSubaccount} />,
     paige: <PaigeHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     compass: <TrustCompass isAgency={isAgency} acting={acting} openAsk={openAsk} />,
     autos: <AutomationsHub isAgency={isAgency} acting={acting} openAsk={openAsk} />,
@@ -693,8 +701,8 @@ const AgencyAppContent = ({ mode = "agency" }) => {
 
   return (
     <TenantCommandCenterShell
-      accountName={brand.name}
-      accountType={activeTenant?.account_type}
+      accountName={accountContext.accountName}
+      accountType={accountContext.accountType}
       providedBy={!isAgency ? ownAgencyTenant?.name : null}
       userRole="admin"
       accountControls={isAgency ? (

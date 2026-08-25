@@ -7,7 +7,7 @@ import { Ic } from "./_shared";
 
 const noop = () => {};
 
-const CommandCenter = ({ isAgency = true, acting = null, openAsk = noop }) => {
+const CommandCenter = ({ accountContext = null, isAgency = true, acting = null, openAsk = noop }) => {
   const [tab, setTab] = useSubtabRoute(
     isAgency ? "agency" : "sub_account",
     "command-center",
@@ -66,7 +66,7 @@ const CommandCenter = ({ isAgency = true, acting = null, openAsk = noop }) => {
         style={{ flex: 1, minHeight: 0, padding: "22px 26px 24px", overflow: "auto" }}
       >
         {currentTab === "main" ? (
-          <AgencyCommandCenterCore context={{ isAgency, acting }} openPaige={openAsk} />
+          <AgencyCommandCenterCore accountContext={accountContext} context={{ isAgency, acting }} openPaige={openAsk} />
         ) : (
           <div style={{ width: "100%", maxWidth: 1180, margin: "0 auto" }}>
             <SystemsCheckTile scope="tenant" />

@@ -5,11 +5,11 @@ import { SystemsCheckTile } from "@/components/systems-check/SystemsCheckTile";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic, SubTabs } from "./_shared";
 
-const CommandCenter = ({ openPaige }) => (
-  <SoloCommandCenterCore openPaige={openPaige} />
+const CommandCenter = ({ accountContext, openPaige }) => (
+  <SoloCommandCenterCore accountContext={accountContext} openPaige={openPaige} />
 );
 
-const CommandHub = ({ openPaige }) => {
+const CommandHub = ({ accountContext, openPaige }) => {
   const [tab, setTab] = useSubtabRoute("solo", "command-center", "home");
   const tabs = [
     ["home", "Command Center", () => <Ic.grid size={15} />],
@@ -21,7 +21,7 @@ const CommandHub = ({ openPaige }) => {
       <SubTabs tabs={tabs} cur={tab} set={setTab} />
       <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
         {tab === "home" ? (
-          <CommandCenter openPaige={openPaige} />
+          <CommandCenter accountContext={accountContext} openPaige={openPaige} />
         ) : (
           <div style={{ padding: 24, maxWidth: 1180, margin: "0 auto" }}>
             <SystemsCheckTile scope="tenant" />

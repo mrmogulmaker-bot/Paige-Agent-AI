@@ -18,7 +18,11 @@ import {
   type CommandApproval as AgencyCommandApproval,
 } from "@/agency/data/useAgencyCommandCenter";
 import type { AgencyShellCtx } from "@/agency/data/useAgencyRoster";
-import { tenantShellDestinationsForPath } from "./tenantShellRoutes";
+import {
+  resolveTenantAccountContext,
+  tenantShellDestinationsForPath,
+  type TenantAccountContext,
+} from "./tenantShellRoutes";
 import "./tenant-command-center-core.css";
 
 type Approval = CommandApproval | AgencyCommandApproval;
@@ -45,10 +49,17 @@ interface CoreData {
   refresh: () => void;
 }
 
-export function SoloCommandCenterCore({ openPaige }: { openPaige: () => void }) {
+export function SoloCommandCenterCore({
+  accountContext,
+  openPaige,
+}: {
+  accountContext?: TenantAccountContext | null;
+  openPaige: () => void;
+}) {
   const data = useCommandCenter();
   return (
     <TenantCommandCenterCore
+      accountContext={accountContext}
       openPaige={openPaige}
       data={{
         ...data,
@@ -65,15 +76,18 @@ export function SoloCommandCenterCore({ openPaige }: { openPaige: () => void }) 
 }
 
 export function AgencyCommandCenterCore({
+  accountContext,
   context,
   openPaige,
 }: {
+  accountContext?: TenantAccountContext | null;
   context: AgencyShellCtx;
   openPaige: () => void;
 }) {
   const data = useAgencyCommandCenter(context);
   return (
     <TenantCommandCenterCore
+      accountContext={accountContext}
       openPaige={openPaige}
       data={{
         greeting: data.greeting,
@@ -101,9 +115,11 @@ export function AgencyCommandCenterCore({
 }
 
 export function TenantCommandCenterCore({
+  accountContext,
   data,
   openPaige,
 }: {
+  accountContext?: TenantAccountContext | null;
   data: CoreData;
   openPaige: () => void;
 }) {
@@ -117,6 +133,7 @@ export function TenantCommandCenterCore({
   const [resolved, setResolved] = useState(() => new Set<string>());
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const resolvedAccount = resolveTenantAccountContext(accountContext);
 
   const approvals = useMemo(
     () => data.approvals.filter((approval) => !resolved.has(approval.id)),
@@ -160,7 +177,13 @@ export function TenantCommandCenterCore({
     <section className="tcc-core" aria-labelledby="tenant-command-center-title">
       <header className="tcc-brief">
         <div>
-          <p className="tcc-kicker">{data.greeting.dateLabel}</p>
+          <p className="tcc-kicker">
+            <span data-tenant-account-name>{resolvedAccount.accountName}</span>
+            <span aria-hidden="true"> · </span>
+            <span data-tenant-account-tier>{resolvedAccount.accountTypeLabel}</span>
+            <span aria-hidden="true"> · </span>
+            {data.greeting.dateLabel}
+          </p>
           <h1 id="tenant-command-center-title">
             Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}, {data.greeting.name}.
           </h1>

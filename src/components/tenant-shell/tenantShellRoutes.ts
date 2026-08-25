@@ -20,6 +20,18 @@ export interface TenantShellDestination {
 
 type TenantRouteRoot = "agency" | "business" | "enterprise" | "solo";
 
+export interface TenantAccountContext {
+  accountName?: string | null;
+  accountType?: string | null;
+  parentTenantId?: string | null;
+}
+
+export interface ResolvedTenantAccountContext {
+  accountName: string;
+  accountType: string | null;
+  accountTypeLabel: string;
+}
+
 const TENANT_ROUTE_PATTERN = /^\/(agency|business|enterprise|solo)\/([^/]+)/;
 
 const TENANT_BRANCHES: Record<TenantDestination, { slug: string; aliases: string[] }> = {
@@ -43,8 +55,27 @@ export function tenantAccountTypeLabel(accountType?: string | null): string {
     case "enterprise":
       return "Enterprise";
     default:
-      return accountType?.split("_").join(" ") || "tenant";
+      return accountType?.split("_").join(" ") || "Account";
   }
+}
+
+/**
+ * Present authenticated account context atomically. The route account number is
+ * intentionally not accepted here: a URL is an address, never tenant authority.
+ */
+export function resolveTenantAccountContext(
+  context?: TenantAccountContext | null,
+): ResolvedTenantAccountContext {
+  const accountName = context?.accountName?.trim() || "Your workspace";
+  const accountType = context?.parentTenantId
+    ? "sub_account"
+    : context?.accountType?.trim().toLowerCase() || null;
+
+  return {
+    accountName,
+    accountType,
+    accountTypeLabel: tenantAccountTypeLabel(accountType),
+  };
 }
 
 /**

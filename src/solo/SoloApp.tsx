@@ -23,6 +23,7 @@ import { TeamHub } from "./team";
 import { Setup } from "./setup";
 import { VibeStudio } from "./vibe";
 import { TenantCommandCenterShell } from "@/components/tenant-shell/TenantCommandCenterShell";
+import { resolveTenantAccountContext } from "@/components/tenant-shell/tenantShellRoutes";
 import { AgentPresenceProvider, useAgentPresence } from "@/components/ui/paige";
 import { VoiceDeviceProvider } from "@/lib/voice/VoiceDeviceProvider";
 import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
@@ -169,10 +170,11 @@ const theme=resolvedTheme==='light'?'light':'dark';
 // and nothing more; the rail is navigation, never a panel trigger.
 const openPaige=()=>expandRail();
 const full=route==='paige'||route==='auto'||route==='cal'||route==='setup'||route==='team'||route==='home';
-const screens={home:<CommandHub openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<ClientsHub openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
+const accountContext=resolveTenantAccountContext({accountName:activeTenant?.name,accountType:activeTenant?.account_type,parentTenantId:activeTenant?.parent_tenant_id});
+const screens={home:<CommandHub accountContext={accountContext} openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<ClientsHub openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
 return <TenantCommandCenterShell
-accountName={activeTenant?.name||'Your business'}
-accountType={activeTenant?.account_type}
+accountName={accountContext.accountName}
+accountType={accountContext.accountType}
 userRole="admin"
 onSignOut={()=>void performSignOut({redirectTo:'/'})}>
 <div className="paige-solo" data-theme={theme} style={{height:'100%',minHeight:0}}>
