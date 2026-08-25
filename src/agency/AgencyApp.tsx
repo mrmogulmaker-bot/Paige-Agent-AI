@@ -22,6 +22,7 @@
 // code is unreachable. A sub-account owner sees only their own book.
 import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useTheme } from "next-themes";
 import { performSignOut } from "@/lib/auth/signOut";
 import { branchBySlug, branchByKey, branchPath, defaultBranchSlug } from "@/lib/routing/tierBranches";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -65,6 +66,12 @@ import IntegrationsHub from "./integrations";
 // layers are one-for-one mirrors (.paige-solo / .paige-agency), so the panel themes
 // correctly inside this shell.
 import { PaigePanel } from "@/solo/agent";
+import { TenantCommandCenterShell } from "@/components/tenant-shell/TenantCommandCenterShell";
+import { AgentPresenceProvider, useAgentPresence } from "@/components/ui/paige";
+import { VoiceDeviceProvider } from "@/lib/voice/VoiceDeviceProvider";
+import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
+import { IncomingCallOverlay } from "@/components/admin/voice/IncomingCallOverlay";
+import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPanel";
 
 // ── Nav (Agency Shell.dc.html:12587 navMain / 12599 navPlatform) ────────────
 // [route, label, IconFn, badge(sub)] — badge is a fn of `sub` (presenting as a
@@ -268,8 +275,10 @@ const Stub = ({ route }) => {
 };
 
 // ── AgencyApp (root) ─────────────────────────────────────────────────────────
-const AgencyApp = ({ mode = "agency" }) => {
+const AgencyAppContent = ({ mode = "agency" }) => {
   const isAgency = mode === "agency";
+  const { expandRail } = useAgentPresence();
+  const { resolvedTheme, setTheme } = useTheme();
 
   // §65 URL-driven branch — every tab is its own deep-linkable route
   // (/agency/{account}/{branch} for agency mode, /business/{account}/{branch} for
@@ -321,8 +330,7 @@ const AgencyApp = ({ mode = "agency" }) => {
     setAcctOpen(false);
   };
   const [collapsed, setCollapsed] = React.useState(false);
-  const [theme, setTheme] = React.useState(() => localStorage.getItem("paige-agency-theme") || "light");
-  React.useEffect(() => { localStorage.setItem("paige-agency-theme", theme); }, [theme]);
+  const theme = resolvedTheme === "light" ? "light" : "dark";
 
   // ── §65 Option B (B1a) — REAL agency identity + REAL sub-account roster ──────
   // The adapters read ONLY session-scoped seams (agency_portfolio_metrics /
@@ -584,7 +592,11 @@ const AgencyApp = ({ mode = "agency" }) => {
   // Owner directive (2026-08-18) — the slide-in panel pops out from THIS launcher ONLY
   // (the TopBar spark / ⌘K). EVERY rail item, "Paige" included, navigates to its own URL
   // and nothing more; the rail is navigation, never a panel trigger.
-  const openAsk = () => { setAskOpen(true); setAcctOpen(false); setSwitcherOpen(false); };
+  const openAsk = React.useCallback(() => {
+    expandRail();
+    setAcctOpen(false);
+    setSwitcherOpen(false);
+  }, [expandRail]);
   const openHelp = () => { setHelpOpen(true); setHelpSent(false); setAcctOpen(false); };
   // Provisioning is an AGENCY act — never offered in subaccount mode.
   const openProvision = () => { if (!isAgency) return; setProvisionOpen(true); setProvStep(1); setFeed([]); setSwitcherOpen(false); };
@@ -595,7 +607,7 @@ const AgencyApp = ({ mode = "agency" }) => {
     const h = e => { if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); openAsk(); } };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, []);
+  }, [openAsk]);
   React.useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
 
   // 3-step provisioning scan (Agency Shell.dc.html runScan) — streams the seven
@@ -688,26 +700,25 @@ const AgencyApp = ({ mode = "agency" }) => {
   const swatches = ["#7C6CE0", "#3F7F5C", "#2F6FA8", "#C1652F", "#A8425A", "#B3932A"];
 
   return (
-    <div className="paige-agency" data-theme={theme} style={{ height: "100vh" }}>
-      <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
-        <Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} sub={sub} brand={brand} planLine={railPlanLine} bookLine={railBookLine} />
+    <TenantCommandCenterShell
+      accountName={brand.name}
+      accountType={activeTenant?.account_type}
+      providedBy={!isAgency ? ownAgencyTenant?.name : null}
+      userRole="admin"
+      accountControls={isAgency ? (
+        <button ref={switcherRef} type="button" onClick={() => setSwitcherOpen(v => !v)} aria-expanded={switcherOpen}>
+          {acting ? `Sub-account: ${acting.name}` : "Switch account"}
+        </button>
+      ) : ownAgencyTenant?.account_number != null ? (
+        <button type="button" onClick={() => navigate(branchPath("agency", String(ownAgencyTenant.account_number), defaultBranchSlug("agency")))}>
+          Back to {ownAgencyTenant.name || "agency"}
+        </button>
+      ) : null}
+      onSignOut={() => void performSignOut({ redirectTo: "/" })}
+    >
+    <div className="paige-agency" data-theme={theme} style={{ height: "100%", minHeight: 0 }}>
+      <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
-          <TopBar theme={theme} setTheme={setTheme} route={route} isAgency={isAgency} acting={acting} brand={brand} sub={sub}
-            operatorName={operatorName} providerLabel={providerLabel}
-            openSwitcher={() => setSwitcherOpen(v => !v)} switcherOpen={switcherOpen} switcherRef={switcherRef}
-            openAcct={() => setAcctOpen(v => !v)} acctOpen={acctOpen} acctRef={acctRef}
-            openAsk={openAsk} openHelp={openHelp}
-            /* §58 escape hatch. Computed HERE because `ownAgencyTenant` and `navigate`
-               live in AgencyApp, not TopBar — passing the pieces separately would have
-               put two out-of-scope identifiers inside a @ts-nocheck file, where tsc
-               cannot catch a ReferenceError (§32: compiles clean, crashes at render).
-               null when the caller has no agency to return to, which is the correct
-               state for a genuine sub-account-only owner. */
-            onBackToAgency={!isAgency && ownAgencyTenant?.account_number != null ? {
-              name: ownAgencyTenant.name,
-              go: () => navigate(branchPath("agency", String(ownAgencyTenant.account_number), defaultBranchSlug("agency"))),
-            } : null} />
-
           {/* Account SWITCHER popover — agency only (§51). */}
           {isAgency && (
             <div style={{ position: "absolute", top: 50, left: 300, zIndex: 60 }}>
@@ -933,7 +944,19 @@ const AgencyApp = ({ mode = "agency" }) => {
         </SlideOut>
       </div>
     </div>
+    </TenantCommandCenterShell>
   );
 };
+
+const AgencyApp = (props) => (
+  <AgentPresenceProvider launcherEnabled={false} hasChatBody>
+    <VoiceDeviceProvider>
+      <DialPadSurface />
+      <IncomingCallOverlay />
+      <LiveTranscriptPanel />
+      <AgencyAppContent {...props} />
+    </VoiceDeviceProvider>
+  </AgentPresenceProvider>
+);
 
 export default AgencyApp;

@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useTheme } from "next-themes";
 import { performSignOut } from "@/lib/auth/signOut";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 import { useTenantContext } from "@/hooks/useTenantContext";
@@ -9,7 +10,6 @@ import "./solo-tokens.css";
 import { Ic, Logo, Avatar, Wrap, PageHead } from "./_shared";
 import { CommandHub } from "./CommandCenter";
 import { PaigeHub } from "./paigehub";
-import { PaigePanel } from "./agent";
 import { TrustCompass } from "./compass";
 import { AutomationsHub } from "./automations-build";
 import { ClientsHub } from "./conversations";
@@ -22,6 +22,12 @@ import { Integrations } from "./integrations";
 import { TeamHub } from "./team";
 import { Setup } from "./setup";
 import { VibeStudio } from "./vibe";
+import { TenantCommandCenterShell } from "@/components/tenant-shell/TenantCommandCenterShell";
+import { AgentPresenceProvider, useAgentPresence } from "@/components/ui/paige";
+import { VoiceDeviceProvider } from "@/lib/voice/VoiceDeviceProvider";
+import { DialPadSurface } from "@/components/admin/voice/DialPadSurface";
+import { IncomingCallOverlay } from "@/components/admin/voice/IncomingCallOverlay";
+import { LiveTranscriptPanel } from "@/components/admin/voice/LiveTranscriptPanel";
 
 const NAV=[['home','Command Center',()=><Ic.grid/>],['paige','Paige',()=><Ic.spark/>],['compass','Trust Compass',()=><Ic.shield/>],['auto','Automations',()=><Ic.bolt/>],['clients','Clients',()=><Ic.users/>],['cal','Calendar',()=><Ic.cal/>],['growth','Growth',()=><Ic.trend/>],['analytics','Analytics',()=><Ic.chart/>]];
 const NAV2=[['market','Marketplace',()=><Ic.store/>],['vault','Business Vault',()=><Ic.vault/>],['integrations','Integrations',()=><Ic.bolt/>],['team','Team',()=><Ic.users/>],['setup','Setup',()=><Ic.gear/>]];
@@ -104,7 +110,7 @@ const Stub=({title,sub})=>(<Wrap max={900}><PageHead eyebrow="Coming into view" 
 <div style={{fontWeight:600,fontSize:15}}>Not part of this pass</div>
 <div className="sub" style={{maxWidth:380,margin:'6px auto 0'}}>Command Center, Paige, Clients, Growth, and Analytics are designed. Say the word and this one is next.</div></div></Wrap>);
 
-const SoloApp=()=>{
+const SoloAppContent=()=>{
 // §65 R3d-i — every tab is its own deep-linkable route (/solo/{account}/{branch}).
 // The screen `route` is DERIVED from the URL slug via the TIER_BRANCHES registry,
 // and `go(k)` NAVIGATES rather than mutating local state (mirrors AgencyApp.tsx's
@@ -115,6 +121,8 @@ const SoloApp=()=>{
 // there is no sub-prefix parsing here — this is the simpler leg.
 const urlParams = useParams();
 const navigate = useNavigate();
+const { expandRail } = useAgentPresence();
+const { resolvedTheme } = useTheme();
 const urlAccount = urlParams.account || null;
 const urlDriven = !!urlAccount;
 const urlBranchSlug = urlDriven ? ((urlParams["*"] || "").split("/")[0] || defaultBranchSlug("solo")) : null;
@@ -153,25 +161,31 @@ React.useEffect(() => {
     navigate(branchPath("solo", urlAccount, defaultBranchSlug("solo")), { replace: true });
   }
 }, [urlDriven, urlAccount, urlSplat, activeTenant?.account_number, navigate]);
-const[collapsed,setCollapsed]=React.useState(false);
-const[panel,setPanel]=React.useState(false);
 const[studio,setStudio]=React.useState(false);
 React.useEffect(()=>{const h=()=>setStudio(true);window.addEventListener('paige-studio',h);return()=>window.removeEventListener('paige-studio',h)},[]);
-const[theme,setTheme]=React.useState(()=>localStorage.getItem('paige-theme')||'light');
-React.useEffect(()=>{localStorage.setItem('paige-theme',theme)},[theme]);
+const theme=resolvedTheme==='light'?'light':'dark';
 // Owner directive (2026-08-18) — the slide-in panel pops out from THIS launcher ONLY
 // (the TopBar spark / ⌘K). EVERY rail item, "Paige" included, navigates to its own URL
 // and nothing more; the rail is navigation, never a panel trigger.
-const openPaige=()=>setPanel(true);
-React.useEffect(()=>{const h=e=>{if((e.metaKey||e.ctrlKey)&&(e.key==='k'||e.key==='K')){e.preventDefault();setPanel(true)}};window.addEventListener('keydown',h);return()=>window.removeEventListener('keydown',h)},[]);
+const openPaige=()=>expandRail();
 const full=route==='paige'||route==='auto'||route==='cal'||route==='setup'||route==='team'||route==='home';
 const screens={home:<CommandHub openPaige={openPaige}/>,paige:<PaigeHub/>,compass:<TrustCompass/>,auto:<AutomationsHub/>,clients:<ClientsHub openPaige={openPaige}/>,cal:<CalendarHub/>,growth:<GrowthHub/>,analytics:<Analytics2/>,market:<Marketplace/>,vault:<VaultView/>,integrations:<Integrations/>,team:<TeamHub/>,setup:<Setup/>};
-return <div className="paige-solo" data-theme={theme} style={{height:'100vh'}}>
-<div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
-<Rail route={route} go={go} collapsed={collapsed} setCollapsed={setCollapsed} homeCount={railApprovals.length}/>
-<div style={{display:'flex',flexDirection:'column',flex:1,minWidth:0}}>
-<TopBar theme={theme} setTheme={setTheme} openPaige={openPaige} route={route} go={go}/>
-<main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0}}>{screens[route]}</main></div>
-<PaigePanel open={panel} onClose={()=>setPanel(false)} onOpenFull={()=>{setPanel(false);go('paige')}}/>
-{studio&&<VibeStudio onBack={()=>setStudio(false)}/>}</div></div>};
+return <TenantCommandCenterShell
+accountName={activeTenant?.name||'Your business'}
+accountType={activeTenant?.account_type}
+userRole="admin"
+onSignOut={()=>void performSignOut({redirectTo:'/'})}>
+<div className="paige-solo" data-theme={theme} style={{height:'100%',minHeight:0}}>
+<div style={{display:'flex',height:'100%',overflow:'hidden'}}>
+<main key={route} style={{flex:1,overflow:full?'hidden':'auto',minHeight:0,minWidth:0}}>{screens[route]}</main>
+{studio&&<VibeStudio onBack={()=>setStudio(false)}/>}</div></div>
+</TenantCommandCenterShell>};
+
+const SoloApp=()=> (
+<AgentPresenceProvider launcherEnabled={false} hasChatBody>
+<VoiceDeviceProvider>
+<DialPadSurface/><IncomingCallOverlay/><LiveTranscriptPanel/><SoloAppContent/>
+</VoiceDeviceProvider>
+</AgentPresenceProvider>
+);
 export default SoloApp;

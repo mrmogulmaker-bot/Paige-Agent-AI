@@ -17,6 +17,19 @@ export interface TenantShellDestination {
   icon: LucideIcon;
   aliases: string[];
 }
+
+type TenantRouteRoot = "agency" | "business" | "enterprise" | "solo";
+
+const TENANT_ROUTE_PATTERN = /^\/(agency|business|enterprise|solo)\/([^/]+)/;
+
+const TENANT_BRANCHES: Record<TenantDestination, { slug: string; aliases: string[] }> = {
+  command: { slug: "command-center", aliases: ["paige", "trust-compass", "automations"] },
+  clients: { slug: "clients", aliases: ["client-support", "billing"] },
+  calendar: { slug: "calendar", aliases: [] },
+  studio: { slug: "growth", aliases: [] },
+  insights: { slug: "analytics", aliases: [] },
+  settings: { slug: "setup", aliases: ["marketplace", "business-vault", "integrations", "team"] },
+};
 /**
  * The tenant platform's six global destinations. Existing pages remain mounted at
  * their canonical routes; aliases only answer the shell question "where am I?".
@@ -33,9 +46,9 @@ export const TENANT_SHELL_DESTINATIONS: TenantShellDestination[] = [
   {
     id: "calendar",
     label: "Calendar",
-    href: "/admin/clients-hub/delivery",
+    href: "/admin/calendar",
     icon: CalendarDays,
-    aliases: ["/admin/calendar", "/admin/bookings", "/admin/planning", "/admin/tasks"],
+    aliases: ["/admin/bookings", "/admin/planning", "/admin/tasks"],
   },
   {
     id: "studio",
@@ -71,23 +84,35 @@ export const TENANT_SHELL_DESTINATIONS: TenantShellDestination[] = [
   },
 ];
 
+/** Keep the six shell homes inside the route tree that owns the active account. */
+export function tenantShellDestinationsForPath(pathname: string): TenantShellDestination[] {
+  const match = pathname.match(TENANT_ROUTE_PATTERN);
+  if (!match) return TENANT_SHELL_DESTINATIONS;
+
+  const [, routeRoot, account] = match as [string, TenantRouteRoot, string];
+  const root = `/${routeRoot}/${account}`;
+  return TENANT_SHELL_DESTINATIONS.map((destination) => {
+    const branch = TENANT_BRANCHES[destination.id];
+    return {
+      ...destination,
+      href: `${root}/${branch.slug}`,
+      aliases: branch.aliases.map((slug) => `${root}/${slug}`),
+    };
+  });
+}
+
 function pathMatches(pathname: string, href: string): boolean {
   if (href === "/admin") return pathname === "/admin";
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 export function resolveTenantShellDestination(pathname: string): TenantShellDestination {
-  // Calendar is intentionally checked before Clients because its canonical route
-  // lives under /admin/clients-hub while Calendar owns delivery and scheduling.
-  const ordered = [
-    TENANT_SHELL_DESTINATIONS[2],
-    ...TENANT_SHELL_DESTINATIONS.filter((destination) => destination.id !== "calendar"),
-  ];
+  const destinations = tenantShellDestinationsForPath(pathname);
   return (
-    ordered.find(
+    destinations.find(
       (destination) =>
         pathMatches(pathname, destination.href) ||
         destination.aliases.some((alias) => pathMatches(pathname, alias)),
-    ) ?? TENANT_SHELL_DESTINATIONS[0]
+    ) ?? destinations[0]
   );
 }

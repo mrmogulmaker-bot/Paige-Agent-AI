@@ -18,7 +18,7 @@ import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { DialPadTrigger } from "@/components/admin/voice/DialPadTrigger";
 import { useAgentPresence } from "@/components/ui/paige";
 import { CommandMark } from "@/operator/shell/CommandMark";
-import { TENANT_SHELL_DESTINATIONS, resolveTenantShellDestination } from "./tenantShellRoutes";
+import { resolveTenantShellDestination, tenantShellDestinationsForPath } from "./tenantShellRoutes";
 import "./tenant-command-center-shell.css";
 
 const NAV_PREF_KEY = "paige.tenantShell.navExpanded";
@@ -72,6 +72,7 @@ export function TenantCommandCenterShell({
   const { railExpanded, expandRail, collapseRail } = useAgentPresence();
   const [navExpanded, setNavExpanded] = useState(readNavPreference);
   const [announcement, setAnnouncement] = useState("PAIGE workspace ready");
+  const destinations = tenantShellDestinationsForPath(location.pathname);
   const destination = resolveTenantShellDestination(location.pathname);
   const isDark = resolvedTheme !== "light";
   const detached = new URLSearchParams(location.search).get("paigeSurface") === "detached";
@@ -171,7 +172,7 @@ export function TenantCommandCenterShell({
         </div>
 
         <div className="tcs-nav-links">
-          {TENANT_SHELL_DESTINATIONS.map(({ id, label, href, icon: Icon }) => {
+          {destinations.map(({ id, label, href, icon: Icon }) => {
             const active = destination.id === id;
             return (
               <Link
