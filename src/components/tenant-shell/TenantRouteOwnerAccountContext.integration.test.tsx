@@ -372,7 +372,7 @@ describe("tenant route owners preserve the newest authenticated account context"
     await resolveLoad(1, loadResult(child.id, [parent, child]));
     expect(container.querySelector("[data-provider-tenant-id]")?.getAttribute("data-provider-tenant-id")).toBe(child.id);
     expect(accountName()).toBe("Acting Child");
-    expect(accountTier()).toBe("Business");
+    expect(accountTier()).toBe("Sub-account");
     expect(accountName()).not.toBe("Agency Parent");
     expect(container.querySelector("[data-current-path]")?.getAttribute("data-current-path")).toBe(
       "/agency/700001/sub/700002/command-center",
@@ -381,7 +381,7 @@ describe("tenant route owners preserve the newest authenticated account context"
     await resolveLoad(0, loadResult(parent.id, [parent]));
     expect(container.querySelector("[data-provider-tenant-id]")?.getAttribute("data-provider-tenant-id")).toBe(child.id);
     expect(accountName()).toBe("Acting Child");
-    expect(accountTier()).toBe("Business");
+    expect(accountTier()).toBe("Sub-account");
   });
 
   it("never commits an older authenticated subject after a different user signs in", async () => {
