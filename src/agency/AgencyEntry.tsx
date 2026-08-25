@@ -1,6 +1,8 @@
 import { Routes, Route, useLocation } from "react-router-dom";
 import AgencyLayout from "@/components/admin/AgencyLayout";
 import AgencyApp from "@/agency/AgencyApp";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { PageSkeleton } from "@/components/ui/page";
 
 /**
  * AgencyEntry — the `/agency/*` dispatcher (§65 R0-slice-2).
@@ -23,11 +25,17 @@ import AgencyApp from "@/agency/AgencyApp";
 export default function AgencyEntry() {
   const seg = useLocation().pathname.split("/")[2] || "";
   if (/^\d+$/.test(seg)) {
-    return (
-      <Routes>
-        <Route path=":account/*" element={<AgencyApp mode="agency" />} />
-      </Routes>
-    );
+    return <ResolvedAgencyApp />;
   }
   return <AgencyLayout />;
+}
+
+function ResolvedAgencyApp() {
+  const { accountContextLoading } = useTenantContext();
+  if (accountContextLoading) return <PageSkeleton />;
+  return (
+    <Routes>
+      <Route path=":account/*" element={<AgencyApp mode="agency" />} />
+    </Routes>
+  );
 }

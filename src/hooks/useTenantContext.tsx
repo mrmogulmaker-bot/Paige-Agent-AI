@@ -117,6 +117,8 @@ export interface TenantSummary {
 
 interface TenantContextState {
   loading: boolean;
+  /** True only while the authenticated subject's account identity is unresolved. */
+  accountContextLoading: boolean;
   isPlatformOwner: boolean;
   /** Owner OR scoped Platform Admin — sees the God console instead of the agency CRM. */
   isPlatformStaff: boolean;
@@ -149,10 +151,19 @@ const TenantContext = createContext<TenantContextState | null>(null);
  */
 export function TenantProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
+  const [accountContextLoading, setAccountContextLoading] = useState(true);
   const [isPlatformOwner, setIsPlatformOwner] = useState(false);
   const [isPlatformStaff, setIsPlatformStaff] = useState(false);
   const [tenants, setTenants] = useState<TenantSummary[]>([]);
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
+  // Auth events can start a background revalidation before the foreground mount
+  // load finishes. Track accepted reads by start order so an older response can
+  // never erase a newer authenticated account context when it resolves last.
+  const nextLoadIdRef = useRef(0);
+  const acceptedLoadIdRef = useRef(0);
+  const subjectEpochRef = useRef(0);
+  const sessionUidRef = useRef<string | null>(null);
+  const hasAcceptedContextRef = useRef(false);
   // The uid resolved by the last successful load — captured so the SIGNED_OUT
   // handler (whose session is already null) can clear THIS user's freshness
   // marker for the correct per-uid key (fold-fix #5).
@@ -173,6 +184,9 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   // stays silent and commits ONLY on a fully-successful read; the first mount keeps
   // the blocking loader (there's no prior state to preserve) so the gate resolves once.
   const load = useCallback(async (background = false) => {
+    const loadId = ++nextLoadIdRef.current;
+    let loadSubjectEpoch = subjectEpochRef.current;
+    let acceptedThisLoad = false;
     if (!background) setLoading(true);
     try {
       // getSession() reads the session Supabase restores from localStorage. On a
@@ -182,18 +196,39 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       // operator "Restricted area" bug on /admin/platform/*). Pair with the
       // onAuthStateChange re-run below so a late hydration always re-resolves.
       const { data: { session } } = await supabase.auth.getSession();
-      const uid = session?.user?.id;
+      const uid = session?.user?.id ?? null;
+      if (uid !== sessionUidRef.current) {
+        // A result belongs to the authenticated subject that started it. Invalidate
+        // every older in-flight read immediately when the subject changes so user A's
+        // late tenant list can never paint inside user B's session (§9).
+        sessionUidRef.current = uid;
+        subjectEpochRef.current += 1;
+        loadSubjectEpoch = subjectEpochRef.current;
+        hasAcceptedContextRef.current = false;
+        activeUidRef.current = uid;
+        setTenants([]);
+        setActiveTenantId(null);
+        setIsPlatformOwner(false);
+        setIsPlatformStaff(false);
+        setLoading(true);
+        setAccountContextLoading(true);
+      } else {
+        loadSubjectEpoch = subjectEpochRef.current;
+      }
       if (!uid) {
         // No session is authoritative from local storage (getSession, unlike getUser,
         // doesn't fail transiently on the network) — a real signed-out state. Clear.
+        if (loadSubjectEpoch !== subjectEpochRef.current || loadId < acceptedLoadIdRef.current) return;
+        acceptedLoadIdRef.current = loadId;
+        acceptedThisLoad = true;
         activeUidRef.current = null;
+        hasAcceptedContextRef.current = false;
         setTenants([]);
         setActiveTenantId(null);
         setIsPlatformOwner(false);
         setIsPlatformStaff(false);
         return;
       }
-      activeUidRef.current = uid;
 
       const [owner, staff, profileRes, tenantsRes, classRes] = await Promise.all([
         supabase.rpc("is_platform_owner"),
@@ -221,7 +256,19 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       // (empty on error is the honest first-paint, corrected by the next event).
       // NOTE: classRes is intentionally NOT in this guard — the classification is an
       // enhancement; its absence (pre-migration / non-staff) must never block the shell.
-      if (background && (owner.error || staff.error || tenantsRes.error)) return;
+      const requiredReadFailed = Boolean(owner.error || staff.error || profileRes.error || tenantsRes.error);
+      if (requiredReadFailed && (background || hasAcceptedContextRef.current)) return;
+
+      // A later-started successful read is authoritative. This is intentionally a
+      // last-SUCCESSFUL-read guard, not a last-started-read guard: a transiently
+      // failed background refresh must not suppress a valid foreground result.
+      if (loadSubjectEpoch !== subjectEpochRef.current || loadId < acceptedLoadIdRef.current) return;
+      acceptedLoadIdRef.current = loadId;
+      acceptedThisLoad = true;
+      activeUidRef.current = uid;
+      hasAcceptedContextRef.current = true;
+      const stillAuthoritative = () =>
+        loadSubjectEpoch === subjectEpochRef.current && loadId === acceptedLoadIdRef.current;
 
       setIsPlatformOwner(Boolean(owner.data));
       setIsPlatformStaff(Boolean(staff.data));
@@ -284,6 +331,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
           let home: string | null = null;
           if (!staff.data) {
             const primary = await supabase.rpc("get_user_primary_tenant", { _user_id: uid });
+            if (!stillAuthoritative()) return;
             if (primary.error) {
               // Couldn't resolve home — leave scope on the committed base and do
               // NOT burn, so the next auth event retries (fold-fix #1: never lose
@@ -296,6 +344,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
             // Already home — nothing to persist; mark the login handled.
             burnHandledSignIn(uid, lastSignInAt);
           } else {
+            if (!stillAuthoritative()) return;
             // Persist so current_user_tenant_id() (RLS) and the client agree (§9).
             const reset = await supabase
               .from("profiles")
@@ -307,6 +356,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
               // NOT burn; retry on the next auth event with DB and client aligned.
               return;
             }
+            if (!stillAuthoritative()) return;
             // Commit + invalidate ONLY after the write succeeds, then burn the
             // marker LAST (fold-fix #1) so the reset is never lost on a bail.
             setActiveTenantId(home);
@@ -316,7 +366,18 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         }
       }
     } finally {
-      if (!background) setLoading(false);
+      // A successful background hydration can be the first authoritative tenant
+      // result on a cold deep-link, so it owns releasing the initial gate. An older
+      // foreground request that became stale must not release that gate while the
+      // accepted load is still completing its fresh-sign-in scope reconciliation.
+      const sameSubject = loadSubjectEpoch === subjectEpochRef.current;
+      if (
+        (acceptedThisLoad && sameSubject && loadId === acceptedLoadIdRef.current) ||
+        (!acceptedThisLoad && !background && sameSubject && loadId === nextLoadIdRef.current)
+      ) {
+        setLoading(false);
+        setAccountContextLoading(false);
+      }
     }
   }, [queryClient]);
 
@@ -415,6 +476,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
   const value: TenantContextState = {
     loading,
+    accountContextLoading,
     isPlatformOwner,
     isPlatformStaff,
     tenants,
@@ -443,4 +505,3 @@ export function useTenantContext(): TenantContextState {
   }
   return ctx;
 }
-

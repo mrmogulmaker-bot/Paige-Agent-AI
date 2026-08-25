@@ -1,5 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import AgencyApp from "@/agency/AgencyApp";
+import { useTenantContext } from "@/hooks/useTenantContext";
+import { PageSkeleton } from "@/components/ui/page";
 
 /**
  * BusinessEntry — the `/business/*` dispatcher (§65 R3c-i).
@@ -18,6 +20,8 @@ import AgencyApp from "@/agency/AgencyApp";
  * the `:account` segment honest against the caller's real tenant.
  */
 export default function BusinessEntry() {
+  const { accountContextLoading } = useTenantContext();
+  if (accountContextLoading) return <PageSkeleton />;
   return (
     <Routes>
       <Route path=":account/*" element={<AgencyApp mode="subaccount" />} />
