@@ -42,6 +42,8 @@ export interface SubTab {
   key: string;
   /** Sub-tab label. */
   label: string;
+  /** Addressable branch-root view that is owned by the parent destination, not its visible strip. */
+  hidden?: boolean;
   /**
    * OPTIONAL third level — used only by the OPERATOR tree's `settings` branch, because the
    * design nests settings one level deeper (`/operator/settings/governance/audit-log`).
@@ -100,7 +102,7 @@ export interface TierTree {
  * SOLO_BRANCHES — the Solo tree (13). Shared by `solo` AND `sub_account` (§11c/§60).
  * Keys match `src/solo/SoloApp.tsx`'s `screens` registry.
  *
- * Sub-tabs verified screen-by-screen against the Solo screen SOURCE 2026-08-18 (53 across 11
+ * Sub-tabs verified screen-by-screen against the Solo screen SOURCE (55 across 11
  * branches) — a source read, not a browser drive; the §32.c live-drive is owed separately.
  * `tierBranches.test.ts` enforces this by parsing each screen's rendered strip, so the pairing
  * can't silently drift. Solo's internal sub-tab keys are its OWN abbreviations (`know`/`sub`/`pipe`/`sch`/
@@ -115,8 +117,10 @@ export const SOLO_BRANCHES: Branch[] = [
     // `home`'s label is "Command Center" (== branch); slug'd "overview" to avoid
     // /command-center/command-center. Source: src/solo/CommandCenter.tsx.
     subtabs: [
-      { slug: "overview", key: "home", label: "Command Center" },
+      { slug: "overview", key: "home", label: "Command Center", hidden: true },
       { slug: "systems-check", key: "sys", label: "Systems Check" },
+      { slug: "directory", key: "dir", label: "Directory" },
+      { slug: "history", key: "hist", label: "History" },
     ],
   },
   {
@@ -260,13 +264,13 @@ export const SOLO_BRANCHES: Branch[] = [
 export const AGENCY_BRANCHES: Branch[] = [
   {
     slug: "command-center", key: "command", label: "Command Center", group: "main",
-    // NOTE: `main`'s label is "Command Center" (== branch); slug'd "overview" to avoid
-    // /command-center/command-center. Sub-account mode shows only overview + systems-check.
+    // NOTE: `main` is the branch root. Systems Check, Directory, and History are the
+    // three consistent tenant secondary views; account context remains in the shared shell.
     subtabs: [
-      { slug: "overview", key: "main", label: "Command Center" },
+      { slug: "overview", key: "main", label: "Command Center", hidden: true },
       { slug: "systems-check", key: "systems", label: "Systems Check" },
-      { slug: "team-pulse", key: "team", label: "Team Pulse" },
-      { slug: "prospect-pipeline", key: "pipe", label: "Prospect Pipeline" },
+      { slug: "directory", key: "directory", label: "Directory" },
+      { slug: "history", key: "history", label: "History" },
     ],
   },
   {
@@ -628,7 +632,7 @@ export const TIER_TREES: Record<RouteTierKey, TierTree> = {
   // Solo screens hardcode `useSubtabRoute("solo", …)` — safe today because
   // SoloApp only ever mounts at /solo/*, but the moment /business mounts it,
   // every sub-tab click by a sub-account owner builds a /solo/{n}/… path and
-  // silently throws them out of the /business tree — 53 routes at once. The
+  // silently throws them out of the /business tree — 55 routes at once. The
   // agency screens already model the fix: `useSubtabRoute(isAgency ? "agency"
   // : "sub_account", …)`. Thread the tier through SoloApp the same way BEFORE
   // mounting it at /business; it was left hardcoded here only because there is

@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React from "react";
 import { AgencyCommandCenterCore } from "@/components/tenant-shell/TenantCommandCenterCore";
+import { TenantSystemsCheckSecondaryView } from "@/components/tenant-shell/TenantSystemsCheckSecondaryView";
 import { SystemsCheckTile } from "@/components/systems-check/SystemsCheckTile";
 import { useSubtabRoute } from "@/lib/routing/useSubtabRoute";
 import { Ic } from "./_shared";
@@ -8,16 +9,21 @@ import { Ic } from "./_shared";
 const noop = () => {};
 
 const CommandCenter = ({ accountContext = null, isAgency = true, acting = null, openAsk = noop }) => {
+  const rootKey = isAgency ? "main" : "home";
+  const systemsKey = isAgency ? "systems" : "sys";
+  const directoryKey = isAgency ? "directory" : "dir";
+  const historyKey = isAgency ? "history" : "hist";
   const [tab, setTab] = useSubtabRoute(
     isAgency ? "agency" : "sub_account",
     "command-center",
-    "main",
+    rootKey,
   );
   const tabs = [
-    ["main", "Command Center", () => <Ic.grid size={15} />],
-    ["systems", "Systems Check", () => <Ic.pulse size={15} />],
+    [systemsKey, "Systems Check", () => <Ic.pulse size={15} />],
+    [directoryKey, "Directory", () => <Ic.grid size={15} />],
+    [historyKey, "History", () => <Ic.pulse size={15} />],
   ];
-  const currentTab = tabs.some(([id]) => id === tab) ? tab : "main";
+  const currentTab = tab;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
@@ -65,12 +71,14 @@ const CommandCenter = ({ accountContext = null, isAgency = true, acting = null, 
         className="fade-in"
         style={{ flex: 1, minHeight: 0, padding: "22px 26px 24px", overflow: "auto" }}
       >
-        {currentTab === "main" ? (
+        {currentTab === rootKey ? (
           <AgencyCommandCenterCore accountContext={accountContext} context={{ isAgency, acting }} openPaige={openAsk} />
-        ) : (
+        ) : currentTab === systemsKey ? (
           <div style={{ width: "100%", maxWidth: 1180, margin: "0 auto" }}>
             <SystemsCheckTile scope="tenant" />
           </div>
+        ) : (
+          <TenantSystemsCheckSecondaryView view={currentTab === directoryKey ? "directory" : "history"} />
         )}
       </div>
     </div>
