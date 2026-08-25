@@ -49,9 +49,9 @@ export function tenantAccountTypeLabel(accountType?: string | null): string {
     case "standalone":
       return "Solo";
     case "sub_account":
-      return "Business";
+      return "Sub-account";
     case "agency":
-      return "Agency";
+      return "Agency Parent";
     case "enterprise":
       return "Enterprise";
     default:
