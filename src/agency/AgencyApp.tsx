@@ -5,9 +5,10 @@
 //
 // Source of truth: "Agency Shell.dc.html" — the two-group Rail (MAIN + PLATFORM),
 // the header identity/breadcrumb + account SWITCHER + account/profile MENU + theme
-// toggle + Ask-Paige + Help + notifications, the acting-banner, and the FIVE global
+// toggle + Ask-Paige + Help + notifications, the acting-banner, and the FOUR remaining
 // chrome pop-outs (switcher popover · account menu · 3-step provisioning wizard ·
-// Ask Paige launcher · Help drawer). The DCLogic runtime is NOT ported — its markup,
+// Help drawer). Ask Paige now expands the v3 shell's single PAIGE workspace. The
+// DCLogic runtime is NOT ported — its markup,
 // measurements, copy, and interaction are mirrored onto React + the ./_shared
 // primitives (Modal/Popover/SlideOut carry portal/focus-trap/Esc/reduced-motion).
 //
@@ -58,14 +59,6 @@ import TeamScreen from "./team";
 import VaultHub from "./vault";
 import SetupScreen from "./setup";
 import IntegrationsHub from "./integrations";
-// §18 ONE HOME — the right-side "Ask Paige" pop-out is the SAME component the Solo
-// shell mounts (src/solo/agent.tsx › PaigePanel): a real, session-scoped conversation
-// (useSoloChat → usePaigeThreads + paige-ai-chat, §9 never a client tenant_id), not a
-// second chat surface. Cross-pack reuse follows the established precedent in this repo
-// (src/agency/data/useAgencyContacts.ts imports @/solo/data/useSoloOwner); the two token
-// layers are one-for-one mirrors (.paige-solo / .paige-agency), so the panel themes
-// correctly inside this shell.
-import { PaigePanel } from "@/solo/agent";
 import { TenantCommandCenterShell } from "@/components/tenant-shell/TenantCommandCenterShell";
 import { AgentPresenceProvider, useAgentPresence } from "@/components/ui/paige";
 import { VoiceDeviceProvider } from "@/lib/voice/VoiceDeviceProvider";
@@ -574,7 +567,6 @@ const AgencyAppContent = ({ mode = "agency" }) => {
   // Global chrome pop-out open-state (all held here, per the task).
   const [switcherOpen, setSwitcherOpen] = React.useState(false);
   const [acctOpen, setAcctOpen] = React.useState(false);
-  const [askOpen, setAskOpen] = React.useState(false);
   const [helpOpen, setHelpOpen] = React.useState(false);
   const [helpSent, setHelpSent] = React.useState(false);
   const [provisionOpen, setProvisionOpen] = React.useState(false);
@@ -900,15 +892,6 @@ const AgencyAppContent = ({ mode = "agency" }) => {
             )}
           </Modal>
         )}
-
-        {/* Ask Paige (both modes) — the RIGHT-SIDE slide-in, opened by the TopBar spark,
-            the rail's "Paige" item, and ⌘K. §58 NOTE: this replaces the design-port's
-            decorative center Modal (a static, composer-less transcript of fixture
-            sub-account names and figures) with the shell's real, session-scoped
-            conversation. No live capability is removed — the fixture copy was never
-            wired to anything — and the full-page Paige workspace stays reachable via
-            "Open workspace" and its own /…/paige URL. */}
-        <PaigePanel open={askOpen} onClose={() => setAskOpen(false)} onOpenFull={() => { setAskOpen(false); go("paige"); }} />
 
         {/* Help (both modes) — right drawer SlideOut → sendHelp → helpSent. */}
         <SlideOut open={helpOpen} onClose={() => setHelpOpen(false)} title="Help and support" sub="Tell me what's going on — I pull your account context in myself." icon={<Ic.spark size={15} />}

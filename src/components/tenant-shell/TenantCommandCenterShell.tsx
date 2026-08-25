@@ -10,14 +10,12 @@ import {
   Moon,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
   Sun,
 } from "lucide-react";
 import { AdminBridgeBell } from "@/components/admin/AdminBridgeBell";
 import { DialPadTrigger } from "@/components/admin/voice/DialPadTrigger";
 import { useAgentPresence } from "@/components/ui/paige";
-import { CommandMark } from "@/operator/shell/CommandMark";
+import { CommandGlyph, CommandMark } from "@/operator/shell/CommandMark";
 import { resolveTenantShellDestination, tenantShellDestinationsForPath } from "./tenantShellRoutes";
 import "./tenant-command-center-shell.css";
 
@@ -53,6 +51,32 @@ export interface TenantCommandCenterShellProps {
   accountControls?: ReactNode;
   onSignOut: () => void;
   signingOut?: boolean;
+}
+
+export function TenantPaigeCommandField({
+  expanded,
+  onOpen,
+}: {
+  expanded: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-tenant-paige-command
+      className="tcs-command-field"
+      onClick={onOpen}
+      aria-expanded={expanded}
+      aria-controls="tenant-paige-workspace"
+      aria-label="Direct PAIGE"
+    >
+      <span className="tcs-command-glyph" data-state={expanded ? "charged" : "dormant"}>
+        <CommandGlyph size={18} />
+      </span>
+      <span>Direct PAIGE, or press ⌘K</span>
+      <kbd>⌘K</kbd>
+    </button>
+  );
 }
 
 export function TenantCommandCenterShell({
@@ -228,21 +252,11 @@ export function TenantCommandCenterShell({
             <strong>{destination.label}</strong>
             <small>{providedBy ? `Provided by ${providedBy}` : accountType?.split("_").join(" ") || "tenant"}</small>
           </div>
+          <TenantPaigeCommandField expanded={railExpanded} onOpen={openPaige} />
           <div className="tcs-command-actions">
             <div className="tcs-account-controls" aria-label="Account context controls">{accountControls}</div>
             <DialPadTrigger />
             <AdminBridgeBell />
-            <button
-              type="button"
-              className="tcs-paige-button"
-              onClick={railExpanded ? closePaige : openPaige}
-              aria-expanded={railExpanded}
-              aria-controls="tenant-paige-workspace"
-            >
-              <CommandMark state="dormant" size={15} />
-              <span>{railExpanded ? "Fold PAIGE" : "Open PAIGE"}</span>
-              {railExpanded ? <PanelRightClose aria-hidden /> : <PanelRightOpen aria-hidden />}
-            </button>
           </div>
         </header>
 
@@ -267,7 +281,7 @@ function PaigeWorkspace({
   return (
     <aside id="tenant-paige-workspace" className="tcs-paige" aria-label="PAIGE command workspace">
       <header className="tcs-paige-header">
-        <CommandMark state="dormant" size={22} />
+        <span className="tcs-paige-mark"><CommandGlyph size={20} /></span>
         <div>
           <strong>PAIGE</strong>
           <span>Your live operating partner</span>
